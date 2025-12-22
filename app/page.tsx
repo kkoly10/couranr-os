@@ -6,17 +6,24 @@ export default function HomePage() {
       {/* Header */}
       <header className="header">
         <div className="container header-inner">
+          {/* Logo */}
           <Link href="/" className="logo">
-            Couranr
+            Couranr<span className="logo-dot">.</span>
           </Link>
 
+          {/* Navigation */}
           <nav className="nav">
-            <a href="#courier">Courier</a>
-            <a href="#rentals">Rentals</a>
-            <a href="#pack-ship">Pack & Ship</a>
-            <a href="#documents">Documents</a>
-            <a href="#detailing">Detailing</a>
-            <Link href="/login">Login / Account</Link>
+            <div className="nav-services">
+              <a href="#courier">Courier</a>
+              <a href="#rentals">Rentals</a>
+              <a href="#pack-ship">Pack & Ship</a>
+              <a href="#documents">Documents</a>
+              <a href="#detailing">Detailing</a>
+            </div>
+
+            <Link href="/login" className="nav-account">
+              Login / Account
+            </Link>
           </nav>
         </div>
       </header>
