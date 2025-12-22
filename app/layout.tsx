@@ -1,8 +1,9 @@
-import type { ReactNode } from "react";
+import "./globals.css";
+import { ReactNode } from "react";
 
 export const metadata = {
-  title: "Couranr OS",
-  description: "Couranr multi-service operating system"
+  title: "Couranr",
+  description: "Couranr multi-service platform"
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
