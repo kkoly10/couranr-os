@@ -1,20 +1,38 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+
+import { useSearchParams } from "next/navigation";
 
 import AuthGuard from "../../../components/AuthGuard";
 
 export default function CourierCheckoutPage() {
 
+  const params = useSearchParams();
+
+  const quotedPrice = useMemo(() => {
+
+    const p = params.get("price");
+
+    const n = p ? Number(p) : NaN;
+
+    return Number.isFinite(n) ? n : null;
+
+  }, [params]);
+
   const [recipientName, setRecipientName] = useState("");
 
   const [recipientPhone, setRecipientPhone] = useState("");
 
-  const [isBusiness, setIsBusiness] = useState(false);
+  const [isBusiness, setIsBusiness] = useState(params.get("business") === "1");
 
   const [businessHours, setBusinessHours] = useState("");
 
-  const [needsSignature, setNeedsSignature] = useState(false);
+  const [needsSignature, setNeedsSignature] = useState(
+
+    params.get("signature") === "1"
+
+  );
 
   const [pickupPhoto, setPickupPhoto] = useState<File | null>(null);
 
@@ -22,11 +40,29 @@ export default function CourierCheckoutPage() {
 
   const [error, setError] = useState<string | null>(null);
 
-  const [submitted, setSubmitted] = useState(false);
+  const [creatingAuth, setCreatingAuth] = useState(false);
 
-  const handleSubmit = () => {
+  const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
+
+  const amountCents = useMemo(() => {
+
+    if (quotedPrice === null) return null;
+
+    return Math.round(quotedPrice * 100);
+
+  }, [quotedPrice]);
+
+  const createAuthorization = async () => {
 
     setError(null);
+
+    if (quotedPrice === null || amountCents === null) {
+
+      setError("Missing quote price. Please return to the quote page.");
+
+      return;
+
+    }
 
     if (!recipientName || !recipientPhone) {
 
@@ -52,9 +88,61 @@ export default function CourierCheckoutPage() {
 
     }
 
-    // Payment + order creation will happen next step
+    setCreatingAuth(true);
 
-    setSubmitted(true);
+    try {
+
+      const res = await fetch("/api/create-payment-intent", {
+
+        method: "POST",
+
+        headers: { "Content-Type": "application/json" },
+
+        body: JSON.stringify({
+
+          amountCents,
+
+          currency: "usd",
+
+          metadata: {
+
+            service: "courier",
+
+            signature_required: needsSignature ? "yes" : "no",
+
+            address_type: isBusiness ? "business" : "residential"
+
+          }
+
+        })
+
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+
+        setError(data?.error || "Failed to create authorization.");
+
+        setCreatingAuth(false);
+
+        return;
+
+      }
+
+      // Next step: we’ll use clientSecret with Stripe Elements to actually authorize the card.
+
+      setPaymentIntentId(data.paymentIntentId);
+
+      setCreatingAuth(false);
+
+    } catch (e: any) {
+
+      setError(e?.message || "Failed to create authorization.");
+
+      setCreatingAuth(false);
+
+    }
 
   };
 
@@ -63,13 +151,39 @@ export default function CourierCheckoutPage() {
 <main style={{ padding: "100px 20px" }}>
 <div className="container">
 <h1>Checkout</h1>
-<p style={{ color: "var(--muted)", marginBottom: 32 }}>
+<p style={{ color: "var(--muted)", marginBottom: 24 }}>
 
-            Review delivery details and provide recipient information.
+            Recipient info + required photos. Then we’ll authorize payment.
 </p>
-<div className="card" style={{ maxWidth: 640 }}>
+<div className="card" style={{ maxWidth: 680 }}>
 
-            {/* Recipient Info */}
+            {/* Quote summary */}
+<div
+
+              style={{
+
+                padding: 14,
+
+                border: "1px solid var(--border)",
+
+                borderRadius: 8,
+
+                background: "var(--surface-alt)",
+
+                marginBottom: 22
+
+              }}
+>
+<strong>Quote</strong>
+<div style={{ marginTop: 8, fontSize: 18, fontWeight: 700 }}>
+
+                {quotedPrice !== null ? `$${quotedPrice.toFixed(2)}` : "—"}
+</div>
+<div style={{ color: "var(--muted)", fontSize: 13, marginTop: 6 }}>
+
+                Authorization only (capture happens after delivery).
+</div>
+</div>
 <h3 style={{ marginBottom: 12 }}>Recipient Information</h3>
 <label>Full Name</label>
 <input
@@ -128,8 +242,6 @@ export default function CourierCheckoutPage() {
 </>
 
             )}
-
-            {/* Signature */}
 <div style={{ marginBottom: 24 }}>
 <label>
 <input
@@ -145,8 +257,6 @@ export default function CourierCheckoutPage() {
                 Require signature on delivery
 </label>
 </div>
-
-            {/* Photos */}
 <h3 style={{ marginBottom: 12 }}>Required Photos</h3>
 <label>Pickup Photo (Required)</label>
 <input
@@ -155,11 +265,7 @@ export default function CourierCheckoutPage() {
 
               accept="image/*"
 
-              onChange={(e) =>
-
-                setPickupPhoto(e.target.files?.[0] || null)
-
-              }
+              onChange={(e) => setPickupPhoto(e.target.files?.[0] || null)}
 
               style={{ width: "100%", marginBottom: 16 }}
 
@@ -171,29 +277,28 @@ export default function CourierCheckoutPage() {
 
               accept="image/*"
 
-              onChange={(e) =>
-
-                setDropoffPhoto(e.target.files?.[0] || null)
-
-              }
+              onChange={(e) => setDropoffPhoto(e.target.files?.[0] || null)}
 
               style={{ width: "100%", marginBottom: 24 }}
 
             />
-
-            {/* Error */}
 
             {error && (
 <p style={{ color: "#dc2626", marginBottom: 16 }}>{error}</p>
 
             )}
 
-            {/* Submit */}
+            {!paymentIntentId ? (
+<button
 
-            {!submitted ? (
-<button style={{ width: "100%" }} onClick={handleSubmit}>
+                style={{ width: "100%" }}
 
-                Confirm & Continue
+                onClick={createAuthorization}
+
+                disabled={creatingAuth}
+>
+
+                {creatingAuth ? "Creating authorization…" : "Authorize Payment"}
 </button>
 
             ) : (
@@ -211,10 +316,16 @@ export default function CourierCheckoutPage() {
 
                 }}
 >
-<strong>Details confirmed</strong>
+<strong>Authorization initialized</strong>
 <p style={{ color: "var(--muted)", marginTop: 8 }}>
 
-                  Next step: payment and order confirmation.
+                  PaymentIntent created: <code>{paymentIntentId}</code>
+</p>
+<p style={{ color: "var(--muted)", marginTop: 8 }}>
+
+                  Next step: add Stripe card entry (Elements) to complete the
+
+                  authorization, then create the order + upload photos.
 </p>
 </div>
 
