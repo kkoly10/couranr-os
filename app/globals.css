@@ -62,7 +62,7 @@ button:hover {
   padding: 0 20px;
 }
 
-/* Header */
+/* ===== Header ===== */
 .header {
   position: fixed;
   top: 0;
@@ -81,20 +81,45 @@ button:hover {
   justify-content: space-between;
 }
 
+/* Logo */
 .logo {
   font-size: 20px;
   font-weight: 800;
-  color: var(--primary);
+  color: var(--text);
+  letter-spacing: -0.2px;
 }
 
+.logo-dot {
+  color: var(--primary);
+  margin-left: 2px;
+}
+
+/* Navigation */
 .nav {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+/* Service links */
+.nav-services {
   display: flex;
   gap: 18px;
   font-weight: 500;
   color: var(--muted);
+  font-size: 15px;
 }
 
-/* Hero */
+/* Account link */
+.nav-account {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text);
+  padding-left: 20px;
+  border-left: 1px solid var(--border);
+}
+
+/* ===== Hero ===== */
 .hero {
   padding: 140px 0 80px;
 }
@@ -111,7 +136,7 @@ button:hover {
   font-size: 18px;
 }
 
-/* Sections */
+/* ===== Sections ===== */
 .section {
   padding: 80px 0;
 }
