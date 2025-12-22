@@ -1,21 +1,42 @@
 {
+
   "name": "couranr-os",
+
   "private": true,
+
   "scripts": {
+
     "dev": "next dev",
+
     "build": "next build",
+
     "start": "next start"
+
   },
+
   "dependencies": {
+
+    "@supabase/supabase-js": "^2.45.4",
+
     "next": "14.2.5",
+
     "react": "18.3.1",
+
     "react-dom": "18.3.1",
-    "@supabase/supabase-js": "^2.45.4"
+
+    "stripe": "^16.12.0"
+
   },
+
   "devDependencies": {
-    "typescript": "^5.4.5",
-    "@types/react": "^18.3.3",
+
     "@types/node": "^20.14.2",
-    "@supabase/supabase-js": "^2.45.4"
+
+    "@types/react": "^18.3.3",
+
+    "typescript": "^5.4.5"
+
   }
+
 }
+ 
