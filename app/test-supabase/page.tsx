@@ -1,4 +1,4 @@
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "../../lib/supabaseClient";
 
 export default async function TestSupabase() {
   const { data, error } = await supabase
@@ -11,7 +11,7 @@ export default async function TestSupabase() {
       <h1>Supabase Connection Test</h1>
 
       {error ? (
-        <pre style={{ color: "red" }}>
+        <pre style={{ color: "red", whiteSpace: "pre-wrap" }}>
           {JSON.stringify(error, null, 2)}
         </pre>
       ) : (
