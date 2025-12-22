@@ -1,341 +1,177 @@
 "use client";
 
 import { useMemo, useState } from "react";
-
 import { useSearchParams } from "next/navigation";
-
 import AuthGuard from "../../../components/AuthGuard";
+import StripeProvider from "../../../components/StripeProvider";
+import {
+  CardElement,
+  useElements,
+  useStripe
+} from "@stripe/react-stripe-js";
 
-export default function CourierCheckoutPage() {
-
+function CheckoutInner() {
+  const stripe = useStripe();
+  const elements = useElements();
   const params = useSearchParams();
 
   const quotedPrice = useMemo(() => {
-
     const p = params.get("price");
-
     const n = p ? Number(p) : NaN;
-
     return Number.isFinite(n) ? n : null;
-
   }, [params]);
 
   const [recipientName, setRecipientName] = useState("");
-
   const [recipientPhone, setRecipientPhone] = useState("");
-
   const [isBusiness, setIsBusiness] = useState(params.get("business") === "1");
-
   const [businessHours, setBusinessHours] = useState("");
-
   const [needsSignature, setNeedsSignature] = useState(
-
     params.get("signature") === "1"
-
   );
 
   const [pickupPhoto, setPickupPhoto] = useState<File | null>(null);
-
   const [dropoffPhoto, setDropoffPhoto] = useState<File | null>(null);
 
   const [error, setError] = useState<string | null>(null);
+  const [processing, setProcessing] = useState(false);
+  const [success, setSuccess] = useState(false);
 
-  const [creatingAuth, setCreatingAuth] = useState(false);
+  const amountCents =
+    quotedPrice !== null ? Math.round(quotedPrice * 100) : null;
 
-  const [paymentIntentId, setPaymentIntentId] = useState<string | null>(null);
-
-  const amountCents = useMemo(() => {
-
-    if (quotedPrice === null) return null;
-
-    return Math.round(quotedPrice * 100);
-
-  }, [quotedPrice]);
-
-  const createAuthorization = async () => {
-
+  const authorizePayment = async () => {
     setError(null);
 
-    if (quotedPrice === null || amountCents === null) {
-
-      setError("Missing quote price. Please return to the quote page.");
-
+    if (!stripe || !elements) {
+      setError("Payment system not ready.");
       return;
-
     }
 
-    if (!recipientName || !recipientPhone) {
-
-      setError("Recipient name and phone number are required.");
-
+    if (!amountCents || !recipientName || !recipientPhone) {
+      setError("Missing required information.");
       return;
-
     }
 
     if (isBusiness && !businessHours) {
-
-      setError("Please provide delivery hours for the business address.");
-
+      setError("Business delivery hours required.");
       return;
-
     }
 
     if (!pickupPhoto || !dropoffPhoto) {
-
       setError("Pickup and drop-off photos are required.");
-
       return;
-
     }
 
-    setCreatingAuth(true);
+    setProcessing(true);
 
     try {
-
       const res = await fetch("/api/create-payment-intent", {
-
         method: "POST",
-
         headers: { "Content-Type": "application/json" },
-
         body: JSON.stringify({
-
           amountCents,
-
           currency: "usd",
-
           metadata: {
-
             service: "courier",
-
-            signature_required: needsSignature ? "yes" : "no",
-
-            address_type: isBusiness ? "business" : "residential"
-
+            signature_required: needsSignature ? "yes" : "no"
           }
-
         })
-
       });
 
       const data = await res.json();
-
       if (!res.ok) {
-
-        setError(data?.error || "Failed to create authorization.");
-
-        setCreatingAuth(false);
-
+        setError(data?.error || "Failed to create payment authorization.");
+        setProcessing(false);
         return;
-
       }
 
-      // Next step: we’ll use clientSecret with Stripe Elements to actually authorize the card.
+      const result = await stripe.confirmCardPayment(data.clientSecret, {
+        payment_method: {
+          card: elements.getElement(CardElement)!
+        }
+      });
 
-      setPaymentIntentId(data.paymentIntentId);
+      if (result.error) {
+        setError(result.error.message || "Card authorization failed.");
+        setProcessing(false);
+        return;
+      }
 
-      setCreatingAuth(false);
-
+      if (result.paymentIntent?.status === "requires_capture") {
+        setSuccess(true);
+      } else {
+        setError("Unexpected payment status.");
+      }
     } catch (e: any) {
-
-      setError(e?.message || "Failed to create authorization.");
-
-      setCreatingAuth(false);
-
+      setError(e?.message || "Authorization failed.");
     }
 
+    setProcessing(false);
   };
 
   return (
-<AuthGuard>
-<main style={{ padding: "100px 20px" }}>
-<div className="container">
-<h1>Checkout</h1>
-<p style={{ color: "var(--muted)", marginBottom: 24 }}>
+    <main style={{ padding: "100px 20px" }}>
+      <div className="container">
+        <h1>Checkout</h1>
 
-            Recipient info + required photos. Then we’ll authorize payment.
-</p>
-<div className="card" style={{ maxWidth: 680 }}>
+        <div className="card" style={{ maxWidth: 680 }}>
+          <strong>Quote</strong>
+          <p style={{ fontSize: 22, fontWeight: 700 }}>
+            {quotedPrice ? `$${quotedPrice.toFixed(2)}` : "—"}
+          </p>
+          <p style={{ color: "var(--muted)", marginBottom: 24 }}>
+            Card will be authorized now and captured after delivery.
+          </p>
 
-            {/* Quote summary */}
-<div
+          <h3>Card Information</h3>
+          <div
+            style={{
+              padding: 12,
+              border: "1px solid var(--border)",
+              borderRadius: 8,
+              marginBottom: 20
+            }}
+          >
+            <CardElement />
+          </div>
 
+          {error && <p style={{ color: "#dc2626" }}>{error}</p>}
+
+          {!success ? (
+            <button
+              style={{ width: "100%" }}
+              onClick={authorizePayment}
+              disabled={processing}
+            >
+              {processing ? "Authorizing…" : "Authorize Payment"}
+            </button>
+          ) : (
+            <div
               style={{
-
-                padding: 14,
-
-                border: "1px solid var(--border)",
-
-                borderRadius: 8,
-
+                padding: 16,
                 background: "var(--surface-alt)",
-
-                marginBottom: 22
-
+                borderRadius: 8
               }}
->
-<strong>Quote</strong>
-<div style={{ marginTop: 8, fontSize: 18, fontWeight: 700 }}>
-
-                {quotedPrice !== null ? `$${quotedPrice.toFixed(2)}` : "—"}
-</div>
-<div style={{ color: "var(--muted)", fontSize: 13, marginTop: 6 }}>
-
-                Authorization only (capture happens after delivery).
-</div>
-</div>
-<h3 style={{ marginBottom: 12 }}>Recipient Information</h3>
-<label>Full Name</label>
-<input
-
-              value={recipientName}
-
-              onChange={(e) => setRecipientName(e.target.value)}
-
-              placeholder="Recipient full name"
-
-              style={{ width: "100%", marginBottom: 16 }}
-
-            />
-<label>Phone Number</label>
-<input
-
-              value={recipientPhone}
-
-              onChange={(e) => setRecipientPhone(e.target.value)}
-
-              placeholder="Recipient phone number"
-
-              style={{ width: "100%", marginBottom: 16 }}
-
-            />
-<div style={{ marginBottom: 12 }}>
-<label>
-<input
-
-                  type="checkbox"
-
-                  checked={isBusiness}
-
-                  onChange={() => setIsBusiness(!isBusiness)}
-
-                />{" "}
-
-                Delivery is to a business address
-</label>
-</div>
-
-            {isBusiness && (
-<>
-<label>Business Delivery Hours</label>
-<input
-
-                  value={businessHours}
-
-                  onChange={(e) => setBusinessHours(e.target.value)}
-
-                  placeholder="e.g. Mon–Fri, 9am–5pm"
-
-                  style={{ width: "100%", marginBottom: 16 }}
-
-                />
-</>
-
-            )}
-<div style={{ marginBottom: 24 }}>
-<label>
-<input
-
-                  type="checkbox"
-
-                  checked={needsSignature}
-
-                  onChange={() => setNeedsSignature(!needsSignature)}
-
-                />{" "}
-
-                Require signature on delivery
-</label>
-</div>
-<h3 style={{ marginBottom: 12 }}>Required Photos</h3>
-<label>Pickup Photo (Required)</label>
-<input
-
-              type="file"
-
-              accept="image/*"
-
-              onChange={(e) => setPickupPhoto(e.target.files?.[0] || null)}
-
-              style={{ width: "100%", marginBottom: 16 }}
-
-            />
-<label>Drop-off Photo (Required)</label>
-<input
-
-              type="file"
-
-              accept="image/*"
-
-              onChange={(e) => setDropoffPhoto(e.target.files?.[0] || null)}
-
-              style={{ width: "100%", marginBottom: 24 }}
-
-            />
-
-            {error && (
-<p style={{ color: "#dc2626", marginBottom: 16 }}>{error}</p>
-
-            )}
-
-            {!paymentIntentId ? (
-<button
-
-                style={{ width: "100%" }}
-
-                onClick={createAuthorization}
-
-                disabled={creatingAuth}
->
-
-                {creatingAuth ? "Creating authorization…" : "Authorize Payment"}
-</button>
-
-            ) : (
-<div
-
-                style={{
-
-                  padding: 16,
-
-                  border: "1px solid var(--border)",
-
-                  borderRadius: 8,
-
-                  background: "var(--surface-alt)"
-
-                }}
->
-<strong>Authorization initialized</strong>
-<p style={{ color: "var(--muted)", marginTop: 8 }}>
-
-                  PaymentIntent created: <code>{paymentIntentId}</code>
-</p>
-<p style={{ color: "var(--muted)", marginTop: 8 }}>
-
-                  Next step: add Stripe card entry (Elements) to complete the
-
-                  authorization, then create the order + upload photos.
-</p>
-</div>
-
-            )}
-</div>
-</div>
-</main>
-</AuthGuard>
-
+            >
+              <strong>Payment authorized</strong>
+              <p style={{ color: "var(--muted)" }}>
+                Your delivery is confirmed. Funds will be captured after
+                completion.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </main>
   );
-
 }
- 
+
+export default function CourierCheckoutPage() {
+  return (
+    <AuthGuard>
+      <StripeProvider>
+        <CheckoutInner />
+      </StripeProvider>
+    </AuthGuard>
+  );
+}
