@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
 
 export default function LoginPage() {
@@ -8,6 +9,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+
+  const router = useRouter();
 
   const handleLogin = async () => {
     setLoading(true);
@@ -20,11 +23,11 @@ export default function LoginPage() {
 
     if (error) {
       setMessage(error.message);
-    } else {
-      setMessage("Login successful.");
+      setLoading(false);
+      return;
     }
 
-    setLoading(false);
+    router.push("/dashboard");
   };
 
   return (
