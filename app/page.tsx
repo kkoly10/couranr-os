@@ -6,12 +6,10 @@ export default function HomePage() {
       {/* Header */}
       <header className="header">
         <div className="container header-inner">
-          {/* Logo */}
           <Link href="/" className="logo">
             Couranr<span className="logo-dot">.</span>
           </Link>
 
-          {/* Navigation */}
           <nav className="nav">
             <div className="nav-services">
               <a href="#courier">Courier</a>
@@ -44,7 +42,7 @@ export default function HomePage() {
       </section>
 
       {/* Courier */}
-      <section id="courier" className="section">
+      <section id="courier" className="section alt">
         <div className="container">
           <h2>Courier Services</h2>
           <p>
@@ -93,7 +91,7 @@ export default function HomePage() {
       </section>
 
       {/* Pack & Ship */}
-      <section id="pack-ship" className="section">
+      <section id="pack-ship" className="section alt">
         <div className="container">
           <h2>Pack & Ship</h2>
           <p>
@@ -141,7 +139,7 @@ export default function HomePage() {
       </section>
 
       {/* Detailing */}
-      <section id="detailing" className="section">
+      <section id="detailing" className="section alt">
         <div className="container">
           <h2>Auto Detailing</h2>
           <p>
