@@ -1,5 +1,6 @@
 "use client";
 
+import AuthGuard from "../../components/AuthGuard";
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 
@@ -15,15 +16,20 @@ export default function DashboardPage() {
     getUser();
   }, []);
 
-  if (!user) {
-    return <p style={{ padding: 40 }}>Loading...</p>;
-  }
-
   return (
-    <main style={{ padding: 40 }}>
-      <h1>Welcome to Couranr</h1>
-      <p>You are logged in as:</p>
-      <pre>{JSON.stringify(user, null, 2)}</pre>
-    </main>
+    <AuthGuard>
+      <main style={{ padding: 40 }}>
+        <h1>Dashboard</h1>
+
+        {user ? (
+          <>
+            <p>Logged in as:</p>
+            <pre>{JSON.stringify(user, null, 2)}</pre>
+          </>
+        ) : (
+          <p>Loading user...</p>
+        )}
+      </main>
+    </AuthGuard>
   );
 }
