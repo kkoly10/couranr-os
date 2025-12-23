@@ -8,6 +8,26 @@ const stripePromise = loadStripe(
   process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY as string
 );
 
-export default function StripeProvider({ children }: { children: ReactNode }) {
-  return <Elements stripe={stripePromise}>{children}</Elements>;
+export default function StripeProvider({
+  children,
+  clientSecret
+}: {
+  children: ReactNode;
+  clientSecret: string | null;
+}) {
+  if (!clientSecret) return <>{children}</>;
+
+  return (
+    <Elements
+      stripe={stripePromise}
+      options={{
+        clientSecret,
+        appearance: {
+          theme: "stripe"
+        }
+      }}
+    >
+      {children}
+    </Elements>
+  );
 }
