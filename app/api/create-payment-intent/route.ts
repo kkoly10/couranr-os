@@ -8,30 +8,28 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { amountCents, currency = "usd", metadata } = body || {};
+    const { amountCents } = body;
 
-    if (!amountCents || typeof amountCents !== "number") {
+    if (!amountCents || amountCents < 50) {
       return NextResponse.json(
-        { error: "Invalid amountCents" },
+        { error: "Invalid amount" },
         { status: 400 }
       );
     }
 
     const intent = await stripe.paymentIntents.create({
       amount: amountCents,
-      currency,
-      capture_method: "manual",
-      automatic_payment_methods: { enabled: true },
-      metadata: metadata || {}
+      currency: "usd",
+      capture_method: "manual", // AUTHORIZE ONLY
+      automatic_payment_methods: { enabled: true }
     });
 
     return NextResponse.json({
-      clientSecret: intent.client_secret,
-      paymentIntentId: intent.id
+      clientSecret: intent.client_secret
     });
   } catch (err: any) {
     return NextResponse.json(
-      { error: err?.message || "Failed to create payment intent" },
+      { error: err?.message || "Failed to create PaymentIntent" },
       { status: 500 }
     );
   }
