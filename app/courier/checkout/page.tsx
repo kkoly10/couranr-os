@@ -1,5 +1,11 @@
 "use client";
 
+/**
+ * Force dynamic rendering.
+ * This prevents static prerendering errors with useSearchParams.
+ */
+export const dynamic = "force-dynamic";
+
 import { useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import AuthGuard from "../../../components/AuthGuard";
@@ -93,9 +99,9 @@ export default function CourierCheckoutPage() {
 
             {step === 2 && (
               <>
-                <h3 style={{ marginTop: 24 }}>Payment (Coming Next)</h3>
+                <h3 style={{ marginTop: 24 }}>Payment</h3>
                 <p style={{ color: "var(--muted)" }}>
-                  Card entry will appear here once Stripe is re-enabled.
+                  Card entry will appear here next.
                 </p>
 
                 <button
