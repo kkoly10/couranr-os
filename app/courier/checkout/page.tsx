@@ -1,5 +1,6 @@
 import dynamic from "next/dynamic";
 import AuthGuard from "../../../components/AuthGuard";
+import StripeProvider from "../../../components/StripeProvider";
 
 const CheckoutClient = dynamic(
   () => import("../../../components/courier/CheckoutClient"),
@@ -9,7 +10,9 @@ const CheckoutClient = dynamic(
 export default function CourierCheckoutPage() {
   return (
     <AuthGuard>
-      <CheckoutClient />
+      <StripeProvider>
+        <CheckoutClient />
+      </StripeProvider>
     </AuthGuard>
   );
 }
