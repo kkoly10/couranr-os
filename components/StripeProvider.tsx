@@ -13,18 +13,14 @@ export default function StripeProvider({
   clientSecret
 }: {
   children: ReactNode;
-  clientSecret: string | null;
+  clientSecret: string;
 }) {
-  if (!clientSecret) return <>{children}</>;
-
   return (
     <Elements
       stripe={stripePromise}
       options={{
         clientSecret,
-        appearance: {
-          theme: "stripe"
-        }
+        appearance: { theme: "stripe" }
       }}
     >
       {children}
