@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { CardElement, useElements, useStripe } from "@stripe/react-stripe-js";
+import { PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 
 export default function CheckoutClient() {
   const router = useRouter();
@@ -30,6 +30,7 @@ export default function CheckoutClient() {
       setError("Recipient name and phone are required.");
       return;
     }
+
     if (!pickupPhoto) {
       setError("Pickup photo is required.");
       return;
@@ -52,27 +53,23 @@ export default function CheckoutClient() {
     }
   };
 
-  const payNow = async () => {
+  const authorizePayment = async () => {
     if (!stripe || !elements || !clientSecret) return;
 
     setProcessing(true);
     setError(null);
 
-    const card = elements.getElement(CardElement);
-    if (!card) {
-      setError("Card element not ready");
-      setProcessing(false);
-      return;
-    }
-
-    const result = await stripe.confirmCardPayment(clientSecret, {
-      payment_method: {
-        card,
-        billing_details: {
-          name: recipientName,
-          phone: recipientPhone
+    const result = await stripe.confirmPayment({
+      elements,
+      confirmParams: {
+        payment_method_data: {
+          billing_details: {
+            name: recipientName,
+            phone: recipientPhone
+          }
         }
-      }
+      },
+      redirect: "if_required"
     });
 
     if (result.error) {
@@ -81,7 +78,7 @@ export default function CheckoutClient() {
       return;
     }
 
-    // Authorized successfully (NOT captured)
+    // Authorized successfully (manual capture later)
     router.push("/courier/confirmation");
   };
 
@@ -129,9 +126,9 @@ export default function CheckoutClient() {
             </>
           )}
 
-          {step === 2 && (
+          {step === 2 && clientSecret && (
             <>
-              <h3 style={{ marginTop: 24 }}>Card Payment</h3>
+              <h3 style={{ marginTop: 24 }}>Payment</h3>
 
               <div
                 style={{
@@ -141,7 +138,7 @@ export default function CheckoutClient() {
                   marginBottom: 16
                 }}
               >
-                <CardElement />
+                <PaymentElement />
               </div>
 
               {error && <p style={{ color: "#dc2626" }}>{error}</p>}
@@ -149,7 +146,7 @@ export default function CheckoutClient() {
               <button
                 style={{ width: "100%" }}
                 disabled={processing || !stripe}
-                onClick={payNow}
+                onClick={authorizePayment}
               >
                 {processing ? "Authorizing…" : "Authorize Payment"}
               </button>
