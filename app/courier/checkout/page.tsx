@@ -10,9 +10,16 @@ const CheckoutClient = dynamic(
 export default function CourierCheckoutPage() {
   return (
     <AuthGuard>
-      <StripeProvider>
-        <CheckoutClient />
-      </StripeProvider>
+      <CheckoutClientWrapper />
     </AuthGuard>
+  );
+}
+
+function CheckoutClientWrapper() {
+  // StripeProvider will be activated once clientSecret is set
+  return (
+    <StripeProvider clientSecret={null}>
+      <CheckoutClient />
+    </StripeProvider>
   );
 }
