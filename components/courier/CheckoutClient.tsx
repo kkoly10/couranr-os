@@ -8,12 +8,21 @@ export default function CheckoutClient() {
   const params = useSearchParams();
 
   const quotedPrice = Number(params.get("price") || 0);
+  const miles = params.get("miles");
+  const pickup = params.get("pickup") || "";
+  const dropoff = params.get("dropoff") || "";
+  const weight = params.get("weight") || "";
+  const rush = params.get("rush") === "1";
+  const signature = params.get("signature") === "1";
 
   const [step, setStep] = useState<1 | 2>(1);
+
   const [recipientName, setRecipientName] = useState("");
   const [recipientPhone, setRecipientPhone] = useState("");
+
+  // Customer uploads pickup photo ONLY
   const [pickupPhoto, setPickupPhoto] = useState<File | null>(null);
-  const [dropoffPhoto, setDropoffPhoto] = useState<File | null>(null);
+
   const [error, setError] = useState<string | null>(null);
 
   const continueToPayment = () => {
@@ -24,8 +33,8 @@ export default function CheckoutClient() {
       return;
     }
 
-    if (!pickupPhoto || !dropoffPhoto) {
-      setError("Pickup and drop-off photos are required.");
+    if (!pickupPhoto) {
+      setError("Pickup photo is required.");
       return;
     }
 
@@ -37,58 +46,76 @@ export default function CheckoutClient() {
       <div className="container">
         <h1>Checkout</h1>
 
-        <div className="card" style={{ maxWidth: 700 }}>
-          <strong>Quote</strong>
-          <p style={{ fontSize: 22, fontWeight: 700 }}>
+        <div className="card" style={{ maxWidth: 760 }}>
+          <strong>Summary</strong>
+          <div style={{ marginTop: 10, color: "var(--muted)", fontSize: 14, lineHeight: 1.5 }}>
+            <div><b>Pickup:</b> {pickup || "—"}</div>
+            <div><b>Drop-off:</b> {dropoff || "—"}</div>
+            <div><b>Distance:</b> {miles ? `${miles} miles` : "—"}</div>
+            <div><b>Weight:</b> {weight ? `${weight} lbs` : "—"}</div>
+            <div><b>Rush:</b> {rush ? "Yes" : "No"}</div>
+            <div><b>Signature:</b> {signature ? "Yes" : "No"}</div>
+          </div>
+
+          <div style={{ marginTop: 14, fontSize: 26, fontWeight: 800 }}>
             ${quotedPrice.toFixed(2)}
-          </p>
+          </div>
 
           {step === 1 && (
             <>
-              <h3>Recipient Information</h3>
+              <h3 style={{ marginTop: 24 }}>Recipient Information</h3>
 
-              <label>Full Name</label>
+              <label>Recipient Full Name</label>
               <input
                 value={recipientName}
                 onChange={(e) => setRecipientName(e.target.value)}
+                style={{ width: "100%", marginBottom: 16 }}
               />
 
-              <label>Phone Number</label>
+              <label>Recipient Phone Number</label>
               <input
                 value={recipientPhone}
                 onChange={(e) => setRecipientPhone(e.target.value)}
+                style={{ width: "100%", marginBottom: 16 }}
               />
 
-              <label>Pickup Photo</label>
+              <h3>Pickup Photo (Required)</h3>
+              <p style={{ color: "var(--muted)", marginTop: 6 }}>
+                Upload a pickup photo showing the item/package condition at handoff.
+                The driver will upload the drop-off photo as proof of delivery.
+              </p>
+
               <input
                 type="file"
-                onChange={(e) =>
-                  setPickupPhoto(e.target.files?.[0] || null)
-                }
+                accept="image/*"
+                onChange={(e) => setPickupPhoto(e.target.files?.[0] || null)}
+                style={{ width: "100%", marginBottom: 16 }}
               />
 
-              <label>Drop-off Photo</label>
-              <input
-                type="file"
-                onChange={(e) =>
-                  setDropoffPhoto(e.target.files?.[0] || null)
-                }
-              />
+              {error && <p style={{ color: "#dc2626" }}>{error}</p>}
 
-              {error && <p style={{ color: "red" }}>{error}</p>}
-
-              <button onClick={continueToPayment}>
+              <button style={{ width: "100%" }} onClick={continueToPayment}>
                 Continue to Payment
               </button>
+
+              <p style={{ marginTop: 12, color: "var(--muted)", fontSize: 12 }}>
+                Safety note: Drivers may refuse pickup if an item appears unsafe, exceeds declared weight,
+                or requires more than one person to lift. Support may contact you to adjust pricing or cancel the order.
+              </p>
             </>
           )}
 
           {step === 2 && (
             <>
-              <h3>Payment</h3>
-              <p>Card entry will appear here next.</p>
+              <h3 style={{ marginTop: 24 }}>Payment</h3>
+              <p style={{ color: "var(--muted)" }}>
+                Card entry will be enabled next. Payment will be authorized now and captured after delivery.
+              </p>
 
-              <button onClick={() => router.push("/courier/confirmation")}>
+              <button
+                style={{ width: "100%", marginTop: 16 }}
+                onClick={() => router.push("/courier/confirmation")}
+              >
                 Simulate Successful Payment
               </button>
             </>
