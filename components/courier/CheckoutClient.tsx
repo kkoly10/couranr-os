@@ -2,10 +2,20 @@
 
 import { useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
-import StripeProvider from "../StripeProvider";
+import { loadStripe } from "@stripe/stripe-js";
+import {
+  Elements,
+  PaymentElement,
+  useStripe,
+  useElements
+} from "@stripe/react-stripe-js";
 
-function PaymentStep({
+const stripePromise = loadStripe(
+  process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY as string
+);
+
+/* ---------- Payment Step (inside Elements) ---------- */
+function PaymentForm({
   recipientName,
   recipientPhone,
   onSuccess
@@ -19,7 +29,7 @@ function PaymentStep({
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const authorize = async () => {
+  const authorizePayment = async () => {
     if (!stripe || !elements) return;
 
     setProcessing(true);
@@ -66,15 +76,20 @@ function PaymentStep({
 
       <button
         style={{ width: "100%" }}
+        onClick={authorizePayment}
         disabled={processing}
-        onClick={authorize}
       >
         {processing ? "Authorizing…" : "Authorize Payment"}
       </button>
+
+      <p style={{ marginTop: 10, color: "var(--muted)", fontSize: 12 }}>
+        Your card will be authorized now and charged after delivery is completed.
+      </p>
     </>
   );
 }
 
+/* ---------- Main Checkout ---------- */
 export default function CheckoutClient() {
   const router = useRouter();
   const params = useSearchParams();
@@ -86,7 +101,6 @@ export default function CheckoutClient() {
   const [recipientName, setRecipientName] = useState("");
   const [recipientPhone, setRecipientPhone] = useState("");
   const [pickupPhoto, setPickupPhoto] = useState<File | null>(null);
-
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -111,7 +125,7 @@ export default function CheckoutClient() {
 
     const data = await res.json();
     if (!res.ok) {
-      setError(data?.error || "Failed to start payment");
+      setError(data?.error || "Failed to initialize payment.");
       return;
     }
 
@@ -164,13 +178,19 @@ export default function CheckoutClient() {
           )}
 
           {step === 2 && clientSecret && (
-            <StripeProvider clientSecret={clientSecret}>
-              <PaymentStep
+            <Elements
+              stripe={stripePromise}
+              options={{
+                clientSecret,
+                appearance: { theme: "stripe" }
+              }}
+            >
+              <PaymentForm
                 recipientName={recipientName}
                 recipientPhone={recipientPhone}
                 onSuccess={() => router.push("/courier/confirmation")}
               />
-            </StripeProvider>
+            </Elements>
           )}
         </div>
       </div>
