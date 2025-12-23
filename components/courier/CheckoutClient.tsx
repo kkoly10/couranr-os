@@ -3,58 +3,24 @@
 import { useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
+import StripeProvider from "../StripeProvider";
 
-export default function CheckoutClient() {
-  const router = useRouter();
-  const params = useSearchParams();
-
+function PaymentStep({
+  recipientName,
+  recipientPhone,
+  onSuccess
+}: {
+  recipientName: string;
+  recipientPhone: string;
+  onSuccess: () => void;
+}) {
   const stripe = useStripe();
   const elements = useElements();
-
-  const quotedPrice = Number(params.get("price") || 0);
-  const amountCents = Math.round(quotedPrice * 100);
-
-  const [step, setStep] = useState<1 | 2>(1);
-  const [recipientName, setRecipientName] = useState("");
-  const [recipientPhone, setRecipientPhone] = useState("");
-  const [pickupPhoto, setPickupPhoto] = useState<File | null>(null);
-
-  const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const continueToPayment = async () => {
-    setError(null);
-
-    if (!recipientName || !recipientPhone) {
-      setError("Recipient name and phone are required.");
-      return;
-    }
-
-    if (!pickupPhoto) {
-      setError("Pickup photo is required.");
-      return;
-    }
-
-    try {
-      const res = await fetch("/api/create-payment-intent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amountCents })
-      });
-
-      const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Payment init failed");
-
-      setClientSecret(data.clientSecret);
-      setStep(2);
-    } catch (e: any) {
-      setError(e.message || "Failed to start payment");
-    }
-  };
-
-  const authorizePayment = async () => {
-    if (!stripe || !elements || !clientSecret) return;
+  const authorize = async () => {
+    if (!stripe || !elements) return;
 
     setProcessing(true);
     setError(null);
@@ -78,8 +44,79 @@ export default function CheckoutClient() {
       return;
     }
 
-    // Authorized successfully (manual capture later)
-    router.push("/courier/confirmation");
+    onSuccess();
+  };
+
+  return (
+    <>
+      <h3 style={{ marginTop: 24 }}>Payment</h3>
+
+      <div
+        style={{
+          padding: 12,
+          border: "1px solid var(--border)",
+          borderRadius: 8,
+          marginBottom: 16
+        }}
+      >
+        <PaymentElement />
+      </div>
+
+      {error && <p style={{ color: "#dc2626" }}>{error}</p>}
+
+      <button
+        style={{ width: "100%" }}
+        disabled={processing}
+        onClick={authorize}
+      >
+        {processing ? "Authorizing…" : "Authorize Payment"}
+      </button>
+    </>
+  );
+}
+
+export default function CheckoutClient() {
+  const router = useRouter();
+  const params = useSearchParams();
+
+  const quotedPrice = Number(params.get("price") || 0);
+  const amountCents = Math.round(quotedPrice * 100);
+
+  const [step, setStep] = useState<1 | 2>(1);
+  const [recipientName, setRecipientName] = useState("");
+  const [recipientPhone, setRecipientPhone] = useState("");
+  const [pickupPhoto, setPickupPhoto] = useState<File | null>(null);
+
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const continueToPayment = async () => {
+    setError(null);
+
+    if (!recipientName || !recipientPhone) {
+      setError("Recipient name and phone are required.");
+      return;
+    }
+
+    if (!pickupPhoto) {
+      setError("Pickup photo is required.");
+      return;
+    }
+
+    const res = await fetch("/api/create-payment-intent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ amountCents })
+    });
+
+    const data = await res.json();
+    if (!res.ok) {
+      setError(data?.error || "Failed to start payment");
+      return;
+    }
+
+    setClientSecret(data.clientSecret);
+    setStep(2);
   };
 
   return (
@@ -127,34 +164,13 @@ export default function CheckoutClient() {
           )}
 
           {step === 2 && clientSecret && (
-            <>
-              <h3 style={{ marginTop: 24 }}>Payment</h3>
-
-              <div
-                style={{
-                  padding: 12,
-                  border: "1px solid var(--border)",
-                  borderRadius: 8,
-                  marginBottom: 16
-                }}
-              >
-                <PaymentElement />
-              </div>
-
-              {error && <p style={{ color: "#dc2626" }}>{error}</p>}
-
-              <button
-                style={{ width: "100%" }}
-                disabled={processing || !stripe}
-                onClick={authorizePayment}
-              >
-                {processing ? "Authorizing…" : "Authorize Payment"}
-              </button>
-
-              <p style={{ marginTop: 10, color: "var(--muted)", fontSize: 12 }}>
-                Your card will be authorized now and charged after delivery is completed.
-              </p>
-            </>
+            <StripeProvider clientSecret={clientSecret}>
+              <PaymentStep
+                recipientName={recipientName}
+                recipientPhone={recipientPhone}
+                onSuccess={() => router.push("/courier/confirmation")}
+              />
+            </StripeProvider>
           )}
         </div>
       </div>
