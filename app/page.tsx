@@ -1,9 +1,9 @@
 import Link from "next/link";
+import SpecialRequestForm from "../components/SpecialRequestForm";
 
 export default function HomePage() {
   return (
     <main>
-      {/* HERO */}
       <section className="section">
         <div className="container">
           <div
@@ -47,7 +47,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* HOW IT WORKS */}
       <section className="section sectionAlt">
         <div className="container">
           <h2>How it works</h2>
@@ -70,7 +69,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* SERVICES */}
       <section id="services" className="section">
         <div className="container">
           <h2>Services</h2>
@@ -136,7 +134,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* SPECIAL REQUESTS */}
       <section id="special-requests" className="section sectionAlt">
         <div className="container">
           <div className="grid2">
@@ -159,7 +156,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* FINAL CTA */}
       <section className="section">
         <div className="container">
           <div className="card" style={{ textAlign: "center" }}>
@@ -177,9 +173,4 @@ export default function HomePage() {
       </section>
     </main>
   );
-}
-
-/* Inline client form component via server page: use a small client wrapper */
-function SpecialRequestForm() {
-  return null as any;
 }
