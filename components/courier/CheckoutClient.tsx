@@ -14,44 +14,33 @@ const stripePromise = loadStripe(
   process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY as string
 );
 
-/* ================= PAYMENT FORM ================= */
-
 function PaymentForm({
-  recipientName,
-  recipientPhone,
+  clientSecret,
   onSuccess
 }: {
-  recipientName: string;
-  recipientPhone: string;
+  clientSecret: string;
   onSuccess: () => void;
 }) {
   const stripe = useStripe();
   const elements = useElements();
-  const [processing, setProcessing] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const authorizePayment = async () => {
+  const submit = async () => {
     if (!stripe || !elements) return;
 
-    setProcessing(true);
+    setLoading(true);
     setError(null);
 
     const result = await stripe.confirmPayment({
       elements,
-      confirmParams: {
-        payment_method_data: {
-          billing_details: {
-            name: recipientName,
-            phone: recipientPhone
-          }
-        }
-      },
+      confirmParams: {},
       redirect: "if_required"
     });
 
     if (result.error) {
       setError(result.error.message || "Payment failed");
-      setProcessing(false);
+      setLoading(false);
       return;
     }
 
@@ -59,72 +48,61 @@ function PaymentForm({
   };
 
   return (
-    <>
-      <h3 style={{ marginTop: 24 }}>Payment</h3>
+    <div
+      style={{
+        background: "#ffffff",
+        padding: 24,
+        borderRadius: 12,
+        maxWidth: 520,
+        margin: "100px auto",
+        border: "1px solid #e5e7eb"
+      }}
+    >
+      <h2>Payment</h2>
 
-      {/* STRIPE SAFE ZONE */}
       <div
         style={{
-          background: "#ffffff",
-          padding: 16,
-          borderRadius: 10,
-          border: "1px solid #e5e7eb",
-          position: "relative",
-          zIndex: 9999,
-          pointerEvents: "auto"
+          marginTop: 16,
+          marginBottom: 16,
+          padding: 12,
+          border: "1px solid #d1d5db",
+          borderRadius: 8
         }}
       >
         <PaymentElement />
       </div>
 
-      {error && (
-        <p style={{ color: "#dc2626", marginTop: 12 }}>{error}</p>
-      )}
+      {error && <p style={{ color: "#dc2626" }}>{error}</p>}
 
       <button
-        style={{ width: "100%", marginTop: 16 }}
-        disabled={processing}
-        onClick={authorizePayment}
+        onClick={submit}
+        disabled={loading}
+        style={{
+          width: "100%",
+          padding: 14,
+          background: "#111827",
+          color: "#ffffff",
+          borderRadius: 8,
+          border: "none",
+          cursor: "pointer"
+        }}
       >
-        {processing ? "Authorizing…" : "Authorize Payment"}
+        {loading ? "Authorizing…" : "Authorize Payment"}
       </button>
-
-      <p style={{ marginTop: 10, color: "#6b7280", fontSize: 12 }}>
-        Your card will be authorized now and charged after delivery is completed.
-      </p>
-    </>
+    </div>
   );
 }
-
-/* ================= CHECKOUT ================= */
 
 export default function CheckoutClient() {
   const router = useRouter();
   const params = useSearchParams();
 
-  const quotedPrice = Number(params.get("price") || 0);
-  const amountCents = Math.round(quotedPrice * 100);
+  const price = Number(params.get("price") || 0);
+  const amountCents = Math.round(price * 100);
 
-  const [step, setStep] = useState<1 | 2>(1);
-  const [recipientName, setRecipientName] = useState("");
-  const [recipientPhone, setRecipientPhone] = useState("");
-  const [pickupPhoto, setPickupPhoto] = useState<File | null>(null);
   const [clientSecret, setClientSecret] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
-  const continueToPayment = async () => {
-    setError(null);
-
-    if (!recipientName || !recipientPhone) {
-      setError("Recipient name and phone are required.");
-      return;
-    }
-
-    if (!pickupPhoto) {
-      setError("Pickup photo is required.");
-      return;
-    }
-
+  const startPayment = async () => {
     const res = await fetch("/api/create-payment-intent", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -132,94 +110,30 @@ export default function CheckoutClient() {
     });
 
     const data = await res.json();
-
-    if (!res.ok || !data.clientSecret) {
-      setError(data?.error || "Failed to initialize payment.");
-      return;
-    }
-
     setClientSecret(data.clientSecret);
-    setStep(2);
   };
 
-  return (
-    <main style={{ padding: "100px 20px" }}>
-      <div className="container">
-        <h1>Checkout</h1>
-
-        <div
-          className="card"
-          style={{
-            maxWidth: 760,
-            pointerEvents: "auto",
-            position: "relative",
-            zIndex: 1
-          }}
-        >
-          <div style={{ fontSize: 26, fontWeight: 800 }}>
-            ${quotedPrice.toFixed(2)}
-          </div>
-
-          {step === 1 && (
-            <>
-              <h3 style={{ marginTop: 24 }}>Recipient Information</h3>
-
-              <label>Recipient Full Name</label>
-              <input
-                value={recipientName}
-                onChange={(e) => setRecipientName(e.target.value)}
-                style={{ width: "100%", marginBottom: 16 }}
-              />
-
-              <label>Recipient Phone Number</label>
-              <input
-                value={recipientPhone}
-                onChange={(e) => setRecipientPhone(e.target.value)}
-                style={{ width: "100%", marginBottom: 16 }}
-              />
-
-              <h3>Pickup Photo (Required)</h3>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) =>
-                  setPickupPhoto(e.target.files?.[0] || null)
-                }
-                style={{ width: "100%", marginBottom: 16 }}
-              />
-
-              {error && (
-                <p style={{ color: "#dc2626" }}>{error}</p>
-              )}
-
-              <button
-                style={{ width: "100%" }}
-                onClick={continueToPayment}
-              >
-                Continue to Payment
-              </button>
-            </>
-          )}
-
-          {step === 2 && clientSecret && (
-            <Elements
-              stripe={stripePromise}
-              options={{
-                clientSecret,
-                appearance: { theme: "stripe" }
-              }}
-            >
-              <PaymentForm
-                recipientName={recipientName}
-                recipientPhone={recipientPhone}
-                onSuccess={() =>
-                  router.push("/courier/confirmation")
-                }
-              />
-            </Elements>
-          )}
-        </div>
+  if (!clientSecret) {
+    return (
+      <div style={{ padding: 100, textAlign: "center" }}>
+        <h2>${price.toFixed(2)}</h2>
+        <button onClick={startPayment}>Proceed to Payment</button>
       </div>
-    </main>
+    );
+  }
+
+  return (
+    <Elements
+      stripe={stripePromise}
+      options={{
+        clientSecret,
+        appearance: { theme: "stripe" }
+      }}
+    >
+      <PaymentForm
+        clientSecret={clientSecret}
+        onSuccess={() => router.push("/courier/confirmation")}
+      />
+    </Elements>
   );
 }
