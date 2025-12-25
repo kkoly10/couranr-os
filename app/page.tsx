@@ -4,151 +4,99 @@ import SpecialRequestForm from "../components/SpecialRequestForm";
 export default function HomePage() {
   return (
     <main>
-      <section className="section">
+
+      {/* HERO (FULL WIDTH) */}
+      <section style={{ padding: "96px 0" }}>
         <div className="container">
-          <div
-            className="card"
-            style={{
-              padding: 28,
-              background:
-                "linear-gradient(180deg, rgba(255,255,255,1) 0%, rgba(241,245,249,0.75) 100%)",
-              borderColor: "rgba(226,232,240,0.95)"
-            }}
-          >
-            <h1>
-              Online services,
-              <br />
-              delivered to you.
-            </h1>
+          <h1>
+            Online services,
+            <br />
+            delivered to you.
+          </h1>
 
-            <p style={{ maxWidth: 720 }}>
-              Courier delivery for <strong>documents</strong>,{" "}
-              <strong>packages</strong>, <strong>boxes</strong>, and{" "}
-              <strong>everyday items</strong> — ordered online, handled with
-              photo verification, and delivered to your door.
-            </p>
+          <p style={{ maxWidth: 640, marginTop: 16 }}>
+            Courier delivery for documents, packages, boxes, and everyday items —
+            ordered online, verified with photos, and delivered to your door.
+          </p>
 
-            <div style={{ display: "flex", gap: 12, marginTop: 22, flexWrap: "wrap" }}>
-              <Link href="/courier">
-                <button className="btn btn-primary">Get a Delivery Quote</button>
-              </Link>
-              <Link href="#services">
-                <button className="btn btn-secondary">Explore Services</button>
-              </Link>
-              <Link href="#special-requests">
-                <button className="btn btn-link">Special request</button>
-              </Link>
-            </div>
-
-            <div style={{ marginTop: 14, fontSize: 13, color: "var(--muted)" }}>
-              Transparent pricing • Secure payments • Online-first • Appointment-based options
-            </div>
+          <div style={{ display: "flex", gap: 12, marginTop: 28 }}>
+            <Link href="/courier">
+              <button className="btn btn-primary">Get a Delivery Quote</button>
+            </Link>
+            <Link href="#services">
+              <button className="btn btn-secondary">Explore Services</button>
+            </Link>
           </div>
         </div>
       </section>
 
-      <section className="section sectionAlt">
+      {/* HOW IT WORKS */}
+      <section style={{ padding: "72px 0", background: "#ffffff" }}>
         <div className="container">
           <h2>How it works</h2>
-          <p>Fast, clear, and built to prevent disputes with verification.</p>
-
-          <div className="grid3" style={{ marginTop: 22 }}>
+          <div className="grid3" style={{ marginTop: 32 }}>
             <div className="card hover">
-              <h3>1) Create your order</h3>
-              <p>Get a quote online and choose standard or scheduled delivery.</p>
+              <h3>Create your order</h3>
+              <p>Get a quote online in minutes.</p>
             </div>
             <div className="card hover">
-              <h3>2) Verified pickup</h3>
-              <p>Customer uploads a pickup photo. We lock in details before dispatch.</p>
+              <h3>Verified pickup</h3>
+              <p>Customer uploads a pickup photo.</p>
             </div>
             <div className="card hover">
-              <h3>3) Verified drop-off</h3>
-              <p>Driver uploads drop-off photo. Payment is captured after delivery.</p>
+              <h3>Verified delivery</h3>
+              <p>Driver uploads drop-off photo.</p>
             </div>
           </div>
         </div>
       </section>
 
-      <section id="services" className="section">
+      {/* SERVICES */}
+      <section id="services" style={{ padding: "72px 0" }}>
         <div className="container">
           <h2>Services</h2>
-          <p>Online-first services designed for convenience and clarity.</p>
-
-          <div className="grid3" style={{ marginTop: 22 }}>
+          <div className="grid3" style={{ marginTop: 32 }}>
             <div className="card hover">
               <h3>Courier Delivery</h3>
               <p>
-                Local delivery for documents, envelopes, packages, boxes, and select electronics
-                — within our size, weight, and distance guidelines.
+                Documents, envelopes, packages, boxes, and select electronics —
+                within size, weight, and distance limits.
               </p>
-              <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <Link href="/courier">
-                  <button className="btn btn-primary">Get a Quote</button>
-                </Link>
-                <Link href="#special-requests">
-                  <button className="btn btn-secondary">Special request</button>
-                </Link>
-              </div>
+              <Link href="/courier">
+                <button className="btn btn-primary" style={{ marginTop: 16 }}>
+                  Get a Quote
+                </button>
+              </Link>
             </div>
 
             <div className="card hover">
               <h3>Print & Document Services</h3>
               <p>
-                Upload or email documents. We print (B&W or color), organize, and deliver to you.
+                Upload or email documents. We print and deliver them to you.
               </p>
-              <ul style={{ marginTop: 12, paddingLeft: 18, color: "var(--muted)" }}>
-                <li>Upload & print (B&W / color)</li>
-                <li>Scan, copy & email PDFs</li>
-                <li>Basic document preparation</li>
-              </ul>
-              <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <button className="btn btn-primary" disabled>
-                  Upload (coming next)
-                </button>
-                <Link href="#special-requests">
-                  <button className="btn btn-secondary">Ask a question</button>
-                </Link>
-              </div>
             </div>
 
             <div className="card hover">
-              <h3>Appointment-Based Document Prep</h3>
+              <h3>Document Prep (Appointments)</h3>
               <p>
-                Need help preparing paperwork (e.g., DMV-related forms, applications, official
-                documents)? Book an appointment and upload your files ahead of time.
+                DMV forms, applications, and official paperwork by appointment.
               </p>
-              <div style={{ marginTop: 14, display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <button className="btn btn-primary" disabled>
-                  Book (coming next)
-                </button>
-                <Link href="#special-requests">
-                  <button className="btn btn-secondary">Request an appointment</button>
-                </Link>
-              </div>
             </div>
-          </div>
-
-          <div style={{ marginTop: 18, fontSize: 13, color: "var(--muted)" }}>
-            Note: For oversized, fragile, high-value, or unusual items, use a Special Request so we can confirm feasibility and pricing.
           </div>
         </div>
       </section>
 
-      <section id="special-requests" className="section sectionAlt">
+      {/* SPECIAL REQUESTS */}
+      <section style={{ padding: "72px 0", background: "#ffffff" }}>
         <div className="container">
           <div className="grid2">
             <div>
               <h2>Special requests</h2>
-              <p style={{ maxWidth: 520 }}>
-                Have an unusual delivery, fragile electronics, multiple stops, or something that
-                doesn’t fit our standard options? Send the details and we’ll respond with next steps.
+              <p>
+                Oversized items, fragile electronics, multi-stop deliveries, or
+                anything outside our standard options.
               </p>
-
-              <div style={{ marginTop: 16, fontSize: 13, color: "var(--muted)" }}>
-                Typical examples: TVs, fragile items, multi-stop deliveries, oversized boxes, or time-sensitive requests.
-              </div>
             </div>
-
             <div className="card">
               <SpecialRequestForm />
             </div>
@@ -156,21 +104,6 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="section">
-        <div className="container">
-          <div className="card" style={{ textAlign: "center" }}>
-            <h2>Ready to get started?</h2>
-            <p style={{ marginTop: 8 }}>
-              Get a quote online and schedule your delivery in minutes.
-            </p>
-            <div style={{ marginTop: 16 }}>
-              <Link href="/courier">
-                <button className="btn btn-primary">Get a Delivery Quote</button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
     </main>
   );
 }
