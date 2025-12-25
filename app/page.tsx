@@ -5,7 +5,7 @@ export default function HomePage() {
   return (
     <main>
 
-      {/* HERO (FULL WIDTH) */}
+      {/* HERO */}
       <section style={{ padding: "96px 0" }}>
         <div className="container">
           <h1>
@@ -45,7 +45,7 @@ export default function HomePage() {
             </div>
             <div className="card hover">
               <h3>Verified delivery</h3>
-              <p>Driver uploads drop-off photo.</p>
+              <p>Driver uploads a drop-off photo.</p>
             </div>
           </div>
         </div>
