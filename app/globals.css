@@ -1,5 +1,5 @@
 /* =========================================================
-   COURANR – MODERN STARTUP SAAS GLOBAL STYLES (NO BLUR)
+   COURANR – FINAL GLOBALS (NO FLOATING PANELS)
    ========================================================= */
 
 :root {
@@ -12,7 +12,7 @@
 
   --border: #e2e8f0;
 
-  --accent: #2563eb; /* brand blue */
+  --accent: #2563eb;
   --accent-soft: rgba(37, 99, 235, 0.12);
 
   --radius-sm: 10px;
@@ -37,6 +37,9 @@ html,
 body {
   margin: 0;
   padding: 0;
+}
+
+body {
   background: var(--bg);
   color: var(--text);
   font-family: ui-sans-serif, system-ui, -apple-system,
@@ -45,13 +48,22 @@ body {
   line-height: 1.55;
 }
 
+/* 🔴 CRITICAL FIX: MAIN MUST BE TRANSPARENT */
+main {
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  min-height: auto !important;
+  position: static !important;
+}
+
+/* =========================================================
+   LINKS
+   ========================================================= */
+
 a {
   color: inherit;
   text-decoration: none;
-}
-
-main {
-  min-height: 100vh;
 }
 
 /* =========================================================
@@ -95,7 +107,7 @@ p {
 }
 
 /* =========================================================
-   HEADER NAV
+   NAV
    ========================================================= */
 
 .navLink {
@@ -106,12 +118,12 @@ p {
   color: var(--muted);
   border-radius: 10px;
   border: 1px solid transparent;
-  transition: color 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
 
 .navLink:hover {
-  color: var(--text);
   background: var(--surface-alt);
+  color: var(--text);
   border-color: var(--border);
 }
 
@@ -143,15 +155,13 @@ p {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
   padding: 12px 18px;
   font-size: 0.95rem;
   font-weight: 650;
   border-radius: var(--radius-md);
   border: 1px solid transparent;
   cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease,
-    transform 0.05s ease;
+  transition: background 0.12s ease, transform 0.05s ease;
 }
 
 .btn:active {
@@ -170,22 +180,11 @@ p {
 .btn-secondary {
   background: var(--surface-alt);
   color: var(--text);
-  border-color: var(--border);
+  border: 1px solid var(--border);
 }
 
 .btn-secondary:hover {
-  border-color: rgba(37, 99, 235, 0.35);
   box-shadow: 0 0 0 4px var(--accent-soft);
-}
-
-.btn-link {
-  background: transparent;
-  color: var(--text);
-  border-color: var(--border);
-}
-
-.btn-link:hover {
-  border-color: rgba(37, 99, 235, 0.35);
 }
 
 /* =========================================================
@@ -198,6 +197,9 @@ p {
   border-radius: var(--radius-lg);
   padding: 22px;
   box-shadow: var(--shadow-sm);
+}
+
+.card.hover {
   transition: transform 0.12s ease, box-shadow 0.12s ease,
     border-color 0.12s ease;
 }
@@ -252,22 +254,12 @@ select {
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text);
-  outline: none;
-  transition: border-color 0.12s ease, box-shadow 0.12s ease;
 }
 
 input:focus,
 textarea:focus,
 select:focus {
+  outline: none;
   border-color: rgba(37, 99, 235, 0.6);
   box-shadow: 0 0 0 4px var(--accent-soft);
-}
-
-/* =========================================================
-   STRIPE SAFETY (NON-INTRUSIVE)
-   ========================================================= */
-
-iframe[name^="__privateStripeFrame"],
-.StripeElement {
-  z-index: 1000;
 }
