@@ -1,10 +1,4 @@
-import "./globals.css";
 import Header from "../components/Header";
-
-export const metadata = {
-  title: "Couranr",
-  description: "Online services, delivered to you."
-};
 
 export default function RootLayout({
   children,
@@ -15,7 +9,7 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <Header />
-        {children}
+        <main style={{ padding: 24 }}>{children}</main>
       </body>
     </html>
   );
