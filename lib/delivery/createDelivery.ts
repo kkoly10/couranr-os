@@ -1,3 +1,9 @@
+import { supabase } from "../supabaseClient";
+
+/**
+ * Creates the delivery record linked to an order.
+ * This contains delivery-specific details only.
+ */
 export async function createDelivery({
   orderId,
   pickupAddressId,
@@ -8,11 +14,13 @@ export async function createDelivery({
   orderId: string;
   pickupAddressId: string;
   dropoffAddressId: string;
+
   recipient: {
     name: string;
     phone: string;
     email?: string;
   };
+
   pricing: {
     miles: number;
     weight: number;
@@ -27,11 +35,14 @@ export async function createDelivery({
     order_id: orderId,
     pickup_address_id: pickupAddressId,
     dropoff_address_id: dropoffAddressId,
+
     recipient_name: recipient.name,
     recipient_phone: recipient.phone,
     recipient_email: recipient.email,
+
     estimated_miles: pricing.miles,
     weight_lbs: pricing.weight,
+
     base_fee_cents: pricing.baseFee,
     mileage_fee_cents: pricing.mileageFee,
     weight_fee_cents: pricing.weightFee,
@@ -39,5 +50,7 @@ export async function createDelivery({
     signature_fee_cents: pricing.signatureFee,
   });
 
-  if (error) throw error;
+  if (error) {
+    throw error;
+  }
 }
