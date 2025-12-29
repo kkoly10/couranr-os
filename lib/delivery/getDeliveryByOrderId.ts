@@ -1,10 +1,8 @@
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "../supabaseClient";
 
 /**
- * Fetch a delivery and its related order + addresses
- * for the currently authenticated customer.
- *
- * RLS ensures users can only access their own data.
+ * Fetches a delivery with its order and addresses.
+ * RLS guarantees the customer can only access their own data.
  */
 export async function getDeliveryByOrderId(orderId: string) {
   if (!orderId) {
