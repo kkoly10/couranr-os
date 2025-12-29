@@ -1,88 +1,35 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import AuthGuard from "../../components/AuthGuard";
-import { supabase } from "../../lib/supabaseClient";
-
-export default function DashboardPage() {
-  const [user, setUser] = useState<any>(null);
-
-  useEffect(() => {
-    const loadUser = async () => {
-      const { data } = await supabase.auth.getUser();
-      setUser(data.user);
-    };
-
-    loadUser();
-  }, []);
-
+export default function CustomerDashboard() {
   return (
-    <AuthGuard>
-      <main style={{ padding: "100px 20px" }}>
-        <div className="container">
-          <h1 style={{ marginBottom: 8 }}>Dashboard</h1>
+    <div>
+      <h1 style={{ margin: 0, fontSize: 34, letterSpacing: "-0.02em" }}>Customer Dashboard</h1>
+      <p style={{ marginTop: 10, color: "#444", maxWidth: 720 }}>
+        Track your deliveries, document requests, and receipts in one place.
+      </p>
 
-          {user && (
-            <p style={{ color: "var(--muted)", marginBottom: 40 }}>
-              Logged in as {user.email}
-            </p>
-          )}
-
-          {/* Services */}
-          <div className="services">
-            <ServiceCard
-              title="Courier"
-              description="Create and track deliveries with distance-based pricing and delivery confirmation."
-              href="/courier"
-            />
-
-            <ServiceCard
-              title="Rentals"
-              description="Reserve vehicles, manage rentals, and view rental history."
-              href="/rentals"
-            />
-
-            <ServiceCard
-              title="Pack & Ship"
-              description="Prepare shipments, order supplies, and manage drop-offs."
-              href="/pack-ship"
-            />
-
-            <ServiceCard
-              title="Documents"
-              description="Upload documents for secure processing and in-store pickup."
-              href="/documents"
-            />
-
-            <ServiceCard
-              title="Auto Detailing"
-              description="Book appointment-only detailing services at our facility."
-              href="/detailing"
-            />
-          </div>
-        </div>
-      </main>
-    </AuthGuard>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14, marginTop: 22 }}>
+        <Card title="Delivery status" desc="View your current delivery progress and proof milestones." href="/delivery/status" />
+        <Card title="Receipts" desc="See completed orders and totals." href="/delivery/status" />
+        <Card title="Special request" desc="Request oversized or unusual deliveries." href="/courier/special-request" />
+      </div>
+    </div>
   );
 }
 
-function ServiceCard({
-  title,
-  description,
-  href
-}: {
-  title: string;
-  description: string;
-  href: string;
-}) {
+function Card({ title, desc, href }: { title: string; desc: string; href: string }) {
   return (
-    <div className="card">
-      <h3>{title}</h3>
-      <p>{description}</p>
-      <Link href={href}>
-        <button>Open</button>
-      </Link>
-    </div>
+    <a
+      href={href}
+      style={{
+        border: "1px solid #e5e7eb",
+        borderRadius: 14,
+        padding: 16,
+        textDecoration: "none",
+        color: "#111",
+        background: "#fff",
+      }}
+    >
+      <div style={{ fontWeight: 650 }}>{title}</div>
+      <div style={{ marginTop: 8, color: "#555", lineHeight: 1.35 }}>{desc}</div>
+    </a>
   );
 }
