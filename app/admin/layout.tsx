@@ -1,4 +1,5 @@
-import AdminHeader from "../../components/AdminHeader";
+import Brand from "../../components/Brand";
+import LogoutButton from "../../components/LogoutButton";
 
 export default function AdminLayout({
   children,
@@ -7,8 +8,31 @@ export default function AdminLayout({
 }) {
   return (
     <section>
-      <AdminHeader />
-      <main style={{ padding: 24 }}>{children}</main>
+      <header
+        style={{
+          borderBottom: "3px solid #7c3aed",
+          background:
+            "linear-gradient(180deg, rgba(124,58,237,0.12), #ffffff 60%)",
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 1100,
+            margin: "0 auto",
+            padding: "18px 24px",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <Brand href="/admin" role="admin" />
+          <LogoutButton />
+        </div>
+      </header>
+
+      <main style={{ maxWidth: 1100, margin: "0 auto", padding: "28px 24px" }}>
+        {children}
+      </main>
     </section>
   );
 }
