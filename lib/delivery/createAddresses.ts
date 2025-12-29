@@ -1,4 +1,10 @@
-async function createAddress(address: {
+import { supabase } from "../supabaseClient";
+
+/**
+ * Creates a single address record.
+ * Used for both pickup and dropoff addresses.
+ */
+export async function createAddress(address: {
   label?: string;
   address_line: string;
   city?: string;
@@ -15,6 +21,9 @@ async function createAddress(address: {
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    throw error;
+  }
+
   return data;
 }
