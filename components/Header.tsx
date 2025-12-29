@@ -1,44 +1,34 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import { supabase } from "../lib/supabaseClient";
+import { useEffect, useState } from "react";
 import Brand from "./Brand";
 import LogoutButton from "./LogoutButton";
 
 export default function Header() {
-  const [role, setRole] = useState<"customer" | "driver" | "admin" | null>(null);
+  const [isAuthed, setIsAuthed] = useState<boolean>(false);
 
   useEffect(() => {
-    async function load() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) return;
-
-      const { data } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .single();
-
-      setRole(data?.role ?? "customer");
-    }
-    load();
+    supabase.auth.getUser().then(({ data }) => {
+      setIsAuthed(!!data.user);
+    });
   }, []);
 
   return (
     <header
       style={{
-        borderBottom: "3px solid #2563eb",
-        background:
-          "linear-gradient(180deg, rgba(37,99,235,0.08), #ffffff 60%)",
+        position: "sticky",
+        top: 0,
+        zIndex: 40,
+        background: "rgba(255,255,255,0.95)",
+        backdropFilter: "blur(10px)",
+        borderBottom: "1px solid #e5e7eb",
       }}
     >
       <div
         style={{
-          maxWidth: 1100,
+          maxWidth: 1200,
           margin: "0 auto",
           padding: "18px 24px",
           display: "flex",
@@ -46,14 +36,15 @@ export default function Header() {
           alignItems: "center",
         }}
       >
-        <Brand role={role ?? "customer"} />
+        <Brand />
 
         <nav style={{ display: "flex", gap: 18, alignItems: "center" }}>
           <Link href="/courier">Courier</Link>
           <Link href="/docs">Docs</Link>
           <Link href="/auto">Auto</Link>
-          {role && <Link href="/dashboard">Dashboard</Link>}
-          {role ? <LogoutButton /> : <Link href="/login">Login</Link>}
+
+          {!isAuthed && <Link href="/login">Login</Link>}
+          {isAuthed && <LogoutButton />}
         </nav>
       </div>
     </header>
