@@ -1,36 +1,42 @@
+"use client";
+
 import Link from "next/link";
+import { supabase } from "../lib/supabaseClient";
+import { useEffect, useState } from "react";
+import LogoutButton from "./LogoutButton";
 
 export default function Header() {
-  return (
-    <header style={{ background: "white", borderBottom: "1px solid #e5e7eb" }}>
-      <div
-        className="container"
-        style={{
-          height: 64,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between"
-        }}
-      >
-        {/* BRAND */}
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span
-            style={{
-              width: 8,
-              height: 8,
-              background: "#2563eb",
-              borderRadius: "50%"
-            }}
-          />
-          <strong style={{ fontSize: "1.05rem" }}>Couranr</strong>
-        </div>
+  const [user, setUser] = useState<any>(null);
 
-        {/* NAV */}
-        <nav style={{ display: "flex", gap: 16 }}>
-          <Link href="/#services">Services</Link>
-          <Link href="/login">Login / Account</Link>
-        </nav>
-      </div>
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data.user);
+    });
+  }, []);
+
+  return (
+    <header
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        padding: "16px 24px",
+        borderBottom: "1px solid #eee",
+      }}
+    >
+      <Link href="/" style={{ fontWeight: 600 }}>
+        • Couranr
+      </Link>
+
+      <nav style={{ display: "flex", gap: 16 }}>
+        {!user && <Link href="/login">Login</Link>}
+        {user && (
+          <>
+            <Link href="/delivery/status">My Orders</Link>
+            <LogoutButton />
+          </>
+        )}
+      </nav>
     </header>
   );
 }
