@@ -1,10 +1,10 @@
-import dynamic from "next/dynamic";
-
-const CheckoutClient = dynamic(
-  () => import("../../../components/courier/CheckoutClient"),
-  { ssr: false }
-);
+import { Suspense } from "react";
+import CheckoutClient from "./CheckoutClient";
 
 export default function CourierCheckoutPage() {
-  return <CheckoutClient />;
+  return (
+    <Suspense fallback={<div style={{ padding: 24 }}>Loading checkout…</div>}>
+      <CheckoutClient />
+    </Suspense>
+  );
 }
