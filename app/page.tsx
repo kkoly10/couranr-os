@@ -1,143 +1,105 @@
 import Link from "next/link";
-import SpecialRequestForm from "../components/SpecialRequestForm";
 
 export default function HomePage() {
   return (
-    <main>
-      {/* HERO */}
-      <section style={{ padding: "96px 0" }}>
-        <div className="container">
-          <h1>Online services, delivered to you.</h1>
+    <section>
+      <div style={{ maxWidth: 900, marginTop: 60 }}>
+        <h1
+          style={{
+            fontSize: 48,
+            lineHeight: 1.1,
+            letterSpacing: "-0.03em",
+          }}
+        >
+          Local services,
+          <br />
+          delivered with clarity.
+        </h1>
 
-          <p style={{ maxWidth: 680, marginTop: 16 }}>
-            Courier delivery for documents, packages, boxes, and everyday items —
-            ordered online, handled with photo verification, and delivered to
-            your door.
-          </p>
+        <p style={{ marginTop: 20, fontSize: 18, color: "#444", maxWidth: 640 }}>
+          Couranr lets you order deliveries, documents, and rentals online —
+          with verification, tracking, and clear pricing.
+        </p>
 
-          <div style={{ display: "flex", gap: 12, marginTop: 32 }}>
-            <Link href="/courier">
-              <button className="btn-primary">Get a delivery quote</button>
-            </Link>
-            <Link href="#services">
-              <button className="btn-secondary">Explore services</button>
-            </Link>
-          </div>
+        <div style={{ display: "flex", gap: 16, marginTop: 32 }}>
+          <PrimaryButton href="/courier">Get delivery quote</PrimaryButton>
+          <SecondaryButton href="/docs">Document services</SecondaryButton>
         </div>
-      </section>
+      </div>
 
-      {/* HOW IT WORKS */}
-      <section style={{ padding: "72px 0", background: "white" }}>
-        <div className="container">
-          <h2>How it works</h2>
+      <div
+        style={{
+          marginTop: 80,
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+          gap: 24,
+        }}
+      >
+        <Feature
+          title="Courier Delivery"
+          desc="Documents, packages, and everyday items delivered with photo verification."
+        />
+        <Feature
+          title="Document Services"
+          desc="Upload, print, prepare, and receive documents without visiting a store."
+        />
+        <Feature
+          title="Auto Rentals"
+          desc="Affordable local car rentals managed online."
+        />
+      </div>
+    </section>
+  );
+}
 
-          <div className="grid grid-3" style={{ marginTop: 32 }}>
-            <div className="card">
-              <h3>Create your order</h3>
-              <p>
-                Get a quote online, choose standard or scheduled delivery, and
-                submit your request in minutes.
-              </p>
-            </div>
+function Feature({ title, desc }: { title: string; desc: string }) {
+  return (
+    <div
+      style={{
+        border: "1px solid #e5e7eb",
+        borderRadius: 16,
+        padding: 20,
+        background: "#fff",
+      }}
+    >
+      <h3 style={{ margin: 0 }}>{title}</h3>
+      <p style={{ marginTop: 10, color: "#555", lineHeight: 1.4 }}>{desc}</p>
+    </div>
+  );
+}
 
-            <div className="card">
-              <h3>Verified pickup</h3>
-              <p>
-                Customers upload a pickup photo so item condition and details
-                are documented before dispatch.
-              </p>
-            </div>
+function PrimaryButton({ href, children }: any) {
+  return (
+    <Link
+      href={href}
+      style={{
+        padding: "14px 20px",
+        background: "#2563eb",
+        color: "#fff",
+        borderRadius: 10,
+        fontWeight: 600,
+        textDecoration: "none",
+      }}
+    >
+      {children}
+    </Link>
+  );
+}
 
-            <div className="card">
-              <h3>Verified delivery</h3>
-              <p>
-                Drivers upload a drop-off photo. Payment is captured only after
-                delivery is confirmed.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* SERVICES */}
-      <section id="services" style={{ padding: "72px 0" }}>
-        <div className="container">
-          <h2>Services</h2>
-
-          <div className="grid grid-3" style={{ marginTop: 32 }}>
-            <div className="card">
-              <h3>Courier Delivery</h3>
-              <p>
-                Local delivery for documents, envelopes, packages, boxes, and
-                select electronics — within size, weight, and distance
-                guidelines.
-              </p>
-              <Link href="/courier">
-                <button className="btn-primary" style={{ marginTop: 16 }}>
-                  Get a quote
-                </button>
-              </Link>
-            </div>
-
-            <div className="card">
-              <h3>Print & Document Services</h3>
-              <p>
-                Upload or email documents. We print (black & white or color),
-                organize, and deliver them to you.
-              </p>
-              <p style={{ marginTop: 8 }}>
-                Upload & print • Scan & email • Basic document preparation
-              </p>
-            </div>
-
-            <div className="card">
-              <h3>Appointment-Based Document Prep</h3>
-              <p>
-                Need help preparing official paperwork such as DMV forms,
-                applications, or other documents? Book an appointment and upload
-                files ahead of time.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* WHAT WE DELIVER */}
-      <section style={{ padding: "72px 0", background: "white" }}>
-        <div className="container">
-          <h2>More than paperwork</h2>
-          <p style={{ maxWidth: 720, marginTop: 12 }}>
-            Couranr is not limited to documents. We deliver everyday items —
-            documents, envelopes, packages, boxes, and select electronics —
-            as long as they meet our size, weight, and distance requirements.
-          </p>
-        </div>
-      </section>
-
-      {/* SPECIAL REQUESTS */}
-      <section style={{ padding: "72px 0" }}>
-        <div className="container">
-          <div className="grid">
-            <div>
-              <h2>Special requests</h2>
-              <p style={{ maxWidth: 680, marginTop: 12 }}>
-                Have an oversized item, fragile electronics, multiple stops, or
-                something that doesn’t fit our standard options? Submit a
-                special request and we’ll review feasibility and pricing.
-              </p>
-
-              <p style={{ marginTop: 12 }}>
-                Examples: TVs, fragile items, multi-stop deliveries, oversized
-                boxes, or time-sensitive requests.
-              </p>
-            </div>
-
-            <div className="card" style={{ marginTop: 24 }}>
-              <SpecialRequestForm />
-            </div>
-          </div>
-        </div>
-      </section>
-    </main>
+function SecondaryButton({ href, children }: any) {
+  return (
+    <Link
+      href={href}
+      style={{
+        padding: "14px 20px",
+        border: "1px solid #d1d5db",
+        borderRadius: 10,
+        fontWeight: 600,
+        textDecoration: "none",
+        color: "#111",
+      }}
+    >
+      {children}
+    </Link>
   );
 }
