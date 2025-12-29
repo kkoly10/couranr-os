@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { supabase } from "../../../lib/supabaseClient";
+import { useRouter } from "next/navigation";
 
 type Delivery = {
   id: string;
   status: string;
   recipient_name: string;
-  recipient_phone: string;
   pickup_address: { address_line: string };
   dropoff_address: { address_line: string };
 };
@@ -14,15 +15,38 @@ type Delivery = {
 export default function DriverDeliveriesPage() {
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [loading, setLoading] = useState(true);
+  const router = useRouter();
 
   useEffect(() => {
-    fetch("/api/driver/my-deliveries")
-      .then((res) => res.json())
-      .then((data) => {
-        setDeliveries(data.deliveries || []);
-        setLoading(false);
-      });
-  }, []);
+    async function init() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        router.push("/login");
+        return;
+      }
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .single();
+
+      if (profile?.role !== "driver") {
+        router.push("/");
+        return;
+      }
+
+      const res = await fetch("/api/driver/my-deliveries");
+      const data = await res.json();
+      setDeliveries(data.deliveries || []);
+      setLoading(false);
+    }
+
+    init();
+  }, [router]);
 
   if (loading) return <p>Loading deliveries…</p>;
 
