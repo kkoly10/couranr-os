@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "../../../../lib/supabaseClient";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2023-10-16",
@@ -18,7 +18,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1️⃣ Create PaymentIntent (authorize only)
+    // 1️⃣ Create PaymentIntent (manual capture = authorization only)
     const paymentIntent = await stripe.paymentIntents.create({
       amount: amountCents,
       currency,
@@ -57,7 +57,8 @@ export async function POST(req: Request) {
       clientSecret: paymentIntent.client_secret,
     });
   } catch (err: any) {
-    console.error(err);
+    console.error("Authorize payment error:", err);
+
     return NextResponse.json(
       { error: err.message || "Payment authorization failed" },
       { status: 500 }
