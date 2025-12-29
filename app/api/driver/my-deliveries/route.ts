@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabase } from "../../../../lib/supabaseClient";
 
 export async function GET() {
+  // Auth check
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -10,6 +11,18 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // Role check
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  if (profileError || profile?.role !== "driver") {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  // Fetch driver deliveries
   const { data, error } = await supabase
     .from("deliveries")
     .select(`
