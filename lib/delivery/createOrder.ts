@@ -1,3 +1,9 @@
+import { supabase } from "../supabaseClient";
+
+/**
+ * Creates a delivery order record.
+ * This is platform-level and service-agnostic.
+ */
 export async function createDeliveryOrder({
   customerId,
   subtotalCents,
@@ -22,6 +28,9 @@ export async function createDeliveryOrder({
     .select()
     .single();
 
-  if (error) throw error;
+  if (error) {
+    throw error;
+  }
+
   return data;
 }
