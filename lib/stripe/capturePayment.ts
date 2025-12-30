@@ -7,10 +7,10 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 export async function capturePayment(paymentIntentId: string) {
   const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
 
-  if (intent.status === "succeeded") {
-    return intent; // already captured (idempotent)
-  }
+  // Already captured = idempotent success
+  if (intent.status === "succeeded") return intent;
 
+  // Must be in requires_capture (because we authorized first)
   if (intent.status !== "requires_capture") {
     throw new Error(`Payment cannot be captured. Status: ${intent.status}`);
   }
