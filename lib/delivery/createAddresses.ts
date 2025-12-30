@@ -1,29 +1,35 @@
 import { supabase } from "../supabaseClient";
 
-/**
- * Creates a single address record.
- * Used for both pickup and dropoff addresses.
- */
-export async function createAddress(address: {
-  label?: string;
+type AddressInput = {
   address_line: string;
-  city?: string;
-  state?: string;
-  zip?: string;
-  lat?: number;
-  lng?: number;
-  is_business?: boolean;
+  city: string;
+  state: string;
+  zip: string;
+  is_business: boolean;
   business_hours?: string;
+};
+
+export async function createAddresses({
+  pickup,
+  dropoff,
+}: {
+  pickup: AddressInput;
+  dropoff: AddressInput;
 }) {
   const { data, error } = await supabase
     .from("addresses")
-    .insert(address)
-    .select()
-    .single();
+    .insert([
+      { ...pickup },
+      { ...dropoff },
+    ])
+    .select();
 
-  if (error) {
-    throw error;
+  if (error || !data || data.length !== 2) {
+    throw new Error("Failed to create addresses");
   }
 
-  return data;
+  return {
+    pickupAddressId: data[0].id,
+    dropoffAddressId: data[1].id,
+  };
 }
