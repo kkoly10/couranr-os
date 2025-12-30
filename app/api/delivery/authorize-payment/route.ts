@@ -1,11 +1,11 @@
+
 import { NextResponse } from "next/server";
-import { stripe } from "@/lib/stripe";
-import { supabase } from "@/lib/supabaseClient";
+import { stripe } from "../../../../lib/stripe";
+import { supabase } from "../../../../lib/supabaseClient";
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const { orderId, amountCents } = body;
+    const { orderId, amountCents } = await req.json();
 
     if (!orderId || !amountCents || amountCents < 50) {
       return NextResponse.json(
@@ -14,7 +14,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1️⃣ Create PaymentIntent (AUTHORIZE ONLY)
     const intent = await stripe.paymentIntents.create({
       amount: amountCents,
       currency: "usd",
@@ -22,8 +21,7 @@ export async function POST(req: Request) {
       automatic_payment_methods: { enabled: true },
     });
 
-    // 2️⃣ Store PaymentIntent ID on order
-    const { error: updateError } = await supabase
+    await supabase
       .from("orders")
       .update({
         stripe_payment_intent_id: intent.id,
@@ -31,11 +29,6 @@ export async function POST(req: Request) {
       })
       .eq("id", orderId);
 
-    if (updateError) {
-      throw new Error(updateError.message);
-    }
-
-    // 3️⃣ Return clientSecret to frontend
     return NextResponse.json({
       clientSecret: intent.client_secret,
     });
