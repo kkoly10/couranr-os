@@ -1,20 +1,27 @@
 import { NextResponse } from "next/server";
-import { supabase } from "../../../../lib/supabaseClient";
+import { cookies } from "next/headers";
+import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+
 import { createDeliveryOrderFlow } from "../../../../lib/delivery/createDeliveryOrderFlow";
 
 export async function POST(req: Request) {
   try {
-    // 1️⃣ Authenticated user
+    // ✅ SERVER-SIDE SUPABASE WITH COOKIES
+    const supabase = createRouteHandlerClient({ cookies });
+
     const {
       data: { user },
       error: authError,
     } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
     }
 
-    // 2️⃣ Request body
+    // Parse body
     const body = await req.json();
 
     const {
@@ -42,7 +49,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // 3️⃣ Orchestration flow (FIXED: scheduledAt)
+    // ✅ CREATE DELIVERY (AUTHORIZED USER)
     const {
       orderId,
       deliveryId,
@@ -57,7 +64,7 @@ export async function POST(req: Request) {
       stops,
       rush,
       signatureRequired,
-      scheduledAt: null, // REQUIRED
+      scheduledAt: null,
       totalCents,
     });
 
