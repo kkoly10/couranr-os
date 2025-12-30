@@ -5,26 +5,16 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2024-06-20",
 });
 
-type AuthorizeDeliveryPaymentInput = {
-  orderId: string;
-  amountCents: number;
-};
-
 export async function authorizeDeliveryPayment({
   orderId,
   amountCents,
-}: AuthorizeDeliveryPaymentInput) {
-  if (!orderId) {
-    throw new Error("orderId is required to authorize payment");
-  }
+}: {
+  orderId: string;
+  amountCents: number;
+}) {
+  if (!orderId) throw new Error("authorizeDeliveryPayment: orderId is required");
+  if (!amountCents || amountCents < 50) throw new Error("authorizeDeliveryPayment: invalid amount");
 
-  if (!amountCents || amountCents < 50) {
-    throw new Error("Invalid payment amount");
-  }
-
-  /**
-   * 1. Create Stripe PaymentIntent (manual capture)
-   */
   const intent = await stripe.paymentIntents.create({
     amount: amountCents,
     currency: "usd",
@@ -36,9 +26,7 @@ export async function authorizeDeliveryPayment({
     },
   });
 
-  /**
-   * 2. Persist PaymentIntent ID on the order
-   */
+  // NOTE: adjust column names if yours differ
   const { error } = await supabase
     .from("orders")
     .update({
@@ -47,16 +35,7 @@ export async function authorizeDeliveryPayment({
     })
     .eq("id", orderId);
 
-  if (error) {
-    throw new Error(
-      `Failed to link payment intent to order: ${error.message}`
-    );
-  }
+  if (error) throw new Error(`authorizeDeliveryPayment: failed to update order: ${error.message}`);
 
-  /**
-   * 3. Return client secret for Stripe Elements
-   */
-  return {
-    clientSecret: intent.client_secret,
-  };
+  return { clientSecret: intent.client_secret as string };
 }
