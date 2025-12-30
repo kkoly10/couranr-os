@@ -5,6 +5,9 @@ import { loadStripe } from "@stripe/stripe-js";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
+// ✅ IMPORT WAS MISSING
+import CheckoutForm from "./CheckoutForm";
+
 const stripePromise = loadStripe(
   process.env.NEXT_PUBLIC_STRIPE_SHARABLE_KEY!
 );
@@ -68,7 +71,8 @@ export default function CourierPaymentPage() {
       </h1>
 
       <p style={{ color: "#555", marginBottom: 20 }}>
-        Your card will be authorized for <strong>${price.toFixed(2)}</strong>.
+        Your card will be authorized for{" "}
+        <strong>${price.toFixed(2)}</strong>.  
         You will only be charged after delivery is completed.
       </p>
 
@@ -76,9 +80,7 @@ export default function CourierPaymentPage() {
         stripe={stripePromise}
         options={{
           clientSecret,
-          appearance: {
-            theme: "stripe",
-          },
+          appearance: { theme: "stripe" },
         }}
       >
         <CheckoutForm />
