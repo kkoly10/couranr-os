@@ -19,14 +19,13 @@ export async function createAddresses({
   const { data, error } = await supabase
     .from("addresses")
     .insert([pickup, dropoff])
-    .select();
+    .select("id");
 
-  if (error || !data || data.length !== 2) {
-    throw new Error("Failed to create addresses");
-  }
+  if (error) throw new Error(`createAddresses failed: ${error.message}`);
+  if (!data || data.length !== 2) throw new Error("createAddresses failed: missing inserted rows");
 
   return {
-    pickupAddressId: data[0].id,
-    dropoffAddressId: data[1].id,
+    pickupAddressId: data[0].id as string,
+    dropoffAddressId: data[1].id as string,
   };
 }
