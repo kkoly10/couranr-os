@@ -1,5 +1,5 @@
-import { supabase } from "@/lib/supabaseClient";
-import { capturePayment } from "@/lib/stripe/capturePayment";
+import { supabase } from "../supabaseClient";
+import { capturePayment } from "../stripe/capturePayment";
 
 export async function completeDelivery(orderId: string) {
   // Fetch order
@@ -13,15 +13,16 @@ export async function completeDelivery(orderId: string) {
     throw new Error("Order not found");
   }
 
-  if (order.status === "completed") {
-    return order; // idempotent protection
+  // Idempotency: if already completed, do nothing
+  if (order.status === "completed" || order.payment_status === "captured") {
+    return order;
   }
 
   if (!order.payment_intent_id) {
-    throw new Error("Missing payment intent");
+    throw new Error("Missing payment_intent_id on order");
   }
 
-  // Capture payment
+  // Capture Stripe payment intent (idempotent helper)
   await capturePayment(order.payment_intent_id);
 
   // Mark order complete
@@ -36,8 +37,8 @@ export async function completeDelivery(orderId: string) {
     .select()
     .single();
 
-  if (updateError) {
-    throw new Error("Failed to finalize order");
+  if (updateError || !updated) {
+    throw new Error(updateError?.message || "Failed to finalize order");
   }
 
   return updated;
