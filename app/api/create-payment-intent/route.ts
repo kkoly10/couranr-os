@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
-  apiVersion: "2024-06-20"
+  apiVersion: "2024-04-10", // ✅ FIXED
 });
 
 export async function POST(req: Request) {
@@ -17,17 +17,20 @@ export async function POST(req: Request) {
       );
     }
 
+    // AUTHORIZE ONLY (manual capture)
     const intent = await stripe.paymentIntents.create({
       amount: amountCents,
       currency: "usd",
-      capture_method: "manual", // AUTHORIZE ONLY
-      automatic_payment_methods: { enabled: true }
+      capture_method: "manual",
+      automatic_payment_methods: { enabled: true },
     });
 
     return NextResponse.json({
-      clientSecret: intent.client_secret
+      clientSecret: intent.client_secret,
     });
   } catch (err: any) {
+    console.error("create-payment-intent error:", err);
+
     return NextResponse.json(
       { error: err?.message || "Failed to create PaymentIntent" },
       { status: 500 }
