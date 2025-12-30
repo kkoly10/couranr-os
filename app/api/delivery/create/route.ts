@@ -1,9 +1,23 @@
 import { NextResponse } from "next/server";
-import { createDeliveryOrderFlow } from "../../../../lib/delivery/createDeliveryOrderFlow";
-import { supabase } from "../../../../lib/supabaseClient";
+import { supabase } from "@/lib/supabaseClient";
+import { createDeliveryOrderFlow } from "@/lib/delivery/createDeliveryOrderFlow";
 
 export async function POST(req: Request) {
   try {
+    // 1️⃣ Get authenticated user
+    const {
+      data: { user },
+      error: authError,
+    } = await supabase.auth.getUser();
+
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401 }
+      );
+    }
+
+    // 2️⃣ Parse request body
     const body = await req.json();
 
     const {
@@ -11,49 +25,63 @@ export async function POST(req: Request) {
       dropoffAddress,
       estimatedMiles,
       weightLbs,
+      stops,
       rush,
       signatureRequired,
-      stops,
       totalCents,
     } = body;
 
-    if (!pickupAddress || !dropoffAddress || !totalCents) {
+    // 3️⃣ Basic validation (minimal, backend-safe)
+    if (!pickupAddress || !dropoffAddress) {
       return NextResponse.json(
-        { error: "Missing required checkout data" },
+        { error: "Pickup and dropoff addresses are required" },
         { status: 400 }
       );
     }
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
+    if (!totalCents || totalCents < 50) {
       return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
+        { error: "Invalid total amount" },
+        { status: 400 }
       );
     }
 
-    const { orderId, deliveryId } = await createDeliveryOrderFlow({
+    // 4️⃣ Create delivery + order + authorize payment
+    const {
+      orderId,
+      deliveryId,
+      orderNumber,
+      clientSecret,
+    } = await createDeliveryOrderFlow({
       customerId: user.id,
+
       pickupAddress,
       dropoffAddress,
+
       estimatedMiles,
       weightLbs,
+      stops,
+
       rush,
       signatureRequired,
-      stops,
+
+      scheduledAt: null, // ✅ REQUIRED — deliver now (FIX)
+
       totalCents,
     });
 
+    // 5️⃣ Success response
     return NextResponse.json({
       orderId,
       deliveryId,
+      orderNumber,
+      clientSecret,
     });
   } catch (err: any) {
+    console.error("Create delivery error:", err);
+
     return NextResponse.json(
-      { error: err?.message || "Failed to create delivery order" },
+      { error: err?.message || "Failed to create delivery" },
       { status: 500 }
     );
   }
