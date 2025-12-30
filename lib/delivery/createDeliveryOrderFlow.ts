@@ -3,7 +3,7 @@ import { createOrder } from "./createOrder";
 import { createDelivery } from "./createDelivery";
 import { authorizeDeliveryPayment } from "./authorizeDeliveryPayment";
 
-type CreateDeliveryOrderFlowInput = {
+export type CreateDeliveryOrderFlowInput = {
   customerId: string;
 
   pickupAddress: {
@@ -28,41 +28,35 @@ type CreateDeliveryOrderFlowInput = {
   weightLbs: number;
   rush: boolean;
   signatureRequired: boolean;
-
   totalCents: number;
 };
 
-export async function createDeliveryOrderFlow({
-  customerId,
-  pickupAddress,
-  dropoffAddress,
-  estimatedMiles,
-  weightLbs,
-  rush,
-  signatureRequired,
-  totalCents,
-}: CreateDeliveryOrderFlowInput) {
-  /**
-   * 1. Create addresses
-   */
+export async function createDeliveryOrderFlow(
+  input: CreateDeliveryOrderFlowInput
+) {
+  const {
+    customerId,
+    pickupAddress,
+    dropoffAddress,
+    estimatedMiles,
+    weightLbs,
+    rush,
+    signatureRequired,
+    totalCents,
+  } = input;
+
   const { pickupAddressId, dropoffAddressId } =
     await createAddresses({
       pickup: pickupAddress,
       dropoff: dropoffAddress,
     });
 
-  /**
-   * 2. Create order
-   */
   const { orderId, orderNumber } = await createOrder({
     customerId,
     totalCents,
     serviceType: "delivery",
   });
 
-  /**
-   * 3. Create delivery
-   */
   const { deliveryId } = await createDelivery({
     orderId,
     pickupAddressId,
@@ -73,9 +67,6 @@ export async function createDeliveryOrderFlow({
     signatureRequired,
   });
 
-  /**
-   * 4. Authorize payment (manual capture)
-   */
   const { clientSecret } = await authorizeDeliveryPayment({
     orderId,
     amountCents: totalCents,
