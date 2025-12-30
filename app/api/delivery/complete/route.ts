@@ -1,18 +1,20 @@
 import { NextResponse } from "next/server";
-
-// IMPORTANT: use relative imports so Vercel build never fails on alias resolution
 import { completeDelivery } from "../../../../lib/delivery/completeDelivery";
 import { supabase } from "../../../../lib/supabaseClient";
 
 export async function POST(req: Request) {
   try {
-    const { orderId } = await req.json();
+    const body = await req.json();
+    const { orderId } = body;
 
     if (!orderId) {
-      return NextResponse.json({ error: "Missing orderId" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Missing orderId" },
+        { status: 400 }
+      );
     }
 
-    // Verify drop-off photo exists before capturing payment
+    // Verify drop-off photo exists
     const { data: photos, error: photoErr } = await supabase
       .from("delivery_photos")
       .select("id")
@@ -36,7 +38,10 @@ export async function POST(req: Request) {
 
     const completed = await completeDelivery(orderId);
 
-    return NextResponse.json({ success: true, order: completed });
+    return NextResponse.json({
+      success: true,
+      order: completed,
+    });
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message || "Failed to complete delivery" },
