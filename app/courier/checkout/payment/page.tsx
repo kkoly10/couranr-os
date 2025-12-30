@@ -1,11 +1,11 @@
+export const dynamic = "force-dynamic";
+
 "use client";
 
 import { Elements } from "@stripe/react-stripe-js";
 import { loadStripe } from "@stripe/stripe-js";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-
-// ✅ IMPORT WAS MISSING
 import CheckoutForm from "./CheckoutForm";
 
 const stripePromise = loadStripe(
@@ -13,11 +13,11 @@ const stripePromise = loadStripe(
 );
 
 export default function CourierPaymentPage() {
-  const sp = useSearchParams();
+  const searchParams = useSearchParams();
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const price = Number(sp.get("price") ?? "0");
+  const price = Number(searchParams.get("price") || "0");
 
   useEffect(() => {
     async function createIntent() {
