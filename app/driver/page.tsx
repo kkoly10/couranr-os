@@ -4,6 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import Link from "next/link";
 
+/* ---------------- TYPES ---------------- */
+
+type DriverOrder = {
+  order_number: string;
+};
+
 type DriverDelivery = {
   id: string;
   status: string;
@@ -12,9 +18,7 @@ type DriverDelivery = {
   dropoff_address: string | null;
   estimated_miles: number | null;
   weight_lbs: number | null;
-  orders: {
-    order_number: string | null;
-  } | null;
+  order: DriverOrder | null;
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -22,6 +26,8 @@ const STATUS_LABELS: Record<string, string> = {
   in_transit: "In transit",
   completed: "Completed",
 };
+
+/* --------------- COMPONENT -------------- */
 
 export default function DriverDashboard() {
   const [loading, setLoading] = useState(true);
@@ -59,8 +65,7 @@ export default function DriverDashboard() {
 
       const { data, error } = await supabase
         .from("deliveries")
-        .select(
-          `
+        .select(`
           id,
           status,
           created_at,
@@ -71,8 +76,7 @@ export default function DriverDashboard() {
           orders (
             order_number
           )
-        `
-        )
+        `)
         .eq("driver_id", user.id)
         .order("created_at", { ascending: false });
 
@@ -83,12 +87,29 @@ export default function DriverDashboard() {
         return;
       }
 
-      setDeliveries((data ?? []) as DriverDelivery[]);
+      // ✅ NORMALIZE Supabase relation array → single object
+      const normalized: DriverDelivery[] = (data ?? []).map((d: any) => ({
+        id: d.id,
+        status: d.status,
+        created_at: d.created_at,
+        pickup_address: d.pickup_address,
+        dropoff_address: d.dropoff_address,
+        estimated_miles: d.estimated_miles,
+        weight_lbs: d.weight_lbs,
+        order:
+          d.orders && d.orders.length > 0
+            ? { order_number: d.orders[0].order_number }
+            : null,
+      }));
+
+      setDeliveries(normalized);
       setLoading(false);
     }
 
     load();
   }, []);
+
+  /* --------------- UI STATES -------------- */
 
   if (loading) {
     return (
@@ -132,7 +153,7 @@ export default function DriverDashboard() {
           <div style={{ marginTop: 14, ...styles.inner }}>
             <Info
               label="Order #"
-              value={activeDelivery.orders?.order_number ?? "—"}
+              value={activeDelivery.order?.order_number ?? "—"}
             />
             <Info
               label="Status"
@@ -195,7 +216,7 @@ export default function DriverDashboard() {
             {completedToday.map((d) => (
               <div key={d.id} style={styles.row}>
                 <div>
-                  <strong>{d.orders?.order_number ?? "Order"}</strong>
+                  <strong>{d.order?.order_number ?? "Order"}</strong>
                   <div style={{ fontSize: 13, color: "#555" }}>
                     {new Date(d.created_at).toLocaleTimeString()}
                   </div>
@@ -220,6 +241,8 @@ export default function DriverDashboard() {
     </div>
   );
 }
+
+/* ---------------- HELPERS ---------------- */
 
 function Info({ label, value }: { label: string; value: string }) {
   return (
