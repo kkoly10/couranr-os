@@ -1,8 +1,8 @@
 import Stripe from "stripe";
 import { supabase } from "../supabaseClient";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2024-06-20",
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
+  apiVersion: "2024-04-10", // ✅ FIXED — matches installed Stripe SDK
 });
 
 export async function authorizeDeliveryPayment({
@@ -12,9 +12,15 @@ export async function authorizeDeliveryPayment({
   orderId: string;
   amountCents: number;
 }) {
-  if (!orderId) throw new Error("authorizeDeliveryPayment: orderId is required");
-  if (!amountCents || amountCents < 50) throw new Error("authorizeDeliveryPayment: invalid amount");
+  if (!orderId) {
+    throw new Error("authorizeDeliveryPayment: orderId is required");
+  }
 
+  if (!amountCents || amountCents < 50) {
+    throw new Error("authorizeDeliveryPayment: invalid amount");
+  }
+
+  // 1️⃣ Create PaymentIntent (AUTHORIZE ONLY)
   const intent = await stripe.paymentIntents.create({
     amount: amountCents,
     currency: "usd",
@@ -26,7 +32,7 @@ export async function authorizeDeliveryPayment({
     },
   });
 
-  // NOTE: adjust column names if yours differ
+  // 2️⃣ Persist Stripe intent on order
   const { error } = await supabase
     .from("orders")
     .update({
@@ -35,7 +41,13 @@ export async function authorizeDeliveryPayment({
     })
     .eq("id", orderId);
 
-  if (error) throw new Error(`authorizeDeliveryPayment: failed to update order: ${error.message}`);
+  if (error) {
+    throw new Error(
+      `authorizeDeliveryPayment: failed to update order: ${error.message}`
+    );
+  }
 
-  return { clientSecret: intent.client_secret as string };
+  return {
+    clientSecret: intent.client_secret as string,
+  };
 }
