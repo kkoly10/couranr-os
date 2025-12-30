@@ -1,10 +1,11 @@
+import { createAddresses } from "./createAddresses";
 import { createOrder } from "./createOrder";
 import { createDelivery } from "./createDelivery";
-import { createAddresses } from "./createAddresses";
 import { authorizeDeliveryPayment } from "./authorizeDeliveryPayment";
 
 type CreateDeliveryOrderFlowInput = {
   customerId: string;
+
   pickupAddress: {
     address_line: string;
     city: string;
@@ -13,6 +14,7 @@ type CreateDeliveryOrderFlowInput = {
     is_business: boolean;
     business_hours?: string;
   };
+
   dropoffAddress: {
     address_line: string;
     city: string;
@@ -21,6 +23,12 @@ type CreateDeliveryOrderFlowInput = {
     is_business: boolean;
     business_hours?: string;
   };
+
+  estimatedMiles: number;
+  weightLbs: number;
+  rush: boolean;
+  signatureRequired: boolean;
+
   totalCents: number;
 };
 
@@ -28,10 +36,14 @@ export async function createDeliveryOrderFlow({
   customerId,
   pickupAddress,
   dropoffAddress,
+  estimatedMiles,
+  weightLbs,
+  rush,
+  signatureRequired,
   totalCents,
 }: CreateDeliveryOrderFlowInput) {
   /**
-   * 1. Create pickup + dropoff addresses
+   * 1. Create addresses
    */
   const { pickupAddressId, dropoffAddressId } =
     await createAddresses({
@@ -42,35 +54,33 @@ export async function createDeliveryOrderFlow({
   /**
    * 2. Create order
    */
-  const {
-    orderId,
-    orderNumber,
-  } = await createOrder({
+  const { orderId, orderNumber } = await createOrder({
     customerId,
     totalCents,
     serviceType: "delivery",
   });
 
   /**
-   * 3. Create delivery record
+   * 3. Create delivery
    */
   const { deliveryId } = await createDelivery({
     orderId,
     pickupAddressId,
     dropoffAddressId,
+    estimatedMiles,
+    weightLbs,
+    rush,
+    signatureRequired,
   });
 
   /**
-   * 4. Authorize payment (Stripe manual capture)
+   * 4. Authorize payment (manual capture)
    */
   const { clientSecret } = await authorizeDeliveryPayment({
     orderId,
     amountCents: totalCents,
   });
 
-  /**
-   * ✅ FINAL RETURN (LOCKED CONTRACT)
-   */
   return {
     orderId,
     deliveryId,
