@@ -42,3 +42,4 @@ export async function completeDelivery(orderId: string) {
   }
 
   return updated;
+}
