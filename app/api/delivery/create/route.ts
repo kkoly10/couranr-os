@@ -1,23 +1,20 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabaseClient";
-import { createDeliveryOrderFlow } from "@/lib/delivery/createDeliveryOrderFlow";
+import { supabase } from "../../../../lib/supabaseClient";
+import { createDeliveryOrderFlow } from "../../../../lib/delivery/createDeliveryOrderFlow";
 
 export async function POST(req: Request) {
   try {
-    // 1️⃣ Get authenticated user
+    // 1️⃣ Authenticated user
     const {
       data: { user },
       error: authError,
     } = await supabase.auth.getUser();
 
     if (authError || !user) {
-      return NextResponse.json(
-        { error: "Unauthorized" },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // 2️⃣ Parse request body
+    // 2️⃣ Request body
     const body = await req.json();
 
     const {
@@ -31,7 +28,6 @@ export async function POST(req: Request) {
       totalCents,
     } = body;
 
-    // 3️⃣ Basic validation (minimal, backend-safe)
     if (!pickupAddress || !dropoffAddress) {
       return NextResponse.json(
         { error: "Pickup and dropoff addresses are required" },
@@ -46,7 +42,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // 4️⃣ Create delivery + order + authorize payment
+    // 3️⃣ Orchestration flow (FIXED: scheduledAt)
     const {
       orderId,
       deliveryId,
@@ -54,23 +50,17 @@ export async function POST(req: Request) {
       clientSecret,
     } = await createDeliveryOrderFlow({
       customerId: user.id,
-
       pickupAddress,
       dropoffAddress,
-
       estimatedMiles,
       weightLbs,
       stops,
-
       rush,
       signatureRequired,
-
-      scheduledAt: null, // ✅ REQUIRED — deliver now (FIX)
-
+      scheduledAt: null, // REQUIRED
       totalCents,
     });
 
-    // 5️⃣ Success response
     return NextResponse.json({
       orderId,
       deliveryId,
