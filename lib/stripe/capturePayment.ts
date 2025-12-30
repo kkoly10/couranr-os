@@ -1,19 +1,44 @@
-import Stripe from "stripe";
+import { stripe } from "../stripe";
+import { supabase } from "../supabaseClient";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2024-06-20",
-});
-
-export async function capturePayment(paymentIntentId: string) {
-  const intent = await stripe.paymentIntents.retrieve(paymentIntentId);
-
-  // Already captured = idempotent success
-  if (intent.status === "succeeded") return intent;
-
-  // Must be in requires_capture (because we authorized first)
-  if (intent.status !== "requires_capture") {
-    throw new Error(`Payment cannot be captured. Status: ${intent.status}`);
+export async function capturePayment({
+  orderId,
+}: {
+  orderId: string;
+}) {
+  if (!orderId) {
+    throw new Error("capturePayment: orderId is required");
   }
 
-  return await stripe.paymentIntents.capture(paymentIntentId);
+  // 1️⃣ Get Stripe PaymentIntent ID from order
+  const { data: order, error: orderError } = await supabase
+    .from("orders")
+    .select("stripe_payment_intent_id")
+    .eq("id", orderId)
+    .single();
+
+  if (orderError || !order?.stripe_payment_intent_id) {
+    throw new Error("capturePayment: PaymentIntent not found for order");
+  }
+
+  // 2️⃣ Capture payment
+  const intent = await stripe.paymentIntents.capture(
+    order.stripe_payment_intent_id
+  );
+
+  // 3️⃣ Update order status
+  const { error: updateError } = await supabase
+    .from("orders")
+    .update({
+      payment_status: "captured",
+    })
+    .eq("id", orderId);
+
+  if (updateError) {
+    throw new Error(
+      `capturePayment: failed to update order: ${updateError.message}`
+    );
+  }
+
+  return intent;
 }
