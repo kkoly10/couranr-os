@@ -1,10 +1,9 @@
 import { NextResponse } from "next/server";
-import { capturePayment } from "@/lib/stripe/capturePayment";
+import { capturePayment } from "../../../../lib/stripe/capturePayment";
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const { orderId } = body;
+    const { orderId } = await req.json();
 
     if (!orderId) {
       return NextResponse.json(
@@ -13,10 +12,8 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1️⃣ Capture the payment
     const intent = await capturePayment({ orderId });
 
-    // 2️⃣ Respond with success
     return NextResponse.json({
       success: true,
       paymentIntentId: intent.id,
