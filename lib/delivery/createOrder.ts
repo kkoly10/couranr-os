@@ -1,36 +1,35 @@
 import { supabase } from "../supabaseClient";
 
-/**
- * Creates a delivery order record.
- * This is platform-level and service-agnostic.
- */
-export async function createDeliveryOrder({
+export async function createOrder({
   customerId,
-  subtotalCents,
-  feesCents,
   totalCents,
+  serviceType,
 }: {
   customerId: string;
-  subtotalCents: number;
-  feesCents: number;
   totalCents: number;
+  serviceType: "delivery";
 }) {
+  const orderNumber = `CR-${Date.now()}`;
+
   const { data, error } = await supabase
     .from("orders")
     .insert({
-      service_type: "delivery",
       customer_id: customerId,
-      status: "draft",
-      subtotal_cents: subtotalCents,
-      fees_cents: feesCents,
+      service_type: serviceType,
+      order_number: orderNumber,
       total_cents: totalCents,
+      status: "pending",
+      payment_status: "pending",
     })
     .select()
     .single();
 
-  if (error) {
-    throw error;
+  if (error || !data) {
+    throw new Error("Failed to create order");
   }
 
-  return data;
+  return {
+    orderId: data.id,
+    orderNumber: data.order_number,
+  };
 }
