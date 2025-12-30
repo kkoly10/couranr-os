@@ -1,56 +1,98 @@
-import { supabase } from "../supabaseClient";
+import { createAddresses } from "./createAddresses";
+import { createOrder } from "./createOrder";
+import { createDelivery } from "./createDelivery";
+import { authorizeDeliveryPayment } from "./authorizeDeliveryPayment";
 
-/**
- * Creates the delivery record linked to an order.
- * This contains delivery-specific details only.
- */
-export async function createDelivery({
-  orderId,
-  pickupAddressId,
-  dropoffAddressId,
-  recipient,
-  pricing,
-}: {
-  orderId: string;
-  pickupAddressId: string;
-  dropoffAddressId: string;
+export type CreateDeliveryOrderFlowInput = {
+  customerId: string;
 
-  recipient: {
-    name: string;
-    phone: string;
-    email?: string;
+  pickupAddress: {
+    address_line: string;
+    city: string;
+    state: string;
+    zip: string;
+    is_business: boolean;
+    business_hours?: string;
   };
 
-  pricing: {
-    miles: number;
-    weight: number;
-    baseFee: number;
-    mileageFee: number;
-    weightFee: number;
-    rushFee: number;
-    signatureFee: number;
+  dropoffAddress: {
+    address_line: string;
+    city: string;
+    state: string;
+    zip: string;
+    is_business: boolean;
+    business_hours?: string;
   };
-}) {
-  const { error } = await supabase.from("deliveries").insert({
-    order_id: orderId,
-    pickup_address_id: pickupAddressId,
-    dropoff_address_id: dropoffAddressId,
 
-    recipient_name: recipient.name,
-    recipient_phone: recipient.phone,
-    recipient_email: recipient.email,
+  estimatedMiles: number;
+  weightLbs: number;
+  stops: number;
+  rush: boolean;
+  signatureRequired: boolean;
 
-    estimated_miles: pricing.miles,
-    weight_lbs: pricing.weight,
+  totalCents: number;
+};
 
-    base_fee_cents: pricing.baseFee,
-    mileage_fee_cents: pricing.mileageFee,
-    weight_fee_cents: pricing.weightFee,
-    rush_fee_cents: pricing.rushFee,
-    signature_fee_cents: pricing.signatureFee,
+export async function createDeliveryOrderFlow(
+  input: CreateDeliveryOrderFlowInput
+) {
+  const {
+    customerId,
+    pickupAddress,
+    dropoffAddress,
+    estimatedMiles,
+    weightLbs,
+    stops,
+    rush,
+    signatureRequired,
+    totalCents,
+  } = input;
+
+  /**
+   * 1. Create addresses
+   */
+  const { pickupAddressId, dropoffAddressId } =
+    await createAddresses({
+      pickup: pickupAddress,
+      dropoff: dropoffAddress,
+    });
+
+  /**
+   * 2. Create order
+   */
+  const { orderId, orderNumber } = await createOrder({
+    customerId,
+    totalCents,
+    serviceType: "delivery",
   });
 
-  if (error) {
-    throw error;
-  }
+  /**
+   * 3. Create delivery
+   */
+  const { deliveryId } = await createDelivery({
+    orderId,
+    pickupAddressId,
+    dropoffAddressId,
+    estimatedMiles,
+    weightLbs,
+    stops,
+    rush,
+    signatureRequired,
+  });
+
+  /**
+   * 4. Authorize payment (Stripe manual capture)
+   */
+  const { clientSecret } = await authorizeDeliveryPayment({
+    orderId,
+    amountCents: totalCents,
+  });
+
+  return {
+    orderId,
+    deliveryId,
+    orderNumber,
+    totalCents,
+    clientSecret,
+  };
 }
