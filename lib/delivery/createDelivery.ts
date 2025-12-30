@@ -1,75 +1,21 @@
-import { createAddresses } from "./createAddresses";
-import { createOrder } from "./createOrder";
-import { createDelivery } from "./createDelivery";
-import { authorizeDeliveryPayment } from "./authorizeDeliveryPayment";
+import { supabase } from "../supabaseClient";
 
-export type CreateDeliveryOrderFlowInput = {
-  customerId: string;
-
-  pickupAddress: {
-    address_line: string;
-    city: string;
-    state: string;
-    zip: string;
-    is_business: boolean;
-    business_hours?: string;
-  };
-
-  dropoffAddress: {
-    address_line: string;
-    city: string;
-    state: string;
-    zip: string;
-    is_business: boolean;
-    business_hours?: string;
-  };
+export type CreateDeliveryInput = {
+  orderId: string;
+  pickupAddressId: string;
+  dropoffAddressId: string;
 
   estimatedMiles: number;
   weightLbs: number;
   stops: number;
+
   rush: boolean;
   signatureRequired: boolean;
-
-  totalCents: number;
+  scheduledAt: string | null; // ISO string or null
 };
 
-export async function createDeliveryOrderFlow(
-  input: CreateDeliveryOrderFlowInput
-) {
+export async function createDelivery(input: CreateDeliveryInput) {
   const {
-    customerId,
-    pickupAddress,
-    dropoffAddress,
-    estimatedMiles,
-    weightLbs,
-    stops,
-    rush,
-    signatureRequired,
-    totalCents,
-  } = input;
-
-  /**
-   * 1. Create addresses
-   */
-  const { pickupAddressId, dropoffAddressId } =
-    await createAddresses({
-      pickup: pickupAddress,
-      dropoff: dropoffAddress,
-    });
-
-  /**
-   * 2. Create order
-   */
-  const { orderId, orderNumber } = await createOrder({
-    customerId,
-    totalCents,
-    serviceType: "delivery",
-  });
-
-  /**
-   * 3. Create delivery
-   */
-  const { deliveryId } = await createDelivery({
     orderId,
     pickupAddressId,
     dropoffAddressId,
@@ -78,21 +24,33 @@ export async function createDeliveryOrderFlow(
     stops,
     rush,
     signatureRequired,
-  });
+    scheduledAt,
+  } = input;
 
-  /**
-   * 4. Authorize payment (Stripe manual capture)
-   */
-  const { clientSecret } = await authorizeDeliveryPayment({
-    orderId,
-    amountCents: totalCents,
-  });
+  if (!orderId) throw new Error("createDelivery: orderId is required");
 
-  return {
-    orderId,
-    deliveryId,
-    orderNumber,
-    totalCents,
-    clientSecret,
-  };
+  const { data, error } = await supabase
+    .from("deliveries")
+    .insert({
+      order_id: orderId,
+      pickup_address_id: pickupAddressId,
+      dropoff_address_id: dropoffAddressId,
+
+      estimated_miles: estimatedMiles,
+      weight_lbs: weightLbs,
+      stops,
+
+      rush,
+      signature_required: signatureRequired,
+      scheduled_at: scheduledAt,
+
+      status: "created", // adjust if your enum differs
+    })
+    .select("id")
+    .single();
+
+  if (error) throw new Error(`createDelivery failed: ${error.message}`);
+  if (!data?.id) throw new Error("createDelivery failed: missing delivery id");
+
+  return { deliveryId: data.id as string };
 }
