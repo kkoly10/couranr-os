@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 
+/* ---------------- TYPES ---------------- */
+
 type AdminOrder = {
   order_number: string;
   total_cents: number;
@@ -21,12 +23,17 @@ type AdminDelivery = {
   order: AdminOrder | null;
 };
 
+/* --------------- COMPONENT -------------- */
+
 export default function AdminDashboard() {
   const [deliveries, setDeliveries] = useState<AdminDelivery[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadDeliveries() {
+      setLoading(true);
+
       const { data, error } = await supabase
         .from("deliveries")
         .select(`
@@ -47,12 +54,12 @@ export default function AdminDashboard() {
         .order("created_at", { ascending: false });
 
       if (error) {
-        console.error("Failed to load deliveries:", error.message);
+        setError(error.message);
         setLoading(false);
         return;
       }
 
-      // Normalize Supabase relation array → single object
+      // 🔑 Normalize Supabase relation array → single object
       const normalized: AdminDelivery[] = (data ?? []).map((d: any) => ({
         id: d.id,
         status: d.status,
@@ -62,7 +69,7 @@ export default function AdminDashboard() {
         dropoff_address: d.dropoff_address,
         estimated_miles: d.estimated_miles,
         weight_lbs: d.weight_lbs,
-        order: d.orders?.[0] ?? null,
+        order: d.orders && d.orders.length > 0 ? d.orders[0] : null,
       }));
 
       setDeliveries(normalized);
@@ -72,14 +79,26 @@ export default function AdminDashboard() {
     loadDeliveries();
   }, []);
 
+  /* --------------- UI STATES -------------- */
+
   if (loading) {
     return <div style={{ padding: 24 }}>Loading admin dashboard…</div>;
   }
 
+  if (error) {
+    return (
+      <div style={{ padding: 24, color: "red" }}>
+        Failed to load deliveries: {error}
+      </div>
+    );
+  }
+
+  /* ----------------- UI ------------------ */
+
   return (
     <div style={{ padding: 24 }}>
       <h1 style={{ fontSize: 28, marginBottom: 16 }}>
-        Admin — Active Deliveries
+        Admin — Deliveries
       </h1>
 
       {deliveries.length === 0 && <p>No deliveries found.</p>}
@@ -104,6 +123,7 @@ export default function AdminDashboard() {
           <br />
           <strong>Weight:</strong> {d.weight_lbs} lbs
           <br />
+
           {d.order && (
             <>
               <strong>Order #:</strong> {d.order.order_number}
