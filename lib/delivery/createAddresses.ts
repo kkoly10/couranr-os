@@ -1,6 +1,6 @@
 import { supabase } from "../supabaseClient";
 
-type AddressInput = {
+export type AddressInput = {
   address_line: string;
   city: string;
   state: string;
@@ -18,10 +18,7 @@ export async function createAddresses({
 }) {
   const { data, error } = await supabase
     .from("addresses")
-    .insert([
-      { ...pickup },
-      { ...dropoff },
-    ])
+    .insert([pickup, dropoff])
     .select();
 
   if (error || !data || data.length !== 2) {
