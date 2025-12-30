@@ -15,8 +15,8 @@ export async function createOrder({
     .from("orders")
     .insert({
       customer_id: customerId,
-      service_type: serviceType,
       order_number: orderNumber,
+      service_type: serviceType,
       total_cents: totalCents,
       status: "pending",
       payment_status: "pending",
