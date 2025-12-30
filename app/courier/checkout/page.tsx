@@ -1,106 +1,148 @@
 "use client";
 
-export const dynamic = "force-dynamic";
+import { useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { supabase } from "../../../lib/supabaseClient";
 
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+type CheckoutPayload = {
+  pickupAddress: any;
+  dropoffAddress: any;
+  estimatedMiles: number;
+  weightLbs: number;
+  rush: boolean;
+  signatureRequired: boolean;
+  stops: number;
+  totalCents: number;
+  scheduledAt: string | null;
+};
+
+function num(v: string | null, fallback = 0) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+}
 
 export default function CourierCheckoutPage() {
   const router = useRouter();
+  const sp = useSearchParams();
+
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
 
-  async function proceedToPayment() {
-    try {
-      setLoading(true);
-      setError(null);
+  // Read quote params (your app already passes these in the URL)
+  const price = sp.get("price") ?? "0";
+  const miles = sp.get("miles") ?? "0";
+  const pickup = sp.get("pickup") ?? "";
+  const dropoff = sp.get("dropoff") ?? "";
+  const weight = sp.get("weight") ?? "0";
+  const rush = sp.get("rush") === "1" || sp.get("rush") === "true";
+  const signature = sp.get("signature") === "1" || sp.get("signature") === "true";
+  const stops = sp.get("stops") ?? "0";
+  const scheduledAt = sp.get("scheduledAt"); // optional
 
-      // NOTE: These values should already exist in your state
-      // Replace with your actual checkout state variables if named differently
-      const payload = {
-        pickupAddress: JSON.parse(
-          decodeURIComponent(
-            new URLSearchParams(window.location.search).get("pickup") || "{}"
-          )
-        ),
-        dropoffAddress: JSON.parse(
-          decodeURIComponent(
-            new URLSearchParams(window.location.search).get("dropoff") || "{}"
-          )
-        ),
-        estimatedMiles: Number(
-          new URLSearchParams(window.location.search).get("miles") || 0
-        ),
-        weightLbs: Number(
-          new URLSearchParams(window.location.search).get("weight") || 0
-        ),
-        rush:
-          new URLSearchParams(window.location.search).get("rush") === "1",
-        signatureRequired:
-          new URLSearchParams(window.location.search).get("signature") === "1",
-        stops: Number(
-          new URLSearchParams(window.location.search).get("stops") || 0
-        ),
-        totalCents: Math.round(
-          Number(
-            new URLSearchParams(window.location.search).get("price") || 0
-          ) * 100
-        ),
-      };
+  const amountCents = useMemo(() => Math.round(num(price) * 100), [price]);
 
-      const res = await fetch("/api/delivery/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
+  // Minimal payload (you can expand this later)
+  const payload: CheckoutPayload = useMemo(
+    () => ({
+      pickupAddress: { address_line: pickup },
+      dropoffAddress: { address_line: dropoff },
+      estimatedMiles: num(miles),
+      weightLbs: num(weight),
+      rush,
+      signatureRequired: signature,
+      stops: num(stops),
+      totalCents: amountCents,
+      scheduledAt: scheduledAt ?? null,
+    }),
+    [pickup, dropoff, miles, weight, rush, signature, stops, amountCents, scheduledAt]
+  );
 
-      const data = await res.json();
+  async function continueToPayment() {
+    setErr(null);
+    setLoading(true);
 
-      if (!res.ok) {
-        throw new Error(data.error || "Failed to create order");
-      }
+    // 1) Get session token
+    const { data: sessionRes } = await supabase.auth.getSession();
+    const token = sessionRes.session?.access_token;
 
-      const { orderId } = data;
-
-      router.push(
-        `/courier/checkout/payment?orderId=${orderId}&price=${
-          payload.totalCents / 100
-        }`
-      );
-    } catch (err: any) {
-      setError(err.message);
+    if (!token) {
       setLoading(false);
+      // API-only enforcement still needs a token, so send user to login
+      router.push(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+      return;
     }
+
+    // 2) Call API with Bearer token
+    const res = await fetch("/api/delivery/start-checkout", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await res.json();
+
+    if (!res.ok) {
+      setLoading(false);
+      setErr(data?.error || "Failed to continue to payment");
+      return;
+    }
+
+    // 3) Go to payment page with order + clientSecret
+    const qs = new URLSearchParams({
+      orderId: data.orderId,
+      amountCents: String(data.amountCents),
+      clientSecret: data.clientSecret,
+      orderNumber: data.orderNumber,
+    });
+
+    setLoading(false);
+    router.push(`/courier/checkout/payment?${qs.toString()}`);
   }
 
   return (
-    <div style={{ maxWidth: 600, margin: "0 auto", padding: 24 }}>
-      <h1 style={{ fontSize: 28 }}>Confirm delivery details</h1>
-
-      <p style={{ marginTop: 12, color: "#555" }}>
-        Review your delivery details before continuing to payment.
+    <div style={{ maxWidth: 900, margin: "0 auto", padding: 24 }}>
+      <h1 style={{ fontSize: 28, marginBottom: 8 }}>Confirm delivery details</h1>
+      <p style={{ color: "#555", marginTop: 0 }}>
+        Review your details, then continue to payment authorization.
       </p>
 
-      {error && (
-        <div style={{ color: "red", marginTop: 12 }}>{error}</div>
+      <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 16, marginTop: 16 }}>
+        <div><strong>Pickup:</strong> {pickup || "—"}</div>
+        <div><strong>Drop-off:</strong> {dropoff || "—"}</div>
+        <div><strong>Estimated miles:</strong> {num(miles).toFixed(2)}</div>
+        <div><strong>Weight:</strong> {num(weight)} lbs</div>
+        <div><strong>Stops:</strong> {num(stops)}</div>
+        <div><strong>Rush:</strong> {rush ? "Yes" : "No"}</div>
+        <div><strong>Signature:</strong> {signature ? "Required" : "No"}</div>
+        <div style={{ marginTop: 10, fontSize: 18 }}>
+          <strong>Total:</strong> ${num(price).toFixed(2)}
+        </div>
+      </div>
+
+      {err && (
+        <div style={{ marginTop: 12, color: "#b91c1c", fontWeight: 600 }}>
+          {err}
+        </div>
       )}
 
       <button
-        onClick={proceedToPayment}
+        onClick={continueToPayment}
         disabled={loading}
         style={{
-          marginTop: 24,
-          padding: "14px 20px",
-          fontWeight: 700,
-          background: "#2563eb",
-          color: "#fff",
-          border: "none",
+          marginTop: 18,
+          padding: "12px 16px",
           borderRadius: 10,
-          width: "100%",
-          cursor: "pointer",
+          border: "none",
+          background: "#111827",
+          color: "#fff",
+          fontWeight: 700,
+          cursor: loading ? "not-allowed" : "pointer",
         }}
       >
-        {loading ? "Creating order…" : "Continue to payment"}
+        {loading ? "Working…" : "Continue to payment"}
       </button>
     </div>
   );
