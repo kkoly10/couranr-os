@@ -1,4 +1,3 @@
-import { supabaseAdmin } from "../supabaseAdmin";
 import { createOrder } from "./createOrder";
 import { createAddresses } from "./createAddresses";
 import { createDelivery } from "./createDelivery";
@@ -42,13 +41,14 @@ export async function createDeliveryOrderFlow(
     totalCents,
   } = input;
 
-  // 1️⃣ Create order
+  // 1️⃣ Create order (EXPLICIT service type)
   const order = await createOrder({
     customerId,
     totalCents,
+    serviceType: "delivery",
   });
 
-  // 2️⃣ Create addresses
+  // 2️⃣ Create pickup + dropoff addresses
   const pickup = await createAddresses({
     ...pickupAddress,
     type: "pickup",
@@ -59,7 +59,7 @@ export async function createDeliveryOrderFlow(
     type: "dropoff",
   });
 
-  // 3️⃣ Create delivery
+  // 3️⃣ Create delivery record
   const delivery = await createDelivery({
     orderId: order.id,
     pickupAddressId: pickup.id,
@@ -72,7 +72,7 @@ export async function createDeliveryOrderFlow(
     scheduledAt,
   });
 
-  // ✅ THIS IS WHAT WAS MISSING
+  // ✅ Explicit return
   return {
     orderId: order.id,
     orderNumber: order.order_number,
