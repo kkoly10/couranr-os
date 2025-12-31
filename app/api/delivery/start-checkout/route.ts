@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { createDeliveryOrderFlow } from "@/lib/delivery/createDeliveryOrderFlow";
+
+// ✅ RELATIVE IMPORTS (NO @ ALIAS)
+import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
+import { createDeliveryOrderFlow } from "../../../../lib/delivery/createDeliveryOrderFlow";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2024-04-10",
@@ -37,7 +39,7 @@ export async function POST(req: Request) {
       totalCents,
     } = body;
 
-    // 🔒 HARD VALIDATION
+    // 🔒 Validate amount
     if (!totalCents || typeof totalCents !== "number" || totalCents < 50) {
       return NextResponse.json(
         { error: "Invalid amount" },
@@ -45,7 +47,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1️⃣ Create order + delivery (NO Stripe yet)
+    // 1️⃣ Create order + delivery (DB only)
     const { orderId, orderNumber, deliveryId } =
       await createDeliveryOrderFlow({
         customerId: user.id,
@@ -64,7 +66,7 @@ export async function POST(req: Request) {
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_intent_data: {
-        capture_method: "manual", // authorize only
+        capture_method: "manual",
         metadata: {
           orderId,
           deliveryId,
