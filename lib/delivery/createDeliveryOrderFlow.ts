@@ -2,14 +2,18 @@ import { createOrder } from "./createOrder";
 import { createAddresses } from "./createAddresses";
 import { createDelivery } from "./createDelivery";
 
+export type AddressInput = {
+  address_line: string;
+  city: string;
+  state: string;
+  zip: string;
+  is_business: boolean;
+};
+
 export type DeliveryOrderInput = {
   customerId: string;
-  pickupAddress: {
-    address_line: string;
-  };
-  dropoffAddress: {
-    address_line: string;
-  };
+  pickupAddress: AddressInput;
+  dropoffAddress: AddressInput;
   estimatedMiles: number;
   weightLbs: number;
   rush: boolean;
@@ -48,8 +52,8 @@ export async function createDeliveryOrderFlow(
     serviceType: "delivery",
   });
 
-  // 2️⃣ Create pickup + dropoff addresses
-  const pickup = await createAddresses({
+  // 2️⃣ Create pickup + dropoff addresses (FULL objects)
+  const addresses = await createAddresses({
     pickup: pickupAddress,
     dropoff: dropoffAddress,
   });
@@ -57,8 +61,8 @@ export async function createDeliveryOrderFlow(
   // 3️⃣ Create delivery record
   const delivery = await createDelivery({
     orderId: order.id,
-    pickupAddressId: pickup.pickup.id,
-    dropoffAddressId: pickup.dropoff.id,
+    pickupAddressId: addresses.pickup.id,
+    dropoffAddressId: addresses.dropoff.id,
     estimatedMiles,
     weightLbs,
     rush,
@@ -67,7 +71,6 @@ export async function createDeliveryOrderFlow(
     scheduledAt,
   });
 
-  // ✅ Explicit return (NO Stripe here)
   return {
     orderId: order.id,
     orderNumber: order.order_number,
