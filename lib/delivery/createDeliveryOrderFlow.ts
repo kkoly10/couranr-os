@@ -41,7 +41,7 @@ export async function createDeliveryOrderFlow(
     totalCents,
   } = input;
 
-  // 1️⃣ Create order (EXPLICIT service type)
+  // 1️⃣ Create order (explicit service type)
   const order = await createOrder({
     customerId,
     totalCents,
@@ -50,20 +50,15 @@ export async function createDeliveryOrderFlow(
 
   // 2️⃣ Create pickup + dropoff addresses
   const pickup = await createAddresses({
-    ...pickupAddress,
-    type: "pickup",
-  });
-
-  const dropoff = await createAddresses({
-    ...dropoffAddress,
-    type: "dropoff",
+    pickup: pickupAddress,
+    dropoff: dropoffAddress,
   });
 
   // 3️⃣ Create delivery record
   const delivery = await createDelivery({
     orderId: order.id,
-    pickupAddressId: pickup.id,
-    dropoffAddressId: dropoff.id,
+    pickupAddressId: pickup.pickup.id,
+    dropoffAddressId: pickup.dropoff.id,
     estimatedMiles,
     weightLbs,
     rush,
@@ -72,7 +67,7 @@ export async function createDeliveryOrderFlow(
     scheduledAt,
   });
 
-  // ✅ Explicit return
+  // ✅ Explicit return (NO Stripe here)
   return {
     orderId: order.id,
     orderNumber: order.order_number,
