@@ -1,93 +1,44 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "../../../../lib/supabaseAdmin";
-import { createDeliveryOrderFlow } from "../../../../lib/delivery/createDeliveryOrderFlow";
+import Stripe from "stripe";
 
-function getBearerToken(req: Request) {
-  const auth = req.headers.get("authorization") || "";
-  const parts = auth.split(" ");
-  if (parts.length === 2 && parts[0].toLowerCase() === "bearer") return parts[1];
-  return null;
-}
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: "2024-04-10",
+});
 
 export async function POST(req: Request) {
   try {
-    // 1) Require a Bearer token from the client
-    const token = getBearerToken(req);
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const { amountCents } = await req.json();
 
-    // 2) Validate token with Supabase (server-side)
-    const { data: userRes, error: userErr } = await supabaseAdmin.auth.getUser(token);
-    if (userErr || !userRes?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    const user = userRes.user;
-
-    // 3) Check role = customer
-    const { data: profile, error: profErr } = await supabaseAdmin
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (profErr) {
-      return NextResponse.json({ error: "Profile lookup failed" }, { status: 500 });
-    }
-
-    if (profile?.role !== "customer") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    // 4) Read body (delivery details from checkout)
-    const body = await req.json();
-
-    const {
-      pickupAddress,
-      dropoffAddress,
-      estimatedMiles,
-      weightLbs,
-      rush,
-      signatureRequired,
-      stops,
-      totalCents,
-      scheduledAt, // can be null
-    } = body;
-
-    if (!pickupAddress || !dropoffAddress) {
+    if (!amountCents || amountCents < 50) {
       return NextResponse.json(
-        { error: "pickupAddress and dropoffAddress are required" },
+        { error: "Invalid amount" },
         { status: 400 }
       );
     }
 
-    if (typeof totalCents !== "number" || totalCents < 50) {
-      return NextResponse.json({ error: "totalCents is invalid" }, { status: 400 });
-    }
-
-    // 5) Orchestrate: create addresses, order, delivery, authorize payment, return clientSecret
-    const result = await createDeliveryOrderFlow({
-      customerId: user.id,
-      pickupAddress,
-      dropoffAddress,
-      estimatedMiles: Number(estimatedMiles ?? 0),
-      weightLbs: Number(weightLbs ?? 0),
-      rush: Boolean(rush),
-      signatureRequired: Boolean(signatureRequired),
-      stops: Number(stops ?? 0),
-      totalCents: Number(totalCents),
-      scheduledAt: scheduledAt ?? null,
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
+      payment_method_types: ["card"],
+      line_items: [
+        {
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: "Couranr Delivery",
+            },
+            unit_amount: amountCents,
+          },
+          quantity: 1,
+        },
+      ],
+      success_url: `${process.env.NEXT_PUBLIC_BASE_URL}/courier/success`,
+      cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL}/courier/checkout`,
     });
 
-    return NextResponse.json({
-      orderId: result.orderId,
-      orderNumber: result.orderNumber,
-      amountCents: result.totalCents,
-      clientSecret: result.clientSecret,
-    });
+    return NextResponse.json({ url: session.url });
   } catch (err: any) {
     return NextResponse.json(
-      { error: err?.message || "Failed to start checkout" },
+      { error: err.message || "Checkout failed" },
       { status: 500 }
     );
   }
