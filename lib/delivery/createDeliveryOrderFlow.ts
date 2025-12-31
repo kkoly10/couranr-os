@@ -1,28 +1,45 @@
-import { createAddresses, AddressInput } from "./createAddresses";
 import { createOrder } from "./createOrder";
+import { createAddresses } from "./createAddresses";
 import { createDelivery } from "./createDelivery";
-import { authorizeDeliveryPayment } from "./authorizeDeliveryPayment";
 
 /**
- * ✅ CANONICAL MVP CONTRACT (FROZEN)
+ * Input required to create a delivery order
  */
 export type DeliveryOrderInput = {
   customerId: string;
 
-  pickupAddress: AddressInput;
-  dropoffAddress: AddressInput;
+  pickupAddress: {
+    address_line: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+    notes?: string;
+  };
+
+  dropoffAddress: {
+    address_line: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+    notes?: string;
+  };
 
   estimatedMiles: number;
   weightLbs: number;
   stops: number;
-
   rush: boolean;
   signatureRequired: boolean;
-  scheduledAt: string | null;
 
+  scheduledAt: string | null; // ISO string or null
   totalCents: number;
 };
 
+/**
+ * Orchestrates the full delivery order creation:
+ * 1. Create order
+ * 2. Create addresses
+ * 3. Create delivery record
+ */
 export async function createDeliveryOrderFlow(input: DeliveryOrderInput) {
   const {
     customerId,
@@ -37,24 +54,32 @@ export async function createDeliveryOrderFlow(input: DeliveryOrderInput) {
     totalCents,
   } = input;
 
-  // 1) addresses
-  const { pickupAddressId, dropoffAddressId } = await createAddresses({
-    pickup: pickupAddress,
-    dropoff: dropoffAddress,
-  });
-
-  // 2) order
-  const { orderId, orderNumber } = await createOrder({
+  // 1️⃣ Create order
+  const order = await createOrder({
     customerId,
     totalCents,
     serviceType: "delivery",
   });
 
-  // 3) delivery
-  const { deliveryId } = await createDelivery({
-    orderId,
-    pickupAddressId,
-    dropoffAddressId,
+  // 2️⃣ Create addresses
+  const pickup = await createAddresses({
+    ...pickupAddress,
+    type: "pickup",
+    orderId: order.id,
+  });
+
+  const dropoff = await createAddresses({
+    ...dropoffAddress,
+    type: "dropoff",
+    orderId: order.id,
+  });
+
+  // 3️⃣ Create delivery
+  const delivery = await createDelivery({
+    orderId: order.id,
+    customerId,
+    pickupAddressId: pickup.id,
+    dropoffAddressId: dropoff.id,
     estimatedMiles,
     weightLbs,
     stops,
@@ -63,17 +88,10 @@ export async function createDeliveryOrderFlow(input: DeliveryOrderInput) {
     scheduledAt,
   });
 
-  // 4) authorize payment (manual capture)
-  const { clientSecret } = await authorizeDeliveryPayment({
-    orderId,
-    amountCents: totalCents,
-  });
-
   return {
-    orderId,
-    deliveryId,
-    orderNumber,
-    totalCents,
-    clientSecret,
+    orderId: order.id,
+    orderNumber: order.order_number,
+    deliveryId: delivery.id,
+    totalCents: order.total_cents,
   };
 }
