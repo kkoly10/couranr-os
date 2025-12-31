@@ -45,24 +45,24 @@ export async function createDeliveryOrderFlow(
     totalCents,
   } = input;
 
-  // 1️⃣ Create order (explicit service type)
+  // 1️⃣ Create order
   const order = await createOrder({
     customerId,
     totalCents,
     serviceType: "delivery",
   });
 
-  // 2️⃣ Create pickup + dropoff addresses (FULL objects)
-  const addresses = await createAddresses({
+  // 2️⃣ Create addresses → RETURNS IDs ONLY
+  const { pickupAddressId, dropoffAddressId } = await createAddresses({
     pickup: pickupAddress,
     dropoff: dropoffAddress,
   });
 
-  // 3️⃣ Create delivery record
+  // 3️⃣ Create delivery using returned IDs
   const delivery = await createDelivery({
     orderId: order.id,
-    pickupAddressId: addresses.pickup.id,
-    dropoffAddressId: addresses.dropoff.id,
+    pickupAddressId,
+    dropoffAddressId,
     estimatedMiles,
     weightLbs,
     rush,
