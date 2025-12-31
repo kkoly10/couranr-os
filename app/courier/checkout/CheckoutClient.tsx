@@ -23,7 +23,8 @@ export default function CheckoutClient() {
   const dropoff = sp.get("dropoff") ?? "";
   const weight = sp.get("weight") ?? "0";
   const rush = sp.get("rush") === "1" || sp.get("rush") === "true";
-  const signature = sp.get("signature") === "1" || sp.get("signature") === "true";
+  const signature =
+    sp.get("signature") === "1" || sp.get("signature") === "true";
   const stops = sp.get("stops") ?? "0";
   const scheduledAt = sp.get("scheduledAt");
 
@@ -36,15 +37,21 @@ export default function CheckoutClient() {
     setErr(null);
     setLoading(true);
 
+    // 🔐 AUTH GATE (ONLY PLACE IT EXISTS)
     const { data: sessionRes } = await supabase.auth.getSession();
     const token = sessionRes.session?.access_token;
 
     if (!token) {
       setLoading(false);
-      router.push(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+      router.push(
+        `/login?next=${encodeURIComponent(
+          window.location.pathname + window.location.search
+        )}`
+      );
       return;
     }
 
+    // 🚀 START STRIPE CHECKOUT
     const res = await fetch("/api/delivery/start-checkout", {
       method: "POST",
       headers: {
@@ -66,21 +73,14 @@ export default function CheckoutClient() {
 
     const data = await res.json();
 
-    if (!res.ok) {
-      setErr(data?.error || "Failed to continue to payment");
+    if (!res.ok || !data?.url) {
+      setErr(data?.error || "Failed to start checkout");
       setLoading(false);
       return;
     }
 
-    const qs = new URLSearchParams({
-      orderId: data.orderId,
-      amountCents: String(data.amountCents),
-      clientSecret: data.clientSecret,
-      orderNumber: data.orderNumber,
-    });
-
-    setLoading(false);
-    router.push(`/courier/checkout/payment?${qs.toString()}`);
+    // ✅ REDIRECT DIRECTLY TO STRIPE
+    window.location.href = data.url;
   }
 
   return (
@@ -89,7 +89,13 @@ export default function CheckoutClient() {
         Confirm delivery details
       </h1>
 
-      <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 16 }}>
+      <div
+        style={{
+          border: "1px solid #e5e7eb",
+          borderRadius: 12,
+          padding: 16,
+        }}
+      >
         <div><strong>Pickup:</strong> {pickup || "—"}</div>
         <div><strong>Drop-off:</strong> {dropoff || "—"}</div>
         <div><strong>Miles:</strong> {num(miles).toFixed(2)}</div>
@@ -123,7 +129,7 @@ export default function CheckoutClient() {
           cursor: loading ? "not-allowed" : "pointer",
         }}
       >
-        {loading ? "Working…" : "Continue to payment"}
+        {loading ? "Redirecting…" : "Continue to payment"}
       </button>
     </div>
   );
