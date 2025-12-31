@@ -7,18 +7,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-
-    const {
-      amountCents,
-      pickup,
-      dropoff,
-      miles,
-      weight,
-      stops,
-      rush,
-      signature,
-    } = body;
+    const { amountCents } = await req.json();
 
     if (!amountCents || amountCents < 50) {
       return NextResponse.json(
@@ -29,40 +18,29 @@ export async function POST(req: Request) {
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
-
+      payment_intent_data: {
+        capture_method: "manual", // authorize only
+      },
       line_items: [
         {
           price_data: {
             currency: "usd",
             product_data: {
-              name: "Couranr Delivery",
-              description: "Local courier delivery service",
+              name: "Courier Delivery",
             },
             unit_amount: amountCents,
           },
           quantity: 1,
         },
       ],
-
-      metadata: {
-        pickup: pickup ?? "",
-        dropoff: dropoff ?? "",
-        miles: miles?.toString() ?? "0",
-        weight: weight?.toString() ?? "0",
-        stops: stops?.toString() ?? "0",
-        rush: rush ? "yes" : "no",
-        signature: signature ? "yes" : "no",
-      },
-
-      success_url: `${process.env.NEXT_PUBLIC_BASE_URL}/courier/confirmation`,
+      success_url: `${process.env.NEXT_PUBLIC_BASE_URL}/courier/success`,
       cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL}/courier/checkout`,
     });
 
     return NextResponse.json({ url: session.url });
   } catch (err: any) {
-    console.error("Stripe checkout error:", err);
     return NextResponse.json(
-      { error: err.message || "Stripe checkout failed" },
+      { error: err.message || "Stripe error" },
       { status: 500 }
     );
   }
