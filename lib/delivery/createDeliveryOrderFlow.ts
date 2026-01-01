@@ -1,19 +1,23 @@
-import { createOrder } from "./createOrder";
+limport { createOrder } from "./createOrder";
 import { createAddresses } from "./createAddresses";
 import { createDelivery } from "./createDelivery";
 
-export type AddressInput = {
-  address_line: string;
-  city: string;
-  state: string;
-  zip: string;
-  is_business: boolean;
-};
-
 export type DeliveryOrderInput = {
   customerId: string;
-  pickupAddress: AddressInput;
-  dropoffAddress: AddressInput;
+  pickupAddress: {
+    address_line: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+    is_business?: boolean;
+  };
+  dropoffAddress: {
+    address_line: string;
+    city?: string;
+    state?: string;
+    zip?: string;
+    is_business?: boolean;
+  };
   estimatedMiles: number;
   weightLbs: number;
   rush: boolean;
@@ -52,17 +56,15 @@ export async function createDeliveryOrderFlow(
     serviceType: "delivery",
   });
 
-  // 2️⃣ Create addresses → RETURNS IDs ONLY
-  const { pickupAddressId, dropoffAddressId } = await createAddresses({
-    pickup: pickupAddress,
-    dropoff: dropoffAddress,
-  });
+  // 2️⃣ Create addresses
+  const pickup = await createAddresses(pickupAddress);
+  const dropoff = await createAddresses(dropoffAddress);
 
-  // 3️⃣ Create delivery using returned IDs
+  // 3️⃣ Create delivery
   const delivery = await createDelivery({
     orderId: order.id,
-    pickupAddressId,
-    dropoffAddressId,
+    pickupAddressId: pickup.id,
+    dropoffAddressId: dropoff.id,
     estimatedMiles,
     weightLbs,
     rush,
@@ -71,9 +73,10 @@ export async function createDeliveryOrderFlow(
     scheduledAt,
   });
 
+  // ✅ IMPORTANT: createDelivery returns { deliveryId }
   return {
     orderId: order.id,
     orderNumber: order.order_number,
-    deliveryId: delivery.id,
+    deliveryId: delivery.deliveryId,
   };
 }
