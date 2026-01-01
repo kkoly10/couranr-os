@@ -1,4 +1,4 @@
-limport { createOrder } from "./createOrder";
+import { createOrder } from "./createOrder";
 import { createAddresses } from "./createAddresses";
 import { createDelivery } from "./createDelivery";
 
@@ -73,7 +73,7 @@ export async function createDeliveryOrderFlow(
     scheduledAt,
   });
 
-  // ✅ IMPORTANT: createDelivery returns { deliveryId }
+  // ✅ createDelivery returns { deliveryId }
   return {
     orderId: order.id,
     orderNumber: order.order_number,
