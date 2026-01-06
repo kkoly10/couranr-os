@@ -6,7 +6,18 @@ export type CreateOrderInput = {
   serviceType: "delivery" | "docs" | "auto";
 };
 
-export async function createOrder(input: CreateOrderInput) {
+export type CreateOrderResult = {
+  id: string;
+  order_number: string;
+  total_cents: number;
+  service_type: string;
+  customer_id: string;
+  created_at: string;
+};
+
+export async function createOrder(
+  input: CreateOrderInput
+): Promise<CreateOrderResult> {
   const { customerId, totalCents, serviceType } = input;
 
   const { data, error } = await supabaseAdmin
@@ -15,13 +26,15 @@ export async function createOrder(input: CreateOrderInput) {
       customer_id: customerId,
       total_cents: totalCents,
       service_type: serviceType,
-      payment_status: "pending",
+      // ❌ DO NOT pass order_number
+      // ✅ Database generates it automatically
     })
     .select()
     .single();
 
   if (error) {
-    throw new Error(`createOrder failed: ${error.message}`);
+    console.error("createOrder failed:", error);
+    throw new Error("Failed to create order");
   }
 
   return data;
