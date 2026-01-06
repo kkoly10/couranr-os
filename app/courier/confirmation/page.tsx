@@ -1,12 +1,30 @@
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 function ConfirmationInner() {
   const params = useSearchParams();
-  const orderNumber = params.get("orderNumber");
+  const sessionId = params.get("session_id");
+
+  const [orderNumber, setOrderNumber] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!sessionId) return;
+
+    fetch(`/api/orders/by-session?session_id=${sessionId}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.error) {
+          setError(data.error);
+        } else {
+          setOrderNumber(data.orderNumber);
+        }
+      })
+      .catch(() => setError("Failed to load order details"));
+  }, [sessionId]);
 
   return (
     <div style={{ maxWidth: 720, margin: "0 auto", padding: 32 }}>
@@ -14,7 +32,7 @@ function ConfirmationInner() {
         🎉 Order received
       </h1>
 
-      <p style={{ marginTop: 12, fontSize: 16 }}>
+      <p style={{ marginTop: 12 }}>
         Thank you for your order. Your delivery has been successfully placed.
       </p>
 
@@ -27,7 +45,11 @@ function ConfirmationInner() {
           fontWeight: 700,
         }}
       >
-        Order Number: {orderNumber ?? "—"}
+        {error
+          ? error
+          : orderNumber
+          ? `Order Number: ${orderNumber}`
+          : "Loading order number…"}
       </div>
 
       <div style={{ marginTop: 24, display: "flex", gap: 12 }}>
