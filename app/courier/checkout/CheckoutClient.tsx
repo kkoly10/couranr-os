@@ -11,24 +11,22 @@ function num(v: string | null, fallback = 0) {
 
 export default function CheckoutClient() {
   const router = useRouter();
-  const params = useSearchParams();
+  const sp = useSearchParams();
 
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // ✅ Read params
-  const miles = num(params.get("miles"));
-  const weightLbs = num(params.get("weight"));
-  const stops = num(params.get("stops"));
-  const rush = params.get("rush") === "1";
-  const signature = params.get("signature") === "1";
-  const price = num(params.get("price"));
-
-  const pickup = params.get("pickup") ?? "";
-  const dropoff = params.get("dropoff") ?? "";
+  const price = sp.get("price") ?? "0";
+  const miles = sp.get("miles") ?? "0";
+  const pickup = sp.get("pickup") ?? "";
+  const dropoff = sp.get("dropoff") ?? "";
+  const weight = sp.get("weight") ?? "0";
+  const rush = sp.get("rush") === "1";
+  const signature = sp.get("signature") === "1";
+  const stops = sp.get("stops") ?? "0";
 
   const amountCents = useMemo(
-    () => Math.round(price * 100),
+    () => Math.round(num(price) * 100),
     [price]
   );
 
@@ -36,16 +34,14 @@ export default function CheckoutClient() {
     setErr(null);
     setLoading(true);
 
-    // 🔐 Auth gate
     const { data } = await supabase.auth.getSession();
     const token = data.session?.access_token;
 
     if (!token) {
-      router.push(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+      router.push(`/login?next=${encodeURIComponent(location.pathname + location.search)}`);
       return;
     }
 
-    // 🚚 Start checkout
     const res = await fetch("/api/delivery/start-checkout", {
       method: "POST",
       headers: {
@@ -53,54 +49,51 @@ export default function CheckoutClient() {
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        miles,              // ✅ FIXED
-        weightLbs,          // ✅ FIXED
-        stops,
-        rush,
-        signature,
         pickupAddress: pickup,
         dropoffAddress: dropoff,
+        miles: num(miles),
+        weight: num(weight),
+        stops: num(stops),
+        rush,
+        signature,
+        totalCents: amountCents,
       }),
     });
 
-    const dataRes = await res.json();
+    const json = await res.json();
 
     if (!res.ok) {
-      setErr(dataRes?.error || "Failed to continue to payment");
+      setErr(json?.error || "Failed to continue to payment");
       setLoading(false);
       return;
     }
 
-    window.location.href = dataRes.url;
+    window.location.href = json.url;
   }
 
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: 24 }}>
       <h1>Confirm delivery details</h1>
 
-      <p>Pickup: {pickup}</p>
-      <p>Drop-off: {dropoff}</p>
-      <p>Miles: {miles.toFixed(2)}</p>
-      <p>Weight: {weightLbs} lbs</p>
-      <p>Stops: {stops}</p>
-      <p>Rush: {rush ? "Yes" : "No"}</p>
-      <p>Signature: {signature ? "Yes" : "No"}</p>
-
-      <h2>Total: ${price.toFixed(2)}</h2>
+      <div style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 16 }}>
+        <div><strong>Pickup:</strong> {pickup || "—"}</div>
+        <div><strong>Drop-off:</strong> {dropoff || "—"}</div>
+        <div><strong>Miles:</strong> {num(miles).toFixed(2)}</div>
+        <div><strong>Weight:</strong> {num(weight)} lbs</div>
+        <div><strong>Stops:</strong> {num(stops)}</div>
+        <div><strong>Rush:</strong> {rush ? "Yes" : "No"}</div>
+        <div><strong>Signature:</strong> {signature ? "Yes" : "No"}</div>
+        <div style={{ marginTop: 12, fontSize: 18 }}>
+          <strong>Total:</strong> ${num(price).toFixed(2)}
+        </div>
+      </div>
 
       {err && <p style={{ color: "red" }}>{err}</p>}
 
       <button
         onClick={continueToPayment}
         disabled={loading}
-        style={{
-          marginTop: 16,
-          padding: "12px 16px",
-          borderRadius: 10,
-          background: "#111827",
-          color: "#fff",
-          fontWeight: 700,
-        }}
+        style={{ marginTop: 20 }}
       >
         {loading ? "Working…" : "Continue to payment"}
       </button>
