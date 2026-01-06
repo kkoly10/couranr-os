@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 
 export default function AuthHeader() {
   const [role, setRole] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
@@ -15,7 +16,11 @@ export default function AuthHeader() {
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (!user) return;
+      if (!user) {
+        setRole(null);
+        setLoading(false);
+        return;
+      }
 
       const { data } = await supabase
         .from("profiles")
@@ -24,19 +29,34 @@ export default function AuthHeader() {
         .single();
 
       setRole(data?.role ?? null);
+      setLoading(false);
     }
 
     load();
   }, []);
 
-  async function logout() {
+  async function handleLogout() {
     await supabase.auth.signOut();
     router.push("/");
+    router.refresh();
   }
 
-  if (!role) return null;
+  if (loading) return null;
 
-  const dashboardPath =
+  // 🔒 NOT AUTHENTICATED → SHOW LOGIN
+  if (!role) {
+    return (
+      <Link
+        href="/login"
+        style={{ fontWeight: 600, textDecoration: "none", color: "#111" }}
+      >
+        Login
+      </Link>
+    );
+  }
+
+  // 🔐 AUTHENTICATED → SHOW DASHBOARD + LOGOUT
+  const dashboardHref =
     role === "admin"
       ? "/admin"
       : role === "driver"
@@ -44,15 +64,9 @@ export default function AuthHeader() {
       : "/dashboard";
 
   return (
-    <div
-      style={{
-        display: "flex",
-        gap: 14,
-        alignItems: "center",
-      }}
-    >
+    <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
       <Link
-        href={dashboardPath}
+        href={dashboardHref}
         style={{
           fontWeight: 600,
           textDecoration: "none",
@@ -63,14 +77,14 @@ export default function AuthHeader() {
       </Link>
 
       <button
-        onClick={logout}
+        onClick={handleLogout}
         style={{
           border: "1px solid #e5e7eb",
-          padding: "6px 10px",
-          borderRadius: 8,
           background: "#fff",
-          cursor: "pointer",
+          padding: "6px 12px",
+          borderRadius: 8,
           fontWeight: 600,
+          cursor: "pointer",
         }}
       >
         Logout
