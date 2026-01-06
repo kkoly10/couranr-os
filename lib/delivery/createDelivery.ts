@@ -1,56 +1,58 @@
-import { supabase } from "../supabaseClient";
+import { supabaseAdmin } from "../supabaseAdmin";
 
 export type CreateDeliveryInput = {
   orderId: string;
   pickupAddressId: string;
   dropoffAddressId: string;
-
   estimatedMiles: number;
   weightLbs: number;
-  stops: number;
-
   rush: boolean;
   signatureRequired: boolean;
-  scheduledAt: string | null; // ISO string or null
+  stops: number;
+  scheduledAt: string | null;
 };
 
-export async function createDelivery(input: CreateDeliveryInput) {
+export type CreateDeliveryResult = {
+  id: string;
+};
+
+export async function createDelivery(
+  input: CreateDeliveryInput
+): Promise<CreateDeliveryResult> {
   const {
     orderId,
     pickupAddressId,
     dropoffAddressId,
     estimatedMiles,
     weightLbs,
-    stops,
     rush,
     signatureRequired,
+    stops,
     scheduledAt,
   } = input;
 
-  if (!orderId) throw new Error("createDelivery: orderId is required");
-
-  const { data, error } = await supabase
+  const { data, error } = await supabaseAdmin
     .from("deliveries")
     .insert({
       order_id: orderId,
       pickup_address_id: pickupAddressId,
       dropoff_address_id: dropoffAddressId,
-
       estimated_miles: estimatedMiles,
       weight_lbs: weightLbs,
-      stops,
-
       rush,
       signature_required: signatureRequired,
+      stops,
       scheduled_at: scheduledAt,
-
-      status: "created", // adjust if your enum differs
+      status: "pending",
     })
     .select("id")
     .single();
 
-  if (error) throw new Error(`createDelivery failed: ${error.message}`);
-  if (!data?.id) throw new Error("createDelivery failed: missing delivery id");
+  if (error || !data) {
+    throw new Error(
+      error?.message || "Failed to create delivery"
+    );
+  }
 
-  return { deliveryId: data.id as string };
+  return { id: data.id };
 }
