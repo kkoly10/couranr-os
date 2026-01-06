@@ -7,7 +7,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 
 export async function POST(req: Request) {
   try {
-    const { amountCents, orderId, orderNumber } = await req.json();
+    const { amountCents } = await req.json();
 
     if (!amountCents || amountCents < 50) {
       return NextResponse.json(
@@ -16,47 +16,30 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!orderNumber) {
-      return NextResponse.json(
-        { error: "Missing order number" },
-        { status: 400 }
-      );
-    }
-
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
-
-      payment_intent_data: {
-        capture_method: "manual",
-        metadata: {
-          order_id: orderId,
-          order_number: orderNumber,
-        },
-        description: `Order #${orderNumber}`,
-      },
-
+      payment_method_types: ["card"],
       line_items: [
         {
           price_data: {
             currency: "usd",
             product_data: {
               name: "Couranr Delivery",
-              description: `Order #${orderNumber}`,
             },
             unit_amount: amountCents,
           },
           quantity: 1,
         },
       ],
-
-      success_url: `${process.env.NEXT_PUBLIC_BASE_URL}/courier/confirmation?order=${orderId}`,
-      cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL}/courier/checkout`,
+      success_url: `${process.env.NEXT_PUBLIC_SITE_URL}/courier/confirmation`,
+      cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL}/courier/checkout`,
     });
 
     return NextResponse.json({ url: session.url });
   } catch (err: any) {
+    console.error("Stripe error:", err);
     return NextResponse.json(
-      { error: err.message || "Stripe error" },
+      { error: "Failed to create checkout session" },
       { status: 500 }
     );
   }
