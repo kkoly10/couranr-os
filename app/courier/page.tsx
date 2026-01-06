@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 
-const BASE_FEE = 15;
+const BASE_FEE = 0;
 const FREE_MILES = 3;
 const PER_MILE = 1.75;
 
