@@ -1,31 +1,39 @@
-import { supabase } from "../supabaseClient";
+import { supabaseAdmin } from "../supabaseAdmin";
 
 export type AddressInput = {
   address_line: string;
-  city: string;
-  state: string;
-  zip: string;
-  is_business: boolean;
-  business_hours?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  is_business?: boolean;
 };
 
-export async function createAddresses({
-  pickup,
-  dropoff,
-}: {
-  pickup: AddressInput;
-  dropoff: AddressInput;
-}) {
-  const { data, error } = await supabase
+export type AddressRecord = {
+  id: string;
+};
+
+export async function createAddress(
+  input: AddressInput
+): Promise<AddressRecord> {
+  const { address_line, city, state, zip, is_business } = input;
+
+  const { data, error } = await supabaseAdmin
     .from("addresses")
-    .insert([pickup, dropoff])
-    .select("id");
+    .insert({
+      address_line,
+      city: city ?? null,
+      state: state ?? null,
+      zip: zip ?? null,
+      is_business: is_business ?? false,
+    })
+    .select("id")
+    .single();
 
-  if (error) throw new Error(`createAddresses failed: ${error.message}`);
-  if (!data || data.length !== 2) throw new Error("createAddresses failed: missing inserted rows");
+  if (error || !data) {
+    throw new Error(
+      error?.message || "Failed to create address"
+    );
+  }
 
-  return {
-    pickupAddressId: data[0].id as string,
-    dropoffAddressId: data[1].id as string,
-  };
+  return { id: data.id };
 }
