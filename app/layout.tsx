@@ -80,16 +80,13 @@ export default function RootLayout({
               <Link href="/docs">Docs</Link>
               <Link href="/auto">Auto</Link>
 
-              {/* Auth-aware actions */}
+              {/* Auth-aware controls */}
               <AuthHeader />
-
-              {/* Login (only visible when not logged in) */}
-              <Link href="/login">Login</Link>
             </nav>
           </div>
         </header>
 
-        {/* PAGE CONTENT */}
+        {/* CONTENT */}
         <main
           style={{
             maxWidth: 1100,
