@@ -1,15 +1,9 @@
 import { NextResponse } from "next/server";
-import Stripe from "stripe";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { computeDeliveryPrice } from "@/lib/delivery/pricing";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2024-04-10",
-});
-
 export async function POST(req: Request) {
   try {
-    // 1️⃣ Auth
     const authHeader = req.headers.get("authorization");
     if (!authHeader) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -18,90 +12,76 @@ export async function POST(req: Request) {
     const token = authHeader.replace("Bearer ", "");
     const {
       data: { user },
-      error: userError,
+      error: authError,
     } = await supabaseAdmin.auth.getUser(token);
 
-    if (userError || !user) {
+    if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // 2️⃣ Parse input
     const body = await req.json();
+
     const {
+      pickupAddressId,
+      dropoffAddressId,
       miles,
-      weightLbs,
+      weight,
       stops,
       rush,
       signature,
-      pickupAddress,
-      dropoffAddress,
     } = body;
 
-    // 3️⃣ Server-side pricing (source of truth)
+    if (!pickupAddressId || !dropoffAddressId) {
+      return NextResponse.json(
+        { error: "Missing address IDs" },
+        { status: 400 }
+      );
+    }
+
+    // ✅ pricing stays server-authoritative
     const pricing = computeDeliveryPrice({
       miles,
-      weightLbs,
+      weightLbs: weight,
       stops,
       rush,
       signature,
     });
 
-    // 4️⃣ Create order FIRST
+    // 1️⃣ create order
     const { data: order, error: orderErr } = await supabaseAdmin
       .from("orders")
       .insert({
         customer_id: user.id,
         total_cents: pricing.amountCents,
-        status: "pending_payment",
         service_type: "delivery",
+        status: "pending",
       })
       .select()
       .single();
 
     if (orderErr) throw orderErr;
 
-    // 5️⃣ Create delivery
-    const { error: deliveryErr } = await supabaseAdmin
+    // 2️⃣ create delivery (IDs only — NO address text)
+    const { data: delivery, error: deliveryErr } = await supabaseAdmin
       .from("deliveries")
       .insert({
         order_id: order.id,
-        status: "pending_payment",
-        pickup_address: pickupAddress,
-        dropoff_address: dropoffAddress,
+        pickup_address_id: pickupAddressId,
+        dropoff_address_id: dropoffAddressId,
         estimated_miles: miles,
-        weight_lbs: weightLbs,
-        stops,
-        rush,
-        signature_required: signature,
-      });
+        weight_lbs: weight,
+        status: "created",
+      })
+      .select()
+      .single();
 
     if (deliveryErr) throw deliveryErr;
 
-    // 6️⃣ Stripe Checkout
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      payment_intent_data: {
-        metadata: {
-          orderId: order.id,
-        },
-      },
-      line_items: [
-        {
-          price_data: {
-            currency: "usd",
-            product_data: {
-              name: `Couranr Delivery — Order #${order.order_number}`,
-            },
-            unit_amount: pricing.amountCents,
-          },
-          quantity: 1,
-        },
-      ],
-      success_url: `${process.env.NEXT_PUBLIC_BASE_URL}/courier/confirmation?orderId=${order.id}`,
-      cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL}/courier/checkout`,
+    return NextResponse.json({
+      orderId: order.id,
+      orderNumber: order.order_number,
+      amountCents: pricing.amountCents,
     });
-
-    return NextResponse.json({ url: session.url });
   } catch (err: any) {
     console.error("start-checkout error:", err);
     return NextResponse.json(
