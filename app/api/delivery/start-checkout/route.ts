@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
+import Stripe from "stripe";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { createDeliveryOrderFlow } from "@/lib/delivery/createDeliveryOrderFlow";
 
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+  apiVersion: "2024-04-10",
+});
+
 export async function POST(req: Request) {
   try {
+    // 🔐 Auth
     const authHeader = req.headers.get("authorization");
     if (!authHeader) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -18,7 +24,7 @@ export async function POST(req: Request) {
 
     const body = await req.json();
 
-    // 1️⃣ Create order + delivery in DB
+    // 1️⃣ Create order + delivery (DB)
     const { orderId, orderNumber, deliveryId } =
       await createDeliveryOrderFlow({
         customerId: auth.user.id,
@@ -33,33 +39,46 @@ export async function POST(req: Request) {
         totalCents: body.totalCents,
       });
 
-    // 2️⃣ Create Stripe Checkout session
-    const checkoutRes = await fetch(
-      `${process.env.NEXT_PUBLIC_BASE_URL}/api/create-checkout-session`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          amountCents: body.totalCents,
-          orderId,
-          orderNumber,
-        }),
-      }
-    );
+    // 2️⃣ Create Stripe Checkout Session (DIRECT)
+    const session = await stripe.checkout.sessions.create({
+      mode: "payment",
 
-    const checkout = await checkoutRes.json();
+      payment_intent_data: {
+        capture_method: "manual",
+        metadata: {
+          order_id: orderId,
+          order_number: orderNumber,
+          delivery_id: deliveryId,
+        },
+        description: `Order #${orderNumber}`,
+      },
 
-    if (!checkout.url) {
-      throw new Error("Failed to create checkout session");
-    }
+      line_items: [
+        {
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: "Couranr Delivery",
+              description: `Order #${orderNumber}`,
+            },
+            unit_amount: body.totalCents,
+          },
+          quantity: 1,
+        },
+      ],
+
+      success_url: `${process.env.NEXT_PUBLIC_BASE_URL}/courier/confirmation?order=${orderId}`,
+      cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL}/courier/checkout`,
+    });
 
     return NextResponse.json({
-      url: checkout.url,
+      url: session.url,
       orderId,
       orderNumber,
       deliveryId,
     });
   } catch (err: any) {
+    console.error("START CHECKOUT ERROR:", err);
     return NextResponse.json(
       { error: err.message || "Checkout failed" },
       { status: 500 }
