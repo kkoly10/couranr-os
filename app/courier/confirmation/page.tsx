@@ -1,94 +1,70 @@
 "use client";
 
-import Link from "next/link";
+import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 
-export default function CourierConfirmationPage() {
+function ConfirmationInner() {
   const params = useSearchParams();
   const orderNumber = params.get("orderNumber");
 
   return (
-    <div
-      style={{
-        maxWidth: 720,
-        margin: "0 auto",
-        padding: "60px 24px",
-        textAlign: "center",
-      }}
-    >
-      <div style={{ fontSize: 44, marginBottom: 16 }}>✅</div>
-
-      <h1 style={{ fontSize: 32, marginBottom: 12 }}>
-        Order received
+    <div style={{ maxWidth: 720, margin: "0 auto", padding: 32 }}>
+      <h1 style={{ fontSize: 28, fontWeight: 800 }}>
+        🎉 Order received
       </h1>
 
-      <p style={{ fontSize: 16, color: "#444", lineHeight: 1.6 }}>
-        Thank you for choosing <strong>Couranr Delivery</strong>.
-        <br />
-        Your delivery request has been successfully submitted.
+      <p style={{ marginTop: 12, fontSize: 16 }}>
+        Thank you for your order. Your delivery has been successfully placed.
       </p>
 
-      {orderNumber && (
-        <div
-          style={{
-            marginTop: 18,
-            padding: 12,
-            borderRadius: 10,
-            background: "#f1f5f9",
-            fontWeight: 700,
-          }}
-        >
-          Order #{orderNumber}
-        </div>
-      )}
-
       <div
         style={{
-          marginTop: 28,
-          display: "flex",
-          gap: 12,
-          justifyContent: "center",
-          flexWrap: "wrap",
+          marginTop: 20,
+          padding: 16,
+          borderRadius: 12,
+          background: "#f3f4f6",
+          fontWeight: 700,
         }}
       >
-        <Link
-          href="/dashboard"
-          style={{
-            padding: "12px 18px",
-            background: "#2563eb",
-            color: "#fff",
-            borderRadius: 10,
-            fontWeight: 800,
-            textDecoration: "none",
-          }}
-        >
-          Go to dashboard
-        </Link>
-
-        <Link
-          href="/courier"
-          style={{
-            padding: "12px 18px",
-            border: "1px solid #d1d5db",
-            color: "#111",
-            borderRadius: 10,
-            fontWeight: 800,
-            textDecoration: "none",
-          }}
-        >
-          New delivery
-        </Link>
+        Order Number: {orderNumber ?? "—"}
       </div>
 
-      <div
-        style={{
-          marginTop: 32,
-          fontSize: 13,
-          color: "#6b7280",
-        }}
-      >
-        You’ll receive updates as your delivery progresses.
+      <div style={{ marginTop: 24, display: "flex", gap: 12 }}>
+        <Link href="/dashboard/customer" style={btnPrimary}>
+          Go to Dashboard
+        </Link>
+        <Link href="/courier" style={btnGhost}>
+          New Delivery
+        </Link>
       </div>
     </div>
   );
 }
+
+export default function ConfirmationPage() {
+  return (
+    <Suspense fallback={<p>Loading confirmation…</p>}>
+      <ConfirmationInner />
+    </Suspense>
+  );
+}
+
+const btnPrimary: React.CSSProperties = {
+  padding: "12px 16px",
+  background: "#2563eb",
+  color: "#fff",
+  borderRadius: 10,
+  fontWeight: 800,
+  textDecoration: "none",
+};
+
+const btnGhost: React.CSSProperties = {
+  padding: "12px 16px",
+  border: "1px solid #d1d5db",
+  background: "#fff",
+  color: "#111",
+  borderRadius: 10,
+  fontWeight: 800,
+  textDecoration: "none",
+};
