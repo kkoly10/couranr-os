@@ -1,5 +1,5 @@
 import { createOrder } from "./createOrder";
-import { createAddresses } from "./createAddresses";
+import { createAddress } from "./createAddresses";
 import { createDelivery } from "./createDelivery";
 
 export type DeliveryOrderInput = {
@@ -56,9 +56,9 @@ export async function createDeliveryOrderFlow(
     serviceType: "delivery",
   });
 
-  // 2️⃣ Create addresses
-  const pickup = await createAddresses(pickupAddress);
-  const dropoff = await createAddresses(dropoffAddress);
+  // 2️⃣ Create pickup & dropoff addresses (SEPARATELY)
+  const pickup = await createAddress(pickupAddress);
+  const dropoff = await createAddress(dropoffAddress);
 
   // 3️⃣ Create delivery
   const delivery = await createDelivery({
@@ -73,10 +73,9 @@ export async function createDeliveryOrderFlow(
     scheduledAt,
   });
 
-  // ✅ createDelivery returns { deliveryId }
   return {
     orderId: order.id,
     orderNumber: order.order_number,
-    deliveryId: delivery.deliveryId,
+    deliveryId: delivery.id,
   };
 }
