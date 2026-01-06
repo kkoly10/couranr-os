@@ -10,40 +10,50 @@ export default function AuthHeader() {
   const [loading, setLoading] = useState(true);
   const router = useRouter();
 
-  useEffect(() => {
-    async function load() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+  async function loadUser() {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
 
-      if (!user) {
-        setRole(null);
-        setLoading(false);
-        return;
-      }
-
-      const { data } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .single();
-
-      setRole(data?.role ?? null);
+    if (!user) {
+      setRole(null);
       setLoading(false);
+      return;
     }
 
-    load();
+    const { data } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", user.id)
+      .single();
+
+    setRole(data?.role ?? null);
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    loadUser();
+
+    const { data: listener } = supabase.auth.onAuthStateChange(() => {
+      loadUser();
+      router.refresh(); // ensures layout consistency
+    });
+
+    return () => {
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
   async function handleLogout() {
     await supabase.auth.signOut();
+    setRole(null);
     router.push("/");
     router.refresh();
   }
 
   if (loading) return null;
 
-  // 🔒 NOT AUTHENTICATED → SHOW LOGIN
+  // 🔓 Logged out
   if (!role) {
     return (
       <Link
@@ -55,7 +65,7 @@ export default function AuthHeader() {
     );
   }
 
-  // 🔐 AUTHENTICATED → SHOW DASHBOARD + LOGOUT
+  // 🔐 Logged in
   const dashboardHref =
     role === "admin"
       ? "/admin"
@@ -67,11 +77,7 @@ export default function AuthHeader() {
     <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
       <Link
         href={dashboardHref}
-        style={{
-          fontWeight: 600,
-          textDecoration: "none",
-          color: "#111",
-        }}
+        style={{ fontWeight: 600, textDecoration: "none", color: "#111" }}
       >
         Dashboard
       </Link>
