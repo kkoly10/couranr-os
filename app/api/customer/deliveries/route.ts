@@ -1,6 +1,14 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+// ✅ Prevent Next from trying to statically optimize this route
+export const dynamic = "force-dynamic";
+
+function first<T>(v: T | T[] | null | undefined): T | null {
+  if (!v) return null;
+  return Array.isArray(v) ? (v[0] ?? null) : v;
+}
+
 export async function GET(req: Request) {
   try {
     const authHeader = req.headers.get("authorization");
@@ -22,17 +30,25 @@ export async function GET(req: Request) {
       }
     );
 
-    // 🔐 Identify user
+    // 🔐 Confirm user from token (RLS-safe)
     const {
       data: { user },
-      error: authErr,
+      error: userErr,
     } = await supabase.auth.getUser();
 
-    if (authErr || !user) {
+    if (userErr || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // 📦 Fetch customer deliveries (NO LEAKAGE)
+    /**
+     * IMPORTANT:
+     * - deliveries should reference orders via order_id (FK)
+     * - pickup_address_id and dropoff_address_id reference addresses table
+     *
+     * Also:
+     * Supabase can sometimes return nested relations as arrays depending on FK direction.
+     * So we normalize for both object/array shapes.
+     */
     const { data, error } = await supabase
       .from("deliveries")
       .select(
@@ -42,8 +58,9 @@ export async function GET(req: Request) {
         created_at,
         estimated_miles,
         weight_lbs,
+        order_id,
 
-        orders!inner (
+        orders:order_id (
           id,
           order_number,
           total_cents,
@@ -64,37 +81,44 @@ export async function GET(req: Request) {
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.error("Customer deliveries error:", error);
-      return NextResponse.json(
-        { error: error.message },
-        { status: 500 }
-      );
+      console.error("Customer deliveries query error:", error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // 🧠 Normalize for frontend
-    const deliveries = (data ?? []).map((d: any) => ({
-      id: d.id,
-      status: d.status,
-      createdAt: d.created_at,
-      estimatedMiles: d.estimated_miles,
-      weightLbs: d.weight_lbs,
+    // ✅ Normalize
+    const normalized = (data ?? []).map((d: any) => {
+      const order = first(d.orders);
+      const pickup = first(d.pickup_address);
+      const dropoff = first(d.dropoff_address);
 
-      order: {
-        orderNumber: d.orders.order_number,
-        totalCents: d.orders.total_cents,
-        status: d.orders.status,
-      },
+      return {
+        id: d.id,
+        status: d.status,
+        createdAt: d.created_at,
+        estimatedMiles: d.estimated_miles,
+        weightLbs: d.weight_lbs,
 
-      pickupAddress: d.pickup_address?.address_line ?? "—",
-      dropoffAddress: d.dropoff_address?.address_line ?? "—",
-    }));
+        order: {
+          orderNumber: order?.order_number ?? "—",
+          totalCents: order?.total_cents ?? 0,
+          status: order?.status ?? "unknown",
+        },
 
-    return NextResponse.json({ deliveries });
+        pickupAddress: pickup?.address_line ?? "—",
+        dropoffAddress: dropoff?.address_line ?? "—",
+      };
+    });
+
+    // ✅ Debug output (so we can STOP guessing)
+    // You can remove raw later once verified.
+    return NextResponse.json({
+      userId: user.id,
+      count: normalized.length,
+      deliveries: normalized,
+      raw: data, // <-- this is the truth; check what shape Supabase returns
+    });
   } catch (err: any) {
     console.error("Customer deliveries fatal error:", err);
-    return NextResponse.json(
-      { error: "Server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }
