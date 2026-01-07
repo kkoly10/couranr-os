@@ -7,7 +7,6 @@ import { supabase } from "@/lib/supabaseClient";
 type DeliveryRow = {
   id: string;
   status: string;
-  createdAt: string;
   pickupAddress: string;
   dropoffAddress: string;
   order: {
@@ -18,15 +17,12 @@ type DeliveryRow = {
 
 export default function CustomerDashboard() {
   const router = useRouter();
-  const [loading, setLoading] = useState(true);
   const [deliveries, setDeliveries] = useState<DeliveryRow[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
-      setLoading(true);
-
       const {
         data: { session },
       } = await supabase.auth.getSession();
@@ -43,10 +39,12 @@ export default function CustomerDashboard() {
           },
         });
 
+        if (!res.ok) throw new Error("Failed to load deliveries");
+
         const data = await res.json();
         setDeliveries(data.deliveries || []);
       } catch (err: any) {
-        setError(err.message || "Failed to load deliveries");
+        setError(err.message);
       } finally {
         setLoading(false);
       }
@@ -56,8 +54,6 @@ export default function CustomerDashboard() {
   }, [router]);
 
   async function uploadPickupPhoto(deliveryId: string, file: File) {
-    setUploading(deliveryId);
-
     const {
       data: { session },
     } = await supabase.auth.getSession();
@@ -65,10 +61,10 @@ export default function CustomerDashboard() {
     if (!session) return;
 
     const formData = new FormData();
-    formData.append("file", file);
     formData.append("deliveryId", deliveryId);
+    formData.append("file", file);
 
-    const res = await fetch("/api/customer/upload-pickup-photo", {
+    await fetch("/api/customer/upload-pickup-photo", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${session.access_token}`,
@@ -76,20 +72,14 @@ export default function CustomerDashboard() {
       body: formData,
     });
 
-    if (!res.ok) {
-      alert("Upload failed");
-    } else {
-      alert("Pickup photo uploaded");
-    }
-
-    setUploading(null);
+    alert("Pickup photo uploaded");
   }
 
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: 24 }}>
-      <h1>My deliveries</h1>
+    <div style={{ maxWidth: 1000, margin: "0 auto", padding: 24 }}>
+      <h1>My Deliveries</h1>
 
-      {loading && <p>Loading deliveries…</p>}
+      {loading && <p>Loading…</p>}
       {error && <p style={{ color: "red" }}>{error}</p>}
 
       {!loading &&
@@ -98,36 +88,28 @@ export default function CustomerDashboard() {
             key={d.id}
             style={{
               border: "1px solid #e5e7eb",
-              borderRadius: 14,
+              borderRadius: 12,
               padding: 16,
-              marginBottom: 14,
+              marginBottom: 16,
             }}
           >
-            <strong>Order #{d.order.orderNumber}</strong>
+            <strong>Order {d.order.orderNumber}</strong>
             <p>Pickup: {d.pickupAddress}</p>
             <p>Drop-off: {d.dropoffAddress}</p>
-            <p>
-              Total: ${(d.order.totalCents / 100).toFixed(2)}
-            </p>
-            <p>Status: {d.status}</p>
+            <p>Total: ${(d.order.totalCents / 100).toFixed(2)}</p>
 
-            {(d.status === "pending" || d.status === "scheduled") && (
-              <div style={{ marginTop: 10 }}>
-                <label>
-                  Upload pickup photo:
-                  <input
-                    type="file"
-                    accept="image/*"
-                    disabled={uploading === d.id}
-                    onChange={(e) => {
-                      if (e.target.files?.[0]) {
-                        uploadPickupPhoto(d.id, e.target.files[0]);
-                      }
-                    }}
-                  />
-                </label>
-              </div>
-            )}
+            <label style={{ display: "block", marginTop: 12 }}>
+              Upload pickup photo:
+              <input
+                type="file"
+                accept="image/*"
+                onChange={(e) => {
+                  if (e.target.files?.[0]) {
+                    uploadPickupPhoto(d.id, e.target.files[0]);
+                  }
+                }}
+              />
+            </label>
           </div>
         ))}
     </div>
