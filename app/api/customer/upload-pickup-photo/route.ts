@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 export async function POST(req: Request) {
   try {
+    // 1️⃣ Auth header
     const authHeader = req.headers.get("authorization");
     if (!authHeader) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -10,6 +11,7 @@ export async function POST(req: Request) {
 
     const token = authHeader.replace("Bearer ", "");
 
+    // 2️⃣ Supabase client (user-scoped)
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -22,59 +24,96 @@ export async function POST(req: Request) {
       }
     );
 
-    const formData = await req.formData();
-    const deliveryId = formData.get("deliveryId") as string;
-    const file = formData.get("file") as File;
+    // 3️⃣ Get user
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser();
 
-    if (!deliveryId || !file) {
+    if (userErr || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // 4️⃣ Parse form data
+    const formData = await req.formData();
+    const file = formData.get("file") as File | null;
+    const deliveryId = formData.get("deliveryId") as string | null;
+
+    if (!file || !deliveryId) {
       return NextResponse.json(
-        { error: "Missing deliveryId or file" },
+        { error: "Missing file or deliveryId" },
         { status: 400 }
       );
     }
 
-    // Upload to storage
-    const filePath = `pickup/${deliveryId}/${Date.now()}-${file.name}`;
+    // 5️⃣ Verify delivery belongs to this customer
+    const { data: delivery, error: deliveryErr } = await supabase
+      .from("deliveries")
+      .select(
+        `
+        id,
+        orders!inner (
+          customer_id
+        )
+      `
+      )
+      .eq("id", deliveryId)
+      .single();
 
-    const { error: uploadError } = await supabase.storage
+    if (deliveryErr || delivery.orders.customer_id !== user.id) {
+      return NextResponse.json(
+        { error: "Forbidden" },
+        { status: 403 }
+      );
+    }
+
+    // 6️⃣ Upload to Storage
+    const fileExt = file.name.split(".").pop();
+    const path = `pickup/${deliveryId}-${Date.now()}.${fileExt}`;
+
+    const { error: uploadErr } = await supabase.storage
       .from("delivery-photos")
-      .upload(filePath, file, {
-        upsert: false,
+      .upload(path, file, {
         contentType: file.type,
+        upsert: false,
       });
 
-    if (uploadError) {
+    if (uploadErr) {
+      console.error("Upload error:", uploadErr);
       return NextResponse.json(
-        { error: uploadError.message },
+        { error: "Upload failed" },
         { status: 500 }
       );
     }
 
-    const { data: publicUrl } = supabase.storage
+    // 7️⃣ Get public URL
+    const { data: urlData } = supabase.storage
       .from("delivery-photos")
-      .getPublicUrl(filePath);
+      .getPublicUrl(path);
 
-    // Insert DB record
-    const { error: insertError } = await supabase
+    // 8️⃣ Insert DB record
+    const { error: insertErr } = await supabase
       .from("delivery_photos")
       .insert({
         delivery_id: deliveryId,
         photo_type: "pickup",
-        photo_url: publicUrl.publicUrl,
+        photo_url: urlData.publicUrl,
         uploaded_by: "customer",
       });
 
-    if (insertError) {
+    if (insertErr) {
+      console.error("DB insert error:", insertErr);
       return NextResponse.json(
-        { error: insertError.message },
+        { error: "Failed to save photo record" },
         { status: 500 }
       );
     }
 
     return NextResponse.json({ success: true });
   } catch (err: any) {
+    console.error("Upload fatal error:", err);
     return NextResponse.json(
-      { error: err?.message || "Upload failed" },
+      { error: "Server error" },
       { status: 500 }
     );
   }
