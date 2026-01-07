@@ -2,36 +2,48 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { computeDeliveryPrice } from "@/lib/delivery/pricing";
 
-/* -------------------- TYPES -------------------- */
-
-type DistanceState =
-  | { status: "idle" }
-  | { status: "loading" }
-  | { status: "ok"; miles: number; text: string }
-  | { status: "too_far"; miles: number; text: string }
-  | { status: "error"; message: string };
-
-/* -------------------- LIMITS -------------------- */
+/* -------------------- CONFIG -------------------- */
 
 const MAX_MILES = 40;
 const MAX_WEIGHT = 100;
 
-/* -------------------- GOOGLE MAPS -------------------- */
+// Pricing (FINAL)
+const BASE_FEE = 15;
+const INCLUDED_MILES = 4;
+const PER_MILE_RATE = 1.75;
+const STOP_FEE = 6;
+const RUSH_FEE = 10;
+const SIGNATURE_FEE = 5;
+
+/* -------------------- HELPERS -------------------- */
+
+function round2(n: number) {
+  return Math.round(n * 100) / 100;
+}
+
+function isWithinBusinessHours(d: Date) {
+  const h = d.getHours();
+  return h >= 9 && h < 18;
+}
+
+function isAfterCutoff(d: Date) {
+  return d.getHours() >= 16;
+}
 
 function loadGoogleMaps(apiKey: string) {
   return new Promise<void>((resolve, reject) => {
-    if ((window as any).google?.maps?.places) return resolve();
+    if ((window as any).google?.maps?.places) {
+      resolve();
+      return;
+    }
 
     const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
-      apiKey
-    )}&libraries=places`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
     script.async = true;
     script.defer = true;
     script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Google Maps failed to load"));
+    script.onerror = () => reject(new Error("Failed to load Google Maps"));
     document.head.appendChild(script);
   });
 }
@@ -42,8 +54,8 @@ export default function QuoteClient() {
   const router = useRouter();
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY!;
 
-  const pickupRef = useRef<HTMLInputElement | null>(null);
-  const dropoffRef = useRef<HTMLInputElement | null>(null);
+  const pickupRef = useRef<HTMLInputElement>(null);
+  const dropoffRef = useRef<HTMLInputElement>(null);
 
   const [pickup, setPickup] = useState("");
   const [dropoff, setDropoff] = useState("");
@@ -52,51 +64,42 @@ export default function QuoteClient() {
   const [rush, setRush] = useState(false);
   const [signature, setSignature] = useState(false);
 
-  const [distance, setDistance] = useState<DistanceState>({
-    status: "idle",
-  });
+  const [miles, setMiles] = useState<number | null>(null);
+  const [distanceText, setDistanceText] = useState<string | null>(null);
+  const [distanceError, setDistanceError] = useState<string | null>(null);
 
-  /* -------------------- AUTOCOMPLETE -------------------- */
+  const now = new Date();
+  const afterCutoff = isAfterCutoff(now);
+  const outsideHours = !isWithinBusinessHours(now);
+
+  /* -------------------- GOOGLE AUTOCOMPLETE -------------------- */
 
   useEffect(() => {
     if (!apiKey) return;
 
-    loadGoogleMaps(apiKey)
-      .then(() => {
-        const google = (window as any).google;
+    loadGoogleMaps(apiKey).then(() => {
+      const google = (window as any).google;
 
-        if (pickupRef.current) {
-          const a = new google.maps.places.Autocomplete(pickupRef.current, {
-            fields: ["formatted_address"],
-          });
-          a.addListener("place_changed", () => {
-            setPickup(a.getPlace()?.formatted_address || "");
-          });
-        }
+      if (pickupRef.current) {
+        const a = new google.maps.places.Autocomplete(pickupRef.current);
+        a.addListener("place_changed", () => {
+          setPickup(a.getPlace()?.formatted_address || "");
+        });
+      }
 
-        if (dropoffRef.current) {
-          const b = new google.maps.places.Autocomplete(dropoffRef.current, {
-            fields: ["formatted_address"],
-          });
-          b.addListener("place_changed", () => {
-            setDropoff(b.getPlace()?.formatted_address || "");
-          });
-        }
-      })
-      .catch(() =>
-        setDistance({
-          status: "error",
-          message: "Google Maps failed to load",
-        })
-      );
+      if (dropoffRef.current) {
+        const b = new google.maps.places.Autocomplete(dropoffRef.current);
+        b.addListener("place_changed", () => {
+          setDropoff(b.getPlace()?.formatted_address || "");
+        });
+      }
+    });
   }, [apiKey]);
 
   /* -------------------- DISTANCE -------------------- */
 
   useEffect(() => {
-    if (pickup.length < 6 || dropoff.length < 6) return;
-
-    setDistance({ status: "loading" });
+    if (!pickup || !dropoff) return;
 
     const google = (window as any).google;
     if (!google?.maps) return;
@@ -111,31 +114,20 @@ export default function QuoteClient() {
       },
       (res: any, status: string) => {
         if (status !== "OK") {
-          setDistance({
-            status: "error",
-            message: "Distance unavailable",
-          });
+          setDistanceError("Unable to calculate distance");
           return;
         }
 
         const el = res.rows[0].elements[0];
-        const miles = el.distance.value / 1609.344;
-        const rounded = Math.round(miles * 100) / 100;
-
-        if (rounded > MAX_MILES) {
-          setDistance({
-            status: "too_far",
-            miles: rounded,
-            text: el.distance.text,
-          });
+        if (el.status !== "OK") {
+          setDistanceError("Invalid addresses");
           return;
         }
 
-        setDistance({
-          status: "ok",
-          miles: rounded,
-          text: el.distance.text,
-        });
+        const m = el.distance.value / 1609.344;
+        setMiles(round2(m));
+        setDistanceText(el.distance.text);
+        setDistanceError(null);
       }
     );
   }, [pickup, dropoff]);
@@ -143,30 +135,43 @@ export default function QuoteClient() {
   /* -------------------- PRICING -------------------- */
 
   const pricing = useMemo(() => {
-    if (distance.status !== "ok") return null;
-    if (weight === "") return null;
+    if (miles === null || weight === "") return null;
+    if (miles > MAX_MILES) return { error: "Long distance — custom quote required" };
+    if (weight > MAX_WEIGHT) return { error: "Heavy item — custom handling required" };
 
-    try {
-      return computeDeliveryPrice({
-        miles: distance.miles,
-        weightLbs: Number(weight),
-        stops,
-        rush,
-        signature,
-      });
-    } catch (e: any) {
-      return { error: e.message };
-    }
-  }, [distance, weight, stops, rush, signature]);
+    const extraMiles = Math.max(0, miles - INCLUDED_MILES);
+    const extraMilesFee = round2(extraMiles * PER_MILE_RATE);
+    const stopsFee = stops * STOP_FEE;
+    const rushFee = rush ? RUSH_FEE : 0;
+    const signatureFee = signature ? SIGNATURE_FEE : 0;
+
+    const total = round2(
+      BASE_FEE + extraMilesFee + stopsFee + rushFee + signatureFee
+    );
+
+    return {
+      total,
+      breakdown: {
+        base: BASE_FEE,
+        includedMiles: INCLUDED_MILES,
+        extraMiles,
+        extraMilesFee,
+        stopsFee,
+        rushFee,
+        signatureFee,
+        total,
+      },
+    };
+  }, [miles, weight, stops, rush, signature]);
 
   /* -------------------- CHECKOUT -------------------- */
 
-  const goToCheckout = () => {
+  const continueToCheckout = () => {
     if (!pricing || "error" in pricing) return;
 
     const qs = new URLSearchParams({
-      price: (pricing.amountCents / 100).toFixed(2),
-      miles: String(distance.status === "ok" ? distance.miles : 0),
+      price: pricing.total.toFixed(2),
+      miles: String(miles),
       pickup,
       dropoff,
       weight: String(weight),
@@ -181,92 +186,125 @@ export default function QuoteClient() {
   /* -------------------- UI -------------------- */
 
   return (
-    <main style={{ padding: "96px 20px" }}>
-      <div style={{ maxWidth: 760, margin: "0 auto" }}>
-        <h1>Courier Delivery Quote</h1>
+    <main style={{ maxWidth: 900, margin: "0 auto", padding: 24 }}>
+      <h1 style={{ fontSize: 32 }}>Courier Delivery Quote</h1>
 
-        <div className="card">
-          <label>Pickup address</label>
-          <input ref={pickupRef} />
-
-          <label>Drop-off address</label>
-          <input ref={dropoffRef} />
-
-          <label>Weight (lbs)</label>
-          <input
-            type="number"
-            max={MAX_WEIGHT}
-            value={weight}
-            onChange={(e) =>
-              setWeight(e.target.value === "" ? "" : Number(e.target.value))
-            }
-          />
-
-          <label>Extra stops</label>
-          <input
-            type="number"
-            min={0}
-            max={3}
-            value={stops}
-            onChange={(e) => setStops(Number(e.target.value))}
-          />
-
-          <label>
-            <input type="checkbox" checked={rush} onChange={() => setRush(!rush)} />
-            Rush (+$10)
-          </label>
-
-          <label>
-            <input
-              type="checkbox"
-              checked={signature}
-              onChange={() => setSignature(!signature)}
-            />
-            Signature (+$5)
-          </label>
-
-          {distance.status === "loading" && <p>Calculating distance…</p>}
-          {distance.status === "ok" && (
-            <p>{distance.text} ({distance.miles} miles)</p>
-          )}
-          {distance.status === "too_far" && (
-            <p style={{ color: "red" }}>
-              Over {MAX_MILES} miles — special request required
-            </p>
-          )}
-
-          {pricing && "error" in pricing && (
-            <p style={{ color: "red" }}>{pricing.error}</p>
-          )}
-
-          {pricing && !("error" in pricing) && (
-            <>
-              <h2>${(pricing.amountCents / 100).toFixed(2)}</h2>
-
-              <details>
-                <summary>View price breakdown</summary>
-                <ul>
-                  <li>Base: ${pricing.breakdown.base}</li>
-                  <li>Extra miles: ${pricing.breakdown.extraMiles}</li>
-                  <li>Weight: ${pricing.breakdown.weightSurcharge}</li>
-                  <li>Stops: ${pricing.breakdown.stops}</li>
-                  <li>Rush: ${pricing.breakdown.rush}</li>
-                  <li>Signature: ${pricing.breakdown.signature}</li>
-                </ul>
-              </details>
-
-              <button onClick={goToCheckout}>
-                Continue to checkout
-              </button>
-
-              <p style={{ fontSize: 12, color: "#666" }}>
-                Orders placed after 4 PM may be scheduled for the next business day.
-                Heavy or unsafe items may be refused at pickup.
-              </p>
-            </>
-          )}
+      {(afterCutoff || outsideHours) && (
+        <div style={warningBox}>
+          Orders placed after <strong>4:00 PM</strong> or outside business hours
+          will be scheduled for the next business day.
         </div>
+      )}
+
+      <div style={card}>
+        <label>Pickup address</label>
+        <input ref={pickupRef} placeholder="Start typing…" />
+
+        <label>Drop-off address</label>
+        <input ref={dropoffRef} placeholder="Start typing…" />
+
+        {distanceText && (
+          <p>
+            Distance: <strong>{distanceText}</strong> ({miles} miles)
+          </p>
+        )}
+        {distanceError && <p style={{ color: "red" }}>{distanceError}</p>}
+
+        <label>Weight (lbs)</label>
+        <input
+          type="number"
+          value={weight}
+          onChange={(e) =>
+            setWeight(e.target.value === "" ? "" : Number(e.target.value))
+          }
+        />
+
+        <label>Additional stops</label>
+        <input
+          type="number"
+          min={0}
+          max={3}
+          value={stops}
+          onChange={(e) => setStops(Number(e.target.value))}
+        />
+
+        <label>
+          <input type="checkbox" checked={rush} onChange={() => setRush(!rush)} />
+          Rush (+${RUSH_FEE})
+        </label>
+
+        <label>
+          <input
+            type="checkbox"
+            checked={signature}
+            onChange={() => setSignature(!signature)}
+          />
+          Signature required (+${SIGNATURE_FEE})
+        </label>
+      </div>
+
+      <div style={card}>
+        <h2>Price</h2>
+
+        {!pricing && <p>Enter details to see pricing.</p>}
+
+        {pricing && "error" in pricing && (
+          <p style={{ color: "red" }}>{pricing.error}</p>
+        )}
+
+        {pricing && !("error" in pricing) && (
+          <>
+            <div style={{ fontSize: 28, fontWeight: 800 }}>
+              ${pricing.total.toFixed(2)}
+            </div>
+
+            <ul>
+              <li>Base: ${pricing.breakdown.base}</li>
+              <li>
+                Extra miles: ${pricing.breakdown.extraMilesFee.toFixed(2)}
+              </li>
+              <li>Stops: ${pricing.breakdown.stopsFee.toFixed(2)}</li>
+              <li>Rush: ${pricing.breakdown.rushFee.toFixed(2)}</li>
+              <li>Signature: ${pricing.breakdown.signatureFee.toFixed(2)}</li>
+            </ul>
+
+            <button onClick={continueToCheckout} style={primaryBtn}>
+              Continue to checkout
+            </button>
+
+            <p style={{ fontSize: 12, color: "#555", marginTop: 12 }}>
+              Drivers may refuse unsafe, overweight, or misdeclared items.
+            </p>
+          </>
+        )}
       </div>
     </main>
   );
 }
+
+/* -------------------- STYLES -------------------- */
+
+const card: React.CSSProperties = {
+  border: "1px solid #e5e7eb",
+  borderRadius: 14,
+  padding: 16,
+  marginTop: 16,
+  background: "#fff",
+};
+
+const primaryBtn: React.CSSProperties = {
+  marginTop: 16,
+  padding: "12px 16px",
+  background: "#111827",
+  color: "#fff",
+  borderRadius: 10,
+  fontWeight: 700,
+};
+
+const warningBox: React.CSSProperties = {
+  border: "1px solid #fde68a",
+  background: "#fffbeb",
+  padding: 12,
+  borderRadius: 10,
+  marginBottom: 16,
+};
