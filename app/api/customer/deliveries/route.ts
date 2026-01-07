@@ -1,13 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-/**
- * GET /api/customer/deliveries
- * Returns deliveries belonging ONLY to the authenticated customer
- */
 export async function GET(req: Request) {
   try {
-    // 1️⃣ Auth header
     const authHeader = req.headers.get("authorization");
     if (!authHeader) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -15,7 +10,6 @@ export async function GET(req: Request) {
 
     const token = authHeader.replace("Bearer ", "");
 
-    // 2️⃣ Supabase client scoped to user
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -28,17 +22,17 @@ export async function GET(req: Request) {
       }
     );
 
-    // 3️⃣ Get current user (needed to scope orders)
+    // 🔐 Identify user
     const {
       data: { user },
-      error: userError,
+      error: authErr,
     } = await supabase.auth.getUser();
 
-    if (userError || !user) {
+    if (authErr || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // 4️⃣ Fetch deliveries WITH enforced order join
+    // 📦 Fetch customer deliveries (NO LEAKAGE)
     const { data, error } = await supabase
       .from("deliveries")
       .select(
@@ -46,14 +40,8 @@ export async function GET(req: Request) {
         id,
         status,
         created_at,
-
-        pickup_address:pickup_address_id (
-          address_line
-        ),
-
-        dropoff_address:dropoff_address_id (
-          address_line
-        ),
+        estimated_miles,
+        weight_lbs,
 
         orders!inner (
           id,
@@ -61,6 +49,14 @@ export async function GET(req: Request) {
           total_cents,
           status,
           customer_id
+        ),
+
+        pickup_address:pickup_address_id (
+          address_line
+        ),
+
+        dropoff_address:dropoff_address_id (
+          address_line
         )
       `
       )
@@ -75,21 +71,22 @@ export async function GET(req: Request) {
       );
     }
 
-    // 5️⃣ Normalize response for frontend
+    // 🧠 Normalize for frontend
     const deliveries = (data ?? []).map((d: any) => ({
       id: d.id,
       status: d.status,
       createdAt: d.created_at,
-
-      pickupAddress: d.pickup_address?.address_line ?? "—",
-      dropoffAddress: d.dropoff_address?.address_line ?? "—",
+      estimatedMiles: d.estimated_miles,
+      weightLbs: d.weight_lbs,
 
       order: {
-        id: d.orders.id,
         orderNumber: d.orders.order_number,
         totalCents: d.orders.total_cents,
         status: d.orders.status,
       },
+
+      pickupAddress: d.pickup_address?.address_line ?? "—",
+      dropoffAddress: d.dropoff_address?.address_line ?? "—",
     }));
 
     return NextResponse.json({ deliveries });
