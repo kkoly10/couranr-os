@@ -33,14 +33,16 @@ export async function POST(req: Request) {
       );
     }
 
-    // 🔐 Ensure delivery belongs to this customer
+    // 🔐 Verify delivery belongs to this customer
     const { data: delivery, error: deliveryErr } = await supabase
       .from("deliveries")
       .select("id, orders(customer_id)")
       .eq("id", deliveryId)
       .single();
 
-    if (deliveryErr || !delivery?.orders?.customer_id) {
+    const customerId = delivery?.orders?.[0]?.customer_id;
+
+    if (deliveryErr || !customerId) {
       return NextResponse.json(
         { error: "Delivery not found" },
         { status: 404 }
@@ -52,9 +54,7 @@ export async function POST(req: Request) {
 
     const { error: uploadErr } = await supabase.storage
       .from("delivery-photos")
-      .upload(filePath, file, {
-        upsert: false,
-      });
+      .upload(filePath, file, { upsert: false });
 
     if (uploadErr) {
       return NextResponse.json(
@@ -67,7 +67,7 @@ export async function POST(req: Request) {
       .from("delivery-photos")
       .getPublicUrl(filePath);
 
-    // 📝 Save record
+    // 📝 Save DB record
     const { error: insertErr } = await supabase
       .from("delivery_photos")
       .insert({
