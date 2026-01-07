@@ -13,24 +13,19 @@ type DeliveryRow = {
   order: {
     orderNumber: string;
     totalCents: number;
-    status: string;
   };
 };
 
 export default function CustomerDashboard() {
   const router = useRouter();
-
   const [loading, setLoading] = useState(true);
   const [deliveries, setDeliveries] = useState<DeliveryRow[]>([]);
   const [error, setError] = useState<string | null>(null);
-
-  // Debug so you can SEE if the API is returning what we expect
-  const [debug, setDebug] = useState<any>(null);
+  const [uploading, setUploading] = useState<string | null>(null);
 
   useEffect(() => {
     async function load() {
       setLoading(true);
-      setError(null);
 
       const {
         data: { session },
@@ -43,31 +38,15 @@ export default function CustomerDashboard() {
 
       try {
         const res = await fetch("/api/customer/deliveries", {
-          method: "GET",
           headers: {
             Authorization: `Bearer ${session.access_token}`,
           },
-          cache: "no-store",
         });
 
-        const text = await res.text();
-
-        // If it returns HTML, you're not hitting the route you think you are.
-        // (e.g. 404 page)
-        if (text.trim().startsWith("<!DOCTYPE html")) {
-          throw new Error("API returned HTML (likely 404). Check route path: /api/customer/deliveries");
-        }
-
-        const json = JSON.parse(text);
-        setDebug(json);
-
-        if (!res.ok) {
-          throw new Error(json?.error || "Failed to load deliveries");
-        }
-
-        setDeliveries(json.deliveries || []);
-      } catch (e: any) {
-        setError(e?.message || "Failed to load deliveries");
+        const data = await res.json();
+        setDeliveries(data.deliveries || []);
+      } catch (err: any) {
+        setError(err.message || "Failed to load deliveries");
       } finally {
         setLoading(false);
       }
@@ -76,91 +55,81 @@ export default function CustomerDashboard() {
     load();
   }, [router]);
 
-  return (
-    <div style={styles.container}>
-      <div style={styles.header}>
-        <div>
-          <h1 style={styles.h1}>My deliveries</h1>
-          <p style={styles.sub}>Track your active and past deliveries</p>
-        </div>
+  async function uploadPickupPhoto(deliveryId: string, file: File) {
+    setUploading(deliveryId);
 
-        <button onClick={() => router.push("/courier")} style={styles.primaryBtn}>
-          New delivery
-        </button>
-      </div>
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session) return;
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("deliveryId", deliveryId);
+
+    const res = await fetch("/api/customer/upload-pickup-photo", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: formData,
+    });
+
+    if (!res.ok) {
+      alert("Upload failed");
+    } else {
+      alert("Pickup photo uploaded");
+    }
+
+    setUploading(null);
+  }
+
+  return (
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: 24 }}>
+      <h1>My deliveries</h1>
 
       {loading && <p>Loading deliveries…</p>}
-
-      {error && (
-        <div style={{ ...styles.card, borderColor: "#fecaca" }}>
-          <strong>Error:</strong> {error}
-          <div style={{ marginTop: 10 }}>
-            <button
-              style={styles.secondaryBtn}
-              onClick={() => window.location.reload()}
-            >
-              Refresh
-            </button>
-          </div>
-        </div>
-      )}
-
-      {!loading && !error && deliveries.length === 0 && (
-        <div style={styles.card}>
-          <p>You don’t have any deliveries yet.</p>
-        </div>
-      )}
+      {error && <p style={{ color: "red" }}>{error}</p>}
 
       {!loading &&
-        !error &&
         deliveries.map((d) => (
-          <div key={d.id} style={styles.card}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-              <strong>{d.order.orderNumber}</strong>
-              <span style={pill(d.status)}>{d.status}</span>
-            </div>
-            <p style={styles.line}><strong>Pickup:</strong> {d.pickupAddress}</p>
-            <p style={styles.line}><strong>Drop-off:</strong> {d.dropoffAddress}</p>
-            <p style={styles.line}>
-              <strong>Total:</strong> ${(d.order.totalCents / 100).toFixed(2)}
+          <div
+            key={d.id}
+            style={{
+              border: "1px solid #e5e7eb",
+              borderRadius: 14,
+              padding: 16,
+              marginBottom: 14,
+            }}
+          >
+            <strong>Order #{d.order.orderNumber}</strong>
+            <p>Pickup: {d.pickupAddress}</p>
+            <p>Drop-off: {d.dropoffAddress}</p>
+            <p>
+              Total: ${(d.order.totalCents / 100).toFixed(2)}
             </p>
+            <p>Status: {d.status}</p>
+
+            {(d.status === "pending" || d.status === "scheduled") && (
+              <div style={{ marginTop: 10 }}>
+                <label>
+                  Upload pickup photo:
+                  <input
+                    type="file"
+                    accept="image/*"
+                    disabled={uploading === d.id}
+                    onChange={(e) => {
+                      if (e.target.files?.[0]) {
+                        uploadPickupPhoto(d.id, e.target.files[0]);
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+            )}
           </div>
         ))}
-
-      {/* Debug viewer (remove later) */}
-      <details style={{ marginTop: 18 }}>
-        <summary style={{ cursor: "pointer", fontWeight: 700 }}>Debug: API response</summary>
-        <pre style={{ whiteSpace: "pre-wrap", marginTop: 10, fontSize: 12 }}>
-          {JSON.stringify(debug, null, 2)}
-        </pre>
-      </details>
     </div>
   );
-}
-
-const styles: Record<string, any> = {
-  container: { maxWidth: 1100, margin: "0 auto", padding: 24 },
-  header: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 },
-  h1: { margin: 0, fontSize: 32 },
-  sub: { marginTop: 6, color: "#555" },
-  card: { border: "1px solid #e5e7eb", borderRadius: 14, padding: 16, background: "#fff", marginBottom: 12 },
-  primaryBtn: { padding: "10px 16px", borderRadius: 10, border: "none", background: "#111827", color: "#fff", fontWeight: 700, cursor: "pointer" },
-  secondaryBtn: { padding: "8px 12px", borderRadius: 10, border: "1px solid #d1d5db", background: "#fff", fontWeight: 700, cursor: "pointer" },
-  line: { margin: "8px 0" },
-};
-
-function pill(status: string): React.CSSProperties {
-  const s = (status || "").toLowerCase();
-  const base: React.CSSProperties = {
-    padding: "4px 10px",
-    borderRadius: 999,
-    fontSize: 12,
-    fontWeight: 800,
-    border: "1px solid #e5e7eb",
-  };
-  if (s === "pending") return { ...base, background: "#fff7ed", borderColor: "#fed7aa" };
-  if (s === "paid") return { ...base, background: "#ecfeff", borderColor: "#a5f3fc" };
-  if (s === "completed") return { ...base, background: "#ecfdf5", borderColor: "#a7f3d0" };
-  if (s === "cancelled") return { ...base, background: "#fef2f2", borderColor: "#fecaca" };
-  return base;
 }
