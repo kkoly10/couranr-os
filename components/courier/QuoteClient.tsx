@@ -154,7 +154,9 @@ export default function QuoteClient() {
       breakdown: {
         base: BASE_FEE,
         includedMiles: INCLUDED_MILES,
-        extraMiles,
+        totalMiles: miles,
+        billableMiles: extraMiles,
+        perMileRate: PER_MILE_RATE,
         extraMilesFee,
         stopsFee,
         rushFee,
@@ -258,10 +260,16 @@ export default function QuoteClient() {
               ${pricing.total.toFixed(2)}
             </div>
 
-            <ul>
-              <li>Base: ${pricing.breakdown.base}</li>
+            <ul style={{ marginTop: 12 }}>
               <li>
-                Extra miles: ${pricing.breakdown.extraMilesFee.toFixed(2)}
+                Base fee: ${pricing.breakdown.base.toFixed(2)}{" "}
+                <em>(includes first {pricing.breakdown.includedMiles} miles)</em>
+              </li>
+              <li>
+                Distance: {pricing.breakdown.totalMiles} miles total →{" "}
+                {pricing.breakdown.billableMiles} billable miles × $
+                {pricing.breakdown.perMileRate.toFixed(2)} = $
+                {pricing.breakdown.extraMilesFee.toFixed(2)}
               </li>
               <li>Stops: ${pricing.breakdown.stopsFee.toFixed(2)}</li>
               <li>Rush: ${pricing.breakdown.rushFee.toFixed(2)}</li>
