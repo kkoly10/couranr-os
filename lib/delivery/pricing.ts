@@ -6,138 +6,119 @@ export type PricingInput = {
   stops: number;
   rush: boolean;
   signature: boolean;
+};
 
-  /**
-   * Required ONLY if weight > 70 lbs
-   * Customer must acknowledge heavy item handling
-   */
-  heavyItemAcknowledged?: boolean;
+export type PricingFlags = {
+  longDistance: boolean;
+  heavyItem: boolean;
 };
 
 export type PricingResult = {
   amountCents: number;
-  flags: {
-    longDistance: boolean;
-    heavyItem: boolean;
-  };
+  flags: PricingFlags;
   breakdown: {
     base: number;
+    includedMiles: number;
     extraMiles: number;
+    extraMilesFee: number;
     weightSurcharge: number;
-    longDistance: number;
-    stops: number;
-    rush: number;
-    signature: number;
+    stopsFee: number;
+    rushFee: number;
+    signatureFee: number;
     total: number;
   };
 };
 
 /**
- * Couranr Delivery — FINAL MVP PRICING ENGINE
+ * Couranr Delivery — FINALIZED PRICING LOGIC
  *
- * This is the SINGLE source of truth for delivery pricing.
- * Client UI must never compute totals.
+ * Base fee: $15 (includes first 4 miles)
+ * Extra miles: $1.75 / mile
+ * Max weight: 100 lbs
+ * Heavy item (51–100 lbs): +$15
+ * Stops: $6 each
+ * Rush: +$10
+ * Signature: +$5
+ *
+ * Flags:
+ * - longDistance: miles > 25
+ * - heavyItem: weight > 50
+ *
+ * ⚠️ Server-side source of truth
  */
 export function computeDeliveryPrice(input: PricingInput): PricingResult {
-  const miles = finite(input.miles);
-  const weight = finite(input.weightLbs);
-  const stops = Math.max(0, Math.floor(finite(input.stops)));
-  const rush = !!input.rush;
-  const signature = !!input.signature;
-  const heavyAck = !!input.heavyItemAcknowledged;
+  const miles = toNumber(input.miles);
+  const weight = toNumber(input.weightLbs);
+  const stops = Math.max(0, Math.floor(toNumber(input.stops)));
 
-  /* ---------------- HARD VALIDATION ---------------- */
-
-  if (miles <= 0) throw new Error("Miles must be greater than 0.");
-  if (weight <= 0) throw new Error("Weight must be greater than 0.");
-
-  // Distance rules
-  if (miles > 60) {
-    throw new Error("Deliveries over 60 miles require a Special Request.");
+  if (miles <= 0) {
+    throw new Error("Miles must be greater than 0.");
   }
 
-  // Weight rules
+  if (weight <= 0) {
+    throw new Error("Weight must be greater than 0.");
+  }
+
   if (weight > 100) {
-    throw new Error("Items over 100 lbs require a Special Request.");
+    throw new Error("Items over 100 lbs require special handling.");
   }
 
-  if (weight > 70 && !heavyAck) {
-    throw new Error(
-      "Heavy item acknowledgment is required for items over 70 lbs."
-    );
-  }
-
-  /* ---------------- PRICING CONSTANTS ---------------- */
-
+  // --- Constants
   const BASE_FEE = 15;
   const INCLUDED_MILES = 4;
-  const PER_MILE_AFTER = 1.75;
+  const PER_MILE = 1.75;
 
-  const LONG_DISTANCE_FEE = 15; // 41–60 miles
+  const HEAVY_ITEM_SURCHARGE = 15;
+  const STOP_FEE = 6;
+  const RUSH_FEE = 10;
+  const SIGNATURE_FEE = 5;
 
-  /* ---------------- DISTANCE ---------------- */
+  // --- Flags
+  const flags: PricingFlags = {
+    longDistance: miles > 25,
+    heavyItem: weight > 50,
+  };
 
+  // --- Calculations
   const extraMiles = Math.max(0, miles - INCLUDED_MILES);
-  const extraMilesFee = round2(extraMiles * PER_MILE_AFTER);
+  const extraMilesFee = round2(extraMiles * PER_MILE);
 
-  const longDistance = miles > 40;
-
-  /* ---------------- WEIGHT ---------------- */
-
-  let weightSurcharge = 0;
-  let heavyItem = false;
-
-  if (weight > 70) {
-    weightSurcharge = 20;
-    heavyItem = true;
-  } else if (weight > 40) {
-    weightSurcharge = 10;
-  }
-
-  /* ---------------- OPTIONS ---------------- */
-
-  const stopsFee = stops * 6;
-  const rushFee = rush ? 10 : 0;
-  const signatureFee = signature ? 5 : 0;
-  const longDistanceFee = longDistance ? LONG_DISTANCE_FEE : 0;
-
-  /* ---------------- TOTAL ---------------- */
+  const weightSurcharge = weight > 50 ? HEAVY_ITEM_SURCHARGE : 0;
+  const stopsFee = stops * STOP_FEE;
+  const rushFee = input.rush ? RUSH_FEE : 0;
+  const signatureFee = input.signature ? SIGNATURE_FEE : 0;
 
   const total = round2(
     BASE_FEE +
       extraMilesFee +
       weightSurcharge +
-      longDistanceFee +
       stopsFee +
       rushFee +
       signatureFee
   );
 
-  // Stripe minimum safeguard
   const amountCents = Math.max(50, Math.round(total * 100));
 
   return {
     amountCents,
-    flags: {
-      longDistance,
-      heavyItem,
-    },
+    flags,
     breakdown: {
       base: BASE_FEE,
-      extraMiles: extraMilesFee,
+      includedMiles: INCLUDED_MILES,
+      extraMiles,
+      extraMilesFee,
       weightSurcharge,
-      longDistance: longDistanceFee,
-      stops: stopsFee,
-      rush: rushFee,
-      signature: signatureFee,
+      stopsFee,
+      rushFee,
+      signatureFee,
       total,
     },
   };
 }
 
-/* ---------------- HELPERS ---------------- */
+/* ---------------- helpers ---------------- */
 
-function finite(v: any): number {
+function toNumber(v: any): number {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }
