@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 /**
  * GET /api/customer/deliveries
- * Returns deliveries belonging to the authenticated customer
+ * Returns deliveries belonging ONLY to the authenticated customer
  */
 export async function GET(req: Request) {
   try {
@@ -15,7 +15,7 @@ export async function GET(req: Request) {
 
     const token = authHeader.replace("Bearer ", "");
 
-    // 2️⃣ Supabase client scoped to user session
+    // 2️⃣ Supabase client scoped to user
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -28,25 +28,43 @@ export async function GET(req: Request) {
       }
     );
 
-    // 3️⃣ Fetch deliveries with proper address joins
+    // 3️⃣ Get current user (needed to scope orders)
+    const {
+      data: { user },
+      error: userError,
+    } = await supabase.auth.getUser();
+
+    if (userError || !user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // 4️⃣ Fetch deliveries WITH enforced order join
     const { data, error } = await supabase
       .from("deliveries")
-      .select(`
+      .select(
+        `
         id,
         status,
         created_at,
+
         pickup_address:pickup_address_id (
           address_line
         ),
+
         dropoff_address:dropoff_address_id (
           address_line
         ),
-        orders (
+
+        orders!inner (
+          id,
           order_number,
           total_cents,
-          status
+          status,
+          customer_id
         )
-      `)
+      `
+      )
+      .eq("orders.customer_id", user.id)
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -57,17 +75,20 @@ export async function GET(req: Request) {
       );
     }
 
-    // 4️⃣ Normalize response for frontend
+    // 5️⃣ Normalize response for frontend
     const deliveries = (data ?? []).map((d: any) => ({
       id: d.id,
       status: d.status,
       createdAt: d.created_at,
+
       pickupAddress: d.pickup_address?.address_line ?? "—",
       dropoffAddress: d.dropoff_address?.address_line ?? "—",
+
       order: {
-        orderNumber: d.orders?.order_number ?? "—",
-        totalCents: d.orders?.total_cents ?? 0,
-        status: d.orders?.status ?? "unknown",
+        id: d.orders.id,
+        orderNumber: d.orders.order_number,
+        totalCents: d.orders.total_cents,
+        status: d.orders.status,
       },
     }));
 
