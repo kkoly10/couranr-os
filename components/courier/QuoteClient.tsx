@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
+/* ---------------- Types ---------------- */
+
 type QuoteResult = {
   amountCents: number;
   breakdown: {
@@ -26,25 +28,19 @@ type DistanceState =
   | { status: "ok"; miles: number; text: string }
   | { status: "error"; message: string };
 
+/* ---------------- Helpers ---------------- */
+
 function round2(n: number) {
   return Math.round(n * 100) / 100;
 }
 
-function loadGoogleMaps(apiKey: string) {
-  return new Promise<void>((resolve, reject) => {
-    if ((window as any).google?.maps?.places) return resolve();
-
-    const script = document.createElement("script");
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
-      apiKey
-    )}&libraries=places`;
-    script.async = true;
-    script.defer = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Google Maps failed to load"));
-    document.head.appendChild(script);
-  });
+function isAfterCutoff() {
+  const now = new Date();
+  const h = now.getHours();
+  return h >= 16; // 4:00 PM cutoff
 }
+
+/* ---------------- Component ---------------- */
 
 export default function QuoteClient() {
   const router = useRouter();
@@ -63,51 +59,40 @@ export default function QuoteClient() {
   const [quote, setQuote] = useState<QuoteResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Load autocomplete
+  /* ---------------- Google Maps ---------------- */
+
   useEffect(() => {
-    loadGoogleMaps(apiKey).then(() => {
-      const g = (window as any).google;
-      if (pickupRef.current) {
-        new g.maps.places.Autocomplete(pickupRef.current, {
-          fields: ["formatted_address"]
-        }).addListener("place_changed", function () {
-          setPickup(this.getPlace()?.formatted_address || "");
-        });
-      }
-      if (dropoffRef.current) {
-        new g.maps.places.Autocomplete(dropoffRef.current, {
-          fields: ["formatted_address"]
-        }).addListener("place_changed", function () {
-          setDropoff(this.getPlace()?.formatted_address || "");
-        });
-      }
-    });
+    if ((window as any).google?.maps?.places) return;
+
+    const script = document.createElement("script");
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+    script.async = true;
+    script.defer = true;
+    document.head.appendChild(script);
   }, [apiKey]);
 
-  const canCompute = useMemo(
-    () => pickup.length > 5 && dropoff.length > 5,
-    [pickup, dropoff]
-  );
+  /* ---------------- Distance + Quote ---------------- */
 
-  // Distance
   useEffect(() => {
-    if (!canCompute) return;
+    if (pickup.length < 6 || dropoff.length < 6 || weight === "") return;
 
     setDistance({ status: "loading" });
     setQuote(null);
     setError(null);
 
     const g = (window as any).google;
+    if (!g?.maps) return;
+
     new g.maps.DistanceMatrixService().getDistanceMatrix(
       {
         origins: [pickup],
         destinations: [dropoff],
         travelMode: g.maps.TravelMode.DRIVING,
-        unitSystem: g.maps.UnitSystem.IMPERIAL
+        unitSystem: g.maps.UnitSystem.IMPERIAL,
       },
       async (res: any, status: string) => {
         if (status !== "OK") {
-          setDistance({ status: "error", message: "Distance failed" });
+          setDistance({ status: "error", message: "Distance unavailable" });
           return;
         }
 
@@ -120,7 +105,6 @@ export default function QuoteClient() {
         const miles = round2(el.distance.value / 1609.344);
         setDistance({ status: "ok", miles, text: el.distance.text });
 
-        // 🔑 SERVER QUOTE (single source of truth)
         try {
           const q = await fetch("/api/delivery/quote", {
             method: "POST",
@@ -130,8 +114,8 @@ export default function QuoteClient() {
               weightLbs: Number(weight),
               stops: 0,
               rush,
-              signature
-            })
+              signature,
+            }),
           }).then((r) => r.json());
 
           if (q.error) throw new Error(q.error);
@@ -141,61 +125,100 @@ export default function QuoteClient() {
         }
       }
     );
-  }, [canCompute, pickup, dropoff, weight, rush, signature]);
+  }, [pickup, dropoff, weight, rush, signature]);
 
-  const goCheckout = () => {
-    if (!quote) return;
-    router.push(
-      `/courier/checkout?price=${(quote.amountCents / 100).toFixed(
-        2
-      )}&pickup=${encodeURIComponent(pickup)}&dropoff=${encodeURIComponent(
-        dropoff
-      )}&miles=${distance.status === "ok" ? distance.miles : 0}&weight=${weight}`
-    );
+  /* ---------------- Checkout ---------------- */
+
+  const goToCheckout = () => {
+    if (!quote || distance.status !== "ok") return;
+
+    const qs = new URLSearchParams({
+      price: (quote.amountCents / 100).toFixed(2),
+      miles: String(distance.miles),
+      pickup,
+      dropoff,
+      weight: String(weight),
+      rush: rush ? "1" : "0",
+      signature: signature ? "1" : "0",
+    });
+
+    router.push(`/courier/checkout?${qs.toString()}`);
   };
 
+  /* ---------------- UI ---------------- */
+
   return (
-    <main style={{ padding: 80 }}>
-      <h1>Courier Delivery Quote</h1>
+    <main style={{ maxWidth: 900, margin: "0 auto", padding: 32 }}>
+      <h1 style={{ fontSize: 34 }}>Courier Delivery Quote</h1>
 
-      <input ref={pickupRef} placeholder="Pickup address" />
-      <input ref={dropoffRef} placeholder="Drop-off address" />
-      <input
-        type="number"
-        placeholder="Weight (lbs)"
-        value={weight}
-        onChange={(e) =>
-          setWeight(e.target.value === "" ? "" : Number(e.target.value))
-        }
-      />
+      {isAfterCutoff() && (
+        <div style={banner}>
+          Orders placed after <strong>4:00 PM</strong> will be scheduled for the
+          next business day.
+        </div>
+      )}
 
-      <label>
-        <input type="checkbox" checked={rush} onChange={() => setRush(!rush)} />{" "}
-        Rush
-      </label>
-      <label>
+      <div style={card}>
+        <input ref={pickupRef} placeholder="Pickup address" onChange={(e) => setPickup(e.target.value)} />
+        <input ref={dropoffRef} placeholder="Drop-off address" onChange={(e) => setDropoff(e.target.value)} />
         <input
-          type="checkbox"
-          checked={signature}
-          onChange={() => setSignature(!signature)}
-        />{" "}
-        Signature
-      </label>
+          type="number"
+          placeholder="Weight (lbs)"
+          value={weight}
+          onChange={(e) => setWeight(e.target.value === "" ? "" : Number(e.target.value))}
+        />
+
+        <label><input type="checkbox" checked={rush} onChange={() => setRush(!rush)} /> Rush</label>
+        <label><input type="checkbox" checked={signature} onChange={() => setSignature(!signature)} /> Signature</label>
+      </div>
 
       {distance.status === "loading" && <p>Calculating distance…</p>}
       {distance.status === "ok" && <p>{distance.text}</p>}
-      {error && <p style={{ color: "red" }}>{error}</p>}
+      {error && <p style={{ color: "#dc2626" }}>{error}</p>}
 
       {quote && (
-        <>
+        <div style={card}>
           <h2>${quote.breakdown.total.toFixed(2)}</h2>
-          {quote.flags.longDistance && (
-            <p>⚠ Long-distance delivery</p>
-          )}
-          {quote.flags.heavyItem && <p>⚠ Heavy item disclaimer applies</p>}
-          <button onClick={goCheckout}>Continue to checkout</button>
-        </>
+
+          <details>
+            <summary>View price breakdown</summary>
+            <ul>
+              <li>Base: ${quote.breakdown.base}</li>
+              <li>Extra miles: ${quote.breakdown.extraMiles}</li>
+              <li>Weight surcharge: ${quote.breakdown.weightSurcharge}</li>
+              {quote.breakdown.rush > 0 && <li>Rush: ${quote.breakdown.rush}</li>}
+              {quote.breakdown.signature > 0 && <li>Signature: ${quote.breakdown.signature}</li>}
+            </ul>
+          </details>
+
+          {quote.flags.longDistance && <p>⚠ Long-distance delivery</p>}
+          {quote.flags.heavyItem && <p>⚠ Heavy-item handling required</p>}
+
+          <p style={{ fontSize: 12, color: "#555" }}>
+            Drivers may refuse pickup if the item exceeds declared weight,
+            appears unsafe, or requires more than one person to lift.
+          </p>
+
+          <button onClick={goToCheckout}>Continue to checkout</button>
+        </div>
       )}
     </main>
   );
 }
+
+/* ---------------- Styles ---------------- */
+
+const card: React.CSSProperties = {
+  border: "1px solid #e5e7eb",
+  borderRadius: 14,
+  padding: 16,
+  marginTop: 20,
+};
+
+const banner: React.CSSProperties = {
+  background: "#fffbeb",
+  border: "1px solid #fde68a",
+  borderRadius: 12,
+  padding: 12,
+  marginBottom: 16,
+};
