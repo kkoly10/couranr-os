@@ -23,63 +23,50 @@ export async function POST(req: Request) {
     );
 
     const formData = await req.formData();
-    const file = formData.get("file") as File | null;
-    const deliveryId = formData.get("deliveryId") as string | null;
+    const deliveryId = formData.get("deliveryId") as string;
+    const file = formData.get("file") as File;
 
-    if (!file || !deliveryId) {
+    if (!deliveryId || !file) {
       return NextResponse.json(
-        { error: "Missing file or deliveryId" },
+        { error: "Missing deliveryId or file" },
         { status: 400 }
       );
     }
 
-    // 🔐 Verify delivery belongs to this customer
-    const { data: delivery, error: deliveryErr } = await supabase
-      .from("deliveries")
-      .select("id, orders(customer_id)")
-      .eq("id", deliveryId)
-      .single();
-
-    const customerId = delivery?.orders?.[0]?.customer_id;
-
-    if (deliveryErr || !customerId) {
-      return NextResponse.json(
-        { error: "Delivery not found" },
-        { status: 404 }
-      );
-    }
-
-    // 📦 Upload to storage
+    // Upload to storage
     const filePath = `pickup/${deliveryId}/${Date.now()}-${file.name}`;
 
-    const { error: uploadErr } = await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from("delivery-photos")
-      .upload(filePath, file, { upsert: false });
+      .upload(filePath, file, {
+        upsert: false,
+        contentType: file.type,
+      });
 
-    if (uploadErr) {
+    if (uploadError) {
       return NextResponse.json(
-        { error: uploadErr.message },
+        { error: uploadError.message },
         { status: 500 }
       );
     }
 
-    const { data: urlData } = supabase.storage
+    const { data: publicUrl } = supabase.storage
       .from("delivery-photos")
       .getPublicUrl(filePath);
 
-    // 📝 Save DB record
-    const { error: insertErr } = await supabase
+    // Insert DB record
+    const { error: insertError } = await supabase
       .from("delivery_photos")
       .insert({
         delivery_id: deliveryId,
         photo_type: "pickup",
+        photo_url: publicUrl.publicUrl,
         uploaded_by: "customer",
-        photo_url: urlData.publicUrl,
       });
 
-    if (insertErr) {
+    if (insertError) {
       return NextResponse.json(
-        { error: insertErr.message },
+        { error: insertError.message },
         { status: 500 }
       );
     }
