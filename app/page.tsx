@@ -1,105 +1,135 @@
-import Link from "next/link";
+"use client";
 
-export default function HomePage() {
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
+
+type DeliveryRow = {
+  id: string;
+  status: string;
+  createdAt: string;
+  pickupAddress: string;
+  dropoffAddress: string;
+  order: {
+    orderNumber: string;
+    totalCents: number;
+  };
+};
+
+export default function CustomerDashboard() {
+  const router = useRouter();
+  const [loading, setLoading] = useState(true);
+  const [deliveries, setDeliveries] = useState<DeliveryRow[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [uploading, setUploading] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function load() {
+      setLoading(true);
+
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session) {
+        router.push("/login");
+        return;
+      }
+
+      try {
+        const res = await fetch("/api/customer/deliveries", {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        });
+
+        const data = await res.json();
+        setDeliveries(data.deliveries || []);
+      } catch (err: any) {
+        setError(err.message || "Failed to load deliveries");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    load();
+  }, [router]);
+
+  async function uploadPickupPhoto(deliveryId: string, file: File) {
+    setUploading(deliveryId);
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session) return;
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("deliveryId", deliveryId);
+
+    const res = await fetch("/api/customer/upload-pickup-photo", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+      },
+      body: formData,
+    });
+
+    if (!res.ok) {
+      alert("Upload failed");
+    } else {
+      alert("Pickup photo uploaded");
+    }
+
+    setUploading(null);
+  }
+
   return (
-    <section>
-      <div style={{ maxWidth: 900, marginTop: 60 }}>
-        <h1
-          style={{
-            fontSize: 48,
-            lineHeight: 1.1,
-            letterSpacing: "-0.03em",
-          }}
-        >
-          Local services,
-          <br />
-          delivered with clarity.
-        </h1>
+    <div style={{ maxWidth: 1100, margin: "0 auto", padding: 24 }}>
+      <h1>My deliveries</h1>
 
-        <p style={{ marginTop: 20, fontSize: 18, color: "#444", maxWidth: 640 }}>
-          Couranr lets you order deliveries, documents, and rentals online —
-          with verification, tracking, and clear pricing.
-        </p>
+      {loading && <p>Loading deliveries…</p>}
+      {error && <p style={{ color: "red" }}>{error}</p>}
 
-        <div style={{ display: "flex", gap: 16, marginTop: 32 }}>
-          <PrimaryButton href="/courier">Get delivery quote</PrimaryButton>
-          <SecondaryButton href="/docs">Document services</SecondaryButton>
-        </div>
-      </div>
+      {!loading &&
+        deliveries.map((d) => (
+          <div
+            key={d.id}
+            style={{
+              border: "1px solid #e5e7eb",
+              borderRadius: 14,
+              padding: 16,
+              marginBottom: 14,
+            }}
+          >
+            <strong>Order #{d.order.orderNumber}</strong>
+            <p>Pickup: {d.pickupAddress}</p>
+            <p>Drop-off: {d.dropoffAddress}</p>
+            <p>
+              Total: ${(d.order.totalCents / 100).toFixed(2)}
+            </p>
+            <p>Status: {d.status}</p>
 
-      <div
-        style={{
-          marginTop: 80,
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-          gap: 24,
-        }}
-      >
-        <Feature
-          title="Courier Delivery"
-          desc="Documents, packages, and everyday items delivered with photo verification."
-        />
-        <Feature
-          title="Document Services"
-          desc="Upload, print, prepare, and receive documents without visiting a store."
-        />
-        <Feature
-          title="Auto Rentals"
-          desc="Affordable local car rentals managed online."
-        />
-      </div>
-    </section>
-  );
-}
-
-function Feature({ title, desc }: { title: string; desc: string }) {
-  return (
-    <div
-      style={{
-        border: "1px solid #e5e7eb",
-        borderRadius: 16,
-        padding: 20,
-        background: "#fff",
-      }}
-    >
-      <h3 style={{ margin: 0 }}>{title}</h3>
-      <p style={{ marginTop: 10, color: "#555", lineHeight: 1.4 }}>{desc}</p>
+            {(d.status === "pending" || d.status === "scheduled") && (
+              <div style={{ marginTop: 10 }}>
+                <label>
+                  Upload pickup photo:
+                  <input
+                    type="file"
+                    accept="image/*"
+                    disabled={uploading === d.id}
+                    onChange={(e) => {
+                      if (e.target.files?.[0]) {
+                        uploadPickupPhoto(d.id, e.target.files[0]);
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+            )}
+          </div>
+        ))}
     </div>
-  );
-}
-
-function PrimaryButton({ href, children }: any) {
-  return (
-    <Link
-      href={href}
-      style={{
-        padding: "14px 20px",
-        background: "#2563eb",
-        color: "#fff",
-        borderRadius: 10,
-        fontWeight: 600,
-        textDecoration: "none",
-      }}
-    >
-      {children}
-    </Link>
-  );
-}
-
-function SecondaryButton({ href, children }: any) {
-  return (
-    <Link
-      href={href}
-      style={{
-        padding: "14px 20px",
-        border: "1px solid #d1d5db",
-        borderRadius: 10,
-        fontWeight: 600,
-        textDecoration: "none",
-        color: "#111",
-      }}
-    >
-      {children}
-    </Link>
   );
 }
