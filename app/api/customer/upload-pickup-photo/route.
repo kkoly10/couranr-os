@@ -1,0 +1,94 @@
+import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+
+export async function POST(req: Request) {
+  try {
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const token = authHeader.replace("Bearer ", "");
+
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        },
+      }
+    );
+
+    const formData = await req.formData();
+    const file = formData.get("file") as File | null;
+    const deliveryId = formData.get("deliveryId") as string | null;
+
+    if (!file || !deliveryId) {
+      return NextResponse.json(
+        { error: "Missing file or deliveryId" },
+        { status: 400 }
+      );
+    }
+
+    // 🔐 Ensure delivery belongs to this customer
+    const { data: delivery, error: deliveryErr } = await supabase
+      .from("deliveries")
+      .select("id, orders(customer_id)")
+      .eq("id", deliveryId)
+      .single();
+
+    if (deliveryErr || !delivery?.orders?.customer_id) {
+      return NextResponse.json(
+        { error: "Delivery not found" },
+        { status: 404 }
+      );
+    }
+
+    // 📦 Upload to storage
+    const filePath = `pickup/${deliveryId}/${Date.now()}-${file.name}`;
+
+    const { error: uploadErr } = await supabase.storage
+      .from("delivery-photos")
+      .upload(filePath, file, {
+        upsert: false,
+      });
+
+    if (uploadErr) {
+      return NextResponse.json(
+        { error: uploadErr.message },
+        { status: 500 }
+      );
+    }
+
+    const { data: urlData } = supabase.storage
+      .from("delivery-photos")
+      .getPublicUrl(filePath);
+
+    // 📝 Save record
+    const { error: insertErr } = await supabase
+      .from("delivery_photos")
+      .insert({
+        delivery_id: deliveryId,
+        photo_type: "pickup",
+        uploaded_by: "customer",
+        photo_url: urlData.publicUrl,
+      });
+
+    if (insertErr) {
+      return NextResponse.json(
+        { error: insertErr.message },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ success: true });
+  } catch (err: any) {
+    return NextResponse.json(
+      { error: err?.message || "Upload failed" },
+      { status: 500 }
+    );
+  }
+}
