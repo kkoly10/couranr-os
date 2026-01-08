@@ -1,10 +1,11 @@
-import { Suspense } from "react";
-import ConfirmationClient from "./ConfirmationClient";
+// app/courier/confirmation/page.tsx
+import dynamic from "next/dynamic";
+
+const ConfirmationClient = dynamic(
+  () => import("./ConfirmationClient"),
+  { ssr: false }
+);
 
 export default function ConfirmationPage() {
-  return (
-    <Suspense fallback={<p style={{ padding: 24 }}>Loading confirmation…</p>}>
-      <ConfirmationClient />
-    </Suspense>
-  );
+  return <ConfirmationClient />;
 }
