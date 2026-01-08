@@ -46,13 +46,13 @@ export async function POST(req: Request) {
       );
     }
 
-    // 5️⃣ Verify delivery belongs to this customer
+    // 5️⃣ Fetch delivery + owning order
     const { data: delivery, error: deliveryErr } = await supabase
       .from("deliveries")
       .select(
         `
         id,
-        orders!inner (
+        orders (
           customer_id
         )
       `
@@ -60,7 +60,13 @@ export async function POST(req: Request) {
       .eq("id", deliveryId)
       .single();
 
-    if (deliveryErr || delivery.orders.customer_id !== user.id) {
+    if (
+      deliveryErr ||
+      !delivery ||
+      !delivery.orders ||
+      delivery.orders.length === 0 ||
+      delivery.orders[0].customer_id !== user.id
+    ) {
       return NextResponse.json(
         { error: "Forbidden" },
         { status: 403 }
@@ -86,7 +92,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // 7️⃣ Get public URL
+    // 7️⃣ Public URL
     const { data: urlData } = supabase.storage
       .from("delivery-photos")
       .getPublicUrl(path);
