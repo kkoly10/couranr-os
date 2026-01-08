@@ -1,141 +1,148 @@
-// app/api/delivery/start-checkout/route.ts
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
-
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { computeDeliveryPrice } from "@/lib/delivery/pricing";
 import { createDeliveryOrderFlow } from "@/lib/delivery/createDeliveryOrderFlow";
 
 export const dynamic = "force-dynamic";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
-  // Keep whatever your stripe package expects (you previously needed 2024-04-10)
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
   apiVersion: "2024-04-10",
 });
 
-function getBaseUrl(req: Request) {
-  // Prefer origin (works on Vercel)
-  const origin = req.headers.get("origin");
-  if (origin && origin.startsWith("http")) return origin;
+type StartCheckoutBody = {
+  pickupAddress: { address_line: string };
+  dropoffAddress: { address_line: string };
+  estimatedMiles: number;
+  weightLbs: number;
+  rush: boolean;
+  signatureRequired: boolean;
+  stops: number;
+  scheduledAt: string | null;
+  totalCents: number;
 
-  // Fallback: x-forwarded-proto + host
-  const proto = req.headers.get("x-forwarded-proto") || "https";
-  const host = req.headers.get("x-forwarded-host") || req.headers.get("host");
-  if (host) return `${proto}://${host}`;
-
-  // Last resort: env (must include https)
-  const envUrl = process.env.NEXT_PUBLIC_BASE_URL;
-  if (envUrl && envUrl.startsWith("http")) return envUrl;
-
-  // If we get here, we cannot safely construct URLs
-  throw new Error("Base URL could not be determined.");
-}
+  // NEW
+  recipientName: string;
+  recipientPhone: string;
+  deliveryNotes: string | null;
+};
 
 export async function POST(req: Request) {
   try {
     // 1) Auth
-    const authHeader = req.headers.get("authorization") || "";
-    const token = authHeader.startsWith("Bearer ")
-      ? authHeader.slice("Bearer ".length)
-      : "";
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const token = authHeader.replace("Bearer ", "").trim();
 
-    if (!token) {
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabaseAdmin.auth.getUser(token);
+
+    if (userErr || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { data: userRes, error: userErr } = await supabaseAdmin.auth.getUser(token);
-    if (userErr || !userRes?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // 2) Parse body
+    const body = (await req.json()) as StartCheckoutBody;
+
+    const pickupLine = body?.pickupAddress?.address_line?.trim();
+    const dropoffLine = body?.dropoffAddress?.address_line?.trim();
+
+    if (!pickupLine || !dropoffLine) {
+      return NextResponse.json({ error: "Missing addresses" }, { status: 400 });
     }
 
-    const user = userRes.user;
+    const recipientName = (body?.recipientName || "").trim();
+    const recipientPhone = (body?.recipientPhone || "").trim();
 
-    // 2) Parse input
-    const body = await req.json();
-
-    const pickupAddressLine = body?.pickupAddress?.address_line || "";
-    const dropoffAddressLine = body?.dropoffAddress?.address_line || "";
-
-    const estimatedMiles = Number(body?.estimatedMiles ?? 0);
-    const weightLbs = Number(body?.weightLbs ?? 0);
-    const stops = Number(body?.stops ?? 0);
-
-    const rush = !!body?.rush;
-    const signatureRequired = !!body?.signatureRequired;
-    const scheduledAt = body?.scheduledAt ?? null;
-
-    if (!pickupAddressLine || !dropoffAddressLine) {
-      return NextResponse.json({ error: "Pickup and drop-off are required." }, { status: 400 });
+    if (!recipientName) {
+      return NextResponse.json({ error: "Recipient name is required" }, { status: 400 });
+    }
+    if (!recipientPhone || recipientPhone.length < 10) {
+      return NextResponse.json({ error: "Recipient phone is required" }, { status: 400 });
     }
 
-    // 3) Server pricing (source of truth)
-    const pricing = computeDeliveryPrice({
-      miles: estimatedMiles,
-      weightLbs,
-      stops,
-      rush,
-      signature: signatureRequired,
-    });
+    const totalCents = Number(body?.totalCents);
+    if (!Number.isFinite(totalCents) || totalCents < 50) {
+      return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
+    }
 
-    const amountCents = pricing.amountCents;
-
-    // 4) Create DB records (order + delivery)
-    // IMPORTANT: createDeliveryOrderFlow must match your current DB columns.
-    const { orderId, orderNumber } = await createDeliveryOrderFlow({
+    // 3) Create order + delivery (DB)
+    // createDeliveryOrderFlow should create:
+    // - orders row linked to customerId
+    // - deliveries row linked to order_id and addresses
+    const created = await createDeliveryOrderFlow({
       customerId: user.id,
-      pickupAddress: { address_line: pickupAddressLine },
-      dropoffAddress: { address_line: dropoffAddressLine },
-      estimatedMiles,
-      weightLbs,
-      rush,
-      signatureRequired,
-      stops,
-      scheduledAt,
-      totalCents: amountCents,
+      pickupAddress: { address_line: pickupLine },
+      dropoffAddress: { address_line: dropoffLine },
+      estimatedMiles: Number(body?.estimatedMiles) || 0,
+      weightLbs: Number(body?.weightLbs) || 0,
+      rush: !!body?.rush,
+      signatureRequired: !!body?.signatureRequired,
+      stops: Math.max(0, Math.floor(Number(body?.stops) || 0)),
+      scheduledAt: body?.scheduledAt ?? null,
+      totalCents,
+
+      // NEW (your createDeliveryOrderFlow must write these into deliveries)
+      recipientName,
+      recipientPhone,
+      deliveryNotes: body?.deliveryNotes ?? null,
     } as any);
 
-    // 5) Stripe checkout session
-    const baseUrl = getBaseUrl(req);
+    const { orderId, orderNumber, deliveryId } = created;
+
+    // 4) Create Stripe Checkout Session
+    const origin =
+      req.headers.get("origin") ||
+      process.env.NEXT_PUBLIC_SITE_URL ||
+      "https://example.com";
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
+      payment_method_types: ["card"],
       line_items: [
         {
+          quantity: 1,
           price_data: {
             currency: "usd",
+            unit_amount: totalCents,
             product_data: {
               name: "Couranr Delivery",
-              description: orderNumber ? `Order #${orderNumber}` : undefined,
+              description: `Order #${orderNumber}`,
             },
-            unit_amount: amountCents,
           },
-          quantity: 1,
         },
       ],
-      // Link Stripe session to your order
-      client_reference_id: orderId,
       metadata: {
         orderId,
-        orderNumber: orderNumber || "",
-        service: "delivery",
+        deliveryId,
+        orderNumber,
+        customerId: user.id,
       },
-
-      success_url: `${baseUrl}/courier/confirmation?orderId=${encodeURIComponent(
+      success_url: `${origin}/courier/confirmation?orderId=${encodeURIComponent(
         orderId
-      )}&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${baseUrl}/courier/checkout?canceled=1`,
+      )}&deliveryId=${encodeURIComponent(deliveryId)}&orderNumber=${encodeURIComponent(
+        orderNumber
+      )}`,
+      cancel_url: `${origin}/courier/checkout?canceled=1`,
     });
+
+    if (!session.url) {
+      return NextResponse.json({ error: "Failed to create checkout session" }, { status: 500 });
+    }
 
     return NextResponse.json({
       url: session.url,
       orderId,
       orderNumber,
-      amountCents,
+      deliveryId,
     });
   } catch (err: any) {
     console.error("start-checkout error:", err);
     return NextResponse.json(
-      { error: err?.message || "Failed to start checkout" },
+      { error: err?.message || "Server error" },
       { status: 500 }
     );
   }
