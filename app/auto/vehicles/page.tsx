@@ -14,6 +14,7 @@ type Vehicle = {
   weekly_rate_cents: number;
   deposit_cents: number;
   status: string;
+  image_urls?: string[]; // ✅ ADD THIS
 };
 
 export default function AvailableVehiclesPage() {
@@ -52,46 +53,92 @@ export default function AvailableVehiclesPage() {
         <p>No vehicles available at the moment.</p>
       )}
 
-      <div style={{ display: "grid", gap: 20, gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
-        {vehicles.map((v) => (
-          <div
-            key={v.id}
-            style={{
-              border: "1px solid #e5e7eb",
-              borderRadius: 14,
-              padding: 16,
-              background: "#fff",
-            }}
-          >
-            <h3 style={{ marginTop: 0 }}>
-              {v.year} {v.make} {v.model}
-            </h3>
+      <div
+        style={{
+          display: "grid",
+          gap: 20,
+          gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))",
+        }}
+      >
+        {vehicles.map((v) => {
+          const image =
+            v.image_urls && v.image_urls.length > 0
+              ? v.image_urls[0]
+              : "/placeholder-car.jpg"; // optional fallback
 
-            {v.trim && <p>{v.trim}</p>}
-            {v.color && <p>Color: {v.color}</p>}
-
-            <p><strong>Daily:</strong> ${(v.daily_rate_cents / 100).toFixed(2)}</p>
-            <p><strong>Weekly:</strong> ${(v.weekly_rate_cents / 100).toFixed(2)}</p>
-            <p><strong>Deposit:</strong> ${(v.deposit_cents / 100).toFixed(2)}</p>
-
-            <button
+          return (
+            <div
+              key={v.id}
               style={{
-                marginTop: 12,
-                width: "100%",
-                padding: "10px",
-                borderRadius: 10,
-                border: "none",
-                background: "#111827",
-                color: "#fff",
-                fontWeight: 700,
-                cursor: "pointer",
+                border: "1px solid #e5e7eb",
+                borderRadius: 16,
+                background: "#fff",
+                overflow: "hidden",
               }}
-              onClick={() => router.push(`/auto/rent/${v.id}`)}
             >
-              Rent this car
-            </button>
-          </div>
-        ))}
+              {/* Vehicle Image */}
+              <div style={{ height: 180, background: "#f3f4f6" }}>
+                <img
+                  src={image}
+                  alt={`${v.year} ${v.make} ${v.model}`}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                  }}
+                />
+              </div>
+
+              {/* Vehicle Info */}
+              <div style={{ padding: 16 }}>
+                <h3 style={{ margin: "0 0 6px 0" }}>
+                  {v.year} {v.make} {v.model}
+                </h3>
+
+                {v.trim && (
+                  <p style={{ margin: 0, color: "#555" }}>{v.trim}</p>
+                )}
+                {v.color && (
+                  <p style={{ margin: 0, color: "#555" }}>
+                    Color: {v.color}
+                  </p>
+                )}
+
+                <div style={{ marginTop: 12 }}>
+                  <p>
+                    <strong>Daily:</strong>{" "}
+                    ${(v.daily_rate_cents / 100).toFixed(2)}
+                  </p>
+                  <p>
+                    <strong>Weekly:</strong>{" "}
+                    ${(v.weekly_rate_cents / 100).toFixed(2)}
+                  </p>
+                  <p>
+                    <strong>Deposit:</strong>{" "}
+                    ${(v.deposit_cents / 100).toFixed(2)}
+                  </p>
+                </div>
+
+                <button
+                  style={{
+                    marginTop: 14,
+                    width: "100%",
+                    padding: "12px",
+                    borderRadius: 10,
+                    border: "none",
+                    background: "#111827",
+                    color: "#fff",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                  onClick={() => router.push(`/auto/rent/${v.id}`)}
+                >
+                  Rent this car
+                </button>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
