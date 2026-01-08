@@ -19,17 +19,19 @@ export async function GET() {
       daily_rate_cents,
       weekly_rate_cents,
       deposit_cents,
-      status
+      status,
+      image_urls
     `)
     .eq("status", "available")
-    .order("created_at", { ascending: false });
+    .order("year", { ascending: false });
 
   if (error) {
+    console.error("Vehicles fetch error:", error);
     return NextResponse.json(
-      { error: error.message },
+      { error: "Failed to load vehicles" },
       { status: 500 }
     );
   }
 
-  return NextResponse.json({ vehicles: data });
+  return NextResponse.json({ vehicles: data || [] });
 }
