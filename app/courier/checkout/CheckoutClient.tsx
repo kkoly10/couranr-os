@@ -1,4 +1,3 @@
-// app/courier/checkout/CheckoutClient.tsx
 "use client";
 
 import { useMemo, useState } from "react";
@@ -17,40 +16,68 @@ export default function CheckoutClient() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  // Read quote params (display only — server is source of truth)
+  // Read quote params
+  const price = sp.get("price") ?? "0";
   const miles = sp.get("miles") ?? "0";
   const pickup = sp.get("pickup") ?? "";
   const dropoff = sp.get("dropoff") ?? "";
   const weight = sp.get("weight") ?? "0";
   const rush = sp.get("rush") === "1" || sp.get("rush") === "true";
   const signature = sp.get("signature") === "1" || sp.get("signature") === "true";
+  const stops = sp.get("stops") ?? sp.get("extraStops") ?? "0";
+  const scheduledAt = sp.get("scheduledAt");
 
-  // Support both naming styles: stops vs extraStops (you had both in different places)
-  const stopsRaw = sp.get("stops") ?? sp.get("extraStops") ?? "0";
-  const scheduledAt = sp.get("scheduledAt") ?? null;
+  // Recipient fields (NEW)
+  const [recipientName, setRecipientName] = useState("");
+  const [recipientPhone, setRecipientPhone] = useState("");
+  const [deliveryNotes, setDeliveryNotes] = useState("");
 
-  // Price shown on page (purely UI)
-  const displayedPrice = useMemo(() => {
-    const p = sp.get("price");
-    return p ? num(p, 0) : 0;
-  }, [sp]);
+  const amountCents = useMemo(() => Math.round(num(price) * 100), [price]);
+
+  function cleanPhone(p: string) {
+    return p.replace(/[^\d+]/g, "").trim();
+  }
 
   async function continueToPayment() {
     setErr(null);
+
+    // Basic validation before doing anything
+    const rn = recipientName.trim();
+    const rp = cleanPhone(recipientPhone);
+
+    if (!pickup || !dropoff) {
+      setErr("Missing pickup or drop-off address. Please re-generate your quote.");
+      return;
+    }
+    if (!rn) {
+      setErr("Recipient name is required.");
+      return;
+    }
+    if (!rp || rp.length < 10) {
+      setErr("Recipient phone is required (enter a valid number).");
+      return;
+    }
+    if (!amountCents || amountCents < 50) {
+      setErr("Invalid amount. Please re-generate your quote.");
+      return;
+    }
+
     setLoading(true);
 
-    // ✅ Auth gate
+    // ✅ Auth gate (quote is public, order is not)
     const { data: sessionRes } = await supabase.auth.getSession();
     const token = sessionRes.session?.access_token;
 
     if (!token) {
       setLoading(false);
-      const next = window.location.pathname + window.location.search;
-      router.push(`/login?next=${encodeURIComponent(next)}`);
+      router.push(
+        `/login?next=${encodeURIComponent(
+          window.location.pathname + window.location.search
+        )}`
+      );
       return;
     }
 
-    // ✅ Start checkout (server computes amount, creates order, creates Stripe session)
     const res = await fetch("/api/delivery/start-checkout", {
       method: "POST",
       headers: {
@@ -64,27 +91,38 @@ export default function CheckoutClient() {
         weightLbs: num(weight),
         rush,
         signatureRequired: signature,
-        stops: Math.max(0, Math.floor(num(stopsRaw))),
-        scheduledAt,
+        stops: Math.max(0, Math.floor(num(stops))),
+        totalCents: amountCents, // server will still validate/compute as needed
+        scheduledAt: scheduledAt ?? null,
+
+        // ✅ NEW: recipient info
+        recipientName: rn,
+        recipientPhone: rp,
+        deliveryNotes: deliveryNotes.trim() || null,
       }),
     });
 
-    const data = await res.json();
+    let data: any = null;
+    try {
+      data = await res.json();
+    } catch {
+      // ignore JSON parse errors
+    }
 
     if (!res.ok) {
-      setErr(data?.error || "Failed to start checkout");
+      setErr(data?.error || "Failed to continue to payment");
       setLoading(false);
       return;
     }
 
-    if (!data?.url) {
-      setErr("Failed to create checkout session");
-      setLoading(false);
+    // We expect server to return Stripe Checkout URL
+    if (data?.url) {
+      window.location.href = data.url;
       return;
     }
 
-    // ✅ Redirect to Stripe checkout
-    window.location.href = data.url;
+    setErr("Failed to create checkout session.");
+    setLoading(false);
   }
 
   return (
@@ -96,21 +134,84 @@ export default function CheckoutClient() {
         <div><strong>Drop-off:</strong> {dropoff || "—"}</div>
         <div><strong>Miles:</strong> {num(miles).toFixed(2)}</div>
         <div><strong>Weight:</strong> {num(weight)} lbs</div>
-        <div><strong>Stops:</strong> {Math.max(0, Math.floor(num(stopsRaw)))}</div>
+        <div><strong>Stops:</strong> {Math.max(0, Math.floor(num(stops)))}</div>
         <div><strong>Rush:</strong> {rush ? "Yes" : "No"}</div>
         <div><strong>Signature:</strong> {signature ? "Required" : "No"}</div>
 
         <div style={{ marginTop: 12, fontSize: 18 }}>
-          <strong>Total:</strong>{" "}
-          {displayedPrice > 0 ? `$${displayedPrice.toFixed(2)}` : "—"}
-          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
-            Final amount is calculated on the server at checkout.
+          <strong>Total:</strong> ${num(price).toFixed(2)}
+        </div>
+      </div>
+
+      {/* Recipient info (NEW) */}
+      <div style={{ marginTop: 16, border: "1px solid #e5e7eb", borderRadius: 12, padding: 16 }}>
+        <h2 style={{ margin: 0, fontSize: 18 }}>Recipient information</h2>
+
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.06em" }}>
+            RECIPIENT NAME (REQUIRED)
           </div>
+          <input
+            value={recipientName}
+            onChange={(e) => setRecipientName(e.target.value)}
+            placeholder="Full name"
+            style={{
+              width: "100%",
+              marginTop: 8,
+              padding: "10px 12px",
+              borderRadius: 10,
+              border: "1px solid #d1d5db",
+              outline: "none",
+            }}
+          />
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.06em" }}>
+            RECIPIENT PHONE (REQUIRED)
+          </div>
+          <input
+            value={recipientPhone}
+            onChange={(e) => setRecipientPhone(e.target.value)}
+            placeholder="(555) 555-5555"
+            style={{
+              width: "100%",
+              marginTop: 8,
+              padding: "10px 12px",
+              borderRadius: 10,
+              border: "1px solid #d1d5db",
+              outline: "none",
+            }}
+          />
+          <div style={{ marginTop: 6, fontSize: 12, color: "#6b7280" }}>
+            We use this only for delivery coordination (arrival, handoff, issues).
+          </div>
+        </div>
+
+        <div style={{ marginTop: 12 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.06em" }}>
+            DELIVERY NOTES (OPTIONAL)
+          </div>
+          <textarea
+            value={deliveryNotes}
+            onChange={(e) => setDeliveryNotes(e.target.value)}
+            placeholder="Gate code, lobby instructions, call on arrival, etc."
+            rows={3}
+            style={{
+              width: "100%",
+              marginTop: 8,
+              padding: "10px 12px",
+              borderRadius: 10,
+              border: "1px solid #d1d5db",
+              outline: "none",
+              resize: "vertical",
+            }}
+          />
         </div>
       </div>
 
       {err && (
-        <div style={{ marginTop: 12, color: "#b91c1c", fontWeight: 600 }}>
+        <div style={{ marginTop: 12, color: "#b91c1c", fontWeight: 700 }}>
           {err}
         </div>
       )}
@@ -125,12 +226,16 @@ export default function CheckoutClient() {
           border: "none",
           background: "#111827",
           color: "#fff",
-          fontWeight: 700,
+          fontWeight: 800,
           cursor: loading ? "not-allowed" : "pointer",
         }}
       >
         {loading ? "Working…" : "Continue to payment"}
       </button>
+
+      <div style={{ marginTop: 10, fontSize: 12, color: "#6b7280" }}>
+        After payment, you’ll upload a pickup photo on the confirmation page.
+      </div>
     </div>
   );
 }
