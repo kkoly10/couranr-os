@@ -2,132 +2,81 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2024-06-20",
-});
+// ✅ Stripe init — FIXED (Option A: no apiVersion)
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+
+// Supabase (server-side)
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 export async function POST(req: Request) {
   try {
-    const auth = req.headers.get("authorization");
-    if (!auth) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const token = auth.replace("Bearer ", "");
-
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        global: {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      }
-    );
-
-    // 1️⃣ Get user
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabase.auth.getUser();
-
-    if (userErr || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // 2️⃣ Parse body
     const body = await req.json();
-    const { rentalId } = body;
 
-    if (!rentalId) {
+    const {
+      rentalId,
+      amountCents,
+      customerEmail,
+      successUrl,
+      cancelUrl,
+    } = body;
+
+    if (!rentalId || !amountCents || !successUrl || !cancelUrl) {
       return NextResponse.json(
-        { error: "Missing rentalId" },
+        { error: "Missing required checkout fields" },
         { status: 400 }
       );
     }
 
-    // 3️⃣ Load rental
-    const { data: rental, error: rentalErr } = await supabase
-      .from("rentals")
-      .select(
-        `
-        id,
-        rate_cents,
-        deposit_cents,
-        vehicles (
-          year,
-          make,
-          model
-        )
-      `
-      )
-      .eq("id", rentalId)
-      .eq("user_id", user.id)
-      .single();
-
-    if (rentalErr || !rental) {
-      return NextResponse.json(
-        { error: "Rental not found" },
-        { status: 404 }
-      );
-    }
-
-    const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [
-      {
-        price_data: {
-          currency: "usd",
-          product_data: {
-            name: `${rental.vehicles.year} ${rental.vehicles.make} ${rental.vehicles.model}`,
-          },
-          unit_amount: rental.rate_cents,
-        },
-        quantity: 1,
-      },
-    ];
-
-    if (rental.deposit_cents > 0) {
-      lineItems.push({
-        price_data: {
-          currency: "usd",
-          product_data: {
-            name: "Refundable Security Deposit",
-          },
-          unit_amount: rental.deposit_cents,
-        },
-        quantity: 1,
-      });
-    }
-
-    // 4️⃣ Create Stripe session
+    // 1️⃣ Create Stripe Checkout Session
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
+      customer_email: customerEmail || undefined,
       payment_method_types: ["card"],
-      customer_email: user.email || undefined,
-      line_items: lineItems,
+      line_items: [
+        {
+          price_data: {
+            currency: "usd",
+            product_data: {
+              name: "Couranr Auto Rental",
+            },
+            unit_amount: amountCents,
+          },
+          quantity: 1,
+        },
+      ],
+      success_url: `${successUrl}?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: cancelUrl,
       metadata: {
-        rentalId: rental.id,
-        userId: user.id,
-        type: "auto_rental",
+        rental_id: rentalId,
       },
-      success_url: `${process.env.NEXT_PUBLIC_SITE_URL}/auto/confirmation?rentalId=${rental.id}`,
-      cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL}/auto/vehicles`,
     });
 
-    // 5️⃣ Save Stripe session ID
-    await supabase
+    // 2️⃣ Store Stripe session on rental record
+    const { error: updateErr } = await supabase
       .from("rentals")
       .update({
         stripe_checkout_session_id: session.id,
+        status: "awaiting_payment",
       })
-      .eq("id", rental.id);
+      .eq("id", rentalId);
 
-    return NextResponse.json({ url: session.url });
+    if (updateErr) {
+      return NextResponse.json(
+        { error: updateErr.message },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      checkoutUrl: session.url,
+    });
   } catch (err: any) {
-    console.error("Auto checkout error:", err);
+    console.error("Stripe checkout error:", err);
     return NextResponse.json(
-      { error: "Failed to create checkout session" },
+      { error: err?.message || "Failed to create checkout session" },
       { status: 500 }
     );
   }
