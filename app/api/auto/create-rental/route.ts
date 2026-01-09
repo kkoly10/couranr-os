@@ -1,144 +1,102 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-/* ------------------------ helpers ------------------------ */
-
-const OPEN_HOUR = 9;
-const CLOSE_HOUR = 18;
-
-function isValidPickupTime(d: Date) {
-  const hour = d.getHours();
-  return hour >= OPEN_HOUR && hour < CLOSE_HOUR;
-}
-
-/* ------------------------- route ------------------------- */
-
 export async function POST(req: Request) {
   try {
-    const auth = req.headers.get("authorization");
-    if (!auth) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const token = auth.replace("Bearer ", "");
-
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        global: {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      }
-    );
-
-    // 1️⃣ Get user
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabase.auth.getUser();
-
-    if (userErr || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // 2️⃣ Parse body
     const body = await req.json();
+
     const {
       vehicleId,
-      fullName,
-      phone,
-      license,
-      days,
-      pickupAt,
-      signature,
+      pricingMode,
+      rateCents,
+      depositCents,
+      startDate,
+      endDate,
+      pickupTime,
     } = body;
 
-    if (
-      !vehicleId ||
-      !fullName ||
-      !phone ||
-      !license ||
-      !days ||
-      !pickupAt ||
-      !signature
-    ) {
+    if (!vehicleId || !pricingMode || !rateCents || !startDate || !endDate) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
       );
     }
 
-    const pickupDate = new Date(pickupAt);
-    if (!isValidPickupTime(pickupDate)) {
-      return NextResponse.json(
-        { error: "Pickup time outside business hours" },
-        { status: 400 }
-      );
+    // 🔐 Auth
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // 3️⃣ Load vehicle
-    const { data: vehicle, error: vehicleErr } = await supabase
-      .from("vehicles")
-      .select("*")
-      .eq("id", vehicleId)
-      .single();
+    const token = authHeader.replace("Bearer ", "");
 
-    if (vehicleErr || !vehicle) {
-      return NextResponse.json(
-        { error: "Vehicle not found" },
-        { status: 404 }
-      );
-    }
-
-    // 4️⃣ Upsert renter
-    const { data: renter } = await supabase
-      .from("renters")
-      .upsert(
-        {
-          user_id: user.id,
-          full_name: fullName,
-          phone,
-          license_number: license,
-          license_state: "VA",
-          license_expires: new Date(Date.now() + 365 * 24 * 60 * 60 * 1000),
+    const supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: { Authorization: `Bearer ${token}` },
         },
-        { onConflict: "user_id" }
-      )
-      .select()
+      }
+    );
+
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser();
+
+    if (userErr || !user) {
+      return NextResponse.json({ error: "Invalid session" }, { status: 401 });
+    }
+
+    // 👤 Ensure renter exists
+    let { data: renter } = await supabase
+      .from("renters")
+      .select("id")
+      .eq("user_id", user.id)
       .single();
 
-    // 5️⃣ Compute pricing
-    const isWeekly = days >= 7;
+    if (!renter) {
+      const { data: newRenter, error: renterErr } = await supabase
+        .from("renters")
+        .insert({
+          user_id: user.id,
+          full_name: user.email,
+          phone: "pending",
+          email: user.email,
+          license_number: "pending",
+          license_state: "VA",
+          license_expires: "2099-01-01",
+        })
+        .select("id")
+        .single();
 
-    const rateCents = isWeekly
-      ? vehicle.weekly_rate_cents
-      : vehicle.daily_rate_cents * days;
+      if (renterErr) {
+        return NextResponse.json(
+          { error: renterErr.message },
+          { status: 500 }
+        );
+      }
 
-    const depositCents = vehicle.deposit_cents || 0;
+      renter = newRenter;
+    }
 
-    // 6️⃣ Create rental
+    // 🚗 Create rental (DRAFT)
     const { data: rental, error: rentalErr } = await supabase
       .from("rentals")
       .insert({
         renter_id: renter.id,
         user_id: user.id,
-        vehicle_id: vehicle.id,
-        pricing_mode: isWeekly ? "weekly" : "daily",
+        vehicle_id: vehicleId,
+        pricing_mode: pricingMode,
         rate_cents: rateCents,
-        deposit_cents: depositCents,
-        start_date: pickupDate.toISOString().slice(0, 10),
-        end_date: new Date(
-          pickupDate.getTime() + days * 24 * 60 * 60 * 1000
-        )
-          .toISOString()
-          .slice(0, 10),
-        status: "awaiting_payment",
-        pickup_location: "1090 Stafford Marketplace, Stafford, VA 22556",
+        deposit_cents: depositCents || 0,
+        start_date: startDate,
+        end_date: endDate,
+        pickup_location: "1090 Stafford Marketplace, VA 22556",
+        status: "draft",
       })
-      .select()
+      .select("id")
       .single();
 
     if (rentalErr) {
@@ -148,21 +106,13 @@ export async function POST(req: Request) {
       );
     }
 
-    // 7️⃣ Save agreement signature
-    await supabase.from("rental_agreements").insert({
-      rental_id: rental.id,
-      signed_name: signature,
-      ip_address: req.headers.get("x-forwarded-for") || null,
-      agreement_version: "v1",
-    });
-
     return NextResponse.json({
+      success: true,
       rentalId: rental.id,
     });
   } catch (err: any) {
-    console.error("Create rental error:", err);
     return NextResponse.json(
-      { error: "Server error" },
+      { error: err?.message || "Server error" },
       { status: 500 }
     );
   }
