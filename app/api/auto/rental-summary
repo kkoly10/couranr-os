@@ -1,0 +1,109 @@
+import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+
+export const dynamic = "force-dynamic";
+
+function requireEnv(name: string) {
+  const v = process.env[name];
+  if (!v) throw new Error(`Missing env: ${name}`);
+  return v;
+}
+
+export async function GET(req: Request) {
+  try {
+    const url = new URL(req.url);
+    const rentalId = url.searchParams.get("rentalId");
+    if (!rentalId) {
+      return NextResponse.json({ error: "Missing rentalId" }, { status: 400 });
+    }
+
+    const authHeader = req.headers.get("authorization") || "";
+    const token = authHeader.replace("Bearer ", "").trim();
+    if (!token) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const supabase = createClient(
+      requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
+      requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+      { global: { headers: { Authorization: `Bearer ${token}` } } }
+    );
+
+    const { data: rental, error } = await supabase
+      .from("rentals")
+      .select(
+        `
+        id,
+        purpose,
+        pricing_mode,
+        rate_cents,
+        deposit_cents,
+        status,
+        pickup_at,
+        return_at,
+        docs_complete,
+        condition_photos_complete,
+        agreement_signed,
+        vehicles (
+          id,
+          year,
+          make,
+          model,
+          trim,
+          daily_rate_cents,
+          weekly_rate_cents,
+          deposit_cents,
+          image_urls
+        )
+      `
+      )
+      .eq("id", rentalId)
+      .single();
+
+    if (error || !rental) {
+      return NextResponse.json({ error: "Rental not found" }, { status: 404 });
+    }
+
+    const vehicle: any = rental.vehicles;
+
+    const imageUrl =
+      Array.isArray(vehicle?.image_urls) && vehicle.image_urls.length > 0
+        ? vehicle.image_urls[0]
+        : null;
+
+    const pickupAtText = rental.pickup_at
+      ? new Date(rental.pickup_at).toLocaleString()
+      : "—";
+    const returnAtText = rental.return_at
+      ? new Date(rental.return_at).toLocaleString()
+      : "—";
+
+    return NextResponse.json({
+      rental: {
+        rentalId: rental.id,
+        purpose: rental.purpose,
+        pickupAtText,
+        returnAtText,
+        pricingMode: rental.pricing_mode,
+        rateCents: rental.rate_cents,
+        depositCents: rental.deposit_cents,
+        status: rental.status,
+        docsComplete: !!rental.docs_complete,
+        conditionPhotosComplete: !!rental.condition_photos_complete,
+        agreementSigned: !!rental.agreement_signed,
+        vehicle: {
+          year: vehicle?.year,
+          make: vehicle?.make,
+          model: vehicle?.model,
+          trim: vehicle?.trim,
+          dailyRateCents: vehicle?.daily_rate_cents ?? 0,
+          weeklyRateCents: vehicle?.weekly_rate_cents ?? 0,
+          depositCents: vehicle?.deposit_cents ?? 0,
+          imageUrl,
+        },
+      },
+    });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
+  }
+}
