@@ -1,24 +1,38 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-
-type Purpose = "personal" | "rideshare";
+import { supabase } from "@/lib/supabaseClient";
 
 export default function RentClient({ vehicleId }: { vehicleId: string }) {
   const router = useRouter();
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sessionReady, setSessionReady] = useState(false);
 
   const [form, setForm] = useState({
     fullName: "",
     phone: "",
     licenseNumber: "",
-    purpose: "personal" as Purpose,
     days: 1,
     pickupAt: "",
+    purpose: "personal", // personal | rideshare
+    signature: "",
   });
+
+  // 🔐 Ensure session exists before allowing submit
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      if (!data.session) {
+        router.push(
+          `/login?next=${encodeURIComponent(window.location.pathname)}`
+        );
+      } else {
+        setSessionReady(true);
+      }
+    });
+  }, [router]);
 
   function update<K extends keyof typeof form>(key: K, value: any) {
     setForm((f) => ({ ...f, [key]: value }));
@@ -32,7 +46,7 @@ export default function RentClient({ vehicleId }: { vehicleId: string }) {
       !form.phone ||
       !form.licenseNumber ||
       !form.pickupAt ||
-      !form.days
+      !form.signature
     ) {
       setError("Please complete all required fields.");
       return;
@@ -41,17 +55,24 @@ export default function RentClient({ vehicleId }: { vehicleId: string }) {
     setLoading(true);
 
     try {
+      // 🔐 GET SESSION TOKEN
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session?.access_token) {
+        throw new Error("Authentication expired. Please log in again.");
+      }
+
       const res = await fetch("/api/auto/create-rental", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
         body: JSON.stringify({
           vehicleId,
-          fullName: form.fullName,
-          phone: form.phone,
-          licenseNumber: form.licenseNumber,
-          purpose: form.purpose,
-          days: form.days,
-          pickupAt: form.pickupAt,
+          ...form,
         }),
       });
 
@@ -61,7 +82,6 @@ export default function RentClient({ vehicleId }: { vehicleId: string }) {
         throw new Error(data?.error || "Failed to create rental");
       }
 
-      // 🔐 IMPORTANT: redirect to Step C confirmation
       router.push(`/auto/confirmation?rentalId=${data.rentalId}`);
     } catch (e: any) {
       setError(e.message || "Server error");
@@ -70,36 +90,28 @@ export default function RentClient({ vehicleId }: { vehicleId: string }) {
     }
   }
 
+  if (!sessionReady) {
+    return <p style={{ padding: 24 }}>Checking authentication…</p>;
+  }
+
   return (
     <div style={styles.page}>
       <div style={styles.card}>
         <h2 style={styles.title}>Reserve this vehicle</h2>
         <p style={styles.subtitle}>
-          Start your reservation. Verification, agreement, and payment come next.
+          Verification, agreement, and payment come next.
         </p>
 
-        {/* Pickup rules */}
+        {/* Rules */}
         <div style={styles.notice}>
           <strong>Pickup & pricing rules</strong>
-          <ul style={{ marginTop: 6, paddingLeft: 18 }}>
-            <li>
-              Location: <strong>1090 Stafford Marketplace, VA 22556</strong>
-            </li>
-            <li>
-              Hours: <strong>9:00 AM – 6:00 PM</strong>
-            </li>
-            <li>
-              Minimum lead time: <strong>50 minutes</strong>
-            </li>
-            <li>
-              Time rounded to the next 30-minute block
-            </li>
-            <li>
-              Same-day rentals are charged the daily rate
-            </li>
-            <li>
-              Weekly pricing starts at 7 days
-            </li>
+          <ul style={{ marginTop: 6 }}>
+            <li>Location: <strong>1090 Stafford Marketplace, VA 22556</strong></li>
+            <li>Hours: <strong>9:00 AM – 6:00 PM</strong></li>
+            <li>Minimum lead time: <strong>50 minutes</strong></li>
+            <li>Time rounded to next 30-minute block</li>
+            <li>Same-day rentals charged daily</li>
+            <li>Weekly pricing starts at 7 days</li>
           </ul>
         </div>
 
@@ -110,7 +122,6 @@ export default function RentClient({ vehicleId }: { vehicleId: string }) {
               value={form.fullName}
               onChange={(e) => update("fullName", e.target.value)}
               style={styles.input}
-              placeholder="John Doe"
             />
           </Field>
 
@@ -119,7 +130,6 @@ export default function RentClient({ vehicleId }: { vehicleId: string }) {
               value={form.phone}
               onChange={(e) => update("phone", e.target.value)}
               style={styles.input}
-              placeholder="(555) 123-4567"
             />
           </Field>
 
@@ -128,7 +138,6 @@ export default function RentClient({ vehicleId }: { vehicleId: string }) {
               value={form.licenseNumber}
               onChange={(e) => update("licenseNumber", e.target.value)}
               style={styles.input}
-              placeholder="License number"
             />
           </Field>
 
@@ -152,12 +161,20 @@ export default function RentClient({ vehicleId }: { vehicleId: string }) {
             />
           </Field>
 
-          <Field label="Rental length (days)" required>
+          <Field label="Rental length (days)">
             <input
               type="number"
               min={1}
               value={form.days}
               onChange={(e) => update("days", Number(e.target.value))}
+              style={styles.input}
+            />
+          </Field>
+
+          <Field label="Type your name as signature" required>
+            <input
+              value={form.signature}
+              onChange={(e) => update("signature", e.target.value)}
               style={styles.input}
             />
           </Field>
@@ -168,16 +185,13 @@ export default function RentClient({ vehicleId }: { vehicleId: string }) {
         <button
           onClick={submit}
           disabled={loading}
-          style={{
-            ...styles.button,
-            opacity: loading ? 0.7 : 1,
-          }}
+          style={{ ...styles.button, opacity: loading ? 0.7 : 1 }}
         >
-          {loading ? "Creating reservation…" : "Continue"}
+          {loading ? "Processing…" : "Continue to payment"}
         </button>
 
         <p style={styles.footer}>
-          You’ll review the agreement, upload documents, and pay on the next step.
+          By continuing, you agree to Couranr Auto rental terms and policies.
         </p>
       </div>
     </div>
@@ -215,20 +229,14 @@ const styles: Record<string, any> = {
   },
   card: {
     width: "100%",
-    maxWidth: 820,
+    maxWidth: 860,
     background: "#fff",
     borderRadius: 18,
     padding: 28,
     border: "1px solid #e5e7eb",
   },
-  title: {
-    margin: 0,
-    fontSize: 28,
-  },
-  subtitle: {
-    marginTop: 6,
-    color: "#555",
-  },
+  title: { margin: 0, fontSize: 28 },
+  subtitle: { marginTop: 6, color: "#555" },
   notice: {
     marginTop: 20,
     background: "#f9fafb",
@@ -243,19 +251,12 @@ const styles: Record<string, any> = {
     gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
     gap: 16,
   },
-  label: {
-    fontSize: 13,
-    fontWeight: 700,
-    marginBottom: 6,
-    display: "block",
-  },
+  label: { fontSize: 13, fontWeight: 700, marginBottom: 6 },
   input: {
     width: "100%",
     padding: "12px 14px",
     borderRadius: 10,
     border: "1px solid #d1d5db",
-    fontSize: 14,
-    background: "#fff",
   },
   button: {
     marginTop: 28,
@@ -266,14 +267,9 @@ const styles: Record<string, any> = {
     background: "#111827",
     color: "#fff",
     fontWeight: 800,
-    fontSize: 16,
     cursor: "pointer",
   },
-  error: {
-    marginTop: 16,
-    color: "#b91c1c",
-    fontWeight: 600,
-  },
+  error: { marginTop: 16, color: "#b91c1c", fontWeight: 600 },
   footer: {
     marginTop: 14,
     fontSize: 12,
