@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
+type Purpose = "personal" | "rideshare";
+
 export default function RentClient({ vehicleId }: { vehicleId: string }) {
   const router = useRouter();
 
@@ -12,10 +14,10 @@ export default function RentClient({ vehicleId }: { vehicleId: string }) {
   const [form, setForm] = useState({
     fullName: "",
     phone: "",
-    license: "",
+    licenseNumber: "",
+    purpose: "personal" as Purpose,
     days: 1,
     pickupAt: "",
-    signature: "",
   });
 
   function update<K extends keyof typeof form>(key: K, value: any) {
@@ -25,7 +27,13 @@ export default function RentClient({ vehicleId }: { vehicleId: string }) {
   async function submit() {
     setError(null);
 
-    if (!form.fullName || !form.phone || !form.license || !form.pickupAt || !form.signature) {
+    if (
+      !form.fullName ||
+      !form.phone ||
+      !form.licenseNumber ||
+      !form.pickupAt ||
+      !form.days
+    ) {
       setError("Please complete all required fields.");
       return;
     }
@@ -38,7 +46,12 @@ export default function RentClient({ vehicleId }: { vehicleId: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           vehicleId,
-          ...form,
+          fullName: form.fullName,
+          phone: form.phone,
+          licenseNumber: form.licenseNumber,
+          purpose: form.purpose,
+          days: form.days,
+          pickupAt: form.pickupAt,
         }),
       });
 
@@ -48,7 +61,8 @@ export default function RentClient({ vehicleId }: { vehicleId: string }) {
         throw new Error(data?.error || "Failed to create rental");
       }
 
-      router.push(`/auto/checkout?rentalId=${data.rentalId}`);
+      // 🔐 IMPORTANT: redirect to Step C confirmation
+      router.push(`/auto/confirmation?rentalId=${data.rentalId}`);
     } catch (e: any) {
       setError(e.message || "Server error");
     } finally {
@@ -61,19 +75,31 @@ export default function RentClient({ vehicleId }: { vehicleId: string }) {
       <div style={styles.card}>
         <h2 style={styles.title}>Reserve this vehicle</h2>
         <p style={styles.subtitle}>
-          Secure your rental in minutes. Payment confirms your reservation.
+          Start your reservation. Verification, agreement, and payment come next.
         </p>
 
         {/* Pickup rules */}
         <div style={styles.notice}>
-          <strong>Pickup rules</strong>
-          <ul style={{ marginTop: 6 }}>
-            <li>Pickup & return location: <strong>1090 Stafford Marketplace, VA 22556</strong></li>
-            <li>Hours: <strong>9:00 AM – 6:00 PM</strong></li>
-            <li>Minimum lead time: <strong>50 minutes</strong></li>
-            <li>Reservations are rounded to the next 30-minute block</li>
-            <li>Same-day rentals are charged the daily rate</li>
-            <li>Weekly pricing starts at 7 days</li>
+          <strong>Pickup & pricing rules</strong>
+          <ul style={{ marginTop: 6, paddingLeft: 18 }}>
+            <li>
+              Location: <strong>1090 Stafford Marketplace, VA 22556</strong>
+            </li>
+            <li>
+              Hours: <strong>9:00 AM – 6:00 PM</strong>
+            </li>
+            <li>
+              Minimum lead time: <strong>50 minutes</strong>
+            </li>
+            <li>
+              Time rounded to the next 30-minute block
+            </li>
+            <li>
+              Same-day rentals are charged the daily rate
+            </li>
+            <li>
+              Weekly pricing starts at 7 days
+            </li>
           </ul>
         </div>
 
@@ -99,11 +125,22 @@ export default function RentClient({ vehicleId }: { vehicleId: string }) {
 
           <Field label="Driver license #" required>
             <input
-              value={form.license}
-              onChange={(e) => update("license", e.target.value)}
+              value={form.licenseNumber}
+              onChange={(e) => update("licenseNumber", e.target.value)}
               style={styles.input}
               placeholder="License number"
             />
+          </Field>
+
+          <Field label="Rental purpose" required>
+            <select
+              value={form.purpose}
+              onChange={(e) => update("purpose", e.target.value)}
+              style={styles.input}
+            >
+              <option value="personal">Personal / Leisure</option>
+              <option value="rideshare">Rideshare (Uber / Lyft)</option>
+            </select>
           </Field>
 
           <Field label="Pickup date & time" required>
@@ -115,22 +152,13 @@ export default function RentClient({ vehicleId }: { vehicleId: string }) {
             />
           </Field>
 
-          <Field label="Rental length (days)">
+          <Field label="Rental length (days)" required>
             <input
               type="number"
               min={1}
               value={form.days}
               onChange={(e) => update("days", Number(e.target.value))}
               style={styles.input}
-            />
-          </Field>
-
-          <Field label="Type your name as signature" required>
-            <input
-              value={form.signature}
-              onChange={(e) => update("signature", e.target.value)}
-              style={styles.input}
-              placeholder="Legal signature"
             />
           </Field>
         </div>
@@ -145,12 +173,11 @@ export default function RentClient({ vehicleId }: { vehicleId: string }) {
             opacity: loading ? 0.7 : 1,
           }}
         >
-          {loading ? "Processing…" : "Continue to payment"}
+          {loading ? "Creating reservation…" : "Continue"}
         </button>
 
         <p style={styles.footer}>
-          By continuing, you agree to Couranr Auto rental terms.  
-          Vehicle condition photos will be required after checkout.
+          You’ll review the agreement, upload documents, and pay on the next step.
         </p>
       </div>
     </div>
@@ -228,6 +255,7 @@ const styles: Record<string, any> = {
     borderRadius: 10,
     border: "1px solid #d1d5db",
     fontSize: 14,
+    background: "#fff",
   },
   button: {
     marginTop: 28,
