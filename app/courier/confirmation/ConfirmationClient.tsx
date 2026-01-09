@@ -8,87 +8,135 @@ export default function ConfirmationClient() {
   const router = useRouter();
   const sp = useSearchParams();
 
-  const orderId = sp.get("orderId");
-  const deliveryId = sp.get("deliveryId");
-  const orderNumber = sp.get("orderNumber");
-
-  const canUpload = !!orderId && !!deliveryId;
+  const orderId = sp.get("orderId") || "";
+  const deliveryId = sp.get("deliveryId") || "";
+  const orderNumber = sp.get("orderNumber") || "";
 
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  async function uploadPickupPhoto() {
-    if (!file || !canUpload) return;
+  const canUpload = useMemo(() => !!deliveryId && !!orderId, [deliveryId, orderId]);
 
-    setBusy(true);
+  async function uploadPickupPhoto() {
     setMsg(null);
 
-    const { data } = await supabase.auth.getSession();
-    const token = data.session?.access_token;
+    if (!canUpload) {
+      setMsg("Missing delivery info. Please contact support.");
+      return;
+    }
+    if (!file) {
+      setMsg("Please choose a photo first.");
+      return;
+    }
+
+    setBusy(true);
+
+    const { data: sessionRes } = await supabase.auth.getSession();
+    const token = sessionRes.session?.access_token;
 
     if (!token) {
-      router.push("/login");
+      setBusy(false);
+      setMsg("Not authenticated. Please log in again.");
+      router.push(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
       return;
     }
 
     try {
       const form = new FormData();
-      form.append("deliveryId", deliveryId!);
-      form.append("orderId", orderId!);
+      form.append("deliveryId", deliveryId);
+      form.append("orderId", orderId);
       form.append("photo", file);
 
       const res = await fetch("/api/customer/upload-pickup-photo", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
         body: form,
       });
 
-      const body = await res.json();
-      if (!res.ok) throw new Error(body?.error || "Upload failed");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Upload failed");
 
-      setMsg("Pickup photo uploaded. Redirecting…");
-      setTimeout(() => router.push("/dashboard"), 800);
+      setMsg("Pickup photo uploaded. Redirecting to delivery dashboard…");
+      setTimeout(() => router.push("/dashboard/delivery"), 700);
     } catch (e: any) {
-      setMsg(e.message);
+      setMsg(e?.message || "Upload failed");
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div style={{ maxWidth: 800, margin: "0 auto", padding: 24 }}>
-      <h1>Payment received ✅</h1>
+    <div style={{ maxWidth: 860, margin: "0 auto", padding: 24 }}>
+      <h1 style={{ fontSize: 28, margin: 0 }}>Payment received ✅</h1>
+      <p style={{ marginTop: 10, color: "#444" }}>
+        {orderNumber ? (
+          <>
+            Your order number is <strong>{orderNumber}</strong>.
+          </>
+        ) : (
+          <>Your order has been created.</>
+        )}
+      </p>
 
-      {orderNumber && (
-        <p>Your order number is <strong>{orderNumber}</strong>.</p>
-      )}
-
-      {canUpload ? (
-        <div style={{ marginTop: 20 }}>
-          <h3>Upload pickup photo (required)</h3>
-
-          <input
-            type="file"
-            accept="image/*"
-            onChange={(e) => setFile(e.target.files?.[0] || null)}
-          />
-
-          {msg && <p>{msg}</p>}
-
-          <button
-            onClick={uploadPickupPhoto}
-            disabled={busy || !file}
-            style={{ marginTop: 12 }}
-          >
-            {busy ? "Uploading…" : "Upload photo"}
-          </button>
-        </div>
-      ) : (
-        <p style={{ marginTop: 20, color: "#555" }}>
-          Pickup photo was already handled for this order.
+      <div style={{ marginTop: 18, border: "1px solid #e5e7eb", borderRadius: 12, padding: 16 }}>
+        <h2 style={{ margin: 0, fontSize: 18 }}>Upload pickup photo (required)</h2>
+        <p style={{ marginTop: 8, color: "#555", lineHeight: 1.5 }}>
+          Please upload a clear photo of the item at pickup. This protects both you and the driver.
         </p>
-      )}
+
+        <input
+          type="file"
+          accept="image/*"
+          onChange={(e) => setFile(e.target.files?.[0] || null)}
+          style={{ marginTop: 10 }}
+        />
+
+        {msg && (
+          <div style={{ marginTop: 12, fontWeight: 800, color: msg.includes("uploaded") ? "#166534" : "#b91c1c" }}>
+            {msg}
+          </div>
+        )}
+
+        <button
+          onClick={uploadPickupPhoto}
+          disabled={busy || !file}
+          style={{
+            marginTop: 14,
+            padding: "12px 16px",
+            borderRadius: 10,
+            border: "none",
+            background: "#111827",
+            color: "#fff",
+            fontWeight: 900,
+            cursor: busy ? "not-allowed" : "pointer",
+          }}
+        >
+          {busy ? "Uploading…" : "Upload photo"}
+        </button>
+
+        <div style={{ marginTop: 10, fontSize: 12, color: "#6b7280" }}>
+          After upload, you’ll be taken to your delivery dashboard to track the delivery.
+        </div>
+      </div>
+
+      <div style={{ marginTop: 14 }}>
+        <button
+          onClick={() => router.push("/dashboard/delivery")}
+          style={{
+            padding: "10px 14px",
+            borderRadius: 10,
+            border: "1px solid #d1d5db",
+            background: "#fff",
+            fontWeight: 800,
+            cursor: "pointer",
+          }}
+        >
+          Skip for now → Go to delivery dashboard
+        </button>
+      </div>
     </div>
   );
 }
