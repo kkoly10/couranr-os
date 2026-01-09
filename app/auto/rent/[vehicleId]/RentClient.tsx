@@ -1,243 +1,129 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-/* ----------------------------- types ----------------------------- */
-
-type Vehicle = {
-  id: string;
-  year: number;
-  make: string;
-  model: string;
-  trim?: string;
-  color?: string;
-  daily_rate_cents: number;
-  weekly_rate_cents: number;
-  deposit_cents: number;
-  image_urls?: string[];
-};
-
-/* --------------------------- helpers ----------------------------- */
-
-const LOCATION = "1090 Stafford Marketplace, Stafford, VA 22556";
-const OPEN_HOUR = 9;
-const CLOSE_HOUR = 18;
-
-// Round to next :00 or :30
-function roundToNextSlot(d: Date) {
-  const minutes = d.getMinutes();
-  if (minutes < 30) {
-    d.setMinutes(30, 0, 0);
-  } else {
-    d.setHours(d.getHours() + 1);
-    d.setMinutes(0, 0, 0);
-  }
-  return d;
-}
-
-// Earliest pickup logic (locked)
-function computeEarliestPickup() {
-  const now = new Date();
-  let base = new Date(now.getTime() + 50 * 60 * 1000); // +50 min
-
-  if (base.getHours() < OPEN_HOUR) {
-    base.setHours(OPEN_HOUR, 0, 0, 0);
-  }
-
-  if (base.getHours() >= CLOSE_HOUR) {
-    base.setDate(base.getDate() + 1);
-    base.setHours(OPEN_HOUR, 0, 0, 0);
-  }
-
-  return roundToNextSlot(base);
-}
-
-function money(cents: number) {
-  return `$${(cents / 100).toFixed(2)}`;
-}
-
-/* --------------------------- component --------------------------- */
-
-export default function RentClient({ vehicle }: { vehicle: Vehicle }) {
+export default function RentClient({ vehicleId }: { vehicleId: string }) {
   const router = useRouter();
 
-  /* renter info */
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
   const [license, setLicense] = useState("");
-
-  /* rental options */
   const [days, setDays] = useState(1);
-  const [pickupAt, setPickupAt] = useState(() => computeEarliestPickup());
+  const [pickupAt, setPickupAt] = useState("");
   const [signature, setSignature] = useState("");
 
-  const isWeekly = days >= 7;
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const rateCents = isWeekly
-    ? vehicle.weekly_rate_cents
-    : vehicle.daily_rate_cents * days;
+  async function handleContinueToPayment() {
+    setError(null);
+    setLoading(true);
 
-  const totalCents = rateCents + vehicle.deposit_cents;
+    try {
+      // 1️⃣ Ensure user is authenticated
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-  const canSubmit =
-    fullName &&
-    phone &&
-    license &&
-    signature &&
-    pickupAt instanceof Date;
+      if (!session) {
+        router.push(
+          `/login?next=${encodeURIComponent(window.location.pathname)}`
+        );
+        return;
+      }
 
-  async function submitReservation() {
-    if (!canSubmit) return;
+      // 2️⃣ Create rental + Stripe session
+      const res = await fetch("/api/auto/create-rental", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          vehicleId,
+          fullName,
+          phone,
+          license,
+          days,
+          pickupAt,
+          signature,
+        }),
+      });
 
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+      const data = await res.json();
 
-    if (!session) {
-      router.push(`/login?next=${encodeURIComponent(window.location.pathname)}`);
-      return;
+      if (!res.ok) {
+        throw new Error(data?.error || "Failed to create rental");
+      }
+
+      if (!data.checkoutUrl) {
+        throw new Error("Missing Stripe checkout URL");
+      }
+
+      // ✅ 3️⃣ Redirect to Stripe (THIS WAS THE MISSING PIECE)
+      window.location.href = data.checkoutUrl;
+    } catch (err: any) {
+      setError(err.message || "Something went wrong");
+      setLoading(false);
     }
-
-    const res = await fetch("/api/auto/create-rental", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${session.access_token}`,
-      },
-      body: JSON.stringify({
-        vehicleId: vehicle.id,
-        fullName,
-        phone,
-        license,
-        days,
-        pickupAt,
-        signature,
-      }),
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      alert(data.error || "Failed to create rental");
-      return;
-    }
-
-    router.push(`/auto/checkout?rentalId=${data.rentalId}`);
   }
 
-  /* --------------------------- UI --------------------------- */
-
   return (
-    <div style={{ maxWidth: 900, margin: "0 auto", padding: 24 }}>
-      <h1>
-        Rent {vehicle.year} {vehicle.make} {vehicle.model}
-      </h1>
+    <div style={{ maxWidth: 720, margin: "0 auto", padding: 24 }}>
+      <h1>Rent this vehicle</h1>
 
-      {vehicle.image_urls?.[0] && (
-        <img
-          src={vehicle.image_urls[0]}
-          alt="Vehicle"
-          style={{ width: "100%", borderRadius: 12, marginBottom: 16 }}
-        />
-      )}
+      <label>Full name</label>
+      <input value={fullName} onChange={(e) => setFullName(e.target.value)} />
 
-      <p><strong>Pickup & Return:</strong> {LOCATION}</p>
-      <p><strong>Hours:</strong> 9:00 AM – 6:00 PM</p>
+      <label>Phone</label>
+      <input value={phone} onChange={(e) => setPhone(e.target.value)} />
 
-      <hr />
+      <label>Driver’s license number</label>
+      <input value={license} onChange={(e) => setLicense(e.target.value)} />
 
-      <h3>Renter Information</h3>
-
-      <input
-        placeholder="Full legal name"
-        value={fullName}
-        onChange={(e) => setFullName(e.target.value)}
-        style={input}
-      />
-
-      <input
-        placeholder="Phone number"
-        value={phone}
-        onChange={(e) => setPhone(e.target.value)}
-        style={input}
-      />
-
-      <input
-        placeholder="Driver license number"
-        value={license}
-        onChange={(e) => setLicense(e.target.value)}
-        style={input}
-      />
-
-      <h3>Rental Details</h3>
-
-      <label>Number of days</label>
+      <label>Rental duration (days)</label>
       <input
         type="number"
         min={1}
         value={days}
         onChange={(e) => setDays(Number(e.target.value))}
-        style={input}
       />
 
-      <label>Pickup time</label>
+      <label>Pickup date & time</label>
       <input
         type="datetime-local"
-        value={pickupAt.toISOString().slice(0, 16)}
-        onChange={(e) => setPickupAt(new Date(e.target.value))}
-        style={input}
+        value={pickupAt}
+        onChange={(e) => setPickupAt(e.target.value)}
       />
 
-      <h3>Pricing</h3>
-
-      <p>
-        {isWeekly ? "Weekly rate:" : "Daily rate:"}{" "}
-        {money(isWeekly ? vehicle.weekly_rate_cents : vehicle.daily_rate_cents)}
-      </p>
-
-      {vehicle.deposit_cents > 0 && (
-        <p>Deposit: {money(vehicle.deposit_cents)}</p>
-      )}
-
-      <p><strong>Total due today: {money(totalCents)}</strong></p>
-
-      <h3>Agreement & Signature</h3>
-
-      <textarea
-        placeholder="Type your full name as signature"
+      <label>Signature (type your full name)</label>
+      <input
         value={signature}
         onChange={(e) => setSignature(e.target.value)}
-        style={{ ...input, height: 80 }}
       />
 
+      {error && (
+        <div style={{ color: "red", marginTop: 12 }}>
+          {error}
+        </div>
+      )}
+
       <button
-        disabled={!canSubmit}
-        onClick={submitReservation}
+        onClick={handleContinueToPayment}
+        disabled={loading}
         style={{
-          marginTop: 16,
-          padding: "14px 18px",
-          borderRadius: 10,
-          border: "none",
-          background: canSubmit ? "#111827" : "#9ca3af",
+          marginTop: 20,
+          padding: "12px 16px",
+          background: "#111827",
           color: "#fff",
-          fontWeight: 800,
-          cursor: canSubmit ? "pointer" : "not-allowed",
+          borderRadius: 10,
+          fontWeight: 700,
         }}
       >
-        Continue to payment
+        {loading ? "Redirecting…" : "Continue to payment"}
       </button>
     </div>
   );
 }
-
-/* --------------------------- styles --------------------------- */
-
-const input: React.CSSProperties = {
-  width: "100%",
-  padding: "12px",
-  borderRadius: 10,
-  border: "1px solid #d1d5db",
-  marginBottom: 12,
-};
