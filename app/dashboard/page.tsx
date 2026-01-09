@@ -1,161 +1,111 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-type DeliveryRow = {
-  id: string;
-  status: string;
-  createdAt: string;
-  pickupAddress: string;
-  dropoffAddress: string;
-
-  recipientName: string;
-  recipientPhone: string;
-  deliveryNotes: string | null;
-
-  order: {
-    orderNumber: string;
-    totalCents: number;
-    status?: string;
-  };
-
-  hasPickupPhoto: boolean;
-};
-
-export default function CustomerDashboard() {
+export default function DashboardHome() {
   const router = useRouter();
-
   const [loading, setLoading] = useState(true);
-  const [deliveries, setDeliveries] = useState<DeliveryRow[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const [authed, setAuthed] = useState(false);
 
   useEffect(() => {
-    async function load() {
-      setLoading(true);
-      setError(null);
+    let mounted = true;
 
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+    async function boot() {
+      const { data } = await supabase.auth.getSession();
+      if (!mounted) return;
 
-      if (!session) {
-        router.push("/login");
+      if (!data.session) {
+        setAuthed(false);
+        setLoading(false);
+        // Keep them on selector page with a login button
         return;
       }
 
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000);
-
-        const res = await fetch("/api/customer/deliveries", {
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-          },
-          signal: controller.signal,
-        });
-
-        clearTimeout(timeout);
-
-        if (!res.ok) {
-          const msg = await res.text();
-          throw new Error(msg || "Failed to load deliveries");
-        }
-
-        const data = await res.json();
-        setDeliveries(data.deliveries || []);
-      } catch (err: any) {
-        setError(
-          err?.name === "AbortError"
-            ? "Request timed out. Please refresh."
-            : err.message || "Failed to load deliveries"
-        );
-      } finally {
-        setLoading(false);
-      }
+      setAuthed(true);
+      setLoading(false);
     }
 
-    load();
-  }, [router]);
+    boot();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthed(!!session);
+    });
+
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+
+  async function logout() {
+    await supabase.auth.signOut();
+    router.push("/login");
+  }
+
+  if (loading) {
+    return <p style={{ padding: 24 }}>Loading dashboard…</p>;
+  }
 
   return (
     <div style={styles.container}>
       <div style={styles.header}>
         <div>
-          <h1 style={styles.h1}>My deliveries</h1>
-          <p style={styles.sub}>Track your active and past deliveries</p>
+          <h1 style={styles.h1}>Dashboard</h1>
+          <p style={styles.sub}>
+            Choose what you want to manage.
+          </p>
         </div>
 
-        <button onClick={() => router.push("/courier")} style={styles.primaryBtn}>
-          New delivery
-        </button>
+        {authed ? (
+          <button onClick={logout} style={styles.ghostBtn}>
+            Logout
+          </button>
+        ) : (
+          <Link href="/login" style={styles.ghostLink}>
+            Login
+          </Link>
+        )}
       </div>
 
-      {loading && <p>Loading deliveries…</p>}
-
-      {error && (
-        <div style={{ ...styles.card, borderColor: "#fecaca" }}>
-          <strong>Error:</strong> {error}
-        </div>
-      )}
-
-      {!loading && !error && deliveries.length === 0 && (
+      <div style={styles.grid}>
         <div style={styles.card}>
-          <p>You don’t have any deliveries yet.</p>
+          <h2 style={styles.cardTitle}>🚚 Deliveries</h2>
+          <p style={styles.cardText}>
+            Track deliveries, upload pickup photo, and view order history.
+          </p>
+          <Link href="/dashboard/delivery" style={styles.primaryLink}>
+            Go to Delivery Dashboard
+          </Link>
+          <div style={{ height: 10 }} />
+          <Link href="/courier" style={styles.secondaryLink}>
+            Create a Delivery Quote
+          </Link>
+        </div>
+
+        <div style={styles.card}>
+          <h2 style={styles.cardTitle}>🚗 Auto Rentals</h2>
+          <p style={styles.cardText}>
+            View your rentals, payments, agreements, and vehicle condition photos.
+          </p>
+          <Link href="/dashboard/auto" style={styles.primaryLink}>
+            Go to Auto Dashboard
+          </Link>
+          <div style={{ height: 10 }} />
+          <Link href="/auto/vehicles" style={styles.secondaryLink}>
+            View Available Cars
+          </Link>
+        </div>
+      </div>
+
+      {!authed && (
+        <div style={styles.notice}>
+          <strong>Note:</strong> You’re not logged in. You can browse cars and get quotes,
+          but you must log in to place an order or manage your dashboard.
         </div>
       )}
-
-      {!loading &&
-        !error &&
-        deliveries.map((d) => (
-          <div key={d.id} style={styles.card}>
-            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-              <strong style={{ fontSize: 16 }}>{d.order.orderNumber || "Order"}</strong>
-              <span style={pill(d.status)}>{d.status}</span>
-            </div>
-
-            <div style={{ marginTop: 10 }}>
-              <div><strong>Pickup:</strong> {d.pickupAddress}</div>
-              <div><strong>Drop-off:</strong> {d.dropoffAddress}</div>
-            </div>
-
-            <div style={{ marginTop: 10 }}>
-              <div><strong>Recipient:</strong> {d.recipientName} • {d.recipientPhone}</div>
-              {d.deliveryNotes ? (
-                <div style={{ marginTop: 6, color: "#374151" }}>
-                  <strong>Notes:</strong> {d.deliveryNotes}
-                </div>
-              ) : null}
-            </div>
-
-            <div style={{ marginTop: 10 }}>
-              <strong>Total:</strong> ${(d.order.totalCents / 100).toFixed(2)}
-            </div>
-
-            <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
-              {!d.hasPickupPhoto && (
-                <button
-                  onClick={() =>
-                    router.push(`/courier/confirmation?deliveryId=${encodeURIComponent(d.id)}`)
-                  }
-                  style={styles.ghostBtn}
-                >
-                  Upload pickup photo
-                </button>
-              )}
-
-              <a
-                href={`mailto:support@couranr.com?subject=${encodeURIComponent(
-                  `Help with ${d.order.orderNumber || "delivery"}`
-                )}`}
-                style={{ ...styles.ghostBtn, display: "inline-block", textDecoration: "none" }}
-              >
-                Request help
-              </a>
-            </div>
-          </div>
-        ))}
     </div>
   );
 }
@@ -169,32 +119,59 @@ const styles: Record<string, any> = {
   header: {
     display: "flex",
     justifyContent: "space-between",
-    alignItems: "center",
+    alignItems: "flex-start",
+    gap: 12,
     marginBottom: 24,
   },
   h1: {
     margin: 0,
-    fontSize: 32,
+    fontSize: 34,
+    letterSpacing: "-0.02em",
   },
   sub: {
-    marginTop: 6,
+    marginTop: 8,
     color: "#555",
+    lineHeight: 1.5,
+  },
+  grid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+    gap: 16,
   },
   card: {
     border: "1px solid #e5e7eb",
-    borderRadius: 14,
-    padding: 16,
+    borderRadius: 16,
+    padding: 18,
     background: "#fff",
-    marginBottom: 12,
   },
-  primaryBtn: {
-    padding: "10px 16px",
+  cardTitle: {
+    margin: 0,
+    fontSize: 20,
+  },
+  cardText: {
+    marginTop: 10,
+    color: "#555",
+    lineHeight: 1.6,
+  },
+  primaryLink: {
+    display: "inline-block",
+    marginTop: 14,
+    padding: "12px 14px",
     borderRadius: 10,
-    border: "none",
     background: "#111827",
     color: "#fff",
+    textDecoration: "none",
     fontWeight: 800,
-    cursor: "pointer",
+  },
+  secondaryLink: {
+    display: "inline-block",
+    padding: "10px 14px",
+    borderRadius: 10,
+    border: "1px solid #d1d5db",
+    background: "#fff",
+    color: "#111",
+    textDecoration: "none",
+    fontWeight: 800,
   },
   ghostBtn: {
     padding: "10px 14px",
@@ -204,28 +181,22 @@ const styles: Record<string, any> = {
     fontWeight: 800,
     cursor: "pointer",
   },
-};
-
-function pill(status: string) {
-  const s = (status || "").toLowerCase();
-  let bg = "#eef2ff";
-  let fg = "#3730a3";
-  if (s.includes("pending")) {
-    bg = "#fffbeb"; fg = "#92400e";
-  } else if (s.includes("active") || s.includes("assigned")) {
-    bg = "#ecfeff"; fg = "#155e75";
-  } else if (s.includes("delivered") || s.includes("complete")) {
-    bg = "#ecfdf5"; fg = "#166534";
-  } else if (s.includes("cancel")) {
-    bg = "#fef2f2"; fg = "#991b1b";
-  }
-  return {
-    padding: "6px 10px",
-    borderRadius: 999,
-    background: bg,
-    color: fg,
+  ghostLink: {
+    padding: "10px 14px",
+    borderRadius: 10,
+    border: "1px solid #d1d5db",
+    background: "#fff",
     fontWeight: 800,
-    fontSize: 12,
-    border: "1px solid #e5e7eb",
-  } as any;
-}
+    textDecoration: "none",
+    color: "#111",
+    display: "inline-block",
+  },
+  notice: {
+    marginTop: 18,
+    borderRadius: 14,
+    padding: 12,
+    background: "#fffbeb",
+    border: "1px solid #fde68a",
+    color: "#92400e",
+  },
+};
