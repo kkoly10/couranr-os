@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
 
 export default function RentClient({ vehicleId }: { vehicleId: string }) {
   const router = useRouter();
@@ -25,6 +26,15 @@ export default function RentClient({ vehicleId }: { vehicleId: string }) {
 
   async function submit() {
     setError(null);
+
+    const sessionRes = await supabase.auth.getSession();
+    const token = sessionRes.data.session?.access_token;
+
+    if (!token) {
+      setError("You must be logged in to continue.");
+      router.push("/login");
+      return;
+    }
 
     const {
       fullName,
@@ -52,8 +62,14 @@ export default function RentClient({ vehicleId }: { vehicleId: string }) {
     try {
       const res = await fetch("/api/auto/create-rental", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ vehicleId, ...form }),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          vehicleId,
+          ...form,
+        }),
       });
 
       const data = await res.json();
@@ -71,112 +87,36 @@ export default function RentClient({ vehicleId }: { vehicleId: string }) {
   }
 
   return (
-    <div style={styles.page}>
-      <div style={styles.card}>
-        <h2 style={styles.title}>Reserve this vehicle</h2>
+    <div style={{ maxWidth: 900, margin: "40px auto", padding: 24 }}>
+      <h2>Reserve this vehicle</h2>
 
-        <div style={styles.grid}>
-          <Field label="Full name" required>
-            <input
-              value={form.fullName}
-              onChange={(e) => update("fullName", e.target.value)}
-              style={styles.input}
-            />
-          </Field>
+      <div style={{ display: "grid", gap: 14 }}>
+        <input placeholder="Full name" onChange={(e) => update("fullName", e.target.value)} />
+        <input placeholder="Phone" onChange={(e) => update("phone", e.target.value)} />
+        <input placeholder="License number" onChange={(e) => update("licenseNumber", e.target.value)} />
 
-          <Field label="Phone number" required>
-            <input
-              value={form.phone}
-              onChange={(e) => update("phone", e.target.value)}
-              style={styles.input}
-            />
-          </Field>
+        <select onChange={(e) => update("licenseState", e.target.value)}>
+          <option value="">License state</option>
+          {US_STATES.map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+        </select>
 
-          <Field label="Driver license #" required>
-            <input
-              value={form.licenseNumber}
-              onChange={(e) => update("licenseNumber", e.target.value)}
-              style={styles.input}
-            />
-          </Field>
+        <select onChange={(e) => update("purpose", e.target.value)}>
+          <option value="personal">Personal / Leisure</option>
+          <option value="rideshare">Rideshare (Uber / Lyft)</option>
+        </select>
 
-          <Field label="License state" required>
-            <select
-              value={form.licenseState}
-              onChange={(e) => update("licenseState", e.target.value)}
-              style={styles.input}
-            >
-              <option value="">Select state</option>
-              {US_STATES.map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-          </Field>
+        <input type="datetime-local" onChange={(e) => update("pickupAt", e.target.value)} />
+        <input type="number" min={1} value={form.days} onChange={(e) => update("days", Number(e.target.value))} />
+        <input placeholder="Type your name as signature" onChange={(e) => update("signature", e.target.value)} />
 
-          <Field label="Rental purpose" required>
-            <select
-              value={form.purpose}
-              onChange={(e) => update("purpose", e.target.value)}
-              style={styles.input}
-            >
-              <option value="personal">Personal / Leisure</option>
-              <option value="rideshare">Rideshare (Uber / Lyft)</option>
-            </select>
-          </Field>
+        {error && <div style={{ color: "red" }}>{error}</div>}
 
-          <Field label="Pickup date & time" required>
-            <input
-              type="datetime-local"
-              value={form.pickupAt}
-              onChange={(e) => update("pickupAt", e.target.value)}
-              style={styles.input}
-            />
-          </Field>
-
-          <Field label="Rental length (days)">
-            <input
-              type="number"
-              min={1}
-              value={form.days}
-              onChange={(e) => update("days", Number(e.target.value))}
-              style={styles.input}
-            />
-          </Field>
-
-          <Field label="Signature (type full name)" required>
-            <input
-              value={form.signature}
-              onChange={(e) => update("signature", e.target.value)}
-              style={styles.input}
-            />
-          </Field>
-        </div>
-
-        {error && <div style={styles.error}>{error}</div>}
-
-        <button onClick={submit} disabled={loading} style={styles.button}>
+        <button onClick={submit} disabled={loading}>
           {loading ? "Processing…" : "Continue to payment"}
         </button>
       </div>
-    </div>
-  );
-}
-
-function Field({
-  label,
-  required,
-  children,
-}: {
-  label: string;
-  required?: boolean;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <label style={styles.label}>
-        {label} {required && <span style={{ color: "#dc2626" }}>*</span>}
-      </label>
-      {children}
     </div>
   );
 }
@@ -188,14 +128,3 @@ const US_STATES = [
   "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC",
   "SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"
 ];
-
-const styles: Record<string, any> = {
-  page: { display: "flex", justifyContent: "center", padding: 40 },
-  card: { maxWidth: 900, width: "100%", border: "1px solid #e5e7eb", borderRadius: 16, padding: 28 },
-  title: { fontSize: 28, marginBottom: 20 },
-  grid: { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16 },
-  label: { fontSize: 13, fontWeight: 700, marginBottom: 6 },
-  input: { padding: 12, borderRadius: 10, border: "1px solid #d1d5db" },
-  button: { marginTop: 24, padding: 14, borderRadius: 12, background: "#111827", color: "#fff", fontWeight: 800 },
-  error: { marginTop: 16, color: "#b91c1c", fontWeight: 700 },
-};
