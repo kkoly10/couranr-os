@@ -2,13 +2,27 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export async function POST(req: Request) {
+  const authHeader = req.headers.get("authorization");
+
+  if (!authHeader?.startsWith("Bearer ")) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const token = authHeader.replace("Bearer ", "");
+
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      global: {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    }
   );
 
   const body = await req.json();
-
   const {
     vehicleId,
     fullName,
@@ -20,21 +34,6 @@ export async function POST(req: Request) {
     purpose,
     signature,
   } = body;
-
-  if (
-    !vehicleId ||
-    !fullName ||
-    !phone ||
-    !licenseNumber ||
-    !licenseState ||
-    !pickupAt ||
-    !signature
-  ) {
-    return NextResponse.json(
-      { error: "Missing required fields" },
-      { status: 400 }
-    );
-  }
 
   const { data: auth } = await supabase.auth.getUser();
   const user = auth?.user;
