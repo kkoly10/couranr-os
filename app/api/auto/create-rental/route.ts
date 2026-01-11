@@ -23,7 +23,7 @@ export async function POST(req: Request) {
       error: userErr,
     } = await supabase.auth.getUser();
 
-    if (userErr || !user) {
+    if (userErr || !user || !user.email) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -39,10 +39,21 @@ export async function POST(req: Request) {
       signature,
     } = body;
 
-    if (!vehicleId || !fullName || !phone || !licenseNumber || !pickupAt || !signature) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    if (
+      !vehicleId ||
+      !fullName ||
+      !phone ||
+      !licenseNumber ||
+      !pickupAt ||
+      !signature
+    ) {
+      return NextResponse.json(
+        { error: "Missing required fields" },
+        { status: 400 }
+      );
     }
 
+    // 1️⃣ Create or update renter (EMAIL INCLUDED)
     const { data: renter, error: renterErr } = await supabase
       .from("renters")
       .upsert(
@@ -50,6 +61,7 @@ export async function POST(req: Request) {
           user_id: user.id,
           full_name: fullName,
           phone,
+          email: user.email, // ✅ FIX
           license_number: licenseNumber,
         },
         { onConflict: "user_id" }
@@ -58,9 +70,13 @@ export async function POST(req: Request) {
       .single();
 
     if (renterErr) {
-      return NextResponse.json({ error: renterErr.message }, { status: 400 });
+      return NextResponse.json(
+        { error: renterErr.message },
+        { status: 400 }
+      );
     }
 
+    // 2️⃣ Create rental
     const { data: rental, error: rentalErr } = await supabase
       .from("rentals")
       .insert({
@@ -68,22 +84,31 @@ export async function POST(req: Request) {
         user_id: user.id,
         vehicle_id: vehicleId,
         pricing_mode: days >= 7 ? "weekly" : "daily",
-        rate_cents: 0,
+        rate_cents: 0, // calculated at checkout
         deposit_cents: 0,
         start_date: pickupAt,
         end_date: pickupAt,
         status: "awaiting_payment",
+        pickup_location: "1090 Stafford Marketplace, VA 22556",
         notes: `Purpose: ${purpose}`,
       })
       .select()
       .single();
 
     if (rentalErr) {
-      return NextResponse.json({ error: rentalErr.message }, { status: 400 });
+      return NextResponse.json(
+        { error: rentalErr.message },
+        { status: 400 }
+      );
     }
 
-    return NextResponse.json({ rentalId: rental.id });
+    return NextResponse.json({
+      rentalId: rental.id,
+    });
   } catch (e: any) {
-    return NextResponse.json({ error: e.message || "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: e.message || "Server error" },
+      { status: 500 }
+    );
   }
 }
