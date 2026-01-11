@@ -3,8 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 
 export async function POST(req: Request) {
   try {
-    const auth = req.headers.get("authorization");
-    if (!auth) {
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -13,7 +13,9 @@ export async function POST(req: Request) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
       {
         global: {
-          headers: { Authorization: auth },
+          headers: {
+            Authorization: authHeader,
+          },
         },
       }
     );
@@ -28,11 +30,12 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
+
     const {
       vehicleId,
       fullName,
       phone,
-      licenseNumber,
+      licenseNumber, // ✅ MATCH FRONTEND
       pickupAt,
       days,
       purpose,
@@ -53,7 +56,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1️⃣ Create or update renter (EMAIL INCLUDED)
+    // 1️⃣ Upsert renter (EMAIL INCLUDED)
     const { data: renter, error: renterErr } = await supabase
       .from("renters")
       .upsert(
@@ -61,7 +64,7 @@ export async function POST(req: Request) {
           user_id: user.id,
           full_name: fullName,
           phone,
-          email: user.email, // ✅ FIX
+          email: user.email, // ✅ required by schema
           license_number: licenseNumber,
         },
         { onConflict: "user_id" }
@@ -84,7 +87,7 @@ export async function POST(req: Request) {
         user_id: user.id,
         vehicle_id: vehicleId,
         pricing_mode: days >= 7 ? "weekly" : "daily",
-        rate_cents: 0, // calculated at checkout
+        rate_cents: 0,
         deposit_cents: 0,
         start_date: pickupAt,
         end_date: pickupAt,
@@ -102,9 +105,7 @@ export async function POST(req: Request) {
       );
     }
 
-    return NextResponse.json({
-      rentalId: rental.id,
-    });
+    return NextResponse.json({ rentalId: rental.id });
   } catch (e: any) {
     return NextResponse.json(
       { error: e.message || "Server error" },
