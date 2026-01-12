@@ -3,37 +3,13 @@ import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
 
-function requireEnv(name: string) {
+function env(name: string) {
   const v = process.env[name];
   if (!v) throw new Error(`Missing env: ${name}`);
   return v;
 }
 
-const BUCKET = "rental-files";
-const MAX_BYTES = 8 * 1024 * 1024; // 8MB
-
-const PICKUP = { lat: 38.4149, lng: -77.4089 }; // replace later with exact coords
-const GPS_RADIUS_M = 150;
-const GPS_MAX_ACCURACY_M = 50;
-
-function safeExt(type: string) {
-  if (type === "image/jpeg") return "jpg";
-  if (type === "image/png") return "png";
-  if (type === "image/webp") return "webp";
-  return null;
-}
-
-function haversineMeters(aLat: number, aLng: number, bLat: number, bLng: number) {
-  const R = 6371000;
-  const toRad = (n: number) => (n * Math.PI) / 180;
-  const dLat = toRad(bLat - aLat);
-  const dLng = toRad(bLng - aLng);
-  const s1 = Math.sin(dLat / 2);
-  const s2 = Math.sin(dLng / 2);
-  const aa = s1 * s1 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * s2 * s2;
-  const c = 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa));
-  return R * c;
-}
+type Phase = "pickup_exterior" | "pickup_interior" | "return_exterior" | "return_interior";
 
 export async function POST(req: Request) {
   try {
@@ -41,115 +17,106 @@ export async function POST(req: Request) {
     const token = authHeader.replace("Bearer ", "").trim();
     if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const supabaseUser = createClient(
-      requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
-      requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
-      { global: { headers: { Authorization: `Bearer ${token}` } } }
-    );
+    const supabase = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+    });
 
-    const { data: u, error: uErr } = await supabaseUser.auth.getUser();
-    if (uErr || !u?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const { data: u } = await supabase.auth.getUser();
+    if (!u?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const form = await req.formData();
     const rentalId = String(form.get("rentalId") || "");
-    const stage = String(form.get("stage") || "");
-    const view = String(form.get("view") || "");
-    const file = form.get("file") as File | null;
+    const phase = String(form.get("phase") || "") as Phase;
+    const photo = form.get("photo") as File | null;
 
-    const lat = Number(form.get("lat"));
-    const lng = Number(form.get("lng"));
-    const accuracyM = Number(form.get("accuracyM"));
-    const capturedAt = String(form.get("capturedAt") || "");
+    const lat = form.get("lat") ? Number(form.get("lat")) : null;
+    const lng = form.get("lng") ? Number(form.get("lng")) : null;
+    const accuracy = form.get("accuracy") ? Number(form.get("accuracy")) : null;
 
-    if (!rentalId || !file || !stage || !view || !capturedAt) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    if (!rentalId || !photo) return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+    if (!["pickup_exterior","pickup_interior","return_exterior","return_interior"].includes(phase)) {
+      return NextResponse.json({ error: "Invalid phase" }, { status: 400 });
     }
 
-    // IMPORTANT: block interior photos pre-unlock (loophole fix)
-    if (stage !== "pickup_exterior") {
-      return NextResponse.json({ error: "Only pickup exterior photos allowed at this step." }, { status: 400 });
-    }
-
-    if (!["front", "back", "left", "right"].includes(view)) {
-      return NextResponse.json({ error: "Invalid photo view" }, { status: 400 });
-    }
-
-    if (file.size > MAX_BYTES) return NextResponse.json({ error: "File too large (max 8MB)" }, { status: 400 });
-
-    const ext = safeExt(file.type);
-    if (!ext) return NextResponse.json({ error: "Unsupported image type" }, { status: 400 });
-
-    if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(accuracyM)) {
-      return NextResponse.json({ error: "Missing GPS metadata" }, { status: 400 });
-    }
-
-    if (accuracyM > GPS_MAX_ACCURACY_M) {
-      return NextResponse.json({ error: `GPS accuracy too low (${accuracyM}m). Try again outdoors.` }, { status: 400 });
-    }
-
-    const dist = haversineMeters(lat, lng, PICKUP.lat, PICKUP.lng);
-    if (dist > GPS_RADIUS_M) {
-      return NextResponse.json({ error: "Upload must be at pickup location." }, { status: 403 });
-    }
-
-    // Ownership gate (no leakage)
-    const { data: r, error: rErr } = await supabaseUser
+    // Ensure rental belongs to user
+    const { data: rental, error: rErr } = await supabase
       .from("rentals")
-      .select("id, user_id")
+      .select("id,user_id,paid,verification_status,lockbox_code,condition_photos_status")
       .eq("id", rentalId)
       .single();
 
-    if (rErr || !r) return NextResponse.json({ error: "Rental not found" }, { status: 404 });
-    if (r.user_id !== u.user.id) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (rErr || !rental) return NextResponse.json({ error: "Rental not found" }, { status: 404 });
+    if (rental.user_id !== u.user.id) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-    // Storage upload (private)
-    const supabaseSvc = createClient(
-      requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
-      requireEnv("SUPABASE_SERVICE_ROLE_KEY")
-    );
+    // Gating rules:
+    // pickup_exterior allowed after approval+paid (prevents random uploads), but you can loosen later.
+    if (phase === "pickup_exterior") {
+      if (rental.verification_status !== "approved") return NextResponse.json({ error: "Awaiting admin approval." }, { status: 400 });
+      if (!rental.paid) return NextResponse.json({ error: "Payment required before pickup photos." }, { status: 400 });
+    }
 
-    const path = `auto/${u.user.id}/${rentalId}/condition/${stage}/${view}.${ext}`;
-    const buf = Buffer.from(await file.arrayBuffer());
+    // pickup_interior allowed only after lockbox code exists (means admin assigned)
+    if (phase === "pickup_interior") {
+      if (!rental.lockbox_code) return NextResponse.json({ error: "Lockbox not ready yet." }, { status: 400 });
+      if (!rental.paid) return NextResponse.json({ error: "Payment required." }, { status: 400 });
+    }
 
-    const { error: upErr } = await supabaseSvc.storage.from(BUCKET).upload(path, buf, {
-      contentType: file.type,
+    // return phases allowed only if paid
+    if (phase.startsWith("return")) {
+      if (!rental.paid) return NextResponse.json({ error: "Payment required." }, { status: 400 });
+    }
+
+    // Upload to Supabase Storage
+    const bytes = Buffer.from(await photo.arrayBuffer());
+    const ext = (photo.type || "image/jpeg").includes("png") ? "png" : "jpg";
+    const path = `rentals/${rentalId}/${phase}/${Date.now()}.${ext}`;
+
+    const storage = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"));
+
+    const up = await storage.storage.from("vehicle-images").upload(path, bytes, {
+      contentType: photo.type || "image/jpeg",
       upsert: true,
     });
 
-    if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
+    if (up.error) return NextResponse.json({ error: up.error.message }, { status: 500 });
 
-    // Insert record (RLS via user client)
-    const { error: insErr } = await supabaseUser.from("rental_condition_photos").insert({
+    const publicUrl = storage.storage.from("vehicle-images").getPublicUrl(path).data.publicUrl;
+
+    // Insert record
+    const { error: insErr } = await supabase.from("rental_condition_photos").insert({
       rental_id: rentalId,
       user_id: u.user.id,
-      stage,
-      view,
-      storage_bucket: BUCKET,
-      storage_path: path,
-      captured_at: new Date(capturedAt).toISOString(),
-      lat,
-      lng,
-      accuracy_m: Math.round(accuracyM),
+      phase,
+      photo_url: publicUrl,
+      captured_lat: Number.isFinite(lat as any) ? lat : null,
+      captured_lng: Number.isFinite(lng as any) ? lng : null,
+      captured_accuracy_m: Number.isFinite(accuracy as any) ? accuracy : null,
     });
 
     if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 });
 
-    // Mark condition_photos_complete if all 4 views exist for pickup_exterior
-    const { data: photos } = await supabaseUser
-      .from("rental_condition_photos")
-      .select("view")
-      .eq("rental_id", rentalId)
-      .eq("user_id", u.user.id)
-      .eq("stage", "pickup_exterior");
+    // Update status ladder
+    const nextStatusMap: Record<Phase, string> = {
+      pickup_exterior: "pickup_exterior_done",
+      pickup_interior: "pickup_interior_done",
+      return_exterior: "return_exterior_done",
+      return_interior: "return_interior_done",
+    };
 
-    const views = new Set((photos || []).map((x: any) => x.view));
-    const done = ["front", "back", "left", "right"].every((v) => views.has(v));
+    await supabase
+      .from("rentals")
+      .update({ condition_photos_status: nextStatusMap[phase] })
+      .eq("id", rentalId);
 
-    if (done) {
-      await supabaseUser.from("rentals").update({ condition_photos_complete: true }).eq("id", rentalId);
-    }
+    await supabase.from("rental_events").insert({
+      rental_id: rentalId,
+      actor_user_id: u.user.id,
+      actor_role: "customer",
+      event_type: "condition_photo_uploaded",
+      event_payload: { phase, has_gps: !!(lat && lng) },
+    });
 
-    return NextResponse.json({ success: true, conditionPhotosComplete: done });
+    return NextResponse.json({ ok: true, url: publicUrl });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
   }
