@@ -26,38 +26,53 @@ export async function POST(req: Request) {
 
     const body = await req.json().catch(() => ({}));
     const rentalId = String(body.rentalId || "");
-    const signedName = String(body.signedName || "");
-    const purpose = String(body.purpose || "personal");
-    const signedText = String(body.signedText || "");
+    const signedName = String(body.signedName || "").trim();
 
-    if (!rentalId) return NextResponse.json({ error: "Missing rentalId" }, { status: 400 });
-    if (!signedName.trim()) return NextResponse.json({ error: "Missing signedName" }, { status: 400 });
-    if (!["personal", "rideshare"].includes(purpose)) {
-      return NextResponse.json({ error: "Invalid purpose" }, { status: 400 });
+    if (!rentalId || !signedName) {
+      return NextResponse.json({ error: "Missing rentalId or signedName" }, { status: 400 });
     }
 
-    // Insert agreement (RLS ensures owner only)
-    const { error: insErr } = await supabase
+    // Load rental, enforce owner
+    const { data: rental, error: rErr } = await supabase
+      .from("rentals")
+      .select("id, user_id, purpose")
+      .eq("id", rentalId)
+      .single();
+
+    if (rErr || !rental) return NextResponse.json({ error: "Rental not found" }, { status: 404 });
+
+    // ✅ Prevent account leakage
+    if (rental.user_id !== u.user.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const agreementVersion = "v1";
+
+    // Insert agreement record
+    const { error: aErr } = await supabase
       .from("rental_agreements")
       .insert({
         rental_id: rentalId,
-        signed_name: signedName.trim(),
-        purpose,
-        agreement_version: "v1",
-        signed_text: signedText.slice(0, 50000),
+        signed_name: signedName,
+        agreement_version: agreementVersion,
+        // ip_address optional; we can add later via headers/server logs
       });
 
-    if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 });
+    if (aErr) {
+      return NextResponse.json({ error: aErr.message || "Failed to save agreement" }, { status: 500 });
+    }
 
-    // Mark rental signed
+    // Mark rental as signed
     const { error: upErr } = await supabase
       .from("rentals")
-      .update({ agreement_signed: true, status: "awaiting_payment" })
+      .update({ agreement_signed: true })
       .eq("id", rentalId);
 
-    if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
+    if (upErr) {
+      return NextResponse.json({ error: upErr.message || "Failed to update rental" }, { status: 500 });
+    }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ success: true });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
   }
