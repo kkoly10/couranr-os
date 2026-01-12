@@ -1,8 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+
+type Purpose = "personal" | "rideshare";
 
 export default function RentClient({ vehicleId }: { vehicleId: string }) {
   const router = useRouter();
@@ -10,18 +12,23 @@ export default function RentClient({ vehicleId }: { vehicleId: string }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      setSessionToken(data.session?.access_token || null);
+    })();
+  }, []);
+
   const [form, setForm] = useState({
     fullName: "",
-    email: "",
     phone: "",
     licenseNumber: "",
-    licenseState: "",
-    licenseExpires: "", // YYYY-MM-DD
-
-    purpose: "personal" as "personal" | "rideshare",
-
+    licenseState: "VA",
     days: 1,
     pickupAt: "",
+    purpose: "personal" as Purpose,
     signature: "",
   });
 
@@ -30,39 +37,37 @@ export default function RentClient({ vehicleId }: { vehicleId: string }) {
   }
 
   const requiredMissing = useMemo(() => {
-    const missing: string[] = [];
-    if (!form.fullName.trim()) missing.push("Full name");
-    if (!form.email.trim()) missing.push("Email");
-    if (!form.phone.trim()) missing.push("Phone");
-    if (!form.licenseNumber.trim()) missing.push("Driver license #");
-    if (!form.licenseState.trim()) missing.push("License state");
-    if (!form.licenseExpires.trim()) missing.push("License expiration date");
-    if (!form.pickupAt.trim()) missing.push("Pickup date & time");
-    if (!form.signature.trim()) missing.push("Signature");
-    if (!form.purpose) missing.push("Rental purpose");
-    return missing;
+    if (!form.fullName.trim()) return "Full name is required";
+    if (!form.phone.trim()) return "Phone is required";
+    if (!form.licenseNumber.trim()) return "Driver license # is required";
+    if (!form.licenseState.trim()) return "License state is required";
+    if (!form.pickupAt) return "Pickup date & time is required";
+    if (!form.signature.trim()) return "Signature is required";
+    if (!form.purpose) return "Purpose is required";
+    if (!Number.isFinite(Number(form.days)) || Number(form.days) < 1) return "Days must be at least 1";
+    return null;
   }, [form]);
 
   async function submit() {
     setError(null);
 
-    if (requiredMissing.length > 0) {
-      setError(`Missing required fields: ${requiredMissing.join(", ")}`);
+    const missing = requiredMissing;
+    if (missing) {
+      setError(missing);
+      return;
+    }
+
+    // Auth gate (prevents leakage + matches your RLS)
+    const { data: s } = await supabase.auth.getSession();
+    const token = s.session?.access_token;
+    if (!token) {
+      router.push(`/login?next=${encodeURIComponent(window.location.pathname)}`);
       return;
     }
 
     setLoading(true);
 
     try {
-      // ✅ Must include Bearer token (you were getting 401 earlier)
-      const { data: sessionRes } = await supabase.auth.getSession();
-      const token = sessionRes.session?.access_token;
-
-      if (!token) {
-        router.push(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
-        return;
-      }
-
       const res = await fetch("/api/auto/create-rental", {
         method: "POST",
         headers: {
@@ -71,18 +76,22 @@ export default function RentClient({ vehicleId }: { vehicleId: string }) {
         },
         body: JSON.stringify({
           vehicleId,
-          ...form,
+          fullName: form.fullName.trim(),
+          phone: form.phone.trim(),
+          licenseNumber: form.licenseNumber.trim(),
+          licenseState: form.licenseState.trim().toUpperCase(),
+          days: Number(form.days),
+          pickupAt: form.pickupAt,
+          purpose: form.purpose,
+          signature: form.signature.trim(),
         }),
       });
 
       const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Failed to create rental");
 
-      if (!res.ok) {
-        throw new Error(data?.error || "Failed to create rental");
-      }
-
-      // ✅ Step C1: go to agreement next (NOT checkout yet)
-      router.push(`/auto/agreement?rentalId=${encodeURIComponent(data.rentalId)}`);
+      // Step 3 happens on confirmation page (uploads + agreement + payment)
+      router.push(`/auto/confirmation?rentalId=${encodeURIComponent(data.rentalId)}`);
     } catch (e: any) {
       setError(e?.message || "Server error");
     } finally {
@@ -98,26 +107,18 @@ export default function RentClient({ vehicleId }: { vehicleId: string }) {
           Verification, agreement, and payment come next.
         </p>
 
-        {/* Pickup rules */}
         <div style={styles.notice}>
           <strong>Pickup & pricing rules</strong>
-          <ul style={{ marginTop: 6, paddingLeft: 18 }}>
-            <li>
-              Location: <strong>1090 Stafford Marketplace, VA 22556</strong>
-            </li>
-            <li>
-              Hours: <strong>9:00 AM – 6:00 PM</strong>
-            </li>
-            <li>
-              Minimum lead time: <strong>50 minutes</strong>
-            </li>
-            <li>Time rounded to the next 30-minute block</li>
-            <li>Same-day rentals are charged the daily rate</li>
-            <li>Weekly pricing starts at 7 days</li>
+          <ul style={{ marginTop: 10, lineHeight: 1.6 }}>
+            <li>Location: <strong>1090 Stafford Marketplace, VA 22556</strong></li>
+            <li>Hours: <strong>9:00 AM – 6:00 PM</strong></li>
+            <li>Minimum lead time: <strong>50 minutes</strong></li>
+            <li>Time rounded to the next <strong>30-minute</strong> block</li>
+            <li>Same-day rentals are charged the <strong>daily</strong> rate</li>
+            <li>Weekly pricing starts at <strong>7 days</strong></li>
           </ul>
         </div>
 
-        {/* Form */}
         <div style={styles.grid}>
           <Field label="Full name" required>
             <input
@@ -128,23 +129,12 @@ export default function RentClient({ vehicleId }: { vehicleId: string }) {
             />
           </Field>
 
-          <Field label="Email" required>
-            <input
-              value={form.email}
-              onChange={(e) => update("email", e.target.value)}
-              style={styles.input}
-              placeholder="you@email.com"
-              inputMode="email"
-            />
-          </Field>
-
           <Field label="Phone number" required>
             <input
               value={form.phone}
               onChange={(e) => update("phone", e.target.value)}
               style={styles.input}
               placeholder="(555) 123-4567"
-              inputMode="tel"
             />
           </Field>
 
@@ -160,26 +150,17 @@ export default function RentClient({ vehicleId }: { vehicleId: string }) {
           <Field label="License state" required>
             <input
               value={form.licenseState}
-              onChange={(e) => update("licenseState", e.target.value.toUpperCase())}
+              onChange={(e) => update("licenseState", e.target.value)}
               style={styles.input}
               placeholder="VA"
               maxLength={2}
             />
           </Field>
 
-          <Field label="License expiration date" required>
-            <input
-              type="date"
-              value={form.licenseExpires}
-              onChange={(e) => update("licenseExpires", e.target.value)}
-              style={styles.input}
-            />
-          </Field>
-
           <Field label="Rental purpose" required>
             <select
               value={form.purpose}
-              onChange={(e) => update("purpose", e.target.value)}
+              onChange={(e) => update("purpose", e.target.value as Purpose)}
               style={styles.input}
             >
               <option value="personal">Personal / Leisure</option>
@@ -196,7 +177,7 @@ export default function RentClient({ vehicleId }: { vehicleId: string }) {
             />
           </Field>
 
-          <Field label="Rental length (days)">
+          <Field label="Rental length (days)" required>
             <input
               type="number"
               min={1}
@@ -221,23 +202,18 @@ export default function RentClient({ vehicleId }: { vehicleId: string }) {
         <button
           onClick={submit}
           disabled={loading}
-          style={{
-            ...styles.button,
-            opacity: loading ? 0.7 : 1,
-          }}
+          style={{ ...styles.button, opacity: loading ? 0.7 : 1 }}
         >
-          {loading ? "Processing…" : "Continue"}
+          {loading ? "Processing…" : "Continue to Step 3"}
         </button>
 
         <p style={styles.footer}>
-          Next step: you’ll review and sign the rental agreement before payment.
+          Next: upload license + selfie, upload pickup exterior photos (GPS/time verified), then sign agreement and pay.
         </p>
       </div>
     </div>
   );
 }
-
-/* ---------- UI helpers ---------- */
 
 function Field({
   label,
@@ -258,54 +234,37 @@ function Field({
   );
 }
 
-/* ---------- Styles ---------- */
-
 const styles: Record<string, any> = {
-  page: {
-    display: "flex",
-    justifyContent: "center",
-    padding: "40px 20px",
-  },
+  page: { display: "flex", justifyContent: "center", padding: "40px 20px" },
   card: {
     width: "100%",
-    maxWidth: 920,
+    maxWidth: 900,
     background: "#fff",
     borderRadius: 18,
     padding: 28,
     border: "1px solid #e5e7eb",
   },
-  title: {
-    margin: 0,
-    fontSize: 28,
-  },
-  subtitle: {
-    marginTop: 6,
-    color: "#555",
-  },
+  title: { margin: 0, fontSize: 30 },
+  subtitle: { marginTop: 8, color: "#555" },
   notice: {
-    marginTop: 20,
+    marginTop: 18,
     background: "#f9fafb",
     border: "1px solid #e5e7eb",
-    borderRadius: 12,
+    borderRadius: 14,
     padding: 16,
     fontSize: 14,
   },
   grid: {
-    marginTop: 24,
+    marginTop: 22,
     display: "grid",
     gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
     gap: 16,
   },
-  label: {
-    fontSize: 13,
-    fontWeight: 700,
-    marginBottom: 6,
-    display: "block",
-  },
+  label: { fontSize: 13, fontWeight: 800, marginBottom: 6, display: "block" },
   input: {
     width: "100%",
     padding: "12px 14px",
-    borderRadius: 10,
+    borderRadius: 12,
     border: "1px solid #d1d5db",
     fontSize: 14,
     background: "#fff",
@@ -318,19 +277,10 @@ const styles: Record<string, any> = {
     border: "none",
     background: "#111827",
     color: "#fff",
-    fontWeight: 800,
+    fontWeight: 900,
     fontSize: 16,
     cursor: "pointer",
   },
-  error: {
-    marginTop: 16,
-    color: "#b91c1c",
-    fontWeight: 700,
-  },
-  footer: {
-    marginTop: 14,
-    fontSize: 12,
-    color: "#6b7280",
-    textAlign: "center",
-  },
+  error: { marginTop: 14, color: "#b91c1c", fontWeight: 700 },
+  footer: { marginTop: 12, fontSize: 12, color: "#6b7280", textAlign: "center" },
 };
