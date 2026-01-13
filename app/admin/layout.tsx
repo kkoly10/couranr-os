@@ -1,11 +1,42 @@
-import Brand from "../../components/Brand";
-import LogoutButton from "../../components/LogoutButton";
+"use client";
 
-export default function AdminLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
+import Brand from "@/components/Brand";
+import LogoutButton from "@/components/LogoutButton";
+
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const [ok, setOk] = useState(false);
+
+  useEffect(() => {
+    async function guard() {
+      const { data } = await supabase.auth.getSession();
+      if (!data.session) {
+        router.push("/login");
+        return;
+      }
+
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", data.session.user.id)
+        .single();
+
+      if (profile?.role !== "admin") {
+        router.push("/dashboard");
+        return;
+      }
+
+      setOk(true);
+    }
+
+    guard();
+  }, [router]);
+
+  if (!ok) return <p style={{ padding: 24 }}>Verifying admin access…</p>;
+
   return (
     <section>
       <header
