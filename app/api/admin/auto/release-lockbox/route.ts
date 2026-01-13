@@ -12,7 +12,6 @@ const resend = new Resend(process.env.RESEND_API_KEY!);
 
 // ---------- HELPERS ----------
 function generateLockboxCode() {
-  // 6-digit numeric code (industry standard)
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
@@ -35,10 +34,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // ---------- ROLE CHECK (ADMIN ONLY) ----------
+    // ---------- ROLE CHECK ----------
     const { data: profile } = await supabase
       .from("profiles")
-      .select("role,email")
+      .select("role")
       .eq("id", user.id)
       .single();
 
@@ -68,14 +67,8 @@ export async function POST(req: NextRequest) {
         agreement_signed,
         paid,
         lockbox_code_released_at,
-        vehicles (
-          year,
-          make,
-          model
-        ),
-        profiles (
-          email
-        )
+        vehicles ( year, make, model ),
+        profiles ( email )
       `)
       .eq("id", rentalId)
       .single();
@@ -139,7 +132,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ---------- AUDIT LOG ----------
+    // ---------- AUDIT ----------
     await supabase.from("rental_events").insert({
       rental_id: rentalId,
       actor_user_id: user.id,
@@ -150,8 +143,11 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // ---------- EMAIL NOTIFICATION ----------
-    const renterEmail = rental.profiles?.email;
+    // ---------- EMAIL ----------
+    const renterEmail =
+      Array.isArray(rental.profiles) && rental.profiles.length > 0
+        ? rental.profiles[0].email
+        : null;
 
     if (renterEmail) {
       const car =
@@ -171,12 +167,7 @@ export async function POST(req: NextRequest) {
           <h1 style="letter-spacing:2px;">${lockboxCode}</h1>
 
           <p>
-            The vehicle is now ready for pickup.
             Please take <strong>exterior photos</strong> before driving.
-          </p>
-
-          <p>
-            If you have questions, reply to this email.
           </p>
 
           <hr />
