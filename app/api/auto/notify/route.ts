@@ -1,187 +1,154 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { sendEmail, sendSMS } from "@/lib/notify";
+import { sendEmail } from "@/lib/notify";
 
-export const dynamic = "force-dynamic";
-
-function requireEnv(name: string) {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing env: ${name}`);
-  return v;
-}
-
-async function isAdmin(supabase: any) {
-  const { data: u } = await supabase.auth.getUser();
-  const user = u?.user;
-  if (!user) return { ok: false, user: null };
-
-  const { data: prof } = await supabase
-    .from("profiles")
-    .select("role,email")
-    .eq("id", user.id)
-    .single();
-
-  return { ok: prof?.role === "admin", user };
-}
+/**
+ * POST /api/auto/notify
+ *
+ * Body:
+ * {
+ *   rentalId: string,
+ *   type:
+ *     | "verification_submitted"
+ *     | "approved"
+ *     | "pickup_ready"
+ *     | "return_reminder"
+ *     | "deposit_refunded"
+ *     | "deposit_withheld"
+ * }
+ */
 
 export async function POST(req: Request) {
   try {
-    const authHeader = req.headers.get("authorization") || "";
-    const token = authHeader.replace("Bearer ", "").trim();
-    if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const body = await req.json().catch(() => ({}));
+    const { rentalId, type } = body;
 
+    if (!rentalId || !type) {
+      return NextResponse.json(
+        { error: "Missing rentalId or type" },
+        { status: 400 }
+      );
+    }
+
+    // Admin/service-role Supabase (server only)
     const supabase = createClient(
-      requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
-      requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
-      { global: { headers: { Authorization: `Bearer ${token}` } } }
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    const adminCheck = await isAdmin(supabase);
-    if (!adminCheck.ok) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-
-    const body = await req.json().catch(() => ({}));
-    const rentalId = String(body.rentalId || "");
-    const type = String(body.type || ""); // approved | return_reminder | deposit_refunded | deposit_withheld | payment_received
-    if (!rentalId || !type) return NextResponse.json({ error: "Missing rentalId/type" }, { status: 400 });
-
+    // Fetch rental + renter email
     const { data: rental, error } = await supabase
       .from("rentals")
       .select(
         `
         id,
         user_id,
-        purpose,
-        pickup_at,
-        lockbox_code,
-        vehicles ( year, make, model )
+        vehicles ( year, make, model ),
+        profiles:profiles!rentals_user_id_fkey ( email )
       `
       )
       .eq("id", rentalId)
       .single();
 
-    if (error || !rental) return NextResponse.json({ error: "Rental not found" }, { status: 404 });
+    if (error || !rental) {
+      return NextResponse.json(
+        { error: "Rental not found" },
+        { status: 404 }
+      );
+    }
 
-    // Email source (profiles table has email)
-    const { data: prof } = await supabase
-      .from("profiles")
-      .select("email")
-      .eq("id", rental.user_id)
-      .single();
-
-    const customerEmail = String(prof?.email || "");
-    // Phone: for now we read from renters table if you have it. If not, SMS will skip.
-    const { data: renterRow } = await supabase
-      .from("renters")
-      .select("phone")
-      .eq("user_id", rental.user_id)
-      .maybeSingle();
-
-    const phone = String((renterRow as any)?.phone || "");
+    const email = rental.profiles?.email;
+    if (!email) {
+      return NextResponse.json(
+        { error: "Renter email not found" },
+        { status: 400 }
+      );
+    }
 
     const v: any = rental.vehicles;
-    const carTitle = `${v?.year ?? ""} ${v?.make ?? ""} ${v?.model ?? ""}`.trim() || "Couranr Auto";
+    const vehicleLabel =
+      `${v?.year ?? ""} ${v?.make ?? ""} ${v?.model ?? ""}`.trim() ||
+      "Couranr Auto Rental";
 
-    const site = process.env.NEXT_PUBLIC_SITE_URL || req.headers.get("origin") || "";
-    const dashboardUrl = `${site}/dashboard/auto`;
+    // -----------------------------
+    // Email templates (simple + safe)
+    // -----------------------------
 
-    const templates: Record<string, { subject: string; html: string; sms?: string }> = {
-      approved: {
-        subject: `✅ Approved — Pickup instructions for ${carTitle}`,
-        html: `
-          <div style="font-family:Arial,sans-serif;line-height:1.6">
-            <h2>You're approved!</h2>
-            <p><strong>Vehicle:</strong> ${carTitle}</p>
-            <p><strong>Pickup:</strong> ${rental.pickup_at ?? ""}</p>
-            <p>Go to your Auto Dashboard for next steps and lockbox access:</p>
-            <p><a href="${dashboardUrl}">${dashboardUrl}</a></p>
-            <p style="margin-top:14px;color:#6b7280;font-size:12px">
-              Transactional message from Couranr Auto.
-            </p>
-          </div>
-        `,
-        sms: `Couranr Auto: You’re approved for ${carTitle}. Open your dashboard for pickup instructions: ${dashboardUrl}`,
-      },
+    let subject = "Couranr Auto Update";
+    let html = `<p>There is an update regarding your rental.</p>`;
 
-      return_reminder: {
-        subject: `⏰ Return reminder — ${carTitle}`,
-        html: `
-          <div style="font-family:Arial,sans-serif;line-height:1.6">
-            <h2>Return reminder</h2>
-            <p><strong>Vehicle:</strong> ${carTitle}</p>
-            <p>Please complete return steps in your dashboard (photos + confirmation):</p>
-            <p><a href="${dashboardUrl}">${dashboardUrl}</a></p>
-          </div>
-        `,
-        sms: `Couranr Auto: Return reminder for ${carTitle}. Complete return steps in your dashboard: ${dashboardUrl}`,
-      },
+    switch (type) {
+      case "verification_submitted":
+        subject = "ID Verification Received";
+        html = `
+          <p>We’ve received your ID verification for:</p>
+          <p><strong>${vehicleLabel}</strong></p>
+          <p>Our team is reviewing it now.</p>
+        `;
+        break;
 
-      deposit_refunded: {
-        subject: `💵 Deposit refunded — ${carTitle}`,
-        html: `
-          <div style="font-family:Arial,sans-serif;line-height:1.6">
-            <h2>Deposit refunded</h2>
-            <p>Your deposit has been marked as <strong>refunded</strong>.</p>
-            <p>See details in your dashboard:</p>
-            <p><a href="${dashboardUrl}">${dashboardUrl}</a></p>
-          </div>
-        `,
-        sms: `Couranr Auto: Your deposit was refunded. Details: ${dashboardUrl}`,
-      },
+      case "approved":
+        subject = "Rental Approved";
+        html = `
+          <p>Your rental has been <strong>approved</strong>:</p>
+          <p><strong>${vehicleLabel}</strong></p>
+          <p>You’ll receive pickup instructions shortly.</p>
+        `;
+        break;
 
-      deposit_withheld: {
-        subject: `⚠️ Deposit update — ${carTitle}`,
-        html: `
-          <div style="font-family:Arial,sans-serif;line-height:1.6">
-            <h2>Deposit update</h2>
-            <p>Your deposit has been marked as <strong>withheld</strong> pending review or charges.</p>
-            <p>See details in your dashboard:</p>
-            <p><a href="${dashboardUrl}">${dashboardUrl}</a></p>
-          </div>
-        `,
-        sms: `Couranr Auto: Deposit update (withheld). Details: ${dashboardUrl}`,
-      },
+      case "pickup_ready":
+        subject = "Pickup Ready";
+        html = `
+          <p>Your rental is ready for pickup:</p>
+          <p><strong>${vehicleLabel}</strong></p>
+          <p>Please log into your dashboard to view the lockbox code and complete pickup photos.</p>
+        `;
+        break;
 
-      payment_received: {
-        subject: `✅ Payment received — ${carTitle}`,
-        html: `
-          <div style="font-family:Arial,sans-serif;line-height:1.6">
-            <h2>Payment received</h2>
-            <p>We received your payment for <strong>${carTitle}</strong>.</p>
-            <p>Next steps will appear in your Auto Dashboard:</p>
-            <p><a href="${dashboardUrl}">${dashboardUrl}</a></p>
-          </div>
-        `,
-        sms: `Couranr Auto: Payment received for ${carTitle}. Next steps: ${dashboardUrl}`,
-      },
-    };
+      case "return_reminder":
+        subject = "Return Reminder";
+        html = `
+          <p>This is a reminder to return your rental:</p>
+          <p><strong>${vehicleLabel}</strong></p>
+          <p>Please complete return photos in your dashboard.</p>
+        `;
+        break;
 
-    const t = templates[type];
-    if (!t) return NextResponse.json({ error: "Unknown type" }, { status: 400 });
+      case "deposit_refunded":
+        subject = "Deposit Refunded";
+        html = `
+          <p>Your security deposit has been <strong>refunded</strong>.</p>
+          <p>Thank you for renting with Couranr.</p>
+        `;
+        break;
 
-    // Email required in your standard. If missing, we still return success but log.
-    const emailResult = customerEmail
-      ? await sendEmail({ to: customerEmail, subject: t.subject, html: t.html })
-      : { ok: false, skipped: true, reason: "Missing customer email" };
+      case "deposit_withheld":
+        subject = "Deposit Update";
+        html = `
+          <p>Your deposit was <strong>partially or fully withheld</strong>.</p>
+          <p>Please check your dashboard for details.</p>
+        `;
+        break;
 
-    const smsResult =
-      phone && t.sms ? await sendSMS({ to: phone, body: t.sms }) : { ok: false, skipped: true, reason: "No phone/SMS template" };
+      default:
+        return NextResponse.json(
+          { error: "Unsupported notification type" },
+          { status: 400 }
+        );
+    }
 
-    await supabase.from("rental_events").insert({
-      rental_id: rentalId,
-      actor_user_id: adminCheck.user.id,
-      actor_role: "admin",
-      event_type: "notification_sent",
-      event_payload: {
-        type,
-        email: customerEmail || null,
-        emailResult,
-        phone: phone || null,
-        smsResult,
-      },
+    await sendEmail({
+      to: email,
+      subject,
+      html,
     });
 
-    return NextResponse.json({ ok: true, emailResult, smsResult });
-  } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
+    return NextResponse.json({ ok: true });
+  } catch (err: any) {
+    console.error("Auto notify error:", err);
+    return NextResponse.json(
+      { error: err?.message || "Server error" },
+      { status: 500 }
+    );
   }
 }
