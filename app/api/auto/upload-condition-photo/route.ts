@@ -1,100 +1,95 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-export const dynamic = "force-dynamic";
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
-function requireEnv(name: string) {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing env: ${name}`);
-  return v;
-}
+// ---------------- CONFIG ----------------
 
-export async function POST(req: Request) {
+const MAX_PHOTOS_PER_PHASE = 12;
+const MAX_FILE_SIZE_MB = 8;
+const ALLOWED_MIME_PREFIX = "image/";
+
+// ----------------------------------------
+
+export async function POST(req: NextRequest) {
   try {
-    // --------------------------------------------------
-    // Auth
-    // --------------------------------------------------
-    const authHeader = req.headers.get("authorization") || "";
-    const token = authHeader.replace("Bearer ", "").trim();
-    if (!token) {
+    // ---------------- AUTH ----------------
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const supabase = createClient(
-      requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
-      requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
-      {
-        global: {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      }
-    );
-
+    const token = authHeader.replace("Bearer ", "");
     const {
       data: { user },
-      error: userErr,
-    } = await supabase.auth.getUser();
+      error: authError,
+    } = await supabase.auth.getUser(token);
 
-    if (userErr || !user) {
+    if (authError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    // --------------------------------------------------
-    // Body
-    // --------------------------------------------------
-    const body = await req.json().catch(() => ({}));
+    // ---------------- PARSE FORM ----------------
+    const form = await req.formData();
 
-    const {
-      rentalId,
-      phase, // pickup_exterior | pickup_interior | return_exterior | return_interior
-      photoUrl,
-      capturedLat,
-      capturedLng,
-      capturedAccuracyM,
-    } = body;
+    const rentalId = form.get("rentalId")?.toString();
+    const phase = form.get("phase")?.toString();
+    const file = form.get("file") as File | null;
 
-    if (!rentalId || !phase || !photoUrl) {
+    const lat = form.get("lat") ? Number(form.get("lat")) : null;
+    const lng = form.get("lng") ? Number(form.get("lng")) : null;
+    const accuracy = form.get("accuracy") ? Number(form.get("accuracy")) : null;
+
+    if (!rentalId || !phase || !file) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
       );
     }
 
-    const allowedPhases = [
+    const ALLOWED_PHASES = [
       "pickup_exterior",
       "pickup_interior",
       "return_exterior",
       "return_interior",
     ];
 
-    if (!allowedPhases.includes(phase)) {
+    if (!ALLOWED_PHASES.includes(phase)) {
+      return NextResponse.json({ error: "Invalid phase" }, { status: 400 });
+    }
+
+    // ---------------- FILE VALIDATION ----------------
+    if (!file.type.startsWith(ALLOWED_MIME_PREFIX)) {
       return NextResponse.json(
-        { error: "Invalid photo phase" },
+        { error: "Only image uploads allowed" },
         { status: 400 }
       );
     }
 
-    // --------------------------------------------------
-    // Ownership check (RLS backs this up)
-    // --------------------------------------------------
-    const { data: rental, error: rentalErr } = await supabase
+    if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+      return NextResponse.json(
+        { error: "File too large" },
+        { status: 400 }
+      );
+    }
+
+    // ---------------- FETCH RENTAL ----------------
+    const { data: rental, error: rentalError } = await supabase
       .from("rentals")
-      .select(
-        `
+      .select(`
         id,
         user_id,
-        verification_status,
-        agreement_signed,
-        paid,
-        pickup_confirmed_at
-      `
-      )
+        lockbox_code_released_at,
+        pickup_confirmed_at,
+        return_confirmed_at
+      `)
       .eq("id", rentalId)
       .single();
 
-    if (rentalErr || !rental) {
+    if (rentalError || !rental) {
       return NextResponse.json({ error: "Rental not found" }, { status: 404 });
     }
 
@@ -102,18 +97,14 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // --------------------------------------------------
-    // Phase gating (CRITICAL SECURITY)
-    // --------------------------------------------------
+    // ---------------- PHASE GATES ----------------
     if (
-      (phase === "pickup_exterior" || phase === "pickup_interior") &&
-      (!rental.paid ||
-        !rental.agreement_signed ||
-        rental.verification_status !== "approved")
+      phase === "pickup_interior" &&
+      !rental.lockbox_code_released_at
     ) {
       return NextResponse.json(
-        { error: "Pickup photos not allowed yet" },
-        { status: 403 }
+        { error: "Lockbox not released yet" },
+        { status: 400 }
       );
     }
 
@@ -122,73 +113,99 @@ export async function POST(req: Request) {
       !rental.pickup_confirmed_at
     ) {
       return NextResponse.json(
-        { error: "Return photos not allowed yet" },
-        { status: 403 }
+        { error: "Pickup not confirmed yet" },
+        { status: 400 }
       );
     }
 
-    // --------------------------------------------------
-    // Insert photo
-    // --------------------------------------------------
-    const { error: insertErr } = await supabase
+    if (phase === "return_interior") {
+      const { count } = await supabase
+        .from("rental_condition_photos")
+        .select("*", { count: "exact", head: true })
+        .eq("rental_id", rentalId)
+        .eq("phase", "return_exterior");
+
+      if (!count || count === 0) {
+        return NextResponse.json(
+          { error: "Return exterior photos required first" },
+          { status: 400 }
+        );
+      }
+    }
+
+    // ---------------- PHOTO COUNT LIMIT ----------------
+    const { count: existingCount } = await supabase
+      .from("rental_condition_photos")
+      .select("*", { count: "exact", head: true })
+      .eq("rental_id", rentalId)
+      .eq("phase", phase);
+
+    if ((existingCount || 0) >= MAX_PHOTOS_PER_PHASE) {
+      return NextResponse.json(
+        { error: "Photo limit reached for this phase" },
+        { status: 400 }
+      );
+    }
+
+    // ---------------- STORAGE UPLOAD ----------------
+    const fileExt = file.name.split(".").pop();
+    const storagePath = `rentals/${rentalId}/${phase}/${crypto.randomUUID()}.${fileExt}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from("renter-verifications")
+      .upload(storagePath, file, {
+        contentType: file.type,
+        upsert: false,
+      });
+
+    if (uploadError) {
+      return NextResponse.json(
+        { error: "Upload failed" },
+        { status: 500 }
+      );
+    }
+
+    const { data: publicUrl } = supabase.storage
+      .from("renter-verifications")
+      .getPublicUrl(storagePath);
+
+    // ---------------- INSERT PHOTO RECORD ----------------
+    const { error: insertError } = await supabase
       .from("rental_condition_photos")
       .insert({
         rental_id: rentalId,
         user_id: user.id,
         phase,
-        photo_url: photoUrl,
-        captured_lat: capturedLat ?? null,
-        captured_lng: capturedLng ?? null,
-        captured_accuracy_m: capturedAccuracyM ?? null,
+        photo_url: publicUrl.publicUrl,
+        captured_lat: lat,
+        captured_lng: lng,
+        captured_accuracy_m: accuracy,
       });
 
-    if (insertErr) {
+    if (insertError) {
       return NextResponse.json(
-        { error: insertErr.message },
+        { error: "Failed to save photo record" },
         { status: 500 }
       );
     }
 
-    // --------------------------------------------------
-    // Advance condition_photos_status
-    // --------------------------------------------------
-    const statusMap: Record<string, string> = {
-      pickup_exterior: "pickup_exterior_done",
-      pickup_interior: "pickup_interior_done",
-      return_exterior: "return_exterior_done",
-      return_interior: "return_interior_done",
-    };
-
-    const nextStatus = statusMap[phase];
-
-    if (nextStatus) {
-      await supabase
-        .from("rentals")
-        .update({ condition_photos_status: nextStatus })
-        .eq("id", rentalId);
-    }
-
-    // --------------------------------------------------
-    // Audit log
-    // --------------------------------------------------
+    // ---------------- AUDIT LOG ----------------
     await supabase.from("rental_events").insert({
       rental_id: rentalId,
       actor_user_id: user.id,
       actor_role: "customer",
-      event_type: "condition_photo_uploaded",
+      event_type: "photo_uploaded",
       event_payload: {
         phase,
-        photo_url: photoUrl,
-        lat: capturedLat ?? null,
-        lng: capturedLng ?? null,
+        gps_provided: lat !== null && lng !== null,
       },
     });
 
     return NextResponse.json({ success: true });
-  } catch (e: any) {
-    console.error("upload-condition-photo error:", e);
+  } catch (err) {
+    console.error("UPLOAD PHOTO ERROR:", err);
     return NextResponse.json(
-      { error: e?.message || "Server error" },
+      { error: "Internal server error" },
       { status: 500 }
     );
   }
