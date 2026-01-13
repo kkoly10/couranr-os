@@ -1,13 +1,24 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-function env(name: string) {
+export const dynamic = "force-dynamic";
+
+function requireEnv(name: string) {
   const v = process.env[name];
   if (!v) throw new Error(`Missing env: ${name}`);
   return v;
 }
 
-export const dynamic = "force-dynamic";
+async function requireAdmin(supabase: any) {
+  const { data: u } = await supabase.auth.getUser();
+  const user = u?.user;
+  if (!user) return null;
+
+  const { data: prof } = await supabase.from("profiles").select("role").eq("id", user.id).single();
+  if (prof?.role !== "admin") return null;
+
+  return user;
+}
 
 export async function GET(req: Request) {
   try {
@@ -15,42 +26,36 @@ export async function GET(req: Request) {
     const token = authHeader.replace("Bearer ", "").trim();
     if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const supabase = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
-      global: { headers: { Authorization: `Bearer ${token}` } },
-    });
+    const supabase = createClient(
+      requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
+      requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+      { global: { headers: { Authorization: `Bearer ${token}` } } }
+    );
 
-    const { data: u } = await supabase.auth.getUser();
-    if (!u?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    // Must be admin
-    const { data: prof } = await supabase.from("profiles").select("role").eq("id", u.user.id).single();
-    if (prof?.role !== "admin") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    const admin = await requireAdmin(supabase);
+    if (!admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
     const { data, error } = await supabase
       .from("rentals")
-      .select(`
+      .select(
+        `
         id,
         created_at,
-        status,
-        purpose,
         verification_status,
+        docs_complete,
+        agreement_signed,
         paid,
+        condition_photos_status,
         lockbox_code,
-        vehicles ( year, make, model ),
-        renters ( full_name, phone, email )
-      `)
-      .order("created_at", { ascending: false });
+        vehicles ( year, make, model )
+      `
+      )
+      .order("created_at", { ascending: false })
+      .limit(200);
 
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    // Supabase returns relations as arrays sometimes; normalize defensively
-    const rentals = (data || []).map((r: any) => ({
-      ...r,
-      vehicles: Array.isArray(r.vehicles) ? r.vehicles[0] : r.vehicles,
-      renters: Array.isArray(r.renters) ? r.renters[0] : r.renters,
-    }));
-
-    return NextResponse.json({ rentals });
+    return NextResponse.json({ rentals: data || [] });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
   }
