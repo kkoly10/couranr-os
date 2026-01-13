@@ -30,21 +30,20 @@ export async function POST(req: Request) {
       );
     }
 
-    // Admin/service-role Supabase (server only)
+    // Service-role Supabase (server only)
     const supabase = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    // Fetch rental + renter email
+    // Fetch rental + user profile (Supabase returns arrays for relations)
     const { data: rental, error } = await supabase
       .from("rentals")
       .select(
         `
         id,
-        user_id,
         vehicles ( year, make, model ),
-        profiles:profiles!rentals_user_id_fkey ( email )
+        profiles ( email )
       `
       )
       .eq("id", rentalId)
@@ -57,7 +56,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const email = rental.profiles?.email;
+    // 👇 FIX: profiles is an ARRAY
+    const email =
+      Array.isArray(rental.profiles) && rental.profiles.length > 0
+        ? rental.profiles[0].email
+        : null;
+
     if (!email) {
       return NextResponse.json(
         { error: "Renter email not found" },
@@ -69,10 +73,6 @@ export async function POST(req: Request) {
     const vehicleLabel =
       `${v?.year ?? ""} ${v?.make ?? ""} ${v?.model ?? ""}`.trim() ||
       "Couranr Auto Rental";
-
-    // -----------------------------
-    // Email templates (simple + safe)
-    // -----------------------------
 
     let subject = "Couranr Auto Update";
     let html = `<p>There is an update regarding your rental.</p>`;
@@ -101,7 +101,7 @@ export async function POST(req: Request) {
         html = `
           <p>Your rental is ready for pickup:</p>
           <p><strong>${vehicleLabel}</strong></p>
-          <p>Please log into your dashboard to view the lockbox code and complete pickup photos.</p>
+          <p>Please log into your dashboard to view the lockbox code.</p>
         `;
         break;
 
