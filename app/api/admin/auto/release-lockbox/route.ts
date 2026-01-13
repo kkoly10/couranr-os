@@ -149,19 +149,20 @@ export async function POST(req: NextRequest) {
         ? rental.profiles[0].email
         : null;
 
-    if (renterEmail) {
-      const car =
-        rental.vehicles
-          ? `${rental.vehicles.year} ${rental.vehicles.make} ${rental.vehicles.model}`
-          : "Your rental vehicle";
+    const vehicle =
+      Array.isArray(rental.vehicles) && rental.vehicles.length > 0
+        ? `${rental.vehicles[0].year} ${rental.vehicles[0].make} ${rental.vehicles[0].model}`
+        : "Your rental vehicle";
 
+    if (renterEmail) {
       await resend.emails.send({
         from: "Couranr Auto <no-reply@couranr.com>",
         to: renterEmail,
         subject: "🔓 Your vehicle is ready for pickup",
         html: `
           <h2>Your rental is approved</h2>
-          <p><strong>Vehicle:</strong> ${car}</p>
+
+          <p><strong>Vehicle:</strong> ${vehicle}</p>
 
           <p><strong>Lockbox code:</strong></p>
           <h1 style="letter-spacing:2px;">${lockboxCode}</h1>
