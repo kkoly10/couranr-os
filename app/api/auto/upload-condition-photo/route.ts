@@ -11,9 +11,9 @@ function requireEnv(name: string) {
 
 export async function POST(req: Request) {
   try {
-    // -----------------------------
+    // --------------------------------------------------
     // Auth
-    // -----------------------------
+    // --------------------------------------------------
     const authHeader = req.headers.get("authorization") || "";
     const token = authHeader.replace("Bearer ", "").trim();
     if (!token) {
@@ -25,100 +25,118 @@ export async function POST(req: Request) {
       requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
       {
         global: {
-          headers: { Authorization: `Bearer ${token}` },
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         },
       }
     );
 
-    const { data: userRes, error: userErr } = await supabase.auth.getUser();
-    if (userErr || !userRes?.user) {
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser();
+
+    if (userErr || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const userId = userRes.user.id;
-
-    // -----------------------------
-    // Parse request
-    // -----------------------------
-    const body = await req.json();
+    // --------------------------------------------------
+    // Body
+    // --------------------------------------------------
+    const body = await req.json().catch(() => ({}));
 
     const {
       rentalId,
       phase, // pickup_exterior | pickup_interior | return_exterior | return_interior
-      photoBase64,
+      photoUrl,
       capturedLat,
       capturedLng,
       capturedAccuracyM,
-    } = body || {};
+    } = body;
 
-    if (!rentalId || !phase || !photoBase64) {
+    if (!rentalId || !phase || !photoUrl) {
       return NextResponse.json(
         { error: "Missing required fields" },
         { status: 400 }
       );
     }
 
-    // -----------------------------
-    // Validate rental ownership
-    // -----------------------------
-    const { data: rental, error: rentalErr } = await supabase
-      .from("rentals")
-      .select("id, user_id")
-      .eq("id", rentalId)
-      .single();
+    const allowedPhases = [
+      "pickup_exterior",
+      "pickup_interior",
+      "return_exterior",
+      "return_interior",
+    ];
 
-    if (rentalErr || !rental || rental.user_id !== userId) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    // -----------------------------
-    // Decode image
-    // -----------------------------
-    const matches = photoBase64.match(/^data:(.+);base64,(.+)$/);
-    if (!matches) {
-      return NextResponse.json({ error: "Invalid image data" }, { status: 400 });
-    }
-
-    const contentType = matches[1];
-    const buffer = Buffer.from(matches[2], "base64");
-
-    // -----------------------------
-    // Generate filename (NO uuid pkg)
-    // -----------------------------
-    const photoId = crypto.randomUUID();
-    const filePath = `rentals/${rentalId}/${phase}/${photoId}.jpg`;
-
-    // -----------------------------
-    // Upload to storage
-    // -----------------------------
-    const { error: uploadErr } = await supabase.storage
-      .from("renter-verifications")
-      .upload(filePath, buffer, {
-        contentType,
-        upsert: false,
-      });
-
-    if (uploadErr) {
+    if (!allowedPhases.includes(phase)) {
       return NextResponse.json(
-        { error: uploadErr.message },
-        { status: 500 }
+        { error: "Invalid photo phase" },
+        { status: 400 }
       );
     }
 
-    const { data: publicUrl } = supabase.storage
-      .from("renter-verifications")
-      .getPublicUrl(filePath);
+    // --------------------------------------------------
+    // Ownership check (RLS backs this up)
+    // --------------------------------------------------
+    const { data: rental, error: rentalErr } = await supabase
+      .from("rentals")
+      .select(
+        `
+        id,
+        user_id,
+        verification_status,
+        agreement_signed,
+        paid,
+        pickup_confirmed_at
+      `
+      )
+      .eq("id", rentalId)
+      .single();
 
-    // -----------------------------
-    // Insert DB record
-    // -----------------------------
+    if (rentalErr || !rental) {
+      return NextResponse.json({ error: "Rental not found" }, { status: 404 });
+    }
+
+    if (rental.user_id !== user.id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    // --------------------------------------------------
+    // Phase gating (CRITICAL SECURITY)
+    // --------------------------------------------------
+    if (
+      (phase === "pickup_exterior" || phase === "pickup_interior") &&
+      (!rental.paid ||
+        !rental.agreement_signed ||
+        rental.verification_status !== "approved")
+    ) {
+      return NextResponse.json(
+        { error: "Pickup photos not allowed yet" },
+        { status: 403 }
+      );
+    }
+
+    if (
+      (phase === "return_exterior" || phase === "return_interior") &&
+      !rental.pickup_confirmed_at
+    ) {
+      return NextResponse.json(
+        { error: "Return photos not allowed yet" },
+        { status: 403 }
+      );
+    }
+
+    // --------------------------------------------------
+    // Insert photo
+    // --------------------------------------------------
     const { error: insertErr } = await supabase
       .from("rental_condition_photos")
       .insert({
         rental_id: rentalId,
-        user_id: userId,
+        user_id: user.id,
         phase,
-        photo_url: publicUrl.publicUrl,
+        photo_url: photoUrl,
         captured_lat: capturedLat ?? null,
         captured_lng: capturedLng ?? null,
         captured_accuracy_m: capturedAccuracyM ?? null,
@@ -131,9 +149,44 @@ export async function POST(req: Request) {
       );
     }
 
+    // --------------------------------------------------
+    // Advance condition_photos_status
+    // --------------------------------------------------
+    const statusMap: Record<string, string> = {
+      pickup_exterior: "pickup_exterior_done",
+      pickup_interior: "pickup_interior_done",
+      return_exterior: "return_exterior_done",
+      return_interior: "return_interior_done",
+    };
+
+    const nextStatus = statusMap[phase];
+
+    if (nextStatus) {
+      await supabase
+        .from("rentals")
+        .update({ condition_photos_status: nextStatus })
+        .eq("id", rentalId);
+    }
+
+    // --------------------------------------------------
+    // Audit log
+    // --------------------------------------------------
+    await supabase.from("rental_events").insert({
+      rental_id: rentalId,
+      actor_user_id: user.id,
+      actor_role: "customer",
+      event_type: "condition_photo_uploaded",
+      event_payload: {
+        phase,
+        photo_url: photoUrl,
+        lat: capturedLat ?? null,
+        lng: capturedLng ?? null,
+      },
+    });
+
     return NextResponse.json({ success: true });
   } catch (e: any) {
-    console.error("Upload condition photo error:", e);
+    console.error("upload-condition-photo error:", e);
     return NextResponse.json(
       { error: e?.message || "Server error" },
       { status: 500 }
