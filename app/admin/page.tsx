@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { supabase } from "../../lib/supabaseClient";
+import { supabase } from "@/lib/supabaseClient";
 
 /* ---------------- TYPES ---------------- */
 
@@ -33,6 +33,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     async function loadDeliveries() {
       setLoading(true);
+      setError(null);
 
       const { data, error } = await supabase
         .from("deliveries")
@@ -41,10 +42,14 @@ export default function AdminDashboard() {
           status,
           created_at,
           driver_id,
-          pickup_address,
-          dropoff_address,
           estimated_miles,
           weight_lbs,
+          pickup_address:pickup_address_id (
+            address_line
+          ),
+          dropoff_address:dropoff_address_id (
+            address_line
+          ),
           orders (
             order_number,
             total_cents,
@@ -59,16 +64,15 @@ export default function AdminDashboard() {
         return;
       }
 
-      // 🔑 Normalize Supabase relation array → single object
       const normalized: AdminDelivery[] = (data ?? []).map((d: any) => ({
         id: d.id,
         status: d.status,
         created_at: d.created_at,
         driver_id: d.driver_id,
-        pickup_address: d.pickup_address,
-        dropoff_address: d.dropoff_address,
         estimated_miles: d.estimated_miles,
         weight_lbs: d.weight_lbs,
+        pickup_address: d.pickup_address?.address_line ?? "—",
+        dropoff_address: d.dropoff_address?.address_line ?? "—",
         order: d.orders && d.orders.length > 0 ? d.orders[0] : null,
       }));
 
@@ -111,6 +115,7 @@ export default function AdminDashboard() {
             borderRadius: 8,
             padding: 16,
             marginBottom: 12,
+            background: "#fff",
           }}
         >
           <strong>Status:</strong> {d.status}
@@ -128,8 +133,8 @@ export default function AdminDashboard() {
             <>
               <strong>Order #:</strong> {d.order.order_number}
               <br />
-              <strong>Total:</strong> $
-              {(d.order.total_cents / 100).toFixed(2)}
+              <strong>Total:</strong>{" "}
+              ${(d.order.total_cents / 100).toFixed(2)}
             </>
           )}
         </div>
