@@ -6,131 +6,200 @@ import { supabase } from "@/lib/supabaseClient";
 
 type Rental = {
   id: string;
-  status: string;
-  verification_status: string;
-  paid: boolean;
-  lockbox_code: string | null;
+  purpose: string;
+  lockbox_code_released_at: string | null;
   pickup_confirmed_at: string | null;
-  return_confirmed_at: string | null;
+};
+
+type PhotoPhase = {
+  phase: string;
 };
 
 export default function AutoDashboard() {
   const router = useRouter();
-  const [rentals, setRentals] = useState<Rental[]>([]);
   const [loading, setLoading] = useState(true);
-
-  async function load() {
-    const { data: session } = await supabase.auth.getSession();
-    if (!session?.session) {
-      router.push("/login?next=/dashboard/auto");
-      return;
-    }
-
-    const { data } = await supabase
-      .from("rentals")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    setRentals(data || []);
-    setLoading(false);
-  }
+  const [rentals, setRentals] = useState<Rental[]>([]);
+  const [photos, setPhotos] = useState<Record<string, Set<string>>>({});
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     load();
   }, []);
 
-  async function confirm(endpoint: string, rentalId: string) {
-    const { data: session } = await supabase.auth.getSession();
-    const token = session?.session?.access_token;
-    if (!token) return;
+  async function load() {
+    setLoading(true);
+    setError(null);
 
-    await fetch(endpoint, {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session) {
+      router.push("/login?next=/dashboard/auto");
+      return;
+    }
+
+    // Load rentals
+    const { data: rentalsData, error: rErr } = await supabase
+      .from("rentals")
+      .select(
+        `
+        id,
+        purpose,
+        lockbox_code_released_at,
+        pickup_confirmed_at
+      `
+      )
+      .order("created_at", { ascending: false });
+
+    if (rErr) {
+      setError(rErr.message);
+      setLoading(false);
+      return;
+    }
+
+    setRentals(rentalsData || []);
+
+    // Load photos per rental
+    const map: Record<string, Set<string>> = {};
+
+    for (const r of rentalsData || []) {
+      const { data: p } = await supabase
+        .from("rental_condition_photos")
+        .select("phase")
+        .eq("rental_id", r.id);
+
+      map[r.id] = new Set((p || []).map((x: PhotoPhase) => x.phase));
+    }
+
+    setPhotos(map);
+    setLoading(false);
+  }
+
+  async function confirmPickup(rentalId: string) {
+    setError(null);
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session) {
+      router.push("/login");
+      return;
+    }
+
+    const res = await fetch("/api/auto/confirm-pickup", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
+        Authorization: `Bearer ${session.access_token}`,
       },
       body: JSON.stringify({ rentalId }),
     });
 
-    load();
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setError(data?.error || "Failed to confirm pickup");
+      return;
+    }
+
+    await load();
   }
 
-  if (loading) return <p>Loading auto dashboard…</p>;
+  if (loading) return <p style={{ padding: 24 }}>Loading auto dashboard…</p>;
 
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: 24 }}>
       <h1 style={{ fontSize: 32 }}>My Rentals</h1>
+      <p style={{ color: "#555", marginTop: 6 }}>
+        Follow each step carefully to pick up and return your vehicle.
+      </p>
 
-      {rentals.length === 0 && <p>You have no rentals.</p>}
+      {error && (
+        <div
+          style={{
+            marginTop: 14,
+            padding: 12,
+            borderRadius: 10,
+            border: "1px solid #fecaca",
+            background: "#fff",
+            color: "#b91c1c",
+          }}
+        >
+          {error}
+        </div>
+      )}
 
-      {rentals.map((r) => (
-        <div key={r.id} style={card}>
-          <strong>Rental ID:</strong> {r.id}
-          <br />
-          <strong>Status:</strong> {r.status}
-          <br />
+      {rentals.length === 0 && (
+        <p style={{ marginTop: 20 }}>You don’t have any rentals yet.</p>
+      )}
 
-          {!r.pickup_confirmed_at &&
-            r.verification_status === "approved" &&
-            r.paid &&
-            r.lockbox_code && (
+      {rentals.map((r) => {
+        const phases = photos[r.id] || new Set<string>();
+        const hasPickupExterior = phases.has("pickup_exterior");
+        const hasPickupInterior = phases.has("pickup_interior");
+
+        const canConfirmPickup =
+          !!r.lockbox_code_released_at &&
+          !r.pickup_confirmed_at &&
+          hasPickupExterior &&
+          hasPickupInterior;
+
+        return (
+          <div
+            key={r.id}
+            style={{
+              border: "1px solid #e5e7eb",
+              borderRadius: 14,
+              padding: 16,
+              marginTop: 16,
+              background: "#fff",
+            }}
+          >
+            <strong>Rental ID:</strong> {r.id}
+            <br />
+            <strong>Purpose:</strong>{" "}
+            {r.purpose === "rideshare" ? "Rideshare" : "Personal"}
+            <br />
+            <strong>Lockbox released:</strong>{" "}
+            {r.lockbox_code_released_at ? "Yes" : "No"}
+            <br />
+            <strong>Pickup confirmed:</strong>{" "}
+            {r.pickup_confirmed_at ? "Yes" : "No"}
+            <br />
+
+            <div style={{ marginTop: 12 }}>
+              <strong>Pickup photos:</strong>{" "}
+              {hasPickupExterior ? "Exterior ✅" : "Exterior ❌"} •{" "}
+              {hasPickupInterior ? "Interior ✅" : "Interior ❌"}
+            </div>
+
+            {canConfirmPickup && (
               <button
-                style={btnPrimary}
-                onClick={() =>
-                  confirm("/api/auto/confirm-pickup", r.id)
-                }
+                onClick={() => confirmPickup(r.id)}
+                style={{
+                  marginTop: 14,
+                  padding: "12px 16px",
+                  borderRadius: 10,
+                  border: "none",
+                  background: "#111827",
+                  color: "#fff",
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
               >
                 Confirm Pickup
               </button>
             )}
 
-          {r.pickup_confirmed_at && !r.return_confirmed_at && (
-            <button
-              style={btnDanger}
-              onClick={() =>
-                confirm("/api/auto/confirm-return", r.id)
-              }
-            >
-              Confirm Return
-            </button>
-          )}
-
-          {r.return_confirmed_at && (
-            <p style={{ marginTop: 10, color: "#166534" }}>
-              Return confirmed — awaiting deposit decision
-            </p>
-          )}
-        </div>
-      ))}
+            {!canConfirmPickup && !r.pickup_confirmed_at && (
+              <div style={{ marginTop: 12, fontSize: 13, color: "#6b7280" }}>
+                Complete all required steps before confirming pickup.
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
-
-const card: React.CSSProperties = {
-  border: "1px solid #e5e7eb",
-  borderRadius: 14,
-  padding: 16,
-  marginTop: 12,
-  background: "#fff",
-};
-
-const btnPrimary: React.CSSProperties = {
-  marginTop: 12,
-  padding: "10px 14px",
-  borderRadius: 10,
-  background: "#111827",
-  color: "#fff",
-  border: "none",
-  fontWeight: 800,
-};
-
-const btnDanger: React.CSSProperties = {
-  marginTop: 12,
-  padding: "10px 14px",
-  borderRadius: 10,
-  background: "#dc2626",
-  color: "#fff",
-  border: "none",
-  fontWeight: 800,
-};
