@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import JSZip from "jszip";
+import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,261 +11,348 @@ function requireEnv(name: string) {
   return v;
 }
 
-function safeFilename(name: string) {
-  return name.replace(/[^\w.\-]+/g, "_").slice(0, 180);
+type RentalRow = {
+  id: string;
+  user_id: string;
+  vehicle_id: string | null;
+  purpose: string | null;
+  status: string | null;
+  pickup_at: string | null;
+  pickup_location: string | null;
+  created_at: string;
+  paid: boolean;
+  paid_at: string | null;
+  agreement_signed: boolean;
+  docs_complete: boolean;
+  verification_status: string;
+  verification_denial_reason: string | null;
+  lockbox_code_released_at: string | null;
+  pickup_confirmed_at: string | null;
+  return_confirmed_at: string | null;
+  condition_photos_status: string;
+  deposit_refund_status: string;
+  deposit_refund_amount_cents: number;
+  damage_confirmed?: boolean;
+  damage_confirmed_at?: string | null;
+  damage_notes?: string | null;
+};
+
+type VerificationRow = {
+  id: string;
+  rental_id: string;
+  user_id: string;
+  license_front_url: string;
+  license_back_url: string;
+  selfie_url: string;
+  license_state: string;
+  license_expires: string;
+  has_insurance: boolean;
+  captured_lat: number | null;
+  captured_lng: number | null;
+  captured_accuracy_m: number | null;
+  captured_at: string;
+  created_at: string;
+};
+
+type ConditionPhotoRow = {
+  id: string;
+  rental_id: string;
+  user_id: string;
+  phase: "pickup_exterior" | "pickup_interior" | "return_exterior" | "return_interior";
+  photo_url: string;
+  captured_lat: number | null;
+  captured_lng: number | null;
+  captured_accuracy_m: number | null;
+  captured_at: string;
+  created_at: string;
+};
+
+function safeName(s: string) {
+  return String(s || "")
+    .trim()
+    .replace(/[^\w.-]+/g, "_")
+    .slice(0, 120);
 }
 
-async function fetchAsBuffer(url: string, timeoutMs = 15000): Promise<Buffer | null> {
-  try {
-    const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), timeoutMs);
+/**
+ * photo_url / selfie_url may be:
+ * - full http(s) URL
+ * - "bucket/path/to/object.jpg"
+ * We'll try to fetch it either way.
+ */
+async function resolveToFetchUrl(
+  supabaseService: any,
+  urlOrPath: string,
+  ttlSeconds = 600
+): Promise<string> {
+  const raw = String(urlOrPath || "").trim();
+  if (!raw) throw new Error("Empty file reference");
 
-    const res = await fetch(url, { signal: ctrl.signal });
-    clearTimeout(t);
+  if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
 
-    if (!res.ok) return null;
+  // Assume "bucket/path..."
+  const firstSlash = raw.indexOf("/");
+  if (firstSlash === -1) throw new Error(`Unrecognized storage path: ${raw}`);
 
-    // Basic safety cap (25MB)
-    const len = Number(res.headers.get("content-length") || "0");
-    if (len && len > 25 * 1024 * 1024) return null;
+  const bucket = raw.slice(0, firstSlash);
+  const path = raw.slice(firstSlash + 1);
 
-    const ab = await res.arrayBuffer();
-    if (ab.byteLength > 25 * 1024 * 1024) return null;
+  const { data, error } = await supabaseService.storage
+    .from(bucket)
+    .createSignedUrl(path, ttlSeconds);
 
-    return Buffer.from(ab);
-  } catch {
-    return null;
+  if (error || !data?.signedUrl) {
+    throw new Error(`Failed signed URL for ${bucket}/${path}: ${error?.message || "unknown"}`);
   }
+  return data.signedUrl;
 }
 
-function extFromUrl(url: string) {
-  try {
-    const u = new URL(url);
-    const p = u.pathname.toLowerCase();
-    const m = p.match(/\.(jpg|jpeg|png|webp|pdf)$/);
-    return m ? `.${m[1]}` : "";
-  } catch {
-    return "";
-  }
+async function fetchBytes(url: string): Promise<Uint8Array> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to download: ${url} (${res.status})`);
+  const ab = await res.arrayBuffer();
+  return new Uint8Array(ab);
 }
 
-async function assertAdmin(token: string) {
-  const supabase = createClient(
-    requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
-    requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
-    { global: { headers: { Authorization: `Bearer ${token}` } } }
-  );
-
-  const { data: u, error: uErr } = await supabase.auth.getUser();
-  if (uErr || !u?.user) throw new Error("Unauthorized");
-
-  const { data: p, error: pErr } = await supabase
+async function isAdmin(supabaseService: any, userId: string): Promise<boolean> {
+  const { data, error } = await supabaseService
     .from("profiles")
-    .select("role,email")
-    .eq("id", u.user.id)
+    .select("role")
+    .eq("id", userId)
     .maybeSingle();
 
-  if (pErr) throw new Error(pErr.message);
-  if (!p || p.role !== "admin") throw new Error("Forbidden");
-
-  return { userId: u.user.id, adminEmail: p.email || null };
+  if (error) return false;
+  return data?.role === "admin";
 }
 
-export async function GET(req: Request) {
+export async function POST(req: Request) {
   try {
-    // -------- Auth (admin only) --------
     const authHeader = req.headers.get("authorization") || "";
     const token = authHeader.replace("Bearer ", "").trim();
     if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    await assertAdmin(token);
-
-    // -------- Parse rentalId --------
-    const { searchParams } = new URL(req.url);
-    const rentalId = String(searchParams.get("rentalId") || "").trim();
-    if (!rentalId) return NextResponse.json({ error: "Missing rentalId" }, { status: 400 });
-
-    // -------- Server-side Supabase (service role) --------
-    const adminDb = createClient(
+    const supabaseService = createClient(
       requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
       requireEnv("SUPABASE_SERVICE_ROLE_KEY")
     );
 
-    // Rental core
-    const { data: rental, error: rErr } = await adminDb
+    // Validate token
+    const { data: userRes, error: userErr } = await supabaseService.auth.getUser(token);
+    const user = userRes?.user;
+    if (userErr || !user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const admin = await isAdmin(supabaseService, user.id);
+    if (!admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+    const body = await req.json().catch(() => ({}));
+    const rentalId = String(body?.rentalId || "").trim();
+    if (!rentalId) return NextResponse.json({ error: "Missing rentalId" }, { status: 400 });
+
+    // Rental
+    const { data: rental, error: rentalErr } = await supabaseService
       .from("rentals")
       .select(
         `
         id,
-        created_at,
-        status,
-        purpose,
         user_id,
+        vehicle_id,
+        purpose,
+        status,
+        pickup_at,
+        pickup_location,
+        created_at,
+        paid,
+        paid_at,
         agreement_signed,
         docs_complete,
         verification_status,
         verification_denial_reason,
-        paid,
-        paid_at,
         lockbox_code_released_at,
         pickup_confirmed_at,
         return_confirmed_at,
-        damage_confirmed,
-        damage_confirmed_at,
-        damage_notes,
+        condition_photos_status,
         deposit_refund_status,
         deposit_refund_amount_cents,
-        stripe_checkout_session_id,
-        vehicles ( year, make, model )
+        damage_confirmed,
+        damage_confirmed_at,
+        damage_notes
       `
       )
       .eq("id", rentalId)
       .single();
 
-    if (rErr || !rental) return NextResponse.json({ error: "Rental not found" }, { status: 404 });
+    if (rentalErr || !rental) {
+      return NextResponse.json({ error: "Rental not found" }, { status: 404 });
+    }
 
-    // Verification (one row)
-    const { data: ver, error: vErr } = await adminDb
+    // Verification row (optional)
+    const { data: verification } = await supabaseService
       .from("renter_verifications")
-      .select("*")
+      .select(
+        `
+        id,
+        rental_id,
+        user_id,
+        license_front_url,
+        license_back_url,
+        selfie_url,
+        license_state,
+        license_expires,
+        has_insurance,
+        captured_lat,
+        captured_lng,
+        captured_accuracy_m,
+        captured_at,
+        created_at
+      `
+      )
       .eq("rental_id", rentalId)
       .maybeSingle();
 
-    if (vErr) {
-      return NextResponse.json({ error: vErr.message }, { status: 500 });
-    }
-
     // Condition photos
-    const { data: photos, error: pErr } = await adminDb
+    const { data: photos } = await supabaseService
       .from("rental_condition_photos")
-      .select("*")
-      .eq("rental_id", rentalId)
-      .order("created_at", { ascending: true });
-
-    if (pErr) {
-      return NextResponse.json({ error: pErr.message }, { status: 500 });
-    }
-
-    // Timeline / audit
-    const { data: events, error: eErr } = await adminDb
-      .from("rental_events")
-      .select("*")
-      .eq("rental_id", rentalId)
-      .order("created_at", { ascending: true });
-
-    if (eErr) {
-      return NextResponse.json({ error: eErr.message }, { status: 500 });
-    }
-
-    // -------- Build ZIP --------
-    const zip = new JSZip();
-    const root = zip.folder(`rental-${safeFilename(rentalId)}`)!;
-
-    // Summary
-    const v = (rental as any).vehicles;
-    const vehicleLabel =
-      Array.isArray(v) && v.length > 0
-        ? `${v[0]?.year ?? ""} ${v[0]?.make ?? ""} ${v[0]?.model ?? ""}`.trim()
-        : v && typeof v === "object"
-        ? `${v?.year ?? ""} ${v?.make ?? ""} ${v?.model ?? ""}`.trim()
-        : "";
-
-    const summaryLines = [
-      `Rental ID: ${rental.id}`,
-      `Created: ${rental.created_at}`,
-      `Status: ${rental.status}`,
-      `Vehicle: ${vehicleLabel || "—"}`,
-      `Purpose: ${rental.purpose || "—"}`,
-      `User ID: ${rental.user_id || "—"}`,
-      ``,
-      `Docs complete: ${rental.docs_complete ? "Yes" : "No"}`,
-      `Verification status: ${rental.verification_status || "—"}`,
-      `Agreement signed: ${rental.agreement_signed ? "Yes" : "No"}`,
-      `Paid: ${rental.paid ? "Yes" : "No"}`,
-      `Paid at: ${rental.paid_at || "—"}`,
-      `Lockbox released at: ${rental.lockbox_code_released_at || "—"}`,
-      `Pickup confirmed at: ${rental.pickup_confirmed_at || "—"}`,
-      `Return confirmed at: ${rental.return_confirmed_at || "—"}`,
-      ``,
-      `Damage confirmed: ${rental.damage_confirmed ? "Yes" : "No"}`,
-      `Damage confirmed at: ${rental.damage_confirmed_at || "—"}`,
-      `Damage notes: ${rental.damage_notes || "—"}`,
-      ``,
-      `Deposit status: ${rental.deposit_refund_status || "—"}`,
-      `Deposit withheld (cents): ${Number(rental.deposit_refund_amount_cents || 0)}`,
-      `Stripe session id: ${rental.stripe_checkout_session_id || "—"}`,
-    ];
-    root.file("summary.txt", summaryLines.join("\n"));
-
-    // Timeline JSON
-    root.file(
-      "timeline.json",
-      JSON.stringify(
-        {
-          rental,
-          renter_verification: ver || null,
-          condition_photos: photos || [],
-          events: events || [],
-        },
-        null,
-        2
+      .select(
+        `
+        id,
+        rental_id,
+        user_id,
+        phase,
+        photo_url,
+        captured_lat,
+        captured_lng,
+        captured_accuracy_m,
+        captured_at,
+        created_at
+      `
       )
-    );
+      .eq("rental_id", rentalId)
+      .order("created_at", { ascending: true });
 
-    // Identity
-    const identity = root.folder("identity")!;
-    if (ver?.license_front_url) {
-      const buf = await fetchAsBuffer(ver.license_front_url);
-      if (buf) identity.file(`license-front${extFromUrl(ver.license_front_url) || ".jpg"}`, buf);
-    }
-    if (ver?.license_back_url) {
-      const buf = await fetchAsBuffer(ver.license_back_url);
-      if (buf) identity.file(`license-back${extFromUrl(ver.license_back_url) || ".jpg"}`, buf);
-    }
-    if (ver?.selfie_url) {
-      const buf = await fetchAsBuffer(ver.selfie_url);
-      if (buf) identity.file(`selfie${extFromUrl(ver.selfie_url) || ".jpg"}`, buf);
-    }
+    // Events
+    const { data: events } = await supabaseService
+      .from("rental_events")
+      .select("id,rental_id,actor_user_id,actor_role,event_type,event_payload,created_at")
+      .eq("rental_id", rentalId)
+      .order("created_at", { ascending: true });
 
-    // Condition photos by phase
-    const photosFolder = root.folder("photos")!;
-    const phaseMap: Record<string, string> = {
-      pickup_exterior: "pickup-exterior",
-      pickup_interior: "pickup-interior",
-      return_exterior: "return-exterior",
-      return_interior: "return-interior",
+    // Build ZIP
+    const zip = new JSZip();
+
+    // Manifest
+    const manifest = {
+      generatedAt: new Date().toISOString(),
+      generatedByAdminUserId: user.id,
+      rental: rental as RentalRow,
+      verification: (verification as VerificationRow) || null,
+      conditionPhotos: (photos as ConditionPhotoRow[]) || [],
+      events: events || [],
+      notes: {
+        gpsDisclaimer:
+          "GPS values come from browser geolocation at upload time. They can be missing or inaccurate depending on device settings.",
+      },
     };
 
-    const grouped: Record<string, any[]> = {};
-    for (const ph of Object.keys(phaseMap)) grouped[ph] = [];
-    for (const row of photos || []) {
-      const ph = String((row as any).phase || "");
-      if (!grouped[ph]) grouped[ph] = [];
-      grouped[ph].push(row);
+    zip.file("manifest.json", JSON.stringify(manifest, null, 2));
+
+    // Evidence folders
+    const idFolder = zip.folder("id_verification");
+    const photoFolder = zip.folder("condition_photos");
+
+    // Add ID images (best effort)
+    if (verification) {
+      const v = verification as VerificationRow;
+
+      // helper to add file
+      const add = async (label: string, ref: string) => {
+        try {
+          const url = await resolveToFetchUrl(supabaseService, ref);
+          const bytes = await fetchBytes(url);
+          // Try to keep extension
+          const ext = ref.includes(".") ? ref.split(".").pop() : "jpg";
+          idFolder?.file(`${label}.${safeName(ext || "jpg")}`, bytes);
+          return { ok: true };
+        } catch (e: any) {
+          // store error note instead of failing the whole bundle
+          idFolder?.file(`${label}.txt`, `Failed to fetch: ${String(e?.message || e)}`);
+          return { ok: false };
+        }
+      };
+
+      await add("license_front", v.license_front_url);
+      await add("license_back", v.license_back_url);
+      await add("selfie", v.selfie_url);
+    } else {
+      idFolder?.file("README.txt", "No renter_verifications row found for this rental.");
     }
 
-    for (const ph of Object.keys(grouped)) {
-      const folder = photosFolder.folder(phaseMap[ph] || safeFilename(ph))!;
-      const rows = grouped[ph] || [];
-      for (let i = 0; i < rows.length; i++) {
-        const url = String(rows[i]?.photo_url || "");
-        if (!url) continue;
+    // Add condition photos (best effort)
+    const pRows = (photos as ConditionPhotoRow[]) || [];
+    if (!pRows.length) {
+      photoFolder?.file("README.txt", "No rental_condition_photos rows found for this rental.");
+    } else {
+      // Group by phase
+      for (let i = 0; i < pRows.length; i++) {
+        const p = pRows[i];
+        const phaseFolder = photoFolder?.folder(p.phase);
+        const fileBase = `${String(i + 1).padStart(3, "0")}_${safeName(p.id)}`;
 
-        const buf = await fetchAsBuffer(url);
-        if (!buf) continue;
+        try {
+          const url = await resolveToFetchUrl(supabaseService, p.photo_url);
+          const bytes = await fetchBytes(url);
 
-        const ext = extFromUrl(url) || ".jpg";
-        const name = `photo-${String(i + 1).padStart(2, "0")}${ext}`;
-        folder.file(name, buf);
+          // Guess ext
+          const extGuess =
+            p.photo_url.includes(".") ? p.photo_url.split(".").pop() : "jpg";
+
+          phaseFolder?.file(`${fileBase}.${safeName(extGuess || "jpg")}`, bytes);
+
+          // Add metadata per photo
+          phaseFolder?.file(
+            `${fileBase}.json`,
+            JSON.stringify(
+              {
+                id: p.id,
+                phase: p.phase,
+                captured_at: p.captured_at,
+                captured_lat: p.captured_lat,
+                captured_lng: p.captured_lng,
+                captured_accuracy_m: p.captured_accuracy_m,
+                created_at: p.created_at,
+              },
+              null,
+              2
+            )
+          );
+        } catch (e: any) {
+          phaseFolder?.file(
+            `${fileBase}.txt`,
+            `Failed to fetch photo_url: ${p.photo_url}\nError: ${String(e?.message || e)}`
+          );
+        }
       }
     }
 
-    // Generate zip buffer
-    const zipBuf = await zip.generateAsync({ type: "nodebuffer" });
+    // Audit: log bundle download (does not block)
+    try {
+      await supabaseService.from("rental_events").insert({
+        rental_id: rentalId,
+        actor_user_id: user.id,
+        actor_role: "admin",
+        event_type: "evidence_bundle_downloaded",
+        event_payload: { method: "admin_api_zip" },
+      });
+    } catch {
+      // ignore
+    }
 
-    const filename = `rental-${safeFilename(rentalId)}-evidence.zip`;
+    const zipBytes = await zip.generateAsync({ type: "uint8array" });
 
-    return new Response(zipBuf, {
+    const filename = `couranr_evidence_${safeName(rentalId)}_${new Date()
+      .toISOString()
+      .replace(/[:.]/g, "-")}.zip`;
+
+    return new NextResponse(zipBytes, {
       status: 200,
       headers: {
         "Content-Type": "application/zip",
@@ -274,6 +361,7 @@ export async function GET(req: Request) {
       },
     });
   } catch (e: any) {
+    console.error("evidence-bundle error:", e);
     return NextResponse.json(
       { error: e?.message || "Server error" },
       { status: 500 }
