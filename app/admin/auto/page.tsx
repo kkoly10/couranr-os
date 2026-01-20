@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
 type Rental = {
@@ -9,9 +10,10 @@ type Rental = {
   verification_status: string;
   agreement_signed: boolean;
   paid: boolean;
+  lockbox_code_released_at: string | null;
   pickup_confirmed_at: string | null;
   return_confirmed_at: string | null;
-  lockbox_code_released_at: string | null;
+  damage_confirmed: boolean;
   deposit_refund_status: string;
   created_at: string;
 };
@@ -23,7 +25,7 @@ export default function AdminAutoDashboard() {
   async function load() {
     setLoading(true);
 
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("rentals")
       .select(`
         id,
@@ -31,15 +33,16 @@ export default function AdminAutoDashboard() {
         verification_status,
         agreement_signed,
         paid,
+        lockbox_code_released_at,
         pickup_confirmed_at,
         return_confirmed_at,
-        lockbox_code_released_at,
+        damage_confirmed,
         deposit_refund_status,
         created_at
       `)
       .order("created_at", { ascending: false });
 
-    setRentals(data || []);
+    if (!error) setRentals(data || []);
     setLoading(false);
   }
 
@@ -47,130 +50,114 @@ export default function AdminAutoDashboard() {
     load();
   }, []);
 
-  async function adminAction(endpoint: string, body: any = {}) {
+  async function confirmDamage(rentalId: string) {
+    const notes = prompt("Describe the damage (required):");
+    if (!notes) return;
+
     const { data: session } = await supabase.auth.getSession();
     const token = session?.session?.access_token;
     if (!token) return alert("Unauthorized");
 
-    await fetch(endpoint, {
+    const res = await fetch("/api/admin/auto/confirm-damage", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ rentalId, notes }),
     });
 
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert(data?.error || "Failed to confirm damage");
+      return;
+    }
+
+    alert("Damage confirmed");
     load();
   }
 
-  if (loading) return <p style={{ padding: 24 }}>Loading auto rentals…</p>;
+  if (loading) {
+    return <p style={{ padding: 24 }}>Loading auto rentals…</p>;
+  }
 
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: 24 }}>
-      <h1>Admin — Auto Rentals</h1>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+        <div>
+          <h1 style={{ fontSize: 28, margin: 0 }}>Admin — Auto Rentals</h1>
+          <p style={{ color: "#555", marginTop: 6 }}>
+            Full rental lifecycle overview.
+          </p>
+        </div>
+
+        <Link href="/admin/auto/deposits" style={btnGhost}>
+          Deposit Decisions →
+        </Link>
+      </div>
+
+      {rentals.length === 0 && <p>No rentals found.</p>}
 
       {rentals.map((r) => (
         <div
           key={r.id}
           style={{
-            marginTop: 14,
-            padding: 16,
+            marginTop: 16,
             border: "1px solid #e5e7eb",
             borderRadius: 14,
+            padding: 16,
             background: "#fff",
           }}
         >
-          <strong>ID:</strong> {r.id}
-          <br />
-          <strong>Purpose:</strong> {r.purpose}
-          <br />
-          <strong>Verification:</strong> {r.verification_status}
-          <br />
-          <strong>Paid:</strong> {r.paid ? "Yes" : "No"}
-          <br />
-          <strong>Lockbox:</strong>{" "}
-          {r.lockbox_code_released_at ? "Released" : "Not released"}
-          <br />
-          <strong>Pickup:</strong>{" "}
-          {r.pickup_confirmed_at ? "Confirmed" : "Not confirmed"}
-          <br />
-          <strong>Return:</strong>{" "}
-          {r.return_confirmed_at ? "Confirmed" : "Not confirmed"}
-          <br />
-          <strong>Deposit:</strong> {r.deposit_refund_status}
+          <div style={{ lineHeight: 1.7 }}>
+            <div><strong>ID:</strong> {r.id}</div>
+            <div><strong>Purpose:</strong> {r.purpose}</div>
+            <div><strong>Verification:</strong> {r.verification_status}</div>
+            <div><strong>Agreement:</strong> {r.agreement_signed ? "Yes" : "No"}</div>
+            <div><strong>Paid:</strong> {r.paid ? "Yes" : "No"}</div>
+            <div><strong>Lockbox released:</strong> {r.lockbox_code_released_at ? "Yes" : "No"}</div>
+            <div><strong>Pickup confirmed:</strong> {r.pickup_confirmed_at ? "Yes" : "No"}</div>
+            <div><strong>Return confirmed:</strong> {r.return_confirmed_at ? "Yes" : "No"}</div>
+            <div><strong>Damage confirmed:</strong> {r.damage_confirmed ? "Yes" : "No"}</div>
+            <div><strong>Deposit status:</strong> {r.deposit_refund_status}</div>
+          </div>
 
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 12 }}>
-            {r.verification_status === "pending" && (
-              <>
-                <button
-                  onClick={() =>
-                    adminAction("/api/admin/auto/verify", {
-                      rentalId: r.id,
-                      decision: "approved",
-                    })
-                  }
-                >
-                  Approve
-                </button>
-                <button
-                  onClick={() =>
-                    adminAction("/api/admin/auto/verify", {
-                      rentalId: r.id,
-                      decision: "denied",
-                      reason: prompt("Reason for denial") || "Denied",
-                    })
-                  }
-                >
-                  Deny
-                </button>
-              </>
-            )}
-
-            {r.verification_status === "approved" &&
-              r.paid &&
-              !r.lockbox_code_released_at && (
-                <button
-                  onClick={() =>
-                    adminAction("/api/admin/auto/release-lockbox", {
-                      rentalId: r.id,
-                    })
-                  }
-                >
-                  Release Lockbox
-                </button>
-              )}
-
-            {!r.pickup_confirmed_at && (
+          {/* 🔴 DAMAGE CONFIRMATION BUTTON (GATED) */}
+          {r.return_confirmed_at && !r.damage_confirmed && (
+            <div style={{ marginTop: 12 }}>
               <button
-                onClick={() =>
-                  adminAction("/api/admin/auto/confirm-pickup", {
-                    rentalId: r.id,
-                  })
-                }
+                onClick={() => confirmDamage(r.id)}
+                style={btnDanger}
               >
-                Confirm Pickup
+                Confirm Damage
               </button>
-            )}
+            </div>
+          )}
 
-            {r.pickup_confirmed_at && !r.return_confirmed_at && (
-              <button
-                onClick={() =>
-                  adminAction("/api/admin/auto/confirm-return", {
-                    rentalId: r.id,
-                  })
-                }
-              >
-                Confirm Return
-              </button>
-            )}
-
-            <a href={`/admin/auto/deposits?rentalId=${r.id}`}>
-              <button>Deposit</button>
-            </a>
+          <div style={{ fontSize: 12, color: "#6b7280", marginTop: 8 }}>
+            Created: {new Date(r.created_at).toLocaleString()}
           </div>
         </div>
       ))}
     </div>
   );
 }
+
+const btnDanger: React.CSSProperties = {
+  padding: "10px 14px",
+  borderRadius: 10,
+  background: "#dc2626",
+  color: "#fff",
+  border: "none",
+  fontWeight: 900,
+};
+
+const btnGhost: React.CSSProperties = {
+  padding: "10px 14px",
+  borderRadius: 10,
+  border: "1px solid #d1d5db",
+  background: "#fff",
+  color: "#111",
+  fontWeight: 900,
+  textDecoration: "none",
+};
