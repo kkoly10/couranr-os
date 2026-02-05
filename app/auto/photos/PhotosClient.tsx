@@ -1,138 +1,189 @@
+// app/auto/photos/PhotosClient.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-const PHASE_LABELS: Record<string, string> = {
-  pickup_exterior: "Pickup — Exterior Photos",
-  pickup_interior: "Pickup — Interior Photos",
-  return_exterior: "Return — Exterior Photos",
-  return_interior: "Return — Interior Photos",
+type Phase = "pickup_exterior" | "pickup_interior" | "return_exterior" | "return_interior";
+
+const PHASE_LABEL: Record<Phase, string> = {
+  pickup_exterior: "Pickup — Exterior",
+  pickup_interior: "Pickup — Interior",
+  return_exterior: "Return — Exterior",
+  return_interior: "Return — Interior",
 };
 
 export default function PhotosClient() {
   const router = useRouter();
-  const searchParams = useSearchParams();
+  const sp = useSearchParams();
 
-  const rentalId = searchParams.get("rentalId") || "";
-  const phase = searchParams.get("phase") || "";
+  const rentalId = sp.get("rentalId") || "";
+  const phase = (sp.get("phase") || "pickup_exterior") as Phase;
 
   const [loading, setLoading] = useState(true);
+  const [authed, setAuthed] = useState(false);
+  const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  // Simple client-side test mode switch:
+  // If you want it controlled ONLY by server env var, you can remove this toggle.
+  const [skipGps, setSkipGps] = useState(false);
+
+  const title = useMemo(() => PHASE_LABEL[phase] || "Photos", [phase]);
 
   useEffect(() => {
-    async function guard() {
-      if (!rentalId || !phase || !PHASE_LABELS[phase]) {
-        setError("Invalid photo upload request.");
-        setLoading(false);
-        return;
-      }
-
+    async function boot() {
+      setLoading(true);
       const { data } = await supabase.auth.getSession();
-      if (!data.session) {
-        router.push(`/login?next=${encodeURIComponent(window.location.href)}`);
-        return;
-      }
-
+      setAuthed(!!data.session);
       setLoading(false);
+      if (!data.session) {
+        router.push(`/login?next=/auto/photos?rentalId=${encodeURIComponent(rentalId)}&phase=${encodeURIComponent(phase)}`);
+      }
     }
+    boot();
+  }, [router, rentalId, phase]);
 
-    guard();
-  }, [rentalId, phase, router]);
+  function onPickFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const list = Array.from(e.target.files || []);
+    setFiles(list);
+  }
 
-  async function uploadPhoto(file: File) {
+  async function getGps(): Promise<{ lat: number | null; lng: number | null; acc: number | null }> {
+    if (skipGps) return { lat: null, lng: null, acc: null };
+
+    if (!navigator.geolocation) return { lat: null, lng: null, acc: null };
+
+    return new Promise((resolve) => {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          resolve({
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            acc: pos.coords.accuracy,
+          });
+        },
+        () => resolve({ lat: null, lng: null, acc: null }),
+        { enableHighAccuracy: true, timeout: 7000, maximumAge: 0 }
+      );
+    });
+  }
+
+  async function uploadAll() {
     setError(null);
-    setUploading(true);
+
+    if (!rentalId) return setError("Missing rentalId in URL.");
+    if (!files.length) return setError("Please select at least one photo.");
+
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+    if (!token) return setError("Not logged in.");
+
+    setBusy(true);
 
     try {
-      // 1️⃣ Get GPS
-      const position = await new Promise<GeolocationPosition>((resolve, reject) =>
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-          enableHighAccuracy: true,
-          timeout: 10000,
-        })
-      );
+      const gps = await getGps();
 
-      const path = `rentals/${rentalId}/${phase}/${Date.now()}-${file.name}`;
+      for (const f of files) {
+        const fd = new FormData();
+        fd.append("rentalId", rentalId);
+        fd.append("phase", phase);
+        fd.append("file", f);
 
-      // 2️⃣ Upload to Supabase Storage
-      const { error: uploadErr } = await supabase.storage
-        .from("renter-verifications")
-        .upload(path, file, { upsert: false });
+        if (gps.lat !== null) fd.append("capturedLat", String(gps.lat));
+        if (gps.lng !== null) fd.append("capturedLng", String(gps.lng));
+        if (gps.acc !== null) fd.append("capturedAccuracyM", String(gps.acc));
 
-      if (uploadErr) throw uploadErr;
-
-      const { data: urlData } = supabase.storage
-        .from("renter-verifications")
-        .getPublicUrl(path);
-
-      // 3️⃣ Save record
-      const { error: insertErr } = await supabase
-        .from("rental_condition_photos")
-        .insert({
-          rental_id: rentalId,
-          user_id: (await supabase.auth.getUser()).data.user?.id,
-          phase,
-          photo_url: urlData.publicUrl,
-          captured_lat: position.coords.latitude,
-          captured_lng: position.coords.longitude,
-          captured_accuracy_m: position.coords.accuracy,
+        const res = await fetch("/api/auto/upload-condition-photo", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: fd,
         });
 
-      if (insertErr) throw insertErr;
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(out?.error || "Upload failed");
+        }
+      }
 
-      router.push("/dashboard/auto");
+      alert("Uploaded!");
+      setFiles([]);
+      // stay on page; user may upload more
     } catch (e: any) {
-      setError(e?.message || "Photo upload failed");
+      setError(e?.message || "Upload failed");
     } finally {
-      setUploading(false);
+      setBusy(false);
     }
   }
 
-  if (loading) {
-    return <p style={{ padding: 24 }}>Preparing upload…</p>;
-  }
+  if (loading) return <p style={{ padding: 24 }}>Loading…</p>;
+  if (!authed) return <p style={{ padding: 24 }}>Redirecting…</p>;
 
   return (
-    <div style={{ maxWidth: 720, margin: "0 auto", padding: 24 }}>
-      <h1 style={{ fontSize: 28 }}>{PHASE_LABELS[phase]}</h1>
-      <p style={{ color: "#555", marginTop: 6 }}>
-        Please take clear photos. GPS location and timestamp are recorded.
+    <div style={{ maxWidth: 900, margin: "0 auto", padding: 24 }}>
+      <h1 style={{ fontSize: 28, margin: 0 }}>{title}</h1>
+      <p style={{ color: "#555", marginTop: 8 }}>
+        Upload clear photos. This protects you and Couranr.
       </p>
 
-      {error && (
-        <div
-          style={{
-            marginTop: 14,
-            padding: 12,
-            borderRadius: 12,
-            border: "1px solid #fecaca",
-            background: "#fff",
-            color: "#b91c1c",
-          }}
-        >
-          {error}
+      <div style={{ marginTop: 14, padding: 14, borderRadius: 14, border: "1px solid #e5e7eb", background: "#fff" }}>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <input type="file" accept="image/*" multiple onChange={onPickFiles} />
+          <button onClick={uploadAll} disabled={busy} style={btnPrimary}>
+            {busy ? "Uploading…" : "Upload"}
+          </button>
+          <button
+            onClick={() => setSkipGps((v) => !v)}
+            style={btnGhost}
+            type="button"
+            title="Use this if you’re testing away from pickup location."
+          >
+            {skipGps ? "GPS: OFF (Test)" : "GPS: ON"}
+          </button>
         </div>
-      )}
 
-      <div style={{ marginTop: 20 }}>
-        <input
-          type="file"
-          accept="image/*"
-          capture="environment"
-          disabled={uploading}
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            if (file) uploadPhoto(file);
-          }}
-        />
+        {files.length > 0 && (
+          <p style={{ marginTop: 10, color: "#111" }}>
+            Selected: <strong>{files.length}</strong> file(s)
+          </p>
+        )}
+
+        {error && (
+          <div style={{ marginTop: 12, padding: 12, borderRadius: 12, border: "1px solid #fecaca" }}>
+            <strong style={{ color: "#b91c1c" }}>Error:</strong> {error}
+          </div>
+        )}
       </div>
 
-      <p style={{ marginTop: 12, fontSize: 13, color: "#6b7280" }}>
-        Uploading confirms the condition of the vehicle at this step.
-      </p>
+      <div style={{ marginTop: 16 }}>
+        <button onClick={() => router.back()} style={btnGhost}>
+          Back
+        </button>
+      </div>
     </div>
   );
 }
+
+const btnPrimary: React.CSSProperties = {
+  padding: "10px 14px",
+  borderRadius: 10,
+  border: "none",
+  background: "#111827",
+  color: "#fff",
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const btnGhost: React.CSSProperties = {
+  padding: "10px 14px",
+  borderRadius: 10,
+  border: "1px solid #d1d5db",
+  background: "#fff",
+  color: "#111",
+  fontWeight: 900,
+  cursor: "pointer",
+};
