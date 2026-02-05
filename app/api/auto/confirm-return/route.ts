@@ -3,34 +3,35 @@ export const dynamic = "force-dynamic";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
-import { getUserFromRequest } from "@/app/lib/auth";
 
-function adminClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } }
-  );
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+function asSingle<T>(x: any): T | null {
+  if (!x) return null;
+  if (Array.isArray(x)) return (x[0] as T) ?? null;
+  return x as T;
 }
 
-async function getProfileEmail(admin: any, userId: string) {
-  const { data } = await admin
+async function getUserFromRequest(req: NextRequest) {
+  const auth = req.headers.get("authorization");
+  if (!auth?.startsWith("Bearer ")) throw new Error("Missing authorization token");
+  const token = auth.replace("Bearer ", "");
+  const { data, error } = await supabaseAdmin.auth.getUser(token);
+  if (error || !data?.user) throw new Error("Invalid or expired token");
+  return data.user;
+}
+
+async function getEmailForUserId(userId: string): Promise<string | null> {
+  const { data } = await supabaseAdmin
     .from("profiles")
     .select("email")
     .eq("id", userId)
-    .single();
-  return (data?.email as string | null) ?? null;
-}
+    .maybeSingle();
 
-async function getVehicleLabel(admin: any, vehicleId: string | null) {
-  if (!vehicleId) return "your rental vehicle";
-  const { data } = await admin
-    .from("vehicles")
-    .select("year,make,model")
-    .eq("id", vehicleId)
-    .single();
-  if (!data) return "your rental vehicle";
-  return `${data.year} ${data.make} ${data.model}`.trim();
+  return (data as any)?.email ?? null;
 }
 
 export async function POST(req: NextRequest) {
@@ -43,89 +44,78 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing rentalId" }, { status: 400 });
     }
 
-    const admin = adminClient();
-
-    // Load rental (NO joins)
-    const { data: rental, error: rErr } = await admin
+    const { data: rental, error: rentalErr } = await supabaseAdmin
       .from("rentals")
       .select(
         `
         id,
         user_id,
-        vehicle_id,
         status,
         paid,
-        agreement_signed,
-        docs_complete,
-        verification_status,
-        lockbox_code_released_at,
         pickup_confirmed_at,
         return_confirmed_at,
         condition_photos_status,
-        deposit_refund_status,
-        damage_confirmed
+        vehicle_id,
+        vehicles:vehicles(id, year, make, model)
       `
       )
       .eq("id", rentalId)
-      .single();
+      .maybeSingle();
 
-    if (rErr || !rental) {
+    if (rentalErr || !rental) {
       return NextResponse.json({ error: "Rental not found" }, { status: 404 });
     }
 
-    // Ownership enforcement
     if (rental.user_id !== user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // State guards
+    // Must have pickup confirmed before return
     if (!rental.pickup_confirmed_at) {
       return NextResponse.json(
-        { error: "Pickup must be confirmed before return" },
+        { error: "Pickup not confirmed yet" },
         { status: 400 }
       );
     }
 
-    if (rental.return_confirmed_at) {
-      return NextResponse.json(
-        { error: "Return already confirmed" },
-        { status: 400 }
-      );
-    }
-
-    // Enforce return photos completed before confirming return
+    // Must have return photos before return confirm (at least return_interior_done or complete)
     const okReturnPhotos =
       rental.condition_photos_status === "return_interior_done" ||
       rental.condition_photos_status === "complete";
 
     if (!okReturnPhotos) {
       return NextResponse.json(
-        { error: "Return photos required before confirming return" },
+        { error: "Return photos not complete yet" },
         { status: 400 }
       );
     }
 
-    // Update rental return confirmation
+    if (rental.return_confirmed_at) {
+      return NextResponse.json(
+        { ok: true, message: "Return already confirmed" },
+        { status: 200 }
+      );
+    }
+
     const now = new Date().toISOString();
 
-    const { error: uErr } = await admin
+    const { error: updErr } = await supabaseAdmin
       .from("rentals")
       .update({
         return_confirmed_at: now,
         status: "returned",
-        deposit_refund_status:
-          rental.deposit_refund_status && rental.deposit_refund_status !== "n/a"
-            ? rental.deposit_refund_status
-            : "pending",
+        deposit_refund_status: "pending", // deposit now under review
       })
       .eq("id", rentalId);
 
-    if (uErr) {
-      return NextResponse.json({ error: uErr.message }, { status: 400 });
+    if (updErr) {
+      return NextResponse.json(
+        { error: "Failed to confirm return" },
+        { status: 500 }
+      );
     }
 
-    // Audit event
-    await admin.from("rental_events").insert({
+    await supabaseAdmin.from("rental_events").insert({
       rental_id: rentalId,
       actor_user_id: user.id,
       actor_role: "renter",
@@ -133,35 +123,26 @@ export async function POST(req: NextRequest) {
       event_payload: { at: now },
     });
 
-    // Email renter (optional)
-    const resendKey = process.env.RESEND_API_KEY;
-    const fromEmail = process.env.RESEND_FROM_EMAIL;
+    // Email renter
+    const renterEmail = await getEmailForUserId(rental.user_id);
+    const v = asSingle<{ year?: any; make?: any; model?: any }>((rental as any).vehicles);
+    const carLabel =
+      v?.year && v?.make && v?.model ? `${v.year} ${v.make} ${v.model}` : "your rental vehicle";
 
-    if (resendKey && fromEmail) {
-      const renterEmail = await getProfileEmail(admin, rental.user_id);
-      if (renterEmail) {
-        const carLabel = await getVehicleLabel(admin, rental.vehicle_id ?? null);
-        const resend = new Resend(resendKey);
-
-        await resend.emails.send({
-          from: fromEmail,
-          to: renterEmail,
-          subject: "Return confirmed — Couranr Auto",
-          html: `
-            <div style="font-family:Arial,sans-serif;line-height:1.5">
-              <h2 style="margin:0 0 10px 0">Return confirmed ✅</h2>
-              <p>We received your return confirmation for <strong>${carLabel}</strong>.</p>
-              <p>Your deposit is now <strong>under review</strong>. We’ll notify you once the decision is made.</p>
-              <p style="color:#6b7280;font-size:12px;margin-top:18px">
-                Rental ID: ${rentalId}
-              </p>
-            </div>
-          `,
-        });
-      }
+    if (renterEmail && process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL) {
+      const resend = new Resend(process.env.RESEND_API_KEY);
+      await resend.emails.send({
+        from: process.env.RESEND_FROM_EMAIL,
+        to: renterEmail,
+        subject: "Return confirmed — deposit under review (Couranr Auto)",
+        text:
+          `Your return has been confirmed for ${carLabel}.\n\n` +
+          `Damage review (if any) and deposit decision is now pending.\n\n` +
+          `— Couranr Auto`,
+      });
     }
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, return_confirmed_at: now });
   } catch (e: any) {
     return NextResponse.json(
       { error: e?.message || "Server error" },
