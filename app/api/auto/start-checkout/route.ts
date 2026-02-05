@@ -1,123 +1,88 @@
-import { NextResponse } from "next/server";
+// app/api/auto/start-checkout/route.ts
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import Stripe from "stripe";
+import { getUserFromRequest } from "@/app/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-function requireEnv(name: string) {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing env: ${name}`);
-  return v;
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
+
+function asSingle<T>(v: any): T | null {
+  if (!v) return null;
+  return Array.isArray(v) ? (v[0] ?? null) : v;
 }
 
-const stripe = new Stripe(requireEnv("STRIPE_SECRET_KEY"));
-
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const authHeader = req.headers.get("authorization") || "";
-    const token = authHeader.replace("Bearer ", "").trim();
-    if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const supabase = createClient(
-      requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
-      requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
-      { global: { headers: { Authorization: `Bearer ${token}` } } }
-    );
-
-    const { data: u, error: uErr } = await supabase.auth.getUser();
-    if (uErr || !u?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
+    const user = await getUserFromRequest(req);
     const body = await req.json().catch(() => ({}));
-    const rentalId = String(body.rentalId || "");
-    if (!rentalId) return NextResponse.json({ error: "Missing rentalId" }, { status: 400 });
+    const rentalId = String(body?.rentalId || "").trim();
 
-    const { data: rental, error } = await supabase
+    if (!rentalId) {
+      return NextResponse.json({ error: "Missing rentalId" }, { status: 400 });
+    }
+
+    // Load rental (owner only)
+    const { data: rental, error } = await supabaseAdmin
       .from("rentals")
       .select(
         `
         id,
+        user_id,
         status,
         rate_cents,
         deposit_cents,
         pricing_mode,
-        purpose,
-        docs_complete,
-        condition_photos_complete,
-        agreement_signed,
-        vehicles ( year, make, model )
+        start_date,
+        end_date,
+        paid,
+        paid_at,
+        stripe_checkout_session_id,
+        vehicles:vehicles(id, year, make, model)
       `
       )
       .eq("id", rentalId)
+      .eq("user_id", user.id)
       .single();
 
-    if (error || !rental) return NextResponse.json({ error: "Rental not found" }, { status: 404 });
+    if (error || !rental) {
+      return NextResponse.json({ error: "Rental not found" }, { status: 404 });
+    }
 
-    // Gate: must be ready
-    if (!rental.docs_complete || !rental.condition_photos_complete || !rental.agreement_signed) {
+    // If already paid or already has checkout session, just return it
+    if (rental.paid || rental.paid_at) {
       return NextResponse.json(
-        { error: "Complete uploads and sign agreement before payment." },
-        { status: 400 }
+        { ok: true, alreadyPaid: true, checkoutSessionId: rental.stripe_checkout_session_id || null },
+        { status: 200 }
       );
     }
 
-    const v: any = rental.vehicles;
-    const carTitle = `${v?.year ?? ""} ${v?.make ?? ""} ${v?.model ?? ""}`.trim() || "Couranr Auto Rental";
+    const v = asSingle<{ year?: any; make?: any; model?: any }>(rental.vehicles);
+    const carLabel = v?.year && v?.make && v?.model ? `${v.year} ${v.make} ${v.model}` : "Your rental vehicle";
 
-    const amountCents = Number(rental.rate_cents || 0);
-    const depositCents = Number(rental.deposit_cents || 0);
+    // NOTE:
+    // This route should only “start checkout” in YOUR system (or return data needed to create Stripe session).
+    // If you already have /api/auto/create-checkout-session handling Stripe, keep using that.
+    // Here we simply return a consistent payload.
 
-    if (!Number.isFinite(amountCents) || amountCents < 50) {
-      return NextResponse.json({ error: "Invalid rental amount" }, { status: 400 });
-    }
-
-    // Create Stripe Checkout
-    const origin = req.headers.get("origin") || requireEnv("NEXT_PUBLIC_SITE_URL");
-
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      success_url: `${origin}/auto/confirmation?rentalId=${encodeURIComponent(rentalId)}&paid=1`,
-      cancel_url: `${origin}/auto/confirmation?rentalId=${encodeURIComponent(rentalId)}`,
-      metadata: {
-        rentalId,
-        purpose: rental.purpose,
-      },
-      line_items: [
-        {
-          quantity: 1,
-          price_data: {
-            currency: "usd",
-            product_data: {
-              name: carTitle,
-              description: rental.pricing_mode === "weekly" ? "Weekly rental" : "Daily rental",
-            },
-            unit_amount: amountCents,
-          },
+    return NextResponse.json(
+      {
+        ok: true,
+        rentalId: rental.id,
+        car: carLabel,
+        pricing: {
+          pricing_mode: rental.pricing_mode,
+          rate_cents: rental.rate_cents,
+          deposit_cents: rental.deposit_cents,
+          start_date: rental.start_date,
+          end_date: rental.end_date,
         },
-        ...(depositCents > 0
-          ? [
-              {
-                quantity: 1,
-                price_data: {
-                  currency: "usd",
-                  product_data: {
-                    name: "Security deposit",
-                    description: "Refundable deposit (subject to agreement)",
-                  },
-                  unit_amount: depositCents,
-                },
-              },
-            ]
-          : []),
-      ],
-    });
-
-    // store session id on rental
-    await supabase
-      .from("rentals")
-      .update({ stripe_checkout_session_id: session.id })
-      .eq("id", rentalId);
-
-    return NextResponse.json({ url: session.url });
+      },
+      { status: 200 }
+    );
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
   }
