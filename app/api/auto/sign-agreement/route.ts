@@ -1,78 +1,65 @@
-import { NextResponse } from "next/server";
+// app/api/auto/sign-agreement/route.ts
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getUserFromRequest } from "@/app/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-function requireEnv(name: string) {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing env: ${name}`);
-  return v;
-}
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const authHeader = req.headers.get("authorization") || "";
-    const token = authHeader.replace("Bearer ", "").trim();
-    if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const supabase = createClient(
-      requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
-      requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
-      { global: { headers: { Authorization: `Bearer ${token}` } } }
-    );
-
-    const { data: u, error: uErr } = await supabase.auth.getUser();
-    if (uErr || !u?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
+    const user = await getUserFromRequest(req);
     const body = await req.json().catch(() => ({}));
-    const rentalId = String(body.rentalId || "");
-    const signedName = String(body.signedName || "").trim();
 
-    if (!rentalId || !signedName) {
-      return NextResponse.json({ error: "Missing rentalId or signedName" }, { status: 400 });
+    const rentalId = String(body?.rentalId || "").trim();
+    const signatureName = String(body?.signatureName || "").trim(); // optional
+
+    if (!rentalId) {
+      return NextResponse.json({ error: "Missing rentalId" }, { status: 400 });
     }
 
-    // Load rental, enforce owner
-    const { data: rental, error: rErr } = await supabase
+    const { data: rental, error } = await supabaseAdmin
       .from("rentals")
-      .select("id, user_id, purpose")
+      .select("id,user_id,agreement_required,agreement_signed,status")
       .eq("id", rentalId)
+      .eq("user_id", user.id)
       .single();
 
-    if (rErr || !rental) return NextResponse.json({ error: "Rental not found" }, { status: 404 });
-
-    // ✅ Prevent account leakage
-    if (rental.user_id !== u.user.id) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (error || !rental) {
+      return NextResponse.json({ error: "Rental not found" }, { status: 404 });
     }
 
-    const agreementVersion = "v1";
-
-    // Insert agreement record
-    const { error: aErr } = await supabase
-      .from("rental_agreements")
-      .insert({
-        rental_id: rentalId,
-        signed_name: signedName,
-        agreement_version: agreementVersion,
-        // ip_address optional; we can add later via headers/server logs
-      });
-
-    if (aErr) {
-      return NextResponse.json({ error: aErr.message || "Failed to save agreement" }, { status: 500 });
+    if (!rental.agreement_required) {
+      return NextResponse.json({ ok: true, skipped: true }, { status: 200 });
     }
 
-    // Mark rental as signed
-    const { error: upErr } = await supabase
+    if (rental.agreement_signed) {
+      return NextResponse.json({ ok: true, alreadySigned: true }, { status: 200 });
+    }
+
+    const { error: updErr } = await supabaseAdmin
       .from("rentals")
       .update({ agreement_signed: true })
-      .eq("id", rentalId);
+      .eq("id", rentalId)
+      .eq("user_id", user.id);
 
-    if (upErr) {
-      return NextResponse.json({ error: upErr.message || "Failed to update rental" }, { status: 500 });
+    if (updErr) {
+      return NextResponse.json({ error: updErr.message }, { status: 400 });
     }
 
-    return NextResponse.json({ success: true });
+    await supabaseAdmin.from("rental_events").insert({
+      rental_id: rentalId,
+      actor_user_id: user.id,
+      actor_role: "renter",
+      event_type: "agreement_signed",
+      event_payload: { signature_name: signatureName || null },
+    });
+
+    return NextResponse.json({ ok: true }, { status: 200 });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
   }
