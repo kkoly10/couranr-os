@@ -1,142 +1,83 @@
-import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
 export const dynamic = "force-dynamic";
 
-function requireEnv(name: string) {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing env: ${name}`);
-  return v;
-}
+import { NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { Resend } from "resend";
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 export async function POST(req: Request) {
   try {
-    // ---------- AUTH ----------
-    const authHeader = req.headers.get("authorization") || "";
-    const token = authHeader.replace("Bearer ", "").trim();
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const auth = req.headers.get("authorization");
+    if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const supabase = createClient(
-      requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
-      requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
-      {
-        global: {
-          headers: { Authorization: `Bearer ${token}` },
-        },
-      }
-    );
-
-    const { data: auth, error: authErr } = await supabase.auth.getUser();
-    if (authErr || !auth?.user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // ---------- INPUT ----------
-    const body = await req.json().catch(() => ({}));
-    const rentalId = String(body.rentalId || "");
+    const { rentalId } = await req.json();
     if (!rentalId) {
-      return NextResponse.json(
-        { error: "Missing rentalId" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Missing rentalId" }, { status: 400 });
     }
 
-    // ---------- LOAD RENTAL ----------
-    const { data: rental, error: rErr } = await supabase
+    const { data: rental, error } = await supabaseAdmin
       .from("rentals")
-      .select(
-        `
+      .select(`
         id,
         user_id,
         pickup_confirmed_at,
-        return_confirmed_at
-      `
-      )
+        return_confirmed_at,
+        profiles ( email )
+      `)
       .eq("id", rentalId)
       .single();
 
-    if (rErr || !rental) {
-      return NextResponse.json(
-        { error: "Rental not found" },
-        { status: 404 }
-      );
+    if (error || !rental) {
+      return NextResponse.json({ error: "Rental not found" }, { status: 404 });
     }
 
-    // ---------- OWNERSHIP ----------
-    if (rental.user_id !== auth.user.id) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    // ---------- STATE GUARDS ----------
     if (!rental.pickup_confirmed_at) {
       return NextResponse.json(
-        { error: "Pickup has not been confirmed yet" },
+        { error: "Pickup not confirmed yet" },
         { status: 400 }
       );
     }
 
     if (rental.return_confirmed_at) {
-      return NextResponse.json(
-        { error: "Return already confirmed" },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: true });
     }
 
-    // ---------- VERIFY RETURN PHOTOS ----------
-    const { data: photos } = await supabase
-      .from("rental_condition_photos")
-      .select("phase")
-      .eq("rental_id", rentalId);
-
-    const phases = new Set((photos || []).map((p: any) => p.phase));
-
-    if (!phases.has("return_exterior") || !phases.has("return_interior")) {
-      return NextResponse.json(
-        {
-          error:
-            "Return photos required (both exterior and interior) before confirming return",
-        },
-        { status: 400 }
-      );
-    }
-
-    // ---------- UPDATE RENTAL ----------
-    const now = new Date().toISOString();
-
-    const { error: uErr } = await supabase
+    // Confirm return
+    await supabaseAdmin
       .from("rentals")
       .update({
-        return_confirmed_at: now,
-        status: "returned",
+        return_confirmed_at: new Date().toISOString(),
+        deposit_refund_status: "pending",
       })
       .eq("id", rentalId);
 
-    if (uErr) {
-      return NextResponse.json(
-        { error: uErr.message },
-        { status: 500 }
-      );
-    }
-
-    // ---------- AUDIT EVENT ----------
-    await supabase.from("rental_events").insert({
+    // Audit
+    await supabaseAdmin.from("rental_events").insert({
       rental_id: rentalId,
-      actor_user_id: auth.user.id,
-      actor_role: "renter",
       event_type: "return_confirmed",
-      event_payload: {
-        at: now,
-      },
+      event_payload: {},
     });
 
-    return NextResponse.json({ success: true });
+    // Email renter
+    const email = rental.profiles?.email;
+    if (email) {
+      await resend.emails.send({
+        from: process.env.RESEND_FROM_EMAIL!,
+        to: email,
+        subject: "📦 Vehicle returned — deposit review in progress",
+        html: `
+          <p>We’ve received your vehicle.</p>
+          <p>Our team is reviewing it now.</p>
+          <p>Your deposit decision will be completed shortly.</p>
+          <p>Thank you for renting with Couranr Auto.</p>
+        `,
+      });
+    }
+
+    return NextResponse.json({ ok: true });
   } catch (e: any) {
-    console.error("confirm-return error:", e);
-    return NextResponse.json(
-      { error: e?.message || "Server error" },
-      { status: 500 }
-    );
+    console.error("Confirm return error:", e);
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }
