@@ -7,7 +7,7 @@ const supabase = createClient(
 );
 
 /**
- * Resolve user from Authorization header
+ * Resolve authenticated user from Authorization header
  */
 export async function getUserFromRequest(req: NextRequest) {
   const auth = req.headers.get("authorization");
@@ -26,14 +26,14 @@ export async function getUserFromRequest(req: NextRequest) {
 }
 
 /**
- * User-only guard
+ * Require any authenticated user
  */
 export async function requireUser(req: NextRequest) {
   return getUserFromRequest(req);
 }
 
 /**
- * Admin-only guard
+ * Require admin role
  */
 export async function requireAdmin(req: NextRequest) {
   const user = await getUserFromRequest(req);
