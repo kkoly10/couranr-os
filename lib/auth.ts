@@ -7,17 +7,17 @@ const supabase = createClient(
 );
 
 /**
- * Extracts and validates the user session from Authorization header.
+ * Base token → user resolver
  */
-export async function requireUser(req: NextRequest) {
+export async function getUserFromRequest(req: NextRequest) {
   const auth = req.headers.get("authorization");
-  if (!auth?.startsWith("Bearer ")) {
+  if (!auth || !auth.startsWith("Bearer ")) {
     throw new Error("Missing Authorization header");
   }
 
   const token = auth.replace("Bearer ", "");
-  const { data, error } = await supabase.auth.getUser(token);
 
+  const { data, error } = await supabase.auth.getUser(token);
   if (error || !data.user) {
     throw new Error("Invalid or expired token");
   }
@@ -26,10 +26,17 @@ export async function requireUser(req: NextRequest) {
 }
 
 /**
- * Ensures the authenticated user is an admin.
+ * Alias for consistency
+ */
+export async function requireUser(req: NextRequest) {
+  return getUserFromRequest(req);
+}
+
+/**
+ * Admin-only enforcement
  */
 export async function requireAdmin(req: NextRequest) {
-  const user = await requireUser(req);
+  const user = await getUserFromRequest(req);
 
   const { data, error } = await supabase
     .from("profiles")
