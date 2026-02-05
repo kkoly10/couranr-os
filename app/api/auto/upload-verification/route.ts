@@ -1,110 +1,101 @@
-import { NextResponse } from "next/server";
+// app/api/auto/upload-verification/route.ts
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getUserFromRequest } from "@/app/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-function requireEnv(name: string) {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing env: ${name}`);
-  return v;
-}
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
-const BUCKET = "rental-files";
-const MAX_BYTES = 6 * 1024 * 1024; // 6MB
-
-function safeExt(type: string) {
-  if (type === "image/jpeg") return "jpg";
-  if (type === "image/png") return "png";
-  if (type === "image/webp") return "webp";
-  return null;
-}
-
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const authHeader = req.headers.get("authorization") || "";
-    const token = authHeader.replace("Bearer ", "").trim();
-    if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getUserFromRequest(req);
+    const body = await req.json().catch(() => ({}));
 
-    // User client (RLS + identity)
-    const supabaseUser = createClient(
-      requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
-      requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
-      { global: { headers: { Authorization: `Bearer ${token}` } } }
-    );
+    const rentalId = String(body?.rentalId || "").trim();
+    const licenseFrontUrl = String(body?.licenseFrontUrl || "").trim();
+    const licenseBackUrl = String(body?.licenseBackUrl || "").trim();
+    const selfieUrl = String(body?.selfieUrl || "").trim();
 
-    const { data: u, error: uErr } = await supabaseUser.auth.getUser();
-    if (uErr || !u?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const licenseState = String(body?.licenseState || "").trim();
+    const licenseExpires = String(body?.licenseExpires || "").trim(); // "YYYY-MM-DD"
+    const hasInsurance = !!body?.hasInsurance;
 
-    const form = await req.formData();
-    const rentalId = String(form.get("rentalId") || "");
-    const kind = String(form.get("kind") || "");
-    const file = form.get("file") as File | null;
+    const capturedLat = body?.capturedLat ?? null;
+    const capturedLng = body?.capturedLng ?? null;
+    const capturedAccuracyM = body?.capturedAccuracyM ?? null;
 
-    if (!rentalId || !file || !["license_front", "license_back", "selfie"].includes(kind)) {
+    if (!rentalId || !licenseFrontUrl || !licenseBackUrl || !selfieUrl) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
-
-    if (file.size > MAX_BYTES) {
-      return NextResponse.json({ error: "File too large (max 6MB)" }, { status: 400 });
+    if (!licenseState || !licenseExpires) {
+      return NextResponse.json({ error: "Missing license state/expiry" }, { status: 400 });
     }
 
-    const ext = safeExt(file.type);
-    if (!ext) {
-      return NextResponse.json({ error: "Unsupported image type" }, { status: 400 });
-    }
-
-    // Ownership validation (no leakage)
-    const { data: r, error: rErr } = await supabaseUser
+    // Ensure rental belongs to user
+    const { data: rental, error: rentalErr } = await supabaseAdmin
       .from("rentals")
-      .select("id, user_id")
+      .select("id,user_id,status")
       .eq("id", rentalId)
+      .eq("user_id", user.id)
       .single();
 
-    if (rErr || !r) return NextResponse.json({ error: "Rental not found" }, { status: 404 });
-    if (r.user_id !== u.user.id) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-
-    // Service client for private storage upload
-    const supabaseSvc = createClient(
-      requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
-      requireEnv("SUPABASE_SERVICE_ROLE_KEY")
-    );
-
-    const path = `auto/${u.user.id}/${rentalId}/verification/${kind}.${ext}`;
-
-    const buf = Buffer.from(await file.arrayBuffer());
-    const { error: upErr } = await supabaseSvc.storage.from(BUCKET).upload(path, buf, {
-      contentType: file.type,
-      upsert: true,
-    });
-
-    if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
-
-    // Insert file record (use user client so RLS applies)
-    const { error: insErr } = await supabaseUser.from("rental_files").insert({
-      rental_id: rentalId,
-      user_id: u.user.id,
-      kind,
-      storage_bucket: BUCKET,
-      storage_path: path,
-    });
-
-    if (insErr) return NextResponse.json({ error: insErr.message }, { status: 500 });
-
-    // Mark docs_complete if all 3 exist
-    const { data: files } = await supabaseUser
-      .from("rental_files")
-      .select("kind")
-      .eq("rental_id", rentalId)
-      .eq("user_id", u.user.id);
-
-    const kinds = new Set((files || []).map((x: any) => x.kind));
-    const docsComplete = ["license_front", "license_back", "selfie"].every((k) => kinds.has(k));
-
-    if (docsComplete) {
-      await supabaseUser.from("rentals").update({ docs_complete: true }).eq("id", rentalId);
+    if (rentalErr || !rental) {
+      return NextResponse.json({ error: "Rental not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ success: true, docsComplete });
+    // Upsert verification row (one per rental)
+    const { error: upErr } = await supabaseAdmin.from("renter_verifications").upsert(
+      {
+        rental_id: rentalId,
+        user_id: user.id,
+        license_front_url: licenseFrontUrl,
+        license_back_url: licenseBackUrl,
+        selfie_url: selfieUrl,
+        license_state: licenseState,
+        license_expires: licenseExpires,
+        has_insurance: hasInsurance,
+        captured_lat: capturedLat,
+        captured_lng: capturedLng,
+        captured_accuracy_m: capturedAccuracyM,
+        captured_at: new Date().toISOString(),
+      },
+      { onConflict: "rental_id" }
+    );
+
+    if (upErr) {
+      return NextResponse.json({ error: upErr.message }, { status: 400 });
+    }
+
+    // Mark docs complete ONLY via server route
+    const { error: updErr } = await supabaseAdmin
+      .from("rentals")
+      .update({ docs_complete: true, verification_status: "pending" })
+      .eq("id", rentalId)
+      .eq("user_id", user.id);
+
+    if (updErr) {
+      return NextResponse.json({ error: updErr.message }, { status: 400 });
+    }
+
+    // Audit event
+    await supabaseAdmin.from("rental_events").insert({
+      rental_id: rentalId,
+      actor_user_id: user.id,
+      actor_role: "renter",
+      event_type: "verification_submitted",
+      event_payload: {
+        has_insurance: hasInsurance,
+        captured_lat: capturedLat,
+        captured_lng: capturedLng,
+        captured_accuracy_m: capturedAccuracyM,
+      },
+    });
+
+    return NextResponse.json({ ok: true }, { status: 200 });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
   }
