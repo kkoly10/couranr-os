@@ -1,65 +1,70 @@
-import { NextResponse } from "next/server";
+export const dynamic = "force-dynamic";
+
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 
-export const dynamic = "force-dynamic";
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
-function requireEnv(name: string) {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing env: ${name}`);
-  return v;
+function asSingle<T>(x: any): T | null {
+  if (!x) return null;
+  if (Array.isArray(x)) return (x[0] as T) ?? null;
+  return x as T;
 }
 
-function asSingle<T>(v: any): T | null {
-  if (!v) return null;
-  if (Array.isArray(v)) return (v[0] as T) ?? null;
-  return v as T;
+async function getUserFromRequest(req: NextRequest) {
+  const auth = req.headers.get("authorization");
+  if (!auth?.startsWith("Bearer ")) throw new Error("Missing authorization token");
+  const token = auth.replace("Bearer ", "");
+  const { data, error } = await supabaseAdmin.auth.getUser(token);
+  if (error || !data?.user) throw new Error("Invalid or expired token");
+  return data.user;
 }
 
-export async function POST(req: Request) {
+async function requireAdmin(userId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error || (data as any)?.role !== "admin") {
+    throw new Error("Admin access required");
+  }
+}
+
+async function getEmailForUserId(userId: string): Promise<string | null> {
+  const { data } = await supabaseAdmin
+    .from("profiles")
+    .select("email")
+    .eq("id", userId)
+    .maybeSingle();
+
+  return (data as any)?.email ?? null;
+}
+
+export async function POST(req: NextRequest) {
   try {
-    // ---------------------------
-    // AUTH (Bearer token required)
-    // ---------------------------
-    const authHeader = req.headers.get("authorization") || "";
-    const token = authHeader.replace("Bearer ", "").trim();
-    if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const adminUser = await getUserFromRequest(req);
+    await requireAdmin(adminUser.id);
 
-    const supabase = createClient(
-      requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
-      requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
-      { global: { headers: { Authorization: `Bearer ${token}` } } }
-    );
+    const body = await req.json().catch(() => ({}));
+    const rentalId = body?.rentalId as string | undefined;
+    const decision = body?.decision as "refunded" | "withheld" | undefined;
+    const amountCents = Number(body?.amountCents ?? 0);
+    const reason = (body?.reason ?? null) as string | null;
 
-    const { data: auth, error: authErr } = await supabase.auth.getUser();
-    if (authErr || !auth?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    // ---------------------------
-    // ADMIN CHECK (profiles.role)
-    // ---------------------------
-    const { data: prof, error: profErr } = await supabase
-      .from("profiles")
-      .select("id, role, email")
-      .eq("id", auth.user.id)
-      .single();
-
-    if (profErr || !prof || prof.role !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (!rentalId || !decision) {
+      return NextResponse.json(
+        { error: "Missing rentalId or decision" },
+        { status: 400 }
+      );
     }
 
-    // ---------------------------
-    // INPUT
-    // ---------------------------
-    const body = await req.json().catch(() => ({}));
-
-    const rentalId = String(body.rentalId || "");
-    const decision = String(body.decision || ""); // refunded | withheld
-    const amountCents = Number(body.amountCents ?? 0);
-    const reason = body.reason ? String(body.reason) : null;
-
-    if (!rentalId) return NextResponse.json({ error: "Missing rentalId" }, { status: 400 });
-
-    if (decision !== "refunded" && decision !== "withheld") {
+    if (!["refunded", "withheld"].includes(decision)) {
       return NextResponse.json({ error: "Invalid decision" }, { status: 400 });
     }
 
@@ -67,142 +72,116 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Invalid amountCents" }, { status: 400 });
     }
 
-    // If refunded, always force amount withheld to 0
-    const finalWithheldCents = decision === "withheld" ? amountCents : 0;
-
-    // ---------------------------
-    // LOAD RENTAL (+ renter email, vehicle)
-    // NOTE: Supabase relations sometimes return arrays; normalize safely.
-    // ---------------------------
-    const { data: rental, error: rErr } = await supabase
+    // Load rental (NO profiles join)
+    const { data: rental, error: rentalErr } = await supabaseAdmin
       .from("rentals")
       .select(
         `
         id,
         user_id,
-        status,
         paid,
         return_confirmed_at,
         deposit_refund_status,
         deposit_refund_amount_cents,
-        profiles ( email ),
-        vehicles ( year, make, model )
+        damage_confirmed,
+        damage_notes,
+        vehicles:vehicles(id, year, make, model)
       `
       )
       .eq("id", rentalId)
-      .single();
+      .maybeSingle();
 
-    if (rErr || !rental) return NextResponse.json({ error: "Rental not found" }, { status: 404 });
+    if (rentalErr || !rental) {
+      return NextResponse.json({ error: "Rental not found" }, { status: 404 });
+    }
 
-    // Guardrails (recommended)
-    if (!rental.return_confirmed_at) {
+    // Must be paid + return confirmed
+    if (!rental.paid || !rental.return_confirmed_at) {
       return NextResponse.json(
-        { error: "Return must be confirmed before deposit decision." },
+        { error: "Requires: paid + return confirmed" },
         { status: 400 }
       );
     }
 
-    // If you want to block deposit decisions when unpaid:
-    if (!rental.paid) {
+    // Prevent changing after decision
+    if (rental.deposit_refund_status === "refunded" || rental.deposit_refund_status === "withheld") {
       return NextResponse.json(
-        { error: "Rental is not marked paid; deposit decision blocked." },
+        { error: "Deposit decision already completed" },
         { status: 400 }
       );
     }
 
-    // ---------------------------
-    // UPDATE RENTAL (deposit fields)
-    // ---------------------------
-    const nowIso = new Date().toISOString();
+    // ---- Damage gate: cannot withhold unless damage confirmed ----
+    if (decision === "withheld" && !rental.damage_confirmed) {
+      return NextResponse.json(
+        { error: "Cannot withhold until damage is confirmed" },
+        { status: 400 }
+      );
+    }
 
-    const { error: uErr } = await supabase
+    const now = new Date().toISOString();
+
+    const nextStatus = decision;
+    const withholdAmount = decision === "withheld" ? Math.max(0, Math.floor(amountCents)) : 0;
+
+    const { error: updErr } = await supabaseAdmin
       .from("rentals")
       .update({
-        deposit_refund_status: decision,
-        deposit_refund_amount_cents: finalWithheldCents,
-        // optional: set to pending before this step in your flow
-        // status: rental.status === "returned" ? "closed" : rental.status,
+        deposit_refund_status: nextStatus,
+        deposit_refund_amount_cents: withholdAmount,
       })
       .eq("id", rentalId);
 
-    if (uErr) return NextResponse.json({ error: uErr.message }, { status: 500 });
+    if (updErr) {
+      return NextResponse.json({ error: "Failed to save deposit decision" }, { status: 500 });
+    }
 
-    // ---------------------------
-    // AUDIT EVENT
-    // ---------------------------
-    await supabase.from("rental_events").insert({
+    // Audit event
+    await supabaseAdmin.from("rental_events").insert({
       rental_id: rentalId,
-      actor_user_id: auth.user.id,
+      actor_user_id: adminUser.id,
       actor_role: "admin",
       event_type: "deposit_decision",
       event_payload: {
         decision,
-        withheld_cents: finalWithheldCents,
+        amountCents: withholdAmount,
         reason,
-        at: nowIso,
+        at: now,
       },
     });
 
-    // ---------------------------
-    // EMAIL NOTIFICATION (Resend)
-    // - Don’t crash build if env missing: create client inside handler
-    // ---------------------------
-    const renterProfile = asSingle<{ email?: string }>(rental.profiles);
-    const renterEmail = renterProfile?.email || null;
+    // Email renter
+    const renterEmail = await getEmailForUserId(rental.user_id);
+    const v = asSingle<{ year?: any; make?: any; model?: any }>((rental as any).vehicles);
+    const carLabel =
+      v?.year && v?.make && v?.model ? `${v.year} ${v.make} ${v.model}` : "your rental vehicle";
 
-    const vehicle = asSingle<{ year?: any; make?: any; model?: any }>(rental.vehicles);
-    const carLabel = vehicle
-      ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim() || "your rental"
-      : "your rental";
-
-    // Only attempt email if we have both:
-    // - renter email
-    // - RESEND_API_KEY
-    if (renterEmail && process.env.RESEND_API_KEY) {
+    if (renterEmail && process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL) {
       const resend = new Resend(process.env.RESEND_API_KEY);
 
       const subject =
         decision === "refunded"
-          ? "Couranr Auto — Deposit refunded"
-          : "Couranr Auto — Deposit withheld (review)";
+          ? "Deposit refunded — Couranr Auto"
+          : "Deposit withheld — Couranr Auto (Damage confirmed)";
 
-      const moneyLine =
-        decision === "withheld"
-          ? `Withheld amount: $${(finalWithheldCents / 100).toFixed(2)}`
-          : `Withheld amount: $0.00`;
+      const text =
+        decision === "refunded"
+          ? `Your deposit decision is complete for ${carLabel}.\n\nDeposit: REFUNDED\n\n— Couranr Auto`
+          : `Your deposit decision is complete for ${carLabel}.\n\nDeposit: WITHHELD\nAmount: $${(withholdAmount / 100).toFixed(2)}\nReason: ${reason || rental.damage_notes || "Damage / cleaning / mileage"}\n\n— Couranr Auto`;
 
-      const reasonLine =
-        decision === "withheld" && reason ? `Reason: ${reason}` : "";
-
-      const html = `
-        <div style="font-family:Arial,sans-serif;line-height:1.5">
-          <h2 style="margin:0 0 12px">Deposit update</h2>
-          <p style="margin:0 0 8px">Rental: <strong>${carLabel}</strong></p>
-          <p style="margin:0 0 8px">Decision: <strong>${decision.toUpperCase()}</strong></p>
-          <p style="margin:0 0 8px">${moneyLine}</p>
-          ${reasonLine ? `<p style="margin:0 0 8px">${reasonLine}</p>` : ""}
-          <p style="margin:16px 0 0;color:#555">
-            If you believe this is incorrect, reply to this email with details and photos.
-          </p>
-        </div>
-      `;
-
-      try {
-        await resend.emails.send({
-          from: requireEnv("RESEND_FROM_EMAIL"), // e.g. "Couranr <no-reply@couranr.com>" or your verified sender
-          to: renterEmail,
-          subject,
-          html,
-        });
-      } catch (emailErr) {
-        // Do NOT fail the deposit decision if email fails — log only
-        console.error("Resend email failed:", emailErr);
-      }
+      await resend.emails.send({
+        from: process.env.RESEND_FROM_EMAIL,
+        to: renterEmail,
+        subject,
+        text,
+      });
     }
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ ok: true });
   } catch (e: any) {
-    console.error("deposit-decision error:", e);
-    return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: e?.message || "Server error" },
+      { status: 500 }
+    );
   }
 }
