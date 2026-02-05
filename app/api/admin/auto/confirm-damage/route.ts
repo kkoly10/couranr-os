@@ -1,79 +1,90 @@
 export const dynamic = "force-dynamic";
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { requireAdmin } from "@/app/lib/auth";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+function svc() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+}
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const { rentalId, notes } = await req.json();
+    await requireAdmin(req);
 
-    if (!rentalId || !notes) {
+    const body = await req.json().catch(() => ({}));
+    const rentalId = String(body?.rentalId || "");
+    const damageConfirmed = Boolean(body?.damageConfirmed);
+    const notes = body?.notes ? String(body.notes).slice(0, 2000) : null;
+
+    if (!rentalId) {
+      return NextResponse.json({ error: "Missing rentalId" }, { status: 400 });
+    }
+
+    const supabase = svc();
+
+    // Load rental (admin)
+    const { data: rental, error: rErr } = await supabase
+      .from("rentals")
+      .select(
+        "id,status,paid,return_confirmed_at,deposit_refund_status,damage_confirmed,damage_confirmed_at"
+      )
+      .eq("id", rentalId)
+      .single();
+
+    if (rErr || !rental) {
+      return NextResponse.json({ error: "Rental not found" }, { status: 404 });
+    }
+
+    // Enforce: you only confirm damage after return is confirmed
+    if (!rental.return_confirmed_at) {
       return NextResponse.json(
-        { error: "Missing rentalId or notes" },
+        { error: "Return must be confirmed before damage review." },
         { status: 400 }
       );
     }
 
-    // ---------- AUTH ----------
-    const authHeader = req.headers.get("authorization") || "";
-    const token = authHeader.replace("Bearer ", "");
-
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // If deposit already finalized, do not allow changing damage state
+    if (rental.deposit_refund_status === "refunded" || rental.deposit_refund_status === "withheld") {
+      return NextResponse.json(
+        { error: "Deposit already finalized. Cannot change damage state." },
+        { status: 400 }
+      );
     }
 
-    const supabaseAuth = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      { global: { headers: { Authorization: `Bearer ${token}` } } }
-    );
+    const now = new Date().toISOString();
 
-    const { data: userRes } = await supabaseAuth.auth.getUser();
-    const user = userRes?.user;
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const updatePayload: any = {
+      damage_confirmed: damageConfirmed,
+      damage_notes: notes,
+      damage_confirmed_at: damageConfirmed ? now : null,
+    };
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (profile?.role !== "admin") {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    // ---------- UPDATE ----------
-    const { error } = await supabase
+    const { error: uErr } = await supabase
       .from("rentals")
-      .update({
-        damage_confirmed: true,
-        damage_confirmed_at: new Date().toISOString(),
-        damage_notes: notes,
-      })
+      .update(updatePayload)
       .eq("id", rentalId);
 
-    if (error) throw error;
+    if (uErr) {
+      return NextResponse.json({ error: uErr.message }, { status: 500 });
+    }
 
-    // ---------- AUDIT ----------
+    // Audit log
     await supabase.from("rental_events").insert({
       rental_id: rentalId,
-      actor_user_id: user.id,
+      actor_user_id: null,
       actor_role: "admin",
-      event_type: "damage_confirmed",
-      event_payload: { notes },
+      event_type: damageConfirmed ? "damage_confirmed" : "damage_cleared",
+      event_payload: {
+        notes,
+      },
     });
 
-    return NextResponse.json({ success: true });
-  } catch (err: any) {
-    console.error("Confirm damage error:", err);
-    return NextResponse.json(
-      { error: err?.message || "Server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: true });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || "Server error" }, { status: 401 });
   }
 }
