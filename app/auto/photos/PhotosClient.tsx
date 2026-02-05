@@ -1,11 +1,14 @@
-// app/auto/photos/PhotosClient.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-type Phase = "pickup_exterior" | "pickup_interior" | "return_exterior" | "return_interior";
+type Phase =
+  | "pickup_exterior"
+  | "pickup_interior"
+  | "return_exterior"
+  | "return_interior";
 
 const PHASE_LABEL: Record<Phase, string> = {
   pickup_exterior: "Pickup — Exterior",
@@ -13,6 +16,9 @@ const PHASE_LABEL: Record<Phase, string> = {
   return_exterior: "Return — Exterior",
   return_interior: "Return — Interior",
 };
+
+const TEST_MODE =
+  (process.env.NEXT_PUBLIC_AUTO_TEST_MODE || "").toLowerCase() === "true";
 
 export default function PhotosClient() {
   const router = useRouter();
@@ -27,9 +33,8 @@ export default function PhotosClient() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // Simple client-side test mode switch:
-  // If you want it controlled ONLY by server env var, you can remove this toggle.
-  const [skipGps, setSkipGps] = useState(false);
+  // ✅ Default GPS off in test mode (but you can toggle it on)
+  const [skipGps, setSkipGps] = useState<boolean>(TEST_MODE);
 
   const title = useMemo(() => PHASE_LABEL[phase] || "Photos", [phase]);
 
@@ -39,8 +44,13 @@ export default function PhotosClient() {
       const { data } = await supabase.auth.getSession();
       setAuthed(!!data.session);
       setLoading(false);
+
       if (!data.session) {
-        router.push(`/login?next=/auto/photos?rentalId=${encodeURIComponent(rentalId)}&phase=${encodeURIComponent(phase)}`);
+        router.push(
+          `/login?next=/auto/photos?rentalId=${encodeURIComponent(
+            rentalId
+          )}&phase=${encodeURIComponent(phase)}`
+        );
       }
     }
     boot();
@@ -51,9 +61,12 @@ export default function PhotosClient() {
     setFiles(list);
   }
 
-  async function getGps(): Promise<{ lat: number | null; lng: number | null; acc: number | null }> {
+  async function getGps(): Promise<{
+    lat: number | null;
+    lng: number | null;
+    acc: number | null;
+  }> {
     if (skipGps) return { lat: null, lng: null, acc: null };
-
     if (!navigator.geolocation) return { lat: null, lng: null, acc: null };
 
     return new Promise((resolve) => {
@@ -105,14 +118,11 @@ export default function PhotosClient() {
         });
 
         const out = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error(out?.error || "Upload failed");
-        }
+        if (!res.ok) throw new Error(out?.error || "Upload failed");
       }
 
       alert("Uploaded!");
       setFiles([]);
-      // stay on page; user may upload more
     } catch (e: any) {
       setError(e?.message || "Upload failed");
     } finally {
@@ -130,19 +140,37 @@ export default function PhotosClient() {
         Upload clear photos. This protects you and Couranr.
       </p>
 
-      <div style={{ marginTop: 14, padding: 14, borderRadius: 14, border: "1px solid #e5e7eb", background: "#fff" }}>
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+      <div
+        style={{
+          marginTop: 14,
+          padding: 14,
+          borderRadius: 14,
+          border: "1px solid #e5e7eb",
+          background: "#fff",
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
           <input type="file" accept="image/*" multiple onChange={onPickFiles} />
+
           <button onClick={uploadAll} disabled={busy} style={btnPrimary}>
             {busy ? "Uploading…" : "Upload"}
           </button>
+
           <button
             onClick={() => setSkipGps((v) => !v)}
             style={btnGhost}
             type="button"
             title="Use this if you’re testing away from pickup location."
           >
-            {skipGps ? "GPS: OFF (Test)" : "GPS: ON"}
+            {skipGps ? "GPS: OFF" : "GPS: ON"}
+            {TEST_MODE ? " (Test Mode)" : ""}
           </button>
         </div>
 
@@ -153,7 +181,14 @@ export default function PhotosClient() {
         )}
 
         {error && (
-          <div style={{ marginTop: 12, padding: 12, borderRadius: 12, border: "1px solid #fecaca" }}>
+          <div
+            style={{
+              marginTop: 12,
+              padding: 12,
+              borderRadius: 12,
+              border: "1px solid #fecaca",
+            }}
+          >
             <strong style={{ color: "#b91c1c" }}>Error:</strong> {error}
           </div>
         )}
