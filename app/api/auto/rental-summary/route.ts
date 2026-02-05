@@ -1,68 +1,103 @@
-import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
 export const dynamic = "force-dynamic";
 
-function requireEnv(name: string) {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing env: ${name}`);
-  return v;
+import { NextRequest, NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+import { getUserFromRequest } from "@/app/lib/auth";
+
+function adminClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false } }
+  );
 }
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   try {
-    const authHeader = req.headers.get("authorization") || "";
-    const token = authHeader.replace("Bearer ", "").trim();
-    if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const user = await getUserFromRequest(req);
+    const { searchParams } = new URL(req.url);
+    const rentalId = searchParams.get("rentalId");
 
-    const supabase = createClient(
-      requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
-      requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
-      { global: { headers: { Authorization: `Bearer ${token}` } } }
-    );
+    if (!rentalId) {
+      return NextResponse.json({ error: "Missing rentalId" }, { status: 400 });
+    }
 
-    const { data: u, error: uErr } = await supabase.auth.getUser();
-    if (uErr || !u?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    const admin = adminClient();
 
-    const url = new URL(req.url);
-    const rentalId = url.searchParams.get("rentalId") || "";
-    if (!rentalId) return NextResponse.json({ error: "Missing rentalId" }, { status: 400 });
-
-    const { data: rental, error } = await supabase
+    const { data: rental, error } = await admin
       .from("rentals")
       .select(
         `
         id,
         user_id,
+        vehicle_id,
+        status,
         purpose,
-        pickup_location,
-        created_at,
-        vehicles ( year, make, model )
+        docs_complete,
+        verification_status,
+        agreement_signed,
+        paid,
+        lockbox_code_released_at,
+        pickup_confirmed_at,
+        return_confirmed_at,
+        condition_photos_status,
+        deposit_refund_status,
+        deposit_refund_amount_cents,
+        damage_confirmed,
+        damage_confirmed_at,
+        created_at
       `
       )
       .eq("id", rentalId)
       .single();
 
-    if (error || !rental) return NextResponse.json({ error: "Rental not found" }, { status: 404 });
+    if (error || !rental) {
+      return NextResponse.json({ error: "Rental not found" }, { status: 404 });
+    }
 
-    // ✅ Prevent account leakage
-    if (rental.user_id !== u.user.id) {
+    if (rental.user_id !== user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const v: any = rental.vehicles;
-    const vehicleLabel = `${v?.year ?? ""} ${v?.make ?? ""} ${v?.model ?? ""}`.trim() || "Vehicle";
+    // Vehicle label (optional)
+    let vehicle: any = null;
+    if (rental.vehicle_id) {
+      const vRes = await admin
+        .from("vehicles")
+        .select("id,year,make,model")
+        .eq("id", rental.vehicle_id)
+        .single();
+      vehicle = vRes.data || null;
+    }
 
-    return NextResponse.json({
-      rental: {
-        rentalId: rental.id,
-        purpose: rental.purpose || "personal",
-        vehicleLabel,
-        pickupLocation: rental.pickup_location || "1090 Stafford Marketplace, VA 22556",
-        pickupAt: rental.created_at, // best available without extra fields; we can swap to pickup_at column later if you add it
-      },
-    });
+    // Compute “next step” hints (renter-facing)
+    const next = {
+      needsVerification: !rental.docs_complete,
+      needsAgreement: !rental.agreement_signed,
+      needsPayment: !rental.paid,
+      needsApproval: rental.verification_status !== "approved",
+      lockboxAvailable: !!rental.lockbox_code_released_at,
+      needsPickupPhotos:
+        rental.condition_photos_status === "not_started" ||
+        rental.condition_photos_status === "pickup_exterior_done",
+      needsReturnPhotos:
+        rental.pickup_confirmed_at &&
+        !rental.return_confirmed_at &&
+        (rental.condition_photos_status === "pickup_interior_done" ||
+          rental.condition_photos_status === "return_exterior_done"),
+      damageUnderReview:
+        !!rental.return_confirmed_at && !rental.damage_confirmed,
+      depositPending:
+        rental.deposit_refund_status === "pending" ||
+        rental.deposit_refund_status === "withheld" ||
+        rental.deposit_refund_status === "refunded",
+    };
+
+    return NextResponse.json({ rental, vehicle, next });
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: e?.message || "Server error" },
+      { status: 500 }
+    );
   }
 }
