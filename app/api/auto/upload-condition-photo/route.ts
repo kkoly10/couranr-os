@@ -38,6 +38,15 @@ function safeExtFromMime(mime: string) {
   return "jpg";
 }
 
+function isValidPhase(phase: string): phase is Phase {
+  return (
+    phase === "pickup_exterior" ||
+    phase === "pickup_interior" ||
+    phase === "return_exterior" ||
+    phase === "return_interior"
+  );
+}
+
 export async function POST(req: NextRequest) {
   try {
     const user = await getUserFromRequest(req);
@@ -48,8 +57,8 @@ export async function POST(req: NextRequest) {
       return jsonError("Server missing Supabase env vars", 500);
     }
 
-    const bucket =
-      process.env.RENTAL_PHOTOS_BUCKET?.trim() || "rental-photos";
+    // ✅ Your confirmed bucket exists:
+    const bucket = (process.env.RENTAL_PHOTOS_BUCKET || "rental-photos").trim();
 
     const supabaseAdmin = createClient(url, serviceKey, {
       auth: { persistSession: false },
@@ -58,7 +67,8 @@ export async function POST(req: NextRequest) {
     const form = await req.formData();
 
     const rentalId = String(form.get("rentalId") || "").trim();
-    const phase = String(form.get("phase") || "").trim() as Phase;
+    const phaseRaw = String(form.get("phase") || "").trim();
+    const phase = phaseRaw as Phase;
 
     const capturedLatRaw = form.get("capturedLat");
     const capturedLngRaw = form.get("capturedLng");
@@ -74,70 +84,66 @@ export async function POST(req: NextRequest) {
     const file = form.get("file");
 
     if (!rentalId) return jsonError("Missing rentalId");
-    if (!phase) return jsonError("Missing phase");
-    if (
-      phase !== "pickup_exterior" &&
-      phase !== "pickup_interior" &&
-      phase !== "return_exterior" &&
-      phase !== "return_interior"
-    ) {
-      return jsonError("Invalid phase");
-    }
-    if (!file || !(file instanceof File)) {
-      return jsonError("Missing file");
-    }
+    if (!phaseRaw) return jsonError("Missing phase");
+    if (!isValidPhase(phaseRaw)) return jsonError("Invalid phase");
+    if (!file || !(file instanceof File)) return jsonError("Missing file");
 
-    if (!isAllowedMime(file.type)) {
-      return jsonError("Only JPG/PNG/WEBP images allowed");
-    }
-    if (file.size > MAX_BYTES) {
-      return jsonError(`File too large (max ${MAX_MB}MB)`);
-    }
+    if (!isAllowedMime(file.type)) return jsonError("Only JPG/PNG/WEBP images allowed");
+    if (file.size > MAX_BYTES) return jsonError(`File too large (max ${MAX_MB}MB)`);
 
     // Load rental + enforce ownership + phase gating
     const { data: rental, error: rentalErr } = await supabaseAdmin
       .from("rentals")
       .select(
         `
-        id,
-        user_id,
-        renter_id,
-        lockbox_code_released_at,
-        pickup_confirmed_at,
-        return_confirmed_at
-      `
+          id,
+          user_id,
+          renter_id,
+          lockbox_code_released_at,
+          pickup_confirmed_at,
+          return_confirmed_at
+        `
       )
       .eq("id", rentalId)
       .single();
 
     if (rentalErr || !rental) return jsonError("Rental not found", 404);
 
-    const ownerOk =
-      rental.user_id === user.id || rental.renter_id === user.id;
-
+    const ownerOk = rental.user_id === user.id || rental.renter_id === user.id;
     if (!ownerOk) return jsonError("Forbidden", 403);
 
-    // Do not allow uploads after return is confirmed (keeps evidence clean)
+    // Keep evidence clean
     if (rental.return_confirmed_at) {
       return jsonError("Return already confirmed. Uploads are closed.", 409);
     }
 
     // Phase bypass prevention
-    if ((phase === "pickup_exterior" || phase === "pickup_interior") && !rental.lockbox_code_released_at) {
+    if (
+      (phase === "pickup_exterior" || phase === "pickup_interior") &&
+      !rental.lockbox_code_released_at
+    ) {
       return jsonError("Pickup photos require lockbox release first.", 409);
     }
-    if ((phase === "return_exterior" || phase === "return_interior") && !rental.pickup_confirmed_at) {
+
+    if (
+      (phase === "return_exterior" || phase === "return_interior") &&
+      !rental.pickup_confirmed_at
+    ) {
       return jsonError("Return photos require pickup confirmation first.", 409);
     }
+
     if (phase === "return_interior") {
-      // Require return_exterior first (optional but helpful)
       const { count: extCount } = await supabaseAdmin
         .from("rental_condition_photos")
         .select("*", { count: "exact", head: true })
         .eq("rental_id", rentalId)
         .eq("phase", "return_exterior");
+
       if (!extCount || extCount < 1) {
-        return jsonError("Return interior requires at least one return exterior photo first.", 409);
+        return jsonError(
+          "Return interior requires at least one return exterior photo first.",
+          409
+        );
       }
     }
 
@@ -149,68 +155,52 @@ export async function POST(req: NextRequest) {
       .eq("phase", phase);
 
     if ((count || 0) >= MAX_PHOTOS_PER_PHASE) {
-      return jsonError(`Photo limit reached for ${phase} (max ${MAX_PHOTOS_PER_PHASE}).`, 409);
-    }
-
-    // Optional: allow null GPS in AUTO_TEST_MODE
-    const testMode = (process.env.AUTO_TEST_MODE || "").toLowerCase() === "true";
-    if (!testMode) {
-      // If not in test mode, encourage gps but don't block (industry-realistic)
-      // (No hard GPS enforcement here.)
+      return jsonError(
+        `Photo limit reached for ${phase} (max ${MAX_PHOTOS_PER_PHASE}).`,
+        409
+      );
     }
 
     const ext = safeExtFromMime(file.type);
     const key = `${rentalId}/${phase}/${crypto.randomUUID()}.${ext}`;
-
     const bytes = new Uint8Array(await file.arrayBuffer());
 
-    const { error: uploadErr } = await supabaseAdmin.storage
-      .from(bucket)
-      .upload(key, bytes, {
-        contentType: file.type,
-        upsert: false,
-        cacheControl: "3600",
-      });
+    const { error: uploadErr } = await supabaseAdmin.storage.from(bucket).upload(key, bytes, {
+      contentType: file.type,
+      upsert: false,
+      cacheControl: "3600",
+    });
 
-    if (uploadErr) {
-      return jsonError(`Upload failed: ${uploadErr.message}`, 500);
-    }
+    if (uploadErr) return jsonError(`Upload failed: ${uploadErr.message}`, 500);
 
-    // Store URL as a storage path reference (bucket + key).
-    // Admin/renter fetch routes can sign it later if bucket is private.
     const photoUrl = `supabase://${bucket}/${key}`;
 
-    const { error: insertErr } = await supabaseAdmin
-      .from("rental_condition_photos")
-      .insert({
-        rental_id: rentalId,
-        user_id: user.id,
-        phase,
-        photo_url: photoUrl,
-        captured_lat: Number.isFinite(capturedLat as any) ? capturedLat : null,
-        captured_lng: Number.isFinite(capturedLng as any) ? capturedLng : null,
-        captured_accuracy_m: Number.isFinite(capturedAccuracyM as any)
-          ? capturedAccuracyM
-          : null,
-        captured_at: nowIso(),
-        created_at: nowIso(),
-      });
+    const { error: insertErr } = await supabaseAdmin.from("rental_condition_photos").insert({
+      rental_id: rentalId,
+      user_id: user.id,
+      phase,
+      photo_url: photoUrl,
+      captured_lat: Number.isFinite(capturedLat as any) ? capturedLat : null,
+      captured_lng: Number.isFinite(capturedLng as any) ? capturedLng : null,
+      captured_accuracy_m: Number.isFinite(capturedAccuracyM as any) ? capturedAccuracyM : null,
+      captured_at: nowIso(),
+      created_at: nowIso(),
+    });
 
     if (insertErr) {
-      // Rollback uploaded file to avoid orphan storage
       await supabaseAdmin.storage.from(bucket).remove([key]);
       return jsonError(`DB insert failed: ${insertErr.message}`, 500);
     }
 
-    return NextResponse.json(
-      {
-        ok: true,
-        rentalId,
-        phase,
-        photo_url: photoUrl,
-      },
-      { status: 200 }
-    );
+    await supabaseAdmin.from("rental_events").insert({
+      rental_id: rentalId,
+      actor_user_id: user.id,
+      actor_role: "renter",
+      event_type: "condition_photo_uploaded",
+      event_payload: { phase, photo_url: photoUrl },
+    });
+
+    return NextResponse.json({ ok: true, rentalId, phase, photo_url: photoUrl }, { status: 200 });
   } catch (e: any) {
     return jsonError(e?.message || "Server error", 500);
   }
