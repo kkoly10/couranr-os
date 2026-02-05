@@ -5,257 +5,213 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getUserFromRequest } from "@/app/lib/auth";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+type Phase =
+  | "pickup_exterior"
+  | "pickup_interior"
+  | "return_exterior"
+  | "return_interior";
 
-// Set these in Vercel if you want:
-// AUTO_TEST_MODE=true
-// RENTAL_PHOTOS_BUCKET=rental-photos
-const TEST_MODE = (process.env.AUTO_TEST_MODE || "").toLowerCase() === "true";
-const BUCKET = process.env.RENTAL_PHOTOS_BUCKET || "rental-photos";
-
-// Hard limits (safe defaults)
-const MAX_FILE_BYTES = 8 * 1024 * 1024; // 8MB
+const MAX_MB = 8;
+const MAX_BYTES = MAX_MB * 1024 * 1024;
 const MAX_PHOTOS_PER_PHASE = 12;
-// simple burst limiter: max uploads per rental per minute
-const MAX_UPLOADS_PER_MINUTE = 20;
 
-function jsonError(status: number, message: string) {
+function jsonError(message: string, status = 400) {
   return NextResponse.json({ error: message }, { status });
 }
 
-function isImageMime(mime: string | null) {
-  if (!mime) return false;
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function isAllowedMime(mime: string) {
   return (
     mime === "image/jpeg" ||
     mime === "image/jpg" ||
     mime === "image/png" ||
-    mime === "image/webp" ||
-    mime === "image/heic" ||
-    mime === "image/heif"
+    mime === "image/webp"
   );
 }
 
-/**
- * Phase rules:
- * - pickup_* requires lockbox released
- * - return_* requires pickup_confirmed_at
- */
-function enforcePhaseRules(rental: any, phase: string) {
-  const p = (phase || "").toLowerCase();
-
-  if (p.startsWith("pickup")) {
-    if (!rental.lockbox_code_released_at) {
-      throw new Error("Pickup photos are locked until lockbox is released.");
-    }
-    if (rental.return_confirmed_at) {
-      throw new Error("Rental already returned. Pickup photos are closed.");
-    }
-  }
-
-  if (p.startsWith("return")) {
-    if (!rental.pickup_confirmed_at) {
-      throw new Error("Return photos are locked until pickup is confirmed.");
-    }
-    if (rental.return_confirmed_at) {
-      throw new Error("Return already confirmed. Photos are closed.");
-    }
-  }
-
-  // Optional ordering rule (industry style):
-  // require return_exterior before return_interior
-  if (p === "return_interior") {
-    // only enforce if you want strict ordering
-    // (leave disabled if you want flexibility)
-  }
+function safeExtFromMime(mime: string) {
+  if (mime === "image/png") return "png";
+  if (mime === "image/webp") return "webp";
+  return "jpg";
 }
 
 export async function POST(req: NextRequest) {
   try {
-    if (!SUPABASE_URL || !SERVICE_ROLE) {
-      return jsonError(500, "Server misconfigured (missing Supabase env vars).");
-    }
-
-    const supabase = createClient(SUPABASE_URL, SERVICE_ROLE);
-
-    // --- Auth user from Bearer token ---
     const user = await getUserFromRequest(req);
 
-    // --- Parse multipart form ---
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!url || !serviceKey) {
+      return jsonError("Server missing Supabase env vars", 500);
+    }
+
+    const bucket =
+      process.env.RENTAL_PHOTOS_BUCKET?.trim() || "rental-photos";
+
+    const supabaseAdmin = createClient(url, serviceKey, {
+      auth: { persistSession: false },
+    });
+
     const form = await req.formData();
+
     const rentalId = String(form.get("rentalId") || "").trim();
-    const phase = String(form.get("phase") || "").trim();
+    const phase = String(form.get("phase") || "").trim() as Phase;
 
-    if (!rentalId) return jsonError(400, "Missing rentalId.");
-    if (!phase) return jsonError(400, "Missing phase.");
-
-    const file = form.get("file") as File | null;
-    if (!file) return jsonError(400, "Missing file.");
-
-    if (!isImageMime(file.type)) {
-      return jsonError(400, `Invalid file type (${file.type}). Use JPG/PNG/WEBP/HEIC.`);
-    }
-
-    if (file.size > MAX_FILE_BYTES) {
-      return jsonError(400, `File too large. Max ${(MAX_FILE_BYTES / 1024 / 1024).toFixed(0)}MB.`);
-    }
-
-    // --- GPS fields (optional) ---
-    // We accept these if present. If TEST_MODE, we allow nulls freely.
     const capturedLatRaw = form.get("capturedLat");
     const capturedLngRaw = form.get("capturedLng");
     const capturedAccRaw = form.get("capturedAccuracyM");
 
-    const captured_lat =
-      capturedLatRaw === null || capturedLatRaw === ""
-        ? null
-        : Number(capturedLatRaw);
-    const captured_lng =
-      capturedLngRaw === null || capturedLngRaw === ""
-        ? null
-        : Number(capturedLngRaw);
-    const captured_accuracy_m =
-      capturedAccRaw === null || capturedAccRaw === ""
-        ? null
-        : Number(capturedAccRaw);
+    const capturedLat =
+      capturedLatRaw === null || capturedLatRaw === "" ? null : Number(capturedLatRaw);
+    const capturedLng =
+      capturedLngRaw === null || capturedLngRaw === "" ? null : Number(capturedLngRaw);
+    const capturedAccuracyM =
+      capturedAccRaw === null || capturedAccRaw === "" ? null : Number(capturedAccRaw);
 
-    const hasGps =
-      Number.isFinite(captured_lat as any) && Number.isFinite(captured_lng as any);
+    const file = form.get("file");
 
-    if (!TEST_MODE) {
-      // GPS is NOT required, but if provided it must be valid
-      if (captured_lat !== null && !Number.isFinite(captured_lat)) {
-        return jsonError(400, "Invalid capturedLat.");
-      }
-      if (captured_lng !== null && !Number.isFinite(captured_lng)) {
-        return jsonError(400, "Invalid capturedLng.");
-      }
-      if (captured_accuracy_m !== null && !Number.isFinite(captured_accuracy_m)) {
-        return jsonError(400, "Invalid capturedAccuracyM.");
-      }
+    if (!rentalId) return jsonError("Missing rentalId");
+    if (!phase) return jsonError("Missing phase");
+    if (
+      phase !== "pickup_exterior" &&
+      phase !== "pickup_interior" &&
+      phase !== "return_exterior" &&
+      phase !== "return_interior"
+    ) {
+      return jsonError("Invalid phase");
+    }
+    if (!file || !(file instanceof File)) {
+      return jsonError("Missing file");
     }
 
-    // --- Load rental (ownership + gating prerequisites) ---
-    const { data: rental, error: rentalErr } = await supabase
+    if (!isAllowedMime(file.type)) {
+      return jsonError("Only JPG/PNG/WEBP images allowed");
+    }
+    if (file.size > MAX_BYTES) {
+      return jsonError(`File too large (max ${MAX_MB}MB)`);
+    }
+
+    // Load rental + enforce ownership + phase gating
+    const { data: rental, error: rentalErr } = await supabaseAdmin
       .from("rentals")
       .select(
-        "id, user_id, renter_id, lockbox_code_released_at, pickup_confirmed_at, return_confirmed_at, paid, agreement_signed, docs_complete, approval_status, verification_status, condition_photos_status"
+        `
+        id,
+        user_id,
+        renter_id,
+        lockbox_code_released_at,
+        pickup_confirmed_at,
+        return_confirmed_at
+      `
       )
       .eq("id", rentalId)
-      .maybeSingle();
+      .single();
 
-    if (rentalErr) return jsonError(500, rentalErr.message);
-    if (!rental) return jsonError(404, "Rental not found.");
+    if (rentalErr || !rental) return jsonError("Rental not found", 404);
 
-    // Ownership: support either user_id or renter_id being the renter
-    const ownerOk = rental.user_id === user.id || rental.renter_id === user.id;
-    if (!ownerOk) return jsonError(403, "Not authorized for this rental.");
+    const ownerOk =
+      rental.user_id === user.id || rental.renter_id === user.id;
 
-    // Phase bypass protection
-    enforcePhaseRules(rental, phase);
+    if (!ownerOk) return jsonError("Forbidden", 403);
 
-    // --- Rate limit: per rental per minute ---
-    const oneMinuteAgo = new Date(Date.now() - 60_000).toISOString();
-    const { count: recentCount, error: rateErr } = await supabase
-      .from("rental_condition_photos")
-      .select("id", { count: "exact", head: true })
-      .eq("rental_id", rentalId)
-      .gte("created_at", oneMinuteAgo);
-
-    if (rateErr) return jsonError(500, rateErr.message);
-    if ((recentCount || 0) >= MAX_UPLOADS_PER_MINUTE) {
-      return jsonError(429, "Too many uploads. Please wait a minute and try again.");
+    // Do not allow uploads after return is confirmed (keeps evidence clean)
+    if (rental.return_confirmed_at) {
+      return jsonError("Return already confirmed. Uploads are closed.", 409);
     }
 
-    // --- Cap photos per phase ---
-    const { count: phaseCount, error: phaseErr } = await supabase
+    // Phase bypass prevention
+    if ((phase === "pickup_exterior" || phase === "pickup_interior") && !rental.lockbox_code_released_at) {
+      return jsonError("Pickup photos require lockbox release first.", 409);
+    }
+    if ((phase === "return_exterior" || phase === "return_interior") && !rental.pickup_confirmed_at) {
+      return jsonError("Return photos require pickup confirmation first.", 409);
+    }
+    if (phase === "return_interior") {
+      // Require return_exterior first (optional but helpful)
+      const { count: extCount } = await supabaseAdmin
+        .from("rental_condition_photos")
+        .select("*", { count: "exact", head: true })
+        .eq("rental_id", rentalId)
+        .eq("phase", "return_exterior");
+      if (!extCount || extCount < 1) {
+        return jsonError("Return interior requires at least one return exterior photo first.", 409);
+      }
+    }
+
+    // Cap photos per phase
+    const { count } = await supabaseAdmin
       .from("rental_condition_photos")
-      .select("id", { count: "exact", head: true })
+      .select("*", { count: "exact", head: true })
       .eq("rental_id", rentalId)
       .eq("phase", phase);
 
-    if (phaseErr) return jsonError(500, phaseErr.message);
-    if ((phaseCount || 0) >= MAX_PHOTOS_PER_PHASE) {
-      return jsonError(400, `Max photos reached for this phase (${MAX_PHOTOS_PER_PHASE}).`);
+    if ((count || 0) >= MAX_PHOTOS_PER_PHASE) {
+      return jsonError(`Photo limit reached for ${phase} (max ${MAX_PHOTOS_PER_PHASE}).`, 409);
     }
 
-    // --- Upload to storage ---
-    const ext =
-      file.type === "image/png"
-        ? "png"
-        : file.type === "image/webp"
-        ? "webp"
-        : file.type === "image/heic" || file.type === "image/heif"
-        ? "heic"
-        : "jpg";
+    // Optional: allow null GPS in AUTO_TEST_MODE
+    const testMode = (process.env.AUTO_TEST_MODE || "").toLowerCase() === "true";
+    if (!testMode) {
+      // If not in test mode, encourage gps but don't block (industry-realistic)
+      // (No hard GPS enforcement here.)
+    }
 
-    const safePhase = phase.replace(/[^a-zA-Z0-9_-]/g, "_");
-    const objectPath = `rentals/${rentalId}/${safePhase}/${crypto.randomUUID()}.${ext}`;
+    const ext = safeExtFromMime(file.type);
+    const key = `${rentalId}/${phase}/${crypto.randomUUID()}.${ext}`;
 
     const bytes = new Uint8Array(await file.arrayBuffer());
 
-    const { error: upErr } = await supabase.storage
-      .from(BUCKET)
-      .upload(objectPath, bytes, {
+    const { error: uploadErr } = await supabaseAdmin.storage
+      .from(bucket)
+      .upload(key, bytes, {
         contentType: file.type,
         upsert: false,
+        cacheControl: "3600",
       });
 
-    if (upErr) {
-      return jsonError(
-        500,
-        `Storage upload failed. Check bucket "${BUCKET}" exists. (${upErr.message})`
-      );
+    if (uploadErr) {
+      return jsonError(`Upload failed: ${uploadErr.message}`, 500);
     }
 
-    const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(objectPath);
-    const photo_url = pub?.publicUrl;
+    // Store URL as a storage path reference (bucket + key).
+    // Admin/renter fetch routes can sign it later if bucket is private.
+    const photoUrl = `supabase://${bucket}/${key}`;
 
-    if (!photo_url) return jsonError(500, "Could not create public URL.");
-
-    const nowIso = new Date().toISOString();
-
-    // --- Insert DB row ---
-    const insertRow = {
-      rental_id: rentalId,
-      user_id: user.id,
-      phase,
-      photo_url,
-      captured_lat: hasGps ? captured_lat : null,
-      captured_lng: hasGps ? captured_lng : null,
-      captured_accuracy_m: hasGps ? captured_accuracy_m : null,
-      // Use server time for reliability (less spoofable)
-      captured_at: nowIso,
-      created_at: nowIso,
-    };
-
-    const { data: created, error: insErr } = await supabase
+    const { error: insertErr } = await supabaseAdmin
       .from("rental_condition_photos")
-      .insert(insertRow)
-      .select("id, photo_url, phase, created_at")
-      .single();
+      .insert({
+        rental_id: rentalId,
+        user_id: user.id,
+        phase,
+        photo_url: photoUrl,
+        captured_lat: Number.isFinite(capturedLat as any) ? capturedLat : null,
+        captured_lng: Number.isFinite(capturedLng as any) ? capturedLng : null,
+        captured_accuracy_m: Number.isFinite(capturedAccuracyM as any)
+          ? capturedAccuracyM
+          : null,
+        captured_at: nowIso(),
+        created_at: nowIso(),
+      });
 
-    if (insErr) return jsonError(500, insErr.message);
-
-    // --- Optional: update condition_photos_status ---
-    // We do NOT mark condition_photos_complete here unless your rules confirm all phases.
-    // But we can set a "started" signal.
-    if (!rental.condition_photos_status || rental.condition_photos_status === "not_started") {
-      await supabase
-        .from("rentals")
-        .update({ condition_photos_status: "in_progress" })
-        .eq("id", rentalId);
+    if (insertErr) {
+      // Rollback uploaded file to avoid orphan storage
+      await supabaseAdmin.storage.from(bucket).remove([key]);
+      return jsonError(`DB insert failed: ${insertErr.message}`, 500);
     }
 
     return NextResponse.json(
       {
         ok: true,
-        testMode: TEST_MODE,
-        photo: created,
+        rentalId,
+        phase,
+        photo_url: photoUrl,
       },
       { status: 200 }
     );
   } catch (e: any) {
-    return jsonError(400, e?.message || "Upload failed.");
+    return jsonError(e?.message || "Server error", 500);
   }
 }
