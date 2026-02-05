@@ -17,12 +17,9 @@ const supabaseAdmin = createClient(
 );
 
 const MAX_FILE_MB = 10;
-const ALLOWED_MIME = new Set([
-  "image/jpeg",
-  "image/jpg",
-  "image/png",
-  "image/webp",
-]);
+const ALLOWED_MIME = new Set(["image/jpeg", "image/jpg", "image/png", "image/webp"]);
+
+type Kind = "license_front" | "license_back" | "selfie";
 
 function safeExtFromMime(mime: string) {
   if (mime === "image/png") return "png";
@@ -30,11 +27,21 @@ function safeExtFromMime(mime: string) {
   return "jpg";
 }
 
+function bucketForKind(kind: Kind) {
+  return kind === "selfie" ? "renter-verifications" : "renter-licenses";
+}
+
+function columnForKind(kind: Kind) {
+  if (kind === "license_front") return "license_front_url";
+  if (kind === "license_back") return "license_back_url";
+  return "selfie_url";
+}
+
 async function uploadPrivateImage(opts: {
   bucket: "renter-licenses" | "renter-verifications";
   rentalId: string;
   userId: string;
-  kind: string;
+  kind: Kind;
   file: File;
 }) {
   const { bucket, rentalId, userId, kind, file } = opts;
@@ -42,6 +49,7 @@ async function uploadPrivateImage(opts: {
   if (!ALLOWED_MIME.has(file.type)) {
     throw new Error(`Invalid file type: ${file.type}`);
   }
+
   const bytes = await file.arrayBuffer();
   const sizeMb = bytes.byteLength / (1024 * 1024);
   if (sizeMb > MAX_FILE_MB) {
@@ -52,18 +60,49 @@ async function uploadPrivateImage(opts: {
   const ts = new Date().toISOString().replace(/[:.]/g, "-");
   const path = `${userId}/${rentalId}/${kind}-${ts}.${ext}`;
 
-  const { error } = await supabaseAdmin.storage
-    .from(bucket)
-    .upload(path, Buffer.from(bytes), {
-      contentType: file.type,
-      upsert: true,
-    });
+  const { error } = await supabaseAdmin.storage.from(bucket).upload(path, Buffer.from(bytes), {
+    contentType: file.type,
+    upsert: true,
+  });
 
   if (error) throw new Error(error.message);
 
-  // IMPORTANT: bucket is private; do NOT use getPublicUrl.
-  // Store a stable identifier we can sign later:
+  // private bucket reference (we sign later)
   return `supabase://${bucket}/${path}`;
+}
+
+async function ensureRentalBelongsToUser(rentalId: string, userId: string) {
+  const { data: rental, error } = await supabaseAdmin
+    .from("rentals")
+    .select("id,user_id,status,docs_complete,verification_status")
+    .eq("id", rentalId)
+    .eq("user_id", userId)
+    .single();
+
+  if (error || !rental) throw new Error("Rental not found");
+  return rental;
+}
+
+async function recomputeDocsComplete(rentalId: string) {
+  const { data: rv } = await supabaseAdmin
+    .from("renter_verifications")
+    .select("license_front_url,license_back_url,selfie_url")
+    .eq("rental_id", rentalId)
+    .maybeSingle();
+
+  const complete = !!(rv?.license_front_url && rv?.license_back_url && rv?.selfie_url);
+
+  // Always keep verification_status in pending once any file is submitted;
+  // Only mark docs_complete true when all 3 exist.
+  await supabaseAdmin
+    .from("rentals")
+    .update({
+      docs_complete: complete,
+      verification_status: "pending",
+    })
+    .eq("id", rentalId);
+
+  return { complete, rv };
 }
 
 export async function POST(req: NextRequest) {
@@ -72,148 +111,150 @@ export async function POST(req: NextRequest) {
 
     const ct = req.headers.get("content-type") || "";
     if (!ct.includes("multipart/form-data")) {
-      return NextResponse.json(
-        { error: "Expected multipart/form-data" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Expected multipart/form-data" }, { status: 400 });
     }
 
     const fd = await req.formData();
-
     const rentalId = String(fd.get("rentalId") || "").trim();
-    if (!rentalId) {
-      return NextResponse.json({ error: "Missing rentalId" }, { status: 400 });
+    if (!rentalId) return NextResponse.json({ error: "Missing rentalId" }, { status: 400 });
+
+    // Ensure ownership
+    await ensureRentalBelongsToUser(rentalId, user.id);
+
+    // ----- MODE A (your current UI): rentalId + kind + file -----
+    const kindRaw = String(fd.get("kind") || "").trim();
+    const fileSingle = fd.get("file");
+
+    if (kindRaw && fileSingle instanceof File) {
+      if (!["license_front", "license_back", "selfie"].includes(kindRaw)) {
+        return NextResponse.json({ error: "Invalid kind" }, { status: 400 });
+      }
+
+      const kind = kindRaw as Kind;
+      const bucket = bucketForKind(kind);
+
+      const ref = await uploadPrivateImage({
+        bucket,
+        rentalId,
+        userId: user.id,
+        kind,
+        file: fileSingle,
+      });
+
+      // upsert + set the specific column
+      const col = columnForKind(kind);
+
+      const { error: upErr } = await supabaseAdmin
+        .from("renter_verifications")
+        .upsert(
+          {
+            rental_id: rentalId,
+            user_id: user.id,
+            [col]: ref,
+            captured_at: new Date().toISOString(),
+          } as any,
+          { onConflict: "rental_id" }
+        );
+
+      if (upErr) return NextResponse.json({ error: upErr.message }, { status: 400 });
+
+      // Audit event
+      await supabaseAdmin.from("rental_events").insert({
+        rental_id: rentalId,
+        actor_user_id: user.id,
+        actor_role: "renter",
+        event_type: "verification_file_uploaded",
+        event_payload: { kind },
+      });
+
+      const { complete } = await recomputeDocsComplete(rentalId);
+
+      return NextResponse.json(
+        {
+          ok: true,
+          uploaded: { kind, ref },
+          docs_complete: complete,
+        },
+        { status: 200 }
+      );
     }
 
-    // required files
+    // ----- MODE B (optional): rentalId + licenseFront + licenseBack + selfie -----
     const licenseFront = fd.get("licenseFront");
     const licenseBack = fd.get("licenseBack");
     const selfie = fd.get("selfie");
 
-    if (!(licenseFront instanceof File) || !(licenseBack instanceof File) || !(selfie instanceof File)) {
+    if (
+      licenseFront instanceof File &&
+      licenseBack instanceof File &&
+      selfie instanceof File
+    ) {
+      const frontRef = await uploadPrivateImage({
+        bucket: "renter-licenses",
+        rentalId,
+        userId: user.id,
+        kind: "license_front",
+        file: licenseFront,
+      });
+
+      const backRef = await uploadPrivateImage({
+        bucket: "renter-licenses",
+        rentalId,
+        userId: user.id,
+        kind: "license_back",
+        file: licenseBack,
+      });
+
+      const selfieRef = await uploadPrivateImage({
+        bucket: "renter-verifications",
+        rentalId,
+        userId: user.id,
+        kind: "selfie",
+        file: selfie,
+      });
+
+      const { error: upErr } = await supabaseAdmin
+        .from("renter_verifications")
+        .upsert(
+          {
+            rental_id: rentalId,
+            user_id: user.id,
+            license_front_url: frontRef,
+            license_back_url: backRef,
+            selfie_url: selfieRef,
+            captured_at: new Date().toISOString(),
+          },
+          { onConflict: "rental_id" }
+        );
+
+      if (upErr) return NextResponse.json({ error: upErr.message }, { status: 400 });
+
+      await supabaseAdmin.from("rental_events").insert({
+        rental_id: rentalId,
+        actor_user_id: user.id,
+        actor_role: "renter",
+        event_type: "verification_submitted",
+        event_payload: {},
+      });
+
+      const { complete } = await recomputeDocsComplete(rentalId);
+
       return NextResponse.json(
-        { error: "Missing required files (licenseFront, licenseBack, selfie)" },
-        { status: 400 }
-      );
-    }
-
-    // optional fields
-    const licenseState = String(fd.get("licenseState") || "").trim();
-    const licenseExpires = String(fd.get("licenseExpires") || "").trim(); // YYYY-MM-DD
-    const hasInsuranceRaw = String(fd.get("hasInsurance") || "").trim();
-    const hasInsurance =
-      hasInsuranceRaw === "true" || hasInsuranceRaw === "1" || hasInsuranceRaw === "yes";
-
-    const capturedLat = fd.get("capturedLat");
-    const capturedLng = fd.get("capturedLng");
-    const capturedAccuracyM = fd.get("capturedAccuracyM");
-
-    const lat = capturedLat ? Number(capturedLat) : null;
-    const lng = capturedLng ? Number(capturedLng) : null;
-    const acc = capturedAccuracyM ? Number(capturedAccuracyM) : null;
-
-    // Ensure rental belongs to user
-    const { data: rental, error: rentalErr } = await supabaseAdmin
-      .from("rentals")
-      .select("id,user_id,status")
-      .eq("id", rentalId)
-      .eq("user_id", user.id)
-      .single();
-
-    if (rentalErr || !rental) {
-      return NextResponse.json({ error: "Rental not found" }, { status: 404 });
-    }
-
-    // Upload files to private buckets
-    const licenseFrontRef = await uploadPrivateImage({
-      bucket: "renter-licenses",
-      rentalId,
-      userId: user.id,
-      kind: "license_front",
-      file: licenseFront,
-    });
-
-    const licenseBackRef = await uploadPrivateImage({
-      bucket: "renter-licenses",
-      rentalId,
-      userId: user.id,
-      kind: "license_back",
-      file: licenseBack,
-    });
-
-    const selfieRef = await uploadPrivateImage({
-      bucket: "renter-verifications",
-      rentalId,
-      userId: user.id,
-      kind: "selfie",
-      file: selfie,
-    });
-
-    // Upsert verification row (one per rental)
-    const { error: upErr } = await supabaseAdmin
-      .from("renter_verifications")
-      .upsert(
         {
-          rental_id: rentalId,
-          user_id: user.id,
-          license_front_url: licenseFrontRef,
-          license_back_url: licenseBackRef,
-          selfie_url: selfieRef,
-          license_state: licenseState || null,
-          license_expires: licenseExpires || null,
-          has_insurance: hasInsurance,
-          captured_lat: Number.isFinite(lat as any) ? lat : null,
-          captured_lng: Number.isFinite(lng as any) ? lng : null,
-          captured_accuracy_m: Number.isFinite(acc as any) ? acc : null,
-          captured_at: new Date().toISOString(),
+          ok: true,
+          uploaded: { frontRef, backRef, selfieRef },
+          docs_complete: complete,
         },
-        { onConflict: "rental_id" }
+        { status: 200 }
       );
-
-    if (upErr) {
-      return NextResponse.json({ error: upErr.message }, { status: 400 });
     }
 
-    // Mark docs complete + set pending status (server-only)
-    const { error: updErr } = await supabaseAdmin
-      .from("rentals")
-      .update({ docs_complete: true, verification_status: "pending" })
-      .eq("id", rentalId)
-      .eq("user_id", user.id);
-
-    if (updErr) {
-      return NextResponse.json({ error: updErr.message }, { status: 400 });
-    }
-
-    // Audit event
-    await supabaseAdmin.from("rental_events").insert({
-      rental_id: rentalId,
-      actor_user_id: user.id,
-      actor_role: "renter",
-      event_type: "verification_submitted",
-      event_payload: {
-        has_insurance: hasInsurance,
-        captured_lat: Number.isFinite(lat as any) ? lat : null,
-        captured_lng: Number.isFinite(lng as any) ? lng : null,
-        captured_accuracy_m: Number.isFinite(acc as any) ? acc : null,
-      },
-    });
-
+    // neither mode matched
     return NextResponse.json(
-      {
-        ok: true,
-        uploaded: {
-          license_front: licenseFrontRef,
-          license_back: licenseBackRef,
-          selfie: selfieRef,
-        },
-      },
-      { status: 200 }
+      { error: "Missing required upload fields. Expected (kind + file) or (licenseFront + licenseBack + selfie)." },
+      { status: 400 }
     );
   } catch (e: any) {
-    return NextResponse.json(
-      { error: e?.message || "Server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
   }
 }
