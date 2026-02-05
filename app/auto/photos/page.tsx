@@ -3,7 +3,7 @@ import PhotosClient from "./PhotosClient";
 
 export default function PhotosPage() {
   return (
-    <Suspense fallback={<p style={{ padding: 24 }}>Loading photo upload…</p>}>
+    <Suspense fallback={<p style={{ padding: 24 }}>Loading photos…</p>}>
       <PhotosClient />
     </Suspense>
   );
