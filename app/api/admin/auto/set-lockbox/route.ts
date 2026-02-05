@@ -1,64 +1,66 @@
-import { NextResponse } from "next/server";
+// app/api/admin/auto/set-lockbox/route.ts
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { requireAdmin } from "@/app/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-function requireEnv(name: string) {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing env: ${name}`);
-  return v;
-}
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
-async function requireAdmin(supabase: any) {
-  const { data: u } = await supabase.auth.getUser();
-  const user = u?.user;
-  if (!user) return null;
-
-  const { data: prof } = await supabase.from("profiles").select("role").eq("id", user.id).single();
-  if (prof?.role !== "admin") return null;
-
-  return user;
-}
-
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
   try {
-    const authHeader = req.headers.get("authorization") || "";
-    const token = authHeader.replace("Bearer ", "").trim();
-    if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const supabase = createClient(
-      requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
-      requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
-      { global: { headers: { Authorization: `Bearer ${token}` } } }
-    );
-
-    const admin = await requireAdmin(supabase);
-    if (!admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-
+    const admin = await requireAdmin(req);
     const body = await req.json().catch(() => ({}));
-    const rentalId = String(body.rentalId || "");
-    const code = String(body.code || "");
 
-    if (!rentalId || !code.trim()) {
-      return NextResponse.json({ error: "Missing rentalId/code" }, { status: 400 });
+    const rentalId = String(body?.rentalId || "").trim();
+    const code = String(body?.code || "").trim();
+
+    if (!rentalId || !code) {
+      return NextResponse.json({ error: "Missing rentalId or code" }, { status: 400 });
     }
 
-    const { error } = await supabase
+    // Ensure rental exists
+    const { data: rental, error: rentalErr } = await supabaseAdmin
       .from("rentals")
-      .update({ lockbox_code: code.trim(), lockbox_code_released_at: new Date().toISOString() })
+      .select("id,status,lockbox_code_released_at")
+      .eq("id", rentalId)
+      .single();
+
+    if (rentalErr || !rental) {
+      return NextResponse.json({ error: "Rental not found" }, { status: 404 });
+    }
+
+    // Safety: if already released, don't allow changing code here.
+    if (rental.lockbox_code_released_at) {
+      return NextResponse.json(
+        { error: "Lockbox already released. Use admin tools carefully." },
+        { status: 400 }
+      );
+    }
+
+    // ONLY set the code. DO NOT set lockbox_code_released_at here.
+    const { error: updErr } = await supabaseAdmin
+      .from("rentals")
+      .update({ lockbox_code: code })
       .eq("id", rentalId);
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (updErr) {
+      return NextResponse.json({ error: updErr.message }, { status: 400 });
+    }
 
-    await supabase.from("rental_events").insert({
+    // Audit
+    await supabaseAdmin.from("rental_events").insert({
       rental_id: rentalId,
       actor_user_id: admin.id,
       actor_role: "admin",
       event_type: "lockbox_code_set",
-      event_payload: { code: code.trim() },
+      event_payload: { note: "Code stored (not released)" },
     });
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true }, { status: 200 });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
   }
