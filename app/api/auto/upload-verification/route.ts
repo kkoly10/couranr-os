@@ -51,9 +51,14 @@ export async function POST(req: NextRequest) {
     const kind = String(form.get("kind") || "").trim() as Kind;
     const file = form.get("file");
 
-    const licenseState = String(form.get("licenseState") || "").trim();
-    const licenseExpires = String(form.get("licenseExpires") || "").trim(); // YYYY-MM-DD
-    const hasInsurance = String(form.get("hasInsurance") || "").toLowerCase() === "true";
+    // OPTIONAL meta (UI might not send these yet)
+    const licenseState = String(form.get("licenseState") || "").trim() || null;
+    const licenseExpires = String(form.get("licenseExpires") || "").trim() || null; // YYYY-MM-DD or null
+    const hasInsuranceRaw = form.get("hasInsurance");
+    const hasInsurance =
+      typeof hasInsuranceRaw === "string"
+        ? hasInsuranceRaw.toLowerCase() === "true"
+        : false;
 
     const capturedLatRaw = form.get("capturedLat");
     const capturedLngRaw = form.get("capturedLng");
@@ -73,13 +78,6 @@ export async function POST(req: NextRequest) {
     if (!file || !(file instanceof File)) return jsonError("Missing file");
     if (!isAllowedMime(file.type)) return jsonError("Only JPG/PNG/WEBP images allowed");
     if (file.size > MAX_BYTES) return jsonError(`File too large (max ${MAX_MB}MB)`);
-
-    // Require license meta once (at least when uploading license_front)
-    if (kind === "license_front") {
-      if (!licenseState || !licenseExpires) {
-        return jsonError("Missing licenseState / licenseExpires");
-      }
-    }
 
     // Ensure rental belongs to user
     const { data: rental, error: rentalErr } = await supabaseAdmin
@@ -114,13 +112,14 @@ export async function POST(req: NextRequest) {
 
     const fileUrl = `supabase://${bucket}/${storageKey}`;
 
-    // Fetch existing row so we can patch just one field at a time
+    // Fetch existing verification row
     const { data: existing } = await supabaseAdmin
       .from("renter_verifications")
       .select("*")
       .eq("rental_id", rentalId)
       .maybeSingle();
 
+    // Patch only what we got (do NOT overwrite fields with null unless they were empty)
     const patch: any = {
       rental_id: rentalId,
       user_id: user.id,
@@ -128,10 +127,14 @@ export async function POST(req: NextRequest) {
       captured_lng: Number.isFinite(capturedLng as any) ? capturedLng : null,
       captured_accuracy_m: Number.isFinite(capturedAccuracyM as any) ? capturedAccuracyM : null,
       captured_at: nowIso(),
-      has_insurance: existing?.has_insurance ?? hasInsurance,
-      license_state: existing?.license_state ?? (kind === "license_front" ? licenseState : null),
-      license_expires: existing?.license_expires ?? (kind === "license_front" ? licenseExpires : null),
     };
+
+    // Keep has_insurance if already set; otherwise accept new value
+    patch.has_insurance = existing?.has_insurance ?? hasInsurance;
+
+    // Only set license meta if provided OR if not already set
+    if (!existing?.license_state && licenseState) patch.license_state = licenseState;
+    if (!existing?.license_expires && licenseExpires) patch.license_expires = licenseExpires;
 
     if (kind === "license_front") patch.license_front_url = fileUrl;
     if (kind === "license_back") patch.license_back_url = fileUrl;
@@ -142,13 +145,13 @@ export async function POST(req: NextRequest) {
       .upsert(patch, { onConflict: "rental_id" });
 
     if (upErr) {
-      // rollback storage if DB fails
       await supabaseAdmin.storage.from(bucket).remove([storageKey]);
       return jsonError(`DB upsert failed: ${upErr.message}`, 500);
     }
 
-    // Check if all required files exist now
     const merged = { ...(existing || {}), ...patch };
+
+    // Required for docs_complete:
     const complete =
       !!merged.license_front_url && !!merged.license_back_url && !!merged.selfie_url;
 
@@ -168,9 +171,8 @@ export async function POST(req: NextRequest) {
         event_type: "verification_submitted",
         event_payload: {
           has_insurance: merged.has_insurance,
-          captured_lat: merged.captured_lat,
-          captured_lng: merged.captured_lng,
-          captured_accuracy_m: merged.captured_accuracy_m,
+          license_state: merged.license_state ?? null,
+          license_expires: merged.license_expires ?? null,
         },
       });
     } else {
