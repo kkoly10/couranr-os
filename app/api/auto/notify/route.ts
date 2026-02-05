@@ -1,153 +1,116 @@
-import { NextResponse } from "next/server";
+export const dynamic = "force-dynamic";
+
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { sendEmail } from "@/lib/notify";
+import { Resend } from "resend";
+import { getUserFromRequest, requireAdmin } from "@/app/lib/auth";
 
-/**
- * POST /api/auto/notify
- *
- * Body:
- * {
- *   rentalId: string,
- *   type:
- *     | "verification_submitted"
- *     | "approved"
- *     | "pickup_ready"
- *     | "return_reminder"
- *     | "deposit_refunded"
- *     | "deposit_withheld"
- * }
- */
+function adminClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false } }
+  );
+}
 
-export async function POST(req: Request) {
+async function getProfileEmail(admin: any, userId: string) {
+  const { data } = await admin
+    .from("profiles")
+    .select("email")
+    .eq("id", userId)
+    .single();
+  return (data?.email as string | null) ?? null;
+}
+
+export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
-    const { rentalId, type } = body;
 
-    if (!rentalId || !type) {
+    const rentalId = body?.rentalId as string | undefined;
+    const subject = body?.subject as string | undefined;
+    const html = body?.html as string | undefined;
+    const mode = (body?.mode as string | undefined) || "renter"; // "renter" | "admin"
+
+    if (!rentalId || !subject || !html) {
       return NextResponse.json(
-        { error: "Missing rentalId or type" },
+        { error: "Missing rentalId, subject, or html" },
         { status: 400 }
       );
     }
 
-    // Service-role Supabase (server only)
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    const resendKey = process.env.RESEND_API_KEY;
+    const fromEmail = process.env.RESEND_FROM_EMAIL;
 
-    // Fetch rental + user profile (Supabase returns arrays for relations)
-    const { data: rental, error } = await supabase
-      .from("rentals")
-      .select(
-        `
-        id,
-        vehicles ( year, make, model ),
-        profiles ( email )
-      `
-      )
-      .eq("id", rentalId)
-      .single();
-
-    if (error || !rental) {
+    if (!resendKey || !fromEmail) {
       return NextResponse.json(
-        { error: "Rental not found" },
-        { status: 404 }
+        { error: "Missing RESEND_API_KEY or RESEND_FROM_EMAIL" },
+        { status: 500 }
       );
     }
 
-    // 👇 FIX: profiles is an ARRAY
-    const email =
-      Array.isArray(rental.profiles) && rental.profiles.length > 0
-        ? rental.profiles[0].email
-        : null;
+    const admin = adminClient();
 
-    if (!email) {
+    // Who can trigger notify?
+    // - renter can only email themselves (renter mode)
+    // - admin can email renter or admin address (admin mode)
+    let actorRole: "renter" | "admin" = "renter";
+    let actorId: string | null = null;
+
+    if (mode === "admin") {
+      const adminUser = await requireAdmin(req);
+      actorRole = "admin";
+      actorId = adminUser.id;
+    } else {
+      const user = await getUserFromRequest(req);
+      actorRole = "renter";
+      actorId = user.id;
+    }
+
+    // Load rental + enforce permissions
+    const { data: rental } = await admin
+      .from("rentals")
+      .select("id,user_id")
+      .eq("id", rentalId)
+      .single();
+
+    if (!rental) {
+      return NextResponse.json({ error: "Rental not found" }, { status: 404 });
+    }
+
+    if (actorRole === "renter" && actorId !== rental.user_id) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    const renterEmail = await getProfileEmail(admin, rental.user_id);
+    if (!renterEmail) {
       return NextResponse.json(
         { error: "Renter email not found" },
         { status: 400 }
       );
     }
 
-    const v: any = rental.vehicles;
-    const vehicleLabel =
-      `${v?.year ?? ""} ${v?.make ?? ""} ${v?.model ?? ""}`.trim() ||
-      "Couranr Auto Rental";
+    const resend = new Resend(resendKey);
 
-    let subject = "Couranr Auto Update";
-    let html = `<p>There is an update regarding your rental.</p>`;
-
-    switch (type) {
-      case "verification_submitted":
-        subject = "ID Verification Received";
-        html = `
-          <p>We’ve received your ID verification for:</p>
-          <p><strong>${vehicleLabel}</strong></p>
-          <p>Our team is reviewing it now.</p>
-        `;
-        break;
-
-      case "approved":
-        subject = "Rental Approved";
-        html = `
-          <p>Your rental has been <strong>approved</strong>:</p>
-          <p><strong>${vehicleLabel}</strong></p>
-          <p>You’ll receive pickup instructions shortly.</p>
-        `;
-        break;
-
-      case "pickup_ready":
-        subject = "Pickup Ready";
-        html = `
-          <p>Your rental is ready for pickup:</p>
-          <p><strong>${vehicleLabel}</strong></p>
-          <p>Please log into your dashboard to view the lockbox code.</p>
-        `;
-        break;
-
-      case "return_reminder":
-        subject = "Return Reminder";
-        html = `
-          <p>This is a reminder to return your rental:</p>
-          <p><strong>${vehicleLabel}</strong></p>
-          <p>Please complete return photos in your dashboard.</p>
-        `;
-        break;
-
-      case "deposit_refunded":
-        subject = "Deposit Refunded";
-        html = `
-          <p>Your security deposit has been <strong>refunded</strong>.</p>
-          <p>Thank you for renting with Couranr.</p>
-        `;
-        break;
-
-      case "deposit_withheld":
-        subject = "Deposit Update";
-        html = `
-          <p>Your deposit was <strong>partially or fully withheld</strong>.</p>
-          <p>Please check your dashboard for details.</p>
-        `;
-        break;
-
-      default:
-        return NextResponse.json(
-          { error: "Unsupported notification type" },
-          { status: 400 }
-        );
-    }
-
-    await sendEmail({
-      to: email,
+    await resend.emails.send({
+      from: fromEmail,
+      to: renterEmail,
       subject,
       html,
     });
 
+    // Audit
+    await admin.from("rental_events").insert({
+      rental_id: rentalId,
+      actor_user_id: actorId,
+      actor_role: actorRole,
+      event_type: "email_sent",
+      event_payload: { subject },
+    });
+
     return NextResponse.json({ ok: true });
-  } catch (err: any) {
-    console.error("Auto notify error:", err);
+  } catch (e: any) {
     return NextResponse.json(
-      { error: err?.message || "Server error" },
+      { error: e?.message || "Server error" },
       { status: 500 }
     );
   }
