@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
@@ -25,7 +26,6 @@ function formatLocal(dt: string) {
 export default function AgreementClient() {
   const router = useRouter();
   const sp = useSearchParams();
-
   const rentalId = sp.get("rentalId") || "";
 
   const [loading, setLoading] = useState(true);
@@ -33,13 +33,14 @@ export default function AgreementClient() {
   const [error, setError] = useState<string | null>(null);
 
   const [agree, setAgree] = useState(false);
+  const [acceptPolicies, setAcceptPolicies] = useState(false);
   const [typedName, setTypedName] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
   const agreementText = useMemo(() => {
     const purpose = rental?.purpose || "personal";
-    return purpose === "rideshare" ? RIDESHARE_AGREEMENT : PERSONAL_AGREEMENT;
+    return purpose === "rideshare" ? RIDESHARE_AGREEMENT_V2 : PERSONAL_AGREEMENT_V2;
   }, [rental]);
 
   useEffect(() => {
@@ -84,18 +85,10 @@ export default function AgreementClient() {
     setMsg(null);
     setError(null);
 
-    if (!rentalId) {
-      setError("Missing rentalId.");
-      return;
-    }
-    if (!agree) {
-      setError("You must check the box to agree before continuing.");
-      return;
-    }
-    if (!typedName.trim()) {
-      setError("Please type your full name as your signature.");
-      return;
-    }
+    if (!rentalId) return setError("Missing rentalId.");
+    if (!acceptPolicies) return setError("You must accept Terms and Privacy Policy before continuing.");
+    if (!agree) return setError("You must check the box to agree before continuing.");
+    if (!typedName.trim()) return setError("Please type your full name as your signature.");
 
     setSubmitting(true);
 
@@ -117,7 +110,11 @@ export default function AgreementClient() {
         },
         body: JSON.stringify({
           rentalId,
-          signedName: typedName.trim(),
+          // ✅ match your API route’s expected key
+          signatureName: typedName.trim(),
+          agreementVersion: "v2",
+          termsVersion: "v1",
+          privacyVersion: "v1",
         }),
       });
 
@@ -125,7 +122,7 @@ export default function AgreementClient() {
       if (!res.ok) throw new Error(data?.error || "Failed to sign agreement");
 
       setMsg("Agreement signed. Taking you to checkout…");
-      setTimeout(() => router.push(`/auto/checkout?rentalId=${encodeURIComponent(rentalId)}`), 700);
+      setTimeout(() => router.push(`/auto/checkout?rentalId=${encodeURIComponent(rentalId)}`), 600);
     } catch (e: any) {
       setError(e?.message || "Failed to sign agreement");
     } finally {
@@ -153,17 +150,17 @@ export default function AgreementClient() {
           <div style={infoCard}>
             <strong>Rental summary</strong>
             <div style={{ marginTop: 8, color: "#374151", lineHeight: 1.6 }}>
-              <div><strong>Vehicle:</strong> {rental.vehicleLabel}</div>
+              <div><strong>Vehicle:</strong> {rental.vehicleLabel || "—"}</div>
               <div><strong>Purpose:</strong> {rental.purpose === "rideshare" ? "Rideshare (Uber/Lyft)" : "Personal / Leisure"}</div>
-              <div><strong>Pickup location:</strong> {rental.pickupLocation}</div>
-              <div><strong>Pickup time:</strong> {formatLocal(rental.pickupAt)}</div>
+              <div><strong>Pickup location:</strong> {rental.pickupLocation || "—"}</div>
+              <div><strong>Pickup time:</strong> {rental.pickupAt ? formatLocal(rental.pickupAt) : "—"}</div>
             </div>
           </div>
 
           <div style={agreementBox}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
               <strong>{rental.purpose === "rideshare" ? "Rideshare Agreement" : "Personal / Leisure Agreement"}</strong>
-              <span style={{ fontSize: 12, color: "#6b7280" }}>Version v1</span>
+              <span style={{ fontSize: 12, color: "#6b7280" }}>Version v2</span>
             </div>
 
             <div style={{ marginTop: 12, whiteSpace: "pre-wrap", fontSize: 13, lineHeight: 1.55, color: "#111827" }}>
@@ -172,15 +169,26 @@ export default function AgreementClient() {
           </div>
 
           <div style={infoCard}>
-            <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              <input
-                type="checkbox"
-                checked={agree}
-                onChange={() => setAgree(!agree)}
-              />
-              <span>
-                I have read and agree to the Rental Agreement above.
-              </span>
+            <div style={{ fontSize: 13, color: "#374151", lineHeight: 1.6 }}>
+              By continuing you agree to our{" "}
+              <Link href="/terms" target="_blank" style={{ fontWeight: 900 }}>
+                Terms of Use
+              </Link>{" "}
+              and{" "}
+              <Link href="/privacy" target="_blank" style={{ fontWeight: 900 }}>
+                Privacy Policy
+              </Link>
+              .
+            </div>
+
+            <label style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 12 }}>
+              <input type="checkbox" checked={acceptPolicies} onChange={() => setAcceptPolicies(!acceptPolicies)} />
+              <span>I agree to the Terms of Use and Privacy Policy.</span>
+            </label>
+
+            <label style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 12 }}>
+              <input type="checkbox" checked={agree} onChange={() => setAgree(!agree)} />
+              <span>I have read and agree to the Rental Agreement above.</span>
             </label>
 
             <div style={{ marginTop: 12 }}>
@@ -252,113 +260,122 @@ const agreementBox: React.CSSProperties = {
   overflow: "auto",
 };
 
-/** ---------------- Agreement Texts ---------------- */
+/** ---------------- Agreement Texts (v2) ---------------- */
 
-const PERSONAL_AGREEMENT = `
-COURANR AUTO — PERSONAL / LEISURE RENTAL AGREEMENT (v1)
+const PERSONAL_AGREEMENT_V2 = `
+COURANR AUTO — RENTAL AGREEMENT (PERSONAL / LEISURE) — v2
 
-1) Parties
-This Rental Agreement (“Agreement”) is between Couranr (“Owner”) and the renter (“Renter”).
+IMPORTANT: PLEASE READ CAREFULLY. THIS IS A LEGALLY BINDING AGREEMENT.
 
-2) Eligibility
-Minimum age: 21. Standard advertised pricing applies to ages 25+. Under age 25 fee: +$30/day.
+1) PARTIES
+This Rental Agreement (“Agreement”) is between Couranr Auto / Couranr (“Company,” “Owner,” “We,” “Us”) and the individual renter (“Renter,” “You”).
+By clicking accept / signing electronically, You agree to all terms.
 
-3) Pickup & Return
-Pickup/Return Location: 1090 Stafford Marketplace, VA 22556
-Hours: 9:00 AM – 6:00 PM
-Late return: time past the agreed return time may be charged at the daily rate (and additional fees where applicable).
+2) ELIGIBILITY & DRIVER REQUIREMENTS
+- Minimum age: 21. Standard advertised pricing applies to ages 25+. Under age 25 fee may apply if disclosed at booking.
+- A valid driver’s license and identity verification (license + selfie) are required.
+- Only approved drivers may operate the vehicle. No unauthorized drivers.
 
-4) Insurance Requirement
-Renter must maintain valid auto insurance that covers rental vehicles.
-If Renter does not have personal insurance, Couranr may offer optional coverage at:
-- $15/day OR $100/week (as applicable)
-Couranr coverage reduces liability but does not eliminate responsibility.
+3) RENTAL TERM, PICKUP & RETURN
+- Pickup/Return Location: 1090 Stafford Marketplace, VA 22556 (or other disclosed location).
+- Hours: 9:00 AM – 6:00 PM unless otherwise stated.
+- You must pick up and return on time. Late returns may be billed at the daily rate and/or additional fees disclosed in booking or this Agreement.
 
-5) Mileage Policy (Locked)
-Mileage is not unlimited. Daily rentals include a reasonable daily mileage allowance. Weekly rentals include a weekly allowance.
-Excess mileage may be charged per mile, as disclosed at booking.
+4) VEHICLE CONDITION PHOTOS & DISPUTE PROTECTION
+- You agree to provide required condition photos at pickup and return when instructed.
+- Photos may be GPS/time verified where applicable. Failure to provide required photos may result in delayed deposit decisions and/or administrative fees.
 
-6) Prohibited Use
-No rideshare (Uber/Lyft), racing, off-road, towing, illegal activity, or driving under the influence.
-Unauthorized drivers are prohibited.
+5) PAYMENT, DEPOSIT, AND AUTHORIZATION HOLDS
+- You agree to pay rental charges, deposits, fees, and any authorized additional charges under this Agreement.
+- Deposits are refundable only after return review and subject to deductions for damage, cleaning, late fees, tolls, tickets, administrative/recovery fees, and unpaid balances.
 
-7) Fees
-- Smoking fee: charged for evidence of smoking/vaping (including odor/ash)
-- Excess cleaning: charged for heavy stains, pet hair, spills, trash, sand/mud
-- Late fees and admin fees may apply for violations
+6) CANCELLATION & REFUND POLICY
+Unless a different policy is disclosed at booking:
+- Cancel 48+ hours before pickup: refund rental charges (excluding any non-refundable processing fees if disclosed).
+- Cancel within 48 hours / same day / no-show: may be non-refundable.
 
-8) Damage Responsibility (Agreement-Ready Damage Clause)
-Renter is responsible for all loss or damage to the vehicle during the rental period, regardless of fault.
-This responsibility applies whether Renter uses personal insurance or Couranr-provided insurance.
+7) PROHIBITED USE
+No illegal activity, DUI, racing, off-road use, towing, reckless use, or unauthorized drivers. No subleasing/lending.
 
-If damage is minor (scratches, curb rash, interior):
-Couranr may choose not to involve insurance and may charge repair cost.
-Deposit may be applied toward repair costs, deductibles, cleaning fees, late fees, or other charges.
+8) INSURANCE & LIABILITY (CRITICAL)
+A) If You have your own insurance:
+- You represent you have active coverage that applies to rental vehicle operation.
+- You are responsible for all losses, damages, claims, deductibles, diminished value, loss of use, towing, storage, and related costs during the rental.
 
-If Renter uses Couranr coverage:
-Couranr coverage reduces liability but does not eliminate responsibility.
-Deductible (up to) $1,000 per incident may apply.
-Renter remains responsible for negligence, misuse, prohibited use, and unauthorized drivers.
+B) If Company coverage is provided (if offered):
+- Coverage reduces liability but does not eliminate responsibility.
+- Deductible up to $1,000 per incident may apply.
+- You remain responsible for prohibited use, negligence, misuse, and unauthorized drivers.
 
-9) Deposit
-Deposits are refundable subject to vehicle condition, time returned, mileage, and fees.
+C) If You have no valid coverage:
+- You are fully responsible for all loss or damage to the vehicle and third-party claims to the maximum extent allowed by law.
 
-10) Acknowledgment
-By signing, Renter confirms all information provided is accurate and agrees to this Agreement.
+9) GLASS / BODY / WHEELS (ALWAYS RENTER RESPONSIBILITY)
+Regardless of fault or coverage:
+- Glass damage, body damage, wheel/tire damage, curb rash, and undercarriage damage are renter responsibility.
+Company may repair without involving insurance and charge actual repair costs plus administrative fees.
+
+10) DAMAGE RESPONSIBILITY & “DAMAGE UNDER REVIEW”
+- You are responsible for all loss or damage during the rental, regardless of fault.
+- Vehicle may be placed in “Damage Under Review” status after return.
+- Deposit may be held pending review and repair estimates.
+- You authorize charges for verified damage costs, deductibles, cleaning, and permitted fees.
+
+11) ADMIN / RECOVERY FEES DISCLOSURE
+Administrative and recovery fees may apply for: unpaid balances, late return, tow/impound handling, damage processing, vehicle recovery/immobilization, and dispute/chargeback handling.
+
+12) REPOSSESSION / IMMOBILIZATION CONSENT
+If payment is not received, you breach this Agreement, or the vehicle is not returned on time, you authorize Company to locate, immobilize, and/or recover the vehicle where legally permitted, and you agree to pay recovery costs.
+
+13) MAINTENANCE & SAFETY (ALERTS/WARNINGS)
+Company performs routine maintenance. You must:
+- follow dashboard alerts,
+- stop driving on warnings indicating risk,
+- report issues immediately.
+Damage caused by continuing to operate after warnings, misuse, or neglect is renter responsibility.
+
+14) CHARGEBACK PROHIBITION & DISPUTES
+You agree not to initiate chargebacks for authorized charges. You must contact Company first for dispute resolution.
+
+15) LIMITATION OF LIABILITY
+To the maximum extent permitted by law, Company is not liable for indirect/incidental/consequential damages. Company is not responsible for lost items.
+
+16) INDEMNIFICATION
+You agree to indemnify and hold Company harmless from claims/losses arising from your use of the vehicle, including costs and attorney fees where permitted.
+
+17) ELECTRONIC CONSENT
+You consent to electronic records and signatures. Your typed name and acceptance actions constitute your legal signature.
+
+18) GOVERNING LAW
+Virginia law governs this Agreement. Venue shall be in Virginia unless otherwise required by law.
+
+19) SEVERABILITY & ENTIRE AGREEMENT
+If any term is unenforceable, the rest remains in effect. This Agreement plus referenced policies form the entire agreement.
+
+ACCEPTANCE
+By accepting, you confirm you have read, understand, and agree to this Agreement.
 `;
 
-const RIDESHARE_AGREEMENT = `
-COURANR AUTO — RIDESHARE (UBER/LYFT) RENTAL AGREEMENT (v1)
+const RIDESHARE_AGREEMENT_V2 = `
+COURANR AUTO — RENTAL AGREEMENT (RIDESHARE: UBER/LYFT) — v2
 
-1) Parties
-This Rental Agreement (“Agreement”) is between Couranr (“Owner”) and the renter (“Renter”).
+This Rideshare Agreement includes ALL terms in the Personal/Leisure Agreement v2, plus:
 
-2) Eligibility
-Minimum age: 21. Standard advertised pricing applies to ages 25+. Under age 25 fee: +$30/day.
+A) RIDESHARE AUTHORIZATION
+Rideshare use is permitted only if:
+- You are the approved driver on your rideshare platform account, and
+- You comply with all platform requirements, and
+- No unauthorized drivers operate the vehicle.
 
-3) Pickup & Return
-Pickup/Return Location: 1090 Stafford Marketplace, VA 22556
-Hours: 9:00 AM – 6:00 PM
-Late return: time past the agreed return time may be charged at the daily rate (and additional fees where applicable).
+B) PLATFORM INSURANCE / COVERAGE
+Platform coverage may apply only in certain trip phases and may have coverage gaps. You remain responsible for all loss or damage as stated in the base agreement.
 
-4) Rideshare Use Permitted
-Rideshare use is permitted ONLY if:
-- Renter is the approved driver on their rideshare platform account
-- Renter complies with platform requirements
-- No unauthorized drivers operate the vehicle
+C) PAYMENT STRUCTURE
+Rideshare rentals may be billed weekly or by plan. Extensions must be approved and paid in advance.
 
-5) Payment Structure
-Rideshare rentals are typically billed weekly (7 days). Extensions must be approved and paid in advance.
+D) MILEAGE / ABUSE
+High-mileage terms may apply based on plan, but abuse or prohibited use may trigger fees and/or termination.
 
-6) Mileage
-Rideshare rentals may include high or “unlimited-style” mileage terms based on the vehicle and plan, but abuse is prohibited.
-Owner may investigate abnormal usage patterns and apply limits/fees if misuse is detected.
-
-7) Insurance
-Renter must maintain valid auto insurance that covers rideshare/rental use OR comply with platform-provided coverage.
-If Renter does not have personal insurance, Couranr may offer optional coverage at:
-- $15/day OR $100/week (as applicable)
-Couranr coverage reduces liability but does not eliminate responsibility.
-
-8) Damage Responsibility (Agreement-Ready Damage Clause)
-Renter is responsible for all loss or damage to the vehicle during the rental period, regardless of fault.
-This responsibility applies whether Renter uses personal insurance or Couranr-provided insurance.
-
-If damage is minor (scratches, curb rash, interior):
-Couranr may choose not to involve insurance and may charge repair cost.
-Deposit may be applied toward repair costs, deductibles, cleaning fees, late fees, or other charges.
-
-If Renter uses Couranr coverage:
-Couranr coverage reduces liability but does not eliminate responsibility.
-Deductible (up to) $1,000 per incident may apply.
-Renter remains responsible for negligence, misuse, and unauthorized drivers.
-
-9) Fees
-- Smoking fee
-- Excess cleaning fee
-- Late return fees
-- Administrative fees for violations or unpaid balances
-
-10) Acknowledgment
-By signing, Renter confirms information is accurate and agrees to this Agreement.
+ACCEPTANCE
+By accepting, you confirm you have read, understand, and agree to this Agreement.
 `;
