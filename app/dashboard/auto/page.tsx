@@ -58,7 +58,9 @@ type LoadState =
 
 const TEST_MODE =
   typeof process !== "undefined" &&
-  (process.env.NEXT_PUBLIC_TEST_MODE === "1" ||
+  (process.env.NEXT_PUBLIC_AUTO_TEST_MODE === "1" ||
+    process.env.NEXT_PUBLIC_AUTO_TEST_MODE === "true" ||
+    process.env.NEXT_PUBLIC_TEST_MODE === "1" ||
     process.env.NEXT_PUBLIC_TEST_MODE === "true");
 
 export default function AutoDashboardRenterHub() {
@@ -311,7 +313,6 @@ export default function AutoDashboardRenterHub() {
     );
   }
 
-  // ready
   const rental = ui?.r;
 
   return (
@@ -342,9 +343,7 @@ export default function AutoDashboardRenterHub() {
 
       {!rental ? (
         <div style={styles.card}>
-          <p style={{ margin: 0 }}>
-            You don’t have an active rental yet.
-          </p>
+          <p style={{ margin: 0 }}>You don’t have an active rental yet.</p>
           <div style={{ marginTop: 12 }}>
             <Link href="/auto/vehicles" style={styles.primaryLink}>
               View available cars
@@ -353,7 +352,6 @@ export default function AutoDashboardRenterHub() {
         </div>
       ) : (
         <>
-          {/* NEXT ACTION */}
           {ui?.nextAction && (
             <div style={styles.card}>
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
@@ -370,15 +368,12 @@ export default function AutoDashboardRenterHub() {
                     Go
                   </Link>
                 ) : (
-                  <span style={{ color: "#6b7280", fontWeight: 800, alignSelf: "center" }}>
-                    —
-                  </span>
+                  <span style={{ color: "#6b7280", fontWeight: 800, alignSelf: "center" }}>—</span>
                 )}
               </div>
             </div>
           )}
 
-          {/* DAMAGE UNDER REVIEW renter-facing banner */}
           {ui?.damageUnderReview && (
             <div style={{ ...styles.card, background: "#fff7ed", borderColor: "#fed7aa" }}>
               <strong>Damage under review — deposit decision pending.</strong>
@@ -388,7 +383,6 @@ export default function AutoDashboardRenterHub() {
             </div>
           )}
 
-          {/* TIMELINE */}
           <div style={styles.card}>
             <div style={{ fontWeight: 900, fontSize: 16, marginBottom: 10 }}>Rental Progress</div>
 
@@ -428,13 +422,11 @@ export default function AutoDashboardRenterHub() {
             <TimelineItem
               n={4}
               title="Admin approval"
-              status={ui?.verificationApproved ? "done" : ui?.verificationPending ? "todo" : ui?.verificationDenied ? "blocked" : "todo"}
+              status={
+                ui?.verificationApproved ? "done" : ui?.verificationPending ? "todo" : ui?.verificationDenied ? "blocked" : "todo"
+              }
               note={
-                ui?.verificationApproved
-                  ? "Approved."
-                  : ui?.verificationDenied
-                  ? "Denied — re-upload."
-                  : "Under review."
+                ui?.verificationApproved ? "Approved." : ui?.verificationDenied ? "Denied — re-upload." : "Under review."
               }
             />
 
@@ -459,13 +451,15 @@ export default function AutoDashboardRenterHub() {
               status={ui?.pickupPhotosDone ? "done" : ui?.lockboxReleased ? "todo" : "disabled"}
               actionHref="/auto/photos?phase=pickup_exterior"
               actionLabel={ui?.pickupPhotosDone ? "View" : "Upload"}
-              note={ui?.pickupPhotosDone ? "Completed." : ui?.lockboxReleased ? "Upload before pickup confirmation." : "Lockbox required first."}
+              note={
+                ui?.pickupPhotosDone ? "Completed." : ui?.lockboxReleased ? "Upload before pickup confirmation." : "Lockbox required first."
+              }
             />
 
             <TimelineItem
               n={7}
               title="Confirm pickup"
-              status={ui?.pickupConfirmed ? "done" : ui?.canConfirmPickup ? "todo" : ui?.lockboxReleased ? "disabled" : "disabled"}
+              status={ui?.pickupConfirmed ? "done" : ui?.canConfirmPickup ? "todo" : "disabled"}
               actionLabel="Confirm"
               onAction={
                 ui?.canConfirmPickup
@@ -478,9 +472,7 @@ export default function AutoDashboardRenterHub() {
                   ? "Pickup confirmed."
                   : ui?.canConfirmPickup
                   ? "Confirm after pickup photos."
-                  : ui?.lockboxReleased
-                  ? "Upload pickup photos first."
-                  : "Lockbox must be released first."
+                  : "Upload pickup photos first."
               }
               busy={busy === "confirm-pickup"}
             />
@@ -545,7 +537,6 @@ export default function AutoDashboardRenterHub() {
             />
           </div>
 
-          {/* Summary card */}
           <div style={styles.card}>
             <div style={{ fontWeight: 900, marginBottom: 10 }}>Rental summary</div>
             <div style={{ color: "#374151", lineHeight: 1.75 }}>
@@ -620,9 +611,7 @@ function TimelineItem(props: {
             {pill.text}
           </span>
         </div>
-        {props.note && (
-          <div style={{ marginTop: 6, color: "#4b5563", lineHeight: 1.5 }}>{props.note}</div>
-        )}
+        {props.note && <div style={{ marginTop: 6, color: "#4b5563", lineHeight: 1.5 }}>{props.note}</div>}
       </div>
 
       <div style={{ display: "flex", justifyContent: "flex-end", minWidth: 120 }}>
@@ -659,11 +648,7 @@ function TimelineItem(props: {
 }
 
 const styles: Record<string, any> = {
-  container: {
-    maxWidth: 1100,
-    margin: "0 auto",
-    padding: 24,
-  },
+  container: { maxWidth: 1100, margin: "0 auto", padding: 24 },
   header: {
     display: "flex",
     justifyContent: "space-between",
@@ -672,17 +657,8 @@ const styles: Record<string, any> = {
     marginBottom: 18,
     flexWrap: "wrap",
   },
-  h1: {
-    margin: 0,
-    fontSize: 32,
-    letterSpacing: "-0.02em",
-  },
-  sub: {
-    marginTop: 8,
-    color: "#555",
-    lineHeight: 1.5,
-    maxWidth: 720,
-  },
+  h1: { margin: 0, fontSize: 32, letterSpacing: "-0.02em" },
+  sub: { marginTop: 8, color: "#555", lineHeight: 1.5, maxWidth: 720 },
   card: {
     border: "1px solid #e5e7eb",
     borderRadius: 16,
