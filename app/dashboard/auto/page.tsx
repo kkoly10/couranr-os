@@ -56,12 +56,15 @@ type LoadState =
   | { kind: "ready"; rental: Rental | null }
   | { kind: "error"; message: string };
 
+function envTrue(v: any) {
+  const s = String(v ?? "").trim().toLowerCase();
+  return s === "1" || s === "true" || s === "yes" || s === "on";
+}
+
+// ✅ Support your new standard + keep backward compatibility
 const TEST_MODE =
   typeof process !== "undefined" &&
-  (process.env.NEXT_PUBLIC_AUTO_TEST_MODE === "1" ||
-    process.env.NEXT_PUBLIC_AUTO_TEST_MODE === "true" ||
-    process.env.NEXT_PUBLIC_TEST_MODE === "1" ||
-    process.env.NEXT_PUBLIC_TEST_MODE === "true");
+  (envTrue(process.env.NEXT_PUBLIC_AUTO_TEST_MODE) || envTrue(process.env.NEXT_PUBLIC_TEST_MODE));
 
 export default function AutoDashboardRenterHub() {
   const router = useRouter();
@@ -170,8 +173,7 @@ export default function AutoDashboardRenterHub() {
       photoStatus === "return_interior_done" ||
       photoStatus === "complete";
 
-    const returnPhotosDone =
-      photoStatus === "return_interior_done" || photoStatus === "complete";
+    const returnPhotosDone = photoStatus === "return_interior_done" || photoStatus === "complete";
 
     const pickupConfirmed = !!r?.pickup_confirmed_at;
     const returnConfirmed = !!r?.return_confirmed_at;
@@ -186,18 +188,10 @@ export default function AutoDashboardRenterHub() {
       depositStatus !== "withheld";
 
     // Confirm pickup button rules (your spec)
-    const canConfirmPickup =
-      !!r?.id &&
-      lockboxReleased &&
-      pickupPhotosDone &&
-      !pickupConfirmed;
+    const canConfirmPickup = !!r?.id && lockboxReleased && pickupPhotosDone && !pickupConfirmed;
 
     // Confirm return button rules
-    const canConfirmReturn =
-      !!r?.id &&
-      pickupConfirmed &&
-      returnPhotosDone &&
-      !returnConfirmed;
+    const canConfirmReturn = !!r?.id && pickupConfirmed && returnPhotosDone && !returnConfirmed;
 
     // Next action suggestion
     let nextAction: { label: string; href?: string; note?: string } | null = null;
@@ -219,13 +213,13 @@ export default function AutoDashboardRenterHub() {
     } else if (!agreementDone) {
       nextAction = {
         label: "Sign agreement",
-        href: "/auto/agreement",
+        href: `/auto/agreement?rentalId=${encodeURIComponent(r.id)}`,
         note: "Agreement must be signed before payment and pickup.",
       };
     } else if (!paidDone) {
       nextAction = {
         label: "Complete payment",
-        href: "/auto/checkout",
+        href: `/auto/checkout?rentalId=${encodeURIComponent(r.id)}`,
         note: "Payment is required before lockbox code release.",
       };
     } else if (verificationApproved && paidDone && agreementDone && docsDone && !lockboxReleased) {
@@ -393,11 +387,7 @@ export default function AutoDashboardRenterHub() {
               actionHref="/auto/verify"
               actionLabel={ui?.docsDone ? "View" : "Upload"}
               note={
-                ui?.verificationDenied
-                  ? "Denied — re-upload clearly."
-                  : ui?.docsDone
-                  ? "Submitted."
-                  : "Required to proceed."
+                ui?.verificationDenied ? "Denied — re-upload clearly." : ui?.docsDone ? "Submitted." : "Required to proceed."
               }
             />
 
@@ -405,7 +395,7 @@ export default function AutoDashboardRenterHub() {
               n={2}
               title="Agreement pending"
               status={ui?.agreementDone ? "done" : ui?.docsDone ? "todo" : "disabled"}
-              actionHref="/auto/agreement"
+              actionHref={`/auto/agreement?rentalId=${encodeURIComponent(rental.id)}`}
               actionLabel={ui?.agreementDone ? "View" : "Sign"}
               note={ui?.agreementDone ? "Signed." : ui?.docsDone ? "Sign to proceed." : "Complete verification first."}
             />
@@ -414,7 +404,7 @@ export default function AutoDashboardRenterHub() {
               n={3}
               title="Payment pending"
               status={ui?.paidDone ? "done" : ui?.agreementDone ? "todo" : "disabled"}
-              actionHref="/auto/checkout"
+              actionHref={`/auto/checkout?rentalId=${encodeURIComponent(rental.id)}`}
               actionLabel={ui?.paidDone ? "View" : "Pay"}
               note={ui?.paidDone ? "Paid." : ui?.agreementDone ? "Pay to proceed." : "Sign agreement first."}
             />
@@ -422,12 +412,8 @@ export default function AutoDashboardRenterHub() {
             <TimelineItem
               n={4}
               title="Admin approval"
-              status={
-                ui?.verificationApproved ? "done" : ui?.verificationPending ? "todo" : ui?.verificationDenied ? "blocked" : "todo"
-              }
-              note={
-                ui?.verificationApproved ? "Approved." : ui?.verificationDenied ? "Denied — re-upload." : "Under review."
-              }
+              status={ui?.verificationApproved ? "done" : ui?.verificationPending ? "todo" : ui?.verificationDenied ? "blocked" : "todo"}
+              note={ui?.verificationApproved ? "Approved." : ui?.verificationDenied ? "Denied — re-upload." : "Under review."}
             />
 
             <TimelineItem
@@ -452,7 +438,11 @@ export default function AutoDashboardRenterHub() {
               actionHref="/auto/photos?phase=pickup_exterior"
               actionLabel={ui?.pickupPhotosDone ? "View" : "Upload"}
               note={
-                ui?.pickupPhotosDone ? "Completed." : ui?.lockboxReleased ? "Upload before pickup confirmation." : "Lockbox required first."
+                ui?.pickupPhotosDone
+                  ? "Completed."
+                  : ui?.lockboxReleased
+                  ? "Upload before pickup confirmation."
+                  : "Lockbox required first."
               }
             />
 
@@ -472,7 +462,9 @@ export default function AutoDashboardRenterHub() {
                   ? "Pickup confirmed."
                   : ui?.canConfirmPickup
                   ? "Confirm after pickup photos."
-                  : "Upload pickup photos first."
+                  : ui?.lockboxReleased
+                  ? "Upload pickup photos first."
+                  : "Lockbox must be released first."
               }
               busy={busy === "confirm-pickup"}
             />
@@ -489,7 +481,7 @@ export default function AutoDashboardRenterHub() {
             <TimelineItem
               n={9}
               title="Confirm return"
-              status={ui?.returnConfirmed ? "done" : ui?.canConfirmReturn ? "todo" : ui?.pickupConfirmed ? "disabled" : "disabled"}
+              status={ui?.returnConfirmed ? "done" : ui?.canConfirmReturn ? "todo" : "disabled"}
               actionLabel="Confirm"
               onAction={
                 ui?.canConfirmReturn
