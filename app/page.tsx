@@ -3,111 +3,111 @@ import Link from "next/link";
 
 export default function HomePage() {
   return (
-    <main
-      style={{
-        maxWidth: 1100,
-        margin: "0 auto",
-        padding: "80px 24px",
-      }}
-    >
-      <header style={{ marginBottom: 48 }}>
-        <h1
-          style={{
-            fontSize: 44,
-            fontWeight: 900,
-            letterSpacing: "-0.02em",
-            marginBottom: 12,
-          }}
-        >
+    <main className="home">
+      {/* Ambient background */}
+      <div className="bgGlow" aria-hidden="true" />
+
+      <header className="homeHero">
+        <div className="badgeRow">
+          <span className="badge">Local • Fast • Trusted</span>
+          <span className="badge ghost">One platform</span>
+        </div>
+
+        <h1 className="heroTitle">
           Couranr
+          <span className="heroTitleDot">•</span>
+          <span className="heroTitleSub">Local services powered by one OS</span>
         </h1>
 
-        <p style={{ fontSize: 18, color: "#555", maxWidth: 720 }}>
-          Local delivery, document services, and vehicle solutions — built for
-          speed, clarity, and trust.
+        <p className="heroDesc">
+          Local delivery, document services, and vehicle solutions — built for speed, clarity, and trust.
         </p>
+
+        <div className="heroActions">
+          <Link className="btn btnPrimary" href="/auto">
+            Browse vehicles
+          </Link>
+          <Link className="btn btnSecondary" href="/courier">
+            Get a delivery quote
+          </Link>
+          <Link className="btn btnGhost" href="/login">
+            Log in
+          </Link>
+        </div>
       </header>
 
-      <section
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-          gap: 20,
-        }}
-      >
-        {/* Courier */}
+      <section className="cardGrid">
         <Card
+          icon="🚚"
           title="Courier Delivery"
           description="Same-day and scheduled local deliveries with transparent pricing."
           href="/courier"
           cta="Get a quote"
         />
 
-        {/* Docs */}
         <Card
+          icon="📄"
           title="Document Services"
           description="Print, scan, notarize, and deliver documents securely."
           href="/docs"
           cta="View services"
         />
 
-        {/* Auto */}
         <Card
+          icon="🚗"
           title="Auto Services"
           description="Affordable vehicle rentals and fleet solutions."
           href="/auto"
           cta="Browse vehicles"
         />
       </section>
+
+      <section className="homeCTA">
+        <div className="homeCTACard">
+          <h2 className="homeCTATitle">Customer portal</h2>
+          <p className="homeCTADesc">
+            Already started a booking? Log in to complete verification, sign the agreement, and pay.
+          </p>
+          <div className="homeCTAActions">
+            <Link className="btn btnPrimary" href="/login">
+              Log in to continue
+            </Link>
+            <Link className="btn btnSecondary" href="/auto">
+              Start a new rental
+            </Link>
+          </div>
+        </div>
+      </section>
     </main>
   );
 }
 
 function Card({
+  icon,
   title,
   description,
   href,
   cta,
 }: {
+  icon: string;
   title: string;
   description: string;
   href: string;
   cta: string;
 }) {
   return (
-    <div
-      style={{
-        border: "1px solid #e5e7eb",
-        borderRadius: 16,
-        padding: 24,
-        background: "#fff",
-        display: "flex",
-        flexDirection: "column",
-        justifyContent: "space-between",
-      }}
-    >
+    <div className="card interactiveCard">
       <div>
-        <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 8 }}>
-          {title}
-        </h2>
-        <p style={{ color: "#555", lineHeight: 1.6 }}>{description}</p>
+        <div className="cardIcon" aria-hidden="true">
+          {icon}
+        </div>
+
+        <h2 className="cardTitle">{title}</h2>
+        <p className="cardDesc">{description}</p>
       </div>
 
-      <Link
-        href={href}
-        style={{
-          marginTop: 18,
-          display: "inline-block",
-          padding: "12px 16px",
-          borderRadius: 10,
-          background: "#111827",
-          color: "#fff",
-          fontWeight: 700,
-          textDecoration: "none",
-          textAlign: "center",
-        }}
-      >
-        {cta}
+      <Link className="cardCta" href={href}>
+        {cta} <span className="arrow" aria-hidden="true">→</span>
       </Link>
     </div>
   );
