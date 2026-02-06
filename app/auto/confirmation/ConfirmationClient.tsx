@@ -33,12 +33,15 @@ export default function ConfirmationClient() {
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // ✅ Local gate (prevents server refresh from “flipping back” and killing the link)
+  const [docsCompleteLocal, setDocsCompleteLocal] = useState(false);
+
   // Verification files
   const [licenseFront, setLicenseFront] = useState<File | null>(null);
   const [licenseBack, setLicenseBack] = useState<File | null>(null);
   const [selfie, setSelfie] = useState<File | null>(null);
 
-  // Required meta (your API expects these)
+  // Required meta
   const [licenseState, setLicenseState] = useState("VA");
   const [licenseExpires, setLicenseExpires] = useState("");
   const [hasInsurance, setHasInsurance] = useState<"" | "yes" | "no">("");
@@ -66,7 +69,11 @@ export default function ConfirmationClient() {
         });
         const data2 = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data2?.error || "Failed to load rental");
+
         setRental(data2.rental);
+
+        // ✅ sync local gate from server when true
+        if (data2?.rental?.docs_complete) setDocsCompleteLocal(true);
       } catch (e: any) {
         setMsg(e?.message || "Failed to load rental");
       } finally {
@@ -97,7 +104,7 @@ export default function ConfirmationClient() {
     form.append("kind", kind);
     form.append("file", file);
 
-    // ✅ send required meta on every call (simple + reliable)
+    // send required meta on every call
     form.append("licenseState", licenseState.trim().toUpperCase());
     form.append("licenseExpires", licenseExpires); // YYYY-MM-DD
     form.append("hasInsurance", String(hasInsurance === "yes"));
@@ -125,15 +132,19 @@ export default function ConfirmationClient() {
       await uploadVerification("license_back", licenseBack!);
       await uploadVerification("selfie", selfie!);
 
-      // ✅ IMPORTANT: make buttons responsive immediately
+      // ✅ Make links clickable immediately and keep them clickable
+      setDocsCompleteLocal(true);
       setRental((prev) => (prev ? { ...prev, docs_complete: true } : prev));
 
-      // Refresh snapshot too (nice-to-have)
+      // Refresh snapshot (nice-to-have) — but DON'T let it turn local gate off
       const res = await fetch(`/api/auto/rental?rentalId=${encodeURIComponent(rentalId)}`, {
         headers: { Authorization: `Bearer ${token!}` },
       });
       const data = await res.json().catch(() => ({}));
-      if (res.ok) setRental(data.rental);
+      if (res.ok && data?.rental) {
+        setRental(data.rental);
+        if (data.rental.docs_complete) setDocsCompleteLocal(true);
+      }
 
       setMsg("Verification uploaded ✅ You can continue to agreement/payment.");
     } catch (e: any) {
@@ -145,6 +156,8 @@ export default function ConfirmationClient() {
 
   if (loading) return <p style={{ padding: 24 }}>Loading…</p>;
   if (!rental) return <p style={{ padding: 24 }}>{msg || "Rental not found."}</p>;
+
+  const canProceed = docsCompleteLocal; // ✅ the only gate we use for clickability now
 
   return (
     <div style={{ maxWidth: 980, margin: "0 auto", padding: 24 }}>
@@ -193,12 +206,7 @@ export default function ConfirmationClient() {
 
               <div>
                 <Label>License expiration (required)</Label>
-                <input
-                  type="date"
-                  value={licenseExpires}
-                  onChange={(e) => setLicenseExpires(e.target.value)}
-                  style={input}
-                />
+                <input type="date" value={licenseExpires} onChange={(e) => setLicenseExpires(e.target.value)} style={input} />
               </div>
 
               <div>
@@ -211,9 +219,7 @@ export default function ConfirmationClient() {
               </div>
             </div>
 
-            <div style={hint}>
-              Buckets are private. Files are stored securely and linked only to your rental.
-            </div>
+            <div style={hint}>Buckets are private. Files are stored securely and linked only to your rental.</div>
           </div>
         </div>
 
@@ -228,13 +234,12 @@ export default function ConfirmationClient() {
             {busy ? "Working…" : "Upload verification"}
           </button>
 
-          {/* ✅ Always use rentalId in links so agreement page knows which rental */}
           <Link
             href={`/auto/agreement?rentalId=${encodeURIComponent(rentalId)}`}
             style={{
               ...secondaryLinkBtn,
-              opacity: busy || !rental.docs_complete ? 0.6 : 1,
-              pointerEvents: busy || !rental.docs_complete ? "none" : "auto",
+              opacity: busy || !canProceed ? 0.6 : 1,
+              pointerEvents: busy || !canProceed ? "none" : "auto",
             }}
           >
             Sign agreement
@@ -244,8 +249,8 @@ export default function ConfirmationClient() {
             href={`/auto/checkout?rentalId=${encodeURIComponent(rentalId)}`}
             style={{
               ...secondaryLinkBtn,
-              opacity: busy || !rental.docs_complete ? 0.6 : 1,
-              pointerEvents: busy || !rental.docs_complete ? "none" : "auto",
+              opacity: busy || !canProceed ? 0.6 : 1,
+              pointerEvents: busy || !canProceed ? "none" : "auto",
             }}
           >
             Continue to payment
