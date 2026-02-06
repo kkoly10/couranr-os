@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -9,39 +9,49 @@ export default function SuccessClient() {
   const sp = useSearchParams();
   const rentalId = sp.get("rentalId") || "";
 
-  const [msg, setMsg] = useState<string>("Confirming payment…");
+  const [note, setNote] = useState<string>(
+    "Payment completed ✅ Your rental is now in review. You’ll get lockbox instructions after approval."
+  );
 
   useEffect(() => {
+    // Optional: clear corrupted refresh tokens so they don’t spam console/errors
     (async () => {
-      const { data } = await supabase.auth.getSession();
-      const token = data.session?.access_token;
-
-      if (!token) {
-        setMsg("Payment received. Please log in to view your rental status.");
-        return;
-      }
-
-      // Pull latest snapshot so user sees updated paid status once webhook hits
       try {
-        const res = await fetch(`/api/auto/rental?rentalId=${encodeURIComponent(rentalId)}`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (res.ok) setMsg("Payment received ✅");
-        else setMsg("Payment received ✅ (status updating…)"); // webhook might still be processing
-      } catch {
-        setMsg("Payment received ✅ (status updating…)"); 
+        // This does NOT force a refresh call; it reads cached session if present
+        const { data } = await supabase.auth.getSession();
+        // If session object is missing but storage has junk, Supabase may throw later.
+        // We proactively sign out only if Supabase reports an auth error elsewhere.
+        if (!data?.session) {
+          // Not logged in (normal after Stripe). No action needed.
+          return;
+        }
+      } catch (e: any) {
+        // If refresh token is invalid, wipe it clean
+        const msg = String(e?.message || "");
+        if (msg.toLowerCase().includes("refresh token")) {
+          await supabase.auth.signOut();
+          setNote(
+            "Payment completed ✅ (Session refreshed). Please log in again to view your rental status."
+          );
+        }
       }
     })();
-  }, [rentalId]);
+  }, []);
 
   return (
-    <div style={{ maxWidth: 820, margin: "0 auto", padding: 24 }}>
-      <h1 style={{ fontSize: 28, margin: 0 }}>Payment complete</h1>
-      <p style={{ marginTop: 10, color: "#555" }}>{msg}</p>
+    <div style={{ maxWidth: 860, margin: "0 auto", padding: 24 }}>
+      <h1 style={{ margin: 0, fontSize: 28 }}>Payment complete</h1>
+      <p style={{ marginTop: 10, color: "#555", lineHeight: 1.6 }}>{note}</p>
+
+      {rentalId ? (
+        <div style={{ marginTop: 10, fontSize: 12, color: "#6b7280" }}>
+          Rental ID: <strong>{rentalId}</strong>
+        </div>
+      ) : null}
 
       <div style={{ marginTop: 16, display: "flex", gap: 10, flexWrap: "wrap" }}>
         <Link
-          href={`/dashboard/auto`}
+          href="/dashboard/auto"
           style={{
             padding: "10px 14px",
             borderRadius: 10,
@@ -54,26 +64,24 @@ export default function SuccessClient() {
           Go to Auto Dashboard
         </Link>
 
-        {rentalId ? (
-          <Link
-            href={`/auto/access?rentalId=${encodeURIComponent(rentalId)}`}
-            style={{
-              padding: "10px 14px",
-              borderRadius: 10,
-              border: "1px solid #111827",
-              color: "#111827",
-              textDecoration: "none",
-              fontWeight: 900,
-            }}
-          >
-            View access step
-          </Link>
-        ) : null}
+        <Link
+          href="/login?next=/dashboard/auto"
+          style={{
+            padding: "10px 14px",
+            borderRadius: 10,
+            border: "1px solid #111827",
+            color: "#111827",
+            textDecoration: "none",
+            fontWeight: 900,
+          }}
+        >
+          Log in (if needed)
+        </Link>
       </div>
 
-      <p style={{ marginTop: 14, fontSize: 12, color: "#6b7280" }}>
-        Next step: admin review → then lockbox code release → then pickup photos on-site → confirm pickup.
-      </p>
+      <div style={{ marginTop: 14, fontSize: 12, color: "#6b7280", lineHeight: 1.6 }}>
+        Next steps: admin review → lockbox release → pickup photos on-site → confirm pickup.
+      </div>
     </div>
   );
 }
