@@ -9,60 +9,19 @@ type RentalSummary = {
   status: string;
   purpose: "personal" | "rideshare";
   docs_complete: boolean;
-  condition_photos_complete: boolean;
-  agreement_signed: boolean; // if your schema has it; if not, we just ignore
-  pickup_at: string | null;
+  agreement_signed: boolean;
+  paid: boolean;
+  lockbox_code_released_at: string | null;
   vehicles: { year: number; make: string; model: string } | null;
 };
 
-type Geo = { lat: number; lng: number; accuracyM: number; capturedAt: string };
-
-const PICKUP_LOCATION = {
-  label: "1090 Stafford Marketplace, VA 22556",
-  lat: 38.4149, // replace with your exact lat/lng later (still works now)
-  lng: -77.4089,
-};
-
-const GPS_RADIUS_M = 150; // ~500 ft
-const GPS_MAX_ACCURACY_M = 50;
-
-function haversineMeters(aLat: number, aLng: number, bLat: number, bLng: number) {
-  const R = 6371000;
-  const toRad = (n: number) => (n * Math.PI) / 180;
-  const dLat = toRad(bLat - aLat);
-  const dLng = toRad(bLng - aLng);
-  const s1 = Math.sin(dLat / 2);
-  const s2 = Math.sin(dLng / 2);
-  const aa =
-    s1 * s1 +
-    Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * s2 * s2;
-  const c = 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa));
-  return R * c;
-}
-
-async function getGeo(): Promise<Geo> {
-  const capturedAt = new Date().toISOString();
-
-  return new Promise((resolve, reject) => {
-    if (!navigator.geolocation) {
-      reject(new Error("Location is not supported on this device/browser."));
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        resolve({
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-          accuracyM: Math.round(pos.coords.accuracy || 9999),
-          capturedAt,
-        });
-      },
-      (err) => reject(new Error(err?.message || "Location permission denied.")),
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
-  });
-}
+const TEST_MODE =
+  typeof process !== "undefined" &&
+  (process.env.NEXT_PUBLIC_AUTO_TEST_MODE === "1" ||
+    process.env.NEXT_PUBLIC_AUTO_TEST_MODE === "true" ||
+    // backwards compatibility with your existing banner:
+    process.env.NEXT_PUBLIC_TEST_MODE === "1" ||
+    process.env.NEXT_PUBLIC_TEST_MODE === "true");
 
 export default function ConfirmationClient() {
   const router = useRouter();
@@ -81,12 +40,6 @@ export default function ConfirmationClient() {
   const [licenseBack, setLicenseBack] = useState<File | null>(null);
   const [selfie, setSelfie] = useState<File | null>(null);
 
-  // pickup exterior photos
-  const [front, setFront] = useState<File | null>(null);
-  const [back, setBack] = useState<File | null>(null);
-  const [left, setLeft] = useState<File | null>(null);
-  const [right, setRight] = useState<File | null>(null);
-
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getSession();
@@ -94,7 +47,11 @@ export default function ConfirmationClient() {
       setToken(t);
 
       if (!t) {
-        router.push(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+        router.push(
+          `/login?next=${encodeURIComponent(
+            window.location.pathname + window.location.search
+          )}`
+        );
         return;
       }
 
@@ -105,9 +62,10 @@ export default function ConfirmationClient() {
       }
 
       try {
-        const res = await fetch(`/api/auto/rental?rentalId=${encodeURIComponent(rentalId)}`, {
-          headers: { Authorization: `Bearer ${t}` },
-        });
+        const res = await fetch(
+          `/api/auto/rental?rentalId=${encodeURIComponent(rentalId)}`,
+          { headers: { Authorization: `Bearer ${t}` } }
+        );
         const data2 = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data2?.error || "Failed to load rental");
         setRental(data2.rental);
@@ -129,12 +87,9 @@ export default function ConfirmationClient() {
     return !!licenseFront && !!licenseBack && !!selfie;
   }, [licenseFront, licenseBack, selfie]);
 
-  const photosReady = useMemo(() => {
-    return !!front && !!back && !!left && !!right;
-  }, [front, back, left, right]);
-
   async function uploadVerification(kind: "license_front" | "license_back" | "selfie", file: File) {
     if (!token) throw new Error("Not authenticated");
+
     const form = new FormData();
     form.append("rentalId", rentalId);
     form.append("kind", kind);
@@ -150,70 +105,26 @@ export default function ConfirmationClient() {
     if (!res.ok) throw new Error(data?.error || "Upload failed");
   }
 
-  async function uploadPickupExterior(view: "front" | "back" | "left" | "right", file: File) {
-    if (!token) throw new Error("Not authenticated");
-
-    // GPS + timestamp capture
-    const geo = await getGeo();
-
-    // client-side precheck (server also checks)
-    if (geo.accuracyM > GPS_MAX_ACCURACY_M) {
-      throw new Error(`Location accuracy too low (${geo.accuracyM}m). Move outdoors and try again.`);
-    }
-
-    const dist = haversineMeters(geo.lat, geo.lng, PICKUP_LOCATION.lat, PICKUP_LOCATION.lng);
-    if (dist > GPS_RADIUS_M) {
-      throw new Error(`You appear too far from pickup location (${Math.round(dist)}m). Upload must be on-site.`);
-    }
-
-    const form = new FormData();
-    form.append("rentalId", rentalId);
-    form.append("stage", "pickup_exterior");
-    form.append("view", view);
-    form.append("file", file);
-    form.append("lat", String(geo.lat));
-    form.append("lng", String(geo.lng));
-    form.append("accuracyM", String(geo.accuracyM));
-    form.append("capturedAt", geo.capturedAt);
-
-    const res = await fetch("/api/auto/upload-condition-photo", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-      body: form,
-    });
-
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data?.error || "Upload failed");
-  }
-
-  async function doUploads() {
+  async function doVerificationUploads() {
     setMsg(null);
 
     if (!rentalId) return setMsg("Missing rentalId.");
     if (!docsReady) return setMsg("Upload license front/back and a selfie first.");
-    if (!photosReady) return setMsg("Upload all 4 pickup exterior photos (front/back/left/right).");
 
     setBusy(true);
     try {
-      // 1) verification docs
       await uploadVerification("license_front", licenseFront!);
       await uploadVerification("license_back", licenseBack!);
       await uploadVerification("selfie", selfie!);
 
-      // 2) pickup exterior photos (GPS/time verified)
-      await uploadPickupExterior("front", front!);
-      await uploadPickupExterior("back", back!);
-      await uploadPickupExterior("left", left!);
-      await uploadPickupExterior("right", right!);
-
-      // reload rental flags
+      // reload rental snapshot
       const res = await fetch(`/api/auto/rental?rentalId=${encodeURIComponent(rentalId)}`, {
         headers: { Authorization: `Bearer ${token!}` },
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) setRental(data.rental);
 
-      setMsg("Uploads complete ✅ You can now proceed to payment.");
+      setMsg("Verification uploaded ✅ You can continue to agreement/payment.");
     } catch (e: any) {
       setMsg(e?.message || "Upload failed");
     } finally {
@@ -221,9 +132,20 @@ export default function ConfirmationClient() {
     }
   }
 
+  async function goToAgreement() {
+    if (!rentalId) return;
+    router.push(`/auto/agreement?rentalId=${encodeURIComponent(rentalId)}`);
+  }
+
   async function goToPayment() {
     setMsg(null);
     if (!token) return;
+
+    // Only block if docs not complete yet (payment should be after docs)
+    if (!rental?.docs_complete) {
+      setMsg("Please upload your verification documents first.");
+      return;
+    }
 
     setBusy(true);
     try {
@@ -252,62 +174,37 @@ export default function ConfirmationClient() {
 
   return (
     <div style={{ maxWidth: 980, margin: "0 auto", padding: 24 }}>
-      <h1 style={{ margin: 0, fontSize: 28 }}>Step 3: Verification + Pickup Photos</h1>
+      <h1 style={{ margin: 0, fontSize: 28 }}>Step 3: Verification</h1>
       <p style={{ color: "#555", marginTop: 8 }}>
-        {carTitle} • Purpose: <strong>{rental.purpose === "rideshare" ? "Rideshare" : "Personal"}</strong>
+        {carTitle} • Purpose:{" "}
+        <strong>{rental.purpose === "rideshare" ? "Rideshare" : "Personal"}</strong>
       </p>
 
+      {TEST_MODE && (
+        <div style={{ ...notice, background: "#fff7ed", borderColor: "#fed7aa", color: "#9a3412" }}>
+          <strong>TEST MODE:</strong> Enabled (client). GPS checks should be bypassed where applicable.
+        </div>
+      )}
+
       <div style={card}>
-        <h2 style={h2}>Required before payment</h2>
+        <h2 style={h2}>Required before agreement & payment</h2>
 
-        <div style={grid}>
-          <div style={panel}>
-            <h3 style={h3}>1) Identity verification</h3>
-            <p style={p}>
-              Upload your driver license and a selfie. These are used for fraud prevention and dispute resolution.
-            </p>
+        <div style={panel}>
+          <h3 style={h3}>Identity verification</h3>
+          <p style={p}>
+            Upload your driver license and a selfie. These are used for fraud prevention and dispute resolution.
+          </p>
 
-            <Label>License front (required)</Label>
-            <input type="file" accept="image/*" onChange={(e) => setLicenseFront(e.target.files?.[0] || null)} />
+          <Label>License front (required)</Label>
+          <input type="file" accept="image/*" onChange={(e) => setLicenseFront(e.target.files?.[0] || null)} />
 
-            <Label>License back (required)</Label>
-            <input type="file" accept="image/*" onChange={(e) => setLicenseBack(e.target.files?.[0] || null)} />
+          <Label>License back (required)</Label>
+          <input type="file" accept="image/*" onChange={(e) => setLicenseBack(e.target.files?.[0] || null)} />
 
-            <Label>Selfie (required)</Label>
-            <input type="file" accept="image/*" onChange={(e) => setSelfie(e.target.files?.[0] || null)} />
+          <Label>Selfie (required)</Label>
+          <input type="file" accept="image/*" onChange={(e) => setSelfie(e.target.files?.[0] || null)} />
 
-            <div style={hint}>
-              Bucket is private. Files are stored securely and linked only to your rental.
-            </div>
-          </div>
-
-          <div style={panel}>
-            <h3 style={h3}>2) Pickup exterior photos (GPS + time verified)</h3>
-            <p style={p}>
-              You must be near the pickup location to upload these. Location is captured only at upload time.
-            </p>
-
-            <div style={notice}>
-              <strong>Pickup location:</strong> {PICKUP_LOCATION.label}<br />
-              <strong>GPS rule:</strong> within {GPS_RADIUS_M}m and accuracy ≤ {GPS_MAX_ACCURACY_M}m.
-            </div>
-
-            <Label>Front</Label>
-            <input type="file" accept="image/*" onChange={(e) => setFront(e.target.files?.[0] || null)} />
-
-            <Label>Back</Label>
-            <input type="file" accept="image/*" onChange={(e) => setBack(e.target.files?.[0] || null)} />
-
-            <Label>Left</Label>
-            <input type="file" accept="image/*" onChange={(e) => setLeft(e.target.files?.[0] || null)} />
-
-            <Label>Right</Label>
-            <input type="file" accept="image/*" onChange={(e) => setRight(e.target.files?.[0] || null)} />
-
-            <div style={hint}>
-              Interior photos are not allowed before access. They will be required after unlock.
-            </div>
-          </div>
+          <div style={hint}>Buckets are private. Files are stored securely and linked only to your rental.</div>
         </div>
 
         {msg && (
@@ -317,24 +214,25 @@ export default function ConfirmationClient() {
         )}
 
         <div style={{ display: "flex", gap: 12, marginTop: 18, flexWrap: "wrap" }}>
-          <button onClick={doUploads} disabled={busy} style={primaryBtn}>
-            {busy ? "Working…" : "Upload required items"}
+          <button onClick={doVerificationUploads} disabled={busy} style={primaryBtn}>
+            {busy ? "Working…" : "Upload verification"}
+          </button>
+
+          <button onClick={goToAgreement} disabled={busy || !rental.docs_complete} style={secondaryBtn}>
+            Sign agreement
           </button>
 
           <button
             onClick={goToPayment}
-            disabled={busy || !(rental.docs_complete && rental.condition_photos_complete)}
-            style={{
-              ...secondaryBtn,
-              opacity: busy || !(rental.docs_complete && rental.condition_photos_complete) ? 0.6 : 1,
-            }}
+            disabled={busy || !rental.docs_complete}
+            style={{ ...secondaryBtn, opacity: busy || !rental.docs_complete ? 0.6 : 1 }}
           >
             Continue to payment
           </button>
         </div>
 
         <div style={{ marginTop: 14, color: "#6b7280", fontSize: 12 }}>
-          Manual approval: your rental will require review before lockbox access is released.
+          Pickup photos happen later (after approval + lockbox release) on the Photos step.
         </div>
       </div>
     </div>
@@ -353,14 +251,8 @@ const card: React.CSSProperties = {
   background: "#fff",
 };
 
-const grid: React.CSSProperties = {
-  display: "grid",
-  gap: 16,
-  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
-  marginTop: 12,
-};
-
 const panel: React.CSSProperties = {
+  marginTop: 12,
   border: "1px solid #e5e7eb",
   borderRadius: 14,
   padding: 14,
@@ -368,14 +260,12 @@ const panel: React.CSSProperties = {
 };
 
 const notice: React.CSSProperties = {
-  marginTop: 10,
-  padding: 10,
-  border: "1px solid #e5e7eb",
-  borderRadius: 12,
-  background: "#fff",
-  fontSize: 13,
-  color: "#374151",
-  lineHeight: 1.4,
+  marginTop: 12,
+  padding: 12,
+  borderRadius: 14,
+  border: "1px solid #bfdbfe",
+  background: "#eff6ff",
+  color: "#1e3a8a",
 };
 
 const h2: React.CSSProperties = { margin: 0, fontSize: 18 };
