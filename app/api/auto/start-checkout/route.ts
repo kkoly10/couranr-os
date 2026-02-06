@@ -6,27 +6,29 @@ import { getUserFromRequest } from "@/app/lib/auth";
 
 export const dynamic = "force-dynamic";
 
-function requireEnv(name: string) {
+function env(name: string) {
   const v = process.env[name];
   if (!v) throw new Error(`Missing env: ${name}`);
   return v;
 }
 
-function siteUrlFromReq(req: NextRequest) {
-  // Works on Vercel + local
-  const origin = req.headers.get("origin");
-  if (origin) return origin;
+const stripe = new Stripe(env("STRIPE_SECRET_KEY"), {
+  apiVersion: "2024-06-20",
+});
 
-  const host =
-    req.headers.get("x-forwarded-host") ||
-    req.headers.get("host") ||
-    process.env.NEXT_PUBLIC_SITE_URL ||
-    "www.couranr.com";
+function getSiteUrl(req: NextRequest) {
+  // Prefer explicit env (best for prod)
+  const fromEnv = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  if (fromEnv) return fromEnv.replace(/\/$/, "");
 
-  const proto = req.headers.get("x-forwarded-proto") || "https";
-  if (host.startsWith("http")) return host;
-  return `${proto}://${host}`;
+  // Fallback to request origin (works on preview)
+  const origin = req.headers.get("origin") || "";
+  return origin.replace(/\/$/, "");
 }
+
+const supabaseAdmin = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), {
+  auth: { persistSession: false },
+});
 
 export async function POST(req: NextRequest) {
   try {
@@ -38,13 +40,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing rentalId" }, { status: 400 });
     }
 
-    const supabaseAdmin = createClient(
-      requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
-      requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
-      { auth: { persistSession: false } }
-    );
-
-    // ✅ IMPORTANT: renter pays, so gate by renter_id (not user_id)
+    // Load rental
     const { data: rental, error: rErr } = await supabaseAdmin
       .from("rentals")
       .select(
@@ -53,105 +49,146 @@ export async function POST(req: NextRequest) {
         renter_id,
         user_id,
         status,
+        purpose,
+        pricing_mode,
         rate_cents,
         deposit_cents,
+        start_date,
+        end_date,
+        pickup_at,
+        pickup_location,
         docs_complete,
         agreement_signed,
         paid,
         paid_at,
         stripe_checkout_session_id,
-        vehicles:vehicles(id, year, make, model)
+        vehicles:vehicles ( year, make, model )
       `
       )
       .eq("id", rentalId)
-      .eq("renter_id", user.id)
       .single();
 
     if (rErr || !rental) {
       return NextResponse.json({ error: "Rental not found" }, { status: 404 });
     }
 
+    // Ownership gate: renter OR owner (owner allowed for testing/admin)
+    const allowed = rental.renter_id === user.id || rental.user_id === user.id;
+    if (!allowed) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    // If already paid, no need to start checkout
+    if (rental.paid || rental.paid_at) {
+      return NextResponse.json({ ok: true, alreadyPaid: true }, { status: 200 });
+    }
+
+    // Require verification docs + agreement before payment
     if (!rental.docs_complete) {
-      return NextResponse.json({ error: "Verification not complete" }, { status: 409 });
+      return NextResponse.json({ error: "Verification required before payment." }, { status: 409 });
     }
     if (!rental.agreement_signed) {
-      return NextResponse.json({ error: "Agreement not signed" }, { status: 409 });
-    }
-    if (rental.paid || rental.paid_at) {
-      return NextResponse.json(
-        { ok: true, alreadyPaid: true, checkoutSessionId: rental.stripe_checkout_session_id || null },
-        { status: 200 }
-      );
+      return NextResponse.json({ error: "Agreement must be signed before payment." }, { status: 409 });
     }
 
-    const stripe = new Stripe(requireEnv("STRIPE_SECRET_KEY"), {
-      apiVersion: "2024-06-20",
-    });
+    const siteUrl = getSiteUrl(req);
 
-    const siteUrl = siteUrlFromReq(req);
-    const successUrl = `${siteUrl}/auto/checkout/success?rentalId=${encodeURIComponent(rentalId)}`;
-    const cancelUrl = `${siteUrl}/auto/checkout?rentalId=${encodeURIComponent(rentalId)}&canceled=1`;
-
-    // Build a nice label
-    const v: any = Array.isArray(rental.vehicles) ? rental.vehicles[0] : rental.vehicles;
+    const v = Array.isArray(rental.vehicles) ? rental.vehicles[0] : rental.vehicles;
     const carLabel =
       v?.year && v?.make && v?.model ? `${v.year} ${v.make} ${v.model}` : "Couranr Auto Rental";
 
-    const rate = Number(rental.rate_cents || 0);
-    if (!Number.isFinite(rate) || rate <= 0) {
-      return NextResponse.json({ error: "Invalid rate_cents on rental" }, { status: 400 });
+    const rateCents = Number(rental.rate_cents || 0);
+    const depositCents = Number(rental.deposit_cents || 0);
+
+    if (!Number.isFinite(rateCents) || rateCents < 50) {
+      return NextResponse.json({ error: "Invalid rental rate." }, { status: 400 });
+    }
+    if (!Number.isFinite(depositCents) || depositCents < 0) {
+      return NextResponse.json({ error: "Invalid deposit amount." }, { status: 400 });
     }
 
+    // If we already created a Checkout session earlier, try to reuse it (and return url)
+    if (rental.stripe_checkout_session_id) {
+      try {
+        const existing = await stripe.checkout.sessions.retrieve(rental.stripe_checkout_session_id);
+        if (existing?.url) {
+          return NextResponse.json({ ok: true, url: existing.url }, { status: 200 });
+        }
+        // If no url (rare), fall through and create a new one
+      } catch {
+        // If Stripe can't retrieve it, fall through and create new
+      }
+    }
+
+    // Build line items
     const lineItems: Stripe.Checkout.SessionCreateParams.LineItem[] = [
       {
-        quantity: 1,
         price_data: {
           currency: "usd",
-          unit_amount: rate,
-          product_data: { name: `Rental Payment — ${carLabel}` },
+          product_data: {
+            name: `${carLabel} — Rental`,
+          },
+          unit_amount: rateCents,
         },
+        quantity: 1,
       },
     ];
 
-    const deposit = Number(rental.deposit_cents || 0);
-    if (Number.isFinite(deposit) && deposit > 0) {
+    if (depositCents > 0) {
       lineItems.push({
-        quantity: 1,
         price_data: {
           currency: "usd",
-          unit_amount: deposit,
-          product_data: { name: "Security Deposit (Refundable)" },
+          product_data: {
+            name: `${carLabel} — Security Deposit`,
+          },
+          unit_amount: depositCents,
         },
+        quantity: 1,
       });
     }
 
+    const successUrl = `${siteUrl}/dashboard/auto?paid=1&rentalId=${encodeURIComponent(
+      rentalId
+    )}&session_id={CHECKOUT_SESSION_ID}`;
+    const cancelUrl = `${siteUrl}/auto/checkout?rentalId=${encodeURIComponent(rentalId)}&canceled=1`;
+
+    // Create Stripe Checkout session
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
       line_items: lineItems,
+
+      // Useful for webhook + audit
+      metadata: {
+        rentalId: rentalId,
+        renterId: String(rental.renter_id || ""),
+        ownerId: String(rental.user_id || ""),
+        purpose: String(rental.purpose || ""),
+      },
+
       success_url: successUrl,
       cancel_url: cancelUrl,
-      metadata: {
-        rentalId,
-        renterId: user.id,
-        ownerId: rental.user_id,
-      },
     });
 
     if (!session.url) {
-      return NextResponse.json({ error: "Stripe session created but URL missing" }, { status: 500 });
+      return NextResponse.json({ error: "Stripe session created but URL missing." }, { status: 500 });
     }
 
+    // Save session id on rental (so webhook + reuse works)
     await supabaseAdmin
       .from("rentals")
-      .update({
-        stripe_checkout_session_id: session.id,
-        // Optional: move out of draft once checkout begins
-        status: rental.status === "draft" ? "pending_payment" : rental.status,
-      })
+      .update({ stripe_checkout_session_id: session.id })
       .eq("id", rentalId);
 
-    return NextResponse.json({ url: session.url }, { status: 200 });
+    await supabaseAdmin.from("rental_events").insert({
+      rental_id: rentalId,
+      actor_user_id: user.id,
+      actor_role: rental.renter_id === user.id ? "renter" : "owner",
+      event_type: "checkout_started",
+      event_payload: { session_id: session.id },
+    });
+
+    return NextResponse.json({ ok: true, url: session.url }, { status: 200 });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
   }
