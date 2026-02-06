@@ -6,6 +6,13 @@ import { supabase } from "@/lib/supabaseClient";
 
 type Phase = "pickup_exterior" | "pickup_interior" | "return_exterior" | "return_interior";
 
+const TEST_MODE =
+  typeof process !== "undefined" &&
+  (process.env.NEXT_PUBLIC_AUTO_TEST_MODE === "1" ||
+    process.env.NEXT_PUBLIC_AUTO_TEST_MODE === "true" ||
+    process.env.NEXT_PUBLIC_TEST_MODE === "1" ||
+    process.env.NEXT_PUBLIC_TEST_MODE === "true");
+
 export default function ConditionClient() {
   const router = useRouter();
   const sp = useSearchParams();
@@ -18,19 +25,23 @@ export default function ConditionClient() {
 
   const title = useMemo(() => {
     switch (step) {
-      case "pickup_exterior": return "Pickup — Exterior Photos";
-      case "pickup_interior": return "Pickup — Interior Photos";
-      case "return_exterior": return "Return — Exterior Photos";
-      case "return_interior": return "Return — Interior Photos";
+      case "pickup_exterior":
+        return "Pickup — Exterior Photos";
+      case "pickup_interior":
+        return "Pickup — Interior Photos";
+      case "return_exterior":
+        return "Return — Exterior Photos";
+      case "return_interior":
+        return "Return — Interior Photos";
     }
   }, [step]);
 
-  async function getGeo(): Promise<{ lat: number; lng: number; accuracy: number } | null> {
+  async function getGeo(): Promise<{ lat: number; lng: number; acc: number } | null> {
     if (!("geolocation" in navigator)) return null;
 
     return new Promise((resolve) => {
       navigator.geolocation.getCurrentPosition(
-        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy }),
+        (pos) => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy }),
         () => resolve(null),
         { enableHighAccuracy: true, timeout: 8000 }
       );
@@ -49,16 +60,17 @@ export default function ConditionClient() {
       const token = sessionRes.session?.access_token;
       if (!token) throw new Error("Not authenticated");
 
-      const geo = await getGeo();
+      const geo = TEST_MODE ? null : await getGeo();
 
       const form = new FormData();
       form.append("rentalId", rentalId);
       form.append("phase", step);
-      form.append("photo", file);
+      form.append("file", file);
+
       if (geo) {
-        form.append("lat", String(geo.lat));
-        form.append("lng", String(geo.lng));
-        form.append("accuracy", String(geo.accuracy));
+        form.append("capturedLat", String(geo.lat));
+        form.append("capturedLng", String(geo.lng));
+        form.append("capturedAccuracyM", String(Math.round(geo.acc)));
       }
 
       const res = await fetch("/api/auto/upload-condition-photo", {
@@ -72,14 +84,9 @@ export default function ConditionClient() {
 
       setMsg("Uploaded ✅");
 
-      // Next step routing
       setTimeout(() => {
-        if (step === "pickup_exterior") {
-          router.push(`/auto/access?rentalId=${encodeURIComponent(rentalId)}`);
-        } else {
-          router.push("/dashboard");
-        }
-      }, 700);
+        router.push("/dashboard/auto");
+      }, 600);
     } catch (e: any) {
       setMsg(e?.message || "Upload failed");
     } finally {
@@ -91,7 +98,8 @@ export default function ConditionClient() {
     <div style={{ maxWidth: 820, margin: "0 auto", padding: 24 }}>
       <h1>{title}</h1>
       <p style={{ color: "#555" }}>
-        Upload clear photos. Your GPS/time will be captured for protection and dispute resolution.
+        Upload clear photos. GPS/time may be captured for protection and dispute resolution.
+        {TEST_MODE ? " (TEST MODE: GPS bypass)" : ""}
       </p>
 
       <div style={{ marginTop: 14, border: "1px solid #e5e7eb", borderRadius: 14, padding: 16, background: "#fff" }}>
