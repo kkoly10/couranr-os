@@ -9,10 +9,15 @@ function requireEnv(name: string) {
   return v;
 }
 
+function getBearerToken(req: Request) {
+  const h = req.headers.get("authorization") || "";
+  const m = h.match(/^Bearer\s+(.+)$/i);
+  return (m?.[1] || "").trim();
+}
+
 export async function GET(req: Request) {
   try {
-    const authHeader = req.headers.get("authorization") || "";
-    const token = authHeader.replace("Bearer ", "").trim();
+    const token = getBearerToken(req);
     if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const supabase = createClient(
@@ -28,6 +33,7 @@ export async function GET(req: Request) {
     const rentalId = url.searchParams.get("rentalId") || "";
     if (!rentalId) return NextResponse.json({ error: "Missing rentalId" }, { status: 400 });
 
+    // ✅ single query: include user_id + renter_id so we can gate correctly
     const { data: rental, error } = await supabase
       .from("rentals")
       .select(
@@ -38,6 +44,8 @@ export async function GET(req: Request) {
         docs_complete,
         condition_photos_complete,
         pickup_at,
+        user_id,
+        renter_id,
         vehicles ( year, make, model )
       `
       )
@@ -46,18 +54,15 @@ export async function GET(req: Request) {
 
     if (error || !rental) return NextResponse.json({ error: "Rental not found" }, { status: 404 });
 
-    // Ownership gate: avoid leakage even if RLS is loosened
-    const { data: ownerCheck } = await supabase
-      .from("rentals")
-      .select("user_id")
-      .eq("id", rentalId)
-      .single();
+    // ✅ allow owner OR renter to view
+    const viewerId = u.user.id;
+    const allowed = rental.user_id === viewerId || rental.renter_id === viewerId;
+    if (!allowed) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-    if (!ownerCheck || ownerCheck.user_id !== u.user.id) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
+    // (optional) if you don’t want to leak user_id/renter_id back to client:
+    const { user_id, renter_id, ...safeRental } = rental as any;
 
-    return NextResponse.json({ rental });
+    return NextResponse.json({ rental: safeRental });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
   }
