@@ -5,16 +5,21 @@ import Footer from "./ui/Footer";
 
 export const metadata: Metadata = {
   title: "Couranr OS",
-  description: "Couranr OS — Auto Rentals + Delivery + Docs, unified under one platform.",
+  description:
+    "Couranr OS — One platform powering Couranr Auto Rentals and Courier Delivery.",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
-    <html lang="en">
-      <body>
-        <div className="min-h-screen bg-white text-zinc-900">
+    <html lang="en" className="h-full">
+      <body className="min-h-screen bg-zinc-950 text-zinc-50 antialiased">
+        <div className="min-h-screen">
           <Navbar />
-          <main>{children}</main>
+          <main className="min-h-[70vh]">{children}</main>
           <Footer />
         </div>
       </body>
