@@ -1,62 +1,32 @@
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
+// middleware.ts
+import { NextResponse, type NextRequest } from "next/server";
+import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
 
-const PROTECTED_PREFIXES = ["/admin", "/dashboard", "/driver"];
+export async function middleware(req: NextRequest) {
+  const res = NextResponse.next();
 
-/**
- * Tries to detect "logged in" using common auth cookies:
- * - NextAuth: next-auth.session-token / __Secure-next-auth.session-token
- * - Supabase: sb-access-token / sb-refresh-token / supabase-auth-token (varies by setup)
- * - Custom fallback: couranr_session / couranr_admin
- *
- * If your auth uses a different cookie name, add it here.
- */
-function isAuthed(req: NextRequest) {
-  const c = req.cookies;
+  const supabase = createMiddlewareClient({ req, res });
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
 
-  return Boolean(
-    c.get("next-auth.session-token")?.value ||
-      c.get("__Secure-next-auth.session-token")?.value ||
-      c.get("sb-access-token")?.value ||
-      c.get("sb-refresh-token")?.value ||
-      c.get("supabase-auth-token")?.value ||
-      c.get("couranr_session")?.value ||
-      c.get("couranr_admin")?.value
-  );
-}
-
-export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Ignore Next internals & static assets
-  if (
-    pathname.startsWith("/_next") ||
-    pathname.startsWith("/favicon") ||
-    pathname.startsWith("/robots") ||
-    pathname.startsWith("/sitemap") ||
-    pathname.match(/\.(.*)$/)
-  ) {
-    return NextResponse.next();
+  // Routes that require auth
+  const protectedPrefixes = ["/dashboard", "/admin", "/driver"];
+
+  const isProtected = protectedPrefixes.some((p) => pathname.startsWith(p));
+
+  if (isProtected && !session) {
+    const loginUrl = req.nextUrl.clone();
+    loginUrl.pathname = "/login";
+    loginUrl.searchParams.set("redirect", pathname);
+    return NextResponse.redirect(loginUrl);
   }
 
-  const isProtected = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
-  if (!isProtected) return NextResponse.next();
-
-  // Allow auth pages
-  if (pathname.startsWith("/login") || pathname.startsWith("/signup")) {
-    return NextResponse.next();
-  }
-
-  if (!isAuthed(req)) {
-    const url = req.nextUrl.clone();
-    url.pathname = "/login";
-    url.searchParams.set("next", pathname);
-    return NextResponse.redirect(url);
-  }
-
-  return NextResponse.next();
+  return res;
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/dashboard/:path*", "/driver/:path*"],
+  matcher: ["/dashboard/:path*", "/admin/:path*", "/driver/:path*"],
 };
