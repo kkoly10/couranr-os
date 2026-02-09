@@ -1,6 +1,5 @@
 @import "tailwindcss";
 
-/* App-wide polish */
 :root {
   color-scheme: dark;
 }
@@ -10,8 +9,25 @@ body {
   height: 100%;
 }
 
+/* Better default readability on dark */
+body {
+  background: #09090b; /* zinc-950-ish */
+  color: rgba(255, 255, 255, 0.88);
+}
+
 /* Smoother type rendering */
 * {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/* Make links readable by default (if any raw <a> shows up) */
+a {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+/* Better focus ring visibility */
+:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.35);
+  outline-offset: 2px;
 }
