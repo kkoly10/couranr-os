@@ -1,12 +1,28 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-/* Optional nicer defaults */
-html, body {
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
   height: 100%;
 }
 
 body {
-  margin: 0;
+  background: white;
+  color: rgb(24 24 27);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: rgb(37 99 235 / 0.25);
+}
+
+a {
+  color: rgb(37 99 235);
+}
+a:hover {
+  color: rgb(29 78 216);
 }
