@@ -1,7 +1,8 @@
 @import "tailwindcss";
 
+/* App-wide polish */
 :root {
-  color-scheme: light;
+  color-scheme: dark;
 }
 
 html,
@@ -9,20 +10,8 @@ body {
   height: 100%;
 }
 
-body {
-  background: white;
-  color: rgb(24 24 27);
+/* Smoother type rendering */
+* {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-}
-
-::selection {
-  background: rgb(37 99 235 / 0.25);
-}
-
-a {
-  color: rgb(37 99 235);
-}
-a:hover {
-  color: rgb(29 78 216);
 }
