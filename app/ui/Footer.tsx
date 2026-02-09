@@ -8,33 +8,60 @@ export default function Footer() {
           <div>
             <div className="text-sm font-semibold text-zinc-900">Couranr OS</div>
             <p className="mt-2 text-sm leading-relaxed text-zinc-600">
-              Unified platform for Couranr Auto and Couranr Delivery—built to scale into Docs.
+              Unified platform powering Couranr Auto Rentals and Couranr Courier delivery operations.
             </p>
           </div>
 
           <div>
             <div className="text-sm font-semibold text-zinc-900">Services</div>
             <ul className="mt-3 space-y-2 text-sm">
-              <li><Link className="text-zinc-600 hover:text-zinc-900" href="/auto">Auto Rentals</Link></li>
-              <li><Link className="text-zinc-600 hover:text-zinc-900" href="/delivery">Delivery</Link></li>
-              <li><Link className="text-zinc-600 hover:text-zinc-900" href="/docs">Docs</Link></li>
+              <li>
+                <Link className="text-zinc-600 hover:text-zinc-900" href="/auto">
+                  Auto Rentals
+                </Link>
+              </li>
+              <li>
+                <Link className="text-zinc-600 hover:text-zinc-900" href="/courier">
+                  Courier Delivery
+                </Link>
+              </li>
             </ul>
           </div>
 
           <div>
-            <div className="text-sm font-semibold text-zinc-900">Company</div>
+            <div className="text-sm font-semibold text-zinc-900">Portals</div>
             <ul className="mt-3 space-y-2 text-sm">
-              <li><Link className="text-zinc-600 hover:text-zinc-900" href="/pricing">Pricing</Link></li>
-              <li><Link className="text-zinc-600 hover:text-zinc-900" href="/contact">Contact</Link></li>
-              <li><Link className="text-zinc-600 hover:text-zinc-900" href="/faq">FAQ</Link></li>
+              <li>
+                <Link className="text-zinc-600 hover:text-zinc-900" href="/dashboard/home">
+                  Customer Dashboard
+                </Link>
+              </li>
+              <li>
+                <Link className="text-zinc-600 hover:text-zinc-900" href="/admin">
+                  Admin
+                </Link>
+              </li>
+              <li>
+                <Link className="text-zinc-600 hover:text-zinc-900" href="/driver">
+                  Driver
+                </Link>
+              </li>
             </ul>
           </div>
 
           <div>
             <div className="text-sm font-semibold text-zinc-900">Legal</div>
             <ul className="mt-3 space-y-2 text-sm">
-              <li><Link className="text-zinc-600 hover:text-zinc-900" href="/privacy">Privacy</Link></li>
-              <li><Link className="text-zinc-600 hover:text-zinc-900" href="/terms">Terms</Link></li>
+              <li>
+                <Link className="text-zinc-600 hover:text-zinc-900" href="/privacy">
+                  Privacy
+                </Link>
+              </li>
+              <li>
+                <Link className="text-zinc-600 hover:text-zinc-900" href="/terms">
+                  Terms
+                </Link>
+              </li>
             </ul>
           </div>
         </div>
