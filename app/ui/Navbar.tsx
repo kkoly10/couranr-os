@@ -1,47 +1,45 @@
 import Link from "next/link";
 
+const NavLink = ({ href, children }: { href: string; children: React.ReactNode }) => (
+  <Link
+    href={href}
+    className="rounded-lg px-3 py-2 text-sm text-white/70 hover:bg-white/5 hover:text-white"
+  >
+    {children}
+  </Link>
+);
+
 export default function Navbar() {
   return (
-    <header className="sticky top-0 z-50 border-b border-zinc-200/70 bg-white/70 backdrop-blur">
-      <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
-        <Link href="/" className="flex items-center gap-2">
-          <div className="grid h-9 w-9 place-items-center rounded-xl bg-zinc-950 text-sm font-semibold text-white">
+    <header className="sticky top-0 z-50 border-b border-white/10 bg-zinc-950/70 backdrop-blur">
+      <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
+        <Link href="/" className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-sm font-semibold">
             C
           </div>
           <div className="leading-tight">
-            <div className="text-sm font-semibold text-zinc-950">Couranr OS</div>
-            <div className="text-xs text-zinc-500">Auto • Courier</div>
+            <div className="text-sm font-semibold text-white">Couranr OS</div>
+            <div className="text-xs text-white/55">Auto • Courier • Docs</div>
           </div>
         </Link>
 
-        <nav className="hidden items-center gap-6 md:flex">
-          <Link className="text-sm font-medium text-zinc-700 hover:text-zinc-950" href="/auto">
-            Auto
-          </Link>
-          <Link className="text-sm font-medium text-zinc-700 hover:text-zinc-950" href="/courier">
-            Courier
-          </Link>
-          <Link
-            className="text-sm font-medium text-zinc-700 hover:text-zinc-950"
-            href="/dashboard/home"
-          >
-            Dashboard
-          </Link>
-          <Link className="text-sm font-medium text-zinc-700 hover:text-zinc-950" href="/admin">
-            Admin
-          </Link>
+        <nav className="hidden items-center gap-1 md:flex">
+          <NavLink href="/auto">Auto</NavLink>
+          <NavLink href="/courier">Courier</NavLink>
+          <NavLink href="/policy/delivery">Policies</NavLink>
+          <NavLink href="/terms">Terms</NavLink>
         </nav>
 
         <div className="flex items-center gap-2">
           <Link
             href="/login"
-            className="hidden rounded-xl border border-zinc-200 bg-white px-4 py-2 text-sm font-semibold text-zinc-900 shadow-sm hover:bg-zinc-50 sm:inline-flex"
+            className="rounded-xl border border-white/12 bg-white/5 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10"
           >
             Log in
           </Link>
           <Link
             href="/signup"
-            className="inline-flex rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
+            className="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-zinc-950 hover:bg-white/90"
           >
             Sign up
           </Link>
