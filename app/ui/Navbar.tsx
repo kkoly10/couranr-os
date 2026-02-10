@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { supabase } from "../../lib/supabaseClient";
+import { supabase } from "@/lib/supabaseClient";
 
 type SessionUser = { email?: string | null };
 
@@ -15,12 +15,12 @@ export default function Navbar() {
 
     supabase.auth.getSession().then(({ data }) => {
       if (!mounted) return;
-      setUser(data.session?.user ?? null);
+      setUser((data.session?.user as any) ?? null);
       setLoading(false);
     });
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
+      setUser((session?.user as any) ?? null);
     });
 
     return () => {
@@ -41,8 +41,7 @@ export default function Navbar() {
             </span>
             <div className="leading-tight">
               <div className="text-sm font-extrabold text-[var(--text)]">
-                Couranr
-                <span className="ml-1 text-[var(--gold)]">•</span>
+                Couranr <span className="text-[var(--gold)]">•</span>
               </div>
               <div className="text-xs text-[var(--muted)]">Auto Rentals • Courier</div>
             </div>
@@ -88,7 +87,13 @@ export default function Navbar() {
               <Link href="/admin" className="btn btn-outline">
                 Admin
               </Link>
-              <button onClick={() => supabase.auth.signOut()} className="btn btn-primary">
+              <button
+                onClick={async () => {
+                  await supabase.auth.signOut();
+                  window.location.assign("/");
+                }}
+                className="btn btn-primary"
+              >
                 Log out
               </button>
             </>
