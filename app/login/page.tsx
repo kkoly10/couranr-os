@@ -3,7 +3,7 @@
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { supabase } from "../lib/supabaseClient";
+import { supabase } from "../../lib/supabaseClient";
 
 function LoginInner() {
   const router = useRouter();
@@ -30,7 +30,7 @@ function LoginInner() {
       return;
     }
 
-    // If login succeeds but session isn't immediately available, force refresh
+    // If login succeeds but session isn't immediately available, force re-check
     if (!data.session) {
       const { data: s } = await supabase.auth.getSession();
       if (!s.session) {
@@ -51,7 +51,9 @@ function LoginInner() {
             <Link href="/" className="text-sm font-semibold text-zinc-900">
               Couranr<span className="text-zinc-500">.</span>
             </Link>
-            <h1 className="mt-3 text-2xl font-semibold text-zinc-900">Sign in</h1>
+            <h1 className="mt-3 text-2xl font-semibold text-zinc-900">
+              Sign in
+            </h1>
             <p className="mt-1 text-sm text-zinc-600">
               Access your account to manage rentals and orders.
             </p>
@@ -71,7 +73,9 @@ function LoginInner() {
             </div>
 
             <div>
-              <label className="text-sm font-medium text-zinc-900">Password</label>
+              <label className="text-sm font-medium text-zinc-900">
+                Password
+              </label>
               <input
                 className="mt-1 w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none focus:border-zinc-400"
                 type="password"
@@ -98,7 +102,10 @@ function LoginInner() {
 
             <p className="text-sm text-zinc-600">
               Don’t have an account?{" "}
-              <Link href="/signup" className="font-semibold text-zinc-900 hover:underline">
+              <Link
+                href="/signup"
+                className="font-semibold text-zinc-900 hover:underline"
+              >
                 Create one
               </Link>
             </p>
