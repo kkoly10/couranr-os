@@ -1,33 +1,60 @@
 @import "tailwindcss";
 
+/* Couranr Premium Theme — Navy + Gold (light) */
 :root {
-  color-scheme: dark;
+  color-scheme: light;
+
+  /* Surfaces */
+  --bg: #fbfbfd;           /* near-white */
+  --surface: #ffffff;      /* cards */
+  --surface-2: #f4f6fb;    /* soft section */
+  --border: rgba(17, 24, 39, 0.10);
+
+  /* Text */
+  --text: #0b1220;         /* deep ink */
+  --muted: rgba(11, 18, 32, 0.70);
+
+  /* Brand */
+  --navy: #0b1b3a;
+  --navy-2: #102a5c;
+
+  --gold: #c8a85a;
+  --gold-2: #b89440;
+
+  /* UI */
+  --primary: var(--navy);
+  --primary-contrast: #ffffff;
+  --accent: var(--gold);
+  --accent-contrast: #0b1220;
+
+  --ring: rgba(200, 168, 90, 0.45);
 }
 
 html,
 body {
   height: 100%;
+  background: var(--bg);
+  color: var(--text);
 }
 
-/* Better default readability on dark */
+/* Make default text rendering look premium */
 body {
-  background: #09090b; /* zinc-950-ish */
-  color: rgba(255, 255, 255, 0.88);
-}
-
-/* Smoother type rendering */
-* {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Make links readable by default (if any raw <a> shows up) */
+/* Links */
 a {
-  color: rgba(255, 255, 255, 0.9);
+  color: inherit;
 }
 
-/* Better focus ring visibility */
+/* Nice focus styles */
 :focus-visible {
-  outline: 2px solid rgba(255, 255, 255, 0.35);
+  outline: 3px solid var(--ring);
   outline-offset: 2px;
+}
+
+/* Optional: nicer selection */
+::selection {
+  background: rgba(200, 168, 90, 0.25);
 }
