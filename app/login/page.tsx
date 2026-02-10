@@ -3,7 +3,7 @@
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { supabase } from "../../lib/supabaseClient";
+import { supabase } from "@/lib/supabaseClient";
 
 function LoginInner() {
   const searchParams = useSearchParams();
@@ -18,7 +18,7 @@ function LoginInner() {
     setLoading(true);
     setError(null);
 
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
@@ -29,17 +29,7 @@ function LoginInner() {
       return;
     }
 
-    // Ensure cookie/session exists
-    if (!data.session) {
-      const { data: s } = await supabase.auth.getSession();
-      if (!s.session) {
-        setError("Signed in, but session not found. Please try again.");
-        setLoading(false);
-        return;
-      }
-    }
-
-    // Full reload so middleware sees cookies
+    // hard redirect so middleware sees the updated cookie
     window.location.assign(next);
   };
 
