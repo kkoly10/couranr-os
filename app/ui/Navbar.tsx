@@ -3,24 +3,37 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { getUserRole } from "@/lib/getUserRole";
 
 type SessionUser = { email?: string | null };
 
 export default function Navbar() {
   const [user, setUser] = useState<SessionUser | null>(null);
+  const [role, setRole] = useState<"admin" | "driver" | "customer" | null>(null);
   const [loading, setLoading] = useState(true);
+
+  async function refreshRole() {
+    try {
+      const r = await getUserRole();
+      setRole(r);
+    } catch {
+      setRole("customer");
+    }
+  }
 
   useEffect(() => {
     let mounted = true;
 
-    supabase.auth.getSession().then(({ data }) => {
+    supabase.auth.getSession().then(async ({ data }) => {
       if (!mounted) return;
       setUser((data.session?.user as any) ?? null);
+      await refreshRole();
       setLoading(false);
     });
 
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setUser((session?.user as any) ?? null);
+      await refreshRole();
     });
 
     return () => {
@@ -84,9 +97,19 @@ export default function Navbar() {
               <Link href="/dashboard" className="btn btn-outline">
                 Dashboard
               </Link>
-              <Link href="/admin" className="btn btn-outline">
-                Admin
-              </Link>
+
+              {(role === "admin") && (
+                <Link href="/admin" className="btn btn-outline">
+                  Admin
+                </Link>
+              )}
+
+              {(role === "driver" || role === "admin") && (
+                <Link href="/driver" className="btn btn-outline">
+                  Driver
+                </Link>
+              )}
+
               <button
                 onClick={async () => {
                   await supabase.auth.signOut();
