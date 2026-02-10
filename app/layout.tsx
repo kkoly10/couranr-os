@@ -2,24 +2,26 @@ import "./globals.css";
 import type { Metadata } from "next";
 import Navbar from "./ui/Navbar";
 import Footer from "./ui/Footer";
+import { Inter } from "next/font/google";
+
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+});
 
 export const metadata: Metadata = {
-  title: "Couranr OS",
+  title: "Couranr — Premium Auto Rentals",
   description:
-    "Couranr OS — One platform powering Couranr Auto Rentals and Courier Delivery.",
+    "Couranr OS — premium auto rentals today, courier and docs coming soon. Unified platform for customers, drivers, and admin operations.",
 };
 
-export default function RootLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className="h-full">
-      <body className="min-h-screen bg-zinc-950 text-zinc-50 antialiased">
-        <div className="min-h-screen">
+    <html lang="en" className={inter.className}>
+      <body>
+        <div className="min-h-screen bg-[var(--bg)] text-[var(--text)]">
           <Navbar />
-          <main className="min-h-[70vh]">{children}</main>
+          <main className="min-h-[60vh]">{children}</main>
           <Footer />
         </div>
       </body>
