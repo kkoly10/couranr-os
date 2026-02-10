@@ -2,11 +2,10 @@
 
 import { Suspense, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
 
 function LoginInner() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const next = searchParams.get("next") || "/dashboard";
 
@@ -30,7 +29,7 @@ function LoginInner() {
       return;
     }
 
-    // If login succeeds but session isn't immediately available, force re-check
+    // Ensure cookie/session exists
     if (!data.session) {
       const { data: s } = await supabase.auth.getSession();
       if (!s.session) {
@@ -40,30 +39,29 @@ function LoginInner() {
       }
     }
 
-    router.push(next);
+    // Full reload so middleware sees cookies
+    window.location.assign(next);
   };
 
   return (
-    <main className="min-h-[calc(100vh-140px)] bg-white">
-      <div className="mx-auto flex max-w-6xl items-center justify-center px-6 py-14">
-        <div className="w-full max-w-md rounded-3xl border border-zinc-200 bg-white p-8 shadow-sm">
+    <main className="min-h-[calc(100vh-140px)]">
+      <div className="c-container flex justify-center py-14">
+        <div className="w-full max-w-md rounded-3xl border bg-[var(--surface)] p-8 shadow-sm">
           <div className="mb-6">
-            <Link href="/" className="text-sm font-semibold text-zinc-900">
-              Couranr<span className="text-zinc-500">.</span>
+            <Link href="/" className="text-sm font-extrabold text-[var(--text)]">
+              Couranr<span className="text-[var(--gold)]">•</span>
             </Link>
-            <h1 className="mt-3 text-2xl font-semibold text-zinc-900">
-              Sign in
-            </h1>
-            <p className="mt-1 text-sm text-zinc-600">
-              Access your account to manage rentals and orders.
+            <h1 className="mt-3 text-2xl font-extrabold text-[var(--text)]">Sign in</h1>
+            <p className="mt-1 text-sm text-[var(--muted)]">
+              Manage rentals, agreements, payments, and more.
             </p>
           </div>
 
           <div className="space-y-4">
             <div>
-              <label className="text-sm font-medium text-zinc-900">Email</label>
+              <label className="text-sm font-semibold text-[var(--text)]">Email</label>
               <input
-                className="mt-1 w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none focus:border-zinc-400"
+                className="mt-1 w-full rounded-xl border bg-white px-4 py-3 text-sm text-[var(--text)] outline-none focus:border-[var(--gold)]"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -73,11 +71,9 @@ function LoginInner() {
             </div>
 
             <div>
-              <label className="text-sm font-medium text-zinc-900">
-                Password
-              </label>
+              <label className="text-sm font-semibold text-[var(--text)]">Password</label>
               <input
-                className="mt-1 w-full rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-900 outline-none focus:border-zinc-400"
+                className="mt-1 w-full rounded-xl border bg-white px-4 py-3 text-sm text-[var(--text)] outline-none focus:border-[var(--gold)]"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -92,20 +88,13 @@ function LoginInner() {
               </div>
             )}
 
-            <button
-              onClick={handleLogin}
-              disabled={loading}
-              className="w-full rounded-xl bg-zinc-900 px-4 py-3 text-sm font-semibold text-white hover:bg-zinc-800 disabled:opacity-60"
-            >
+            <button onClick={handleLogin} disabled={loading} className="btn btn-primary w-full">
               {loading ? "Signing in…" : "Sign in"}
             </button>
 
-            <p className="text-sm text-zinc-600">
+            <p className="text-sm text-[var(--muted)]">
               Don’t have an account?{" "}
-              <Link
-                href="/signup"
-                className="font-semibold text-zinc-900 hover:underline"
-              >
+              <Link href="/signup" className="font-extrabold text-[var(--primary)] hover:underline">
                 Create one
               </Link>
             </p>
@@ -118,7 +107,7 @@ function LoginInner() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="p-6 text-sm text-zinc-600">Loading…</div>}>
+    <Suspense fallback={<div className="c-container py-10 text-sm text-[var(--muted)]">Loading…</div>}>
       <LoginInner />
     </Suspense>
   );
