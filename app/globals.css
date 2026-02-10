@@ -1,60 +1,96 @@
 @import "tailwindcss";
 
-/* Couranr Premium Theme — Navy + Gold (light) */
+/* -------------------------------------------------------
+   Couranr Theme: Premium Gold + White (Rental-first)
+   ------------------------------------------------------- */
+
 :root {
+  /* surfaces */
+  --bg: #fbfbf7;          /* warm white */
+  --surface: #ffffff;
+  --surface-2: #f6f5ef;
+
+  /* text */
+  --text: #0b1220;        /* deep navy-ish for premium readability */
+  --muted: #5b6474;
+
+  /* borders */
+  --border: #e7e2d2;
+
+  /* brand */
+  --primary: #0b1b35;     /* navy */
+  --primary-2: #10284f;   /* hover navy */
+  --gold: #c7a34a;        /* premium gold */
+  --gold-2: #b28d32;      /* hover gold */
+
+  /* focus */
+  --ring: rgba(199, 163, 74, 0.35);
+
   color-scheme: light;
-
-  /* Surfaces */
-  --bg: #fbfbfd;           /* near-white */
-  --surface: #ffffff;      /* cards */
-  --surface-2: #f4f6fb;    /* soft section */
-  --border: rgba(17, 24, 39, 0.10);
-
-  /* Text */
-  --text: #0b1220;         /* deep ink */
-  --muted: rgba(11, 18, 32, 0.70);
-
-  /* Brand */
-  --navy: #0b1b3a;
-  --navy-2: #102a5c;
-
-  --gold: #c8a85a;
-  --gold-2: #b89440;
-
-  /* UI */
-  --primary: var(--navy);
-  --primary-contrast: #ffffff;
-  --accent: var(--gold);
-  --accent-contrast: #0b1220;
-
-  --ring: rgba(200, 168, 90, 0.45);
 }
 
 html,
 body {
   height: 100%;
+}
+
+body {
   background: var(--bg);
   color: var(--text);
 }
 
-/* Make default text rendering look premium */
-body {
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+/* nice defaults */
+* {
+  border-color: var(--border);
 }
 
-/* Links */
-a {
-  color: inherit;
+/* Common UI helpers (optional but useful) */
+.c-container {
+  max-width: 72rem; /* 1152px */
+  margin: 0 auto;
+  padding: 0 1.5rem;
 }
 
-/* Nice focus styles */
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 0.9rem;
+  padding: 0.65rem 1rem;
+  font-weight: 700;
+  font-size: 0.95rem;
+  line-height: 1;
+  transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: #fff;
+}
+.btn-primary:hover {
+  background: var(--primary-2);
+}
+
+.btn-gold {
+  background: var(--gold);
+  color: #111;
+}
+.btn-gold:hover {
+  background: var(--gold-2);
+}
+
+.btn-outline {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.btn-outline:hover {
+  background: var(--surface-2);
+}
+
 :focus-visible {
   outline: 3px solid var(--ring);
   outline-offset: 2px;
-}
-
-/* Optional: nicer selection */
-::selection {
-  background: rgba(200, 168, 90, 0.25);
 }
