@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { supabase } from "../../lib/supabaseClient";
+import Link from "next/link";
+import { supabase } from "@/lib/supabaseClient";
 
 export default function SignupPage() {
   const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -17,57 +17,79 @@ export default function SignupPage() {
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      phone,
       options: {
         data: {
           role: "customer",
-          marketing_opt_in: true
-        }
-      }
+          marketing_opt_in: true,
+        },
+      },
     });
 
     if (error) {
       setMessage(error.message);
     } else {
-      setMessage(
-        "Account created. Please check your email and phone to verify your account."
-      );
+      setMessage("Account created. Check your email to confirm, then sign in.");
     }
 
     setLoading(false);
   };
 
   return (
-    <main style={{ maxWidth: 420, margin: "60px auto" }}>
-      <h1>Create your Couranr account</h1>
+    <main className="min-h-[calc(100vh-140px)]">
+      <div className="c-container flex justify-center py-14">
+        <div className="w-full max-w-md rounded-3xl border bg-[var(--surface)] p-8 shadow-sm">
+          <div className="mb-6">
+            <Link href="/" className="text-sm font-extrabold text-[var(--text)]">
+              Couranr<span className="text-[var(--gold)]">•</span>
+            </Link>
+            <h1 className="mt-3 text-2xl font-extrabold text-[var(--text)]">Create account</h1>
+            <p className="mt-1 text-sm text-[var(--muted)]">Start renting in minutes.</p>
+          </div>
 
-      <input
-        placeholder="Email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        style={{ width: "100%", marginBottom: 12 }}
-      />
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-semibold text-[var(--text)]">Email</label>
+              <input
+                className="mt-1 w-full rounded-xl border bg-white px-4 py-3 text-sm text-[var(--text)] outline-none focus:border-[var(--gold)]"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                autoComplete="email"
+              />
+            </div>
 
-      <input
-        placeholder="Phone (e.g. +15551234567)"
-        value={phone}
-        onChange={(e) => setPhone(e.target.value)}
-        style={{ width: "100%", marginBottom: 12 }}
-      />
+            <div>
+              <label className="text-sm font-semibold text-[var(--text)]">Password</label>
+              <input
+                className="mt-1 w-full rounded-xl border bg-white px-4 py-3 text-sm text-[var(--text)] outline-none focus:border-[var(--gold)]"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Minimum 8 characters"
+                autoComplete="new-password"
+              />
+            </div>
 
-      <input
-        type="password"
-        placeholder="Password (min 8 characters)"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        style={{ width: "100%", marginBottom: 12 }}
-      />
+            {message && (
+              <div className="rounded-xl border bg-[var(--surface-2)] p-3 text-sm text-[var(--text)]">
+                {message}
+              </div>
+            )}
 
-      <button onClick={handleSignup} disabled={loading}>
-        {loading ? "Creating account..." : "Sign up"}
-      </button>
+            <button onClick={handleSignup} disabled={loading} className="btn btn-primary w-full">
+              {loading ? "Creating…" : "Sign up"}
+            </button>
 
-      {message && <p style={{ marginTop: 20 }}>{message}</p>}
+            <p className="text-sm text-[var(--muted)]">
+              Already have an account?{" "}
+              <Link href="/login" className="font-extrabold text-[var(--primary)] hover:underline">
+                Sign in
+              </Link>
+            </p>
+          </div>
+        </div>
+      </div>
     </main>
   );
 }
