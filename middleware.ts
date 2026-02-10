@@ -16,12 +16,9 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/admin") ||
     pathname.startsWith("/driver");
 
-  // Public routes
-  const isAuthRoute = pathname.startsWith("/login") || pathname.startsWith("/signup");
-
   if (!isProtected) return res;
 
-  // If protected and not logged in → send to login
+  // Not logged in → send to login
   if (!session?.user) {
     const url = req.nextUrl.clone();
     url.pathname = "/login";
@@ -29,18 +26,46 @@ export async function middleware(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Optional: basic admin gate
-  // If you later add roles, replace this with a real role check.
-  if (pathname.startsWith("/admin")) {
-    const adminEmail = process.env.ADMIN_EMAIL;
-    if (adminEmail && session.user.email !== adminEmail) {
-      const url = req.nextUrl.clone();
-      url.pathname = "/dashboard";
-      return NextResponse.redirect(url);
+  // ---------------------------
+  // ROLE GATING (profiles.role)
+  // ---------------------------
+  // If profiles table doesn't exist yet or role missing, default to "customer".
+  let role: "admin" | "driver" | "customer" = "customer";
+
+  try {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("role")
+      .eq("id", session.user.id)
+      .single();
+
+    if (!error && data?.role) {
+      role = data.role as any;
+    } else {
+      // fallback: allow admin by env email even if profiles isn't ready
+      const adminEmail = process.env.ADMIN_EMAIL;
+      if (adminEmail && session.user.email === adminEmail) role = "admin";
     }
+  } catch {
+    // fallback: allow admin by env email even if query fails
+    const adminEmail = process.env.ADMIN_EMAIL;
+    if (adminEmail && session.user.email === adminEmail) role = "admin";
   }
 
-  // Logged in → allow
+  // Admin area: admin only
+  if (pathname.startsWith("/admin") && role !== "admin") {
+    const url = req.nextUrl.clone();
+    url.pathname = "/dashboard";
+    return NextResponse.redirect(url);
+  }
+
+  // Driver area: driver OR admin
+  if (pathname.startsWith("/driver") && role !== "driver" && role !== "admin") {
+    const url = req.nextUrl.clone();
+    url.pathname = "/dashboard";
+    return NextResponse.redirect(url);
+  }
+
   return res;
 }
 
