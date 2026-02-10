@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -37,7 +38,29 @@ export default async function AvailableCarsPage() {
 
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: 24 }}>
-      <h1>Available Vehicles</h1>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <div>
+          <h1 style={{ margin: 0 }}>Available Vehicles</h1>
+          <p style={{ marginTop: 8, color: "#555" }}>
+            Choose a vehicle and start the booking flow.
+          </p>
+        </div>
+        <Link
+          href="/auto"
+          style={{
+            alignSelf: "center",
+            padding: "10px 14px",
+            borderRadius: 10,
+            border: "1px solid #e5e7eb",
+            textDecoration: "none",
+            fontWeight: 800,
+            color: "#111827",
+            background: "#fff",
+          }}
+        >
+          How rentals work
+        </Link>
+      </div>
 
       <div
         style={{
@@ -48,10 +71,7 @@ export default async function AvailableCarsPage() {
         }}
       >
         {vehicles?.map((v: Vehicle) => {
-          const image =
-            v.image_urls && v.image_urls.length > 0
-              ? v.image_urls[0]
-              : null;
+          const image = v.image_urls?.[0] ?? null;
 
           return (
             <div
@@ -67,11 +87,7 @@ export default async function AvailableCarsPage() {
                 <img
                   src={image}
                   alt={`${v.year} ${v.make} ${v.model}`}
-                  style={{
-                    width: "100%",
-                    height: 200,
-                    objectFit: "cover",
-                  }}
+                  style={{ width: "100%", height: 200, objectFit: "cover" }}
                 />
               ) : (
                 <div
@@ -84,7 +100,7 @@ export default async function AvailableCarsPage() {
                     color: "#6b7280",
                   }}
                 >
-                  No image
+                  No image yet
                 </div>
               )}
 
@@ -93,25 +109,48 @@ export default async function AvailableCarsPage() {
                   {v.year} {v.make} {v.model}
                 </h3>
 
-                {v.trim && (
-                  <p style={{ margin: "4px 0", color: "#555" }}>
-                    {v.trim}
-                  </p>
-                )}
+                {v.trim && <p style={{ margin: "4px 0", color: "#555" }}>{v.trim}</p>}
 
                 <p style={{ marginTop: 10 }}>
-                  <strong>${(v.daily_rate_cents / 100).toFixed(0)}</strong> / day
-                </p>
-
-                <p>
+                  <strong>${(v.daily_rate_cents / 100).toFixed(0)}</strong> / day •{" "}
                   <strong>${(v.weekly_rate_cents / 100).toFixed(0)}</strong> / week
                 </p>
 
-                {v.deposit_cents > 0 ? (
-                  <p>Deposit: ${(v.deposit_cents / 100).toFixed(0)}</p>
-                ) : (
-                  <p>No deposit required</p>
-                )}
+                <p style={{ marginTop: 8, color: "#555" }}>
+                  Deposit:{" "}
+                  {v.deposit_cents > 0 ? `$${(v.deposit_cents / 100).toFixed(0)}` : "No deposit"}
+                </p>
+
+                <div style={{ display: "flex", gap: 10, marginTop: 14, flexWrap: "wrap" }}>
+                  <Link
+                    href={`/auto/rent/${v.id}`}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      background: "#111827",
+                      color: "#fff",
+                      textDecoration: "none",
+                      fontWeight: 900,
+                    }}
+                  >
+                    Rent this car
+                  </Link>
+
+                  <Link
+                    href={`/auto/rent/${v.id}`}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 10,
+                      border: "1px solid #111827",
+                      color: "#111827",
+                      textDecoration: "none",
+                      fontWeight: 900,
+                      background: "#fff",
+                    }}
+                  >
+                    View details
+                  </Link>
+                </div>
               </div>
             </div>
           );
