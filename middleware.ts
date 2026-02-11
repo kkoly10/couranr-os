@@ -1,13 +1,25 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
 
+function redirectToLogin(req: NextRequest) {
+  const url = req.nextUrl.clone();
+  url.pathname = "/login";
+  url.searchParams.set("next", req.nextUrl.pathname);
+  return NextResponse.redirect(url);
+}
+
+function redirectToDashboard(req: NextRequest) {
+  const url = req.nextUrl.clone();
+  url.pathname = "/dashboard";
+  return NextResponse.redirect(url);
+}
+
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
   const supabase = createMiddlewareClient({ req, res });
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  const { data: sessionRes } = await supabase.auth.getSession();
+  const session = sessionRes.session;
 
   const pathname = req.nextUrl.pathname;
 
@@ -18,54 +30,29 @@ export async function middleware(req: NextRequest) {
 
   if (!isProtected) return res;
 
-  // Not logged in → send to login
-  if (!session?.user) {
-    const url = req.nextUrl.clone();
-    url.pathname = "/login";
-    url.searchParams.set("next", pathname);
-    return NextResponse.redirect(url);
+  // Must be logged in
+  if (!session?.user) return redirectToLogin(req);
+
+  // Role from user_metadata (set during signUp)
+  // NOTE: existing users might not have this; you can handle fallback later.
+  const role =
+    (session.user.user_metadata?.role as "admin" | "driver" | "customer" | undefined) ??
+    "customer";
+
+  // ADMIN AREA
+  if (pathname.startsWith("/admin")) {
+    if (role !== "admin") return redirectToDashboard(req);
+    return res;
   }
 
-  // ---------------------------
-  // ROLE GATING (profiles.role)
-  // ---------------------------
-  // If profiles table doesn't exist yet or role missing, default to "customer".
-  let role: "admin" | "driver" | "customer" = "customer";
-
-  try {
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", session.user.id)
-      .single();
-
-    if (!error && data?.role) {
-      role = data.role as any;
-    } else {
-      // fallback: allow admin by env email even if profiles isn't ready
-      const adminEmail = process.env.ADMIN_EMAIL;
-      if (adminEmail && session.user.email === adminEmail) role = "admin";
-    }
-  } catch {
-    // fallback: allow admin by env email even if query fails
-    const adminEmail = process.env.ADMIN_EMAIL;
-    if (adminEmail && session.user.email === adminEmail) role = "admin";
+  // DRIVER AREA
+  if (pathname.startsWith("/driver")) {
+    // Option A: only drivers
+    if (role !== "driver" && role !== "admin") return redirectToDashboard(req);
+    return res;
   }
 
-  // Admin area: admin only
-  if (pathname.startsWith("/admin") && role !== "admin") {
-    const url = req.nextUrl.clone();
-    url.pathname = "/dashboard";
-    return NextResponse.redirect(url);
-  }
-
-  // Driver area: driver OR admin
-  if (pathname.startsWith("/driver") && role !== "driver" && role !== "admin") {
-    const url = req.nextUrl.clone();
-    url.pathname = "/dashboard";
-    return NextResponse.redirect(url);
-  }
-
+  // DASHBOARD AREA: any logged-in user allowed
   return res;
 }
 
