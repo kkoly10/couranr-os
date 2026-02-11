@@ -1,14 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "../../lib/supabaseClient";
+import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
 import Link from "next/link";
 
-/* ---------------- TYPES ---------------- */
-
-type DriverOrder = {
-  order_number: string;
-};
+type DriverOrder = { order_number: string };
 
 type DriverDelivery = {
   id: string;
@@ -27,45 +24,52 @@ const STATUS_LABELS: Record<string, string> = {
   completed: "Completed",
 };
 
-/* --------------- COMPONENT -------------- */
-
 export default function DriverDashboard() {
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [deliveries, setDeliveries] = useState<DriverDelivery[]>([]);
   const [error, setError] = useState<string | null>(null);
 
-  const activeDelivery = useMemo(() => {
-    return deliveries.find(
-      (d) => d.status === "assigned" || d.status === "in_transit"
-    );
-  }, [deliveries]);
+  const activeDelivery = useMemo(
+    () => deliveries.find((d) => d.status === "assigned" || d.status === "in_transit"),
+    [deliveries]
+  );
 
   const completedToday = useMemo(() => {
     const today = new Date().toDateString();
     return deliveries.filter(
-      (d) =>
-        d.status === "completed" &&
-        new Date(d.created_at).toDateString() === today
+      (d) => d.status === "completed" && new Date(d.created_at).toDateString() === today
     );
   }, [deliveries]);
 
   useEffect(() => {
-    async function load() {
+    async function boot() {
       setLoading(true);
       setError(null);
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const { data: sessionRes } = await supabase.auth.getSession();
+      const session = sessionRes.session;
 
-      if (!user) {
-        setLoading(false);
+      if (!session) {
+        router.push("/login?next=/driver");
+        return;
+      }
+
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", session.user.id)
+        .single();
+
+      if (prof?.role !== "driver") {
+        router.push("/dashboard/home");
         return;
       }
 
       const { data, error } = await supabase
         .from("deliveries")
-        .select(`
+        .select(
+          `
           id,
           status,
           created_at,
@@ -73,11 +77,10 @@ export default function DriverDashboard() {
           dropoff_address,
           estimated_miles,
           weight_lbs,
-          orders (
-            order_number
-          )
-        `)
-        .eq("driver_id", user.id)
+          orders ( order_number )
+        `
+        )
+        .eq("driver_id", session.user.id)
         .order("created_at", { ascending: false });
 
       if (error) {
@@ -87,7 +90,6 @@ export default function DriverDashboard() {
         return;
       }
 
-      // ✅ NORMALIZE Supabase relation array → single object
       const normalized: DriverDelivery[] = (data ?? []).map((d: any) => ({
         id: d.id,
         status: d.status,
@@ -96,20 +98,15 @@ export default function DriverDashboard() {
         dropoff_address: d.dropoff_address,
         estimated_miles: d.estimated_miles,
         weight_lbs: d.weight_lbs,
-        order:
-          d.orders && d.orders.length > 0
-            ? { order_number: d.orders[0].order_number }
-            : null,
+        order: d.orders && d.orders.length > 0 ? { order_number: d.orders[0].order_number } : null,
       }));
 
       setDeliveries(normalized);
       setLoading(false);
     }
 
-    load();
-  }, []);
-
-  /* --------------- UI STATES -------------- */
+    boot();
+  }, [router]);
 
   if (loading) {
     return (
@@ -125,11 +122,8 @@ export default function DriverDashboard() {
       <div style={{ display: "flex", justifyContent: "space-between" }}>
         <div>
           <h1 style={styles.h1}>Driver Dashboard</h1>
-          <p style={styles.sub}>
-            Focus on active deliveries and complete them safely.
-          </p>
+          <p style={styles.sub}>Focus on active deliveries and complete them safely.</p>
         </div>
-
         <div style={styles.driverBadge}>Driver</div>
       </div>
 
@@ -139,77 +133,36 @@ export default function DriverDashboard() {
         </div>
       )}
 
-      {/* ACTIVE DELIVERY */}
       <div style={{ marginTop: 24, ...styles.card }}>
         <h2 style={styles.sectionTitle}>Active Delivery</h2>
 
-        {!activeDelivery && (
-          <p style={{ marginTop: 10, color: "#555" }}>
-            No active delivery assigned right now.
-          </p>
-        )}
+        {!activeDelivery && <p style={{ marginTop: 10, color: "#555" }}>No active delivery assigned.</p>}
 
         {activeDelivery && (
           <div style={{ marginTop: 14, ...styles.inner }}>
-            <Info
-              label="Order #"
-              value={activeDelivery.order?.order_number ?? "—"}
-            />
-            <Info
-              label="Status"
-              value={STATUS_LABELS[activeDelivery.status]}
-            />
-            <Info
-              label="Pickup address"
-              value={activeDelivery.pickup_address ?? "—"}
-            />
-            <Info
-              label="Drop-off address"
-              value={activeDelivery.dropoff_address ?? "—"}
-            />
-            <Info
-              label="Estimated miles"
-              value={activeDelivery.estimated_miles?.toFixed(2) ?? "—"}
-            />
-            <Info
-              label="Weight"
-              value={
-                activeDelivery.weight_lbs
-                  ? `${activeDelivery.weight_lbs} lbs`
-                  : "—"
-              }
-            />
+            <Info label="Order #" value={activeDelivery.order?.order_number ?? "—"} />
+            <Info label="Status" value={STATUS_LABELS[activeDelivery.status]} />
+            <Info label="Pickup address" value={activeDelivery.pickup_address ?? "—"} />
+            <Info label="Drop-off address" value={activeDelivery.dropoff_address ?? "—"} />
+            <Info label="Estimated miles" value={activeDelivery.estimated_miles?.toFixed(2) ?? "—"} />
+            <Info label="Weight" value={activeDelivery.weight_lbs ? `${activeDelivery.weight_lbs} lbs` : "—"} />
 
             <div style={{ display: "flex", gap: 12, marginTop: 18 }}>
               {activeDelivery.status === "assigned" && (
-                <PrimaryButton
-                  href={`/driver/delivery/${activeDelivery.id}/pickup`}
-                >
-                  Upload pickup photo
-                </PrimaryButton>
+                <PrimaryButton href={`/driver/delivery/${activeDelivery.id}/pickup`}>Upload pickup photo</PrimaryButton>
               )}
-
               {activeDelivery.status === "in_transit" && (
-                <PrimaryButton
-                  href={`/driver/delivery/${activeDelivery.id}/dropoff`}
-                >
-                  Upload drop-off photo
-                </PrimaryButton>
+                <PrimaryButton href={`/driver/delivery/${activeDelivery.id}/dropoff`}>Upload drop-off photo</PrimaryButton>
               )}
             </div>
           </div>
         )}
       </div>
 
-      {/* COMPLETED TODAY */}
       <div style={{ marginTop: 24, ...styles.card }}>
         <h2 style={styles.sectionTitle}>Completed Today</h2>
 
-        {!completedToday.length && (
-          <p style={{ marginTop: 10, color: "#555" }}>
-            No deliveries completed today yet.
-          </p>
-        )}
+        {!completedToday.length && <p style={{ marginTop: 10, color: "#555" }}>No deliveries completed today.</p>}
 
         {completedToday.length > 0 && (
           <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
@@ -217,39 +170,22 @@ export default function DriverDashboard() {
               <div key={d.id} style={styles.row}>
                 <div>
                   <strong>{d.order?.order_number ?? "Order"}</strong>
-                  <div style={{ fontSize: 13, color: "#555" }}>
-                    {new Date(d.created_at).toLocaleTimeString()}
-                  </div>
+                  <div style={{ fontSize: 13, color: "#555" }}>{new Date(d.created_at).toLocaleTimeString()}</div>
                 </div>
-
                 <span style={styles.completedPill}>Completed</span>
               </div>
             ))}
           </div>
         )}
       </div>
-
-      {/* SAFETY */}
-      <div style={{ marginTop: 24, ...styles.card }}>
-        <h2 style={styles.sectionTitle}>Safety reminders</h2>
-        <ul style={{ marginTop: 10, color: "#555", lineHeight: 1.6 }}>
-          <li>Always upload clear pickup and drop-off photos</li>
-          <li>Do not leave items unattended unless marked “no signature”</li>
-          <li>Contact support if a situation feels unsafe</li>
-        </ul>
-      </div>
     </div>
   );
 }
 
-/* ---------------- HELPERS ---------------- */
-
 function Info({ label, value }: { label: string; value: string }) {
   return (
     <div style={{ marginBottom: 10 }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280" }}>
-        {label}
-      </div>
+      <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280" }}>{label}</div>
       <div style={{ fontWeight: 650 }}>{value}</div>
     </div>
   );
@@ -277,45 +213,10 @@ function PrimaryButton({ href, children }: any) {
 const styles: Record<string, any> = {
   h1: { margin: 0, fontSize: 34, letterSpacing: "-0.02em" },
   sub: { marginTop: 10, color: "#444" },
-  driverBadge: {
-    background: "#16a34a",
-    color: "#fff",
-    padding: "8px 14px",
-    borderRadius: 999,
-    fontWeight: 700,
-  },
-  card: {
-    border: "1px solid #e5e7eb",
-    borderRadius: 16,
-    padding: 20,
-    background: "#fff",
-  },
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: 800,
-    letterSpacing: "0.02em",
-    textTransform: "uppercase",
-  },
-  inner: {
-    border: "1px solid #eef2f7",
-    borderRadius: 14,
-    padding: 16,
-    background: "#fbfdff",
-  },
-  row: {
-    border: "1px solid #eef2f7",
-    borderRadius: 14,
-    padding: 14,
-    background: "#fff",
-    display: "flex",
-    justifyContent: "space-between",
-  },
-  completedPill: {
-    background: "#dcfce7",
-    color: "#166534",
-    padding: "6px 12px",
-    borderRadius: 999,
-    fontWeight: 700,
-    fontSize: 12,
-  },
+  driverBadge: { background: "#16a34a", color: "#fff", padding: "8px 14px", borderRadius: 999, fontWeight: 700 },
+  card: { border: "1px solid #e5e7eb", borderRadius: 16, padding: 20, background: "#fff" },
+  sectionTitle: { fontSize: 16, fontWeight: 800, letterSpacing: "0.02em", textTransform: "uppercase" },
+  inner: { border: "1px solid #eef2f7", borderRadius: 14, padding: 16, background: "#fbfdff" },
+  row: { border: "1px solid #eef2f7", borderRadius: 14, padding: 14, background: "#fff", display: "flex", justifyContent: "space-between" },
+  completedPill: { background: "#dcfce7", color: "#166534", padding: "6px 12px", borderRadius: 999, fontWeight: 700, fontSize: 12 },
 };
