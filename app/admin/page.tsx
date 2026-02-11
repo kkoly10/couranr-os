@@ -1,10 +1,8 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-
-/* ---------------- TYPES ---------------- */
 
 type AdminOrder = {
   order_number: string;
@@ -24,39 +22,50 @@ type AdminDelivery = {
   order: AdminOrder | null;
 };
 
-/* --------------- COMPONENT -------------- */
-
 export default function AdminDashboard() {
+  const router = useRouter();
   const [deliveries, setDeliveries] = useState<AdminDelivery[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    async function loadDeliveries() {
+    async function boot() {
       setLoading(true);
       setError(null);
 
+      const { data: sessionRes } = await supabase.auth.getSession();
+      const session = sessionRes.session;
+      if (!session) {
+        router.push("/login?next=/admin");
+        return;
+      }
+
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", session.user.id)
+        .single();
+
+      if (prof?.role !== "admin") {
+        router.push("/dashboard/home");
+        return;
+      }
+
       const { data, error } = await supabase
         .from("deliveries")
-        .select(`
+        .select(
+          `
           id,
           status,
           created_at,
           driver_id,
           estimated_miles,
           weight_lbs,
-          pickup_address:pickup_address_id (
-            address_line
-          ),
-          dropoff_address:dropoff_address_id (
-            address_line
-          ),
-          orders (
-            order_number,
-            total_cents,
-            customer_id
-          )
-        `)
+          pickup_address:pickup_address_id ( address_line ),
+          dropoff_address:dropoff_address_id ( address_line ),
+          orders ( order_number, total_cents, customer_id )
+        `
+        )
         .order("created_at", { ascending: false });
 
       if (error) {
@@ -81,8 +90,8 @@ export default function AdminDashboard() {
       setLoading(false);
     }
 
-    loadDeliveries();
-  }, []);
+    boot();
+  }, [router]);
 
   if (loading) return <div style={{ padding: 24 }}>Loading admin dashboard…</div>;
 
@@ -95,65 +104,8 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div style={{ maxWidth: 1100, margin: "0 auto", padding: 24 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <div>
-          <h1 style={{ fontSize: 28, margin: 0 }}>Admin</h1>
-          <p style={{ marginTop: 8, color: "#555" }}>
-            Admin tools are separate from the customer dashboard.
-          </p>
-        </div>
-
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <Link
-            href="/admin"
-            style={{
-              padding: "10px 14px",
-              borderRadius: 10,
-              background: "#111827",
-              color: "#fff",
-              textDecoration: "none",
-              fontWeight: 900,
-            }}
-          >
-            Deliveries
-          </Link>
-
-          <Link
-            href="/admin/auto"
-            style={{
-              padding: "10px 14px",
-              borderRadius: 10,
-              border: "1px solid #111827",
-              color: "#111827",
-              textDecoration: "none",
-              fontWeight: 900,
-              background: "#fff",
-            }}
-          >
-            Auto Admin
-          </Link>
-
-          <Link
-            href="/dashboard/home"
-            style={{
-              padding: "10px 14px",
-              borderRadius: 10,
-              border: "1px solid #e5e7eb",
-              color: "#111827",
-              textDecoration: "none",
-              fontWeight: 900,
-              background: "#fff",
-            }}
-          >
-            Customer view
-          </Link>
-        </div>
-      </div>
-
-      <hr style={{ margin: "18px 0" }} />
-
-      <h2 style={{ fontSize: 18, marginBottom: 12 }}>Deliveries</h2>
+    <div style={{ padding: 24 }}>
+      <h1 style={{ fontSize: 28, marginBottom: 16 }}>Admin — Deliveries</h1>
 
       {deliveries.length === 0 && <p>No deliveries found.</p>}
 
@@ -162,7 +114,7 @@ export default function AdminDashboard() {
           key={d.id}
           style={{
             border: "1px solid #e5e7eb",
-            borderRadius: 12,
+            borderRadius: 8,
             padding: 16,
             marginBottom: 12,
             background: "#fff",
