@@ -3,37 +3,61 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { getUserRole } from "@/lib/getUserRole";
 
-type SessionUser = { email?: string | null };
+type Role = "admin" | "driver" | "customer" | null;
 
 export default function Navbar() {
-  const [user, setUser] = useState<SessionUser | null>(null);
-  const [role, setRole] = useState<"admin" | "driver" | "customer" | null>(null);
   const [loading, setLoading] = useState(true);
-
-  async function refreshRole() {
-    try {
-      const r = await getUserRole();
-      setRole(r);
-    } catch {
-      setRole("customer");
-    }
-  }
+  const [authed, setAuthed] = useState(false);
+  const [role, setRole] = useState<Role>(null);
 
   useEffect(() => {
     let mounted = true;
 
-    supabase.auth.getSession().then(async ({ data }) => {
+    async function boot() {
+      const { data } = await supabase.auth.getSession();
+      const session = data.session;
+
       if (!mounted) return;
-      setUser((data.session?.user as any) ?? null);
-      await refreshRole();
+
+      setAuthed(!!session);
       setLoading(false);
-    });
+
+      if (!session) {
+        setRole(null);
+        return;
+      }
+
+      // Fetch role from profiles
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", session.user.id)
+        .single();
+
+      if (!mounted) return;
+      setRole((prof?.role as Role) || "customer");
+    }
+
+    boot();
 
     const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setUser((session?.user as any) ?? null);
-      await refreshRole();
+      if (!mounted) return;
+
+      setAuthed(!!session);
+
+      if (!session) {
+        setRole(null);
+        return;
+      }
+
+      const { data: prof } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", session.user.id)
+        .single();
+
+      setRole((prof?.role as Role) || "customer");
     });
 
     return () => {
@@ -41,8 +65,6 @@ export default function Navbar() {
       sub.subscription.unsubscribe();
     };
   }, []);
-
-  const isLoggedIn = !!user?.email;
 
   return (
     <header className="sticky top-0 z-50 border-b bg-[var(--surface)]/85 backdrop-blur">
@@ -81,7 +103,7 @@ export default function Navbar() {
             View cars
           </Link>
 
-          {!loading && !isLoggedIn && (
+          {!loading && !authed && (
             <>
               <Link href="/login" className="btn btn-outline">
                 Log in
@@ -92,21 +114,22 @@ export default function Navbar() {
             </>
           )}
 
-          {!loading && isLoggedIn && (
+          {!loading && authed && (
             <>
-              <Link href="/dashboard" className="btn btn-outline">
-                Dashboard
-              </Link>
-
-              {(role === "admin") && (
+              {/* ONE dashboard per role */}
+              {role === "admin" && (
                 <Link href="/admin" className="btn btn-outline">
                   Admin
                 </Link>
               )}
-
-              {(role === "driver" || role === "admin") && (
+              {role === "driver" && (
                 <Link href="/driver" className="btn btn-outline">
                   Driver
+                </Link>
+              )}
+              {role === "customer" && (
+                <Link href="/dashboard/home" className="btn btn-outline">
+                  Dashboard
                 </Link>
               )}
 
