@@ -3,7 +3,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { supabaseBrowser } from "@/lib/supabaseBrowser";
+import { supabase } from "@/lib/supabaseClient";
 
 export type UserRole = "admin" | "driver" | "customer";
 
@@ -15,8 +15,7 @@ export default function Navbar() {
   const [loading, setLoading] = useState(true);
 
   async function loadRole(userId: string) {
-    // profiles_select_own policy allows user to read their own role
-    const { data, error } = await supabaseBrowser
+    const { data, error } = await supabase
       .from("profiles")
       .select("role")
       .eq("id", userId)
@@ -31,7 +30,7 @@ export default function Navbar() {
 
     async function boot() {
       try {
-        const { data } = await supabaseBrowser.auth.getSession();
+        const { data } = await supabase.auth.getSession();
         if (!alive) return;
 
         const u = data.session?.user;
@@ -46,14 +45,13 @@ export default function Navbar() {
         if (!alive) return;
         setRole(r);
       } finally {
-        // ✅ Always end loading even if something failed
         if (alive) setLoading(false);
       }
     }
 
     boot();
 
-    const { data: sub } = supabaseBrowser.auth.onAuthStateChange(async (_event, session) => {
+    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (!alive) return;
 
       const u = session?.user;
@@ -116,7 +114,6 @@ export default function Navbar() {
             View cars
           </Link>
 
-          {/* While loading, show nothing extra (optional: skeleton) */}
           {!loading && !isLoggedIn && (
             <>
               <Link href="/login" className="btn btn-outline">
@@ -148,7 +145,7 @@ export default function Navbar() {
 
               <button
                 onClick={async () => {
-                  await supabaseBrowser.auth.signOut();
+                  await supabase.auth.signOut();
                   window.location.assign("/");
                 }}
                 className="btn btn-primary"

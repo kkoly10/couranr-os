@@ -1,3 +1,4 @@
+// app/signup/page.tsx
 "use client";
 
 import { useState } from "react";
@@ -7,6 +8,7 @@ import { supabase } from "@/lib/supabaseClient";
 export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -27,10 +29,11 @@ export default function SignupPage() {
 
     if (error) {
       setMessage(error.message);
-    } else {
-      setMessage("Account created. Check your email to confirm, then sign in.");
+      setLoading(false);
+      return;
     }
 
+    setMessage("Account created. Check your email to verify, then sign in.");
     setLoading(false);
   };
 
@@ -43,14 +46,16 @@ export default function SignupPage() {
               Couranr<span className="text-[var(--gold)]">•</span>
             </Link>
             <h1 className="mt-3 text-2xl font-extrabold text-[var(--text)]">Create account</h1>
-            <p className="mt-1 text-sm text-[var(--muted)]">Start renting in minutes.</p>
+            <p className="mt-1 text-sm text-[var(--muted)]">
+              Start with rentals today. Delivery coming soon.
+            </p>
           </div>
 
           <div className="space-y-4">
             <div>
               <label className="text-sm font-semibold text-[var(--text)]">Email</label>
               <input
-                className="mt-1 w-full rounded-xl border bg-white px-4 py-3 text-sm text-[var(--text)] outline-none focus:border-[var(--gold)]"
+                className="mt-1 w-full rounded-xl border bg-white px-4 py-3 text-sm text-zinc-900 outline-none focus:border-[var(--gold)]"
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -62,7 +67,7 @@ export default function SignupPage() {
             <div>
               <label className="text-sm font-semibold text-[var(--text)]">Password</label>
               <input
-                className="mt-1 w-full rounded-xl border bg-white px-4 py-3 text-sm text-[var(--text)] outline-none focus:border-[var(--gold)]"
+                className="mt-1 w-full rounded-xl border bg-white px-4 py-3 text-sm text-zinc-900 outline-none focus:border-[var(--gold)]"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -71,15 +76,15 @@ export default function SignupPage() {
               />
             </div>
 
+            <button onClick={handleSignup} disabled={loading} className="btn btn-primary w-full">
+              {loading ? "Creating…" : "Sign up"}
+            </button>
+
             {message && (
               <div className="rounded-xl border bg-[var(--surface-2)] p-3 text-sm text-[var(--text)]">
                 {message}
               </div>
             )}
-
-            <button onClick={handleSignup} disabled={loading} className="btn btn-primary w-full">
-              {loading ? "Creating…" : "Sign up"}
-            </button>
 
             <p className="text-sm text-[var(--muted)]">
               Already have an account?{" "}
