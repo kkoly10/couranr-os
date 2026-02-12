@@ -1,13 +1,22 @@
+// lib/getUserRole.ts
+"use client";
+
 import { supabase } from "@/lib/supabaseClient";
 
-export async function getUserRole() {
-  const { data } = await supabase.auth.getSession();
-  const user = data.session?.user;
-  if (!user) return null;
+export type UserRole = "admin" | "driver" | "customer";
 
-  const role = user.user_metadata?.role;
-  if (role === "admin" || role === "driver" || role === "customer") return role;
+export async function getUserRole(): Promise<UserRole | null> {
+  const { data: sessionRes } = await supabase.auth.getSession();
+  const session = sessionRes.session;
+  if (!session?.user?.id) return null;
 
-  // Default safe fallback
-  return "customer";
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", session.user.id)
+    .single();
+
+  if (error || !data?.role) return null;
+
+  return data.role as UserRole;
 }
