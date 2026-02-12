@@ -1,63 +1,47 @@
+// app/ui/Navbar.tsx
 "use client";
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { getUserRole, type UserRole } from "@/lib/getUserRole";
 
-type Role = "admin" | "driver" | "customer" | null;
+type SessionUser = { email?: string | null; id?: string };
 
 export default function Navbar() {
+  const [user, setUser] = useState<SessionUser | null>(null);
+  const [role, setRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(true);
-  const [authed, setAuthed] = useState(false);
-  const [role, setRole] = useState<Role>(null);
+
+  async function refreshRole() {
+    const r = await getUserRole();
+    setRole(r);
+  }
 
   useEffect(() => {
     let mounted = true;
 
-    async function boot() {
-      const { data } = await supabase.auth.getSession();
-      const session = data.session;
-
+    supabase.auth.getSession().then(async ({ data }) => {
       if (!mounted) return;
-
-      setAuthed(!!session);
+      setUser((data.session?.user as any) ?? null);
       setLoading(false);
 
-      if (!session) {
+      if (data.session?.user) {
+        await refreshRole();
+      } else {
         setRole(null);
-        return;
       }
-
-      // Fetch role from profiles
-      const { data: prof } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", session.user.id)
-        .single();
-
-      if (!mounted) return;
-      setRole((prof?.role as Role) || "customer");
-    }
-
-    boot();
+    });
 
     const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
       if (!mounted) return;
+      setUser((session?.user as any) ?? null);
 
-      setAuthed(!!session);
-
-      if (!session) {
+      if (session?.user) {
+        await refreshRole();
+      } else {
         setRole(null);
-        return;
       }
-
-      const { data: prof } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", session.user.id)
-        .single();
-
-      setRole((prof?.role as Role) || "customer");
     });
 
     return () => {
@@ -65,6 +49,8 @@ export default function Navbar() {
       sub.subscription.unsubscribe();
     };
   }, []);
+
+  const isLoggedIn = !!user?.email;
 
   return (
     <header className="sticky top-0 z-50 border-b bg-[var(--surface)]/85 backdrop-blur">
@@ -103,7 +89,7 @@ export default function Navbar() {
             View cars
           </Link>
 
-          {!loading && !authed && (
+          {!loading && !isLoggedIn && (
             <>
               <Link href="/login" className="btn btn-outline">
                 Log in
@@ -114,22 +100,24 @@ export default function Navbar() {
             </>
           )}
 
-          {!loading && authed && (
+          {!loading && isLoggedIn && (
             <>
-              {/* ONE dashboard per role */}
+              {/* Everyone gets dashboard */}
+              <Link href="/dashboard" className="btn btn-outline">
+                Dashboard
+              </Link>
+
+              {/* Only admin sees Admin */}
               {role === "admin" && (
                 <Link href="/admin" className="btn btn-outline">
                   Admin
                 </Link>
               )}
+
+              {/* Only driver sees Driver */}
               {role === "driver" && (
                 <Link href="/driver" className="btn btn-outline">
                   Driver
-                </Link>
-              )}
-              {role === "customer" && (
-                <Link href="/dashboard/home" className="btn btn-outline">
-                  Dashboard
                 </Link>
               )}
 
