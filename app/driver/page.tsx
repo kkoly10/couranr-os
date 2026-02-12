@@ -1,222 +1,98 @@
+// app/driver/deliveries/page.tsx
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 
-type DriverOrder = { order_number: string };
-
-type DriverDelivery = {
+type Delivery = {
   id: string;
   status: string;
-  created_at: string;
-  pickup_address: string | null;
-  dropoff_address: string | null;
-  estimated_miles: number | null;
-  weight_lbs: number | null;
-  order: DriverOrder | null;
+  recipient_name: string;
+  pickup_address: { address_line: string };
+  dropoff_address: { address_line: string };
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  assigned: "Assigned",
-  in_transit: "In transit",
-  completed: "Completed",
-};
-
-export default function DriverDashboard() {
-  const router = useRouter();
+export default function DriverDeliveriesPage() {
+  const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [loading, setLoading] = useState(true);
-  const [deliveries, setDeliveries] = useState<DriverDelivery[]>([]);
   const [error, setError] = useState<string | null>(null);
-
-  const activeDelivery = useMemo(
-    () => deliveries.find((d) => d.status === "assigned" || d.status === "in_transit"),
-    [deliveries]
-  );
-
-  const completedToday = useMemo(() => {
-    const today = new Date().toDateString();
-    return deliveries.filter(
-      (d) => d.status === "completed" && new Date(d.created_at).toDateString() === today
-    );
-  }, [deliveries]);
+  const router = useRouter();
 
   useEffect(() => {
-    async function boot() {
+    let alive = true;
+
+    async function init() {
       setLoading(true);
       setError(null);
 
       const { data: sessionRes } = await supabase.auth.getSession();
       const session = sessionRes.session;
-
       if (!session) {
-        router.push("/login?next=/driver");
+        router.replace("/login?next=/driver/deliveries");
         return;
       }
 
-      const { data: prof } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", session.user.id)
-        .single();
+      try {
+        const res = await fetch("/api/driver/my-deliveries", {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
 
-      if (prof?.role !== "driver") {
-        router.push("/dashboard/home");
-        return;
-      }
+        const json = await res.json().catch(() => ({}));
 
-      const { data, error } = await supabase
-        .from("deliveries")
-        .select(
-          `
-          id,
-          status,
-          created_at,
-          pickup_address,
-          dropoff_address,
-          estimated_miles,
-          weight_lbs,
-          orders ( order_number )
-        `
-        )
-        .eq("driver_id", session.user.id)
-        .order("created_at", { ascending: false });
+        if (!res.ok) throw new Error(json?.error || "Failed to load deliveries");
 
-      if (error) {
-        setError(error.message);
-        setDeliveries([]);
+        if (!alive) return;
+        setDeliveries(json.deliveries || []);
+      } catch (e: any) {
+        if (!alive) return;
+        setError(e?.message || "Failed to load deliveries");
+      } finally {
+        if (!alive) return;
         setLoading(false);
-        return;
       }
-
-      const normalized: DriverDelivery[] = (data ?? []).map((d: any) => ({
-        id: d.id,
-        status: d.status,
-        created_at: d.created_at,
-        pickup_address: d.pickup_address,
-        dropoff_address: d.dropoff_address,
-        estimated_miles: d.estimated_miles,
-        weight_lbs: d.weight_lbs,
-        order: d.orders && d.orders.length > 0 ? { order_number: d.orders[0].order_number } : null,
-      }));
-
-      setDeliveries(normalized);
-      setLoading(false);
     }
 
-    boot();
+    init();
+    return () => {
+      alive = false;
+    };
   }, [router]);
 
-  if (loading) {
-    return (
-      <div>
-        <h1 style={styles.h1}>Driver Dashboard</h1>
-        <p style={styles.sub}>Loading your deliveries…</p>
-      </div>
-    );
-  }
+  if (loading) return <p style={{ padding: 24 }}>Loading deliveries…</p>;
+
+  if (error) return <p style={{ padding: 24, color: "red" }}>Error: {error}</p>;
+
+  if (!deliveries.length) return <p style={{ padding: 24 }}>No assigned deliveries.</p>;
 
   return (
-    <div style={{ maxWidth: 1100 }}>
-      <div style={{ display: "flex", justifyContent: "space-between" }}>
-        <div>
-          <h1 style={styles.h1}>Driver Dashboard</h1>
-          <p style={styles.sub}>Focus on active deliveries and complete them safely.</p>
+    <div style={{ padding: 24 }}>
+      <h1>My Deliveries</h1>
+
+      {deliveries.map((d) => (
+        <div
+          key={d.id}
+          style={{
+            border: "1px solid #ddd",
+            padding: 16,
+            marginBottom: 16,
+            borderRadius: 8,
+          }}
+        >
+          <p>
+            <strong>Status:</strong> {d.status}
+          </p>
+          <p>
+            <strong>Recipient:</strong> {d.recipient_name}
+          </p>
+          <p>
+            <strong>Pickup:</strong> {d.pickup_address?.address_line || "—"}
+          </p>
+          <p>
+            <strong>Dropoff:</strong> {d.dropoff_address?.address_line || "—"}
+          </p>
         </div>
-        <div style={styles.driverBadge}>Driver</div>
-      </div>
-
-      {error && (
-        <div style={{ ...styles.card, borderColor: "#fecaca" }}>
-          <strong>Error:</strong> {error}
-        </div>
-      )}
-
-      <div style={{ marginTop: 24, ...styles.card }}>
-        <h2 style={styles.sectionTitle}>Active Delivery</h2>
-
-        {!activeDelivery && <p style={{ marginTop: 10, color: "#555" }}>No active delivery assigned.</p>}
-
-        {activeDelivery && (
-          <div style={{ marginTop: 14, ...styles.inner }}>
-            <Info label="Order #" value={activeDelivery.order?.order_number ?? "—"} />
-            <Info label="Status" value={STATUS_LABELS[activeDelivery.status]} />
-            <Info label="Pickup address" value={activeDelivery.pickup_address ?? "—"} />
-            <Info label="Drop-off address" value={activeDelivery.dropoff_address ?? "—"} />
-            <Info label="Estimated miles" value={activeDelivery.estimated_miles?.toFixed(2) ?? "—"} />
-            <Info label="Weight" value={activeDelivery.weight_lbs ? `${activeDelivery.weight_lbs} lbs` : "—"} />
-
-            <div style={{ display: "flex", gap: 12, marginTop: 18 }}>
-              {activeDelivery.status === "assigned" && (
-                <PrimaryButton href={`/driver/delivery/${activeDelivery.id}/pickup`}>Upload pickup photo</PrimaryButton>
-              )}
-              {activeDelivery.status === "in_transit" && (
-                <PrimaryButton href={`/driver/delivery/${activeDelivery.id}/dropoff`}>Upload drop-off photo</PrimaryButton>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div style={{ marginTop: 24, ...styles.card }}>
-        <h2 style={styles.sectionTitle}>Completed Today</h2>
-
-        {!completedToday.length && <p style={{ marginTop: 10, color: "#555" }}>No deliveries completed today.</p>}
-
-        {completedToday.length > 0 && (
-          <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
-            {completedToday.map((d) => (
-              <div key={d.id} style={styles.row}>
-                <div>
-                  <strong>{d.order?.order_number ?? "Order"}</strong>
-                  <div style={{ fontSize: 13, color: "#555" }}>{new Date(d.created_at).toLocaleTimeString()}</div>
-                </div>
-                <span style={styles.completedPill}>Completed</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      ))}
     </div>
   );
 }
-
-function Info({ label, value }: { label: string; value: string }) {
-  return (
-    <div style={{ marginBottom: 10 }}>
-      <div style={{ fontSize: 12, fontWeight: 600, color: "#6b7280" }}>{label}</div>
-      <div style={{ fontWeight: 650 }}>{value}</div>
-    </div>
-  );
-}
-
-function PrimaryButton({ href, children }: any) {
-  return (
-    <Link
-      href={href}
-      style={{
-        padding: "12px 18px",
-        background: "#16a34a",
-        color: "#fff",
-        borderRadius: 10,
-        fontWeight: 650,
-        textDecoration: "none",
-        display: "inline-block",
-      }}
-    >
-      {children}
-    </Link>
-  );
-}
-
-const styles: Record<string, any> = {
-  h1: { margin: 0, fontSize: 34, letterSpacing: "-0.02em" },
-  sub: { marginTop: 10, color: "#444" },
-  driverBadge: { background: "#16a34a", color: "#fff", padding: "8px 14px", borderRadius: 999, fontWeight: 700 },
-  card: { border: "1px solid #e5e7eb", borderRadius: 16, padding: 20, background: "#fff" },
-  sectionTitle: { fontSize: 16, fontWeight: 800, letterSpacing: "0.02em", textTransform: "uppercase" },
-  inner: { border: "1px solid #eef2f7", borderRadius: 14, padding: 16, background: "#fbfdff" },
-  row: { border: "1px solid #eef2f7", borderRadius: 14, padding: 14, background: "#fff", display: "flex", justifyContent: "space-between" },
-  completedPill: { background: "#dcfce7", color: "#166534", padding: "6px 12px", borderRadius: 999, fontWeight: 700, fontSize: 12 },
-};
