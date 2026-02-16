@@ -4,7 +4,7 @@
 import { Suspense, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
 function LoginInner() {
   const searchParams = useSearchParams();
@@ -20,7 +20,7 @@ function LoginInner() {
     setLoading(true);
     setError(null);
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { error } = await supabaseBrowser.auth.signInWithPassword({
       email,
       password,
     });
@@ -44,9 +44,7 @@ function LoginInner() {
               Couranr<span className="text-[var(--gold)]">•</span>
             </Link>
             <h1 className="mt-3 text-2xl font-extrabold text-[var(--text)]">Sign in</h1>
-            <p className="mt-1 text-sm text-[var(--muted)]">
-              Manage rentals, agreements, payments, and more.
-            </p>
+            <p className="mt-1 text-sm text-[var(--muted)]">Manage rentals, agreements, payments, and more.</p>
           </div>
 
           <div className="space-y-4">
