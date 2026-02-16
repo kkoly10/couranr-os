@@ -1,39 +1,55 @@
-// app/dashboard/page.tsx
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
-import { getUserRole } from "@/lib/getUserRole";
+import { supabaseBrowser } from "@/lib/supabaseBrowser";
+
+type UserRole = "admin" | "driver" | "customer";
 
 export default function DashboardRouter() {
   const router = useRouter();
+  const [msg, setMsg] = useState("Loading dashboard…");
 
   useEffect(() => {
     let alive = true;
 
-    async function run() {
-      const { data } = await supabase.auth.getSession();
-      if (!alive) return;
+    async function route() {
+      try {
+        const { data } = await supabaseBrowser.auth.getSession();
+        const session = data.session;
 
-      if (!data.session) {
-        router.replace("/login?next=/dashboard");
-        return;
+        if (!session?.user) {
+          router.push("/login?next=/dashboard");
+          return;
+        }
+
+        // Read role from profiles (RLS: profiles_select_own allows this)
+        const { data: prof, error } = await supabaseBrowser
+          .from("profiles")
+          .select("role")
+          .eq("id", session.user.id)
+          .single();
+
+        if (error) {
+          setMsg(`Failed to load your role: ${error.message}`);
+          return;
+        }
+
+        const role = (prof?.role ?? "customer") as UserRole;
+
+        if (role === "admin") router.push("/admin");
+        else if (role === "driver") router.push("/driver");
+        else router.push("/dashboard/home");
+      } catch (e: any) {
+        setMsg(e?.message || "Failed to load dashboard.");
       }
-
-      const role = await getUserRole();
-      if (!alive) return;
-
-      if (role === "admin") router.replace("/admin");
-      else if (role === "driver") router.replace("/driver");
-      else router.replace("/dashboard/home");
     }
 
-    run();
+    route();
     return () => {
       alive = false;
     };
   }, [router]);
 
-  return <p style={{ padding: 24 }}>Loading dashboard…</p>;
+  return <p style={{ padding: 24 }}>{msg}</p>;
 }
