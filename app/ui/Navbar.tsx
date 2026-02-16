@@ -3,49 +3,76 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
-import { getUserRole, type UserRole } from "@/lib/getUserRole";
+import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
-type SessionUser = { email?: string | null; id?: string };
+export type UserRole = "admin" | "driver" | "customer";
+
+type SessionUser = { email?: string | null; id: string };
 
 export default function Navbar() {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [role, setRole] = useState<UserRole | null>(null);
   const [loading, setLoading] = useState(true);
 
-  async function refreshRole() {
-    const r = await getUserRole();
-    setRole(r);
+  async function loadRole(userId: string) {
+    // profiles_select_own policy allows user to read their own role
+    const { data, error } = await supabaseBrowser
+      .from("profiles")
+      .select("role")
+      .eq("id", userId)
+      .single();
+
+    if (error || !data?.role) return null;
+    return data.role as UserRole;
   }
 
   useEffect(() => {
-    let mounted = true;
+    let alive = true;
 
-    supabase.auth.getSession().then(async ({ data }) => {
-      if (!mounted) return;
-      setUser((data.session?.user as any) ?? null);
+    async function boot() {
+      try {
+        const { data } = await supabaseBrowser.auth.getSession();
+        if (!alive) return;
+
+        const u = data.session?.user;
+        if (!u) {
+          setUser(null);
+          setRole(null);
+          return;
+        }
+
+        setUser({ id: u.id, email: u.email });
+        const r = await loadRole(u.id);
+        if (!alive) return;
+        setRole(r);
+      } finally {
+        // ✅ Always end loading even if something failed
+        if (alive) setLoading(false);
+      }
+    }
+
+    boot();
+
+    const { data: sub } = supabaseBrowser.auth.onAuthStateChange(async (_event, session) => {
+      if (!alive) return;
+
+      const u = session?.user;
+      if (!u) {
+        setUser(null);
+        setRole(null);
+        setLoading(false);
+        return;
+      }
+
+      setUser({ id: u.id, email: u.email });
+      const r = await loadRole(u.id);
+      if (!alive) return;
+      setRole(r);
       setLoading(false);
-
-      if (data.session?.user) {
-        await refreshRole();
-      } else {
-        setRole(null);
-      }
-    });
-
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      if (!mounted) return;
-      setUser((session?.user as any) ?? null);
-
-      if (session?.user) {
-        await refreshRole();
-      } else {
-        setRole(null);
-      }
     });
 
     return () => {
-      mounted = false;
+      alive = false;
       sub.subscription.unsubscribe();
     };
   }, []);
@@ -89,6 +116,7 @@ export default function Navbar() {
             View cars
           </Link>
 
+          {/* While loading, show nothing extra (optional: skeleton) */}
           {!loading && !isLoggedIn && (
             <>
               <Link href="/login" className="btn btn-outline">
@@ -102,19 +130,16 @@ export default function Navbar() {
 
           {!loading && isLoggedIn && (
             <>
-              {/* Everyone gets dashboard */}
               <Link href="/dashboard" className="btn btn-outline">
                 Dashboard
               </Link>
 
-              {/* Only admin sees Admin */}
               {role === "admin" && (
                 <Link href="/admin" className="btn btn-outline">
                   Admin
                 </Link>
               )}
 
-              {/* Only driver sees Driver */}
               {role === "driver" && (
                 <Link href="/driver" className="btn btn-outline">
                   Driver
@@ -123,7 +148,7 @@ export default function Navbar() {
 
               <button
                 onClick={async () => {
-                  await supabase.auth.signOut();
+                  await supabaseBrowser.auth.signOut();
                   window.location.assign("/");
                 }}
                 className="btn btn-primary"
