@@ -1,3 +1,4 @@
+// app/dashboard/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -6,12 +7,14 @@ import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
 type UserRole = "admin" | "driver" | "customer";
 
-export default function DashboardRouter() {
+export default function DashboardPage() {
   const router = useRouter();
   const [msg, setMsg] = useState("Loading dashboard…");
 
   useEffect(() => {
-    async function route() {
+    let alive = true;
+
+    async function go() {
       const { data } = await supabaseBrowser.auth.getSession();
       const session = data.session;
 
@@ -26,8 +29,10 @@ export default function DashboardRouter() {
         .eq("id", session.user.id)
         .single();
 
+      if (!alive) return;
+
       if (error) {
-        setMsg(`Failed to load role from profiles: ${error.message}`);
+        setMsg(`Failed to load your role: ${error.message}`);
         return;
       }
 
@@ -38,7 +43,10 @@ export default function DashboardRouter() {
       else router.replace("/dashboard/home");
     }
 
-    route().catch((e) => setMsg(e?.message || "Failed to load dashboard."));
+    go();
+    return () => {
+      alive = false;
+    };
   }, [router]);
 
   return <p style={{ padding: 24 }}>{msg}</p>;
