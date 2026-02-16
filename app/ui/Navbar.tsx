@@ -3,25 +3,25 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
 export type UserRole = "admin" | "driver" | "customer";
-
 type SessionUser = { email?: string | null; id: string };
 
 export default function Navbar() {
   const [user, setUser] = useState<SessionUser | null>(null);
-  const [role, setRole] = useState<UserRole | null>(null);
+  const [role, setRole] = useState<UserRole>("customer");
   const [loading, setLoading] = useState(true);
 
-  async function loadRole(userId: string) {
-    const { data, error } = await supabase
+  async function loadRole(userId: string): Promise<UserRole> {
+    const { data, error } = await supabaseBrowser
       .from("profiles")
       .select("role")
       .eq("id", userId)
       .single();
 
-    if (error || !data?.role) return null;
+    // if profile doesn't exist yet, default to customer
+    if (error || !data?.role) return "customer";
     return data.role as UserRole;
   }
 
@@ -30,13 +30,13 @@ export default function Navbar() {
 
     async function boot() {
       try {
-        const { data } = await supabase.auth.getSession();
+        const { data } = await supabaseBrowser.auth.getSession();
         if (!alive) return;
 
         const u = data.session?.user;
         if (!u) {
           setUser(null);
-          setRole(null);
+          setRole("customer");
           return;
         }
 
@@ -51,13 +51,13 @@ export default function Navbar() {
 
     boot();
 
-    const { data: sub } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: sub } = supabaseBrowser.auth.onAuthStateChange(async (_event, session) => {
       if (!alive) return;
 
       const u = session?.user;
       if (!u) {
         setUser(null);
-        setRole(null);
+        setRole("customer");
         setLoading(false);
         return;
       }
@@ -145,7 +145,7 @@ export default function Navbar() {
 
               <button
                 onClick={async () => {
-                  await supabase.auth.signOut();
+                  await supabaseBrowser.auth.signOut();
                   window.location.assign("/");
                 }}
                 className="btn btn-primary"

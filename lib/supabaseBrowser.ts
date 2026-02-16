@@ -1,3 +1,4 @@
+// lib/supabaseBrowser.ts
 "use client";
 
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
