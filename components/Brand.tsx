@@ -1,50 +1,42 @@
 import Link from "next/link";
 
-type Role = "customer" | "driver" | "admin";
-
-const ROLE_COLORS: Record<Role, string> = {
-  customer: "#2563eb",
-  driver: "#16a34a",
-  admin: "#7c3aed",
-};
-
 export default function Brand({
-  href = "/",
+  href,
   role,
 }: {
-  href?: string;
-  role?: Role;
+  href: string;
+  role?: "admin" | "driver" | "customer" | string;
 }) {
-  return (
-    <Link
-      href={href}
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 10,
-        textDecoration: "none",
-        color: "#111",
-      }}
-    >
-      <span style={{ fontSize: 20, fontWeight: 650 }}>
-        Couranr
-        <span style={{ color: "#2563eb", fontSize: 22, marginLeft: 4 }}>•</span>
-      </span>
+  const badge =
+    role === "admin" ? "Admin" : role === "driver" ? "Driver" : role ? role : null;
 
-      {role && (
-        <span
+  return (
+    <Link href={href} style={{ textDecoration: "none", color: "#111" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div
           style={{
-            fontSize: 12,
-            fontWeight: 600,
-            padding: "4px 10px",
-            borderRadius: 999,
-            background: ROLE_COLORS[role],
+            width: 40,
+            height: 40,
+            borderRadius: 12,
+            background: "#111827",
             color: "#fff",
+            display: "grid",
+            placeItems: "center",
+            fontWeight: 900,
           }}
         >
-          {role.charAt(0).toUpperCase() + role.slice(1)}
-        </span>
-      )}
+          C
+        </div>
+
+        <div style={{ lineHeight: 1.1 }}>
+          <div style={{ fontWeight: 900 }}>Couranr</div>
+          {badge && (
+            <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 800 }}>
+              {badge}
+            </div>
+          )}
+        </div>
+      </div>
     </Link>
   );
 }
