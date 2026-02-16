@@ -2,18 +2,13 @@ import Link from "next/link";
 import Brand from "@/components/Brand";
 import LogoutButton from "@/components/LogoutButton";
 
-export default function AdminLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
     <section>
       <header
         style={{
           borderBottom: "3px solid #7c3aed",
-          background:
-            "linear-gradient(180deg, rgba(124,58,237,0.12), #ffffff 60%)",
+          background: "linear-gradient(180deg, rgba(124,58,237,0.12), #ffffff 60%)",
         }}
       >
         <div
@@ -29,27 +24,17 @@ export default function AdminLayout({
         >
           <Brand href="/admin" role="admin" />
 
-          <nav style={{ display: "flex", gap: 14 }}>
-            <Link href="/admin" style={navLink}>
-              🚚 Deliveries
-            </Link>
-            <Link href="/admin/auto" style={navLink}>
-              🚗 Auto Rentals
-            </Link>
-            <span style={{ opacity: 0.4 }}>📄 Docs</span>
+          <nav style={{ display: "flex", gap: 14, alignItems: "center" }}>
+            <Link href="/admin" style={navLink}>🚚 Deliveries</Link>
+            <Link href="/admin/auto" style={navLink}>🚗 Auto Rentals</Link>
+            <Link href="/admin/courier" style={navLink}>📦 Courier</Link>
           </nav>
 
           <LogoutButton />
         </div>
       </header>
 
-      <main
-        style={{
-          maxWidth: 1200,
-          margin: "0 auto",
-          padding: "28px 24px",
-        }}
-      >
+      <main style={{ maxWidth: 1200, margin: "0 auto", padding: "28px 24px" }}>
         {children}
       </main>
     </section>
