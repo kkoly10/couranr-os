@@ -1,10 +1,10 @@
 import Link from "next/link";
 
 export default function Brand({
-  href,
+  href = "/",
   role,
 }: {
-  href: string;
+  href?: string;
   role?: "admin" | "driver" | "customer" | string;
 }) {
   const badge =
