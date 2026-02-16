@@ -1,24 +1,21 @@
 "use client";
 
-import { supabase } from "../lib/supabaseClient";
-import { useRouter } from "next/navigation";
+import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
 export default function LogoutButton() {
-  const router = useRouter();
-
-  async function handleLogout() {
-    await supabase.auth.signOut();
-    router.push("/login");
-    router.refresh();
-  }
-
   return (
     <button
-      onClick={handleLogout}
+      onClick={async () => {
+        await supabaseBrowser.auth.signOut();
+        window.location.assign("/");
+      }}
       style={{
-        padding: "8px 12px",
-        borderRadius: 6,
-        border: "1px solid #ccc",
+        padding: "10px 14px",
+        borderRadius: 10,
+        border: "1px solid #d1d5db",
+        background: "#111827",
+        color: "#fff",
+        fontWeight: 800,
         cursor: "pointer",
       }}
     >
