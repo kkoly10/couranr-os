@@ -10,53 +10,137 @@ type Delivery = {
   recipient_name: string;
   pickup_address: { address_line: string };
   dropoff_address: { address_line: string };
+  created_at?: string;
 };
 
 export default function DriverDeliveriesPage() {
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
   const router = useRouter();
 
   useEffect(() => {
+    let mounted = true;
+
     async function init() {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      try {
+        setLoading(true);
+        setError(null);
 
-      if (!user) {
-        router.push("/login");
-        return;
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+
+        if (!session) {
+          router.push("/login?next=/driver/deliveries");
+          return;
+        }
+
+        // Optional: quick client-side role guard (server already guards too)
+        const { data: profile, error: pErr } = await supabase
+          .from("profiles")
+          .select("role")
+          .eq("id", session.user.id)
+          .single();
+
+        if (pErr) throw new Error(pErr.message);
+
+        if (profile?.role !== "driver") {
+          router.push("/");
+          return;
+        }
+
+        const res = await fetch("/api/driver/my-deliveries", {
+          headers: {
+            Authorization: `Bearer ${session.access_token}`,
+          },
+        });
+
+        const json = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          throw new Error(json?.error || `Failed to load deliveries (${res.status})`);
+        }
+
+        if (!mounted) return;
+        setDeliveries(json.deliveries || []);
+      } catch (e: any) {
+        if (!mounted) return;
+        setError(e?.message || "Failed to load deliveries");
+        setDeliveries([]);
+      } finally {
+        if (!mounted) return;
+        setLoading(false);
       }
-
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .single();
-
-      if (profile?.role !== "driver") {
-        router.push("/");
-        return;
-      }
-
-      const res = await fetch("/api/driver/my-deliveries");
-      const data = await res.json();
-      setDeliveries(data.deliveries || []);
-      setLoading(false);
     }
 
     init();
+    return () => {
+      mounted = false;
+    };
   }, [router]);
 
-  if (loading) return <p>Loading deliveries…</p>;
+  async function startDelivery(deliveryId: string) {
+    try {
+      setError(null);
 
-  if (!deliveries.length) {
-    return <p>No assigned deliveries.</p>;
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (!session) {
+        router.push("/login?next=/driver/deliveries");
+        return;
+      }
+
+      const res = await fetch("/api/delivery/mark-in-transit", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ deliveryId }),
+      });
+
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.error || "Failed to start delivery");
+      }
+
+      // Reload
+      const reload = await fetch("/api/driver/my-deliveries", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const reloadJson = await reload.json().catch(() => ({}));
+      setDeliveries(reloadJson.deliveries || []);
+    } catch (e: any) {
+      setError(e?.message || "Failed to start delivery");
+    }
   }
+
+  if (loading) return <p style={{ padding: 24 }}>Loading deliveries…</p>;
 
   return (
     <div style={{ padding: 24 }}>
       <h1>My Deliveries</h1>
+
+      {error && (
+        <div
+          style={{
+            marginTop: 12,
+            marginBottom: 12,
+            padding: 12,
+            borderRadius: 10,
+            border: "1px solid #fecaca",
+            background: "#fff1f2",
+          }}
+        >
+          <strong>Error:</strong> {error}
+        </div>
+      )}
+
+      {!deliveries.length && !error && <p>No assigned deliveries.</p>}
 
       {deliveries.map((d) => (
         <div
@@ -68,23 +152,21 @@ export default function DriverDeliveriesPage() {
             borderRadius: 8,
           }}
         >
-          <p><strong>Status:</strong> {d.status}</p>
-          <p><strong>Recipient:</strong> {d.recipient_name}</p>
-          <p><strong>Pickup:</strong> {d.pickup_address.address_line}</p>
-          <p><strong>Dropoff:</strong> {d.dropoff_address.address_line}</p>
+          <p>
+            <strong>Status:</strong> {d.status}
+          </p>
+          <p>
+            <strong>Recipient:</strong> {d.recipient_name}
+          </p>
+          <p>
+            <strong>Pickup:</strong> {d.pickup_address?.address_line ?? "—"}
+          </p>
+          <p>
+            <strong>Dropoff:</strong> {d.dropoff_address?.address_line ?? "—"}
+          </p>
 
           {d.status === "assigned" && (
-            <button
-              onClick={() =>
-                fetch("/api/delivery/mark-in-transit", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ deliveryId: d.id }),
-                }).then(() => location.reload())
-              }
-            >
-              Start Delivery
-            </button>
+            <button onClick={() => startDelivery(d.id)}>Start Delivery</button>
           )}
         </div>
       ))}
