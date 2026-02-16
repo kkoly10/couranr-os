@@ -1,5 +1,5 @@
-import Brand from "../../components/Brand";
-import LogoutButton from "../../components/LogoutButton";
+import Brand from "@/components/Brand";
+import LogoutButton from "@/components/LogoutButton";
 
 export default function DriverLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -7,8 +7,7 @@ export default function DriverLayout({ children }: { children: React.ReactNode }
       <header
         style={{
           borderBottom: "3px solid #16a34a",
-          background:
-            "linear-gradient(180deg, rgba(22,163,74,0.12), #ffffff 60%)",
+          background: "linear-gradient(180deg, rgba(22,163,74,0.12), #ffffff 60%)",
         }}
       >
         <div
@@ -18,6 +17,8 @@ export default function DriverLayout({ children }: { children: React.ReactNode }
             padding: "18px 24px",
             display: "flex",
             justifyContent: "space-between",
+            alignItems: "center",
+            gap: 12,
           }}
         >
           <Brand href="/driver" role="driver" />
