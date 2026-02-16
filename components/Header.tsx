@@ -1,18 +1,31 @@
+// components/Header.tsx
 "use client";
 
 import Link from "next/link";
-import { supabase } from "../lib/supabaseClient";
 import { useEffect, useState } from "react";
 import Brand from "./Brand";
 import LogoutButton from "./LogoutButton";
+import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
 export default function Header() {
-  const [isAuthed, setIsAuthed] = useState<boolean>(false);
+  const [isAuthed, setIsAuthed] = useState(false);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
-      setIsAuthed(!!data.user);
+    let mounted = true;
+
+    supabaseBrowser.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      setIsAuthed(!!data.session?.user);
     });
+
+    const { data: sub } = supabaseBrowser.auth.onAuthStateChange((_event, session) => {
+      setIsAuthed(!!session?.user);
+    });
+
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
   }, []);
 
   return (
@@ -36,14 +49,13 @@ export default function Header() {
           alignItems: "center",
         }}
       >
-        <Brand />
+        <Brand href="/" />
 
         <nav style={{ display: "flex", gap: 18, alignItems: "center" }}>
           <Link href="/courier">Courier</Link>
-          <Link href="/docs">Docs</Link>
           <Link href="/auto">Auto</Link>
 
-          {!isAuthed && <Link href="/login">Login</Link>}
+          {!isAuthed && <Link href="/login">Log in</Link>}
           {isAuthed && <LogoutButton />}
         </nav>
       </div>
