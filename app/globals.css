@@ -3,12 +3,14 @@
 /* ===== RESET ===== */
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
+img { max-width: 100%; display: block; }
+a { color: inherit; }
 
 /* ===== THEME ===== */
 :root{
   --bg: #0b1220;
-  --surface: rgba(255,255,255,0.85);
-  --surface2: rgba(255,255,255,0.72);
+  --surface: rgba(255,255,255,0.92);
+  --surface2: rgba(255,255,255,0.78);
   --text: #0f172a;
   --muted: #475569;
   --border: rgba(15,23,42,0.10);
@@ -28,7 +30,6 @@ body{
 a, button, .interactiveCard{
   transition: transform 160ms ease, box-shadow 160ms ease, opacity 160ms ease, background 160ms ease, border-color 160ms ease;
 }
-
 @media (prefers-reduced-motion: reduce) {
   a, button, .interactiveCard { transition: none; }
   .bgGlow { animation: none !important; }
@@ -38,7 +39,7 @@ a, button, .interactiveCard{
 .home{
   max-width: 1100px;
   margin: 0 auto;
-  padding: 72px 24px 56px;
+  padding: 72px 24px 72px;
   position: relative;
 }
 
@@ -47,9 +48,10 @@ a, button, .interactiveCard{
   position: absolute;
   inset: -140px -80px auto -80px;
   height: 420px;
-  background: radial-gradient(closest-side at 30% 40%, rgba(124,58,237,0.30), transparent 70%),
-              radial-gradient(closest-side at 70% 20%, rgba(59,130,246,0.22), transparent 70%),
-              radial-gradient(closest-side at 55% 80%, rgba(16,185,129,0.18), transparent 70%);
+  background:
+    radial-gradient(closest-side at 30% 40%, rgba(124,58,237,0.30), transparent 70%),
+    radial-gradient(closest-side at 70% 20%, rgba(59,130,246,0.22), transparent 70%),
+    radial-gradient(closest-side at 55% 80%, rgba(16,185,129,0.18), transparent 70%);
   filter: blur(18px);
   opacity: 0.9;
   pointer-events: none;
@@ -110,7 +112,6 @@ a, button, .interactiveCard{
 .heroTitleSub{
   font-size: 16px;
   font-weight: 800;
-  letter-spacing: 0;
   color: rgba(15,23,42,0.70);
 }
 
@@ -149,7 +150,6 @@ a, button, .interactiveCard{
   color: #fff;
   box-shadow: 0 10px 22px rgba(17,24,39,0.18);
 }
-
 .btnPrimary:hover{
   transform: translateY(-2px);
   box-shadow: 0 16px 34px rgba(17,24,39,0.22);
@@ -160,18 +160,16 @@ a, button, .interactiveCard{
   color: #111827;
   border-color: rgba(17,24,39,0.18);
 }
-
 .btnSecondary:hover{
   transform: translateY(-2px);
   box-shadow: 0 14px 28px rgba(15,23,42,0.12);
 }
 
 .btnGhost{
-  background: rgba(255,255,255,0.0);
+  background: transparent;
   color: #111827;
   border-color: rgba(17,24,39,0.18);
 }
-
 .btnGhost:hover{
   transform: translateY(-2px);
   background: rgba(17,24,39,0.04);
@@ -197,7 +195,6 @@ a, button, .interactiveCard{
   position: relative;
   overflow: hidden;
 }
-
 .interactiveCard::before{
   content: "";
   position: absolute;
@@ -207,12 +204,10 @@ a, button, .interactiveCard{
   transition: opacity 180ms ease;
   pointer-events: none;
 }
-
 .interactiveCard:hover{
   transform: translateY(-3px);
   box-shadow: var(--shadow2);
 }
-
 .interactiveCard:hover::before{
   opacity: 1;
 }
@@ -253,42 +248,38 @@ a, button, .interactiveCard{
   text-decoration: none;
   width: fit-content;
 }
-
 .cardCta:hover{
   transform: translateY(-2px);
   box-shadow: 0 14px 28px rgba(17,24,39,0.20);
 }
 
-.arrow{ transition: transform 160ms ease; }
-.cardCta:hover .arrow{ transform: translateX(2px); }
-
-/* ===== HOME CTA ===== */
+/* ===== PORTAL CTA ===== */
 .homeCTA{
-  margin-top: 18px;
+  margin-top: 22px;
 }
 
 .homeCTACard{
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(255,255,255,0.80));
+  box-shadow: var(--shadow);
   padding: 22px;
-  background: linear-gradient(180deg, rgba(17,24,39,0.03), rgba(255,255,255,1));
 }
 
 .homeCTATitle{
-  margin: 0 0 8px 0;
+  margin: 0;
   font-size: 20px;
   font-weight: 950;
 }
 
 .homeCTADesc{
-  margin: 0;
+  margin: 8px 0 14px;
   color: var(--muted);
-  max-width: 760px;
+  max-width: 780px;
 }
 
 .homeCTAActions{
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
-  margin-top: 14px;
 }

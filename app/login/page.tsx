@@ -1,25 +1,26 @@
+// app/login/page.tsx
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { supabase } from "../../lib/supabaseClient";
+import { useSearchParams } from "next/navigation";
+import { useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
 
 export default function LoginPage() {
-  const router = useRouter();
+  const sp = useSearchParams();
+  const next = sp.get("next") || "/dashboard";
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleLogin = async () => {
+  async function handleLogin() {
     setLoading(true);
     setError(null);
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password
-    });
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
       setError(error.message);
@@ -27,101 +28,85 @@ export default function LoginPage() {
       return;
     }
 
-    router.push("/dashboard");
-  };
+    // Hard redirect so session is definitely applied everywhere
+    window.location.assign(next);
+  }
 
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: "20px",
-        background: "var(--bg)"
-      }}
-    >
-      <div
-        className="card"
-        style={{
-          maxWidth: 420,
-          width: "100%",
-          padding: 32
-        }}
-      >
-        {/* Logo */}
-        <div style={{ marginBottom: 24 }}>
-          <Link href="/" className="logo">
-            Couranr<span className="logo-dot">.</span>
-          </Link>
+    <main className="min-h-[calc(100vh-0px)]" style={{ padding: 24 }}>
+      <div style={{ maxWidth: 520, margin: "0 auto" }}>
+        <Link href="/" style={{ fontWeight: 900, textDecoration: "none" }}>
+          Couranr
+        </Link>
+
+        <h1 style={{ marginTop: 14, marginBottom: 6, fontSize: 28, fontWeight: 900 }}>
+          Sign in
+        </h1>
+        <p style={{ marginTop: 0, color: "#475569" }}>
+          Access your portal to manage services and orders.
+        </p>
+
+        <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
+          <div>
+            <label style={{ fontWeight: 800, fontSize: 13 }}>Email</label>
+            <input
+              style={inputStyle}
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              autoComplete="email"
+            />
+          </div>
+
+          <div>
+            <label style={{ fontWeight: 800, fontSize: 13 }}>Password</label>
+            <input
+              style={inputStyle}
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              autoComplete="current-password"
+            />
+          </div>
+
+          {error && (
+            <div style={{ background: "#fef2f2", border: "1px solid #fecaca", padding: 12, borderRadius: 12, color: "#991b1b" }}>
+              {error}
+            </div>
+          )}
+
+          <button
+            onClick={handleLogin}
+            disabled={loading}
+            className="btn btnPrimary"
+            style={{ width: "100%" }}
+          >
+            {loading ? "Signing in…" : "Sign in"}
+          </button>
+
+          <p style={{ color: "#475569", marginTop: 6 }}>
+            Don’t have an account?{" "}
+            <Link href="/signup" style={{ fontWeight: 900 }}>
+              Create one
+            </Link>
+          </p>
+
+          <p style={{ fontSize: 12, color: "#64748b" }}>
+            Redirect after login: <span style={{ fontWeight: 800 }}>{next}</span>
+          </p>
         </div>
-
-        <h1 style={{ marginBottom: 8 }}>Sign in</h1>
-        <p style={{ color: "var(--muted)", marginBottom: 24 }}>
-          Access your account to manage services and orders.
-        </p>
-
-        {/* Email */}
-        <label style={{ fontSize: 14, fontWeight: 500 }}>Email</label>
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="you@example.com"
-          style={{
-            width: "100%",
-            padding: "12px 14px",
-            marginTop: 6,
-            marginBottom: 16,
-            borderRadius: 8,
-            border: "1px solid var(--border)",
-            fontSize: 14
-          }}
-        />
-
-        {/* Password */}
-        <label style={{ fontSize: 14, fontWeight: 500 }}>Password</label>
-        <input
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="••••••••"
-          style={{
-            width: "100%",
-            padding: "12px 14px",
-            marginTop: 6,
-            marginBottom: 20,
-            borderRadius: 8,
-            border: "1px solid var(--border)",
-            fontSize: 14
-          }}
-        />
-
-        {error && (
-          <p style={{ color: "#dc2626", marginBottom: 16 }}>{error}</p>
-        )}
-
-        <button
-          onClick={handleLogin}
-          disabled={loading}
-          style={{ width: "100%" }}
-        >
-          {loading ? "Signing in…" : "Sign in"}
-        </button>
-
-        <p
-          style={{
-            marginTop: 20,
-            fontSize: 14,
-            color: "var(--muted)"
-          }}
-        >
-          Don’t have an account?{" "}
-          <Link href="/signup" style={{ color: "var(--primary)" }}>
-            Create one
-          </Link>
-        </p>
       </div>
     </main>
   );
 }
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  marginTop: 6,
+  padding: "12px 14px",
+  borderRadius: 12,
+  border: "1px solid rgba(15,23,42,0.16)",
+  outline: "none",
+};

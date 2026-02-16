@@ -1,73 +1,110 @@
+// app/signup/page.tsx
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
-import { supabase } from "../../lib/supabaseClient";
+import { supabase } from "@/lib/supabaseClient";
 
 export default function SignupPage() {
   const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
-  const handleSignup = async () => {
+  async function handleSignup() {
     setLoading(true);
     setMessage(null);
 
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      phone,
       options: {
-        data: {
-          role: "customer",
-          marketing_opt_in: true
-        }
-      }
+        data: { role: "customer" },
+      },
     });
 
     if (error) {
       setMessage(error.message);
-    } else {
-      setMessage(
-        "Account created. Please check your email and phone to verify your account."
-      );
+      setLoading(false);
+      return;
     }
 
+    setMessage("Account created. Check your email to verify, then sign in.");
     setLoading(false);
-  };
+  }
 
   return (
-    <main style={{ maxWidth: 420, margin: "60px auto" }}>
-      <h1>Create your Couranr account</h1>
+    <main className="min-h-[calc(100vh-0px)]" style={{ padding: 24 }}>
+      <div style={{ maxWidth: 520, margin: "0 auto" }}>
+        <Link href="/" style={{ fontWeight: 900, textDecoration: "none" }}>
+          Couranr
+        </Link>
 
-      <input
-        placeholder="Email"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        style={{ width: "100%", marginBottom: 12 }}
-      />
+        <h1 style={{ marginTop: 14, marginBottom: 6, fontSize: 28, fontWeight: 900 }}>
+          Create account
+        </h1>
+        <p style={{ marginTop: 0, color: "#475569" }}>
+          Start with rentals today. Delivery coming soon.
+        </p>
 
-      <input
-        placeholder="Phone (e.g. +15551234567)"
-        value={phone}
-        onChange={(e) => setPhone(e.target.value)}
-        style={{ width: "100%", marginBottom: 12 }}
-      />
+        <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
+          <div>
+            <label style={{ fontWeight: 800, fontSize: 13 }}>Email</label>
+            <input
+              style={inputStyle}
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              autoComplete="email"
+            />
+          </div>
 
-      <input
-        type="password"
-        placeholder="Password (min 8 characters)"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-        style={{ width: "100%", marginBottom: 12 }}
-      />
+          <div>
+            <label style={{ fontWeight: 800, fontSize: 13 }}>Password</label>
+            <input
+              style={inputStyle}
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Minimum 8 characters"
+              autoComplete="new-password"
+            />
+          </div>
 
-      <button onClick={handleSignup} disabled={loading}>
-        {loading ? "Creating account..." : "Sign up"}
-      </button>
+          <button
+            onClick={handleSignup}
+            disabled={loading}
+            className="btn btnPrimary"
+            style={{ width: "100%" }}
+          >
+            {loading ? "Creating…" : "Sign up"}
+          </button>
 
-      {message && <p style={{ marginTop: 20 }}>{message}</p>}
+          {message && (
+            <div style={{ background: "#f8fafc", border: "1px solid rgba(15,23,42,0.12)", padding: 12, borderRadius: 12 }}>
+              {message}
+            </div>
+          )}
+
+          <p style={{ color: "#475569", marginTop: 6 }}>
+            Already have an account?{" "}
+            <Link href="/login" style={{ fontWeight: 900 }}>
+              Sign in
+            </Link>
+          </p>
+        </div>
+      </div>
     </main>
   );
 }
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  marginTop: 6,
+  padding: "12px 14px",
+  borderRadius: 12,
+  border: "1px solid rgba(15,23,42,0.16)",
+  outline: "none",
+};
