@@ -1,17 +1,13 @@
-// app/login/LoginForm.tsx
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import { useSearchParams } from "next/navigation";
+import { supabaseBrowser } from "@/lib/supabaseBrowser";
 
 export default function LoginForm() {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const supabase = useMemo(() => createClientComponentClient(), []);
-
-  const redirectTo = searchParams.get("redirect") || "/dashboard";
+  const next = searchParams.get("next") || "/dashboard";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -24,7 +20,7 @@ export default function LoginForm() {
     setError(null);
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabaseBrowser.auth.signInWithPassword({
         email,
         password,
       });
@@ -35,17 +31,14 @@ export default function LoginForm() {
         return;
       }
 
-      // If the session isn't present, middleware will keep bouncing you.
       if (!data.session) {
-        setError("Signed in, but no session was created. Check Supabase env vars and auth settings.");
+        setError("Signed in, but no session was created.");
         setLoading(false);
         return;
       }
 
-      // Refresh server components + go to destination
-      router.replace(redirectTo);
-      router.refresh();
-      setLoading(false);
+      // Hard redirect ensures session cookie is definitely applied everywhere
+      window.location.assign(next);
     } catch (e: any) {
       setError(e?.message || "Login failed. Please try again.");
       setLoading(false);
@@ -53,81 +46,64 @@ export default function LoginForm() {
   };
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-white">
-      <div className="mx-auto max-w-6xl px-6 py-14">
-        <div className="mb-10">
-          <Link href="/" className="inline-flex items-center gap-2 text-white font-semibold">
-            <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/15">
-              C
-            </span>
-            <span className="tracking-tight">Couranr OS</span>
-          </Link>
-        </div>
-
-        <div className="mx-auto max-w-md">
-          <div className="rounded-2xl bg-white/5 ring-1 ring-white/10 shadow-[0_0_0_1px_rgba(255,255,255,0.06)]">
-            <div className="p-7">
-              <h1 className="text-2xl font-semibold tracking-tight">Sign in</h1>
-              <p className="mt-2 text-sm text-white/70">
-                Access your account to manage services and orders.
-              </p>
-
-              <div className="mt-6 space-y-4">
-                <div>
-                  <label className="text-sm font-medium text-white/90">Email</label>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="you@example.com"
-                    className="mt-2 w-full rounded-xl bg-black/30 px-4 py-3 text-sm text-white placeholder:text-white/40 ring-1 ring-white/10 focus:outline-none focus:ring-2 focus:ring-white/25"
-                    autoComplete="email"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-sm font-medium text-white/90">Password</label>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••"
-                    className="mt-2 w-full rounded-xl bg-black/30 px-4 py-3 text-sm text-white placeholder:text-white/40 ring-1 ring-white/10 focus:outline-none focus:ring-2 focus:ring-white/25"
-                    autoComplete="current-password"
-                  />
-                </div>
-
-                {error && (
-                  <div className="rounded-xl bg-red-500/10 ring-1 ring-red-500/30 px-4 py-3 text-sm text-red-200">
-                    {error}
-                  </div>
-                )}
-
-                <button
-                  onClick={handleLogin}
-                  disabled={loading}
-                  className="w-full rounded-xl bg-white text-zinc-950 py-3 text-sm font-semibold hover:bg-white/90 disabled:opacity-60 disabled:cursor-not-allowed"
-                >
-                  {loading ? "Signing in…" : "Sign in"}
-                </button>
-
-                <div className="text-sm text-white/70">
-                  Don’t have an account?{" "}
-                  <Link href="/signup" className="text-white underline underline-offset-4 hover:text-white/90">
-                    Create one
-                  </Link>
-                </div>
-
-                <div className="text-xs text-white/40">
-                  Tip: If you were redirected here, you’ll be sent back to{" "}
-                  <span className="text-white/60">{redirectTo}</span> after sign in.
-                </div>
-              </div>
-            </div>
+    <main className="min-h-[calc(100vh-140px)]">
+      <div className="c-container flex justify-center py-14">
+        <div className="w-full max-w-md rounded-3xl border bg-[var(--surface)] p-8 shadow-sm">
+          <div className="mb-6">
+            <Link href="/" className="text-sm font-extrabold text-[var(--text)]">
+              Couranr<span className="text-[var(--gold)]">•</span>
+            </Link>
+            <h1 className="mt-3 text-2xl font-extrabold text-[var(--text)]">Sign in</h1>
+            <p className="mt-1 text-sm text-[var(--muted)]">
+              Manage rentals, agreements, payments, and more.
+            </p>
           </div>
 
-          <div className="mt-6 text-center text-xs text-white/40">
-            Having trouble? Make sure Supabase env vars are set in Vercel.
+          <div className="space-y-4">
+            <div>
+              <label className="text-sm font-semibold text-[var(--text)]">Email</label>
+              <input
+                className="mt-1 w-full rounded-xl border bg-white px-4 py-3 text-sm text-[var(--text)] outline-none focus:border-[var(--gold)]"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                autoComplete="email"
+              />
+            </div>
+
+            <div>
+              <label className="text-sm font-semibold text-[var(--text)]">Password</label>
+              <input
+                className="mt-1 w-full rounded-xl border bg-white px-4 py-3 text-sm text-[var(--text)] outline-none focus:border-[var(--gold)]"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                autoComplete="current-password"
+              />
+            </div>
+
+            {error && (
+              <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {error}
+              </div>
+            )}
+
+            <button onClick={handleLogin} disabled={loading} className="btn btn-primary w-full">
+              {loading ? "Signing in…" : "Sign in"}
+            </button>
+
+            <p className="text-sm text-[var(--muted)]">
+              Don’t have an account?{" "}
+              <Link href="/signup" className="font-extrabold text-[var(--primary)] hover:underline">
+                Create one
+              </Link>
+            </p>
+
+            <p className="text-xs text-[var(--muted)]">
+              You’ll be redirected to: <span className="font-semibold">{next}</span>
+            </p>
           </div>
         </div>
       </div>
