@@ -5,7 +5,8 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Couranr",
-  description: "Local delivery, document services, and vehicle solutions — built for speed, clarity, and trust.",
+  description:
+    "Local delivery, document services, and vehicle solutions — built for speed, clarity, and trust.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -22,11 +23,23 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
               <span className="brandText">
                 <span className="brandName">Couranr</span>
-                <span className="brandTag">Auto • Courier • Docs</span>
+                <span className="brandTag">Local service OS</span>
               </span>
             </Link>
 
-            <div className="btnRow">
+            <nav className="topNav" aria-label="Primary navigation">
+              <Link className="topNavLink" href="/auto">
+                Auto
+              </Link>
+              <Link className="topNavLink" href="/courier">
+                Courier
+              </Link>
+              <Link className="topNavLink" href="/docs">
+                Docs
+              </Link>
+            </nav>
+
+            <div className="topActions">
               <Link className="btn btnGhost" href="/login">
                 Log in
               </Link>
