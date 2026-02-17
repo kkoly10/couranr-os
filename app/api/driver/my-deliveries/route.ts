@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
 
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const supabase = createRouteHandlerClient({ cookies });
 
@@ -14,7 +16,6 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  // If your RLS allows drivers to read their own deliveries, this works.
   const { data, error } = await supabase
     .from("deliveries")
     .select("*")
