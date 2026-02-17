@@ -6,7 +6,7 @@ export default function HomePage() {
     <main className="home">
       <div className="bgGlow" aria-hidden="true" />
 
-      {/* Home-only top row (NO admin links, no auth logic) */}
+      {/* Home-only top row (NO admin links) */}
       <div className="homeTop">
         <Link href="/" className="brandMini" aria-label="Couranr home">
           <span className="brandMark">
@@ -25,37 +25,75 @@ export default function HomePage() {
         </div>
       </div>
 
+      {/* HERO: 2-column like mock 1-B */}
       <header className="homeHero">
-        <div className="badgeRow">
-          <span className="badge">Local • Fast • Trusted</span>
-          <span className="badge ghost">One platform</span>
-        </div>
+        <div className="heroGrid">
+          <div>
+            <div className="badgeRow">
+              <span className="badge">Local • Fast • Trusted</span>
+              <span className="badge ghost">One platform</span>
+            </div>
 
-        <h1 className="heroTitle">
-          Couranr
-          <span className="heroTitleDot">•</span>
-          <span className="heroTitleSub">Local services powered by one OS</span>
-        </h1>
+            <h1 className="heroTitle">
+              Couranr
+              <span className="heroTitleDot">•</span>
+              <span className="heroTitleSub">Local services powered by one OS</span>
+            </h1>
 
-        <p className="heroDesc">
-          Delivery, document help, and auto services — built for speed, clarity, and trust.
-        </p>
+            <p className="heroDesc">
+              Delivery, document help, and auto services — built for speed, clarity, and trust.
+            </p>
 
-        <div className="heroActions">
-          <Link className="btn btnPrimary" href="/courier">
-            Get a delivery quote →
-          </Link>
-          <Link className="btn btnSecondary" href="/auto">
-            Browse vehicles
-          </Link>
-          <Link className="btn btnGhost" href="/signup">
-            Create account
-          </Link>
+            <div className="heroActions">
+              <Link className="btn btnPrimary" href="/courier">
+                Start a delivery →
+              </Link>
+              <Link className="btn btnSecondary" href="/auto">
+                Browse vehicles
+              </Link>
+              <Link className="btn btnGhost" href="/signup">
+                Create account
+              </Link>
+            </div>
+          </div>
+
+          <aside className="heroPanel">
+            <h3 className="heroPanelTitle">Quick start</h3>
+            <p className="heroPanelSub">
+              Pick a service. We’ll guide you through a clean flow and you can manage everything in your portal.
+            </p>
+
+            <div className="heroPanelButtons">
+              <Link className="pillBtn" href="/courier">
+                <span>Courier delivery</span>
+                <span className="pillMeta">Quote →</span>
+              </Link>
+
+              <Link className="pillBtn" href="/auto">
+                <span>Auto rentals</span>
+                <span className="pillMeta">Browse →</span>
+              </Link>
+
+              <Link className="pillBtn" href="/docs">
+                <span>Document services</span>
+                <span className="pillMeta">Coming soon →</span>
+              </Link>
+            </div>
+          </aside>
         </div>
       </header>
 
+      {/* SERVICES */}
       <section className="section">
-        <div style={{ display: "flex", alignItems: "end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "flex-end", // ✅ FIX: was "end"
+            justifyContent: "space-between",
+            gap: 16,
+            flexWrap: "wrap",
+          }}
+        >
           <div>
             <div className="kicker">What you can do</div>
             <h2 className="h2" style={{ marginTop: 10 }}>
@@ -63,18 +101,40 @@ export default function HomePage() {
             </h2>
             <p className="p">Simple flows. Clear pricing. A portal to manage everything after checkout.</p>
           </div>
+
           <Link className="btn btnSecondary" href="/signup">
             Create account
           </Link>
         </div>
 
         <div className="cardGrid">
-          <Card icon="🚚" title="Courier Delivery" description="Same-day and scheduled local deliveries with transparent pricing." href="/courier" cta="Get a quote" />
-          <Card icon="📄" title="Document Services" description="Print, scan, notarize, and deliver documents securely." href="/docs" cta="View services" />
-          <Card icon="🚗" title="Auto Services" description="Affordable rentals and fleet solutions." href="/auto" cta="Browse vehicles" />
+          <Card
+            icon="🚚"
+            title="Courier Delivery"
+            description="Same-day and scheduled local deliveries with transparent pricing."
+            href="/courier"
+            cta="Get a quote"
+          />
+
+          <Card
+            icon="📄"
+            title="Document Services"
+            description="Print, scan, notarize, and deliver documents securely."
+            href="/docs"
+            cta="View services"
+          />
+
+          <Card
+            icon="🚗"
+            title="Auto Services"
+            description="Affordable rentals and fleet solutions."
+            href="/auto"
+            cta="Browse vehicles"
+          />
         </div>
       </section>
 
+      {/* HOW IT WORKS */}
       <section className="section">
         <div className="card cardSoft">
           <div className="kicker">How it works</div>
@@ -91,7 +151,7 @@ export default function HomePage() {
             }}
           >
             <Step n="1" title="Start a request" desc="Choose Courier, Docs, or Auto and answer a few quick questions." />
-            <Step n="2" title="Confirm details" desc="Review the price and requirements. Upload anything needed." />
+            <Step n="2" title="Confirm details" desc="Review price and requirements. Upload anything needed." />
             <Step n="3" title="Track & manage" desc="Log in anytime to see status, receipts, and next steps." />
           </div>
 
@@ -106,7 +166,8 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="section" style={{ paddingBottom: 24 }}>
+      {/* FINAL CTA */}
+      <section className="section">
         <div className="card">
           <h2 className="h2">Already started something?</h2>
           <p className="p">Log in to complete verification, sign agreements, and manage orders.</p>
