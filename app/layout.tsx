@@ -13,6 +13,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="appBody">
+        {/* Public-safe top bar (NO admin links, no auth logic here) */}
         <header className="topbar">
           <div className="container topbarInner">
             <Link href="/" className="brand" aria-label="Couranr home">
@@ -23,7 +24,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
 
               <span className="brandText">
                 <span className="brandName">Couranr</span>
-                <span className="brandTag">Local service OS</span>
+                <span className="brandTag">Local services • one OS</span>
               </span>
             </Link>
 
@@ -40,10 +41,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </nav>
 
             <div className="topActions">
-              <Link className="btn btnGhost" href="/login">
+              <Link className="btn btn-ghost" href="/login">
                 Log in
               </Link>
-              <Link className="btn btnGold" href="/signup">
+              <Link className="btn btn-gold" href="/signup">
                 Create account
               </Link>
             </div>
