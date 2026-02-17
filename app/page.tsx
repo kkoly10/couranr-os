@@ -3,166 +3,98 @@ import Link from "next/link";
 
 export default function HomePage() {
   return (
-    <div className="home">
-      <div className="container">
-        {/* HERO (Option A) */}
-        <section className="section">
-          <div className="card cardSoft heroGrid">
-            <div className="heroLeft">
-              <div className="kicker">Local services, one platform</div>
+    <main className="home">
+      <div className="bgGlow" aria-hidden="true" />
 
-              <h1 className="h1" style={{ marginTop: 12 }}>
-                Move fast with Couranr
-                <span className="heroTitleAccent">.</span>
-              </h1>
+      <header className="homeHero cardSoft">
+        <div className="badgeRow">
+          <span className="badge">Local • Fast • Trusted</span>
+          <span className="badge ghost">Clean tech</span>
+        </div>
 
-              <p className="p" style={{ fontSize: 16, maxWidth: 680 }}>
-                Clean flows for courier delivery, document help, and auto services — plus a portal to track everything after checkout.
-              </p>
+        <h1 className="heroTitle">
+          Couranr
+          <span className="heroTitleDot">•</span>
+          <span className="heroTitleSub">Local services powered by one OS</span>
+        </h1>
 
-              <div className="pillRow">
-                <span className="pill pillGold">Same-day options</span>
-                <span className="pill">Clear pricing</span>
-                <span className="pill">Verified workflows</span>
-              </div>
+        <p className="heroDesc">
+          Delivery, document help, and auto services — built for speed, clarity, and trust.
+        </p>
 
-              <div className="btnRow" style={{ marginTop: 18 }}>
-                <Link className="btn btnGold" href="/courier">
-                  Get a delivery quote →
-                </Link>
-                <Link className="btn btnSoft" href="/auto">
-                  Browse vehicles
-                </Link>
-                <Link className="btn btnGhost" href="/login">
-                  Customer portal
-                </Link>
-              </div>
-            </div>
+        <div className="heroActions">
+          <Link className="btn btn-gold" href="/courier">
+            Get a delivery quote →
+          </Link>
+          <Link className="btn btn-secondary" href="/auto">
+            Browse vehicles
+          </Link>
+          <Link className="btn btn-ghost" href="/login">
+            Log in
+          </Link>
+        </div>
+      </header>
 
-            {/* Right panel (quick actions / proof) */}
-            <aside className="heroRight">
-              <div className="card cardPad" style={{ background: "rgba(255,255,255,0.92)" }}>
-                <div className="kicker">Quick start</div>
-                <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-                  <Link className="btn btnSoft" href="/courier">
-                    Courier → Quote & checkout
-                  </Link>
-                  <Link className="btn btnSoft" href="/auto">
-                    Auto → View availability
-                  </Link>
-                  <Link className="btn btnSoft" href="/docs">
-                    Docs → Services
-                  </Link>
-                </div>
-              </div>
-
-              <div className="card cardPad cardSoft">
-                <div className="kicker">Why it feels easy</div>
-                <p className="p" style={{ marginTop: 10 }}>
-                  Request → confirm → track. No clutter. No confusion.
-                </p>
-              </div>
-            </aside>
+      <section className="section">
+        <div style={{ display: "flex", alignItems: "end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+          <div>
+            <div className="kicker">What you can do</div>
+            <h2 className="h2" style={{ marginTop: 10 }}>Pick a service and move fast</h2>
+            <p className="p">Simple flows. Clear pricing. A portal to manage everything after checkout.</p>
           </div>
-        </section>
+          <Link className="btn btn-secondary" href="/signup">
+            Create account
+          </Link>
+        </div>
 
-        {/* SERVICES */}
-        <section className="section">
-          <div style={{ display: "flex", alignItems: "end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-            <div>
-              <div className="kicker">What you can do</div>
-              <h2 className="h2" style={{ marginTop: 10 }}>
-                Pick a service and move fast
-              </h2>
-              <p className="p">Simple flows. Clear requirements. A portal to manage everything after checkout.</p>
-            </div>
+        <div className="cardGrid" style={{ marginTop: 18 }}>
+          <Card icon="🚚" title="Courier Delivery" description="Same-day and scheduled local deliveries with transparent pricing." href="/courier" cta="Get a quote" />
+          <Card icon="📄" title="Document Services" description="Print, scan, notarize, and deliver documents securely." href="/docs" cta="View services" />
+          <Card icon="🚗" title="Auto Services" description="Affordable rentals and fleet solutions." href="/auto" cta="Browse vehicles" />
+        </div>
+      </section>
 
-            <Link className="btn btnSoft" href="/signup">
-              Create account
-            </Link>
+      <section className="section" style={{ paddingBottom: 72 }}>
+        <div className="card cardSoft" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 18, flexWrap: "wrap" }}>
+          <div>
+            <div className="kicker">Customer portal</div>
+            <h2 className="h2" style={{ marginTop: 10 }}>Already started something?</h2>
+            <p className="p">Log in to complete verification, sign agreements, and manage orders.</p>
           </div>
-
-          <div className="cardGrid" style={{ marginTop: 16 }}>
-            <ServiceCard
-              icon="🚚"
-              title="Courier Delivery"
-              desc="Same-day and scheduled local deliveries with transparent pricing."
-              href="/courier"
-              cta="Get a quote"
-            />
-            <ServiceCard
-              icon="📄"
-              title="Document Services"
-              desc="Print, scan, notarize, and deliver documents securely."
-              href="/docs"
-              cta="View services"
-            />
-            <ServiceCard
-              icon="🚗"
-              title="Auto Services"
-              desc="Affordable rentals and fleet solutions."
-              href="/auto"
-              cta="Browse vehicles"
-            />
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+            <Link className="btn btn-primary" href="/login">Log in</Link>
+            <Link className="btn btn-gold" href="/signup">Create account</Link>
           </div>
-        </section>
-
-        {/* HOW IT WORKS */}
-        <section className="section">
-          <div className="card cardPad cardSoft">
-            <div className="kicker">How it works</div>
-            <h2 className="h2" style={{ marginTop: 10 }}>
-              A clean flow from request → confirmation
-            </h2>
-            <p className="p">Designed to reduce back-and-forth and keep everything trackable.</p>
-
-            <div className="steps">
-              <Step n="1" title="Start a request" desc="Choose Courier, Docs, or Auto and answer a few quick questions." />
-              <Step n="2" title="Confirm details" desc="Review the price and requirements. Upload anything needed." />
-              <Step n="3" title="Track & manage" desc="Log in anytime to see status, receipts, and next steps." />
-            </div>
-
-            <div className="btnRow" style={{ marginTop: 16 }}>
-              <Link className="btn btnGold" href="/login">
-                Go to customer portal
-              </Link>
-              <Link className="btn btnGhost" href="/dashboard">
-                Open dashboard
-              </Link>
-            </div>
-          </div>
-
-          <div className="footerLite">
-            © {new Date().getFullYear()} Couranr. Built for speed, clarity, and trust.
-          </div>
-        </section>
-      </div>
-    </div>
+        </div>
+      </section>
+    </main>
   );
 }
 
-function ServiceCard({ icon, title, desc, href, cta }: { icon: string; title: string; desc: string; href: string; cta: string }) {
+function Card({
+  icon,
+  title,
+  description,
+  href,
+  cta,
+}: {
+  icon: string;
+  title: string;
+  description: string;
+  href: string;
+  cta: string;
+}) {
   return (
-    <div className="card serviceCard">
-      <div className="serviceIcon" aria-hidden="true">{icon}</div>
-      <div className="serviceTitle">{title}</div>
-      <p className="serviceDesc">{desc}</p>
+    <div className="card interactiveCard">
+      <div>
+        <div className="cardIcon" aria-hidden="true">{icon}</div>
+        <h2 className="cardTitle">{title}</h2>
+        <p className="cardDesc">{description}</p>
+      </div>
 
-      <Link className="serviceLink" href={href}>
+      <Link className="cardCta" href={href}>
         {cta} <span aria-hidden="true">→</span>
       </Link>
-    </div>
-  );
-}
-
-function Step({ n, title, desc }: { n: string; title: string; desc: string }) {
-  return (
-    <div className="card cardPad" style={{ background: "rgba(255,255,255,0.92)" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-        <span className="stepN">{n}</span>
-        <div style={{ fontWeight: 950 }}>{title}</div>
-      </div>
-      <p className="p" style={{ marginTop: 10 }}>{desc}</p>
     </div>
   );
 }
