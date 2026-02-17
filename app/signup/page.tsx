@@ -1,4 +1,3 @@
-// app/signup/page.tsx
 "use client";
 
 import Link from "next/link";
@@ -35,24 +34,28 @@ export default function SignupPage() {
   }
 
   return (
-    <main className="min-h-[calc(100vh-0px)]" style={{ padding: 24 }}>
-      <div style={{ maxWidth: 520, margin: "0 auto" }}>
-        <Link href="/" style={{ fontWeight: 900, textDecoration: "none" }}>
-          Couranr
-        </Link>
+    <main className="authWrap">
+      <div className="authCard">
+        <div className="authHeader">
+          <Link href="/" className="brand brand--center" aria-label="Couranr home">
+            <span className="brandMark" aria-hidden="true">
+              <span className="brandC">C</span>
+              <span className="brandDot">.</span>
+            </span>
+            <span className="brandName">Couranr</span>
+          </Link>
 
-        <h1 style={{ marginTop: 14, marginBottom: 6, fontSize: 28, fontWeight: 900 }}>
-          Create account
-        </h1>
-        <p style={{ marginTop: 0, color: "#475569" }}>
-          Start with rentals today. Delivery coming soon.
-        </p>
+          <h1 className="authTitle">Create account</h1>
+          <p className="authSub">Create your portal login to manage orders and bookings.</p>
+        </div>
 
-        <div style={{ marginTop: 16, display: "grid", gap: 12 }}>
-          <div>
-            <label style={{ fontWeight: 800, fontSize: 13 }}>Email</label>
+        {message && <div className="authNotice">{message}</div>}
+
+        <div className="authForm">
+          <div className="field">
+            <label className="label">Email</label>
             <input
-              style={inputStyle}
+              className="input"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -61,10 +64,10 @@ export default function SignupPage() {
             />
           </div>
 
-          <div>
-            <label style={{ fontWeight: 800, fontSize: 13 }}>Password</label>
+          <div className="field">
+            <label className="label">Password</label>
             <input
-              style={inputStyle}
+              className="input"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -73,38 +76,26 @@ export default function SignupPage() {
             />
           </div>
 
-          <button
-            onClick={handleSignup}
-            disabled={loading}
-            className="btn btnPrimary"
-            style={{ width: "100%" }}
-          >
+          <button onClick={handleSignup} disabled={loading} className="btn btn-gold" style={{ width: "100%" }}>
             {loading ? "Creating…" : "Sign up"}
           </button>
 
-          {message && (
-            <div style={{ background: "#f8fafc", border: "1px solid rgba(15,23,42,0.12)", padding: 12, borderRadius: 12 }}>
-              {message}
-            </div>
-          )}
+          <div className="authMeta">
+            <span>
+              Already have an account?{" "}
+              <Link className="authLink" href="/login">
+                Sign in
+              </Link>
+            </span>
+          </div>
 
-          <p style={{ color: "#475569", marginTop: 6 }}>
-            Already have an account?{" "}
-            <Link href="/login" style={{ fontWeight: 900 }}>
-              Sign in
+          <div className="authBack">
+            <Link className="btn btn-outline" href="/">
+              Back home
             </Link>
-          </p>
+          </div>
         </div>
       </div>
     </main>
   );
 }
-
-const inputStyle: React.CSSProperties = {
-  width: "100%",
-  marginTop: 6,
-  padding: "12px 14px",
-  borderRadius: 12,
-  border: "1px solid rgba(15,23,42,0.16)",
-  outline: "none",
-};
