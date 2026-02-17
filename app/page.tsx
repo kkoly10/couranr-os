@@ -3,98 +3,203 @@ import Link from "next/link";
 
 export default function HomePage() {
   return (
-    <main className="home">
-      <div className="bgGlow" aria-hidden="true" />
+    <div className="home">
+      <div className="homeBackdrop" aria-hidden="true" />
 
-      <header className="homeHero cardSoft">
-        <div className="badgeRow">
-          <span className="badge">Local • Fast • Trusted</span>
-          <span className="badge ghost">Clean tech</span>
+      <section className="hero">
+        <div className="container">
+          <div className="heroGrid">
+            <div className="heroLeft">
+              <div className="pillRow">
+                <span className="pill">Auto • Fast • Trusted</span>
+                <span className="pill ghost">One platform</span>
+              </div>
+
+              <h1 className="heroTitle">
+                Local services powered by one OS
+              </h1>
+
+              <p className="heroDesc">
+                Delivery, document help, and auto services — built for speed, clarity, and trust.
+              </p>
+
+              <div className="heroActions">
+                <Link className="btn btnPrimary" href="/courier">
+                  Get a delivery quote
+                </Link>
+                <Link className="btn btnSecondary" href="/auto">
+                  Browse vehicles
+                </Link>
+                <Link className="btn btnGhost" href="/docs">
+                  Document services
+                </Link>
+              </div>
+
+              <div className="microTrust">
+                <span className="microItem">Clear pricing</span>
+                <span className="microDot">•</span>
+                <span className="microItem">Fast flow</span>
+                <span className="microDot">•</span>
+                <span className="microItem">Manage in one portal</span>
+              </div>
+            </div>
+
+            <aside className="quickCard">
+              <div className="quickTitle">Quick start</div>
+              <p className="quickDesc">
+                Pick a service and move fast. It’s simple to confirm details and track progress.
+              </p>
+
+              <div className="quickLinks">
+                <Link className="quickLink" href="/courier">
+                  <span className="quickIcon" aria-hidden="true">🚚</span>
+                  <span className="quickText">Courier delivery</span>
+                  <span className="quickArrow" aria-hidden="true">›</span>
+                </Link>
+
+                <Link className="quickLink" href="/auto">
+                  <span className="quickIcon" aria-hidden="true">🚗</span>
+                  <span className="quickText">Auto rentals</span>
+                  <span className="quickArrow" aria-hidden="true">›</span>
+                </Link>
+
+                <Link className="quickLink" href="/docs">
+                  <span className="quickIcon" aria-hidden="true">📄</span>
+                  <span className="quickText">
+                    Document services <span className="quickSoon">Coming soon</span>
+                  </span>
+                  <span className="quickArrow" aria-hidden="true">›</span>
+                </Link>
+              </div>
+            </aside>
+          </div>
         </div>
-
-        <h1 className="heroTitle">
-          Couranr
-          <span className="heroTitleDot">•</span>
-          <span className="heroTitleSub">Local services powered by one OS</span>
-        </h1>
-
-        <p className="heroDesc">
-          Delivery, document help, and auto services — built for speed, clarity, and trust.
-        </p>
-
-        <div className="heroActions">
-          <Link className="btn btn-gold" href="/courier">
-            Get a delivery quote →
-          </Link>
-          <Link className="btn btn-secondary" href="/auto">
-            Browse vehicles
-          </Link>
-          <Link className="btn btn-ghost" href="/login">
-            Log in
-          </Link>
-        </div>
-      </header>
+      </section>
 
       <section className="section">
-        <div style={{ display: "flex", alignItems: "end", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-          <div>
-            <div className="kicker">What you can do</div>
-            <h2 className="h2" style={{ marginTop: 10 }}>Pick a service and move fast</h2>
-            <p className="p">Simple flows. Clear pricing. A portal to manage everything after checkout.</p>
-          </div>
-          <Link className="btn btn-secondary" href="/signup">
-            Create account
-          </Link>
-        </div>
+        <div className="container">
+          <div className="sectionHead">
+            <div>
+              <div className="kicker">Services</div>
+              <h2 className="h2">Pick what you need</h2>
+              <p className="p">
+                Simple flows. Clear pricing. Track everything after checkout.
+              </p>
+            </div>
 
-        <div className="cardGrid" style={{ marginTop: 18 }}>
-          <Card icon="🚚" title="Courier Delivery" description="Same-day and scheduled local deliveries with transparent pricing." href="/courier" cta="Get a quote" />
-          <Card icon="📄" title="Document Services" description="Print, scan, notarize, and deliver documents securely." href="/docs" cta="View services" />
-          <Card icon="🚗" title="Auto Services" description="Affordable rentals and fleet solutions." href="/auto" cta="Browse vehicles" />
+            <Link className="btn btnSecondary" href="/signup">
+              Create account
+            </Link>
+          </div>
+
+          <div className="serviceGrid">
+            <ServiceCard
+              icon="🚚"
+              title="Courier Delivery"
+              desc="Same-day and scheduled local deliveries with transparent pricing."
+              href="/courier"
+              cta="Get a quote"
+            />
+            <ServiceCard
+              icon="📄"
+              title="Document Services"
+              desc="Print, scan, notarize, and deliver important documents securely."
+              href="/docs"
+              cta="View services"
+            />
+            <ServiceCard
+              icon="🚗"
+              title="Auto Services"
+              desc="Affordable rentals and fleet solutions for work and personal needs."
+              href="/auto"
+              cta="Browse vehicles"
+            />
+          </div>
         </div>
       </section>
 
-      <section className="section" style={{ paddingBottom: 72 }}>
-        <div className="card cardSoft" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 18, flexWrap: "wrap" }}>
-          <div>
-            <div className="kicker">Customer portal</div>
-            <h2 className="h2" style={{ marginTop: 10 }}>Already started something?</h2>
-            <p className="p">Log in to complete verification, sign agreements, and manage orders.</p>
-          </div>
-          <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-            <Link className="btn btn-primary" href="/login">Log in</Link>
-            <Link className="btn btn-gold" href="/signup">Create account</Link>
+      <section className="section">
+        <div className="container">
+          <div className="howCard">
+            <div className="kicker">How it works</div>
+            <h2 className="h2">Request → confirm → track</h2>
+
+            <div className="steps">
+              <Step n="1" title="Start a request" desc="Choose Courier, Docs, or Auto and answer a few quick questions." />
+              <Step n="2" title="Confirm details" desc="Review price and requirements. Upload anything needed." />
+              <Step n="3" title="Track & manage" desc="See status, receipts, and next steps in one place." />
+            </div>
+
+            <div className="howActions">
+              <Link className="btn btnPrimary" href="/courier">
+                Start with Courier
+              </Link>
+              <Link className="btn btnGhost" href="/auto">
+                Or browse Auto
+              </Link>
+            </div>
           </div>
         </div>
       </section>
-    </main>
+
+      <section className="section sectionBottom">
+        <div className="container">
+          <div className="finalCta">
+            <div>
+              <h2 className="h2">Ready to start?</h2>
+              <p className="p">Create an account to save progress and manage everything in one portal.</p>
+            </div>
+            <div className="finalActions">
+              <Link className="btn btnPrimary" href="/signup">
+                Create account
+              </Link>
+              <Link className="btn btnSecondary" href="/courier">
+                Get a quote
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
   );
 }
 
-function Card({
+function ServiceCard({
   icon,
   title,
-  description,
+  desc,
   href,
   cta,
 }: {
   icon: string;
   title: string;
-  description: string;
+  desc: string;
   href: string;
   cta: string;
 }) {
   return (
     <div className="card interactiveCard">
-      <div>
+      <div className="cardTop">
         <div className="cardIcon" aria-hidden="true">{icon}</div>
-        <h2 className="cardTitle">{title}</h2>
-        <p className="cardDesc">{description}</p>
+        <h3 className="cardTitle">{title}</h3>
+        <p className="cardDesc">{desc}</p>
       </div>
 
       <Link className="cardCta" href={href}>
         {cta} <span aria-hidden="true">→</span>
       </Link>
+    </div>
+  );
+}
+
+function Step({ n, title, desc }: { n: string; title: string; desc: string }) {
+  return (
+    <div className="stepCard">
+      <div className="stepHead">
+        <span className="stepNum" aria-hidden="true">{n}</span>
+        <div className="stepTitle">{title}</div>
+      </div>
+      <p className="stepDesc">{desc}</p>
     </div>
   );
 }
