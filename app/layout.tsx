@@ -14,7 +14,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body className="appBody">
         <header className="topbar">
-          <div className="container topbarInner">
+          <div className="topbarInner">
             <Link href="/" className="brand" aria-label="Couranr home">
               <span className="brandMark" aria-hidden="true">
                 C<span className="brandDot">.</span>
@@ -22,23 +22,23 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               <span className="brandWord">Couranr</span>
             </Link>
 
-            <nav className="nav" aria-label="Primary">
-              <Link className="navLink" href="/courier">
+            <nav className="topnav" aria-label="Primary navigation">
+              <Link className="topnavLink" href="/courier">
                 Courier
               </Link>
-              <Link className="navLink" href="/docs">
+              <Link className="topnavLink" href="/docs">
                 Docs
               </Link>
-              <Link className="navLink" href="/auto">
+              <Link className="topnavLink" href="/auto">
                 Auto
               </Link>
             </nav>
 
-            <div className="navActions">
-              <Link className="navLink subtle" href="/login">
+            <div className="topActions">
+              <Link className="topnavLink" href="/login">
                 Log in
               </Link>
-              <Link className="btn btnSecondary" href="/signup">
+              <Link className="btn btn-primary" href="/signup">
                 Create account
               </Link>
             </div>
@@ -46,6 +46,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         </header>
 
         <main className="appMain">{children}</main>
+
+        <footer className="siteFooter">
+          <div className="siteFooterInner">
+            <div className="siteFooterLeft">© Couranr</div>
+            <div className="siteFooterLinks">
+              <Link className="footerLink" href="/privacy">
+                Privacy
+              </Link>
+              <Link className="footerLink" href="/terms">
+                Terms
+              </Link>
+            </div>
+          </div>
+        </footer>
       </body>
     </html>
   );
