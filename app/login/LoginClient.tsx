@@ -30,64 +30,71 @@ export default function LoginClient() {
   };
 
   return (
-    <main className="min-h-[calc(100vh-140px)]">
-      <div className="c-container flex justify-center py-14">
-        <div className="w-full max-w-md rounded-3xl border bg-[var(--surface)] p-8 shadow-sm">
-          <div className="mb-6">
-            <Link href="/" className="text-sm font-extrabold text-[var(--text)]">
-              Couranr<span className="text-[var(--gold)]">•</span>
-            </Link>
-            <h1 className="mt-3 text-2xl font-extrabold text-[var(--text)]">Sign in</h1>
-            <p className="mt-1 text-sm text-[var(--muted)]">
-              Manage rentals, agreements, payments, and more.
-            </p>
+    <main className="authWrap">
+      <div className="authCard">
+        <div className="authHeader">
+          <Link href="/" className="brand brand--center" aria-label="Couranr home">
+            <span className="brandMark" aria-hidden="true">
+              <span className="brandC">C</span>
+              <span className="brandDot">.</span>
+            </span>
+            <span className="brandName">Couranr</span>
+          </Link>
+
+          <h1 className="authTitle">Sign in</h1>
+          <p className="authSub">
+            Access your portal to manage rentals, deliveries, agreements, and payments.
+          </p>
+        </div>
+
+        {error && <div className="authError">{error}</div>}
+
+        <div className="authForm">
+          <div className="field">
+            <label className="label">Email</label>
+            <input
+              className="input"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              autoComplete="email"
+            />
           </div>
 
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-semibold text-[var(--text)]">Email</label>
-              <input
-                className="mt-1 w-full rounded-xl border bg-white px-4 py-3 text-sm text-zinc-900 outline-none focus:border-[var(--gold)]"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                autoComplete="email"
-              />
-            </div>
+          <div className="field">
+            <label className="label">Password</label>
+            <input
+              className="input"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              autoComplete="current-password"
+            />
+          </div>
 
-            <div>
-              <label className="text-sm font-semibold text-[var(--text)]">Password</label>
-              <input
-                className="mt-1 w-full rounded-xl border bg-white px-4 py-3 text-sm text-zinc-900 outline-none focus:border-[var(--gold)]"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                autoComplete="current-password"
-              />
-            </div>
+          <button onClick={handleLogin} disabled={loading} className="btn btn-gold" style={{ width: "100%" }}>
+            {loading ? "Signing in…" : "Sign in"}
+          </button>
 
-            {error && (
-              <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                {error}
-              </div>
-            )}
-
-            <button onClick={handleLogin} disabled={loading} className="btn btn-primary w-full">
-              {loading ? "Signing in…" : "Sign in"}
-            </button>
-
-            <p className="text-sm text-[var(--muted)]">
+          <div className="authMeta">
+            <span>
               Don’t have an account?{" "}
-              <Link href="/signup" className="font-extrabold text-[var(--primary)] hover:underline">
+              <Link className="authLink" href="/signup">
                 Create one
               </Link>
-            </p>
+            </span>
 
-            <p className="text-xs text-[var(--muted)]">
-              You’ll be redirected to: <span className="font-semibold">{next}</span>
-            </p>
+            <span className="authRedirect">
+              Redirect: <span className="mono">{next}</span>
+            </span>
+          </div>
+
+          <div className="authBack">
+            <Link className="btn btn-outline" href="/">
+              Back home
+            </Link>
           </div>
         </div>
       </div>
