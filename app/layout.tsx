@@ -3,71 +3,70 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import "./globals.css";
 
+import { cookies } from "next/headers";
+import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+
 export const metadata: Metadata = {
   title: "Couranr",
-  description: "Local delivery, document services, and vehicle solutions — built for speed, clarity, and trust.",
+  description:
+    "Local delivery, document services, and vehicle solutions — built for speed, clarity, and trust.",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  // Server-side auth check (prevents the “still shows login” issue)
+  const supabase = createServerComponentClient({ cookies });
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  const isAuthed = !!session;
+
   return (
     <html lang="en">
       <body className="appBody">
-        <header className="topbar">
-          <div className="c-container topbarInner">
-            {/* Brand */}
-            <Link href="/" className="brand" aria-label="Couranr home">
-              <span className="brandMark" aria-hidden="true">
-                <span className="brandC">C</span>
-                <span className="brandDot">.</span>
-              </span>
-              <span className="brandName">Couranr</span>
-            </Link>
+        {/* PUBLIC NAV ONLY (hidden once authed) */}
+        {!isAuthed && (
+          <header className="topbar">
+            <div className="topbarInner">
+              <div className="topbarLeft">
+                <Link href="/" className="brand" aria-label="Couranr home">
+                  <span className="brandMark" aria-hidden="true">
+                    <span className="brandC">C</span>
+                    <span className="brandDot">.</span>
+                  </span>
+                  <span className="brandName">Couranr</span>
+                </Link>
 
-            {/* Nav */}
-            <nav className="topnav" aria-label="Primary">
-              <Link className="toplink" href="/courier">
-                Courier
-              </Link>
-              <Link className="toplink" href="/docs">
-                Docs
-              </Link>
-              <Link className="toplink" href="/auto">
-                Auto
-              </Link>
-            </nav>
+                <nav className="topbarNav" aria-label="Public navigation">
+                  <Link className="topLink" href="/auto">
+                    Auto
+                  </Link>
+                  <Link className="topLink" href="/courier">
+                    Courier
+                  </Link>
+                  <Link className="topLink" href="/docs">
+                    Docs
+                  </Link>
+                </nav>
+              </div>
 
-            {/* Auth (always visible, but does NOT grant access) */}
-            <div className="topactions">
-              <Link className="btn btn-outline" href="/login">
-                Log in
-              </Link>
-              <Link className="btn btn-gold" href="/signup">
-                Create account
-              </Link>
+              <div className="topbarRight">
+                <Link className="btn btn-ghost" href="/login">
+                  Log in
+                </Link>
+                <Link className="btn btn-gold" href="/signup">
+                  Create account
+                </Link>
+              </div>
             </div>
-          </div>
-        </header>
+          </header>
+        )}
 
         <main className="appMain">{children}</main>
-
-        <footer className="siteFooter">
-          <div className="c-container footerInner">
-            <div className="footerLeft">
-              <div className="footerBrand">
-                <span className="footerMark" aria-hidden="true">
-                  <span className="brandC">C</span>
-                  <span className="brandDot">.</span>
-                </span>
-                <span>Couranr</span>
-              </div>
-              <div className="footerNote">Local services, one portal.</div>
-            </div>
-
-            <div className="footerRight">
-              <span className="footerTiny">© {new Date().getFullYear()} Couranr</span>
-            </div>
-          </div>
-        </footer>
       </body>
     </html>
   );
