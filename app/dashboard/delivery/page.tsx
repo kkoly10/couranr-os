@@ -42,9 +42,7 @@ export default function DeliveryDashboard() {
         const timeout = setTimeout(() => controller.abort(), 8000);
 
         const res = await fetch("/api/customer/deliveries", {
-          headers: {
-            Authorization: `Bearer ${session.access_token}`,
-          },
+          headers: { Authorization: `Bearer ${session.access_token}` },
           signal: controller.signal,
         });
 
@@ -59,9 +57,7 @@ export default function DeliveryDashboard() {
         setDeliveries(data.deliveries || []);
       } catch (err: any) {
         setError(
-          err?.name === "AbortError"
-            ? "Request timed out. Please refresh."
-            : err.message || "Failed to load deliveries"
+          err?.name === "AbortError" ? "Request timed out. Please refresh." : err.message || "Failed to load deliveries"
         );
       } finally {
         setLoading(false);
@@ -72,97 +68,59 @@ export default function DeliveryDashboard() {
   }, [router]);
 
   return (
-    <div style={styles.container}>
-      <div style={styles.header}>
+    <div className="page">
+      <div className="pageHeader">
         <div>
-          <h1 style={styles.h1}>My deliveries</h1>
-          <p style={styles.sub}>Track your active and past deliveries</p>
+          <h1 className="pageTitle">My deliveries</h1>
+          <p className="pageSub">Track your active and past deliveries.</p>
         </div>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button onClick={() => router.push("/courier")} style={styles.primaryBtn}>
-            New delivery
-          </button>
-          <button onClick={() => router.push("/dashboard")} style={styles.ghostBtn}>
-            Back to dashboards
-          </button>
-        </div>
+        <button onClick={() => router.push("/courier")} className="btn btnPrimary">
+          New delivery
+        </button>
       </div>
 
-      {loading && <p>Loading deliveries…</p>}
+      {loading && <p className="muted">Loading deliveries…</p>}
 
       {error && (
-        <div style={{ ...styles.card, borderColor: "#fecaca" }}>
+        <div className="notice noticeError">
           <strong>Error:</strong> {error}
         </div>
       )}
 
       {!loading && !error && deliveries.length === 0 && (
-        <div style={styles.card}>
-          <p>You don’t have any deliveries yet.</p>
+        <div className="card">
+          <p className="muted" style={{ margin: 0 }}>
+            You don’t have any deliveries yet.
+          </p>
         </div>
       )}
 
       {!loading &&
         !error &&
         deliveries.map((d) => (
-          <div key={d.id} style={styles.card}>
-            <strong>{d.order.orderNumber || "—"}</strong>
-            <p>Pickup: {d.pickupAddress || "—"}</p>
-            <p>Drop-off: {d.dropoffAddress || "—"}</p>
-            <p>Total: ${(d.order.totalCents / 100).toFixed(2)}</p>
-            <p>Status: {d.status}</p>
+          <div key={d.id} className="card">
+            <div className="rowBetween">
+              <strong>{d.order.orderNumber || "—"}</strong>
+              <span className="pill">{d.status}</span>
+            </div>
+
+            <div className="kv">
+              <div>
+                <div className="k">Pickup</div>
+                <div className="v">{d.pickupAddress || "—"}</div>
+              </div>
+              <div>
+                <div className="k">Drop-off</div>
+                <div className="v">{d.dropoffAddress || "—"}</div>
+              </div>
+              <div>
+                <div className="k">Total</div>
+                <div className="v">${(d.order.totalCents / 100).toFixed(2)}</div>
+              </div>
+            </div>
           </div>
         ))}
     </div>
   );
 }
-
-const styles: Record<string, any> = {
-  container: {
-    maxWidth: 1100,
-    margin: "0 auto",
-    padding: 24,
-  },
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 24,
-    flexWrap: "wrap",
-  },
-  h1: {
-    margin: 0,
-    fontSize: 32,
-  },
-  sub: {
-    marginTop: 6,
-    color: "#555",
-  },
-  card: {
-    border: "1px solid #e5e7eb",
-    borderRadius: 14,
-    padding: 16,
-    background: "#fff",
-    marginBottom: 12,
-  },
-  primaryBtn: {
-    padding: "10px 16px",
-    borderRadius: 10,
-    border: "none",
-    background: "#111827",
-    color: "#fff",
-    fontWeight: 800,
-    cursor: "pointer",
-  },
-  ghostBtn: {
-    padding: "10px 16px",
-    borderRadius: 10,
-    border: "1px solid #d1d5db",
-    background: "#fff",
-    color: "#111",
-    fontWeight: 800,
-    cursor: "pointer",
-  },
-};
