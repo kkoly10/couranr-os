@@ -13,38 +13,32 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="appBody">
-        {/* Public-safe top bar (NO admin links, no auth logic here) */}
         <header className="topbar">
           <div className="container topbarInner">
             <Link href="/" className="brand" aria-label="Couranr home">
-              <span className="logoMark" aria-hidden="true">
-                <span className="logoC">C</span>
-                <span className="logoDot" />
+              <span className="brandMark" aria-hidden="true">
+                C<span className="brandDot">.</span>
               </span>
-
-              <span className="brandText">
-                <span className="brandName">Couranr</span>
-                <span className="brandTag">Local services • one OS</span>
-              </span>
+              <span className="brandWord">Couranr</span>
             </Link>
 
-            <nav className="topNav" aria-label="Primary navigation">
-              <Link className="topNavLink" href="/auto">
-                Auto
-              </Link>
-              <Link className="topNavLink" href="/courier">
+            <nav className="nav" aria-label="Primary">
+              <Link className="navLink" href="/courier">
                 Courier
               </Link>
-              <Link className="topNavLink" href="/docs">
+              <Link className="navLink" href="/docs">
                 Docs
+              </Link>
+              <Link className="navLink" href="/auto">
+                Auto
               </Link>
             </nav>
 
-            <div className="topActions">
-              <Link className="btn btn-ghost" href="/login">
+            <div className="navActions">
+              <Link className="navLink subtle" href="/login">
                 Log in
               </Link>
-              <Link className="btn btn-gold" href="/signup">
+              <Link className="btn btnSecondary" href="/signup">
                 Create account
               </Link>
             </div>
