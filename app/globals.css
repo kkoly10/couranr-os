@@ -6,6 +6,10 @@
   --card: rgba(255, 255, 255, 0.78);
   --shadow: 0 14px 40px rgba(15, 23, 42, 0.08);
   --gold: #c8a12b;
+
+  --radius-xl: 24px;
+  --radius-lg: 18px;
+  --radius-md: 14px;
 }
 
 * {
@@ -179,7 +183,7 @@ a {
   align-items: center;
   justify-content: center;
   padding: 10px 14px;
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   border: 1px solid transparent;
   font-weight: 700;
   cursor: pointer;
@@ -209,10 +213,76 @@ a {
   filter: brightness(0.98);
 }
 
-/* ===== Home ===== */
-.home {
+.btnFull {
+  width: 100%;
+}
+
+/* ===== Inputs (fix ugly default login/signup look) ===== */
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.label {
+  font-weight: 800;
+  font-size: 13px;
+  color: #111827;
+}
+
+.input {
+  height: 44px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.95);
+  outline: none;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.input:focus {
+  border-color: rgba(200, 161, 43, 0.55);
+  box-shadow: 0 0 0 4px rgba(200, 161, 43, 0.15);
+}
+
+.helpText {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.errorBox {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+  background: rgba(239, 68, 68, 0.06);
+  color: #7f1d1d;
+  font-weight: 700;
+}
+
+.successBox {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  background: rgba(16, 185, 129, 0.08);
+  color: #064e3b;
+  font-weight: 700;
+}
+
+/* ===== Shared page shell ===== */
+.page {
   position: relative;
-  padding: 34px 0 60px;
+  padding: 34px 0 70px;
 }
 
 .bgGlow {
@@ -237,6 +307,19 @@ a {
   padding: 0 18px;
 }
 
+.pageTitle {
+  margin: 0;
+  font-size: 34px;
+  letter-spacing: -0.02em;
+}
+
+.pageDesc {
+  margin: 10px 0 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+/* ===== Cards / Sections (already used by home) ===== */
 .hero {
   padding-top: 10px;
 }
@@ -244,7 +327,7 @@ a {
 .heroCard {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: 24px;
+  border-radius: var(--radius-xl);
   box-shadow: var(--shadow);
   padding: 22px;
 }
@@ -303,7 +386,7 @@ a {
 .mini {
   border: 1px solid var(--border);
   background: rgba(255, 255, 255, 0.75);
-  border-radius: 18px;
+  border-radius: var(--radius-lg);
   padding: 14px;
 }
 
@@ -403,6 +486,7 @@ a {
   font-weight: 900;
 }
 
+/* Steps */
 .steps {
   margin-top: 16px;
   display: grid;
@@ -439,6 +523,7 @@ a {
   line-height: 1.55;
 }
 
+/* FAQ */
 .faq {
   margin-top: 14px;
   display: grid;
@@ -463,6 +548,7 @@ a {
   line-height: 1.6;
 }
 
+/* About */
 .aboutGrid {
   margin-top: 14px;
   display: grid;
@@ -487,10 +573,95 @@ a {
   line-height: 1.6;
 }
 
+/* Contact row */
 .contactRow {
   margin-top: 14px;
   display: flex;
   gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.emailPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.75);
+  font-weight: 800;
+}
+
+.mutedLink {
+  color: #374151;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ===== Auth pages ===== */
+.authWrap {
+  max-width: 520px;
+  margin: 0 auto;
+}
+
+.authCard {
+  margin-top: 14px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow);
+  padding: 22px;
+}
+
+.rowBetween {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.smallMuted {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+/* ===== Dashboard (customer page body) ===== */
+.dashGrid {
+  margin-top: 16px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+@media (max-width: 980px) {
+  .dashGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ===== Footer ===== */
+.siteFooter {
+  margin-top: 34px;
+  border-top: 1px solid var(--border);
+  padding: 18px 0 22px;
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.footerInner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.footerLinks {
+  display: flex;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
@@ -507,217 +678,6 @@ a {
   }
 
   .heroMiniGrid {
-    grid-template-columns: 1fr;
-  }
-}
-/* ================================
-   Auth (Login / Signup) + Dashboard
-   Safe add-on styles (no header edits)
-=================================== */
-
-.pageShell {
-  position: relative;
-  padding: 34px 0 70px;
-  min-height: calc(100vh - 64px);
-}
-
-.pageGlow {
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(
-      circle at 20% 10%,
-      rgba(200, 161, 43, 0.16),
-      transparent 42%
-    ),
-    radial-gradient(
-      circle at 80% 15%,
-      rgba(90, 150, 255, 0.14),
-      transparent 48%
-    );
-  pointer-events: none;
-}
-
-.centerWrap {
-  display: grid;
-  place-items: start center;
-  position: relative;
-  z-index: 1;
-}
-
-.authCard {
-  width: 100%;
-  max-width: 520px;
-  background: var(--card);
-  border: 1px solid var(--border);
-  border-radius: 24px;
-  box-shadow: var(--shadow);
-  padding: 22px;
-}
-
-.authTitle {
-  margin: 0;
-  font-size: 30px;
-  letter-spacing: -0.03em;
-  line-height: 1.1;
-}
-
-.authSub {
-  margin: 10px 0 0;
-  color: var(--muted);
-  line-height: 1.6;
-}
-
-.formGrid {
-  margin-top: 16px;
-  display: grid;
-  gap: 12px;
-}
-
-.field label {
-  display: block;
-  font-weight: 800;
-  font-size: 13.5px;
-  margin-bottom: 6px;
-  color: #111827;
-}
-
-.field input {
-  width: 100%;
-  height: 44px;
-  border-radius: 14px;
-  border: 1px solid var(--border);
-  padding: 0 12px;
-  background: rgba(255, 255, 255, 0.92);
-  color: var(--text);
-  outline: none;
-}
-
-.field input:focus {
-  border-color: rgba(200, 161, 43, 0.6);
-  box-shadow: 0 0 0 4px rgba(200, 161, 43, 0.15);
-}
-
-.formRow {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  align-items: center;
-  margin-top: 14px;
-}
-
-.helperLine {
-  margin-top: 12px;
-  color: var(--muted);
-  font-size: 13.5px;
-  line-height: 1.55;
-}
-
-.noticeBox {
-  margin-top: 14px;
-  padding: 12px 14px;
-  border-radius: 14px;
-  border: 1px solid rgba(15, 23, 42, 0.12);
-  background: rgba(248, 250, 252, 0.9);
-  color: #0b1220;
-  line-height: 1.55;
-  font-size: 13.5px;
-}
-
-.noticeBox.error {
-  border-color: rgba(220, 38, 38, 0.25);
-  background: rgba(254, 242, 242, 0.9);
-}
-
-.noticeBox.success {
-  border-color: rgba(22, 163, 74, 0.25);
-  background: rgba(240, 253, 244, 0.92);
-}
-
-.authFooterLinks {
-  margin-top: 14px;
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  font-weight: 800;
-}
-
-/* Dashboard content styling (not the dashboard header/nav) */
-.dashWrap {
-  max-width: 980px;
-  margin: 0 auto;
-  padding: 26px 18px 70px;
-}
-
-.dashTop {
-  margin-top: 10px;
-}
-
-.dashTitle {
-  margin: 0;
-  font-size: 32px;
-  letter-spacing: -0.03em;
-}
-
-.dashSub {
-  margin: 10px 0 0;
-  color: var(--muted);
-  line-height: 1.6;
-}
-
-.dashGrid {
-  margin-top: 18px;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-}
-
-.dashCard {
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.82);
-  border-radius: 22px;
-  padding: 16px;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
-}
-
-.dashCardTop {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-weight: 900;
-}
-
-.dashIcon {
-  height: 44px;
-  width: 44px;
-  border-radius: 14px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.9);
-}
-
-.dashCardTitle {
-  margin: 12px 0 6px;
-  font-size: 18px;
-  letter-spacing: -0.01em;
-}
-
-.dashCardDesc {
-  margin: 0;
-  color: var(--muted);
-  line-height: 1.55;
-}
-
-.dashActions {
-  margin-top: 12px;
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-@media (max-width: 980px) {
-  .dashGrid {
     grid-template-columns: 1fr;
   }
 }
