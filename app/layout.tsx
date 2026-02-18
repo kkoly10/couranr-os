@@ -1,3 +1,4 @@
+// app/layout.tsx
 import type { Metadata } from "next";
 import "./globals.css";
 
@@ -8,7 +9,7 @@ import PublicHeader from "@/components/PublicHeader";
 export const metadata: Metadata = {
   title: "Couranr",
   description:
-    "Local delivery, document services, and vehicle solutions — built for speed, clarity, and trust.",
+    "Local delivery, document help, and auto rentals — built for speed, clarity, and trust.",
 };
 
 export default async function RootLayout({
@@ -16,7 +17,6 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Server-side auth check
   const supabase = createServerComponentClient({ cookies });
   const {
     data: { session },
@@ -27,8 +27,8 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body className="appBody">
-        {/* Public nav only when NOT authenticated */}
         {!isAuthed && <PublicHeader />}
+
         <main className="appMain">{children}</main>
       </body>
     </html>
