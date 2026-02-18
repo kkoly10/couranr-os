@@ -2,63 +2,59 @@ import Link from "next/link";
 
 export default function DashboardPage() {
   return (
-    <div className="dashWrap">
-      <div className="dashTop">
-        <h1 className="dashTitle">Dashboard</h1>
-        <p className="dashSub">
-          Manage your services in one place. Use the cards below to jump into your active flows.
-        </p>
-      </div>
+    <main className="page">
+      <div className="cContainer">
+        <h1 className="pageTitle">Dashboard</h1>
+        <p className="pageDesc">Manage your services in one place.</p>
 
-      <div className="dashGrid">
-        <div className="dashCard">
-          <div className="dashCardTop">
-            <span className="dashIcon" aria-hidden="true">🚚</span>
-            <span>Courier</span>
+        <div className="dashGrid">
+          <div className="card">
+            <div className="cardIcon" aria-hidden="true">
+              🚚
+            </div>
+            <h3 className="cardTitle">Deliveries</h3>
+            <p className="cardDesc">
+              Track deliveries, view updates, and start new requests.
+            </p>
+
+            <div className="contactRow">
+              <Link className="btn btnGhost" href="/dashboard/deliveries">
+                Open deliveries
+              </Link>
+              <Link className="btn btnGold" href="/dashboard/deliveries/new">
+                New delivery →
+              </Link>
+            </div>
+
+            <p className="finePrint">
+              Proof-of-pickup/drop-off may be available depending on the delivery type.
+            </p>
           </div>
-          <h3 className="dashCardTitle">Deliveries</h3>
-          <p className="dashCardDesc">
-            Track deliveries, view updates, and start new requests.
-          </p>
-          <div className="dashActions">
-            <Link className="btn btnGold" href="/deliveries/new">New delivery</Link>
-            <Link className="btn btnGhost" href="/deliveries">Open deliveries</Link>
+
+          <div className="card">
+            <div className="cardIcon" aria-hidden="true">
+              🚗
+            </div>
+            <h3 className="cardTitle">Auto Rentals</h3>
+            <p className="cardDesc">
+              Verification, agreements, payments, and pickup/return steps.
+            </p>
+
+            <div className="contactRow">
+              <Link className="btn btnGhost" href="/dashboard/auto">
+                Open rentals
+              </Link>
+              <Link className="btn btnGold" href="/auto">
+                Browse vehicles →
+              </Link>
+            </div>
+
+            <p className="finePrint">
+              Policies and renter responsibilities are shown before payment.
+            </p>
           </div>
         </div>
-
-        <div className="dashCard">
-          <div className="dashCardTop">
-            <span className="dashIcon" aria-hidden="true">🚗</span>
-            <span>Auto</span>
-          </div>
-          <h3 className="dashCardTitle">Auto rentals</h3>
-          <p className="dashCardDesc">
-            Verification, agreements, payments, and pickup/return steps.
-          </p>
-          <div className="dashActions">
-            <Link className="btn btnGold" href="/auto">Browse vehicles</Link>
-            <Link className="btn btnGhost" href="/rentals">Open rentals</Link>
-          </div>
-        </div>
-
-        <div className="dashCard">
-          <div className="dashCardTop">
-            <span className="dashIcon" aria-hidden="true">📄</span>
-            <span>Docs</span>
-          </div>
-          <h3 className="dashCardTitle">Documents (coming soon)</h3>
-          <p className="dashCardDesc">
-            Administrative document help and appointment-based assistance.
-          </p>
-          <div className="dashActions">
-            <Link className="btn btnGhost" href="/docs">Learn more</Link>
-          </div>
-        </div>
       </div>
-
-      <div className="noticeBox" style={{ marginTop: 16 }}>
-        Need help? Email <a href="mailto:couranr@couranrauto.com" style={{ fontWeight: 900 }}>couranr@couranrauto.com</a>.
-      </div>
-    </div>
+    </main>
   );
 }
