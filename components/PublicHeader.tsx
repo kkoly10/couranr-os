@@ -26,46 +26,30 @@ export default function PublicHeader() {
 
   if (shouldHideByPath || hasSession) return null;
 
-  const tabWrap: React.CSSProperties = {
-    display: "inline-flex",
-    gap: 6,
-    padding: 6,
-    borderRadius: 999,
-    border: "1px solid rgba(15,23,42,0.12)",
-    background: "rgba(15,23,42,0.04)",
-    flexWrap: "wrap",
-  };
-
-  const tab: React.CSSProperties = {
-    padding: "10px 14px",
-    borderRadius: 999,
-    fontWeight: 950,
-    textDecoration: "none",
-    color: "#0f172a",
-    background: "#fff",
-    border: "1px solid rgba(15,23,42,0.10)",
-  };
+  const a: React.CSSProperties = { fontWeight: 950, textDecoration: "none", color: "#0f172a" };
 
   return (
-    <header style={{ position: "sticky", top: 0, zIndex: 50, background: "rgba(255,255,255,0.92)", backdropFilter: "blur(10px)", borderBottom: "1px solid rgba(15,23,42,0.08)" }}>
-      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <Link href="/" style={{ display: "flex", alignItems: "center", gap: 10, textDecoration: "none" }}>
-          <span style={{ position: "relative", display: "inline-block", fontWeight: 950, fontSize: 28, lineHeight: 1, color: "#0f172a" }}>
-            C
-            <span style={{ position: "absolute", right: -10, bottom: 2, fontSize: 18, lineHeight: 1, color: GOLD }}>.</span>
-          </span>
-          <span style={{ fontWeight: 950, fontSize: 18, color: "#0f172a" }}>Couranr</span>
-        </Link>
+    <header style={{ position: "sticky", top: 0, zIndex: 50, background: "#fff", borderBottom: "1px solid rgba(15,23,42,0.10)" }}>
+      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "14px 16px", display: "grid", gap: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <Link href="/" style={{ ...a, display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ position: "relative", fontSize: 28, lineHeight: 1 }}>
+              C
+              <span style={{ position: "absolute", right: -10, bottom: 2, fontSize: 18, color: GOLD }}>.</span>
+            </span>
+            <span style={{ fontSize: 18 }}>Couranr</span>
+          </Link>
 
-        <nav style={tabWrap} aria-label="Primary">
-          <Link href="/auto" style={tab}>Auto</Link>
-          <Link href="/courier" style={tab}>Courier</Link>
-          <Link href="/docs" style={tab}>Docs</Link>
-        </nav>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <Link href="/login" style={{ ...a, padding: "10px 14px", borderRadius: 999, border: "1px solid rgba(15,23,42,0.14)" }}>Log in</Link>
+            <Link href="/signup" style={{ ...a, padding: "10px 14px", borderRadius: 999, background: GOLD, border: "1px solid rgba(0,0,0,0.08)" }}>Create account</Link>
+          </div>
+        </div>
 
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <Link href="/login" style={{ ...tab, background: "#fff" }}>Log in</Link>
-          <Link href="/signup" style={{ ...tab, background: GOLD, borderColor: "rgba(0,0,0,0.08)" }}>Create account</Link>
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
+          <Link href="/auto" style={a}>Auto</Link>
+          <Link href="/courier" style={a}>Courier</Link>
+          <Link href="/docs" style={a}>Docs</Link>
         </div>
       </div>
     </header>
