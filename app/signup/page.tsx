@@ -1,24 +1,27 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import SiteFooter from "@/components/SiteFooter";
 
 export default function SignupPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const next = searchParams.get("next") || "/dashboard";
+  const params = useSearchParams();
+  const next = params.get("next") || "/dashboard";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
   const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState<{ type: "error" | "success"; text: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setMsg(null);
+    setError(null);
+    setSuccess(null);
     setLoading(true);
 
     const { data, error } = await supabase.auth.signUp({
@@ -29,87 +32,99 @@ export default function SignupPage() {
     setLoading(false);
 
     if (error) {
-      setMsg({ type: "error", text: error.message });
+      setError(error.message);
       return;
     }
 
-    // If email confirmation is enabled, session may be null
-    if (!data.session) {
-      setMsg({
-        type: "success",
-        text: "Account created. Please check your email to confirm, then sign in.",
-      });
+    // If email confirmations are OFF, you may already have a session.
+    if (data.session) {
+      router.push(next);
       return;
     }
 
-    router.push(next);
-    router.refresh();
+    setSuccess(
+      "Account created. If email confirmation is enabled, check your inbox to confirm."
+    );
   }
 
   return (
-    <div className="pageShell">
-      <div className="pageGlow" aria-hidden="true" />
-      <div className="cContainer centerWrap">
-        <div className="authCard">
-          <h1 className="authTitle">Create account</h1>
-          <p className="authSub">
-            Start with Auto today. Courier & Docs expanding soon.
+    <main className="page">
+      <div className="bgGlow" aria-hidden="true" />
+
+      <div className="cContainer">
+        <div className="authWrap">
+          <h1 className="pageTitle">Create account</h1>
+          <p className="pageDesc">
+            Start with the customer portal for rentals and deliveries.
           </p>
 
-          {msg && (
-            <div className={`noticeBox ${msg.type === "error" ? "error" : "success"}`}>
-              {msg.text}
-            </div>
-          )}
+          <div className="authCard">
+            <form onSubmit={onSubmit}>
+              <div className="field">
+                <div className="label">Email</div>
+                <input
+                  className="input"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  type="email"
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  required
+                />
+              </div>
 
-          <form className="formGrid" onSubmit={onSubmit}>
-            <div className="field">
-              <label htmlFor="email">Email</label>
-              <input
-                id="email"
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                required
-              />
-            </div>
+              <div className="field">
+                <div className="label">Password</div>
+                <input
+                  className="input"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  type="password"
+                  autoComplete="new-password"
+                  placeholder="Minimum 8 characters"
+                  required
+                />
+              </div>
 
-            <div className="field">
-              <label htmlFor="password">Password</label>
-              <input
-                id="password"
-                type="password"
-                autoComplete="new-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Minimum 8 characters"
-                minLength={8}
-                required
-              />
-            </div>
+              {error && <div className="errorBox">{error}</div>}
+              {success && <div className="successBox">{success}</div>}
 
-            <div className="formRow">
-              <button className="btn btnGold" type="submit" disabled={loading}>
-                {loading ? "Creating..." : "Sign up"}
-              </button>
+              <div style={{ marginTop: 14 }}>
+                <button
+                  className="btn btnGold btnFull"
+                  type="submit"
+                  disabled={loading}
+                >
+                  {loading ? "Creating..." : "Sign up"}
+                </button>
+              </div>
 
-              <Link className="btn btnGhost" href={`/login?next=${encodeURIComponent(next)}`}>
-                Log in
-              </Link>
-            </div>
-          </form>
+              <div style={{ marginTop: 12 }} className="rowBetween">
+                <p className="smallMuted" style={{ margin: 0 }}>
+                  Already have an account?{" "}
+                  <Link className="mutedLink" href="/login">
+                    Sign in
+                  </Link>
+                </p>
 
-          <p className="helperLine">
+                <p className="smallMuted" style={{ margin: 0 }}>
+                  After signup: <strong>{next}</strong>
+                </p>
+              </div>
+            </form>
+          </div>
+
+          <p className="helpText">
             Questions? Email{" "}
-            <a href="mailto:couranr@couranrauto.com" style={{ fontWeight: 900 }}>
+            <a className="mutedLink" href="mailto:couranr@couranrauto.com">
               couranr@couranrauto.com
             </a>
             .
           </p>
         </div>
       </div>
-    </div>
+
+      <SiteFooter />
+    </main>
   );
 }
