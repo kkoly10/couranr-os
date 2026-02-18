@@ -1,24 +1,25 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import SiteFooter from "@/components/SiteFooter";
 
 export default function LoginPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const next = searchParams.get("next") || "/dashboard";
+  const params = useSearchParams();
+  const next = params.get("next") || "/dashboard";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
   const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState<{ type: "error" | "success"; text: string } | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setMsg(null);
+    setError(null);
     setLoading(true);
 
     const { error } = await supabase.auth.signInWithPassword({
@@ -29,78 +30,90 @@ export default function LoginPage() {
     setLoading(false);
 
     if (error) {
-      setMsg({ type: "error", text: error.message });
+      setError(error.message);
       return;
     }
 
-    // Important: refresh so server layout re-renders and hides PublicHeader if needed
     router.push(next);
-    router.refresh();
   }
 
   return (
-    <div className="pageShell">
-      <div className="pageGlow" aria-hidden="true" />
-      <div className="cContainer centerWrap">
-        <div className="authCard">
-          <h1 className="authTitle">Sign in</h1>
-          <p className="authSub">
+    <main className="page">
+      <div className="bgGlow" aria-hidden="true" />
+
+      <div className="cContainer">
+        <div className="authWrap">
+          <h1 className="pageTitle">Sign in</h1>
+          <p className="pageDesc">
             Access your portal to manage rentals and deliveries.
           </p>
 
-          {msg && (
-            <div className={`noticeBox ${msg.type === "error" ? "error" : "success"}`}>
-              {msg.text}
-            </div>
-          )}
+          <div className="authCard">
+            <form onSubmit={onSubmit}>
+              <div className="field">
+                <div className="label">Email</div>
+                <input
+                  className="input"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  type="email"
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  required
+                />
+              </div>
 
-          <form className="formGrid" onSubmit={onSubmit}>
-            <div className="field">
-              <label htmlFor="email">Email</label>
-              <input
-                id="email"
-                type="email"
-                autoComplete="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@example.com"
-                required
-              />
-            </div>
+              <div className="field">
+                <div className="label">Password</div>
+                <input
+                  className="input"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  type="password"
+                  autoComplete="current-password"
+                  placeholder="Your password"
+                  required
+                />
+              </div>
 
-            <div className="field">
-              <label htmlFor="password">Password</label>
-              <input
-                id="password"
-                type="password"
-                autoComplete="current-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Your password"
-                required
-              />
-            </div>
+              {error && <div className="errorBox">{error}</div>}
 
-            <div className="formRow">
-              <button className="btn btnGold" type="submit" disabled={loading}>
-                {loading ? "Signing in..." : "Sign in"}
-              </button>
+              <div style={{ marginTop: 14 }}>
+                <button
+                  className="btn btnGold btnFull"
+                  type="submit"
+                  disabled={loading}
+                >
+                  {loading ? "Signing in..." : "Sign in"}
+                </button>
+              </div>
 
-              <Link className="btn btnGhost" href={`/signup?next=${encodeURIComponent(next)}`}>
-                Create account
-              </Link>
-            </div>
-          </form>
+              <div style={{ marginTop: 12 }} className="rowBetween">
+                <p className="smallMuted" style={{ margin: 0 }}>
+                  Don’t have an account?{" "}
+                  <Link className="mutedLink" href="/signup">
+                    Create one
+                  </Link>
+                </p>
 
-          <p className="helperLine">
-            Having trouble? Email{" "}
-            <a href="mailto:couranr@couranrauto.com" style={{ fontWeight: 900 }}>
+                <p className="smallMuted" style={{ margin: 0 }}>
+                  Redirect after login: <strong>{next}</strong>
+                </p>
+              </div>
+            </form>
+          </div>
+
+          <p className="helpText">
+            Need help? Email{" "}
+            <a className="mutedLink" href="mailto:couranr@couranrauto.com">
               couranr@couranrauto.com
             </a>
             .
           </p>
         </div>
       </div>
-    </div>
+
+      <SiteFooter />
+    </main>
   );
 }
