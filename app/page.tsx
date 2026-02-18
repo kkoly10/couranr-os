@@ -1,8 +1,9 @@
 import Link from "next/link";
+import SiteFooter from "@/components/SiteFooter";
 
 export default function HomePage() {
   return (
-    <main className="home">
+    <main className="page">
       <div className="bgGlow" aria-hidden="true" />
 
       <div className="cContainer">
@@ -17,8 +18,8 @@ export default function HomePage() {
             <h1 className="heroTitle">Local services, powered by one OS.</h1>
 
             <p className="heroDesc">
-              Courier delivery, document help, and auto rentals — with simple
-              checkout and one portal to manage everything after.
+              Courier delivery, document help, and auto rentals — with simple checkout
+              and one portal to manage everything after.
             </p>
 
             <div className="heroActions">
@@ -58,7 +59,7 @@ export default function HomePage() {
                   <span className="miniTitle">Docs</span>
                 </div>
                 <p className="miniDesc">
-                  Document preparation help + appointments (immigration/DMV support).
+                  Document help + appointments (immigration/DMV support).
                 </p>
               </div>
             </div>
@@ -114,7 +115,7 @@ export default function HomePage() {
                 "Clear disclaimers + customer responsibility",
               ]}
               href="/docs"
-              cta="View docs"
+              cta="Learn more"
             />
           </div>
         </section>
@@ -136,7 +137,7 @@ export default function HomePage() {
               <div className="stepNum">2</div>
               <h3 className="stepTitle">Verify + confirm</h3>
               <p className="stepDesc">
-                Identity verification may be required for safety and fraud prevention.
+                Verification may be required for safety and fraud prevention.
               </p>
             </div>
 
@@ -165,17 +166,17 @@ export default function HomePage() {
             />
             <FAQItem
               q="What items can’t be delivered?"
-              a="Illegal items, hazardous materials, weapons, and any restricted items are not accepted. Specific restrictions may be shown during checkout."
+              a="Illegal items, hazardous materials, weapons, and restricted items are not accepted. Specific restrictions may be shown during checkout."
             />
             <FAQItem
               q="Why do you ask for ID verification?"
-              a="To reduce fraud, protect vehicle owners and customers, and support dispute resolution and safety."
+              a="To reduce fraud, protect customers and assets, and support dispute resolution and safety."
             />
           </div>
 
           <p className="finePrint">
-            This website includes general information about services and is not a substitute for
-            professional advice. Terms apply at checkout and inside your portal.
+            This site provides general information. Final rules, pricing, and eligibility
+            are shown at checkout and inside your portal.
           </p>
         </section>
 
@@ -204,27 +205,29 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* CONTACT */}
+        {/* CONTACT (no form — email only) */}
         <section className="section">
           <h2 className="sectionTitle">Contact</h2>
           <p className="sectionSub">
-            For the fastest help, use the customer portal after checkout. For general questions,
-            reach us through the contact details on the site.
+            For general questions, email us. For active bookings, use the customer portal.
           </p>
 
           <div className="contactRow">
+            <span className="emailPill">
+              ✉️{" "}
+              <a className="mutedLink" href="mailto:couranr@couranrauto.com">
+                couranr@couranrauto.com
+              </a>
+            </span>
+
             <Link className="btn btnGhost" href="/login">
               Open customer portal
-            </Link>
-            <Link className="btn btnGhost" href="/terms">
-              Terms
-            </Link>
-            <Link className="btn btnGhost" href="/privacy">
-              Privacy
             </Link>
           </div>
         </section>
       </div>
+
+      <SiteFooter />
     </main>
   );
 }
