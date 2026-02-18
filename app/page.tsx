@@ -4,44 +4,37 @@ export default function HomePage() {
   return (
     <>
       <header className="publicHeader">
-        <div className="c-container nav1">
-          <Link className="brand" href="/" aria-label="Couranr home">
-            <span className="brandMark">
-              C<span className="brandDot">.</span>
-            </span>
-            <span className="brandName">Couranr</span>
-          </Link>
+        <div className="c-container nav2">
+          <div className="nav2Top">
+            <Link className="brand" href="/">
+              <span className="brandMark">C<span className="brandDot">.</span></span>
+              <span className="brandName">Couranr</span>
+            </Link>
 
-          <nav className="navLinks" aria-label="Primary">
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <Link className="btn btnGhost" href="/login">Log in</Link>
+              <Link className="btn btnPrimary" href="/signup">Create account</Link>
+            </div>
+          </div>
+
+          <nav className="nav2Links" aria-label="Primary">
             <Link href="/auto">Auto</Link>
             <Link href="/courier">Courier</Link>
             <Link href="/docs">Docs</Link>
           </nav>
-
-          <div className="navActions">
-            <Link className="btn btnGhost" href="/login">Log in</Link>
-            <Link className="btn btnPrimary" href="/signup">Create account</Link>
-          </div>
         </div>
       </header>
 
       <main className="home">
         <div className="bgGlow" aria-hidden="true" />
-
         <div className="c-container">
           <section className="heroCard">
             <div className="badgeRow">
               <span className="badge">Local • Fast • Trusted</span>
               <span className="badge ghost">One platform</span>
             </div>
-
             <h1 className="heroTitle">Local services, built clean.</h1>
-
-            <p className="heroDesc">
-              Courier delivery, document help, and auto rentals — with a simple flow and one portal
-              to manage everything after checkout.
-            </p>
-
+            <p className="heroDesc">Courier delivery, document help, and auto rentals — managed in one portal after checkout.</p>
             <div className="heroActions">
               <Link className="btn btnPrimary" href="/courier">Start a delivery quote →</Link>
               <Link className="btn btnGhost" href="/auto">Browse vehicles</Link>
@@ -62,7 +55,7 @@ export default function HomePage() {
   );
 }
 
-function Card({ icon, title, desc, href, cta }: { icon: string; title: string; desc: string; href: string; cta: string }) {
+function Card({ icon, title, desc, href, cta }: any) {
   return (
     <div className="card">
       <div className="cardIcon" aria-hidden="true">{icon}</div>
