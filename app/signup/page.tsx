@@ -1,3 +1,4 @@
+// app/signup/page.tsx
 "use client";
 
 import Link from "next/link";
@@ -18,9 +19,7 @@ export default function SignupPage() {
     const { error } = await supabase.auth.signUp({
       email,
       password,
-      options: {
-        data: { role: "customer" },
-      },
+      options: { data: { role: "customer" } },
     });
 
     if (error) {
@@ -35,63 +34,64 @@ export default function SignupPage() {
 
   return (
     <main className="authWrap">
+      <div className="bgGlow" aria-hidden="true" />
+
       <div className="authCard">
-        <div className="authHeader">
-          <Link href="/" className="brand brand--center" aria-label="Couranr home">
-            <span className="brandMark" aria-hidden="true">
-              <span className="brandC">C</span>
-              <span className="brandDot">.</span>
+        <div className="authTop">
+          <Link className="brandRow" href="/" aria-label="Couranr home">
+            <span className="brandMark">
+              C<span className="brandDot">.</span>
             </span>
             <span className="brandName">Couranr</span>
           </Link>
 
-          <h1 className="authTitle">Create account</h1>
-          <p className="authSub">Create your portal login to manage orders and bookings.</p>
+          <Link className="btn btnGhost" href="/login">
+            Log in
+          </Link>
         </div>
 
-        {message && <div className="authNotice">{message}</div>}
+        <h1 className="authTitle">Create account</h1>
+        <p className="authSub">Start with Auto today. Courier & Docs expanding soon.</p>
 
-        <div className="authForm">
-          <div className="field">
-            <label className="label">Email</label>
-            <input
-              className="input"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              autoComplete="email"
-            />
+        <div className="field">
+          <div className="label">Email</div>
+          <input
+            className="input"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            autoComplete="email"
+          />
+        </div>
+
+        <div className="field">
+          <div className="label">Password</div>
+          <input
+            className="input"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Minimum 8 characters"
+            autoComplete="new-password"
+          />
+        </div>
+
+        {message && (
+          <div className={message.toLowerCase().includes("check your email") ? "noticeOk" : "noticeErr"}>
+            {message}
           </div>
+        )}
 
-          <div className="field">
-            <label className="label">Password</label>
-            <input
-              className="input"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Minimum 8 characters"
-              autoComplete="new-password"
-            />
-          </div>
-
-          <button onClick={handleSignup} disabled={loading} className="btn btn-gold" style={{ width: "100%" }}>
+        <div style={{ marginTop: 14, display: "grid", gap: 10 }}>
+          <button onClick={handleSignup} disabled={loading} className="btn btnPrimary">
             {loading ? "Creating…" : "Sign up"}
           </button>
 
-          <div className="authMeta">
-            <span>
-              Already have an account?{" "}
-              <Link className="authLink" href="/login">
-                Sign in
-              </Link>
-            </span>
-          </div>
-
-          <div className="authBack">
-            <Link className="btn btn-outline" href="/">
-              Back home
+          <div style={{ fontSize: 13, color: "rgba(71,85,105,0.95)" }}>
+            Already have an account?{" "}
+            <Link href="/login" style={{ fontWeight: 950, color: "rgba(11,18,32,0.95)" }}>
+              Sign in
             </Link>
           </div>
         </div>
