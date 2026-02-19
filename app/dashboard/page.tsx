@@ -1,3 +1,4 @@
+// app/dashboard/page.tsx
 import Link from "next/link";
 
 export default function DashboardPage() {
@@ -18,10 +19,11 @@ export default function DashboardPage() {
             </p>
 
             <div className="contactRow">
-              <Link className="btn btnGhost" href="/dashboard/deliveries">
+              {/* ✅ updated to match dashboard/home */}
+              <Link className="btn btnGhost" href="/dashboard/delivery">
                 Open deliveries
               </Link>
-              <Link className="btn btnGold" href="/dashboard/deliveries/new">
+              <Link className="btn btnGold" href="/courier">
                 New delivery →
               </Link>
             </div>
@@ -44,7 +46,9 @@ export default function DashboardPage() {
               <Link className="btn btnGhost" href="/dashboard/auto">
                 Open rentals
               </Link>
-              <Link className="btn btnGold" href="/auto">
+
+              {/* ✅ updated to match dashboard/home */}
+              <Link className="btn btnGold" href="/auto/vehicles">
                 Browse vehicles →
               </Link>
             </div>
