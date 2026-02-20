@@ -6,7 +6,11 @@ import { usePathname } from "next/navigation";
 
 const HIDE_ON_PREFIX = ["/dashboard", "/admin", "/driver"];
 
-export default function PublicHeader() {
+export default function PublicHeader({
+  isAuthed = false,
+}: {
+  isAuthed?: boolean;
+}) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
 
@@ -45,12 +49,20 @@ export default function PublicHeader() {
 
         {/* Desktop actions */}
         <div className="publicActions">
-          <Link className="btn btnGhost" href="/login">
-            Log in
-          </Link>
-          <Link className="btn btnGold" href="/signup">
-            Create account
-          </Link>
+          {isAuthed ? (
+            <Link className="btn btnGold" href="/portal">
+              Dashboard
+            </Link>
+          ) : (
+            <>
+              <Link className="btn btnGhost" href="/login">
+                Log in
+              </Link>
+              <Link className="btn btnGold" href="/signup">
+                Create account
+              </Link>
+            </>
+          )}
         </div>
 
         {/* Mobile menu button */}
@@ -81,12 +93,20 @@ export default function PublicHeader() {
           </div>
 
           <div className="mobileActions">
-            <Link className="btn btnGhost wFull" href="/login">
-              Log in
-            </Link>
-            <Link className="btn btnGold wFull" href="/signup">
-              Create account
-            </Link>
+            {isAuthed ? (
+              <Link className="btn btnGold wFull" href="/portal">
+                Dashboard
+              </Link>
+            ) : (
+              <>
+                <Link className="btn btnGhost wFull" href="/login">
+                  Log in
+                </Link>
+                <Link className="btn btnGold wFull" href="/signup">
+                  Create account
+                </Link>
+              </>
+            )}
           </div>
         </div>
       )}
