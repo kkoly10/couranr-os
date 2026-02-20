@@ -27,7 +27,8 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body className="appBody">
-        {!isAuthed && <PublicHeader />}
+        {/* Always render one global header. It will switch actions based on auth. */}
+        <PublicHeader isAuthed={isAuthed} />
 
         <main className="appMain">{children}</main>
       </body>
