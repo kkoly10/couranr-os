@@ -23,13 +23,13 @@ export default function HomePage() {
             </p>
 
             <div className="heroActions">
-              <Link className="btn btnGold" href="/courier">
+              <Link className="btn btnGold" href="/courier/quote">
                 Start a delivery quote →
               </Link>
-              <Link className="btn btnGhost" href="/auto">
+              <Link className="btn btnGhost" href="/auto/vehicles">
                 Browse vehicles
               </Link>
-              <Link className="btn btnGhost" href="/login">
+              <Link className="btn btnGhost" href="/portal">
                 Customer portal
               </Link>
             </div>
@@ -88,7 +88,7 @@ export default function HomePage() {
                 "Photo proof (when applicable)",
                 "Clear prohibited-item rules",
               ]}
-              href="/courier"
+              href="/courier/quote"
               cta="Get a quote"
             />
 
@@ -101,7 +101,7 @@ export default function HomePage() {
                 "Damage documentation + history",
                 "Policies shown before payment",
               ]}
-              href="/auto"
+              href="/auto/vehicles"
               cta="Browse vehicles"
             />
 
@@ -220,7 +220,7 @@ export default function HomePage() {
               </a>
             </span>
 
-            <Link className="btn btnGhost" href="/login">
+            <Link className="btn btnGhost" href="/portal">
               Open customer portal
             </Link>
           </div>
