@@ -18,6 +18,7 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const supabase = createServerComponentClient({ cookies });
+
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -27,8 +28,8 @@ export default async function RootLayout({
   return (
     <html lang="en">
       <body className="appBody">
-        {/* Always render one global header. It will switch actions based on auth. */}
-        <PublicHeader isAuthed={isAuthed} />
+        {/* Always render ONE header. It will hide itself on dashboard/admin paths. */}
+        <PublicHeader initialIsAuthed={isAuthed} />
 
         <main className="appMain">{children}</main>
       </body>
