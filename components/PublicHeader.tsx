@@ -3,16 +3,18 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
 
 const HIDE_ON_PREFIX = ["/dashboard", "/admin", "/driver"];
 
 export default function PublicHeader({
-  isAuthed = false,
+  initialIsAuthed = false,
 }: {
-  isAuthed?: boolean;
+  initialIsAuthed?: boolean;
 }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [isAuthed, setIsAuthed] = useState(initialIsAuthed);
 
   const shouldHideByPath = useMemo(() => {
     return HIDE_ON_PREFIX.some((p) => pathname?.startsWith(p));
@@ -21,6 +23,27 @@ export default function PublicHeader({
   useEffect(() => {
     setOpen(false);
   }, [pathname]);
+
+  // Keep header auth state in sync on the client (fixes stale "Log in" display after auth)
+  useEffect(() => {
+    let mounted = true;
+
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      setIsAuthed(!!data.session);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAuthed(!!session);
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
   if (shouldHideByPath) return null;
 
@@ -51,7 +74,7 @@ export default function PublicHeader({
         <div className="publicActions">
           {isAuthed ? (
             <Link className="btn btnGold" href="/portal">
-              Dashboard
+              Open portal
             </Link>
           ) : (
             <>
@@ -95,7 +118,7 @@ export default function PublicHeader({
           <div className="mobileActions">
             {isAuthed ? (
               <Link className="btn btnGold wFull" href="/portal">
-                Dashboard
+                Open portal
               </Link>
             ) : (
               <>
