@@ -8,10 +8,10 @@ export default function CourierPage() {
   const [miles, setMiles] = useState<number>(8);
   const [priority, setPriority] = useState<"standard" | "rush">("standard");
 
-  // EDIT THESE CONSTANTS ANYTIME
+  // Quick estimate only (planning)
   const pricing = useMemo(() => {
-    const base = 18; // base fee
-    const perMile = 1.65; // per mile
+    const base = 18;
+    const perMile = 1.65;
     const rushFee = priority === "rush" ? 12 : 0;
     const raw = base + miles * perMile + rushFee;
     const min = 28;
@@ -38,10 +38,10 @@ export default function CourierPage() {
             </p>
 
             <div className="heroActions">
-              <a className="btn btnGold" href="#estimate">
-                Get an estimate →
-              </a>
-              <Link className="btn btnGhost" href="/login">
+              <Link className="btn btnGold" href="/courier/quote">
+                Get a full quote →
+              </Link>
+              <Link className="btn btnGhost" href="/portal">
                 Customer portal
               </Link>
               <a className="btn btnGhost" href="mailto:couranr@couranrauto.com">
@@ -80,10 +80,12 @@ export default function CourierPage() {
           </div>
         </section>
 
+        {/* Optional quick estimate for browsing */}
         <section className="section" id="estimate">
-          <h2 className="sectionTitle">Quick estimate</h2>
+          <h2 className="sectionTitle">Quick estimate (optional)</h2>
           <p className="sectionSub">
-            This is an estimate for planning. Final pricing may be confirmed after details are reviewed.
+            For an exact quote with address autocomplete and checkout flow, use the full quote.
+            This quick estimate is only for planning.
           </p>
 
           <div className="cardGrid">
@@ -92,9 +94,7 @@ export default function CourierPage() {
                 🧮
               </div>
               <h3 className="cardTitle">Estimate inputs</h3>
-              <p className="cardDesc">
-                Adjust miles and speed preference.
-              </p>
+              <p className="cardDesc">Adjust miles and speed preference.</p>
 
               <div className="field">
                 <div className="label">Estimated miles</div>
@@ -113,7 +113,7 @@ export default function CourierPage() {
                 <select
                   className="input"
                   value={priority}
-                  onChange={(e) => setPriority(e.target.value as any)}
+                  onChange={(e) => setPriority(e.target.value as "standard" | "rush")}
                 >
                   <option value="standard">Standard</option>
                   <option value="rush">Rush / priority</option>
@@ -134,14 +134,18 @@ export default function CourierPage() {
                 💰
               </div>
               <h3 className="cardTitle">Estimated total</h3>
-              <p className="cardDesc">
-                Based on your selections:
-              </p>
+              <p className="cardDesc">Based on your selections:</p>
 
               <ul className="cardList">
                 <li>Base: ${pricing.base}</li>
-                <li>${pricing.perMile.toFixed(2)}/mile × {miles} miles</li>
-                {pricing.rushFee > 0 ? <li>Rush fee: +${pricing.rushFee}</li> : <li>Rush fee: $0</li>}
+                <li>
+                  ${pricing.perMile.toFixed(2)}/mile × {miles} miles
+                </li>
+                {pricing.rushFee > 0 ? (
+                  <li>Rush fee: +${pricing.rushFee}</li>
+                ) : (
+                  <li>Rush fee: $0</li>
+                )}
               </ul>
 
               <div style={{ marginTop: 8, fontWeight: 900, fontSize: 22 }}>
@@ -149,8 +153,8 @@ export default function CourierPage() {
               </div>
 
               <div className="contactRow" style={{ marginTop: 12 }}>
-                <Link className="btn btnGold" href="/login">
-                  Continue in portal →
+                <Link className="btn btnGold" href="/courier/quote">
+                  Start full quote →
                 </Link>
                 <a className="btn btnGhost" href="mailto:couranr@couranrauto.com">
                   Email request
@@ -158,8 +162,8 @@ export default function CourierPage() {
               </div>
 
               <p className="finePrint">
-                No illegal/hazardous/restricted items. You’re responsible for accurate pickup/drop-off info
-                and packaging where applicable.
+                No illegal/hazardous/restricted items. You’re responsible for accurate
+                pickup/drop-off info and packaging where applicable.
               </p>
             </div>
 
@@ -168,18 +172,14 @@ export default function CourierPage() {
                 🚫
               </div>
               <h3 className="cardTitle">Prohibited items</h3>
-              <p className="cardDesc">
-                We do not accept deliveries of:
-              </p>
+              <p className="cardDesc">We do not accept deliveries of:</p>
               <ul className="cardList">
                 <li>Illegal items</li>
                 <li>Hazardous materials</li>
                 <li>Weapons and restricted items</li>
                 <li>Anything unsafe to transport</li>
               </ul>
-              <p className="finePrint">
-                If unsure, email us before requesting.
-              </p>
+              <p className="finePrint">If unsure, email us before requesting.</p>
             </div>
           </div>
         </section>
