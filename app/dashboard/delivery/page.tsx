@@ -57,7 +57,9 @@ export default function DeliveryDashboard() {
         setDeliveries(data.deliveries || []);
       } catch (err: any) {
         setError(
-          err?.name === "AbortError" ? "Request timed out. Please refresh." : err.message || "Failed to load deliveries"
+          err?.name === "AbortError"
+            ? "Request timed out. Please refresh."
+            : err.message || "Failed to load deliveries"
         );
       } finally {
         setLoading(false);
@@ -75,7 +77,7 @@ export default function DeliveryDashboard() {
           <p className="pageSub">Track your active and past deliveries.</p>
         </div>
 
-        <button onClick={() => router.push("/courier")} className="btn btnPrimary">
+        <button onClick={() => router.push("/courier/quote")} className="btn btnPrimary">
           New delivery
         </button>
       </div>
