@@ -25,6 +25,11 @@ export type DeliveryOrderInput = {
   stops: number;
   scheduledAt: string | null;
   totalCents: number;
+
+  // 👇 ADDED RECIPIENT FIELDS 👇
+  recipientName: string;
+  recipientPhone: string;
+  deliveryNotes: string | null;
 };
 
 export type DeliveryOrderResult = {
@@ -47,6 +52,10 @@ export async function createDeliveryOrderFlow(
     stops,
     scheduledAt,
     totalCents,
+    // 👇 EXTRACT THEM HERE 👇
+    recipientName,
+    recipientPhone,
+    deliveryNotes,
   } = input;
 
   // 1️⃣ Create order
@@ -71,6 +80,10 @@ export async function createDeliveryOrderFlow(
     signatureRequired,
     stops,
     scheduledAt,
+    // 👇 PASS THEM TO THE DATABASE INSERTER 👇
+    recipientName,
+    recipientPhone,
+    deliveryNotes,
   });
 
   return {
