@@ -1,8 +1,22 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
+import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import Brand from "@/components/Brand";
 import LogoutButton from "@/components/LogoutButton";
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const supabase = createServerComponentClient({ cookies });
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  // 1. If not logged in, send them to login with a return path
+  if (!session) {
+    redirect("/login?next=/dashboard");
+  }
+
   return (
     <section>
       <header
@@ -27,7 +41,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <Brand href="/dashboard/home" role="customer" />
 
           <nav style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            <Link href="/dashboard/home" style={navLink}>
+            <Link href="/dashboard" style={navLink}>
               Dashboard
             </Link>
             <Link href="/dashboard/delivery" style={navLink}>
