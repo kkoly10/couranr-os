@@ -19,17 +19,16 @@ export async function GET(req: NextRequest) {
 
     const { data: rentals, error } = await admin
       .from("rentals")
-      .select(
-        `
+      .select(`
         id,user_id,vehicle_id,status,purpose,
         docs_complete,verification_status,agreement_signed,paid,
         lockbox_code_released_at,pickup_confirmed_at,return_confirmed_at,
         condition_photos_status,deposit_refund_status,damage_confirmed,
         created_at
-      `
-      )
+      `)
       .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
+      .order("paid", { ascending: false }) // Paid rentals first
+      .order("created_at", { ascending: false }); // Then newest
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 400 });
