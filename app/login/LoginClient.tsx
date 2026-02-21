@@ -8,7 +8,8 @@ import { supabase } from "@/lib/supabaseClient";
 
 export default function LoginClient() {
   const sp = useSearchParams();
-  const next = sp.get("next") || "/dashboard";
+  // ✅ FIXED: Now defaults to the smart portal router instead of dashboard
+  const next = sp.get("next") || "/portal";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
