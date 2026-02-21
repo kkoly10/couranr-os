@@ -10,6 +10,11 @@ export type CreateDeliveryInput = {
   signatureRequired: boolean;
   stops: number;
   scheduledAt: string | null;
+  
+  // New recipient fields added to the input type
+  recipientName: string;
+  recipientPhone: string;
+  deliveryNotes: string | null;
 };
 
 export type CreateDeliveryResult = {
@@ -29,6 +34,10 @@ export async function createDelivery(
     signatureRequired,
     stops,
     scheduledAt,
+    // Extracting the new fields
+    recipientName,
+    recipientPhone,
+    deliveryNotes,
   } = input;
 
   const { data, error } = await supabaseAdmin
@@ -44,6 +53,10 @@ export async function createDelivery(
       stops,
       scheduled_at: scheduledAt,
       status: "pending",
+      // Mapping to the database columns
+      recipient_name: recipientName,
+      recipient_phone: recipientPhone,
+      delivery_notes: deliveryNotes,
     })
     .select("id")
     .single();
