@@ -3,9 +3,6 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 
-const ADMIN_PATH = "/admin"; // change to "/admin/courier" if that's your real admin landing
-const CUSTOMER_PATH = "/dashboard";
-
 export const dynamic = "force-dynamic";
 
 export default async function PortalRedirectPage() {
@@ -19,7 +16,7 @@ export default async function PortalRedirectPage() {
     redirect("/login?next=/portal");
   }
 
-  // Try to read role from profiles
+  // Fetch the user's role from the profiles table
   const { data: profile } = await supabase
     .from("profiles")
     .select("role")
@@ -28,9 +25,13 @@ export default async function PortalRedirectPage() {
 
   const role = profile?.role;
 
+  // The Smart Routing Logic
   if (role === "admin") {
-    redirect(ADMIN_PATH);
+    redirect("/admin");
+  } else if (role === "driver") {
+    redirect("/driver");
+  } else {
+    // Default fallback for standard customers or missing roles
+    redirect("/dashboard");
   }
-
-  redirect(CUSTOMER_PATH);
 }
