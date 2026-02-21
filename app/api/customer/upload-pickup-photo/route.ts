@@ -36,7 +36,9 @@ export async function POST(req: Request) {
 
     // 4️⃣ Parse form data
     const formData = await req.formData();
-    const file = formData.get("file") as File | null;
+    
+    // ✅ FIX: Look for "photo" (what frontend sends) OR "file"
+    const file = (formData.get("photo") || formData.get("file")) as File | null;
     const deliveryId = formData.get("deliveryId") as string | null;
 
     if (!file || !deliveryId) {
@@ -49,26 +51,28 @@ export async function POST(req: Request) {
     // 5️⃣ Fetch delivery + owning order
     const { data: delivery, error: deliveryErr } = await supabase
       .from("deliveries")
-      .select(
-        `
+      .select(`
         id,
         orders (
           customer_id
         )
-      `
-      )
+      `)
       .eq("id", deliveryId)
       .single();
+
+    // ✅ FIX: Safely handle if Supabase returns `orders` as an Array OR an Object
+    const orderData = Array.isArray(delivery?.orders) 
+      ? delivery?.orders[0] 
+      : delivery?.orders;
 
     if (
       deliveryErr ||
       !delivery ||
-      !delivery.orders ||
-      delivery.orders.length === 0 ||
-      delivery.orders[0].customer_id !== user.id
+      !orderData ||
+      orderData.customer_id !== user.id
     ) {
       return NextResponse.json(
-        { error: "Forbidden" },
+        { error: "Forbidden - You do not own this delivery" },
         { status: 403 }
       );
     }
