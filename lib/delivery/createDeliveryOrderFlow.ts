@@ -26,7 +26,7 @@ export type DeliveryOrderInput = {
   scheduledAt: string | null;
   totalCents: number;
 
-  // 👇 ADDED RECIPIENT FIELDS 👇
+  // New recipient fields added here
   recipientName: string;
   recipientPhone: string;
   deliveryNotes: string | null;
@@ -52,7 +52,7 @@ export async function createDeliveryOrderFlow(
     stops,
     scheduledAt,
     totalCents,
-    // 👇 EXTRACT THEM HERE 👇
+    // Extracting the new fields
     recipientName,
     recipientPhone,
     deliveryNotes,
@@ -80,7 +80,7 @@ export async function createDeliveryOrderFlow(
     signatureRequired,
     stops,
     scheduledAt,
-    // 👇 PASS THEM TO THE DATABASE INSERTER 👇
+    // Passing the new fields down to createDelivery
     recipientName,
     recipientPhone,
     deliveryNotes,
