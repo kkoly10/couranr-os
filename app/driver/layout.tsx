@@ -1,7 +1,33 @@
+import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
+import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import Brand from "../../components/Brand";
 import LogoutButton from "../../components/LogoutButton";
 
-export default function DriverLayout({ children }: { children: React.ReactNode }) {
+export default async function DriverLayout({ children }: { children: React.ReactNode }) {
+  const supabase = createServerComponentClient({ cookies });
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  // 1. Kick out unauthenticated users
+  if (!session) {
+    redirect("/login?next=/driver");
+  }
+
+  // 2. Verify the Driver Role
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", session.user.id)
+    .single();
+
+  // 3. Kick non-drivers to the portal
+  if (profile?.role !== "driver") {
+    redirect("/portal");
+  }
+
   return (
     <section>
       <header
