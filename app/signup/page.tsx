@@ -9,7 +9,8 @@ import SiteFooter from "@/components/SiteFooter";
 export default function SignupPage() {
   const router = useRouter();
   const params = useSearchParams();
-  const next = params.get("next") || "/dashboard";
+  // ✅ FIXED: Now defaults to the smart portal router instead of dashboard
+  const next = params.get("next") || "/portal";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
