@@ -14,17 +14,18 @@ export default function SiteFooter() {
             </a>
           </div>
 
-          <div className="footerLinks">
+          {/* Semantic <nav> tag added, routing fixed to /portal */}
+          <nav className="footerLinks" aria-label="Footer Navigation">
             <Link className="mutedLink" href="/terms">
               Terms
             </Link>
             <Link className="mutedLink" href="/privacy">
               Privacy
             </Link>
-            <Link className="mutedLink" href="/login">
+            <Link className="mutedLink" href="/portal">
               Customer portal
             </Link>
-          </div>
+          </nav>
         </div>
       </div>
     </footer>
