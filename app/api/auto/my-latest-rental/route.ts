@@ -17,19 +17,20 @@ export async function GET(req: NextRequest) {
     const user = await getUserFromRequest(req);
     const admin = adminClient();
 
+    // We fetch the most recently UPDATED rental that is NOT cancelled
     const { data: rental, error } = await admin
       .from("rentals")
-      .select(
-        `
+      .select(`
         id,user_id,vehicle_id,status,purpose,
         docs_complete,verification_status,agreement_signed,paid,
         lockbox_code_released_at,pickup_confirmed_at,return_confirmed_at,
         condition_photos_status,deposit_refund_status,damage_confirmed,
         created_at
-      `
-      )
+      `)
       .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
+      .neq("status", "cancelled")
+      .order("paid", { ascending: false }) // Prioritize paid rentals
+      .order("created_at", { ascending: false }) // Then by newest
       .limit(1)
       .maybeSingle();
 
