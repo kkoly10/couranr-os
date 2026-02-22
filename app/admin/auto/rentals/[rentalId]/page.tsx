@@ -45,6 +45,7 @@ export default function AdminAutoRentalDetail() {
         ? { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
         : { Authorization: `Bearer ${token}` },
       body: body ? JSON.stringify(body) : undefined,
+      cache: "no-store", // <-- Forces fresh data from DB!
     });
 
     const json = await res.json().catch(() => ({}));
@@ -203,7 +204,7 @@ export default function AdminAutoRentalDetail() {
           </button>
         </div>
 
-        {/* RESTORED: Both Notify Buttons are back! */}
+        {/* Both Notify Buttons! */}
         <div style={{ display: "flex", gap: 8, paddingLeft: "16px", borderLeft: "1px solid #d1d5db" }}>
           <button disabled={saving} onClick={() => notify("approved")} style={btnGhost}>Notify: Approved</button>
           <button disabled={saving} onClick={() => notify("return_reminder")} style={btnGhost}>Notify: Return reminder</button>
