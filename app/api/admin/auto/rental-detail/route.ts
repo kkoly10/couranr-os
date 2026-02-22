@@ -1,3 +1,4 @@
+// app/api/admin/auto/rental-detail/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/app/lib/auth";
@@ -12,7 +13,6 @@ function requireEnv(name: string) {
 }
 
 function parseSupabaseStorageUrl(u: string): { bucket: string; path: string } | null {
-  // Expected: supabase://bucket/path/to/file.jpg
   if (!u || typeof u !== "string") return null;
   if (!u.startsWith("supabase://")) return null;
   const rest = u.replace("supabase://", "");
@@ -26,14 +26,12 @@ function parseSupabaseStorageUrl(u: string): { bucket: string; path: string } | 
 
 export async function GET(req: NextRequest) {
   try {
-    // ✅ ADMIN AUTH (Bearer token) using your shared helper
     await requireAdmin(req);
 
     const url = new URL(req.url);
     const rentalId = url.searchParams.get("rentalId") || "";
     if (!rentalId) return NextResponse.json({ error: "Missing rentalId" }, { status: 400 });
 
-    // Client with admin privileges for reading + signing
     const supabaseAdmin = createClient(
       requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
       requireEnv("SUPABASE_SERVICE_ROLE_KEY")
@@ -42,9 +40,9 @@ export async function GET(req: NextRequest) {
     // ---- Rental core ----
     const { data: rental, error: rentalErr } = await supabaseAdmin
       .from("rentals")
-      .select(
-        `
+      .select(`
         id,
+        status, 
         renter_id,
         user_id,
         verification_status,
@@ -64,8 +62,7 @@ export async function GET(req: NextRequest) {
         damage_notes,
         created_at,
         vehicles:vehicles ( id, year, make, model )
-      `
-      )
+      `)
       .eq("id", rentalId)
       .single();
 
@@ -73,7 +70,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    // ---- Verification row (if exists) ----
+    // ---- Verification row ----
     const { data: rv } = await supabaseAdmin
       .from("renter_verifications")
       .select("*")
@@ -93,11 +90,9 @@ export async function GET(req: NextRequest) {
         if (!parsed) {
           return { ...p, signed_url: null };
         }
-
         const { data: signed, error: signErr } = await supabaseAdmin.storage
           .from(parsed.bucket)
-          .createSignedUrl(parsed.path, 60 * 10); // 10 minutes
-
+          .createSignedUrl(parsed.path, 60 * 10);
         return {
           ...p,
           signed_url: signErr ? null : signed?.signedUrl || null,
@@ -116,13 +111,7 @@ export async function GET(req: NextRequest) {
     });
   } catch (e: any) {
     const msg = e?.message || "Server error";
-    const code =
-      msg.includes("Missing authorization") || msg.includes("Invalid or expired token")
-        ? 401
-        : msg.includes("Admin access required")
-        ? 403
-        : 500;
-
+    const code = msg.includes("Missing authorization") || msg.includes("Invalid or expired token") ? 401 : msg.includes("Admin access required") ? 403 : 500;
     return NextResponse.json({ error: msg }, { status: code });
   }
 }
