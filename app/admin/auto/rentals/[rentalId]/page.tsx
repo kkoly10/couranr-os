@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabaseClient";
 
 type Detail = {
   id: string;
+  status: string | null;
   verification_status: "pending" | "approved" | "denied";
   verification_denial_reason: string | null;
   docs_complete: boolean;
@@ -131,21 +132,45 @@ export default function AdminAutoRentalDetail() {
     } catch (e: any) { setErr(e?.message || "Failed to notify"); } finally { setSaving(false); }
   }
 
+  // CANCEL RENTAL LOGIC
+  async function cancelRental() {
+    const reason = prompt("Reason for cancellation? (This will be emailed to the customer)");
+    if (reason === null) return; // Admin hit cancel on the prompt
+
+    if (!window.confirm("Are you ABSOLUTELY sure? This will permanently cancel the rental in the system.")) return;
+
+    setSaving(true);
+    setErr(null);
+    try {
+      await api("/api/admin/auto/cancel-rental", { rentalId, reason: reason.trim() });
+      alert("Rental successfully cancelled.");
+      await load();
+    } catch (e: any) {
+      setErr(e?.message || "Failed to cancel rental");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   if (loading) return <p style={{ padding: 24 }}>Loading…</p>;
   if (!d) return <p style={{ padding: 24 }}>Not found.</p>;
 
   const v: any = d.vehicles;
   const label = v ? `${v.year} ${v.make} ${v.model}` : "Vehicle";
-
-  // Check if it is completely ready for release
+  
+  // Check if it is completely ready for lockbox release
   const readyToRelease = d.verification_status === "approved" && d.paid && d.docs_complete && d.agreement_signed;
+  const isCancelled = d.status === "cancelled";
 
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: 24 }}>
       <button onClick={() => router.push("/admin/auto")} style={btnGhost}>← Back to Admin</button>
 
-      <h1 style={{ marginTop: 14, marginBottom: 6 }}>{label}</h1>
+      <h1 style={{ marginTop: 14, marginBottom: 6, color: isCancelled ? "#9ca3af" : "#111" }}>
+        {label} {isCancelled && "(CANCELLED)"}
+      </h1>
       <div style={{ color: "#6b7280", fontSize: 13 }}>
+        Status: <strong style={{ textTransform: "uppercase", color: isCancelled ? "#dc2626" : "#111" }}>{d.status}</strong> •
         Verification: <strong>{d.verification_status}</strong> • Paid: <strong>{d.paid ? "yes" : "no"}</strong> •
         Docs: <strong>{d.docs_complete ? "yes" : "no"}</strong> • Agreement: <strong>{d.agreement_signed ? "yes" : "no"}</strong>
       </div>
@@ -156,16 +181,14 @@ export default function AdminAutoRentalDetail() {
         </div>
       )}
 
-      {/* ADMIN CONTROLS */}
-      <div style={{ marginTop: 16, display: "flex", gap: 10, flexWrap: "wrap", padding: "16px", background: "#f9fafb", borderRadius: "12px", border: "1px solid #e5e7eb" }}>
+      {/* ADMIN CONTROLS (Disabled if cancelled) */}
+      <div style={{ marginTop: 16, display: "flex", gap: 10, flexWrap: "wrap", padding: "16px", background: "#f9fafb", borderRadius: "12px", border: "1px solid #e5e7eb", opacity: isCancelled ? 0.5 : 1, pointerEvents: isCancelled ? "none" : "auto" }}>
         
-        {/* Verification Group */}
         <div style={{ display: "flex", gap: 8, paddingRight: "16px", borderRight: "1px solid #d1d5db" }}>
           <button disabled={saving || d.verification_status === "approved"} onClick={approve} style={btnOk}>Approve ID</button>
           <button disabled={saving} onClick={deny} style={btnDanger}>Deny ID</button>
         </div>
 
-        {/* Lockbox Group */}
         <div style={{ display: "flex", gap: 8 }}>
           <button disabled={saving} onClick={setLockbox} style={btnGhost}>
             1. Set Code {d.lockbox_code && "✅"}
@@ -180,13 +203,14 @@ export default function AdminAutoRentalDetail() {
           </button>
         </div>
 
-        {/* Notifications */}
+        {/* RESTORED: Both Notify Buttons are back! */}
         <div style={{ display: "flex", gap: 8, paddingLeft: "16px", borderLeft: "1px solid #d1d5db" }}>
+          <button disabled={saving} onClick={() => notify("approved")} style={btnGhost}>Notify: Approved</button>
           <button disabled={saving} onClick={() => notify("return_reminder")} style={btnGhost}>Notify: Return reminder</button>
         </div>
       </div>
 
-      {!readyToRelease && !d.lockbox_code_released_at && (
+      {!readyToRelease && !d.lockbox_code_released_at && !isCancelled && (
         <p style={{ fontSize: 13, color: "#b45309", marginTop: 8 }}>
           ⚠️ Cannot release lockbox until verification is approved, agreement is signed, and rental is paid.
         </p>
@@ -231,7 +255,6 @@ export default function AdminAutoRentalDetail() {
               <div style={{ marginTop: 8 }}>
                 <img src={p.photo_url} alt={p.phase} style={{ width: "100%", borderRadius: 12, border: "1px solid #e5e7eb" }} />
               </div>
-              {/* RESTORED: GPS, Timestamp, and Link! */}
               <div style={{ marginTop: 8, fontSize: 12, color: "#6b7280" }}>
                 Time: {p.captured_at ? new Date(p.captured_at).toLocaleString() : "—"}<br />
                 GPS: {p.captured_lat ?? "—"}, {p.captured_lng ?? "—"}
@@ -243,6 +266,22 @@ export default function AdminAutoRentalDetail() {
           ))}
         </div>
       </div>
+
+      {/* DANGER ZONE */}
+      <div style={{ marginTop: 40, padding: 20, border: "1px solid #fecaca", borderRadius: 16, background: "#fef2f2" }}>
+        <h3 style={{ margin: "0 0 10px 0", color: "#991b1b" }}>Danger Zone</h3>
+        <p style={{ fontSize: 14, color: "#7f1d1d", marginBottom: 16 }}>
+          Cancelling a rental will permanently lock the customer's dashboard and stop the flow. Note: If the customer has already paid, you must process their financial refund separately via your Stripe dashboard.
+        </p>
+        <button 
+          disabled={saving || isCancelled} 
+          onClick={cancelRental} 
+          style={{ ...btnDanger, opacity: isCancelled ? 0.5 : 1, cursor: isCancelled ? "not-allowed" : "pointer" }}
+        >
+          {isCancelled ? "Rental Already Cancelled" : "Cancel Rental"}
+        </button>
+      </div>
+
     </div>
   );
 }
@@ -250,5 +289,5 @@ export default function AdminAutoRentalDetail() {
 const card: React.CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 16, padding: 16, background: "#fff" };
 const btnPrimary: React.CSSProperties = { padding: "10px 14px", borderRadius: 12, border: "none", background: "#111827", color: "#fff", fontWeight: 900, cursor: "pointer" };
 const btnOk: React.CSSProperties = { padding: "10px 14px", borderRadius: 12, border: "none", background: "#16a34a", color: "#fff", fontWeight: 900, cursor: "pointer" };
-const btnDanger: React.CSSProperties = { padding: "10px 14px", borderRadius: 12, border: "none", background: "#b91c1c", color: "#fff", fontWeight: 900, cursor: "pointer" };
+const btnDanger: React.CSSProperties = { padding: "10px 14px", borderRadius: 12, border: "none", background: "#dc2626", color: "#fff", fontWeight: 900, cursor: "pointer" };
 const btnGhost: React.CSSProperties = { padding: "10px 14px", borderRadius: 12, border: "1px solid #d1d5db", background: "#fff", fontWeight: 900, cursor: "pointer" };
