@@ -1,10 +1,10 @@
+// app/api/auto/confirm-pickup/route.ts
 export const dynamic = "force-dynamic";
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
 
-// ---------- Server-only Supabase (Service Role) ----------
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -26,7 +26,6 @@ async function getUserFromRequest(req: NextRequest) {
 }
 
 async function getEmailForUserId(userId: string): Promise<string | null> {
-  // Prefer profiles.email (you control it)
   const { data } = await supabaseAdmin
     .from("profiles")
     .select("email")
@@ -46,11 +45,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing rentalId" }, { status: 400 });
     }
 
-    // Fetch rental (no profiles join)
     const { data: rental, error: rentalErr } = await supabaseAdmin
       .from("rentals")
-      .select(
-        `
+      .select(`
         id,
         user_id,
         status,
@@ -63,8 +60,7 @@ export async function POST(req: NextRequest) {
         condition_photos_status,
         vehicle_id,
         vehicles:vehicles(id, year, make, model)
-      `
-      )
+      `)
       .eq("id", rentalId)
       .maybeSingle();
 
@@ -72,20 +68,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Rental not found" }, { status: 404 });
     }
 
-    // Ownership enforcement
     if (rental.user_id !== user.id) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // Must have lockbox released
     if (!rental.lockbox_code_released_at) {
-      return NextResponse.json(
-        { error: "Lockbox not released yet" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Lockbox not released yet" }, { status: 400 });
     }
 
-    // Must have pickup photos done before pickup confirmation
+    // Gating check: Matches our smart status upgrading logic
     const okPickupPhotos =
       rental.condition_photos_status === "pickup_interior_done" ||
       rental.condition_photos_status === "return_exterior_done" ||
@@ -93,22 +84,15 @@ export async function POST(req: NextRequest) {
       rental.condition_photos_status === "complete";
 
     if (!okPickupPhotos) {
-      return NextResponse.json(
-        { error: "Pickup photos not complete yet" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Pickup photos not complete yet. Please upload exterior and interior photos." }, { status: 400 });
     }
 
-    // Prevent double-confirm
     if (rental.pickup_confirmed_at) {
-      return NextResponse.json(
-        { ok: true, message: "Pickup already confirmed" },
-        { status: 200 }
-      );
+      return NextResponse.json({ ok: true, message: "Pickup already confirmed" }, { status: 200 });
     }
 
-    // Update rental
     const now = new Date().toISOString();
+    
     const { error: updErr } = await supabaseAdmin
       .from("rentals")
       .update({
@@ -118,13 +102,9 @@ export async function POST(req: NextRequest) {
       .eq("id", rentalId);
 
     if (updErr) {
-      return NextResponse.json(
-        { error: "Failed to confirm pickup" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Failed to confirm pickup" }, { status: 500 });
     }
 
-    // Audit event
     await supabaseAdmin.from("rental_events").insert({
       rental_id: rentalId,
       actor_user_id: user.id,
@@ -133,30 +113,29 @@ export async function POST(req: NextRequest) {
       event_payload: { at: now },
     });
 
-    // Email renter (optional)
-    const renterEmail = await getEmailForUserId(rental.user_id);
-    const v = asSingle<{ year?: any; make?: any; model?: any }>((rental as any).vehicles);
-    const carLabel =
-      v?.year && v?.make && v?.model ? `${v.year} ${v.make} ${v.model}` : "your rental vehicle";
+    // 🚨 THE FIX: Wrapped Email in Try/Catch so it doesn't crash the confirmation
+    if (process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL) {
+      try {
+        const renterEmail = await getEmailForUserId(rental.user_id);
+        if (renterEmail) {
+          const resend = new Resend(process.env.RESEND_API_KEY);
+          const v = asSingle<{ year?: any; make?: any; model?: any }>((rental as any).vehicles);
+          const carLabel = v?.year && v?.make && v?.model ? `${v.year} ${v.make} ${v.model}` : "your rental vehicle";
 
-    if (renterEmail && process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL) {
-      const resend = new Resend(process.env.RESEND_API_KEY);
-      await resend.emails.send({
-        from: process.env.RESEND_FROM_EMAIL,
-        to: renterEmail,
-        subject: "Pickup confirmed — Couranr Auto",
-        text:
-          `Your pickup has been confirmed for ${carLabel}.\n\n` +
-          `Drive safe.\n\n` +
-          `— Couranr Auto`,
-      });
+          await resend.emails.send({
+            from: process.env.RESEND_FROM_EMAIL,
+            to: renterEmail,
+            subject: "Pickup confirmed — Couranr Auto",
+            text: `Your pickup has been confirmed for ${carLabel}.\n\nDrive safe.\n\n— Couranr Auto`,
+          });
+        }
+      } catch (emailErr) {
+        console.error("Email failed to send, but pickup was successfully confirmed.", emailErr);
+      }
     }
 
     return NextResponse.json({ ok: true, pickup_confirmed_at: now });
   } catch (e: any) {
-    return NextResponse.json(
-      { error: e?.message || "Server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
   }
 }
