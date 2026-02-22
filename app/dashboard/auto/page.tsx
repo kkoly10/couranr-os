@@ -71,13 +71,16 @@ export default function AutoDashboardRenterHub() {
 
   async function refreshData(token: string) {
     try {
-      const res = await fetch("/api/auto/my-rentals", {
+      // 🚨 THE FIX: Added the timestamp cache-buster here!
+      const res = await fetch(`/api/auto/my-rentals?t=${Date.now()}`, {
         headers: { Authorization: `Bearer ${token}` },
-        cache: "no-store", // <-- Forces fresh data from DB!
+        cache: "no-store", // Bypass fetch cache
       });
       if (!res.ok) throw new Error("Failed to load rentals");
       const data = await res.json();
       setState({ kind: "ready", rentals: data?.rentals ?? [] });
+      // BUST THE NEXT.JS PAGE CACHE
+      router.refresh(); 
     } catch (e: any) {
       setState({ kind: "error", message: e.message });
     }
