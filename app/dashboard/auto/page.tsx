@@ -73,6 +73,7 @@ export default function AutoDashboardRenterHub() {
     try {
       const res = await fetch("/api/auto/my-rentals", {
         headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store", // <-- Forces fresh data from DB!
       });
       if (!res.ok) throw new Error("Failed to load rentals");
       const data = await res.json();
@@ -94,12 +95,13 @@ export default function AutoDashboardRenterHub() {
           Authorization: `Bearer ${session.access_token}`,
         },
         body: JSON.stringify(body),
+        cache: "no-store",
       });
       if (!res.ok) {
         const d = await res.json();
         throw new Error(d.error || "Action failed");
       }
-      // Instantly refresh the data so the deleted draft vanishes from the screen
+      // Instantly refresh the data
       await refreshData(session.access_token);
     } catch (e: any) {
       alert(e.message);
@@ -117,16 +119,15 @@ export default function AutoDashboardRenterHub() {
   const ui = useMemo(() => {
     if (state.kind !== "ready") return null;
 
-    // 1. Identify the primary rental (first active/pending found, otherwise fallback to the newest draft)
+    // 1. Identify the primary rental
     const active = state.rentals.find(r => r.status === 'active' || r.status === 'pending');
     const primary = active || state.rentals[0] || null;
     
-    // 2. Filter History: Keep all past non-drafts, but limit drafts to max 5
+    // 2. Filter History
     const allHistory = state.rentals.filter(r => r.id !== primary?.id);
     const pastActives = allHistory.filter(r => r.status !== 'draft');
-    const drafts = allHistory.filter(r => r.status === 'draft').slice(0, 5); // Max 5 drafts!
+    const drafts = allHistory.filter(r => r.status === 'draft').slice(0, 5); 
     
-    // Re-sort the combined list chronologically (newest at the top)
     const history = [...pastActives, ...drafts].sort((a, b) => 
       new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
     );
