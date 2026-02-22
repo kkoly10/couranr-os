@@ -45,7 +45,7 @@ export default function AdminAutoRentalDetail() {
         ? { "Content-Type": "application/json", Authorization: `Bearer ${token}` }
         : { Authorization: `Bearer ${token}` },
       body: body ? JSON.stringify(body) : undefined,
-      cache: "no-store", // <-- Forces fresh data from DB!
+      cache: "no-store", // Bypass fetch cache
     });
 
     const json = await res.json().catch(() => ({}));
@@ -57,12 +57,16 @@ export default function AdminAutoRentalDetail() {
     setLoading(true);
     setErr(null);
     try {
-      const json = await api(`/api/admin/auto/rental-detail?rentalId=${encodeURIComponent(rentalId)}`);
+      // THE FIX: Added a unique timestamp to physically force a fresh database read
+      const url = `/api/admin/auto/rental-detail?rentalId=${encodeURIComponent(rentalId)}&t=${Date.now()}`;
+      const json = await api(url);
       setD(json.detail);
     } catch (e: any) {
       setErr(e?.message || "Failed to load");
     } finally {
       setLoading(false);
+      // BUST THE NEXT.JS PAGE CACHE
+      router.refresh(); 
     }
   }
 
@@ -116,7 +120,7 @@ export default function AdminAutoRentalDetail() {
     try {
       await api("/api/admin/auto/release-lockbox", { rentalId, lockboxCode: code });
       alert("Lockbox Released! The customer can now see it on their dashboard.");
-      await load();
+      await load(); // Reloads data & triggers router.refresh()
     } catch (e: any) {
       setErr(e?.message || "Failed to release lockbox");
     } finally {
@@ -204,7 +208,6 @@ export default function AdminAutoRentalDetail() {
           </button>
         </div>
 
-        {/* Both Notify Buttons! */}
         <div style={{ display: "flex", gap: 8, paddingLeft: "16px", borderLeft: "1px solid #d1d5db" }}>
           <button disabled={saving} onClick={() => notify("approved")} style={btnGhost}>Notify: Approved</button>
           <button disabled={saving} onClick={() => notify("return_reminder")} style={btnGhost}>Notify: Return reminder</button>
