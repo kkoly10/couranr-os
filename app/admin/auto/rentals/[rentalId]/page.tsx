@@ -1,3 +1,4 @@
+// app/admin/auto/rentals/[rentalId]/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
@@ -63,10 +64,7 @@ export default function AdminAutoRentalDetail() {
     }
   }
 
-  useEffect(() => {
-    load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rentalId]);
+  useEffect(() => { load(); }, [rentalId]);
 
   async function approve() {
     if (!d) return;
@@ -75,11 +73,7 @@ export default function AdminAutoRentalDetail() {
     try {
       await api("/api/admin/auto/set-verification", { rentalId, status: "approved" });
       await load();
-    } catch (e: any) {
-      setErr(e?.message || "Failed");
-    } finally {
-      setSaving(false);
-    }
+    } catch (e: any) { setErr(e?.message || "Failed"); } finally { setSaving(false); }
   }
 
   async function deny() {
@@ -90,13 +84,10 @@ export default function AdminAutoRentalDetail() {
     try {
       await api("/api/admin/auto/set-verification", { rentalId, status: "denied", reason });
       await load();
-    } catch (e: any) {
-      setErr(e?.message || "Failed");
-    } finally {
-      setSaving(false);
-    }
+    } catch (e: any) { setErr(e?.message || "Failed"); } finally { setSaving(false); }
   }
 
+  // STEP 1: Just stores the code securely
   async function setLockbox() {
     const code = prompt("Enter lockbox code (ex: 1234)");
     if (!code?.trim()) return;
@@ -105,8 +96,27 @@ export default function AdminAutoRentalDetail() {
     try {
       await api("/api/admin/auto/set-lockbox", { rentalId, code: code.trim() });
       await load();
+    } catch (e: any) { setErr(e?.message || "Failed"); } finally { setSaving(false); }
+  }
+
+  // STEP 2: Releases the code to the customer dashboard
+  async function releaseLockbox() {
+    let code = d?.lockbox_code;
+    if (!code) {
+      code = prompt("No code saved yet. Enter lockbox code to release:");
+      if (!code?.trim()) return;
+    } else {
+      if (!window.confirm(`Are you sure you want to release code [${code}] to the customer now?`)) return;
+    }
+
+    setSaving(true);
+    setErr(null);
+    try {
+      await api("/api/admin/auto/release-lockbox", { rentalId, lockboxCode: code });
+      alert("Lockbox Released! The customer can now see it on their dashboard.");
+      await load();
     } catch (e: any) {
-      setErr(e?.message || "Failed");
+      setErr(e?.message || "Failed to release lockbox");
     } finally {
       setSaving(false);
     }
@@ -118,11 +128,7 @@ export default function AdminAutoRentalDetail() {
     try {
       await api("/api/auto/notify", { rentalId, type });
       alert("Notification sent.");
-    } catch (e: any) {
-      setErr(e?.message || "Failed to notify");
-    } finally {
-      setSaving(false);
-    }
+    } catch (e: any) { setErr(e?.message || "Failed to notify"); } finally { setSaving(false); }
   }
 
   if (loading) return <p style={{ padding: 24 }}>Loading…</p>;
@@ -131,11 +137,12 @@ export default function AdminAutoRentalDetail() {
   const v: any = d.vehicles;
   const label = v ? `${v.year} ${v.make} ${v.model}` : "Vehicle";
 
+  // Check if it is completely ready for release
+  const readyToRelease = d.verification_status === "approved" && d.paid && d.docs_complete && d.agreement_signed;
+
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto", padding: 24 }}>
-      <button onClick={() => router.push("/admin/auto/rentals")} style={btnGhost}>
-        ← Back
-      </button>
+      <button onClick={() => router.push("/admin/auto")} style={btnGhost}>← Back to Admin</button>
 
       <h1 style={{ marginTop: 14, marginBottom: 6 }}>{label}</h1>
       <div style={{ color: "#6b7280", fontSize: 13 }}>
@@ -149,22 +156,50 @@ export default function AdminAutoRentalDetail() {
         </div>
       )}
 
-      <div style={{ marginTop: 16, display: "flex", gap: 10, flexWrap: "wrap" }}>
-        <button disabled={saving} onClick={approve} style={btnPrimary}>Approve</button>
-        <button disabled={saving} onClick={deny} style={btnDanger}>Deny</button>
-        <button disabled={saving} onClick={setLockbox} style={btnGhost}>Set lockbox code</button>
-        <button disabled={saving} onClick={() => notify("approved")} style={btnGhost}>Notify: Approved</button>
-        <button disabled={saving} onClick={() => notify("return_reminder")} style={btnGhost}>Notify: Return reminder</button>
+      {/* ADMIN CONTROLS */}
+      <div style={{ marginTop: 16, display: "flex", gap: 10, flexWrap: "wrap", padding: "16px", background: "#f9fafb", borderRadius: "12px", border: "1px solid #e5e7eb" }}>
+        
+        {/* Verification Group */}
+        <div style={{ display: "flex", gap: 8, paddingRight: "16px", borderRight: "1px solid #d1d5db" }}>
+          <button disabled={saving || d.verification_status === "approved"} onClick={approve} style={btnOk}>Approve ID</button>
+          <button disabled={saving} onClick={deny} style={btnDanger}>Deny ID</button>
+        </div>
+
+        {/* Lockbox Group */}
+        <div style={{ display: "flex", gap: 8 }}>
+          <button disabled={saving} onClick={setLockbox} style={btnGhost}>
+            1. Set Code {d.lockbox_code && "✅"}
+          </button>
+          
+          <button 
+            disabled={saving || !!d.lockbox_code_released_at || !readyToRelease} 
+            onClick={releaseLockbox} 
+            style={d.lockbox_code_released_at ? btnGhost : btnPrimary}
+          >
+            {d.lockbox_code_released_at ? "Code Released ✅" : "2. Release Lockbox"}
+          </button>
+        </div>
+
+        {/* Notifications */}
+        <div style={{ display: "flex", gap: 8, paddingLeft: "16px", borderLeft: "1px solid #d1d5db" }}>
+          <button disabled={saving} onClick={() => notify("return_reminder")} style={btnGhost}>Notify: Return reminder</button>
+        </div>
       </div>
+
+      {!readyToRelease && !d.lockbox_code_released_at && (
+        <p style={{ fontSize: 13, color: "#b45309", marginTop: 8 }}>
+          ⚠️ Cannot release lockbox until verification is approved, agreement is signed, and rental is paid.
+        </p>
+      )}
 
       <div style={{ marginTop: 18, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12 }}>
         <div style={card}>
-          <strong>Lockbox</strong>
+          <strong>Lockbox Status</strong>
           <div style={{ marginTop: 8, fontSize: 14 }}>
-            Code: <strong>{d.lockbox_code || "—"}</strong>
+            Code stored: <strong>{d.lockbox_code || "None set yet"}</strong>
           </div>
-          <div style={{ marginTop: 6, fontSize: 13, color: "#6b7280" }}>
-            Released at: {d.lockbox_code_released_at || "—"}
+          <div style={{ marginTop: 6, fontSize: 13, color: d.lockbox_code_released_at ? "#16a34a" : "#ca8a04", fontWeight: 700 }}>
+            {d.lockbox_code_released_at ? `Released at: ${new Date(d.lockbox_code_released_at).toLocaleString()}` : "Not released to customer yet."}
           </div>
         </div>
 
@@ -174,9 +209,9 @@ export default function AdminAutoRentalDetail() {
             (Open in a new tab)
           </div>
           <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
-            <a href={d.renter_verifications?.license_front_url || "#"} target="_blank">License (front)</a>
-            <a href={d.renter_verifications?.license_back_url || "#"} target="_blank">License (back)</a>
-            <a href={d.renter_verifications?.selfie_url || "#"} target="_blank">Selfie</a>
+            <a href={d.renter_verifications?.license_front_url || "#"} target="_blank" style={{ color: "#111", textDecoration: "underline" }}>License (front)</a>
+            <a href={d.renter_verifications?.license_back_url || "#"} target="_blank" style={{ color: "#111", textDecoration: "underline" }}>License (back)</a>
+            <a href={d.renter_verifications?.selfie_url || "#"} target="_blank" style={{ color: "#111", textDecoration: "underline" }}>Selfie</a>
             <div style={{ fontSize: 13, color: "#6b7280" }}>
               State: <strong>{d.renter_verifications?.license_state || "—"}</strong> • Exp:{" "}
               <strong>{d.renter_verifications?.license_expires || "—"}</strong> • Insurance:{" "}
@@ -196,11 +231,12 @@ export default function AdminAutoRentalDetail() {
               <div style={{ marginTop: 8 }}>
                 <img src={p.photo_url} alt={p.phase} style={{ width: "100%", borderRadius: 12, border: "1px solid #e5e7eb" }} />
               </div>
+              {/* RESTORED: GPS, Timestamp, and Link! */}
               <div style={{ marginTop: 8, fontSize: 12, color: "#6b7280" }}>
-                Time: {p.captured_at || "—"}<br />
+                Time: {p.captured_at ? new Date(p.captured_at).toLocaleString() : "—"}<br />
                 GPS: {p.captured_lat ?? "—"}, {p.captured_lng ?? "—"}
               </div>
-              <a href={p.photo_url} target="_blank" style={{ fontSize: 12, marginTop: 8, display: "inline-block" }}>
+              <a href={p.photo_url} target="_blank" style={{ fontSize: 12, marginTop: 8, display: "inline-block", color: "#111", textDecoration: "underline" }}>
                 Open original
               </a>
             </div>
@@ -211,38 +247,8 @@ export default function AdminAutoRentalDetail() {
   );
 }
 
-const card: React.CSSProperties = {
-  border: "1px solid #e5e7eb",
-  borderRadius: 16,
-  padding: 16,
-  background: "#fff",
-};
-
-const btnPrimary: React.CSSProperties = {
-  padding: "10px 14px",
-  borderRadius: 12,
-  border: "none",
-  background: "#111827",
-  color: "#fff",
-  fontWeight: 900,
-  cursor: "pointer",
-};
-
-const btnDanger: React.CSSProperties = {
-  padding: "10px 14px",
-  borderRadius: 12,
-  border: "none",
-  background: "#b91c1c",
-  color: "#fff",
-  fontWeight: 900,
-  cursor: "pointer",
-};
-
-const btnGhost: React.CSSProperties = {
-  padding: "10px 14px",
-  borderRadius: 12,
-  border: "1px solid #d1d5db",
-  background: "#fff",
-  fontWeight: 900,
-  cursor: "pointer",
-};
+const card: React.CSSProperties = { border: "1px solid #e5e7eb", borderRadius: 16, padding: 16, background: "#fff" };
+const btnPrimary: React.CSSProperties = { padding: "10px 14px", borderRadius: 12, border: "none", background: "#111827", color: "#fff", fontWeight: 900, cursor: "pointer" };
+const btnOk: React.CSSProperties = { padding: "10px 14px", borderRadius: 12, border: "none", background: "#16a34a", color: "#fff", fontWeight: 900, cursor: "pointer" };
+const btnDanger: React.CSSProperties = { padding: "10px 14px", borderRadius: 12, border: "none", background: "#b91c1c", color: "#fff", fontWeight: 900, cursor: "pointer" };
+const btnGhost: React.CSSProperties = { padding: "10px 14px", borderRadius: 12, border: "1px solid #d1d5db", background: "#fff", fontWeight: 900, cursor: "pointer" };
