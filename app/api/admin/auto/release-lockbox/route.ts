@@ -37,16 +37,6 @@ async function requireAdmin(userId: string) {
   }
 }
 
-async function getEmailForUserId(userId: string): Promise<string | null> {
-  const { data } = await supabaseAdmin
-    .from("profiles")
-    .select("email")
-    .eq("id", userId)
-    .maybeSingle();
-
-  return (data as any)?.email ?? null;
-}
-
 export async function POST(req: NextRequest) {
   try {
     const user = await getUserFromRequest(req);
@@ -56,11 +46,8 @@ export async function POST(req: NextRequest) {
     const rentalId = body?.rentalId as string | undefined;
     let lockboxCode = body?.lockboxCode as string | undefined;
 
-    if (!rentalId) {
-      return NextResponse.json({ error: "Missing rentalId" }, { status: 400 });
-    }
+    if (!rentalId) return NextResponse.json({ error: "Missing rentalId" }, { status: 400 });
 
-    // Load rental + vehicle
     const { data: rental, error: rentalErr } = await supabaseAdmin
       .from("rentals")
       .select(`
@@ -74,12 +61,8 @@ export async function POST(req: NextRequest) {
     if (rentalErr || !rental) return NextResponse.json({ error: "Rental not found" }, { status: 404 });
     if (rental.lockbox_code_released_at) return NextResponse.json({ ok: true, message: "Lockbox already released" }, { status: 200 });
 
-    // Use pre-saved code if none was provided in this request
     if (!lockboxCode) lockboxCode = rental.lockbox_code;
-    
-    if (!lockboxCode || String(lockboxCode).trim().length < 2) {
-      return NextResponse.json({ error: "No lockbox code provided or saved." }, { status: 400 });
-    }
+    if (!lockboxCode || String(lockboxCode).trim().length < 2) return NextResponse.json({ error: "No lockbox code provided or saved." }, { status: 400 });
 
     // Strict safety checks
     if (rental.verification_status !== "approved") return NextResponse.json({ error: "Verification not approved" }, { status: 400 });
@@ -89,7 +72,6 @@ export async function POST(req: NextRequest) {
 
     const now = new Date().toISOString();
 
-    // Release lockbox and activate
     const { error: updErr } = await supabaseAdmin
       .from("rentals")
       .update({
@@ -102,7 +84,6 @@ export async function POST(req: NextRequest) {
 
     if (updErr) return NextResponse.json({ error: "Failed to release lockbox" }, { status: 500 });
 
-    // Audit log
     await supabaseAdmin.from("rental_events").insert({
       rental_id: rentalId,
       actor_user_id: user.id,
@@ -111,21 +92,25 @@ export async function POST(req: NextRequest) {
       event_payload: { at: now, code: lockboxCode },
     });
 
-    // Email renter pickup instructions
-    const renterEmail = await getEmailForUserId(rental.user_id);
-    const v = asSingle<{ year?: any; make?: any; model?: any }>((rental as any).vehicles);
-    const carLabel = v?.year && v?.make && v?.model ? `${v.year} ${v.make} ${v.model}` : "your rental vehicle";
-
-    if (renterEmail && process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL) {
-      const resend = new Resend(process.env.RESEND_API_KEY);
-      const pickupLocation = (rental as any).pickup_location || "See your dashboard for pickup details";
-
-      await resend.emails.send({
-        from: process.env.RESEND_FROM_EMAIL,
-        to: renterEmail,
-        subject: "Approved — pickup instructions + lockbox code (Couranr Auto)",
-        text: `You're approved for ${carLabel}.\n\nPickup location: ${pickupLocation}\nLockbox code: ${String(lockboxCode).trim()}\n\nNext steps:\n1) Go to your renter dashboard\n2) Upload required pickup photos\n3) Confirm pickup when prompted\n\n— Couranr Auto`,
-      });
+    // 🚨 Wrapped Email in Try/Catch so a failed email doesn't crash the Lockbox Release
+    if (process.env.RESEND_API_KEY && process.env.RESEND_FROM_EMAIL) {
+      try {
+        const { data: profile } = await supabaseAdmin.from("profiles").select("email").eq("id", rental.user_id).single();
+        if (profile?.email) {
+          const resend = new Resend(process.env.RESEND_API_KEY);
+          const v = asSingle<{ year?: any; make?: any; model?: any }>((rental as any).vehicles);
+          const carLabel = v?.year && v?.make && v?.model ? `${v.year} ${v.make} ${v.model}` : "your rental vehicle";
+          
+          await resend.emails.send({
+            from: process.env.RESEND_FROM_EMAIL,
+            to: profile.email,
+            subject: "Approved — pickup instructions + lockbox code (Couranr Auto)",
+            text: `You're approved for ${carLabel}.\n\nLockbox code: ${String(lockboxCode).trim()}\n\nNext steps:\n1) Go to your renter dashboard\n2) Upload required pickup photos\n3) Confirm pickup when prompted\n\n— Couranr Auto`,
+          });
+        }
+      } catch (emailErr) {
+        console.error("Email failed to send, but lockbox was successfully released.", emailErr);
+      }
     }
 
     return NextResponse.json({ ok: true, released_at: now });
