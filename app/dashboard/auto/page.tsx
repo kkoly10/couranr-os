@@ -1,3 +1,4 @@
+// app/dashboard/auto/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -98,6 +99,7 @@ export default function AutoDashboardRenterHub() {
         const d = await res.json();
         throw new Error(d.error || "Action failed");
       }
+      // Instantly refresh the data so the deleted draft vanishes from the screen
       await refreshData(session.access_token);
     } catch (e: any) {
       alert(e.message);
@@ -106,19 +108,34 @@ export default function AutoDashboardRenterHub() {
     }
   }
 
+  // --- DELETE DRAFT LOGIC ---
+  async function deleteDraft(rentalId: string) {
+    if (!window.confirm("Are you sure you want to delete this test/draft rental?")) return;
+    await postAction("/api/auto/delete-draft", { rentalId }, `delete-${rentalId}`);
+  }
+
   const ui = useMemo(() => {
     if (state.kind !== "ready") return null;
 
-    // 1. Logic to prioritize the most important rental
+    // 1. Identify the primary rental (first active/pending found, otherwise fallback to the newest draft)
     const active = state.rentals.find(r => r.status === 'active' || r.status === 'pending');
     const primary = active || state.rentals[0] || null;
-    const history = state.rentals.filter(r => r.id !== primary?.id);
+    
+    // 2. Filter History: Keep all past non-drafts, but limit drafts to max 5
+    const allHistory = state.rentals.filter(r => r.id !== primary?.id);
+    const pastActives = allHistory.filter(r => r.status !== 'draft');
+    const drafts = allHistory.filter(r => r.status === 'draft').slice(0, 5); // Max 5 drafts!
+    
+    // Re-sort the combined list chronologically (newest at the top)
+    const history = [...pastActives, ...drafts].sort((a, b) => 
+      new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+    );
 
     if (!primary) return { primary: null, history: [], timeline: null };
 
     const r = primary;
 
-    // --- RESTORING YOUR 10-STEP LOGIC ---
+    // Timeline Progress Logic
     const verificationApproved = r.verification_status === "approved";
     const verificationDenied = r.verification_status === "denied";
     const verificationPending = r.verification_status === "pending";
@@ -196,50 +213,16 @@ export default function AutoDashboardRenterHub() {
 
           <div style={styles.card}>
             <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 15 }}>Rental Progress</div>
-            
-            <TimelineItem 
-              n={1} title="Upload ID & selfie" 
-              status={ui.timeline?.docsDone ? "done" : ui.timeline?.verificationDenied ? "blocked" : "todo"} 
-              actionHref="/auto/verify" actionLabel="Upload"
-            />
-            
-            <TimelineItem 
-              n={2} title="Sign Agreement" 
-              status={ui.timeline?.agreementDone ? "done" : ui.timeline?.docsDone ? "todo" : "disabled"} 
-              actionHref={`/auto/agreement?rentalId=${ui.primary.id}`} actionLabel="Sign"
-            />
-
-            <TimelineItem 
-              n={3} title="Payment" 
-              status={ui.timeline?.paidDone ? "done" : ui.timeline?.agreementDone ? "todo" : "disabled"} 
-              actionHref={`/auto/checkout?rentalId=${ui.primary.id}`} actionLabel="Pay"
-            />
-
-            <TimelineItem 
-              n={4} title="Admin Approval" 
-              status={ui.timeline?.verificationApproved ? "done" : "todo"} 
-            />
-
-            <TimelineItem 
-              n={5} title="Lockbox Access" 
-              status={ui.timeline?.lockboxReleased ? "done" : "disabled"} 
-              actionHref="/auto/access" actionLabel="View"
-            />
-
-            <TimelineItem 
-              n={6} title="Pickup Photos" 
-              status={ui.timeline?.pickupPhotosDone ? "done" : ui.timeline?.lockboxReleased ? "todo" : "disabled"} 
-              actionHref="/auto/photos?phase=pickup_exterior" actionLabel="Upload"
-            />
-
-            <TimelineItem 
-              n={7} title="Confirm Pickup" 
-              status={ui.timeline?.pickupConfirmed ? "done" : ui.timeline?.canConfirmPickup ? "todo" : "disabled"} 
-              onAction={() => postAction("/api/auto/confirm-pickup", { rentalId: ui.primary!.id }, "confirm-pickup")}
-              actionLabel="Confirm" busy={busy === "confirm-pickup"}
-            />
-
-            {/* Steps 8-10 continue here... (Restoring the rest for space) */}
+            <TimelineItem n={1} title="Upload ID & selfie" status={ui.timeline?.docsDone ? "done" : ui.timeline?.verificationDenied ? "blocked" : "todo"} actionHref="/auto/verify" actionLabel="Upload" />
+            <TimelineItem n={2} title="Sign Agreement" status={ui.timeline?.agreementDone ? "done" : ui.timeline?.docsDone ? "todo" : "disabled"} actionHref={`/auto/agreement?rentalId=${ui.primary.id}`} actionLabel="Sign" />
+            <TimelineItem n={3} title="Payment" status={ui.timeline?.paidDone ? "done" : ui.timeline?.agreementDone ? "todo" : "disabled"} actionHref={`/auto/checkout?rentalId=${ui.primary.id}`} actionLabel="Pay" />
+            <TimelineItem n={4} title="Admin Approval" status={ui.timeline?.verificationApproved ? "done" : "todo"} />
+            <TimelineItem n={5} title="Lockbox Access" status={ui.timeline?.lockboxReleased ? "done" : "disabled"} actionHref="/auto/access" actionLabel="View" />
+            <TimelineItem n={6} title="Pickup Photos" status={ui.timeline?.pickupPhotosDone ? "done" : ui.timeline?.lockboxReleased ? "todo" : "disabled"} actionHref="/auto/photos?phase=pickup_exterior" actionLabel="Upload" />
+            <TimelineItem n={7} title="Confirm Pickup" status={ui.timeline?.pickupConfirmed ? "done" : ui.timeline?.canConfirmPickup ? "todo" : "disabled"} onAction={() => postAction("/api/auto/confirm-pickup", { rentalId: ui.primary!.id }, "confirm-pickup")} actionLabel="Confirm" busy={busy === "confirm-pickup"} />
+            <TimelineItem n={8} title="Return Photos" status={ui.timeline?.returnPhotosDone ? "done" : ui.timeline?.pickupConfirmed ? "todo" : "disabled"} actionHref="/auto/photos?phase=return_exterior" actionLabel="Upload" />
+            <TimelineItem n={9} title="Confirm Return" status={ui.timeline?.returnConfirmed ? "done" : ui.timeline?.canConfirmReturn ? "todo" : "disabled"} onAction={() => postAction("/api/auto/confirm-return", { rentalId: ui.primary!.id }, "confirm-return")} actionLabel="Confirm" busy={busy === "confirm-return"} />
+            <TimelineItem n={10} title="Deposit Status" status={ui.timeline?.depositStatus === "refunded" ? "done" : ui.timeline?.depositStatus === "withheld" ? "blocked" : ui.timeline?.returnConfirmed ? "todo" : "disabled"} note={ui.timeline?.depositStatus === "refunded" ? "Refunded." : ui.timeline?.depositStatus === "withheld" ? "Withheld." : ui.timeline?.returnConfirmed ? "Pending decision." : ""} />
           </div>
 
           <div style={styles.card}>
@@ -268,9 +251,24 @@ export default function AutoDashboardRenterHub() {
               <div style={{ fontSize: 11, fontWeight: 900, textTransform: 'uppercase', color: h.status === 'draft' ? '#f59e0b' : '#6b7280' }}>
                 {h.status}
               </div>
-              <Link href={h.status === 'draft' ? `/auto/checkout?rentalId=${h.id}` : `/auto/rental/${h.id}`} style={{ fontSize: 12, color: '#111', textDecoration: 'underline' }}>
-                {h.status === 'draft' ? 'Finish Checkout' : 'View Details'}
-              </Link>
+              
+              <div style={{ display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'flex-end', marginTop: 4 }}>
+                {/* Delete Draft Button */}
+                {h.status === 'draft' && (
+                  <button 
+                    onClick={() => deleteDraft(h.id)}
+                    disabled={busy === `delete-${h.id}`}
+                    style={{ background: 'none', border: 'none', padding: 0, fontSize: 12, color: '#ef4444', cursor: 'pointer', textDecoration: 'underline' }}
+                  >
+                    {busy === `delete-${h.id}` ? 'Deleting...' : 'Delete'}
+                  </button>
+                )}
+                
+                <Link href={h.status === 'draft' ? `/auto/checkout?rentalId=${h.id}` : `/auto/rental/${h.id}`} style={{ fontSize: 12, color: '#111', textDecoration: 'underline' }}>
+                  {h.status === 'draft' ? 'Finish Checkout' : 'View Details'}
+                </Link>
+              </div>
+
             </div>
           </div>
         )) : (
@@ -281,8 +279,7 @@ export default function AutoDashboardRenterHub() {
   );
 }
 
-// Restored TimelineItem with original button logic
-function TimelineItem(props: { n: number; title: string; status: "done" | "todo" | "disabled" | "blocked"; actionHref?: string; actionLabel?: string; onAction?: () => void; busy?: boolean; }) {
+function TimelineItem(props: { n: number; title: string; status: "done" | "todo" | "disabled" | "blocked"; actionHref?: string; actionLabel?: string; onAction?: () => void; busy?: boolean; note?: string; }) {
   const pill = props.status === "done" ? { bg: "#ecfdf5", border: "#bbf7d0", color: "#166534", text: "Done" } : props.status === "blocked" ? { bg: "#fef2f2", border: "#fecaca", color: "#991b1b", text: "Blocked" } : props.status === "disabled" ? { bg: "#f3f4f6", border: "#e5e7eb", color: "#6b7280", text: "Locked" } : { bg: "#eff6ff", border: "#bfdbfe", color: "#1e3a8a", text: "Next" };
   const canClick = (!!props.actionHref || !!props.onAction) && props.status !== "disabled";
 
@@ -291,6 +288,7 @@ function TimelineItem(props: { n: number; title: string; status: "done" | "todo"
       <div style={{ width: 28, height: 28, borderRadius: 999, background: props.status === 'done' ? '#10b981' : '#111', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 900, fontSize: 12 }}>{props.n}</div>
       <div style={{ flex: 1 }}>
         <div style={{ fontWeight: 900, fontSize: 14 }}>{props.title} <span style={{ marginLeft: 8, padding: "2px 8px", borderRadius: 999, fontSize: 10, background: pill.bg, border: `1px solid ${pill.border}`, color: pill.color }}>{pill.text}</span></div>
+        {props.note && <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>{props.note}</div>}
       </div>
       <div style={{ minWidth: 80, textAlign: 'right' }}>
         {canClick ? (
