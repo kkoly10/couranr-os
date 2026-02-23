@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { requireAdmin } from "@/app/lib/auth";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 export const runtime = "nodejs";
 
 function requireEnv(name: string) {
@@ -24,13 +25,24 @@ function parseSupabaseStorageUrl(u: string): { bucket: string; path: string } | 
   return { bucket, path };
 }
 
+const noStoreHeaders = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+  Pragma: "no-cache",
+  Expires: "0",
+};
+
 export async function GET(req: NextRequest) {
   try {
     await requireAdmin(req);
 
     const url = new URL(req.url);
     const rentalId = url.searchParams.get("rentalId") || "";
-    if (!rentalId) return NextResponse.json({ error: "Missing rentalId" }, { status: 400 });
+    if (!rentalId) {
+      return NextResponse.json(
+        { error: "Missing rentalId" },
+        { status: 400, headers: noStoreHeaders }
+      );
+    }
 
     const supabaseAdmin = createClient(
       requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
@@ -42,7 +54,7 @@ export async function GET(req: NextRequest) {
       .from("rentals")
       .select(`
         id,
-        status, 
+        status,
         renter_id,
         user_id,
         verification_status,
@@ -67,7 +79,10 @@ export async function GET(req: NextRequest) {
       .single();
 
     if (rentalErr || !rental) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Not found" },
+        { status: 404, headers: noStoreHeaders }
+      );
     }
 
     // ---- Verification row ----
@@ -87,31 +102,50 @@ export async function GET(req: NextRequest) {
     const photos = await Promise.all(
       (photosRaw || []).map(async (p: any) => {
         const parsed = parseSupabaseStorageUrl(p.photo_url);
+
+        // If it's already a normal URL, return as-is
         if (!parsed) {
           return { ...p, signed_url: null };
         }
+
         const { data: signed, error: signErr } = await supabaseAdmin.storage
           .from(parsed.bucket)
           .createSignedUrl(parsed.path, 60 * 10);
+
+        const signedUrl = signErr ? null : signed?.signedUrl || null;
+
         return {
           ...p,
-          signed_url: signErr ? null : signed?.signedUrl || null,
+          // ✅ Make photo_url browser-safe for existing UI code
+          photo_url: signedUrl || p.photo_url,
+          signed_url: signedUrl,
           storage_bucket: parsed.bucket,
           storage_path: parsed.path,
         };
       })
     );
 
-    return NextResponse.json({
-      detail: {
-        ...rental,
-        renter_verifications: rv || null,
-        photos,
+    return NextResponse.json(
+      {
+        detail: {
+          ...rental,
+          renter_verifications: rv || null,
+          photos,
+        },
       },
-    });
+      { headers: noStoreHeaders }
+    );
   } catch (e: any) {
     const msg = e?.message || "Server error";
-    const code = msg.includes("Missing authorization") || msg.includes("Invalid or expired token") ? 401 : msg.includes("Admin access required") ? 403 : 500;
-    return NextResponse.json({ error: msg }, { status: code });
+    const code = msg.includes("Missing authorization") || msg.includes("Invalid or expired token")
+      ? 401
+      : msg.includes("Admin access required")
+      ? 403
+      : 500;
+
+    return NextResponse.json(
+      { error: msg },
+      { status: code, headers: noStoreHeaders }
+    );
   }
 }
