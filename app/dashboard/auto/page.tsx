@@ -81,7 +81,7 @@ export default function AutoDashboardRenterHub() {
     };
   }, [router]);
 
-  // ✅ Auto-refresh for admin-triggered changes (poll + focus + same-browser signal)
+  // Auto-refresh for admin-triggered changes (poll + focus + same-browser signal)
   useEffect(() => {
     let active = true;
 
@@ -136,8 +136,6 @@ export default function AutoDashboardRenterHub() {
 
       const data = await res.json();
       setState({ kind: "ready", rentals: data?.rentals ?? [] });
-
-      // ✅ removed router.refresh(); this page is client-state driven
     } catch (e: any) {
       setState({ kind: "error", message: e.message });
     }
@@ -185,7 +183,7 @@ export default function AutoDashboardRenterHub() {
   const ui = useMemo(() => {
     if (state.kind !== "ready") return null;
 
-    // ✅ prioritize active over pending
+    // Prioritize active over pending
     const activeRental = state.rentals.find((r) => r.status === "active");
     const pendingRental = state.rentals.find((r) => r.status === "pending");
     const primary = activeRental || pendingRental || state.rentals[0] || null;
@@ -253,7 +251,7 @@ export default function AutoDashboardRenterHub() {
     } else if (lockboxReleased && !pickupPhotosDone) {
       nextAction = {
         label: "Upload pickup photos",
-        href: "/auto/photos?phase=pickup_exterior",
+        href: `/auto/photos?phase=pickup_exterior&rentalId=${r.id}`,
         note: "Required before confirming pickup.",
       };
     } else if (canConfirmPickup) {
@@ -310,7 +308,7 @@ export default function AutoDashboardRenterHub() {
         </div>
       )}
 
-      {/* --- ACTIVE RENTAL SECTION --- */}
+      {/* ACTIVE RENTAL SECTION */}
       {ui?.primary ? (
         <div style={{ marginBottom: 40 }}>
           <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 15 }}>Current Rental</h2>
@@ -375,14 +373,14 @@ export default function AutoDashboardRenterHub() {
               n={5}
               title="Lockbox Access"
               status={ui.timeline?.lockboxReleased ? "done" : "disabled"}
-              actionHref="/auto/access"
+              actionHref={`/auto/access?rentalId=${ui.primary.id}`}
               actionLabel="View"
             />
             <TimelineItem
               n={6}
               title="Pickup Photos"
               status={ui.timeline?.pickupPhotosDone ? "done" : ui.timeline?.lockboxReleased ? "todo" : "disabled"}
-              actionHref="/auto/photos?phase=pickup_exterior"
+              actionHref={`/auto/photos?phase=pickup_exterior&rentalId=${ui.primary.id}`}
               actionLabel="Upload"
             />
             <TimelineItem
@@ -397,7 +395,7 @@ export default function AutoDashboardRenterHub() {
               n={8}
               title="Return Photos"
               status={ui.timeline?.returnPhotosDone ? "done" : ui.timeline?.pickupConfirmed ? "todo" : "disabled"}
-              actionHref="/auto/photos?phase=return_exterior"
+              actionHref={`/auto/photos?phase=return_exterior&rentalId=${ui.primary.id}`}
               actionLabel="Upload"
             />
             <TimelineItem
@@ -453,7 +451,7 @@ export default function AutoDashboardRenterHub() {
         <div style={styles.card}>You don’t have an active rental yet.</div>
       )}
 
-      {/* --- HISTORY SECTION --- */}
+      {/* HISTORY SECTION */}
       <h2 style={{ fontSize: 20, fontWeight: 900, marginBottom: 15 }}>Rental History & Drafts</h2>
       <div style={{ display: "grid", gap: 12 }}>
         {ui?.history.length ? (
