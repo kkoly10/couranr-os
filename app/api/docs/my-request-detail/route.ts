@@ -20,7 +20,10 @@ function parseSupabaseStorageUrl(u: string): { bucket: string; path: string } | 
   const rest = u.replace("supabase://", "");
   const i = rest.indexOf("/");
   if (i <= 0) return null;
-  return { bucket: rest.slice(0, i), path: rest.slice(i + 1) };
+  const bucket = rest.slice(0, i);
+  const path = rest.slice(i + 1);
+  if (!bucket || !path) return null;
+  return { bucket, path };
 }
 
 function resolveFileRef(row: any): { bucket: string; path: string } | null {
@@ -38,9 +41,7 @@ function resolveFileRef(row: any): { bucket: string; path: string } | null {
   }
 
   const maybe = row?.file_url || row?.storage_url || row?.url || null;
-  if (typeof maybe === "string") {
-    return parseSupabaseStorageUrl(maybe);
-  }
+  if (typeof maybe === "string") return parseSupabaseStorageUrl(maybe);
 
   return null;
 }
@@ -95,8 +96,21 @@ export async function GET(req: NextRequest) {
       })
     );
 
-    return NextResponse.json({ request: requestRow, files });
+    const { data: eventsRaw } = await supabase
+      .from("doc_request_events")
+      .select("*")
+      .eq("request_id", requestId)
+      .order("created_at", { ascending: true });
+
+    return NextResponse.json({
+      request: requestRow,
+      files,
+      events: eventsRaw || [],
+    });
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: e?.message || "Server error" },
+      { status: 500 }
+    );
   }
 }
