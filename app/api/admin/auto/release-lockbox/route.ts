@@ -84,14 +84,25 @@ export async function POST(req: NextRequest) {
       console.error("Select Error:", rentalErr);
       return NextResponse.json({ error: "Database error or Rental not found" }, { status: 500 });
     }
-    
+
     if (!rental) {
       return NextResponse.json({ error: "Rental not found" }, { status: 404 });
     }
 
+    // ✅ Return full rental payload even if already released (helps admin UI sync)
     if (rental.lockbox_code_released_at) {
       return NextResponse.json(
-        { ok: true, message: "Lockbox already released" },
+        {
+          ok: true,
+          message: "Lockbox already released",
+          released_at: rental.lockbox_code_released_at,
+          rental: {
+            id: rentalId,
+            status: (rental as any).status ?? "active",
+            lockbox_code: (rental as any).lockbox_code ?? null,
+            lockbox_code_released_at: (rental as any).lockbox_code_released_at,
+          },
+        },
         { status: 200 }
       );
     }
@@ -102,10 +113,18 @@ export async function POST(req: NextRequest) {
     }
 
     // Strict safety checks
-    if (rental.verification_status !== "approved") return NextResponse.json({ error: "Verification not approved" }, { status: 400 });
-    if (!rental.docs_complete) return NextResponse.json({ error: "Docs not complete" }, { status: 400 });
-    if (!rental.agreement_signed) return NextResponse.json({ error: "Agreement not signed" }, { status: 400 });
-    if (!rental.paid) return NextResponse.json({ error: "Payment not received" }, { status: 400 });
+    if (rental.verification_status !== "approved") {
+      return NextResponse.json({ error: "Verification not approved" }, { status: 400 });
+    }
+    if (!rental.docs_complete) {
+      return NextResponse.json({ error: "Docs not complete" }, { status: 400 });
+    }
+    if (!rental.agreement_signed) {
+      return NextResponse.json({ error: "Agreement not signed" }, { status: 400 });
+    }
+    if (!rental.paid) {
+      return NextResponse.json({ error: "Payment not received" }, { status: 400 });
+    }
 
     const now = new Date().toISOString();
 
@@ -139,8 +158,10 @@ export async function POST(req: NextRequest) {
         if (renterEmail) {
           const resend = new Resend(process.env.RESEND_API_KEY);
           const v = asSingle<{ year?: any; make?: any; model?: any }>((rental as any).vehicles);
-          const carLabel = v?.year && v?.make && v?.model ? `${v.year} ${v.make} ${v.model}` : "your rental vehicle";
-          const pickupLocation = (rental as any).pickup_location || "See your dashboard for pickup details";
+          const carLabel =
+            v?.year && v?.make && v?.model ? `${v.year} ${v.make} ${v.model}` : "your rental vehicle";
+          const pickupLocation =
+            (rental as any).pickup_location || "See your dashboard for pickup details";
 
           await resend.emails.send({
             from: process.env.RESEND_FROM_EMAIL,
@@ -162,7 +183,17 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    return NextResponse.json({ ok: true, released_at: now });
+    // ✅ Return updated rental payload for immediate admin UI update
+    return NextResponse.json({
+      ok: true,
+      released_at: now,
+      rental: {
+        id: rentalId,
+        status: "active",
+        lockbox_code: String(lockboxCode).trim(),
+        lockbox_code_released_at: now,
+      },
+    });
   } catch (e: any) {
     return NextResponse.json(
       { error: e?.message || "Server error" },
