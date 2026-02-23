@@ -64,7 +64,6 @@ export default function DocsDashboardClient() {
     if (state.kind !== "ready") return null;
 
     const requests = state.requests || [];
-
     const historyStatuses = new Set(["completed", "cancelled"]);
     const current = requests.filter((r) => !historyStatuses.has(String(r.status || "").toLowerCase()));
     const history = requests.filter((r) => historyStatuses.has(String(r.status || "").toLowerCase()));
@@ -117,6 +116,8 @@ export default function DocsDashboardClient() {
 function RequestCard({ r }: { r: DocRequest }) {
   const status = String(r.status || "draft").toLowerCase();
   const isDraft = status === "draft";
+  const amountCents = Number(r.final_total_cents ?? r.quoted_total_cents ?? 0);
+  const canPay = !r.paid && amountCents > 0 && !["completed", "cancelled"].includes(status);
 
   return (
     <div style={styles.card}>
@@ -127,6 +128,7 @@ function RequestCard({ r }: { r: DocRequest }) {
               {r.title || "Docs Request"}
             </div>
             <Badge value={status} />
+            {r.paid ? <Badge value="paid" /> : null}
           </div>
 
           <div style={{ marginTop: 6, fontSize: 13, color: "#374151", lineHeight: 1.65 }}>
@@ -136,11 +138,8 @@ function RequestCard({ r }: { r: DocRequest }) {
             {r.submitted_at ? <div><strong>Submitted:</strong> {fmtDateTime(r.submitted_at)}</div> : null}
             {r.completed_at ? <div><strong>Completed:</strong> {fmtDateTime(r.completed_at)}</div> : null}
             <div><strong>Paid:</strong> {r.paid ? "Yes" : "No"}</div>
-            {(r.quoted_total_cents ?? r.final_total_cents) ? (
-              <div>
-                <strong>Quote/Total:</strong>{" "}
-                {formatMoney((r.final_total_cents ?? r.quoted_total_cents) || 0)}
-              </div>
+            {amountCents > 0 ? (
+              <div><strong>Quote/Total:</strong> {formatMoney(amountCents)}</div>
             ) : null}
           </div>
         </div>
@@ -149,6 +148,12 @@ function RequestCard({ r }: { r: DocRequest }) {
           <Link href={`/dashboard/docs/${r.id}`} style={styles.btnPrimaryLink}>
             View Details
           </Link>
+
+          {canPay && (
+            <Link href={`/docs/checkout?requestId=${encodeURIComponent(r.id)}`} style={styles.btnPrimaryLink}>
+              Pay Now
+            </Link>
+          )}
 
           {isDraft && (
             <Link href={`/docs/request?requestId=${encodeURIComponent(r.id)}`} style={styles.btnGhost}>
@@ -208,7 +213,7 @@ function Badge({ value }: { value: string }) {
   const v = String(value || "").toLowerCase();
   const color =
     v === "completed" || v === "paid" ? "#16a34a" :
-    v === "draft" || v === "submitted" || v === "pending" ? "#ca8a04" :
+    v === "draft" || v === "submitted" || v === "pending" || v === "quoted" || v === "in_progress" ? "#ca8a04" :
     v === "cancelled" || v === "rejected" ? "#dc2626" :
     "#374151";
 
