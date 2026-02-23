@@ -3,16 +3,17 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import SiteFooter from "@/components/SiteFooter";
-import { calculateCourierTotal, COURIER_PRICING } from "@/lib/delivery/pricing";
+// ✅ FIXED: Imported the correct function name 'computeDeliveryPrice'
+import { computeDeliveryPrice, COURIER_PRICING } from "@/lib/delivery/pricing";
 
 export default function CourierPage() {
   const [miles, setMiles] = useState<number>(8);
   const [priority, setPriority] = useState<"standard" | "rush">("standard");
 
-  // ✅ Uses the shared pricing logic
+  // ✅ FIXED: Using computeDeliveryPrice
   const pricing = useMemo(() => {
     try {
-      return calculateCourierTotal({
+      return computeDeliveryPrice({
         miles,
         weightLbs: 1, // Dummy weight for quick estimate
         stops: 0,
@@ -184,7 +185,7 @@ export default function CourierPage() {
           </div>
         </section>
 
-        {/* ✅ RESTORED "What you can expect" Section */}
+        {/* What you can expect Section */}
         <section className="section">
           <h2 className="sectionTitle">What you can expect</h2>
           <p className="sectionSub">A simple flow with clear rules and strong documentation.</p>
@@ -211,7 +212,7 @@ export default function CourierPage() {
           </div>
         </section>
 
-        {/* ✅ RESTORED FAQ Section */}
+        {/* FAQ Section */}
         <section className="section">
           <h2 className="sectionTitle">FAQ</h2>
           <div className="faq">
