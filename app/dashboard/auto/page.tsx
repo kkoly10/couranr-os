@@ -1,4 +1,3 @@
-// app/dashboard/auto/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -57,73 +56,23 @@ export default function AutoDashboardRenterHub() {
 
   useEffect(() => {
     let mounted = true;
-
     async function boot() {
       const {
         data: { session },
       } = await supabase.auth.getSession();
-
       if (!mounted) return;
-
       if (!session) {
         setState({ kind: "unauth" });
         router.push("/login?next=/dashboard/auto");
         return;
       }
-
       await refreshData(session.access_token);
     }
-
     boot();
-
     return () => {
       mounted = false;
     };
   }, [router]);
-
-  // Auto-refresh for admin-triggered changes (poll + focus + same-browser signal)
-  useEffect(() => {
-    let active = true;
-
-    const runRefresh = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (!active || !session?.access_token) return;
-      await refreshData(session.access_token);
-    };
-
-    const onFocus = () => {
-      runRefresh();
-    };
-
-    const onVisibility = () => {
-      if (!document.hidden) runRefresh();
-    };
-
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === "couranr:auto-lockbox-release") {
-        runRefresh();
-      }
-    };
-
-    const intervalId = window.setInterval(() => {
-      if (!document.hidden) runRefresh();
-    }, 5000);
-
-    window.addEventListener("focus", onFocus);
-    document.addEventListener("visibilitychange", onVisibility);
-    window.addEventListener("storage", onStorage);
-
-    return () => {
-      active = false;
-      window.clearInterval(intervalId);
-      window.removeEventListener("focus", onFocus);
-      document.removeEventListener("visibilitychange", onVisibility);
-      window.removeEventListener("storage", onStorage);
-    };
-  }, []);
 
   async function refreshData(token: string) {
     try {
@@ -131,11 +80,10 @@ export default function AutoDashboardRenterHub() {
         headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
       });
-
       if (!res.ok) throw new Error("Failed to load rentals");
-
       const data = await res.json();
       setState({ kind: "ready", rentals: data?.rentals ?? [] });
+      router.refresh();
     } catch (e: any) {
       setState({ kind: "error", message: e.message });
     }
@@ -143,14 +91,11 @@ export default function AutoDashboardRenterHub() {
 
   async function postAction(url: string, body: any, busyKey: string) {
     setBusy(busyKey);
-
     try {
       const {
         data: { session },
       } = await supabase.auth.getSession();
-
       if (!session?.access_token) throw new Error("Unauthorized");
-
       const res = await fetch(url, {
         method: "POST",
         headers: {
@@ -160,12 +105,10 @@ export default function AutoDashboardRenterHub() {
         body: JSON.stringify(body),
         cache: "no-store",
       });
-
       if (!res.ok) {
         const d = await res.json();
         throw new Error(d.error || "Action failed");
       }
-
       await refreshData(session.access_token);
     } catch (e: any) {
       alert(e.message);
@@ -174,7 +117,6 @@ export default function AutoDashboardRenterHub() {
     }
   }
 
-  // --- DELETE DRAFT LOGIC ---
   async function deleteDraft(rentalId: string) {
     if (!window.confirm("Are you sure you want to delete this test/draft rental?")) return;
     await postAction("/api/auto/delete-draft", { rentalId }, `delete-${rentalId}`);
@@ -183,24 +125,27 @@ export default function AutoDashboardRenterHub() {
   const ui = useMemo(() => {
     if (state.kind !== "ready") return null;
 
-    // Prioritize active over pending
-    const activeRental = state.rentals.find((r) => r.status === "active");
-    const pendingRental = state.rentals.find((r) => r.status === "pending");
-    const primary = activeRental || pendingRental || state.rentals[0] || null;
+    // ✅ Current queue includes returned (while deposit is still being handled)
+    // ✅ Completed/cancelled must NOT appear in Current Rental
+    const currentStatuses = new Set(["pending", "active", "returned"]);
+    const currentRentals = state.rentals.filter((r) =>
+      currentStatuses.has(String(r.status || "").toLowerCase())
+    );
+
+    const primary = currentRentals[0] || null;
 
     const allHistory = state.rentals.filter((r) => r.id !== primary?.id);
-    const pastActives = allHistory.filter((r) => r.status !== "draft");
-    const drafts = allHistory.filter((r) => r.status === "draft").slice(0, 5);
+    const pastActives = allHistory.filter((r) => String(r.status || "").toLowerCase() !== "draft");
+    const drafts = allHistory.filter((r) => String(r.status || "").toLowerCase() === "draft").slice(0, 5);
 
     const history = [...pastActives, ...drafts].sort(
       (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
     );
 
-    if (!primary) return { primary: null, history: [], timeline: null };
+    if (!primary) return { primary: null, history: [], timeline: null, allHistory: history };
 
     const r = primary;
 
-    // Timeline Progress Logic
     const verificationApproved = r.verification_status === "approved";
     const verificationDenied = r.verification_status === "denied";
     const verificationPending = r.verification_status === "pending";
@@ -209,15 +154,18 @@ export default function AutoDashboardRenterHub() {
     const paidDone = !!r.paid;
     const lockboxReleased = !!r.lockbox_code_released_at;
     const photoStatus = r.condition_photos_status || "not_started";
-    const pickupPhotosDone = ["pickup_interior_done", "return_exterior_done", "return_interior_done", "complete"].includes(photoStatus);
+    const pickupPhotosDone = [
+      "pickup_interior_done",
+      "return_exterior_done",
+      "return_interior_done",
+      "complete",
+    ].includes(photoStatus);
     const returnPhotosDone = ["return_interior_done", "complete"].includes(photoStatus);
     const pickupConfirmed = !!r.pickup_confirmed_at;
     const returnConfirmed = !!r.return_confirmed_at;
     const depositStatus = r.deposit_refund_status || "n/a";
     const damageUnderReview =
-      !!r.return_confirmed_at &&
-      !!r.damage_confirmed &&
-      !["refunded", "withheld"].includes(depositStatus);
+      !!r.return_confirmed_at && !!r.damage_confirmed && !["refunded", "withheld"].includes(depositStatus);
     const canConfirmPickup = !!r.id && lockboxReleased && pickupPhotosDone && !pickupConfirmed;
     const canConfirmReturn = !!r.id && pickupConfirmed && returnPhotosDone && !returnConfirmed;
 
@@ -232,33 +180,21 @@ export default function AutoDashboardRenterHub() {
           : "Complete verification so we can approve your pickup.",
       };
     } else if (!agreementDone) {
-      nextAction = {
-        label: "Sign agreement",
-        href: `/auto/agreement?rentalId=${r.id}`,
-        note: "Required before payment.",
-      };
+      nextAction = { label: "Sign agreement", href: `/auto/agreement?rentalId=${r.id}`, note: "Required before payment." };
     } else if (!paidDone) {
-      nextAction = {
-        label: "Complete payment",
-        href: `/auto/checkout?rentalId=${r.id}`,
-        note: "Required before lockbox release.",
-      };
+      nextAction = { label: "Complete payment", href: `/auto/checkout?rentalId=${r.id}`, note: "Required before lockbox release." };
     } else if (verificationApproved && paidDone && agreementDone && docsDone && !lockboxReleased) {
-      nextAction = {
-        label: "Awaiting Lockbox Release",
-        note: "Admin is reviewing your records.",
-      };
+      nextAction = { label: "Awaiting Lockbox Release", note: "Admin is reviewing your records." };
     } else if (lockboxReleased && !pickupPhotosDone) {
-      nextAction = {
-        label: "Upload pickup photos",
-        href: `/auto/photos?phase=pickup_exterior&rentalId=${r.id}`,
-        note: "Required before confirming pickup.",
-      };
+      nextAction = { label: "Upload pickup photos", href: `/auto/photos?rentalId=${r.id}&phase=pickup_exterior`, note: "Required before confirming pickup." };
     } else if (canConfirmPickup) {
-      nextAction = {
-        label: "Confirm pickup",
-        note: "Ready to drive.",
-      };
+      nextAction = { label: "Confirm pickup", note: "Ready to drive." };
+    } else if (pickupConfirmed && !returnPhotosDone) {
+      nextAction = { label: "Upload return photos", href: `/auto/photos?rentalId=${r.id}&phase=return_exterior`, note: "Required before confirming return." };
+    } else if (canConfirmReturn) {
+      nextAction = { label: "Confirm return", note: "Finish the rental return flow." };
+    } else if (returnConfirmed && !["refunded", "withheld", "n/a"].includes(depositStatus)) {
+      nextAction = { label: "Deposit review pending", note: "Admin is reviewing your deposit decision." };
     }
 
     return {
@@ -284,11 +220,14 @@ export default function AutoDashboardRenterHub() {
         nextAction,
         photoStatus,
       },
+      allHistory: history,
     };
   }, [state]);
 
   if (state.kind === "loading") return <p style={{ padding: 24 }}>Loading auto dashboard…</p>;
   if (state.kind === "error") return <p style={{ padding: 24, color: "red" }}>Error: {state.message}</p>;
+
+  const historyRows = ui?.allHistory || [];
 
   return (
     <div style={styles.container}>
@@ -297,9 +236,7 @@ export default function AutoDashboardRenterHub() {
           <h1 style={styles.h1}>Auto Dashboard</h1>
           <p style={styles.sub}>Manage your active rentals and view your history.</p>
         </div>
-        <Link href="/auto/vehicles" style={styles.primaryLink}>
-          Book a car
-        </Link>
+        <Link href="/auto/vehicles" style={styles.primaryLink}>Book a car</Link>
       </div>
 
       {TEST_MODE && (
@@ -308,33 +245,22 @@ export default function AutoDashboardRenterHub() {
         </div>
       )}
 
-      {/* ACTIVE RENTAL SECTION */}
+      {/* --- CURRENT RENTAL SECTION --- */}
       {ui?.primary ? (
         <div style={{ marginBottom: 40 }}>
           <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 15 }}>Current Rental</h2>
 
           {ui.timeline?.nextAction && (
             <div style={{ ...styles.card, background: "#fefce8", borderColor: "#fef08a" }}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  gap: 12,
-                }}
-              >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
                 <div>
                   <div style={{ fontWeight: 900, color: "#854d0e" }}>
                     Next step: {ui.timeline.nextAction.label}
                   </div>
-                  <div style={{ fontSize: 14, color: "#a16207" }}>
-                    {ui.timeline.nextAction.note}
-                  </div>
+                  <div style={{ fontSize: 14, color: "#a16207" }}>{ui.timeline.nextAction.note}</div>
                 </div>
                 {ui.timeline.nextAction.href && (
-                  <Link href={ui.timeline.nextAction.href} style={styles.primaryLink}>
-                    Go
-                  </Link>
+                  <Link href={ui.timeline.nextAction.href} style={styles.primaryLink}>Go</Link>
                 )}
               </div>
             </div>
@@ -342,11 +268,16 @@ export default function AutoDashboardRenterHub() {
 
           <div style={styles.card}>
             <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 15 }}>Rental Progress</div>
-
             <TimelineItem
               n={1}
               title="Upload ID & selfie"
-              status={ui.timeline?.docsDone ? "done" : ui.timeline?.verificationDenied ? "blocked" : "todo"}
+              status={
+                ui.timeline?.docsDone
+                  ? "done"
+                  : ui.timeline?.verificationDenied
+                  ? "blocked"
+                  : "todo"
+              }
               actionHref="/auto/verify"
               actionLabel="Upload"
             />
@@ -380,7 +311,7 @@ export default function AutoDashboardRenterHub() {
               n={6}
               title="Pickup Photos"
               status={ui.timeline?.pickupPhotosDone ? "done" : ui.timeline?.lockboxReleased ? "todo" : "disabled"}
-              actionHref={`/auto/photos?phase=pickup_exterior&rentalId=${ui.primary.id}`}
+              actionHref={`/auto/photos?rentalId=${ui.primary.id}&phase=pickup_exterior`}
               actionLabel="Upload"
             />
             <TimelineItem
@@ -395,7 +326,7 @@ export default function AutoDashboardRenterHub() {
               n={8}
               title="Return Photos"
               status={ui.timeline?.returnPhotosDone ? "done" : ui.timeline?.pickupConfirmed ? "todo" : "disabled"}
-              actionHref={`/auto/photos?phase=return_exterior&rentalId=${ui.primary.id}`}
+              actionHref={`/auto/photos?rentalId=${ui.primary.id}&phase=return_exterior`}
               actionLabel="Upload"
             />
             <TimelineItem
@@ -434,8 +365,7 @@ export default function AutoDashboardRenterHub() {
             <div style={{ fontWeight: 900, marginBottom: 10 }}>Rental summary</div>
             <div style={{ fontSize: 14, color: "#374151", lineHeight: 1.75 }}>
               <div>
-                <strong>Vehicle:</strong> {ui.primary.vehicle?.year} {ui.primary.vehicle?.make}{" "}
-                {ui.primary.vehicle?.model}
+                <strong>Vehicle:</strong> {ui.primary.vehicle?.year} {ui.primary.vehicle?.make} {ui.primary.vehicle?.model}
               </div>
               <div>
                 <strong>Status:</strong>{" "}
@@ -448,14 +378,16 @@ export default function AutoDashboardRenterHub() {
           </div>
         </div>
       ) : (
-        <div style={styles.card}>You don’t have an active rental yet.</div>
+        <div style={styles.card}>
+          You don’t have a current rental in progress. Your completed/cancelled rentals are listed below.
+        </div>
       )}
 
-      {/* HISTORY SECTION */}
+      {/* --- HISTORY SECTION --- */}
       <h2 style={{ fontSize: 20, fontWeight: 900, marginBottom: 15 }}>Rental History & Drafts</h2>
       <div style={{ display: "grid", gap: 12 }}>
-        {ui?.history.length ? (
-          ui.history.map((h) => (
+        {historyRows.length ? (
+          historyRows.map((h) => (
             <div
               key={h.id}
               style={{
@@ -474,14 +406,13 @@ export default function AutoDashboardRenterHub() {
                   {h.created_at ? new Date(h.created_at).toLocaleDateString() : "—"}
                 </div>
               </div>
-
               <div style={{ textAlign: "right" }}>
                 <div
                   style={{
                     fontSize: 11,
                     fontWeight: 900,
                     textTransform: "uppercase",
-                    color: h.status === "draft" ? "#f59e0b" : "#6b7280",
+                    color: String(h.status || "").toLowerCase() === "draft" ? "#f59e0b" : "#6b7280",
                   }}
                 >
                   {h.status}
@@ -496,7 +427,7 @@ export default function AutoDashboardRenterHub() {
                     marginTop: 4,
                   }}
                 >
-                  {h.status === "draft" && (
+                  {String(h.status || "").toLowerCase() === "draft" && (
                     <button
                       onClick={() => deleteDraft(h.id)}
                       disabled={busy === `delete-${h.id}`}
@@ -515,10 +446,14 @@ export default function AutoDashboardRenterHub() {
                   )}
 
                   <Link
-                    href={h.status === "draft" ? `/auto/checkout?rentalId=${h.id}` : `/auto/rental/${h.id}`}
+                    href={
+                      String(h.status || "").toLowerCase() === "draft"
+                        ? `/auto/checkout?rentalId=${h.id}`
+                        : `/auto/rental/${h.id}`
+                    }
                     style={{ fontSize: 12, color: "#111", textDecoration: "underline" }}
                   >
-                    {h.status === "draft" ? "Finish Checkout" : "View Details"}
+                    {String(h.status || "").toLowerCase() === "draft" ? "Finish Checkout" : "View Details"}
                   </Link>
                 </div>
               </div>
@@ -579,7 +514,6 @@ function TimelineItem(props: {
       >
         {props.n}
       </div>
-
       <div style={{ flex: 1 }}>
         <div style={{ fontWeight: 900, fontSize: 14 }}>
           {props.title}{" "}
@@ -599,7 +533,6 @@ function TimelineItem(props: {
         </div>
         {props.note && <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>{props.note}</div>}
       </div>
-
       <div style={{ minWidth: 80, textAlign: "right" }}>
         {canClick ? (
           props.actionHref ? (
@@ -621,49 +554,11 @@ function TimelineItem(props: {
 
 const styles: Record<string, any> = {
   container: { maxWidth: 1000, margin: "0 auto", padding: 24, fontFamily: "sans-serif" },
-  header: {
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-    marginBottom: 30,
-    flexWrap: "wrap",
-  },
+  header: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 30, flexWrap: "wrap" },
   h1: { margin: 0, fontSize: 28, fontWeight: 900 },
   sub: { color: "#666", margin: "5px 0 0 0", fontSize: 14 },
-  card: {
-    border: "1px solid #e5e7eb",
-    borderRadius: 16,
-    padding: 20,
-    background: "#fff",
-    marginBottom: 15,
-  },
-  primaryLink: {
-    background: "#111",
-    color: "#fff",
-    padding: "10px 18px",
-    borderRadius: 10,
-    textDecoration: "none",
-    fontWeight: 900,
-    fontSize: 14,
-  },
-  stepBtn: {
-    background: "#fff",
-    border: "1px solid #d1d5db",
-    padding: "6px 12px",
-    borderRadius: 8,
-    color: "#111",
-    fontSize: 12,
-    fontWeight: 900,
-    cursor: "pointer",
-    textDecoration: "none",
-  },
-  notice: {
-    background: "#fff7ed",
-    border: "1px solid #fed7aa",
-    padding: 12,
-    borderRadius: 12,
-    marginBottom: 20,
-    fontSize: 13,
-    color: "#9a3412",
-  },
+  card: { border: "1px solid #e5e7eb", borderRadius: 16, padding: 20, background: "#fff", marginBottom: 15 },
+  primaryLink: { background: "#111", color: "#fff", padding: "10px 18px", borderRadius: 10, textDecoration: "none", fontWeight: 900, fontSize: 14 },
+  stepBtn: { background: "#fff", border: "1px solid #d1d5db", padding: "6px 12px", borderRadius: 8, color: "#111", fontSize: 12, fontWeight: 900, cursor: "pointer", textDecoration: "none" },
+  notice: { background: "#fff7ed", border: "1px solid #fed7aa", padding: 12, borderRadius: 12, marginBottom: 20, fontSize: 13, color: "#9a3412" },
 };
