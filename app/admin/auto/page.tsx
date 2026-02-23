@@ -149,6 +149,24 @@ export default function AdminAutoDashboard() {
     }
   }
 
+  async function markCompleted(rentalId: string) {
+    if (!window.confirm("Mark this rental as COMPLETED? It will move out of the customer's current rental queue.")) {
+      return;
+    }
+
+    setBusyId(rentalId);
+    setError(null);
+    try {
+      await api("/api/admin/auto/mark-completed", { rentalId });
+      await load();
+      alert("Rental marked as completed.");
+    } catch (e: any) {
+      setError(e?.message || "Failed to mark completed");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   const stats = useMemo(() => {
     const total = rentals.length;
     const pendingVerif = rentals.filter(
@@ -158,7 +176,8 @@ export default function AdminAutoDashboard() {
       (r) => String(r.verification_status).toLowerCase() === "approved"
     ).length;
     const paid = rentals.filter((r) => !!r.paid).length;
-    return { total, pendingVerif, approvedVerif, paid };
+    const completed = rentals.filter((r) => String(r.status || "").toLowerCase() === "completed").length;
+    return { total, pendingVerif, approvedVerif, paid, completed };
   }, [rentals]);
 
   if (loading) return <p style={{ padding: 24 }}>Loading auto rentals…</p>;
@@ -169,13 +188,14 @@ export default function AdminAutoDashboard() {
         <div>
           <h1 style={{ fontSize: 28, margin: 0 }}>Admin — Auto Rentals</h1>
           <p style={{ color: "#555", marginTop: 6 }}>
-            Manage verification, pickup, returns, deposits, and evidence bundles.
+            Manage verification, pickup, returns, deposits, evidence bundles, and completion.
           </p>
           <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
             <Chip label={`Total: ${stats.total}`} />
             <Chip label={`Verif pending: ${stats.pendingVerif}`} />
             <Chip label={`Verif approved: ${stats.approvedVerif}`} />
             <Chip label={`Paid: ${stats.paid}`} />
+            <Chip label={`Completed: ${stats.completed}`} />
           </div>
         </div>
 
@@ -212,7 +232,17 @@ export default function AdminAutoDashboard() {
         {rentals.map((r) => {
           const canAct = busyId === null || busyId === r.id;
           const isBusy = busyId === r.id;
+
           const canDownloadBundle = !!r.return_confirmed_at;
+          const depositStatus = String(r.deposit_refund_status || "").toLowerCase();
+          const isFinalDeposit = ["refunded", "withheld", "n/a"].includes(depositStatus);
+          const status = String(r.status || "").toLowerCase();
+
+          const canMarkCompleted =
+            !!r.return_confirmed_at &&
+            isFinalDeposit &&
+            status !== "completed" &&
+            status !== "cancelled";
 
           return (
             <div
@@ -277,6 +307,12 @@ export default function AdminAutoDashboard() {
                       Lockbox code: <strong>{r.lockbox_code}</strong>
                     </div>
                   )}
+
+                  {status === "completed" && (
+                    <div style={{ marginTop: 10, padding: 10, borderRadius: 12, border: "1px solid #bbf7d0", background: "#ecfdf5", color: "#166534" }}>
+                      This rental is fully closed.
+                    </div>
+                  )}
                 </div>
 
                 <div style={{ display: "grid", gap: 10, alignContent: "start", minWidth: 260 }}>
@@ -334,9 +370,27 @@ export default function AdminAutoDashboard() {
                     {isBusy ? "Preparing…" : "Download Evidence Bundle"}
                   </button>
 
+                  <button
+                    disabled={!canMarkCompleted || isBusy}
+                    onClick={() => markCompleted(r.id)}
+                    style={{
+                      ...btnComplete,
+                      opacity: !canMarkCompleted || isBusy ? 0.6 : 1,
+                      cursor: !canMarkCompleted || isBusy ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {isBusy ? "Working…" : status === "completed" ? "Completed ✅" : "Mark Completed"}
+                  </button>
+
+                  {!canMarkCompleted && status !== "completed" && (
+                    <div style={{ fontSize: 12, color: "#6b7280", maxWidth: 260 }}>
+                      Completion requires: return confirmed + final deposit status (refunded/withheld).
+                    </div>
+                  )}
+
                   {!canDownloadBundle && (
                     <div style={{ fontSize: 12, color: "#6b7280" }}>
-                      Available after return confirmation.
+                      Evidence bundle available after return confirmation.
                     </div>
                   )}
                 </div>
@@ -369,11 +423,11 @@ function Chip({ label }: { label: string }) {
 function Badge({ value }: { value: string }) {
   const v = String(value || "").toLowerCase();
   const color =
-    v === "approved" || v === "refunded" || v === "complete" || v === "yes" || v === "active"
+    v === "approved" || v === "refunded" || v === "complete" || v === "completed" || v === "yes" || v === "active"
       ? "#16a34a"
-      : v === "pending" || v === "draft" || v === "not_started"
+      : v === "pending" || v === "draft" || v === "not_started" || v === "returned"
       ? "#ca8a04"
-      : v === "denied" || v === "withheld" || v === "no"
+      : v === "denied" || v === "withheld" || v === "no" || v === "cancelled"
       ? "#dc2626"
       : "#374151";
 
@@ -406,7 +460,6 @@ async function downloadEvidenceBundle(
     const token = sessionRes.session?.access_token;
     if (!token) throw new Error("Unauthorized");
 
-    // ✅ FIX: route is GET + query param, not POST body
     const res = await fetch(
       `/api/admin/auto/evidence-bundle?rentalId=${encodeURIComponent(rentalId)}`,
       {
@@ -475,6 +528,15 @@ const btnDanger: React.CSSProperties = {
   borderRadius: 10,
   border: "none",
   background: "#b91c1c",
+  color: "#fff",
+  fontWeight: 900,
+};
+
+const btnComplete: React.CSSProperties = {
+  padding: "10px 14px",
+  borderRadius: 10,
+  border: "none",
+  background: "#0f766e",
   color: "#fff",
   fontWeight: 900,
 };
