@@ -1,4 +1,7 @@
+// app/api/admin/auto/deposit-decision/route.ts
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
@@ -7,14 +10,9 @@ import { requireAdmin } from "@/app/lib/auth";
 function svc() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false } }
   );
-}
-
-function asSingle<T>(val: any): T | null {
-  if (!val) return null;
-  if (Array.isArray(val)) return (val[0] as T) || null;
-  return val as T;
 }
 
 export async function POST(req: NextRequest) {
@@ -23,7 +21,13 @@ export async function POST(req: NextRequest) {
 
     const body = await req.json().catch(() => ({}));
     const rentalId = String(body?.rentalId || "");
-    const decision = body?.decision === "withheld" ? "withheld" : body?.decision === "refunded" ? "refunded" : null;
+    const decision =
+      body?.decision === "withheld"
+        ? "withheld"
+        : body?.decision === "refunded"
+        ? "refunded"
+        : null;
+
     const amountCentsRaw = body?.amountCents;
     const reason = body?.reason ? String(body.reason).slice(0, 2000) : null;
 
@@ -42,35 +46,58 @@ export async function POST(req: NextRequest) {
 
     const supabase = svc();
 
-    // Load rental
+    // ✅ Keep this select simple (no broken joins)
     const { data: rental, error: rErr } = await supabase
       .from("rentals")
-      .select(
-        `
-        id,status,paid,paid_at,return_confirmed_at,deposit_refund_status,deposit_refund_amount_cents,
-        damage_confirmed,damage_confirmed_at,
-        profiles:profiles(email),
-        vehicles:vehicles(id, year, make, model)
-      `
-      )
+      .select(`
+        id,
+        status,
+        paid,
+        paid_at,
+        return_confirmed_at,
+        deposit_refund_status,
+        deposit_refund_amount_cents,
+        damage_confirmed,
+        damage_confirmed_at
+      `)
       .eq("id", rentalId)
-      .single();
+      .maybeSingle();
 
-    if (rErr || !rental) {
+    if (rErr) {
+      return NextResponse.json(
+        { error: `Failed to load rental: ${rErr.message}` },
+        { status: 500 }
+      );
+    }
+
+    if (!rental) {
       return NextResponse.json({ error: "Rental not found" }, { status: 404 });
     }
 
     // Enforce prerequisites
     if (!rental.paid) {
-      return NextResponse.json({ error: "Cannot decide deposit: rental not marked paid." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Cannot decide deposit: rental not marked paid." },
+        { status: 400 }
+      );
     }
+
     if (!rental.return_confirmed_at) {
-      return NextResponse.json({ error: "Cannot decide deposit: return not confirmed." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Cannot decide deposit: return not confirmed." },
+        { status: 400 }
+      );
     }
 
     // Prevent double-finalization
-    if (rental.deposit_refund_status === "refunded" || rental.deposit_refund_status === "withheld") {
-      return NextResponse.json({ error: "Deposit already finalized for this rental." }, { status: 400 });
+    if (
+      rental.deposit_refund_status === "refunded" ||
+      rental.deposit_refund_status === "withheld"
+    ) {
+      return NextResponse.json(
+        { error: "Deposit already finalized for this rental." },
+        { status: 400 }
+      );
     }
 
     // 🔒 Damage gate: WITHHOLD requires damage_confirmed
@@ -86,12 +113,16 @@ export async function POST(req: NextRequest) {
       deposit_refund_amount_cents: decision === "withheld" ? amountCents : 0,
     };
 
-    const { error: uErr } = await supabase.from("rentals").update(updatePayload).eq("id", rentalId);
+    const { error: uErr } = await supabase
+      .from("rentals")
+      .update(updatePayload)
+      .eq("id", rentalId);
+
     if (uErr) {
-      return NextResponse.json({ error: uErr.message }, { status: 500 });
+      return NextResponse.json({ error: `Failed to update rental: ${uErr.message}` }, { status: 500 });
     }
 
-    // Audit event
+    // Audit event (best effort)
     await supabase.from("rental_events").insert({
       rental_id: rentalId,
       actor_user_id: null,
@@ -105,11 +136,16 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Optional: you can email the renter here later (we’ll do that in “B” properly)
-    // Keep this route stable for now.
-
     return NextResponse.json({ ok: true });
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Server error" }, { status: 401 });
+    const msg = e?.message || "Server error";
+    const code =
+      msg.includes("Missing authorization") || msg.includes("Invalid or expired token")
+        ? 401
+        : msg.includes("Admin access required")
+        ? 403
+        : 500;
+
+    return NextResponse.json({ error: msg }, { status: code });
   }
 }
