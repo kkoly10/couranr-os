@@ -22,6 +22,7 @@ type Rental = {
   deposit_refund_status: string;
   deposit_refund_amount_cents: number | null;
   damage_confirmed: boolean;
+  completed_at: string | null;
   created_at: string;
 };
 
@@ -66,6 +67,7 @@ export default function AdminAutoDashboard() {
           deposit_refund_status,
           deposit_refund_amount_cents,
           damage_confirmed,
+          completed_at,
           created_at
         `
         )
@@ -169,12 +171,8 @@ export default function AdminAutoDashboard() {
 
   const stats = useMemo(() => {
     const total = rentals.length;
-    const pendingVerif = rentals.filter(
-      (r) => String(r.verification_status).toLowerCase() === "pending"
-    ).length;
-    const approvedVerif = rentals.filter(
-      (r) => String(r.verification_status).toLowerCase() === "approved"
-    ).length;
+    const pendingVerif = rentals.filter((r) => String(r.verification_status).toLowerCase() === "pending").length;
+    const approvedVerif = rentals.filter((r) => String(r.verification_status).toLowerCase() === "approved").length;
     const paid = rentals.filter((r) => !!r.paid).length;
     const completed = rentals.filter((r) => String(r.status || "").toLowerCase() === "completed").length;
     return { total, pendingVerif, approvedVerif, paid, completed };
@@ -213,15 +211,7 @@ export default function AdminAutoDashboard() {
       </div>
 
       {error && (
-        <div
-          style={{
-            marginTop: 16,
-            padding: 12,
-            borderRadius: 12,
-            border: "1px solid #fecaca",
-            background: "#fff",
-          }}
-        >
+        <div style={{ marginTop: 16, padding: 12, borderRadius: 12, border: "1px solid #fecaca", background: "#fff" }}>
           <strong style={{ color: "#b91c1c" }}>Error:</strong> {error}
         </div>
       )}
@@ -264,33 +254,16 @@ export default function AdminAutoDashboard() {
                     <Badge value={r.purpose || "—"} />
                   </div>
 
+                  <div><strong>Verification:</strong> <Badge value={r.verification_status} /></div>
+                  <div><strong>Agreement signed:</strong> {r.agreement_signed ? "Yes" : "No"}</div>
+                  <div><strong>Paid:</strong> {r.paid ? "Yes" : "No"}</div>
+                  <div><strong>Lockbox released:</strong> {r.lockbox_code_released_at ? "Yes" : "No"}</div>
+                  <div><strong>Pickup confirmed:</strong> {r.pickup_confirmed_at ? "Yes" : "No"}</div>
+                  <div><strong>Return confirmed:</strong> {r.return_confirmed_at ? "Yes" : "No"}</div>
+                  <div><strong>Condition photos status:</strong> <Badge value={r.condition_photos_status} /></div>
+                  <div><strong>Damage confirmed:</strong> <Badge value={r.damage_confirmed ? "yes" : "no"} /></div>
                   <div>
-                    <strong>Verification:</strong> <Badge value={r.verification_status} />
-                  </div>
-                  <div>
-                    <strong>Agreement signed:</strong> {r.agreement_signed ? "Yes" : "No"}
-                  </div>
-                  <div>
-                    <strong>Paid:</strong> {r.paid ? "Yes" : "No"}
-                  </div>
-                  <div>
-                    <strong>Lockbox released:</strong> {r.lockbox_code_released_at ? "Yes" : "No"}
-                  </div>
-                  <div>
-                    <strong>Pickup confirmed:</strong> {r.pickup_confirmed_at ? "Yes" : "No"}
-                  </div>
-                  <div>
-                    <strong>Return confirmed:</strong> {r.return_confirmed_at ? "Yes" : "No"}
-                  </div>
-                  <div>
-                    <strong>Condition photos status:</strong> <Badge value={r.condition_photos_status} />
-                  </div>
-                  <div>
-                    <strong>Damage confirmed:</strong> <Badge value={r.damage_confirmed ? "yes" : "no"} />
-                  </div>
-                  <div>
-                    <strong>Deposit status:</strong>{" "}
-                    <Badge value={r.deposit_refund_status} />{" "}
+                    <strong>Deposit status:</strong> <Badge value={r.deposit_refund_status} />{" "}
                     {r.deposit_refund_status === "withheld" && (
                       <span style={{ color: "#111" }}>
                         (${(Number(r.deposit_refund_amount_cents || 0) / 100).toFixed(2)} withheld)
@@ -301,6 +274,12 @@ export default function AdminAutoDashboard() {
                   <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6 }}>
                     Created: {new Date(r.created_at).toLocaleString()}
                   </div>
+
+                  {r.completed_at && (
+                    <div style={{ fontSize: 12, color: "#065f46", marginTop: 4, fontWeight: 700 }}>
+                      Completed: {new Date(r.completed_at).toLocaleString()}
+                    </div>
+                  )}
 
                   {r.lockbox_code && (
                     <div style={{ marginTop: 8, fontSize: 13 }}>
@@ -324,11 +303,7 @@ export default function AdminAutoDashboard() {
                     <button
                       disabled={!canAct || isBusy}
                       onClick={() => approve(r.id)}
-                      style={{
-                        ...btnOk,
-                        opacity: !canAct || isBusy ? 0.6 : 1,
-                        cursor: !canAct || isBusy ? "not-allowed" : "pointer",
-                      }}
+                      style={{ ...btnOk, opacity: !canAct || isBusy ? 0.6 : 1, cursor: !canAct || isBusy ? "not-allowed" : "pointer" }}
                     >
                       {isBusy ? "Working…" : "Approve"}
                     </button>
@@ -336,11 +311,7 @@ export default function AdminAutoDashboard() {
                     <button
                       disabled={!canAct || isBusy}
                       onClick={() => deny(r.id)}
-                      style={{
-                        ...btnDanger,
-                        opacity: !canAct || isBusy ? 0.6 : 1,
-                        cursor: !canAct || isBusy ? "not-allowed" : "pointer",
-                      }}
+                      style={{ ...btnDanger, opacity: !canAct || isBusy ? 0.6 : 1, cursor: !canAct || isBusy ? "not-allowed" : "pointer" }}
                     >
                       Deny
                     </button>
@@ -348,11 +319,7 @@ export default function AdminAutoDashboard() {
                     <button
                       disabled={!canAct || isBusy}
                       onClick={() => setLockbox(r.id)}
-                      style={{
-                        ...btnGhost,
-                        opacity: !canAct || isBusy ? 0.6 : 1,
-                        cursor: !canAct || isBusy ? "not-allowed" : "pointer",
-                      }}
+                      style={{ ...btnGhost, opacity: !canAct || isBusy ? 0.6 : 1, cursor: !canAct || isBusy ? "not-allowed" : "pointer" }}
                     >
                       Set lockbox
                     </button>
@@ -361,11 +328,7 @@ export default function AdminAutoDashboard() {
                   <button
                     disabled={!canDownloadBundle || isBusy}
                     onClick={() => downloadEvidenceBundle(r.id, setError, setBusyId)}
-                    style={{
-                      ...btnPrimary,
-                      opacity: !canDownloadBundle || isBusy ? 0.6 : 1,
-                      cursor: !canDownloadBundle || isBusy ? "not-allowed" : "pointer",
-                    }}
+                    style={{ ...btnPrimary, opacity: !canDownloadBundle || isBusy ? 0.6 : 1, cursor: !canDownloadBundle || isBusy ? "not-allowed" : "pointer" }}
                   >
                     {isBusy ? "Preparing…" : "Download Evidence Bundle"}
                   </button>
@@ -373,11 +336,7 @@ export default function AdminAutoDashboard() {
                   <button
                     disabled={!canMarkCompleted || isBusy}
                     onClick={() => markCompleted(r.id)}
-                    style={{
-                      ...btnComplete,
-                      opacity: !canMarkCompleted || isBusy ? 0.6 : 1,
-                      cursor: !canMarkCompleted || isBusy ? "not-allowed" : "pointer",
-                    }}
+                    style={{ ...btnComplete, opacity: !canMarkCompleted || isBusy ? 0.6 : 1, cursor: !canMarkCompleted || isBusy ? "not-allowed" : "pointer" }}
                   >
                     {isBusy ? "Working…" : status === "completed" ? "Completed ✅" : "Mark Completed"}
                   </button>
@@ -464,9 +423,7 @@ async function downloadEvidenceBundle(
       `/api/admin/auto/evidence-bundle?rentalId=${encodeURIComponent(rentalId)}`,
       {
         method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
         cache: "no-store",
       }
     );
@@ -495,8 +452,6 @@ async function downloadEvidenceBundle(
     setBusyId(null);
   }
 }
-
-/* ---------------- styles ---------------- */
 
 const btnPrimary: React.CSSProperties = {
   padding: "10px 14px",
