@@ -3,29 +3,21 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import SiteFooter from "@/components/SiteFooter";
-// ✅ FIXED: Imported the correct function name 'computeDeliveryPrice'
-import { computeDeliveryPrice, COURIER_PRICING } from "@/lib/delivery/pricing";
 
 export default function CourierPage() {
   const [miles, setMiles] = useState<number>(8);
   const [priority, setPriority] = useState<"standard" | "rush">("standard");
 
-  // ✅ FIXED: Using computeDeliveryPrice
+  // Quick estimate only (planning)
   const pricing = useMemo(() => {
-    try {
-      return computeDeliveryPrice({
-        miles,
-        weightLbs: 1, // Dummy weight for quick estimate
-        stops: 0,
-        rush: priority === "rush",
-        signature: false,
-      });
-    } catch {
-      return null;
-    }
+    const base = 18;
+    const perMile = 1.65;
+    const rushFee = priority === "rush" ? 12 : 0;
+    const raw = base + miles * perMile + rushFee;
+    const min = 28;
+    const total = Math.max(min, Math.round(raw));
+    return { base, perMile, rushFee, total };
   }, [miles, priority]);
-
-  const totalStr = pricing ? (pricing.amountCents / 100).toFixed(2) : "0.00";
 
   return (
     <main className="page">
@@ -98,7 +90,9 @@ export default function CourierPage() {
 
           <div className="cardGrid">
             <div className="card">
-              <div className="cardIcon" aria-hidden="true">🧮</div>
+              <div className="cardIcon" aria-hidden="true">
+                🧮
+              </div>
               <h3 className="cardTitle">Estimate inputs</h3>
               <p className="cardDesc">Adjust miles and speed preference.</p>
 
@@ -108,13 +102,13 @@ export default function CourierPage() {
                   className="input"
                   type="number"
                   min={1}
-                  max={COURIER_PRICING.MAX_MILES}
+                  max={300}
                   value={miles}
                   onChange={(e) => setMiles(Number(e.target.value || 0))}
                 />
               </div>
 
-              <div className="field" style={{ marginTop: 12 }}>
+              <div className="field">
                 <div className="label">Speed</div>
                 <select
                   className="input"
@@ -130,29 +124,32 @@ export default function CourierPage() {
                 For special items or multi-stop routes, email{" "}
                 <a className="mutedLink" href="mailto:couranr@couranrauto.com">
                   couranr@couranrauto.com
-                </a>.
+                </a>
+                .
               </p>
             </div>
 
             <div className="card">
-              <div className="cardIcon" aria-hidden="true">💰</div>
+              <div className="cardIcon" aria-hidden="true">
+                💰
+              </div>
               <h3 className="cardTitle">Estimated total</h3>
               <p className="cardDesc">Based on your selections:</p>
 
               <ul className="cardList">
-                <li>Base: ${COURIER_PRICING.BASE_FEE.toFixed(2)}</li>
+                <li>Base: ${pricing.base}</li>
                 <li>
-                  ${COURIER_PRICING.PER_MILE.toFixed(2)}/mile × {miles} miles
+                  ${pricing.perMile.toFixed(2)}/mile × {miles} miles
                 </li>
-                {priority === "rush" ? (
-                  <li>Rush fee: +${COURIER_PRICING.RUSH_FEE}</li>
+                {pricing.rushFee > 0 ? (
+                  <li>Rush fee: +${pricing.rushFee}</li>
                 ) : (
                   <li>Rush fee: $0</li>
                 )}
               </ul>
 
               <div style={{ marginTop: 8, fontWeight: 900, fontSize: 22 }}>
-                ${totalStr}
+                ${pricing.total}
               </div>
 
               <div className="contactRow" style={{ marginTop: 12 }}>
@@ -171,7 +168,9 @@ export default function CourierPage() {
             </div>
 
             <div className="card">
-              <div className="cardIcon" aria-hidden="true">🚫</div>
+              <div className="cardIcon" aria-hidden="true">
+                🚫
+              </div>
               <h3 className="cardTitle">Prohibited items</h3>
               <p className="cardDesc">We do not accept deliveries of:</p>
               <ul className="cardList">
@@ -185,34 +184,6 @@ export default function CourierPage() {
           </div>
         </section>
 
-        {/* What you can expect Section */}
-        <section className="section">
-          <h2 className="sectionTitle">What you can expect</h2>
-          <p className="sectionSub">A simple flow with clear rules and strong documentation.</p>
-
-          <div className="cardGrid">
-            <InfoCard
-              icon="✅"
-              title="Clear eligibility"
-              desc="Basic requirements are confirmed before pickup to avoid surprises."
-              bullets={["Account verification", "Accurate info required", "Fraud prevention checks"]}
-            />
-            <InfoCard
-              icon="🧠"
-              title="Straightforward rules"
-              desc="No confusion—key restrictions are shown in the flow and agreement."
-              bullets={["No unauthorized drivers", "No illegal activity", "Return expectations"]}
-            />
-            <InfoCard
-              icon="🛡️"
-              title="Reduced disputes"
-              desc="Documentation and portal history help resolve issues professionally."
-              bullets={["Photos when applicable", "Receipts + records", "Support trail"]}
-            />
-          </div>
-        </section>
-
-        {/* FAQ Section */}
         <section className="section">
           <h2 className="sectionTitle">FAQ</h2>
           <div className="faq">
@@ -234,21 +205,6 @@ export default function CourierPage() {
 
       <SiteFooter />
     </main>
-  );
-}
-
-function InfoCard({ icon, title, desc, bullets }: { icon: string; title: string; desc: string; bullets: string[]; }) {
-  return (
-    <div className="card">
-      <div className="cardIcon" aria-hidden="true">{icon}</div>
-      <h3 className="cardTitle">{title}</h3>
-      <p className="cardDesc">{desc}</p>
-      <ul className="cardList">
-        {bullets.map((b) => (
-          <li key={b}>{b}</li>
-        ))}
-      </ul>
-    </div>
   );
 }
 
