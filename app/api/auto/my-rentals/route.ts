@@ -1,7 +1,4 @@
-// app/api/auto/my-rentals/route.ts
 export const dynamic = "force-dynamic";
-export const revalidate = 0;
-export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
@@ -15,12 +12,6 @@ function adminClient() {
   );
 }
 
-const noStoreHeaders = {
-  "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-  Pragma: "no-cache",
-  Expires: "0",
-};
-
 export async function GET(req: NextRequest) {
   try {
     const user = await getUserFromRequest(req);
@@ -29,37 +20,18 @@ export async function GET(req: NextRequest) {
     const { data: rentals, error } = await admin
       .from("rentals")
       .select(`
-        id,
-        user_id,
-        vehicle_id,
-        status,
-        purpose,
-        docs_complete,
-        verification_status,
-        agreement_signed,
-        paid,
-        paid_at,
-        lockbox_code_released_at,
-        pickup_confirmed_at,
-        return_confirmed_at,
-        condition_photos_status,
-        deposit_refund_status,
-        deposit_refund_amount_cents,
-        damage_confirmed,
-        pickup_at,
-        return_at,
-        pickup_location,
-        created_at
+        id,user_id,vehicle_id,status,purpose,
+        docs_complete,verification_status,agreement_signed,paid,paid_at,
+        lockbox_code_released_at,pickup_confirmed_at,return_confirmed_at,
+        condition_photos_status,deposit_refund_status,deposit_refund_amount_cents,
+        damage_confirmed,created_at,completed_at
       `)
       .eq("user_id", user.id)
-      .order("paid", { ascending: false }) // Paid rentals first
-      .order("created_at", { ascending: false }); // Then newest
+      .order("paid", { ascending: false })
+      .order("created_at", { ascending: false });
 
     if (error) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 400, headers: noStoreHeaders }
-      );
+      return NextResponse.json({ error: error.message }, { status: 400 });
     }
 
     const vehicleIds = Array.from(
@@ -81,14 +53,11 @@ export async function GET(req: NextRequest) {
       vehicle: r.vehicle_id ? vehicleMap[r.vehicle_id] || null : null,
     }));
 
-    return NextResponse.json(
-      { rentals: enriched },
-      { headers: noStoreHeaders }
-    );
+    return NextResponse.json({ rentals: enriched });
   } catch (e: any) {
     return NextResponse.json(
       { error: e?.message || "Server error" },
-      { status: 500, headers: noStoreHeaders }
+      { status: 500 }
     );
   }
 }
