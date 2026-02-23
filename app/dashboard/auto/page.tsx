@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-// --- TYPES ---
 type Rental = {
   id: string;
   status: string | null;
@@ -27,6 +26,7 @@ type Rental = {
   vehicle_id?: string | null;
   pickup_location?: string | null;
   created_at?: string | null;
+  completed_at?: string | null;
   vehicle?: {
     year: number;
     make: string;
@@ -57,9 +57,7 @@ export default function AutoDashboardRenterHub() {
   useEffect(() => {
     let mounted = true;
     async function boot() {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      const { data: { session } } = await supabase.auth.getSession();
       if (!mounted) return;
       if (!session) {
         setState({ kind: "unauth" });
@@ -69,9 +67,7 @@ export default function AutoDashboardRenterHub() {
       await refreshData(session.access_token);
     }
     boot();
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, [router]);
 
   async function refreshData(token: string) {
@@ -92,9 +88,7 @@ export default function AutoDashboardRenterHub() {
   async function postAction(url: string, body: any, busyKey: string) {
     setBusy(busyKey);
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) throw new Error("Unauthorized");
       const res = await fetch(url, {
         method: "POST",
@@ -125,8 +119,6 @@ export default function AutoDashboardRenterHub() {
   const ui = useMemo(() => {
     if (state.kind !== "ready") return null;
 
-    // ✅ Current queue includes returned (while deposit is still being handled)
-    // ✅ Completed/cancelled must NOT appear in Current Rental
     const currentStatuses = new Set(["pending", "active", "returned"]);
     const currentRentals = state.rentals.filter((r) =>
       currentStatuses.has(String(r.status || "").toLowerCase())
@@ -139,7 +131,11 @@ export default function AutoDashboardRenterHub() {
     const drafts = allHistory.filter((r) => String(r.status || "").toLowerCase() === "draft").slice(0, 5);
 
     const history = [...pastActives, ...drafts].sort(
-      (a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime()
+      (a, b) => {
+        const aTime = new Date(a.completed_at || a.created_at || 0).getTime();
+        const bTime = new Date(b.completed_at || b.created_at || 0).getTime();
+        return bTime - aTime;
+      }
     );
 
     if (!primary) return { primary: null, history: [], timeline: null, allHistory: history };
@@ -154,12 +150,7 @@ export default function AutoDashboardRenterHub() {
     const paidDone = !!r.paid;
     const lockboxReleased = !!r.lockbox_code_released_at;
     const photoStatus = r.condition_photos_status || "not_started";
-    const pickupPhotosDone = [
-      "pickup_interior_done",
-      "return_exterior_done",
-      "return_interior_done",
-      "complete",
-    ].includes(photoStatus);
+    const pickupPhotosDone = ["pickup_interior_done", "return_exterior_done", "return_interior_done", "complete"].includes(photoStatus);
     const returnPhotosDone = ["return_interior_done", "complete"].includes(photoStatus);
     const pickupConfirmed = !!r.pickup_confirmed_at;
     const returnConfirmed = !!r.return_confirmed_at;
@@ -175,9 +166,7 @@ export default function AutoDashboardRenterHub() {
       nextAction = {
         label: "Upload ID + selfie",
         href: "/auto/verify",
-        note: verificationDenied
-          ? "Verification denied. Please re-upload."
-          : "Complete verification so we can approve your pickup.",
+        note: verificationDenied ? "Verification denied. Please re-upload." : "Complete verification so we can approve your pickup.",
       };
     } else if (!agreementDone) {
       nextAction = { label: "Sign agreement", href: `/auto/agreement?rentalId=${r.id}`, note: "Required before payment." };
@@ -239,13 +228,8 @@ export default function AutoDashboardRenterHub() {
         <Link href="/auto/vehicles" style={styles.primaryLink}>Book a car</Link>
       </div>
 
-      {TEST_MODE && (
-        <div style={styles.notice}>
-          <strong>TEST MODE:</strong> Enabled. Location/GPS checks may be bypassed.
-        </div>
-      )}
+      {TEST_MODE && <div style={styles.notice}><strong>TEST MODE:</strong> Enabled. Location/GPS checks may be bypassed.</div>}
 
-      {/* --- CURRENT RENTAL SECTION --- */}
       {ui?.primary ? (
         <div style={{ marginBottom: 40 }}>
           <h2 style={{ fontSize: 22, fontWeight: 900, marginBottom: 15 }}>Current Rental</h2>
@@ -254,9 +238,7 @@ export default function AutoDashboardRenterHub() {
             <div style={{ ...styles.card, background: "#fefce8", borderColor: "#fef08a" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
                 <div>
-                  <div style={{ fontWeight: 900, color: "#854d0e" }}>
-                    Next step: {ui.timeline.nextAction.label}
-                  </div>
+                  <div style={{ fontWeight: 900, color: "#854d0e" }}>Next step: {ui.timeline.nextAction.label}</div>
                   <div style={{ fontSize: 14, color: "#a16207" }}>{ui.timeline.nextAction.note}</div>
                 </div>
                 {ui.timeline.nextAction.href && (
@@ -268,75 +250,15 @@ export default function AutoDashboardRenterHub() {
 
           <div style={styles.card}>
             <div style={{ fontWeight: 900, fontSize: 18, marginBottom: 15 }}>Rental Progress</div>
-            <TimelineItem
-              n={1}
-              title="Upload ID & selfie"
-              status={
-                ui.timeline?.docsDone
-                  ? "done"
-                  : ui.timeline?.verificationDenied
-                  ? "blocked"
-                  : "todo"
-              }
-              actionHref="/auto/verify"
-              actionLabel="Upload"
-            />
-            <TimelineItem
-              n={2}
-              title="Sign Agreement"
-              status={ui.timeline?.agreementDone ? "done" : ui.timeline?.docsDone ? "todo" : "disabled"}
-              actionHref={`/auto/agreement?rentalId=${ui.primary.id}`}
-              actionLabel="Sign"
-            />
-            <TimelineItem
-              n={3}
-              title="Payment"
-              status={ui.timeline?.paidDone ? "done" : ui.timeline?.agreementDone ? "todo" : "disabled"}
-              actionHref={`/auto/checkout?rentalId=${ui.primary.id}`}
-              actionLabel="Pay"
-            />
-            <TimelineItem
-              n={4}
-              title="Admin Approval"
-              status={ui.timeline?.verificationApproved ? "done" : "todo"}
-            />
-            <TimelineItem
-              n={5}
-              title="Lockbox Access"
-              status={ui.timeline?.lockboxReleased ? "done" : "disabled"}
-              actionHref={`/auto/access?rentalId=${ui.primary.id}`}
-              actionLabel="View"
-            />
-            <TimelineItem
-              n={6}
-              title="Pickup Photos"
-              status={ui.timeline?.pickupPhotosDone ? "done" : ui.timeline?.lockboxReleased ? "todo" : "disabled"}
-              actionHref={`/auto/photos?rentalId=${ui.primary.id}&phase=pickup_exterior`}
-              actionLabel="Upload"
-            />
-            <TimelineItem
-              n={7}
-              title="Confirm Pickup"
-              status={ui.timeline?.pickupConfirmed ? "done" : ui.timeline?.canConfirmPickup ? "todo" : "disabled"}
-              onAction={() => postAction("/api/auto/confirm-pickup", { rentalId: ui.primary!.id }, "confirm-pickup")}
-              actionLabel="Confirm"
-              busy={busy === "confirm-pickup"}
-            />
-            <TimelineItem
-              n={8}
-              title="Return Photos"
-              status={ui.timeline?.returnPhotosDone ? "done" : ui.timeline?.pickupConfirmed ? "todo" : "disabled"}
-              actionHref={`/auto/photos?rentalId=${ui.primary.id}&phase=return_exterior`}
-              actionLabel="Upload"
-            />
-            <TimelineItem
-              n={9}
-              title="Confirm Return"
-              status={ui.timeline?.returnConfirmed ? "done" : ui.timeline?.canConfirmReturn ? "todo" : "disabled"}
-              onAction={() => postAction("/api/auto/confirm-return", { rentalId: ui.primary!.id }, "confirm-return")}
-              actionLabel="Confirm"
-              busy={busy === "confirm-return"}
-            />
+            <TimelineItem n={1} title="Upload ID & selfie" status={ui.timeline?.docsDone ? "done" : ui.timeline?.verificationDenied ? "blocked" : "todo"} actionHref="/auto/verify" actionLabel="Upload" />
+            <TimelineItem n={2} title="Sign Agreement" status={ui.timeline?.agreementDone ? "done" : ui.timeline?.docsDone ? "todo" : "disabled"} actionHref={`/auto/agreement?rentalId=${ui.primary.id}`} actionLabel="Sign" />
+            <TimelineItem n={3} title="Payment" status={ui.timeline?.paidDone ? "done" : ui.timeline?.agreementDone ? "todo" : "disabled"} actionHref={`/auto/checkout?rentalId=${ui.primary.id}`} actionLabel="Pay" />
+            <TimelineItem n={4} title="Admin Approval" status={ui.timeline?.verificationApproved ? "done" : "todo"} />
+            <TimelineItem n={5} title="Lockbox Access" status={ui.timeline?.lockboxReleased ? "done" : "disabled"} actionHref={`/auto/access?rentalId=${ui.primary.id}`} actionLabel="View" />
+            <TimelineItem n={6} title="Pickup Photos" status={ui.timeline?.pickupPhotosDone ? "done" : ui.timeline?.lockboxReleased ? "todo" : "disabled"} actionHref={`/auto/photos?rentalId=${ui.primary.id}&phase=pickup_exterior`} actionLabel="Upload" />
+            <TimelineItem n={7} title="Confirm Pickup" status={ui.timeline?.pickupConfirmed ? "done" : ui.timeline?.canConfirmPickup ? "todo" : "disabled"} onAction={() => postAction("/api/auto/confirm-pickup", { rentalId: ui.primary!.id }, "confirm-pickup")} actionLabel="Confirm" busy={busy === "confirm-pickup"} />
+            <TimelineItem n={8} title="Return Photos" status={ui.timeline?.returnPhotosDone ? "done" : ui.timeline?.pickupConfirmed ? "todo" : "disabled"} actionHref={`/auto/photos?rentalId=${ui.primary.id}&phase=return_exterior`} actionLabel="Upload" />
+            <TimelineItem n={9} title="Confirm Return" status={ui.timeline?.returnConfirmed ? "done" : ui.timeline?.canConfirmReturn ? "todo" : "disabled"} onAction={() => postAction("/api/auto/confirm-return", { rentalId: ui.primary!.id }, "confirm-return")} actionLabel="Confirm" busy={busy === "confirm-return"} />
             <TimelineItem
               n={10}
               title="Deposit Status"
@@ -364,16 +286,9 @@ export default function AutoDashboardRenterHub() {
           <div style={styles.card}>
             <div style={{ fontWeight: 900, marginBottom: 10 }}>Rental summary</div>
             <div style={{ fontSize: 14, color: "#374151", lineHeight: 1.75 }}>
-              <div>
-                <strong>Vehicle:</strong> {ui.primary.vehicle?.year} {ui.primary.vehicle?.make} {ui.primary.vehicle?.model}
-              </div>
-              <div>
-                <strong>Status:</strong>{" "}
-                <span style={{ textTransform: "uppercase", fontWeight: 900 }}>{ui.primary.status}</span>
-              </div>
-              <div>
-                <strong>ID:</strong> {ui.primary.id}
-              </div>
+              <div><strong>Vehicle:</strong> {ui.primary.vehicle?.year} {ui.primary.vehicle?.make} {ui.primary.vehicle?.model}</div>
+              <div><strong>Status:</strong> <span style={{ textTransform: "uppercase", fontWeight: 900 }}>{ui.primary.status}</span></div>
+              <div><strong>ID:</strong> {ui.primary.id}</div>
             </div>
           </div>
         </div>
@@ -383,83 +298,59 @@ export default function AutoDashboardRenterHub() {
         </div>
       )}
 
-      {/* --- HISTORY SECTION --- */}
       <h2 style={{ fontSize: 20, fontWeight: 900, marginBottom: 15 }}>Rental History & Drafts</h2>
       <div style={{ display: "grid", gap: 12 }}>
-        {historyRows.length ? (
-          historyRows.map((h) => (
-            <div
-              key={h.id}
-              style={{
-                ...styles.card,
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                marginBottom: 0,
-              }}
-            >
-              <div>
-                <div style={{ fontWeight: 700 }}>
-                  {h.vehicle?.year} {h.vehicle?.make} {h.vehicle?.model || "Rental Session"}
-                </div>
-                <div style={{ fontSize: 12, color: "#888" }}>
-                  {h.created_at ? new Date(h.created_at).toLocaleDateString() : "—"}
-                </div>
+        {historyRows.length ? historyRows.map((h) => (
+          <div
+            key={h.id}
+            style={{ ...styles.card, display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 0 }}
+          >
+            <div>
+              <div style={{ fontWeight: 700 }}>
+                {h.vehicle?.year} {h.vehicle?.make} {h.vehicle?.model || "Rental Session"}
               </div>
-              <div style={{ textAlign: "right" }}>
-                <div
-                  style={{
-                    fontSize: 11,
-                    fontWeight: 900,
-                    textTransform: "uppercase",
-                    color: String(h.status || "").toLowerCase() === "draft" ? "#f59e0b" : "#6b7280",
-                  }}
-                >
-                  {h.status}
+              <div style={{ fontSize: 12, color: "#888" }}>
+                {h.created_at ? `Created: ${new Date(h.created_at).toLocaleDateString()}` : "—"}
+              </div>
+              {String(h.status || "").toLowerCase() === "completed" && h.completed_at && (
+                <div style={{ fontSize: 12, color: "#065f46", fontWeight: 700 }}>
+                  Completed: {new Date(h.completed_at).toLocaleString()}
                 </div>
+              )}
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  fontWeight: 900,
+                  textTransform: "uppercase",
+                  color: String(h.status || "").toLowerCase() === "draft" ? "#f59e0b" : "#6b7280",
+                }}
+              >
+                {h.status}
+              </div>
 
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 12,
-                    alignItems: "center",
-                    justifyContent: "flex-end",
-                    marginTop: 4,
-                  }}
-                >
-                  {String(h.status || "").toLowerCase() === "draft" && (
-                    <button
-                      onClick={() => deleteDraft(h.id)}
-                      disabled={busy === `delete-${h.id}`}
-                      style={{
-                        background: "none",
-                        border: "none",
-                        padding: 0,
-                        fontSize: 12,
-                        color: "#ef4444",
-                        cursor: "pointer",
-                        textDecoration: "underline",
-                      }}
-                    >
-                      {busy === `delete-${h.id}` ? "Deleting..." : "Delete"}
-                    </button>
-                  )}
-
-                  <Link
-                    href={
-                      String(h.status || "").toLowerCase() === "draft"
-                        ? `/auto/checkout?rentalId=${h.id}`
-                        : `/auto/rental/${h.id}`
-                    }
-                    style={{ fontSize: 12, color: "#111", textDecoration: "underline" }}
+              <div style={{ display: "flex", gap: 12, alignItems: "center", justifyContent: "flex-end", marginTop: 4 }}>
+                {String(h.status || "").toLowerCase() === "draft" && (
+                  <button
+                    onClick={() => deleteDraft(h.id)}
+                    disabled={busy === `delete-${h.id}`}
+                    style={{ background: "none", border: "none", padding: 0, fontSize: 12, color: "#ef4444", cursor: "pointer", textDecoration: "underline" }}
                   >
-                    {String(h.status || "").toLowerCase() === "draft" ? "Finish Checkout" : "View Details"}
-                  </Link>
-                </div>
+                    {busy === `delete-${h.id}` ? "Deleting..." : "Delete"}
+                  </button>
+                )}
+
+                <Link
+                  href={String(h.status || "").toLowerCase() === "draft" ? `/auto/checkout?rentalId=${h.id}` : `/auto/rental/${h.id}`}
+                  style={{ fontSize: 12, color: "#111", textDecoration: "underline" }}
+                >
+                  {String(h.status || "").toLowerCase() === "draft" ? "Finish Checkout" : "View Details"}
+                </Link>
               </div>
             </div>
-          ))
-        ) : (
+          </div>
+        )) : (
           <p style={{ color: "#999", fontSize: 14 }}>No past activity found.</p>
         )}
       </div>
@@ -467,16 +358,7 @@ export default function AutoDashboardRenterHub() {
   );
 }
 
-function TimelineItem(props: {
-  n: number;
-  title: string;
-  status: "done" | "todo" | "disabled" | "blocked";
-  actionHref?: string;
-  actionLabel?: string;
-  onAction?: () => void;
-  busy?: boolean;
-  note?: string;
-}) {
+function TimelineItem(props: { n: number; title: string; status: "done" | "todo" | "disabled" | "blocked"; actionHref?: string; actionLabel?: string; onAction?: () => void; busy?: boolean; note?: string }) {
   const pill =
     props.status === "done"
       ? { bg: "#ecfdf5", border: "#bbf7d0", color: "#166534", text: "Done" }
@@ -489,45 +371,14 @@ function TimelineItem(props: {
   const canClick = (!!props.actionHref || !!props.onAction) && props.status !== "disabled";
 
   return (
-    <div
-      style={{
-        display: "flex",
-        gap: 12,
-        padding: "12px 0",
-        borderTop: "1px solid #f3f4f6",
-        alignItems: "center",
-      }}
-    >
-      <div
-        style={{
-          width: 28,
-          height: 28,
-          borderRadius: 999,
-          background: props.status === "done" ? "#10b981" : "#111",
-          color: "#fff",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontWeight: 900,
-          fontSize: 12,
-        }}
-      >
+    <div style={{ display: "flex", gap: 12, padding: "12px 0", borderTop: "1px solid #f3f4f6", alignItems: "center" }}>
+      <div style={{ width: 28, height: 28, borderRadius: 999, background: props.status === "done" ? "#10b981" : "#111", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 12 }}>
         {props.n}
       </div>
       <div style={{ flex: 1 }}>
         <div style={{ fontWeight: 900, fontSize: 14 }}>
-          {props.title}{" "}
-          <span
-            style={{
-              marginLeft: 8,
-              padding: "2px 8px",
-              borderRadius: 999,
-              fontSize: 10,
-              background: pill.bg,
-              border: `1px solid ${pill.border}`,
-              color: pill.color,
-            }}
-          >
+          {props.title}
+          <span style={{ marginLeft: 8, padding: "2px 8px", borderRadius: 999, fontSize: 10, background: pill.bg, border: `1px solid ${pill.border}`, color: pill.color }}>
             {pill.text}
           </span>
         </div>
@@ -536,13 +387,9 @@ function TimelineItem(props: {
       <div style={{ minWidth: 80, textAlign: "right" }}>
         {canClick ? (
           props.actionHref ? (
-            <Link href={props.actionHref} style={styles.stepBtn}>
-              {props.actionLabel}
-            </Link>
+            <Link href={props.actionHref} style={styles.stepBtn}>{props.actionLabel}</Link>
           ) : (
-            <button onClick={props.onAction} style={styles.stepBtn}>
-              {props.busy ? "..." : props.actionLabel}
-            </button>
+            <button onClick={props.onAction} style={styles.stepBtn}>{props.busy ? "..." : props.actionLabel}</button>
           )
         ) : (
           <span style={{ color: "#ccc" }}>—</span>
