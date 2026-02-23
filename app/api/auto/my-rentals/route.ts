@@ -1,4 +1,7 @@
+// app/api/auto/my-rentals/route.ts
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
@@ -12,6 +15,12 @@ function adminClient() {
   );
 }
 
+const noStoreHeaders = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+  Pragma: "no-cache",
+  Expires: "0",
+};
+
 export async function GET(req: NextRequest) {
   try {
     const user = await getUserFromRequest(req);
@@ -20,10 +29,26 @@ export async function GET(req: NextRequest) {
     const { data: rentals, error } = await admin
       .from("rentals")
       .select(`
-        id,user_id,vehicle_id,status,purpose,
-        docs_complete,verification_status,agreement_signed,paid,
-        lockbox_code_released_at,pickup_confirmed_at,return_confirmed_at,
-        condition_photos_status,deposit_refund_status,damage_confirmed,
+        id,
+        user_id,
+        vehicle_id,
+        status,
+        purpose,
+        docs_complete,
+        verification_status,
+        agreement_signed,
+        paid,
+        paid_at,
+        lockbox_code_released_at,
+        pickup_confirmed_at,
+        return_confirmed_at,
+        condition_photos_status,
+        deposit_refund_status,
+        deposit_refund_amount_cents,
+        damage_confirmed,
+        pickup_at,
+        return_at,
+        pickup_location,
         created_at
       `)
       .eq("user_id", user.id)
@@ -31,14 +56,17 @@ export async function GET(req: NextRequest) {
       .order("created_at", { ascending: false }); // Then newest
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 400 });
+      return NextResponse.json(
+        { error: error.message },
+        { status: 400, headers: noStoreHeaders }
+      );
     }
 
     const vehicleIds = Array.from(
       new Set((rentals || []).map((r: any) => r.vehicle_id).filter(Boolean))
     );
 
-    let vehicleMap: Record<string, any> = {};
+    const vehicleMap: Record<string, any> = {};
     if (vehicleIds.length) {
       const vRes = await admin
         .from("vehicles")
@@ -53,11 +81,14 @@ export async function GET(req: NextRequest) {
       vehicle: r.vehicle_id ? vehicleMap[r.vehicle_id] || null : null,
     }));
 
-    return NextResponse.json({ rentals: enriched });
+    return NextResponse.json(
+      { rentals: enriched },
+      { headers: noStoreHeaders }
+    );
   } catch (e: any) {
     return NextResponse.json(
       { error: e?.message || "Server error" },
-      { status: 500 }
+      { status: 500, headers: noStoreHeaders }
     );
   }
 }
