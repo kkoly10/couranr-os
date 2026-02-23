@@ -225,92 +225,64 @@ export default function AdminDocsPage() {
 
       {!loading && requests.length > 0 && (
         <div style={{ display: "grid", gap: 12, marginTop: 12 }}>
-          {requests.map((r) => {
-            const canOpenDetail = false; // Step 3 comes next; avoid 404 for now
-
-            return (
-              <div key={r.id} style={styles.card}>
-                <div style={styles.rowTop}>
-                  <div style={{ flex: 1, minWidth: 300 }}>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                      <strong style={{ fontSize: 15 }}>{r.title || "Docs Request"}</strong>
-                      <Badge value={r.status} />
-                      <Badge value={formatServiceType(r.service_type)} tone="neutral" />
-                    </div>
-
-                    <div style={{ marginTop: 6, fontSize: 13, color: "#374151", lineHeight: 1.6 }}>
-                      <div><strong>Request code:</strong> {r.request_code}</div>
-                      <div><strong>Request ID:</strong> {r.id}</div>
-                      <div><strong>Customer email:</strong> {r.customer_email || "—"}</div>
-                      <div><strong>Phone:</strong> {r.phone || "—"}</div>
-                      <div><strong>Delivery method:</strong> {r.delivery_method || "—"}</div>
-                      <div><strong>Files uploaded:</strong> {r.file_count}</div>
-                      <div><strong>Paid:</strong> {r.paid ? "Yes" : "No"}</div>
-
-                      {typeof r.quoted_total_cents === "number" && (
-                        <div>
-                          <strong>Quote:</strong> ${(r.quoted_total_cents / 100).toFixed(2)}
-                        </div>
-                      )}
-
-                      {r.description && (
-                        <div style={{ marginTop: 6 }}>
-                          <strong>Description:</strong> {r.description}
-                        </div>
-                      )}
-                    </div>
-
-                    <div style={{ marginTop: 8, fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
-                      Created: {new Date(r.created_at).toLocaleString()}
-                      {r.submitted_at ? ` • Submitted: ${new Date(r.submitted_at).toLocaleString()}` : ""}
-                      {r.due_at ? ` • Due: ${new Date(r.due_at).toLocaleString()}` : ""}
-                      {r.completed_at ? ` • Completed: ${new Date(r.completed_at).toLocaleString()}` : ""}
-                      {r.cancelled_at ? ` • Cancelled: ${new Date(r.cancelled_at).toLocaleString()}` : ""}
-                    </div>
+          {requests.map((r) => (
+            <div key={r.id} style={styles.card}>
+              <div style={styles.rowTop}>
+                <div style={{ flex: 1, minWidth: 300 }}>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <strong style={{ fontSize: 15 }}>{r.title || "Docs Request"}</strong>
+                    <Badge value={r.status} />
+                    <Badge value={formatServiceType(r.service_type)} tone="neutral" />
                   </div>
 
-                  <div style={styles.actionCol}>
-                    <button
-                      disabled={!canOpenDetail}
-                      style={{
-                        ...styles.btnPrimary,
-                        opacity: canOpenDetail ? 1 : 0.55,
-                        cursor: canOpenDetail ? "pointer" : "not-allowed",
-                      }}
-                      title="Step 3 (request detail page) comes next"
-                    >
-                      Open Request
-                    </button>
+                  <div style={{ marginTop: 6, fontSize: 13, color: "#374151", lineHeight: 1.6 }}>
+                    <div><strong>Request code:</strong> {r.request_code}</div>
+                    <div><strong>Request ID:</strong> {r.id}</div>
+                    <div><strong>Customer email:</strong> {r.customer_email || "—"}</div>
+                    <div><strong>Phone:</strong> {r.phone || "—"}</div>
+                    <div><strong>Delivery method:</strong> {r.delivery_method || "—"}</div>
+                    <div><strong>Files uploaded:</strong> {r.file_count}</div>
+                    <div><strong>Paid:</strong> {r.paid ? "Yes" : "No"}</div>
 
-                    <Link
-                      href={`/admin/docs/requests/${r.id}`}
-                      style={{
-                        ...styles.btnGhost,
-                        opacity: 0.55,
-                        pointerEvents: "none",
-                      }}
-                      title="Step 3 comes next"
-                    >
-                      Detail Page (next)
-                    </Link>
-
-                    {r.customer_email && (
-                      <a
-                        href={`mailto:${encodeURIComponent(r.customer_email)}?subject=${encodeURIComponent(`Couranr Docs Request ${r.request_code}`)}`}
-                        style={styles.btnGhost}
-                      >
-                        Email Customer
-                      </a>
+                    {typeof r.quoted_total_cents === "number" && (
+                      <div>
+                        <strong>Quote:</strong> ${(r.quoted_total_cents / 100).toFixed(2)}
+                      </div>
                     )}
 
-                    <div style={styles.sideNote}>
-                      Next build step: full admin request detail page with quote, file review, and status controls.
-                    </div>
+                    {r.description && (
+                      <div style={{ marginTop: 6 }}>
+                        <strong>Description:</strong> {r.description}
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ marginTop: 8, fontSize: 12, color: "#6b7280", lineHeight: 1.5 }}>
+                    Created: {new Date(r.created_at).toLocaleString()}
+                    {r.submitted_at ? ` • Submitted: ${new Date(r.submitted_at).toLocaleString()}` : ""}
+                    {r.due_at ? ` • Due: ${new Date(r.due_at).toLocaleString()}` : ""}
+                    {r.completed_at ? ` • Completed: ${new Date(r.completed_at).toLocaleString()}` : ""}
+                    {r.cancelled_at ? ` • Cancelled: ${new Date(r.cancelled_at).toLocaleString()}` : ""}
                   </div>
                 </div>
+
+                <div style={styles.actionCol}>
+                  <Link href={`/admin/docs/requests/${r.id}`} style={styles.btnPrimary}>
+                    Open Request
+                  </Link>
+
+                  {r.customer_email && (
+                    <a
+                      href={`mailto:${encodeURIComponent(r.customer_email)}?subject=${encodeURIComponent(`Couranr Docs Request ${r.request_code}`)}`}
+                      style={styles.btnGhost}
+                    >
+                      Email Customer
+                    </a>
+                  )}
+                </div>
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -486,16 +458,10 @@ const styles: Record<string, any> = {
     flexWrap: "wrap",
   },
   actionCol: {
-    minWidth: 240,
+    minWidth: 220,
     display: "grid",
     gap: 8,
     alignContent: "start",
-  },
-  sideNote: {
-    fontSize: 12,
-    color: "#6b7280",
-    lineHeight: 1.4,
-    maxWidth: 280,
   },
   btnPrimary: {
     padding: "10px 14px",
