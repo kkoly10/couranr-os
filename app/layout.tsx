@@ -1,6 +1,12 @@
 // app/layout.tsx
+import type { Metadata } from "next";
 import "./globals.css";
 import PublicHeader from "@/components/PublicHeader";
+
+export const metadata: Metadata = {
+  title: "Couranr",
+  description: "Couranr OS — Delivery, Auto Rentals, and Docs",
+};
 
 export default function RootLayout({
   children,
@@ -9,9 +15,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="appBody">
+      <body className="appBody" suppressHydrationWarning>
         <PublicHeader />
-        <main className="appMain">{children}</main>
+        {/* Use div (not <main>) because page files already render <main className="page"> */}
+        <div className="appMain">{children}</div>
       </body>
     </html>
   );
