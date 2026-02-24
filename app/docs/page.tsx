@@ -10,98 +10,155 @@ export default function DocsPage() {
         <section className="hero">
           <div className="heroCard">
             <div className="badgeRow">
-              <span className="badge">Appointments</span>
-              <span className="badge ghost">Administrative help</span>
+              <span className="badge">Fast document help</span>
+              <span className="badge ghost">Clerical support only</span>
             </div>
 
-            <h1 className="heroTitle">Document help, without the confusion.</h1>
+            <h1 className="heroTitle">Couranr Docs</h1>
             <p className="heroDesc">
-              Printing/scanning, form organization, and appointment-based paperwork support —
-              including immigration and DMV-related assistance.
+              Printing, scan & delivery, typing, resume support, business data-entry help, and
+              document-prep assistance for DMV and immigration paperwork — all in one flow.
             </p>
 
             <div className="heroActions">
-              <a className="btn btnGold" href="mailto:couranr@couranrauto.com">
-                Email to book →
-              </a>
-              <Link className="btn btnGhost" href="/login">
-                Customer portal
+              <Link className="btn btnGold" href="/docs/request">
+                Start a docs request →
               </Link>
-              <Link className="btn btnGhost" href="/privacy">
-                Privacy policy
+              <Link className="btn btnGhost" href="/docs/pricing">
+                View pricing
+              </Link>
+              <Link className="btn btnGhost" href="/dashboard/docs">
+                Track requests
               </Link>
             </div>
 
+            <div className="heroMiniGrid" aria-label="Docs flow">
+              <div className="mini">
+                <div className="miniTop">
+                  <span className="miniIcon">📤</span>
+                  <span className="miniTitle">Upload</span>
+                </div>
+                <p className="miniDesc">Send files and tell us exactly what you need done.</p>
+              </div>
+              <div className="mini">
+                <div className="miniTop">
+                  <span className="miniIcon">🛠️</span>
+                  <span className="miniTitle">Process</span>
+                </div>
+                <p className="miniDesc">We handle printing, prep, typing, or clerical work.</p>
+              </div>
+              <div className="mini">
+                <div className="miniTop">
+                  <span className="miniIcon">🚗</span>
+                  <span className="miniTitle">Deliver</span>
+                </div>
+                <p className="miniDesc">Pickup/delivery or digital handoff depending on request type.</p>
+              </div>
+            </div>
+
             <p className="finePrint">
-              Couranr Docs provides administrative/document assistance only — not legal advice, not a law firm,
-              not affiliated with USCIS/DMV, and no outcome is guaranteed. You are responsible for accuracy and
-              truthfulness of all submissions.
+              Couranr Docs provides administrative/document assistance only — not legal advice, not
+              a law firm, and not affiliated with USCIS, DMV, or any government agency. You are
+              responsible for the accuracy and truthfulness of all information and submissions.
             </p>
           </div>
         </section>
 
         <section className="section">
-          <h2 className="sectionTitle">What we help with</h2>
+          <h2 className="sectionTitle">What we do</h2>
           <p className="sectionSub">
-            Support is clerical/organizational—designed to help you prepare and submit correctly.
+            Think “FedEx Office + admin support” with a cleaner online workflow.
           </p>
 
           <div className="cardGrid">
             <InfoCard
               icon="🖨️"
-              title="Print / scan / organize"
-              desc="Prepare clean PDFs, print packets, scan to email, and keep files structured."
-              bullets={["PDF cleanup (when possible)", "Scanning + file naming", "Packet assembly"]}
+              title="Print / scan / deliver"
+              desc="Upload files, choose print options, and request local delivery or pickup."
+              bullets={[
+                "Black & white or color printing",
+                "Scan to PDF / email handoff",
+                "Local delivery or pickup scheduling",
+              ]}
             />
+
+            <InfoCard
+              icon="⌨️"
+              title="Typing & resume support"
+              desc="Need something typed, cleaned up, or reviewed? We help with clerical formatting and edits."
+              bullets={[
+                "Typing from image or handwritten notes",
+                "Resume formatting + review support",
+                "Basic document cleanup and organization",
+              ]}
+            />
+
+            <InfoCard
+              icon="📊"
+              title="Business data entry help"
+              desc="For businesses overwhelmed with paperwork, we can process clerical backlogs and structured entry."
+              bullets={[
+                "Invoice / form entry support",
+                "Spreadsheet-ready organization",
+                "Backlog cleanup for admin teams",
+              ]}
+            />
+
             <InfoCard
               icon="🧾"
-              title="Form assistance"
-              desc="Typing and organizing information into forms you provide (no legal guidance)."
-              bullets={["Data entry/typing", "Checklists + missing-items review", "Upload assistance"]}
-            />
-            <InfoCard
-              icon="📅"
-              title="Appointments"
-              desc="Appointment-based support for DMV/immigration-related paperwork steps."
-              bullets={["Scheduling support", "Document readiness checklist", "Reminders + prep notes"]}
+              title="DMV & immigration prep help"
+              desc="Clerical assistance only: checklists, typing, printing, packet organization, and submission readiness."
+              bullets={[
+                "Document readiness checklist",
+                "Typing / packet organization",
+                "Upload / print support (no legal advice)",
+              ]}
             />
           </div>
         </section>
 
         <section className="section">
-          <h2 className="sectionTitle">How it works</h2>
+          <h2 className="sectionTitle">How the docs flow works</h2>
+          <p className="sectionSub">
+            Same customer/admin style as your other Couranr services, but optimized for fast document jobs.
+          </p>
 
           <div className="steps">
             <div className="step">
               <div className="stepNum">1</div>
-              <h3 className="stepTitle">Email your request</h3>
+              <h3 className="stepTitle">Create request</h3>
               <p className="stepDesc">
-                Tell us what you need, your city, and preferred times.
+                Choose service type, add instructions, and upload your files.
               </p>
             </div>
+
             <div className="step">
               <div className="stepNum">2</div>
-              <h3 className="stepTitle">Bring/upload documents</h3>
+              <h3 className="stepTitle">Review & pay</h3>
               <p className="stepDesc">
-                We’ll tell you what to bring/upload so nothing is missing.
+                You’ll see pricing before checkout. Admin can review details and confirm readiness.
               </p>
             </div>
+
             <div className="step">
               <div className="stepNum">3</div>
-              <h3 className="stepTitle">Complete the appointment</h3>
+              <h3 className="stepTitle">Track status</h3>
               <p className="stepDesc">
-                Administrative support + file organization to help you submit properly.
+                Follow progress in your docs dashboard: received, in progress, ready, completed.
               </p>
             </div>
           </div>
 
-          <div className="contactRow" style={{ marginTop: 16 }}>
-            <span className="emailPill">
-              ✉️{" "}
-              <a className="mutedLink" href="mailto:couranr@couranrauto.com">
-                couranr@couranrauto.com
-              </a>
-            </span>
+          <div className="heroActions" style={{ marginTop: 16 }}>
+            <Link className="btn btnGold" href="/docs/request">
+              Start request →
+            </Link>
+            <Link className="btn btnGhost" href="/dashboard/docs">
+              Open docs dashboard
+            </Link>
+            <a className="btn btnGhost" href="mailto:couranr@couranrauto.com">
+              Email support
+            </a>
           </div>
         </section>
 
@@ -110,14 +167,18 @@ export default function DocsPage() {
           <div className="faq">
             <FAQItem
               q="Do you provide legal advice for immigration or DMV?"
-              a="No. We provide administrative assistance only (typing, organizing, printing/scanning, uploading, appointment coordination). If you need legal advice, consult a licensed attorney or accredited representative."
+              a="No. Couranr Docs provides clerical and administrative support only (typing, organizing, printing/scanning, checklists, and packet preparation help). If you need legal advice, consult a licensed attorney or accredited representative."
             />
             <FAQItem
-              q="Do you guarantee approvals?"
-              a="No. Government decisions and processing timelines are outside our control. You are responsible for the accuracy and truthfulness of submissions."
+              q="Can businesses use this for admin backlogs?"
+              a="Yes. We can support structured clerical work such as data entry, document sorting, and form typing for businesses that need overflow help."
             />
             <FAQItem
-              q="Are you affiliated with USCIS or the DMV?"
+              q="Can you guarantee government approvals?"
+              a="No. Government decisions and timelines are outside our control. We help you prepare and organize documents, but approvals are never guaranteed."
+            />
+            <FAQItem
+              q="Are you affiliated with USCIS or DMV?"
               a="No. Couranr is an independent service provider and not a government agency."
             />
           </div>
