@@ -1,38 +1,109 @@
-// app/layout.tsx
-import type { Metadata } from "next";
-import "./globals.css";
+"use client";
 
-import { cookies } from "next/headers";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
-import PublicHeader from "@/components/PublicHeader";
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
 
-export const metadata: Metadata = {
-  title: "Couranr",
-  description:
-    "Local delivery, document help, and auto rentals — built for speed, clarity, and trust.",
-};
-
-export default async function RootLayout({
+export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = createServerComponentClient({ cookies });
+  const pathname = usePathname();
+  const router = useRouter();
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  const isAuthed = !!session;
+  async function onLogout() {
+    await supabase.auth.signOut();
+    router.push("/login");
+  }
 
   return (
-    <html lang="en">
-      <body className="appBody">
-        {/* Always render ONE header. It will hide itself on dashboard/admin paths. */}
-        <PublicHeader initialIsAuthed={isAuthed} />
+    <div style={{ minHeight: "100vh", background: "#f8fafc" }}>
+      <header
+        style={{
+          borderBottom: "1px solid #e5e7eb",
+          background: "#fff",
+          position: "sticky",
+          top: 0,
+          zIndex: 20,
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 1180,
+            margin: "0 auto",
+            padding: "12px 16px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <Link
+            href="/dashboard"
+            style={{
+              textDecoration: "none",
+              color: "#111827",
+              fontWeight: 900,
+              fontSize: 20,
+            }}
+          >
+            Couranr
+          </Link>
 
-        <main className="appMain">{children}</main>
-      </body>
-    </html>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              flexWrap: "wrap",
+            }}
+          >
+            <Link href="/dashboard/delivery" style={navBtn(pathname.startsWith("/dashboard/delivery"))}>
+              🚚 Deliveries
+            </Link>
+
+            <Link href="/dashboard/auto" style={navBtn(pathname.startsWith("/dashboard/auto"))}>
+              🚗 Auto Rentals
+            </Link>
+
+            <Link href="/dashboard/docs" style={navBtn(pathname.startsWith("/dashboard/docs"))}>
+              📄 Docs
+            </Link>
+
+            <button onClick={onLogout} style={ghostBtn}>
+              Log out
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main>{children}</main>
+    </div>
   );
 }
+
+function navBtn(active: boolean): React.CSSProperties {
+  return {
+    textDecoration: "none",
+    color: "#111827",
+    fontWeight: active ? 800 : 700,
+    fontSize: 14,
+    padding: "9px 12px",
+    borderRadius: 10,
+    border: active ? "1px solid #d1d5db" : "1px solid transparent",
+    background: active ? "#f3f4f6" : "transparent",
+    display: "inline-block",
+  };
+}
+
+const ghostBtn: React.CSSProperties = {
+  border: "1px solid #d1d5db",
+  background: "#fff",
+  color: "#111827",
+  borderRadius: 10,
+  padding: "9px 12px",
+  fontWeight: 700,
+  cursor: "pointer",
+};
