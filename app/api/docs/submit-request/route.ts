@@ -1,4 +1,3 @@
-// app/api/docs/submit-request/route.ts
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -14,70 +13,202 @@ function svc() {
   );
 }
 
+function firstString(...vals: any[]): string | null {
+  for (const v of vals) {
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return null;
+}
+
+function normalizeServiceType(input: any): string | null {
+  const raw = String(input || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/-/g, "_");
+
+  if (!raw) return null;
+
+  if (
+    raw === "print_scan_delivery" ||
+    raw === "data_entry" ||
+    raw === "dmv_prep" ||
+    raw === "immigration_clerical" ||
+    raw === "resume_typing"
+  ) {
+    return raw;
+  }
+
+  const map: Record<string, string> = {
+    print: "print_scan_delivery",
+    printing: "print_scan_delivery",
+    print_delivery: "print_scan_delivery",
+    print_scan: "print_scan_delivery",
+    print_scan_and_delivery: "print_scan_delivery",
+    scan: "print_scan_delivery",
+
+    dataentry: "data_entry",
+    business_data_entry: "data_entry",
+    clerical_data_entry: "data_entry",
+
+    dmv: "dmv_prep",
+    dmv_guidance: "dmv_prep",
+    dmv_doc_prep: "dmv_prep",
+    dmv_document_prep: "dmv_prep",
+
+    immigration: "immigration_clerical",
+    immigration_prep: "immigration_clerical",
+    immigration_doc_help: "immigration_clerical",
+    immigration_document_assistance: "immigration_clerical",
+
+    resume: "resume_typing",
+    resume_review: "resume_typing",
+    resume_help: "resume_typing",
+    typing: "resume_typing",
+    typing_help: "resume_typing",
+    resume_and_typing: "resume_typing",
+  };
+
+  return map[raw] || null;
+}
+
+function getMissingColumnFromError(msg: string): string | null {
+  if (!msg) return null;
+
+  let m = msg.match(/Could not find the '([^']+)' column/i);
+  if (m?.[1]) return m[1];
+
+  m = msg.match(/column ["']?([a-zA-Z0-9_]+)["']? does not exist/i);
+  if (m?.[1]) return m[1];
+
+  return null;
+}
+
+async function resilientUpdateDocRequest(
+  supabase: ReturnType<typeof svc>,
+  requestId: string,
+  payload: Record<string, any>
+) {
+  const current = { ...payload };
+
+  for (let i = 0; i < 30; i++) {
+    if (Object.keys(current).length === 0) {
+      return { ok: true as const };
+    }
+
+    const { error } = await supabase
+      .from("doc_requests")
+      .update(current)
+      .eq("id", requestId);
+
+    if (!error) return { ok: true as const };
+
+    const msg = error.message || "";
+    const missingCol = getMissingColumnFromError(msg);
+
+    if (missingCol && missingCol in current) {
+      delete current[missingCol];
+      continue;
+    }
+
+    return { ok: false as const, error };
+  }
+
+  return {
+    ok: false as const,
+    error: { message: "Update failed after retries" },
+  };
+}
+
 export async function POST(req: NextRequest) {
   try {
     const user = await getUserFromRequest(req);
     const supabase = svc();
 
     const body = await req.json().catch(() => ({}));
-    const requestId = String(body?.requestId || "");
+    const requestId = String(body?.requestId || body?.id || "");
 
     if (!requestId) {
       return NextResponse.json({ error: "Missing requestId" }, { status: 400 });
     }
 
-    const { data: requestRow, error: reqErr } = await supabase
+    // Verify ownership + read current values
+    const { data: row, error: rowErr } = await supabase
       .from("doc_requests")
-      .select("*")
+      .select("id,user_id,status,service_type")
       .eq("id", requestId)
       .eq("user_id", user.id)
       .maybeSingle();
 
-    if (reqErr || !requestRow) {
+    if (rowErr || !row) {
       return NextResponse.json({ error: "Request not found" }, { status: 404 });
     }
 
-    const title = String(requestRow.title || "").trim();
-    const serviceType = String(requestRow.service_type || "").trim();
+    const rawService = firstString(
+      body?.serviceType,
+      body?.service_type,
+      body?.service,
+      body?.category,
+      (row as any)?.service_type
+    );
 
-    if (!title) {
-      return NextResponse.json({ error: "Please add a request title." }, { status: 400 });
-    }
+    const serviceType = normalizeServiceType(rawService);
+
     if (!serviceType) {
-      return NextResponse.json({ error: "Please choose a service type." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Please select a valid Docs service type before submitting." },
+        { status: 400 }
+      );
     }
 
     const now = new Date().toISOString();
 
-    const { data: updated, error: updErr } = await supabase
-      .from("doc_requests")
-      .update({
-        status: "submitted",
-        submitted_at: requestRow.submitted_at || now,
-        updated_at: now,
-      })
-      .eq("id", requestId)
-      .eq("user_id", user.id)
-      .select("*")
-      .single();
+    const updatePayload: Record<string, any> = {
+      status: "submitted",
+      service_type: serviceType,
+      updated_at: now,
+      submitted_at: now,
 
-    if (updErr || !updated) {
-      return NextResponse.json({ error: updErr?.message || "Failed to submit request" }, { status: 500 });
+      ...(rawService ? { service_label: rawService } : {}),
+
+      // save final payload snapshot if supported
+      intake_payload: body,
+      request_payload: body,
+      form_payload: body,
+    };
+
+    for (const k of Object.keys(updatePayload)) {
+      if (updatePayload[k] === undefined) delete updatePayload[k];
+      if (updatePayload[k] === null) delete updatePayload[k];
     }
 
+    const updated = await resilientUpdateDocRequest(supabase, requestId, updatePayload);
+
+    if (!updated.ok) {
+      const msg = updated.error?.message || "Failed to submit request";
+      return NextResponse.json({ error: msg }, { status: 400 });
+    }
+
+    // Audit event (non-blocking)
     await supabase.from("doc_request_events").insert({
       request_id: requestId,
       actor_user_id: user.id,
       actor_role: "customer",
       event_type: "request_submitted",
-      event_payload: {
-        submitted_at: now,
-        service_type: updated.service_type,
-      },
+      event_payload: { service_type: serviceType, submitted_at: now },
     });
 
-    return NextResponse.json({ ok: true, request: updated });
+    return NextResponse.json({
+      ok: true,
+      requestId,
+      status: "submitted",
+      service_type: serviceType,
+      submitted_at: now,
+    });
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
+    return NextResponse.json(
+      { error: e?.message || "Server error" },
+      { status: 500 }
+    );
   }
 }
