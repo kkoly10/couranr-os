@@ -1,75 +1,74 @@
+// app/dashboard/layout.tsx
+"use client";
+
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
-import Brand from "@/components/Brand";
-import LogoutButton from "@/components/LogoutButton";
+import { usePathname, useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
+import { cn } from "@/lib/cn";
 
-export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const supabase = createServerComponentClient({ cookies });
+export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const pathname = usePathname();
+  const router = useRouter();
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  // 1. If not logged in, send them to login with a return path
-  if (!session) {
-    redirect("/login?next=/dashboard");
+  async function onLogout() {
+    await supabase.auth.signOut();
+    router.push("/login");
   }
 
   return (
-    <section>
-      <header
-        style={{
-          borderBottom: "1px solid rgba(15,23,42,0.10)",
-          background: "rgba(255,255,255,0.78)",
-          backdropFilter: "blur(10px)",
-        }}
-      >
-        <div
-          style={{
-            maxWidth: 1200,
-            margin: "0 auto",
-            padding: "14px 22px",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 12,
-            flexWrap: "wrap",
-          }}
-        >
-          <Brand href="/dashboard/home" role="customer" />
+    <div className="min-h-screen bg-gray-50">
+      <header className="border-b bg-white">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+          <Link href="/dashboard" className="font-bold text-lg">
+            Couranr
+          </Link>
 
-          <nav style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            <Link href="/dashboard" style={navLink}>
-              Dashboard
+          <div className="flex items-center gap-2 text-sm">
+            <Link
+              href="/dashboard/delivery"
+              className={cn(
+                "rounded-lg px-3 py-2 hover:bg-gray-100",
+                pathname.startsWith("/dashboard/delivery") && "bg-gray-100 font-semibold"
+              )}
+            >
+              🚚 Deliveries
             </Link>
-            <Link href="/dashboard/delivery" style={navLink}>
-              Deliveries
-            </Link>
-            <Link href="/dashboard/auto" style={navLink}>
-              Auto
-            </Link>
-            <span style={{ opacity: 0.5 }}>Docs</span>
-          </nav>
 
-          <LogoutButton />
+            <Link
+              href="/dashboard/auto"
+              className={cn(
+                "rounded-lg px-3 py-2 hover:bg-gray-100",
+                pathname.startsWith("/dashboard/auto") && "bg-gray-100 font-semibold"
+              )}
+            >
+              🚗 Auto Rentals
+            </Link>
+
+            <Link
+              href="/dashboard/docs"
+              className={cn(
+                "rounded-lg px-3 py-2 hover:bg-gray-100",
+                pathname.startsWith("/dashboard/docs") && "bg-gray-100 font-semibold"
+              )}
+            >
+              📄 Docs
+            </Link>
+
+            <button
+              onClick={onLogout}
+              className="ml-2 rounded-lg border px-3 py-2 hover:bg-gray-50"
+            >
+              Log out
+            </button>
+          </div>
         </div>
       </header>
 
-      <main style={{ maxWidth: 1200, margin: "0 auto", padding: "22px" }}>
-        {children}
-      </main>
-    </section>
+      <main>{children}</main>
+    </div>
   );
 }
-
-const navLink: React.CSSProperties = {
-  fontWeight: 900,
-  textDecoration: "none",
-  color: "rgba(15,23,42,0.90)",
-  padding: "10px 12px",
-  borderRadius: 12,
-  border: "1px solid rgba(15,23,42,0.10)",
-  background: "rgba(255,255,255,0.70)",
-};
