@@ -46,7 +46,6 @@ function loadGoogleMaps(apiKey: string) {
       return;
     }
 
-    // Reuse one shared loader promise if already loading
     if (w.__couranrMapsLoaderPromise) {
       w.__couranrMapsLoaderPromise.then(resolve).catch(reject);
       return;
@@ -295,7 +294,6 @@ export default function CourierQuotePage() {
       signature: signature ? "1" : "0",
     });
 
-    // Re-check auth in case state is stale
     const {
       data: { session },
     } = await supabase.auth.getSession();
@@ -315,19 +313,79 @@ export default function CourierQuotePage() {
     ? "Continue to checkout"
     : "Create account to continue";
 
-  /* -------------------- UI -------------------- */
+  const formFieldStyle = {
+    marginTop: 12,
+  } as const;
+
+  const labelStyle = {
+    display: "block",
+    fontSize: 13,
+    fontWeight: 800,
+    color: "#374151",
+    marginBottom: 6,
+  } as const;
+
+  const inputStyle = {
+    width: "100%",
+    border: "1px solid #d1d5db",
+    borderRadius: 10,
+    padding: "10px 12px",
+    fontSize: 14,
+    outline: "none",
+    background: "#fff",
+    color: "#111827",
+  } as const;
+
+  const checkboxRow = {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    fontSize: 14,
+    color: "#111827",
+  } as const;
 
   return (
     <main className="page">
-      <div className="cContainer" style={{ maxWidth: 980 }}>
-        <div className="pageHeader">
-          <div>
-            <h1 className="pageTitle">Courier Delivery Quote</h1>
-            <p className="pageSub">
-              Enter pickup and drop-off addresses for an exact distance-based quote.
+      <div className="bgGlow" aria-hidden="true" />
+
+      <div className="cContainer" style={{ maxWidth: 1100 }}>
+        <section className="hero" style={{ marginBottom: 18 }}>
+          <div className="heroCard">
+            <div className="badgeRow">
+              <span className="badge">Instant quote</span>
+              <span className="badge ghost">Distance-based pricing</span>
+            </div>
+
+            <h1 className="heroTitle">Courier delivery quote</h1>
+            <p className="heroDesc">
+              Enter pickup and drop-off addresses to get an exact delivery estimate before checkout.
             </p>
+
+            <div className="heroMiniGrid" aria-label="Quote flow">
+              <div className="mini">
+                <div className="miniTop">
+                  <span className="miniIcon">📍</span>
+                  <span className="miniTitle">Route</span>
+                </div>
+                <p className="miniDesc">We calculate distance from your addresses.</p>
+              </div>
+              <div className="mini">
+                <div className="miniTop">
+                  <span className="miniIcon">💵</span>
+                  <span className="miniTitle">Quote</span>
+                </div>
+                <p className="miniDesc">See pricing before payment or submission.</p>
+              </div>
+              <div className="mini">
+                <div className="miniTop">
+                  <span className="miniIcon">✅</span>
+                  <span className="miniTitle">Checkout</span>
+                </div>
+                <p className="miniDesc">Review details and pay securely to place the order.</p>
+              </div>
+            </div>
           </div>
-        </div>
+        </section>
 
         {(afterCutoff || outsideHours) && (
           <div
@@ -339,8 +397,8 @@ export default function CourierQuotePage() {
               marginBottom: 16,
             }}
           >
-            Orders placed after <strong>4:00 PM</strong> or outside business hours may be
-            scheduled for the next business day.
+            Orders placed after <strong>4:00 PM</strong> or outside business hours may be scheduled
+            for the next business day.
           </div>
         )}
 
@@ -350,14 +408,7 @@ export default function CourierQuotePage() {
           </div>
         )}
 
-        <div
-          style={{
-            display: "grid",
-            gap: 16,
-            gridTemplateColumns: "1.1fr 0.9fr",
-            alignItems: "start",
-          }}
-        >
+        <div className="quoteGrid" style={{ display: "grid", gap: 16, gridTemplateColumns: "1.15fr 0.85fr" }}>
           {/* LEFT: FORM */}
           <div className="card">
             <div className="cardIcon" aria-hidden="true">
@@ -368,11 +419,11 @@ export default function CourierQuotePage() {
               Use full addresses. If autocomplete appears, select the best match.
             </p>
 
-            <div className="field">
-              <div className="label">Pickup address</div>
+            <div style={formFieldStyle}>
+              <label style={labelStyle}>Pickup address</label>
               <input
                 ref={pickupRef}
-                className="input"
+                style={inputStyle}
                 placeholder="Start typing pickup address…"
                 value={pickup}
                 onChange={(e) => setPickup(e.target.value)}
@@ -380,11 +431,11 @@ export default function CourierQuotePage() {
               />
             </div>
 
-            <div className="field">
-              <div className="label">Drop-off address</div>
+            <div style={formFieldStyle}>
+              <label style={labelStyle}>Drop-off address</label>
               <input
                 ref={dropoffRef}
-                className="input"
+                style={inputStyle}
                 placeholder="Start typing drop-off address…"
                 value={dropoff}
                 onChange={(e) => setDropoff(e.target.value)}
@@ -396,9 +447,10 @@ export default function CourierQuotePage() {
               <div
                 className="notice"
                 style={{
-                  marginTop: 10,
-                  border: "1px solid rgba(245, 158, 11, 0.25)",
-                  background: "rgba(255,255,255,0.03)",
+                  marginTop: 12,
+                  border: "1px solid #dbeafe",
+                  background: "#eff6ff",
+                  color: "#1e3a8a",
                 }}
               >
                 Distance: <strong>{distanceText}</strong> ({miles} miles)
@@ -406,35 +458,39 @@ export default function CourierQuotePage() {
             )}
 
             {distanceError && (
-              <p style={{ color: "#ef4444", marginTop: 8, marginBottom: 0 }}>{distanceError}</p>
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: 10,
+                  borderRadius: 10,
+                  border: "1px solid #fecaca",
+                  background: "#fef2f2",
+                  color: "#b91c1c",
+                  fontSize: 13,
+                  fontWeight: 700,
+                }}
+              >
+                {distanceError}
+              </div>
             )}
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 12,
-                marginTop: 12,
-              }}
-            >
-              <div className="field" style={{ marginBottom: 0 }}>
-                <div className="label">Package weight (lbs)</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 12 }}>
+              <div>
+                <label style={labelStyle}>Package weight (lbs)</label>
                 <input
-                  className="input"
+                  style={inputStyle}
                   type="number"
                   min={1}
                   max={500}
                   value={weight}
-                  onChange={(e) =>
-                    setWeight(e.target.value === "" ? "" : Number(e.target.value))
-                  }
+                  onChange={(e) => setWeight(e.target.value === "" ? "" : Number(e.target.value))}
                 />
               </div>
 
-              <div className="field" style={{ marginBottom: 0 }}>
-                <div className="label">Additional stops</div>
+              <div>
+                <label style={labelStyle}>Additional stops</label>
                 <input
-                  className="input"
+                  style={inputStyle}
                   type="number"
                   min={0}
                   max={3}
@@ -444,34 +500,24 @@ export default function CourierQuotePage() {
               </div>
             </div>
 
-            <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
-              <label
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  fontSize: 14,
-                  color: "rgba(255,255,255,0.9)",
-                }}
-              >
+            <div
+              style={{
+                marginTop: 14,
+                border: "1px solid #e5e7eb",
+                borderRadius: 12,
+                padding: 12,
+                display: "grid",
+                gap: 10,
+                background: "#fafafa",
+              }}
+            >
+              <label style={checkboxRow}>
                 <input type="checkbox" checked={rush} onChange={() => setRush((v) => !v)} />
                 Rush / priority delivery (+${RUSH_FEE})
               </label>
 
-              <label
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 8,
-                  fontSize: 14,
-                  color: "rgba(255,255,255,0.9)",
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={signature}
-                  onChange={() => setSignature((v) => !v)}
-                />
+              <label style={checkboxRow}>
+                <input type="checkbox" checked={signature} onChange={() => setSignature((v) => !v)} />
                 Signature required (+${SIGNATURE_FEE})
               </label>
             </div>
@@ -488,12 +534,10 @@ export default function CourierQuotePage() {
               💰
             </div>
             <h2 className="cardTitle">Quote summary</h2>
-            <p className="cardDesc">
-              Exact quote appears after address distance is calculated.
-            </p>
+            <p className="cardDesc">Exact quote appears after distance and package details are ready.</p>
 
             {!pricing && (
-              <p className="muted" style={{ marginTop: 8 }}>
+              <p className="cardDesc" style={{ marginTop: 10 }}>
                 Enter addresses and package details to see pricing.
               </p>
             )}
@@ -506,18 +550,28 @@ export default function CourierQuotePage() {
 
             {pricing && !("error" in pricing) && (
               <>
-                <div style={{ fontSize: 30, fontWeight: 900, marginTop: 8 }}>
-                  ${pricing.total.toFixed(2)}
+                <div
+                  style={{
+                    marginTop: 10,
+                    padding: "12px 14px",
+                    borderRadius: 12,
+                    border: "1px solid #e5e7eb",
+                    background: "#fff",
+                  }}
+                >
+                  <div style={{ fontSize: 12, color: "#6b7280" }}>Estimated total</div>
+                  <div style={{ fontSize: 30, fontWeight: 900, color: "#111827" }}>
+                    ${pricing.total.toFixed(2)}
+                  </div>
                 </div>
 
-                <ul className="cardList" style={{ marginTop: 10 }}>
+                <ul className="cardList" style={{ marginTop: 12 }}>
                   <li>
                     Base fee: ${pricing.breakdown.base.toFixed(2)} (includes first{" "}
                     {pricing.breakdown.includedMiles} miles)
                   </li>
                   <li>
-                    Distance: {pricing.breakdown.totalMiles} miles total →{" "}
-                    {pricing.breakdown.billableMiles} billable × $
+                    Distance: {pricing.breakdown.totalMiles} miles → {pricing.breakdown.billableMiles} billable × $
                     {pricing.breakdown.perMileRate.toFixed(2)} = $
                     {pricing.breakdown.extraMilesFee.toFixed(2)}
                   </li>
@@ -537,8 +591,7 @@ export default function CourierQuotePage() {
 
                 {!isAuthed && !authLoading && (
                   <p className="finePrint" style={{ marginTop: 10 }}>
-                    You’ll be redirected to create an account first, then you can continue with this
-                    quote.
+                    You’ll be redirected to create an account first, then you can continue with this quote.
                   </p>
                 )}
 
@@ -553,7 +606,7 @@ export default function CourierQuotePage() {
             <div
               style={{
                 marginTop: 14,
-                borderTop: "1px solid rgba(255,255,255,0.08)",
+                borderTop: "1px solid #e5e7eb",
                 paddingTop: 12,
               }}
             >
@@ -564,23 +617,24 @@ export default function CourierQuotePage() {
           </div>
         </div>
 
-        <div className="card" style={{ marginTop: 16 }}>
-          <h3 className="cardTitle" style={{ marginBottom: 8 }}>
-            Prohibited items
-          </h3>
-          <ul className="cardList">
-            <li>Illegal items</li>
-            <li>Hazardous materials</li>
-            <li>Weapons or restricted items</li>
-            <li>Anything unsafe to transport</li>
-          </ul>
-        </div>
+        <section className="section" style={{ marginTop: 18 }}>
+          <div className="card">
+            <h3 className="cardTitle" style={{ marginBottom: 8 }}>
+              Prohibited items
+            </h3>
+            <ul className="cardList">
+              <li>Illegal items</li>
+              <li>Hazardous materials</li>
+              <li>Weapons or restricted items</li>
+              <li>Anything unsafe to transport</li>
+            </ul>
+          </div>
+        </section>
       </div>
 
-      {/* Simple responsive tweak without touching globals.css */}
       <style jsx>{`
         @media (max-width: 900px) {
-          div[style*="grid-template-columns: 1.1fr 0.9fr"] {
+          .quoteGrid {
             grid-template-columns: 1fr !important;
           }
         }
