@@ -12,11 +12,7 @@ type ServiceKey =
   | "immigration_prep_help"
   | "general_typing";
 
-const SERVICES: {
-  key: ServiceKey;
-  label: string;
-  desc: string;
-}[] = [
+const SERVICES: { key: ServiceKey; label: string; desc: string }[] = [
   {
     key: "printing_delivery",
     label: "Printing + Delivery",
@@ -35,7 +31,7 @@ const SERVICES: {
   {
     key: "resume_typing",
     label: "Resume Review + Typing",
-    desc: "Formatting, cleanup, and typing support (not job placement).",
+    desc: "Formatting, cleanup, and typing support.",
   },
   {
     key: "immigration_prep_help",
@@ -48,6 +44,19 @@ const SERVICES: {
     desc: "Typing, editing, formatting, and basic document organization.",
   },
 ];
+
+function extractRequestId(obj: any): string | null {
+  if (!obj || typeof obj !== "object") return null;
+  return (
+    obj.requestId ||
+    obj.id ||
+    obj.docsRequestId ||
+    obj.docRequestId ||
+    obj.request?.id ||
+    obj.data?.id ||
+    null
+  );
+}
 
 export default function DocsRequestPage() {
   const router = useRouter();
@@ -69,7 +78,7 @@ export default function DocsRequestPage() {
   const [doubleSided, setDoubleSided] = useState(false);
   const [deliveryNeeded, setDeliveryNeeded] = useState(true);
 
-  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const activeService = useMemo(
@@ -89,45 +98,88 @@ export default function DocsRequestPage() {
       setAuthLoading(false);
 
       if (!authed) {
-        const next = "/docs/request";
-        router.push(`/login?next=${encodeURIComponent(next)}`);
+        router.push(`/login?next=${encodeURIComponent("/docs/request")}`);
       }
     }
 
     boot();
-
     return () => {
       mounted = false;
     };
   }, [router]);
 
+  async function authedPost(path: string, token: string, body: any) {
+    const res = await fetch(path, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    const json = await res.json().catch(() => ({}));
+    return { res, json };
+  }
+
+  function buildPayload() {
+    const printing =
+      serviceType === "printing_delivery"
+        ? {
+            pages: Number(pages || 0),
+            copies: Number(copies || 1),
+            color,
+            doubleSided,
+            deliveryNeeded,
+          }
+        : null;
+
+    return {
+      // Common fields (send aliases so your existing APIs can accept whichever they expect)
+      serviceType,
+      requestType: serviceType,
+      category: serviceType,
+
+      title: title.trim(),
+      requestTitle: title.trim(),
+
+      notes: notes.trim(),
+      description: notes.trim(),
+      details: notes.trim(),
+
+      contactPhone: contactPhone.trim() || null,
+      phone: contactPhone.trim() || null,
+
+      city: city.trim() || null,
+      rush,
+
+      status: "draft",
+
+      printing,
+
+      intake: {
+        serviceType,
+        serviceLabel: activeService?.label || serviceType,
+        contactPhone: contactPhone.trim() || null,
+        city: city.trim() || null,
+        rush,
+        printing,
+      },
+    };
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
 
-    if (!title.trim()) {
-      setError("Please enter a short request title.");
-      return;
-    }
-
-    if (!notes.trim()) {
-      setError("Please describe what you need.");
-      return;
-    }
+    if (!title.trim()) return setError("Please enter a request title.");
+    if (!notes.trim()) return setError("Please describe what you need.");
 
     if (serviceType === "printing_delivery") {
       const p = Number(pages || 0);
       const c = Number(copies || 0);
-
-      if (!Number.isFinite(p) || p <= 0) {
-        setError("Please enter the estimated number of pages.");
-        return;
-      }
-
-      if (!Number.isFinite(c) || c <= 0) {
-        setError("Please enter the number of copies.");
-        return;
-      }
+      if (!Number.isFinite(p) || p <= 0) return setError("Enter estimated pages.");
+      if (!Number.isFinite(c) || c <= 0) return setError("Enter number of copies.");
     }
 
     const {
@@ -135,82 +187,57 @@ export default function DocsRequestPage() {
     } = await supabase.auth.getSession();
 
     const token = session?.access_token;
-    if (!token) {
-      setError("Please log in again.");
-      return;
-    }
+    if (!token) return setError("Please log in again.");
 
-    setLoading(true);
+    setSaving(true);
 
     try {
-      const payload = {
-        // send multiple aliases so older/newer API versions both work
-        serviceType,
-        requestType: serviceType,
-        category: serviceType,
+      const payload = buildPayload();
+      let requestId: string | null = null;
 
-        title: title.trim(),
-        requestTitle: title.trim(),
-
-        notes: notes.trim(),
-        description: notes.trim(),
-
-        contactPhone: contactPhone.trim() || null,
-        city: city.trim() || null,
-        rush,
-
-        printing: serviceType === "printing_delivery"
-          ? {
-              pages: Number(pages || 0),
-              copies: Number(copies || 1),
-              color,
-              doubleSided,
-              deliveryNeeded,
-            }
-          : null,
-
-        intake: {
-          serviceType,
-          serviceLabel: activeService?.label ?? serviceType,
-          contactPhone: contactPhone.trim() || null,
-          city: city.trim() || null,
-          rush,
-          printing:
-            serviceType === "printing_delivery"
-              ? {
-                  pages: Number(pages || 0),
-                  copies: Number(copies || 1),
-                  color,
-                  doubleSided,
-                  deliveryNeeded,
-                }
-              : null,
-        },
-      };
-
-      const res = await fetch("/api/docs/create-request", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await res.json().catch(() => ({}));
-
-      if (!res.ok) {
-        throw new Error(data?.error || "Failed to create request");
+      // STEP 1: Create draft
+      {
+        const { res, json } = await authedPost("/api/docs/create-draft", token, payload);
+        if (!res.ok) {
+          throw new Error(json?.error || "Unable to create draft");
+        }
+        requestId = extractRequestId(json);
       }
 
-      const requestId =
-        data?.requestId ||
-        data?.id ||
-        data?.request?.id ||
-        data?.docsRequest?.id ||
-        null;
+      // STEP 2: Save details (if endpoint requires requestId, include it)
+      {
+        const savePayload = {
+          ...payload,
+          requestId,
+          id: requestId,
+          status: "draft",
+        };
 
-      // Best UX: go to detail page if it exists, otherwise dashboard docs
+        const { res, json } = await authedPost("/api/docs/save-request", token, savePayload);
+        if (!res.ok) {
+          throw new Error(json?.error || "Unable to save request");
+        }
+        requestId = requestId || extractRequestId(json);
+      }
+
+      // STEP 3: Submit request
+      {
+        const submitPayload = {
+          requestId,
+          id: requestId,
+          status: "submitted",
+          // include payload too in case your submit route expects full object
+          ...payload,
+        };
+
+        const { res, json } = await authedPost("/api/docs/submit-request", token, submitPayload);
+        if (!res.ok) {
+          throw new Error(json?.error || "Unable to submit request");
+        }
+        requestId = requestId || extractRequestId(json);
+      }
+
+      // Go to request detail if available, else docs dashboard
       if (requestId) {
         router.push(`/dashboard/docs/${requestId}`);
       } else {
@@ -219,7 +246,7 @@ export default function DocsRequestPage() {
     } catch (err: any) {
       setError(err?.message || "Unable to create request");
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   }
 
@@ -237,7 +264,7 @@ export default function DocsRequestPage() {
     return (
       <main className="page">
         <div className="cContainer">
-          <p>Redirecting to login…</p>
+          <p>Redirecting…</p>
         </div>
       </main>
     );
@@ -252,14 +279,14 @@ export default function DocsRequestPage() {
           <div>
             <h1 className="pageTitle">New Docs Request</h1>
             <p className="pageSub">
-              Submit a request for printing, document prep help, typing, or admin support.
+              Submit a request for printing, typing, document prep help, or clerical support.
             </p>
           </div>
         </div>
 
         <div className="notice" style={{ marginBottom: 14 }}>
-          <strong>Important:</strong> Couranr Docs provides clerical/administrative assistance only.
-          We do <strong>not</strong> provide legal advice and are not affiliated with the DMV or USCIS.
+          <strong>Reminder:</strong> Couranr Docs provides administrative/document assistance only.
+          We do not provide legal advice and are not affiliated with the DMV or USCIS.
         </div>
 
         <form onSubmit={handleSubmit} className="card">
@@ -288,7 +315,7 @@ export default function DocsRequestPage() {
                 className="fieldInput"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Example: Print packet + deliver to Stafford"
+                placeholder="Example: Print packet + delivery"
               />
             </div>
 
@@ -318,13 +345,13 @@ export default function DocsRequestPage() {
               <label className="fieldLabel">Priority</label>
               <div className="check" style={{ height: 44 }}>
                 <input
+                  id="docs-rush"
                   type="checkbox"
                   checked={rush}
                   onChange={() => setRush((v) => !v)}
-                  id="docs-rush"
                 />
                 <label htmlFor="docs-rush" style={{ cursor: "pointer" }}>
-                  Rush request (faster handling if available)
+                  Rush request
                 </label>
               </div>
             </div>
@@ -350,10 +377,7 @@ export default function DocsRequestPage() {
                     type="number"
                     min={1}
                     value={pages}
-                    onChange={(e) =>
-                      setPages(e.target.value === "" ? "" : Number(e.target.value))
-                    }
-                    placeholder="10"
+                    onChange={(e) => setPages(e.target.value === "" ? "" : Number(e.target.value))}
                   />
                 </div>
 
@@ -364,21 +388,14 @@ export default function DocsRequestPage() {
                     type="number"
                     min={1}
                     value={copies}
-                    onChange={(e) =>
-                      setCopies(e.target.value === "" ? "" : Number(e.target.value))
-                    }
-                    placeholder="1"
+                    onChange={(e) => setCopies(e.target.value === "" ? "" : Number(e.target.value))}
                   />
                 </div>
               </div>
 
               <div className="checkRow">
                 <label className="check">
-                  <input
-                    type="checkbox"
-                    checked={color}
-                    onChange={() => setColor((v) => !v)}
-                  />
+                  <input type="checkbox" checked={color} onChange={() => setColor((v) => !v)} />
                   Color print
                 </label>
 
@@ -409,9 +426,9 @@ export default function DocsRequestPage() {
               className="fieldInput"
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Describe the documents, what you need typed/organized, any deadlines, and any special instructions."
+              placeholder="Describe the documents, typing help, deadlines, and any important details."
               style={{
-                height: 130,
+                minHeight: 130,
                 paddingTop: 10,
                 resize: "vertical",
                 fontFamily: "inherit",
@@ -422,15 +439,15 @@ export default function DocsRequestPage() {
           {error && <div className="errorText">{error}</div>}
 
           <div className="dashActions" style={{ marginTop: 14 }}>
-            <button type="submit" className="btn btnGold" disabled={loading}>
-              {loading ? "Creating request…" : "Create request"}
+            <button type="submit" className="btn btnGold" disabled={saving}>
+              {saving ? "Submitting…" : "Submit request"}
             </button>
 
             <button
               type="button"
               className="btn btnGhost"
               onClick={() => router.push("/dashboard/docs")}
-              disabled={loading}
+              disabled={saving}
             >
               Back to Docs Dashboard
             </button>
@@ -439,15 +456,15 @@ export default function DocsRequestPage() {
               type="button"
               className="btn btnGhost"
               onClick={() => router.push("/docs/pricing")}
-              disabled={loading}
+              disabled={saving}
             >
               View pricing
             </button>
           </div>
 
           <p className="finePrint">
-            After creating the request, you can track status in your Docs dashboard and upload files
-            (if required) from the request detail page.
+            After submission, you can track status in your Docs dashboard and upload files from the
+            request detail page.
           </p>
         </form>
       </div>
