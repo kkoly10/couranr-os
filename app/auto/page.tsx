@@ -21,8 +21,11 @@ export default function AutoPage() {
             </p>
 
             <div className="heroActions">
-              <Link className="btn btnGold" href="/login">
-                Customer portal →
+              <Link className="btn btnGold" href="/auto/vehicles">
+                Browse vehicles →
+              </Link>
+              <Link className="btn btnGhost" href="/dashboard/auto">
+                Customer portal
               </Link>
               <Link className="btn btnGhost" href="mailto:couranr@couranrauto.com">
                 Email support
