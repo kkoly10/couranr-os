@@ -27,7 +27,7 @@ export default function DocsPage() {
               <Link className="btn btnGhost" href="/docs/pricing">
                 View pricing
               </Link>
-              <Link className="btn btnGhost" href="/dashboard/docs">
+              <Link className="btn btnGhost" href="/login?next=%2Fdashboard%2Fdocs">
                 Track requests
               </Link>
             </div>
@@ -38,21 +38,21 @@ export default function DocsPage() {
                   <span className="miniIcon">📤</span>
                   <span className="miniTitle">Upload</span>
                 </div>
-                <p className="miniDesc">Send files and tell us exactly what you need done.</p>
+                <p className="miniDesc">Send files and tell us what you need done.</p>
               </div>
               <div className="mini">
                 <div className="miniTop">
                   <span className="miniIcon">🛠️</span>
                   <span className="miniTitle">Process</span>
                 </div>
-                <p className="miniDesc">We handle printing, prep, typing, or clerical work.</p>
+                <p className="miniDesc">We handle printing, prep, typing, or clerical support.</p>
               </div>
               <div className="mini">
                 <div className="miniTop">
                   <span className="miniIcon">🚗</span>
                   <span className="miniTitle">Deliver</span>
                 </div>
-                <p className="miniDesc">Pickup/delivery or digital handoff depending on request type.</p>
+                <p className="miniDesc">Local delivery/pickup or digital handoff based on the job.</p>
               </div>
             </div>
 
@@ -87,64 +87,59 @@ export default function DocsPage() {
               title="Typing & resume support"
               desc="Need something typed, cleaned up, or reviewed? We help with clerical formatting and edits."
               bullets={[
-                "Typing from image or handwritten notes",
+                "Typing from image or notes",
                 "Resume formatting + review support",
-                "Basic document cleanup and organization",
+                "Basic document cleanup",
               ]}
             />
 
             <InfoCard
               icon="📊"
               title="Business data entry help"
-              desc="For businesses overwhelmed with paperwork, we can process clerical backlogs and structured entry."
+              desc="For businesses overwhelmed with paperwork, we can support clerical backlogs and structured entry."
               bullets={[
                 "Invoice / form entry support",
                 "Spreadsheet-ready organization",
-                "Backlog cleanup for admin teams",
+                "Overflow admin support",
               ]}
             />
 
             <InfoCard
               icon="🧾"
               title="DMV & immigration prep help"
-              desc="Clerical assistance only: checklists, typing, printing, packet organization, and submission readiness."
+              desc="Clerical support only: checklists, typing, printing, and packet organization."
               bullets={[
-                "Document readiness checklist",
-                "Typing / packet organization",
-                "Upload / print support (no legal advice)",
+                "Readiness checklist",
+                "Packet assembly",
+                "No legal advice",
               ]}
             />
           </div>
         </section>
 
         <section className="section">
-          <h2 className="sectionTitle">How the docs flow works</h2>
-          <p className="sectionSub">
-            Same customer/admin style as your other Couranr services, but optimized for fast document jobs.
-          </p>
+          <h2 className="sectionTitle">How it works</h2>
 
           <div className="steps">
             <div className="step">
               <div className="stepNum">1</div>
               <h3 className="stepTitle">Create request</h3>
               <p className="stepDesc">
-                Choose service type, add instructions, and upload your files.
+                Choose a service, add instructions, and upload your files.
               </p>
             </div>
-
             <div className="step">
               <div className="stepNum">2</div>
               <h3 className="stepTitle">Review & pay</h3>
               <p className="stepDesc">
-                You’ll see pricing before checkout. Admin can review details and confirm readiness.
+                See pricing before checkout. We review your request and confirm details.
               </p>
             </div>
-
             <div className="step">
               <div className="stepNum">3</div>
               <h3 className="stepTitle">Track status</h3>
               <p className="stepDesc">
-                Follow progress in your docs dashboard: received, in progress, ready, completed.
+                Follow progress in your Docs dashboard from submitted to completed.
               </p>
             </div>
           </div>
@@ -153,8 +148,8 @@ export default function DocsPage() {
             <Link className="btn btnGold" href="/docs/request">
               Start request →
             </Link>
-            <Link className="btn btnGhost" href="/dashboard/docs">
-              Open docs dashboard
+            <Link className="btn btnGhost" href="/docs/pricing">
+              Pricing
             </Link>
             <a className="btn btnGhost" href="mailto:couranr@couranrauto.com">
               Email support
@@ -174,8 +169,8 @@ export default function DocsPage() {
               a="Yes. We can support structured clerical work such as data entry, document sorting, and form typing for businesses that need overflow help."
             />
             <FAQItem
-              q="Can you guarantee government approvals?"
-              a="No. Government decisions and timelines are outside our control. We help you prepare and organize documents, but approvals are never guaranteed."
+              q="Do you guarantee approvals?"
+              a="No. Government decisions and timelines are outside our control. We help prepare and organize documents, but approvals are never guaranteed."
             />
             <FAQItem
               q="Are you affiliated with USCIS or DMV?"
