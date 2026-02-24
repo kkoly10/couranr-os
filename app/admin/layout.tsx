@@ -4,7 +4,10 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import { cn } from "@/lib/cn";
+
+function cn(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(" ");
+}
 
 export default function AdminLayout({
   children,
@@ -24,7 +27,8 @@ export default function AdminLayout({
       <header className="border-b bg-white">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
           <Link href="/admin" className="font-bold text-lg">
-            Couranr <span className="text-sm font-normal text-gray-500">admin</span>
+            Couranr{" "}
+            <span className="text-sm font-normal text-gray-500">admin</span>
           </Link>
 
           <div className="flex items-center gap-2 text-sm">
