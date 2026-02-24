@@ -1,13 +1,8 @@
-// app/admin/layout.tsx
 "use client";
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-
-function cn(...classes: Array<string | false | null | undefined>) {
-  return classes.filter(Boolean).join(" ");
-}
 
 export default function AdminLayout({
   children,
@@ -23,49 +18,64 @@ export default function AdminLayout({
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="border-b bg-white">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
-          <Link href="/admin" className="font-bold text-lg">
+    <div style={{ minHeight: "100vh", background: "#f8fafc" }}>
+      <header
+        style={{
+          borderBottom: "1px solid #e5e7eb",
+          background: "#fff",
+          position: "sticky",
+          top: 0,
+          zIndex: 20,
+        }}
+      >
+        <div
+          style={{
+            maxWidth: 1240,
+            margin: "0 auto",
+            padding: "12px 16px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <Link
+            href="/admin"
+            style={{
+              textDecoration: "none",
+              color: "#111827",
+              fontWeight: 900,
+              fontSize: 20,
+            }}
+          >
             Couranr{" "}
-            <span className="text-sm font-normal text-gray-500">admin</span>
+            <span style={{ fontSize: 13, fontWeight: 500, color: "#6b7280" }}>
+              admin
+            </span>
           </Link>
 
-          <div className="flex items-center gap-2 text-sm">
-            <Link
-              href="/admin"
-              className={cn(
-                "rounded-lg px-3 py-2 hover:bg-gray-100",
-                pathname === "/admin" && "bg-gray-100 font-semibold"
-              )}
-            >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              flexWrap: "wrap",
+            }}
+          >
+            <Link href="/admin" style={navBtn(pathname === "/admin")}>
               🚚 Deliveries
             </Link>
 
-            <Link
-              href="/admin/auto"
-              className={cn(
-                "rounded-lg px-3 py-2 hover:bg-gray-100",
-                pathname.startsWith("/admin/auto") && "bg-gray-100 font-semibold"
-              )}
-            >
+            <Link href="/admin/auto" style={navBtn(pathname.startsWith("/admin/auto"))}>
               🚗 Auto Rentals
             </Link>
 
-            <Link
-              href="/admin/docs"
-              className={cn(
-                "rounded-lg px-3 py-2 hover:bg-gray-100",
-                pathname.startsWith("/admin/docs") && "bg-gray-100 font-semibold"
-              )}
-            >
+            <Link href="/admin/docs" style={navBtn(pathname.startsWith("/admin/docs"))}>
               📄 Docs
             </Link>
 
-            <button
-              onClick={onLogout}
-              className="ml-2 rounded-lg border px-3 py-2 hover:bg-gray-50"
-            >
+            <button onClick={onLogout} style={ghostBtn}>
               Log out
             </button>
           </div>
@@ -76,3 +86,27 @@ export default function AdminLayout({
     </div>
   );
 }
+
+function navBtn(active: boolean): React.CSSProperties {
+  return {
+    textDecoration: "none",
+    color: "#111827",
+    fontWeight: active ? 800 : 700,
+    fontSize: 14,
+    padding: "9px 12px",
+    borderRadius: 10,
+    border: active ? "1px solid #d1d5db" : "1px solid transparent",
+    background: active ? "#f3f4f6" : "transparent",
+    display: "inline-block",
+  };
+}
+
+const ghostBtn: React.CSSProperties = {
+  border: "1px solid #d1d5db",
+  background: "#fff",
+  color: "#111827",
+  borderRadius: 10,
+  padding: "9px 12px",
+  fontWeight: 700,
+  cursor: "pointer",
+};
