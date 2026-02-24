@@ -1,18 +1,15 @@
 // app/dashboard/layout.tsx
 "use client";
 
+import type { CSSProperties, ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-function cn(...classes: Array<string | false | null | undefined>) {
-  return classes.filter(Boolean).join(" ");
-}
-
 export default function DashboardLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -22,59 +19,116 @@ export default function DashboardLayout({
     router.push("/login");
   }
 
+  const linkStyle = (active: boolean): CSSProperties => ({
+    ...styles.navLink,
+    background: active ? "#eef2ff" : "#fff",
+    borderColor: active ? "#c7d2fe" : "#e5e7eb",
+    color: active ? "#312e81" : "#111827",
+    fontWeight: active ? 800 : 600,
+  });
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="border-b bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-          <Link href="/dashboard" className="font-bold text-lg">
+    <div style={styles.shell}>
+      <header style={styles.header}>
+        <div style={styles.headerInner}>
+          <Link href="/dashboard" style={styles.brand}>
             Couranr
           </Link>
 
-          <div className="flex items-center gap-2 text-sm">
+          <div style={styles.navWrap}>
             <Link
               href="/dashboard/delivery"
-              className={cn(
-                "rounded-lg px-3 py-2 hover:bg-gray-100",
-                pathname.startsWith("/dashboard/delivery") &&
-                  "bg-gray-100 font-semibold"
-              )}
+              style={linkStyle(pathname.startsWith("/dashboard/delivery"))}
             >
               🚚 Deliveries
             </Link>
 
             <Link
               href="/dashboard/auto"
-              className={cn(
-                "rounded-lg px-3 py-2 hover:bg-gray-100",
-                pathname.startsWith("/dashboard/auto") &&
-                  "bg-gray-100 font-semibold"
-              )}
+              style={linkStyle(pathname.startsWith("/dashboard/auto"))}
             >
               🚗 Auto Rentals
             </Link>
 
             <Link
               href="/dashboard/docs"
-              className={cn(
-                "rounded-lg px-3 py-2 hover:bg-gray-100",
-                pathname.startsWith("/dashboard/docs") &&
-                  "bg-gray-100 font-semibold"
-              )}
+              style={linkStyle(pathname.startsWith("/dashboard/docs"))}
             >
               📄 Docs
             </Link>
 
-            <button
-              onClick={onLogout}
-              className="ml-2 rounded-lg border px-3 py-2 hover:bg-gray-50"
-            >
+            <button onClick={onLogout} style={styles.logoutBtn}>
               Log out
             </button>
           </div>
         </div>
       </header>
 
-      <main>{children}</main>
+      <main style={styles.main}>{children}</main>
     </div>
   );
 }
+
+const styles: Record<string, CSSProperties> = {
+  shell: {
+    minHeight: "100vh",
+    background: "#f8fafc",
+  },
+  header: {
+    position: "sticky",
+    top: 0,
+    zIndex: 20,
+    background: "rgba(255,255,255,0.95)",
+    borderBottom: "1px solid #e5e7eb",
+    backdropFilter: "blur(8px)",
+  },
+  headerInner: {
+    maxWidth: 1100,
+    margin: "0 auto",
+    padding: "12px 16px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    flexWrap: "wrap",
+  },
+  brand: {
+    textDecoration: "none",
+    color: "#111827",
+    fontWeight: 900,
+    fontSize: 20,
+    letterSpacing: 0.2,
+  },
+  navWrap: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  navLink: {
+    textDecoration: "none",
+    border: "1px solid #e5e7eb",
+    borderRadius: 10,
+    padding: "8px 10px",
+    fontSize: 14,
+    lineHeight: 1,
+    display: "inline-flex",
+    alignItems: "center",
+    whiteSpace: "nowrap",
+  },
+  logoutBtn: {
+    border: "1px solid #e5e7eb",
+    background: "#fff",
+    color: "#111827",
+    borderRadius: 10,
+    padding: "8px 10px",
+    fontWeight: 700,
+    cursor: "pointer",
+    fontSize: 14,
+  },
+  main: {
+    maxWidth: 1100,
+    margin: "0 auto",
+    padding: 16,
+  },
+};
