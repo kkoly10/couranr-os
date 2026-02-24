@@ -4,7 +4,10 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import { cn } from "@/lib/cn";
+
+function cn(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(" ");
+}
 
 export default function DashboardLayout({
   children,
@@ -32,7 +35,8 @@ export default function DashboardLayout({
               href="/dashboard/delivery"
               className={cn(
                 "rounded-lg px-3 py-2 hover:bg-gray-100",
-                pathname.startsWith("/dashboard/delivery") && "bg-gray-100 font-semibold"
+                pathname.startsWith("/dashboard/delivery") &&
+                  "bg-gray-100 font-semibold"
               )}
             >
               🚚 Deliveries
@@ -42,7 +46,8 @@ export default function DashboardLayout({
               href="/dashboard/auto"
               className={cn(
                 "rounded-lg px-3 py-2 hover:bg-gray-100",
-                pathname.startsWith("/dashboard/auto") && "bg-gray-100 font-semibold"
+                pathname.startsWith("/dashboard/auto") &&
+                  "bg-gray-100 font-semibold"
               )}
             >
               🚗 Auto Rentals
@@ -52,7 +57,8 @@ export default function DashboardLayout({
               href="/dashboard/docs"
               className={cn(
                 "rounded-lg px-3 py-2 hover:bg-gray-100",
-                pathname.startsWith("/dashboard/docs") && "bg-gray-100 font-semibold"
+                pathname.startsWith("/dashboard/docs") &&
+                  "bg-gray-100 font-semibold"
               )}
             >
               📄 Docs
