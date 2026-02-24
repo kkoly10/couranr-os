@@ -3,62 +3,57 @@ import Link from "next/link";
 
 export default function DashboardPage() {
   return (
-    <main className="page">
-      <div className="cContainer">
-        <h1 className="pageTitle">Dashboard</h1>
-        <p className="pageDesc">Manage your services in one place.</p>
-
-        <div className="dashGrid">
-          <div className="card">
-            <div className="cardIcon" aria-hidden="true">
-              🚚
-            </div>
-            <h3 className="cardTitle">Deliveries</h3>
-            <p className="cardDesc">
-              Track deliveries, view updates, and start new requests.
-            </p>
-
-            <div className="contactRow">
-              {/* ✅ updated to match dashboard/home */}
-              <Link className="btn btnGhost" href="/dashboard/delivery">
-                Open deliveries
-              </Link>
-              <Link className="btn btnGold" href="/courier">
-                New delivery →
-              </Link>
-            </div>
-
-            <p className="finePrint">
-              Proof-of-pickup/drop-off may be available depending on the delivery type.
-            </p>
-          </div>
-
-          <div className="card">
-            <div className="cardIcon" aria-hidden="true">
-              🚗
-            </div>
-            <h3 className="cardTitle">Auto Rentals</h3>
-            <p className="cardDesc">
-              Verification, agreements, payments, and pickup/return steps.
-            </p>
-
-            <div className="contactRow">
-              <Link className="btn btnGhost" href="/dashboard/auto">
-                Open rentals
-              </Link>
-
-              {/* ✅ updated to match dashboard/home */}
-              <Link className="btn btnGold" href="/auto/vehicles">
-                Browse vehicles →
-              </Link>
-            </div>
-
-            <p className="finePrint">
-              Policies and renter responsibilities are shown before payment.
-            </p>
-          </div>
-        </div>
+    <div className="mx-auto max-w-6xl p-4 md:p-6">
+      <div className="mb-6">
+        <h1 className="text-2xl font-bold">Your Couranr Dashboard</h1>
+        <p className="text-gray-600">
+          Choose a service to manage requests, rentals, and deliveries.
+        </p>
       </div>
-    </main>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <Link
+          href="/dashboard/delivery"
+          className="rounded-2xl border bg-white p-5 shadow-sm hover:shadow-md transition"
+        >
+          <div className="text-2xl">🚚</div>
+          <div className="mt-2 font-semibold">Delivery</div>
+          <div className="text-sm text-gray-600">
+            Track or create courier requests.
+          </div>
+          <div className="mt-4 text-sm font-medium text-blue-600">
+            Open Delivery →
+          </div>
+        </Link>
+
+        <Link
+          href="/dashboard/auto"
+          className="rounded-2xl border bg-white p-5 shadow-sm hover:shadow-md transition"
+        >
+          <div className="text-2xl">🚗</div>
+          <div className="mt-2 font-semibold">Auto Rentals</div>
+          <div className="text-sm text-gray-600">
+            Manage verification, pickup, return, and deposit status.
+          </div>
+          <div className="mt-4 text-sm font-medium text-blue-600">
+            Open Auto →
+          </div>
+        </Link>
+
+        <Link
+          href="/dashboard/docs"
+          className="rounded-2xl border bg-white p-5 shadow-sm hover:shadow-md transition"
+        >
+          <div className="text-2xl">📄</div>
+          <div className="mt-2 font-semibold">Docs</div>
+          <div className="text-sm text-gray-600">
+            Printing, document prep help, typing, resume support, and more.
+          </div>
+          <div className="mt-4 text-sm font-medium text-blue-600">
+            Open Docs →
+          </div>
+        </Link>
+      </div>
+    </div>
   );
 }
