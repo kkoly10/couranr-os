@@ -1,10 +1,10 @@
-// app/admin/docs/requests/[requestId]/page.tsx
+import { Suspense } from "react";
 import DocsAdminRequestDetailClient from "./DocsAdminRequestDetailClient";
 
-export default function AdminDocsRequestDetailPage({
-  params,
-}: {
-  params: { requestId: string };
-}) {
-  return <DocsAdminRequestDetailClient requestId={params.requestId} />;
+export default function AdminDocsRequestDetailPage() {
+  return (
+    <Suspense fallback={<p style={{ padding: 24 }}>Loading docs request…</p>}>
+      <DocsAdminRequestDetailClient />
+    </Suspense>
+  );
 }
