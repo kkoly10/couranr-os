@@ -1,109 +1,29 @@
-"use client";
+// app/layout.tsx
+import type { Metadata } from "next";
+import "./globals.css";
 
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+export const metadata: Metadata = {
+  title: "Couranr",
+  description: "Couranr OS — Delivery, Auto Rentals, and Docs",
+};
 
-export default function DashboardLayout({
+export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const pathname = usePathname();
-  const router = useRouter();
-
-  async function onLogout() {
-    await supabase.auth.signOut();
-    router.push("/login");
-  }
-
   return (
-    <div style={{ minHeight: "100vh", background: "#f8fafc" }}>
-      <header
+    <html lang="en">
+      <body
         style={{
-          borderBottom: "1px solid #e5e7eb",
-          background: "#fff",
-          position: "sticky",
-          top: 0,
-          zIndex: 20,
+          margin: 0,
+          padding: 0,
+          background: "#0b0f17",
+          color: "#f9fafb",
         }}
       >
-        <div
-          style={{
-            maxWidth: 1180,
-            margin: "0 auto",
-            padding: "12px 16px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
-            flexWrap: "wrap",
-          }}
-        >
-          <Link
-            href="/dashboard"
-            style={{
-              textDecoration: "none",
-              color: "#111827",
-              fontWeight: 900,
-              fontSize: 20,
-            }}
-          >
-            Couranr
-          </Link>
-
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              flexWrap: "wrap",
-            }}
-          >
-            <Link href="/dashboard/delivery" style={navBtn(pathname.startsWith("/dashboard/delivery"))}>
-              🚚 Deliveries
-            </Link>
-
-            <Link href="/dashboard/auto" style={navBtn(pathname.startsWith("/dashboard/auto"))}>
-              🚗 Auto Rentals
-            </Link>
-
-            <Link href="/dashboard/docs" style={navBtn(pathname.startsWith("/dashboard/docs"))}>
-              📄 Docs
-            </Link>
-
-            <button onClick={onLogout} style={ghostBtn}>
-              Log out
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <main>{children}</main>
-    </div>
+        {children}
+      </body>
+    </html>
   );
 }
-
-function navBtn(active: boolean): React.CSSProperties {
-  return {
-    textDecoration: "none",
-    color: "#111827",
-    fontWeight: active ? 800 : 700,
-    fontSize: 14,
-    padding: "9px 12px",
-    borderRadius: 10,
-    border: active ? "1px solid #d1d5db" : "1px solid transparent",
-    background: active ? "#f3f4f6" : "transparent",
-    display: "inline-block",
-  };
-}
-
-const ghostBtn: React.CSSProperties = {
-  border: "1px solid #d1d5db",
-  background: "#fff",
-  color: "#111827",
-  borderRadius: 10,
-  padding: "9px 12px",
-  fontWeight: 700,
-  cursor: "pointer",
-};
