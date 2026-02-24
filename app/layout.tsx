@@ -1,12 +1,6 @@
 // app/layout.tsx
-import type { Metadata } from "next";
 import "./globals.css";
-import SiteHeader from "@/components/SiteHeader";
-
-export const metadata: Metadata = {
-  title: "Couranr",
-  description: "Couranr OS — Delivery, Auto Rentals, and Docs",
-};
+import PublicHeader from "@/components/PublicHeader";
 
 export default function RootLayout({
   children,
@@ -15,9 +9,9 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>
-        <SiteHeader />
-        {children}
+      <body className="appBody">
+        <PublicHeader />
+        <main className="appMain">{children}</main>
       </body>
     </html>
   );
