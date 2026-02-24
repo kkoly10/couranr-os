@@ -1,90 +1,74 @@
-import Link from "next/link";
-import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
-import Brand from "@/components/Brand";
-import LogoutButton from "@/components/LogoutButton";
+// app/admin/layout.tsx
+"use client";
 
-export default async function AdminLayout({
+import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
+import { cn } from "@/lib/cn";
+
+export default function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  // 1. Initialize Supabase on the server
-  const supabase = createServerComponentClient({ cookies });
+  const pathname = usePathname();
+  const router = useRouter();
 
-  // 2. Get the user session
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  if (!session) {
-    redirect("/login?next=/admin");
-  }
-
-  // 3. Verify the Admin Role
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role")
-    .eq("id", session.user.id)
-    .single();
-
-  if (profile?.role !== "admin") {
-    // Kick standard users back to their dashboard
-    redirect("/dashboard");
+  async function onLogout() {
+    await supabase.auth.signOut();
+    router.push("/login");
   }
 
   return (
-    <section>
-      <header
-        style={{
-          borderBottom: "3px solid #7c3aed",
-          background:
-            "linear-gradient(180deg, rgba(124,58,237,0.12), #ffffff 60%)",
-        }}
-      >
-        <div
-          style={{
-            maxWidth: 1200,
-            margin: "0 auto",
-            padding: "18px 24px",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            gap: 12,
-          }}
-        >
-          <Brand href="/admin" role="admin" />
+    <div className="min-h-screen bg-gray-50">
+      <header className="border-b bg-white">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
+          <Link href="/admin" className="font-bold text-lg">
+            Couranr <span className="text-sm font-normal text-gray-500">admin</span>
+          </Link>
 
-          <nav style={{ display: "flex", gap: 14 }}>
-            <Link href="/admin" style={navLink}>
+          <div className="flex items-center gap-2 text-sm">
+            <Link
+              href="/admin"
+              className={cn(
+                "rounded-lg px-3 py-2 hover:bg-gray-100",
+                pathname === "/admin" && "bg-gray-100 font-semibold"
+              )}
+            >
               🚚 Deliveries
             </Link>
-            <Link href="/admin/auto" style={navLink}>
+
+            <Link
+              href="/admin/auto"
+              className={cn(
+                "rounded-lg px-3 py-2 hover:bg-gray-100",
+                pathname.startsWith("/admin/auto") && "bg-gray-100 font-semibold"
+              )}
+            >
               🚗 Auto Rentals
             </Link>
-            <span style={{ opacity: 0.4 }}>📄 Docs</span>
-          </nav>
 
-          <LogoutButton />
+            <Link
+              href="/admin/docs"
+              className={cn(
+                "rounded-lg px-3 py-2 hover:bg-gray-100",
+                pathname.startsWith("/admin/docs") && "bg-gray-100 font-semibold"
+              )}
+            >
+              📄 Docs
+            </Link>
+
+            <button
+              onClick={onLogout}
+              className="ml-2 rounded-lg border px-3 py-2 hover:bg-gray-50"
+            >
+              Log out
+            </button>
+          </div>
         </div>
       </header>
 
-      <main
-        style={{
-          maxWidth: 1200,
-          margin: "0 auto",
-          padding: "28px 24px",
-        }}
-      >
-        {children}
-      </main>
-    </section>
+      <main>{children}</main>
+    </div>
   );
 }
-
-const navLink: React.CSSProperties = {
-  fontWeight: 800,
-  textDecoration: "none",
-  color: "#111",
-};
