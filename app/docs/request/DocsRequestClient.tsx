@@ -1,10 +1,16 @@
-// app/docs/request/DocsRequestClient.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+
+type CanonicalServiceType =
+  | "print_scan_delivery"
+  | "data_entry"
+  | "dmv_prep"
+  | "immigration_clerical"
+  | "resume_typing";
 
 type DocFile = {
   id: string;
@@ -18,28 +24,72 @@ type DocFile = {
 
 type DocRequest = {
   id: string;
-  request_code: string;
-  service_type: string;
-  title: string;
-  description: string | null;
-  delivery_method: string | null;
-  phone: string | null;
-  status: string;
-  paid: boolean;
+  request_code?: string | null;
+  service_type?: string | null;
+  title?: string | null;
+  description?: string | null;
+  delivery_method?: string | null;
+  phone?: string | null;
+  status?: string | null;
+  paid?: boolean | null;
   quoted_total_cents?: number | null;
 };
 
-const SERVICE_OPTIONS = [
-  { value: "printing_delivery", label: "Printing + Delivery" },
-  { value: "printing_pickup", label: "Printing + Pickup" },
-  { value: "scan_email", label: "Scan to Email" },
-  { value: "typing", label: "Typing / Document Typing" },
-  { value: "resume_review", label: "Resume Review / Formatting" },
+const SERVICE_OPTIONS: { value: CanonicalServiceType; label: string }[] = [
+  { value: "print_scan_delivery", label: "Printing / Scan / Delivery" },
   { value: "data_entry", label: "Business Data Entry Help" },
-  { value: "dmv_prep_admin", label: "DMV Forms Prep (administrative help)" },
-  { value: "immigration_prep_admin", label: "Immigration Packet Prep (administrative help)" },
-  { value: "general_admin_help", label: "General Admin / Document Help" },
+  { value: "dmv_prep", label: "DMV Document Prep Help (Admin Only)" },
+  { value: "immigration_clerical", label: "Immigration Clerical Assistance (Admin Only)" },
+  { value: "resume_typing", label: "Resume / Typing / Formatting Help" },
 ];
+
+function normalizeServiceTypeForUI(input: any): CanonicalServiceType {
+  const raw = String(input || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "_")
+    .replace(/-/g, "_");
+
+  // Canonical values
+  if (
+    raw === "print_scan_delivery" ||
+    raw === "data_entry" ||
+    raw === "dmv_prep" ||
+    raw === "immigration_clerical" ||
+    raw === "resume_typing"
+  ) {
+    return raw as CanonicalServiceType;
+  }
+
+  // Legacy / old UI aliases
+  const aliases: Record<string, CanonicalServiceType> = {
+    printing_delivery: "print_scan_delivery",
+    printing_pickup: "print_scan_delivery",
+    scan_email: "print_scan_delivery",
+    print_scan: "print_scan_delivery",
+    print_delivery: "print_scan_delivery",
+    printing: "print_scan_delivery",
+
+    dataentry: "data_entry",
+    general_admin_help: "data_entry",
+    general_typing: "data_entry",
+
+    dmv: "dmv_prep",
+    dmv_doc_help: "dmv_prep",
+    dmv_prep_admin: "dmv_prep",
+    dmv_guidance: "dmv_prep",
+
+    immigration: "immigration_clerical",
+    immigration_prep_help: "immigration_clerical",
+    immigration_prep_admin: "immigration_clerical",
+
+    typing: "resume_typing",
+    resume_review: "resume_typing",
+    resume: "resume_typing",
+  };
+
+  return aliases[raw] || "print_scan_delivery";
+}
 
 export default function DocsRequestClient() {
   const router = useRouter();
@@ -56,7 +106,7 @@ export default function DocsRequestClient() {
   const [request, setRequest] = useState<DocRequest | null>(null);
   const [files, setFiles] = useState<DocFile[]>([]);
 
-  const [serviceType, setServiceType] = useState("printing_delivery");
+  const [serviceType, setServiceType] = useState<CanonicalServiceType>("print_scan_delivery");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [deliveryMethod, setDeliveryMethod] = useState("delivery");
@@ -67,18 +117,19 @@ export default function DocsRequestClient() {
   const requestId = sp.get("requestId") || "";
 
   const serviceHelp = useMemo(() => {
-    const map: Record<string, string> = {
-      printing_delivery: "Upload your files and tell us paper size, color/black & white, and quantity. We print and deliver.",
-      printing_pickup: "Upload your files and pick them up when ready.",
-      scan_email: "Upload photos/scans or dropoff instructions; we can organize and return clean PDFs by email.",
-      typing: "Send handwritten notes or drafts and we type/format them into clean digital documents.",
-      resume_review: "Resume cleanup, formatting, wording edits, and PDF-ready final version.",
-      data_entry: "For businesses that are overloaded with paperwork or forms, we can organize and enter data into your system/spreadsheet accurately.",
-      dmv_prep_admin: "We help organize and prepare documents/forms (administrative support only, not legal advice or government affiliation).",
-      immigration_prep_admin: "We help organize packets and typed forms based on your provided information (administrative support only, not legal advice).",
-      general_admin_help: "General document help, formatting, forms, scans, and typing support.",
+    const map: Record<CanonicalServiceType, string> = {
+      print_scan_delivery:
+        "Use this for printing, scanning, or file prep. Specify delivery vs pickup vs email in Delivery Method and Description.",
+      data_entry:
+        "Clerical support for businesses or individuals with paperwork backlogs, spreadsheet updates, or document-to-system data entry.",
+      dmv_prep:
+        "Administrative document prep support only (checklists, typing, organizing). No legal advice and not affiliated with DMV.",
+      immigration_clerical:
+        "Administrative packet organization and typing support only. No legal advice and not affiliated with USCIS.",
+      resume_typing:
+        "Resume cleanup, formatting, typing, and general document typing/formatting support.",
     };
-    return map[serviceType] || "";
+    return map[serviceType];
   }, [serviceType]);
 
   async function getTokenOrRedirect() {
@@ -92,25 +143,69 @@ export default function DocsRequestClient() {
     return token;
   }
 
+  function buildDocsPayload(currentRequestId?: string) {
+    return {
+      // IDs
+      ...(currentRequestId ? { requestId: currentRequestId, id: currentRequestId } : {}),
+
+      // Canonical service type (DB-safe)
+      service_type: serviceType,
+      serviceType: serviceType,
+      service: serviceType,
+      category: serviceType,
+
+      // Human-friendly label (optional if backend stores it)
+      serviceLabel: SERVICE_OPTIONS.find((o) => o.value === serviceType)?.label || serviceType,
+
+      // Common fields
+      title: title.trim() || "Docs Request",
+      requestTitle: title.trim() || "Docs Request",
+
+      description: description.trim() || null,
+      notes: description.trim() || null,
+      details: description.trim() || null,
+
+      delivery_method: deliveryMethod || null,
+      deliveryMethod: deliveryMethod || null,
+
+      phone: phone.trim() || null,
+      contactPhone: phone.trim() || null,
+    };
+  }
+
   async function createDraft() {
     setBootingDraft(true);
     setError(null);
     try {
       const token = await getTokenOrRedirect();
+
+      const payload = {
+        service_type: "print_scan_delivery",
+        serviceType: "print_scan_delivery",
+        service: "print_scan_delivery",
+        category: "print_scan_delivery",
+        title: "Docs Request",
+        requestTitle: "Docs Request",
+      };
+
       const res = await fetch("/api/docs/create-draft", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ serviceType: "printing_delivery", title: "Docs Request" }),
+        body: JSON.stringify(payload),
       });
 
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || "Failed to create draft");
 
-      const req = json.request;
-      router.replace(`/docs/request?requestId=${encodeURIComponent(req.id)}`);
+      const reqId =
+        json?.request?.id || json?.requestId || json?.id || json?.data?.id || null;
+
+      if (!reqId) throw new Error("Draft created but request ID was missing");
+
+      router.replace(`/docs/request?requestId=${encodeURIComponent(reqId)}`);
     } catch (e: any) {
       setError(e?.message || "Failed to create draft");
     } finally {
@@ -124,21 +219,26 @@ export default function DocsRequestClient() {
     try {
       const token = await getTokenOrRedirect();
 
-      const res = await fetch(`/api/docs/my-request-detail?requestId=${encodeURIComponent(id)}&t=${Date.now()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-        cache: "no-store",
-      });
+      const res = await fetch(
+        `/api/docs/my-request-detail?requestId=${encodeURIComponent(id)}&t=${Date.now()}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        }
+      );
 
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || "Failed to load request");
 
-      const req = json.request as DocRequest;
+      const req = (json.request || null) as DocRequest | null;
       const fs = (json.files || []) as DocFile[];
+
+      if (!req) throw new Error("Request not found");
 
       setRequest(req);
       setFiles(fs);
 
-      setServiceType(req.service_type || "printing_delivery");
+      setServiceType(normalizeServiceTypeForUI(req.service_type));
       setTitle(req.title || "");
       setDescription(req.description || "");
       setDeliveryMethod(req.delivery_method || "delivery");
@@ -160,10 +260,12 @@ export default function DocsRequestClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestId]);
 
-  async function saveDraft() {
-    if (!request) return;
+  async function saveDraft(quiet = false) {
+    if (!request) return false;
+
     setSaving(true);
     setError(null);
+
     try {
       const token = await getTokenOrRedirect();
 
@@ -173,23 +275,27 @@ export default function DocsRequestClient() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          requestId: request.id,
-          serviceType,
-          title,
-          description,
-          deliveryMethod,
-          phone,
-        }),
+        body: JSON.stringify(buildDocsPayload(request.id)),
       });
 
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || "Failed to save");
 
-      setRequest(json.request);
-      alert("Saved.");
+      if (json?.request) {
+        setRequest(json.request as DocRequest);
+      } else {
+        // Soft refresh so UI stays synced even if route doesn't return full request
+        await loadRequest(request.id);
+      }
+
+      if (!quiet) {
+        alert("Saved.");
+      }
+
+      return true;
     } catch (e: any) {
       setError(e?.message || "Failed to save");
+      return false;
     } finally {
       setSaving(false);
     }
@@ -236,6 +342,11 @@ export default function DocsRequestClient() {
   async function submitRequest() {
     if (!request) return;
 
+    if (!serviceType) {
+      setError("Please select a valid service type.");
+      return;
+    }
+
     if (!title.trim()) {
       setError("Please add a title.");
       return;
@@ -245,8 +356,9 @@ export default function DocsRequestClient() {
     setError(null);
 
     try {
-      // Save latest form first
-      await saveDraft();
+      // Save latest form first (quiet, no alert popup)
+      const saved = await saveDraft(true);
+      if (!saved) throw new Error("Please fix the request details before submitting.");
 
       const token = await getTokenOrRedirect();
 
@@ -256,16 +368,18 @@ export default function DocsRequestClient() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ requestId: request.id }),
+        body: JSON.stringify(buildDocsPayload(request.id)),
       });
 
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || "Failed to submit");
 
-      const finalReq = json.request as DocRequest;
+      const finalRequestId = json?.request?.id || json?.requestId || request.id;
+      const finalCode = json?.request?.request_code || request.request_code || "";
+
       router.push(
-        `/docs/success?requestId=${encodeURIComponent(finalReq.id)}&code=${encodeURIComponent(
-          finalReq.request_code || ""
+        `/docs/success?requestId=${encodeURIComponent(finalRequestId)}&code=${encodeURIComponent(
+          finalCode || ""
         )}`
       );
     } catch (e: any) {
@@ -318,7 +432,7 @@ export default function DocsRequestClient() {
           <div style={styles.label}>Service Type</div>
           <select
             value={serviceType}
-            onChange={(e) => setServiceType(e.target.value)}
+            onChange={(e) => setServiceType(e.target.value as CanonicalServiceType)}
             style={styles.input}
           >
             {SERVICE_OPTIONS.map((o) => (
@@ -374,7 +488,7 @@ export default function DocsRequestClient() {
           </div>
 
           <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button onClick={saveDraft} disabled={saving || submitting} style={styles.btnPrimary}>
+            <button onClick={() => saveDraft(false)} disabled={saving || submitting} style={styles.btnPrimary}>
               {saving ? "Saving…" : "Save Draft"}
             </button>
           </div>
@@ -426,7 +540,7 @@ export default function DocsRequestClient() {
                     </div>
 
                     {f.signed_url ? (
-                      <a href={f.signed_url} target="_blank" style={styles.btnGhost}>
+                      <a href={f.signed_url} target="_blank" rel="noreferrer" style={styles.btnGhost}>
                         Open
                       </a>
                     ) : (
@@ -443,12 +557,13 @@ export default function DocsRequestClient() {
       <section style={{ ...styles.card, marginTop: 12 }}>
         <h2 style={styles.h2}>3) Submit Request</h2>
         <p style={{ marginTop: 0, color: "#374151", lineHeight: 1.6 }}>
-          Once submitted, your request moves into admin review. We may send a quote depending on the service type and scope.
+          Once submitted, your request moves into admin review. We may send a quote depending on the
+          service type and scope.
         </p>
 
         <div style={styles.disclaimer}>
-          <strong>Important:</strong> DMV / immigration support here is administrative document-prep assistance only.
-          We do not provide legal advice and are not a government agency.
+          <strong>Important:</strong> DMV / immigration support here is administrative document-prep
+          assistance only. We do not provide legal advice and are not a government agency.
         </div>
 
         <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -459,7 +574,7 @@ export default function DocsRequestClient() {
           >
             {submitting ? "Submitting…" : "Submit Docs Request"}
           </button>
-          <button onClick={saveDraft} disabled={saving || submitting} style={styles.btnGhost}>
+          <button onClick={() => saveDraft(false)} disabled={saving || submitting} style={styles.btnGhost}>
             Save First
           </button>
         </div>
@@ -471,9 +586,7 @@ export default function DocsRequestClient() {
 function Badge({ value }: { value: string }) {
   const v = String(value || "").toLowerCase();
   const color =
-    v === "completed" || v === "paid" ? "#16a34a" :
-    v === "submitted" || v === "draft" ? "#ca8a04" :
-    "#374151";
+    v === "completed" || v === "paid" ? "#16a34a" : v === "submitted" || v === "draft" ? "#ca8a04" : "#374151";
 
   return (
     <span
