@@ -1,4 +1,3 @@
-// app/api/docs/my-request-detail/route.ts
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -14,36 +13,95 @@ function svc() {
   );
 }
 
-function parseSupabaseStorageUrl(u: string): { bucket: string; path: string } | null {
-  if (!u || typeof u !== "string") return null;
-  if (!u.startsWith("supabase://")) return null;
-  const rest = u.replace("supabase://", "");
-  const i = rest.indexOf("/");
-  if (i <= 0) return null;
-  const bucket = rest.slice(0, i);
-  const path = rest.slice(i + 1);
-  if (!bucket || !path) return null;
-  return { bucket, path };
-}
+function getMissingColumnFromError(msg: string): string | null {
+  if (!msg) return null;
 
-function resolveFileRef(row: any): { bucket: string; path: string } | null {
-  if (row?.storage_bucket && row?.storage_path) {
-    return { bucket: String(row.storage_bucket), path: String(row.storage_path) };
-  }
-  if (row?.bucket && row?.path) {
-    return { bucket: String(row.bucket), path: String(row.path) };
-  }
-  if (row?.storage_path) {
-    return { bucket: "docs-files", path: String(row.storage_path) };
-  }
-  if (row?.file_path) {
-    return { bucket: "docs-files", path: String(row.file_path) };
-  }
+  let m = msg.match(/Could not find the '([^']+)' column/i);
+  if (m?.[1]) return m[1];
 
-  const maybe = row?.file_url || row?.storage_url || row?.url || null;
-  if (typeof maybe === "string") return parseSupabaseStorageUrl(maybe);
+  m = msg.match(/column ["']?([a-zA-Z0-9_]+)["']? does not exist/i);
+  if (m?.[1]) return m[1];
 
   return null;
+}
+
+async function safeSelectDocRequest(
+  supabase: ReturnType<typeof svc>,
+  requestId: string,
+  userId: string
+) {
+  const candidates = [
+    "id,user_id,status,service_type,title,description,delivery_method,phone,request_code,paid,quoted_total_cents,created_at,updated_at",
+    "id,user_id,status,service_type,title,description,delivery_method,phone,request_code,created_at,updated_at",
+    "id,user_id,status,service_type,title,description,delivery_method,phone,created_at,updated_at",
+    "id,user_id,status,service_type,title,created_at,updated_at",
+    "*",
+  ];
+
+  for (const sel of candidates) {
+    const { data, error } = await supabase
+      .from("doc_requests")
+      .select(sel)
+      .eq("id", requestId)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (!error && data) {
+      return {
+        ok: true as const,
+        data: {
+          ...data,
+          request_code: (data as any).request_code ?? null,
+          paid: (data as any).paid ?? false,
+          quoted_total_cents: (data as any).quoted_total_cents ?? null,
+          description: (data as any).description ?? null,
+          delivery_method: (data as any).delivery_method ?? null,
+          phone: (data as any).phone ?? null,
+          title: (data as any).title ?? "Docs Request",
+        },
+      };
+    }
+
+    const msg = error?.message || "";
+    if (/Could not find the '.*' column/i.test(msg) || /column .* does not exist/i.test(msg)) {
+      continue;
+    }
+
+    return { ok: false as const, error };
+  }
+
+  return { ok: false as const, error: { message: "Could not load request" } };
+}
+
+async function safeSelectDocFiles(
+  supabase: ReturnType<typeof svc>,
+  requestId: string,
+  userId: string
+) {
+  const candidates = [
+    "id,request_id,user_id,file_name,mime_type,size_bytes,storage_bucket,storage_path,created_at",
+    "id,request_id,user_id,file_name,mime_type,size_bytes,storage_path,created_at",
+    "*",
+  ];
+
+  for (const sel of candidates) {
+    const { data, error } = await supabase
+      .from("doc_request_files")
+      .select(sel)
+      .eq("request_id", requestId)
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false });
+
+    if (!error) return { ok: true as const, data: data || [] };
+
+    const msg = error?.message || "";
+    const missing = getMissingColumnFromError(msg);
+    if (missing || /column .* does not exist/i.test(msg)) continue;
+
+    return { ok: false as const, error };
+  }
+
+  return { ok: false as const, error: { message: "Could not load files" } };
 }
 
 export async function GET(req: NextRequest) {
@@ -51,66 +109,58 @@ export async function GET(req: NextRequest) {
     const user = await getUserFromRequest(req);
     const supabase = svc();
 
-    const url = new URL(req.url);
-    const requestId = url.searchParams.get("requestId") || "";
+    const { searchParams } = new URL(req.url);
+    const requestId = String(searchParams.get("requestId") || "").trim();
+
     if (!requestId) {
       return NextResponse.json({ error: "Missing requestId" }, { status: 400 });
     }
 
-    const { data: requestRow, error: reqErr } = await supabase
-      .from("doc_requests")
-      .select("*")
-      .eq("id", requestId)
-      .eq("user_id", user.id)
-      .maybeSingle();
-
-    if (reqErr || !requestRow) {
-      return NextResponse.json({ error: "Request not found" }, { status: 404 });
+    const reqRow = await safeSelectDocRequest(supabase, requestId, user.id);
+    if (!reqRow.ok || !reqRow.data) {
+      return NextResponse.json({ error: reqRow.error?.message || "Request not found" }, { status: 404 });
     }
 
-    const { data: filesRaw } = await supabase
-      .from("doc_request_files")
-      .select("*")
-      .eq("request_id", requestId)
-      .order("created_at", { ascending: true });
+    const fileRows = await safeSelectDocFiles(supabase, requestId, user.id);
+    if (!fileRows.ok) {
+      return NextResponse.json({ error: fileRows.error?.message || "Failed to load files" }, { status: 400 });
+    }
 
     const files = await Promise.all(
-      (filesRaw || []).map(async (f: any, idx: number) => {
-        const ref = resolveFileRef(f);
+      (fileRows.data || []).map(async (f: any) => {
+        const bucket = f.storage_bucket || "docs-files";
+        const path = f.storage_path || null;
+
         let signed_url: string | null = null;
-
-        if (ref) {
+        if (path) {
           const { data: signed } = await supabase.storage
-            .from(ref.bucket)
-            .createSignedUrl(ref.path, 60 * 15);
-
+            .from(bucket)
+            .createSignedUrl(path, 60 * 30);
           signed_url = signed?.signedUrl || null;
         }
 
         return {
-          ...f,
-          display_name:
-            f.file_name || f.original_name || f.name || f.filename || `File ${idx + 1}`,
+          id: f.id,
+          request_id: f.request_id,
+          user_id: f.user_id,
+          file_name: f.file_name || "file",
+          display_name: f.file_name || "file",
+          mime_type: f.mime_type || "application/octet-stream",
+          size_bytes: f.size_bytes ?? null,
+          storage_bucket: bucket,
+          storage_path: path,
+          created_at: f.created_at ?? null,
           signed_url,
         };
       })
     );
 
-    const { data: eventsRaw } = await supabase
-      .from("doc_request_events")
-      .select("*")
-      .eq("request_id", requestId)
-      .order("created_at", { ascending: true });
-
     return NextResponse.json({
-      request: requestRow,
+      ok: true,
+      request: reqRow.data,
       files,
-      events: eventsRaw || [],
     });
   } catch (e: any) {
-    return NextResponse.json(
-      { error: e?.message || "Server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });
   }
 }
