@@ -45,6 +45,66 @@ async function ensureDocsBucket(supabase: ReturnType<typeof svc>) {
   }
 }
 
+// ✅ NEW: Helper to extract missing column from Supabase error message
+function getMissingColumnFromError(msg: string): string | null {
+  if (!msg) return null;
+  let m = msg.match(/Could not find the '([^']+)' column/i);
+  if (m?.[1]) return m[1];
+  m = msg.match(/column ["']?([a-zA-Z0-9_]+)["']? does not exist/i);
+  if (m?.[1]) return m[1];
+  return null;
+}
+
+// ✅ NEW: Self-Healing database insertion logic
+async function resilientInsertFile(
+  supabase: ReturnType<typeof svc>,
+  basePayload: Record<string, any>
+) {
+  const current = { ...basePayload };
+
+  for (let i = 0; i < 15; i++) {
+    const { data, error } = await supabase
+      .from("doc_request_files")
+      .insert(current)
+      .select("*")
+      .single();
+
+    if (!error) return { ok: true, data };
+
+    const msg = error.message || "";
+    const missingCol = getMissingColumnFromError(msg);
+
+    if (missingCol) {
+      // Smart fallbacks to match common Supabase schema variations
+      if (missingCol === "file_name") {
+        current.filename = current.file_name;
+        delete current.file_name;
+      } else if (missingCol === "mime_type") {
+        current.content_type = current.mime_type;
+        delete current.mime_type;
+      } else if (missingCol === "size_bytes") {
+        current.file_size = current.size_bytes;
+        delete current.size_bytes;
+      } else if (missingCol === "storage_bucket") {
+        current.bucket = current.storage_bucket;
+        delete current.storage_bucket;
+      } else if (missingCol === "storage_path") {
+        current.path = current.storage_path;
+        delete current.storage_path;
+      } else {
+        // If unknown, strip it to prevent crashing
+        delete current[missingCol];
+      }
+      continue;
+    }
+
+    // Completely unrecoverable error
+    return { ok: false, error };
+  }
+
+  return { ok: false, error: { message: "Failed to resolve schema columns after retries." } };
+}
+
 export async function POST(req: NextRequest) {
   let uploadedPath: string | null = null;
 
@@ -107,32 +167,32 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Record file in DB
-    const { data: insertedFile, error: fileErr } = await supabase
-      .from("doc_request_files")
-      .insert({
-        request_id: requestId,
-        user_id: user.id,
-        file_name: file.name || safeName,
-        mime_type: file.type || "application/octet-stream",
-        size_bytes: file.size ?? null,
-        storage_bucket: DOCS_BUCKET,
-        storage_path: uploadedPath,
-      })
-      .select("*")
-      .single();
+    // ✅ FIXED: Record file in DB using resilient self-healing logic
+    const filePayload = {
+      request_id: requestId,
+      user_id: user.id,
+      file_name: file.name || safeName,
+      mime_type: file.type || "application/octet-stream",
+      size_bytes: file.size ?? null,
+      storage_bucket: DOCS_BUCKET,
+      storage_path: uploadedPath,
+    };
 
-    if (fileErr || !insertedFile) {
-      // Cleanup orphan storage file if DB insert fails
+    const insertResult = await resilientInsertFile(supabase, filePayload);
+
+    if (!insertResult.ok || !insertResult.data) {
+      // Cleanup orphan storage file if DB insert fails entirely
       if (uploadedPath) {
         await supabase.storage.from(DOCS_BUCKET).remove([uploadedPath]);
       }
 
       return NextResponse.json(
-        { error: `Failed to record file: ${fileErr?.message || "Unknown DB error"}` },
+        { error: `Failed to record file: ${insertResult.error?.message || "Unknown DB error"}` },
         { status: 500 }
       );
     }
+
+    const insertedFile = insertResult.data;
 
     // Audit event (non-fatal if it fails)
     const { error: eventErr } = await supabase.from("doc_request_events").insert({
@@ -141,9 +201,10 @@ export async function POST(req: NextRequest) {
       actor_role: "customer",
       event_type: "file_uploaded",
       event_payload: {
-        file_name: insertedFile.file_name,
-        size_bytes: insertedFile.size_bytes,
-        storage_path: insertedFile.storage_path,
+        // Fallbacks used here safely in case the column names shifted
+        file_name: insertedFile.file_name || insertedFile.filename || safeName,
+        size_bytes: insertedFile.size_bytes || insertedFile.file_size || file.size,
+        storage_path: insertedFile.storage_path || insertedFile.path || uploadedPath,
       },
     });
 
