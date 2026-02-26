@@ -81,6 +81,11 @@ async function resilientInsertFile(
       } else if (missingCol === "storage_path") {
         current.path = current.storage_path;
         delete current.storage_path;
+      } else if (missingCol === "storage_url") {
+        // Fallbacks for URL
+        current.url = current.storage_url;
+        current.file_url = current.storage_url;
+        delete current.storage_url;
       } else {
         delete current[missingCol];
       }
@@ -152,7 +157,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ✅ FIXED: Added file_role to satisfy the database NOT NULL constraint
+    // Construct the authenticated storage URL string to satisfy the database constraint
+    const storageUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/authenticated/${DOCS_BUCKET}/${uploadedPath}`;
+
+    // ✅ FIXED: Added storage_url to perfectly satisfy the NOT NULL constraint
     const filePayload = {
       request_id: requestId,
       user_id: user.id,
@@ -161,7 +169,8 @@ export async function POST(req: NextRequest) {
       size_bytes: file.size ?? null,
       storage_bucket: DOCS_BUCKET,
       storage_path: uploadedPath,
-      file_role: "customer_upload", 
+      file_role: "customer_upload",
+      storage_url: storageUrl, 
     };
 
     const insertResult = await resilientInsertFile(supabase, filePayload);
@@ -189,6 +198,7 @@ export async function POST(req: NextRequest) {
         size_bytes: insertedFile.size_bytes || insertedFile.file_size || file.size,
         storage_path: insertedFile.storage_path || insertedFile.path || uploadedPath,
         file_role: insertedFile.file_role || "customer_upload",
+        storage_url: insertedFile.storage_url || insertedFile.url || storageUrl,
       },
     });
 
