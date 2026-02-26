@@ -24,28 +24,19 @@ function cleanName(name: string) {
 }
 
 async function ensureDocsBucket(supabase: ReturnType<typeof svc>) {
-  // Try to read bucket first
   const { data: bucket, error: getErr } = await supabase.storage.getBucket(DOCS_BUCKET);
-
-  // If it exists, we're good
   if (bucket && !getErr) return;
 
-  // If not found, create it (service-role only)
   const { error: createErr } = await supabase.storage.createBucket(DOCS_BUCKET, {
     public: false,
     fileSizeLimit: "25MB",
   });
 
-  // If another request created it at the same time, that's okay
-  if (
-    createErr &&
-    !String(createErr.message || "").toLowerCase().includes("already exists")
-  ) {
+  if (createErr && !String(createErr.message || "").toLowerCase().includes("already exists")) {
     throw new Error(`Storage bucket error: ${createErr.message || "Could not create docs bucket"}`);
   }
 }
 
-// ✅ NEW: Helper to extract missing column from Supabase error message
 function getMissingColumnFromError(msg: string): string | null {
   if (!msg) return null;
   let m = msg.match(/Could not find the '([^']+)' column/i);
@@ -55,7 +46,7 @@ function getMissingColumnFromError(msg: string): string | null {
   return null;
 }
 
-// ✅ NEW: Self-Healing database insertion logic
+// Self-Healing database insertion logic
 async function resilientInsertFile(
   supabase: ReturnType<typeof svc>,
   basePayload: Record<string, any>
@@ -75,7 +66,6 @@ async function resilientInsertFile(
     const missingCol = getMissingColumnFromError(msg);
 
     if (missingCol) {
-      // Smart fallbacks to match common Supabase schema variations
       if (missingCol === "file_name") {
         current.filename = current.file_name;
         delete current.file_name;
@@ -92,13 +82,11 @@ async function resilientInsertFile(
         current.path = current.storage_path;
         delete current.storage_path;
       } else {
-        // If unknown, strip it to prevent crashing
         delete current[missingCol];
       }
       continue;
     }
 
-    // Completely unrecoverable error
     return { ok: false, error };
   }
 
@@ -112,7 +100,6 @@ export async function POST(req: NextRequest) {
     const user = await getUserFromRequest(req);
     const supabase = svc();
 
-    // Ensure storage bucket exists
     await ensureDocsBucket(supabase);
 
     const fd = await req.formData();
@@ -126,7 +113,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing file" }, { status: 400 });
     }
 
-    // Verify ownership of the docs request
     const { data: requestRow, error: reqErr } = await supabase
       .from("doc_requests")
       .select("id,user_id,status")
@@ -152,7 +138,6 @@ export async function POST(req: NextRequest) {
       1000 + Math.random() * 9000
     )}-${safeName}`;
 
-    // Upload to Supabase Storage
     const { error: uploadErr } = await supabase.storage
       .from(DOCS_BUCKET)
       .upload(uploadedPath, new Uint8Array(bytes), {
@@ -167,7 +152,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ✅ FIXED: Record file in DB using resilient self-healing logic
+    // ✅ FIXED: Added file_role to satisfy the database NOT NULL constraint
     const filePayload = {
       request_id: requestId,
       user_id: user.id,
@@ -176,12 +161,12 @@ export async function POST(req: NextRequest) {
       size_bytes: file.size ?? null,
       storage_bucket: DOCS_BUCKET,
       storage_path: uploadedPath,
+      file_role: "customer_upload", 
     };
 
     const insertResult = await resilientInsertFile(supabase, filePayload);
 
     if (!insertResult.ok || !insertResult.data) {
-      // Cleanup orphan storage file if DB insert fails entirely
       if (uploadedPath) {
         await supabase.storage.from(DOCS_BUCKET).remove([uploadedPath]);
       }
@@ -194,22 +179,20 @@ export async function POST(req: NextRequest) {
 
     const insertedFile = insertResult.data;
 
-    // Audit event (non-fatal if it fails)
     const { error: eventErr } = await supabase.from("doc_request_events").insert({
       request_id: requestId,
       actor_user_id: user.id,
       actor_role: "customer",
       event_type: "file_uploaded",
       event_payload: {
-        // Fallbacks used here safely in case the column names shifted
         file_name: insertedFile.file_name || insertedFile.filename || safeName,
         size_bytes: insertedFile.size_bytes || insertedFile.file_size || file.size,
         storage_path: insertedFile.storage_path || insertedFile.path || uploadedPath,
+        file_role: insertedFile.file_role || "customer_upload",
       },
     });
 
     if (eventErr) {
-      // Do not fail the upload if audit insert fails
       console.error("doc_request_events insert failed:", eventErr.message);
     }
 
