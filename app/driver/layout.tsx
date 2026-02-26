@@ -4,6 +4,9 @@ import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
 import Brand from "../../components/Brand";
 import LogoutButton from "../../components/LogoutButton";
 
+// ✅ THE FIX: Forces Next.js to run this on the server per-request, skipping static build
+export const dynamic = "force-dynamic";
+
 export default async function DriverLayout({ children }: { children: React.ReactNode }) {
   const supabase = createServerComponentClient({ cookies });
 
