@@ -91,20 +91,6 @@ async function loadRequestFiles(
   return { data: deduped, error: null };
 }
 
-
-function parseStorageUrl(url: string): { bucket: string; path: string } | null {
-  if (!url || typeof url !== "string") return null;
-
-  const m = url.match(/\/storage\/v1\/object\/(?:authenticated|public)\/([^\/]+)\/(.+)$/i);
-  if (!m) return null;
-
-  const bucket = decodeURIComponent(m[1] || "").trim();
-  const path = decodeURIComponent(m[2] || "").trim();
-
-  if (!bucket || !path) return null;
-  return { bucket, path };
-}
-
 function normalizeRequest(row: Record<string, any>) {
   return {
     id: row.id ?? null,

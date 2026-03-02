@@ -30,10 +30,6 @@ export default function HomePage() {
               </Link>
             </div>
 
-            <p className="sectionSub" style={{ marginTop: 8 }}>
-              Couranr is a local operations platform for transportation, delivery, and document workflows.
-            </p>
-
             <div className="trustBar" aria-label="Trust signals">
               <span className="trustPill">Secure checkout</span>
               <span className="trustPill">Identity verification</span>
@@ -48,7 +44,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="section" id="services">
+        <section className="section">
           <h2 className="sectionTitle">What we do</h2>
           <p className="sectionSub">
             Straightforward rules, no hidden fees, and everything tracked in your dashboard.
