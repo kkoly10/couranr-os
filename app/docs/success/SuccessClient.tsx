@@ -16,6 +16,7 @@ export default function SuccessClient() {
   const requestId = sp.get("requestId") || "";
   const sessionId = sp.get("session_id") || "";
   const mode = sp.get("mode") || "";
+  const code = sp.get("code") || "";
   const alreadyPaid = sp.get("alreadyPaid") === "1";
 
   const [state, setState] = useState<State>({ kind: "loading" });
@@ -35,7 +36,16 @@ export default function SuccessClient() {
           return;
         }
 
-        if (!sessionId) throw new Error("Missing Stripe session_id");
+        if (!sessionId) {
+          if (code) {
+            setState({
+              kind: "ok",
+              message: "Your Docs request was submitted successfully. A payment link will appear once your quote is ready.",
+            });
+            return;
+          }
+          throw new Error("Missing Stripe session_id");
+        }
 
         const { data } = await supabase.auth.getSession();
         const token = data.session?.access_token;
@@ -60,7 +70,7 @@ export default function SuccessClient() {
     }
 
     run();
-  }, [requestId, sessionId, mode, alreadyPaid]);
+  }, [requestId, sessionId, mode, alreadyPaid, code]);
 
   return (
     <div style={styles.wrap}>
