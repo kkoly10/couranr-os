@@ -38,7 +38,9 @@ export default function ConfirmationClient() {
     if (!token) {
       setBusy(false);
       setMsg("Not authenticated. Please log in again.");
-      router.push(`/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+      router.push(
+        `/login?next=${encodeURIComponent(window.location.pathname + window.location.search)}`
+      );
       return;
     }
 
@@ -69,74 +71,69 @@ export default function ConfirmationClient() {
   }
 
   return (
-    <div style={{ maxWidth: 860, margin: "0 auto", padding: 24 }}>
-      <h1 style={{ fontSize: 28, margin: 0 }}>Payment received ✅</h1>
-      <p style={{ marginTop: 10, color: "#444" }}>
-        {orderNumber ? (
-          <>
-            Your order number is <strong>{orderNumber}</strong>.
-          </>
-        ) : (
-          <>Your order has been created.</>
-        )}
-      </p>
-
-      <div style={{ marginTop: 18, border: "1px solid #e5e7eb", borderRadius: 12, padding: 16 }}>
-        <h2 style={{ margin: 0, fontSize: 18 }}>Upload pickup photo (required)</h2>
-        <p style={{ marginTop: 8, color: "#555", lineHeight: 1.5 }}>
-          Please upload a clear photo of the item at pickup. This protects both you and the driver.
-        </p>
-
-        <input
-          type="file"
-          accept="image/*"
-          onChange={(e) => setFile(e.target.files?.[0] || null)}
-          style={{ marginTop: 10 }}
-        />
-
-        {msg && (
-          <div style={{ marginTop: 12, fontWeight: 800, color: msg.includes("uploaded") ? "#166534" : "#b91c1c" }}>
-            {msg}
+    <main className="page">
+      <div className="bgGlow" aria-hidden="true" />
+      <div className="cContainer" style={{ maxWidth: 860 }}>
+        <section className="section" style={{ marginTop: 0 }}>
+          <div className="heroCard">
+            <h1 className="pageTitle" style={{ fontSize: 30 }}>Payment received ✅</h1>
+            <p className="pageDesc">
+              {orderNumber ? (
+                <>
+                  Your order number is <strong>{orderNumber}</strong>.
+                </>
+              ) : (
+                <>Your order has been created.</>
+              )}
+            </p>
           </div>
-        )}
+        </section>
 
-        <button
-          onClick={uploadPickupPhoto}
-          disabled={busy || !file}
-          style={{
-            marginTop: 14,
-            padding: "12px 16px",
-            borderRadius: 10,
-            border: "none",
-            background: "#111827",
-            color: "#fff",
-            fontWeight: 900,
-            cursor: busy ? "not-allowed" : "pointer",
-          }}
-        >
-          {busy ? "Uploading…" : "Upload photo"}
-        </button>
+        <section className="section">
+          <div className="card">
+            <h2 className="cardTitle" style={{ marginTop: 0 }}>Upload pickup photo (required)</h2>
+            <p className="cardDesc">
+              Please upload a clear photo of the item at pickup. This protects both you and the
+              driver.
+            </p>
 
-        <div style={{ marginTop: 10, fontSize: 12, color: "#6b7280" }}>
-          After upload, you’ll be taken to your delivery dashboard to track the delivery.
-        </div>
+            <div className="field">
+              <label className="fieldLabel" htmlFor="pickup-photo">
+                Pickup photo
+              </label>
+              <input
+                id="pickup-photo"
+                className="fieldInput fileInput"
+                type="file"
+                accept="image/*"
+                onChange={(e) => setFile(e.target.files?.[0] || null)}
+              />
+              <p className="finePrint" style={{ marginTop: 6 }}>
+                Accepted formats: JPG, PNG, HEIC. Use a clear image with adequate lighting.
+              </p>
+            </div>
+
+            {msg && (
+              <div className={msg.includes("uploaded") ? "statusNote statusSuccess" : "statusNote statusError"}>
+                {msg}
+              </div>
+            )}
+
+            <div className="heroActions" style={{ marginTop: 14 }}>
+              <button className="btn btnGold" onClick={uploadPickupPhoto} disabled={busy || !file}>
+                {busy ? "Uploading…" : "Upload photo"}
+              </button>
+              <button className="btn btnGhost" onClick={() => router.push("/dashboard/delivery")}>
+                Skip for now → Go to delivery dashboard
+              </button>
+            </div>
+
+            <div className="finePrint" style={{ marginTop: 10 }}>
+              After upload, you’ll be taken to your delivery dashboard to track the delivery.
+            </div>
+          </div>
+        </section>
       </div>
-
-      <div style={{ marginTop: 14 }}>
-        <button
-          onClick={() => router.push("/dashboard/delivery")}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            border: "1px solid #d1d5db",
-            background: "#fff",
-            fontWeight: 800,
-            cursor: "pointer",
-          }}
-        >
-          Skip for now → Go to delivery dashboard
-        </button>
-      </div>
-    </div>
+    </main>
   );
 }

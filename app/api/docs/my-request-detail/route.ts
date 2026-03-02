@@ -57,27 +57,38 @@ async function loadRequestFiles(
   supabase: ReturnType<typeof svc>,
   requestId: string
 ) {
-  let q = await supabase
+  const primary = await supabase
     .from("doc_request_files")
     .select("*")
     .eq("request_id", requestId)
     .order("created_at", { ascending: false });
 
-  if (!q.error) {
-    return { data: q.data || [], error: null };
+  const secondary = await supabase
+    .from("docs_request_files")
+    .select("*")
+    .eq("request_id", requestId)
+    .order("created_at", { ascending: false });
+
+  const hasPrimaryErr = !!primary.error && !isRelationMissingError(primary.error.message || "");
+  const hasSecondaryErr = !!secondary.error && !isRelationMissingError(secondary.error.message || "");
+
+  if (hasPrimaryErr) {
+    return { data: [], error: primary.error };
+  }
+  if (hasSecondaryErr) {
+    return { data: [], error: secondary.error };
   }
 
-  if (isRelationMissingError(q.error.message || "")) {
-    const fallback = await supabase
-      .from("docs_request_files")
-      .select("*")
-      .eq("request_id", requestId)
-      .order("created_at", { ascending: false });
+  const merged = [...(primary.data || []), ...(secondary.data || [])];
+  const seen = new Set<string>();
+  const deduped = merged.filter((row: any) => {
+    const key = String(row?.id || `${row?.request_id || ""}:${row?.storage_path || row?.path || row?.file_name || ""}`);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 
-    return { data: fallback.data || [], error: fallback.error };
-  }
-
-  return { data: [], error: q.error };
+  return { data: deduped, error: null };
 }
 
 function normalizeRequest(row: Record<string, any>) {

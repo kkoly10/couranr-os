@@ -104,14 +104,29 @@ export async function GET(
       customerProfile = prof || null;
     }
 
-    const { data: filesRaw } = await supabase
+    const { data: filesRawPrimary } = await supabase
       .from("doc_request_files")
       .select("*")
       .eq("request_id", requestId)
       .order("created_at", { ascending: true });
 
+    const { data: filesRawSecondary } = await supabase
+      .from("docs_request_files")
+      .select("*")
+      .eq("request_id", requestId)
+      .order("created_at", { ascending: true });
+
+    const mergedFiles = [...(filesRawPrimary || []), ...(filesRawSecondary || [])];
+    const seen = new Set<string>();
+    const uniqueFiles = mergedFiles.filter((f: any) => {
+      const key = String(f?.id || `${f?.request_id || ""}:${f?.storage_path || f?.path || f?.file_name || ""}`);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
     const files = await Promise.all(
-      (filesRaw || []).map(async (f: any, idx: number) => {
+      uniqueFiles.map(async (f: any, idx: number) => {
         const ref = resolveFileRef(f);
 
         let signedUrl: string | null = null;
