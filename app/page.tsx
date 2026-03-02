@@ -22,14 +22,11 @@ export default function HomePage() {
             </p>
 
             <div className="heroActions">
-              <Link className="btn btnGold" href="/auto/vehicles">
-                Browse vehicles →
+              <Link className="btn btnGold" href="/portal">
+                Open customer portal →
               </Link>
-              <Link className="btn btnGhost" href="/courier/quote">
-                Start a delivery quote
-              </Link>
-              <Link className="btn btnGhost" href="/portal">
-                Customer portal
+              <Link className="btn btnGhost" href="#services">
+                Explore services
               </Link>
             </div>
 

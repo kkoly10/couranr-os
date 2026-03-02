@@ -55,6 +55,14 @@ function resolveFileRef(row: any): { bucket: string; path: string } | null {
   if (typeof maybeUrl === "string") {
     const parsed = parseSupabaseStorageUrl(maybeUrl);
     if (parsed) return parsed;
+
+    const m = maybeUrl.match(/\/storage\/v1\/object\/(?:authenticated|public)\/([^\/]+)\/(.+)$/i);
+    if (m?.[1] && m?.[2]) {
+      return {
+        bucket: decodeURIComponent(m[1]),
+        path: decodeURIComponent(m[2]),
+      };
+    }
   }
 
   return null;
