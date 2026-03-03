@@ -35,6 +35,19 @@ export default function HomePage() {
               New visitor? Start with a quote. Existing customer? <Link className="mutedLink" href="/portal">Open your portal</Link>.
             </p>
 
+              Book confidently with clear pricing, strong verification, and a single customer
+              portal for tracking every request from start to finish.
+            </p>
+
+            <div className="heroActions">
+              <Link className="btn btnGold" href="/portal">
+                Open customer portal →
+              </Link>
+              <Link className="btn btnGhost" href="#services">
+                Explore services
+              </Link>
+            </div>
+
             <div className="trustBar" aria-label="Trust signals">
               <span className="trustPill">Secure checkout</span>
               <span className="trustPill">Identity verification</span>
@@ -83,6 +96,7 @@ export default function HomePage() {
           <div className="cardGrid">
             <ServiceCard
               image={serviceImageSets.auto[0]}
+              imageOptions={serviceImageSets.auto}
               icon="🚗"
               title="Auto Rentals"
               desc="Browse vehicles, verify your ID, pay securely, and manage your rental in one place."
@@ -97,6 +111,7 @@ export default function HomePage() {
 
             <ServiceCard
               image={serviceImageSets.courier[0]}
+              imageOptions={serviceImageSets.courier}
               icon="🚚"
               title="Courier Delivery"
               desc="Same-day and scheduled local delivery with transparent pricing and live tracking."
@@ -111,6 +126,7 @@ export default function HomePage() {
 
             <ServiceCard
               image={serviceImageSets.docs[0]}
+              imageOptions={serviceImageSets.docs}
               icon="📄"
               title="Couranr Docs"
               desc="Document help, printing/scanning, and appointment-based paperwork assistance."
@@ -209,6 +225,30 @@ export default function HomePage() {
               <h3 className="aboutTitle">Trackable operational record</h3>
               <p className="aboutDesc">
                 Time-stamped updates and evidence workflows create cleaner resolution paths when questions come up.
+          <h2 className="sectionTitle">Operational Controls</h2>
+          <p className="sectionSub">
+            Designed for individuals, teams, and business operations that need reliability.
+          </p>
+          <div className="aboutGrid">
+            <div className="aboutCard">
+              <h3 className="aboutTitle">Audit-friendly records</h3>
+              <p className="aboutDesc">
+                Time-stamped status updates and photo verification help create clean service
+                records.
+              </p>
+            </div>
+            <div className="aboutCard">
+              <h3 className="aboutTitle">Policy-first workflows</h3>
+              <p className="aboutDesc">
+                Eligibility checks, prohibited-item rules, and service policies are surfaced before
+                completion.
+              </p>
+            </div>
+            <div className="aboutCard">
+              <h3 className="aboutTitle">Scalable support model</h3>
+              <p className="aboutDesc">
+                Built to support routine requests and higher-volume operations through a single
+                portal.
               </p>
             </div>
           </div>
