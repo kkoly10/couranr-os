@@ -31,10 +31,6 @@ export default function HomePage() {
               </Link>
             </div>
 
-            <p className="sectionSub" style={{ marginTop: 8 }}>
-              Couranr is a local operations platform for transportation, delivery, and document workflows.
-            </p>
-
             <div className="trustBar" aria-label="Trust signals">
               <span className="trustPill">Secure checkout</span>
               <span className="trustPill">Identity verification</span>
@@ -49,7 +45,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="section" id="services">
+        <section className="section">
           <h2 className="sectionTitle">What we do</h2>
           <p className="sectionSub">
             Straightforward rules, no hidden fees, and everything tracked in your dashboard.
@@ -57,7 +53,7 @@ export default function HomePage() {
 
           <div className="cardGrid">
             <ServiceCard
-              image={serviceImageSets.auto[0]}
+              imageOptions={serviceImageSets.auto}
               icon="🚗"
               title="Auto Rentals"
               desc="Browse vehicles, verify your ID, pay securely, and manage your rental in one place."
@@ -71,7 +67,7 @@ export default function HomePage() {
             />
 
             <ServiceCard
-              image={serviceImageSets.courier[0]}
+              imageOptions={serviceImageSets.courier}
               icon="🚚"
               title="Courier Delivery"
               desc="Same-day and scheduled local delivery with transparent pricing and live tracking."
@@ -85,7 +81,7 @@ export default function HomePage() {
             />
 
             <ServiceCard
-              image={serviceImageSets.docs[0]}
+              imageOptions={serviceImageSets.docs}
               icon="📄"
               title="Couranr Docs"
               desc="Document help, printing/scanning, and appointment-based paperwork assistance."
@@ -240,7 +236,6 @@ export default function HomePage() {
 }
 
 function ServiceCard({
-  image,
   icon,
   title,
   desc,
@@ -248,7 +243,6 @@ function ServiceCard({
   href,
   cta,
 }: {
-  image: string;
   icon: string;
   title: string;
   desc: string;
@@ -258,11 +252,6 @@ function ServiceCard({
 }) {
   return (
     <div className="card" style={{ display: "flex", flexDirection: "column" }}>
-      <img
-        src={image}
-        alt={`${title} service image`}
-        style={{ width: "100%", borderRadius: 14, border: "1px solid var(--border)", marginBottom: 12, objectFit: "cover", maxHeight: 180 }}
-      />
       <div className="cardIcon" aria-hidden="true">
         {icon}
       </div>
