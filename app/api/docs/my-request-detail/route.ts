@@ -91,9 +91,35 @@ async function loadRequestFiles(
   return { data: deduped, error: null };
 }
 
+async function loadRequestEvents(
+  supabase: ReturnType<typeof svc>,
+  requestId: string
+) {
+  const q = await supabase
+    .from("doc_request_events")
+    .select("id,request_id,actor_role,event_type,event_payload,created_at")
+    .eq("request_id", requestId)
+    .order("created_at", { ascending: true });
+
+  if (q.error) {
+    return { data: [], error: q.error };
+  }
+
+  return { data: q.data || [], error: null };
+}
 
 function parseStorageUrl(url: string): { bucket: string; path: string } | null {
   if (!url || typeof url !== "string") return null;
+
+  if (url.startsWith("supabase://")) {
+    const rest = url.replace("supabase://", "");
+    const slash = rest.indexOf("/");
+    if (slash > 0) {
+      const bucket = rest.slice(0, slash).trim();
+      const path = rest.slice(slash + 1).trim();
+      if (bucket && path) return { bucket, path };
+    }
+  }
 
   const m = url.match(/\/storage\/v1\/object\/(?:authenticated|public)\/([^\/]+)\/(.+)$/i);
   if (!m) return null;
@@ -117,12 +143,32 @@ function normalizeRequest(row: Record<string, any>) {
     delivery_method: row.delivery_method ?? row.deliveryMethod ?? null,
     phone: row.phone ?? row.contact_phone ?? row.contactPhone ?? null,
 
-    // Status / quote info (with safe defaults)
+    // Status / amount info (with safe defaults)
     status: row.status ?? "draft",
     request_code: row.request_code ?? null,
     paid: typeof row.paid === "boolean" ? row.paid : false,
+    amount_subtotal_cents:
+      typeof row.amount_subtotal_cents === "number" ? row.amount_subtotal_cents : 0,
+    delivery_fee_cents:
+      typeof row.delivery_fee_cents === "number" ? row.delivery_fee_cents : 0,
+    rush_fee_cents:
+      typeof row.rush_fee_cents === "number" ? row.rush_fee_cents : 0,
+    tax_cents: typeof row.tax_cents === "number" ? row.tax_cents : 0,
+    total_cents: typeof row.total_cents === "number" ? row.total_cents : 0,
+
+    // Legacy compatibility fields for existing clients
     quoted_total_cents:
-      typeof row.quoted_total_cents === "number" ? row.quoted_total_cents : null,
+      typeof row.quoted_total_cents === "number"
+        ? row.quoted_total_cents
+        : typeof row.total_cents === "number"
+        ? row.total_cents
+        : null,
+    final_total_cents:
+      typeof row.final_total_cents === "number"
+        ? row.final_total_cents
+        : typeof row.total_cents === "number"
+        ? row.total_cents
+        : null,
 
     // Timestamps
     created_at: row.created_at ?? null,
@@ -169,7 +215,7 @@ async function addSignedUrls(
       id: f.id ?? null,
       request_id: f.request_id ?? null,
       file_name: f.file_name ?? f.filename ?? null,
-      display_name: f.display_name ?? f.file_name ?? f.filename ?? null,
+      display_name: f.display_name ?? f.file_name ?? f.original_name ?? f.filename ?? null,
       mime_type: f.mime_type ?? f.content_type ?? null,
       size_bytes: f.size_bytes ?? f.file_size ?? null,
       storage_bucket: bucket,
@@ -209,7 +255,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Request not found" }, { status: 404 });
     }
 
-    // ✅ Fixes your TypeScript spread issue by forcing object shape
+    // ✅ Fixes TypeScript spread issue by forcing object shape
     const requestRow =
       requestData && typeof requestData === "object"
         ? (requestData as Record<string, any>)
@@ -232,10 +278,19 @@ export async function GET(req: NextRequest) {
       (Array.isArray(fileRows) ? fileRows : []) as Record<string, any>[]
     );
 
+    const { data: events, error: eventsErr } = await loadRequestEvents(supabase, requestId);
+    if (eventsErr) {
+      return NextResponse.json(
+        { error: eventsErr.message || "Failed to load request events" },
+        { status: 500 }
+      );
+    }
+
     return NextResponse.json({
       ok: true,
       request: normalizeRequest(requestRow),
       files,
+      events,
     });
   } catch (e: any) {
     return NextResponse.json(

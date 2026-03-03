@@ -195,6 +195,17 @@ export default function CourierPage() {
         </section>
 
         <section className="section">
+          <h2 className="sectionTitle">Coverage & service window</h2>
+          <p className="sectionSub">Local routes with availability based on driver capacity, timing, and address access conditions.</p>
+          <div className="cardGrid">
+            <div className="card"><h3 className="cardTitle">Service area</h3><p className="cardDesc">Coverage is currently local/regional. Use the quote page to validate pickup/drop-off eligibility.</p></div>
+            <div className="card"><h3 className="cardTitle">Scheduling</h3><p className="cardDesc">Same-day options may be available based on request time, route load, and item constraints.</p></div>
+            <div className="card"><h3 className="cardTitle">Best use cases</h3><p className="cardDesc">Time-sensitive local handoffs, office-to-office runs, and structured proof-required deliveries.</p></div>
+          </div>
+        </section>
+
+
+        <section className="section">
           <h2 className="sectionTitle">FAQ</h2>
           <div className="faq">
             <FAQItem

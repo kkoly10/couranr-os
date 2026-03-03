@@ -36,7 +36,7 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
 
     const { data: before, error: bErr } = await supabaseSrv
       .from("deliveries")
-      .select("id,status,driver_id,pickup_address,dropoff_address")
+      .select("id,status,driver_id,delivery_notes")
       .eq("id", ctx.params.id)
       .single();
 
@@ -45,11 +45,8 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
 
     const patch: any = {
       status: "cancelled",
-      cancel_reason: reason,
-      cancelled_at: new Date().toISOString(),
-      driver_id: null, // unassign
-      admin_last_edited_at: new Date().toISOString(),
-      admin_last_edited_by: adminId,
+      driver_id: null,
+      delivery_notes: reason || before.delivery_notes || null,
     };
 
     const { error: upErr } = await supabaseSrv.from("deliveries").update(patch).eq("id", ctx.params.id);

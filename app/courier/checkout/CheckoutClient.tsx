@@ -113,6 +113,13 @@ export default function CheckoutClient() {
               <Link className="btn btnGhost" href={`/courier/quote?${quoteQS}`}>
                 ← Back to quote
               </Link>
+              <button
+                type="button"
+                className="btn btnGhost"
+                onClick={() => window.location.assign("/dashboard/delivery")}
+              >
+                Delivery dashboard
+              </button>
               <Link className="btn btnGhost" href="/dashboard/delivery">
                 Delivery dashboard
               </Link>

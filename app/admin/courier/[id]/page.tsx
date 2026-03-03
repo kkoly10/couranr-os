@@ -159,6 +159,8 @@ export default function AdminCourierDetailPage() {
           {error && <div className="statusNote statusError">{error}</div>}
 
           <div className="formGrid" style={{ marginTop: 10 }}>
+            <div className="field"><label className="fieldLabel">Pickup address</label><input className="fieldInput" value={delivery.pickup_address || ""} readOnly /></div>
+            <div className="field"><label className="fieldLabel">Drop-off address</label><input className="fieldInput" value={delivery.dropoff_address || ""} readOnly /></div>
             <div className="field"><label className="fieldLabel">Pickup address</label><input className="fieldInput" value={delivery.pickup_address || ""} onChange={(e)=>setDelivery({...delivery,pickup_address:e.target.value})} /></div>
             <div className="field"><label className="fieldLabel">Drop-off address</label><input className="fieldInput" value={delivery.dropoff_address || ""} onChange={(e)=>setDelivery({...delivery,dropoff_address:e.target.value})} /></div>
             <div className="field"><label className="fieldLabel">Recipient name</label><input className="fieldInput" value={delivery.recipient_name || ""} onChange={(e)=>setDelivery({...delivery,recipient_name:e.target.value})} /></div>

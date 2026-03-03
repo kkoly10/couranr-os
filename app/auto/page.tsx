@@ -90,6 +90,17 @@ export default function AutoPage() {
         </section>
 
         <section className="section">
+          <h2 className="sectionTitle">Availability & rental scope</h2>
+          <p className="sectionSub">Vehicle availability and booking windows vary by inventory, verification status, and schedule demand.</p>
+          <div className="cardGrid">
+            <div className="card"><h3 className="cardTitle">Vehicle selection</h3><p className="cardDesc">Inventory is shown live in the vehicles flow, including current availability and checkout rules.</p></div>
+            <div className="card"><h3 className="cardTitle">Approval timing</h3><p className="cardDesc">Bookings are finalized after eligibility checks and verification requirements are completed.</p></div>
+            <div className="card"><h3 className="cardTitle">Best fit</h3><p className="cardDesc">Short-term local transportation needs where policy clarity and documentation matter.</p></div>
+          </div>
+        </section>
+
+
+        <section className="section">
           <h2 className="sectionTitle">FAQ</h2>
           <div className="faq">
             <FAQItem

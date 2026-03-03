@@ -9,6 +9,17 @@ function env(name: string) {
   return v;
 }
 
+function formatAddress(a: any): string | null {
+  if (!a || typeof a !== "object") return null;
+  const parts = [a.address_line, a.city, a.state, a.zip].filter(Boolean);
+  if (parts.length) return parts.join(", ");
+  return a.label || null;
+}
+
+function firstRow(v: any) {
+  return Array.isArray(v) ? (v[0] || null) : v || null;
+}
+
 async function requireAdmin(token: string) {
   const supabaseAuth = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
     global: { headers: { Authorization: `Bearer ${token}` } },
@@ -37,13 +48,15 @@ export async function GET(req: Request) {
     const { supabaseSrv } = await requireAdmin(token);
 
     const url = new URL(req.url);
-    const status = url.searchParams.get("status"); // optional
+    const status = url.searchParams.get("status");
     const onlyUnassigned = url.searchParams.get("unassigned") === "1";
 
     let q = supabaseSrv
       .from("deliveries")
       .select(
-        "id,status,created_at,pickup_address,dropoff_address,recipient_name,recipient_phone,delivery_notes,customer_id,driver_id,cancelled_at,cancel_reason"
+        `id,status,created_at,recipient_name,recipient_phone,delivery_notes,driver_id,
+         pickup_address:pickup_address_id (label,address_line,city,state,zip),
+         dropoff_address:dropoff_address_id (label,address_line,city,state,zip)`
       )
       .order("created_at", { ascending: false })
       .limit(200);
@@ -54,7 +67,13 @@ export async function GET(req: Request) {
     const { data, error } = await q;
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    return NextResponse.json({ deliveries: data || [] });
+    const deliveries = (data || []).map((d: any) => ({
+      ...d,
+      pickup_address: formatAddress(firstRow(d.pickup_address)),
+      dropoff_address: formatAddress(firstRow(d.dropoff_address)),
+    }));
+
+    return NextResponse.json({ deliveries });
   } catch (e: any) {
     const msg = e?.message || "Server error";
     const code = msg === "Unauthorized" ? 401 : msg === "Forbidden" ? 403 : 500;
