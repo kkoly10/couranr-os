@@ -33,7 +33,7 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
 
     const { data: before, error: bErr } = await supabaseSrv
       .from("deliveries")
-      .select("id,status,driver_id,pickup_address,dropoff_address")
+      .select("id,status,driver_id,delivery_notes")
       .eq("id", ctx.params.id)
       .single();
 
@@ -42,10 +42,7 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
 
     const patch: any = {
       status: "pending",
-      cancel_reason: null,
-      cancelled_at: null,
-      admin_last_edited_at: new Date().toISOString(),
-      admin_last_edited_by: adminId,
+      delivery_notes: before.delivery_notes || null,
     };
 
     const { error: upErr } = await supabaseSrv.from("deliveries").update(patch).eq("id", ctx.params.id);

@@ -32,7 +32,7 @@ async function logEvent(
     await supabase.from("doc_request_events").insert({
       request_id: requestId,
       actor_user_id: actorUserId,
-      actor_role: "renter", // generic customer role reused; okay if your docs events use "customer"
+      actor_role: "customer",
       event_type: eventType,
       event_payload: payload ?? {},
     });
@@ -55,7 +55,7 @@ export async function POST(req: NextRequest) {
 
     const { data: row, error } = await supabase
       .from("doc_requests")
-      .select("id,user_id,title,service_type,status,paid,quoted_total_cents,final_total_cents")
+      .select("id,user_id,title,service_type,status,paid,total_cents,amount_subtotal_cents")
       .eq("id", requestId)
       .maybeSingle();
 
@@ -63,7 +63,7 @@ export async function POST(req: NextRequest) {
     if (row.user_id !== user.id) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     if (row.paid) return NextResponse.json({ ok: true, alreadyPaid: true });
 
-    const amountCents = Number(row.final_total_cents ?? row.quoted_total_cents ?? 0);
+    const amountCents = Number(row.total_cents ?? row.amount_subtotal_cents ?? 0);
     if (!Number.isFinite(amountCents) || amountCents <= 0) {
       return NextResponse.json({ error: "No quote available yet" }, { status: 400 });
     }

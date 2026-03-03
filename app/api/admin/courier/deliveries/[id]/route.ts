@@ -9,6 +9,18 @@ function env(name: string) {
   return v;
 }
 
+
+function formatAddress(a: any): string | null {
+  if (!a || typeof a !== "object") return null;
+  const parts = [a.address_line, a.city, a.state, a.zip].filter(Boolean);
+  if (parts.length) return parts.join(", ");
+  return a.label || null;
+}
+
+function firstRow(v: any) {
+  return Array.isArray(v) ? (v[0] || null) : v || null;
+}
+
 async function requireAdmin(token: string) {
   const supabaseAuth = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
     global: { headers: { Authorization: `Bearer ${token}` } },
@@ -37,7 +49,9 @@ export async function GET(req: Request, ctx: { params: { id: string } }) {
 
     const { data, error } = await supabaseSrv
       .from("deliveries")
-      .select("*")
+      .select(`id,status,created_at,driver_id,recipient_name,recipient_phone,delivery_notes,estimated_miles,weight_lbs,rush,signature_required,stops,scheduled_at,
+        pickup_address:pickup_address_id (label,address_line,city,state,zip),
+        dropoff_address:dropoff_address_id (label,address_line,city,state,zip)`)
       .eq("id", ctx.params.id)
       .single();
 
@@ -50,7 +64,13 @@ export async function GET(req: Request, ctx: { params: { id: string } }) {
       .order("created_at", { ascending: false })
       .limit(50);
 
-    return NextResponse.json({ delivery: data, events: events || [] });
+    const delivery = {
+      ...data,
+      pickup_address: formatAddress(firstRow((data as any).pickup_address)),
+      dropoff_address: formatAddress(firstRow((data as any).dropoff_address)),
+    };
+
+    return NextResponse.json({ delivery, events: events || [] });
   } catch (e: any) {
     const msg = e?.message || "Server error";
     const code = msg === "Unauthorized" ? 401 : msg === "Forbidden" ? 403 : 500;
@@ -70,8 +90,6 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
 
     // only allow these fields to be edited
     const allowed = [
-      "pickup_address",
-      "dropoff_address",
       "recipient_name",
       "recipient_phone",
       "delivery_notes",
@@ -89,7 +107,7 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
     // Lock completed deliveries: allow notes only
     const { data: existing, error: getErr } = await supabaseSrv
       .from("deliveries")
-      .select("id,status,pickup_address,dropoff_address,recipient_name,recipient_phone,delivery_notes,driver_id")
+      .select("id,status,recipient_name,recipient_phone,delivery_notes,driver_id")
       .eq("id", ctx.params.id)
       .single();
 
@@ -102,9 +120,6 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
         return NextResponse.json({ error: "Completed deliveries are locked" }, { status: 403 });
       }
     }
-
-    patch.admin_last_edited_at = new Date().toISOString();
-    patch.admin_last_edited_by = adminId;
 
     const beforeJson = existing;
     const afterJson = { ...existing, ...patch };

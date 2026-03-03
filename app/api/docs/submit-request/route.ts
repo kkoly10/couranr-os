@@ -88,6 +88,13 @@ function normalizeServiceType(input: any): string | null {
   return map[raw] || null;
 }
 
+
+function isTrueish(v: any) {
+  if (typeof v === "boolean") return v;
+  const n = String(v || "").trim().toLowerCase();
+  return n === "1" || n === "true" || n === "yes" || n === "on";
+}
+
 function getMissingColumnFromError(msg: string): string | null {
   if (!msg) return null;
 
@@ -207,7 +214,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const termsAccepted = isTrueish(body?.docs_terms_accepted ?? body?.termsAccepted);
+    if (!termsAccepted) {
+      return NextResponse.json(
+        { error: "Please accept the Docs Service Terms before submitting." },
+        { status: 400 }
+      );
+    }
+
     const now = new Date().toISOString();
+    const termsVersion = firstString(body?.docs_terms_version, body?.termsVersion, "v1") || "v1";
 
     // Build a wide payload; resilient updater strips unknown columns automatically
     const updatePayload: Record<string, any> = {
@@ -229,6 +245,12 @@ export async function POST(req: NextRequest) {
       intake_payload: body,
       request_payload: body,
       form_payload: body,
+
+      // Optional terms acceptance fields (if schema supports them)
+      docs_terms_accepted_at: now,
+      docs_terms_version: termsVersion,
+      terms_accepted_at: now,
+      terms_version: termsVersion,
     };
 
     for (const k of Object.keys(updatePayload)) {
@@ -250,7 +272,7 @@ export async function POST(req: NextRequest) {
       actor_user_id: user.id,
       actor_role: "customer",
       event_type: "request_submitted",
-      event_payload: { service_type: serviceType, submitted_at: now },
+      event_payload: { service_type: serviceType, submitted_at: now, terms_version: termsVersion },
     });
 
     // Re-read request (best effort) so client gets consistent response

@@ -22,6 +22,9 @@ export default function SiteFooter() {
             <Link href="/privacy" style={{ color: "var(--muted)", fontWeight: 500 }}>
               Privacy Policy
             </Link>
+            <Link href="/courier/quote" style={{ color: "var(--muted)", fontWeight: 700 }}>
+              Get instant quote
+            </Link>
             <Link href="/portal" style={{ background: "var(--text)", color: "#fff", padding: "8px 16px", borderRadius: "8px", fontWeight: 700 }}>
               Customer Portal →
             </Link>
