@@ -106,29 +106,7 @@ async function loadRequestEvents(
   }
 
   return { data: q.data || [], error: null };
-
-  const hasPrimaryErr = !!primary.error && !isRelationMissingError(primary.error.message || "");
-  const hasSecondaryErr = !!secondary.error && !isRelationMissingError(secondary.error.message || "");
-
-  if (hasPrimaryErr) {
-    return { data: [], error: primary.error };
-  }
-  if (hasSecondaryErr) {
-    return { data: [], error: secondary.error };
-  }
-
-  const merged = [...(primary.data || []), ...(secondary.data || [])];
-  const seen = new Set<string>();
-  const deduped = merged.filter((row: any) => {
-    const key = String(row?.id || `${row?.request_id || ""}:${row?.storage_path || row?.path || row?.file_name || ""}`);
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-
-  return { data: deduped, error: null };
 }
-
 
 function parseStorageUrl(url: string): { bucket: string; path: string } | null {
   if (!url || typeof url !== "string") return null;
@@ -277,7 +255,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Request not found" }, { status: 404 });
     }
 
-    // ✅ Fixes your TypeScript spread issue by forcing object shape
+    // ✅ Fixes TypeScript spread issue by forcing object shape
     const requestRow =
       requestData && typeof requestData === "object"
         ? (requestData as Record<string, any>)
