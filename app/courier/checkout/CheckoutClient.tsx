@@ -120,6 +120,9 @@ export default function CheckoutClient() {
               >
                 Delivery dashboard
               </button>
+              <Link className="btn btnGhost" href="/dashboard/delivery">
+                Delivery dashboard
+              </Link>
             </div>
           </div>
         </section>

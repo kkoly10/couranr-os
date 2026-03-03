@@ -161,6 +161,8 @@ export default function AdminCourierDetailPage() {
           <div className="formGrid" style={{ marginTop: 10 }}>
             <div className="field"><label className="fieldLabel">Pickup address</label><input className="fieldInput" value={delivery.pickup_address || ""} readOnly /></div>
             <div className="field"><label className="fieldLabel">Drop-off address</label><input className="fieldInput" value={delivery.dropoff_address || ""} readOnly /></div>
+            <div className="field"><label className="fieldLabel">Pickup address</label><input className="fieldInput" value={delivery.pickup_address || ""} onChange={(e)=>setDelivery({...delivery,pickup_address:e.target.value})} /></div>
+            <div className="field"><label className="fieldLabel">Drop-off address</label><input className="fieldInput" value={delivery.dropoff_address || ""} onChange={(e)=>setDelivery({...delivery,dropoff_address:e.target.value})} /></div>
             <div className="field"><label className="fieldLabel">Recipient name</label><input className="fieldInput" value={delivery.recipient_name || ""} onChange={(e)=>setDelivery({...delivery,recipient_name:e.target.value})} /></div>
             <div className="field"><label className="fieldLabel">Recipient phone</label><input className="fieldInput" value={delivery.recipient_phone || ""} onChange={(e)=>setDelivery({...delivery,recipient_phone:e.target.value})} /></div>
           </div>
@@ -172,6 +174,8 @@ export default function AdminCourierDetailPage() {
 
           <div className="heroActions" style={{ marginTop: 12 }}>
             <button className="btn btnGold" disabled={busy} onClick={() => patch({
+              pickup_address: delivery.pickup_address,
+              dropoff_address: delivery.dropoff_address,
               recipient_name: delivery.recipient_name,
               recipient_phone: delivery.recipient_phone,
               delivery_notes: delivery.delivery_notes,
