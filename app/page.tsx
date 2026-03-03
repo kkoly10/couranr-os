@@ -15,21 +15,25 @@ export default function HomePage() {
               <span className="badge ghost">One platform</span>
             </div>
 
-            <h1 className="heroTitle">Local services, managed in one place.</h1>
+            <h1 className="heroTitle">Local logistics and document support for busy people and small teams.</h1>
 
             <p className="heroDesc">
-              Book confidently with clear pricing, strong verification, and a single customer
-              portal for tracking every request from start to finish.
+              Get same-day courier quotes, reserve verified auto rentals, and submit document requests
+              in one account with transparent pricing and live status updates.
             </p>
 
             <div className="heroActions">
-              <Link className="btn btnGold" href="/portal">
-                Open customer portal →
+              <Link className="btn btnGold" href="/courier/quote">
+                Get instant quote →
               </Link>
               <Link className="btn btnGhost" href="#services">
-                Explore services
+                See services
               </Link>
             </div>
+
+            <p className="sectionSub" style={{ marginTop: 8 }}>
+              New visitor? Start with a quote. Existing customer? <Link className="mutedLink" href="/portal">Open your portal</Link>.
+            </p>
 
             <div className="trustBar" aria-label="Trust signals">
               <span className="trustPill">Secure checkout</span>
@@ -46,6 +50,31 @@ export default function HomePage() {
         </section>
 
         <section className="section">
+          <h2 className="sectionTitle">Who Couranr is for</h2>
+          <p className="sectionSub">
+            We currently serve local households, professionals, and small businesses that need reliable
+            logistics with documented workflows.
+          </p>
+          <div className="cardGrid">
+            <div className="card">
+              <div className="cardIcon" aria-hidden="true">🏠</div>
+              <h3 className="cardTitle">Busy households</h3>
+              <p className="cardDesc">Help with errands, deliveries, and document tasks without juggling multiple apps.</p>
+            </div>
+            <div className="card">
+              <div className="cardIcon" aria-hidden="true">💼</div>
+              <h3 className="cardTitle">Professionals on deadlines</h3>
+              <p className="cardDesc">Quick courier and docs support when time-sensitive items cannot wait.</p>
+            </div>
+            <div className="card">
+              <div className="cardIcon" aria-hidden="true">🏢</div>
+              <h3 className="cardTitle">Small business teams</h3>
+              <p className="cardDesc">Recurring operational support with one dashboard and trackable activity history.</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="section" id="services">
           <h2 className="sectionTitle">What we do</h2>
           <p className="sectionSub">
             Straightforward rules, no hidden fees, and everything tracked in your dashboard.
@@ -53,7 +82,7 @@ export default function HomePage() {
 
           <div className="cardGrid">
             <ServiceCard
-              imageOptions={serviceImageSets.auto}
+              image={serviceImageSets.auto[0]}
               icon="🚗"
               title="Auto Rentals"
               desc="Browse vehicles, verify your ID, pay securely, and manage your rental in one place."
@@ -67,7 +96,7 @@ export default function HomePage() {
             />
 
             <ServiceCard
-              imageOptions={serviceImageSets.courier}
+              image={serviceImageSets.courier[0]}
               icon="🚚"
               title="Courier Delivery"
               desc="Same-day and scheduled local delivery with transparent pricing and live tracking."
@@ -81,7 +110,7 @@ export default function HomePage() {
             />
 
             <ServiceCard
-              imageOptions={serviceImageSets.docs}
+              image={serviceImageSets.docs[0]}
               icon="📄"
               title="Couranr Docs"
               desc="Document help, printing/scanning, and appointment-based paperwork assistance."
@@ -93,6 +122,38 @@ export default function HomePage() {
               href="/docs"
               cta="Learn more"
             />
+          </div>
+        </section>
+
+        <section className="section">
+          <h2 className="sectionTitle">Transparent pricing snapshot</h2>
+          <p className="sectionSub">Quick starting ranges so you can qualify fit before entering full checkout flows.</p>
+          <div className="cardGrid">
+            <div className="card">
+              <h3 className="cardTitle">Courier Delivery</h3>
+              <p className="cardDesc">Starts at <strong>$15.00</strong> base (includes first 4 miles), plus distance and options.</p>
+              <Link className="cardCta" href="/courier/quote" style={{ color: "var(--gold)", display: "block", marginTop: 10 }}>View exact quote calculator →</Link>
+            </div>
+            <div className="card">
+              <h3 className="cardTitle">Auto Rentals</h3>
+              <p className="cardDesc">Daily pricing varies by vehicle class, availability, and verification status.</p>
+              <Link className="cardCta" href="/auto/vehicles" style={{ color: "var(--gold)", display: "block", marginTop: 10 }}>Browse vehicles & rates →</Link>
+            </div>
+            <div className="card">
+              <h3 className="cardTitle">Couranr Docs</h3>
+              <p className="cardDesc">Task-based pricing with clear scope before payment. No hidden add-ons.</p>
+              <Link className="cardCta" href="/docs/pricing" style={{ color: "var(--gold)", display: "block", marginTop: 10 }}>See docs pricing →</Link>
+            </div>
+          </div>
+        </section>
+
+        <section className="section">
+          <h2 className="sectionTitle">Proof and reliability</h2>
+          <p className="sectionSub">Signals that help first-time customers trust the workflow before checkout.</p>
+          <div className="cardGrid">
+            <div className="card"><h3 className="cardTitle">Documented status trail</h3><p className="cardDesc">Every request follows trackable status updates across intake, processing, and completion.</p></div>
+            <div className="card"><h3 className="cardTitle">Evidence-first operations</h3><p className="cardDesc">Photo proof and time-stamped records are used where applicable to reduce disputes.</p></div>
+            <div className="card"><h3 className="cardTitle">Human support by email</h3><p className="cardDesc">Questions and exceptions can be handled by support instead of an automated-only flow.</p></div>
           </div>
         </section>
 
@@ -127,30 +188,27 @@ export default function HomePage() {
         </section>
 
         <section className="section">
-          <h2 className="sectionTitle">Operational Controls</h2>
+          <h2 className="sectionTitle">Why Couranr</h2>
           <p className="sectionSub">
-            Designed for individuals, teams, and business operations that need reliability.
+            A local operator model designed to be clearer than marketplace-style handoffs.
           </p>
           <div className="aboutGrid">
             <div className="aboutCard">
-              <h3 className="aboutTitle">Audit-friendly records</h3>
+              <h3 className="aboutTitle">One account, three service lines</h3>
               <p className="aboutDesc">
-                Time-stamped status updates and photo verification help create clean service
-                records.
+                Courier, auto, and docs requests are managed in one customer portal with shared history.
               </p>
             </div>
             <div className="aboutCard">
-              <h3 className="aboutTitle">Policy-first workflows</h3>
+              <h3 className="aboutTitle">Verification + policy gates</h3>
               <p className="aboutDesc">
-                Eligibility checks, prohibited-item rules, and service policies are surfaced before
-                completion.
+                Eligibility checks and policy reminders are shown before payment, not after issues appear.
               </p>
             </div>
             <div className="aboutCard">
-              <h3 className="aboutTitle">Scalable support model</h3>
+              <h3 className="aboutTitle">Trackable operational record</h3>
               <p className="aboutDesc">
-                Built to support routine requests and higher-volume operations through a single
-                portal.
+                Time-stamped updates and evidence workflows create cleaner resolution paths when questions come up.
               </p>
             </div>
           </div>
@@ -236,6 +294,7 @@ export default function HomePage() {
 }
 
 function ServiceCard({
+  image,
   icon,
   title,
   desc,
@@ -243,6 +302,7 @@ function ServiceCard({
   href,
   cta,
 }: {
+  image: string;
   icon: string;
   title: string;
   desc: string;
@@ -252,6 +312,11 @@ function ServiceCard({
 }) {
   return (
     <div className="card" style={{ display: "flex", flexDirection: "column" }}>
+      <img
+        src={image}
+        alt={`${title} service image`}
+        style={{ width: "100%", borderRadius: 14, border: "1px solid var(--border)", marginBottom: 12, objectFit: "cover", maxHeight: 180 }}
+      />
       <div className="cardIcon" aria-hidden="true">
         {icon}
       </div>
