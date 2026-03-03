@@ -1,5 +1,6 @@
 import Link from "next/link";
 import SiteFooter from "@/components/SiteFooter";
+import { serviceImageSets } from "@/lib/serviceImages";
 
 export default function DocsPage() {
   return (
@@ -7,8 +8,8 @@ export default function DocsPage() {
       <div className="bgGlow" aria-hidden="true" />
 
       <div className="cContainer">
-        <section className="hero">
-          <div className="heroCard">
+        <section className="hero heroWithImage" style={{ backgroundImage: `linear-gradient(120deg, rgba(7, 10, 17, 0.74), rgba(7, 10, 17, 0.48)), url(${serviceImageSets.docs[0]})` }}>
+          <div className="heroCard heroCardOverlay">
             <div className="badgeRow">
               <span className="badge">Fast document help</span>
               <span className="badge ghost">Clerical support only</span>
@@ -156,6 +157,17 @@ export default function DocsPage() {
             </a>
           </div>
         </section>
+
+        <section className="section">
+          <h2 className="sectionTitle">Service scope & turnaround</h2>
+          <p className="sectionSub">Docs support is clerical/administrative only, with timing based on request complexity and queue volume.</p>
+          <div className="cardGrid">
+            <div className="card"><h3 className="cardTitle">What’s included</h3><p className="cardDesc">Typing, formatting, printing/scanning, checklist help, packet organization, and delivery coordination.</p></div>
+            <div className="card"><h3 className="cardTitle">What’s not included</h3><p className="cardDesc">No legal advice, legal representation, or guarantees on approvals/timelines from government agencies.</p></div>
+            <div className="card"><h3 className="cardTitle">Typical flow time</h3><p className="cardDesc">Simple requests may move quickly; multi-document jobs can require additional review and clarification.</p></div>
+          </div>
+        </section>
+
 
         <section className="section">
           <h2 className="sectionTitle">FAQ</h2>
