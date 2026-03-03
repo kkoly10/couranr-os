@@ -82,9 +82,7 @@ async function loadRequestFiles(
   const merged = [...(primary.data || []), ...(secondary.data || [])];
   const seen = new Set<string>();
   const deduped = merged.filter((row: any) => {
-    const key = String(
-      row?.id || `${row?.request_id || ""}:${row?.storage_path || row?.path || row?.file_name || ""}`
-    );
+    const key = String(row?.id || `${row?.request_id || ""}:${row?.storage_path || row?.path || row?.file_name || ""}`);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -93,10 +91,11 @@ async function loadRequestFiles(
   return { data: deduped, error: null };
 }
 
+
 function parseStorageUrl(url: string): { bucket: string; path: string } | null {
   if (!url || typeof url !== "string") return null;
 
-  const m = url.match(/\/storage\/v1\/object\/(?:authenticated|public)\/([^/]+)\/(.+)$/i);
+  const m = url.match(/\/storage\/v1\/object\/(?:authenticated|public)\/([^\/]+)\/(.+)$/i);
   if (!m) return null;
 
   const bucket = decodeURIComponent(m[1] || "").trim();
@@ -210,6 +209,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Request not found" }, { status: 404 });
     }
 
+    // ✅ Fixes your TypeScript spread issue by forcing object shape
     const requestRow =
       requestData && typeof requestData === "object"
         ? (requestData as Record<string, any>)

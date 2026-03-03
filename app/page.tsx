@@ -1,5 +1,6 @@
 import Link from "next/link";
 import SiteFooter from "@/components/SiteFooter";
+import { serviceImageSets } from "@/lib/serviceImages";
 
 export default function HomePage() {
   return (
@@ -52,6 +53,7 @@ export default function HomePage() {
 
           <div className="cardGrid">
             <ServiceCard
+              imageOptions={serviceImageSets.auto}
               icon="🚗"
               title="Auto Rentals"
               desc="Browse vehicles, verify your ID, pay securely, and manage your rental in one place."
@@ -65,6 +67,7 @@ export default function HomePage() {
             />
 
             <ServiceCard
+              imageOptions={serviceImageSets.courier}
               icon="🚚"
               title="Courier Delivery"
               desc="Same-day and scheduled local delivery with transparent pricing and live tracking."
@@ -78,6 +81,7 @@ export default function HomePage() {
             />
 
             <ServiceCard
+              imageOptions={serviceImageSets.docs}
               icon="📄"
               title="Couranr Docs"
               desc="Document help, printing/scanning, and appointment-based paperwork assistance."

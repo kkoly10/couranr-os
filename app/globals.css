@@ -251,6 +251,70 @@ a {
   padding: 22px;
 }
 
+
+.heroWithImage {
+  position: relative;
+  border-radius: 28px;
+  padding: 18px;
+  background-size: cover;
+  background-position: center;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.heroWithImage::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(4, 8, 18, 0.62), rgba(4, 8, 18, 0.34));
+}
+
+.heroWithImage > * {
+  position: relative;
+  z-index: 1;
+}
+
+.heroCardOverlay {
+  background: rgba(9, 13, 23, 0.42);
+  border-color: rgba(255, 255, 255, 0.24);
+  backdrop-filter: blur(4px);
+}
+
+.heroWithImage .heroTitle,
+.heroWithImage .heroDesc,
+.heroWithImage .finePrint,
+.heroWithImage .miniTitle,
+.heroWithImage .miniDesc {
+  color: #f7f9ff;
+}
+
+.heroWithImage .badge {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.heroWithImage .badge.ghost {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.34);
+}
+
+.heroWithImage .mini {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.heroWithImage .btnGhost {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.34);
+}
+
+.heroWithImage .btnGhost:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
 .badgeRow {
   display: flex;
   gap: 10px;

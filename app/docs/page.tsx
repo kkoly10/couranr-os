@@ -1,5 +1,6 @@
 import Link from "next/link";
 import SiteFooter from "@/components/SiteFooter";
+import { serviceImageSets } from "@/lib/serviceImages";
 
 export default function DocsPage() {
   return (
@@ -7,8 +8,8 @@ export default function DocsPage() {
       <div className="bgGlow" aria-hidden="true" />
 
       <div className="cContainer">
-        <section className="hero">
-          <div className="heroCard">
+        <section className="hero heroWithImage" style={{ backgroundImage: `linear-gradient(120deg, rgba(7, 10, 17, 0.74), rgba(7, 10, 17, 0.48)), url(${serviceImageSets.docs[0]})` }}>
+          <div className="heroCard heroCardOverlay">
             <div className="badgeRow">
               <span className="badge">Fast document help</span>
               <span className="badge ghost">Clerical support only</span>
