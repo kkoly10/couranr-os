@@ -1,5 +1,18 @@
 // lib/delivery/pricing.ts
 
+import {
+  DELIVERY_BASE_FEE,
+  DELIVERY_HEAVY_ITEM_SURCHARGE,
+  DELIVERY_HEAVY_ITEM_THRESHOLD_LBS,
+  DELIVERY_INCLUDED_MILES,
+  DELIVERY_LONG_DISTANCE_FLAG_MILES,
+  DELIVERY_MAX_WEIGHT_LBS,
+  DELIVERY_PER_MILE_RATE,
+  DELIVERY_RUSH_FEE,
+  DELIVERY_SIGNATURE_FEE,
+  DELIVERY_STOP_FEE,
+} from "@/lib/delivery/policy";
+
 export type PricingInput = {
   miles: number;
   weightLbs: number;
@@ -41,7 +54,7 @@ export type PricingResult = {
  * Signature: +$5
  *
  * Flags:
- * - longDistance: miles > 25
+ * - longDistance: miles > DELIVERY_LONG_DISTANCE_FLAG_MILES
  * - heavyItem: weight > 50
  *
  * ⚠️ Server-side source of truth
@@ -59,31 +72,31 @@ export function computeDeliveryPrice(input: PricingInput): PricingResult {
     throw new Error("Weight must be greater than 0.");
   }
 
-  if (weight > 100) {
-    throw new Error("Items over 100 lbs require special handling.");
+  if (weight > DELIVERY_MAX_WEIGHT_LBS) {
+    throw new Error(`Items over ${DELIVERY_MAX_WEIGHT_LBS} lbs require special handling.`);
   }
 
   // --- Constants
-  const BASE_FEE = 15;
-  const INCLUDED_MILES = 4;
-  const PER_MILE = 1.75;
+  const BASE_FEE = DELIVERY_BASE_FEE;
+  const INCLUDED_MILES = DELIVERY_INCLUDED_MILES;
+  const PER_MILE = DELIVERY_PER_MILE_RATE;
 
-  const HEAVY_ITEM_SURCHARGE = 15;
-  const STOP_FEE = 6;
-  const RUSH_FEE = 10;
-  const SIGNATURE_FEE = 5;
+  const HEAVY_ITEM_SURCHARGE = DELIVERY_HEAVY_ITEM_SURCHARGE;
+  const STOP_FEE = DELIVERY_STOP_FEE;
+  const RUSH_FEE = DELIVERY_RUSH_FEE;
+  const SIGNATURE_FEE = DELIVERY_SIGNATURE_FEE;
 
   // --- Flags
   const flags: PricingFlags = {
-    longDistance: miles > 25,
-    heavyItem: weight > 50,
+    longDistance: miles > DELIVERY_LONG_DISTANCE_FLAG_MILES,
+    heavyItem: weight > DELIVERY_HEAVY_ITEM_THRESHOLD_LBS,
   };
 
   // --- Calculations
   const extraMiles = Math.max(0, miles - INCLUDED_MILES);
   const extraMilesFee = round2(extraMiles * PER_MILE);
 
-  const weightSurcharge = weight > 50 ? HEAVY_ITEM_SURCHARGE : 0;
+  const weightSurcharge = weight > DELIVERY_HEAVY_ITEM_THRESHOLD_LBS ? HEAVY_ITEM_SURCHARGE : 0;
   const stopsFee = stops * STOP_FEE;
   const rushFee = input.rush ? RUSH_FEE : 0;
   const signatureFee = input.signature ? SIGNATURE_FEE : 0;

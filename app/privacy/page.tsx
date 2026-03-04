@@ -1,14 +1,13 @@
 // app/privacy/page.tsx
+import { PRIVACY_EFFECTIVE_DATE } from "@/lib/legal";
 export const dynamic = "force-dynamic";
 
 export default function PrivacyPage() {
-  const effective = new Date().toLocaleDateString();
-
   return (
     <div style={{ maxWidth: 980, margin: "0 auto", padding: 24 }}>
       <h1 style={{ margin: 0, fontSize: 34, letterSpacing: "-0.02em" }}>Privacy Policy</h1>
       <p style={{ marginTop: 10, color: "#555" }}>
-        Effective date: <strong>{effective}</strong>
+        Effective date: <strong>{PRIVACY_EFFECTIVE_DATE}</strong>
       </p>
 
       <div style={{ marginTop: 18, lineHeight: 1.75, color: "#111827" }}>
@@ -66,7 +65,7 @@ export default function PrivacyPage() {
         </ul>
         <p>
           We do not sell personal data in the ordinary sense. If we ever engage in “sale” or “targeted advertising” as defined by applicable law,
-          we will provide the required disclosures and opt-out mechanisms.  [oai_citation:2‡Virginia Law](https://law.lis.virginia.gov/vacode/title59.1/chapter53/section59.1-578/)
+          we will provide the required disclosures and opt-out mechanisms.
         </p>
 
         <h3>4. Sensitive information and verification uploads</h3>
@@ -85,7 +84,7 @@ export default function PrivacyPage() {
         <p>
           We use reasonable administrative, technical, and physical safeguards designed to protect information, such as access controls and restricted storage.
           No system is 100% secure; use strong passwords and protect your account.
-          Our approach aligns with common “start with security” best practices (limit access, secure systems, and plan for incidents).  [oai_citation:3‡Federal Trade Commission](https://www.ftc.gov/system/files/ftc_gov/pdf/920a_start_with_security_en_aug2023_508_final_0.pdf)
+          Our approach aligns with common “start with security” best practices (limit access, secure systems, and plan for incidents).
         </p>
 
         <h3>7. Your privacy choices and rights</h3>
@@ -97,13 +96,13 @@ export default function PrivacyPage() {
         <h3>8. Virginia notice (consumer rights requests + appeals)</h3>
         <p>
           If the Virginia Consumer Data Protection Act applies, you may submit a request to exercise your rights, and you may appeal a denial.
-          We will verify your request before completing it, respond within required timeframes, and provide an appeals process where required.  [oai_citation:4‡Virginia Law](https://law.lis.virginia.gov/vacode/title59.1/chapter53/section59.1-578/)
+          We will verify your request before completing it, respond within required timeframes, and provide an appeals process where required.
         </p>
 
         <h3>9. How to submit a privacy request</h3>
         <p>
           Submit requests using the contact method listed on our website. We may ask for information to verify your identity.
-          We do not require you to create a new account to submit a rights request, but we may require you to use an existing account if you already have one.  [oai_citation:5‡Virginia Law](https://law.lis.virginia.gov/vacode/title59.1/chapter53/section59.1-578/)
+          We do not require you to create a new account to submit a rights request, but we may require you to use an existing account if you already have one.
         </p>
 
         <h3>10. Cookies and analytics</h3>

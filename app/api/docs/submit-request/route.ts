@@ -4,6 +4,62 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getUserFromRequest } from "@/app/lib/auth";
+import { DOCS_TERMS_VERSION } from "@/lib/docsTerms";
+
+type SchemaFallbackTelemetry = {
+  updateMissingColumns: string[];
+  updateAttemptCount: number;
+  selectFallbackLevel: number;
+};
+
+function envTrue(v: any) {
+  const s = String(v ?? "").trim().toLowerCase();
+  return s === "1" || s === "true" || s === "yes" || s === "on";
+}
+
+const STRICT_SCHEMA_FALLBACK = envTrue(process.env.DOCS_SCHEMA_FALLBACK_STRICT);
+
+function schemaFallbackUsed(telemetry: SchemaFallbackTelemetry) {
+  return telemetry.updateMissingColumns.length > 0 || telemetry.selectFallbackLevel > 1;
+}
+
+function logSchemaFallback(context: string, telemetry: SchemaFallbackTelemetry, extra?: Record<string, any>) {
+  const used = schemaFallbackUsed(telemetry);
+  if (!used) return;
+  console.warn("docs schema fallback used", {
+    context,
+    update_missing_columns: telemetry.updateMissingColumns,
+    update_attempt_count: telemetry.updateAttemptCount,
+    select_fallback_level: telemetry.selectFallbackLevel,
+    ...(extra || {}),
+  });
+}
+
+async function persistSchemaFallbackEvent(
+  supabase: ReturnType<typeof svc>,
+  requestId: string,
+  userId: string,
+  telemetry: SchemaFallbackTelemetry,
+  context: string
+) {
+  if (!schemaFallbackUsed(telemetry)) return;
+  try {
+    await supabase.from("doc_request_events").insert({
+      request_id: requestId,
+      actor_user_id: userId,
+      actor_role: "system",
+      event_type: "schema_fallback_used",
+      event_payload: {
+        context,
+        update_missing_columns: telemetry.updateMissingColumns,
+        update_attempt_count: telemetry.updateAttemptCount,
+        select_fallback_level: telemetry.selectFallbackLevel,
+      },
+    });
+  } catch {
+    // best-effort telemetry persistence
+  }
+}
 
 function svc() {
   return createClient(
@@ -29,7 +85,6 @@ function normalizeServiceType(input: any): string | null {
 
   if (!raw) return null;
 
-  // Canonical DB values
   const canonical = new Set([
     "print_scan_delivery",
     "data_entry",
@@ -40,9 +95,7 @@ function normalizeServiceType(input: any): string | null {
 
   if (canonical.has(raw)) return raw;
 
-  // Legacy UI aliases + variations (mapped to DB-safe values)
   const map: Record<string, string> = {
-    // Printing / scan / delivery family
     print: "print_scan_delivery",
     printing: "print_scan_delivery",
     print_delivery: "print_scan_delivery",
@@ -53,14 +106,12 @@ function normalizeServiceType(input: any): string | null {
     printing_delivery: "print_scan_delivery",
     printing_pickup: "print_scan_delivery",
 
-    // Data entry / clerical family
     dataentry: "data_entry",
     business_data_entry: "data_entry",
     clerical_data_entry: "data_entry",
     general_admin_help: "data_entry",
     general_typing: "data_entry",
 
-    // DMV family
     dmv: "dmv_prep",
     dmv_guidance: "dmv_prep",
     dmv_doc_prep: "dmv_prep",
@@ -68,7 +119,6 @@ function normalizeServiceType(input: any): string | null {
     dmv_doc_help: "dmv_prep",
     dmv_prep_admin: "dmv_prep",
 
-    // Immigration family
     immigration: "immigration_clerical",
     immigration_prep: "immigration_clerical",
     immigration_doc_help: "immigration_clerical",
@@ -76,7 +126,6 @@ function normalizeServiceType(input: any): string | null {
     immigration_prep_help: "immigration_clerical",
     immigration_prep_admin: "immigration_clerical",
 
-    // Resume / typing family
     resume: "resume_typing",
     resume_review: "resume_typing",
     resume_help: "resume_typing",
@@ -86,6 +135,12 @@ function normalizeServiceType(input: any): string | null {
   };
 
   return map[raw] || null;
+}
+
+function isTrueish(v: any) {
+  if (typeof v === "boolean") return v;
+  const n = String(v || "").trim().toLowerCase();
+  return n === "1" || n === "true" || n === "yes" || n === "on";
 }
 
 function getMissingColumnFromError(msg: string): string | null {
@@ -103,11 +158,13 @@ function getMissingColumnFromError(msg: string): string | null {
 async function resilientUpdateDocRequest(
   supabase: ReturnType<typeof svc>,
   requestId: string,
-  payload: Record<string, any>
+  payload: Record<string, any>,
+  telemetry: SchemaFallbackTelemetry
 ) {
   const current = { ...payload };
 
   for (let i = 0; i < 40; i++) {
+    telemetry.updateAttemptCount = i + 1;
     if (Object.keys(current).length === 0) {
       return { ok: true as const };
     }
@@ -120,6 +177,7 @@ async function resilientUpdateDocRequest(
     const missingCol = getMissingColumnFromError(msg);
 
     if (missingCol && missingCol in current) {
+      if (!telemetry.updateMissingColumns.includes(missingCol)) telemetry.updateMissingColumns.push(missingCol);
       delete current[missingCol];
       continue;
     }
@@ -136,16 +194,19 @@ async function resilientUpdateDocRequest(
 async function resilientSelectSubmittedRequest(
   supabase: ReturnType<typeof svc>,
   requestId: string,
-  userId: string
+  userId: string,
+  telemetry: SchemaFallbackTelemetry
 ) {
-  // Try richer select first; fall back if request_code (or other columns) are missing
   const selectAttempts = [
     "id,user_id,status,service_type,request_code,submitted_at",
     "id,user_id,status,service_type,submitted_at",
     "id,user_id,status,service_type",
   ];
 
-  for (const columns of selectAttempts) {
+  for (let idx = 0; idx < selectAttempts.length; idx++) {
+    const columns = selectAttempts[idx];
+    telemetry.selectFallbackLevel = idx + 1;
+
     const { data, error } = await supabase
       .from("doc_requests")
       .select(columns)
@@ -177,7 +238,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Missing requestId" }, { status: 400 });
     }
 
-    // Verify ownership + read current values (minimal stable select)
     const { data: row, error: rowErr } = await supabase
       .from("doc_requests")
       .select("id,user_id,status,service_type")
@@ -199,7 +259,6 @@ export async function POST(req: NextRequest) {
     );
 
     const serviceType = normalizeServiceType(rawService);
-
     if (!serviceType) {
       return NextResponse.json(
         { error: "Please select a valid Docs service type before submitting." },
@@ -207,28 +266,40 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const now = new Date().toISOString();
+    const termsAccepted = isTrueish(body?.docs_terms_accepted ?? body?.termsAccepted);
+    if (!termsAccepted) {
+      return NextResponse.json(
+        { error: "Please accept the Docs Service Terms before submitting." },
+        { status: 400 }
+      );
+    }
 
-    // Build a wide payload; resilient updater strips unknown columns automatically
+    const now = new Date().toISOString();
+    const termsVersion = firstString(body?.docs_terms_version, body?.termsVersion, DOCS_TERMS_VERSION) || DOCS_TERMS_VERSION;
+
+    const schemaTelemetry: SchemaFallbackTelemetry = {
+      updateMissingColumns: [],
+      updateAttemptCount: 0,
+      selectFallbackLevel: 1,
+    };
+
     const updatePayload: Record<string, any> = {
       status: "submitted",
       service_type: serviceType,
       updated_at: now,
       submitted_at: now,
-
-      // Optional mirrors / labels (only if schema supports them)
       service_label: firstString(body?.serviceLabel, rawService),
-
       title: firstString(body?.title, body?.requestTitle),
       description: firstString(body?.description, body?.notes, body?.details),
-
       delivery_method: firstString(body?.delivery_method, body?.deliveryMethod),
       phone: firstString(body?.phone, body?.contactPhone),
-
-      // Optional JSON snapshots
       intake_payload: body,
       request_payload: body,
       form_payload: body,
+      docs_terms_accepted_at: now,
+      docs_terms_version: termsVersion,
+      terms_accepted_at: now,
+      terms_version: termsVersion,
     };
 
     for (const k of Object.keys(updatePayload)) {
@@ -237,26 +308,36 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    const updated = await resilientUpdateDocRequest(supabase, requestId, updatePayload);
-
+    const updated = await resilientUpdateDocRequest(supabase, requestId, updatePayload, schemaTelemetry);
     if (!updated.ok) {
+      logSchemaFallback("submit_request_failed_update", schemaTelemetry, { request_id: requestId, user_id: user.id });
+      await persistSchemaFallbackEvent(supabase, requestId, user.id, schemaTelemetry, "submit_request_failed_update");
       const msg = (updated as any)?.error?.message || "Failed to submit request";
       return NextResponse.json({ error: msg }, { status: 400 });
     }
 
-    // Audit event (non-blocking)
     await supabase.from("doc_request_events").insert({
       request_id: requestId,
       actor_user_id: user.id,
       actor_role: "customer",
       event_type: "request_submitted",
-      event_payload: { service_type: serviceType, submitted_at: now },
+      event_payload: { service_type: serviceType, submitted_at: now, terms_version: termsVersion },
     });
 
-    // Re-read request (best effort) so client gets consistent response
-    const finalRead = await resilientSelectSubmittedRequest(supabase, requestId, user.id);
+    const finalRead = await resilientSelectSubmittedRequest(supabase, requestId, user.id, schemaTelemetry);
+
+    if (schemaFallbackUsed(schemaTelemetry) && STRICT_SCHEMA_FALLBACK) {
+      logSchemaFallback("submit_request_strict_block", schemaTelemetry, { request_id: requestId, user_id: user.id });
+      await persistSchemaFallbackEvent(supabase, requestId, user.id, schemaTelemetry, "submit_request_strict_block");
+      return NextResponse.json(
+        { error: "Schema fallback was triggered while strict mode is enabled. Apply migrations and retry." },
+        { status: 500 }
+      );
+    }
 
     if (!finalRead.ok) {
+      logSchemaFallback("submit_request_failed_select", schemaTelemetry, { request_id: requestId, user_id: user.id });
+      await persistSchemaFallbackEvent(supabase, requestId, user.id, schemaTelemetry, "submit_request_failed_select");
       return NextResponse.json({
         ok: true,
         requestId,
@@ -270,8 +351,11 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    const finalRow: any = finalRead.data;
+    logSchemaFallback("submit_request", schemaTelemetry, { request_id: requestId, user_id: user.id });
+    await persistSchemaFallbackEvent(supabase, requestId, user.id, schemaTelemetry, "submit_request");
 
+    const finalRow: any = finalRead.data;
+    const exposeSchemaFallback = process.env.NODE_ENV !== "production";
     return NextResponse.json({
       ok: true,
       requestId,
@@ -282,6 +366,14 @@ export async function POST(req: NextRequest) {
         request_code: finalRow.request_code ?? null,
         submitted_at: finalRow.submitted_at ?? now,
       },
+      ...(exposeSchemaFallback
+        ? {
+            schema_fallback: {
+              update_missing_columns: schemaTelemetry.updateMissingColumns,
+              select_fallback_level: schemaTelemetry.selectFallbackLevel,
+            },
+          }
+        : {}),
     });
   } catch (e: any) {
     return NextResponse.json({ error: e?.message || "Server error" }, { status: 500 });

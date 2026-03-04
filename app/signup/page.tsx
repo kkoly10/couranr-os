@@ -1,17 +1,27 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { useState, Suspense } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import SiteFooter from "@/components/SiteFooter";
 
+function getSafeNextPath(input: string | null): string {
+  if (!input) return "/portal";
+  if (!input.startsWith("/") || input.startsWith("//")) return "/portal";
+
+  const blockedPrefixes = ["/admin", "/driver", "/api", "/debug"];
+  if (blockedPrefixes.some((prefix) => input.startsWith(prefix))) {
+    return "/portal";
+  }
+
+  return input;
+}
+
 function SignupContent() {
-  const router = useRouter();
   const params = useSearchParams();
-  
-  // ✅ Preserved from your original: Smart redirect logic
-  const next = params.get("next") || "/portal";
+
+  const next = getSafeNextPath(params.get("next"));
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -25,7 +35,6 @@ function SignupContent() {
     setSuccess(null);
     setLoading(true);
 
-    // ✅ Preserved from your original: email.trim()
     const { data, error } = await supabase.auth.signUp({
       email: email.trim(),
       password,
@@ -38,7 +47,6 @@ function SignupContent() {
       return;
     }
 
-    // ✅ Preserved from your original: Handle immediate session or confirmation
     if (data.session) {
       window.location.assign(next);
       return;
@@ -56,7 +64,7 @@ function SignupContent() {
         <div style={{ textAlign: "center", marginBottom: "24px" }}>
           <h1 className="pageTitle" style={{ color: "var(--text)" }}>Create account</h1>
           <p className="pageDesc" style={{ marginTop: "8px", color: "var(--muted)" }}>
-            Start with the customer portal for rentals and deliveries.
+            Create your secure account to manage rentals, deliveries, and documents.
           </p>
         </div>
 
@@ -96,7 +104,6 @@ function SignupContent() {
               </div>
             )}
 
-            {/* ✅ Restored Success Message from original */}
             {success && (
               <div style={{ padding: "12px", borderRadius: "12px", background: "#f0fdf4", border: "1px solid #bbf7d0", color: "#166534", fontSize: "14px", fontWeight: 700 }}>
                 {success}
@@ -106,13 +113,6 @@ function SignupContent() {
             <button className="btn btnGold" type="submit" disabled={loading} style={{ width: "100%", padding: "12px", fontSize: "16px", marginTop: "8px" }}>
               {loading ? "Creating..." : "Sign up"}
             </button>
-
-            {/* ✅ Restored Redirect Debugger from original */}
-            <div style={{ marginTop: 12 }}>
-              <p style={{ fontSize: "11px", color: "var(--muted)", margin: 0, textAlign: "center" }}>
-                After signup, you'll go to: <strong style={{ color: "var(--text)" }}>{next}</strong>
-              </p>
-            </div>
           </form>
         </div>
 

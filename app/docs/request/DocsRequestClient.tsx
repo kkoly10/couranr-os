@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { DOCS_TERMS_VERSION } from "@/lib/docsTerms";
 
 type DocFile = {
   id: string;
@@ -58,6 +59,7 @@ export default function DocsRequestClient() {
   const [phone, setPhone] = useState("");
 
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
   const requestId = sp.get("requestId") || "";
 
@@ -190,6 +192,8 @@ export default function DocsRequestClient() {
           description,
           deliveryMethod,
           phone,
+          docs_terms_accepted: termsAccepted,
+          docs_terms_version: DOCS_TERMS_VERSION,
         }),
       });
 
@@ -258,6 +262,11 @@ export default function DocsRequestClient() {
       return;
     }
 
+    if (!termsAccepted) {
+      setError("Please review and accept the Docs Service Terms before submitting.");
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
 
@@ -282,6 +291,8 @@ export default function DocsRequestClient() {
           description,
           deliveryMethod,
           phone,
+          docs_terms_accepted: termsAccepted,
+          docs_terms_version: DOCS_TERMS_VERSION,
         }),
       });
 
@@ -480,6 +491,20 @@ export default function DocsRequestClient() {
           We do not provide legal advice and are not a government agency.
         </div>
 
+
+        <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+          <label style={styles.checkboxRow}>
+            <input
+              type="checkbox"
+              checked={termsAccepted}
+              onChange={(e) => setTermsAccepted(e.target.checked)}
+            />
+            <span>
+              I agree to the <Link href="/docs/terms" target="_blank" style={{ fontWeight: 800 }}>Docs Service Terms</Link> and understand this is administrative support only (not legal advice).
+            </span>
+          </label>
+        </div>
+
         <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button
             onClick={submitRequest}
@@ -600,6 +625,14 @@ const styles: Record<string, any> = {
     background: "#fffbeb",
     color: "#92400e",
     fontSize: 13,
+    lineHeight: 1.5,
+  },
+  checkboxRow: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 8,
+    fontSize: 13,
+    color: "#374151",
     lineHeight: 1.5,
   },
   errorBox: {

@@ -3,20 +3,30 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import SiteFooter from "@/components/SiteFooter";
+import { computeDeliveryPrice } from "@/lib/delivery/pricing";
+import { serviceImageSets } from "@/lib/serviceImages";
+import { COURIER_SERVICE_RADIUS_MILES, PRIMARY_SERVICE_TOWNS, SERVICE_HUB } from "@/lib/serviceArea";
 
 export default function CourierPage() {
   const [miles, setMiles] = useState<number>(8);
   const [priority, setPriority] = useState<"standard" | "rush">("standard");
 
-  // Quick estimate only (planning)
+  // Quick estimate only (planning): uses the same pricing source of truth as quote + API
   const pricing = useMemo(() => {
-    const base = 18;
-    const perMile = 1.65;
-    const rushFee = priority === "rush" ? 12 : 0;
-    const raw = base + miles * perMile + rushFee;
-    const min = 28;
-    const total = Math.max(min, Math.round(raw));
-    return { base, perMile, rushFee, total };
+    const safeMiles = Number.isFinite(miles) ? Math.max(1, miles) : 1;
+    const result = computeDeliveryPrice({
+      miles: safeMiles,
+      weightLbs: 1,
+      stops: 0,
+      rush: priority === "rush",
+      signature: false,
+    });
+
+    return {
+      miles: safeMiles,
+      breakdown: result.breakdown,
+      total: result.breakdown.total,
+    };
   }, [miles, priority]);
 
   return (
@@ -24,8 +34,8 @@ export default function CourierPage() {
       <div className="bgGlow" aria-hidden="true" />
 
       <div className="cContainer">
-        <section className="hero">
-          <div className="heroCard">
+        <section className="hero heroWithImage" style={{ backgroundImage: `linear-gradient(120deg, rgba(7, 10, 17, 0.74), rgba(7, 10, 17, 0.48)), url(${serviceImageSets.courier[0]})` }}>
+          <div className="heroCard heroCardOverlay">
             <div className="badgeRow">
               <span className="badge">Same-day options</span>
               <span className="badge ghost">Status updates</span>
@@ -137,19 +147,19 @@ export default function CourierPage() {
               <p className="cardDesc">Based on your selections:</p>
 
               <ul className="cardList">
-                <li>Base: ${pricing.base}</li>
+                <li>Base: ${pricing.breakdown.base.toFixed(2)} (includes first {pricing.breakdown.includedMiles} miles)</li>
                 <li>
-                  ${pricing.perMile.toFixed(2)}/mile × {miles} miles
+                  Distance: {pricing.miles} miles → {pricing.breakdown.extraMiles} billable × $1.75 = ${pricing.breakdown.extraMilesFee.toFixed(2)}
                 </li>
-                {pricing.rushFee > 0 ? (
-                  <li>Rush fee: +${pricing.rushFee}</li>
+                {pricing.breakdown.rushFee > 0 ? (
+                  <li>Rush fee: +${pricing.breakdown.rushFee.toFixed(2)}</li>
                 ) : (
-                  <li>Rush fee: $0</li>
+                  <li>Rush fee: $0.00</li>
                 )}
               </ul>
 
               <div style={{ marginTop: 8, fontWeight: 900, fontSize: 22 }}>
-                ${pricing.total}
+                ${pricing.total.toFixed(2)}
               </div>
 
               <div className="contactRow" style={{ marginTop: 12 }}>
@@ -162,6 +172,7 @@ export default function CourierPage() {
               </div>
 
               <p className="finePrint">
+                Quick estimate assumes 1 lb package, no extra stops, and no signature service.
                 No illegal/hazardous/restricted items. You’re responsible for accurate
                 pickup/drop-off info and packaging where applicable.
               </p>
@@ -185,6 +196,17 @@ export default function CourierPage() {
         </section>
 
         <section className="section">
+          <h2 className="sectionTitle">Coverage & service window</h2>
+          <p className="sectionSub">Courier coverage extends up to {COURIER_SERVICE_RADIUS_MILES} miles from {SERVICE_HUB}, with availability based on capacity and routing windows.</p>
+          <div className="cardGrid">
+            <div className="card"><h3 className="cardTitle">Service radius</h3><p className="cardDesc">Up to <strong>{COURIER_SERVICE_RADIUS_MILES} miles</strong> from <strong>{SERVICE_HUB}</strong> for courier deliveries.</p></div>
+            <div className="card"><h3 className="cardTitle">Primary towns served</h3><p className="cardDesc">{PRIMARY_SERVICE_TOWNS.join(", ")} and surrounding communities.</p></div>
+            <div className="card"><h3 className="cardTitle">Scheduling</h3><p className="cardDesc">Same-day options may be available based on request time, route load, and access constraints.</p></div>
+          </div>
+        </section>
+
+
+        <section className="section">
           <h2 className="sectionTitle">FAQ</h2>
           <div className="faq">
             <FAQItem
@@ -197,7 +219,7 @@ export default function CourierPage() {
             />
             <FAQItem
               q="How do I request a special route or multi-stop?"
-              a="Email us with pickup/drop-off details and time window: couranr@couranrauto.com."
+              a={`Email us with pickup/drop-off details and time window at couranr@couranrauto.com. Coverage is up to ${COURIER_SERVICE_RADIUS_MILES} miles from ${SERVICE_HUB}.`}
             />
           </div>
         </section>

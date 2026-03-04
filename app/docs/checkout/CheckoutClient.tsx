@@ -14,6 +14,8 @@ type DocRequest = {
   paid?: boolean | null;
   quoted_total_cents?: number | null;
   final_total_cents?: number | null;
+  total_cents?: number | null;
+  amount_subtotal_cents?: number | null;
 };
 
 function envTrue(v: any) {
@@ -38,7 +40,7 @@ export default function CheckoutClient() {
   const [requestRow, setRequestRow] = useState<DocRequest | null>(null);
 
   const amountCents = useMemo(
-    () => Number(requestRow?.final_total_cents ?? requestRow?.quoted_total_cents ?? 0),
+    () => Number(requestRow?.total_cents ?? requestRow?.final_total_cents ?? requestRow?.quoted_total_cents ?? requestRow?.amount_subtotal_cents ?? 0),
     [requestRow]
   );
 

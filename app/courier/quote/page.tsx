@@ -3,19 +3,29 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import {
+  DELIVERY_BASE_FEE,
+  DELIVERY_INCLUDED_MILES,
+  DELIVERY_INSTANT_QUOTE_MAX_MILES,
+  DELIVERY_MAX_WEIGHT_LBS,
+  DELIVERY_PER_MILE_RATE,
+  DELIVERY_RUSH_FEE,
+  DELIVERY_SIGNATURE_FEE,
+  DELIVERY_STOP_FEE,
+} from "@/lib/delivery/policy";
 
 /* -------------------- CONFIG -------------------- */
 
-const MAX_MILES = 40;
-const MAX_WEIGHT = 100;
+const MAX_MILES = DELIVERY_INSTANT_QUOTE_MAX_MILES;
+const MAX_WEIGHT = DELIVERY_MAX_WEIGHT_LBS;
 
 // Pricing
-const BASE_FEE = 15;
-const INCLUDED_MILES = 4;
-const PER_MILE_RATE = 1.75;
-const STOP_FEE = 6;
-const RUSH_FEE = 10;
-const SIGNATURE_FEE = 5;
+const BASE_FEE = DELIVERY_BASE_FEE;
+const INCLUDED_MILES = DELIVERY_INCLUDED_MILES;
+const PER_MILE_RATE = DELIVERY_PER_MILE_RATE;
+const STOP_FEE = DELIVERY_STOP_FEE;
+const RUSH_FEE = DELIVERY_RUSH_FEE;
+const SIGNATURE_FEE = DELIVERY_SIGNATURE_FEE;
 
 /* -------------------- HELPERS -------------------- */
 
@@ -249,7 +259,7 @@ export default function CourierQuotePage() {
 
   const pricing = useMemo(() => {
     if (miles === null || weight === "") return null;
-    if (miles > MAX_MILES) return { error: "Long distance — custom quote required" as const };
+    if (miles > MAX_MILES) return { error: `Outside service area — max ${MAX_MILES} miles` as const };
     if (weight > MAX_WEIGHT) return { error: "Heavy item — custom handling required" as const };
 
     const extraMiles = Math.max(0, miles - INCLUDED_MILES);
