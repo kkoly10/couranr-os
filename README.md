@@ -48,3 +48,13 @@ The app references these environment variables across API routes and pages:
 - `NEXT_PUBLIC_AUTO_TEST_MODE`
 - `NEXT_PUBLIC_DOCS_TEST_MODE`
 - `DOCS_TEST_MODE`
+- `DOCS_SCHEMA_FALLBACK_STRICT`
+
+## Docs schema fallback strict mode
+
+Set `DOCS_SCHEMA_FALLBACK_STRICT=1` to fail Docs submit requests whenever runtime schema fallback logic is triggered.
+
+Recommended rollout:
+- Keep disabled in production initially.
+- Enable in staging first and confirm no `schema_fallback_used` events are generated.
+- Enable in production only after canonical schema migrations are complete.
