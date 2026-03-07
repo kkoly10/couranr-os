@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { createDeliveryOrderFlow } from "@/lib/delivery/createDeliveryOrderFlow";
+import { ensureBusinessAccess, parseBusinessAccountId } from "@/lib/businessAccount";
+import { computeDeliveryPrice } from "@/lib/delivery/pricing";
+import { applyBusinessDeliveryPricing, getBusinessPricingProfile } from "@/lib/businessPricing";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +27,7 @@ type StartCheckoutBody = {
   recipientName: string;
   recipientPhone: string;
   deliveryNotes: string | null;
+  businessAccountId?: string | null;
 };
 
 export async function POST(req: Request) {
@@ -64,9 +68,31 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Recipient phone is required" }, { status: 400 });
     }
 
-    const totalCents = Number(body?.totalCents);
-    if (!Number.isFinite(totalCents) || totalCents < 50) {
-      return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
+    const basePrice = computeDeliveryPrice({
+      miles: Number(body?.estimatedMiles) || 0,
+      weightLbs: Number(body?.weightLbs) || 0,
+      stops: Math.max(0, Math.floor(Number(body?.stops) || 0)),
+      rush: !!body?.rush,
+      signature: !!body?.signatureRequired,
+    });
+
+    const requestedBusinessAccountId = parseBusinessAccountId(body?.businessAccountId);
+    if (body?.businessAccountId && !requestedBusinessAccountId) {
+      return NextResponse.json({ error: "Invalid businessAccountId" }, { status: 400 });
+    }
+
+    let totalCents = basePrice.amountCents;
+    let pricingStrategy = "base";
+
+    if (requestedBusinessAccountId) {
+      const access = await ensureBusinessAccess(supabaseAdmin as any, user.id, requestedBusinessAccountId);
+      if (!access.ok) {
+        return NextResponse.json({ error: access.error }, { status: access.code });
+      }
+      const profile = await getBusinessPricingProfile(supabaseAdmin as any, requestedBusinessAccountId);
+      const adjusted = applyBusinessDeliveryPricing(basePrice.amountCents, profile);
+      totalCents = adjusted.amountCents;
+      pricingStrategy = adjusted.strategy;
     }
 
     // 3) Create order + delivery (DB)
@@ -89,6 +115,7 @@ export async function POST(req: Request) {
       recipientName,
       recipientPhone,
       deliveryNotes: body?.deliveryNotes ?? null,
+      businessAccountId: requestedBusinessAccountId,
     } as any);
 
     const { orderId, orderNumber, deliveryId } = created;
@@ -120,6 +147,7 @@ export async function POST(req: Request) {
         deliveryId,
         orderNumber,
         customerId: user.id,
+        businessAccountId: requestedBusinessAccountId || "",
       },
       success_url: `${origin}/courier/confirmation?orderId=${encodeURIComponent(
         orderId
@@ -138,6 +166,12 @@ export async function POST(req: Request) {
       orderId,
       orderNumber,
       deliveryId,
+      pricing: {
+        baseAmountCents: basePrice.amountCents,
+        chargedAmountCents: totalCents,
+        strategy: pricingStrategy,
+        mode: requestedBusinessAccountId ? "business" : "personal",
+      },
     });
   } catch (err: any) {
     console.error("start-checkout error:", err);

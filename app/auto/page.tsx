@@ -1,5 +1,6 @@
 import Link from "next/link";
 import SiteFooter from "@/components/SiteFooter";
+import { serviceImageSets } from "@/lib/serviceImages";
 
 export default function AutoPage() {
   return (
@@ -7,8 +8,8 @@ export default function AutoPage() {
       <div className="bgGlow" aria-hidden="true" />
 
       <div className="cContainer">
-        <section className="hero">
-          <div className="heroCard">
+        <section className="hero heroWithImage" style={{ backgroundImage: `linear-gradient(120deg, rgba(7, 10, 17, 0.74), rgba(7, 10, 17, 0.48)), url(${serviceImageSets.auto[0]})` }}>
+          <div className="heroCard heroCardOverlay">
             <div className="badgeRow">
               <span className="badge">Verification-first</span>
               <span className="badge ghost">Transparent policies</span>
@@ -26,6 +27,9 @@ export default function AutoPage() {
               </Link>
               <Link className="btn btnGhost" href="/dashboard/auto">
                 Customer portal
+              </Link>
+              <Link className="btn btnGhost" href="/terms">
+                Terms
               </Link>
               <Link className="btn btnGhost" href="mailto:couranr@couranrauto.com">
                 Email support
@@ -87,6 +91,17 @@ export default function AutoPage() {
             />
           </div>
         </section>
+
+        <section className="section">
+          <h2 className="sectionTitle">Availability & rental scope</h2>
+          <p className="sectionSub">Vehicle availability and booking windows vary by inventory, verification status, and schedule demand.</p>
+          <div className="cardGrid">
+            <div className="card"><h3 className="cardTitle">Vehicle selection</h3><p className="cardDesc">Inventory is shown live in the vehicles flow, including current availability and checkout rules.</p></div>
+            <div className="card"><h3 className="cardTitle">Approval timing</h3><p className="cardDesc">Bookings are finalized after eligibility checks and verification requirements are completed.</p></div>
+            <div className="card"><h3 className="cardTitle">Best fit</h3><p className="cardDesc">Short-term local transportation needs where policy clarity and documentation matter.</p></div>
+          </div>
+        </section>
+
 
         <section className="section">
           <h2 className="sectionTitle">FAQ</h2>

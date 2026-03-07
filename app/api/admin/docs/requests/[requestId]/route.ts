@@ -55,6 +55,14 @@ function resolveFileRef(row: any): { bucket: string; path: string } | null {
   if (typeof maybeUrl === "string") {
     const parsed = parseSupabaseStorageUrl(maybeUrl);
     if (parsed) return parsed;
+
+    const m = maybeUrl.match(/\/storage\/v1\/object\/(?:authenticated|public)\/([^\/]+)\/(.+)$/i);
+    if (m?.[1] && m?.[2]) {
+      return {
+        bucket: decodeURIComponent(m[1]),
+        path: decodeURIComponent(m[2]),
+      };
+    }
   }
 
   return null;
@@ -104,14 +112,29 @@ export async function GET(
       customerProfile = prof || null;
     }
 
-    const { data: filesRaw } = await supabase
+    const { data: filesRawPrimary } = await supabase
       .from("doc_request_files")
       .select("*")
       .eq("request_id", requestId)
       .order("created_at", { ascending: true });
 
+    const { data: filesRawSecondary } = await supabase
+      .from("docs_request_files")
+      .select("*")
+      .eq("request_id", requestId)
+      .order("created_at", { ascending: true });
+
+    const mergedFiles = [...(filesRawPrimary || []), ...(filesRawSecondary || [])];
+    const seen = new Set<string>();
+    const uniqueFiles = mergedFiles.filter((f: any) => {
+      const key = String(f?.id || `${f?.request_id || ""}:${f?.storage_path || f?.path || f?.file_name || ""}`);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
     const files = await Promise.all(
-      (filesRaw || []).map(async (f: any, idx: number) => {
+      uniqueFiles.map(async (f: any, idx: number) => {
         const ref = resolveFileRef(f);
 
         let signedUrl: string | null = null;
@@ -136,6 +159,14 @@ export async function GET(
 
           if (!signErr) {
             signedUrl = signed?.signedUrl || null;
+          } else {
+            console.error("admin docs signed url creation failed", {
+              request_id: requestId,
+              file_id: f?.id ?? null,
+              bucket: ref.bucket,
+              path: ref.path,
+              error: signErr.message,
+            });
           }
         }
 
