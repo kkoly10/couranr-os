@@ -37,7 +37,18 @@ function resolveFileRef(row: any): { bucket: string; path: string } | null {
   if (row?.file_path) return { bucket: "docs-files", path: String(row.file_path) };
 
   const maybe = row?.file_url || row?.storage_url || row?.url || null;
-  if (typeof maybe === "string") return parseSupabaseStorageUrl(maybe);
+  if (typeof maybe === "string") {
+    const supabaseRef = parseSupabaseStorageUrl(maybe);
+    if (supabaseRef) return supabaseRef;
+
+    const m = maybe.match(/\/storage\/v1\/object\/(?:authenticated|public)\/([^\/]+)\/(.+)$/i);
+    if (m?.[1] && m?.[2]) {
+      return {
+        bucket: decodeURIComponent(m[1]),
+        path: decodeURIComponent(m[2]),
+      };
+    }
+  }
 
   return null;
 }

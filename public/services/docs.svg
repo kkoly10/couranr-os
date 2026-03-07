@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700" fill="none">
+  <rect width="1200" height="700" rx="28" fill="#1E293B"/>
+  <rect x="70" y="70" width="1060" height="560" rx="24" fill="#334155" stroke="#475569"/>
+  <rect x="220" y="190" width="760" height="390" rx="22" fill="#E2E8F0"/>
+  <rect x="280" y="270" width="440" height="26" rx="8" fill="#94A3B8"/>
+  <rect x="280" y="320" width="620" height="20" rx="8" fill="#94A3B8"/>
+  <rect x="280" y="360" width="620" height="20" rx="8" fill="#94A3B8"/>
+  <rect x="280" y="400" width="510" height="20" rx="8" fill="#94A3B8"/>
+  <rect x="760" y="460" width="140" height="50" rx="12" fill="#C8A12B"/>
+  <text x="100" y="170" fill="#F8FAFC" font-family="Arial, sans-serif" font-size="58" font-weight="700">Couranr Docs</text>
+  <text x="100" y="230" fill="#CBD5E1" font-family="Arial, sans-serif" font-size="34">Document workflows • Uploads • Structured support</text>
+</svg>

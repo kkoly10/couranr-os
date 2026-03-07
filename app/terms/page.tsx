@@ -1,14 +1,13 @@
 // app/terms/page.tsx
+import { TERMS_EFFECTIVE_DATE } from "@/lib/legal";
 export const dynamic = "force-dynamic";
 
 export default function TermsPage() {
-  const effective = new Date().toLocaleDateString();
-
   return (
     <div style={{ maxWidth: 980, margin: "0 auto", padding: 24 }}>
       <h1 style={{ margin: 0, fontSize: 34, letterSpacing: "-0.02em" }}>Terms of Use</h1>
       <p style={{ marginTop: 10, color: "#555" }}>
-        Effective date: <strong>{effective}</strong>
+        Effective date: <strong>{TERMS_EFFECTIVE_DATE}</strong>
       </p>
 
       <div style={{ marginTop: 18, lineHeight: 1.75, color: "#111827" }}>
@@ -151,18 +150,9 @@ export default function TermsPage() {
           For support and disputes, contact Couranr using the contact method provided on our website.
         </p>
 
-        <div
-          style={{
-            marginTop: 18,
-            padding: 14,
-            borderRadius: 14,
-            background: "#fffbeb",
-            border: "1px solid #fde68a",
-          }}
-        >
-          <strong>Template notice:</strong> This Terms page is a protective baseline. Have a qualified attorney review your final version
-          (insurance, fees, cancellations, repossession/immobilization rules, and local compliance).
-        </div>
+        <p style={{ marginTop: 18, color: "#374151" }}>
+          For legal notices or questions about these Terms, contact Couranr through the official support contact listed on the website.
+        </p>
       </div>
     </div>
   );
