@@ -5,6 +5,7 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getUserFromRequest } from "@/app/lib/auth";
+import { ensureBusinessAccess, parseBusinessAccountId } from "@/lib/businessAccount";
 
 function svc() {
   return createClient(
@@ -81,6 +82,18 @@ export async function POST(req: NextRequest) {
     const requestCode =
       String(body?.request_code ?? body?.requestCode ?? "").trim() || makeRequestCode();
 
+    const requestedBusinessAccountId = parseBusinessAccountId(body?.businessAccountId);
+    if (body?.businessAccountId && !requestedBusinessAccountId) {
+      return NextResponse.json({ error: "Invalid businessAccountId" }, { status: 400 });
+    }
+
+    if (requestedBusinessAccountId) {
+      const access = await ensureBusinessAccess(supabase as any, user.id, requestedBusinessAccountId);
+      if (!access.ok) {
+        return NextResponse.json({ error: access.error }, { status: access.code });
+      }
+    }
+
     // Keep insert minimal so it works across schema versions
     const insertRow: any = {
       user_id: user.id,
@@ -88,13 +101,29 @@ export async function POST(req: NextRequest) {
       service_type: serviceType,
       paid: false,
       request_code: requestCode,
+      ...(requestedBusinessAccountId ? { business_account_id: requestedBusinessAccountId } : {}),
     };
 
-    const { data: requestRow, error } = await supabase
+    let { data: requestRow, error } = await supabase
       .from("doc_requests")
       .insert(insertRow)
       .select("*")
       .single();
+
+    if (error) {
+      const msg = error.message || "";
+      if (requestedBusinessAccountId && /business_account_id/i.test(msg)) {
+        const retryRow = { ...insertRow };
+        delete retryRow.business_account_id;
+        const retry = await supabase
+          .from("doc_requests")
+          .insert(retryRow)
+          .select("*")
+          .single();
+        requestRow = retry.data as any;
+        error = retry.error as any;
+      }
+    }
 
     if (error || !requestRow) {
       return NextResponse.json(
@@ -112,6 +141,7 @@ export async function POST(req: NextRequest) {
       event_payload: {
         service_type: serviceType,
         request_code: requestCode,
+        business_account_id: requestedBusinessAccountId,
       },
     });
 

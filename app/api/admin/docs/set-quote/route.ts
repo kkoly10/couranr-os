@@ -71,8 +71,8 @@ export async function POST(req: NextRequest) {
     const { error: updErr } = await supabase
       .from("doc_requests")
       .update({
-        quoted_total_cents: amountCents,
-        final_total_cents: amountCents,
+        total_cents: amountCents,
+        amount_subtotal_cents: amountCents,
         status: nextStatus,
       })
       .eq("id", requestId);

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700" fill="none">
+  <rect width="1200" height="700" rx="28" fill="#052E2B"/>
+  <rect x="70" y="70" width="1060" height="560" rx="24" fill="#064E3B" stroke="#065F46"/>
+  <rect x="180" y="300" width="470" height="210" rx="28" fill="#10B981"/>
+  <rect x="650" y="340" width="190" height="170" rx="18" fill="#34D399"/>
+  <circle cx="300" cy="550" r="55" fill="#052E2B" stroke="#A7F3D0" stroke-width="12"/>
+  <circle cx="700" cy="550" r="55" fill="#052E2B" stroke="#A7F3D0" stroke-width="12"/>
+  <path d="M840 380L970 380L1050 470" stroke="#A7F3D0" stroke-width="18" stroke-linecap="round"/>
+  <text x="100" y="170" fill="#ECFDF5" font-family="Arial, sans-serif" font-size="58" font-weight="700">Courier Delivery</text>
+  <text x="100" y="230" fill="#A7F3D0" font-family="Arial, sans-serif" font-size="34">Live tracking • Proof of pickup/drop-off • Local routes</text>
+</svg>

@@ -15,6 +15,8 @@ type DocRequest = {
   paid?: boolean | null;
   quoted_total_cents?: number | null;
   final_total_cents?: number | null;
+  total_cents?: number | null;
+  amount_subtotal_cents?: number | null;
   created_at?: string | null;
   submitted_at?: string | null;
   completed_at?: string | null;
@@ -116,7 +118,7 @@ export default function DocsDashboardClient() {
 function RequestCard({ r }: { r: DocRequest }) {
   const status = String(r.status || "draft").toLowerCase();
   const isDraft = status === "draft";
-  const amountCents = Number(r.final_total_cents ?? r.quoted_total_cents ?? 0);
+  const amountCents = Number(r.total_cents ?? r.final_total_cents ?? r.quoted_total_cents ?? r.amount_subtotal_cents ?? 0);
   const canPay = !r.paid && amountCents > 0 && !["completed", "cancelled"].includes(status);
 
   return (
