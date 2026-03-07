@@ -19,8 +19,8 @@ function envTrue(v: any) {
   return s === "1" || s === "true" || s === "yes" || s === "on";
 }
 
-const TEST_MODE =
-  envTrue(process.env.NEXT_PUBLIC_DOCS_TEST_MODE) || envTrue(process.env.NEXT_PUBLIC_TEST_MODE);
+const TEST_MODE = envTrue(process.env.DOCS_TEST_MODE);
+const IS_PROD = String(process.env.NODE_ENV || "").toLowerCase() === "production";
 
 async function logEvent(
   supabase: ReturnType<typeof svc>,
@@ -33,7 +33,7 @@ async function logEvent(
     await supabase.from("doc_request_events").insert({
       request_id: requestId,
       actor_user_id: actorUserId,
-      actor_role: "renter",
+      actor_role: "customer",
       event_type: eventType,
       event_payload: payload ?? {},
     });
@@ -44,7 +44,7 @@ async function logEvent(
 
 export async function POST(req: NextRequest) {
   try {
-    if (!TEST_MODE) {
+    if (IS_PROD || !TEST_MODE) {
       return NextResponse.json({ error: "Test mode is disabled" }, { status: 403 });
     }
 

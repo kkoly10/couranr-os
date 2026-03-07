@@ -4,6 +4,7 @@ export type CreateOrderInput = {
   customerId: string;
   totalCents: number;
   serviceType: "delivery" | "docs" | "auto";
+  businessAccountId?: string | null;
 };
 
 export type CreateOrderResult = {
@@ -18,7 +19,7 @@ export type CreateOrderResult = {
 export async function createOrder(
   input: CreateOrderInput
 ): Promise<CreateOrderResult> {
-  const { customerId, totalCents, serviceType } = input;
+  const { customerId, totalCents, serviceType, businessAccountId } = input;
 
   const { data, error } = await supabaseAdmin
     .from("orders")
@@ -26,6 +27,7 @@ export async function createOrder(
       customer_id: customerId,
       total_cents: totalCents,
       service_type: serviceType,
+      business_account_id: businessAccountId ?? null,
       // ❌ DO NOT pass order_number
       // ✅ Database generates it automatically
     })

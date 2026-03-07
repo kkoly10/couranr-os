@@ -1,21 +1,37 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import {
+  getStoredBusinessAccountId,
+  resolveBusinessAccountId,
+  setStoredBusinessAccountId,
+} from "@/lib/businessSelection";
+import {
+  DELIVERY_BASE_FEE,
+  DELIVERY_INCLUDED_MILES,
+  DELIVERY_INSTANT_QUOTE_MAX_MILES,
+  DELIVERY_MAX_WEIGHT_LBS,
+  DELIVERY_PER_MILE_RATE,
+  DELIVERY_RUSH_FEE,
+  DELIVERY_SIGNATURE_FEE,
+  DELIVERY_STOP_FEE,
+} from "@/lib/delivery/policy";
 
 /* -------------------- CONFIG -------------------- */
 
-const MAX_MILES = 40;
-const MAX_WEIGHT = 100;
+const MAX_MILES = DELIVERY_INSTANT_QUOTE_MAX_MILES;
+const MAX_WEIGHT = DELIVERY_MAX_WEIGHT_LBS;
 
 // Pricing
-const BASE_FEE = 15;
-const INCLUDED_MILES = 4;
-const PER_MILE_RATE = 1.75;
-const STOP_FEE = 6;
-const RUSH_FEE = 10;
-const SIGNATURE_FEE = 5;
+const BASE_FEE = DELIVERY_BASE_FEE;
+const INCLUDED_MILES = DELIVERY_INCLUDED_MILES;
+const PER_MILE_RATE = DELIVERY_PER_MILE_RATE;
+const STOP_FEE = DELIVERY_STOP_FEE;
+const RUSH_FEE = DELIVERY_RUSH_FEE;
+const SIGNATURE_FEE = DELIVERY_SIGNATURE_FEE;
 
 /* -------------------- HELPERS -------------------- */
 
@@ -92,6 +108,10 @@ export default function CourierQuotePage() {
 
   const [isAuthed, setIsAuthed] = useState(false);
   const [authLoading, setAuthLoading] = useState(true);
+  const [contextMode, setContextMode] = useState<"personal" | "business">("personal");
+  const [businessAccounts, setBusinessAccounts] = useState<Array<{ id: string; name: string | null }>>([]);
+  const [businessPromptError, setBusinessPromptError] = useState<string | null>(null);
+  const [selectedBusinessAccountId, setSelectedBusinessAccountId] = useState<string | null>(null);
 
   const [pickup, setPickup] = useState("");
   const [dropoff, setDropoff] = useState("");
@@ -109,6 +129,17 @@ export default function CourierQuotePage() {
   const outsideHours = !isWithinBusinessHours(now);
 
   /* -------------------- AUTH STATE -------------------- */
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const qs = new URLSearchParams(window.location.search);
+    const resolved = resolveBusinessAccountId(qs.get("businessAccountId"));
+    if (resolved) {
+      setContextMode("business");
+      setSelectedBusinessAccountId(resolved);
+      setStoredBusinessAccountId(resolved);
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -137,6 +168,43 @@ export default function CourierQuotePage() {
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    async function loadBusinessAccounts() {
+      if (!isAuthed || contextMode !== "business") return;
+      setBusinessPromptError(null);
+
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) return;
+
+      const res = await fetch("/api/business/my-accounts", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setBusinessPromptError(json?.error || "Failed to load business accounts");
+        return;
+      }
+
+      const accounts = ((json?.accounts || []) as any[]).map((a) => ({
+        id: String(a.id || ""),
+        name: (a.name ?? null) as string | null,
+      }));
+      setBusinessAccounts(accounts);
+      if (!selectedBusinessAccountId) {
+        const stored = getStoredBusinessAccountId();
+        const next = accounts.find((a) => a.id === stored)?.id || accounts[0]?.id || null;
+        if (next) {
+          setSelectedBusinessAccountId(next);
+          setStoredBusinessAccountId(next);
+        }
+      }
+    }
+
+    loadBusinessAccounts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthed, contextMode]);
 
   /* -------------------- LOAD GOOGLE MAPS -------------------- */
 
@@ -249,7 +317,7 @@ export default function CourierQuotePage() {
 
   const pricing = useMemo(() => {
     if (miles === null || weight === "") return null;
-    if (miles > MAX_MILES) return { error: "Long distance — custom quote required" as const };
+    if (miles > MAX_MILES) return { error: `Outside service area — max ${MAX_MILES} miles` as const };
     if (weight > MAX_WEIGHT) return { error: "Heavy item — custom handling required" as const };
 
     const extraMiles = Math.max(0, miles - INCLUDED_MILES);
@@ -293,6 +361,10 @@ export default function CourierQuotePage() {
       rush: rush ? "1" : "0",
       signature: signature ? "1" : "0",
     });
+
+    if (contextMode === "business" && selectedBusinessAccountId) {
+      qs.set("businessAccountId", selectedBusinessAccountId);
+    }
 
     const {
       data: { session },
@@ -360,6 +432,61 @@ export default function CourierQuotePage() {
             <p className="heroDesc">
               Enter pickup and drop-off addresses to get an exact delivery estimate before checkout.
             </p>
+
+            <div className="heroActions">
+              <Link className="btn btnGhost" href="/terms">
+                Terms
+              </Link>
+            </div>
+
+            <div style={{ marginTop: 12, border: "1px solid #e5e7eb", borderRadius: 12, padding: 12, background: "#fff" }}>
+              <div style={{ fontWeight: 800, color: "#111827", marginBottom: 8 }}>Order context</div>
+              <label style={{ marginRight: 14, fontSize: 14 }}>
+                <input
+                  type="radio"
+                  checked={contextMode === "personal"}
+                  onChange={() => setContextMode("personal")}
+                  style={{ marginRight: 6 }}
+                />
+                Personal
+              </label>
+              <label style={{ fontSize: 14 }}>
+                <input
+                  type="radio"
+                  checked={contextMode === "business"}
+                  onChange={() => setContextMode("business")}
+                  style={{ marginRight: 6 }}
+                />
+                Business account
+              </label>
+
+              {contextMode === "business" && (
+                <div style={{ marginTop: 10 }}>
+                  {!isAuthed ? (
+                    <p className="finePrint" style={{ margin: 0 }}>Sign in to select a business account and preview business pricing.</p>
+                  ) : businessAccounts.length > 0 ? (
+                    <select
+                      value={selectedBusinessAccountId || ""}
+                      onChange={(e) => {
+                        const v = e.target.value || null;
+                        setSelectedBusinessAccountId(v);
+                        setStoredBusinessAccountId(v);
+                      }}
+                      style={{ border: "1px solid #d1d5db", borderRadius: 10, padding: "8px 10px", maxWidth: 380, width: "100%" }}
+                    >
+                      {businessAccounts.map((a) => (
+                        <option key={a.id} value={a.id}>{a.name || "Business account"}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="finePrint" style={{ margin: 0 }}>
+                      No business memberships found yet. <Link href="/dashboard/business">Open Business Portal</Link>.
+                    </p>
+                  )}
+                  {businessPromptError && <p style={{ margin: "8px 0 0", color: "#b91c1c", fontSize: 13 }}>{businessPromptError}</p>}
+                </div>
+              )}
+            </div>
 
             <div className="heroMiniGrid" aria-label="Quote flow">
               <div className="mini">
@@ -598,6 +725,12 @@ export default function CourierQuotePage() {
                 {isAuthed && (
                   <p className="finePrint" style={{ marginTop: 10 }}>
                     You’ll review delivery details and pay securely before submission.
+                  </p>
+                )}
+
+                {contextMode === "business" && (
+                  <p className="finePrint" style={{ marginTop: 10 }}>
+                    Business pricing rules are applied at checkout using your selected business account.
                   </p>
                 )}
               </>

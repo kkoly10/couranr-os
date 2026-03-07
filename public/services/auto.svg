@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="700" viewBox="0 0 1200 700" fill="none">
+  <rect width="1200" height="700" rx="28" fill="#0F172A"/>
+  <rect x="70" y="70" width="1060" height="560" rx="24" fill="#111827" stroke="#334155"/>
+  <rect x="170" y="320" width="860" height="190" rx="40" fill="#1F2937"/>
+  <circle cx="310" cy="535" r="58" fill="#0B1220" stroke="#F59E0B" stroke-width="14"/>
+  <circle cx="890" cy="535" r="58" fill="#0B1220" stroke="#F59E0B" stroke-width="14"/>
+  <path d="M250 330L410 220H790L950 330" stroke="#E5E7EB" stroke-width="16" stroke-linecap="round"/>
+  <text x="100" y="170" fill="#F8FAFC" font-family="Arial, sans-serif" font-size="58" font-weight="700">Auto Rentals</text>
+  <text x="100" y="230" fill="#94A3B8" font-family="Arial, sans-serif" font-size="34">Verified drivers • Secure checkout • Fleet ready</text>
+</svg>

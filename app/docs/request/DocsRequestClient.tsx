@@ -4,6 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { DOCS_TERMS_VERSION } from "@/lib/docsTerms";
+import {
+  getStoredBusinessAccountId,
+  resolveBusinessAccountId,
+  setStoredBusinessAccountId,
+} from "@/lib/businessSelection";
 
 type DocFile = {
   id: string;
@@ -13,6 +19,12 @@ type DocFile = {
   size_bytes?: number;
   created_at?: string;
   signed_url?: string | null;
+};
+
+
+type BusinessAccountOption = {
+  id: string;
+  name: string | null;
 };
 
 type DocRequest = {
@@ -58,8 +70,13 @@ export default function DocsRequestClient() {
   const [phone, setPhone] = useState("");
 
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [termsAccepted, setTermsAccepted] = useState(false);
 
   const requestId = sp.get("requestId") || "";
+  const [contextMode, setContextMode] = useState<"personal" | "business">("personal");
+  const [businessAccountId, setBusinessAccountId] = useState<string | null>(null);
+  const [businessAccounts, setBusinessAccounts] = useState<BusinessAccountOption[]>([]);
+  const [contextError, setContextError] = useState<string | null>(null);
 
   const serviceHelp = useMemo(() => {
     const map: Record<string, string> = {
@@ -76,6 +93,51 @@ export default function DocsRequestClient() {
     };
     return map[serviceType] || "";
   }, [serviceType]);
+
+  useEffect(() => {
+    const resolved = resolveBusinessAccountId(sp.get("businessAccountId"));
+    if (resolved) {
+      setContextMode("business");
+      setBusinessAccountId(resolved);
+      setStoredBusinessAccountId(resolved);
+    }
+  }, [sp]);
+
+  useEffect(() => {
+    async function loadBusinessAccounts() {
+      if (contextMode !== "business") return;
+      setContextError(null);
+      try {
+        const { data } = await supabase.auth.getSession();
+        const token = data.session?.access_token;
+        if (!token) return;
+
+        const res = await fetch("/api/business/my-accounts", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(json?.error || "Failed to load business accounts");
+
+        const accounts = ((json?.accounts || []) as any[]).map((a) => ({
+          id: String(a.id || ""),
+          name: (a.name ?? null) as string | null,
+        }));
+        setBusinessAccounts(accounts);
+        if (!businessAccountId) {
+          const stored = getStoredBusinessAccountId();
+          const next = accounts.find((a) => a.id === stored)?.id || accounts[0]?.id || null;
+          if (next) {
+            setBusinessAccountId(next);
+            setStoredBusinessAccountId(next);
+          }
+        }
+      } catch (e: any) {
+        setContextError(e?.message || "Failed to load business accounts");
+      }
+    }
+
+    loadBusinessAccounts();
+  }, [contextMode, businessAccountId]);
 
   async function getTokenOrRedirect() {
     const { data } = await supabase.auth.getSession();
@@ -105,6 +167,7 @@ export default function DocsRequestClient() {
           serviceType: "print_scan_delivery",
           title: "Docs Request",
           deliveryMethod: "delivery",
+          ...(contextMode === "business" && businessAccountId ? { businessAccountId } : {}),
         }),
       });
 
@@ -114,7 +177,9 @@ export default function DocsRequestClient() {
       const req = (json.request || {}) as DocRequest;
       if (!req?.id) throw new Error("Draft created but request ID is missing");
 
-      router.replace(`/docs/request?requestId=${encodeURIComponent(req.id)}`);
+      const qs = new URLSearchParams({ requestId: req.id });
+      if (contextMode === "business" && businessAccountId) qs.set("businessAccountId", businessAccountId);
+      router.replace(`/docs/request?${qs.toString()}`);
     } catch (e: any) {
       setError(e?.message || "Failed to create draft");
     } finally {
@@ -190,6 +255,9 @@ export default function DocsRequestClient() {
           description,
           deliveryMethod,
           phone,
+          docs_terms_accepted: termsAccepted,
+          docs_terms_version: DOCS_TERMS_VERSION,
+          ...(contextMode === "business" && businessAccountId ? { businessAccountId } : {}),
         }),
       });
 
@@ -258,6 +326,11 @@ export default function DocsRequestClient() {
       return;
     }
 
+    if (!termsAccepted) {
+      setError("Please review and accept the Docs Service Terms before submitting.");
+      return;
+    }
+
     setSubmitting(true);
     setError(null);
 
@@ -282,6 +355,9 @@ export default function DocsRequestClient() {
           description,
           deliveryMethod,
           phone,
+          docs_terms_accepted: termsAccepted,
+          docs_terms_version: DOCS_TERMS_VERSION,
+          ...(contextMode === "business" && businessAccountId ? { businessAccountId } : {}),
         }),
       });
 
@@ -343,6 +419,58 @@ export default function DocsRequestClient() {
       <div style={styles.grid}>
         <section style={styles.card}>
           <h2 style={styles.h2}>1) Request Details</h2>
+
+          <div style={{ border: "1px solid #e5e7eb", borderRadius: 10, padding: 10, marginBottom: 12, background: "#f9fafb" }}>
+            <div style={{ fontWeight: 700, fontSize: 13, color: "#374151", marginBottom: 8 }}>Request context</div>
+            <label style={{ fontSize: 14, marginRight: 14 }}>
+              <input
+                type="radio"
+                checked={contextMode === "personal"}
+                onChange={() => {
+                  setContextMode("personal");
+                  setBusinessAccountId(null);
+                }}
+                style={{ marginRight: 6 }}
+              />
+              Personal
+            </label>
+            <label style={{ fontSize: 14 }}>
+              <input
+                type="radio"
+                checked={contextMode === "business"}
+                onChange={() => setContextMode("business")}
+                style={{ marginRight: 6 }}
+              />
+              Business account
+            </label>
+
+            {contextMode === "business" && (
+              <div style={{ marginTop: 8 }}>
+                {businessAccounts.length > 0 ? (
+                  <select
+                    value={businessAccountId || ""}
+                    onChange={(e) => {
+                      const v = e.target.value || null;
+                      setBusinessAccountId(v);
+                      setStoredBusinessAccountId(v);
+                    }}
+                    style={styles.input}
+                  >
+                    {businessAccounts.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name || "Business account"}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <p style={{ margin: 0, fontSize: 13, color: "#4b5563" }}>
+                    No business memberships found. <Link href="/dashboard/business">Open Business Portal</Link>.
+                  </p>
+                )}
+                {contextError && <p style={{ margin: "8px 0 0", color: "#b91c1c", fontSize: 13 }}>{contextError}</p>}
+              </div>
+            )}
+          </div>
 
           <div style={styles.label}>Service Type</div>
           <select
@@ -480,6 +608,20 @@ export default function DocsRequestClient() {
           We do not provide legal advice and are not a government agency.
         </div>
 
+
+        <div style={{ marginTop: 12, display: "grid", gap: 8 }}>
+          <label style={styles.checkboxRow}>
+            <input
+              type="checkbox"
+              checked={termsAccepted}
+              onChange={(e) => setTermsAccepted(e.target.checked)}
+            />
+            <span>
+              I agree to the <Link href="/docs/terms" target="_blank" style={{ fontWeight: 800 }}>Docs Service Terms</Link> and understand this is administrative support only (not legal advice).
+            </span>
+          </label>
+        </div>
+
         <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
           <button
             onClick={submitRequest}
@@ -600,6 +742,14 @@ const styles: Record<string, any> = {
     background: "#fffbeb",
     color: "#92400e",
     fontSize: 13,
+    lineHeight: 1.5,
+  },
+  checkboxRow: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 8,
+    fontSize: 13,
+    color: "#374151",
     lineHeight: 1.5,
   },
   errorBox: {

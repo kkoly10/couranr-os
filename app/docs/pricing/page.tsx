@@ -27,6 +27,9 @@ export default function DocsPricingPage() {
               <Link className="btn btnGhost" href="/login?next=%2Fdashboard%2Fdocs">
                 Track requests
               </Link>
+              <Link className="btn btnGhost" href="/docs/terms">
+                Docs service terms
+              </Link>
             </div>
 
             <p className="finePrint">
