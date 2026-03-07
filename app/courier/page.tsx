@@ -54,6 +54,9 @@ export default function CourierPage() {
               <Link className="btn btnGhost" href="/portal">
                 Customer portal
               </Link>
+              <Link className="btn btnGhost" href="/terms">
+                Terms
+              </Link>
               <a className="btn btnGhost" href="mailto:couranr@couranrauto.com">
                 Email support
               </a>

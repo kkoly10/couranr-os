@@ -30,6 +30,9 @@ export default function HomePage() {
               <Link className="btn btnGhost" href="#services">
                 See services
               </Link>
+              <Link className="btn btnGhost" href="/terms">
+                Terms
+              </Link>
             </div>
 
             <p className="sectionSub" style={{ marginTop: 8 }}>

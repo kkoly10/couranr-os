@@ -25,6 +25,9 @@ export default function BuildPage() {
               <a className="btn btnGold" href="mailto:couranr@couranrauto.com?subject=Website%20Builder%20Quote%20Request">
                 Request your quote →
               </a>
+              <Link className="btn btnGhost" href="/terms">
+                Terms
+              </Link>
               <Link className="btn btnGhost" href="/">
                 Back to Step 1
               </Link>

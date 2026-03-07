@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
@@ -370,6 +371,12 @@ export default function CourierQuotePage() {
             <p className="heroDesc">
               Enter pickup and drop-off addresses to get an exact delivery estimate before checkout.
             </p>
+
+            <div className="heroActions">
+              <Link className="btn btnGhost" href="/terms">
+                Terms
+              </Link>
+            </div>
 
             <div className="heroMiniGrid" aria-label="Quote flow">
               <div className="mini">
