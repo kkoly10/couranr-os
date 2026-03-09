@@ -1,3 +1,4 @@
+// app/api/docs/create-checkout-session/route.ts
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -5,10 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { getUserFromRequest } from "@/app/lib/auth";
-import {
-  applyBusinessDocsPricing,
-  getBusinessPricingProfile,
-} from "@/lib/businessPricing";
+import { applyBusinessDocsPricing, getBusinessPricingProfile } from "@/lib/businessPricing";
 
 function svc() {
   return createClient(
@@ -58,47 +56,17 @@ export async function POST(req: NextRequest) {
 
     const { data: row, error } = await supabase
       .from("doc_requests")
-      .select(
-        "id,user_id,title,service_type,status,paid,total_cents,amount_subtotal_cents,business_account_id"
-      )
+      .select("id,user_id,title,service_type,status,paid,total_cents,amount_subtotal_cents,business_account_id")
       .eq("id", requestId)
       .maybeSingle();
 
-    if (error || !row) {
-      return NextResponse.json({ error: "Request not found" }, { status: 404 });
-    }
+    if (error || !row) return NextResponse.json({ error: "Request not found" }, { status: 404 });
+    if (row.user_id !== user.id) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (row.paid) return NextResponse.json({ ok: true, alreadyPaid: true });
 
-    if (row.user_id !== user.id) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-    }
-
-    if (row.paid) {
-      return NextResponse.json({ ok: true, alreadyPaid: true });
-    }
-
-    const quotedAmountCents = Number(
-      row.total_cents ?? row.amount_subtotal_cents ?? 0
-    );
-
+    const quotedAmountCents = Number(row.total_cents ?? row.amount_subtotal_cents ?? 0);
     if (!Number.isFinite(quotedAmountCents) || quotedAmountCents <= 0) {
-      return NextResponse.json(
-        { error: "No quote available yet" },
-        { status: 400 }
-      );
-    }
-
-    let amountCents = quotedAmountCents;
-    let pricingStrategy = "base";
-
-    const businessAccountId = String(row.business_account_id || "").trim();
-    if (businessAccountId) {
-      const profile = await getBusinessPricingProfile(
-        supabase as any,
-        businessAccountId
-      );
-      const adjusted = applyBusinessDocsPricing(quotedAmountCents, profile);
-      amountCents = adjusted.amountCents;
-      pricingStrategy = adjusted.strategy;
+      return NextResponse.json({ error: "No quote available yet" }, { status: 400 });
     }
 
     let amountCents = quotedAmountCents;
@@ -113,20 +81,13 @@ export async function POST(req: NextRequest) {
 
     const origin = new URL(req.url).origin;
     const title = row.title || "Couranr Docs Request";
-    const svcLabel = String(row.service_type || "document service").replace(
-      /_/g,
-      " "
-    );
+    const svcLabel = String(row.service_type || "document service").replace(/_/g, " ");
 
     const session = await stripe.checkout.sessions.create({
       mode: "payment",
       payment_method_types: ["card"],
-      success_url: `${origin}/docs/success?requestId=${encodeURIComponent(
-        requestId
-      )}&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${origin}/docs/checkout?requestId=${encodeURIComponent(
-        requestId
-      )}&canceled=1`,
+      success_url: `${origin}/docs/success?requestId=${encodeURIComponent(requestId)}&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${origin}/docs/checkout?requestId=${encodeURIComponent(requestId)}&canceled=1`,
       line_items: [
         {
           quantity: 1,
@@ -151,11 +112,12 @@ export async function POST(req: NextRequest) {
       .update({
         stripe_checkout_session_id: session.id,
         total_cents: amountCents,
-        status: ["draft", "submitted", "quoted", "pending_quote", "pending"].includes(
-          String(row.status || "").toLowerCase()
-        )
-          ? "awaiting_payment"
-          : row.status,
+        status:
+          ["draft", "submitted", "quoted", "pending_quote", "pending"].includes(
+            String(row.status || "").toLowerCase()
+          )
+            ? "awaiting_payment"
+            : row.status,
       })
       .eq("id", requestId)
       .eq("user_id", user.id);
