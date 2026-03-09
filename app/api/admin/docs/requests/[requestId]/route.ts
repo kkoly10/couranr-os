@@ -159,6 +159,14 @@ export async function GET(
 
           if (!signErr) {
             signedUrl = signed?.signedUrl || null;
+          } else {
+            console.error("admin docs signed url creation failed", {
+              request_id: requestId,
+              file_id: f?.id ?? null,
+              bucket: ref.bucket,
+              path: ref.path,
+              error: signErr.message,
+            });
           }
         }
 

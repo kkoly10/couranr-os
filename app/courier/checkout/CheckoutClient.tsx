@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { resolveBusinessAccountId } from "@/lib/businessSelection";
 
 function num(v: string | null, fallback = 0) {
   const n = Number(v);
@@ -25,6 +26,7 @@ export default function CheckoutClient() {
   const stops = sp.get("stops") ?? "0";
   const rush = sp.get("rush") === "1";
   const signature = sp.get("signature") === "1";
+  const businessAccountId = resolveBusinessAccountId(sp.get("businessAccountId"));
 
   const [recipientName, setRecipientName] = useState("");
   const [recipientPhone, setRecipientPhone] = useState("");
@@ -82,6 +84,7 @@ export default function CheckoutClient() {
         recipientName,
         recipientPhone,
         deliveryNotes: deliveryNotes || null,
+        ...(businessAccountId ? { businessAccountId } : {}),
       }),
     });
 

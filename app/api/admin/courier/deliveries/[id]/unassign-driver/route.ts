@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { requireAdmin } from "@/app/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -9,27 +10,10 @@ function env(name: string) {
   return v;
 }
 
-async function requireAdmin(token: string) {
-  const supabaseAuth = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
-    global: { headers: { Authorization: `Bearer ${token}` } },
-  });
-
-  const { data: u, error: uErr } = await supabaseAuth.auth.getUser();
-  if (uErr || !u?.user) throw new Error("Unauthorized");
-
-  const supabaseSrv = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"));
-  const { data: profile, error: pErr } = await supabaseSrv.from("profiles").select("role").eq("id", u.user.id).single();
-  if (pErr || !profile || profile.role !== "admin") throw new Error("Forbidden");
-
-  return { adminId: u.user.id, supabaseSrv };
-}
-
-export async function POST(req: Request, ctx: { params: { id: string } }) {
+export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
   try {
-    const token = (req.headers.get("authorization") || "").replace("Bearer ", "").trim();
-    if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const { adminId, supabaseSrv } = await requireAdmin(token);
+    const admin = await requireAdmin(req);
+    const supabaseSrv = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"));
 
     const { data: before, error: bErr } = await supabaseSrv
       .from("deliveries")
@@ -38,12 +22,11 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
       .single();
 
     if (bErr || !before) return NextResponse.json({ error: "Delivery not found" }, { status: 404 });
-
     if (before.status === "completed") {
       return NextResponse.json({ error: "Completed deliveries are locked" }, { status: 403 });
     }
 
-    const patch: any = {
+    const patch = {
       driver_id: null,
       status: before.status === "assigned" ? "pending" : before.status,
 
@@ -54,7 +37,7 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
 
     await supabaseSrv.from("delivery_admin_events").insert({
       delivery_id: ctx.params.id,
-      admin_user_id: adminId,
+      admin_user_id: admin.id,
       event_type: "unassign_driver",
       before_json: before,
       after_json: { ...before, ...patch },
@@ -63,7 +46,7 @@ export async function POST(req: Request, ctx: { params: { id: string } }) {
     return NextResponse.json({ success: true });
   } catch (e: any) {
     const msg = e?.message || "Server error";
-    const code = msg === "Unauthorized" ? 401 : msg === "Forbidden" ? 403 : 500;
+    const code = msg === "Missing Authorization header" || msg === "Invalid or expired token" ? 401 : msg === "Admin access required" ? 403 : 500;
     return NextResponse.json({ error: msg }, { status: code });
   }
 }

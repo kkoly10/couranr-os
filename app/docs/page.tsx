@@ -180,6 +180,10 @@ export default function DocsPage() {
               a="No. Couranr Docs provides clerical and administrative support only (typing, organizing, printing/scanning, checklists, and packet preparation help). If you need legal advice, consult a licensed attorney or accredited representative."
             />
             <FAQItem
+              q="What areas do you serve for document delivery?"
+              a={`Document delivery is currently available up to ${DOCS_SERVICE_RADIUS_MILES} miles from ${SERVICE_HUB}, focused on ${PRIMARY_SERVICE_TOWNS.join(", ")} and nearby towns.`}
+            />
+            <FAQItem
               q="Can businesses use this for admin backlogs?"
               a="Yes. We can support structured clerical work such as data entry, document sorting, and form typing for businesses that need overflow help."
             />

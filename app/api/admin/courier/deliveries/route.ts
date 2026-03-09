@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { requireAdmin } from "@/app/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -35,21 +36,23 @@ async function requireAdmin(token: string) {
     .eq("id", u.user.id)
     .single();
 
-  if (pErr || !profile || profile.role !== "admin") throw new Error("Forbidden");
-  return { adminId: u.user.id, supabaseSrv };
+function firstRow(v: any) {
+  return Array.isArray(v) ? (v[0] || null) : v || null;
 }
 
-export async function GET(req: Request) {
+export async function GET(req: NextRequest) {
   try {
-    const authHeader = req.headers.get("authorization") || "";
-    const token = authHeader.replace("Bearer ", "").trim();
-    if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    await requireAdmin(req);
 
-    const { supabaseSrv } = await requireAdmin(token);
-
+    const supabaseSrv = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"));
     const url = new URL(req.url);
     const status = url.searchParams.get("status");
     const onlyUnassigned = url.searchParams.get("unassigned") === "1";
+    const includeCount = url.searchParams.get("includeCount") === "1";
+    const page = Math.max(1, Number(url.searchParams.get("page") || "1") || 1);
+    const limit = Math.min(200, Math.max(1, Number(url.searchParams.get("limit") || "60") || 60));
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
 
     let q = supabaseSrv
       .from("deliveries")
@@ -59,7 +62,7 @@ export async function GET(req: Request) {
          dropoff_address:dropoff_address_id (label,address_line,city,state,zip)`
       )
       .order("created_at", { ascending: false })
-      .limit(200);
+      .range(from, to);
 
     if (status) q = q.eq("status", status);
     if (onlyUnassigned) q = q.is("driver_id", null);
@@ -76,7 +79,7 @@ export async function GET(req: Request) {
     return NextResponse.json({ deliveries });
   } catch (e: any) {
     const msg = e?.message || "Server error";
-    const code = msg === "Unauthorized" ? 401 : msg === "Forbidden" ? 403 : 500;
+    const code = msg === "Missing Authorization header" || msg === "Invalid or expired token" ? 401 : msg === "Admin access required" ? 403 : 500;
     return NextResponse.json({ error: msg }, { status: code });
   }
 }

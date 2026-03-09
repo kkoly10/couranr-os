@@ -1,5 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { requireAdmin } from "@/app/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -36,16 +37,14 @@ async function requireAdmin(token: string) {
     .eq("id", u.user.id)
     .single();
 
-  if (pErr || !profile || profile.role !== "admin") throw new Error("Forbidden");
-  return { adminId: u.user.id, supabaseSrv };
+function firstRow(v: any) {
+  return Array.isArray(v) ? (v[0] || null) : v || null;
 }
 
-export async function GET(req: Request, ctx: { params: { id: string } }) {
+export async function GET(req: NextRequest, ctx: { params: { id: string } }) {
   try {
-    const token = (req.headers.get("authorization") || "").replace("Bearer ", "").trim();
-    if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const { supabaseSrv } = await requireAdmin(token);
+    await requireAdmin(req);
+    const supabaseSrv = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"));
 
     const { data, error } = await supabaseSrv
       .from("deliveries")
@@ -73,17 +72,15 @@ export async function GET(req: Request, ctx: { params: { id: string } }) {
     return NextResponse.json({ delivery, events: events || [] });
   } catch (e: any) {
     const msg = e?.message || "Server error";
-    const code = msg === "Unauthorized" ? 401 : msg === "Forbidden" ? 403 : 500;
+    const code = msg === "Missing Authorization header" || msg === "Invalid or expired token" ? 401 : msg === "Admin access required" ? 403 : 500;
     return NextResponse.json({ error: msg }, { status: code });
   }
 }
 
-export async function PATCH(req: Request, ctx: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, ctx: { params: { id: string } }) {
   try {
-    const token = (req.headers.get("authorization") || "").replace("Bearer ", "").trim();
-    if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-    const { adminId, supabaseSrv } = await requireAdmin(token);
+    const admin = await requireAdmin(req);
+    const supabaseSrv = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"));
 
     const body = await req.json().catch(() => ({}));
     const patch: any = {};
@@ -104,7 +101,6 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
       return NextResponse.json({ error: "No editable fields provided" }, { status: 400 });
     }
 
-    // Lock completed deliveries: allow notes only
     const { data: existing, error: getErr } = await supabaseSrv
       .from("deliveries")
       .select("id,status,recipient_name,recipient_phone,delivery_notes,driver_id")
@@ -114,8 +110,7 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
     if (getErr || !existing) return NextResponse.json({ error: "Delivery not found" }, { status: 404 });
 
     if (existing.status === "completed") {
-      const onlyNotes =
-        Object.keys(patch).length === 1 && Object.prototype.hasOwnProperty.call(patch, "delivery_notes");
+      const onlyNotes = Object.keys(patch).length === 1 && Object.prototype.hasOwnProperty.call(patch, "delivery_notes");
       if (!onlyNotes) {
         return NextResponse.json({ error: "Completed deliveries are locked" }, { status: 403 });
       }
@@ -129,7 +124,7 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
 
     await supabaseSrv.from("delivery_admin_events").insert({
       delivery_id: ctx.params.id,
-      admin_user_id: adminId,
+      admin_user_id: admin.id,
       event_type: "edit_delivery",
       before_json: beforeJson,
       after_json: afterJson,
@@ -138,7 +133,7 @@ export async function PATCH(req: Request, ctx: { params: { id: string } }) {
     return NextResponse.json({ success: true });
   } catch (e: any) {
     const msg = e?.message || "Server error";
-    const code = msg === "Unauthorized" ? 401 : msg === "Forbidden" ? 403 : 500;
+    const code = msg === "Missing Authorization header" || msg === "Invalid or expired token" ? 401 : msg === "Admin access required" ? 403 : 500;
     return NextResponse.json({ error: msg }, { status: code });
   }
 }

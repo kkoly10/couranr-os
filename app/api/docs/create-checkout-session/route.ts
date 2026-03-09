@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { getUserFromRequest } from "@/app/lib/auth";
+import { applyBusinessDocsPricing, getBusinessPricingProfile } from "@/lib/businessPricing";
 
 function svc() {
   return createClient(
@@ -68,6 +69,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "No quote available yet" }, { status: 400 });
     }
 
+    let amountCents = quotedAmountCents;
+    let pricingStrategy = "base";
+    const businessAccountId = String((row as any)?.business_account_id || "").trim();
+    if (businessAccountId) {
+      const profile = await getBusinessPricingProfile(supabase as any, businessAccountId);
+      const adjusted = applyBusinessDocsPricing(quotedAmountCents, profile);
+      amountCents = adjusted.amountCents;
+      pricingStrategy = adjusted.strategy;
+    }
+
     const origin = new URL(req.url).origin;
     const title = row.title || "Couranr Docs Request";
     const svcLabel = String(row.service_type || "document service").replace(/_/g, " ");
@@ -96,8 +107,33 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    const { error: updErr } = await supabase
+      .from("doc_requests")
+      .update({
+        stripe_checkout_session_id: session.id,
+        total_cents: amountCents,
+        status:
+          ["draft", "submitted", "quoted", "pending_quote", "pending"].includes(
+            String(row.status || "").toLowerCase()
+          )
+            ? "awaiting_payment"
+            : row.status,
+      })
+      .eq("id", requestId)
+      .eq("user_id", user.id);
+
+    if (updErr) {
+      console.error("docs checkout session persist failed", {
+        request_id: requestId,
+        session_id: session.id,
+        error: updErr.message,
+      });
+    }
+
     await logEvent(supabase, requestId, user.id, "checkout_session_created", {
       amount_cents: amountCents,
+      quoted_amount_cents: quotedAmountCents,
+      pricing_strategy: pricingStrategy,
       session_id: session.id,
     });
 

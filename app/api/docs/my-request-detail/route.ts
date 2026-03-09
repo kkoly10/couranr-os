@@ -21,36 +21,87 @@ function isRelationMissingError(message: string) {
   ) || m.includes("schema cache");
 }
 
+const REQUEST_SELECT_ATTEMPTS = [
+  [
+    "id",
+    "user_id",
+    "request_code",
+    "service_type",
+    "title",
+    "description",
+    "delivery_method",
+    "phone",
+    "status",
+    "paid",
+    "amount_subtotal_cents",
+    "delivery_fee_cents",
+    "rush_fee_cents",
+    "tax_cents",
+    "total_cents",
+    "quoted_total_cents",
+    "final_total_cents",
+    "docs_terms_accepted_at",
+    "docs_terms_version",
+    "created_at",
+    "updated_at",
+    "submitted_at",
+    "completed_at",
+  ].join(","),
+  "*",
+];
+
 async function loadRequestRow(
   supabase: ReturnType<typeof svc>,
   requestId: string,
   userId: string
 ) {
-  // Try base table first
-  let q = await supabase
-    .from("doc_requests")
-    .select("*")
-    .eq("id", requestId)
-    .eq("user_id", userId)
-    .maybeSingle();
-
-  if (!q.error) {
-    return { data: q.data, error: null };
-  }
-
-  // Fallback to view if base table alias/view is what your routes are reading
-  if (isRelationMissingError(q.error.message || "")) {
-    const fallback = await supabase
-      .from("docs_requests")
-      .select("*")
+  // Try base table first with a stable explicit shape, then fall back to "*".
+  for (const selectCols of REQUEST_SELECT_ATTEMPTS) {
+    const q = await supabase
+      .from("doc_requests")
+      .select(selectCols)
       .eq("id", requestId)
       .eq("user_id", userId)
       .maybeSingle();
 
-    return { data: fallback.data, error: fallback.error };
+    if (!q.error) {
+      return { data: q.data, error: null };
+    }
+
+    if (!isRelationMissingError(q.error.message || "")) {
+      const missing = /column .* does not exist|Could not find the '.*' column/i.test(
+        q.error.message || ""
+      );
+      if (!missing) {
+        return { data: null, error: q.error };
+      }
+    }
   }
 
-  return { data: null, error: q.error };
+  // Fallback to legacy view alias if base table isn't available in this env.
+  for (const selectCols of REQUEST_SELECT_ATTEMPTS) {
+    const fallback = await supabase
+      .from("docs_requests")
+      .select(selectCols)
+      .eq("id", requestId)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (!fallback.error) {
+      return { data: fallback.data, error: null };
+    }
+
+    if (!isRelationMissingError(fallback.error.message || "")) {
+      const missing = /column .* does not exist|Could not find the '.*' column/i.test(
+        fallback.error.message || ""
+      );
+      if (!missing) {
+        return { data: null, error: fallback.error };
+      }
+    }
+  }
+
+  return { data: null, error: { message: "Request not found" } as any };
 }
 
 async function loadRequestFiles(
@@ -175,6 +226,10 @@ function normalizeRequest(row: Record<string, any>) {
     updated_at: row.updated_at ?? null,
     submitted_at: row.submitted_at ?? null,
     completed_at: row.completed_at ?? null,
+
+    // Terms acceptance metadata
+    docs_terms_accepted_at: row.docs_terms_accepted_at ?? row.terms_accepted_at ?? null,
+    docs_terms_version: row.docs_terms_version ?? row.terms_version ?? null,
   };
 }
 
@@ -208,6 +263,14 @@ async function addSignedUrls(
 
       if (!error) {
         signed_url = data?.signedUrl ?? null;
+      } else {
+        console.error("docs signed url creation failed", {
+          request_id: f.request_id ?? null,
+          file_id: f.id ?? null,
+          bucket,
+          path,
+          error: error.message,
+        });
       }
     }
 

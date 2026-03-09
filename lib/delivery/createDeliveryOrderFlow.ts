@@ -30,6 +30,7 @@ export type DeliveryOrderInput = {
   recipientName: string;
   recipientPhone: string;
   deliveryNotes: string | null;
+  businessAccountId?: string | null;
 };
 
 export type DeliveryOrderResult = {
@@ -56,6 +57,7 @@ export async function createDeliveryOrderFlow(
     recipientName,
     recipientPhone,
     deliveryNotes,
+    businessAccountId,
   } = input;
 
   // 1️⃣ Create order
@@ -63,6 +65,7 @@ export async function createDeliveryOrderFlow(
     customerId,
     totalCents,
     serviceType: "delivery",
+    businessAccountId: businessAccountId ?? null,
   });
 
   // 2️⃣ Create pickup & dropoff addresses (SEPARATELY)
@@ -84,6 +87,7 @@ export async function createDeliveryOrderFlow(
     recipientName,
     recipientPhone,
     deliveryNotes,
+    businessAccountId: businessAccountId ?? null,
   });
 
   return {

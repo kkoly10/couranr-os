@@ -53,6 +53,9 @@ export default function CourierPage() {
               <Link className="btn btnGhost" href="/portal">
                 Customer portal
               </Link>
+              <Link className="btn btnGhost" href="/terms">
+                Terms
+              </Link>
               <a className="btn btnGhost" href="mailto:couranr@couranrauto.com">
                 Email support
               </a>
@@ -218,7 +221,7 @@ export default function CourierPage() {
             />
             <FAQItem
               q="How do I request a special route or multi-stop?"
-              a="Email us with pickup/drop-off details and time window: couranr@couranrauto.com."
+              a={`Email us with pickup/drop-off details and time window at couranr@couranrauto.com. Coverage is up to ${COURIER_SERVICE_RADIUS_MILES} miles from ${SERVICE_HUB}.`}
             />
           </div>
         </section>

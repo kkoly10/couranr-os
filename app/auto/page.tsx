@@ -28,6 +28,9 @@ export default function AutoPage() {
               <Link className="btn btnGhost" href="/dashboard/auto">
                 Customer portal
               </Link>
+              <Link className="btn btnGhost" href="/terms">
+                Terms
+              </Link>
               <Link className="btn btnGhost" href="mailto:couranr@couranrauto.com">
                 Email support
               </Link>
