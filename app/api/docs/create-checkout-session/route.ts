@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
 
     const { data: row, error } = await supabase
       .from("doc_requests")
-      .select("id,user_id,title,service_type,status,paid,total_cents,amount_subtotal_cents,business_account_id")
+      .select("id,user_id,title,service_type,status,paid,total_cents,amount_subtotal_cents")
       .eq("id", requestId)
       .maybeSingle();
 
@@ -64,8 +64,8 @@ export async function POST(req: NextRequest) {
     if (row.user_id !== user.id) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     if (row.paid) return NextResponse.json({ ok: true, alreadyPaid: true });
 
-    const quotedAmountCents = Number(row.total_cents ?? row.amount_subtotal_cents ?? 0);
-    if (!Number.isFinite(quotedAmountCents) || quotedAmountCents <= 0) {
+    const amountCents = Number(row.total_cents ?? row.amount_subtotal_cents ?? 0);
+    if (!Number.isFinite(amountCents) || amountCents <= 0) {
       return NextResponse.json({ error: "No quote available yet" }, { status: 400 });
     }
 

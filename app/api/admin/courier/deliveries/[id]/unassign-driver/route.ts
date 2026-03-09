@@ -29,6 +29,7 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
     const patch = {
       driver_id: null,
       status: before.status === "assigned" ? "pending" : before.status,
+
     };
 
     const { error: upErr } = await supabaseSrv.from("deliveries").update(patch).eq("id", ctx.params.id);

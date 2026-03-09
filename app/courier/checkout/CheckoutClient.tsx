@@ -123,6 +123,9 @@ export default function CheckoutClient() {
               >
                 Delivery dashboard
               </button>
+              <Link className="btn btnGhost" href="/dashboard/delivery">
+                Delivery dashboard
+              </Link>
             </div>
           </div>
         </section>
@@ -136,7 +139,6 @@ export default function CheckoutClient() {
               <div><strong>Miles:</strong> {num(miles).toFixed(2)}</div>
               <div><strong>Weight:</strong> {num(weight)} lbs</div>
               <div><strong>Total:</strong> ${num(price).toFixed(2)}</div>
-              <div><strong>Context:</strong> {businessAccountId ? "Business" : "Personal"}</div>
             </div>
           </div>
         </section>
@@ -165,12 +167,6 @@ export default function CheckoutClient() {
               />
             </div>
 
-
-            {!businessAccountId && (
-              <div className="statusNote" style={{ marginTop: 10 }}>
-                Need this billed to your business? Go back and choose <strong>Business account</strong> in quote context.
-              </div>
-            )}
             {err && <div className="statusNote statusError">{err}</div>}
 
             <div className="heroActions" style={{ marginTop: 14 }}>

@@ -5,7 +5,6 @@ import { useMemo, useState } from "react";
 import SiteFooter from "@/components/SiteFooter";
 import { computeDeliveryPrice } from "@/lib/delivery/pricing";
 import { serviceImageSets } from "@/lib/serviceImages";
-import { COURIER_SERVICE_RADIUS_MILES, PRIMARY_SERVICE_TOWNS, SERVICE_HUB } from "@/lib/serviceArea";
 
 export default function CourierPage() {
   const [miles, setMiles] = useState<number>(8);
@@ -200,11 +199,11 @@ export default function CourierPage() {
 
         <section className="section">
           <h2 className="sectionTitle">Coverage & service window</h2>
-          <p className="sectionSub">Courier coverage extends up to {COURIER_SERVICE_RADIUS_MILES} miles from {SERVICE_HUB}, with availability based on capacity and routing windows.</p>
+          <p className="sectionSub">Local routes with availability based on driver capacity, timing, and address access conditions.</p>
           <div className="cardGrid">
-            <div className="card"><h3 className="cardTitle">Service radius</h3><p className="cardDesc">Up to <strong>{COURIER_SERVICE_RADIUS_MILES} miles</strong> from <strong>{SERVICE_HUB}</strong> for courier deliveries.</p></div>
-            <div className="card"><h3 className="cardTitle">Primary towns served</h3><p className="cardDesc">{PRIMARY_SERVICE_TOWNS.join(", ")} and surrounding communities.</p></div>
-            <div className="card"><h3 className="cardTitle">Scheduling</h3><p className="cardDesc">Same-day options may be available based on request time, route load, and access constraints.</p></div>
+            <div className="card"><h3 className="cardTitle">Service area</h3><p className="cardDesc">Coverage is currently local/regional. Use the quote page to validate pickup/drop-off eligibility.</p></div>
+            <div className="card"><h3 className="cardTitle">Scheduling</h3><p className="cardDesc">Same-day options may be available based on request time, route load, and item constraints.</p></div>
+            <div className="card"><h3 className="cardTitle">Best use cases</h3><p className="cardDesc">Time-sensitive local handoffs, office-to-office runs, and structured proof-required deliveries.</p></div>
           </div>
         </section>
 
