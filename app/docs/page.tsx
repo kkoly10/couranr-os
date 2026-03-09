@@ -1,5 +1,11 @@
 import Link from "next/link";
 import SiteFooter from "@/components/SiteFooter";
+import { serviceImageSets } from "@/lib/serviceImages";
+import * as serviceArea from "@/lib/serviceArea";
+
+const DOCS_SERVICE_RADIUS_MILES = serviceArea.DOCS_SERVICE_RADIUS_MILES ?? 30;
+const SERVICE_HUB = serviceArea.SERVICE_HUB ?? "Stafford, VA";
+const PRIMARY_SERVICE_TOWNS = [...(serviceArea.PRIMARY_SERVICE_TOWNS ?? ["Stafford", "Fredericksburg", "Woodbridge"])];
 
 export default function DocsPage() {
   return (
@@ -7,8 +13,8 @@ export default function DocsPage() {
       <div className="bgGlow" aria-hidden="true" />
 
       <div className="cContainer">
-        <section className="hero">
-          <div className="heroCard">
+        <section className="hero heroWithImage" style={{ backgroundImage: `linear-gradient(120deg, rgba(7, 10, 17, 0.74), rgba(7, 10, 17, 0.48)), url(${serviceImageSets.docs[0]})` }}>
+          <div className="heroCard heroCardOverlay">
             <div className="badgeRow">
               <span className="badge">Fast document help</span>
               <span className="badge ghost">Clerical support only</span>
@@ -26,6 +32,9 @@ export default function DocsPage() {
               </Link>
               <Link className="btn btnGhost" href="/docs/pricing">
                 View pricing
+              </Link>
+              <Link className="btn btnGhost" href="/docs/terms">
+                Docs service terms
               </Link>
               <Link className="btn btnGhost" href="/login?next=%2Fdashboard%2Fdocs">
                 Track requests
@@ -158,11 +167,37 @@ export default function DocsPage() {
         </section>
 
         <section className="section">
+          <h2 className="sectionTitle">Service scope & turnaround</h2>
+          <p className="sectionSub">Docs support is clerical/administrative only, with timing based on request complexity and queue volume.</p>
+          <div className="cardGrid">
+            <div className="card"><h3 className="cardTitle">What’s included</h3><p className="cardDesc">Typing, formatting, printing/scanning, checklist help, packet organization, and delivery coordination.</p></div>
+            <div className="card"><h3 className="cardTitle">What’s not included</h3><p className="cardDesc">No legal advice, legal representation, or guarantees on approvals/timelines from government agencies.</p></div>
+            <div className="card"><h3 className="cardTitle">Typical flow time</h3><p className="cardDesc">Simple requests may move quickly; multi-document jobs can require additional review and clarification.</p></div>
+          </div>
+        </section>
+
+
+
+        <section className="section">
+          <h2 className="sectionTitle">Document delivery service area</h2>
+          <p className="sectionSub">Document delivery is available up to {DOCS_SERVICE_RADIUS_MILES} miles from {SERVICE_HUB}.</p>
+          <div className="cardGrid">
+            <div className="card"><h3 className="cardTitle">Delivery radius</h3><p className="cardDesc">Up to <strong>{DOCS_SERVICE_RADIUS_MILES} miles</strong> from <strong>{SERVICE_HUB}</strong> for local document delivery requests.</p></div>
+            <div className="card"><h3 className="cardTitle">Primary towns served</h3><p className="cardDesc">{PRIMARY_SERVICE_TOWNS.join(", ")} and surrounding towns.</p></div>
+            <div className="card"><h3 className="cardTitle">Outside radius</h3><p className="cardDesc">If your location is outside the radius, contact support and we can confirm if alternatives are available.</p></div>
+          </div>
+        </section>
+
+        <section className="section">
           <h2 className="sectionTitle">FAQ</h2>
           <div className="faq">
             <FAQItem
               q="Do you provide legal advice for immigration or DMV?"
               a="No. Couranr Docs provides clerical and administrative support only (typing, organizing, printing/scanning, checklists, and packet preparation help). If you need legal advice, consult a licensed attorney or accredited representative."
+            />
+            <FAQItem
+              q="What areas do you serve for document delivery?"
+              a={`Document delivery is currently available up to ${DOCS_SERVICE_RADIUS_MILES} miles from ${SERVICE_HUB}, focused on ${PRIMARY_SERVICE_TOWNS.join(", ")} and nearby towns.`}
             />
             <FAQItem
               q="Can businesses use this for admin backlogs?"

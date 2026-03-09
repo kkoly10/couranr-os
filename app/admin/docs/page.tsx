@@ -6,12 +6,19 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 type DocRow = Record<string, any>;
+type SchemaFallbackStats = {
+  lookback_days: number;
+  total_events: number;
+  by_day: { day: string; count: number }[];
+  top_missing_columns: { column: string; count: number }[];
+};
 
 export default function AdminDocsDashboardPage() {
   const router = useRouter();
 
   const [loading, setLoading] = useState(true);
   const [rows, setRows] = useState<DocRow[]>([]);
+  const [fallbackStats, setFallbackStats] = useState<SchemaFallbackStats | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
@@ -57,6 +64,17 @@ export default function AdminDocsDashboardPage() {
     }
 
     setRows((data as any[]) || []);
+
+    try {
+      const res = await fetch(`/api/admin/docs/schema-fallback-stats?days=14`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json?.ok) setFallbackStats(json as SchemaFallbackStats);
+    } catch {
+      // non-blocking stats panel
+    }
+
     setLoading(false);
   }
 
@@ -125,6 +143,21 @@ export default function AdminDocsDashboardPage() {
           <Chip label={`Ready: ${stats.ready}`} />
           <Chip label={`Paid: ${stats.paid}`} />
         </div>
+
+        {fallbackStats && (
+          <div style={{ marginTop: 12, border: "1px solid #e5e7eb", borderRadius: 12, padding: 10, background: "#f8fafc" }}>
+            <div style={{ fontSize: 13, color: "#111827", fontWeight: 700 }}>
+              Docs schema fallback telemetry (last {fallbackStats.lookback_days} days): {fallbackStats.total_events} events
+            </div>
+            {fallbackStats.top_missing_columns.length > 0 ? (
+              <div style={{ marginTop: 6, fontSize: 12, color: "#374151" }}>
+                Top missing columns: {fallbackStats.top_missing_columns.map((x) => `${x.column} (${x.count})`).join(", ")}
+              </div>
+            ) : (
+              <div style={{ marginTop: 6, fontSize: 12, color: "#065f46" }}>No fallback events detected in lookback window.</div>
+            )}
+          </div>
+        )}
       </div>
 
       {loading && <div style={panelStyle}>Loading docs requests…</div>}

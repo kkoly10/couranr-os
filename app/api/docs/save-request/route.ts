@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getUserFromRequest } from "@/app/lib/auth";
+import { ensureBusinessAccess, parseBusinessAccountId } from "@/lib/businessAccount";
 
 function svc() {
   return createClient(
@@ -155,6 +156,18 @@ export async function POST(req: NextRequest) {
     const serviceType = normalizeServiceType(rawService);
     const now = new Date().toISOString();
 
+    const requestedBusinessAccountId = parseBusinessAccountId(body?.businessAccountId);
+    if (body?.businessAccountId && !requestedBusinessAccountId) {
+      return NextResponse.json({ error: "Invalid businessAccountId" }, { status: 400 });
+    }
+
+    if (requestedBusinessAccountId) {
+      const access = await ensureBusinessAccess(supabase as any, user.id, requestedBusinessAccountId);
+      if (!access.ok) {
+        return NextResponse.json({ error: access.error }, { status: access.code });
+      }
+    }
+
     const updatePayload: Record<string, any> = {
       updated_at: now,
 
@@ -177,6 +190,7 @@ export async function POST(req: NextRequest) {
       intake_payload: body,
       request_payload: body,
       form_payload: body,
+      ...(requestedBusinessAccountId ? { business_account_id: requestedBusinessAccountId } : {}),
     };
 
     for (const k of Object.keys(updatePayload)) {
@@ -200,6 +214,7 @@ export async function POST(req: NextRequest) {
       event_payload: {
         service_type: serviceType ?? (row as any)?.service_type ?? null,
         has_payload: true,
+        business_account_id: requestedBusinessAccountId ?? null,
       },
     });
 

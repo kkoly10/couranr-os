@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { COURIER_SERVICE_RADIUS_MILES, DOCS_SERVICE_RADIUS_MILES, SERVICE_HUB } from "@/lib/serviceArea";
 
 export default function SiteFooter() {
   const year = new Date().getFullYear();
@@ -13,6 +14,8 @@ export default function SiteFooter() {
             <a href="mailto:couranr@couranrauto.com" style={{ textDecoration: "underline", textUnderlineOffset: "2px" }}>
               couranr@couranrauto.com
             </a>
+            <br />
+            Courier: up to {COURIER_SERVICE_RADIUS_MILES} miles · Docs delivery: up to {DOCS_SERVICE_RADIUS_MILES} miles from {SERVICE_HUB}
           </div>
 
           <nav style={{ display: "flex", gap: "24px", alignItems: "center", fontSize: "14px", flexWrap: "wrap" }} aria-label="Footer Navigation">
@@ -21,6 +24,9 @@ export default function SiteFooter() {
             </Link>
             <Link href="/privacy" style={{ color: "var(--muted)", fontWeight: 500 }}>
               Privacy Policy
+            </Link>
+            <Link href="/courier/quote" style={{ color: "var(--muted)", fontWeight: 700 }}>
+              Get instant quote
             </Link>
             <Link href="/portal" style={{ background: "var(--text)", color: "#fff", padding: "8px 16px", borderRadius: "8px", fontWeight: 700 }}>
               Customer Portal →

@@ -8,10 +8,46 @@ import { supabase } from "@/lib/supabaseClient";
 export default function SuccessClient() {
   const sp = useSearchParams();
   const rentalId = sp.get("rentalId") || "";
+  const sessionId = sp.get("session_id") || "";
 
   const [note, setNote] = useState<string>(
     "Payment completed ✅ Your rental is now in review. You’ll get lockbox instructions after approval."
   );
+
+
+  useEffect(() => {
+    async function confirmCheckoutIfNeeded() {
+      if (!rentalId || !sessionId) return;
+      try {
+        const { data } = await supabase.auth.getSession();
+        const token = data.session?.access_token;
+        if (!token) return;
+
+        const res = await fetch("/api/auto/confirm-checkout", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ rentalId, sessionId }),
+        });
+
+        const json = await res.json().catch(() => ({}));
+        if (res.ok) {
+          setNote("Payment completed ✅ Your rental is active in dashboard and next steps are unlocked.");
+          return;
+        }
+
+        if (json?.error) {
+          setNote((prev) => `${prev} (${json.error})`);
+        }
+      } catch {
+        // best effort: webhook may still complete state update
+      }
+    }
+
+    confirmCheckoutIfNeeded();
+  }, [rentalId, sessionId]);
 
   useEffect(() => {
     // Optional: clear corrupted refresh tokens so they don’t spam console/errors

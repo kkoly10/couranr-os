@@ -1,0 +1,2 @@
+export const TERMS_EFFECTIVE_DATE = "2026-03-04";
+export const PRIVACY_EFFECTIVE_DATE = "2026-03-04";

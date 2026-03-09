@@ -119,7 +119,7 @@ export default function AutoDashboardRenterHub() {
   const ui = useMemo(() => {
     if (state.kind !== "ready") return null;
 
-    const currentStatuses = new Set(["pending", "active", "returned"]);
+    const currentStatuses = new Set(["draft", "awaiting_payment", "pending", "active", "returned"]);
     const currentRentals = state.rentals.filter((r) =>
       currentStatuses.has(String(r.status || "").toLowerCase())
     );

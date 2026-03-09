@@ -32,7 +32,7 @@ async function logEvent(
     await supabase.from("doc_request_events").insert({
       request_id: requestId,
       actor_user_id: actorUserId,
-      actor_role: "renter",
+      actor_role: "customer",
       event_type: eventType,
       event_payload: payload ?? {},
     });
@@ -57,7 +57,7 @@ export async function POST(req: NextRequest) {
 
     const { data: row, error: rowErr } = await supabase
       .from("doc_requests")
-      .select("id,user_id,paid,status")
+      .select("id,user_id,paid,status,stripe_checkout_session_id,stripe_payment_intent_id")
       .eq("id", requestId)
       .maybeSingle();
 
@@ -87,7 +87,11 @@ export async function POST(req: NextRequest) {
       .from("doc_requests")
       .update({
         paid: true,
+        paid_at: new Date().toISOString(),
         status: nextStatus,
+        stripe_checkout_session_id: session.id,
+        stripe_payment_intent_id:
+          typeof session.payment_intent === "string" ? session.payment_intent : row.stripe_payment_intent_id ?? null,
       })
       .eq("id", requestId);
 
