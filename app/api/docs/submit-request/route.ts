@@ -138,6 +138,7 @@ function normalizeServiceType(input: any): string | null {
   return map[raw] || null;
 }
 
+
 function isTrueish(v: any) {
   if (typeof v === "boolean") return v;
   const n = String(v || "").trim().toLowerCase();
@@ -276,25 +277,7 @@ export async function POST(req: NextRequest) {
     }
 
     const now = new Date().toISOString();
-    const termsVersion = firstString(body?.docs_terms_version, body?.termsVersion, DOCS_TERMS_VERSION) || DOCS_TERMS_VERSION;
-
-    const requestedBusinessAccountId = parseBusinessAccountId(body?.businessAccountId);
-    if (body?.businessAccountId && !requestedBusinessAccountId) {
-      return NextResponse.json({ error: "Invalid businessAccountId" }, { status: 400 });
-    }
-
-    if (requestedBusinessAccountId) {
-      const access = await ensureBusinessAccess(supabase as any, user.id, requestedBusinessAccountId);
-      if (!access.ok) {
-        return NextResponse.json({ error: access.error }, { status: access.code });
-      }
-    }
-
-    const schemaTelemetry: SchemaFallbackTelemetry = {
-      updateMissingColumns: [],
-      updateAttemptCount: 0,
-      selectFallbackLevel: 1,
-    };
+    const termsVersion = firstString(body?.docs_terms_version, body?.termsVersion, "v1") || "v1";
 
     const updatePayload: Record<string, any> = {
       status: "submitted",
@@ -309,11 +292,12 @@ export async function POST(req: NextRequest) {
       intake_payload: body,
       request_payload: body,
       form_payload: body,
+
+      // Optional terms acceptance fields (if schema supports them)
       docs_terms_accepted_at: now,
       docs_terms_version: termsVersion,
       terms_accepted_at: now,
       terms_version: termsVersion,
-      ...(requestedBusinessAccountId ? { business_account_id: requestedBusinessAccountId } : {}),
     };
 
     for (const k of Object.keys(updatePayload)) {
@@ -335,12 +319,7 @@ export async function POST(req: NextRequest) {
       actor_user_id: user.id,
       actor_role: "customer",
       event_type: "request_submitted",
-      event_payload: {
-        service_type: serviceType,
-        submitted_at: now,
-        terms_version: termsVersion,
-        business_account_id: requestedBusinessAccountId ?? null,
-      },
+      event_payload: { service_type: serviceType, submitted_at: now, terms_version: termsVersion },
     });
 
     const finalRead = await resilientSelectSubmittedRequest(supabase, requestId, user.id, schemaTelemetry);

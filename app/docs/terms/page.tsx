@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { DOCS_TERMS_VERSION } from "@/lib/docsTerms";
 
 export default function DocsTermsPage() {
   return (
@@ -7,7 +6,7 @@ export default function DocsTermsPage() {
       <div className="cContainer" style={{ maxWidth: 900 }}>
         <h1 style={{ marginTop: 0 }}>Docs Service Terms</h1>
         <p style={{ color: "#4b5563" }}>
-          Effective version: <strong>{DOCS_TERMS_VERSION}</strong>. These terms apply to Couranr Docs services and are designed for
+          Effective version: <strong>v1</strong>. These terms apply to Couranr Docs services and are designed for
           print/scan centers and clerical support workflows similar to major office-service providers.
         </p>
 

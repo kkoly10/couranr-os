@@ -21,6 +21,25 @@ function firstRow(v: any) {
   return Array.isArray(v) ? (v[0] || null) : v || null;
 }
 
+async function requireAdmin(token: string) {
+  const supabaseAuth = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+  });
+
+  const { data: u, error: uErr } = await supabaseAuth.auth.getUser();
+  if (uErr || !u?.user) throw new Error("Unauthorized");
+
+  const supabaseSrv = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"));
+  const { data: profile, error: pErr } = await supabaseSrv
+    .from("profiles")
+    .select("role")
+    .eq("id", u.user.id)
+    .single();
+
+function firstRow(v: any) {
+  return Array.isArray(v) ? (v[0] || null) : v || null;
+}
+
 export async function GET(req: NextRequest) {
   try {
     await requireAdmin(req);
@@ -51,32 +70,13 @@ export async function GET(req: NextRequest) {
     const { data, error } = await q;
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-    let total: number | null = null;
-    if (includeCount) {
-      let countQuery = supabaseSrv.from("deliveries").select("id", { count: "exact", head: true });
-      if (status) countQuery = countQuery.eq("status", status);
-      if (onlyUnassigned) countQuery = countQuery.is("driver_id", null);
-      const { count, error: countError } = await countQuery;
-      if (countError) return NextResponse.json({ error: countError.message }, { status: 500 });
-      total = count || 0;
-    }
-
     const deliveries = (data || []).map((d: any) => ({
       ...d,
       pickup_address: formatAddress(firstRow(d.pickup_address)),
       dropoff_address: formatAddress(firstRow(d.dropoff_address)),
     }));
 
-    return NextResponse.json({
-      deliveries,
-      pagination: {
-        page,
-        limit,
-        total,
-        hasNext: includeCount ? (total || 0) > page * limit : deliveries.length === limit,
-        includeCount,
-      },
-    });
+    return NextResponse.json({ deliveries });
   } catch (e: any) {
     const msg = e?.message || "Server error";
     const code = msg === "Missing Authorization header" || msg === "Invalid or expired token" ? 401 : msg === "Admin access required" ? 403 : 500;
