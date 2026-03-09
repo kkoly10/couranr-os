@@ -1,7 +1,6 @@
 import Link from "next/link";
 import SiteFooter from "@/components/SiteFooter";
 import { serviceImageSets } from "@/lib/serviceImages";
-import { COURIER_SERVICE_RADIUS_MILES, DOCS_SERVICE_RADIUS_MILES, SERVICE_AREA_NOTE, SERVICE_HUB } from "@/lib/serviceArea";
 
 export default function HomePage() {
   return (
@@ -29,9 +28,6 @@ export default function HomePage() {
               </Link>
               <Link className="btn btnGhost" href="#services">
                 See services
-              </Link>
-              <Link className="btn btnGhost" href="/terms">
-                Terms
               </Link>
             </div>
 
@@ -126,28 +122,6 @@ export default function HomePage() {
               href="/docs"
               cta="Learn more"
             />
-          </div>
-        </section>
-
-
-        <section className="section">
-          <h2 className="sectionTitle">Service area</h2>
-          <p className="sectionSub">{SERVICE_AREA_NOTE}</p>
-          <div className="cardGrid">
-            <div className="card">
-              <h3 className="cardTitle">Courier delivery radius</h3>
-              <p className="cardDesc">Up to <strong>{COURIER_SERVICE_RADIUS_MILES} miles</strong> from {" "}
-                <strong>{SERVICE_HUB}</strong> for courier deliveries.</p>
-            </div>
-            <div className="card">
-              <h3 className="cardTitle">Document delivery radius</h3>
-              <p className="cardDesc">Up to <strong>{DOCS_SERVICE_RADIUS_MILES} miles</strong> from {" "}
-                <strong>{SERVICE_HUB}</strong> for document deliveries.</p>
-            </div>
-            <div className="card">
-              <h3 className="cardTitle">Primary coverage</h3>
-              <p className="cardDesc">We regularly serve Stafford, Fredericksburg, Woodbridge, and nearby towns.</p>
-            </div>
           </div>
         </section>
 
@@ -246,7 +220,7 @@ export default function HomePage() {
           <div className="faq">
             <FAQItem
               q="What areas do you serve?"
-              a={`Courier service is available up to ${COURIER_SERVICE_RADIUS_MILES} miles and document delivery up to ${DOCS_SERVICE_RADIUS_MILES} miles from ${SERVICE_HUB}. We primarily serve Stafford, Fredericksburg, Woodbridge, and surrounding towns.`}
+              a="Service availability depends on route coverage and scheduling windows. You can confirm availability during quote and checkout flows."
             />
             <FAQItem
               q="Do you provide guaranteed delivery times?"

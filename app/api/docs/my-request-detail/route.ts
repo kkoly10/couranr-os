@@ -159,7 +159,6 @@ async function loadRequestEvents(
   return { data: q.data || [], error: null };
 }
 
-
 function parseStorageUrl(url: string): { bucket: string; path: string } | null {
   if (!url || typeof url !== "string") return null;
 
@@ -319,7 +318,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Request not found" }, { status: 404 });
     }
 
-    // ✅ Fixes your TypeScript spread issue by forcing object shape
+    // ✅ Fixes TypeScript spread issue by forcing object shape
     const requestRow =
       requestData && typeof requestData === "object"
         ? (requestData as Record<string, any>)

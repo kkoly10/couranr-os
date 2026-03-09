@@ -1,11 +1,6 @@
 import Link from "next/link";
 import SiteFooter from "@/components/SiteFooter";
 import { serviceImageSets } from "@/lib/serviceImages";
-import * as serviceArea from "@/lib/serviceArea";
-
-const DOCS_SERVICE_RADIUS_MILES = serviceArea.DOCS_SERVICE_RADIUS_MILES ?? 30;
-const SERVICE_HUB = serviceArea.SERVICE_HUB ?? "Stafford, VA";
-const PRIMARY_SERVICE_TOWNS = [...(serviceArea.PRIMARY_SERVICE_TOWNS ?? ["Stafford", "Fredericksburg", "Woodbridge"])];
 
 export default function DocsPage() {
   return (
@@ -176,17 +171,6 @@ export default function DocsPage() {
           </div>
         </section>
 
-
-
-        <section className="section">
-          <h2 className="sectionTitle">Document delivery service area</h2>
-          <p className="sectionSub">Document delivery is available up to {DOCS_SERVICE_RADIUS_MILES} miles from {SERVICE_HUB}.</p>
-          <div className="cardGrid">
-            <div className="card"><h3 className="cardTitle">Delivery radius</h3><p className="cardDesc">Up to <strong>{DOCS_SERVICE_RADIUS_MILES} miles</strong> from <strong>{SERVICE_HUB}</strong> for local document delivery requests.</p></div>
-            <div className="card"><h3 className="cardTitle">Primary towns served</h3><p className="cardDesc">{PRIMARY_SERVICE_TOWNS.join(", ")} and surrounding towns.</p></div>
-            <div className="card"><h3 className="cardTitle">Outside radius</h3><p className="cardDesc">If your location is outside the radius, contact support and we can confirm if alternatives are available.</p></div>
-          </div>
-        </section>
 
         <section className="section">
           <h2 className="sectionTitle">FAQ</h2>
