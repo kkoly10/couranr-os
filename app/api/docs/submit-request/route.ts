@@ -295,9 +295,33 @@ export async function POST(req: NextRequest) {
 
     const now = new Date().toISOString();
     const termsVersion =
-      firstString(body?.docs_terms_version, body?.termsVersion, DOCS_TERMS_VERSION || "v1") ||
-      DOCS_TERMS_VERSION ||
-      "v1";
+      firstString(
+        body?.docs_terms_version,
+        body?.termsVersion,
+        DOCS_TERMS_VERSION
+      ) || DOCS_TERMS_VERSION;
+
+    const rawBusinessAccountId = firstString(
+      body?.business_account_id,
+      body?.businessAccountId,
+      body?.businessId
+    );
+    const businessAccountId = parseBusinessAccountId(rawBusinessAccountId);
+
+    if (rawBusinessAccountId && !businessAccountId) {
+      return NextResponse.json({ error: "Invalid business account id." }, { status: 400 });
+    }
+
+    if (businessAccountId) {
+      const access = await ensureBusinessAccess(
+        supabase as any,
+        user.id,
+        businessAccountId
+      );
+      if (!access.ok) {
+        return NextResponse.json({ error: access.error }, { status: access.code });
+      }
+    }
 
     const updatePayload: Record<string, any> = {
       status: "submitted",
@@ -312,18 +336,13 @@ export async function POST(req: NextRequest) {
       intake_payload: body,
       request_payload: body,
       form_payload: body,
+      business_account_id: businessAccountId,
 
       docs_terms_accepted_at: now,
       docs_terms_version: termsVersion,
       terms_accepted_at: now,
       terms_version: termsVersion,
     };
-
-    const businessAccountId = parseBusinessAccountId(body);
-    if (businessAccountId) {
-      await ensureBusinessAccess(supabase as any, businessAccountId, user.id);
-      updatePayload.business_account_id = businessAccountId;
-    }
 
     for (const k of Object.keys(updatePayload)) {
       if (updatePayload[k] === undefined || updatePayload[k] === null) {
@@ -363,6 +382,7 @@ export async function POST(req: NextRequest) {
         service_type: serviceType,
         submitted_at: now,
         terms_version: termsVersion,
+        business_account_id: businessAccountId,
       },
     });
 
