@@ -10,7 +10,6 @@ export default function CourierPage() {
   const [miles, setMiles] = useState<number>(8);
   const [priority, setPriority] = useState<"standard" | "rush">("standard");
 
-  // Quick estimate only (planning): uses the same pricing source of truth as quote + API
   const pricing = useMemo(() => {
     const safeMiles = Number.isFinite(miles) ? Math.max(1, miles) : 1;
     const result = computeDeliveryPrice({
@@ -33,7 +32,12 @@ export default function CourierPage() {
       <div className="bgGlow" aria-hidden="true" />
 
       <div className="cContainer">
-        <section className="hero heroWithImage" style={{ backgroundImage: `linear-gradient(120deg, rgba(7, 10, 17, 0.74), rgba(7, 10, 17, 0.48)), url(${serviceImageSets.courier[0]})` }}>
+        <section
+          className="hero heroWithImage"
+          style={{
+            backgroundImage: `linear-gradient(120deg, rgba(7, 10, 17, 0.74), rgba(7, 10, 17, 0.48)), url(${serviceImageSets.courier[0]})`,
+          }}
+        >
           <div className="heroCard heroCardOverlay">
             <div className="badgeRow">
               <span className="badge">Same-day options</span>
@@ -42,8 +46,8 @@ export default function CourierPage() {
 
             <h1 className="heroTitle">Courier delivery, kept simple.</h1>
             <p className="heroDesc">
-              Request a pickup, get clear pricing, and track updates. Designed for local
-              runs where speed and proof matter.
+              Request a pickup, get clear pricing, and track updates. Designed
+              for local runs where speed and proof matter.
             </p>
 
             <div className="heroActions">
@@ -69,35 +73,41 @@ export default function CourierPage() {
                 </div>
                 <p className="miniDesc">Share pickup + drop-off details.</p>
               </div>
+
               <div className="mini">
                 <div className="miniTop">
                   <span className="miniIcon">🚚</span>
                   <span className="miniTitle">Deliver</span>
                 </div>
-                <p className="miniDesc">A driver is assigned based on availability.</p>
+                <p className="miniDesc">
+                  A driver is assigned based on availability.
+                </p>
               </div>
+
               <div className="mini">
                 <div className="miniTop">
                   <span className="miniIcon">📸</span>
                   <span className="miniTitle">Proof</span>
                 </div>
-                <p className="miniDesc">Photo proof may be available when applicable.</p>
+                <p className="miniDesc">
+                  Photo proof may be available when applicable.
+                </p>
               </div>
             </div>
 
             <p className="finePrint">
-              Delivery times are estimates and can be affected by traffic, weather, access issues,
-              and recipient availability. Prohibited items are not accepted.
+              Delivery times are estimates and can be affected by traffic,
+              weather, access issues, and recipient availability. Prohibited
+              items are not accepted.
             </p>
           </div>
         </section>
 
-        {/* Optional quick estimate for browsing */}
         <section className="section" id="estimate">
           <h2 className="sectionTitle">Quick estimate (optional)</h2>
           <p className="sectionSub">
-            For an exact quote with address autocomplete and checkout flow, use the full quote.
-            This quick estimate is only for planning.
+            For an exact quote with address autocomplete and checkout flow, use
+            the full quote. This quick estimate is only for planning.
           </p>
 
           <div className="cardGrid">
@@ -125,7 +135,9 @@ export default function CourierPage() {
                 <select
                   className="input"
                   value={priority}
-                  onChange={(e) => setPriority(e.target.value as "standard" | "rush")}
+                  onChange={(e) =>
+                    setPriority(e.target.value as "standard" | "rush")
+                  }
                 >
                   <option value="standard">Standard</option>
                   <option value="rush">Rush / priority</option>
@@ -149,9 +161,14 @@ export default function CourierPage() {
               <p className="cardDesc">Based on your selections:</p>
 
               <ul className="cardList">
-                <li>Base: ${pricing.breakdown.base.toFixed(2)} (includes first {pricing.breakdown.includedMiles} miles)</li>
                 <li>
-                  Distance: {pricing.miles} miles → {pricing.breakdown.extraMiles} billable × $1.75 = ${pricing.breakdown.extraMilesFee.toFixed(2)}
+                  Base: ${pricing.breakdown.base.toFixed(2)} (includes first{" "}
+                  {pricing.breakdown.includedMiles} miles)
+                </li>
+                <li>
+                  Distance: {pricing.miles} miles →{" "}
+                  {pricing.breakdown.extraMiles} billable × $1.75 = $
+                  {pricing.breakdown.extraMilesFee.toFixed(2)}
                 </li>
                 {pricing.breakdown.rushFee > 0 ? (
                   <li>Rush fee: +${pricing.breakdown.rushFee.toFixed(2)}</li>
@@ -174,9 +191,10 @@ export default function CourierPage() {
               </div>
 
               <p className="finePrint">
-                Quick estimate assumes 1 lb package, no extra stops, and no signature service.
-                No illegal/hazardous/restricted items. You’re responsible for accurate
-                pickup/drop-off info and packaging where applicable.
+                Quick estimate assumes 1 lb package, no extra stops, and no
+                signature service. No illegal, hazardous, or restricted items.
+                You’re responsible for accurate pickup/drop-off info and
+                packaging where applicable.
               </p>
             </div>
 
@@ -199,14 +217,37 @@ export default function CourierPage() {
 
         <section className="section">
           <h2 className="sectionTitle">Coverage & service window</h2>
-          <p className="sectionSub">Local routes with availability based on driver capacity, timing, and address access conditions.</p>
+          <p className="sectionSub">
+            Local routes with availability based on driver capacity, timing, and
+            address access conditions.
+          </p>
+
           <div className="cardGrid">
-            <div className="card"><h3 className="cardTitle">Service area</h3><p className="cardDesc">Coverage is currently local/regional. Use the quote page to validate pickup/drop-off eligibility.</p></div>
-            <div className="card"><h3 className="cardTitle">Scheduling</h3><p className="cardDesc">Same-day options may be available based on request time, route load, and item constraints.</p></div>
-            <div className="card"><h3 className="cardTitle">Best use cases</h3><p className="cardDesc">Time-sensitive local handoffs, office-to-office runs, and structured proof-required deliveries.</p></div>
+            <div className="card">
+              <h3 className="cardTitle">Service area</h3>
+              <p className="cardDesc">
+                Coverage is currently local/regional. Use the quote page to
+                validate pickup/drop-off eligibility.
+              </p>
+            </div>
+
+            <div className="card">
+              <h3 className="cardTitle">Scheduling</h3>
+              <p className="cardDesc">
+                Same-day options may be available based on request time, route
+                load, and item constraints.
+              </p>
+            </div>
+
+            <div className="card">
+              <h3 className="cardTitle">Best use cases</h3>
+              <p className="cardDesc">
+                Time-sensitive local handoffs, office-to-office runs, and
+                structured proof-required deliveries.
+              </p>
+            </div>
           </div>
         </section>
-
 
         <section className="section">
           <h2 className="sectionTitle">FAQ</h2>
@@ -221,7 +262,7 @@ export default function CourierPage() {
             />
             <FAQItem
               q="How do I request a special route or multi-stop?"
-              a={`Email us with pickup/drop-off details and time window at couranr@couranrauto.com. Coverage is up to ${COURIER_SERVICE_RADIUS_MILES} miles from ${SERVICE_HUB}.`}
+              a="Email us with pickup and drop-off details plus your preferred time window at couranr@couranrauto.com. Coverage depends on route, availability, and service-area eligibility."
             />
           </div>
         </section>
