@@ -105,7 +105,7 @@ export async function POST(req: NextRequest) {
         rentalId: rental.id,
         rental_id: rental.id, 
       },
-      success_url: `${siteUrl}/auto/checkout/success?rentalId=${encodeURIComponent(rental.id)}`,
+      success_url: `${siteUrl}/auto/checkout/success?rentalId=${encodeURIComponent(rental.id)}&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${siteUrl}/auto/checkout?rentalId=${encodeURIComponent(rental.id)}`,
     });
 

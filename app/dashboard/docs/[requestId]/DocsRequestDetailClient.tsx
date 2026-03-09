@@ -23,6 +23,8 @@ type DocRequest = {
   completed_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
+  docs_terms_accepted_at?: string | null;
+  docs_terms_version?: string | null;
 };
 
 type DocFile = {
@@ -144,6 +146,12 @@ export default function DocsRequestDetailClient({ requestId }: { requestId: stri
             <div><strong>Updated:</strong> {fmtDateTime(request.updated_at)}</div>
             {request.submitted_at ? <div><strong>Submitted:</strong> {fmtDateTime(request.submitted_at)}</div> : null}
             {request.completed_at ? <div><strong>Completed:</strong> {fmtDateTime(request.completed_at)}</div> : null}
+            {request.docs_terms_accepted_at ? (
+              <div><strong>Terms Accepted:</strong> {fmtDateTime(request.docs_terms_accepted_at)}</div>
+            ) : null}
+            {request.docs_terms_version ? (
+              <div><strong>Terms Version:</strong> {request.docs_terms_version}</div>
+            ) : null}
           </div>
 
           {(request.quoted_total_cents ?? request.final_total_cents) ? (

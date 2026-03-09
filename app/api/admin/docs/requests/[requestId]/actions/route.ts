@@ -125,18 +125,17 @@ export async function POST(
 
     if (action === "save_quote") {
       const amountCents = Number(body?.amountCents);
-      const dueAtRaw = body?.dueAt ? String(body.dueAt) : null;
 
       if (!Number.isFinite(amountCents) || amountCents < 0) {
         return NextResponse.json({ error: "Invalid amountCents" }, { status: 400 });
       }
 
       const patch: any = {
-        quoted_total_cents: Math.round(amountCents),
+        total_cents: Math.round(amountCents),
+        amount_subtotal_cents: Math.round(amountCents),
         updated_at: now,
       };
 
-      if (dueAtRaw) patch.due_at = dueAtRaw;
 
       // If still early in flow, move to quoted
       if (
@@ -156,7 +155,6 @@ export async function POST(
 
       await insertEvent(supabase, requestId, "quote_saved", {
         amount_cents: Math.round(amountCents),
-        due_at: dueAtRaw,
       });
 
       const { data: updated } = await supabase
@@ -208,27 +206,7 @@ export async function POST(
     }
 
     if (action === "set_due_at") {
-      const dueAt = body?.dueAt ? String(body.dueAt) : null;
-
-      const { error: updErr } = await supabase
-        .from("doc_requests")
-        .update({
-          due_at: dueAt,
-          updated_at: now,
-        })
-        .eq("id", requestId);
-
-      if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 });
-
-      await insertEvent(supabase, requestId, "due_date_updated", { due_at: dueAt });
-
-      const { data: updated } = await supabase
-        .from("doc_requests")
-        .select("*")
-        .eq("id", requestId)
-        .maybeSingle();
-
-      return NextResponse.json({ ok: true, request: updated });
+      return NextResponse.json({ error: "Unsupported action" }, { status: 400 });
     }
 
     if (action === "add_note") {

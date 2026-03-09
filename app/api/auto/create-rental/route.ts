@@ -113,6 +113,7 @@ export async function POST(req: Request) {
         docs_complete: false,
         condition_photos_complete: false,
         approval_status: "pending",
+        agreement_signed: true,
       })
       .select("id")
       .single();

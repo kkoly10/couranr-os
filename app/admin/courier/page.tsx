@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 type Delivery = {
@@ -18,15 +18,29 @@ type Delivery = {
 
 type Driver = { id: string; email: string; role: string };
 
+type Pagination = {
+  page: number;
+  limit: number;
+  total: number | null;
+  hasNext: boolean;
+  includeCount: boolean;
+};
+
 export default function AdminCourierPage() {
   const router = useRouter();
+  const pathname = usePathname();
 
   const [loading, setLoading] = useState(true);
+  const [initialized, setInitialized] = useState(false);
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   const [onlyUnassigned, setOnlyUnassigned] = useState(true);
+  const [page, setPage] = useState(1);
+  const [knownTotal, setKnownTotal] = useState<number | null>(null);
+  const [pagination, setPagination] = useState<Pagination | null>(null);
 
   async function apiFetch(path: string, init?: RequestInit) {
     const { data } = await supabase.auth.getSession();
@@ -46,12 +60,35 @@ export default function AdminCourierPage() {
     return json;
   }
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const qs = new URLSearchParams(window.location.search);
+    setOnlyUnassigned(qs.get("unassigned") !== "0");
+    setPage(Math.max(1, Number(qs.get("page") || "1") || 1));
+    setInitialized(true);
+  }, []);
+
+  useEffect(() => {
+    if (!initialized) return;
+    const qs = new URLSearchParams();
+    qs.set("unassigned", onlyUnassigned ? "1" : "0");
+    qs.set("page", String(page));
+    router.replace(`${pathname}?${qs.toString()}`, { scroll: false });
+  }, [initialized, onlyUnassigned, page, pathname, router]);
+
   async function load() {
     setLoading(true);
     setError(null);
     try {
-      const d = await apiFetch(`/api/admin/courier/deliveries?unassigned=${onlyUnassigned ? "1" : "0"}`);
+      const includeCount = page === 1 || knownTotal === null ? "1" : "0";
+      const d = await apiFetch(
+        `/api/admin/courier/deliveries?unassigned=${onlyUnassigned ? "1" : "0"}&page=${page}&limit=60&includeCount=${includeCount}`
+      );
       setDeliveries(d.deliveries || []);
+      setPagination(d.pagination || null);
+      if (typeof d?.pagination?.total === "number") {
+        setKnownTotal(d.pagination.total);
+      }
 
       const dr = await apiFetch(`/api/admin/drivers`);
       setDrivers(dr.drivers || []);
@@ -63,9 +100,16 @@ export default function AdminCourierPage() {
   }
 
   useEffect(() => {
+    if (!initialized) return;
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onlyUnassigned]);
+  }, [initialized, onlyUnassigned, page]);
+
+  useEffect(() => {
+    if (!initialized) return;
+    setPage(1);
+    setKnownTotal(null);
+  }, [initialized, onlyUnassigned]);
 
   const unassigned = useMemo(() => deliveries.filter((d) => !d.driver_id && d.status !== "cancelled"), [deliveries]);
   const assigned = useMemo(() => deliveries.filter((d) => !!d.driver_id && d.status !== "cancelled"), [deliveries]);
@@ -73,25 +117,31 @@ export default function AdminCourierPage() {
 
   async function assign(deliveryId: string, driverId: string) {
     try {
+      setActionMessage(null);
       await apiFetch(`/api/admin/courier/deliveries/${deliveryId}/assign-driver`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ driverId }),
       });
+      setActionMessage(`Driver assigned to ${deliveryId.slice(0, 8)}…`);
       await load();
     } catch (e: any) {
-      alert(e?.message || "Assign failed");
+      setError(e?.message || "Assign failed");
     }
   }
 
   async function unassign(deliveryId: string) {
     try {
+      setActionMessage(null);
       await apiFetch(`/api/admin/courier/deliveries/${deliveryId}/unassign-driver`, { method: "POST" });
+      setActionMessage(`Driver unassigned from ${deliveryId.slice(0, 8)}…`);
       await load();
     } catch (e: any) {
-      alert(e?.message || "Unassign failed");
+      setError(e?.message || "Unassign failed");
     }
   }
+
+  const displayedTotal = pagination?.total ?? knownTotal;
 
   return (
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: 24 }}>
@@ -109,6 +159,12 @@ export default function AdminCourierPage() {
             Show only unassigned
           </label>
 
+          {pagination && (
+            <span style={{ fontSize: 13, color: "#4b5563", fontWeight: 700 }}>
+              Page {pagination.page} · {deliveries.length} shown {typeof displayedTotal === "number" ? `/ ${displayedTotal} total` : ""}
+            </span>
+          )}
+
           <button
             onClick={load}
             style={{ padding: "10px 14px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer", fontWeight: 700 }}
@@ -120,47 +176,66 @@ export default function AdminCourierPage() {
 
       {loading && <p>Loading…</p>}
       {error && <p style={{ color: "#b91c1c", fontWeight: 700 }}>{error}</p>}
+      {actionMessage && <p style={{ color: "#065f46", fontWeight: 700 }}>{actionMessage}</p>}
 
       {!loading && !error && (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 18, marginTop: 18 }}>
-          <Section title={`Unassigned (${unassigned.length})`}>
-            {unassigned.map((d) => (
-              <DeliveryCard
-                key={d.id}
-                d={d}
-                drivers={drivers}
-                onAssign={assign}
-                onOpen={() => router.push(`/admin/courier/${d.id}`)}
-              />
-            ))}
-            {unassigned.length === 0 && <Empty />}
-          </Section>
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 18, marginTop: 18 }}>
+            <Section title={`Unassigned (${unassigned.length})`}>
+              {unassigned.map((d) => (
+                <DeliveryCard
+                  key={d.id}
+                  d={d}
+                  drivers={drivers}
+                  onAssign={assign}
+                  onOpen={() => router.push(`/admin/courier/${d.id}`)}
+                />
+              ))}
+              {unassigned.length === 0 && <Empty />}
+            </Section>
 
-          <Section title={`Assigned (${assigned.length})`}>
-            {assigned.map((d) => (
-              <DeliveryCard
-                key={d.id}
-                d={d}
-                drivers={drivers}
-                onUnassign={unassign}
-                onOpen={() => router.push(`/admin/courier/${d.id}`)}
-              />
-            ))}
-            {assigned.length === 0 && <Empty />}
-          </Section>
+            <Section title={`Assigned (${assigned.length})`}>
+              {assigned.map((d) => (
+                <DeliveryCard
+                  key={d.id}
+                  d={d}
+                  drivers={drivers}
+                  onUnassign={unassign}
+                  onOpen={() => router.push(`/admin/courier/${d.id}`)}
+                />
+              ))}
+              {assigned.length === 0 && <Empty />}
+            </Section>
 
-          <Section title={`Cancelled (${cancelled.length})`}>
-            {cancelled.map((d) => (
-              <DeliveryCard
-                key={d.id}
-                d={d}
-                drivers={drivers}
-                onOpen={() => router.push(`/admin/courier/${d.id}`)}
-              />
-            ))}
-            {cancelled.length === 0 && <Empty />}
-          </Section>
-        </div>
+            <Section title={`Cancelled (${cancelled.length})`}>
+              {cancelled.map((d) => (
+                <DeliveryCard
+                  key={d.id}
+                  d={d}
+                  drivers={drivers}
+                  onOpen={() => router.push(`/admin/courier/${d.id}`)}
+                />
+              ))}
+              {cancelled.length === 0 && <Empty />}
+            </Section>
+          </div>
+          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 14 }}>
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={loading || page <= 1}
+              style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer", fontWeight: 700 }}
+            >
+              ← Prev
+            </button>
+            <button
+              onClick={() => setPage((p) => p + 1)}
+              disabled={loading || !(pagination?.hasNext)}
+              style={{ padding: "8px 12px", borderRadius: 10, border: "1px solid #e5e7eb", background: "#fff", cursor: "pointer", fontWeight: 700 }}
+            >
+              Next →
+            </button>
+          </div>
+        </>
       )}
     </div>
   );

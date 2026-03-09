@@ -15,6 +15,7 @@ export type CreateDeliveryInput = {
   recipientName: string;
   recipientPhone: string;
   deliveryNotes: string | null;
+  businessAccountId?: string | null;
 };
 
 export type CreateDeliveryResult = {
@@ -38,6 +39,7 @@ export async function createDelivery(
     recipientName,
     recipientPhone,
     deliveryNotes,
+    businessAccountId,
   } = input;
 
   const { data, error } = await supabaseAdmin
@@ -57,6 +59,7 @@ export async function createDelivery(
       recipient_name: recipientName,
       recipient_phone: recipientPhone,
       delivery_notes: deliveryNotes,
+      business_account_id: businessAccountId ?? null,
     })
     .select("id")
     .single();

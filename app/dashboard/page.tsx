@@ -38,6 +38,14 @@ export default function DashboardHomePage() {
           href="/dashboard/docs"
           cta="Open Docs →"
         />
+
+        <ServiceCard
+          emoji="🏢"
+          title="Business"
+          description="Manage your business account, team context, and business-mode request routing."
+          href="/dashboard/business"
+          cta="Open Business →"
+        />
       </div>
     </div>
   );
