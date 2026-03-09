@@ -10,32 +10,12 @@ function env(name: string) {
   return v;
 }
 
-
 function formatAddress(a: any): string | null {
   if (!a || typeof a !== "object") return null;
   const parts = [a.address_line, a.city, a.state, a.zip].filter(Boolean);
   if (parts.length) return parts.join(", ");
   return a.label || null;
 }
-
-function firstRow(v: any) {
-  return Array.isArray(v) ? (v[0] || null) : v || null;
-}
-
-async function requireAdmin(token: string) {
-  const supabaseAuth = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
-    global: { headers: { Authorization: `Bearer ${token}` } },
-  });
-
-  const { data: u, error: uErr } = await supabaseAuth.auth.getUser();
-  if (uErr || !u?.user) throw new Error("Unauthorized");
-
-  const supabaseSrv = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"));
-  const { data: profile, error: pErr } = await supabaseSrv
-    .from("profiles")
-    .select("role")
-    .eq("id", u.user.id)
-    .single();
 
 function firstRow(v: any) {
   return Array.isArray(v) ? (v[0] || null) : v || null;
@@ -85,14 +65,7 @@ export async function PATCH(req: NextRequest, ctx: { params: { id: string } }) {
     const body = await req.json().catch(() => ({}));
     const patch: any = {};
 
-    // only allow these fields to be edited
-    const allowed = [
-      "recipient_name",
-      "recipient_phone",
-      "delivery_notes",
-      "status",
-    ];
-
+    const allowed = ["recipient_name", "recipient_phone", "delivery_notes", "status"];
     for (const k of allowed) {
       if (typeof body[k] !== "undefined") patch[k] = body[k];
     }
