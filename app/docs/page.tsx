@@ -8,7 +8,12 @@ export default function DocsPage() {
       <div className="bgGlow" aria-hidden="true" />
 
       <div className="cContainer">
-        <section className="hero heroWithImage" style={{ backgroundImage: `linear-gradient(120deg, rgba(7, 10, 17, 0.74), rgba(7, 10, 17, 0.48)), url(${serviceImageSets.docs[0]})` }}>
+        <section
+          className="hero heroWithImage"
+          style={{
+            backgroundImage: `linear-gradient(120deg, rgba(7, 10, 17, 0.74), rgba(7, 10, 17, 0.48)), url(${serviceImageSets.docs[0]})`,
+          }}
+        >
           <div className="heroCard heroCardOverlay">
             <div className="badgeRow">
               <span className="badge">Fast document help</span>
@@ -17,8 +22,9 @@ export default function DocsPage() {
 
             <h1 className="heroTitle">Couranr Docs</h1>
             <p className="heroDesc">
-              Printing, scan & delivery, typing, resume support, business data-entry help, and
-              document-prep assistance for DMV and immigration paperwork — all in one flow.
+              Printing, scan & delivery, typing, resume support, business
+              data-entry help, and document-prep assistance for DMV and
+              immigration paperwork — all in one flow.
             </p>
 
             <div className="heroActions">
@@ -31,7 +37,10 @@ export default function DocsPage() {
               <Link className="btn btnGhost" href="/docs/terms">
                 Docs service terms
               </Link>
-              <Link className="btn btnGhost" href="/login?next=%2Fdashboard%2Fdocs">
+              <Link
+                className="btn btnGhost"
+                href="/login?next=%2Fdashboard%2Fdocs"
+              >
                 Track requests
               </Link>
             </div>
@@ -42,28 +51,37 @@ export default function DocsPage() {
                   <span className="miniIcon">📤</span>
                   <span className="miniTitle">Upload</span>
                 </div>
-                <p className="miniDesc">Send files and tell us what you need done.</p>
+                <p className="miniDesc">
+                  Send files and tell us what you need done.
+                </p>
               </div>
+
               <div className="mini">
                 <div className="miniTop">
                   <span className="miniIcon">🛠️</span>
                   <span className="miniTitle">Process</span>
                 </div>
-                <p className="miniDesc">We handle printing, prep, typing, or clerical support.</p>
+                <p className="miniDesc">
+                  We handle printing, prep, typing, or clerical support.
+                </p>
               </div>
+
               <div className="mini">
                 <div className="miniTop">
                   <span className="miniIcon">🚗</span>
                   <span className="miniTitle">Deliver</span>
                 </div>
-                <p className="miniDesc">Local delivery/pickup or digital handoff based on the job.</p>
+                <p className="miniDesc">
+                  Local delivery/pickup or digital handoff based on the job.
+                </p>
               </div>
             </div>
 
             <p className="finePrint">
-              Couranr Docs provides administrative/document assistance only — not legal advice, not
-              a law firm, and not affiliated with USCIS, DMV, or any government agency. You are
-              responsible for the accuracy and truthfulness of all information and submissions.
+              Couranr Docs provides administrative/document assistance only —
+              not legal advice, not a law firm, and not affiliated with USCIS,
+              DMV, or any government agency. You are responsible for the
+              accuracy and truthfulness of all information and submissions.
             </p>
           </div>
         </section>
@@ -136,14 +154,16 @@ export default function DocsPage() {
               <div className="stepNum">2</div>
               <h3 className="stepTitle">Review & pay</h3>
               <p className="stepDesc">
-                See pricing before checkout. We review your request and confirm details.
+                See pricing before checkout. We review your request and confirm
+                details.
               </p>
             </div>
             <div className="step">
               <div className="stepNum">3</div>
               <h3 className="stepTitle">Track status</h3>
               <p className="stepDesc">
-                Follow progress in your Docs dashboard from submitted to completed.
+                Follow progress in your Docs dashboard from submitted to
+                completed.
               </p>
             </div>
           </div>
@@ -163,14 +183,34 @@ export default function DocsPage() {
 
         <section className="section">
           <h2 className="sectionTitle">Service scope & turnaround</h2>
-          <p className="sectionSub">Docs support is clerical/administrative only, with timing based on request complexity and queue volume.</p>
+          <p className="sectionSub">
+            Docs support is clerical/administrative only, with timing based on
+            request complexity and queue volume.
+          </p>
           <div className="cardGrid">
-            <div className="card"><h3 className="cardTitle">What’s included</h3><p className="cardDesc">Typing, formatting, printing/scanning, checklist help, packet organization, and delivery coordination.</p></div>
-            <div className="card"><h3 className="cardTitle">What’s not included</h3><p className="cardDesc">No legal advice, legal representation, or guarantees on approvals/timelines from government agencies.</p></div>
-            <div className="card"><h3 className="cardTitle">Typical flow time</h3><p className="cardDesc">Simple requests may move quickly; multi-document jobs can require additional review and clarification.</p></div>
+            <div className="card">
+              <h3 className="cardTitle">What’s included</h3>
+              <p className="cardDesc">
+                Typing, formatting, printing/scanning, checklist help, packet
+                organization, and delivery coordination.
+              </p>
+            </div>
+            <div className="card">
+              <h3 className="cardTitle">What’s not included</h3>
+              <p className="cardDesc">
+                No legal advice, legal representation, or guarantees on
+                approvals/timelines from government agencies.
+              </p>
+            </div>
+            <div className="card">
+              <h3 className="cardTitle">Typical flow time</h3>
+              <p className="cardDesc">
+                Simple requests may move quickly; multi-document jobs can
+                require additional review and clarification.
+              </p>
+            </div>
           </div>
         </section>
-
 
         <section className="section">
           <h2 className="sectionTitle">FAQ</h2>
@@ -181,7 +221,7 @@ export default function DocsPage() {
             />
             <FAQItem
               q="What areas do you serve for document delivery?"
-              a={`Document delivery is currently available up to ${DOCS_SERVICE_RADIUS_MILES} miles from ${SERVICE_HUB}, focused on ${PRIMARY_SERVICE_TOWNS.join(", ")} and nearby towns.`}
+              a="Document delivery is currently offered for eligible local routes based on driver availability, timing, and address eligibility. Use the request flow or contact us to confirm delivery availability for your area."
             />
             <FAQItem
               q="Can businesses use this for admin backlogs?"
