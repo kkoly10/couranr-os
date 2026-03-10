@@ -28,18 +28,11 @@ type StartCheckoutBody = {
   stops?: number;
   scheduledAt?: string | null;
   totalCents?: number;
-
   recipientName?: string;
   recipientPhone?: string;
   deliveryNotes?: string | null;
   businessAccountId?: string | null;
 };
-
-function env(name: string) {
-  const v = process.env[name];
-  if (!v) throw new Error(`Missing env: ${name}`);
-  return v;
-}
 
 function siteUrlFromReq(req: NextRequest) {
   const fromEnv = process.env.NEXT_PUBLIC_SITE_URL?.trim();
@@ -98,7 +91,48 @@ async function getDrivingMiles(pickup: string, dropoff: string) {
   return round2(el.distance.value / 1609.344);
 }
 
+async function markCheckoutFailed(orderId: string, deliveryId: string) {
+  try {
+    await supabaseAdmin
+      .from("orders")
+      .update({ status: "checkout_failed" })
+      .eq("id", orderId);
+
+    await supabaseAdmin
+      .from("deliveries")
+      .update({ status: "checkout_failed" })
+      .eq("id", deliveryId);
+  } catch (e) {
+    console.error("Failed to mark checkout failure", e);
+  }
+}
+
+async function attachCheckoutSession(
+  orderId: string,
+  deliveryId: string,
+  sessionId: string
+) {
+  await supabaseAdmin
+    .from("orders")
+    .update({
+      status: "awaiting_payment",
+      stripe_checkout_session_id: sessionId,
+    })
+    .eq("id", orderId);
+
+  await supabaseAdmin
+    .from("deliveries")
+    .update({
+      status: "awaiting_payment",
+      stripe_checkout_session_id: sessionId,
+    })
+    .eq("id", deliveryId);
+}
+
 export async function POST(req: NextRequest) {
+  let createdOrderId = "";
+  let createdDeliveryId = "";
+
   try {
     const user = await getUserFromRequest(req);
     const body = (await req.json().catch(() => ({}))) as StartCheckoutBody;
@@ -208,7 +242,9 @@ export async function POST(req: NextRequest) {
       businessAccountId: requestedBusinessAccountId,
     });
 
-    const { orderId, orderNumber, deliveryId } = created;
+    createdOrderId = created.orderId;
+    createdDeliveryId = created.deliveryId;
+
     const origin = siteUrlFromReq(req);
 
     const session = await stripe.checkout.sessions.create({
@@ -222,39 +258,42 @@ export async function POST(req: NextRequest) {
             unit_amount: totalCents,
             product_data: {
               name: "Couranr Delivery",
-              description: `Order #${orderNumber}`,
+              description: `Order #${created.orderNumber}`,
             },
           },
         },
       ],
       metadata: {
         serviceType: "delivery",
-        orderId,
-        deliveryId,
-        orderNumber,
+        orderId: created.orderId,
+        deliveryId: created.deliveryId,
+        orderNumber: created.orderNumber,
         customerId: user.id,
         businessAccountId: requestedBusinessAccountId || "",
       },
       success_url: `${origin}/courier/confirmation?orderId=${encodeURIComponent(
-        orderId
+        created.orderId
       )}&deliveryId=${encodeURIComponent(
-        deliveryId
+        created.deliveryId
       )}&orderNumber=${encodeURIComponent(
-        orderNumber
+        created.orderNumber
       )}&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${origin}/courier/checkout?canceled=1`,
     });
 
-    if (!session.url) {
+    if (!session.url || !session.id) {
+      await markCheckoutFailed(created.orderId, created.deliveryId);
       throw new Error("Failed to create checkout session");
     }
+
+    await attachCheckoutSession(created.orderId, created.deliveryId, session.id);
 
     return NextResponse.json({
       ok: true,
       url: session.url,
-      orderId,
-      orderNumber,
-      deliveryId,
+      orderId: created.orderId,
+      orderNumber: created.orderNumber,
+      deliveryId: created.deliveryId,
       pricing: {
         mode: requestedBusinessAccountId ? "business" : "personal",
         strategy: pricingStrategy,
@@ -266,6 +305,11 @@ export async function POST(req: NextRequest) {
     });
   } catch (err: any) {
     console.error("delivery start-checkout error:", err);
+
+    if (createdOrderId && createdDeliveryId) {
+      await markCheckoutFailed(createdOrderId, createdDeliveryId);
+    }
+
     const msg = err?.message || "Server error";
 
     if (
