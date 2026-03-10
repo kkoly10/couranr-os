@@ -1,4 +1,3 @@
-// app/api/docs/create-draft/route.ts
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -27,11 +26,11 @@ function normalizeServiceType(input: any): string {
   const raw = String(input ?? "")
     .trim()
     .toLowerCase()
-    .replace(/\s+/g, "_");
+    .replace(/\s+/g, "_")
+    .replace(/-/g, "_");
 
   if (ALLOWED_SERVICE_TYPES.has(raw)) return raw;
 
-  // Map common UI labels / legacy values -> DB-safe values
   const map: Record<string, string> = {
     print: "print_scan_delivery",
     printing: "print_scan_delivery",
@@ -72,7 +71,6 @@ export async function POST(req: NextRequest) {
   try {
     const user = await getUserFromRequest(req);
     const supabase = svc();
-
     const body = await req.json().catch(() => ({}));
 
     const serviceType = normalizeServiceType(
@@ -80,50 +78,54 @@ export async function POST(req: NextRequest) {
     );
 
     const requestCode =
-      String(body?.request_code ?? body?.requestCode ?? "").trim() || makeRequestCode();
+      String(body?.request_code ?? body?.requestCode ?? "").trim() ||
+      makeRequestCode();
 
-    const requestedBusinessAccountId = parseBusinessAccountId(body?.businessAccountId);
-    if (body?.businessAccountId && !requestedBusinessAccountId) {
-      return NextResponse.json({ error: "Invalid businessAccountId" }, { status: 400 });
+    const requestedBusinessAccountId = parseBusinessAccountId(
+      body?.businessAccountId ?? body?.business_account_id
+    );
+
+    if (
+      (body?.businessAccountId || body?.business_account_id) &&
+      !requestedBusinessAccountId
+    ) {
+      return NextResponse.json(
+        { error: "Invalid businessAccountId" },
+        { status: 400 }
+      );
     }
 
     if (requestedBusinessAccountId) {
-      const access = await ensureBusinessAccess(supabase as any, user.id, requestedBusinessAccountId);
+      const access = await ensureBusinessAccess(
+        supabase as any,
+        user.id,
+        requestedBusinessAccountId
+      );
       if (!access.ok) {
-        return NextResponse.json({ error: access.error }, { status: access.code });
+        return NextResponse.json(
+          { error: access.error },
+          { status: access.code }
+        );
       }
     }
 
-    // Keep insert minimal so it works across schema versions
-    const insertRow: any = {
-      user_id: user.id,
-      status: "draft",
-      service_type: serviceType,
-      paid: false,
-      request_code: requestCode,
-      ...(requestedBusinessAccountId ? { business_account_id: requestedBusinessAccountId } : {}),
-    };
-
-    let { data: requestRow, error } = await supabase
+    const { data: requestRow, error } = await supabase
       .from("doc_requests")
-      .insert(insertRow)
-      .select("*")
+      .insert({
+        user_id: user.id,
+        business_account_id: requestedBusinessAccountId ?? null,
+        status: "draft",
+        service_type: serviceType,
+        paid: false,
+        request_code: requestCode,
+        intake_payload: body ?? {},
+        request_payload: body ?? {},
+        form_payload: body ?? {},
+      })
+      .select(
+        "id,user_id,business_account_id,request_code,service_type,title,description,delivery_method,phone,status,paid,total_cents,amount_subtotal_cents,quoted_total_cents,final_total_cents,created_at,submitted_at,completed_at"
+      )
       .single();
-
-    if (error) {
-      const msg = error.message || "";
-      if (requestedBusinessAccountId && /business_account_id/i.test(msg)) {
-        const retryRow = { ...insertRow };
-        delete retryRow.business_account_id;
-        const retry = await supabase
-          .from("doc_requests")
-          .insert(retryRow)
-          .select("*")
-          .single();
-        requestRow = retry.data as any;
-        error = retry.error as any;
-      }
-    }
 
     if (error || !requestRow) {
       return NextResponse.json(
@@ -132,7 +134,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Best-effort event logging (don't fail draft if events table differs)
     await supabase.from("doc_request_events").insert({
       request_id: requestRow.id,
       actor_user_id: user.id,
@@ -141,7 +142,7 @@ export async function POST(req: NextRequest) {
       event_payload: {
         service_type: serviceType,
         request_code: requestCode,
-        business_account_id: requestedBusinessAccountId,
+        business_account_id: requestedBusinessAccountId ?? null,
       },
     });
 
