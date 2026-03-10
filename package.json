@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "check": "npm run typecheck && npm run build"
+    "lint": "next lint",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "check": "npm run lint && npm run typecheck && npm run test:run && npm run build"
   },
   "dependencies": {
     "@stripe/react-stripe-js": "^2.7.0",
@@ -24,6 +27,9 @@
   "devDependencies": {
     "@types/node": "^20.14.2",
     "@types/react": "^18.3.3",
-    "typescript": "^5.4.5"
+    "eslint": "^8.57.0",
+    "eslint-config-next": "14.2.5",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
   }
 }
