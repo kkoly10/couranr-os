@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getUserFromRequest } from "@/app/lib/auth";
 import { ensureBusinessAccess, parseBusinessAccountId } from "@/lib/businessAccount";
+import { DOCS_TERMS_VERSION } from "@/lib/docsTerms";
 
 function svc() {
   return createClient(
@@ -30,15 +31,15 @@ function normalizeServiceType(input: any): string | null {
 
   if (!raw) return null;
 
-  if (
-    raw === "print_scan_delivery" ||
-    raw === "data_entry" ||
-    raw === "dmv_prep" ||
-    raw === "immigration_clerical" ||
-    raw === "resume_typing"
-  ) {
-    return raw;
-  }
+  const canonical = new Set([
+    "print_scan_delivery",
+    "data_entry",
+    "dmv_prep",
+    "immigration_clerical",
+    "resume_typing",
+  ]);
+
+  if (canonical.has(raw)) return raw;
 
   const map: Record<string, string> = {
     print: "print_scan_delivery",
@@ -73,53 +74,10 @@ function normalizeServiceType(input: any): string | null {
   return map[raw] || null;
 }
 
-function getMissingColumnFromError(msg: string): string | null {
-  if (!msg) return null;
-
-  let m = msg.match(/Could not find the '([^']+)' column/i);
-  if (m?.[1]) return m[1];
-
-  m = msg.match(/column ["']?([a-zA-Z0-9_]+)["']? does not exist/i);
-  if (m?.[1]) return m[1];
-
-  return null;
-}
-
-async function resilientUpdateDocRequest(
-  supabase: ReturnType<typeof svc>,
-  requestId: string,
-  payload: Record<string, any>
-) {
-  const current = { ...payload };
-
-  for (let i = 0; i < 30; i++) {
-    // If all optional fields were stripped, treat as no-op success
-    if (Object.keys(current).length === 0) {
-      return { ok: true as const };
-    }
-
-    const { error } = await supabase
-      .from("doc_requests")
-      .update(current)
-      .eq("id", requestId);
-
-    if (!error) return { ok: true as const };
-
-    const msg = error.message || "";
-    const missingCol = getMissingColumnFromError(msg);
-
-    if (missingCol && missingCol in current) {
-      delete current[missingCol];
-      continue;
-    }
-
-    return { ok: false as const, error };
-  }
-
-  return {
-    ok: false as const,
-    error: { message: "Update failed after retries" },
-  };
+function isTrueish(v: any) {
+  if (typeof v === "boolean") return v;
+  const n = String(v || "").trim().toLowerCase();
+  return n === "1" || n === "true" || n === "yes" || n === "on";
 }
 
 export async function POST(req: NextRequest) {
@@ -128,16 +86,15 @@ export async function POST(req: NextRequest) {
     const supabase = svc();
 
     const body = await req.json().catch(() => ({}));
-    const requestId = String(body?.requestId || body?.id || "");
+    const requestId = String(body?.requestId || body?.id || "").trim();
 
     if (!requestId) {
       return NextResponse.json({ error: "Missing requestId" }, { status: 400 });
     }
 
-    // Verify ownership
     const { data: row, error: rowErr } = await supabase
       .from("doc_requests")
-      .select("id,user_id,status,service_type")
+      .select("id,user_id,service_type,business_account_id")
       .eq("id", requestId)
       .eq("user_id", user.id)
       .maybeSingle();
@@ -150,78 +107,125 @@ export async function POST(req: NextRequest) {
       body?.serviceType,
       body?.service_type,
       body?.service,
-      body?.category
+      body?.category,
+      row.service_type
     );
 
-    const serviceType = normalizeServiceType(rawService);
-    const now = new Date().toISOString();
+    const serviceType =
+      normalizeServiceType(rawService) || row.service_type || "print_scan_delivery";
 
-    const requestedBusinessAccountId = parseBusinessAccountId(body?.businessAccountId);
-    if (body?.businessAccountId && !requestedBusinessAccountId) {
-      return NextResponse.json({ error: "Invalid businessAccountId" }, { status: 400 });
-    }
+    const hasBusinessKey =
+      Object.prototype.hasOwnProperty.call(body, "businessAccountId") ||
+      Object.prototype.hasOwnProperty.call(body, "business_account_id");
 
-    if (requestedBusinessAccountId) {
-      const access = await ensureBusinessAccess(supabase as any, user.id, requestedBusinessAccountId);
-      if (!access.ok) {
-        return NextResponse.json({ error: access.error }, { status: access.code });
+    const rawBusinessValue = hasBusinessKey
+      ? body?.businessAccountId ?? body?.business_account_id ?? null
+      : undefined;
+
+    let nextBusinessAccountId: string | null | undefined = undefined;
+
+    if (hasBusinessKey) {
+      if (rawBusinessValue === "" || rawBusinessValue === null) {
+        nextBusinessAccountId = null;
+      } else {
+        const parsed = parseBusinessAccountId(rawBusinessValue);
+        if (!parsed) {
+          return NextResponse.json(
+            { error: "Invalid businessAccountId" },
+            { status: 400 }
+          );
+        }
+
+        const access = await ensureBusinessAccess(
+          supabase as any,
+          user.id,
+          parsed
+        );
+
+        if (!access.ok) {
+          return NextResponse.json(
+            { error: access.error },
+            { status: access.code }
+          );
+        }
+
+        nextBusinessAccountId = parsed;
       }
     }
 
+    const now = new Date().toISOString();
+    const termsAccepted = isTrueish(
+      body?.docs_terms_accepted ?? body?.termsAccepted
+    );
+    const termsVersion =
+      firstString(
+        body?.docs_terms_version,
+        body?.termsVersion,
+        DOCS_TERMS_VERSION
+      ) || DOCS_TERMS_VERSION;
+
     const updatePayload: Record<string, any> = {
       updated_at: now,
-
-      ...(serviceType ? { service_type: serviceType } : {}),
-      ...(rawService ? { service_label: rawService } : {}),
-
+      service_type: serviceType,
+      service_label: firstString(body?.serviceLabel, rawService),
       title: firstString(body?.title, body?.requestTitle),
-      customer_name: firstString(body?.fullName, body?.name, body?.customerName),
-      customer_email: firstString(body?.email, body?.customerEmail),
-      customer_phone: firstString(body?.phone, body?.customerPhone),
-
-      // Common docs request fields (kept optional)
-      due_date: firstString(body?.dueDate, body?.neededBy),
-      delivery_address: firstString(body?.deliveryAddress),
-      pickup_address: firstString(body?.pickupAddress),
-      city: firstString(body?.city),
-      notes: firstString(body?.notes, body?.instructions, body?.description),
-
-      // Whole intake snapshot (stripped if your schema doesn't have these)
+      description: firstString(body?.description, body?.notes, body?.details),
+      delivery_method: firstString(
+        body?.deliveryMethod,
+        body?.delivery_method
+      ),
+      phone: firstString(body?.phone, body?.contactPhone),
       intake_payload: body,
       request_payload: body,
       form_payload: body,
-      ...(requestedBusinessAccountId ? { business_account_id: requestedBusinessAccountId } : {}),
     };
 
-    for (const k of Object.keys(updatePayload)) {
-      if (updatePayload[k] === undefined) delete updatePayload[k];
-      if (updatePayload[k] === null) delete updatePayload[k];
+    if (typeof nextBusinessAccountId !== "undefined") {
+      updatePayload.business_account_id = nextBusinessAccountId;
     }
 
-    const updated = await resilientUpdateDocRequest(supabase, requestId, updatePayload);
-
-    if (!updated.ok) {
-      const msg = updated.error?.message || "Failed to save request";
-      return NextResponse.json({ error: msg }, { status: 400 });
+    if (termsAccepted) {
+      updatePayload.docs_terms_accepted_at = now;
+      updatePayload.docs_terms_version = termsVersion;
+      updatePayload.terms_accepted_at = now;
+      updatePayload.terms_version = termsVersion;
     }
 
-    // Optional audit event (non-blocking)
+    const { data: updated, error: updErr } = await supabase
+      .from("doc_requests")
+      .update(updatePayload)
+      .eq("id", requestId)
+      .eq("user_id", user.id)
+      .select(
+        "id,request_code,service_type,title,description,delivery_method,phone,status,paid,total_cents,amount_subtotal_cents,quoted_total_cents,final_total_cents,created_at,submitted_at,completed_at,business_account_id"
+      )
+      .single();
+
+    if (updErr || !updated) {
+      return NextResponse.json(
+        { error: updErr?.message || "Failed to save request" },
+        { status: 400 }
+      );
+    }
+
     await supabase.from("doc_request_events").insert({
       request_id: requestId,
       actor_user_id: user.id,
       actor_role: "customer",
       event_type: "request_saved",
       event_payload: {
-        service_type: serviceType ?? (row as any)?.service_type ?? null,
-        has_payload: true,
-        business_account_id: requestedBusinessAccountId ?? null,
+        service_type: serviceType,
+        business_account_id:
+          typeof nextBusinessAccountId !== "undefined"
+            ? nextBusinessAccountId
+            : row.business_account_id ?? null,
       },
     });
 
     return NextResponse.json({
       ok: true,
       requestId,
-      service_type: serviceType ?? (row as any)?.service_type ?? null,
+      request: updated,
     });
   } catch (e: any) {
     return NextResponse.json(
