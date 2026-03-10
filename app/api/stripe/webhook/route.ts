@@ -102,6 +102,23 @@ async function deliveryEventAlreadyProcessed(
   return Array.isArray(data) && data.length > 0;
 }
 
+async function rentalEventAlreadyProcessed(
+  supabase: ReturnType<typeof svc>,
+  rentalId: string,
+  stripeEventId: string
+) {
+  const { data, error } = await supabase
+    .from("rental_events")
+    .select("id")
+    .eq("rental_id", rentalId)
+    .eq("event_type", "stripe_webhook_processed")
+    .contains("event_payload", { stripe_event_id: stripeEventId })
+    .limit(1);
+
+  if (error) return false;
+  return Array.isArray(data) && data.length > 0;
+}
+
 async function markDocsPaidFromCheckoutSession(
   supabase: ReturnType<typeof svc>,
   session: Stripe.Checkout.Session,
@@ -139,7 +156,10 @@ async function markDocsPaidFromCheckoutSession(
     ? "paid"
     : row.status;
 
-  if (!row.paid || (paymentIntentId && row.stripe_payment_intent_id !== paymentIntentId)) {
+  if (
+    !row.paid ||
+    (paymentIntentId && row.stripe_payment_intent_id !== paymentIntentId)
+  ) {
     await supabase
       .from("doc_requests")
       .update({
@@ -147,7 +167,8 @@ async function markDocsPaidFromCheckoutSession(
         paid_at: new Date().toISOString(),
         status: nextStatus,
         stripe_checkout_session_id: session.id,
-        stripe_payment_intent_id: paymentIntentId ?? row.stripe_payment_intent_id ?? null,
+        stripe_payment_intent_id:
+          paymentIntentId ?? row.stripe_payment_intent_id ?? null,
       })
       .eq("id", requestId);
   }
@@ -261,32 +282,77 @@ async function markDeliveryPaidFromCheckoutSession(
 
 async function markRentalPaidFromCheckoutSession(
   supabase: ReturnType<typeof svc>,
-  session: Stripe.Checkout.Session
+  session: Stripe.Checkout.Session,
+  stripeEventId: string
 ) {
   const rentalId = String(
     session.metadata?.rentalId || session.metadata?.rental_id || ""
   ).trim();
   if (!rentalId) return;
 
+  const alreadyProcessed = await rentalEventAlreadyProcessed(
+    supabase,
+    rentalId,
+    stripeEventId
+  );
+  if (alreadyProcessed) return;
+
+  const { data: rental } = await supabase
+    .from("rentals")
+    .select(
+      "id,verification_status,agreement_signed,docs_complete,lockbox_code_released_at,stripe_payment_intent_id"
+    )
+    .eq("id", rentalId)
+    .maybeSingle();
+
+  const verificationApproved =
+    String(rental?.verification_status || "").toLowerCase() === "approved";
+  const agreementSigned = !!rental?.agreement_signed;
+  const docsComplete = !!rental?.docs_complete;
+  const lockboxReleased = !!rental?.lockbox_code_released_at;
+
+  let nextStatus = "paid_pending_review";
+  if (verificationApproved && agreementSigned && docsComplete && lockboxReleased) {
+    nextStatus = "pickup_ready";
+  }
+
   await supabase
     .from("rentals")
     .update({
       paid: true,
       paid_at: new Date().toISOString(),
-      status: "active",
+      status: nextStatus,
+      stripe_checkout_session_id: session.id,
       stripe_payment_intent_id:
         typeof session.payment_intent === "string"
           ? session.payment_intent
-          : null,
+          : rental?.stripe_payment_intent_id ?? null,
     })
     .eq("id", rentalId);
 
-  await supabase.from("rental_events").insert({
-    rental_id: rentalId,
-    actor_role: "system",
-    event_type: "payment_completed",
-    event_payload: { session_id: session.id },
-  });
+  await supabase.from("rental_events").insert([
+    {
+      rental_id: rentalId,
+      actor_role: "system",
+      event_type: "payment_completed",
+      event_payload: {
+        session_id: session.id,
+        stripe_event_id: stripeEventId,
+        status_after: nextStatus,
+      },
+    },
+    {
+      rental_id: rentalId,
+      actor_role: "system",
+      event_type: "stripe_webhook_processed",
+      event_payload: {
+        stripe_event_id: stripeEventId,
+        session_id: session.id,
+        payment_status: session.payment_status,
+        status_after: nextStatus,
+      },
+    },
+  ]);
 }
 
 export async function POST(req: Request) {
@@ -311,7 +377,7 @@ export async function POST(req: Request) {
     ) {
       const session = event.data.object as Stripe.Checkout.Session;
 
-      await markRentalPaidFromCheckoutSession(supabase, session);
+      await markRentalPaidFromCheckoutSession(supabase, session, event.id);
       await markDocsPaidFromCheckoutSession(supabase, session, event.id);
       await markDeliveryPaidFromCheckoutSession(supabase, session, event.id);
     }
