@@ -10,8 +10,6 @@ export type CreateDeliveryInput = {
   signatureRequired: boolean;
   stops: number;
   scheduledAt: string | null;
-  
-  // New recipient fields added to the input type
   recipientName: string;
   recipientPhone: string;
   deliveryNotes: string | null;
@@ -20,6 +18,7 @@ export type CreateDeliveryInput = {
 
 export type CreateDeliveryResult = {
   id: string;
+  status?: string;
 };
 
 export async function createDelivery(
@@ -35,7 +34,6 @@ export async function createDelivery(
     signatureRequired,
     stops,
     scheduledAt,
-    // Extracting the new fields
     recipientName,
     recipientPhone,
     deliveryNotes,
@@ -54,21 +52,20 @@ export async function createDelivery(
       signature_required: signatureRequired,
       stops,
       scheduled_at: scheduledAt,
-      status: "pending",
-      // Mapping to the database columns
+      status: "awaiting_payment",
       recipient_name: recipientName,
       recipient_phone: recipientPhone,
       delivery_notes: deliveryNotes,
       business_account_id: businessAccountId ?? null,
+      stripe_checkout_session_id: null,
+      stripe_payment_intent_id: null,
     })
-    .select("id")
+    .select("id,status")
     .single();
 
   if (error || !data) {
-    throw new Error(
-      error?.message || "Failed to create delivery"
-    );
+    throw new Error(error?.message || "Failed to create delivery");
   }
 
-  return { id: data.id };
+  return { id: data.id, status: data.status };
 }
