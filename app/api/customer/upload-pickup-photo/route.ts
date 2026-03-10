@@ -1,45 +1,64 @@
-import { NextResponse } from "next/server";
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getUserFromRequest } from "@/app/lib/auth";
 
-export async function POST(req: Request) {
-  try {
-    // 1️⃣ Auth header
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+const DELIVERY_PHOTOS_BUCKET = "delivery-photos";
+const MAX_PHOTO_SIZE = 15 * 1024 * 1024;
+
+function svc() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false } }
+  );
+}
+
+function cleanName(name: string) {
+  return (name || "photo")
+    .replace(/[^\w.\- ]+/g, "_")
+    .replace(/\s+/g, "_")
+    .slice(0, 120);
+}
+
+async function ensureBucket(supabase: ReturnType<typeof svc>) {
+  const { data: bucket, error: getErr } = await supabase.storage.getBucket(
+    DELIVERY_PHOTOS_BUCKET
+  );
+  if (bucket && !getErr) return;
+
+  const { error: createErr } = await supabase.storage.createBucket(
+    DELIVERY_PHOTOS_BUCKET,
+    {
+      public: false,
+      fileSizeLimit: "15MB",
     }
+  );
 
-    const token = authHeader.replace("Bearer ", "");
-
-    // 2️⃣ Supabase client (user-scoped)
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        global: {
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
-      }
+  if (
+    createErr &&
+    !String(createErr.message || "").toLowerCase().includes("already exists")
+  ) {
+    throw new Error(
+      createErr.message || "Could not create delivery photos bucket"
     );
+  }
+}
 
-    // 3️⃣ Get user
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabase.auth.getUser();
+export async function POST(req: NextRequest) {
+  let uploadedPath: string | null = null;
 
-    if (userErr || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+  try {
+    const user = await getUserFromRequest(req);
+    const supabase = svc();
 
-    // 4️⃣ Parse form data
+    await ensureBucket(supabase);
+
     const formData = await req.formData();
-    
-    // ✅ FIX: Look for "photo" (what frontend sends) OR "file"
     const file = (formData.get("photo") || formData.get("file")) as File | null;
-    const deliveryId = formData.get("deliveryId") as string | null;
+    const deliveryId = String(formData.get("deliveryId") || "").trim();
 
     if (!file || !deliveryId) {
       return NextResponse.json(
@@ -48,82 +67,100 @@ export async function POST(req: Request) {
       );
     }
 
-    // 5️⃣ Fetch delivery + owning order
+    if ((file.size || 0) > MAX_PHOTO_SIZE) {
+      return NextResponse.json(
+        { error: "Photo exceeds 15MB limit" },
+        { status: 400 }
+      );
+    }
+
     const { data: delivery, error: deliveryErr } = await supabase
       .from("deliveries")
-      .select(`
+      .select(
+        `
         id,
-        orders (
+        order_id,
+        orders:order_id (
+          id,
           customer_id
         )
-      `)
+      `
+      )
       .eq("id", deliveryId)
-      .single();
+      .maybeSingle();
 
-    // ✅ FIX: Safely handle if Supabase returns `orders` as an Array OR an Object
-    const orderData = Array.isArray(delivery?.orders) 
-      ? delivery?.orders[0] 
-      : delivery?.orders;
+    if (deliveryErr || !delivery) {
+      return NextResponse.json(
+        { error: "Delivery not found" },
+        { status: 404 }
+      );
+    }
 
-    if (
-      deliveryErr ||
-      !delivery ||
-      !orderData ||
-      orderData.customer_id !== user.id
-    ) {
+    const order = Array.isArray((delivery as any).orders)
+      ? (delivery as any).orders[0]
+      : (delivery as any).orders;
+
+    if (!order || String(order.customer_id || "") !== user.id) {
       return NextResponse.json(
         { error: "Forbidden - You do not own this delivery" },
         { status: 403 }
       );
     }
 
-    // 6️⃣ Upload to Storage
-    const fileExt = file.name.split(".").pop();
-    const path = `pickup/${deliveryId}-${Date.now()}.${fileExt}`;
+    const bytes = await file.arrayBuffer();
+    const safeName = cleanName(file.name || "pickup-photo");
+    uploadedPath = `${user.id}/${deliveryId}/${Date.now()}-${safeName}`;
 
     const { error: uploadErr } = await supabase.storage
-      .from("delivery-photos")
-      .upload(path, file, {
-        contentType: file.type,
+      .from(DELIVERY_PHOTOS_BUCKET)
+      .upload(uploadedPath, new Uint8Array(bytes), {
+        contentType: file.type || "application/octet-stream",
         upsert: false,
       });
 
     if (uploadErr) {
-      console.error("Upload error:", uploadErr);
-      return NextResponse.json(
-        { error: "Upload failed" },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: uploadErr.message }, { status: 500 });
     }
 
-    // 7️⃣ Public URL
-    const { data: urlData } = supabase.storage
-      .from("delivery-photos")
-      .getPublicUrl(path);
+    const storageUrl = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/authenticated/${DELIVERY_PHOTOS_BUCKET}/${uploadedPath}`;
 
-    // 8️⃣ Insert DB record
-    const { error: insertErr } = await supabase
-      .from("delivery_photos")
-      .insert({
-        delivery_id: deliveryId,
-        photo_type: "pickup",
-        photo_url: urlData.publicUrl,
-        uploaded_by: "customer",
-      });
+    const { error: insertErr } = await supabase.from("delivery_photos").insert({
+      delivery_id: deliveryId,
+      photo_type: "pickup",
+      photo_url: storageUrl,
+      storage_bucket: DELIVERY_PHOTOS_BUCKET,
+      storage_path: uploadedPath,
+      uploaded_by: "customer",
+    });
 
     if (insertErr) {
-      console.error("DB insert error:", insertErr);
+      if (uploadedPath) {
+        await supabase.storage.from(DELIVERY_PHOTOS_BUCKET).remove([uploadedPath]);
+      }
+
       return NextResponse.json(
-        { error: "Failed to save photo record" },
+        { error: insertErr.message || "Failed to save photo record" },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({ success: true });
+    await supabase.from("delivery_admin_events").insert({
+      delivery_id: deliveryId,
+      admin_user_id: null,
+      event_type: "pickup_photo_uploaded",
+      before_json: null,
+      after_json: {
+        uploaded_by: "customer",
+        storage_bucket: DELIVERY_PHOTOS_BUCKET,
+        storage_path: uploadedPath,
+      },
+    });
+
+    return NextResponse.json({ ok: true });
   } catch (err: any) {
-    console.error("Upload fatal error:", err);
+    console.error("pickup photo upload error:", err);
     return NextResponse.json(
-      { error: "Server error" },
+      { error: err?.message || "Server error" },
       { status: 500 }
     );
   }
