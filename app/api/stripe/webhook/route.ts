@@ -126,14 +126,7 @@ async function markDocsPaidFromCheckoutSession(
     .eq("id", requestId)
     .maybeSingle();
 
-  if (rowErr || !row) {
-    console.error("docs webhook request lookup failed", {
-      request_id: requestId,
-      stripe_event_id: stripeEventId,
-      error: rowErr?.message || "not_found",
-    });
-    return;
-  }
+  if (rowErr || !row) return;
 
   const nextStatus = [
     "draft",
@@ -147,7 +140,7 @@ async function markDocsPaidFromCheckoutSession(
     : row.status;
 
   if (!row.paid || (paymentIntentId && row.stripe_payment_intent_id !== paymentIntentId)) {
-    const { error: updErr } = await supabase
+    await supabase
       .from("doc_requests")
       .update({
         paid: true,
@@ -157,15 +150,6 @@ async function markDocsPaidFromCheckoutSession(
         stripe_payment_intent_id: paymentIntentId ?? row.stripe_payment_intent_id ?? null,
       })
       .eq("id", requestId);
-
-    if (updErr) {
-      console.error("docs webhook payment update failed", {
-        request_id: requestId,
-        stripe_event_id: stripeEventId,
-        error: updErr.message,
-      });
-      return;
-    }
   }
 
   await supabase.from("doc_request_events").insert([
@@ -224,55 +208,26 @@ async function markDeliveryPaidFromCheckoutSession(
     .eq("id", deliveryId)
     .maybeSingle();
 
-  if (deliveryErr || !deliveryRow) {
-    console.error("delivery webhook lookup failed", {
-      delivery_id: deliveryId,
-      stripe_event_id: stripeEventId,
-      error: deliveryErr?.message || "not_found",
-    });
-    return;
-  }
+  if (deliveryErr || !deliveryRow) return;
 
   const orderId = String(
     session.metadata?.orderId || deliveryRow.order_id || ""
   ).trim();
 
   if (orderId) {
-    const orderUpdate = await resilientUpdateById(supabase, "orders", "id", orderId, {
+    await resilientUpdateById(supabase, "orders", "id", orderId, {
       status: "paid",
       paid_at: new Date().toISOString(),
       stripe_checkout_session_id: session.id,
       stripe_payment_intent_id: paymentIntentId,
     });
-
-    if (!orderUpdate.ok) {
-      console.error("delivery order webhook update failed", {
-        order_id: orderId,
-        delivery_id: deliveryId,
-        stripe_event_id: stripeEventId,
-        error: orderUpdate.error?.message || "unknown",
-      });
-    }
   }
 
-  const deliveryUpdate = await resilientUpdateById(
-    supabase,
-    "deliveries",
-    "id",
-    deliveryId,
-    {
-      stripe_checkout_session_id: session.id,
-      stripe_payment_intent_id: paymentIntentId,
-    }
-  );
-
-  if (!deliveryUpdate.ok) {
-    console.error("delivery webhook update failed", {
-      delivery_id: deliveryId,
-      stripe_event_id: stripeEventId,
-      error: deliveryUpdate.error?.message || "unknown",
-    });
-  }
+  await resilientUpdateById(supabase, "deliveries", "id", deliveryId, {
+    status: "pending",
+    stripe_checkout_session_id: session.id,
+    stripe_payment_intent_id: paymentIntentId,
+  });
 
   await supabase.from("delivery_admin_events").insert([
     {
@@ -298,6 +253,7 @@ async function markDeliveryPaidFromCheckoutSession(
         stripe_event_id: stripeEventId,
         session_id: session.id,
         payment_status: session.payment_status,
+        delivery_status_after: "pending",
       },
     },
   ]);
@@ -309,7 +265,7 @@ async function markRentalPaidFromCheckoutSession(
 ) {
   const rentalId = String(
     session.metadata?.rentalId || session.metadata?.rental_id || ""
-  );
+  ).trim();
   if (!rentalId) return;
 
   await supabase
