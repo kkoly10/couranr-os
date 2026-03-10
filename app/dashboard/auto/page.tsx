@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
@@ -55,40 +55,49 @@ export default function AutoDashboardRenterHub() {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [busy, setBusy] = useState<string | null>(null);
 
+  const refreshData = useCallback(
+    async (token: string) => {
+      try {
+        const res = await fetch(`/api/auto/my-rentals?t=${Date.now()}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+        if (!res.ok) throw new Error("Failed to load rentals");
+        const data = await res.json();
+        setState({ kind: "ready", rentals: data?.rentals ?? [] });
+        router.refresh();
+      } catch (e: any) {
+        setState({ kind: "error", message: e.message });
+      }
+    },
+    [router]
+  );
+
   useEffect(() => {
     let mounted = true;
+
     async function boot() {
       const {
         data: { session },
       } = await supabase.auth.getSession();
+
       if (!mounted) return;
+
       if (!session) {
         setState({ kind: "unauth" });
         router.push("/login?next=/dashboard/auto");
         return;
       }
+
       await refreshData(session.access_token);
     }
+
     boot();
+
     return () => {
       mounted = false;
     };
-  }, [router]);
-
-  async function refreshData(token: string) {
-    try {
-      const res = await fetch(`/api/auto/my-rentals?t=${Date.now()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-        cache: "no-store",
-      });
-      if (!res.ok) throw new Error("Failed to load rentals");
-      const data = await res.json();
-      setState({ kind: "ready", rentals: data?.rentals ?? [] });
-      router.refresh();
-    } catch (e: any) {
-      setState({ kind: "error", message: e.message });
-    }
-  }
+  }, [refreshData, router]);
 
   async function postAction(url: string, body: any, busyKey: string) {
     setBusy(busyKey);
@@ -97,6 +106,7 @@ export default function AutoDashboardRenterHub() {
         data: { session },
       } = await supabase.auth.getSession();
       if (!session?.access_token) throw new Error("Unauthorized");
+
       const res = await fetch(url, {
         method: "POST",
         headers: {
@@ -106,10 +116,12 @@ export default function AutoDashboardRenterHub() {
         body: JSON.stringify(body),
         cache: "no-store",
       });
+
       if (!res.ok) {
         const d = await res.json();
         throw new Error(d.error || "Action failed");
       }
+
       await refreshData(session.access_token);
     } catch (e: any) {
       alert(e.message);
@@ -119,7 +131,9 @@ export default function AutoDashboardRenterHub() {
   }
 
   async function deleteDraft(rentalId: string) {
-    if (!window.confirm("Are you sure you want to delete this test/draft rental?")) return;
+    if (!window.confirm("Are you sure you want to delete this test/draft rental?")) {
+      return;
+    }
     await postAction("/api/auto/delete-draft", { rentalId }, `delete-${rentalId}`);
   }
 
@@ -289,7 +303,9 @@ export default function AutoDashboardRenterHub() {
           <h1 style={styles.h1}>Auto Dashboard</h1>
           <p style={styles.sub}>Manage your active rentals and view your history.</p>
         </div>
-        <Link href="/auto/vehicles" style={styles.primaryLink}>Book a car</Link>
+        <Link href="/auto/vehicles" style={styles.primaryLink}>
+          Book a car
+        </Link>
       </div>
 
       {TEST_MODE && (
