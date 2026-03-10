@@ -70,7 +70,6 @@ export default function AdminAutoRentalDetail() {
       setErr(e?.message || "Failed to load");
     } finally {
       setLoading(false);
-      // ✅ removed router.refresh() to avoid noisy rerenders
     }
   }
 
@@ -108,7 +107,6 @@ export default function AdminAutoRentalDetail() {
     }
   }
 
-  // STEP 1: Just stores the code securely
   async function setLockbox() {
     const code = prompt("Enter lockbox code (ex: 1234)");
     if (!code?.trim()) return;
@@ -124,7 +122,6 @@ export default function AdminAutoRentalDetail() {
     }
   }
 
-  // STEP 2: Releases the code to the customer dashboard
   async function releaseLockbox() {
     let code = d?.lockbox_code;
     if (!code) {
@@ -139,7 +136,6 @@ export default function AdminAutoRentalDetail() {
     try {
       const res = await api("/api/admin/auto/release-lockbox", { rentalId, lockboxCode: code });
 
-      // ✅ instant UI update so admin sees status/button change immediately
       setD((prev) =>
         prev
           ? {
@@ -154,7 +150,6 @@ export default function AdminAutoRentalDetail() {
           : prev
       );
 
-      // ✅ cross-tab signal (same browser) for customer dashboard
       try {
         localStorage.setItem(
           "couranr:auto-lockbox-release",
@@ -163,7 +158,7 @@ export default function AdminAutoRentalDetail() {
       } catch {}
 
       alert("Lockbox Released! The customer can now see it on their dashboard.");
-      await load(); // canonical DB re-sync
+      await load();
     } catch (e: any) {
       setErr(e?.message || "Failed to release lockbox");
     } finally {
@@ -184,7 +179,6 @@ export default function AdminAutoRentalDetail() {
     }
   }
 
-  // CANCEL RENTAL LOGIC
   async function cancelRental() {
     const reason = prompt("Reason for cancellation? (This will be emailed to the customer)");
     if (reason === null) return;
@@ -241,7 +235,6 @@ export default function AdminAutoRentalDetail() {
         </div>
       )}
 
-      {/* ADMIN CONTROLS (Disabled if cancelled) */}
       <div
         style={{
           marginTop: 16,
@@ -426,7 +419,6 @@ export default function AdminAutoRentalDetail() {
         </div>
       </div>
 
-      {/* DANGER ZONE */}
       <div
         style={{
           marginTop: 40,
@@ -438,9 +430,9 @@ export default function AdminAutoRentalDetail() {
       >
         <h3 style={{ margin: "0 0 10px 0", color: "#991b1b" }}>Danger Zone</h3>
         <p style={{ fontSize: 14, color: "#7f1d1d", marginBottom: 16 }}>
-          Cancelling a rental will permanently lock the customer's dashboard and stop the flow. Note:
-          If the customer has already paid, you must process their financial refund separately via your
-          Stripe dashboard.
+          Cancelling a rental will permanently lock the customer&apos;s dashboard and stop the flow.
+          Note: If the customer has already paid, you must process their financial refund separately
+          via your Stripe dashboard.
         </p>
         <button
           disabled={saving || isCancelled}
