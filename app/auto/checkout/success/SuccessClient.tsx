@@ -11,13 +11,13 @@ export default function SuccessClient() {
   const sessionId = sp.get("session_id") || "";
 
   const [note, setNote] = useState<string>(
-    "Payment completed ✅ Your rental is now in review. You’ll get lockbox instructions after approval."
+    "Payment received. Your rental is now pending admin review before lockbox release."
   );
-
 
   useEffect(() => {
     async function confirmCheckoutIfNeeded() {
       if (!rentalId || !sessionId) return;
+
       try {
         const { data } = await supabase.auth.getSession();
         const token = data.session?.access_token;
@@ -34,45 +34,32 @@ export default function SuccessClient() {
 
         const json = await res.json().catch(() => ({}));
         if (res.ok) {
-          setNote("Payment completed ✅ Your rental is active in dashboard and next steps are unlocked.");
+          const status = String(json?.status || "").toLowerCase();
+
+          if (status === "pickup_ready") {
+            setNote(
+              "Payment confirmed ✅ Your rental is fully cleared for the next step and lockbox access can be released."
+            );
+          } else {
+            setNote(
+              "Payment confirmed ✅ Your rental is now pending admin review before lockbox release."
+            );
+          }
           return;
         }
 
         if (json?.error) {
-          setNote((prev) => `${prev} (${json.error})`);
+          setNote(
+            `Payment submitted. Backend confirmation is still in progress. (${json.error})`
+          );
         }
       } catch {
-        // best effort: webhook may still complete state update
+        // best effort
       }
     }
 
     confirmCheckoutIfNeeded();
   }, [rentalId, sessionId]);
-
-  useEffect(() => {
-    // Optional: clear corrupted refresh tokens so they don’t spam console/errors
-    (async () => {
-      try {
-        // This does NOT force a refresh call; it reads cached session if present
-        const { data } = await supabase.auth.getSession();
-        // If session object is missing but storage has junk, Supabase may throw later.
-        // We proactively sign out only if Supabase reports an auth error elsewhere.
-        if (!data?.session) {
-          // Not logged in (normal after Stripe). No action needed.
-          return;
-        }
-      } catch (e: any) {
-        // If refresh token is invalid, wipe it clean
-        const msg = String(e?.message || "");
-        if (msg.toLowerCase().includes("refresh token")) {
-          await supabase.auth.signOut();
-          setNote(
-            "Payment completed ✅ (Session refreshed). Please log in again to view your rental status."
-          );
-        }
-      }
-    })();
-  }, []);
 
   return (
     <div style={{ maxWidth: 860, margin: "0 auto", padding: 24 }}>
