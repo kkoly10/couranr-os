@@ -13,6 +13,7 @@ export type CreateOrderResult = {
   total_cents: number;
   service_type: string;
   customer_id: string;
+  status?: string;
   created_at: string;
 };
 
@@ -28,15 +29,17 @@ export async function createOrder(
       total_cents: totalCents,
       service_type: serviceType,
       business_account_id: businessAccountId ?? null,
-      // ❌ DO NOT pass order_number
-      // ✅ Database generates it automatically
+      status: "awaiting_payment",
+      paid_at: null,
+      stripe_checkout_session_id: null,
+      stripe_payment_intent_id: null,
     })
     .select()
     .single();
 
-  if (error) {
+  if (error || !data) {
     console.error("createOrder failed:", error);
-    throw new Error("Failed to create order");
+    throw new Error(error?.message || "Failed to create order");
   }
 
   return data;
