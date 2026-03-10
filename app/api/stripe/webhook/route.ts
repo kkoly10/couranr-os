@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 function env(name: string) {
   const v = process.env[name];
@@ -13,9 +14,58 @@ function env(name: string) {
 const stripe = new Stripe(env("STRIPE_SECRET_KEY"));
 
 function svc() {
-  return createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), {
-    auth: { persistSession: false },
-  });
+  return createClient(
+    env("NEXT_PUBLIC_SUPABASE_URL"),
+    env("SUPABASE_SERVICE_ROLE_KEY"),
+    {
+      auth: { persistSession: false },
+    }
+  );
+}
+
+function getMissingColumnFromError(msg: string): string | null {
+  if (!msg) return null;
+
+  let m = msg.match(/Could not find the '([^']+)' column/i);
+  if (m?.[1]) return m[1];
+
+  m = msg.match(/column ["']?([a-zA-Z0-9_]+)["']? does not exist/i);
+  if (m?.[1]) return m[1];
+
+  return null;
+}
+
+async function resilientUpdateById(
+  supabase: ReturnType<typeof svc>,
+  table: string,
+  idField: string,
+  id: string,
+  payload: Record<string, any>
+) {
+  const current = { ...payload };
+
+  for (let i = 0; i < 20; i++) {
+    if (Object.keys(current).length === 0) {
+      return { ok: true as const };
+    }
+
+    const { error } = await supabase.from(table).update(current).eq(idField, id);
+
+    if (!error) return { ok: true as const };
+
+    const missingCol = getMissingColumnFromError(error.message || "");
+    if (missingCol && missingCol in current) {
+      delete current[missingCol];
+      continue;
+    }
+
+    return { ok: false as const, error };
+  }
+
+  return {
+    ok: false as const,
+    error: { message: `Failed to update ${table}` },
+  };
 }
 
 async function docsEventAlreadyProcessed(
@@ -35,6 +85,23 @@ async function docsEventAlreadyProcessed(
   return Array.isArray(data) && data.length > 0;
 }
 
+async function deliveryEventAlreadyProcessed(
+  supabase: ReturnType<typeof svc>,
+  deliveryId: string,
+  stripeEventId: string
+) {
+  const { data, error } = await supabase
+    .from("delivery_admin_events")
+    .select("id")
+    .eq("delivery_id", deliveryId)
+    .eq("event_type", "stripe_webhook_processed")
+    .contains("after_json", { stripe_event_id: stripeEventId })
+    .limit(1);
+
+  if (error) return false;
+  return Array.isArray(data) && data.length > 0;
+}
+
 async function markDocsPaidFromCheckoutSession(
   supabase: ReturnType<typeof svc>,
   session: Stripe.Checkout.Session,
@@ -43,7 +110,11 @@ async function markDocsPaidFromCheckoutSession(
   const requestId = String(session.metadata?.docs_request_id || "").trim();
   if (!requestId) return;
 
-  const alreadyProcessed = await docsEventAlreadyProcessed(supabase, requestId, stripeEventId);
+  const alreadyProcessed = await docsEventAlreadyProcessed(
+    supabase,
+    requestId,
+    stripeEventId
+  );
   if (alreadyProcessed) return;
 
   const paymentIntentId =
@@ -64,12 +135,16 @@ async function markDocsPaidFromCheckoutSession(
     return;
   }
 
-  const nextStatus =
-    ["draft", "submitted", "quoted", "pending_quote", "pending", "awaiting_payment"].includes(
-      String(row.status || "").toLowerCase()
-    )
-      ? "paid"
-      : row.status;
+  const nextStatus = [
+    "draft",
+    "submitted",
+    "quoted",
+    "pending_quote",
+    "pending",
+    "awaiting_payment",
+  ].includes(String(row.status || "").toLowerCase())
+    ? "paid"
+    : row.status;
 
   if (!row.paid || (paymentIntentId && row.stripe_payment_intent_id !== paymentIntentId)) {
     const { error: updErr } = await supabase
@@ -122,11 +197,119 @@ async function markDocsPaidFromCheckoutSession(
   ]);
 }
 
+async function markDeliveryPaidFromCheckoutSession(
+  supabase: ReturnType<typeof svc>,
+  session: Stripe.Checkout.Session,
+  stripeEventId: string
+) {
+  const deliveryId = String(
+    session.metadata?.deliveryId || session.metadata?.delivery_id || ""
+  ).trim();
+
+  if (!deliveryId) return;
+
+  const alreadyProcessed = await deliveryEventAlreadyProcessed(
+    supabase,
+    deliveryId,
+    stripeEventId
+  );
+  if (alreadyProcessed) return;
+
+  const paymentIntentId =
+    typeof session.payment_intent === "string" ? session.payment_intent : null;
+
+  const { data: deliveryRow, error: deliveryErr } = await supabase
+    .from("deliveries")
+    .select("id,order_id,status")
+    .eq("id", deliveryId)
+    .maybeSingle();
+
+  if (deliveryErr || !deliveryRow) {
+    console.error("delivery webhook lookup failed", {
+      delivery_id: deliveryId,
+      stripe_event_id: stripeEventId,
+      error: deliveryErr?.message || "not_found",
+    });
+    return;
+  }
+
+  const orderId = String(
+    session.metadata?.orderId || deliveryRow.order_id || ""
+  ).trim();
+
+  if (orderId) {
+    const orderUpdate = await resilientUpdateById(supabase, "orders", "id", orderId, {
+      status: "paid",
+      paid_at: new Date().toISOString(),
+      stripe_checkout_session_id: session.id,
+      stripe_payment_intent_id: paymentIntentId,
+    });
+
+    if (!orderUpdate.ok) {
+      console.error("delivery order webhook update failed", {
+        order_id: orderId,
+        delivery_id: deliveryId,
+        stripe_event_id: stripeEventId,
+        error: orderUpdate.error?.message || "unknown",
+      });
+    }
+  }
+
+  const deliveryUpdate = await resilientUpdateById(
+    supabase,
+    "deliveries",
+    "id",
+    deliveryId,
+    {
+      stripe_checkout_session_id: session.id,
+      stripe_payment_intent_id: paymentIntentId,
+    }
+  );
+
+  if (!deliveryUpdate.ok) {
+    console.error("delivery webhook update failed", {
+      delivery_id: deliveryId,
+      stripe_event_id: stripeEventId,
+      error: deliveryUpdate.error?.message || "unknown",
+    });
+  }
+
+  await supabase.from("delivery_admin_events").insert([
+    {
+      delivery_id: deliveryId,
+      admin_user_id: null,
+      event_type: "payment_completed",
+      before_json: null,
+      after_json: {
+        source: "stripe_webhook",
+        stripe_event_id: stripeEventId,
+        session_id: session.id,
+        payment_intent: paymentIntentId,
+        amount_total: session.amount_total,
+        currency: session.currency,
+      },
+    },
+    {
+      delivery_id: deliveryId,
+      admin_user_id: null,
+      event_type: "stripe_webhook_processed",
+      before_json: null,
+      after_json: {
+        stripe_event_id: stripeEventId,
+        session_id: session.id,
+        payment_status: session.payment_status,
+      },
+    },
+  ]);
+}
+
 async function markRentalPaidFromCheckoutSession(
   supabase: ReturnType<typeof svc>,
   session: Stripe.Checkout.Session
 ) {
-  const rentalId = String(session.metadata?.rentalId || session.metadata?.rental_id || "");
+  const rentalId = String(
+    session.metadata?.rentalId || session.metadata?.rental_id || ""
+  );
   if (!rentalId) return;
 
   await supabase
@@ -135,7 +318,10 @@ async function markRentalPaidFromCheckoutSession(
       paid: true,
       paid_at: new Date().toISOString(),
       status: "active",
-      stripe_payment_intent_id: typeof session.payment_intent === "string" ? session.payment_intent : null,
+      stripe_payment_intent_id:
+        typeof session.payment_intent === "string"
+          ? session.payment_intent
+          : null,
     })
     .eq("id", rentalId);
 
@@ -150,21 +336,35 @@ async function markRentalPaidFromCheckoutSession(
 export async function POST(req: Request) {
   try {
     const sig = req.headers.get("stripe-signature");
-    if (!sig) return NextResponse.json({ error: "Missing signature" }, { status: 400 });
+    if (!sig) {
+      return NextResponse.json({ error: "Missing signature" }, { status: 400 });
+    }
 
     const rawBody = await req.text();
-    const event = stripe.webhooks.constructEvent(rawBody, sig, env("STRIPE_WEBHOOK_SECRET"));
+    const event = stripe.webhooks.constructEvent(
+      rawBody,
+      sig,
+      env("STRIPE_WEBHOOK_SECRET")
+    );
 
     const supabase = svc();
 
-    if (event.type === "checkout.session.completed") {
+    if (
+      event.type === "checkout.session.completed" ||
+      event.type === "checkout.session.async_payment_succeeded"
+    ) {
       const session = event.data.object as Stripe.Checkout.Session;
+
       await markRentalPaidFromCheckoutSession(supabase, session);
       await markDocsPaidFromCheckoutSession(supabase, session, event.id);
+      await markDeliveryPaidFromCheckoutSession(supabase, session, event.id);
     }
 
     return NextResponse.json({ received: true });
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message || "Webhook error" }, { status: 400 });
+    return NextResponse.json(
+      { error: e?.message || "Webhook error" },
+      { status: 400 }
+    );
   }
 }
