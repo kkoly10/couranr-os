@@ -25,8 +25,6 @@ export type DeliveryOrderInput = {
   stops: number;
   scheduledAt: string | null;
   totalCents: number;
-
-  // New recipient fields added here
   recipientName: string;
   recipientPhone: string;
   deliveryNotes: string | null;
@@ -53,14 +51,12 @@ export async function createDeliveryOrderFlow(
     stops,
     scheduledAt,
     totalCents,
-    // Extracting the new fields
     recipientName,
     recipientPhone,
     deliveryNotes,
     businessAccountId,
   } = input;
 
-  // 1️⃣ Create order
   const order = await createOrder({
     customerId,
     totalCents,
@@ -68,11 +64,9 @@ export async function createDeliveryOrderFlow(
     businessAccountId: businessAccountId ?? null,
   });
 
-  // 2️⃣ Create pickup & dropoff addresses (SEPARATELY)
   const pickup = await createAddress(pickupAddress);
   const dropoff = await createAddress(dropoffAddress);
 
-  // 3️⃣ Create delivery
   const delivery = await createDelivery({
     orderId: order.id,
     pickupAddressId: pickup.id,
@@ -83,7 +77,6 @@ export async function createDeliveryOrderFlow(
     signatureRequired,
     stops,
     scheduledAt,
-    // Passing the new fields down to createDelivery
     recipientName,
     recipientPhone,
     deliveryNotes,
