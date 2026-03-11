@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
+import { resolveRentalStatusAfterPayment } from "@/lib/auto/status";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -305,16 +306,12 @@ async function markRentalPaidFromCheckoutSession(
     .eq("id", rentalId)
     .maybeSingle();
 
-  const verificationApproved =
-    String(rental?.verification_status || "").toLowerCase() === "approved";
-  const agreementSigned = !!rental?.agreement_signed;
-  const docsComplete = !!rental?.docs_complete;
-  const lockboxReleased = !!rental?.lockbox_code_released_at;
-
-  let nextStatus = "paid_pending_review";
-  if (verificationApproved && agreementSigned && docsComplete && lockboxReleased) {
-    nextStatus = "pickup_ready";
-  }
+  const nextStatus = resolveRentalStatusAfterPayment({
+    verification_status: rental?.verification_status,
+    agreement_signed: rental?.agreement_signed,
+    docs_complete: rental?.docs_complete,
+    lockbox_code_released_at: rental?.lockbox_code_released_at,
+  });
 
   await supabase
     .from("rentals")
