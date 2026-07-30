@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { signedUrlTtlSeconds } from "@/lib/delivery/deliveryAccess";
+import {
+  assertPersistableRef,
+  buildStorageRef,
+  createDeliveryPhotoSignedUrl,
+} from "@/lib/delivery/deliveryPhotoRef";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -25,72 +31,25 @@ function extFromFile(file: File) {
 
 async function insertDeliveryPhotoRow(params: {
   deliveryId: string;
-  orderId: string | null;
-  userId: string;
-  photoUrl: string;
-  storagePath: string;
-  file: File;
+  photoRef: string;
 }) {
-  const { deliveryId, orderId, userId, photoUrl, storagePath, file } = params;
+  const { deliveryId, photoRef } = params;
 
-  // Try multiple row shapes so this works even if your table columns differ
-  const attempts: Record<string, any>[] = [
-    // Rich shape (common)
-    {
-      delivery_id: deliveryId,
-      order_id: orderId,
-      photo_type: "pickup",
-      photo_url: photoUrl,
-      uploaded_by: "customer",
-      storage_bucket: "delivery-photos",
-      storage_path: storagePath,
-      file_name: file.name || "photo",
-      mime_type: file.type || "image/jpeg",
-      size_bytes: file.size ?? null,
-      user_id: userId,
-    },
+  // One insert, one known shape. The previous version tried four different row
+  // shapes in sequence and kept the first that did not error — the same
+  // swallow-and-retry pattern as `resilientUpdateById`, which can "succeed"
+  // having persisted none of the intended columns. `delivery_photos` is
+  // (id, delivery_id, photo_type, photo_url, uploaded_by, created_at); if that
+  // ever changes, this should fail loudly rather than silently degrade.
+  const { error } = await supabaseAdmin.from("delivery_photos").insert({
+    delivery_id: deliveryId,
+    photo_type: "pickup",
+    photo_url: photoRef,
+    uploaded_by: "customer",
+  });
 
-    // Slightly different naming
-    {
-      delivery_id: deliveryId,
-      order_id: orderId,
-      phase: "pickup",
-      photo_url: photoUrl,
-      actor_role: "customer",
-      storage_bucket: "delivery-photos",
-      storage_path: storagePath,
-      file_name: file.name || "photo",
-      mime_type: file.type || "image/jpeg",
-      size_bytes: file.size ?? null,
-      user_id: userId,
-    },
-
-    // Minimal old shape (what your current code expects)
-    {
-      delivery_id: deliveryId,
-      photo_type: "pickup",
-      photo_url: photoUrl,
-      uploaded_by: "customer",
-    },
-
-    // Minimal alternative
-    {
-      delivery_id: deliveryId,
-      phase: "pickup",
-      photo_url: photoUrl,
-      user_id: userId,
-    },
-  ];
-
-  const errors: string[] = [];
-
-  for (const row of attempts) {
-    const { error } = await supabaseAdmin.from("delivery_photos").insert(row);
-    if (!error) return { ok: true as const };
-    errors.push(error.message);
-  }
-
-  return { ok: false as const, errors };
+  if (error) return { ok: false as const, errors: [error.message] };
+  return { ok: true as const };
 }
 
 export async function POST(req: Request) {
@@ -169,8 +128,6 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    const resolvedOrderId = String((deliveryRow as any)?.order_id || orderIdFromBody || "");
-
     // ---------------- Upload to Storage ----------------
     const bucket = "delivery-photos";
     const ext = extFromFile(photo);
@@ -193,36 +150,39 @@ export async function POST(req: Request) {
       );
     }
 
-    // Bucket is public in your project, so this is fine
-    const { data: pub } = supabaseAdmin.storage.from(bucket).getPublicUrl(path);
-    const publicUrl = pub?.publicUrl || "";
+    // The bucket is PRIVATE. getPublicUrl() would still return a string without
+    // contacting storage, so it fails silently rather than loudly — the URL just
+    // 400s when a browser fetches it. Persist a storage reference instead and
+    // hand back a short-lived signed URL for immediate display.
+    const photoRef = assertPersistableRef(buildStorageRef(bucket, path));
 
     // ---------------- Insert DB record ----------------
-    const inserted = await insertDeliveryPhotoRow({
-      deliveryId,
-      orderId: resolvedOrderId || null,
-      userId: user.id,
-      photoUrl: publicUrl,
-      storagePath: path,
-      file: photo,
-    });
+    const inserted = await insertDeliveryPhotoRow({ deliveryId, photoRef });
 
     if (!inserted.ok) {
+      // Do not leave an orphaned object behind when the row could not be written.
+      await supabaseAdmin.storage.from(bucket).remove([path]);
+
       return NextResponse.json(
         {
           error: "Photo uploaded but DB record insert failed",
           details: inserted.errors,
-          photo_url: publicUrl,
-          storage_path: path,
         },
         { status: 500 }
       );
     }
 
+    // Issued to the uploader, who was just verified as the owning customer.
+    // Returned in the response only — never persisted, never logged.
+    const signedUrl = await createDeliveryPhotoSignedUrl(
+      photoRef,
+      signedUrlTtlSeconds("customer")
+    );
+
     return NextResponse.json({
       success: true,
-      url: publicUrl,
-      photo_url: publicUrl,
+      url: signedUrl,
+      expiresInSeconds: signedUrlTtlSeconds("customer"),
       storage_path: path,
     });
   } catch (err: any) {
