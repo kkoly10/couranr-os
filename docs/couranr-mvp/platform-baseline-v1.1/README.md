@@ -41,8 +41,9 @@ This baseline controls platform versions, dependency purpose, configuration, mig
 - `05_MIGRATION_SEQUENCE.md` — commit-by-commit sequence and gates.
 - `06_COMPATIBILITY_TEST_MATRIX.md` — required evidence.
 - `07_ROLLBACK_PLAN.md` — rollback procedures.
-- `08_CLAUDE_CODE_IMPLEMENTATION_PROMPT.md` — exact Claude Code assignment.
+- `08_CLAUDE_CODE_IMPLEMENTATION_PROMPT.md` — Phase 0.5 implementation assignment.
 - `09_WORK_BREAKDOWN.csv` — tracker.
+- `10_PHASE_0_READINESS_START_PROMPT.md` — exact first prompt to run in Claude Code before any dependency or application changes.
 - `MASTER_PACKAGE_AMENDMENT.md` — text to add to the master implementation package.
 - `templates/` — proposed configuration and validation templates.
 
@@ -62,3 +63,7 @@ Do not execute Phase 0.5 until Phase 0 has returned:
 - payment entry-point map;
 - Next.js breaking-change map;
 - rollback commit SHA.
+
+## Start Claude Code
+
+Use `10_PHASE_0_READINESS_START_PROMPT.md` as the first Claude Code assignment. Claude must stop after the readiness report and wait for approval before changing application code, dependencies, configuration, database migrations, Supabase auth, or Stripe behavior.
