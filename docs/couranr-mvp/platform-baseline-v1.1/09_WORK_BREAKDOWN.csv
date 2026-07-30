@@ -1,0 +1,21 @@
+id,work_item,phase,priority,status,acceptance_note
+PB-000,Phase 0.5 readiness report,0.5,P0,blocked,Inventory only; no changes
+PB-001,Preservation branch/tag and baseline evidence,0.5,P0,todo,Current build/auth/payment evidence
+PB-002,Pin Node 24/npm 11 and npm ci,0.5,P0,todo,Lockfile v3
+PB-003,Upgrade Next 14 to 15,0.5,P0,todo,Isolated commit
+PB-004,Upgrade Next 15 to 16 and React 19.2,0.5,P0,todo,No compiler/cache components
+PB-005,Replace next lint with ESLint CLI,0.5,P1,todo,Zero warnings
+PB-006,Migrate Supabase auth helpers to SSR,0.5,P0,todo,Zero old imports
+PB-007,Add strict canonical TypeScript project,0.5,P0,todo,Security/money first
+PB-008,Add client/server environment validation,0.5,P0,todo,No secret leakage
+PB-009,Add Tailwind v4 canonical CSS layer,0.5,P1,todo,Preserve legacy CSS
+PB-010,Add Radix/shadcn-owned primitives,0.5,P1,todo,Accessibility tests
+PB-011,Add forms/query/table/upload/token dependencies,0.5,P1,todo,Shared schemas
+PB-012,Add Vitest and Testing Library projects,0.5,P0,todo,Unit/component
+PB-013,Add Playwright three-browser setup,0.5,P0,todo,Desktop/mobile
+PB-014,Add pinned Supabase CLI and pgTAP structure,0.5,P0,todo,db reset/test
+PB-015,Implement static release checks,0.5,P0,todo,Negative fixtures
+PB-016,Test current Stripe SDK adapter,0.5,P0,todo,Before upgrade
+PB-017,Upgrade Stripe SDK in isolated commit,0.5,P0,blocked,Requires PB-016
+PB-018,Clean-clone and rollback rehearsal,0.5,P0,todo,Evidence report
+PB-019,Final baseline acceptance report,0.5,P0,todo,Map test matrix
