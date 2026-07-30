@@ -15,6 +15,8 @@ type Delivery = {
 export default function DriverDeliveriesPage() {
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [loading, setLoading] = useState(true);
+  const [startingId, setStartingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -48,6 +50,47 @@ export default function DriverDeliveriesPage() {
     init();
   }, [router]);
 
+  // /api/delivery/mark-in-transit is a verified server command: it resolves the
+  // actor from a Bearer token and requires them to be the assigned driver (or
+  // Operations). This call must therefore forward the session access token.
+  async function startDelivery(deliveryId: string) {
+    setStartingId(deliveryId);
+    setError(null);
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const token = session?.access_token;
+      if (!token) {
+        router.push("/login");
+        return;
+      }
+
+      const res = await fetch("/api/delivery/mark-in-transit", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ deliveryId }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data?.error || "Could not start this delivery.");
+        return;
+      }
+
+      location.reload();
+    } catch {
+      setError("Could not start this delivery.");
+    } finally {
+      setStartingId(null);
+    }
+  }
+
   if (loading) return <p>Loading deliveries…</p>;
 
   if (!deliveries.length) {
@@ -57,6 +100,10 @@ export default function DriverDeliveriesPage() {
   return (
     <div style={{ padding: 24 }}>
       <h1>My Deliveries</h1>
+
+      {error && (
+        <p style={{ color: "#dc2626", marginBottom: 12 }}>{error}</p>
+      )}
 
       {deliveries.map((d) => (
         <div
@@ -75,15 +122,10 @@ export default function DriverDeliveriesPage() {
 
           {d.status === "assigned" && (
             <button
-              onClick={() =>
-                fetch("/api/delivery/mark-in-transit", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ deliveryId: d.id }),
-                }).then(() => location.reload())
-              }
+              disabled={startingId === d.id}
+              onClick={() => startDelivery(d.id)}
             >
-              Start Delivery
+              {startingId === d.id ? "Starting…" : "Start Delivery"}
             </button>
           )}
         </div>
