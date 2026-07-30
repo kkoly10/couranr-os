@@ -1,11 +1,11 @@
-name: Materialize canonical Couranr UI images
+name: Materialize approved Couranr MVP UI images
 
 on:
   push:
     branches:
       - docs/platform-dependency-baseline-v1-1
     paths:
-      - docs/couranr-mvp/ui-reference/canonical-image-payload/READY
+      - docs/couranr-mvp/ui-reference/MATERIALIZE_CANONICAL_IMAGES
 
 permissions:
   contents: write
@@ -14,36 +14,57 @@ jobs:
   materialize:
     runs-on: ubuntu-latest
     steps:
-      - name: Check out branch
+      - name: Check out documentation branch
         uses: actions/checkout@v4
         with:
           ref: docs/platform-dependency-baseline-v1-1
           fetch-depth: 0
 
-      - name: Extract approved canonical image payload
+      - name: Extract only approved canonical MVP images
         shell: bash
         run: |
           set -euo pipefail
-          payload="docs/couranr-mvp/ui-reference/canonical-image-payload"
-          destination="docs/couranr-mvp/ui-reference"
-          test -f "$payload/canonical-mvp-images.tar.gz"
-          tar -xzf "$payload/canonical-mvp-images.tar.gz" -C "$destination"
-          count=$(find "$destination/canonical-mvp-images" -type f -name '*.webp' | wc -l | tr -d ' ')
+
+          archive="Couranr_Canonical_MVP_UI_Package.zip"
+          source_dir="Couranr_Canonical_MVP_UI/canonical-mvp-images"
+          destination="docs/couranr-mvp/ui-reference/canonical-mvp-images"
+          staging="$(mktemp -d)"
+
+          test -f "$archive"
+          rm -rf "$destination"
+          mkdir -p "$destination"
+
+          unzip -q "$archive" "$source_dir/*" -d "$staging"
+          cp -R "$staging/$source_dir/." "$destination/"
+
+          count=$(find "$destination" -type f -name '*.png' | wc -l | tr -d ' ')
           test "$count" = "62"
 
-      - name: Remove one-time payload and workflow
+          find "$destination" -type f -name '*.png' -printf '%P\n' | sort > /tmp/canonical-image-list.txt
+          {
+            echo '# Couranr canonical MVP image manifest'
+            echo
+            echo 'This directory contains only the 62 approved canonical MVP PNG references from `Couranr_Canonical_MVP_UI_Package.zip`.'
+            echo
+            echo 'Exploratory drafts, alternate generations, contact sheets, and collage attempts are excluded.'
+            echo
+            echo '## Included files'
+            echo
+            sed 's#^#- `canonical-mvp-images/#; s#$#`#' /tmp/canonical-image-list.txt
+          } > docs/couranr-mvp/ui-reference/CANONICAL_IMAGE_MANIFEST.md
+
+      - name: Remove one-time trigger and workflow
         shell: bash
         run: |
-          rm -rf docs/couranr-mvp/ui-reference/canonical-image-payload
-          rm -f docs/couranr-mvp/ui-reference/.upload-status
+          rm -f docs/couranr-mvp/ui-reference/MATERIALIZE_CANONICAL_IMAGES
           rm -f .github/workflows/materialize-canonical-ui-images.yml
 
-      - name: Commit canonical MVP image set
+      - name: Commit approved image set
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "docs: materialize approved canonical MVP UI images"
+          git commit -m "docs: add approved canonical MVP UI images"
           git push origin HEAD:docs/platform-dependency-baseline-v1-1
