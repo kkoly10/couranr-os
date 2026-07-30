@@ -6,12 +6,21 @@ on:
       - docs/platform-dependency-baseline-v1-1
     paths:
       - docs/couranr-mvp/ui-reference/MATERIALIZE_CANONICAL_IMAGES
+      - .github/workflows/materialize-canonical-ui-images.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - docs/couranr-mvp/ui-reference/MATERIALIZE_CANONICAL_IMAGES
+      - .github/workflows/materialize-canonical-ui-images.yml
 
 permissions:
   contents: write
+  pull-requests: read
 
 jobs:
   materialize:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Check out documentation branch
@@ -53,11 +62,10 @@ jobs:
             sed 's#^#- `canonical-mvp-images/#; s#$#`#' /tmp/canonical-image-list.txt
           } > docs/couranr-mvp/ui-reference/CANONICAL_IMAGE_MANIFEST.md
 
-      - name: Remove one-time trigger and workflow
+      - name: Remove one-time trigger
         shell: bash
         run: |
           rm -f docs/couranr-mvp/ui-reference/MATERIALIZE_CANONICAL_IMAGES
-          rm -f .github/workflows/materialize-canonical-ui-images.yml
 
       - name: Commit approved image set
         shell: bash
