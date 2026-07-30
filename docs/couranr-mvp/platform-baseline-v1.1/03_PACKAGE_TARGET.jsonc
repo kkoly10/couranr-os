@@ -1,0 +1,50 @@
+{
+  // Specification template. Resolve and exact-pin installed versions through 04_INSTALL_COMMANDS.sh.
+  "name": "couranr-os",
+  "private": true,
+  "version": "0.2.0",
+  "packageManager": "npm@11.16.0",
+  "engines": {
+    "node": ">=24.18.0 <25",
+    "npm": ">=11.16.0 <12"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+
+    "lint": "eslint . --max-warnings=0",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "tsc --noEmit",
+    "typecheck:canonical": "tsc -p tsconfig.couranr.json --noEmit",
+
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+
+    "db:start": "supabase start",
+    "db:stop": "supabase stop",
+    "db:reset": "supabase db reset",
+    "db:test": "supabase test db",
+    "db:lint": "supabase db lint --level warning",
+    "db:types": "supabase gen types typescript --local > types/database.generated.ts",
+
+    "check:routes": "tsx scripts/check-routes.ts",
+    "check:legacy-imports": "tsx scripts/check-legacy-imports.ts",
+    "check:migrations": "tsx scripts/check-migrations.ts",
+    "check:rls": "tsx scripts/check-rls.ts",
+    "check:policy-registry": "tsx scripts/check-policy-registry.ts",
+    "check:deps": "npm ls --all && knip",
+
+    "test:security": "vitest run --project security",
+    "test:payments": "vitest run --project payments",
+    "test:delivery-lifecycle": "vitest run --project delivery-lifecycle",
+    "test:ghost-isolation": "vitest run --project ghost-isolation",
+
+    "check:baseline": "npm run lint && npm run typecheck:canonical && npm run test:run && npm run build",
+    "check:database": "npm run check:legacy-imports && npm run check:migrations && npm run db:reset && npm run db:test && npm run check:rls",
+    "ci": "npm run check:baseline && npm run check:routes && npm run check:policy-registry && npm run test:security && npm run test:payments && npm run test:delivery-lifecycle && npm run test:ghost-isolation && npm run test:e2e"
+  }
+}
