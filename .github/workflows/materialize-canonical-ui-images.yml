@@ -20,15 +20,14 @@ jobs:
           ref: docs/platform-dependency-baseline-v1-1
           fetch-depth: 0
 
-      - name: Decode approved canonical image payload
+      - name: Extract approved canonical image payload
         shell: bash
         run: |
           set -euo pipefail
           payload="docs/couranr-mvp/ui-reference/canonical-image-payload"
           destination="docs/couranr-mvp/ui-reference"
-          cat "$payload"/part-* > /tmp/canonical-mvp-images.tar.gz.b64
-          base64 --decode /tmp/canonical-mvp-images.tar.gz.b64 > /tmp/canonical-mvp-images.tar.gz
-          tar -xzf /tmp/canonical-mvp-images.tar.gz -C "$destination"
+          test -f "$payload/canonical-mvp-images.tar.gz"
+          tar -xzf "$payload/canonical-mvp-images.tar.gz" -C "$destination"
           count=$(find "$destination/canonical-mvp-images" -type f -name '*.webp' | wc -l | tr -d ' ')
           test "$count" = "62"
 
