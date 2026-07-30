@@ -5,15 +5,13 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import Stripe from "stripe";
+import { stripe } from "@/lib/stripeClient";
 
 function env(name: string) {
   const v = process.env[name];
   if (!v) throw new Error(`Missing env: ${name}`);
   return v;
 }
-
-const stripe = new Stripe(env("STRIPE_SECRET_KEY"));
 
 export async function POST(req: Request) {
   try {

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import Stripe from "stripe";
 import { getUserFromRequest } from "@/app/lib/auth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { createDeliveryOrderFlow } from "@/lib/delivery/createDeliveryOrderFlow";
@@ -10,13 +9,11 @@ import {
   getBusinessPricingProfile,
 } from "@/lib/businessPricing";
 import { DELIVERY_INSTANT_QUOTE_MAX_MILES } from "@/lib/delivery/policy";
+import { stripe } from "@/lib/stripeClient";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2024-04-10",
-});
 
 type StartCheckoutBody = {
   pickupAddress?: { address_line?: string };

@@ -1,9 +1,8 @@
-import Stripe from "stripe";
-
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error("Missing STRIPE_SECRET_KEY");
-}
-
-export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: "2024-04-10",
-});
+/**
+ * Kept as a stable import path. The client itself now lives in
+ * `lib/stripeClient.ts` and is lazily initialized.
+ *
+ * This module previously threw `Missing STRIPE_SECRET_KEY` at import time,
+ * which broke `next build` in any environment without production secrets.
+ */
+export { stripe, getStripeClient, STRIPE_API_VERSION } from "@/lib/stripeClient";

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-import { createClient } from "@supabase/supabase-js";
 import { getUserFromRequest } from "@/app/lib/auth";
+import { stripe } from "@/lib/stripeClient";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -24,18 +25,6 @@ function siteUrlFromReq(req: NextRequest) {
 
   return "https://www.couranr.com";
 }
-
-const supabaseAdmin = createClient(
-  env("NEXT_PUBLIC_SUPABASE_URL"),
-  env("SUPABASE_SERVICE_ROLE_KEY"),
-  {
-    auth: { persistSession: false },
-  }
-);
-
-const stripe = new Stripe(env("STRIPE_SECRET_KEY"), {
-  apiVersion: "2024-04-10",
-});
 
 export async function POST(req: NextRequest) {
   try {

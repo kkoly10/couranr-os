@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { resolveRentalStatusAfterPayment } from "@/lib/auto/status";
+import { stripe } from "@/lib/stripeClient";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -11,8 +12,6 @@ function env(name: string) {
   if (!v) throw new Error(`Missing env: ${name}`);
   return v;
 }
-
-const stripe = new Stripe(env("STRIPE_SECRET_KEY"));
 
 function svc() {
   return createClient(

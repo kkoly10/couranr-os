@@ -1,12 +1,12 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { supabasePublic as supabase } from "@/lib/supabasePublic";
+
+// Reads live data, so it must not be prerendered at build time. Without this
+// Next evaluates the handler during `next build`, which needs env vars present.
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export async function GET() {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-
   const { data, error } = await supabase
     .from("vehicles")
     .select(`

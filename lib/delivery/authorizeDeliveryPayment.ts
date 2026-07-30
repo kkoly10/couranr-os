@@ -1,9 +1,6 @@
-import Stripe from "stripe";
 import { supabase } from "../supabaseClient";
+import { stripe } from "@/lib/stripeClient";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string, {
-  apiVersion: "2024-04-10", // ✅ FIXED — matches installed Stripe SDK
-});
 
 export async function authorizeDeliveryPayment({
   orderId,

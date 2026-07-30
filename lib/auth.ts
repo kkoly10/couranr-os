@@ -1,10 +1,5 @@
-import { createClient } from "@supabase/supabase-js";
 import { NextRequest } from "next/server";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { supabaseAdmin as supabase } from "@/lib/supabaseAdmin";
 
 /**
  * Base token → user resolver

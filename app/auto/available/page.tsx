@@ -1,9 +1,8 @@
-import { createClient } from "@supabase/supabase-js";
+import { supabasePublic as supabase } from "@/lib/supabasePublic";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+// Reads live vehicle data, so it must not be statically prerendered at build
+// time — prerendering would require env vars to be present during the build.
+export const dynamic = "force-dynamic";
 
 type Vehicle = {
   id: string;
