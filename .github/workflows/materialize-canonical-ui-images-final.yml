@@ -1,0 +1,104 @@
+name: Materialize canonical Couranr MVP UI set
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - docs/couranr-mvp/ui-reference/MATERIALIZE_CANONICAL_IMAGES
+      - docs/couranr-mvp/ui-reference/canonical-source-map.tsv
+      - .github/workflows/materialize-canonical-ui-images-final.yml
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  materialize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out documentation branch
+        uses: actions/checkout@v4
+        with:
+          ref: docs/platform-dependency-baseline-v1-1
+          fetch-depth: 0
+
+      - name: Prepare image conversion tool
+        shell: bash
+        run: |
+          set -euo pipefail
+          if command -v magick >/dev/null 2>&1; then
+            echo 'IMAGE_TOOL=magick' >> "$GITHUB_ENV"
+          elif command -v convert >/dev/null 2>&1; then
+            echo 'IMAGE_TOOL=convert' >> "$GITHUB_ENV"
+          else
+            sudo apt-get update
+            sudo apt-get install -y imagemagick
+            echo 'IMAGE_TOOL=convert' >> "$GITHUB_ENV"
+          fi
+
+      - name: Build the approved 62-screen image set
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapping="docs/couranr-mvp/ui-reference/canonical-source-map.tsv"
+          destination="docs/couranr-mvp/ui-reference/canonical-mvp-images"
+          manifest="docs/couranr-mvp/ui-reference/CANONICAL_IMAGE_MANIFEST.md"
+
+          test -f "$mapping"
+          map_count=$(grep -cve '^[[:space:]]*$' "$mapping")
+          test "$map_count" = "62"
+
+          rm -rf "$destination"
+          mkdir -p "$destination"
+
+          copied=0
+          while IFS=$'\t' read -r source target; do
+            test -n "$source"
+            test -n "$target"
+            test -f "$source"
+            mkdir -p "$destination/$(dirname "$target")"
+            "$IMAGE_TOOL" "$source" -resize '1000x1000>' -quality 72 "$destination/$target"
+            copied=$((copied + 1))
+          done < "$mapping"
+
+          test "$copied" = "62"
+          output_count=$(find "$destination" -type f -name '*.webp' | wc -l | tr -d ' ')
+          test "$output_count" = "62"
+
+          uuid_count=$(find . -maxdepth 1 -type f -regextype posix-extended \
+            -regex './[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\.png' \
+            | wc -l | tr -d ' ')
+          test "$uuid_count" -ge "62"
+
+          find . -maxdepth 1 -type f -regextype posix-extended \
+            -regex './[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\.png' \
+            -delete
+
+          {
+            echo '# Couranr canonical MVP image manifest'
+            echo
+            echo 'This directory contains 62 approved, repository-optimized WebP references selected from the generated Couranr mock library.'
+            echo
+            echo 'The original canonical PNG package remains the high-resolution design authority. Exploratory drafts, duplicate alternatives, contact sheets, and collage attempts are excluded from this set.'
+            echo
+            echo '## Included screens'
+            echo
+            while IFS=$'\t' read -r source target; do
+              printf -- '- `%s` — source `%s`\n' "canonical-mvp-images/$target" "$source"
+            done < "$mapping"
+          } > "$manifest"
+
+          rm -f docs/couranr-mvp/ui-reference/MATERIALIZE_CANONICAL_IMAGES
+
+      - name: Commit canonical UI references
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "docs: materialize approved canonical MVP UI images"
+          git push origin HEAD:docs/platform-dependency-baseline-v1-1
