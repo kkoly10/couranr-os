@@ -1,12 +1,6 @@
-name: Materialize approved Couranr MVP UI images
+name: Inspect Couranr UI image uploads
 
 on:
-  push:
-    branches:
-      - docs/platform-dependency-baseline-v1-1
-    paths:
-      - docs/couranr-mvp/ui-reference/MATERIALIZE_CANONICAL_IMAGES
-      - .github/workflows/materialize-canonical-ui-images.yml
   pull_request:
     branches:
       - main
@@ -15,12 +9,11 @@ on:
       - .github/workflows/materialize-canonical-ui-images.yml
 
 permissions:
-  contents: write
+  contents: read
   pull-requests: read
 
 jobs:
-  materialize:
-    if: github.actor != 'github-actions[bot]'
+  inspect:
     runs-on: ubuntu-latest
     steps:
       - name: Check out documentation branch
@@ -29,50 +22,27 @@ jobs:
           ref: docs/platform-dependency-baseline-v1-1
           fetch-depth: 0
 
-      - name: Extract only approved canonical MVP images
+      - name: Collect UUID-named root PNG uploads
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p /tmp/couranr-root-ui-images
 
-          archive="Couranr_Canonical_MVP_UI_Package.zip"
-          source_dir="Couranr_Canonical_MVP_UI/canonical-mvp-images"
-          destination="docs/couranr-mvp/ui-reference/canonical-mvp-images"
-          staging="$(mktemp -d)"
+          find . -maxdepth 1 -type f -regextype posix-extended \
+            -regex './[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\.png' \
+            -print0 | sort -z | xargs -0 -I{} cp '{}' /tmp/couranr-root-ui-images/
 
-          test -f "$archive"
-          rm -rf "$destination"
-          mkdir -p "$destination"
+          count=$(find /tmp/couranr-root-ui-images -type f -name '*.png' | wc -l | tr -d ' ')
+          echo "Collected $count UUID-named PNG uploads"
+          test "$count" -ge "62"
 
-          unzip -q "$archive" "$source_dir/*" -d "$staging"
-          cp -R "$staging/$source_dir/." "$destination/"
+          find /tmp/couranr-root-ui-images -type f -name '*.png' -printf '%f\n' | sort > /tmp/couranr-root-ui-images/files.txt
 
-          count=$(find "$destination" -type f -name '*.png' | wc -l | tr -d ' ')
-          test "$count" = "62"
-
-          find "$destination" -type f -name '*.png' -printf '%P\n' | sort > /tmp/canonical-image-list.txt
-          {
-            echo '# Couranr canonical MVP image manifest'
-            echo
-            echo 'This directory contains only the 62 approved canonical MVP PNG references from `Couranr_Canonical_MVP_UI_Package.zip`.'
-            echo
-            echo 'Exploratory drafts, alternate generations, contact sheets, and collage attempts are excluded.'
-            echo
-            echo '## Included files'
-            echo
-            sed 's#^#- `canonical-mvp-images/#; s#$#`#' /tmp/canonical-image-list.txt
-          } > docs/couranr-mvp/ui-reference/CANONICAL_IMAGE_MANIFEST.md
-
-      - name: Remove one-time trigger
-        shell: bash
-        run: |
-          rm -f docs/couranr-mvp/ui-reference/MATERIALIZE_CANONICAL_IMAGES
-
-      - name: Commit approved image set
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "docs: add approved canonical MVP UI images"
-          git push origin HEAD:docs/platform-dependency-baseline-v1-1
+      - name: Upload inspection artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: couranr-root-ui-images
+          path: /tmp/couranr-root-ui-images
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
