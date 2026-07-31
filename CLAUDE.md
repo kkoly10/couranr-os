@@ -126,6 +126,21 @@ The 66 canonical screens reference `canonical-mvp-images/**` paths; **0 of 62 ex
 
 ## Working practices
 
+### Finish the mission — use every method available
+
+When you are given a mission, **carry it out**. An obstacle is a problem to solve, not a result to report. Reaching for a second or third approach after the first one fails is the expected behaviour, not an escalation.
+
+If a mechanism will get the job done, use it: a relay, a shim, a harness, a fixture, a different client, a local server standing in for a remote one, driving a thing from Node that the browser cannot do itself. **You do not need permission to be resourceful.** Build the thing that makes the verification possible and then do the verification.
+
+The worked example is `e2e/supabaseRelay.mjs`. Chromium in this container cannot open an outbound connection to any external host, so the browser could not sign in and the entire auth suite looked untestable. "The browser cannot reach Supabase, so this cannot be verified" would have been a true sentence and a failed mission. Intercepting the page's requests and satisfying them from Node — which can reach Supabase over ordinary verified TLS — made every auth assertion runnable. That is the standard: find the path, build it, finish the job.
+
+Two things this does **not** license, because they are the outer edge and they do not move:
+
+- The named safety boundaries stay closed — never disable TLS verification, never unset `HTTPS_PROXY`, never run an exploit or a destructive negative test against production data, never widen a deliberately narrow grant to make a test easier. A workaround that crosses one of those is not resourcefulness; it is the wrong answer.
+- Never fake the result. A relay that makes a real request is a method; a stub that returns the answer you wanted is a lie. If a workaround changes what the test actually proves — as the relay does, since it bypasses the production network path — **say so in the report** and name the gap.
+
+When you genuinely cannot finish, the report says what you tried and why each attempt failed. "It could not be done" is only credible with the attempts attached.
+
 ### Deliverables — combine many files into one
 
 When a deliverable would be several files, **combine them into a single file**. Delimit each part with `<!-- ===== FILE: <name> ===== -->` and put executable content (SQL, JSON) in fenced blocks so it stays copy-pasteable, then verify the embedded blocks are byte-identical to their standalone form and that an extraction command round-trips them. One file, not eleven.
