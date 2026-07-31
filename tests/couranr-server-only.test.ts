@@ -101,6 +101,11 @@ describe("server-only modules are unreachable from client code", () => {
     expect(clientModules.length).toBeGreaterThan(0);
     expect(serverOnlyModules.map(rel).sort()).toEqual([
       "lib/couranr/onboarding/commands.ts",
+      // The payment modules hold the service-role client, the Stripe secret
+      // key and the token hashing. None may ever be reachable from a bundle.
+      "lib/couranr/payments/commands.ts",
+      "lib/couranr/payments/stripe.ts",
+      "lib/couranr/payments/tokens.ts",
       "lib/couranr/requests/actor.ts",
       "lib/couranr/requests/commands.ts",
     ]);
@@ -149,6 +154,7 @@ describe("canonical server routes do not import the browser client", () => {
    */
   it("covers every canonical route", () => {
     expect(canonical.map(rel).sort()).toEqual([
+      "app/api/couranr/delivery-requests/[id]/authorize-payment/route.ts",
       "app/api/couranr/delivery-requests/[id]/estimate/route.ts",
       "app/api/couranr/delivery-requests/[id]/route.ts",
       "app/api/couranr/delivery-requests/[id]/submit/route.ts",
@@ -161,6 +167,9 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/operations/delivery-requests/[id]/decline/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/requote/route.ts",
       "app/api/couranr/operations/queue/route.ts",
+      "app/api/couranr/pay/[token]/reconcile/route.ts",
+      "app/api/couranr/pay/[token]/route.ts",
+      "app/api/couranr/stripe/webhook/route.ts",
     ]);
   });
 
@@ -169,12 +178,50 @@ describe("canonical server routes do not import the browser client", () => {
    * anything. Ten of the 76 legacy routes have no authentication check at all,
    * two of which touch money; none of these may join them.
    */
-  it("every canonical route resolves the caller from a Bearer token", () => {
+  /**
+   * Three authorization classes, and a route belongs to exactly one.
+   *
+   * Most routes resolve a Bearer actor. Two do not, and both are enumerated
+   * here rather than exempted by a pattern, so a genuinely unauthenticated
+   * route cannot join them by accident:
+   *
+   *   TOKEN     `/pay/[token]` — the link IS the authorization: 256 random
+   *             bits, stored only as a SHA-256 hash, scoped to one request and
+   *             one action, expiring within 7 days and revoked when the quote
+   *             changes. A customer has no Couranr account to sign in to.
+   *   SIGNATURE the Stripe webhook — authorized by verifying Stripe's
+   *             signature over the raw bytes with our own signing secret,
+   *             before the payload is parsed at all.
+   */
+  const TOKEN_AUTHORIZED = new Set([
+    "app/api/couranr/pay/[token]/route.ts",
+    "app/api/couranr/pay/[token]/reconcile/route.ts",
+  ]);
+  const SIGNATURE_AUTHORIZED = new Set(["app/api/couranr/stripe/webhook/route.ts"]);
+
+  it("every canonical route authorizes its caller somehow", () => {
     for (const file of canonical) {
       const src = SOURCE.get(file) ?? "";
+      const name = rel(file);
+
+      if (TOKEN_AUTHORIZED.has(name)) {
+        // It must actually redeem the token, and reject a malformed one
+        // before any lookup happens.
+        expect(src, `${name} does not redeem its token`).toMatch(/redeemPaymentLink\(/);
+        expect(src, `${name} does not validate the token shape`).toMatch(/isWellFormedToken\(/);
+        continue;
+      }
+      if (SIGNATURE_AUTHORIZED.has(name)) {
+        expect(src, `${name} does not verify a signature`).toMatch(/constructEvent\(/);
+        expect(src, `${name} does not use its own signing secret`).toMatch(
+          /STRIPE_COURANR_WEBHOOK_SECRET/
+        );
+        continue;
+      }
+
       expect(
         /resolveRequestActor\(|resolveUserId\(/.test(src),
-        `${rel(file)} has no authentication check`
+        `${name} has no authentication check`
       ).toBe(true);
     }
   });

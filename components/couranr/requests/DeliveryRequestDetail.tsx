@@ -20,6 +20,7 @@ import {
 } from "@/components/couranr/states";
 import { QuoteSummary } from "./QuoteSummary";
 import { ReviewOutcomeActions } from "./ReviewOutcomeActions";
+import { MerchantPaymentPanel } from "@/components/couranr/payments/MerchantPaymentPanel";
 import {
   fetchDeliveryRequest,
   fetchMyBusinessAccounts,
@@ -108,6 +109,8 @@ export function DeliveryRequestDetail({ id }: { id: string }) {
    * and answers 403 to a merchant regardless of what the browser rendered.
    */
   const [isOperations, setIsOperations] = React.useState(false);
+  /** Which business this viewer read the request as; null for Operations. */
+  const [viewerBusinessAccountId, setViewerBusinessAccountId] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -130,6 +133,7 @@ export function DeliveryRequestDetail({ id }: { id: string }) {
           setRequest(r.value.request);
           setEvents(r.value.events ?? []);
           setIsOperations(businessAccountId === undefined);
+          setViewerBusinessAccountId(businessAccountId ?? null);
           setLoading(false);
           return;
         }
@@ -244,6 +248,14 @@ export function DeliveryRequestDetail({ id }: { id: string }) {
       </Card>
 
       <QuoteSummary request={request} />
+
+      {/* MER-007 payment. Operations reviews; it does not pay. */}
+      {!isOperations ? (
+        <MerchantPaymentPanel
+          request={request}
+          businessAccountId={viewerBusinessAccountId}
+        />
+      ) : null}
 
       {isOperations ? (
         <ReviewOutcomeActions

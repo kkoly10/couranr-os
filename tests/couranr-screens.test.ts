@@ -85,6 +85,9 @@ describe("canonical screen registry", () => {
       .map((s) => s.id)
       .sort();
     expect(built).toEqual([
+      // PUB-005 and CUS-005 are the same route; CUS-005 is it at
+      // ?mode=requote. Both ship with the payment authorization slice.
+      "CUS-005",
       "MER-002",
       "MER-005",
       "MER-006",
@@ -96,12 +99,13 @@ describe("canonical screen registry", () => {
       "OPS-003",
       "PUB-002",
       "PUB-003",
+      "PUB-005",
     ]);
 
     const p = implementationProgress();
     expect(p.total).toBe(66);
-    expect(p.implemented).toBe(8);
-    expect(p.remaining).toBe(58);
+    expect(p.implemented).toBe(10);
+    expect(p.remaining).toBe(56);
     expect(p.coreTotal).toBe(62);
   });
 

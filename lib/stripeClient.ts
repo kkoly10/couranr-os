@@ -27,12 +27,49 @@ export const STRIPE_API_VERSION = "2024-04-10" as const;
 
 let cached: Stripe | null = null;
 
+/**
+ * Point the SDK at a local Stripe double.
+ *
+ * Set `STRIPE_API_BASE` (e.g. `http://127.0.0.1:12111`) and the real SDK
+ * builds and sends its real HTTP request — same path, same form encoding, same
+ * `Idempotency-Key` header — to a recorder instead of api.stripe.com. That is
+ * what makes the payment flows drivable in a container with no Stripe
+ * credentials: it proves the request WE build is correct, and it proves
+ * nothing about whether Stripe would accept it. Both facts are reported.
+ *
+ * IGNORED IN PRODUCTION. A misconfigured env var must never be able to
+ * redirect live payment traffic, so the override is refused outright when
+ * NODE_ENV is production — it is a test seam, not a feature flag.
+ */
+function apiBaseOverride(): { host: string; port: number; protocol: "http" | "https" } | null {
+  const raw = process.env.STRIPE_API_BASE;
+  if (!raw) return null;
+  if (process.env.NODE_ENV === "production") return null;
+  try {
+    const u = new URL(raw);
+    return {
+      host: u.hostname,
+      port: Number(u.port || (u.protocol === "https:" ? 443 : 80)),
+      protocol: u.protocol === "https:" ? "https" : "http",
+    };
+  } catch {
+    return null;
+  }
+}
+
 function getStripe(): Stripe {
   if (cached) return cached;
+  const override = apiBaseOverride();
   cached = new Stripe(requireEnv("STRIPE_SECRET_KEY"), {
     apiVersion: STRIPE_API_VERSION,
+    ...(override ?? {}),
   });
   return cached;
+}
+
+/** True when this process is talking to a double rather than to Stripe. */
+export function isStripeDoubled(): boolean {
+  return apiBaseOverride() !== null;
 }
 
 export const stripe: Stripe = new Proxy({} as Stripe, {
