@@ -48,7 +48,7 @@ export type CanonicalScreen = {
 export const CANONICAL_SCREENS: CanonicalScreen[] = [
   { id: "PUB-001", name: "Marketing homepage", group: "public", routes: ["/"], tier: "core", phase: "10", viewport: "responsive", implemented: false },
   { id: "PUB-002", name: "Sign in", group: "public", routes: ["/sign-in"], tier: "core", phase: "10", viewport: "responsive", implemented: false },
-  { id: "PUB-003", name: "Business sign up", group: "public", routes: ["/sign-up"], tier: "core", phase: "4", viewport: "responsive", implemented: false },
+  { id: "PUB-003", name: "Business sign up", group: "public", routes: ["/sign-up"], tier: "core", phase: "4", viewport: "responsive", implemented: true },
   { id: "PUB-004", name: "Delivery estimate and hosted request", group: "public", routes: ["/estimate", "/request/[merchantSlug]"], tier: "core", phase: "5–6", viewport: "mobile-first", implemented: false },
   { id: "PUB-005", name: "Secure delivery payment", group: "public", routes: ["/pay/[token]"], tier: "core", phase: "6", viewport: "mobile-first", implemented: false },
   { id: "PUB-006", name: "Secure live tracking", group: "public", routes: ["/track/[token]"], tier: "core", phase: "7–8", viewport: "mobile-first", implemented: false },
@@ -58,7 +58,7 @@ export const CANONICAL_SCREENS: CanonicalScreen[] = [
   { id: "PUB-010", name: "Service areas page", group: "public", routes: ["/service-areas"], tier: "core", phase: "10", viewport: "responsive", implemented: false },
   { id: "PUB-011", name: "How Couranr works", group: "public", routes: ["/how-it-works"], tier: "core", phase: "10", viewport: "responsive", implemented: false },
   { id: "MER-001", name: "Merchant dashboard", group: "merchant", routes: ["/business"], tier: "core", phase: "4–10", viewport: "desktop-first", implemented: false },
-  { id: "MER-002", name: "Merchant onboarding", group: "merchant", routes: ["/business/onboarding"], tier: "core", phase: "4", viewport: "desktop-first", implemented: false },
+  { id: "MER-002", name: "Merchant onboarding", group: "merchant", routes: ["/business/onboarding"], tier: "core", phase: "4", viewport: "desktop-first", implemented: true },
   { id: "MER-003", name: "Live activation checklist", group: "merchant", routes: ["/business/onboarding?step=activation"], tier: "core", phase: "4", viewport: "desktop-first", implemented: false },
   { id: "MER-004", name: "Deliveries list", group: "merchant", routes: ["/business/deliveries"], tier: "core", phase: "5–8", viewport: "desktop-first", implemented: false },
   { id: "MER-005", name: "Create delivery with Smart Intake", group: "merchant", routes: ["/business/deliveries/new"], tier: "core", phase: "5", viewport: "desktop-first", implemented: true },

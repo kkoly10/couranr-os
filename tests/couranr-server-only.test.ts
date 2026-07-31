@@ -100,6 +100,7 @@ describe("server-only modules are unreachable from client code", () => {
     // If either side is empty the whole suite would pass vacuously.
     expect(clientModules.length).toBeGreaterThan(0);
     expect(serverOnlyModules.map(rel).sort()).toEqual([
+      "lib/couranr/onboarding/commands.ts",
       "lib/couranr/requests/actor.ts",
       "lib/couranr/requests/commands.ts",
     ]);
@@ -153,6 +154,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/delivery-requests/[id]/submit/route.ts",
       "app/api/couranr/delivery-requests/route.ts",
       "app/api/couranr/me/business-accounts/route.ts",
+      "app/api/couranr/me/workspace/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/begin-review/route.ts",
       "app/api/couranr/operations/queue/route.ts",
     ]);

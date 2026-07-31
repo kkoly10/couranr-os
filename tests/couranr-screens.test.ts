@@ -84,12 +84,19 @@ describe("canonical screen registry", () => {
     const built = CANONICAL_SCREENS.filter((s) => s.implemented)
       .map((s) => s.id)
       .sort();
-    expect(built).toEqual(["MER-005", "MER-006", "MER-007", "OPS-002"]);
+    expect(built).toEqual([
+      "MER-002",
+      "MER-005",
+      "MER-006",
+      "MER-007",
+      "OPS-002",
+      "PUB-003",
+    ]);
 
     const p = implementationProgress();
     expect(p.total).toBe(66);
-    expect(p.implemented).toBe(4);
-    expect(p.remaining).toBe(62);
+    expect(p.implemented).toBe(6);
+    expect(p.remaining).toBe(60);
     expect(p.coreTotal).toBe(62);
   });
 

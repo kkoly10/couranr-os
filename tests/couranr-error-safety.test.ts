@@ -129,13 +129,14 @@ describe("classifyDatabaseError", () => {
 });
 
 describe("canonical routes cannot leak a database detail", () => {
-  it("covers the seven canonical routes", () => {
+  it("covers every canonical route", () => {
     expect(ROUTES.map(rel).sort()).toEqual([
       "app/api/couranr/delivery-requests/[id]/estimate/route.ts",
       "app/api/couranr/delivery-requests/[id]/route.ts",
       "app/api/couranr/delivery-requests/[id]/submit/route.ts",
       "app/api/couranr/delivery-requests/route.ts",
       "app/api/couranr/me/business-accounts/route.ts",
+      "app/api/couranr/me/workspace/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/begin-review/route.ts",
       "app/api/couranr/operations/queue/route.ts",
     ]);
