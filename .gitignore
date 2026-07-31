@@ -6,3 +6,7 @@ node_modules
 
 # TypeScript incremental build info
 *.tsbuildinfo
+
+# e2e run state (contains synthetic fixture ids)
+e2e/.state.json
+e2e/artifacts/

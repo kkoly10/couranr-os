@@ -172,9 +172,25 @@ The second row is where memory has actually failed. Both cost time and were one 
 
 Research informs **technical** reasoning only. It never overrides the authority chain, and it is never a route to settling an unresolved product decision: where the registry is silent, the answer is still "unresolved".
 
-### Verifying against a browser
+### Browser verification — MANDATORY for anything with a UI
 
-Chromium is pre-installed at `/opt/pw-browsers` with `PLAYWRIGHT_BROWSERS_PATH` already set — do **not** run `playwright install`. Outbound HTTPS goes through a TLS-intercepting proxy (CA bundle at `/root/.ccr/ca-bundle.crt`); `curl` and Node trust it, a bundled Chromium generally will not. Use `curl` for external checks and a browser only against `localhost`. Never disable TLS verification or unset `HTTPS_PROXY` to force it — that's a safety boundary.
+**A UI deliverable is not done until it has been driven in a real browser.** Green unit tests, a passing typecheck and a 200 from `curl` are all necessary and none of them are sufficient — every one of those passed while `/sign-in` was a placeholder, while "Sign out" was a `<Link>` that left the session live, and while a failed workspace lookup rendered as "you have no business". A jsdom test asserts what a component returns; only a browser proves what a person can actually do.
+
+So: **seed data, start the dev server, drive the UI, assert on what rendered.** Every time.
+
+**How.** Chromium is pre-installed at `/opt/pw-browsers` with `PLAYWRIGHT_BROWSERS_PATH` already set — do **not** run `playwright install`. Playwright is installed globally (`/opt/node22/lib/node_modules/playwright`), not as a repo dependency, so import it by absolute path from a scratchpad script. Prefer the browser MCP tool when the session has one authorized; fall back to driving Playwright from Node when it does not. Run against a `npm run dev` server on `localhost`, which is what lets you test unreleased code and inject faults.
+
+**Seeding.** Use the service-role key to create the accounts, memberships and rows a scenario needs, because `service_role` is the only identity that can. Rules:
+
+- Every seeded row must carry an obvious synthetic marker (an `e2e` email tag, a prefixed business name) and must be recorded so it can be removed.
+- **Never mutate a real row to set up a test.** The connected project holds real data — 42 `orders`, 29 `deliveries`, 94 `addresses`, 28 `rentals`. Create new synthetic rows next to them; never repurpose theirs.
+- Clean up what you created, and report anything you deliberately left behind.
+
+**Fault injection belongs in the browser, not the database.** To test a fail-closed path, intercept the request at the page (`page.route(…)` returning a 500) rather than breaking a table. That exercises the exact branch with zero blast radius. Dropping a privilege or corrupting a row to "see what happens" is never the move against a live project.
+
+**Evidence.** Screenshot each meaningful state and say which assertion each one backs. A screenshot with no assertion is decoration; an assertion with no screenshot is a claim. Report the states you could not reach and why.
+
+**Unchanged safety boundary:** never disable TLS verification and never unset `HTTPS_PROXY` to force something through. If a browser cannot reach an external host, that is a result to report, not an obstacle to bypass.
 
 ### Conventions worth matching
 
