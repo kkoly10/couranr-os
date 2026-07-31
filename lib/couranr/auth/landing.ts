@@ -41,8 +41,6 @@ export type LandingFacts = {
   role: ProfileRole | null;
   /** Count of `business_members` rows with status 'active'. */
   activeMembershipCount: number;
-  /** Whether a `couranr_merchant_workspaces` row exists for this user. */
-  hasWorkspace: boolean;
 };
 
 export type LandingDecision = {

@@ -55,7 +55,21 @@ const EMPTY_ADDRESS = {
 export function OnboardingForm() {
   const router = useRouter();
 
-  const [existing, setExisting] = React.useState<string[] | null>(null);
+  /**
+   * Account-existence status.
+   *
+   * "unknown" is a REAL state, distinct from "none". The form must never be
+   * offered while account existence is unknown: a failed lookup used to
+   * collapse to an empty list, which invited an established merchant to create
+   * a second workspace on a transient error.
+   */
+  const [lookup, setLookup] = React.useState<
+    | { status: "loading" }
+    | { status: "none" }
+    | { status: "exists"; names: string[] }
+    | { status: "unauthenticated" }
+    | { status: "failed"; failure: ApiFailure }
+  >({ status: "loading" });
   const [name, setName] = React.useState("");
   const [businessCategory, setBusinessCategory] = React.useState("");
   const [pickup, setPickup] = React.useState({ ...EMPTY_ADDRESS });
@@ -73,17 +87,33 @@ export function OnboardingForm() {
   const idempotencyKey = React.useRef<string>("");
   if (idempotencyKey.current === "") idempotencyKey.current = newIdempotencyKey();
 
-  React.useEffect(() => {
-    let cancelled = false;
-    fetchMyBusinessAccounts().then((r) => {
-      if (cancelled) return;
-      setExisting(isApiFailure(r) ? [] : r.value.businessAccounts.map((a) => a.name));
-      if (isApiFailure(r) && r.status === 401) setFailure(r);
-    });
-    return () => {
-      cancelled = true;
-    };
+  const cancelledRef = React.useRef(false);
+
+  /** Re-runs the lookup in place. No page reload, no lost form input. */
+  const loadAccounts = React.useCallback(async () => {
+    setLookup({ status: "loading" });
+    const r = await fetchMyBusinessAccounts();
+    if (cancelledRef.current) return;
+
+    if (isApiFailure(r)) {
+      // 401 is a known, actionable state. Everything else — offline, 5xx, a
+      // malformed body — leaves account existence UNKNOWN, and unknown is not
+      // "none".
+      setLookup(r.status === 401 ? { status: "unauthenticated" } : { status: "failed", failure: r });
+      return;
+    }
+
+    const names = r.value.businessAccounts.map((a) => a.name);
+    setLookup(names.length > 0 ? { status: "exists", names } : { status: "none" });
   }, []);
+
+  React.useEffect(() => {
+    cancelledRef.current = false;
+    loadAccounts();
+    return () => {
+      cancelledRef.current = true;
+    };
+  }, [loadAccounts]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -123,7 +153,7 @@ export function OnboardingForm() {
     router.refresh();
   }
 
-  if (existing === null) {
+  if (lookup.status === "loading") {
     return (
       <LoadingState label="Loading your account">
         <CardSkeleton lines={4} />
@@ -131,21 +161,36 @@ export function OnboardingForm() {
     );
   }
 
-  if (failure?.status === 401) {
+  if (lookup.status === "unauthenticated") {
     return (
       <EmptyState
         title="Sign in to continue"
         body="Create a Couranr sign-in first, then set up your business."
-        action={{ label: "Sign up", href: "/sign-up" }}
+        action={{ label: "Sign in", href: "/sign-in" }}
       />
     );
   }
 
-  if (existing.length > 0) {
+  /**
+   * Account existence is UNKNOWN. Offer a retry and nothing else — in
+   * particular, not the form, because submitting it could create a second
+   * workspace for a merchant who already has one.
+   */
+  if (lookup.status === "failed") {
+    return (
+      <ErrorState
+        title="We could not check your account"
+        body={withReference(lookup.failure)}
+        action={{ label: "Try again", onClick: loadAccounts }}
+      />
+    );
+  }
+
+  if (lookup.status === "exists") {
     return (
       <EmptyState
         title="Your workspace is ready"
-        body={`You already have access to ${existing.join(", ")}.`}
+        body={`You already have access to ${lookup.names.join(", ")}.`}
         action={{ label: "Go to your dashboard", href: "/business" }}
       />
     );
@@ -154,7 +199,7 @@ export function OnboardingForm() {
   return (
     <form onSubmit={onSubmit} noValidate>
       <Stack gap={6}>
-        {failure && failure.status !== 401 ? (
+        {failure ? (
           <ErrorState title="Your workspace could not be created" body={withReference(failure)} />
         ) : null}
 

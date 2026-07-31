@@ -143,25 +143,52 @@ export async function resolveRequestActor(
   return { ok: true, actor: { kind: "member", userId, membership }, userId };
 }
 
+export type MembershipLookupFailed = { ok: false; detail: string };
+export type MembershipLookup =
+  | { ok: true; memberships: MembershipSummary[] }
+  | MembershipLookupFailed;
+
+/** `tsconfig` sets `"strict": false`; a bare `!r.ok` does not narrow. */
+export function isMembershipLookupFailed(r: MembershipLookup): r is MembershipLookupFailed {
+  return r.ok === false;
+}
+
+export type MembershipSummary = {
+  businessAccountId: string;
+  name: string;
+  role: MemberRole;
+};
+
 /**
  * The businesses this user may act for. Used by the merchant screens, which
  * have no tenant in the URL — the server decides which account is in scope
  * rather than trusting a client-supplied id.
+ *
+ * FAILS CLOSED. This previously returned `[]` on error, which is
+ * indistinguishable from "you belong to no businesses" — and the onboarding
+ * screen reads exactly that to decide whether to offer workspace creation. A
+ * transient database error would have invited an established merchant to
+ * create a second workspace. The error is now propagated so the caller can
+ * refuse rather than guess.
  */
-export async function listActiveMemberships(userId: string): Promise<
-  Array<{ businessAccountId: string; name: string; role: MemberRole }>
-> {
+export async function listActiveMemberships(userId: string): Promise<MembershipLookup> {
   const { data, error } = await supabaseAdmin
     .from("business_members")
     .select("business_account_id,role,business_accounts(name)")
     .eq("user_id", userId)
     .eq("status", "active");
 
-  if (error || !data) return [];
+  if (error) return { ok: false, detail: error.message };
+  // A successful query always yields an array. Anything else is a driver
+  // surprise, not an empty result.
+  if (!Array.isArray(data)) return { ok: false, detail: "no error and no rows array" };
 
-  return data.map((row: any) => ({
-    businessAccountId: String(row.business_account_id),
-    name: String(row.business_accounts?.name ?? "Business account"),
-    role: row.role as MemberRole,
-  }));
+  return {
+    ok: true,
+    memberships: data.map((row: any) => ({
+      businessAccountId: String(row.business_account_id),
+      name: String(row.business_accounts?.name ?? "Business account"),
+      role: row.role as MemberRole,
+    })),
+  };
 }

@@ -120,8 +120,12 @@ export function NewDeliveryFlow() {
     fetchMyBusinessAccounts().then((r) => {
       if (cancelled) return;
       if (isApiFailure(r)) {
+        // Same fail-closed rule as onboarding: a failed lookup leaves account
+        // existence UNKNOWN, which is not the same as having none. `accounts`
+        // stays null so no "no business account yet" message is shown for what
+        // is actually a transient error.
         setAccountsError(r);
-        setAccounts([]);
+        if (r.status === 401) setAccounts([]);
         return;
       }
       setAccounts(r.value.businessAccounts);
@@ -200,6 +204,16 @@ export function NewDeliveryFlow() {
       return;
     }
     router.push(`/business/deliveries/${result.value.request.id}`);
+  }
+
+  if (accounts === null && accountsError) {
+    return (
+      <ErrorState
+        title="We could not check your account"
+        body={withReference(accountsError)}
+        action={{ label: "Reload", onClick: () => router.refresh() }}
+      />
+    );
   }
 
   if (accounts === null) {

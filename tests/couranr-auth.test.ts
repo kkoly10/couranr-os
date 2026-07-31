@@ -16,10 +16,10 @@ import { classifyAuthError } from "@/components/couranr/auth/authCopy";
 const ROOT = path.resolve(__dirname, "..");
 const read = (p: string) => readFileSync(path.join(ROOT, p), "utf8");
 
-const MERCHANT: LandingFacts = { role: "customer", activeMembershipCount: 1, hasWorkspace: true };
-const NEW_MERCHANT: LandingFacts = { role: "customer", activeMembershipCount: 0, hasWorkspace: false };
-const ADMIN: LandingFacts = { role: "admin", activeMembershipCount: 0, hasWorkspace: false };
-const DRIVER: LandingFacts = { role: "driver", activeMembershipCount: 0, hasWorkspace: false };
+const MERCHANT: LandingFacts = { role: "customer", activeMembershipCount: 1 };
+const NEW_MERCHANT: LandingFacts = { role: "customer", activeMembershipCount: 0 };
+const ADMIN: LandingFacts = { role: "admin", activeMembershipCount: 0 };
+const DRIVER: LandingFacts = { role: "driver", activeMembershipCount: 0 };
 
 /* ------------------------------------------------------------ vocabulary */
 
@@ -77,12 +77,12 @@ describe("landing resolution", () => {
 
   /** The higher-privilege surface wins, so an operator never acts as a merchant by accident. */
   it("prefers Operations when an admin also holds a membership", () => {
-    const both: LandingFacts = { role: "admin", activeMembershipCount: 3, hasWorkspace: true };
+    const both: LandingFacts = { role: "admin", activeMembershipCount: 3 };
     expect(defaultDestination(both)).toBe("/operations");
   });
 
   it("treats a missing profile row as a merchant, not as an operator", () => {
-    const noProfile: LandingFacts = { role: null, activeMembershipCount: 1, hasWorkspace: true };
+    const noProfile: LandingFacts = { role: null, activeMembershipCount: 1 };
     expect(resolveSurface(noProfile)).toBe("business");
   });
 });
@@ -455,6 +455,85 @@ describe("the landing route", () => {
 
   it("treats an unrecognised stored role as no role", () => {
     expect(route).toMatch(/isProfileRole\(rawRole\) \? rawRole : null/);
+  });
+
+  /**
+   * FAIL CLOSED. A failed lookup previously fell through as `data: null` ->
+   * zero rows -> "brand-new merchant", which would have sent an established
+   * merchant to onboarding on a transient database error.
+   */
+  describe("fails closed on every lookup", () => {
+    it("returns an internal failure when the profile lookup errors", () => {
+      expect(route).toMatch(/if \(profileResult\.error\) \{[\s\S]*?routeInternalFailure/);
+    });
+
+    it("returns an internal failure when the membership lookup errors", () => {
+      expect(route).toMatch(/if \(membershipResult\.error\) \{[\s\S]*?routeInternalFailure/);
+    });
+
+    it("returns an internal failure when the membership rows are not an array", () => {
+      expect(route).toMatch(/!Array\.isArray\(membershipResult\.data\)/);
+    });
+
+    /** Every failure path must return BEFORE any destination is computed. */
+    it("computes no destination until every lookup has succeeded", () => {
+      const decisionAt = route.indexOf("resolveLanding(");
+      const guards = [
+        route.indexOf("if (profileResult.error)"),
+        route.indexOf("if (membershipResult.error)"),
+        route.indexOf("!Array.isArray(membershipResult.data)"),
+      ];
+      for (const g of guards) {
+        expect(g).toBeGreaterThan(-1);
+        expect(g).toBeLessThan(decisionAt);
+      }
+    });
+
+    it("never coerces a failed lookup into a count", () => {
+      // The old shape. `?? 0` on a lookup result is the bug.
+      expect(route).not.toMatch(/membershipResult\.data\?\.length \?\? 0/);
+      expect(route).toMatch(/activeMembershipCount: membershipResult\.data\.length/);
+    });
+
+    it("logs the detail rather than returning it", () => {
+      expect(route).toMatch(/routeInternalFailure\(/);
+      expect(read("lib/couranr/requests/respond.ts")).toMatch(/logServerFailure\(/);
+      // The sanitized message is ours, not the driver's.
+      expect(route).toMatch(/We could not load your account/);
+      // The driver error reaches the logger, never a field read in the route.
+      expect(route).toMatch(/error: profileResult\.error/);
+      expect(route).not.toMatch(/error\.message/);
+    });
+  });
+
+  /**
+   * The unused lookup is GONE rather than retained with a corrected error
+   * check: `hasWorkspace` was never read by any landing decision.
+   */
+  it("runs no query whose result is ignored", () => {
+    expect(route).not.toMatch(/couranr_merchant_workspaces/);
+    expect(route).not.toMatch(/hasWorkspace/);
+    expect(read("lib/couranr/auth/landing.ts")).not.toMatch(/hasWorkspace/);
+    // Exactly two lookups remain, and both feed the decision.
+    expect((route.match(/supabaseAdmin\s*\.?\s*\n?\s*\.from\(/g) || []).length).toBe(2);
+  });
+});
+
+describe("the business-accounts route fails closed", () => {
+  const route = read("app/api/couranr/me/business-accounts/route.ts");
+  const actor = read("lib/couranr/requests/actor.ts");
+
+  it("returns an internal failure instead of an empty list", () => {
+    expect(route).toMatch(/isMembershipLookupFailed\(result\)/);
+    expect(route).toMatch(/routeInternalFailure\(/);
+  });
+
+  /** The root cause: `if (error || !data) return []`. */
+  it("listActiveMemberships propagates the error rather than swallowing it", () => {
+    const code = actor.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    expect(code).not.toMatch(/if \(error \|\| !data\) return \[\]/);
+    expect(code).toMatch(/if \(error\) return \{ ok: false/);
+    expect(code).toMatch(/!Array\.isArray\(data\)/);
   });
 });
 
