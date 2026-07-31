@@ -2051,6 +2051,74 @@
       "acceptance_criteria": [
         "No AI code path can write to a money, state or address field."
       ]
+    },
+    {
+      "id": "DRP-001",
+      "category": "payer rules",
+      "decision": "Bounded team permissions for delivery-request creation and submission in the first merchant slice.",
+      "value": {
+        "scope": "delivery-request create and submit only; not the complete team-role matrix",
+        "create_and_submit": {
+          "owner": true,
+          "manager": true,
+          "dispatcher": true,
+          "viewer": false,
+          "billing": false
+        },
+        "read": {
+          "active_member_of_the_owning_business": true,
+          "couranr_operations": "across businesses"
+        },
+        "review": {
+          "couranr_operations_only": true
+        },
+        "membership_status": {
+          "active": "as above",
+          "invited": "denied",
+          "disabled": "denied"
+        },
+        "anonymous": "denied"
+      },
+      "status": "decided",
+      "authority_file": "02_DECISION_REGISTRY.json",
+      "authority_section": "Product owner decision, recorded 2026-07-31, bounding TRM-002 for the first slice only",
+      "affected_routes": [
+        "/business/deliveries/new",
+        "/business/deliveries",
+        "/operations/queue"
+      ],
+      "affected_screen_ids": [
+        "MER-005",
+        "MER-006",
+        "MER-007",
+        "OPS-002"
+      ],
+      "affected_database_objects": [
+        "public.couranr_delivery_requests",
+        "public.couranr_delivery_request_events",
+        "public.business_members"
+      ],
+      "affected_code_paths": [
+        "lib/couranr/requests/permissions.ts"
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "membership": "binary",
+          "role_column_read_by_code": false
+        },
+        "code_location": "lib/businessAccount.ts:11-41",
+        "resolution": "DRP-001 supersedes the binary check for this slice. lib/businessAccount.ts is unchanged and still used by legacy paths; the canonical commands use lib/couranr/requests/permissions.ts.",
+        "remediation_commit": "first merchant vertical slice"
+      },
+      "implementation_phase": "4",
+      "acceptance_criteria": [
+        "An active viewer or billing member cannot create or submit a delivery request.",
+        "An invited or disabled member is denied every capability.",
+        "A member of another business cannot act on this business's requests.",
+        "Couranr Operations can read and review but cannot create or submit."
+      ],
+      "supersedes_scope_of": "TRM-002",
+      "note": "TRM-002 remains unresolved. This record bounds only delivery-request create/submit/read/review."
     }
   ]
 }
