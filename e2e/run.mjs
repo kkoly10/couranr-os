@@ -665,6 +665,177 @@ async function groupI() {
   }
 }
 
+/* ================================================== J. DRIVER DELIVERIES */
+
+/**
+ * DRV-001 / DRV-002 read path (Commit N).
+ *
+ * The browser is what exposed this: /driver queried
+ * `deliveries.pickup_address`, a column that does not exist, and rendered the
+ * PostgREST message to the driver. Meanwhile /driver/deliveries read
+ * `payload.deliveries` from an endpoint that returned `{ data }`, so its list
+ * was permanently empty and looked exactly like "no assignments".
+ *
+ * The populated case is driven by INTERCEPTING the endpoint with a synthetic
+ * assignment rather than writing a delivery row into production — the real
+ * `deliveries` table holds 29 live rows and none of them are ours to touch.
+ */
+const SYNTHETIC_DELIVERY = {
+  id: "e2e00000-0000-4000-8000-000000000001",
+  status: "assigned",
+  createdAt: "2026-07-31T12:00:00.000Z",
+  recipientName: "E2E Recipient",
+  estimatedMiles: 6.4,
+  weightLb: 9,
+  orderNumber: "CR-E2E-001",
+  pickupAddress: "412 Marker Street, Stafford, VA 22554",
+  dropoffAddress: "1500 Caroline Street, Fredericksburg, VA 22401",
+};
+
+/** Fails the whole group if a raw schema/database message ever reaches a page. */
+async function assertNoSchemaError(page, id, where) {
+  const body = await page.locator("body").innerText();
+  const leaked = [
+    /column .* does not exist/i,
+    /relation .* does not exist/i,
+    /PGRST\d+/,
+    /permission denied for table/i,
+    /could not find a relationship/i,
+  ].filter((rx) => rx.test(body));
+  check(id, `${where} renders no schema or database error`, leaked.length === 0,
+    leaked.length ? `leaked: ${body.match(leaked[0])?.[0]}` : "");
+}
+
+async function groupJ() {
+  console.log("\n\x1b[1mJ — driver delivery reads come from the canonical endpoint\x1b[0m");
+
+  // J1–J3: a real driver, real endpoint, genuinely no assignments.
+  {
+    const { ctx, page } = await freshContext();
+    try {
+      await signIn(page, USERS.driver, { expectLanding: "/driver" });
+    } catch {
+      inconclusive("J1", "driver dashboard", `driver did not land on /driver (at ${new URL(page.url()).pathname})`);
+      await ctx.close();
+      return;
+    }
+    await page.waitForTimeout(2500);
+
+    check("J1", "a real driver can open /driver", new URL(page.url()).pathname === "/driver",
+      `path=${new URL(page.url()).pathname}`);
+    await assertNoSchemaError(page, "J2", "/driver");
+
+    // The seeded driver has no assignments, so the empty state is the truth.
+    const empty = await page.getByText(/No active delivery assigned right now/i).count();
+    check("J3", "the empty state renders when the driver has no assignments", empty === 1, `emptyState=${empty}`);
+    await shot(page, "J1-driver-empty");
+    await ctx.close();
+  }
+
+  // J4/J6: populated dashboard via interception.
+  {
+    const { ctx, page } = await freshContext();
+    await page.route("**/api/driver/my-deliveries", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ deliveries: [SYNTHETIC_DELIVERY] }),
+      });
+    });
+    try {
+      await signIn(page, USERS.driver, { expectLanding: "/driver" });
+    } catch {
+      inconclusive("J4", "populated driver dashboard", "driver did not reach /driver");
+      await ctx.close();
+      return;
+    }
+    await page.waitForTimeout(2500);
+
+    const body = await page.locator("body").innerText();
+    const shows = {
+      pickup: body.includes("412 Marker Street, Stafford, VA 22554"),
+      dropoff: body.includes("1500 Caroline Street, Fredericksburg, VA 22401"),
+      status: /Assigned/i.test(body),
+      recipient: body.includes("E2E Recipient"),
+      mileage: body.includes("6.40"),
+      weight: /9 lbs/.test(body),
+      order: body.includes("CR-E2E-001"),
+    };
+    check("J4", "/driver renders pickup, drop-off, status, recipient, mileage and weight",
+      Object.values(shows).every(Boolean), JSON.stringify(shows));
+    await assertNoSchemaError(page, "J4b", "/driver (populated)");
+    await shot(page, "J2-driver-assigned");
+    await ctx.close();
+  }
+
+  // J5/J6: the SAME assignment on /driver/deliveries, with Start Delivery.
+  {
+    const { ctx, page } = await freshContext();
+    await page.route("**/api/driver/my-deliveries", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ deliveries: [SYNTHETIC_DELIVERY] }),
+      });
+    });
+    try {
+      await signIn(page, USERS.driver, { expectLanding: "/driver" });
+    } catch {
+      inconclusive("J5", "/driver/deliveries", "driver did not reach /driver");
+      await ctx.close();
+      return;
+    }
+    await page.goto(`${BASE_URL}/driver/deliveries`, { waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(2500);
+
+    const body = await page.locator("body").innerText();
+    const same =
+      body.includes("412 Marker Street, Stafford, VA 22554") &&
+      body.includes("1500 Caroline Street, Fredericksburg, VA 22401") &&
+      body.includes("E2E Recipient");
+    check("J5", "/driver/deliveries renders the same assignment", same,
+      `pickup=${body.includes("412 Marker Street, Stafford, VA 22554")} ` +
+      `dropoff=${body.includes("1500 Caroline Street, Fredericksburg, VA 22401")} ` +
+      `recipient=${body.includes("E2E Recipient")}`);
+
+    const start = await page.getByRole("button", { name: /start delivery/i }).count();
+    check("J6", "Start Delivery is present for an assigned delivery", start === 1, `buttons=${start}`);
+    await assertNoSchemaError(page, "J6b", "/driver/deliveries");
+    await shot(page, "J3-deliveries-assigned");
+    await ctx.close();
+  }
+
+  // J7: a merchant cannot remain on either driver page.
+  for (const route of ["/driver", "/driver/deliveries"]) {
+    const { ctx, page } = await freshContext();
+    try {
+      await signIn(page, USERS.merchant, { expectLanding: "/business" });
+      await page.goto(`${BASE_URL}${route}`, { waitUntil: "domcontentloaded" });
+      await page.waitForTimeout(3500);
+      const p = new URL(page.url()).pathname;
+      check(`J7${route.replace(/\//g, "-")}`, `a merchant cannot remain on ${route}`,
+        !p.startsWith("/driver"), `landed=${p}`);
+    } catch (e) {
+      inconclusive(`J7${route.replace(/\//g, "-")}`, `merchant on ${route}`, e.message.split("\n")[0]);
+    }
+    await ctx.close();
+  }
+
+  // J8: signed out reaches canonical /sign-in, not legacy /login.
+  for (const route of ["/driver", "/driver/deliveries"]) {
+    const { ctx, page } = await freshContext();
+    await page.goto(`${BASE_URL}${route}`, { waitUntil: "domcontentloaded" });
+    let landed = new URL(page.url()).pathname;
+    try {
+      await page.waitForURL((u) => u.pathname === "/sign-in", { timeout: 20000 });
+      landed = new URL(page.url()).pathname;
+    } catch { /* keep whatever it settled on */ }
+    check(`J8${route.replace(/\//g, "-")}`, `signed-out ${route} reaches canonical /sign-in`,
+      landed === "/sign-in", `landed=${landed}`);
+    await ctx.close();
+  }
+}
+
 /* ------------------------------------------------------------------ main */
 
 console.log(`\n\x1b[1mCouranr browser verification\x1b[0m  ->  ${BASE_URL}`);
@@ -684,7 +855,7 @@ browser = await chromium.launch({
   args: ["--no-proxy-server", "--disable-quic"],
 });
 
-const ALL = { A: groupA, B: groupB, C: groupC, D: groupD, E: groupE, F: groupF, G: groupG, H: groupH, I: groupI };
+const ALL = { A: groupA, B: groupB, C: groupC, D: groupD, E: groupE, F: groupF, G: groupG, H: groupH, I: groupI, J: groupJ };
 
 let REAL_AFTER = null;
 let cleanup = null;

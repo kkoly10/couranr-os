@@ -1,113 +1,58 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import {
+  activeDelivery as pickActive,
+  completedToday as pickCompletedToday,
+  fetchMyDeliveries,
+  isDriverLoadFailure,
+  statusLabel,
+  type DriverDelivery,
+} from "@/lib/couranr/driver/deliveries";
 
-/* ---------------- TYPES ---------------- */
-
-type DriverOrder = {
-  order_number: string;
-};
-
-type DriverDelivery = {
-  id: string;
-  status: string;
-  created_at: string;
-  pickup_address: string | null;
-  dropoff_address: string | null;
-  estimated_miles: number | null;
-  weight_lbs: number | null;
-  order: DriverOrder | null;
-};
-
-const STATUS_LABELS: Record<string, string> = {
-  assigned: "Assigned",
-  in_transit: "In transit",
-  completed: "Completed",
-};
-
-/* --------------- COMPONENT -------------- */
-
-export default function DriverDashboard() {
-  const [loading, setLoading] = useState(true);
+/**
+ * DRV-001 — driver dashboard.
+ *
+ * Reads /api/driver/my-deliveries and nothing else. It used to query Supabase
+ * directly from the browser for `deliveries.pickup_address` and
+ * `deliveries.dropoff_address`, columns that do not exist — the real schema has
+ * `pickup_address_id` / `dropoff_address_id` into `addresses`. The resulting
+ * PostgREST message was rendered straight to the driver as
+ * "Error: column deliveries.pickup_address does not exist".
+ *
+ * There is no client-side role check here any more. SurfaceGuard owns where a
+ * person is sent; the endpoint owns what they may read. Duplicating the check
+ * in the page bought nothing and added a second, weaker, place to get it wrong.
+ *
+ * Styling is deliberately unchanged — this commit fixes the read, not the look.
+ */
+export default function DriverDashboardPage() {
   const [deliveries, setDeliveries] = useState<DriverDelivery[]>([]);
-  const [error, setError] = useState<string | null>(null);
-
-  const activeDelivery = useMemo(() => {
-    return deliveries.find(
-      (d) => d.status === "assigned" || d.status === "in_transit"
-    );
-  }, [deliveries]);
-
-  const completedToday = useMemo(() => {
-    const today = new Date().toDateString();
-    return deliveries.filter(
-      (d) =>
-        d.status === "completed" &&
-        new Date(d.created_at).toDateString() === today
-    );
-  }, [deliveries]);
+  const [loading, setLoading] = useState(true);
+  const [failure, setFailure] = useState<{ message: string; correlationId?: string } | null>(null);
 
   useEffect(() => {
-    async function load() {
-      setLoading(true);
-      setError(null);
-
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
-        setLoading(false);
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from("deliveries")
-        .select(`
-          id,
-          status,
-          created_at,
-          pickup_address,
-          dropoff_address,
-          estimated_miles,
-          weight_lbs,
-          orders (
-            order_number
-          )
-        `)
-        .eq("driver_id", user.id)
-        .order("created_at", { ascending: false });
-
-      if (error) {
-        setError(error.message);
+    const ac = new AbortController();
+    (async () => {
+      const r = await fetchMyDeliveries(ac.signal);
+      if (ac.signal.aborted) return;
+      if (isDriverLoadFailure(r)) {
+        // A failed load is NOT an empty assignment list, and must not render as
+        // "no active delivery".
         setDeliveries([]);
-        setLoading(false);
-        return;
+        setFailure({ message: r.message, correlationId: r.correlationId });
+      } else {
+        setDeliveries(r.deliveries);
+        setFailure(null);
       }
-
-      // ✅ NORMALIZE Supabase relation array → single object
-      const normalized: DriverDelivery[] = (data ?? []).map((d: any) => ({
-        id: d.id,
-        status: d.status,
-        created_at: d.created_at,
-        pickup_address: d.pickup_address,
-        dropoff_address: d.dropoff_address,
-        estimated_miles: d.estimated_miles,
-        weight_lbs: d.weight_lbs,
-        order:
-          d.orders && d.orders.length > 0
-            ? { order_number: d.orders[0].order_number }
-            : null,
-      }));
-
-      setDeliveries(normalized);
       setLoading(false);
-    }
-
-    load();
+    })();
+    return () => ac.abort();
   }, []);
+
+  const activeDelivery = pickActive(deliveries);
+  const completedToday = pickCompletedToday(deliveries);
 
   /* --------------- UI STATES -------------- */
 
@@ -133,9 +78,15 @@ export default function DriverDashboard() {
         <div style={styles.driverBadge}>Driver</div>
       </div>
 
-      {error && (
-        <div style={{ ...styles.card, borderColor: "#fecaca" }}>
-          <strong>Error:</strong> {error}
+      {/* Sanitized load failure. The reference is a correlation id, never a
+          database message. */}
+      {failure && (
+        <div style={{ marginTop: 24, ...styles.card, borderColor: "#fecaca" }} role="alert">
+          <strong>We could not load your deliveries.</strong>
+          <div style={{ marginTop: 6, color: "#555" }}>
+            {failure.message}
+            {failure.correlationId ? ` Reference ${failure.correlationId}.` : ""}
+          </div>
         </div>
       )}
 
@@ -143,7 +94,7 @@ export default function DriverDashboard() {
       <div style={{ marginTop: 24, ...styles.card }}>
         <h2 style={styles.sectionTitle}>Active Delivery</h2>
 
-        {!activeDelivery && (
+        {!activeDelivery && !failure && (
           <p style={{ marginTop: 10, color: "#555" }}>
             No active delivery assigned right now.
           </p>
@@ -151,48 +102,29 @@ export default function DriverDashboard() {
 
         {activeDelivery && (
           <div style={{ marginTop: 14, ...styles.inner }}>
-            <Info
-              label="Order #"
-              value={activeDelivery.order?.order_number ?? "—"}
-            />
-            <Info
-              label="Status"
-              value={STATUS_LABELS[activeDelivery.status]}
-            />
-            <Info
-              label="Pickup address"
-              value={activeDelivery.pickup_address ?? "—"}
-            />
-            <Info
-              label="Drop-off address"
-              value={activeDelivery.dropoff_address ?? "—"}
-            />
+            <Info label="Order #" value={activeDelivery.orderNumber ?? "—"} />
+            <Info label="Status" value={statusLabel(activeDelivery.status)} />
+            <Info label="Recipient" value={activeDelivery.recipientName ?? "—"} />
+            <Info label="Pickup address" value={activeDelivery.pickupAddress ?? "—"} />
+            <Info label="Drop-off address" value={activeDelivery.dropoffAddress ?? "—"} />
             <Info
               label="Estimated miles"
-              value={activeDelivery.estimated_miles?.toFixed(2) ?? "—"}
+              value={activeDelivery.estimatedMiles?.toFixed(2) ?? "—"}
             />
             <Info
               label="Weight"
-              value={
-                activeDelivery.weight_lbs
-                  ? `${activeDelivery.weight_lbs} lbs`
-                  : "—"
-              }
+              value={activeDelivery.weightLb ? `${activeDelivery.weightLb} lbs` : "—"}
             />
 
             <div style={{ display: "flex", gap: 12, marginTop: 18 }}>
               {activeDelivery.status === "assigned" && (
-                <PrimaryButton
-                  href={`/driver/delivery/${activeDelivery.id}/pickup`}
-                >
+                <PrimaryButton href={`/driver/delivery/${activeDelivery.id}/pickup`}>
                   Upload pickup photo
                 </PrimaryButton>
               )}
 
               {activeDelivery.status === "in_transit" && (
-                <PrimaryButton
-                  href={`/driver/delivery/${activeDelivery.id}/dropoff`}
-                >
+                <PrimaryButton href={`/driver/delivery/${activeDelivery.id}/dropoff`}>
                   Upload drop-off photo
                 </PrimaryButton>
               )}
@@ -216,9 +148,9 @@ export default function DriverDashboard() {
             {completedToday.map((d) => (
               <div key={d.id} style={styles.row}>
                 <div>
-                  <strong>{d.order?.order_number ?? "Order"}</strong>
+                  <strong>{d.orderNumber ?? "Order"}</strong>
                   <div style={{ fontSize: 13, color: "#555" }}>
-                    {new Date(d.created_at).toLocaleTimeString()}
+                    {d.createdAt ? new Date(d.createdAt).toLocaleTimeString() : "—"}
                   </div>
                 </div>
 
