@@ -11,14 +11,14 @@ function env(name: string) {
 
 // Admin verification using token + profiles.role
 async function requireAdminUser(token: string) {
-  const supabaseAuth = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
+  const supabaseAuth = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? env("NEXT_PUBLIC_SUPABASE_ANON_KEY")), {
     global: { headers: { Authorization: `Bearer ${token}` } },
   });
 
   const { data: u, error: uErr } = await supabaseAuth.auth.getUser();
   if (uErr || !u?.user) throw new Error("Unauthorized");
 
-  const supabaseSrv = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"));
+  const supabaseSrv = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), (process.env.SUPABASE_SECRET_KEY ?? env("SUPABASE_SERVICE_ROLE_KEY")));
   const { data: profile, error: pErr } = await supabaseSrv
     .from("profiles")
     .select("id, email, role")

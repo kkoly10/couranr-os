@@ -21,15 +21,11 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { BASE_URL, PASSWORD, SHIPMENT, USERS } from "./fixtures.mjs";
+import { BASE_URL, SHIPMENT, USERS } from "./fixtures.mjs";
 import { relaySupabase } from "./supabaseRelay.mjs";
-import {
-  accountsCreatedBy,
-  membershipsFor,
-  realDataCounts,
-  rest,
-  workspacesFor,
-} from "./db.mjs";
+import { accountsCreatedBy, membershipsFor, realDataCounts, workspacesFor } from "./db.mjs";
+import { cleanupAll } from "./seed.mjs";
+import { KEY_SOURCE, SUPABASE_URL as ADMIN_SUPABASE_URL } from "./admin.mjs";
 
 const PW = process.env.E2E_PLAYWRIGHT ?? "/opt/node22/lib/node_modules/playwright/index.mjs";
 const { chromium } = await import(PW);
@@ -88,7 +84,7 @@ async function signIn(page, user, { expectLanding = null } = {}) {
   await page.goto(`${BASE_URL}/sign-in`, { waitUntil: "domcontentloaded" });
   await page.getByLabel("Email").waitFor({ state: "visible", timeout: 20000 });
   await page.getByLabel("Email").fill(user.email);
-  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByLabel("Password").fill(RUN_PASSWORD);
   await page.getByRole("button", { name: /^sign in$/i }).click();
   if (expectLanding) {
     await page.waitForURL((u) => u.pathname.startsWith(expectLanding), { timeout: 25000 });
@@ -145,11 +141,6 @@ async function waitForAuthCopy(page, timeoutMs = 20000) {
 }
 
 /**
- * Supabase rate-limits password grants per IP. A suite that signs in dozens of
- * times will trip it, and a tripped attempt tells us nothing about the assertion
- * under test — so record it as inconclusive rather than as a pass or a failure.
- */
-/**
  * A step this assertion depended on never happened, so the assertion was never
  * exercised. That is NOT a pass. It is recorded as inconclusive and the process
  * still exits non-zero — an assertion that "passes" on a page that did nothing
@@ -162,8 +153,9 @@ function inconclusive(id, desc, why) {
 
 function checkAuthKind(id, desc, actual, expected) {
   if (actual === "rate_limited") {
-    results.push({ id, desc, ok: true, skipped: true, detail: "INCONCLUSIVE — Supabase rate-limited this attempt" });
-    console.log(`  \x1b[33m SKIP \x1b[0m ${id}  ${desc}\n           Supabase rate-limited this attempt; assertion not exercised`);
+    // The assertion was NOT exercised. It must not contribute to a green
+    // suite, so it is inconclusive and the process exits non-zero.
+    inconclusive(id, desc, "Supabase rate-limited this attempt; the assertion never ran");
     return;
   }
   check(id, desc, actual === expected, `expected=${expected} actual=${actual}`);
@@ -178,6 +170,12 @@ function checkAuthKind(id, desc, actual, expected) {
  * quietly pass against someone else's rows.
  */
 const USER_IDS = {};
+/**
+ * The run password is generated per run by the seed and lives ONLY in
+ * .state.json (mode 0600, gitignored, deleted by cleanup). It is never logged,
+ * never placed in a URL, and never handed to page.evaluate.
+ */
+let RUN_PASSWORD = null;
 function loadSeedState() {
   let state;
   try {
@@ -186,6 +184,11 @@ function loadSeedState() {
     console.error("\n  e2e/.state.json is missing — run `node e2e/seed.mjs seed` first.\n");
     process.exit(2);
   }
+  if (!state.password) {
+    console.error("\n  e2e/.state.json carries no run password — re-run the seed.\n");
+    process.exit(2);
+  }
+  RUN_PASSWORD = state.password;
   for (const [key, v] of Object.entries(state.users ?? {})) {
     USER_IDS[key] = v.userId;
     if (USERS[key]) USERS[key].email = v.email; // honour the run-unique address
@@ -238,7 +241,7 @@ async function groupA() {
   // A4 — unconfirmed email gets its OWN copy, not the generic error. This is
   // the state the signup flow promises exists.
   await page.getByLabel("Email").fill(USERS.unconfirmed.email);
-  await page.getByLabel("Password").fill(PASSWORD);
+  await page.getByLabel("Password").fill(RUN_PASSWORD);
   await page.getByRole("button", { name: /^sign in$/i }).click();
   const a4kind = await waitForAuthCopy(page);
   checkAuthKind("A4", "unconfirmed account gets the confirmation-specific copy", a4kind, "email_not_confirmed");
@@ -260,7 +263,7 @@ async function groupA() {
 
 async function groupB() {
   console.log("\n\x1b[1mB — authenticated surfaces reject a signed-out visitor\x1b[0m");
-  for (const surface of ["/business", "/operations", "/driver"]) {
+  for (const surface of ["/business", "/operations", "/driver", "/driver/deliveries"]) {
     const { ctx, page } = await freshContext();
     await page.goto(`${BASE_URL}${surface}`, { waitUntil: "domcontentloaded" });
     let landed = "";
@@ -603,6 +606,65 @@ async function groupH() {
   }
 }
 
+/* ============================================ I. LEGACY HEADER OWNERSHIP */
+
+/**
+ * The legacy `PublicHeader` ("Auto | Courier | Docs | Open portal") used to be
+ * mounted in the ROOT layout, so it sat on top of every canonical screen. No
+ * unit test could see it; it was visible in all 28 screenshots of the previous
+ * run. Asserted structurally on `header.publicHeader`, and asserted in BOTH
+ * directions so "fixed by deleting the header everywhere" cannot pass.
+ */
+async function groupI() {
+  console.log("\n\x1b[1mI — the legacy header is gone from canonical surfaces, kept on legacy ones\x1b[0m");
+
+  const CANONICAL_PUBLIC = ["/sign-in", "/sign-up", "/pricing", "/how-it-works", "/service-areas"];
+  const LEGACY = ["/", "/auto", "/docs"];
+
+  // Signed-out canonical public routes.
+  {
+    const { ctx, page } = await freshContext();
+    for (const route of CANONICAL_PUBLIC) {
+      await page.goto(`${BASE_URL}${route}`, { waitUntil: "domcontentloaded" });
+      await page.waitForTimeout(1200);
+      const n = await page.locator("header.publicHeader").count();
+      check(`I-pub${route.replace(/\//g, "-")}`, `canonical ${route} has no legacy header`, n === 0, `publicHeader nodes=${n}`);
+    }
+    await shot(page, "I1-canonical-public-no-header");
+    await ctx.close();
+  }
+
+  // Authenticated canonical shells.
+  for (const [key, landing] of [["merchant", "/business"], ["ops", "/operations"], ["driver", "/driver"]]) {
+    const { ctx, page } = await freshContext();
+    try {
+      await signIn(page, USERS[key], { expectLanding: landing });
+      await page.waitForTimeout(1200);
+      const n = await page.locator("header.publicHeader").count();
+      check(`I-${key}`, `canonical ${landing} shell has no legacy header`, n === 0, `publicHeader nodes=${n}`);
+      await shot(page, `I2-${key}-no-header`);
+    } catch (e) {
+      inconclusive(`I-${key}`, `canonical ${landing} header check`, `could not reach ${landing}: ${e.message.split("\n")[0]}`);
+    }
+    await ctx.close();
+  }
+
+  // Positive control: legacy pages MUST still have it, or "removed everywhere"
+  // would score green.
+  {
+    const { ctx, page } = await freshContext();
+    for (const route of LEGACY) {
+      await page.goto(`${BASE_URL}${route}`, { waitUntil: "domcontentloaded" });
+      await page.waitForTimeout(1200);
+      const n = await page.locator("header.publicHeader").count();
+      check(`I-legacy${route === "/" ? "-root" : route.replace(/\//g, "-")}`,
+        `legacy ${route} KEEPS its header`, n === 1, `publicHeader nodes=${n}`);
+    }
+    await shot(page, "I3-legacy-keeps-header");
+    await ctx.close();
+  }
+}
+
 /* ------------------------------------------------------------------ main */
 
 console.log(`\n\x1b[1mCouranr browser verification\x1b[0m  ->  ${BASE_URL}`);
@@ -622,40 +684,84 @@ browser = await chromium.launch({
   args: ["--no-proxy-server", "--disable-quic"],
 });
 
-const ALL = { A: groupA, B: groupB, C: groupC, D: groupD, E: groupE, F: groupF, G: groupG, H: groupH };
-for (const [key, fn] of Object.entries(ALL)) {
-  if (!run(key)) continue;
+const ALL = { A: groupA, B: groupB, C: groupC, D: groupD, E: groupE, F: groupF, G: groupG, H: groupH, I: groupI };
+
+let REAL_AFTER = null;
+let cleanup = null;
+try {
+  for (const [key, fn] of Object.entries(ALL)) {
+    if (!run(key)) continue;
+    try {
+      await fn();
+    } catch (e) {
+      check(`${key}-CRASH`, `group ${key} threw`, false, e.message);
+    }
+  }
+  REAL_AFTER = await realDataCounts();
+} finally {
+  // Runs on success, on failure and on a crash. The `admin` and `driver`
+  // fixtures are privileged and must never outlive the run that created them.
+  await browser.close().catch(() => {});
+  console.log("\n\x1b[1mTeardown\x1b[0m");
   try {
-    await fn();
+    cleanup = await cleanupAll();
   } catch (e) {
-    check(`${key}-CRASH`, `group ${key} threw`, false, e.message);
+    cleanup = { ok: false, couldNotRemove: [`cleanup threw: ${e.message}`], manualCleanupRequired: [] };
+    console.log(`    cleanup THREW: ${e.message}`);
   }
 }
 
-await browser.close();
-
-const REAL_AFTER = await realDataCounts();
-const realUnchanged =
-  REAL_BEFORE.orders === REAL_AFTER.orders &&
-  REAL_BEFORE.deliveries === REAL_AFTER.deliveries &&
-  REAL_BEFORE.addresses === REAL_AFTER.addresses &&
-  REAL_BEFORE.rentals === REAL_AFTER.rentals;
 console.log("\n\x1b[1mProduction-data invariant\x1b[0m");
-check("SAFE", "the suite altered no row in orders / deliveries / addresses / rentals",
-  realUnchanged, `before=${JSON.stringify(REAL_BEFORE)} after=${JSON.stringify(REAL_AFTER)}`);
+if (REAL_AFTER) {
+  const same =
+    REAL_BEFORE.orders === REAL_AFTER.orders &&
+    REAL_BEFORE.deliveries === REAL_AFTER.deliveries &&
+    REAL_BEFORE.addresses === REAL_AFTER.addresses &&
+    REAL_BEFORE.rentals === REAL_AFTER.rentals;
+  check("SAFE", "the suite altered no row in orders / deliveries / addresses / rentals",
+    same, `before=${JSON.stringify(REAL_BEFORE)} after=${JSON.stringify(REAL_AFTER)}`);
+} else {
+  inconclusive("SAFE", "production-data invariant", "the run aborted before the after-counts were read");
+}
 
-const skipped = results.filter((r) => r.skipped);
+// Three separate truths, because collapsing them hides the one that matters.
+check("CLEAN-privileged", "no PRIVILEGED synthetic fixture (admin/driver) survived the run",
+  Boolean(cleanup && cleanup.privilegedClean),
+  cleanup ? `remaining=${(cleanup.privilegedRemaining ?? []).join(", ") || "none"}` : "cleanup did not run");
+
+check("CLEAN-behaviour", "cleanup itself completed without an unexpected failure",
+  Boolean(cleanup && cleanup.ok),
+  cleanup ? `unexpectedFailures=${cleanup.couldNotRemove.length}` : "cleanup did not run");
+
+// Append-only residue is a KNOWN limitation, not a passing state: service_role
+// has no DELETE on the canonical tables by design, so MER-002's workspace and
+// the user pinned by it need the privileged path. Reported as its own failure
+// so it can never be mistaken for "all clean".
+check("CLEAN-residue", "nothing at all was left behind (needs the privileged cleanup path)",
+  Boolean(cleanup && cleanup.fullyClean),
+  cleanup
+    ? `appendOnlyResidue=${(cleanup.appendOnlyResidue ?? []).length} — expected while ` +
+      `couranr_merchant_workspaces has no DELETE grant; see supabase/migrations/PROPOSED_couranr_e2e_cleanup.sql.review`
+    : "cleanup did not run");
+
 const incon = results.filter((r) => r.inconclusive);
-const passed = results.filter((r) => r.ok && !r.skipped).length;
+const passed = results.filter((r) => r.ok).length;
 const failed = results.filter((r) => !r.ok && !r.inconclusive);
 console.log(
-  `\n\x1b[1mResult\x1b[0m  ${passed} passed, ${failed.length} failed, ` +
-  `${incon.length} inconclusive, ${skipped.length} rate-limited  (of ${results.length})`
+  `\n\x1b[1mResult\x1b[0m  ${passed} passed, ${failed.length} failed, ${incon.length} inconclusive` +
+  `  (of ${results.length})`
 );
 if (failed.length) {
   console.log("\nFailures:");
   for (const f of failed) console.log(`  ${f.id}  ${f.desc}\n      ${f.detail}`);
 }
+if (incon.length) {
+  console.log("\nInconclusive (counted as NOT passing):");
+  for (const f of incon) console.log(`  ${f.id}  ${f.desc}\n      ${f.detail}`);
+}
+
+// results.json carries assertions only — never a credential, never a key name's value.
 writeFileSync(path.join(SHOTS, "results.json"), JSON.stringify(results, null, 2));
 console.log(`\nScreenshots + results.json in e2e/artifacts/`);
+
 process.exit(failed.length || incon.length ? 1 : 0);

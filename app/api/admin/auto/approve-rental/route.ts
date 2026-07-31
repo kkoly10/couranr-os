@@ -21,7 +21,7 @@ export async function POST(req: Request) {
     const token = authHeader.replace("Bearer ", "").trim();
     if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const supabase = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("NEXT_PUBLIC_SUPABASE_ANON_KEY"), {
+    const supabase = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? env("NEXT_PUBLIC_SUPABASE_ANON_KEY")), {
       global: { headers: { Authorization: `Bearer ${token}` } },
     });
 

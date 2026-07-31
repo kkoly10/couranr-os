@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
     const days = Math.min(90, Math.max(1, Number(req.nextUrl.searchParams.get("days") || "14") || 14));
     const fromIso = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
-    const supabaseSrv = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"));
+    const supabaseSrv = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), (process.env.SUPABASE_SECRET_KEY ?? env("SUPABASE_SERVICE_ROLE_KEY")));
 
     const { data, error } = await supabaseSrv
       .from("doc_request_events")

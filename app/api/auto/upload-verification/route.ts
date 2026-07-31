@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
     const user = await getUserFromRequest(req);
 
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const serviceKey = (process.env.SUPABASE_SECRET_KEY ?? process.env.SUPABASE_SERVICE_ROLE_KEY);
     if (!url || !serviceKey) return jsonError("Server missing Supabase env vars", 500);
 
     const supabaseAdmin = createClient(url, serviceKey, {

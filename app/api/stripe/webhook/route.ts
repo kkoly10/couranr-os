@@ -16,7 +16,7 @@ function env(name: string) {
 function svc() {
   return createClient(
     env("NEXT_PUBLIC_SUPABASE_URL"),
-    env("SUPABASE_SERVICE_ROLE_KEY"),
+    (process.env.SUPABASE_SECRET_KEY ?? env("SUPABASE_SERVICE_ROLE_KEY")),
     {
       auth: { persistSession: false },
     }

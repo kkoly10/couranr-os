@@ -1,0 +1,117 @@
+-- PROPOSED — NOT APPLIED. Requires review before it goes anywhere near the
+-- database. The `.review` suffix keeps it out of any migration runner.
+--
+-- ---------------------------------------------------------------------------
+-- PROBLEM
+-- ---------------------------------------------------------------------------
+-- The browser harness cannot fully clean up after itself, and that is a
+-- consequence of a GOOD property, not a bug:
+--
+--   20260731045417_couranr_delivery_requests.sql:288
+--     "Requests: read, create, advance. Never deleted or truncated, so neither
+--      a bug nor a compromised command can erase merchant history."
+--     grant select, insert, update on public.couranr_delivery_requests to service_role;
+--     grant select, insert         on public.couranr_delivery_request_events to service_role;
+--
+-- `service_role` therefore has no DELETE on couranr_merchant_workspaces,
+-- couranr_delivery_requests or couranr_delivery_request_events. Because
+-- couranr_mw_account_fk and couranr_mw_created_by_fk are RESTRICT, an
+-- undeletable workspace also pins its business_account AND its auth user.
+--
+-- Net effect on a suite run: the privileged `admin` and `driver` fixtures ARE
+-- removed (they own no workspace), but the two merchant fixtures survive and
+-- the run must be reported as INCOMPLETE. Today an operator clears the residue
+-- through the Supabase MCP with a privileged connection.
+--
+-- ---------------------------------------------------------------------------
+-- WHAT THIS DOES *NOT* DO
+-- ---------------------------------------------------------------------------
+-- It does NOT grant DELETE on any canonical table to any role. The append-only
+-- property above is preserved exactly. `service_role` gains EXECUTE on ONE
+-- function whose body can only ever remove rows that carry the synthetic
+-- marker, and which refuses to touch anything else.
+--
+-- Widening the grant instead would be the wrong answer: it would make merchant
+-- history erasable in production to make a test tidier.
+--
+-- ---------------------------------------------------------------------------
+-- OPEN QUESTIONS FOR REVIEW
+-- ---------------------------------------------------------------------------
+-- 1. Should this exist in production at all, or only in a branch/scratch
+--    project? A SECURITY DEFINER deleter is a standing capability; the
+--    alternative is running the canonical-write tests against a Supabase branch
+--    and never creating synthetic canonical rows in production.
+-- 2. Is the `[E2E]` / `couranr-e2e` marker a strong enough gate, or should the
+--    function additionally require a dedicated `is_synthetic boolean` column so
+--    a real business could never be named into range?
+-- 3. Should it be restricted to non-production by an environment check?
+--
+-- My recommendation: option (1) — run canonical-write tests against a Supabase
+-- branch — is architecturally cleaner and needs no new production capability.
+-- This function is the pragmatic alternative if branch-based testing is not
+-- wanted yet.
+
+begin;
+
+create or replace function public.couranr_purge_e2e_fixtures()
+returns table (
+  workspaces_deleted bigint,
+  requests_deleted   bigint,
+  events_deleted     bigint,
+  members_deleted    bigint,
+  accounts_deleted   bigint
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_ws bigint := 0; v_rq bigint := 0; v_ev bigint := 0; v_mb bigint := 0; v_ac bigint := 0;
+begin
+  -- Only ever the marked accounts. A row without the marker is by construction
+  -- not ours and is unreachable from here.
+  create temporary table _targets on commit drop as
+    select id from public.business_accounts where name like '%[E2E]%';
+
+  -- Refuse to run if the marker somehow matches an implausible share of the
+  -- table — a cheap guard against a rename making real rows reachable.
+  if (select count(*) from _targets) > 50 then
+    raise exception 'refusing to purge % accounts; marker is too broad',
+      (select count(*) from _targets) using errcode = 'CR422';
+  end if;
+
+  delete from public.couranr_delivery_request_events e
+   where e.request_id in (select r.id from public.couranr_delivery_requests r
+                          where r.business_account_id in (select id from _targets));
+  get diagnostics v_ev = row_count;
+
+  delete from public.couranr_delivery_requests
+   where business_account_id in (select id from _targets);
+  get diagnostics v_rq = row_count;
+
+  delete from public.couranr_merchant_workspaces
+   where business_account_id in (select id from _targets);
+  get diagnostics v_ws = row_count;
+
+  delete from public.business_members
+   where business_account_id in (select id from _targets);
+  get diagnostics v_mb = row_count;
+
+  delete from public.business_accounts where id in (select id from _targets);
+  get diagnostics v_ac = row_count;
+
+  return query select v_ws, v_rq, v_ev, v_mb, v_ac;
+end;
+$$;
+
+-- pg_default_acl grants EXECUTE on every new function in public to anon and
+-- authenticated, so the revoke is load-bearing, not decorative.
+revoke all on function public.couranr_purge_e2e_fixtures() from public, anon, authenticated, service_role;
+grant execute on function public.couranr_purge_e2e_fixtures() to service_role;
+
+comment on function public.couranr_purge_e2e_fixtures() is
+  'Removes ONLY [E2E]-marked synthetic fixtures. Exists so the browser harness '
+  'can clean up without any role being granted DELETE on the append-only '
+  'canonical tables. Reviewed proposal — see the header of the migration file.';
+
+commit;

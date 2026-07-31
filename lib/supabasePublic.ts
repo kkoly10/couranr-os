@@ -20,7 +20,7 @@ function getClient(): SupabaseClient {
   if (cached) return cached;
   cached = createClient(
     requireEnv("NEXT_PUBLIC_SUPABASE_URL"),
-    requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+    (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? requireEnv("NEXT_PUBLIC_SUPABASE_ANON_KEY")),
     { auth: { persistSession: false } }
   );
   return cached;

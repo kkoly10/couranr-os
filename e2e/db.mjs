@@ -1,97 +1,60 @@
 /**
- * Service-role data access for the browser suite.
+ * Row-level assertions for the browser suite.
  *
- * Exists so assertions can be made against ROWS rather than page text. The
- * storefront's own copy is not evidence: an onboarding page that created
- * nothing still renders, still says "Couranr", and still fails to contain the
- * word "error" — so a naive text grep scores it green. Every claim this suite
- * makes about persistence is backed by a row read back through here.
+ * Exists so claims are made against ROWS rather than page text. An onboarding
+ * page that created nothing still renders, still says "Couranr", and still
+ * lacks the word "error" — so a naive text grep scores it green. Every
+ * persistence claim in the suite is read back through here.
  *
- * The service-role key bypasses RLS, so every query below is scoped by hand.
+ * Goes through `admin.mjs`, i.e. supabase-js with the harness's own secret key,
+ * in Node only. No credential is constructed, logged or exported from here.
  */
 
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { admin } from "./admin.mjs";
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const unwrap = (label) => ({ data, error }) => {
+  if (error) throw new Error(`${label}: ${error.message}`);
+  return data ?? [];
+};
 
-function loadEnv() {
-  const out = {};
-  let raw = "";
-  try {
-    raw = readFileSync(path.join(ROOT, ".env.local"), "utf8");
-  } catch {
-    /* fall through */
-  }
-  for (const line of raw.split("\n")) {
-    const m = /^([A-Z0-9_]+)=(.*)$/.exec(line.trim());
-    if (m) out[m[1]] = m[2];
-  }
-  return {
-    url: process.env.NEXT_PUBLIC_SUPABASE_URL ?? out.NEXT_PUBLIC_SUPABASE_URL,
-    serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? out.SUPABASE_SERVICE_ROLE_KEY,
-  };
-}
-
-export const { url: SUPABASE_URL, serviceKey: SERVICE_KEY } = loadEnv();
-
-export async function api(pathname, init = {}) {
-  const res = await fetch(`${SUPABASE_URL}${pathname}`, {
-    ...init,
-    headers: {
-      apikey: SERVICE_KEY,
-      Authorization: `Bearer ${SERVICE_KEY}`,
-      "Content-Type": "application/json",
-      ...(init.headers ?? {}),
-    },
-  });
-  const text = await res.text();
-  let body;
-  try {
-    body = text ? JSON.parse(text) : null;
-  } catch {
-    body = text;
-  }
-  if (!res.ok) {
-    throw new Error(`${init.method ?? "GET"} ${pathname} -> ${res.status} ${JSON.stringify(body)}`);
-  }
-  return body;
-}
-
-export const rest = (p, init) => api(`/rest/v1/${p}`, init);
-
-/** Every business account whose creator is this user. */
 export const accountsCreatedBy = (userId) =>
-  rest(`business_accounts?select=id,name,slug,status,created_by&created_by=eq.${userId}`);
+  admin
+    .from("business_accounts")
+    .select("id,name,slug,status,created_by")
+    .eq("created_by", userId)
+    .then(unwrap("accountsCreatedBy"));
 
-/** Active memberships for a user, with the account name joined in. */
 export const membershipsFor = (userId) =>
-  rest(`business_members?select=id,role,status,business_account_id&user_id=eq.${userId}`);
+  admin
+    .from("business_members")
+    .select("id,role,status,business_account_id")
+    .eq("user_id", userId)
+    .then(unwrap("membershipsFor"));
 
 export const workspacesFor = (accountId) =>
-  rest(
-    `couranr_merchant_workspaces?select=id,business_category,payer_default,policies_version,contact_phone,created_by&business_account_id=eq.${accountId}`
-  );
+  admin
+    .from("couranr_merchant_workspaces")
+    .select("id,business_category,payer_default,policies_version,contact_phone,created_by")
+    .eq("business_account_id", accountId)
+    .then(unwrap("workspacesFor"));
 
 export const requestsFor = (accountId) =>
-  rest(
-    `couranr_delivery_requests?select=id,request_state,version,delivery_subtotal_cents,payment_due_cents,created_by&business_account_id=eq.${accountId}&order=created_at.desc`
-  );
+  admin
+    .from("couranr_delivery_requests")
+    .select("id,request_state,version,delivery_subtotal_cents,payment_due_cents,created_by")
+    .eq("business_account_id", accountId)
+    .order("created_at", { ascending: false })
+    .then(unwrap("requestsFor"));
 
-/** Counts of the REAL production tables, so the suite can prove it touched none. */
+/**
+ * Exact counts of the REAL production tables, so the suite can prove it touched
+ * none of them. `head: true` fetches the count without transferring rows.
+ */
 export async function realDataCounts() {
-  const one = async (t) => {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/${t}?select=id`, {
-      headers: {
-        apikey: SERVICE_KEY,
-        Authorization: `Bearer ${SERVICE_KEY}`,
-        Prefer: "count=exact",
-        Range: "0-0",
-      },
-    });
-    const cr = res.headers.get("content-range") ?? "";
-    return Number(cr.split("/")[1] ?? NaN);
+  const one = async (table) => {
+    const { count, error } = await admin.from(table).select("id", { count: "exact", head: true });
+    if (error) throw new Error(`count ${table}: ${error.message}`);
+    return count ?? -1;
   };
   return {
     orders: await one("orders"),

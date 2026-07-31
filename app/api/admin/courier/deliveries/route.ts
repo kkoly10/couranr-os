@@ -25,7 +25,7 @@ export async function GET(req: NextRequest) {
   try {
     await requireAdmin(req);
 
-    const supabaseSrv = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"));
+    const supabaseSrv = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), (process.env.SUPABASE_SECRET_KEY ?? env("SUPABASE_SERVICE_ROLE_KEY")));
     const url = new URL(req.url);
     const status = url.searchParams.get("status");
     const onlyUnassigned = url.searchParams.get("unassigned") === "1";

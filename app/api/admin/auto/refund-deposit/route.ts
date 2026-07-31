@@ -22,7 +22,7 @@ export async function POST(req: Request) {
     // User-scoped client to validate admin role
     const supabaseUser = createClient(
       env("NEXT_PUBLIC_SUPABASE_URL"),
-      env("NEXT_PUBLIC_SUPABASE_ANON_KEY"),
+      (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? env("NEXT_PUBLIC_SUPABASE_ANON_KEY")),
       {
         global: { headers: { Authorization: `Bearer ${token}` } },
         auth: { persistSession: false },
@@ -57,7 +57,7 @@ export async function POST(req: Request) {
     // Service role for protected reads/writes
     const admin = createClient(
       env("NEXT_PUBLIC_SUPABASE_URL"),
-      env("SUPABASE_SERVICE_ROLE_KEY"),
+      (process.env.SUPABASE_SECRET_KEY ?? env("SUPABASE_SERVICE_ROLE_KEY")),
       { auth: { persistSession: false } }
     );
 

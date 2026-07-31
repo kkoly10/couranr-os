@@ -13,7 +13,7 @@ function env(name: string) {
 export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
   try {
     const admin = await requireAdmin(req);
-    const supabaseSrv = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"));
+    const supabaseSrv = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), (process.env.SUPABASE_SECRET_KEY ?? env("SUPABASE_SERVICE_ROLE_KEY")));
 
     const { data: before, error: bErr } = await supabaseSrv
       .from("deliveries")

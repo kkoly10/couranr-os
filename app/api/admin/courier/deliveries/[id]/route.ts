@@ -30,7 +30,7 @@ export async function GET(
 
     const supabaseSrv = createClient(
       env("NEXT_PUBLIC_SUPABASE_URL"),
-      env("SUPABASE_SERVICE_ROLE_KEY")
+      (process.env.SUPABASE_SECRET_KEY ?? env("SUPABASE_SERVICE_ROLE_KEY"))
     );
 
     const { data, error } = await supabaseSrv
@@ -87,7 +87,7 @@ export async function PATCH(
 
     const supabaseSrv = createClient(
       env("NEXT_PUBLIC_SUPABASE_URL"),
-      env("SUPABASE_SERVICE_ROLE_KEY")
+      (process.env.SUPABASE_SECRET_KEY ?? env("SUPABASE_SERVICE_ROLE_KEY"))
     );
 
     const body = await req.json().catch(() => ({}));

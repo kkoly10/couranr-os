@@ -1,31 +1,48 @@
 /**
  * Same-origin relay for the browser's Supabase traffic.
  *
- * WHY THIS EXISTS — and what it does not do.
+ * ---------------------------------------------------------------------------
+ * EXACTLY WHAT THIS DOES, AND EXACTLY WHAT IT DOES NOT PROVE
+ * ---------------------------------------------------------------------------
  *
- * The browser process in this container cannot open an outbound HTTPS
- * connection: Chromium gets `net::ERR_CONNECTION_RESET` for every external
- * host, `example.com` as surely as `*.supabase.co`, whether it goes direct or
- * through the session proxy. That is a network-level restriction on the browser,
- * not a certificate problem — a CA failure would surface as `ERR_CERT_*`.
+ * Mechanism
+ *   - Chromium is launched with `--no-proxy-server`, so it talks to
+ *     `localhost:3000` directly and never through the session egress proxy.
+ *   - Requests the page makes to the Supabase origin are INTERCEPTED by
+ *     Playwright (`page.route`) and FORWARDED BY NODE, which performs the real
+ *     HTTPS call. Method, headers and body are forwarded as the page built
+ *     them; the real status, headers and body come back.
+ *   - TLS REMAINS VERIFIED. Node does a normal verified handshake against
+ *     Supabase. Nothing here sets `ignoreHTTPSErrors`,
+ *     `--ignore-certificate-errors`, or `NODE_TLS_REJECT_UNAUTHORIZED=0`, and
+ *     `HTTPS_PROXY` is never unset.
+ *   - The relay carries NO credential of its own. It forwards the page's own
+ *     headers, which contain the PUBLISHABLE key. The harness's secret key
+ *     never enters Chromium, `page.evaluate`, a URL, a log line or
+ *     `.state.json`.
  *
- * Node in the same container CAN reach Supabase, over ordinary fully-verified
- * TLS. So the harness intercepts requests the page makes to the Supabase origin
- * and satisfies them from Node, faithfully forwarding method, headers and body
- * and returning the real status, headers and body.
+ * Why it is needed
+ *   The browser process in this container cannot open an outbound connection to
+ *   ANY external host: Chromium gets `net::ERR_CONNECTION_RESET` for
+ *   `example.com` exactly as for `*.supabase.co`, direct or proxied. That is a
+ *   network-level restriction, not a certificate problem — a CA failure
+ *   surfaces as `ERR_CERT_*`.
  *
- * What this preserves: the real application bundle runs in a real browser, the
- * real `supabase-js` client builds the real requests, the real Supabase
- * responds, and the real session lands in real `localStorage`. Sign-in,
- * sign-out and session persistence are all genuinely exercised.
+ * What it genuinely exercises
+ *   The real application bundle in a real browser, the real `supabase-js`
+ *   client building real requests, the real Supabase answering them, and the
+ *   real auth-helpers session cookie. Sign-in, sign-out, session persistence
+ *   and every authenticated screen are properly tested.
  *
- * What it does NOT prove: the production network path. A CORS rule or a
- * Supabase-side origin restriction that would bite a real browser is bypassed
- * here, because the request never leaves the harness as a cross-origin fetch.
- * Say so when reporting results — do not claim this covers production egress.
- *
- * TLS verification is NOT weakened anywhere: Node performs a normal verified
- * handshake against Supabase.
+ * What it does NOT prove — state this in every report
+ *   - THE RELAY OVERRIDES THE CROSS-ORIGIN PATH. The request never leaves the
+ *     harness as a browser-issued cross-origin fetch.
+ *   - CORS behaviour is therefore NOT proven. The relay supplies its own
+ *     permissive CORS headers on the way back.
+ *   - Supabase origin allowlists / URL configuration are NOT proven.
+ *   - Real production browser egress is NOT proven.
+ *   A misconfiguration in any of those would pass here and fail for a real
+ *   user. Production must be checked separately (curl, or the deployed site).
  */
 
 /** Headers that must not be forwarded upstream — they describe the hop, not the request. */
