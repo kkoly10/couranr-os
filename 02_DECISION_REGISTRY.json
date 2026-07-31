@@ -1380,26 +1380,57 @@
     {
       "id": "REV-002",
       "category": "transition rules",
-      "decision": "UNRESOLVED — no authority defines the vocabulary of reasons Couranr could not confirm a delivery. A minimal placeholder set drawn from codes already in the tree ships so the decline command can require a structured reason; it is not canonical.",
+      "decision": "The canonical vocabulary of reasons Couranr could not confirm a delivery is couranr-decline-v1: eight codes, each with owner-approved merchant-safe copy. The merchant message is derived server-side from the code and is never supplied by a caller. `other` and `merchant_account_on_hold` require a non-empty internal note. Internal notes are never returned to a merchant or customer view.",
       "value": {
-        "canonical_taxonomy": null,
-        "shipped_placeholder": [
+        "reason_version": "couranr-decline-v1",
+        "reasons": [
           "outside_service_area",
-          "over_max_automatic_miles",
-          "over_max_automatic_weight",
-          "overnight_not_offered_in_this_release",
+          "requested_time_unavailable",
+          "no_driver_available",
+          "no_compatible_vehicle",
+          "shipment_not_supported",
+          "merchant_account_on_hold",
+          "duplicate_or_superseded",
           "other"
         ],
-        "provenance": "Every placeholder code except `other` is vocabulary already in the tree: `outside_service_area` from the service_area_review_state values (STA-001), the other three verbatim from ReviewReasonCode in lib/couranr/pricing/types.ts. None was invented as a business category.",
-        "escape_hatch": "`other` requires a non-empty internal note, so a decline the placeholder set cannot name still records why.",
-        "not_covered": null
+        "merchant_messages": {
+          "outside_service_area": "Couranr could not confirm service for this route.",
+          "requested_time_unavailable": "Couranr could not confirm the requested delivery time.",
+          "no_driver_available": "Couranr does not have an available driver for this request.",
+          "no_compatible_vehicle": "Couranr could not confirm a compatible vehicle for this shipment.",
+          "shipment_not_supported": "This shipment cannot be handled through Couranr.",
+          "merchant_account_on_hold": "This business account needs attention before Couranr can confirm service.",
+          "duplicate_or_superseded": "This request was replaced by another request.",
+          "other": "Couranr could not confirm this request. Contact Couranr Support for details."
+        },
+        "require_internal_note": [
+          "other",
+          "merchant_account_on_hold"
+        ],
+        "internal_note_visibility": "Couranr Operations only. The merchant read path selects named JSON keys and never the note; a separate operations-only command reads it.",
+        "event_metadata": [
+          "reasonCode",
+          "reasonVersion",
+          "merchantMessage",
+          "internalNote"
+        ],
+        "invalid_reason_behaviour": "The database function rejects any code outside the taxonomy with SQLSTATE CR422, before any row is read or written.",
+        "retired": {
+          "over_max_automatic_miles": "Review TRIGGER, not a decline reason. It means a quote needs a human, not that Couranr refused the work.",
+          "over_max_automatic_weight": "Review TRIGGER, not a decline reason.",
+          "overnight_not_offered_in_this_release": "Maps conceptually to requested_time_unavailable. Not retained: a release-internal detail is not something to tell a merchant, and it would be false once overnight ships."
+        },
+        "historical_events": "Events written under the placeholder taxonomy are never rewritten or deleted. Any code this build does not recognise renders the generic safe message, which is the `other` copy."
       },
-      "status": "unresolved",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
-      "authority_section": "§8 States — names the review vocabulary (pending / accepted_as_quoted / requoted / declined) but no decline reasons",
+      "status": "decided",
+      "owner_approved": true,
+      "owner_approved_on": "2026-07-31",
+      "authority_file": "02_DECISION_REGISTRY.json",
+      "authority_section": "REV-002 — owner decision of 2026-07-31; no delivered package defines a decline vocabulary, so this record IS the authority",
       "affected_routes": [
         "/api/couranr/operations/delivery-requests/[id]/decline",
-        "/operations/requests"
+        "/operations/deliveries/[id]",
+        "/business/deliveries/[id]"
       ],
       "affected_screen_ids": [
         "OPS-003",
@@ -1412,28 +1443,26 @@
       "affected_code_paths": [
         "lib/couranr/requests/states.ts",
         "lib/couranr/requests/commands.ts",
-        "components/couranr/requests/ReviewOutcomeActions.tsx"
+        "components/couranr/requests/ReviewOutcomeActions.tsx",
+        "components/couranr/requests/DeliveryRequestDetail.tsx"
       ],
       "conflict_with_current_code": {
-        "code_value": "DECLINE_REASONS — five placeholder codes",
+        "code_value": "DECLINE_REASONS — the five-code placeholder shipped with the review outcomes",
         "code_location": "lib/couranr/requests/states.ts",
-        "resolution": "Cannot be inferred. The placeholder ships so the command can enforce a structured reason; it must be replaced, not extended by guesswork.",
-        "remediation_commit": null
+        "resolution": "Replaced by couranr-decline-v1 in migration 20260731210000. The placeholder was never applied to a real merchant request.",
+        "remediation_commit": "fix(operations): finalize Couranr decline reasons"
       },
-      "implementation_phase": "3",
+      "implementation_phase": "7",
       "acceptance_criteria": [
-        "An owner-approved decline reason vocabulary replaces DECLINE_REASONS before Couranr Operations declines a real merchant request.",
-        "Operational reasons a dispatcher actually needs — no driver available, outside operating hours, merchant account on hold, duplicate request — are decided rather than guessed.",
-        "Any code removed from the placeholder set is checked against existing event rows before it is dropped, because the event log is append-only."
+        "The database function accepts exactly the eight approved codes and rejects everything else with CR422.",
+        "The merchant message is derived in the database from the code; no caller supplies it.",
+        "other and merchant_account_on_hold cannot be recorded without a non-empty internal note.",
+        "No merchant or customer read path returns an internal note.",
+        "Every decline event carries reasonCode, reasonVersion, merchantMessage and internalNote.",
+        "A code this build does not recognise renders the generic safe message rather than a raw code.",
+        "No append-only event is rewritten or deleted by the change."
       ],
-      "missing": "No delivered package states why Couranr may decline. The Master Package §8 and the package registry both give the review vocabulary and the actor authority but stop at `declined` as a single outcome, with no reason taxonomy under it.",
-      "blocked_screen_ids": [
-        "OPS-003"
-      ],
-      "blocked_commits": [
-        "any release where Couranr Operations declines a real merchant request"
-      ],
-      "notes": "Raised while implementing REV-001. Recorded so the placeholder is visibly a gap rather than a silent decision."
+      "notes": "Raised while implementing REV-001, when the decline command needed a structured reason and no authority defined one. A placeholder assembled from in-tree codes shipped with REV-001 and was recorded as unresolved rather than presented as canonical; the owner decided the taxonomy on 2026-07-31 and this record replaces it."
     },
     {
       "id": "PRF-001",

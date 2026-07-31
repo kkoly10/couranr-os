@@ -14,6 +14,7 @@ import {
   type DeliveryRequestDraft,
 } from "./input";
 import {
+  declineRequiresInternalNote,
   isDeclineReason,
   isTransitionDenied,
   resolveTransition,
@@ -746,14 +747,18 @@ export async function declineDeliveryRequest(params: {
   }
 
   const note = typeof params.internalNote === "string" ? params.internalNote.trim() : "";
-  // `other` is the escape hatch from an admittedly incomplete taxonomy
-  // (REV-002 is unresolved). It is only honest if it says something, so the
-  // note is required there and optional everywhere else.
-  if (params.reason === "other" && note.length === 0) {
+  /*
+   * `other` names nothing and `merchant_account_on_hold` asserts something
+   * about a business that has to be justifiable later, so both require a note.
+   * The database enforces this too (CR422) — this check exists to give a
+   * field-level error the form can attach to the right input, not to be the
+   * only thing standing between a bad call and the row.
+   */
+  if (declineRequiresInternalNote(params.reason) && note.length === 0) {
     return fail({
       operation: op,
       code: "invalid_input",
-      details: [{ code: "internal_note_required_for_other", field: "internalNote" }],
+      details: [{ code: "internal_note_required", field: "internalNote" }],
       message: "Add a note explaining why this delivery could not be confirmed.",
     });
   }
@@ -790,14 +795,76 @@ export async function getDeliveryRequest(params: {
   const permission = canActOnDeliveryRequest(params.actor, "read", String(row.business_account_id));
   if (!permission.allowed) return denied(op, permission.reason);
 
+  /*
+   * EVENT PROJECTION — the merchant-visible one.
+   *
+   * `metadata` is NEVER selected whole here. A decline event carries an
+   * `internalNote` written for Couranr Operations, and the same component
+   * renders this list for a merchant and for Operations. Selecting the column
+   * and stripping the key afterwards would put the note one forgotten `...`
+   * spread away from a merchant's screen; selecting only named JSON keys
+   * means the note is not in the process at all on this path.
+   *
+   * `reason` is read alongside `reasonCode` because events written under the
+   * placeholder taxonomy used that key. Old rows are never rewritten, so the
+   * reader accommodates them instead.
+   */
+  const SAFE_EVENT_COLUMNS =
+    "id,actor_type,command,from_state,to_state,created_at," +
+    "reasonCode:metadata->>reasonCode," +
+    "reasonVersion:metadata->>reasonVersion," +
+    "legacyReason:metadata->>reason";
+
   const { data: events } = await supabaseAdmin
     .from(EVENTS_TABLE)
-    .select("id,actor_type,command,from_state,to_state,created_at")
+    .select(SAFE_EVENT_COLUMNS)
     .eq("request_id", params.requestId)
     .order("created_at", { ascending: false })
     .limit(50);
 
   return { ok: true, value: { request: row, events: events ?? [] } };
+}
+
+/**
+ * The internal notes on a request's decline events. OPERATIONS ONLY.
+ *
+ * Deliberately a separate function rather than a branch inside
+ * `getDeliveryRequest`: there is exactly one code path that can read a note,
+ * it names the capability it needs, and the merchant read has no branch that
+ * could ever reach it. A conditional select string would have been fewer
+ * lines and one refactor away from leaking.
+ */
+export async function getDeclineInternalNotes(params: {
+  actor: RequestActor;
+  requestId: string;
+}): Promise<CommandResult<{ notes: Array<{ eventId: string; internalNote: string }> }>> {
+  const op = "getDeclineInternalNotes";
+
+  const loaded = await loadRequest(op, params.requestId, null);
+  if (isCommandFailure(loaded)) return loaded;
+  const row = loaded.value;
+
+  // `review`, not `read`: every active member of a business may read a
+  // request, and none of them may see an internal note.
+  const permission = canActOnDeliveryRequest(params.actor, "review", String(row.business_account_id));
+  if (!permission.allowed) return denied(op, permission.reason);
+  if (params.actor.kind !== "operations") return denied(op, "role_may_not_review");
+
+  const { data, error } = await supabaseAdmin
+    .from(EVENTS_TABLE)
+    .select("id,internalNote:metadata->>internalNote")
+    .eq("request_id", params.requestId)
+    .eq("command", "decline_delivery_request")
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  if (error) return fail({ operation: op, code: "internal", detail: error.message });
+
+  const notes = (data ?? [])
+    .filter((e: any) => typeof e.internalNote === "string" && e.internalNote.length > 0)
+    .map((e: any) => ({ eventId: String(e.id), internalNote: String(e.internalNote) }));
+
+  return { ok: true, value: { notes } };
 }
 
 /** OPS-002. Requests waiting for Couranr review, oldest submission first. */

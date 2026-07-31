@@ -1233,12 +1233,15 @@ async function groupL() {
     await ctx.close();
   }
 
+  // A note that is unmistakable if it ever surfaces where it must not.
+  const SECRET_NOTE = "E2E-INTERNAL-ONLY merchant disputed two prior invoices";
+
   if (declineId) {
     const { ctx, page } = await freshContext();
     await signIn(page, USERS.ops, { expectLanding: "/operations" });
     await decideAsOps(page, declineId, "decline", {
-      reason: "outside_service_area",
-      note: "E2E synthetic decline",
+      reason: "no_driver_available",
+      note: SECRET_NOTE,
     });
     await shot(page, "L16-declined");
 
@@ -1248,10 +1251,20 @@ async function groupL() {
       `request_state=${row?.request_state} review_state=${row?.review_state}`);
 
     const ev = (await eventsFor(declineId)).find((e) => e.command === "decline_delivery_request");
-    check("L17", "the decline event records the structured reason and the internal note",
-      ev?.metadata?.reason === "outside_service_area" &&
-        ev?.metadata?.internalNote === "E2E synthetic decline",
-      `reason=${ev?.metadata?.reason} note=${ev?.metadata?.internalNote}`);
+    check("L17", "the decline event records code, version, merchant message and note",
+      ev?.metadata?.reasonCode === "no_driver_available" &&
+        ev?.metadata?.reasonVersion === "couranr-decline-v1" &&
+        ev?.metadata?.merchantMessage ===
+          "Couranr does not have an available driver for this request." &&
+        ev?.metadata?.internalNote === SECRET_NOTE,
+      `code=${ev?.metadata?.reasonCode} version=${ev?.metadata?.reasonVersion} msg=${ev?.metadata?.merchantMessage}`);
+
+    // The message is DERIVED server-side: it matches the code, and the
+    // operator never supplied it.
+    check("L17b", "the recorded merchant message is the one the code maps to, not free text",
+      ev?.metadata?.merchantMessage !== SECRET_NOTE &&
+        !String(ev?.metadata?.merchantMessage ?? "").includes("E2E"),
+      `merchantMessage=${ev?.metadata?.merchantMessage}`);
 
     // A terminal outcome must not offer another decision.
     await page.goto(`${BASE_URL}/operations/deliveries/${declineId}`, { waitUntil: "domcontentloaded" });
@@ -1263,6 +1276,124 @@ async function groupL() {
     await ctx.close();
   } else {
     inconclusive("L16", "decline", "no request was created to decline");
+  }
+
+  /* --- L19..L21  what the MERCHANT sees, and what they must not ---------- */
+
+  if (declineId) {
+    const { ctx, page } = await freshContext();
+
+    // Capture the raw API response the browser receives, so the assertion is
+    // about the bytes crossing the boundary and not only about rendered text.
+    let apiBodies = [];
+    page.on("response", async (r) => {
+      if (r.url().includes(`/api/couranr/delivery-requests/${declineId}`)) {
+        try {
+          apiBodies.push(await r.text());
+        } catch {
+          /* body already consumed */
+        }
+      }
+    });
+
+    await signIn(page, USERS.merchant, { expectLanding: "/business" });
+    await page.goto(`${BASE_URL}/business/deliveries/${declineId}`, { waitUntil: "domcontentloaded" });
+    await page.getByText(/Couranr could not confirm this delivery/i).waitFor({
+      state: "visible",
+      timeout: 25000,
+    });
+    await shot(page, "L19-merchant-decline");
+
+    const shownMessage = await page
+      .getByText("Couranr does not have an available driver for this request.")
+      .count();
+    check("L19", "MER-007 shows the merchant-safe message for the recorded code",
+      shownMessage > 0, `messageHits=${shownMessage}`);
+
+    // The assertion that matters most in this commit.
+    const pageText = await page.evaluate(() => document.body.innerText);
+    const inPage = pageText.includes(SECRET_NOTE) || pageText.includes("E2E-INTERNAL-ONLY");
+    const inApi = apiBodies.some(
+      (b) => b.includes("E2E-INTERNAL-ONLY") || b.includes("internalNote")
+    );
+    check("L20", "the internal note reaches neither the merchant's screen nor the API response",
+      !inPage && !inApi,
+      `inRenderedPage=${inPage} inApiBody=${inApi} bodiesSeen=${apiBodies.length}`);
+
+    // Positive control: the harness CAN see the API bodies it is asserting
+    // about, so L20 cannot pass because nothing was captured.
+    check("L20b", "the merchant's request API response was actually captured",
+      apiBodies.length > 0 && apiBodies.some((b) => b.includes("requestState")),
+      `bodiesSeen=${apiBodies.length}`);
+
+    // And the raw code is never shown to a merchant either.
+    check("L21", "the merchant is shown prose, never a raw reason code",
+      !pageText.includes("no_driver_available"), "raw code rendered");
+    await ctx.close();
+  } else {
+    inconclusive("L19", "merchant decline view", "no declined request to display");
+  }
+
+  /* --- L22  a code this build does not know renders the generic message --- */
+
+  /**
+   * The append-only log holds codes from the placeholder taxonomy, and will
+   * one day hold codes from a v2. There is no live example to point at —
+   * `couranr_decline_delivery_request` now REFUSES every retired code, which
+   * is correct — so the historical row is simulated by rewriting the API
+   * response at the browser.
+   *
+   * Fault injected at the page, never in the database: the request table is
+   * untouched and no invalid row is created to prove a rendering rule.
+   */
+  if (declineId) {
+    const { ctx, page } = await freshContext();
+    await signIn(page, USERS.merchant, { expectLanding: "/business" });
+
+    let rewrote = 0;
+    await page.route(`**/api/couranr/delivery-requests/${declineId}*`, async (route) => {
+      const res = await route.fetch();
+      let body;
+      try {
+        body = await res.json();
+      } catch {
+        return route.fulfill({ response: res });
+      }
+      for (const e of body.events ?? []) {
+        if (e.command === "decline_delivery_request") {
+          // A retired code, exactly as a pre-v1 event would carry it.
+          e.reasonCode = null;
+          e.reasonVersion = null;
+          e.legacyReason = "over_max_automatic_miles";
+          rewrote += 1;
+        }
+      }
+      await route.fulfill({ response: res, body: JSON.stringify(body) });
+    });
+
+    await page.goto(`${BASE_URL}/business/deliveries/${declineId}`, { waitUntil: "domcontentloaded" });
+    await page.getByText(/Couranr could not confirm this delivery/i).waitFor({
+      state: "visible",
+      timeout: 25000,
+    });
+    await shot(page, "L22-unknown-code-fallback");
+
+    const text = await page.evaluate(() => document.body.innerText);
+    if (rewrote === 0) {
+      inconclusive("L22", "unknown reason code falls back to the generic message",
+        "the interceptor never saw a decline event to rewrite");
+    } else {
+      const generic =
+        "Couranr could not confirm this request. Contact Couranr Support for details.";
+      check("L22", "an unrecognised historical code renders the generic safe message",
+        text.includes(generic) &&
+          !text.includes("over_max_automatic_miles") &&
+          !text.includes("does not have an available driver"),
+        `generic=${text.includes(generic)} rawCodeShown=${text.includes("over_max_automatic_miles")}`);
+    }
+    await ctx.close();
+  } else {
+    inconclusive("L22", "unknown reason code fallback", "no declined request to display");
   }
 }
 

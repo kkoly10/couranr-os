@@ -4,11 +4,13 @@ import { describe, expect, it } from "vitest";
 import {
   COMMAND_RULES,
   DECLINE_REASONS,
+  DECLINE_REASON_VERSION,
   QUEUE_STATES,
   READINESS_STATES,
   REQUEST_COMMANDS,
   REQUEST_STATES,
   REVIEW_OUTCOME_COMMANDS,
+  RETIRED_DECLINE_REASONS,
   REVIEW_STATES,
   SERVICE_AREA_REVIEW_STATES,
   isDeclineReason,
@@ -290,19 +292,45 @@ describe("delivery-request state machine", () => {
     });
   });
 
-  it("every decline reason is a code the codebase already establishes", () => {
-    // `other` is the deliberate escape hatch; the rest must be real vocabulary,
-    // not invented business categories. REV-002 (a canonical taxonomy) is open.
+  /**
+   * REV-002 is decided: the placeholder taxonomy that shipped with the review
+   * outcomes has been replaced by the owner-approved `couranr-decline-v1`.
+   * The full taxonomy — copy, note rules, SQL agreement, retired codes — is
+   * asserted in `couranr-request-commands.test.ts`, next to the migration it
+   * has to agree with. What belongs HERE is the state-machine-level fact: the
+   * vocabulary is v1, and the review triggers are not part of it.
+   */
+  it("uses the owner-approved v1 decline vocabulary", () => {
+    expect(DECLINE_REASON_VERSION).toBe("couranr-decline-v1");
     expect([...DECLINE_REASONS]).toEqual([
       "outside_service_area",
-      "over_max_automatic_miles",
-      "over_max_automatic_weight",
-      "overnight_not_offered_in_this_release",
+      "requested_time_unavailable",
+      "no_driver_available",
+      "no_compatible_vehicle",
+      "shipment_not_supported",
+      "merchant_account_on_hold",
+      "duplicate_or_superseded",
       "other",
     ]);
-    expect(isDeclineReason("outside_service_area")).toBe(true);
+    expect(isDeclineReason("no_driver_available")).toBe(true);
     for (const junk of ["", "OTHER", "capacity_unavailable", null, undefined, 3, {}]) {
       expect(isDeclineReason(junk), String(junk)).toBe(false);
+    }
+  });
+
+  /**
+   * A review trigger says "this quote needs a human". A decline says "Couranr
+   * will not do this work". Confusing the two tells a merchant they cannot be
+   * served when the truth is that their price has to be worked out by hand,
+   * so the two vocabularies must stay disjoint.
+   */
+  it("keeps review triggers out of the decline vocabulary", () => {
+    for (const trigger of RETIRED_DECLINE_REASONS) {
+      expect(DECLINE_REASONS, `${trigger} is a decline reason`).not.toContain(trigger as any);
+    }
+    // And no decline reason has leaked into the review-state vocabulary.
+    for (const r of DECLINE_REASONS) {
+      expect(REVIEW_STATES, `${r} is being used as a review state`).not.toContain(r as any);
     }
   });
 

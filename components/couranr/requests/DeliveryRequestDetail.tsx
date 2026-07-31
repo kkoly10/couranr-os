@@ -27,6 +27,7 @@ import {
   type ApiFailure,
 } from "./client";
 import { REQUEST_STATE_LABELS, type DeliveryRequestView } from "@/lib/couranr/requests/view";
+import { declineMessageFor } from "@/lib/couranr/requests/states";
 
 /**
  * MER-007 — delivery detail.
@@ -76,6 +77,8 @@ const OUTCOME_COPY: Record<string, { tone: "info" | "success" | "warning" | "dan
   declined: {
     tone: "danger",
     title: "Couranr could not confirm this delivery",
+    // Body is replaced by the reason-specific message below when the decline
+    // event carries a code this build recognises.
     body: "Nothing was charged. Contact Couranr Support if you would like to discuss alternatives.",
   },
 };
@@ -185,7 +188,9 @@ export function DeliveryRequestDetail({ id }: { id: string }) {
             tone={OUTCOME_COPY[request.requestState].tone}
             title={OUTCOME_COPY[request.requestState].title}
           >
-            {OUTCOME_COPY[request.requestState].body}
+            {request.requestState === "declined"
+              ? `${declineMessageFor(declineReasonCode(events))} Nothing was charged.`
+              : OUTCOME_COPY[request.requestState].body}
           </Alert>
         ) : null}
         <Grid columns={3}>
@@ -311,4 +316,23 @@ function Detail({ label, value }: { label: string; value: React.ReactNode }) {
       <Text strong>{value}</Text>
     </div>
   );
+}
+
+/**
+ * The reason code from the most recent decline event, if there is one.
+ *
+ * `reasonCode` is what `couranr-decline-v1` writes; `legacyReason` is the key
+ * the placeholder taxonomy used. Both are read because append-only means old
+ * events keep their original shape — and `declineMessageFor` maps any code it
+ * does not recognise, including every retired one, onto the generic message.
+ * So a merchant never sees a raw code, an empty string or "undefined".
+ *
+ * The internal note is not consulted, and cannot be: the read path that
+ * produced `events` never selected it.
+ */
+function declineReasonCode(events: any[]): string | null {
+  // `events` arrives newest first.
+  const e = (events ?? []).find((x) => x?.command === "decline_delivery_request");
+  if (!e) return null;
+  return e.reasonCode ?? e.legacyReason ?? null;
 }

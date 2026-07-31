@@ -3,6 +3,17 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { RPC, quoteArgs, shipmentArgs } from "@/lib/couranr/requests/commands";
 import { classifyDatabaseError } from "@/lib/couranr/errors";
+import {
+  DECLINE_MERCHANT_MESSAGE,
+  DECLINE_REASONS,
+  DECLINE_REASONS_REQUIRING_NOTE,
+  DECLINE_REASON_VERSION,
+  GENERIC_DECLINE_MESSAGE,
+  RETIRED_DECLINE_REASONS,
+  declineMessageFor,
+  declineRequiresInternalNote,
+  isDeclineReason,
+} from "@/lib/couranr/requests/states";
 import { isNormalizeFailure, normalizeDeliveryRequestInput } from "@/lib/couranr/requests/input";
 import { quoteDelivery } from "@/lib/couranr/pricing";
 
@@ -643,5 +654,319 @@ describe("a missing acknowledgment is a different conflict from a stale version"
     // raised CR409 -> version_conflict, so it never ran.
     expect(COMMANDS).toMatch(/result\.code === "conflict" && row\.payer_type === "merchant"/);
     expect(COMMANDS).toMatch(/without the payer's approval/);
+  });
+});
+
+/**
+ * Decline reasons v1 — REV-002, owner-approved 2026-07-31.
+ *
+ * The taxonomy lives in TWO places on purpose: the database derives the
+ * merchant message at write time so no caller can choose it, and TypeScript
+ * renders it. Two copies of the same prose is exactly the drift this repo has
+ * shipped before, so they are compared character for character here.
+ */
+describe("decline reasons v1", () => {
+  const DECLINE_MIGRATION = readdirSync(MIGRATIONS).filter((f) =>
+    f.endsWith("_couranr_decline_reasons_v1.sql")
+  )[0];
+  const DECLINE_SQL_RAW = readFileSync(path.join(MIGRATIONS, DECLINE_MIGRATION), "utf8");
+  const DECLINE_SQL = DECLINE_SQL_RAW.replace(/^\s*--.*$/gm, "");
+
+  /** The `case` arms of the effective decline function, as code -> message. */
+  const sqlMessages: Record<string, string> = (() => {
+    const start = DECLINE_SQL.indexOf("v_msg := case p_decline_reason");
+    expect(start, "the message case expression is missing").toBeGreaterThan(-1);
+    const body = DECLINE_SQL.slice(start, DECLINE_SQL.indexOf("else null", start));
+    const out: Record<string, string> = {};
+    for (const m of body.matchAll(/when\s+'([a-z_]+)'\s+then\s*\n?\s*'((?:[^']|'')*)'/g)) {
+      out[m[1]] = m[2].replace(/''/g, "'");
+    }
+    return out;
+  })();
+
+  it("is exactly the eight owner-approved codes, in order", () => {
+    expect([...DECLINE_REASONS]).toEqual([
+      "outside_service_area",
+      "requested_time_unavailable",
+      "no_driver_available",
+      "no_compatible_vehicle",
+      "shipment_not_supported",
+      "merchant_account_on_hold",
+      "duplicate_or_superseded",
+      "other",
+    ]);
+    expect(DECLINE_REASON_VERSION).toBe("couranr-decline-v1");
+  });
+
+  it("carries the owner's merchant copy verbatim", () => {
+    expect(DECLINE_MERCHANT_MESSAGE).toEqual({
+      outside_service_area: "Couranr could not confirm service for this route.",
+      requested_time_unavailable: "Couranr could not confirm the requested delivery time.",
+      no_driver_available: "Couranr does not have an available driver for this request.",
+      no_compatible_vehicle:
+        "Couranr could not confirm a compatible vehicle for this shipment.",
+      shipment_not_supported: "This shipment cannot be handled through Couranr.",
+      merchant_account_on_hold:
+        "This business account needs attention before Couranr can confirm service.",
+      duplicate_or_superseded: "This request was replaced by another request.",
+      other: "Couranr could not confirm this request. Contact Couranr Support for details.",
+    });
+  });
+
+  /** The drift guard. Both enforcement points, compared directly. */
+  it("the SQL that writes the message and the TypeScript that renders it agree exactly", () => {
+    expect(Object.keys(sqlMessages).sort()).toEqual([...DECLINE_REASONS].sort());
+    for (const code of DECLINE_REASONS) {
+      expect(sqlMessages[code], `message for ${code}`).toBe(DECLINE_MERCHANT_MESSAGE[code]);
+    }
+    // Positive control: the extractor really did read eight arms out of the SQL.
+    expect(Object.keys(sqlMessages)).toHaveLength(8);
+  });
+
+  it("the reason version in the SQL is the one TypeScript declares", () => {
+    expect(DECLINE_SQL).toContain(`'reasonVersion',   '${DECLINE_REASON_VERSION}'`);
+  });
+
+  it("the event records all four required keys and no others of substance", () => {
+    const meta = DECLINE_SQL.slice(
+      DECLINE_SQL.indexOf("jsonb_build_object", DECLINE_SQL.indexOf("insert into public.couranr_delivery_request_events"))
+    );
+    for (const key of ["reasonCode", "reasonVersion", "merchantMessage", "internalNote"]) {
+      expect(meta, `event metadata is missing ${key}`).toContain(`'${key}'`);
+    }
+  });
+
+  it("rejects anything outside the taxonomy with CR422, before touching a row", () => {
+    expect(DECLINE_SQL).toMatch(/decline_reason_unrecognized'\s+using\s+errcode\s*=\s*'CR422'/);
+    expect(DECLINE_SQL).toMatch(/internal_note_required'\s+using\s+errcode\s*=\s*'CR422'/);
+
+    // Both guards must precede the request lookup, so an invalid call cannot
+    // even reveal whether the request exists.
+    const unrecognised = DECLINE_SQL.indexOf("decline_reason_unrecognized");
+    const noteRequired = DECLINE_SQL.indexOf("internal_note_required");
+    const lookup = DECLINE_SQL.indexOf("perform 1 from public.couranr_delivery_requests");
+    expect(unrecognised).toBeGreaterThan(-1);
+    expect(unrecognised).toBeLessThan(lookup);
+    expect(noteRequired).toBeLessThan(lookup);
+  });
+
+  it("requires an internal note for exactly two codes", () => {
+    expect([...DECLINE_REASONS_REQUIRING_NOTE].sort()).toEqual([
+      "merchant_account_on_hold",
+      "other",
+    ]);
+    for (const c of DECLINE_REASONS) {
+      const expected = c === "other" || c === "merchant_account_on_hold";
+      expect(declineRequiresInternalNote(c), c).toBe(expected);
+    }
+    expect(DECLINE_SQL).toMatch(
+      /p_decline_reason in \('other', 'merchant_account_on_hold'\) and v_note is null/
+    );
+    // Whitespace is not a note: the SQL trims before deciding.
+    expect(DECLINE_SQL).toMatch(/v_note := nullif\(btrim\(coalesce\(p_internal_note, ''\)\), ''\)/);
+  });
+
+  /**
+   * The retired codes. Two were never decline reasons — they are review
+   * triggers — and one was a release detail. None may come back by accident.
+   */
+  it("keeps the retired codes out of the taxonomy", () => {
+    for (const c of RETIRED_DECLINE_REASONS) {
+      expect(DECLINE_REASONS, `${c} is back in the taxonomy`).not.toContain(c as any);
+      expect(isDeclineReason(c)).toBe(false);
+      expect(sqlMessages[c], `${c} has a SQL message arm`).toBeUndefined();
+      // And each renders the generic safe message rather than a raw code.
+      expect(declineMessageFor(c)).toBe(GENERIC_DECLINE_MESSAGE);
+    }
+    // The two review triggers are still review triggers.
+    expect(RETIRED_DECLINE_REASONS).toContain("over_max_automatic_miles");
+    expect(RETIRED_DECLINE_REASONS).toContain("over_max_automatic_weight");
+  });
+
+  it("an unrecognised code always renders the generic safe message", () => {
+    for (const junk of [
+      null,
+      undefined,
+      "",
+      "   ",
+      "capacity_unavailable",
+      "OUTSIDE_SERVICE_AREA",
+      "over_max_automatic_miles",
+      "overnight_not_offered_in_this_release",
+      42,
+      {},
+      [],
+    ]) {
+      expect(declineMessageFor(junk), String(junk)).toBe(GENERIC_DECLINE_MESSAGE);
+    }
+    // The generic message is safe to show anyone: it names no internal cause.
+    expect(GENERIC_DECLINE_MESSAGE).toBe(DECLINE_MERCHANT_MESSAGE.other);
+    for (const banned of ["driver", "vehicle", "hold", "account", "duplicate"]) {
+      expect(GENERIC_DECLINE_MESSAGE.toLowerCase()).not.toContain(banned);
+    }
+  });
+
+  it("every approved code renders its own message, not the generic one", () => {
+    for (const c of DECLINE_REASONS) {
+      expect(declineMessageFor(c)).toBe(DECLINE_MERCHANT_MESSAGE[c]);
+      if (c !== "other") expect(declineMessageFor(c)).not.toBe(GENERIC_DECLINE_MESSAGE);
+    }
+  });
+
+  /**
+   * No merchant message may leak an internal cause the merchant should not be
+   * given, or name a person, a driver or a threshold.
+   */
+  it("no merchant message says anything Couranr would not say out loud", () => {
+    for (const [code, msg] of Object.entries(DECLINE_MERCHANT_MESSAGE)) {
+      expect(msg.endsWith("."), `${code} is not a sentence`).toBe(true);
+      expect(msg.length, `${code} is too terse`).toBeGreaterThan(20);
+      for (const banned of [/\bcapacity\b/i, /\bmargin\b/i, /\bunprofitable\b/i, /\bblacklist/i, /\brelease\b/i, /\bpolicy threshold/i]) {
+        expect(banned.test(msg), `${code} says something internal: ${msg}`).toBe(false);
+      }
+      // Couranr speaks as Couranr — never as a person.
+      expect(/\b(I|we|our team|my)\b/.test(msg), `${code} uses personal-operator language`).toBe(
+        false
+      );
+    }
+  });
+
+  it("does not rewrite or delete any historical event", () => {
+    for (const rx of [
+      /\bupdate\s+public\.couranr_delivery_request_events/i,
+      /\bdelete\s+from\b/i,
+      /\btruncate\b/i,
+      /\bdrop\s+table\b/i,
+      /\bdrop\s+column\b/i,
+      /\balter\s+table\b/i,
+    ]) {
+      expect(rx.test(DECLINE_SQL), `decline migration must not contain ${rx}`).toBe(false);
+    }
+    // The only statement against the event table is the append.
+    expect(
+      (DECLINE_SQL.match(/insert into public\.couranr_delivery_request_events/g) || []).length
+    ).toBe(1);
+  });
+
+  it("is SECURITY INVOKER, empty search_path, service_role only", () => {
+    expect(DECLINE_SQL).toMatch(/language plpgsql\s+security invoker/);
+    expect(/security\s+definer/i.test(DECLINE_SQL)).toBe(false);
+    expect(DECLINE_SQL).toMatch(/set\s+search_path\s*=\s*''/);
+    expect(DECLINE_SQL).toMatch(
+      /revoke\s+all\s+on\s+function[\s\S]*?from\s+public,\s*anon,\s*authenticated,\s*service_role;/
+    );
+    expect(DECLINE_SQL).toMatch(/grant\s+execute\s+on\s+function[\s\S]*?to\s+service_role;/);
+    expect(/\bto\s+(anon|authenticated|public)\b/i.test(DECLINE_SQL)).toBe(false);
+  });
+
+  /**
+   * The merchant message is DERIVED, never supplied. If a parameter ever
+   * appears for it, a caller chooses what a merchant is told a decline means.
+   */
+  it("takes no merchant-message parameter", () => {
+    expect(DECLINE_SQL).not.toMatch(/p_merchant_message/);
+    expect(DECLINE_SQL).not.toMatch(/p_reason_version/);
+    expect(COMMANDS).not.toMatch(/p_merchant_message/);
+    // The signature is unchanged from the one it replaces.
+    expect(DECLINE_SQL).toMatch(
+      /drop function public\.couranr_decline_delivery_request\(uuid, uuid, integer, uuid, text, text\)/
+    );
+  });
+});
+
+/**
+ * The internal note is the one field in this slice that must never reach a
+ * merchant. It is guarded structurally rather than by stripping: the
+ * merchant-facing read selects named JSON keys, so the note is not in the
+ * process at all on that path.
+ */
+describe("internal notes never reach a merchant read", () => {
+  const getRequest = COMMANDS.slice(
+    COMMANDS.indexOf("export async function getDeliveryRequest"),
+    COMMANDS.indexOf("export async function getDeclineInternalNotes")
+  );
+
+  it("the merchant-facing event read never selects metadata wholesale", () => {
+    expect(getRequest.length).toBeGreaterThan(200);
+    expect(getRequest).not.toMatch(/select\([^)]*\bmetadata\b(?!->)/);
+    expect(getRequest).not.toMatch(/internalNote/);
+    // It selects named keys, and only safe ones.
+    expect(getRequest).toMatch(/reasonCode:metadata->>reasonCode/);
+    expect(getRequest).toMatch(/reasonVersion:metadata->>reasonVersion/);
+    expect(getRequest).toMatch(/legacyReason:metadata->>reason/);
+  });
+
+  it("the note reader is a separate command that demands the review capability", () => {
+    const notes = COMMANDS.slice(COMMANDS.indexOf("export async function getDeclineInternalNotes"));
+    expect(notes).toMatch(/canActOnDeliveryRequest\(params\.actor, "review"/);
+    expect(notes).toMatch(/params\.actor\.kind !== "operations"/);
+    expect(notes).toMatch(/internalNote:metadata->>internalNote/);
+  });
+
+  /**
+   * No route may serve a note. The decline route legitimately ACCEPTS one —
+   * that is Operations writing it — so the assertion is about what leaves,
+   * not about what the word appears next to. Every `NextResponse.json(...)`
+   * body across the canonical routes is extracted and checked.
+   */
+  it("no canonical route returns an internal note in a response body", () => {
+    const dir = path.join(ROOT, "app/api/couranr");
+    const names = (readdirSync(dir, { recursive: true } as any) as any[])
+      .map(String)
+      .filter((f) => f.endsWith("route.ts"));
+    expect(names.length).toBeGreaterThan(5);
+
+    let bodiesChecked = 0;
+    for (const name of names) {
+      const src = readFileSync(path.join(dir, name), "utf8");
+
+      // The note reader is a command-layer function with no HTTP surface.
+      expect(src, `${name} exposes the note reader`).not.toMatch(/getDeclineInternalNotes/);
+
+      // Every response body, taken by balancing parentheses from the call.
+      for (const m of src.matchAll(/NextResponse\.json\(/g)) {
+        let depth = 0;
+        let end = -1;
+        for (let i = m.index + m[0].length - 1; i < src.length; i++) {
+          if (src[i] === "(") depth++;
+          else if (src[i] === ")") {
+            depth--;
+            if (depth === 0) {
+              end = i;
+              break;
+            }
+          }
+        }
+        expect(end, `${name}: unbalanced NextResponse.json`).toBeGreaterThan(-1);
+        const body = src.slice(m.index, end + 1);
+        bodiesChecked += 1;
+        expect(body, `${name} returns an internal note`).not.toMatch(/internalNote/i);
+        expect(body, `${name} returns raw event metadata`).not.toMatch(/\bmetadata\b/);
+      }
+    }
+    // Positive control: the extractor really found response bodies to check.
+    expect(bodiesChecked).toBeGreaterThan(5);
+  });
+
+  it("the only route that mentions an internal note is the decline route, on the way IN", () => {
+    const dir = path.join(ROOT, "app/api/couranr");
+    const names = (readdirSync(dir, { recursive: true } as any) as any[])
+      .map(String)
+      .filter((f) => f.endsWith("route.ts"));
+    const mentioning = names.filter((n) =>
+      /internalNote/.test(readFileSync(path.join(dir, n), "utf8"))
+    );
+    expect(mentioning.map((n) => n.replace(/\\/g, "/"))).toEqual([
+      "operations/delivery-requests/[id]/decline/route.ts",
+    ]);
+  });
+
+  it("the merchant detail screen renders a message from the CODE, never a stored note", () => {
+    const ui = readFileSync(
+      path.join(ROOT, "components/couranr/requests/DeliveryRequestDetail.tsx"),
+      "utf8"
+    );
+    expect(ui).toMatch(/declineMessageFor\(declineReasonCode\(events\)\)/);
+    expect(ui).not.toMatch(/internalNote/);
   });
 });

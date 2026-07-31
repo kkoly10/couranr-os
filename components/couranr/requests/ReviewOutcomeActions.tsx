@@ -20,7 +20,12 @@ import {
   withReference,
   type ApiFailure,
 } from "./client";
-import { DECLINE_REASONS, type DeclineReason } from "@/lib/couranr/requests/states";
+import {
+  DECLINE_MERCHANT_MESSAGE,
+  DECLINE_REASONS,
+  declineRequiresInternalNote,
+  type DeclineReason,
+} from "@/lib/couranr/requests/states";
 import { formatCents, type DeliveryRequestView } from "@/lib/couranr/requests/view";
 
 /**
@@ -36,12 +41,23 @@ import { formatCents, type DeliveryRequestView } from "@/lib/couranr/requests/vi
  * read as "paid and dispatched".
  */
 
+/**
+ * What the OPERATOR picks — a cause, in Couranr's own words.
+ *
+ * Deliberately different strings from `DECLINE_MERCHANT_MESSAGE`, which is
+ * what the merchant is told. The two audiences need different sentences, and
+ * the panel shows both so an operator can see the consequence of the code
+ * they are choosing before they commit to it.
+ */
 const DECLINE_REASON_LABELS: Record<DeclineReason, string> = {
   outside_service_area: "Outside the Couranr service area",
-  over_max_automatic_miles: "Distance beyond automatic pricing",
-  over_max_automatic_weight: "Weight beyond automatic pricing",
-  overnight_not_offered_in_this_release: "Overnight is not offered yet",
-  other: "Another reason (add a note)",
+  requested_time_unavailable: "Requested delivery time unavailable",
+  no_driver_available: "No driver available",
+  no_compatible_vehicle: "No compatible vehicle",
+  shipment_not_supported: "Shipment not supported",
+  merchant_account_on_hold: "Business account on hold",
+  duplicate_or_superseded: "Duplicate or superseded by another request",
+  other: "Another reason",
 };
 
 type Outcome = "accept" | "requote" | "decline";
@@ -218,10 +234,13 @@ export function ReviewOutcomeActions({
                 </Select>
               )}
             </Field>
+            <Alert tone="info" title="The business will be told">
+              {DECLINE_MERCHANT_MESSAGE[declineReason]}
+            </Alert>
             <Field
               label="Internal note"
-              hint="Recorded for Couranr Operations. Not shown to the business."
-              required={declineReason === "other"}
+              hint="Recorded for Couranr Operations. Never shown to the business or the recipient."
+              required={declineRequiresInternalNote(declineReason)}
             >
               {(a) => (
                 <Textarea
@@ -237,7 +256,9 @@ export function ReviewOutcomeActions({
               <Button
                 variant="primary"
                 loading={busy}
-                disabled={declineReason === "other" && declineNote.trim().length === 0}
+                disabled={
+                  declineRequiresInternalNote(declineReason) && declineNote.trim().length === 0
+                }
                 onClick={() => run("decline")}
               >
                 Record that Couranr could not confirm

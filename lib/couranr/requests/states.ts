@@ -226,25 +226,109 @@ export const REVIEW_OUTCOME_COMMANDS = [
 ] as const satisfies ReadonlyArray<{ command: RequestCommand; label: string }>;
 
 /**
- * Decline reasons. Every code here is one the codebase already establishes:
- * the three `ReviewReasonCode` values from the pricing engine, plus
- * `outside_service_area`, which `service_area_review_state` already models.
+ * Decline reasons — REV-002, owner-approved 2026-07-31.
  *
- * `other` requires a note, and exists so Operations is never forced to
- * mislabel a decline. A fuller taxonomy is registry decision REV-002 and is
- * UNRESOLVED — these are not it, and must not be treated as canonical.
+ * The canonical vocabulary for "Couranr could not confirm service". This
+ * replaces the placeholder set that shipped with the review outcomes, which
+ * was assembled from codes already in the tree because no authority had
+ * defined one.
+ *
+ * The version travels with every decline event, so a later taxonomy can be
+ * told apart from this one without guessing from the code alone.
  */
+export const DECLINE_REASON_VERSION = "couranr-decline-v1";
+
 export const DECLINE_REASONS = [
   "outside_service_area",
-  "over_max_automatic_miles",
-  "over_max_automatic_weight",
-  "overnight_not_offered_in_this_release",
+  "requested_time_unavailable",
+  "no_driver_available",
+  "no_compatible_vehicle",
+  "shipment_not_supported",
+  "merchant_account_on_hold",
+  "duplicate_or_superseded",
   "other",
 ] as const;
 export type DeclineReason = (typeof DECLINE_REASONS)[number];
 
+/**
+ * What the merchant is told. Owner-approved copy, reproduced verbatim.
+ *
+ * This map is for RENDERING. The authority at write time is the `case`
+ * expression inside `couranr_decline_delivery_request`, which derives the
+ * message from the code in the database so a caller cannot choose it.
+ * `tests/couranr-request-commands.test.ts` asserts the two agree character
+ * for character, so neither can drift.
+ *
+ * None of these names an internal cause, a driver, a policy threshold or a
+ * release detail. A merchant reads them; they have to be true, useful and
+ * safe to say out loud.
+ */
+export const DECLINE_MERCHANT_MESSAGE: Readonly<Record<DeclineReason, string>> = {
+  outside_service_area: "Couranr could not confirm service for this route.",
+  requested_time_unavailable: "Couranr could not confirm the requested delivery time.",
+  no_driver_available: "Couranr does not have an available driver for this request.",
+  no_compatible_vehicle: "Couranr could not confirm a compatible vehicle for this shipment.",
+  shipment_not_supported: "This shipment cannot be handled through Couranr.",
+  merchant_account_on_hold:
+    "This business account needs attention before Couranr can confirm service.",
+  duplicate_or_superseded: "This request was replaced by another request.",
+  other: "Couranr could not confirm this request. Contact Couranr Support for details.",
+};
+
+/**
+ * `other` names nothing, and `merchant_account_on_hold` is an assertion about
+ * a business that somebody has to be able to justify weeks later. Neither is
+ * honest without a note.
+ */
+export const DECLINE_REASONS_REQUIRING_NOTE: readonly DeclineReason[] = [
+  "other",
+  "merchant_account_on_hold",
+];
+
+/**
+ * Codes that were never, or are no longer, decline reasons. Kept named so the
+ * distinction survives the people who made it.
+ *
+ * The first two are review TRIGGERS (`ReviewReasonCode` in
+ * `lib/couranr/pricing/types.ts`). They mean "this quote needs a human", not
+ * "Couranr refused the work" — declining with one would tell a merchant they
+ * cannot be served when the truth is that their price has to be worked out by
+ * hand.
+ *
+ * `overnight_not_offered_in_this_release` is conceptually a
+ * `requested_time_unavailable` and is deliberately not retained: a
+ * release-internal detail is not something to say to a merchant, and it would
+ * be false the moment overnight ships.
+ *
+ * Events written under the placeholder taxonomy still carry these codes. They
+ * are never rewritten; `declineMessageFor` maps them onto the generic message.
+ */
+export const RETIRED_DECLINE_REASONS = [
+  "over_max_automatic_miles",
+  "over_max_automatic_weight",
+  "overnight_not_offered_in_this_release",
+] as const;
+
 export function isDeclineReason(v: unknown): v is DeclineReason {
   return typeof v === "string" && (DECLINE_REASONS as readonly string[]).includes(v);
+}
+
+export function declineRequiresInternalNote(v: unknown): boolean {
+  return isDeclineReason(v) && DECLINE_REASONS_REQUIRING_NOTE.includes(v);
+}
+
+/**
+ * The one safe thing to say when the code means nothing to this build.
+ *
+ * The append-only log holds codes from the placeholder taxonomy and will one
+ * day hold codes from a v2. Rendering a raw code, an empty string, or
+ * "undefined" to a merchant are all worse than saying the true, general thing
+ * — so an unrecognised code falls back here rather than being displayed.
+ */
+export const GENERIC_DECLINE_MESSAGE = DECLINE_MERCHANT_MESSAGE.other;
+
+export function declineMessageFor(code: unknown): string {
+  return isDeclineReason(code) ? DECLINE_MERCHANT_MESSAGE[code] : GENERIC_DECLINE_MESSAGE;
 }
 
 /** States in which a merchant may still edit the shipment. */
