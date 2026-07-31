@@ -29,6 +29,7 @@ import {
   issueLinkForRequest,
   obligationFor,
   setPayerType,
+  tokenStateFor,
   membershipsFor,
   realDataCounts,
   requestById,
@@ -1627,12 +1628,32 @@ async function groupM() {
       approvals.filter((e) => e.command === "record_payer_quote_approval").length === 1,
       `approvals=${approvals.filter((e) => e.command === "record_payer_quote_approval").length}`);
 
-    // The link is dead the moment it has done its job.
+    /*
+     * The link is dead the moment it has done its job.
+     *
+     * It comes back as `revoked`, not `already_authorized`: authorizing
+     * revokes every live token for the request, so redemption refuses at the
+     * revocation check before it ever reaches the obligation. Both are correct
+     * refusals and the assertion accepts either — what must be true is that
+     * the link no longer offers to take a payment.
+     */
     await page.goto(`${BASE_URL}/pay/${payToken}`, { waitUntil: "domcontentloaded" });
-    await page.waitForTimeout(2500);
-    const reused = await page.getByText(/already authorized/i).count();
-    check("M13", "the payment link stops working once authorized", reused > 0,
-      `alreadyAuthorizedCopy=${reused}`);
+    await page.waitForTimeout(3000);
+    const refusedCopy = await page
+      .getByText(/no longer active|already authorized|expired|not valid/i)
+      .count();
+    const stillOffering = await page
+      .getByRole("button", { name: /Authorize|Approve the revised/i })
+      .count();
+    check("M13", "the payment link stops working once authorized",
+      refusedCopy > 0 && stillOffering === 0,
+      `refusalCopy=${refusedCopy} payButtons=${stillOffering}`);
+
+    // And the database agrees about why.
+    const spent = await tokenStateFor(customerRequestId);
+    check("M13b", "the token was revoked with a reason that names the cause",
+      spent?.revoked_at !== null && spent?.revoked_reason === "payment_authorized",
+      `revoked_reason=${spent?.revoked_reason}`);
     await shot(page, "M13-link-spent");
     await ctx.close();
   }

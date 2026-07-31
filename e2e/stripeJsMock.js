@@ -99,6 +99,28 @@
       retrievePaymentIntent: function () {
         return Promise.resolve({ paymentIntent: { status: "requires_capture" } });
       },
+
+      /*
+       * react-stripe-js validates the object `loadStripe` resolves before it
+       * will use it: `isStripe()` requires elements, createToken,
+       * createPaymentMethod AND confirmCardPayment to be functions, and
+       * throws "Invalid prop `stripe` supplied to `Elements`" otherwise.
+       * Couranr calls none of these three — they exist purely to satisfy that
+       * shape check, and each records the call so an accidental use would be
+       * visible rather than silent.
+       */
+      createToken: function () {
+        window.__couranrStripeCalls.push({ fn: "createToken" });
+        return Promise.resolve({ error: { message: "not implemented in the double" } });
+      },
+      createPaymentMethod: function () {
+        window.__couranrStripeCalls.push({ fn: "createPaymentMethod" });
+        return Promise.resolve({ error: { message: "not implemented in the double" } });
+      },
+      confirmCardPayment: function () {
+        window.__couranrStripeCalls.push({ fn: "confirmCardPayment" });
+        return Promise.resolve({ error: { message: "not implemented in the double" } });
+      },
     };
   };
 })();

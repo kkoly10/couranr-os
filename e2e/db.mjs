@@ -149,3 +149,17 @@ export async function issueLinkForRequest(requestId, businessAccountId) {
   if (error) throw new Error(`issueLinkForRequest: ${error.message}`);
   return raw;
 }
+
+/** The most recent payment link for a request, and why it stopped working. */
+export const tokenStateFor = (requestId) =>
+  admin
+    .from("couranr_payment_access_tokens")
+    .select("id,revoked_at,revoked_reason,expires_at,last_used_at")
+    .eq("request_id", requestId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+    .then(({ data, error }) => {
+      if (error) throw new Error(`tokenStateFor: ${error.message}`);
+      return data;
+    });
