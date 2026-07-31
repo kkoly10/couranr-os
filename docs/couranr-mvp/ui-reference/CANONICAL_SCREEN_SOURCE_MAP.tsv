@@ -90,3 +90,19 @@ MER-003	F6BD39AA-E03A-4B31-9A7C-2DB765889B42.png	Activation Checklist	desktop
 OPS-012	FBE79206-956C-436E-B4C7-3B15BCB664F2.png	Incidents & Claims	variant B
 EXTRA:driver-documents	FE00B26E-7137-49B3-8708-629160FCC3C3.png	Driver Documents & Compliance	not in registry
 OPS-003	FE8171A0-DCFC-4C17-8FDD-8BE16A0AB4BC.png	Delivery review workspace	desktop - Approve quote / Send revised quote / Assign vehicle
+CUS-008	canonical-mvp-images/customer/CUS-008_delivery-preferences-and-access-instructions.png	delivery preferences and access instructions	delivered 2026-07-31 as a named canonical mockup (not a root PNG)
+DRV-002	canonical-mvp-images/driver/DRV-002_assigned-delivery-detail.png	assigned delivery detail	delivered 2026-07-31 as a named canonical mockup (not a root PNG)
+MER-008	canonical-mvp-images/merchant/MER-008_customers-list.png	customers list	delivered 2026-07-31 as a named canonical mockup (not a root PNG)
+MER-010	canonical-mvp-images/merchant/MER-010_presets-list.png	presets list	delivered 2026-07-31 as a named canonical mockup (not a root PNG)
+OPS-001	canonical-mvp-images/operations/OPS-001_operations-dashboard.png	operations dashboard	delivered 2026-07-31 as a named canonical mockup (not a root PNG)
+OPS-005	canonical-mvp-images/operations/OPS-005_operations-messages-and-support-inbox.png	operations messages and support inbox	delivered 2026-07-31 as a named canonical mockup (not a root PNG)
+OPS-008	canonical-mvp-images/operations/OPS-008_vehicle-management.png	vehicle management	delivered 2026-07-31 as a named canonical mockup (not a root PNG)
+OPS-013	canonical-mvp-images/operations/OPS-013_operations-analytics.png	operations analytics	delivered 2026-07-31 as a named canonical mockup (not a root PNG)
+OPS-014	canonical-mvp-images/operations/OPS-014_unmet-demand-analytics.png	unmet demand analytics	delivered 2026-07-31 as a named canonical mockup (not a root PNG)
+OPS-015	canonical-mvp-images/operations/OPS-015_operations-settings.png	operations settings	delivered 2026-07-31 as a named canonical mockup (not a root PNG)
+OPS-016	canonical-mvp-images/operations/OPS-016_availability-controls.png	availability controls	delivered 2026-07-31 as a named canonical mockup (not a root PNG)
+OPS-021	canonical-mvp-images/operations/OPS-021_ask-couranr-lead-inbox.png	ask couranr lead inbox	delivered 2026-07-31 as a named canonical mockup (not a root PNG)
+PUB-004	canonical-mvp-images/public/PUB-004_delivery-estimate-and-hosted-request.png	delivery estimate and hosted request	delivered 2026-07-31 as a named canonical mockup (not a root PNG)
+PUB-008	canonical-mvp-images/public/PUB-008_pricing-page.png	pricing page	delivered 2026-07-31 as a named canonical mockup (not a root PNG)
+PUB-010	canonical-mvp-images/public/PUB-010_service-areas-page.png	service areas page	delivered 2026-07-31 as a named canonical mockup (not a root PNG)
+PUB-011	canonical-mvp-images/public/PUB-011_how-couranr-works.png	how couranr works	delivered 2026-07-31 as a named canonical mockup (not a root PNG)

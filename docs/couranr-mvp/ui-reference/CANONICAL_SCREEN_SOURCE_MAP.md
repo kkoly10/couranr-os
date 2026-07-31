@@ -1,30 +1,34 @@
 # Canonical screen → source image map
 
-Maps each of the 91 root PNGs to the canonical screen it depicts.
+Maps every canonical screen to the image that depicts it.
 
-**Why this file exists.** `UI_SCREEN_REGISTRY.md` references
-`canonical-mvp-images/**` 124 times and **zero of those files have ever been
-committed** — the extraction workflow that was to produce them from
-`Couranr_Canonical_MVP_UI_Package.zip` failed on both of its runs on 2026-07-30,
-and `.upload-status` still reads "Canonical image upload pending binary commit".
-The mocks themselves survived as the 91 UUID-named PNGs at the repo root, but
-nothing connected them to screen ids. This file is that connection.
+## Coverage: **66 of 66 screens**
 
-**This mapping was built by opening all 91 images.** It is non-destructive: no
-PNG is renamed, moved, converted or deleted. The existing
-`materialize-canonical-ui-images` workflow ends with `-delete` on every
-UUID-named root PNG and must still never be run.
-
-## Coverage: 50 of 66 screens
-
-- 69 images map to a canonical screen (several screens have desktop + mobile or state variants)
-- 19 images depict surfaces with **no screen id in the registry**
+- 16 screens have a NAMED canonical mockup under `canonical-mvp-images/` (delivered 2026-07-31)
+- 69 images are the original UUID-named root PNGs, identified by inspection
+- 19 images depict surfaces with **no screen id** in the registry
 - 3 are brand assets, not screens
-- **16 canonical screens have no mock at all**
 
-## Screens with a mock
+**Nothing is missing.** Every one of the 66 registry screens now has a design.
 
-| Screen | Name | Source PNG | Variant |
+### Two kinds of source, and which wins
+
+`canonical-mvp-images/**` is what `UI_SCREEN_REGISTRY.md` cites, so where a screen
+has one it is the reference. The root PNGs remain the source for the other
+screens and were never at the registry's paths — that mismatch is the original
+defect this map exists to fix.
+
+Three screens — PUB-008, PUB-010, PUB-011 — carry a mockup here even though the
+registry says *"Derived from PUB-001 design system; no separate approved mock."*
+Those are additive, not gap-fills.
+
+**Never run `materialize-canonical-ui-images.yml`**: it ends with `-delete` on
+every UUID-named root PNG and would destroy the only copy of the 50 screens that
+live only as root PNGs.
+
+## Every screen and its source
+
+| Screen | Name | Source | Note |
 |---|---|---|---|
 | CUS-001 | Address-change request | `6C497840-4A07-46CC-B5F3-49D8E32885BF.png` | desktop |
 |  |  | `EB2D3712-19D9-4611-A801-575DCA894C0F.png` | duplicate of 41 |
@@ -34,7 +38,9 @@ UUID-named root PNG and must still never be run.
 | CUS-005 | Revised quote approval | `74EAB167-FDAE-477C-896A-A64B59BC8A1C.png` | desktop |
 | CUS-006 | Proof-of-delivery viewer | `95A1E901-A1E9-4513-94EA-1E1DA97192E4.png` | desktop |
 | CUS-007 | Return and refund status | `7E90D5F2-A71E-479A-A33F-D4E8D7F8801B.png` | desktop |
+| CUS-008 | Delivery preferences and access instructions | `canonical-mvp-images/customer/CUS-008_delivery-preferences-and-access-instructions.png` | delivered 2026-07-31 as a named canonical mockup (not a root PNG) |
 | DRV-001 | Driver dashboard | `3C8B6C70-5641-4041-97DC-FAF90344A1CC.png` | mobile |
+| DRV-002 | Assigned delivery detail | `canonical-mvp-images/driver/DRV-002_assigned-delivery-detail.png` | delivered 2026-07-31 as a named canonical mockup (not a root PNG) |
 | DRV-003 | Pickup PIN and proof | `253D4868-0724-4A5D-ADBC-583E80DFDA37.png` | mobile |
 | DRV-004 | Package discrepancy | `7C2BDE48-4216-43BA-8F10-10D8609855BF.png` | mobile |
 | DRV-005 | Driving Mode | `B2866999-DA54-447B-A056-B3B0D89AEFCE.png` | mobile |
@@ -55,7 +61,9 @@ UUID-named root PNG and must still never be run.
 | MER-007 | Delivery detail | `05C42ED1-7AD9-4A55-88CB-7784FD8F52E5.png` | desktop |
 |  |  | `63B3950D-FC9E-4BB0-A896-F65EF4B03393.png` | variant B |
 |  |  | `BFAD28C4-1596-43D8-A9DD-233A6254127D.png` | variant C - merchant proof viewer |
+| MER-008 | Customers list | `canonical-mvp-images/merchant/MER-008_customers-list.png` | delivered 2026-07-31 as a named canonical mockup (not a root PNG) |
 | MER-009 | Customer detail | `0392E7FD-E057-4C5D-9886-94D09DEB2CC8.png` | desktop |
+| MER-010 | Presets list | `canonical-mvp-images/merchant/MER-010_presets-list.png` | delivered 2026-07-31 as a named canonical mockup (not a root PNG) |
 | MER-011 | Preset builder | `935A5590-C4F0-410C-860C-1498AB9062AA.png` | desktop |
 |  |  | `DCFBA4C8-D2C7-4E7F-99D6-91B824D7EB89.png` | variant B |
 | MER-012 | Merchant messages and support | `76A4F41E-4C1E-4A75-8860-AB0A0AEFDD86.png` | desktop |
@@ -69,59 +77,49 @@ UUID-named root PNG and must still never be run.
 |  |  | `CFC37EF0-ECF0-41FE-A7B4-BA35FC9DFC89.png` | variant B |
 | MER-016 | Billing settings | `2EF4F6B4-803D-487A-846B-178DAEEE1957.png` | desktop |
 |  |  | `88802AA2-1520-405B-906C-0BDC02B64B5E.png` | variant B |
+| OPS-001 | Operations dashboard | `canonical-mvp-images/operations/OPS-001_operations-dashboard.png` | delivered 2026-07-31 as a named canonical mockup (not a root PNG) |
 | OPS-002 | Queue and managed dispatch | `5CF6F81A-C1E3-4F69-B04E-C89552AE336B.png` | desktop |
 |  |  | `71149E76-4674-441D-A490-D868FC2E0724.png` | variant B - shows Confirm as quoted / Request info / Requote / Decline |
 | OPS-003 | Delivery review workspace | `FE8171A0-DCFC-4C17-8FDD-8BE16A0AB4BC.png` | desktop - Approve quote / Send revised quote / Assign vehicle |
 | OPS-004 | Requote and promotional credit | `14B61228-795E-4BE9-9E23-F45DB9BB7A73.png` | desktop |
+| OPS-005 | Operations messages and support inbox | `canonical-mvp-images/operations/OPS-005_operations-messages-and-support-inbox.png` | delivered 2026-07-31 as a named canonical mockup (not a root PNG) |
 | OPS-006 | Couranr Ghost Operations | `892BDA6D-1BD9-4EDA-AD2B-8E9BDD07B5F3.png` | AMBIGUOUS - rendered in a merchant shell |
 |  |  | `B3F68382-797C-4AFB-B539-5A65C26F8853.png` | desktop |
 | OPS-007 | Merchant management | `6A18B250-C883-41B6-8281-A426BE1CD45C.png` | desktop |
+| OPS-008 | Vehicle management | `canonical-mvp-images/operations/OPS-008_vehicle-management.png` | delivered 2026-07-31 as a named canonical mockup (not a root PNG) |
 | OPS-009 | Payments and reconciliation | `D0713863-D737-426F-AC13-EDB791475D2D.png` | desktop |
 | OPS-010 | Payment authorization review | `8E9685FE-86A0-426A-B613-EF0510DEFA44.png` | desktop |
 | OPS-011 | Refund management | `09A95BF3-BDCB-4942-B03C-85E586CC5236.png` | desktop |
 | OPS-012 | Incidents and claims | `6519CBA3-8AAA-45AB-941B-01B842703529.png` | desktop |
 |  |  | `FBE79206-956C-436E-B4C7-3B15BCB664F2.png` | variant B |
+| OPS-013 | Operations analytics | `canonical-mvp-images/operations/OPS-013_operations-analytics.png` | delivered 2026-07-31 as a named canonical mockup (not a root PNG) |
+| OPS-014 | Unmet demand analytics | `canonical-mvp-images/operations/OPS-014_unmet-demand-analytics.png` | delivered 2026-07-31 as a named canonical mockup (not a root PNG) |
+| OPS-015 | Operations settings | `canonical-mvp-images/operations/OPS-015_operations-settings.png` | delivered 2026-07-31 as a named canonical mockup (not a root PNG) |
+| OPS-016 | Availability controls | `canonical-mvp-images/operations/OPS-016_availability-controls.png` | delivered 2026-07-31 as a named canonical mockup (not a root PNG) |
 | OPS-017 | Policy and pricing registry | `35621D0A-5CD3-468F-8532-9C32C5F3CBCF.png` | desktop |
 | OPS-018 | Notification template manager | `B1C34AC0-0B14-4A55-AE2D-0F3233EC6D71.png` | desktop |
 | OPS-019 | Ghost auto-reply controls and kill switches | `1E706B14-7209-47E6-A7E7-6C70F1958AAC.png` | desktop |
 | OPS-020 | Activity and audit log | `E2947AC0-485C-4C1D-ADDB-F18B8148DBA0.png` | desktop |
+| OPS-021 | Ask Couranr lead inbox | `canonical-mvp-images/operations/OPS-021_ask-couranr-lead-inbox.png` | delivered 2026-07-31 as a named canonical mockup (not a root PNG) |
 | PUB-001 | Marketing homepage | `0E4F029F-22C3-4497-A00F-E355DCB3164D.png` | desktop |
 |  |  | `22D9363D-248B-41C0-8C4F-2D38CB3BF3D3.png` | mobile |
 | PUB-002 | Sign in | `E3473C54-A4FF-41AD-BFF8-191C4F0F28AF.png` | desktop |
 | PUB-003 | Business sign up | `77CC8223-1475-4C8E-A51B-E189F88AA261.png` | desktop |
+| PUB-004 | Delivery estimate and hosted request | `canonical-mvp-images/public/PUB-004_delivery-estimate-and-hosted-request.png` | delivered 2026-07-31 as a named canonical mockup (not a root PNG) |
 | PUB-005 | Secure delivery payment | `04089370-CE60-45CA-9C07-00F2D06966EF.png` | desktop |
 |  |  | `719032FB-C2D3-42C8-A460-537DDA7733EE.png` | variant B |
 | PUB-006 | Secure live tracking | `0013FABA-3A96-48F9-B71C-B4BB0F08E8B4.png` | desktop |
 |  |  | `5D1A5F04-7525-43E6-9586-BA9187C1E171.png` | variant B |
 | PUB-007 | Delivery Help | `7079F03E-DEEE-449B-881F-8ED05FEE524A.png` | desktop |
+| PUB-008 | Pricing page | `canonical-mvp-images/public/PUB-008_pricing-page.png` | delivered 2026-07-31 as a named canonical mockup (not a root PNG) |
 | PUB-009 | Businesses page | `5780C3C2-8EFC-4BDC-87AA-85CE667921D8.png` | desktop, long-form |
-
-## Screens with NO mock — design still missing
-
-| Screen | Name |
-|---|---|
-| PUB-004 | Delivery estimate and hosted request |
-| PUB-008 | Pricing page |
-| PUB-010 | Service areas page |
-| PUB-011 | How Couranr works |
-| MER-008 | Customers list |
-| MER-010 | Presets list |
-| DRV-002 | Assigned delivery detail |
-| OPS-001 | Operations dashboard |
-| OPS-005 | Operations messages and support inbox |
-| OPS-008 | Vehicle management |
-| OPS-013 | Operations analytics |
-| OPS-014 | Unmet demand analytics |
-| OPS-015 | Operations settings |
-| OPS-016 | Availability controls |
-| OPS-021 | Ask Couranr lead inbox |
-| CUS-008 | Delivery preferences and access instructions |
+| PUB-010 | Service areas page | `canonical-mvp-images/public/PUB-010_service-areas-page.png` | delivered 2026-07-31 as a named canonical mockup (not a root PNG) |
+| PUB-011 | How Couranr works | `canonical-mvp-images/public/PUB-011_how-couranr-works.png` | delivered 2026-07-31 as a named canonical mockup (not a root PNG) |
 
 ## Out-of-registry mocks
 
-Designed surfaces with no screen id. Each is either a genuine registry gap or
-out of scope — **an owner decision, not a mapping decision.** They are recorded
-rather than discarded so nothing is silently lost.
+Designed surfaces with no screen id — a registry gap or out of scope, which is
+an owner decision. Recorded so nothing is silently lost.
 
 | Slug | Title | Note |
 |---|---|---|
@@ -147,13 +145,12 @@ rather than discarded so nothing is silently lost.
 
 ## Brand assets
 
-| Slug | Source PNG | Note |
+| Slug | Source | Note |
 |---|---|---|
 | `photo-storefront-handoff` | `0C5CBF3B-0280-4DBB-AAB2-ECDD0020A927.png` | not a screen |
 | `logo-and-palette` | `258F4C57-12C2-493B-AC91-5DA3C6BA4F66.png` | DESIGN AUTHORITY - not a screen |
 | `photo-storefront-handoff-2` | `44B6E1FB-2987-4067-896A-28A7D33C5518.png` | not a screen |
 
-`logo-and-palette` is the design authority for colour and type:
-`#0D1525` navy, `#F4B740` gold, `#2563EB` blue, `#15803D` green, `#667085` grey,
-`#E3E7ED` border; Inter / Geist Sans.
+The LOGO authority is `docs/couranr-mvp/brand/couranr_logo_system/`, not these
+mock-embedded treatments — BRAND_GUIDE.md retires those explicitly.
 
