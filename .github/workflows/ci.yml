@@ -5,6 +5,10 @@ on:
     branches:
       - main
       - "codex/**"
+      # Feature branches were not covered, so every check ran for the first
+      # time only AFTER a merge to main. That is how the Node mismatch below
+      # went unnoticed.
+      - "claude/**"
   pull_request:
     branches:
       - main
@@ -17,14 +21,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Use Node 20
+      # Node 24, not 20. The dependency tree requires it:
+      #   jsdom@30.0.1  engines: ^22.22.2 || ^24.15.0 || >=26.0.0
+      #   undici@8.9.0  engines: >=22.19.0
+      # On Node 20 jsdom cannot load — undici throws
+      # "webidl.util.markAsUncloneable is not a function" — so every *.dom
+      # test file was SKIPPED and vitest exited 1 on the unhandled errors.
+      # 43 DOM tests had never run in CI. `tests/ci-runtime.test.ts` asserts
+      # this version stays compatible.
+      - name: Use Node 24
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
 
+      # `npm ci` installs the locked tree exactly. `npm install` may resolve a
+      # different one, which is why a desynced lockfile went unnoticed for so
+      # long; CI must validate what the lockfile actually pins.
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Lint
         run: npm run lint
