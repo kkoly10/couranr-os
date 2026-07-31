@@ -1241,6 +1241,99 @@
       ]
     },
     {
+      "id": "REV-001",
+      "category": "transition rules",
+      "decision": "A Couranr review outcome sets review_state AND fires one explicit, guarded coordinating transition on request_state. The two are separate regions that coordinate deliberately; they are not one column and they are not sealed off from each other.",
+      "value": {
+        "actor": "operations",
+        "preconditions": {
+          "request_state": "pending_couranr_review",
+          "review_state": "pending",
+          "concurrency": "optimistic compare-and-set on version",
+          "atomicity": "request mutation and event insert in one transaction"
+        },
+        "transitions": [
+          {
+            "command": "couranr_accept_delivery_request_as_quoted",
+            "ui_label": "Confirm as quoted",
+            "review_state": "accepted_as_quoted",
+            "request_state": "awaiting_quote_acceptance",
+            "guard": "a server-computed quote exists (quote_status = 'estimated' and delivery_subtotal_cents is not null); the caller supplies no amount",
+            "rationale": "Couranr confirming the price does not end the request: payers.capture_timing is 'after_couranr_confirmation' and the Master Package gives merchant and customer the right to approve their own quote, so the request waits on the payer."
+          },
+          {
+            "command": "couranr_requote_delivery_request",
+            "ui_label": "Send revised quote",
+            "review_state": "requoted",
+            "request_state": "quote_revision_required",
+            "guard": "subtotal recomputed server-side through the canonical pricing engine; line items must sum to it",
+            "rationale": "A revised quote is issued and the payer must approve it. CUS-005 'Revised Quote Approval' is that screen. quote_revision_required is the revised-quote track, distinct from a first-time acceptance."
+          },
+          {
+            "command": "couranr_decline_delivery_request",
+            "ui_label": "Could not confirm service",
+            "review_state": "declined",
+            "request_state": "declined",
+            "guard": "a structured decline reason is required; an internal note is optional",
+            "rationale": "The only unambiguous mapping: both vocabularies carry 'declined' and Master Package section 9 names the action 'could not confirm service'."
+          }
+        ],
+        "onward_transitions_not_in_this_decision": {
+          "awaiting_quote_acceptance": "-> confirmed when the payer approves; -> cancelled if declined or expired",
+          "quote_revision_required": "-> confirmed when the payer approves the revised quote; -> cancelled if declined or expired",
+          "note": "Owned by the payment slice. No payment authorization or capture is performed by a review command."
+        },
+        "forbidden": [
+          "no client-supplied target state",
+          "no client-supplied amount",
+          "no order or delivery conversion",
+          "no payment authorization or capture",
+          "merchants may read an outcome but never write one"
+        ]
+      },
+      "status": "decided",
+      "authority_file": "docs/couranr-mvp/REVIEW_OUTCOME_STATE_DESIGN.md",
+      "authority_section": "STA-001 state vocabularies; TRN-001 actor authority; Master Package sections 8 and 9",
+      "affected_routes": [
+        "/operations/queue",
+        "/operations/deliveries/[id]",
+        "/business/deliveries/[id]"
+      ],
+      "affected_screen_ids": [
+        "OPS-002",
+        "OPS-003",
+        "OPS-004",
+        "MER-007",
+        "CUS-005"
+      ],
+      "affected_database_objects": [
+        "public.couranr_delivery_requests",
+        "public.couranr_delivery_request_events"
+      ],
+      "affected_code_paths": [
+        "supabase/migrations (review outcome commands)",
+        "lib/couranr/requests/commands.ts"
+      ],
+      "conflict_with_current_code": {
+        "code_value": null,
+        "code_location": "not implemented",
+        "resolution": "New capability. couranr_begin_delivery_request_review already records that Operations opened a request and deliberately decides no outcome.",
+        "remediation_commit": "feat(deliveries): complete Couranr request review outcomes"
+      },
+      "implementation_phase": "6",
+      "acceptance_criteria": [
+        "each outcome is a named server command with the actor verified as operations/admin",
+        "each sets review_state and request_state in one transaction with an event row",
+        "version compare-and-set rejects a stale write with a conflict",
+        "accept uses the current server-computed quote and accepts no amount from the caller",
+        "requote recomputes through the canonical pricing engine",
+        "decline requires a structured reason",
+        "merchants can read the outcome on MER-007 and cannot write one"
+      ],
+      "derived_not_delivered": true,
+      "derivation_note": "No delivered package defines these transitions. Checked: Master Package section 8, the v1.0 package registry, and TRN-001 — all give the vocabularies and actor authority, none gives the transition graph. Designed from the UML orthogonal-region coordination pattern and the freight approval convention; see the design document for sources."
+    },
+    {
       "id": "PRF-001",
       "category": "proof requirements",
       "decision": "Pickup and delivery proof requirements are fixed by handoff type; face and ID-document photos are forbidden.",
