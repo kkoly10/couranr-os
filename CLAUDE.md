@@ -144,6 +144,34 @@ Read-only catalog queries via `execute_sql` are the right way to establish datab
 
 **Never run an exploit or negative test against production data.** No marking a real order paid, altering a fee, deleting an address, or forging an audit event to prove a vulnerability. Use a Supabase branch, a restored scratch project, or synthetic fixtures.
 
+### Research before deciding — validate reasoning against sources
+
+Two situations require looking something up rather than reasoning from memory:
+
+1. **Any deviation** from what was asked — a different approach, a narrower or wider scope, a refused step.
+2. **Any decision left to your judgment** — "use your best judgement", "do it the better way", or a gap the instructions simply do not cover.
+
+In both, form the answer from **sources, not instinct**, and say in the report what you found and where. Reasoning that cannot be traced to either a command you ran or a document you read is a guess, and this repo has already shipped several confident guesses.
+
+**Split the question before researching. The two halves have different authorities.**
+
+| Question | Answer comes from | Never from |
+|---|---|---|
+| How does *this* codebase or database behave? | A command whose output you saw — `execute_sql`, `grep`, a test | The web. It does not know this project |
+| How does *the tool* behave? | Primary docs for the pinned version | Memory, or a blog post about a different major version |
+| What should the product do? | The authority chain below — registry, Master Package, screen registry | Any web source. A blog post is not authority for pricing, hours or states |
+
+The first row is not a formality. Every published guide about Supabase RLS says a policy protects a table; only a catalog query revealed that this project's `pg_default_acl` grants `arwdDxtm` to `anon`, `authenticated` **and** `service_role` on every new table and function in `public`, which makes a narrow `GRANT` a silent no-op. No amount of reading would have found that. Equally, `service_role` has `rolbypassrls = true` here, so RLS constrains none of the server commands — the `GRANT`s and per-query scoping are the real boundary.
+
+The second row is where memory has actually failed. Both cost time and were one lookup each — and looking them up afterwards produced a better answer than the one reasoned out:
+
+- **A composite `IS NOT NULL` is true only when the row is non-null *and every field* is non-null.** `select fn(...) is not null` reported `false` for a request that had been created correctly, because a draft has a null `submitted_at`. Worse, `IS NULL` and `IS NOT NULL` are **not inverses** for row values — a row with mixed null and non-null fields returns `false` to both. To test whether a composite result exists, use `row is distinct from null`, which the documentation recommends for exactly this. ([PostgreSQL 17, §9.2](https://www.postgresql.org/docs/17/functions-comparison.html))
+- **A user-defined `SQLSTATE` may be any five digits and/or upper-case ASCII letters except `00000`**, which makes the `CR403` / `CR404` / `CR409` / `CR422` codes used by the Couranr command functions legal. The documentation adds a rule that was not reasoned out: **avoid codes ending in three zeroes**, because those are category codes and can only be trapped as a whole category. ([PostgreSQL 17, §43.9](https://www.postgresql.org/docs/17/plpgsql-errors-and-messages.html))
+
+**Pin the version when you search.** This repo is Next.js 14.2.5, React 18.3.1, TypeScript 5.9.3 with `"strict": false`, Vitest 1.6.1, Supabase JS 2.90.1, PostgreSQL 17.6.1.063, and **Stripe 15.12.0 frozen**. An answer written for Next 15, React 19 or a later Stripe SDK is wrong here even when it is correct in general. Prefer primary sources — PostgreSQL, Next.js and Supabase documentation — over aggregators.
+
+Research informs **technical** reasoning only. It never overrides the authority chain, and it is never a route to settling an unresolved product decision: where the registry is silent, the answer is still "unresolved".
+
 ### Verifying against a browser
 
 Chromium is pre-installed at `/opt/pw-browsers` with `PLAYWRIGHT_BROWSERS_PATH` already set — do **not** run `playwright install`. Outbound HTTPS goes through a TLS-intercepting proxy (CA bundle at `/root/.ccr/ca-bundle.crt`); `curl` and Node trust it, a bundled Chromium generally will not. Use `curl` for external checks and a browser only against `localhost`. Never disable TLS verification or unset `HTTPS_PROXY` to force it — that's a safety boundary.
@@ -153,6 +181,7 @@ Chromium is pre-installed at `/opt/pw-browsers` with `PLAYWRIGHT_BROWSERS_PATH` 
 - **Amounts are integer cents, computed server-side.** `app/api/delivery/start-checkout/route.ts:180-186` is the model: it recomputes the price server-side and discards the client's `totalCents` entirely. Never trust a client-supplied amount — `/api/create-checkout-session:10` does, and that is the P0.
 - **Distance is validated server-side** via Google Maps (`getDrivingMiles`, `start-checkout:54-92`). `/api/delivery/quote:21-47` does **not** validate its `miles` input — don't copy that route.
 - **Every state transition should be a named server command** with the actor verified, the current state checked, and the transition allow-listed. No route should accept an arbitrary target status; `/api/delivery/mark-in-transit` currently does, with no auth at all.
+- **To test whether a composite/row result exists, use `row is distinct from null`.** `row is not null` is true only when every field is non-null, so it reports `false` for any valid draft — a draft has a null `submitted_at`. The four `couranr_*` command functions all return a composite.
 - **Test-mode endpoints must be gated server-side.** `app/api/docs/test-mark-paid/route.ts:17-23,47-49` is the correct pattern: `if (IS_PROD || !TEST_MODE) return 403`. `/api/test-email` is the counter-example — unauthenticated, and it sends live mail to a hardcoded fallback address.
 - **Never expose secrets to the browser or put them in analytics, logs, or notification copy.** `NEXT_PUBLIC_SUPABASE_URL` is (correctly but confusingly) used as the URL for service-role clients throughout — the key is what must never cross the boundary.
 - **Say "Couranr", never founder or personal-operator language.** Use Couranr review, Couranr confirmation, Couranr Operations Queue, Couranr-managed dispatch, Couranr Support.
