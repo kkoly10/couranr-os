@@ -142,7 +142,7 @@ export function MerchantShell({
       <aside className="cr-sidebar">
         <div className="cr-sidebar__brand">
           <div>
-            <Wordmark href="/business" />
+            <Wordmark href="/business" tone="dark" />
             <div className="cr-sidebar__role">Merchant</div>
           </div>
         </div>
@@ -170,7 +170,7 @@ export function MerchantShell({
                 </>
               }
             />
-            <Wordmark href="/business" />
+            <Wordmark href="/business" tone="dark" />
             <span style={{ width: 44 }} aria-hidden="true" />
           </div>
         </header>
@@ -209,7 +209,7 @@ export function DriverShell({
       <header className="cr-driverbar">
         <div className="cr-driverbar__inner">
           <div>
-            <Wordmark href="/driver" />
+            <Wordmark href="/driver" tone="dark" />
             <div className="cr-sidebar__role">{driverName}</div>
           </div>
           <div className="cr-cluster cr-cluster--2">
@@ -264,7 +264,7 @@ export function OperationsShell({
       <aside className="cr-sidebar">
         <div className="cr-sidebar__brand">
           <div>
-            <Wordmark href="/operations" />
+            <Wordmark href="/operations" tone="dark" />
             <div className="cr-sidebar__role">Operations</div>
           </div>
         </div>
@@ -292,7 +292,7 @@ export function OperationsShell({
                 </>
               }
             />
-            <Wordmark href="/operations" />
+            <Wordmark href="/operations" tone="dark" />
             <span style={{ width: 44 }} aria-hidden="true" />
           </div>
         </header>

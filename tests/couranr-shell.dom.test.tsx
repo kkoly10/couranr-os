@@ -94,6 +94,13 @@ describe("landmarks, skip link and accessible names", () => {
     }
   });
 
+  /**
+   * An accessible name is not the same thing as textContent. The brand link
+   * wraps the approved logo SVG and is named by aria-label plus the image alt,
+   * which is valid and is what a screen reader announces. This assertion used
+   * to check textContent only, so it failed the moment the typed wordmark was
+   * replaced by the real logo — a defect in the test, not in the markup.
+   */
   it("gives every navigation link a non-empty accessible name", () => {
     render(
       <OperationsShell>
@@ -101,7 +108,14 @@ describe("landmarks, skip link and accessible names", () => {
       </OperationsShell>
     );
     for (const link of screen.getAllByRole("link")) {
-      expect(link.textContent?.trim().length).toBeGreaterThan(0);
+      const fromText = link.textContent?.trim() ?? "";
+      const fromLabel = link.getAttribute("aria-label")?.trim() ?? "";
+      const fromImgAlt = Array.from(link.querySelectorAll("img"))
+        .map((i) => i.getAttribute("alt")?.trim() ?? "")
+        .join("");
+      const accessibleName = fromText || fromLabel || fromImgAlt;
+      expect(accessibleName.length, `link with no accessible name: ${link.outerHTML.slice(0, 120)}`)
+        .toBeGreaterThan(0);
     }
   });
 });

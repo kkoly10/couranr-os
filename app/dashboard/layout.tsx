@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import PublicHeader from "@/components/PublicHeader";
+import { CouranrLogo } from "@/components/brand/CouranrLogo";
 
 export default function DashboardLayout({
   children,
@@ -34,8 +35,10 @@ export default function DashboardLayout({
     <div style={styles.shell}>
       <header style={styles.header}>
         <div style={styles.headerInner}>
-          <Link href="/dashboard" style={styles.brand}>
-            Couranr
+          {/* Approved wordmark; this typed the word "Couranr", which
+              BRAND_GUIDE.md prohibits. The dashboard header is light. */}
+          <Link href="/dashboard" style={styles.brand} aria-label="Couranr home">
+            <CouranrLogo variant="primary" width={132} />
           </Link>
 
           <div style={styles.navWrap}>

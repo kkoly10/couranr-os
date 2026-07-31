@@ -1,6 +1,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { cn } from "@/lib/cn";
+import { CouranrLogo } from "@/components/brand/CouranrLogo";
 import { Container, Heading, Text } from "@/components/couranr/primitives";
 
 /**
@@ -19,11 +20,34 @@ export function SkipLink() {
   );
 }
 
-export function Wordmark({ href = "/", className }: { href?: string; className?: string }) {
-  // §2: lowercase Couranr wordmark. Never redraw or substitute.
+/**
+ * The Couranr wordmark.
+ *
+ * This used to render the literal text `couranr` — directly under a comment
+ * saying "never redraw or substitute". BRAND_GUIDE.md from
+ * Couranr_Canonical_Logo_System_v1.zip prohibits exactly that: "Do not type
+ * `couranr` with a font as a substitute for the outlined SVG." It now renders
+ * the approved outlined SVG.
+ *
+ * `tone` describes the BACKGROUND this sits on, not the logo colour, so callers
+ * cannot get the pairing backwards. `.cr-sidebar` and the mobile drawer are
+ * `--couranr-navy`, so they pass "dark" and receive the reverse wordmark; the
+ * topbar and token bar are `--couranr-surface` and take the primary.
+ */
+export function Wordmark({
+  href = "/",
+  className,
+  tone = "light",
+  width = 132,
+}: {
+  href?: string;
+  className?: string;
+  tone?: "light" | "dark";
+  width?: number;
+}) {
   return (
-    <Link href={href} className={cn("cr-wordmark", className)}>
-      couranr
+    <Link href={href} className={cn("cr-wordmark", className)} aria-label="Couranr">
+      <CouranrLogo variant={tone === "dark" ? "reverse" : "primary"} width={width} />
     </Link>
   );
 }

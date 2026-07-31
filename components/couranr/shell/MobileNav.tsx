@@ -119,7 +119,7 @@ export function MobileNav({
           >
             <div className="cr-cluster cr-cluster--between">
               <div>
-                <Wordmark href={homeHref} />
+                <Wordmark href={homeHref} tone="dark" />
                 {roleLabel ? <div className="cr-sidebar__role">{roleLabel}</div> : null}
               </div>
               <button

@@ -2,9 +2,22 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
+/**
+ * Favicon and PWA icons come from the approved app mark — a white `C` with the
+ * gold motion accent on a navy rounded square — not from a retyped letter or a
+ * mockup crop. Sources: Couranr_Canonical_Logo_System_v1.zip.
+ */
 export const metadata: Metadata = {
   title: "Couranr",
   description: "Couranr OS — Delivery, Auto Rentals, and Docs",
+  icons: {
+    icon: [
+      { url: "/brand/couranr-app-icon.svg", type: "image/svg+xml" },
+      { url: "/brand/couranr-app-icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/brand/couranr-app-icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/brand/couranr-app-icon-256.png", sizes: "256x256", type: "image/png" }],
+  },
 };
 
 /**

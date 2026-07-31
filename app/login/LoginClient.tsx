@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { CouranrLogo } from "@/components/brand/CouranrLogo";
 
 export default function LoginClient() {
   const sp = useSearchParams();
@@ -37,11 +38,9 @@ export default function LoginClient() {
 
       <div className="authCard">
         <div className="authTop">
+          {/* Approved wordmark. Was the retired `C.` mark plus typed text. */}
           <Link className="brandRow" href="/" aria-label="Couranr home">
-            <span className="brandMark">
-              C<span className="brandDot">.</span>
-            </span>
-            <span className="brandName">Couranr</span>
+            <CouranrLogo variant="primary" width={140} priority />
           </Link>
 
           <Link className="btn btnGhost" href="/signup">

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import { CouranrLogo } from "@/components/brand/CouranrLogo";
 
 const HIDE_ON_PREFIX = ["/dashboard", "/admin", "/driver"];
 
@@ -50,11 +51,15 @@ export default function PublicHeader({
   return (
     <header className="publicHeader">
       <div className="publicHeaderInner">
+        {/*
+          The approved outlined wordmark. This was a `C.` mark plus the typed
+          word "Couranr" — BRAND_GUIDE.md retires both: "Do not use the old `C.`
+          header logo" and "Do not type `couranr` with a font as a substitute
+          for the outlined SVG". This header sits on white, so `primary`.
+          `priority` because it is above the fold on every legacy page.
+        */}
         <Link href="/" className="brand" aria-label="Couranr home">
-          <span className="brandMark" aria-hidden="true">
-            C
-          </span>
-          <span className="brandName">Couranr</span>
+          <CouranrLogo variant="primary" width={148} priority />
         </Link>
 
         {/* Desktop nav */}

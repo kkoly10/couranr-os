@@ -836,6 +836,105 @@ async function groupJ() {
   }
 }
 
+/* ================================================== K. CANONICAL LOGO ==== */
+
+/**
+ * BRAND_GUIDE.md from Couranr_Canonical_Logo_System_v1.zip.
+ *
+ * The zip had been tracked since 2026-07-28 and was never unpacked, so every
+ * surface shipped a typed wordmark and a retired `C.` mark. These assertions
+ * run in a real browser because a typed wordmark and an SVG wordmark are
+ * indistinguishable to a string search of rendered HTML once both say
+ * "Couranr" — only the DOM shows which one is actually there.
+ */
+async function groupK() {
+  console.log("\n\x1b[1mK — every surface uses the approved logo, none uses a retired mark\x1b[0m");
+
+  const LIGHT = ["/sign-in", "/sign-up", "/", "/login"];
+  const DARK = [["merchant", "/business"], ["ops", "/operations"], ["driver", "/driver"]];
+
+  // K1 — light surfaces carry the PRIMARY wordmark, signed out.
+  {
+    const { ctx, page } = await freshContext();
+    for (const route of LIGHT) {
+      await page.goto(`${BASE_URL}${route}`, { waitUntil: "domcontentloaded" });
+      await page.waitForTimeout(1200);
+      const primary = await page.locator('img[src*="couranr-logo-primary"]').count();
+      const retired = await page.locator(".brandMark, .brandDot, .brandC").count();
+      check(`K1${route === "/" ? "-root" : route.replace(/\//g, "-")}`,
+        `${route} shows the primary wordmark and no retired mark`,
+        primary >= 1 && retired === 0, `primarySvg=${primary} retiredMark=${retired}`);
+    }
+    await shot(page, "K1-light-surfaces");
+    await ctx.close();
+  }
+
+  // K2 — the dark sidebars carry the REVERSE wordmark, never the navy one.
+  for (const [key, landing] of DARK) {
+    const { ctx, page } = await freshContext();
+    try {
+      await signIn(page, USERS[key], { expectLanding: landing });
+      await page.waitForTimeout(1500);
+      const reverse = await page.locator('img[src*="couranr-logo-reverse"]').count();
+      const navyOnDark = await page.locator('.cr-sidebar img[src*="couranr-logo-primary"]').count();
+      const typed = await page.locator(".cr-wordmark").evaluateAll((els) =>
+        els.filter((e) => (e.textContent ?? "").trim().length > 0).length
+      );
+      check(`K2-${key}`, `${landing} uses the reverse wordmark on navy, never typed text`,
+        reverse >= 1 && navyOnDark === 0 && typed === 0,
+        `reverseSvg=${reverse} navyOnDark=${navyOnDark} typedWordmarks=${typed}`);
+      await shot(page, `K2-${key}-reverse`);
+    } catch (e) {
+      inconclusive(`K2-${key}`, `${landing} logo`, e.message.split("\n")[0]);
+    }
+    await ctx.close();
+  }
+
+  // K3 — aspect ratio is never stretched. "Preserve the SVG aspect ratio."
+  {
+    const { ctx, page } = await freshContext();
+    await page.goto(`${BASE_URL}/sign-in`, { waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(1200);
+    const boxes = await page.locator('img[src*="couranr-logo"]').evaluateAll((els) =>
+      els.map((e) => {
+        const r = e.getBoundingClientRect();
+        return { w: Math.round(r.width), h: Math.round(r.height) };
+      })
+    );
+    const EXPECTED = 900 / 250;
+    const ok = boxes.length > 0 && boxes.every((b) => b.h > 0 && Math.abs(b.w / b.h - EXPECTED) < 0.06);
+    check("K3", "the wordmark renders at the supplied 900:250 ratio (never stretched)",
+      ok, `boxes=${JSON.stringify(boxes)} expectedRatio=${EXPECTED.toFixed(2)}`);
+    await ctx.close();
+  }
+
+  // K4 — favicon and app icon are served, not 404.
+  {
+    const { ctx, page } = await freshContext();
+    const results = {};
+    for (const asset of [
+      "/brand/couranr-logo-primary.svg",
+      "/brand/couranr-logo-reverse.svg",
+      "/brand/couranr-app-icon.svg",
+      "/brand/couranr-app-icon-192.png",
+      "/brand/couranr-app-icon-512.png",
+    ]) {
+      const r = await page.request.get(`${BASE_URL}${asset}`);
+      results[asset] = r.status();
+    }
+    const all200 = Object.values(results).every((s) => s === 200);
+    check("K4", "every approved brand asset is served", all200, JSON.stringify(results));
+
+    await page.goto(`${BASE_URL}/sign-in`, { waitUntil: "domcontentloaded" });
+    const iconHrefs = await page.locator('link[rel~="icon"], link[rel="apple-touch-icon"]')
+      .evaluateAll((els) => els.map((e) => e.getAttribute("href") ?? ""));
+    check("K5", "the favicon is the approved app mark",
+      iconHrefs.length > 0 && iconHrefs.every((h) => h.includes("couranr-app-icon")),
+      `icons=${JSON.stringify(iconHrefs)}`);
+    await ctx.close();
+  }
+}
+
 /* ------------------------------------------------------------------ main */
 
 console.log(`\n\x1b[1mCouranr browser verification\x1b[0m  ->  ${BASE_URL}`);
@@ -855,7 +954,7 @@ browser = await chromium.launch({
   args: ["--no-proxy-server", "--disable-quic"],
 });
 
-const ALL = { A: groupA, B: groupB, C: groupC, D: groupD, E: groupE, F: groupF, G: groupG, H: groupH, I: groupI, J: groupJ };
+const ALL = { A: groupA, B: groupB, C: groupC, D: groupD, E: groupE, F: groupF, G: groupG, H: groupH, I: groupI, J: groupJ, K: groupK };
 
 let REAL_AFTER = null;
 let cleanup = null;
