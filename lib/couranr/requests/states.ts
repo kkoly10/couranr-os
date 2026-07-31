@@ -69,6 +69,7 @@ export const REQUEST_COMMANDS = [
   "accept_delivery_request_as_quoted",
   "requote_delivery_request",
   "decline_delivery_request",
+  "record_payer_quote_approval",
 ] as const;
 export type RequestCommand = (typeof REQUEST_COMMANDS)[number];
 
@@ -87,8 +88,14 @@ type CommandRule = {
   from: readonly RequestState[];
   /** State the request ends in. Equal to `from` when the command only records. */
   to: CommandTarget;
-  /** Which permission capability the actor needs (DRP-001). */
-  capability: "create" | "submit" | "read" | "review";
+  /**
+   * Which permission capability the actor needs (DRP-001).
+   *
+   * `system` means there is no actor to check: the command is a consequence of
+   * a fact the server verified for itself, and no route accepts it from a
+   * caller. Exactly one command uses it.
+   */
+  capability: "create" | "submit" | "read" | "review" | "system";
   /** The review_state this command sets, when it decides a review outcome. */
   reviewState?: ReviewState;
 };
@@ -168,6 +175,27 @@ export const COMMAND_RULES: Readonly<Record<RequestCommand, CommandRule>> = {
     to: "declined",
     capability: "review",
     reviewState: "declined",
+  },
+
+  /* --- payment authorization (PAY-001/PAY-002) -------------------------- */
+
+  /**
+   * The payer approved the quote by authorizing the amount against it.
+   *
+   * NOT invocable. There is no route and no actor: the only writer is
+   * `couranr_apply_payment_intent_state`, and only after it has checked a
+   * PaymentIntent's status, amount, currency and metadata against the stored
+   * obligation. A browser redirect or a Payment Element callback cannot reach
+   * it, which is the whole point — those are claims, not verification.
+   *
+   * It moves the request to `confirmed` and touches NOTHING else. `confirmed`
+   * still does not mean captured, ready, scheduled or dispatched: the money is
+   * authorized, i.e. held and not taken.
+   */
+  record_payer_quote_approval: {
+    from: ["awaiting_quote_acceptance", "quote_revision_required"],
+    to: "confirmed",
+    capability: "system",
   },
 };
 
