@@ -1,0 +1,393 @@
+import * as React from "react";
+import { describe, expect, it, vi, beforeEach } from "vitest";
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+
+/**
+ * DOM behaviour of the shells: §7 requires keyboard navigation, visible focus,
+ * skip-to-content, correct landmarks and accessible names, plus drawer focus
+ * trapping and restoration.
+ *
+ * next/navigation is mocked so `usePathname()` can drive active-route
+ * assertions, and next/link is reduced to an anchor.
+ */
+
+let mockPathname = "/business";
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => mockPathname,
+}));
+
+vi.mock("next/link", () => ({
+  default: ({ href, children, ...rest }: any) => (
+    <a href={typeof href === "string" ? href : "#"} {...rest}>
+      {children}
+    </a>
+  ),
+}));
+
+const { MerchantShell, OperationsShell, DriverShell, PublicShell, CustomerTokenShell } =
+  await import("@/components/couranr/shell/shells");
+const { MAIN_CONTENT_ID } = await import("@/components/couranr/shell/parts");
+
+beforeEach(() => {
+  mockPathname = "/business";
+});
+
+describe("landmarks, skip link and accessible names", () => {
+  it("renders a main landmark whose id is the skip link target", () => {
+    render(
+      <MerchantShell>
+        <p>content</p>
+      </MerchantShell>
+    );
+
+    const main = document.querySelector("main");
+    expect(main).not.toBeNull();
+    expect(main!.id).toBe(MAIN_CONTENT_ID);
+
+    const skip = screen.getByRole("link", { name: /skip to main content/i });
+    expect(skip.getAttribute("href")).toBe(`#${MAIN_CONTENT_ID}`);
+  });
+
+  it("makes the skip link the first tabbable element", async () => {
+    const user = userEvent.setup();
+    render(
+      <MerchantShell>
+        <p>content</p>
+      </MerchantShell>
+    );
+
+    await user.tab();
+    expect(document.activeElement).toBe(
+      screen.getByRole("link", { name: /skip to main content/i })
+    );
+  });
+
+  it("gives the main content region a focusable target for the skip link", () => {
+    render(
+      <MerchantShell>
+        <p>content</p>
+      </MerchantShell>
+    );
+    expect(document.querySelector("main")!.getAttribute("tabindex")).toBe("-1");
+  });
+
+  it("names every navigation landmark", () => {
+    render(
+      <OperationsShell>
+        <p>content</p>
+      </OperationsShell>
+    );
+    for (const nav of screen.getAllByRole("navigation")) {
+      const name =
+        nav.getAttribute("aria-label") || nav.getAttribute("aria-labelledby");
+      expect(name, "every <nav> needs an accessible name").toBeTruthy();
+    }
+  });
+
+  it("gives every navigation link a non-empty accessible name", () => {
+    render(
+      <OperationsShell>
+        <p>content</p>
+      </OperationsShell>
+    );
+    for (const link of screen.getAllByRole("link")) {
+      expect(link.textContent?.trim().length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe("active-route indication comes from the current route", () => {
+  it("marks the matching merchant destination aria-current=page", () => {
+    mockPathname = "/business/deliveries";
+    render(
+      <MerchantShell>
+        <p>content</p>
+      </MerchantShell>
+    );
+
+    const current = screen
+      .getAllByRole("link")
+      .filter((l) => l.getAttribute("aria-current") === "page");
+
+    expect(current.length).toBeGreaterThan(0);
+    for (const el of current) {
+      expect(el.getAttribute("href")).toBe("/business/deliveries");
+    }
+  });
+
+  it("does not mark the section root active on a child route", () => {
+    mockPathname = "/business/deliveries";
+    render(
+      <MerchantShell>
+        <p>content</p>
+      </MerchantShell>
+    );
+
+    const dashboard = screen
+      .getAllByRole("link")
+      .filter((l) => l.getAttribute("href") === "/business");
+
+    for (const el of dashboard) {
+      expect(el.getAttribute("aria-current")).toBeNull();
+    }
+  });
+
+  it("marks nothing active on an unrelated route", () => {
+    mockPathname = "/business/unknown-area";
+    render(
+      <MerchantShell>
+        <p>content</p>
+      </MerchantShell>
+    );
+    const current = screen
+      .getAllByRole("link")
+      .filter((l) => l.getAttribute("aria-current") === "page");
+    expect(current).toHaveLength(0);
+  });
+});
+
+describe("mobile navigation drawer", () => {
+  it("opens, exposes a named dialog, and closes on Escape", async () => {
+    const user = userEvent.setup();
+    render(
+      <MerchantShell>
+        <p>content</p>
+      </MerchantShell>
+    );
+
+    const trigger = screen.getByRole("button", { name: /open merchant navigation/i });
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+
+    await user.click(trigger);
+
+    const dialog = screen.getByRole("dialog", { name: /merchant navigation/i });
+    expect(dialog.getAttribute("aria-modal")).toBe("true");
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("moves focus into the drawer on open and restores it to the trigger on close", async () => {
+    const user = userEvent.setup();
+    render(
+      <MerchantShell>
+        <p>content</p>
+      </MerchantShell>
+    );
+
+    const trigger = screen.getByRole("button", { name: /open merchant navigation/i });
+    await user.click(trigger);
+
+    const dialog = screen.getByRole("dialog", { name: /merchant navigation/i });
+    expect(dialog.contains(document.activeElement)).toBe(true);
+
+    await user.keyboard("{Escape}");
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("closes when the backdrop is clicked", async () => {
+    const user = userEvent.setup();
+    render(
+      <MerchantShell>
+        <p>content</p>
+      </MerchantShell>
+    );
+
+    await user.click(screen.getByRole("button", { name: /open merchant navigation/i }));
+    expect(screen.getByRole("dialog")).toBeTruthy();
+
+    const overlay = document.querySelector(".cr-overlay--nav")!;
+    await user.click(overlay as HTMLElement);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("closes via its own close button and restores focus", async () => {
+    const user = userEvent.setup();
+    render(
+      <OperationsShell>
+        <p>content</p>
+      </OperationsShell>
+    );
+
+    const trigger = screen.getByRole("button", { name: /open operations navigation/i });
+    await user.click(trigger);
+
+    await user.click(
+      screen.getByRole("button", { name: /close operations navigation/i })
+    );
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("traps Tab inside the drawer", async () => {
+    const user = userEvent.setup();
+    render(
+      <MerchantShell>
+        <p>content</p>
+      </MerchantShell>
+    );
+
+    await user.click(screen.getByRole("button", { name: /open merchant navigation/i }));
+    const dialog = screen.getByRole("dialog");
+
+    // Cycle well past the number of focusable children; focus must stay inside.
+    for (let i = 0; i < 24; i++) {
+      await user.tab();
+      expect(dialog.contains(document.activeElement)).toBe(true);
+    }
+  });
+
+  it("exposes only this role's destinations inside the drawer", async () => {
+    const user = userEvent.setup();
+    render(
+      <MerchantShell>
+        <p>content</p>
+      </MerchantShell>
+    );
+
+    await user.click(screen.getByRole("button", { name: /open merchant navigation/i }));
+    const dialog = screen.getByRole("dialog");
+
+    const hrefs = within(dialog)
+      .getAllByRole("link")
+      .map((l) => l.getAttribute("href") || "");
+
+    expect(hrefs.length).toBeGreaterThan(0);
+    for (const h of hrefs) {
+      // Sign out is the one deliberate exception; everything else is /business.
+      if (h === "/login") continue;
+      expect(h.startsWith("/business")).toBe(true);
+      expect(h.startsWith("/operations")).toBe(false);
+    }
+  });
+});
+
+describe("driver field shell", () => {
+  it("uses a bottom tab bar rather than the merchant sidebar", () => {
+    mockPathname = "/driver/messages";
+    render(
+      <DriverShell>
+        <p>content</p>
+      </DriverShell>
+    );
+
+    const tabbar = document.querySelector(".cr-tabbar");
+    expect(tabbar).not.toBeNull();
+    expect(document.querySelector(".cr-sidebar")).toBeNull();
+  });
+
+  it("keeps the driver destination set small and driver-scoped", () => {
+    mockPathname = "/driver/messages";
+    render(
+      <DriverShell>
+        <p>content</p>
+      </DriverShell>
+    );
+
+    const nav = screen.getByRole("navigation", { name: /driver navigation/i });
+    const links = within(nav).getAllByRole("link");
+
+    expect(links.length).toBeLessThanOrEqual(4);
+    for (const l of links) {
+      expect(l.getAttribute("href")!.startsWith("/driver")).toBe(true);
+    }
+  });
+
+  it("indicates the active driver tab", () => {
+    mockPathname = "/driver/availability";
+    render(
+      <DriverShell>
+        <p>content</p>
+      </DriverShell>
+    );
+
+    const current = screen
+      .getAllByRole("link")
+      .filter((l) => l.getAttribute("aria-current") === "page");
+    expect(current.map((l) => l.getAttribute("href"))).toContain("/driver/availability");
+  });
+});
+
+describe("public and customer shells", () => {
+  it("public shell offers sign-in and account creation", () => {
+    mockPathname = "/pricing";
+    render(
+      <PublicShell>
+        <p>content</p>
+      </PublicShell>
+    );
+
+    expect(screen.getAllByRole("link", { name: /sign in/i }).length).toBeGreaterThan(0);
+    const hrefs = screen.getAllByRole("link").map((l) => l.getAttribute("href"));
+    expect(hrefs).toContain("/sign-in");
+    expect(hrefs).toContain("/sign-up");
+  });
+
+  /**
+   * The token-scoped customer shell must not grow an account menu or global
+   * navigation: customer accounts are optional and every customer screen is
+   * reached by token.
+   */
+  it("customer token shell renders no navigation and no sign-out", () => {
+    render(
+      <CustomerTokenShell reference="CR-1042">
+        <p>content</p>
+      </CustomerTokenShell>
+    );
+
+    expect(screen.queryAllByRole("navigation")).toHaveLength(0);
+    expect(screen.queryByRole("link", { name: /sign out/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /open .*navigation/i })).toBeNull();
+  });
+
+  it("customer token shell still provides a main landmark and skip link", () => {
+    render(
+      <CustomerTokenShell>
+        <p>content</p>
+      </CustomerTokenShell>
+    );
+    expect(document.querySelector("main")!.id).toBe(MAIN_CONTENT_ID);
+    expect(screen.getByRole("link", { name: /skip to main content/i })).toBeTruthy();
+  });
+
+  it("customer token shell never renders the access token", () => {
+    render(
+      <CustomerTokenShell reference="CR-1042" helpHref="/help/SECRET-TOKEN">
+        <p>content</p>
+      </CustomerTokenShell>
+    );
+    // The href may carry the token, but no visible label may.
+    expect(document.body.textContent).not.toContain("SECRET-TOKEN");
+  });
+});
+
+describe("sign-out placement", () => {
+  it("appears once in the merchant sidebar and once in its drawer", async () => {
+    const user = userEvent.setup();
+    render(
+      <MerchantShell>
+        <p>content</p>
+      </MerchantShell>
+    );
+
+    // Sidebar copy only, before the drawer opens.
+    expect(screen.getAllByRole("link", { name: /sign out/i })).toHaveLength(1);
+
+    await user.click(screen.getByRole("button", { name: /open merchant navigation/i }));
+    expect(screen.getAllByRole("link", { name: /sign out/i })).toHaveLength(2);
+  });
+
+  it("is absent from the driver field shell's tab bar", () => {
+    render(
+      <DriverShell>
+        <p>content</p>
+      </DriverShell>
+    );
+    const nav = screen.getByRole("navigation", { name: /driver navigation/i });
+    expect(within(nav).queryByRole("link", { name: /sign out/i })).toBeNull();
+  });
+});

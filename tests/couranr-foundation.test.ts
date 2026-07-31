@@ -1,12 +1,18 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { isPreviewEnabled } from "@/lib/couranr/previewGate";
 
-const CSS = readFileSync(
-  path.resolve(__dirname, "../app/(couranr)/couranr.css"),
-  "utf8"
-);
+const CSS_DIR = path.resolve(__dirname, "../app/(couranr)");
+
+/** Every stylesheet in the canonical route group, not just couranr.css. */
+const CSS_FILES = readdirSync(CSS_DIR)
+  .filter((f) => f.endsWith(".css"))
+  .sort();
+
+const CSS = CSS_FILES.map((f) =>
+  readFileSync(path.join(CSS_DIR, f), "utf8")
+).join("\n");
 
 /**
  * Comments are stripped before any assertion about what the stylesheet DOES.
@@ -71,6 +77,20 @@ describe("design foundation is additive", () => {
     expect(CODE).not.toContain("#c8a12b"); // legacy --gold
     expect(CODE).not.toContain("#e6e8ee"); // legacy --border
     expect(CODE).not.toContain("#5b6472"); // legacy --muted
+  });
+});
+
+describe("every canonical stylesheet is covered by these rules", () => {
+  it("finds both couranr.css and shell.css", () => {
+    expect(CSS_FILES).toContain("couranr.css");
+    expect(CSS_FILES).toContain("shell.css");
+  });
+
+  it("checks shell selectors too", () => {
+    // Proof the concatenated source really includes the shell rules.
+    expect(CSS).toContain(".cr-sidebar");
+    expect(CSS).toContain(".cr-tabbar");
+    expect(CSS).toContain(".cr-navdrawer");
   });
 });
 

@@ -1,5 +1,6 @@
 import * as React from "react";
 import "./couranr.css";
+import "./shell.css";
 
 /**
  * Canonical Couranr route group.

@@ -1,0 +1,315 @@
+/* =====================================================================
+   Couranr application shells
+   Authority: UI_SCREEN_REGISTRY.md §2 (navy sidebar), §7 (responsive and
+   accessibility), §8 step 2 (global shell, role-aware navigation).
+
+   Same additive rules as couranr.css: every custom property is --couranr-*
+   and every selector is scoped under a .cr- class. Consumes the tokens
+   defined by couranr.css on .cr-root.
+   ===================================================================== */
+
+/* ---------------------------------------------------------------- Shared */
+
+.cr-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  /* The shell itself never scrolls sideways; wide children scroll internally. */
+  overflow-x: hidden;
+}
+
+.cr-shell__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.cr-shell__content {
+  padding-block: var(--couranr-space-6);
+}
+
+@media (min-width: 1024px) {
+  .cr-shell__content { padding-block: var(--couranr-space-8); }
+}
+
+/* Page header + breadcrumb region */
+.cr-page-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--couranr-space-3);
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: var(--couranr-space-6);
+}
+.cr-breadcrumb { margin: 0 0 var(--couranr-space-2); padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: var(--couranr-space-2); font-size: var(--couranr-text-sm); }
+.cr-breadcrumb li { display: flex; align-items: center; gap: var(--couranr-space-2); color: var(--couranr-text-muted); }
+.cr-breadcrumb li + li::before { content: "/"; color: var(--couranr-border-strong); }
+.cr-breadcrumb a { color: var(--couranr-text-muted); text-decoration: none; }
+.cr-breadcrumb a:hover { text-decoration: underline; }
+.cr-breadcrumb [aria-current="page"] { color: var(--couranr-text); font-weight: var(--couranr-weight-medium); }
+
+/* Brand wordmark — lowercase, per §2. Never redraw or substitute. */
+.cr-wordmark {
+  font-size: var(--couranr-text-lg);
+  font-weight: var(--couranr-weight-bold);
+  letter-spacing: -0.02em;
+  text-transform: lowercase;
+  text-decoration: none;
+  color: inherit;
+}
+
+/* ------------------------------------------------------- Public topbar */
+
+.cr-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--couranr-surface);
+  border-bottom: 1px solid var(--couranr-border);
+}
+.cr-topbar__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--couranr-space-4);
+  min-height: 64px;
+}
+.cr-topbar__links { display: none; gap: var(--couranr-space-1); }
+.cr-topbar__actions { display: flex; align-items: center; gap: var(--couranr-space-2); }
+
+.cr-topbar__link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--couranr-touch-min);
+  padding: 0 var(--couranr-space-3);
+  border-radius: var(--couranr-radius-sm);
+  font-size: var(--couranr-text-sm);
+  font-weight: var(--couranr-weight-medium);
+  color: var(--couranr-text-muted);
+  text-decoration: none;
+}
+.cr-topbar__link:hover { color: var(--couranr-text); background: var(--couranr-surface-sunken); }
+.cr-topbar__link[aria-current="page"] {
+  color: var(--couranr-text);
+  /* Not colour alone: an underline carries the active state too. */
+  box-shadow: inset 0 -2px 0 var(--couranr-navy);
+}
+
+.cr-topbar__toggle { display: inline-flex; }
+
+@media (min-width: 900px) {
+  .cr-topbar__links { display: flex; }
+  .cr-topbar__toggle { display: none; }
+}
+
+/* ------------------------------------------------- Sidebar (nav shells) */
+
+.cr-shell--sidebar { flex-direction: row; }
+
+.cr-sidebar {
+  display: none;
+  flex-direction: column;
+  gap: var(--couranr-space-4);
+  width: 248px;
+  flex: 0 0 248px;
+  padding: var(--couranr-space-5) var(--couranr-space-4);
+  background: var(--couranr-navy);
+  color: var(--couranr-text-inverse);
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+/* §7: Operations must stay usable at narrow desktop and tablet widths, so the
+   rail narrows before it disappears. */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .cr-sidebar { width: 208px; flex-basis: 208px; }
+}
+
+@media (min-width: 1024px) {
+  .cr-sidebar { display: flex; }
+}
+
+.cr-sidebar__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--couranr-space-2);
+  min-height: var(--couranr-touch-min);
+  color: var(--couranr-text-inverse);
+}
+.cr-sidebar__role {
+  font-size: var(--couranr-text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.cr-sidebar__nav { display: flex; flex-direction: column; gap: 2px; }
+
+.cr-sidebar__link {
+  display: flex;
+  align-items: center;
+  gap: var(--couranr-space-2);
+  min-height: var(--couranr-touch-min);
+  padding: var(--couranr-space-2) var(--couranr-space-3);
+  border-radius: var(--couranr-radius-sm);
+  font-size: var(--couranr-text-sm);
+  font-weight: var(--couranr-weight-medium);
+  color: rgba(255, 255, 255, 0.78);
+  text-decoration: none;
+}
+.cr-sidebar__link:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
+.cr-sidebar__link[aria-current="page"] {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  /* Shape cue in addition to the background, per §7. */
+  box-shadow: inset 3px 0 0 var(--couranr-gold);
+}
+
+.cr-sidebar__footer { margin-top: auto; }
+
+/* Mobile/tablet header that replaces the sidebar below 1024px. */
+.cr-appbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--couranr-navy);
+  color: var(--couranr-text-inverse);
+}
+.cr-appbar__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--couranr-space-3);
+  min-height: 60px;
+  padding-inline: var(--couranr-space-4);
+}
+@media (min-width: 1024px) {
+  .cr-appbar { display: none; }
+}
+
+.cr-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--couranr-touch-min);
+  min-height: var(--couranr-touch-min);
+  padding: 0 var(--couranr-space-2);
+  border: 1px solid transparent;
+  border-radius: var(--couranr-radius-sm);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: var(--couranr-text-lg);
+  cursor: pointer;
+}
+.cr-icon-button:hover { background: rgba(255, 255, 255, 0.12); }
+.cr-icon-button--on-surface:hover { background: var(--couranr-surface-sunken); }
+
+/* -------------------------------------------------- Navigation drawer */
+
+.cr-navdrawer {
+  background: var(--couranr-navy);
+  color: var(--couranr-text-inverse);
+  width: min(320px, 86vw);
+  height: 100%;
+  overflow-y: auto;
+  padding: var(--couranr-space-5) var(--couranr-space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--couranr-space-4);
+}
+.cr-overlay--nav { z-index: var(--couranr-z-drawer); align-items: stretch; justify-content: flex-start; padding: 0; }
+
+/* ------------------------------------------------- Driver field shell */
+
+/* §7: driver surfaces are mobile primary. This is a field shell, not a
+   shrunken merchant desktop nav: a compact top bar, a large content area, and
+   a bottom tab bar sized for gloved thumbs. */
+.cr-shell--driver { padding-bottom: 76px; }
+
+.cr-driverbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background: var(--couranr-navy);
+  color: var(--couranr-text-inverse);
+  padding: var(--couranr-space-3) var(--couranr-space-4);
+}
+.cr-driverbar__inner { display: flex; align-items: center; justify-content: space-between; gap: var(--couranr-space-3); }
+
+.cr-tabbar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 35;
+  display: flex;
+  background: var(--couranr-surface);
+  border-top: 1px solid var(--couranr-border);
+  /* Keep clear of the iOS home indicator. */
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+.cr-tabbar__link {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 60px;
+  padding: var(--couranr-space-2) var(--couranr-space-1);
+  font-size: var(--couranr-text-xs);
+  font-weight: var(--couranr-weight-medium);
+  color: var(--couranr-text-muted);
+  text-decoration: none;
+}
+.cr-tabbar__link[aria-current="page"] {
+  color: var(--couranr-navy);
+  box-shadow: inset 0 3px 0 var(--couranr-gold);
+}
+.cr-tabbar__glyph { font-size: var(--couranr-text-lg); line-height: 1; }
+
+/* A wide driver viewport (tablet in a mount) gets a roomier tab bar rather
+   than a desktop sidebar — the surface stays mobile primary. */
+@media (min-width: 768px) {
+  .cr-tabbar__link { min-height: 68px; font-size: var(--couranr-text-sm); }
+}
+
+/* ------------------------------------------- Customer token-scoped shell */
+
+/* Minimal chrome. No global navigation and no account menu: all customer
+   screens are token-scoped and §3 makes customer accounts optional. */
+.cr-tokenbar {
+  background: var(--couranr-surface);
+  border-bottom: 1px solid var(--couranr-border);
+}
+.cr-tokenbar__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--couranr-space-3);
+  min-height: 60px;
+}
+
+/* ------------------------------------------------------------- Account */
+
+.cr-account { display: flex; align-items: center; gap: var(--couranr-space-2); }
+.cr-account__name { font-size: var(--couranr-text-sm); font-weight: var(--couranr-weight-medium); }
+.cr-account__meta { font-size: var(--couranr-text-xs); color: var(--couranr-text-muted); }
+.cr-account--on-navy .cr-account__meta { color: rgba(255, 255, 255, 0.6); }
+
+/* --------------------------------------------------------- Placeholder */
+
+.cr-placeholder {
+  border: 1px dashed var(--couranr-border-strong);
+  border-radius: var(--couranr-radius-lg);
+  background: var(--couranr-surface);
+  padding: var(--couranr-card-padding);
+}
+.cr-placeholder__id {
+  display: inline-block;
+  font-family: var(--couranr-font-mono);
+  font-size: var(--couranr-text-xs);
+  color: var(--couranr-text-muted);
+}
