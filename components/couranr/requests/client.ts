@@ -41,7 +41,13 @@ async function accessToken(): Promise<string | null> {
   return data.session?.access_token ?? null;
 }
 
-async function call<T>(
+/**
+ * Exported so the payment components use this exact path rather than a raw
+ * `fetch`. A hand-rolled fetch carries no Bearer token, and every canonical
+ * route resolves its actor from one — which is precisely how the merchant
+ * authorize call came back 401 the first time it was driven in a browser.
+ */
+export async function call<T>(
   path: string,
   init: { method?: string; body?: unknown; idempotencyKey?: string } = {}
 ): Promise<ApiResult<T>> {

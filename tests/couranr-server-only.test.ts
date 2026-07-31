@@ -156,6 +156,7 @@ describe("canonical server routes do not import the browser client", () => {
     expect(canonical.map(rel).sort()).toEqual([
       "app/api/couranr/delivery-requests/[id]/authorize-payment/route.ts",
       "app/api/couranr/delivery-requests/[id]/estimate/route.ts",
+      "app/api/couranr/delivery-requests/[id]/reconcile-payment/route.ts",
       "app/api/couranr/delivery-requests/[id]/route.ts",
       "app/api/couranr/delivery-requests/[id]/submit/route.ts",
       "app/api/couranr/delivery-requests/route.ts",

@@ -87,3 +87,65 @@ export async function realDataCounts() {
     rentals: await one("rentals"),
   };
 }
+
+/** The live (non-cancelled) obligation for a request, if any. */
+export const obligationFor = (requestId) =>
+  admin
+    .from("couranr_payment_obligations")
+    .select(
+      "id,request_id,payer_type,amount_cents,currency,payment_state,version," +
+        "provider_payment_intent_id,authorized_at,request_version,pricing_policy_version"
+    )
+    .eq("request_id", requestId)
+    .neq("payment_state", "cancelled")
+    .maybeSingle()
+    .then(({ data, error }) => {
+      if (error) throw new Error(`obligationFor: ${error.message}`);
+      return data;
+    });
+
+/**
+ * Flips a synthetic request to customer-paid.
+ *
+ * The merchant UI has no payer picker yet — PAY-001 says onboarding captures a
+ * default and every delivery may go either way, but the per-delivery control
+ * is not built. Setting the column directly on a SYNTHETIC row is the honest
+ * way to reach the customer path today, and it is recorded here rather than
+ * hidden inside the suite so the gap stays visible.
+ */
+export async function setPayerType(requestId, payerType) {
+  const { error } = await admin
+    .from("couranr_delivery_requests")
+    .update({ payer_type: payerType })
+    .eq("id", requestId);
+  if (error) throw new Error(`setPayerType: ${error.message}`);
+  return payerType;
+}
+
+/**
+ * Issues a payment link for a request and returns the RAW token.
+ *
+ * Goes through the same command the app uses, so the token is generated and
+ * hashed by the real code path; only the hash reaches the database.
+ */
+export async function issueLinkForRequest(requestId, businessAccountId) {
+  const { createHash, randomBytes } = await import("node:crypto");
+  const raw = randomBytes(32).toString("base64url");
+  const hash = createHash("sha256").update(raw, "utf8").digest("hex");
+
+  const { data: ob, error: obErr } = await admin.rpc("couranr_create_payment_obligation", {
+    p_request_id: requestId,
+    p_business_account_id: businessAccountId,
+    p_idempotency_key: `e2e-link:${requestId}`,
+  });
+  if (obErr) throw new Error(`issueLinkForRequest/obligation: ${obErr.message}`);
+
+  const { error } = await admin.rpc("couranr_issue_payment_access_token", {
+    p_request_id: requestId,
+    p_obligation_id: ob?.id ?? null,
+    p_token_hash: hash,
+    p_ttl_days: 7,
+  });
+  if (error) throw new Error(`issueLinkForRequest: ${error.message}`);
+  return raw;
+}

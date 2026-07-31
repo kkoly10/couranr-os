@@ -26,6 +26,9 @@ import { relaySupabase } from "./supabaseRelay.mjs";
 import {
   accountsCreatedBy,
   eventsFor,
+  issueLinkForRequest,
+  obligationFor,
+  setPayerType,
   membershipsFor,
   realDataCounts,
   requestById,
@@ -33,6 +36,7 @@ import {
   workspacesFor,
 } from "./db.mjs";
 import { cleanupAll } from "./seed.mjs";
+import { startStripeDouble, capturedPaths } from "./stripeDouble.mjs";
 import { KEY_SOURCE, SUPABASE_URL as ADMIN_SUPABASE_URL } from "./admin.mjs";
 
 const PW = process.env.E2E_PLAYWRIGHT ?? "/opt/node22/lib/node_modules/playwright/index.mjs";
@@ -205,6 +209,19 @@ function loadSeedState() {
 }
 
 const run = (g) => !groups || groups.includes(g);
+
+/**
+ * The local stand-in for api.stripe.com. Started here so a payment group can
+ * assert on what the SDK actually sent — most importantly that no capture was
+ * attempted.
+ */
+let stripeDouble = null;
+if (!groups || groups.includes("M")) {
+  stripeDouble = await startStripeDouble(
+    Number((process.env.E2E_STRIPE_DOUBLE ?? "http://127.0.0.1:12111").split(":").pop())
+  );
+  console.log("  stripe double listening on 127.0.0.1:12111 (no real Stripe call is made)");
+}
 
 /* =========================================================== A. PUBLIC ==== */
 
@@ -1397,7 +1414,241 @@ async function groupL() {
   }
 }
 
-const ALL = { A: groupA, B: groupB, C: groupC, D: groupD, E: groupE, F: groupF, G: groupG, H: groupH, I: groupI, J: groupJ, K: groupK, L: groupL };
+
+/* ============================ M. PAYMENT AUTHORIZATION (mocked Stripe) === */
+
+/**
+ * Both payer paths, end to end, with Stripe mocked at BOTH boundaries:
+ *
+ *   server side  the SDK is pointed at `e2e/stripeDouble.mjs` with
+ *                STRIPE_API_BASE, so it builds and sends its real HTTP request
+ *   browser side `https://js.stripe.com/**` is intercepted and served
+ *                `e2e/stripeJsMock.js`, so the REAL Elements provider and the
+ *                REAL PaymentElement run against a fake Stripe
+ *
+ * What is faked is Stripe. What is under test is our integration: that the
+ * request we build carries manual capture and the server's amount, that
+ * confirmation happens before reconciliation and never the other way round,
+ * that a decline does not reconcile, and that the authorized UI appears only
+ * after the SERVER says so.
+ *
+ * PAYMENT_REAL_STRIPE_VERIFICATION = PENDING_PRELAUNCH. None of this proves
+ * Stripe accepts the request.
+ */
+
+const DOUBLE_BASE = process.env.E2E_STRIPE_DOUBLE ?? "http://127.0.0.1:12111";
+const STRIPE_JS_MOCK = readFileSync(new URL("./stripeJsMock.js", import.meta.url), "utf8");
+
+/** Serves the Stripe.js mock and records what the page asked Stripe to do. */
+async function mockStripeJs(page) {
+  await page.route("**://js.stripe.com/**", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/javascript",
+      body: STRIPE_JS_MOCK,
+    });
+  });
+  await page.addInitScript(
+    ([base]) => {
+      window.__couranrDoubleBase = base;
+    },
+    [DOUBLE_BASE]
+  );
+  /*
+   * No API interception. The mock reads the PaymentIntent id straight out of
+   * the client secret the SERVER handed the page, so the suite learns it
+   * without touching the response — and without calling page.evaluate from
+   * inside a route handler, which deadlocks against the pending request.
+   */
+}
+
+async function groupM() {
+  console.log("\n\x1b[1mM — payment authorization, both payer paths (Stripe mocked)\x1b[0m");
+
+  const accounts = await accountsCreatedBy(USER_IDS.merchant);
+  if (accounts.length === 0) {
+    inconclusive("M0", "payment flows", "the merchant fixture has no business account");
+    return;
+  }
+  const accountId = accounts[0].id;
+
+  /* --- M1..M6  MERCHANT-PAID, unchanged quote --------------------------- */
+
+  let merchantRequestId = null;
+  {
+    // Reach `confirmed` the way a merchant really does: submit with the
+    // acknowledgment, then Operations confirms as quoted.
+    const { ctx, page } = await freshContext();
+    await signIn(page, USERS.merchant, { expectLanding: "/business" });
+    const made = await createRequestThroughUi(page, accountId, { acknowledge: true });
+    merchantRequestId = made.id;
+    await ctx.close();
+
+    if (merchantRequestId) {
+      const { ctx: octx, page: opage } = await freshContext();
+      await signIn(opage, USERS.ops, { expectLanding: "/operations" });
+      await decideAsOps(opage, merchantRequestId, "accept");
+      await octx.close();
+    }
+  }
+
+  if (!merchantRequestId) {
+    inconclusive("M1", "merchant-paid authorization", "no request reached confirmed");
+  } else {
+    const row = await requestById(merchantRequestId);
+    check("M1", "the merchant-paid request is confirmed before any payment exists",
+      row?.request_state === "confirmed", `request_state=${row?.request_state}`);
+
+    const { ctx, page } = await freshContext();
+    await mockStripeJs(page);
+    await signIn(page, USERS.merchant, { expectLanding: "/business" });
+    await page.goto(`${BASE_URL}/business/deliveries/${merchantRequestId}`, {
+      waitUntil: "domcontentloaded",
+    });
+
+    const authorizeBtn = page.getByRole("button", { name: /^Authorize \$/ });
+    await authorizeBtn.waitFor({ state: "visible", timeout: 25000 });
+    await shot(page, "M1-merchant-payment-panel");
+    await authorizeBtn.click();
+
+    // The real PaymentElement mounts against the mocked Stripe.js.
+    await page.locator("[data-stripe-element]").first().waitFor({ state: "visible", timeout: 25000 });
+    const calls = await page.evaluate(() => window.__couranrStripeCalls ?? []);
+    const elementsCall = calls.find((c) => c.fn === "elements");
+    check("M2", "Elements receives the SERVER's client secret",
+      Boolean(elementsCall?.clientSecret) && String(elementsCall.clientSecret).includes("_secret_"),
+      `clientSecret=${elementsCall?.clientSecret ? "present" : "absent"}`);
+    await shot(page, "M2-payment-element-mounted");
+
+    // The obligation exists and carries the SERVER's amount, not the page's.
+    const ob = await obligationFor(merchantRequestId);
+    check("M3", "the obligation amount is the stored quote, and nothing is authorized yet",
+      ob?.amount_cents === row?.delivery_subtotal_cents && ob?.payment_state === "requires_action",
+      `amount=${ob?.amount_cents} quote=${row?.delivery_subtotal_cents} state=${ob?.payment_state}`);
+
+    await page.getByRole("button", { name: /^Authorize \$/ }).click();
+    await page.getByText(/Payment authorized/i).waitFor({ state: "visible", timeout: 25000 });
+    await shot(page, "M3-merchant-authorized");
+
+    const after = await obligationFor(merchantRequestId);
+    check("M4", "the obligation is authorized only after the server said so",
+      after?.payment_state === "authorized" && after?.authorized_at !== null,
+      `payment_state=${after?.payment_state}`);
+
+    const rowAfter = await requestById(merchantRequestId);
+    check("M5", "an already-confirmed merchant request stays confirmed",
+      rowAfter?.request_state === "confirmed", `request_state=${rowAfter?.request_state}`);
+
+    const stripeCalls = await page.evaluate(() => window.__couranrStripeCalls ?? []);
+    const confirm = stripeCalls.filter((c) => c.fn === "confirmPayment");
+    check("M6", "confirmPayment ran once, with redirect if_required and no browser amount",
+      confirm.length === 1 && confirm[0].redirect === "if_required" &&
+        confirm[0].amount === undefined && confirm[0].currency === undefined,
+      `calls=${confirm.length} redirect=${confirm[0]?.redirect} amount=${confirm[0]?.amount}`);
+    await ctx.close();
+  }
+
+  /* --- M7..M12  CUSTOMER-PAID via the payment link ---------------------- */
+
+  let customerRequestId = null;
+  let payToken = null;
+  {
+    const { ctx, page } = await freshContext();
+    await signIn(page, USERS.merchant, { expectLanding: "/business" });
+    const made = await createRequestThroughUi(page, accountId, { acknowledge: false });
+    customerRequestId = made.id;
+    await ctx.close();
+
+    if (customerRequestId) {
+      // Make it customer-paid, then let Operations confirm as quoted, which
+      // for a customer payer lands on awaiting_quote_acceptance.
+      await setPayerType(customerRequestId, "customer");
+      const { ctx: octx, page: opage } = await freshContext();
+      await signIn(opage, USERS.ops, { expectLanding: "/operations" });
+      await decideAsOps(opage, customerRequestId, "accept");
+      await octx.close();
+      payToken = await issueLinkForRequest(customerRequestId, accountId);
+    }
+  }
+
+  if (!customerRequestId || !payToken) {
+    inconclusive("M7", "customer-paid authorization",
+      `requestId=${Boolean(customerRequestId)} token=${Boolean(payToken)}`);
+  } else {
+    const row = await requestById(customerRequestId);
+    check("M7", "a customer-paid confirm waits for the customer",
+      row?.request_state === "awaiting_quote_acceptance",
+      `request_state=${row?.request_state}`);
+
+    // A brand-new context: no session at all. The link IS the authorization.
+    const { ctx, page } = await freshContext();
+    await mockStripeJs(page);
+    await page.goto(`${BASE_URL}/pay/${payToken}`, { waitUntil: "domcontentloaded" });
+
+    await page.getByText(/Authorize this amount|Approve the revised amount/i).waitFor({
+      state: "visible",
+      timeout: 25000,
+    });
+    const signedOut = await hasSession(ctx);
+    check("M8", "PUB-005 opens with no Couranr session — the link is the authorization",
+      signedOut === false, `hasSession=${signedOut}`);
+    await shot(page, "M8-pub005-quote");
+
+    await page.getByRole("button", { name: /Authorize this amount|Approve the revised/i }).click();
+    await page.locator("[data-stripe-element]").first().waitFor({ state: "visible", timeout: 25000 });
+    await shot(page, "M9-pub005-element");
+
+    // A declined card must NOT reconcile.
+    await page.evaluate(() => { window.__couranrStripeFailNext = true; });
+    await page.getByRole("button", { name: /^Authorize \$/ }).click();
+    await page.getByText(/card was declined/i).waitFor({ state: "visible", timeout: 20000 });
+    const declinedOb = await obligationFor(customerRequestId);
+    check("M9", "a declined confirmation authorizes nothing",
+      declinedOb?.payment_state !== "authorized",
+      `payment_state=${declinedOb?.payment_state}`);
+    check("M10", "and the request has not moved",
+      (await requestById(customerRequestId))?.request_state === "awaiting_quote_acceptance",
+      "request moved on a decline");
+    await shot(page, "M10-declined");
+
+    // Now let it succeed.
+    await page.getByRole("button", { name: /^Authorize \$/ }).click();
+    await page.getByText(/Payment authorized/i).waitFor({ state: "visible", timeout: 25000 });
+    await shot(page, "M11-customer-authorized");
+
+    const finalOb = await obligationFor(customerRequestId);
+    const finalRow = await requestById(customerRequestId);
+    check("M11", "authorizing a customer-paid quote confirms the request",
+      finalOb?.payment_state === "authorized" && finalRow?.request_state === "confirmed",
+      `payment=${finalOb?.payment_state} request=${finalRow?.request_state}`);
+
+    const approvals = await eventsFor(customerRequestId);
+    check("M12", "the payer approval is recorded once in the append-only log",
+      approvals.filter((e) => e.command === "record_payer_quote_approval").length === 1,
+      `approvals=${approvals.filter((e) => e.command === "record_payer_quote_approval").length}`);
+
+    // The link is dead the moment it has done its job.
+    await page.goto(`${BASE_URL}/pay/${payToken}`, { waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(2500);
+    const reused = await page.getByText(/already authorized/i).count();
+    check("M13", "the payment link stops working once authorized", reused > 0,
+      `alreadyAuthorizedCopy=${reused}`);
+    await shot(page, "M13-link-spent");
+    await ctx.close();
+  }
+
+  /* --- M14  no capture was ever attempted ------------------------------- */
+
+  const paths = capturedPaths();
+  check("M14", "the Stripe double saw NO capture call",
+    paths.every((p) => !p.includes("/capture")) && paths.some((p) => p.startsWith("POST /v1/payment_intents")),
+    `paths=${[...new Set(paths)].join(", ").slice(0, 200)}`);
+
+  const unexpected = paths.filter((p) => p.includes("/capture") || p.includes("/refunds"));
+  check("M15", "and no refund call either", unexpected.length === 0, unexpected.join(", "));
+}
+
+const ALL = { A: groupA, B: groupB, C: groupC, D: groupD, E: groupE, F: groupF, G: groupG, H: groupH, I: groupI, J: groupJ, K: groupK, L: groupL, M: groupM };
 
 let REAL_AFTER = null;
 let cleanup = null;
@@ -1423,6 +1674,8 @@ try {
     console.log(`    cleanup THREW: ${e.message}`);
   }
 }
+
+if (stripeDouble) stripeDouble.server.close();
 
 console.log("\n\x1b[1mProduction-data invariant\x1b[0m");
 if (REAL_AFTER) {

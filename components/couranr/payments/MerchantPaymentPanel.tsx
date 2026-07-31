@@ -4,6 +4,8 @@ import * as React from "react";
 import { Alert, Badge, Button, Card, CardHeader, Stack, Text } from "@/components/couranr/primitives";
 import { ErrorState } from "@/components/couranr/states";
 import { formatCents, type DeliveryRequestView } from "@/lib/couranr/requests/view";
+import { CouranrPaymentElement } from "./CouranrPaymentElement";
+import { call, isApiFailure } from "@/components/couranr/requests/client";
 
 /**
  * MER-007 — payment state, and the merchant's authorization action.
@@ -61,28 +63,38 @@ export function MerchantPaymentPanel({
     if (!businessAccountId) return;
     setBusy(true);
     setError(null);
-    try {
-      const res = await fetch(
-        `/api/couranr/delivery-requests/${request.id}/authorize-payment`,
-        {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          // No amount. There is no field for one, and the server would ignore it.
-          body: JSON.stringify({ businessAccountId }),
-        }
-      );
-      const body = await res.json();
-      if (!res.ok) {
-        setError(body?.error ?? "Payment could not be set up.");
-        return;
-      }
-      setPayment(body.obligation as PaymentView);
-      setClientSecret(body.clientSecret ?? null);
-    } catch {
-      setError("We could not reach Couranr. Nothing was charged.");
-    } finally {
-      setBusy(false);
+    // Through the shared caller, which attaches the Bearer token every
+    // canonical route resolves its actor from. No amount is sent: there is no
+    // field for one, and the server reads the price off the request.
+    const r = await call<{ obligation: PaymentView; clientSecret: string }>(
+      `/api/couranr/delivery-requests/${request.id}/authorize-payment`,
+      { method: "POST", body: { businessAccountId } }
+    );
+    setBusy(false);
+    if (isApiFailure(r)) {
+      setError(r.error ?? "Payment could not be set up.");
+      return;
     }
+    setPayment(r.value.obligation);
+    setClientSecret(r.value.clientSecret ?? null);
+  }
+
+  /**
+   * Ask the SERVER whether the merchant's payment really authorized.
+   *
+   * Handed to the Payment Element and called only after confirmation
+   * succeeds. Carries the business account so the route can scope it; carries
+   * no state, no amount and no PaymentIntent id, because none of those would
+   * be believed.
+   */
+  async function reconcileWithServer() {
+    const r = await call<{ outcome: string; paymentState: string; requestState: string }>(
+      `/api/couranr/delivery-requests/${request.id}/reconcile-payment`,
+      { method: "POST", body: { businessAccountId } }
+    );
+    // A failure is not an authorization. The Element treats "not authorized"
+    // as "not yet", which is the correct, fail-closed reading.
+    return isApiFailure(r) ? { paymentState: null } : r.value;
   }
 
   const state = payment?.paymentState ?? "not_started";
@@ -123,13 +135,20 @@ export function MerchantPaymentPanel({
             they authorize the amount.
           </Alert>
         ) : state === "authorized" ? null : clientSecret ? (
-          <Stack gap={3}>
-            {/* The Payment Element mounts against the client secret alone. */}
-            <div data-couranr-payment-element data-client-secret="present" />
-            <Text size="xs" muted>
-              {AUTHORIZE_COPY}
-            </Text>
-          </Stack>
+          /*
+            The SAME component the customer link uses. Only the reconcile
+            endpoint differs — this one is authenticated and scoped to the
+            business account, so a merchant cannot reconcile another
+            merchant's delivery.
+          */
+          <CouranrPaymentElement
+            clientSecret={clientSecret}
+            amountCents={payment?.amountCents ?? request.quote.deliverySubtotalCents ?? 0}
+            reconcile={reconcileWithServer}
+            onAuthorized={() =>
+              setPayment((p) => (p ? { ...p, paymentState: "authorized" } : p))
+            }
+          />
         ) : (
           <Stack gap={3}>
             <Alert tone="info" title="Couranr does not take payment yet">

@@ -12,6 +12,7 @@ import {
 } from "@/components/couranr/primitives";
 import { CardSkeleton, ErrorState, LoadingState } from "@/components/couranr/states";
 import { CouranrLogo } from "@/components/brand/CouranrLogo";
+import { CouranrPaymentElement } from "./CouranrPaymentElement";
 import { formatCents } from "@/lib/couranr/requests/view";
 
 /**
@@ -153,32 +154,16 @@ export function PaymentLinkPage({ token }: { token: string }) {
   /**
    * Ask the SERVER whether the payment really authorized.
    *
-   * The page never decides this. Whatever the Payment Element reported, this
-   * calls back and the server retrieves the PaymentIntent from Stripe; if it
-   * is not really at `requires_capture` for the full amount, nothing moves.
+   * Handed to the Payment Element, which calls it only AFTER
+   * `stripe.confirmPayment` returns without an error. The page never decides
+   * authorization: the server retrieves the PaymentIntent from Stripe, and if
+   * it is not really at `requires_capture` for the full amount, nothing moves.
    */
-  async function confirmWithServer() {
-    setPhase("processing");
-    try {
-      const res = await fetch(`/api/couranr/pay/${encodeURIComponent(token)}/reconcile`, {
-        method: "POST",
-      });
-      const body = await res.json();
-      if (body?.paymentState === "authorized") {
-        setPhase("authorized");
-        return;
-      }
-      if (body?.paymentState === "failed") {
-        setFailureText("That payment did not go through. You can try again.");
-        setPhase("failed");
-        return;
-      }
-      // Not authorized and not failed: still waiting on the payer or on Stripe.
-      setPhase("requires_action");
-    } catch {
-      setFailureText("We could not confirm the payment. Nothing was charged.");
-      setPhase("failed");
-    }
+  async function reconcileWithServer() {
+    const res = await fetch(`/api/couranr/pay/${encodeURIComponent(token)}/reconcile`, {
+      method: "POST",
+    });
+    return res.json();
   }
 
   if (phase === "loading") {
@@ -264,34 +249,25 @@ export function PaymentLinkPage({ token }: { token: string }) {
         </LoadingState>
       ) : null}
 
-      {phase === "requires_action" ? (
+      {phase === "requires_action" && clientSecret ? (
         <Card>
           <CardHeader
             title="Payment details"
             description="Enter the card that will be authorized for this delivery."
           />
-          <Stack gap={3}>
-            {/*
-              The Stripe Payment Element mounts here against `clientSecret`.
-              It is deliberately NOT given the amount: the intent already
-              carries it, so there is no number on this page a script could
-              change before it reaches Stripe.
-            */}
-            <div data-couranr-payment-element data-client-secret={clientSecret ? "present" : "absent"} />
-            <Text size="xs" muted>
-              {AUTHORIZE_COPY}
-            </Text>
-            <Button variant="primary" onClick={confirmWithServer}>
-              Authorize {formatCents(quote.amountCents)}
-            </Button>
-          </Stack>
+          {/*
+            The shared Payment Element — the same component the merchant panel
+            uses. It gets the server's client secret and a reconcile callback,
+            and nothing else: the amount lives on the intent, so there is no
+            number on this page a script could change on its way to Stripe.
+          */}
+          <CouranrPaymentElement
+            clientSecret={clientSecret}
+            amountCents={quote.amountCents}
+            reconcile={reconcileWithServer}
+            onAuthorized={() => setPhase("authorized")}
+          />
         </Card>
-      ) : null}
-
-      {phase === "processing" ? (
-        <LoadingState label="Confirming the authorization with Couranr">
-          <CardSkeleton lines={2} />
-        </LoadingState>
       ) : null}
     </Stack>
   );
