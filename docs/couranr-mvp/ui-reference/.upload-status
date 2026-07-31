@@ -1,1 +1,8 @@
-Canonical image upload pending binary commit.
+Canonical image extraction FAILED (workflow "Materialize canonical Couranr MVP UI
+set", both runs, 2026-07-30). canonical-mvp-images/ has never contained a file.
+
+The mocks survive as the 91 UUID-named PNGs at the repo root. They are mapped to
+screen ids in CANONICAL_SCREEN_SOURCE_MAP.md / .tsv.
+
+Do NOT run materialize-canonical-ui-images.yml: it ends with `-delete` on every
+UUID-named root PNG, which would destroy the only copy of the design.
