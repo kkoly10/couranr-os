@@ -2054,7 +2054,7 @@
     },
     {
       "id": "DRP-001",
-      "category": "payer rules",
+      "category": "team and request permissions",
       "decision": "Bounded team permissions for delivery-request creation and submission in the first merchant slice.",
       "value": {
         "scope": "delivery-request create and submit only; not the complete team-role matrix",

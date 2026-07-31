@@ -90,6 +90,8 @@ describe("registry structure", () => {
   });
 
   it("covers every required decision category", () => {
+    // Additional categories beyond the required set are permitted; DRP-001
+    // introduced "team and request permissions".
     const present = new Set(RECORDS.map((r) => r.category));
     for (const c of REQUIRED_CATEGORIES) {
       expect(present.has(c), `no record for category "${c}"`).toBe(true);

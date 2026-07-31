@@ -30,6 +30,23 @@ set local statement_timeout = '120s';
 set local lock_timeout = '10s';
 
 -- ---------------------------------------------------------------------
+-- HARD GUARD. `create table if not exists` would silently accept an
+-- existing table of a DIFFERENT shape, leaving the database looking
+-- migrated while missing columns or constraints. Abort instead.
+-- ---------------------------------------------------------------------
+do $$
+begin
+  if to_regclass('public.couranr_delivery_requests') is not null then
+    raise exception
+      'couranr_delivery_requests already exists. Refusing to run: its shape has not been verified. Inspect it and roll back before re-applying.';
+  end if;
+  if to_regclass('public.couranr_delivery_request_events') is not null then
+    raise exception
+      'couranr_delivery_request_events already exists. Refusing to run: its shape has not been verified. Inspect it and roll back before re-applying.';
+  end if;
+end $$;
+
+-- ---------------------------------------------------------------------
 -- 1. couranr_delivery_requests
 -- ---------------------------------------------------------------------
 create table if not exists public.couranr_delivery_requests (
@@ -140,6 +157,13 @@ create table if not exists public.couranr_delivery_requests (
   -- PRC-004 / TAX-001 remain unresolved: neither may be asserted true.
   constraint couranr_dr_no_rounding_chk check (rounding_applied = false),
   constraint couranr_dr_no_tax_chk check (tax_included = false),
+
+  -- This slice is pre-payment. No payment decision is made, so no payment
+  -- amount may be persisted. Enforced in the database, not only in the
+  -- pricing types, so no future route can quietly begin writing an amount
+  -- before the payment decision (PAY-001) is made. Dropping this constraint
+  -- is the deliberate act that opens the payment slice.
+  constraint couranr_dr_no_payment_due_chk check (payment_due_cents is null),
 
   -- A submitted request must record when it was submitted, and a draft
   -- must not claim to have been.
@@ -252,19 +276,20 @@ revoke all on public.couranr_delivery_request_events from public, anon, authenti
 -- IMPORTANT: this project's pg_default_acl grants arwdDxtm (ALL) to anon,
 -- authenticated AND service_role on every newly created table in `public`
 -- (owner `postgres`, and again for owner `supabase_admin`). A bare
--- `grant select, insert ... to service_role` is therefore a no-op addition on
--- top of an inherited ALL and enforces nothing. Append-only has to be created
--- by REVOKING the write verbs, not by granting a narrower set.
-revoke update, delete, truncate on public.couranr_delivery_request_events from service_role;
+-- `grant select, insert ... to service_role` is a no-op addition on top of an
+-- inherited ALL and enforces nothing.
+--
+-- Revoke EVERYTHING from service_role first, then grant back exactly the verbs
+-- the named server commands need. This also strips REFERENCES, TRIGGER and
+-- MAINTAIN, which the inherited default silently included.
+revoke all on public.couranr_delivery_requests       from service_role;
+revoke all on public.couranr_delivery_request_events from service_role;
 
--- Requests are read/insert/update by server commands; never deleted or
--- truncated, so a bug or a compromised command cannot erase merchant history.
-revoke delete, truncate on public.couranr_delivery_requests from service_role;
+-- Requests: read, create, advance. Never deleted or truncated, so neither a
+-- bug nor a compromised command can erase merchant history.
+grant select, insert, update on public.couranr_delivery_requests to service_role;
 
--- Re-assert the privileges the commands actually need. These are already
--- present via the default ACL; stating them makes the intended set explicit
--- and survives a future tightening of pg_default_acl (registry P1-04).
-grant select, insert, update on public.couranr_delivery_requests       to service_role;
-grant select, insert         on public.couranr_delivery_request_events to service_role;
+-- Events: append-only.
+grant select, insert on public.couranr_delivery_request_events to service_role;
 
 commit;

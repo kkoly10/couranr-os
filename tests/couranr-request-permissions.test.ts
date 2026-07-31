@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -148,14 +148,25 @@ describe("DRP-001 delivery-request permission matrix", () => {
 /* ---------------------------------------------------- migration SQL scope */
 
 describe("migration is additive and correctly scoped", () => {
-  const MIG = path.resolve(
-    __dirname,
-    "../supabase/migrations/20260731000100_couranr_delivery_requests.sql"
+  const DIR = path.resolve(__dirname, "../supabase/migrations");
+  // Resolved by discovery, not by a hard-coded name: `apply_migration` assigns
+  // its own timestamp version, so the file was renamed to match production.
+  const NAMES = readdirSync(DIR).filter((f) => f.endsWith("_couranr_delivery_requests.sql"));
+  const ROLLBACK_NAMES = readdirSync(DIR).filter((f) =>
+    f.endsWith("_couranr_delivery_requests.rollback.sql")
   );
-  const ROLLBACK = path.resolve(
-    __dirname,
-    "../supabase/migrations/20260731000100_couranr_delivery_requests.rollback.sql"
-  );
+  const MIG = path.join(DIR, NAMES[0] ?? "missing.sql");
+  const ROLLBACK = path.join(DIR, ROLLBACK_NAMES[0] ?? "missing.sql");
+
+  it("ships exactly one migration and one rollback, sharing a version", () => {
+    expect(NAMES).toHaveLength(1);
+    expect(ROLLBACK_NAMES).toHaveLength(1);
+    const version = (f: string) => f.split("_")[0];
+    expect(version(NAMES[0])).toBe(version(ROLLBACK_NAMES[0]));
+    // The version Supabase assigned when the migration was applied to
+    // production. The filename is the only place the repo records it.
+    expect(version(NAMES[0])).toBe("20260731045417");
+  });
 
   /** Comments legitimately discuss what the migration must not do. */
   function code(p: string) {
@@ -167,6 +178,9 @@ describe("migration is additive and correctly scoped", () => {
   const SQL = code(MIG);
   const ROLL = code(ROLLBACK);
 
+  /** TRUNCATE in statement position only. No /g — `.test` must not be stateful. */
+  const TRUNCATE_STATEMENT = /(^|;)\s*truncate\s+/i;
+
   it("contains no destructive statement", () => {
     for (const rx of [
       /\bdrop\s+table\b/i,
@@ -176,13 +190,23 @@ describe("migration is additive and correctly scoped", () => {
       // TRUNCATE as a STATEMENT. Matching the bare word would flag
       // `revoke ... truncate ... from service_role`, which is the opposite of
       // destructive: it removes the ability to truncate.
-      /(^|;)\s*truncate\s+/i,
+      TRUNCATE_STATEMENT,
     ]) {
       expect(rx.test(SQL), `migration must not contain ${rx}`).toBe(false);
     }
+  });
 
-    // Positive control: the revoke that the narrowed regex must tolerate.
-    expect(SQL).toMatch(/revoke[^;]*\btruncate\b[^;]*from\s+service_role/i);
+  /**
+   * The narrowed TRUNCATE regex is only trustworthy if it still catches a real
+   * truncate. The migration no longer contains the word at all (it revokes ALL
+   * rather than naming verbs), so the control cannot come from the file — it is
+   * exercised directly here instead.
+   */
+  it("the narrowed TRUNCATE guard catches a statement and tolerates a revoke", () => {
+    expect(TRUNCATE_STATEMENT.test("truncate public.orders;")).toBe(true);
+    expect(TRUNCATE_STATEMENT.test("begin;\ntruncate public.orders;")).toBe(true);
+    expect(TRUNCATE_STATEMENT.test("select 1; truncate public.orders;")).toBe(true);
+    expect(TRUNCATE_STATEMENT.test("revoke truncate on public.x from service_role;")).toBe(false);
   });
 
   it("alters no pre-existing table", () => {
@@ -234,13 +258,23 @@ describe("migration is additive and correctly scoped", () => {
    * to service_role on every new table, so append-only cannot be created by
    * granting a narrow set — the write verbs must be revoked.
    */
-  it("revokes write verbs from service_role to make events append-only", () => {
-    expect(SQL).toMatch(
-      /revoke\s+update,\s*delete,\s*truncate\s+on\s+public\.couranr_delivery_request_events\s+from\s+service_role/i
-    );
-    expect(SQL).toMatch(
-      /revoke\s+delete,\s*truncate\s+on\s+public\.couranr_delivery_requests\s+from\s+service_role/i
-    );
+  it("revokes ALL from service_role, then grants back exactly what is needed", () => {
+    expect(SQL).toMatch(/revoke\s+all\s+on\s+public\.couranr_delivery_requests\s+from\s+service_role/i);
+    expect(SQL).toMatch(/revoke\s+all\s+on\s+public\.couranr_delivery_request_events\s+from\s+service_role/i);
+    expect(SQL).toMatch(/grant\s+select,\s*insert,\s*update\s+on\s+public\.couranr_delivery_requests\s+to\s+service_role/i);
+    expect(SQL).toMatch(/grant\s+select,\s*insert\s+on\s+public\.couranr_delivery_request_events\s+to\s+service_role/i);
+    // Never grant a write verb the commands do not need.
+    expect(/grant[^;]*\b(delete|truncate|references|trigger|maintain)\b[^;]*to\s+service_role/i.test(SQL)).toBe(false);
+  });
+
+  it("aborts rather than silently accepting an existing table", () => {
+    expect(SQL).toMatch(/to_regclass\('public\.couranr_delivery_requests'\)\s+is\s+not\s+null/i);
+    expect(SQL).toMatch(/to_regclass\('public\.couranr_delivery_request_events'\)\s+is\s+not\s+null/i);
+    expect(SQL).toMatch(/raise\s+exception/i);
+  });
+
+  it("forbids persisting a payment amount in this pre-payment slice", () => {
+    expect(SQL).toMatch(/couranr_dr_no_payment_due_chk\s+check\s*\(\s*payment_due_cents\s+is\s+null\s*\)/i);
   });
 
   it("creates no SECURITY DEFINER function", () => {

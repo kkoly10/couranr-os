@@ -1,5 +1,9 @@
 -- =====================================================================
--- ROLLBACK for 20260731000100_couranr_delivery_requests.sql
+-- ROLLBACK for 20260731045417_couranr_delivery_requests.sql
+--
+-- Rolling back also requires deleting the tracked history row, or the next
+-- apply will believe the migration is already present:
+--   delete from supabase_migrations.schema_migrations where version = '20260731045417';
 --
 -- Drops ONLY the two tables that migration created, child first because of
 -- the RESTRICT foreign key. Every index, constraint, comment and grant on
