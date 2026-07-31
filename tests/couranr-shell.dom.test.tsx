@@ -16,6 +16,14 @@ let mockPathname = "/business";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => mockPathname,
+  // The shells render the real SignOutButton, which routes on success.
+  useRouter: () => ({ replace: vi.fn(), refresh: vi.fn(), push: vi.fn() }),
+}));
+
+// SignOutButton reaches the browser Supabase client at module scope through a
+// lazy Proxy. Stubbed so these shell tests stay pure DOM assertions.
+vi.mock("@/lib/supabaseClient", () => ({
+  supabase: { auth: { signOut: async () => ({ error: null }) } },
 }));
 
 vi.mock("next/link", () => ({
@@ -366,6 +374,11 @@ describe("public and customer shells", () => {
 });
 
 describe("sign-out placement", () => {
+  /**
+   * A BUTTON, not a link. This test previously asserted `role: "link"` — it
+   * encoded the defect, where "Sign out" navigated to /login and left the
+   * Supabase session live. Behaviour is covered by couranr-signout.dom.test.tsx.
+   */
   it("appears once in the merchant sidebar and once in its drawer", async () => {
     const user = userEvent.setup();
     render(
@@ -375,19 +388,46 @@ describe("sign-out placement", () => {
     );
 
     // Sidebar copy only, before the drawer opens.
-    expect(screen.getAllByRole("link", { name: /sign out/i })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: /sign out/i })).toHaveLength(1);
+    expect(screen.queryAllByRole("link", { name: /sign out/i })).toHaveLength(0);
 
     await user.click(screen.getByRole("button", { name: /open merchant navigation/i }));
-    expect(screen.getAllByRole("link", { name: /sign out/i })).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: /sign out/i })).toHaveLength(2);
   });
 
-  it("is absent from the driver field shell's tab bar", () => {
+  it("is present in the operations sidebar", () => {
+    render(
+      <OperationsShell>
+        <p>content</p>
+      </OperationsShell>
+    );
+    expect(screen.getAllByRole("button", { name: /sign out/i }).length).toBeGreaterThanOrEqual(1);
+  });
+
+  /**
+   * The driver works on a shared device, so sign-out lives in the persistent
+   * top bar where it is always reachable — NOT in the tab bar, which is for
+   * destinations only.
+   */
+  it("is in the driver top bar and not in its tab bar", () => {
     render(
       <DriverShell>
         <p>content</p>
       </DriverShell>
     );
+    expect(screen.getAllByRole("button", { name: /sign out/i })).toHaveLength(1);
     const nav = screen.getByRole("navigation", { name: /driver navigation/i });
+    expect(within(nav).queryByRole("button", { name: /sign out/i })).toBeNull();
     expect(within(nav).queryByRole("link", { name: /sign out/i })).toBeNull();
+  });
+
+  /** The customer surface is reached by a per-delivery token, not a session. */
+  it("is absent from the customer token shell", () => {
+    render(
+      <CustomerTokenShell>
+        <p>content</p>
+      </CustomerTokenShell>
+    );
+    expect(screen.queryByRole("button", { name: /sign out/i })).toBeNull();
   });
 });

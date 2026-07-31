@@ -733,3 +733,18 @@
   font-size: var(--couranr-text-sm);
 }
 .cr-list > li { margin: 0; }
+
+/* ------------------------------------------------------------ Sign out -- */
+/* Sign-out is a BUTTON, not a link — it ends a session rather than
+   navigating — so it needs the sidebar link's look without its element. */
+.cr-signout {
+  appearance: none;
+  background: none;
+  border: 0;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+.cr-signout:disabled { opacity: 0.6; cursor: progress; }
+.cr-signout--compact { width: auto; padding-inline: var(--couranr-space-3); }

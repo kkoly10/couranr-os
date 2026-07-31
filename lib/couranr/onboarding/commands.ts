@@ -23,8 +23,15 @@ assertServerOnly("lib/couranr/onboarding/commands.ts");
 
 export const CREATE_WORKSPACE_RPC = "couranr_create_merchant_workspace";
 
-/** Profile roles that run Couranr, and therefore must not own a merchant. */
-const OPERATIONS_PROFILE_ROLES = ["admin", "operations"];
+/**
+ * Profile roles that run Couranr, and therefore must not own a merchant.
+ *
+ * Only `admin` exists: `profiles_role_check` permits customer, driver and admin.
+ * The SQL function also checks for 'operations' — harmless, since the constraint
+ * makes that value unreachable — and removing it would cost a migration for no
+ * behavioural change.
+ */
+const OPERATIONS_PROFILE_ROLES = ["admin"];
 
 function fail(params: {
   operation: string;

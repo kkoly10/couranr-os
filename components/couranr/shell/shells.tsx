@@ -9,6 +9,7 @@ import {
   TopbarNav,
 } from "./MobileNav";
 import { AccountBlock, ShellMain, SkipLink, Wordmark } from "./parts";
+import { SignOutButton } from "@/components/couranr/auth/SignOutButton";
 
 /**
  * The five canonical application shells.
@@ -132,7 +133,7 @@ export function MerchantShell({
   accountMeta?: string;
 }) {
   const items = navigationFor("merchant");
-  const signOut = <SignOutLink />;
+  const signOut = <SignOutButton />;
 
   return (
     <div className="cr-shell cr-shell--sidebar">
@@ -211,12 +212,16 @@ export function DriverShell({
             <Wordmark href="/driver" />
             <div className="cr-sidebar__role">{driverName}</div>
           </div>
-          {statusLabel ? (
-            <span className="cr-badge cr-badge--neutral">
-              <span className="cr-badge__dot" aria-hidden="true" />
-              {statusLabel}
-            </span>
-          ) : null}
+          <div className="cr-cluster cr-cluster--2">
+            {statusLabel ? (
+              <span className="cr-badge cr-badge--neutral">
+                <span className="cr-badge__dot" aria-hidden="true" />
+                {statusLabel}
+              </span>
+            ) : null}
+            {/* A shared device needs this reachable without a menu. */}
+            <SignOutButton className="cr-signout--compact" />
+          </div>
         </div>
       </header>
 
@@ -250,7 +255,7 @@ export function OperationsShell({
   operatorMeta?: string;
 }) {
   const items = navigationFor("operations");
-  const signOut = <SignOutLink />;
+  const signOut = <SignOutButton />;
 
   return (
     <div className="cr-shell cr-shell--sidebar">
@@ -306,18 +311,11 @@ export function OperationsShell({
  * Sign-out lives in the shell footer, below account identity, in both the
  * sidebar and the drawer — one consistent placement per shell.
  *
- * Points at the existing /login route rather than the canonical /sign-in,
- * because /sign-in is not implemented yet. Which of the two survives is a
- * "legacy route treatment" decision for the Decision Registry.
+ * It is `components/couranr/auth/SignOutButton`, which terminates the Supabase
+ * session and only then navigates. It used to be a `<Link href="/login">`,
+ * which navigated and left the session live; the next visit to any merchant
+ * page walked straight back in.
+ *
+ * The customer token shell deliberately has none: that surface is reached by a
+ * per-delivery link, not a session, so there is nothing to sign out of.
  */
-function SignOutLink() {
-  return (
-    <Link
-      href="/login"
-      className="cr-sidebar__link"
-      style={{ marginTop: "var(--couranr-space-2)" }}
-    >
-      Sign out
-    </Link>
-  );
-}

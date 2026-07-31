@@ -19,7 +19,14 @@ assertServerOnly("lib/couranr/requests/actor.ts");
  * against Supabase. It is never decoded locally and `getSession()` is not used.
  */
 
-const OPERATIONS_PROFILE_ROLES = ["admin", "operations"] as const;
+/**
+ * The profile role that runs Couranr Operations.
+ *
+ * `profiles_role_check` on production permits only customer, driver and admin —
+ * there is no `operations` value, and an earlier version of this file checked
+ * for one, which was inert. Single source: lib/couranr/auth/landing.ts.
+ */
+const OPERATIONS_PROFILE_ROLES: readonly string[] = ["admin"];
 
 /**
  * Carries a public error CODE, not an HTTP status: the status is derived once,
@@ -100,9 +107,7 @@ export async function resolveRequestActor(
     return { ok: false, code: "internal", error: "Could not verify your account." };
   }
 
-  const isOperations = OPERATIONS_PROFILE_ROLES.includes(
-    (profile?.role ?? "") as (typeof OPERATIONS_PROFILE_ROLES)[number]
-  );
+  const isOperations = OPERATIONS_PROFILE_ROLES.includes(String(profile?.role ?? ""));
 
   if (businessAccountId === null) {
     if (!isOperations) {

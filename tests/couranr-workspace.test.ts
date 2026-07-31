@@ -266,7 +266,8 @@ describe("the onboarding command", () => {
 
   it("blocks Operations owners before calling the database too", () => {
     expect(code).toMatch(/OPERATIONS_PROFILE_ROLES/);
-    expect(code).toMatch(/"admin", "operations"/);
+    // Only `admin` exists: profiles_role_check permits customer, driver, admin.
+    expect(code).toMatch(/OPERATIONS_PROFILE_ROLES = \["admin"\]/);
   });
 
   it("returns no raw driver detail", () => {

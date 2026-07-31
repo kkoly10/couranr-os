@@ -47,7 +47,7 @@ export type CanonicalScreen = {
 
 export const CANONICAL_SCREENS: CanonicalScreen[] = [
   { id: "PUB-001", name: "Marketing homepage", group: "public", routes: ["/"], tier: "core", phase: "10", viewport: "responsive", implemented: false },
-  { id: "PUB-002", name: "Sign in", group: "public", routes: ["/sign-in"], tier: "core", phase: "10", viewport: "responsive", implemented: false },
+  { id: "PUB-002", name: "Sign in", group: "public", routes: ["/sign-in"], tier: "core", phase: "10", viewport: "responsive", implemented: true },
   { id: "PUB-003", name: "Business sign up", group: "public", routes: ["/sign-up"], tier: "core", phase: "4", viewport: "responsive", implemented: true },
   { id: "PUB-004", name: "Delivery estimate and hosted request", group: "public", routes: ["/estimate", "/request/[merchantSlug]"], tier: "core", phase: "5–6", viewport: "mobile-first", implemented: false },
   { id: "PUB-005", name: "Secure delivery payment", group: "public", routes: ["/pay/[token]"], tier: "core", phase: "6", viewport: "mobile-first", implemented: false },

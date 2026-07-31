@@ -90,13 +90,14 @@ describe("canonical screen registry", () => {
       "MER-006",
       "MER-007",
       "OPS-002",
+      "PUB-002",
       "PUB-003",
     ]);
 
     const p = implementationProgress();
     expect(p.total).toBe(66);
-    expect(p.implemented).toBe(6);
-    expect(p.remaining).toBe(60);
+    expect(p.implemented).toBe(7);
+    expect(p.remaining).toBe(59);
     expect(p.coreTotal).toBe(62);
   });
 

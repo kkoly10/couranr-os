@@ -64,11 +64,15 @@ export function SignUpForm() {
     }
 
     if (data.session) {
+      // Confirmation is off, or this address was already confirmed: Supabase
+      // returned a live session, so go straight on.
       router.push("/business/onboarding");
       router.refresh();
       return;
     }
-    // Email confirmation is on for this project.
+    // No session. That means confirmation is required for this project — which
+    // is a runtime property of the Supabase Auth configuration, not something
+    // this code should assert. Branch on what was actually returned.
     setCheckEmail(true);
   }
 
@@ -76,7 +80,7 @@ export function SignUpForm() {
     return (
       <SuccessState
         title="Check your email"
-        body="Confirm your address, then sign in to finish setting up your business."
+        body="Couranr sent a confirmation link to that address. Open it, then sign in to finish setting up your business."
         action={{ label: "Go to sign in", href: "/sign-in" }}
       />
     );
