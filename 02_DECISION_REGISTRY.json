@@ -1614,14 +1614,16 @@
     {
       "id": "LEG-002",
       "category": "legacy-route treatment",
-      "decision": "DRV-001 '/driver' is occupied by a legacy driver page; canonical driver subroutes coexist with it today.",
+      "decision": "DRV-001 '/driver' was occupied by a legacy driver page; the route is now owned by the canonical driver shell. RESOLVED.",
       "value": {
         "canonical_route": "/driver",
         "screen_id": "DRV-001",
-        "occupied_by": "app/driver/page.tsx",
+        "occupied_by": "app/(couranr)/driver/page.tsx",
         "authority_disposition": "replace",
-        "current_state": "canonical /driver not created; /driver/messages, /driver/availability and /driver/vehicle exist under the canonical shell",
-        "known_inconsistency": "the legacy /driver page and the canonical driver subroutes render different shells"
+        "current_state": "RESOLVED — /driver, /driver/deliveries, /driver/availability, /driver/messages and /driver/vehicle all render inside app/(couranr)/driver/layout.tsx (DriverShell + SurfaceGuard). The legacy app/driver/layout.tsx, which redirected anonymous visitors to /login, is deleted. Dashboard and deliveries content remains visually legacy inside the canonical shell by design.",
+        "known_inconsistency": "none for route ownership; DRV-001 and DRV-002 content is still legacy-styled inside the canonical shell and is redesigned in the driver execution slice",
+        "resolved_by": "fix(ui): unify canonical Couranr route ownership",
+        "collision_status": "resolved"
       },
       "status": "decided",
       "authority_file": "Couranr_Claude_Code_Master_Package.md",
@@ -1634,16 +1636,17 @@
       ],
       "affected_database_objects": [],
       "affected_code_paths": [
-        "app/driver/page.tsx",
-        "app/driver/layout.tsx",
+        "app/(couranr)/driver/page.tsx",
+        "app/(couranr)/driver/deliveries/page.tsx",
+        "app/(couranr)/driver/layout.tsx",
         "lib/couranr/navigation.ts:ROUTE_COLLISIONS"
       ],
       "conflict_with_current_code": {
         "code_value": {
-          "route_owner": "app/driver/page.tsx (legacy)"
+          "route_owner": "app/(couranr)/driver/page.tsx (canonical DriverShell + SurfaceGuard)"
         },
-        "code_location": "app/driver/page.tsx",
-        "resolution": "Same duplicate-route constraint as LEG-001.",
+        "code_location": "app/(couranr)/driver/page.tsx",
+        "resolution": "Resolved: the legacy driver layout is deleted and both legacy driver pages now compose the canonical shell. Anonymous access redirects to /sign-in, not /login.",
         "remediation_commit": "driver execution slice"
       },
       "implementation_phase": "6",

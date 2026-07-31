@@ -91,7 +91,9 @@ const NAV_LABELS: Record<string, string> = {
 export const ROUTE_COLLISIONS: { route: string; legacyFile: string; screenId: string }[] =
   [
     { route: "/", legacyFile: "app/page.tsx", screenId: "PUB-001" },
-    { route: "/driver", legacyFile: "app/driver/page.tsx", screenId: "DRV-001" },
+    // DRV-001 resolved: /driver is now owned by app/(couranr)/driver/, which
+    // composes DriverShell + SurfaceGuard like every other canonical route.
+    // The legacy app/driver/layout.tsx (getSession + redirect to /login) is gone.
   ];
 
 const COLLIDING = new Set(ROUTE_COLLISIONS.map((c) => c.route));

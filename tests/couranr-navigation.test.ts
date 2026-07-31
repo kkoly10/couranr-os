@@ -121,7 +121,10 @@ describe("role isolation", () => {
 describe("navigation omits routes a legacy page already occupies", () => {
   it("records both known collisions", () => {
     const routes = ROUTE_COLLISIONS.map((c) => c.route).sort();
-    expect(routes).toEqual(["/", "/driver"]);
+    // /driver was here until DRV-001 was resolved: app/(couranr)/driver/ now
+    // owns every /driver route under DriverShell + SurfaceGuard, so it is no
+    // longer a collision and IS reachable from driver navigation.
+    expect(routes).toEqual(["/"]);
   });
 
   it("does not link to a colliding route from any shell", () => {

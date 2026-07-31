@@ -314,10 +314,18 @@ describe("known code/spec conflicts are explicit", () => {
     expect(one.value.screen_id).toBe("PUB-001");
     expect(one.value.occupied_by).toBe("app/page.tsx");
 
+    // LEG-002 is RESOLVED: /driver is owned by the canonical shell now, so the
+    // occupant is the canonical file and the status is no longer "decided".
     const two = byId("LEG-002");
     expect(two.value.canonical_route).toBe("/driver");
     expect(two.value.screen_id).toBe("DRV-001");
-    expect(two.value.occupied_by).toBe("app/driver/page.tsx");
+    expect(two.value.occupied_by).toBe("app/(couranr)/driver/page.tsx");
+    // The DECISION was always "decided" (disposition: replace); what changed is
+    // that the code now matches it. The registry declares its own status
+    // vocabulary, so the collision outcome lives in `value`, not in `status`.
+    expect(two.status).toBe("decided");
+    expect(two.value.collision_status).toBe("resolved");
+    expect(two.value.current_state).toMatch(/^RESOLVED/);
   });
 
   it("resolves every conflict in favour of the written authority", () => {

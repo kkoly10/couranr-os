@@ -5,6 +5,7 @@ import type { CSSProperties, ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import PublicHeader from "@/components/PublicHeader";
 
 export default function DashboardLayout({
   children,
@@ -28,6 +29,8 @@ export default function DashboardLayout({
   });
 
   return (
+    <>
+      <PublicHeader />
     <div style={styles.shell}>
       <header style={styles.header}>
         <div style={styles.headerInner}>
@@ -66,6 +69,7 @@ export default function DashboardLayout({
 
       <main style={styles.main}>{children}</main>
     </div>
+    </>
   );
 }
 

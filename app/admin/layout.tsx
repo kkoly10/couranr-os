@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import PublicHeader from "@/components/PublicHeader";
 
 export default function AdminLayout({
   children,
@@ -18,6 +19,8 @@ export default function AdminLayout({
   }
 
   return (
+    <>
+      <PublicHeader />
     <div style={{ minHeight: "100vh", background: "#f8fafc" }}>
       <header
         style={{
@@ -84,6 +87,7 @@ export default function AdminLayout({
 
       <main>{children}</main>
     </div>
+    </>
   );
 }
 

@@ -1,9 +1,12 @@
 import Link from "next/link";
 import SiteFooter from "@/components/SiteFooter";
+import PublicHeader from "@/components/PublicHeader";
 import { serviceImageSets } from "@/lib/serviceImages";
 
 export default function HomePage() {
   return (
+    <>
+      <PublicHeader />
     <main className="page">
       <div className="bgGlow" aria-hidden="true" />
 
@@ -290,6 +293,7 @@ export default function HomePage() {
 
       <SiteFooter />
     </main>
+    </>
   );
 }
 
