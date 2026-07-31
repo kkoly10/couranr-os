@@ -1659,7 +1659,6 @@
       "value": {
         "disable": [
           "/api/delivery/assign-driver",
-          "/api/delivery/mark-in-transit",
           "/api/auto/*",
           "/api/docs/*"
         ],
@@ -1678,7 +1677,14 @@
           }
         ],
         "no_dual_write": true,
-        "new_requests_never_create_legacy_orders": true
+        "new_requests_never_create_legacy_orders": true,
+        "secured_rather_than_disabled": [
+          {
+            "route": "/api/delivery/mark-in-transit",
+            "reason": "rebuilt as a verified server command in 3c4e1ca; owner-confirmed",
+            "security_outcome": "no unauthenticated arbitrary status write remains"
+          }
+        ]
       },
       "status": "decided",
       "authority_file": "Couranr_Claude_Code_Master_Package.md",
@@ -1705,13 +1711,15 @@
           "mark_in_transit": "rebuilt as a verified server command, not disabled"
         },
         "code_location": "commit 3c4e1ca",
-        "resolution": "PARTIAL CONFLICT. §15 says disable /api/delivery/mark-in-transit; it was instead rebuilt as a verified server command because a live driver caller exists (app/driver/deliveries/page.tsx). Disabling it would have broken the only working driver action. The authority's intent - no unauthenticated arbitrary status write - is satisfied. Flagged for explicit confirmation.",
-        "remediation_commit": "confirm during driver execution slice"
+        "resolution": "CONFIRMED by the product owner. Section 15's instruction to disable /api/delivery/mark-in-transit applied to its unsafe unauthenticated implementation, which accepted a deliveryId from an unauthenticated body and wrote status with the service-role key. Commit 3c4e1ca rebuilt it as a verified server command: actor resolved from a Bearer token, assigned-driver or Operations required, allow-listed transition, status guarded UPDATE, and an audit event. The secured command satisfies the intended security outcome while preserving the active driver workflow, so it is KEPT rather than disabled.",
+        "remediation_commit": null,
+        "confirmed_by_owner": true
       },
       "implementation_phase": "6",
       "acceptance_criteria": [
         "No redirect target 404s.",
-        "No new request writes a legacy order row."
+        "No new request writes a legacy order row.",
+        "/api/delivery/mark-in-transit rejects anonymous callers and any driver who is not assigned."
       ]
     },
     {
