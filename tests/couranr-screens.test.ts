@@ -75,12 +75,32 @@ describe("canonical screen registry", () => {
     expect(ids).toEqual(["OPS-014", "OPS-017", "OPS-018", "OPS-021"]);
   });
 
-  it("reports honest progress — nothing is implemented yet", () => {
+  /**
+   * `implemented` means the screen is BUILT, not that a placeholder exists for
+   * it. The count is asserted against the explicit id list so a placeholder
+   * cannot be marked implemented without this failing.
+   */
+  it("reports honest progress — only the built screens are marked implemented", () => {
+    const built = CANONICAL_SCREENS.filter((s) => s.implemented)
+      .map((s) => s.id)
+      .sort();
+    expect(built).toEqual(["MER-005", "MER-006", "MER-007", "OPS-002"]);
+
     const p = implementationProgress();
     expect(p.total).toBe(66);
-    expect(p.implemented).toBe(0);
-    expect(p.remaining).toBe(66);
+    expect(p.implemented).toBe(4);
+    expect(p.remaining).toBe(62);
     expect(p.coreTotal).toBe(62);
+  });
+
+  /**
+   * OPS-002 declares two routes. Only `/operations/queue` is built; the second
+   * is still a placeholder, so it is asserted here rather than silently implied
+   * by the flag.
+   */
+  it("OPS-002 is built at /operations/queue only", () => {
+    const ops = getScreen("OPS-002");
+    expect(ops?.routes).toEqual(["/operations/queue", "/operations/deliveries"]);
   });
 
   it("returns undefined for an unknown id", () => {

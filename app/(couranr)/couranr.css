@@ -720,3 +720,16 @@
 .cr-state__title { margin: 0; font-size: var(--couranr-text-lg); font-weight: var(--couranr-weight-semibold); }
 .cr-state__body { margin: 0; max-width: 46ch; color: var(--couranr-text-muted); font-size: var(--couranr-text-sm); }
 .cr-state__actions { margin-top: var(--couranr-space-2); }
+
+/* -------------------------------------------------------------- List ---- */
+/* Namespaced like everything else here: `.cr-list` cannot restyle a legacy
+   auto/docs list, because those carry no cr- class. */
+.cr-list {
+  margin: 0;
+  padding-left: var(--couranr-space-5);
+  display: grid;
+  gap: var(--couranr-space-2);
+  color: var(--couranr-text-muted);
+  font-size: var(--couranr-text-sm);
+}
+.cr-list > li { margin: 0; }
