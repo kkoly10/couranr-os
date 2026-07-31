@@ -29,6 +29,7 @@ import {
   newIdempotencyKey,
   submitDeliveryRequestFromBrowser,
   isApiFailure,
+  withReference,
   type ApiFailure,
   type BusinessAccountOption,
 } from "./client";
@@ -251,7 +252,7 @@ export function NewDeliveryFlow() {
           <PermissionDeniedState />
         ) : null}
         {failure && failure.code !== "version_conflict" && failure.status !== 403 ? (
-          <ErrorState title="This could not be submitted" body={failure.error} />
+          <ErrorState title="This could not be submitted" body={withReference(failure)} />
         ) : null}
 
         <QuoteSummary request={request} />
@@ -287,7 +288,7 @@ export function NewDeliveryFlow() {
       <Stack gap={6}>
         {failure && failure.status === 403 ? <PermissionDeniedState /> : null}
         {failure && failure.status !== 403 ? (
-          <ErrorState title="This could not be priced" body={failure.error} />
+          <ErrorState title="This could not be priced" body={withReference(failure)} />
         ) : null}
 
         {accounts.length > 1 ? (

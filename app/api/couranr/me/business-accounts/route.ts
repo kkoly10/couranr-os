@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listActiveMemberships, resolveUserId } from "@/lib/couranr/requests/actor";
+import {
+  isActorDenied,
+  listActiveMemberships,
+  resolveUserId,
+} from "@/lib/couranr/requests/actor";
+import { routeFailure } from "@/lib/couranr/requests/respond";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +17,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET(req: NextRequest) {
   const user = await resolveUserId(req);
-  if (user.ok === false) return NextResponse.json({ error: user.error }, { status: user.status });
+  if (isActorDenied(user)) return routeFailure(user.code, user.error);
 
   const memberships = await listActiveMemberships(user.userId);
   return NextResponse.json({ businessAccounts: memberships });

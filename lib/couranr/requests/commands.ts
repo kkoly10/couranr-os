@@ -1,53 +1,70 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { assertServerOnly } from "@/lib/couranr/serverOnly";
 import { quoteDelivery, type QuoteResult } from "@/lib/couranr/pricing";
+import {
+  classifyDatabaseError,
+  logServerFailure,
+  newCorrelationId,
+  type PublicErrorCode,
+} from "@/lib/couranr/errors";
 import { canActOnDeliveryRequest, type RequestActor } from "./permissions";
 import {
   isNormalizeFailure,
   normalizeDeliveryRequestInput,
   type DeliveryRequestDraft,
 } from "./input";
-import { resolveTransition, type RequestCommand, type RequestState } from "./states";
+import { resolveTransition } from "./states";
 
 assertServerOnly("lib/couranr/requests/commands.ts");
 
 /**
  * Named server commands for the delivery-request lifecycle.
  *
- * Every command, without exception:
+ * ATOMICITY. Each mutating command is ONE `.rpc()` call into a service-role-only
+ * SQL function that performs the request mutation and the audit-event insert in
+ * a single transaction. The previous shape — `.update()` then `.insert(event)`
+ * — was two transactions, so a failed event insert left the mutation committed
+ * while the API reported an error: a state change with no audit trail.
+ *
+ * Every command still, before it calls anything:
  *   1. verifies the actor against DRP-001,
- *   2. re-scopes its own query by business_account_id — `service_role` has
- *      `rolbypassrls = true`, so the deny-all RLS on these tables does NOT
+ *   2. passes its own `business_account_id` scope into the function, which
+ *      re-checks it — `service_role` has `rolbypassrls = true`, so RLS does not
  *      constrain these queries; the GRANTs and this scoping are the boundary,
- *   3. checks the CURRENT state and takes an allow-listed transition,
- *   4. compare-and-sets `version`, so a concurrent write loses rather than
- *      silently overwriting,
- *   5. appends an audit event.
+ *   3. checks the CURRENT state against the state machine before calling, and
+ *      the function re-checks it in the same statement that writes,
+ *   4. compare-and-sets `version` inside the function's WHERE clause.
  *
  * No command accepts a target status from a caller, and no command accepts an
- * amount: prices come from `lib/couranr/pricing` and nowhere else.
+ * amount: prices come from `lib/couranr/pricing`, and the SQL functions have no
+ * payment-amount parameter at all.
  *
- * There is no `resilientUpdateById`-style retry here. If a column is missing
- * the write fails and the caller is told. A payment write that "succeeds"
- * having persisted none of its columns is the failure mode this repo already
- * has; it is not reproduced.
+ * There is no `resilientUpdateById`-style retry here. If a write fails the
+ * caller is told, with a correlation id, and nothing is persisted.
  */
 
 export const TABLE = "couranr_delivery_requests";
 export const EVENTS_TABLE = "couranr_delivery_request_events";
 
+export const RPC = {
+  create: "couranr_create_delivery_request_draft",
+  estimate: "couranr_calculate_delivery_request_estimate",
+  submit: "couranr_submit_delivery_request",
+  beginReview: "couranr_begin_delivery_request_review",
+} as const;
+
 export type CommandFailure = {
   ok: false;
-  status: 400 | 401 | 403 | 404 | 409 | 500;
-  error: string;
-  code:
-    | "not_permitted"
-    | "invalid_input"
-    | "not_found"
-    | "wrong_state"
-    | "version_conflict"
-    | "write_failed";
-  details?: unknown;
+  code: PublicErrorCode;
+  /** Quote this to Couranr Support to find the server log line. */
+  correlationId: string;
+  /**
+   * Present ONLY for `invalid_input`, and only ever our own field-level codes.
+   * A driver message, constraint name or table name never reaches here.
+   */
+  details?: Array<{ code: string; field?: string }>;
+  /** Optional override for the default public message. Never a driver string. */
+  message?: string;
 };
 
 export type CommandSuccess<T> = { ok: true; value: T };
@@ -103,52 +120,70 @@ export function isCommandFailure(r: { ok: boolean }): r is CommandFailure {
   return r.ok === false;
 }
 
-function denied(reason: string): CommandFailure {
-  return { ok: false, status: 403, error: reason, code: "not_permitted" };
+/**
+ * Turns any failure into a sanitized result, logging the real cause under a
+ * correlation id. This is the ONLY path from a driver error to a caller, and it
+ * forwards nothing but the classification.
+ */
+function fail(params: {
+  operation: string;
+  code: PublicErrorCode;
+  detail?: unknown;
+  message?: string;
+  details?: Array<{ code: string; field?: string }>;
+}): CommandFailure {
+  const correlationId = newCorrelationId();
+  logServerFailure({
+    correlationId,
+    operation: params.operation,
+    code: params.code,
+    detail: params.detail,
+  });
+  const out: CommandFailure = { ok: false, code: params.code, correlationId };
+  if (params.message) out.message = params.message;
+  if (params.details) out.details = params.details;
+  return out;
+}
+
+/** A denial carries no record detail — it must not reveal what exists. */
+function denied(operation: string, reason: string): CommandFailure {
+  return fail({
+    operation,
+    code: "not_permitted",
+    detail: { reason },
+    message: permissionMessage(reason),
+  });
 }
 
 /**
- * Appends an audit event. A failure here is returned, not swallowed: an
- * un-audited state change is a defect, not a cosmetic problem.
- *
- * `metadata` must never carry a secret, a token or a signed URL — the table
- * comment says so and the callers below pass only machine codes.
+ * Wraps an RPC call. A PostgREST error is classified by its SQLSTATE and never
+ * forwarded; the driver's own message goes only to the server log.
  */
-async function appendEvent(params: {
-  requestId: string;
-  actor: RequestActor;
-  command: RequestCommand;
-  fromState: RequestState | null;
-  toState: RequestState | null;
-  metadata?: Record<string, unknown>;
-}): Promise<{ ok: true } | CommandFailure> {
-  const actorType = params.actor.kind === "operations" ? "operations" : "merchant";
-  const actorUserId = params.actor.kind === "anonymous" ? null : params.actor.userId;
-
-  const { error } = await supabaseAdmin.from(EVENTS_TABLE).insert({
-    request_id: params.requestId,
-    actor_user_id: actorUserId,
-    actor_type: actorType,
-    command: params.command,
-    from_state: params.fromState,
-    to_state: params.toState,
-    metadata: params.metadata ?? {},
-  });
+async function callRpc(
+  operation: string,
+  fn: string,
+  args: Record<string, unknown>
+): Promise<CommandResult<DeliveryRequestRow>> {
+  const { data, error } = (await supabaseAdmin.rpc(fn, args)) as {
+    data: any;
+    error: any;
+  };
 
   if (error) {
-    return {
-      ok: false,
-      status: 500,
-      error: "The change could not be recorded. Nothing was applied.",
-      code: "write_failed",
-      details: error.message,
-    };
+    const code = classifyDatabaseError(error);
+    return fail({ operation, code, detail: { fn, code: error.code, message: error.message } });
   }
-  return { ok: true };
+  if (!data) {
+    // A composite-returning function that yields no row. Treated as a conflict
+    // rather than a success with an empty body.
+    return fail({ operation, code: "conflict", detail: { fn, reason: "no row returned" } });
+  }
+  return { ok: true, value: data };
 }
 
 /** Loads one request, scoped to the business it belongs to. */
 async function loadRequest(
+  operation: string,
   requestId: string,
   businessAccountId: string | null
 ): Promise<CommandResult<DeliveryRequestRow>> {
@@ -160,16 +195,10 @@ async function loadRequest(
 
   const { data, error } = (await query.maybeSingle()) as { data: any; error: any };
   if (error) {
-    return {
-      ok: false,
-      status: 500,
-      error: "Could not load this delivery request.",
-      code: "write_failed",
-      details: error.message,
-    };
+    return fail({ operation, code: "internal", detail: error.message });
   }
   if (!data) {
-    return { ok: false, status: 404, error: "Delivery request not found.", code: "not_found" };
+    return fail({ operation, code: "not_found", message: "Delivery request not found." });
   }
   return { ok: true, value: data };
 }
@@ -191,57 +220,56 @@ function quoteFromRow(row: DeliveryRequestRow, overnightRequested: boolean): Quo
 }
 
 /**
- * Columns the SHIPMENT owns. Shared by create and re-estimate so the two paths
- * cannot drift — a field persisted on create but forgotten on edit would leave
- * the stored shipment describing a different delivery from the stored quote.
+ * Shipment arguments. Shared by create and re-estimate so the two paths cannot
+ * drift — a field sent on create but forgotten on edit would leave the stored
+ * shipment describing a different delivery from the stored quote.
  *
- * Identity and lifecycle columns are deliberately absent: `business_account_id`,
- * `created_by`, `idempotency_key`, `request_state`, `review_state` and
- * `service_area_review_state` are not the merchant's to edit.
+ * Identity and lifecycle are deliberately absent: the SQL functions hard-code
+ * every state and own `business_account_id`, `created_by` and the idempotency
+ * key as separate arguments.
  */
-export function shipmentColumns(draft: DeliveryRequestDraft) {
+export function shipmentArgs(draft: DeliveryRequestDraft) {
   return {
-    source: draft.source,
-    readiness_state: draft.readinessState,
-    payer_type: draft.payerType,
-    recipient_name: draft.recipientName,
-    recipient_phone: draft.recipientPhone,
-    recipient_email: draft.recipientEmail,
-    loaded_miles: draft.loadedMiles,
-    weight_lb: draft.weightLb,
-    additional_stops: draft.additionalStops,
-    service_level: draft.serviceLevel,
-    signature_required: draft.signatureRequired,
-    proof_method: draft.proofMethod,
-    pickup_address: draft.pickupAddress,
-    dropoff_address: draft.dropoffAddress,
-    normalized_request_payload: {
-      // Overnight is not a column (the service-level CHECK allows three
-      // values). Persisting it here is what lets a later re-quote or submit
-      // reproduce the manual-review outcome instead of silently pricing the
-      // request as standard.
-      overnightRequested: draft.overnightRequested,
-    },
+    p_source: draft.source,
+    p_readiness_state: draft.readinessState,
+    p_payer_type: draft.payerType,
+    p_recipient_name: draft.recipientName,
+    p_recipient_phone: draft.recipientPhone,
+    p_recipient_email: draft.recipientEmail,
+    p_loaded_miles: draft.loadedMiles,
+    p_weight_lb: draft.weightLb,
+    p_additional_stops: draft.additionalStops,
+    p_service_level: draft.serviceLevel,
+    p_signature_required: draft.signatureRequired,
+    p_proof_method: draft.proofMethod,
+    p_pickup_address: draft.pickupAddress,
+    p_dropoff_address: draft.dropoffAddress,
+    // Overnight is not a column (the service-level CHECK allows three values).
+    // The function stores it in normalized_request_payload so a later re-quote
+    // reproduces the manual-review outcome instead of pricing it as standard.
+    p_overnight_requested: draft.overnightRequested,
   };
 }
 
-/** Columns the quote owns. Written together or not at all. */
-export function quoteColumns(quote: QuoteResult) {
+/**
+ * Quote arguments — SERVER-COMPUTED ONLY.
+ *
+ * There is deliberately no payment argument: the SQL functions have no
+ * `payment_due_cents` parameter and hard-code it null, alongside
+ * `rounding_applied` and `tax_included` false. The function also re-checks that
+ * the subtotal equals the sum of the line items and raises CR422 if not, so a
+ * bug on this side cannot persist an inconsistent quote.
+ */
+export function quoteArgs(quote: QuoteResult) {
   const estimated = quote.quoteStatus === "estimated";
   return {
-    quote_status: quote.quoteStatus,
-    pricing_policy_version: estimated ? quote.policyVersion : null,
-    delivery_subtotal_cents: estimated ? quote.deliverySubtotalCents : null,
-    included_loaded_miles: quote.includedLoadedMiles,
-    billable_loaded_miles: quote.billableLoadedMiles,
-    quote_line_items: quote.lineItems,
-    review_reasons: quote.reviewReasons,
-    // Asserted, not inherited: the database CHECKs these three and the pricing
-    // engine types them as literals. Writing them explicitly means a future
-    // change to either side fails here rather than drifting.
-    rounding_applied: quote.roundingApplied,
-    tax_included: quote.taxIncluded,
-    payment_due_cents: quote.paymentDueCents,
+    p_quote_status: quote.quoteStatus,
+    p_pricing_policy_version: estimated ? quote.policyVersion : null,
+    p_delivery_subtotal_cents: estimated ? quote.deliverySubtotalCents : null,
+    p_included_loaded_miles: quote.includedLoadedMiles,
+    p_billable_loaded_miles: quote.billableLoadedMiles,
+    p_quote_line_items: quote.lineItems,
+    p_review_reasons: quote.reviewReasons,
   };
 }
 
@@ -253,26 +281,26 @@ export async function createDeliveryRequestDraft(params: {
   rawInput: unknown;
   idempotencyKey: string;
 }): Promise<CommandResult<{ request: DeliveryRequestRow; quote: QuoteResult }>> {
+  const op = "createDeliveryRequestDraft";
   const permission = canActOnDeliveryRequest(params.actor, "create", params.businessAccountId);
-  if (!permission.allowed) return denied(permissionMessage(permission.reason));
+  if (!permission.allowed) return denied(op, permission.reason);
 
   const normalized = normalizeDeliveryRequestInput(params.rawInput);
   if (isNormalizeFailure(normalized)) {
-    return {
-      ok: false,
-      status: 400,
-      error: "Some details need attention before this delivery can be created.",
+    return fail({
+      operation: op,
       code: "invalid_input",
+      detail: normalized.errors,
       details: normalized.errors,
-    };
+      message: "Some details need attention before this delivery can be created.",
+    });
   }
   const draft: DeliveryRequestDraft = normalized.value;
 
   if (params.actor.kind !== "member") {
     // Operations does not create on a merchant's behalf in this slice, and an
-    // anonymous actor never reaches here. Belt and braces: created_by must be
-    // a real user id, and only a member has one in this path.
-    return denied("Couranr Operations cannot create a request on a merchant's behalf.");
+    // anonymous actor never reaches here. `created_by` must be a real member.
+    return denied(op, "role_may_not_write");
   }
 
   const quote = quoteDelivery({
@@ -285,80 +313,40 @@ export async function createDeliveryRequestDraft(params: {
   });
 
   if (quote.quoteStatus === "invalid") {
-    return {
-      ok: false,
-      status: 400,
-      error: "These shipment details cannot be priced.",
+    return fail({
+      operation: op,
       code: "invalid_input",
-      details: quote.validationErrors,
-    };
+      detail: quote.validationErrors,
+      details: quote.validationErrors.map((code) => ({ code })),
+      message: "These shipment details cannot be priced.",
+    });
   }
 
-  const insert = {
-    business_account_id: params.businessAccountId,
-    created_by: params.actor.userId,
-    idempotency_key: params.idempotencyKey,
-    request_state: "draft" as const,
-    review_state: "not_required" as const,
-    // SVC-002 is unresolved, so no request is auto-accepted or auto-declined
-    // on geography. Every one is captured for review.
-    service_area_review_state: "pending" as const,
-    ...shipmentColumns(draft),
-    ...quoteColumns(quote),
-  };
-
-  const { data, error } = (await supabaseAdmin
-    .from(TABLE)
-    .insert(insert)
-    .select(REQUEST_COLUMNS)
-    .single()) as { data: any; error: any };
-
-  if (error) {
-    // 23505 is the (business_account_id, idempotency_key) unique constraint:
-    // the same submission arriving twice, not a new request.
-    if ((error as any).code === "23505") {
-      const existing = (await supabaseAdmin
-        .from(TABLE)
-        .select(REQUEST_COLUMNS)
-        .eq("business_account_id", params.businessAccountId)
-        .eq("idempotency_key", params.idempotencyKey)
-        .maybeSingle()) as { data: any };
-      if (existing.data) {
-        // Return the request that already exists, quoted from ITS stored
-        // fields. Re-quoting from `draft` would report numbers that were never
-        // persisted if the two payloads differed.
-        return {
-          ok: true,
-          value: {
-            request: existing.data,
-            quote: quoteFromRow(
-              existing.data,
-              existing.data.normalized_request_payload?.overnightRequested === true
-            ),
-          },
-        };
-      }
-    }
-    return {
-      ok: false,
-      status: 500,
-      error: "This delivery request could not be created.",
-      code: "write_failed",
-      details: error.message,
-    };
-  }
-
-  const audit = await appendEvent({
-    requestId: data.id,
-    actor: params.actor,
-    command: "create_delivery_request_draft",
-    fromState: null,
-    toState: "draft",
-    metadata: { quoteStatus: quote.quoteStatus, reviewReasons: quote.reviewReasons },
+  // One transactional call: the request and its creation event, or neither.
+  // Idempotency is enforced by the function on (business_account_id,
+  // idempotency_key), so a retry returns the original and appends no second
+  // creation event.
+  const result = await callRpc(op, RPC.create, {
+    p_business_account_id: params.businessAccountId,
+    p_created_by: params.actor.userId,
+    p_idempotency_key: params.idempotencyKey,
+    ...shipmentArgs(draft),
+    ...quoteArgs(quote),
   });
-  if (isCommandFailure(audit)) return audit;
+  if (isCommandFailure(result)) return result;
 
-  return { ok: true, value: { request: data, quote } };
+  return {
+    ok: true,
+    value: {
+      request: result.value,
+      // Report the quote the DATABASE holds. On an idempotent replay the stored
+      // request may differ from this attempt's payload, and the stored one wins.
+      quote: quoteFromRow(
+        result.value,
+        result.value.normalized_request_payload?.overnightRequested === true
+      ),
+    },
+  };
 }
 
 /* ------------------------------------ calculate_delivery_request_estimate */
@@ -375,28 +363,28 @@ export async function calculateDeliveryRequestEstimate(params: {
    */
   rawInput?: unknown;
 }): Promise<CommandResult<{ request: DeliveryRequestRow; quote: QuoteResult }>> {
+  const op = "calculateDeliveryRequestEstimate";
   const permission = canActOnDeliveryRequest(params.actor, "create", params.businessAccountId);
-  if (!permission.allowed) return denied(permissionMessage(permission.reason));
+  if (!permission.allowed) return denied(op, permission.reason);
+  if (params.actor.kind === "anonymous") return denied(op, "anonymous");
 
-  const loaded = await loadRequest(params.requestId, params.businessAccountId);
+  const loaded = await loadRequest(op, params.requestId, params.businessAccountId);
   if (isCommandFailure(loaded)) return loaded;
   const row = loaded.value;
 
   const transition = resolveTransition("calculate_delivery_request_estimate", row.request_state);
   if (!transition.allowed) {
-    return {
-      ok: false,
-      status: 409,
-      error: "This delivery request can no longer be re-estimated.",
+    return fail({
+      operation: op,
       code: "wrong_state",
-    };
+      detail: { from: row.request_state },
+      message: "This delivery request can no longer be re-estimated.",
+    });
   }
 
-  // The shipment the quote is computed from, and the columns to persist with
-  // it. Either the edited draft or the stored row — never a mix of the two, so
-  // the stored shipment and the stored quote can never describe different
-  // deliveries.
-  let shipmentPatch: Record<string, unknown> = {};
+  // Either the edited draft or the stored row — never a mix, so the stored
+  // shipment and the stored quote can never describe different deliveries.
+  let shipment: ReturnType<typeof shipmentArgs> | null = null;
   let quote: QuoteResult;
 
   if (params.rawInput === undefined) {
@@ -404,16 +392,16 @@ export async function calculateDeliveryRequestEstimate(params: {
   } else {
     const normalized = normalizeDeliveryRequestInput(params.rawInput);
     if (isNormalizeFailure(normalized)) {
-      return {
-        ok: false,
-        status: 400,
-        error: "Some details need attention before this delivery can be priced.",
+      return fail({
+        operation: op,
         code: "invalid_input",
+        detail: normalized.errors,
         details: normalized.errors,
-      };
+        message: "Some details need attention before this delivery can be priced.",
+      });
     }
     const draft = normalized.value;
-    shipmentPatch = shipmentColumns(draft);
+    shipment = shipmentArgs(draft);
     quote = quoteDelivery({
       loadedMiles: draft.loadedMiles,
       weightLb: draft.weightLb,
@@ -425,34 +413,30 @@ export async function calculateDeliveryRequestEstimate(params: {
   }
 
   if (quote.quoteStatus === "invalid") {
-    return {
-      ok: false,
-      status: 400,
-      error: "These shipment details cannot be priced.",
+    return fail({
+      operation: op,
       code: "invalid_input",
-      details: quote.validationErrors,
-    };
+      detail: quote.validationErrors,
+      details: quote.validationErrors.map((code) => ({ code })),
+      message: "These shipment details cannot be priced.",
+    });
   }
 
-  const updated = await updateWithVersion({
-    requestId: params.requestId,
-    businessAccountId: params.businessAccountId,
-    expectedVersion: params.expectedVersion,
-    patch: { ...shipmentPatch, ...quoteColumns(quote) },
+  // The function ignores every shipment argument when p_update_shipment is
+  // false, so the stored row is passed through unchanged rather than rewritten
+  // from a partially reconstructed draft.
+  const result = await callRpc(op, RPC.estimate, {
+    p_request_id: params.requestId,
+    p_business_account_id: params.businessAccountId,
+    p_expected_version: params.expectedVersion,
+    p_actor_user_id: params.actor.userId,
+    p_update_shipment: shipment !== null,
+    ...(shipment ?? shipmentArgsFromRow(row)),
+    ...quoteArgs(quote),
   });
-  if (isCommandFailure(updated)) return updated;
+  if (isCommandFailure(result)) return result;
 
-  const audit = await appendEvent({
-    requestId: params.requestId,
-    actor: params.actor,
-    command: "calculate_delivery_request_estimate",
-    fromState: row.request_state,
-    toState: row.request_state,
-    metadata: { quoteStatus: quote.quoteStatus, reviewReasons: quote.reviewReasons },
-  });
-  if (isCommandFailure(audit)) return audit;
-
-  return { ok: true, value: { request: updated.value, quote } };
+  return { ok: true, value: { request: result.value, quote } };
 }
 
 /* ------------------------------------------------ submit_delivery_request */
@@ -463,62 +447,49 @@ export async function submitDeliveryRequest(params: {
   requestId: string;
   expectedVersion: number;
 }): Promise<CommandResult<{ request: DeliveryRequestRow }>> {
+  const op = "submitDeliveryRequest";
   const permission = canActOnDeliveryRequest(params.actor, "submit", params.businessAccountId);
-  if (!permission.allowed) return denied(permissionMessage(permission.reason));
+  if (!permission.allowed) return denied(op, permission.reason);
+  if (params.actor.kind === "anonymous") return denied(op, "anonymous");
 
-  const loaded = await loadRequest(params.requestId, params.businessAccountId);
+  const loaded = await loadRequest(op, params.requestId, params.businessAccountId);
   if (isCommandFailure(loaded)) return loaded;
   const row = loaded.value;
 
   const transition = resolveTransition("submit_delivery_request", row.request_state);
   if (!transition.allowed) {
-    return {
-      ok: false,
-      status: 409,
-      error: "This delivery request has already been submitted.",
+    return fail({
+      operation: op,
       code: "wrong_state",
-    };
+      detail: { from: row.request_state },
+      message: "This delivery request has already been submitted.",
+    });
   }
 
-  // The quote is recomputed at submission and re-persisted, so what Couranr
-  // reviews is what the server computes now — not a stale number a merchant
-  // may have been looking at for an hour.
-  const overnightRequested = row.normalized_request_payload?.overnightRequested === true;
-  const quote = quoteFromRow(row, overnightRequested);
+  // The quote is recomputed at submission, so what Couranr reviews is what the
+  // server computes now — not a stale number a merchant may have been looking
+  // at for an hour.
+  const quote = quoteFromRow(row, row.normalized_request_payload?.overnightRequested === true);
   if (quote.quoteStatus === "invalid") {
-    return {
-      ok: false,
-      status: 400,
-      error: "These shipment details cannot be priced.",
+    return fail({
+      operation: op,
       code: "invalid_input",
-      details: quote.validationErrors,
-    };
+      detail: quote.validationErrors,
+      details: quote.validationErrors.map((code) => ({ code })),
+      message: "These shipment details cannot be priced.",
+    });
   }
 
-  const updated = await updateWithVersion({
-    requestId: params.requestId,
-    businessAccountId: params.businessAccountId,
-    expectedVersion: params.expectedVersion,
-    patch: {
-      ...quoteColumns(quote),
-      request_state: transition.nextState,
-      review_state: "pending",
-      submitted_at: new Date().toISOString(),
-    },
+  const result = await callRpc(op, RPC.submit, {
+    p_request_id: params.requestId,
+    p_business_account_id: params.businessAccountId,
+    p_expected_version: params.expectedVersion,
+    p_actor_user_id: params.actor.userId,
+    ...quoteArgs(quote),
   });
-  if (isCommandFailure(updated)) return updated;
+  if (isCommandFailure(result)) return result;
 
-  const audit = await appendEvent({
-    requestId: params.requestId,
-    actor: params.actor,
-    command: "submit_delivery_request",
-    fromState: row.request_state,
-    toState: transition.nextState,
-    metadata: { quoteStatus: quote.quoteStatus, reviewReasons: quote.reviewReasons },
-  });
-  if (isCommandFailure(audit)) return audit;
-
-  return { ok: true, value: { request: updated.value } };
+  return { ok: true, value: { request: result.value } };
 }
 
 /* ------------------------------------------ begin_delivery_request_review */
@@ -528,9 +499,10 @@ export async function beginDeliveryRequestReview(params: {
   requestId: string;
   expectedVersion: number;
 }): Promise<CommandResult<{ request: DeliveryRequestRow }>> {
+  const op = "beginDeliveryRequestReview";
   // Operations reads and reviews across businesses, so the scope is null here
-  // and `canActOnDeliveryRequest` is asked about the request's own business.
-  const loaded = await loadRequest(params.requestId, null);
+  // and the permission check asks about the request's own business.
+  const loaded = await loadRequest(op, params.requestId, null);
   if (isCommandFailure(loaded)) return loaded;
   const row = loaded.value;
 
@@ -539,40 +511,28 @@ export async function beginDeliveryRequestReview(params: {
     "review",
     String(row.business_account_id)
   );
-  if (!permission.allowed) return denied(permissionMessage(permission.reason));
+  if (!permission.allowed) return denied(op, permission.reason);
+  if (params.actor.kind === "anonymous") return denied(op, "anonymous");
 
   const transition = resolveTransition("begin_delivery_request_review", row.request_state);
   if (!transition.allowed) {
-    return {
-      ok: false,
-      status: 409,
-      error: "This request is not waiting for Couranr review.",
+    return fail({
+      operation: op,
       code: "wrong_state",
-    };
+      detail: { from: row.request_state },
+      message: "This request is not waiting for Couranr review.",
+    });
   }
 
-  // Opening a request for review records who opened it and bumps the version.
-  // It does NOT decide the outcome: accept, requote and decline are not part
-  // of this slice, and no code here can reach those states.
-  const updated = await updateWithVersion({
-    requestId: params.requestId,
-    businessAccountId: String(row.business_account_id),
-    expectedVersion: params.expectedVersion,
-    patch: {},
+  const result = await callRpc(op, RPC.beginReview, {
+    p_request_id: params.requestId,
+    p_business_account_id: String(row.business_account_id),
+    p_expected_version: params.expectedVersion,
+    p_actor_user_id: params.actor.userId,
   });
-  if (isCommandFailure(updated)) return updated;
+  if (isCommandFailure(result)) return result;
 
-  const audit = await appendEvent({
-    requestId: params.requestId,
-    actor: params.actor,
-    command: "begin_delivery_request_review",
-    fromState: row.request_state,
-    toState: transition.nextState,
-    metadata: { openedBy: "operations" },
-  });
-  if (isCommandFailure(audit)) return audit;
-
-  return { ok: true, value: { request: updated.value } };
+  return { ok: true, value: { request: result.value } };
 }
 
 /* --------------------------------------------------------------- reads --- */
@@ -582,12 +542,13 @@ export async function getDeliveryRequest(params: {
   businessAccountId: string | null;
   requestId: string;
 }): Promise<CommandResult<{ request: DeliveryRequestRow; events: DeliveryRequestRow[] }>> {
-  const loaded = await loadRequest(params.requestId, params.businessAccountId);
+  const op = "getDeliveryRequest";
+  const loaded = await loadRequest(op, params.requestId, params.businessAccountId);
   if (isCommandFailure(loaded)) return loaded;
   const row = loaded.value;
 
   const permission = canActOnDeliveryRequest(params.actor, "read", String(row.business_account_id));
-  if (!permission.allowed) return denied(permissionMessage(permission.reason));
+  if (!permission.allowed) return denied(op, permission.reason);
 
   const { data: events } = await supabaseAdmin
     .from(EVENTS_TABLE)
@@ -604,9 +565,8 @@ export async function listReviewQueue(params: {
   actor: RequestActor;
   limit?: number;
 }): Promise<CommandResult<DeliveryRequestRow[]>> {
-  if (params.actor.kind !== "operations") {
-    return denied("Couranr Operations access required.");
-  }
+  const op = "listReviewQueue";
+  if (params.actor.kind !== "operations") return denied(op, "role_may_not_review");
 
   const { data, error } = await supabaseAdmin
     .from(TABLE)
@@ -616,13 +576,12 @@ export async function listReviewQueue(params: {
     .limit(Math.min(Math.max(params.limit ?? 50, 1), 200));
 
   if (error) {
-    return {
-      ok: false,
-      status: 500,
-      error: "The Couranr Operations Queue could not be loaded.",
-      code: "write_failed",
-      details: error.message,
-    };
+    return fail({
+      operation: op,
+      code: "internal",
+      detail: error.message,
+      message: "The Couranr Operations Queue could not be loaded.",
+    });
   }
   return { ok: true, value: data ?? [] };
 }
@@ -633,8 +592,9 @@ export async function listDeliveryRequests(params: {
   businessAccountId: string;
   limit?: number;
 }): Promise<CommandResult<DeliveryRequestRow[]>> {
+  const op = "listDeliveryRequests";
   const permission = canActOnDeliveryRequest(params.actor, "read", params.businessAccountId);
-  if (!permission.allowed) return denied(permissionMessage(permission.reason));
+  if (!permission.allowed) return denied(op, permission.reason);
 
   const { data, error } = await supabaseAdmin
     .from(TABLE)
@@ -644,13 +604,12 @@ export async function listDeliveryRequests(params: {
     .limit(Math.min(Math.max(params.limit ?? 50, 1), 200));
 
   if (error) {
-    return {
-      ok: false,
-      status: 500,
-      error: "Your deliveries could not be loaded.",
-      code: "write_failed",
-      details: error.message,
-    };
+    return fail({
+      operation: op,
+      code: "internal",
+      detail: error.message,
+      message: "Your deliveries could not be loaded.",
+    });
   }
   return { ok: true, value: data ?? [] };
 }
@@ -658,55 +617,32 @@ export async function listDeliveryRequests(params: {
 /* ------------------------------------------------------------ internals -- */
 
 /**
- * Compare-and-set on `version`. Matching zero rows means someone else wrote
- * first — reported as a conflict, never retried blindly.
+ * The stored shipment, shaped as function arguments.
+ *
+ * Only used to fill the positional arguments of a re-estimate that is NOT
+ * updating the shipment. The function ignores every one of them in that branch;
+ * they are supplied because PostgREST requires a value for a parameter with no
+ * default, and passing the stored values keeps the call self-consistent if that
+ * branch ever changes.
  */
-async function updateWithVersion(params: {
-  requestId: string;
-  businessAccountId: string;
-  expectedVersion: number;
-  patch: Record<string, unknown>;
-}): Promise<CommandResult<DeliveryRequestRow>> {
-  if (!Number.isInteger(params.expectedVersion) || params.expectedVersion < 1) {
-    return {
-      ok: false,
-      status: 409,
-      error: "This delivery request changed while you were working on it. Reload and try again.",
-      code: "version_conflict",
-    };
-  }
-
-  const { data, error } = (await supabaseAdmin
-    .from(TABLE)
-    .update({
-      ...params.patch,
-      version: params.expectedVersion + 1,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", params.requestId)
-    .eq("business_account_id", params.businessAccountId)
-    .eq("version", params.expectedVersion)
-    .select(REQUEST_COLUMNS)
-    .maybeSingle()) as { data: any; error: any };
-
-  if (error) {
-    return {
-      ok: false,
-      status: 500,
-      error: "This delivery request could not be updated.",
-      code: "write_failed",
-      details: error.message,
-    };
-  }
-  if (!data) {
-    return {
-      ok: false,
-      status: 409,
-      error: "This delivery request changed while you were working on it. Reload and try again.",
-      code: "version_conflict",
-    };
-  }
-  return { ok: true, value: data };
+function shipmentArgsFromRow(row: DeliveryRequestRow) {
+  return {
+    p_source: row.source,
+    p_readiness_state: row.readiness_state,
+    p_payer_type: row.payer_type,
+    p_recipient_name: row.recipient_name,
+    p_recipient_phone: row.recipient_phone,
+    p_recipient_email: row.recipient_email,
+    p_loaded_miles: row.loaded_miles,
+    p_weight_lb: row.weight_lb,
+    p_additional_stops: row.additional_stops,
+    p_service_level: row.service_level,
+    p_signature_required: row.signature_required,
+    p_proof_method: row.proof_method,
+    p_pickup_address: row.pickup_address,
+    p_dropoff_address: row.dropoff_address,
+    p_overnight_requested: row.normalized_request_payload?.overnightRequested === true,
+  };
 }
 
 function permissionMessage(reason: string): string {

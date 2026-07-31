@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { assertServerOnly } from "@/lib/couranr/serverOnly";
+import type { PublicErrorCode } from "@/lib/couranr/errors";
 import type { MemberRole, MemberStatus, Membership, RequestActor } from "./permissions";
 
 assertServerOnly("lib/couranr/requests/actor.ts");
@@ -20,7 +21,11 @@ assertServerOnly("lib/couranr/requests/actor.ts");
 
 const OPERATIONS_PROFILE_ROLES = ["admin", "operations"] as const;
 
-export type ActorDenied = { ok: false; status: 401 | 403 | 500; error: string };
+/**
+ * Carries a public error CODE, not an HTTP status: the status is derived once,
+ * in `lib/couranr/errors.ts`, so a route cannot invent its own mapping.
+ */
+export type ActorDenied = { ok: false; code: PublicErrorCode; error: string };
 export type ActorResolution =
   | { ok: true; actor: RequestActor; userId: string }
   | ActorDenied;
@@ -29,7 +34,7 @@ export type ActorResolution =
  * `tsconfig` sets `"strict": false`; without `strictNullChecks` a bare
  * `if (!r.ok)` does not narrow this union. An explicit predicate does.
  */
-export function isActorDenied(r: ActorResolution): r is ActorDenied {
+export function isActorDenied(r: { ok: boolean }): r is ActorDenied {
   return r.ok === false;
 }
 
@@ -43,13 +48,17 @@ function bearerToken(req: NextRequest): string | null {
 /** Validates the Bearer token and returns the caller's user id. */
 export async function resolveUserId(
   req: NextRequest
-): Promise<{ ok: true; userId: string } | { ok: false; status: 401; error: string }> {
+): Promise<{ ok: true; userId: string } | ActorDenied> {
   const token = bearerToken(req);
-  if (!token) return { ok: false, status: 401, error: "Sign in to continue." };
+  if (!token) return { ok: false, code: "unauthenticated", error: "Sign in to continue." };
 
   const { data, error } = await supabaseAdmin.auth.getUser(token);
   if (error || !data?.user) {
-    return { ok: false, status: 401, error: "Your session has expired. Sign in again." };
+    return {
+      ok: false,
+      code: "unauthenticated",
+      error: "Your session has expired. Sign in again.",
+    };
   }
   return { ok: true, userId: data.user.id };
 }
@@ -66,12 +75,16 @@ export async function resolveRequestActor(
 ): Promise<ActorResolution> {
   const token = bearerToken(req);
   if (!token) {
-    return { ok: false, status: 401, error: "Sign in to continue." };
+    return { ok: false, code: "unauthenticated", error: "Sign in to continue." };
   }
 
   const { data: userData, error: userError } = await supabaseAdmin.auth.getUser(token);
   if (userError || !userData?.user) {
-    return { ok: false, status: 401, error: "Your session has expired. Sign in again." };
+    return {
+      ok: false,
+      code: "unauthenticated",
+      error: "Your session has expired. Sign in again.",
+    };
   }
   const userId = userData.user.id;
 
@@ -84,7 +97,7 @@ export async function resolveRequestActor(
     .maybeSingle();
 
   if (profileError) {
-    return { ok: false, status: 500, error: "Could not verify your account." };
+    return { ok: false, code: "internal", error: "Could not verify your account." };
   }
 
   const isOperations = OPERATIONS_PROFILE_ROLES.includes(
@@ -93,7 +106,7 @@ export async function resolveRequestActor(
 
   if (businessAccountId === null) {
     if (!isOperations) {
-      return { ok: false, status: 403, error: "Couranr Operations access required." };
+      return { ok: false, code: "not_permitted", error: "Couranr Operations access required." };
     }
     return { ok: true, actor: { kind: "operations", userId }, userId };
   }
@@ -110,7 +123,7 @@ export async function resolveRequestActor(
     .maybeSingle();
 
   if (memberError) {
-    return { ok: false, status: 500, error: "Could not verify your business access." };
+    return { ok: false, code: "internal", error: "Could not verify your business access." };
   }
 
   const membership: Membership | null = member

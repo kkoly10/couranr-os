@@ -4,6 +4,7 @@ import {
   calculateDeliveryRequestEstimate,
   isCommandFailure,
 } from "@/lib/couranr/requests/commands";
+import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
 import { toDeliveryRequestView } from "@/lib/couranr/requests/view";
 
 export const dynamic = "force-dynamic";
@@ -20,28 +21,28 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
  */
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   if (!UUID_RE.test(params.id)) {
-    return NextResponse.json({ error: "Delivery request not found." }, { status: 404 });
+    return routeFailure("not_found", "Delivery request not found.");
   }
 
   let body: any;
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "Expected a JSON body." }, { status: 400 });
+    return routeFailure("invalid_input", "Expected a JSON body.");
   }
 
   const businessAccountId = String(body?.businessAccountId ?? "");
   if (!UUID_RE.test(businessAccountId)) {
-    return NextResponse.json({ error: "A business account is required." }, { status: 400 });
+    return routeFailure("invalid_input", "A business account is required.");
   }
 
   const expectedVersion = Number(body?.expectedVersion);
-  if (!Number.isInteger(expectedVersion)) {
-    return NextResponse.json({ error: "A request version is required." }, { status: 400 });
+  if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
+    return routeFailure("invalid_input", "A request version is required.");
   }
 
   const actor = await resolveRequestActor(req, businessAccountId);
-  if (isActorDenied(actor)) return NextResponse.json({ error: actor.error }, { status: actor.status });
+  if (isActorDenied(actor)) return routeFailure(actor.code, actor.error);
 
   const result = await calculateDeliveryRequestEstimate({
     actor: actor.actor,
@@ -52,12 +53,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     rawInput: body?.request,
   });
 
-  if (isCommandFailure(result)) {
-    return NextResponse.json(
-      { error: result.error, code: result.code, details: result.details },
-      { status: result.status }
-    );
-  }
+  if (isCommandFailure(result)) return failureResponse(result);
 
   return NextResponse.json({ request: toDeliveryRequestView(result.value.request) });
 }

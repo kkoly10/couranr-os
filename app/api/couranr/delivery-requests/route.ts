@@ -5,6 +5,7 @@ import {
   isCommandFailure,
   listDeliveryRequests,
 } from "@/lib/couranr/requests/commands";
+import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
 import { toDeliveryRequestView } from "@/lib/couranr/requests/view";
 
 export const dynamic = "force-dynamic";
@@ -26,23 +27,20 @@ export async function POST(req: NextRequest) {
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "Expected a JSON body." }, { status: 400 });
+    return routeFailure("invalid_input", "Expected a JSON body.");
   }
 
   const businessAccountId = String(body?.businessAccountId ?? "");
   if (!UUID_RE.test(businessAccountId)) {
-    return NextResponse.json({ error: "A business account is required." }, { status: 400 });
+    return routeFailure("invalid_input", "A business account is required.");
   }
 
   const actor = await resolveRequestActor(req, businessAccountId);
-  if (isActorDenied(actor)) return NextResponse.json({ error: actor.error }, { status: actor.status });
+  if (isActorDenied(actor)) return routeFailure(actor.code, actor.error);
 
   const idempotencyKey = readIdempotencyKey(req, body);
   if (!idempotencyKey) {
-    return NextResponse.json(
-      { error: "An Idempotency-Key header is required." },
-      { status: 400 }
-    );
+    return routeFailure("invalid_input", "An Idempotency-Key header is required.");
   }
 
   const result = await createDeliveryRequestDraft({
@@ -54,12 +52,7 @@ export async function POST(req: NextRequest) {
     idempotencyKey,
   });
 
-  if (isCommandFailure(result)) {
-    return NextResponse.json(
-      { error: result.error, code: result.code, details: result.details },
-      { status: result.status }
-    );
-  }
+  if (isCommandFailure(result)) return failureResponse(result);
 
   return NextResponse.json(
     { request: toDeliveryRequestView(result.value.request) },
@@ -71,16 +64,14 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const businessAccountId = req.nextUrl.searchParams.get("businessAccountId") ?? "";
   if (!UUID_RE.test(businessAccountId)) {
-    return NextResponse.json({ error: "A business account is required." }, { status: 400 });
+    return routeFailure("invalid_input", "A business account is required.");
   }
 
   const actor = await resolveRequestActor(req, businessAccountId);
-  if (isActorDenied(actor)) return NextResponse.json({ error: actor.error }, { status: actor.status });
+  if (isActorDenied(actor)) return routeFailure(actor.code, actor.error);
 
   const result = await listDeliveryRequests({ actor: actor.actor, businessAccountId });
-  if (isCommandFailure(result)) {
-    return NextResponse.json({ error: result.error, code: result.code }, { status: result.status });
-  }
+  if (isCommandFailure(result)) return failureResponse(result);
 
   return NextResponse.json({ requests: result.value.map(toDeliveryRequestView) });
 }

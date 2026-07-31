@@ -21,6 +21,8 @@ export type ApiFailure = {
   status: number;
   error: string;
   code?: string;
+  /** Server-generated. Shown to the merchant so support can find the log line. */
+  correlationId?: string;
   details?: unknown;
 };
 export type ApiSuccess<T> = { ok: true; value: T };
@@ -76,6 +78,7 @@ async function call<T>(
       status: res.status,
       error: payload?.error || "Something went wrong.",
       code: payload?.code,
+      correlationId: payload?.correlationId,
       details: payload?.details,
     };
   }
@@ -172,4 +175,11 @@ export function beginReview(input: { id: string; expectedVersion: number }) {
     `/api/couranr/operations/delivery-requests/${input.id}/begin-review`,
     { method: "POST", body: { expectedVersion: input.expectedVersion } }
   );
+}
+
+/** Appends the correlation id so a merchant can quote it to Couranr Support. */
+export function withReference(failure: { error: string; correlationId?: string }) {
+  return failure.correlationId
+    ? `${failure.error} Reference ${failure.correlationId}.`
+    : failure.error;
 }

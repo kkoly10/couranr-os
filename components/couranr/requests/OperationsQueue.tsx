@@ -20,7 +20,13 @@ import {
   PermissionDeniedState,
   TableSkeleton,
 } from "@/components/couranr/states";
-import { beginReview, fetchReviewQueue, isApiFailure, type ApiFailure } from "./client";
+import {
+  beginReview,
+  fetchReviewQueue,
+  isApiFailure,
+  withReference,
+  type ApiFailure,
+} from "./client";
 import { REVIEW_REASON_LABELS, formatCents, type DeliveryRequestView } from "@/lib/couranr/requests/view";
 
 /**
@@ -83,7 +89,7 @@ export function OperationsQueue() {
         <ConflictState action={{ label: "Reload the queue", onClick: load }} />
       ) : null}
       {failure && failure.code !== "version_conflict" ? (
-        <ErrorState title="The queue could not be updated" body={failure.error} />
+        <ErrorState title="The queue could not be updated" body={withReference(failure)} />
       ) : null}
 
       {requests.length === 0 ? (
