@@ -3,26 +3,69 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   COMMAND_RULES,
+  DECLINE_REASONS,
   QUEUE_STATES,
   READINESS_STATES,
   REQUEST_COMMANDS,
   REQUEST_STATES,
+  REVIEW_OUTCOME_COMMANDS,
   REVIEW_STATES,
   SERVICE_AREA_REVIEW_STATES,
+  isDeclineReason,
   isEditable,
   isTransitionDenied,
   resolveTransition,
+  targetStates,
   type RequestState,
 } from "@/lib/couranr/requests/states";
 
 const MIGRATIONS = path.resolve(__dirname, "../supabase/migrations");
-const MIGRATION_SQL = readFileSync(
-  path.join(
-    MIGRATIONS,
-    readdirSync(MIGRATIONS).filter((f) => f.endsWith("_couranr_delivery_requests.sql"))[0]
-  ),
-  "utf8"
-);
+
+/**
+ * Forward migrations only, in version order. Rollbacks are excluded on purpose
+ * — they restore OLD definitions, so including them would make the "last
+ * definition wins" reading below pick up the very shape we migrated away from.
+ */
+const MIGRATION_SQL = readdirSync(MIGRATIONS)
+  .filter((f) => f.endsWith(".sql") && !f.includes(".rollback."))
+  .sort()
+  .map((f) => readFileSync(path.join(MIGRATIONS, f), "utf8"))
+  .join("\n");
+
+/**
+ * The literals inside a named CHECK constraint's body.
+ *
+ * `lastIndexOf` because a constraint can be redefined by a later migration —
+ * `couranr_dre_command_chk` was widened by the review-outcome migration — and
+ * the EFFECTIVE definition is the last one. The body is taken by balancing
+ * parentheses rather than scanning for `))`: the two constraint forms in this
+ * repo (`check (x in (...))` and `check (x = any (array[...]))`) do not end
+ * with the same punctuation, and the old scan silently over-captured the
+ * second one.
+ */
+function checkConstraintLiterals(sql: string, constraint: string): string[] | null {
+  const at = sql.lastIndexOf(constraint);
+  if (at < 0) return null;
+  const checkAt = sql.indexOf("check", at);
+  if (checkAt < 0) return null;
+  const open = sql.indexOf("(", checkAt);
+  if (open < 0) return null;
+
+  let depth = 0;
+  let close = -1;
+  for (let i = open; i < sql.length; i++) {
+    if (sql[i] === "(") depth++;
+    else if (sql[i] === ")") {
+      depth--;
+      if (depth === 0) {
+        close = i;
+        break;
+      }
+    }
+  }
+  if (close < 0) return null;
+  return (sql.slice(open, close + 1).match(/'([a-z_0-9]+)'/g) || []).map((s) => s.slice(1, -1));
+}
 
 describe("delivery-request state machine", () => {
   /**
@@ -42,14 +85,30 @@ describe("delivery-request state machine", () => {
 
     for (const [constraint, values] of cases) {
       it(`${constraint} lists exactly the TypeScript vocabulary`, () => {
-        const start = MIGRATION_SQL.indexOf(constraint);
-        expect(start, `${constraint} missing from the migration`).toBeGreaterThan(-1);
-        // From the constraint name to the end of its `check (... in (...))`.
-        const chunk = MIGRATION_SQL.slice(start, MIGRATION_SQL.indexOf("))", start) + 2);
-        const inSql = (chunk.match(/'([a-z_0-9]+)'/g) || []).map((s) => s.slice(1, -1));
+        const inSql = checkConstraintLiterals(MIGRATION_SQL, constraint);
+        expect(inSql, `${constraint} missing from the migrations`).not.toBeNull();
         expect(inSql.sort()).toEqual([...values].sort());
       });
     }
+
+    /**
+     * Positive control for the extractor itself. The old scan reported a
+     * plausible-looking list for the `= any (array[...])` form while actually
+     * over-capturing, so the parser is checked against a known answer rather
+     * than trusted because the assertions above are green.
+     */
+    it("the constraint reader handles both CHECK forms and takes the LAST definition", () => {
+      const inForm = "constraint c_x check (col in ('a','b'))";
+      expect(checkConstraintLiterals(inForm, "c_x")).toEqual(["a", "b"]);
+
+      const anyForm = "constraint c_y check (\n  col = any (array[\n 'p',\n 'q'\n ])\n);";
+      expect(checkConstraintLiterals(anyForm, "c_y")).toEqual(["p", "q"]);
+
+      const redefined = `${inForm};\nalter table t add constraint c_x check (col in ('a','b','c'));`;
+      expect(checkConstraintLiterals(redefined, "c_x")).toEqual(["a", "b", "c"]);
+
+      expect(checkConstraintLiterals(inForm, "c_absent")).toBeNull();
+    });
   });
 
   it("has a rule for every command and no command without a rule", () => {
@@ -61,10 +120,20 @@ describe("delivery-request state machine", () => {
       for (const s of rule.from) {
         expect(REQUEST_STATES, `${command} from ${s}`).toContain(s);
       }
-      if (rule.to !== "unchanged") {
-        expect(REQUEST_STATES, `${command} to ${rule.to}`).toContain(rule.to);
+      for (const s of targetStates(rule.to)) {
+        expect(REQUEST_STATES, `${command} to ${s}`).toContain(s);
       }
     }
+  });
+
+  it("every review-outcome rule names the review_state it sets", () => {
+    for (const { command } of REVIEW_OUTCOME_COMMANDS) {
+      const rule = COMMAND_RULES[command];
+      expect(REVIEW_STATES, `${command} review_state`).toContain(rule.reviewState);
+    }
+    // And the commands that are not outcomes do not claim one.
+    expect(COMMAND_RULES.begin_delivery_request_review.reviewState).toBeUndefined();
+    expect(COMMAND_RULES.submit_delivery_request.reviewState).toBeUndefined();
   });
 
   describe("submit_delivery_request", () => {
@@ -130,29 +199,156 @@ describe("delivery-request state machine", () => {
     }
   });
 
+  /* ------------------------------------------------- review outcomes --- */
+
+  describe("accept_delivery_request_as_quoted (REV-001)", () => {
+    /**
+     * The owner's decision, asserted as two separate facts rather than one.
+     * A merchant-paid confirm skips payer approval because the merchant
+     * already approved this quote at submission; a customer-paid one cannot,
+     * because the merchant is not the payer.
+     */
+    it("sends a merchant-paid request straight to confirmed", () => {
+      const d = resolveTransition(
+        "accept_delivery_request_as_quoted",
+        "pending_couranr_review",
+        "merchant"
+      );
+      expect(d.allowed).toBe(true);
+      if (!d.allowed) return;
+      expect(d.nextState).toBe("confirmed");
+    });
+
+    it("holds a customer-paid request at awaiting_quote_acceptance", () => {
+      const d = resolveTransition(
+        "accept_delivery_request_as_quoted",
+        "pending_couranr_review",
+        "customer"
+      );
+      expect(d.allowed).toBe(true);
+      if (!d.allowed) return;
+      expect(d.nextState).toBe("awaiting_quote_acceptance");
+    });
+
+    /**
+     * The failure that matters most. Defaulting an unknown payer to `merchant`
+     * would confirm a customer-paid request the customer has never seen, which
+     * is precisely what the payer-dependent design exists to prevent — so an
+     * absent or unrecognised payer must DENY, not guess.
+     */
+    it("refuses to guess when the payer type is missing or unrecognised", () => {
+      for (const payer of [undefined, null, "", "MERCHANT", "business", 1, true]) {
+        const d = resolveTransition(
+          "accept_delivery_request_as_quoted",
+          "pending_couranr_review",
+          payer as any
+        );
+        expect(isTransitionDenied(d), `payer ${String(payer)}`).toBe(true);
+        if (!isTransitionDenied(d)) return;
+        expect(d.reason).toBe("payer_required");
+      }
+    });
+
+    it("runs only from pending_couranr_review", () => {
+      for (const s of REQUEST_STATES.filter((x) => x !== "pending_couranr_review")) {
+        expect(
+          resolveTransition("accept_delivery_request_as_quoted", s, "merchant").allowed,
+          s
+        ).toBe(false);
+      }
+    });
+  });
+
+  describe("requote_delivery_request", () => {
+    it("moves to quote_revision_required for either payer", () => {
+      for (const payer of ["merchant", "customer"] as const) {
+        const d = resolveTransition("requote_delivery_request", "pending_couranr_review", payer);
+        expect(d.allowed).toBe(true);
+        if (!d.allowed) return;
+        expect(d.nextState, payer).toBe("quote_revision_required");
+      }
+    });
+
+    it("does not need a payer type, because its target does not depend on one", () => {
+      const d = resolveTransition("requote_delivery_request", "pending_couranr_review");
+      expect(d.allowed).toBe(true);
+    });
+  });
+
+  describe("decline_delivery_request", () => {
+    it("moves to declined for either payer", () => {
+      for (const payer of ["merchant", "customer"] as const) {
+        const d = resolveTransition("decline_delivery_request", "pending_couranr_review", payer);
+        expect(d.allowed).toBe(true);
+        if (!d.allowed) return;
+        expect(d.nextState, payer).toBe("declined");
+      }
+    });
+
+    it("cannot re-decline an already declined request", () => {
+      expect(resolveTransition("decline_delivery_request", "declined").allowed).toBe(false);
+    });
+  });
+
+  it("every decline reason is a code the codebase already establishes", () => {
+    // `other` is the deliberate escape hatch; the rest must be real vocabulary,
+    // not invented business categories. REV-002 (a canonical taxonomy) is open.
+    expect([...DECLINE_REASONS]).toEqual([
+      "outside_service_area",
+      "over_max_automatic_miles",
+      "over_max_automatic_weight",
+      "overnight_not_offered_in_this_release",
+      "other",
+    ]);
+    expect(isDeclineReason("outside_service_area")).toBe(true);
+    for (const junk of ["", "OTHER", "capacity_unavailable", null, undefined, 3, {}]) {
+      expect(isDeclineReason(junk), String(junk)).toBe(false);
+    }
+  });
+
   /**
-   * These states exist in the database vocabulary but no command in this slice
-   * can reach them. Asserting it stops a later change from quietly making a
-   * decision state reachable without a review.
+   * Replaces the pre-REV-001 assertion that NO decision state was reachable.
+   * The review outcomes are exactly what make three of them reachable, so the
+   * guard now pins WHICH ones and by which command — and keeps the states that
+   * belong to the unbuilt payment and fulfillment slices out of reach.
    */
-  it("reaches no decision state", () => {
+  it("reaches exactly the decision states the review outcomes own", () => {
     const reachable = new Set<RequestState>();
     for (const rule of Object.values(COMMAND_RULES)) {
-      if (rule.to !== "unchanged") reachable.add(rule.to);
+      for (const s of targetStates(rule.to)) reachable.add(s);
       for (const s of rule.from) reachable.add(s);
     }
-    for (const s of [
-      "awaiting_quote_acceptance",
-      "quote_revision_required",
-      "confirmed",
-      "declined",
-      "cancelled",
-      "closed",
-      "awaiting_merchant_confirmation",
-    ] as RequestState[]) {
+
+    expect([...reachable].sort()).toEqual(
+      [
+        "awaiting_quote_acceptance",
+        "confirmed",
+        "declined",
+        "draft",
+        "pending_couranr_review",
+        "quote_revision_required",
+      ].sort()
+    );
+
+    // Payment and fulfillment states stay unreachable from a review decision.
+    for (const s of ["cancelled", "closed", "awaiting_merchant_confirmation"] as RequestState[]) {
       expect(reachable.has(s), `${s} became reachable`).toBe(false);
     }
-    expect([...reachable].sort()).toEqual(["draft", "pending_couranr_review"]);
+  });
+
+  /**
+   * `confirmed` is a review conclusion, not a payment or dispatch one. Nothing
+   * in the state machine may imply otherwise — the readiness vocabulary is
+   * untouched by every review outcome, which is the independence STA-001
+   * protects.
+   */
+  it("no review outcome touches readiness", () => {
+    for (const { command } of REVIEW_OUTCOME_COMMANDS) {
+      const rule = COMMAND_RULES[command];
+      for (const s of targetStates(rule.to)) {
+        expect(READINESS_STATES, `${command} produced a readiness state`).not.toContain(s as any);
+      }
+    }
   });
 
   it("only a draft is editable", () => {

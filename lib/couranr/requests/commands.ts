@@ -13,7 +13,13 @@ import {
   normalizeDeliveryRequestInput,
   type DeliveryRequestDraft,
 } from "./input";
-import { resolveTransition } from "./states";
+import {
+  isDeclineReason,
+  isTransitionDenied,
+  resolveTransition,
+  type DeclineReason,
+  type PayerType,
+} from "./states";
 
 assertServerOnly("lib/couranr/requests/commands.ts");
 
@@ -51,6 +57,9 @@ export const RPC = {
   estimate: "couranr_calculate_delivery_request_estimate",
   submit: "couranr_submit_delivery_request",
   beginReview: "couranr_begin_delivery_request_review",
+  accept: "couranr_accept_delivery_request_as_quoted",
+  requote: "couranr_requote_delivery_request",
+  decline: "couranr_decline_delivery_request",
 } as const;
 
 export type CommandFailure = {
@@ -446,6 +455,17 @@ export async function submitDeliveryRequest(params: {
   businessAccountId: string;
   requestId: string;
   expectedVersion: number;
+  /**
+   * The merchant ticked MER-006's "I approve this delivery estimate if Couranr
+   * confirms it without changes." Only a merchant-paid request can use it to
+   * skip a second approval, and only the value recorded here — never a
+   * browser-supplied amount — is what accept-as-quoted later checks.
+   *
+   * Defaulted false and coerced with `=== true`, so a missing, malformed or
+   * truthy-but-not-true body field fails closed: the request is still
+   * submitted, and confirming it will require the payer's approval.
+   */
+  merchantAcknowledged?: boolean;
 }): Promise<CommandResult<{ request: DeliveryRequestRow }>> {
   const op = "submitDeliveryRequest";
   const permission = canActOnDeliveryRequest(params.actor, "submit", params.businessAccountId);
@@ -486,6 +506,7 @@ export async function submitDeliveryRequest(params: {
     p_expected_version: params.expectedVersion,
     p_actor_user_id: params.actor.userId,
     ...quoteArgs(quote),
+    p_merchant_acknowledged: params.merchantAcknowledged === true,
   });
   if (isCommandFailure(result)) return result;
 
@@ -529,6 +550,225 @@ export async function beginDeliveryRequestReview(params: {
     p_business_account_id: String(row.business_account_id),
     p_expected_version: params.expectedVersion,
     p_actor_user_id: params.actor.userId,
+  });
+  if (isCommandFailure(result)) return result;
+
+  return { ok: true, value: { request: result.value } };
+}
+
+/* ------------------------------------------------------ review outcomes ---
+ *
+ * REV-001, owner-approved 2026-07-31. Three named commands end a Couranr
+ * review. Each is one RPC into a service-role-only SQL function that does the
+ * state change and the audit event in a single transaction.
+ *
+ * What none of them do — deliberately, and enforced by the SQL: authorize a
+ * payment, capture a payment, create an order, or create a delivery. Payment,
+ * readiness and fulfillment are separate state groups (STA-001) and still gate
+ * everything downstream. `confirmed` means Couranr confirmed the request and
+ * its unchanged quote, nothing more.
+ *
+ * All three are Operations-only, so they load the request with a null business
+ * scope and then ask the permission layer about the request's OWN business.
+ */
+
+/**
+ * Shared preamble: load, authorize as Operations, and check the transition
+ * against the state machine. Returns the row on success.
+ *
+ * The state check here is advisory — the SQL function re-checks both states
+ * and compare-and-sets `version` in the same statement that writes, so a race
+ * between this read and that write is a conflict, not a bad transition.
+ */
+async function loadForReview(
+  op: string,
+  actor: RequestActor,
+  requestId: string,
+  command: Parameters<typeof resolveTransition>[0]
+): Promise<CommandResult<{ row: DeliveryRequestRow; actorUserId: string }>> {
+  const loaded = await loadRequest(op, requestId, null);
+  if (isCommandFailure(loaded)) return loaded;
+  const row = loaded.value;
+
+  const permission = canActOnDeliveryRequest(actor, "review", String(row.business_account_id));
+  if (!permission.allowed) return denied(op, permission.reason);
+  // Narrowed here so the callers can read `userId` without each repeating the
+  // check — and so a future command cannot forget it.
+  if (actor.kind === "anonymous") return denied(op, "anonymous");
+
+  const transition = resolveTransition(command, row.request_state, row.payer_type as PayerType);
+  if (isTransitionDenied(transition)) {
+    return fail({
+      operation: op,
+      code: "wrong_state",
+      detail: { from: row.request_state, reason: transition.reason },
+      message:
+        transition.reason === "payer_required"
+          ? "This request does not record who is paying, so it cannot be confirmed."
+          : "This request is no longer waiting for a Couranr review decision.",
+    });
+  }
+  return { ok: true, value: { row, actorUserId: actor.userId } };
+}
+
+/* ------------------------------------ accept_delivery_request_as_quoted --- */
+
+/**
+ * Confirm at the stored quote. Takes no amount: the SQL reads the subtotal off
+ * the request, so there is no parameter a caller could use to confirm a price
+ * the pricing engine never produced.
+ */
+export async function acceptDeliveryRequestAsQuoted(params: {
+  actor: RequestActor;
+  requestId: string;
+  expectedVersion: number;
+}): Promise<CommandResult<{ request: DeliveryRequestRow }>> {
+  const op = "acceptDeliveryRequestAsQuoted";
+  const loaded = await loadForReview(
+    op,
+    params.actor,
+    params.requestId,
+    "accept_delivery_request_as_quoted"
+  );
+  if (isCommandFailure(loaded)) return loaded;
+  const { row, actorUserId } = loaded.value;
+
+  const result = await callRpc(op, RPC.accept, {
+    p_request_id: params.requestId,
+    p_business_account_id: String(row.business_account_id),
+    p_expected_version: params.expectedVersion,
+    p_actor_user_id: actorUserId,
+  });
+  if (isCommandFailure(result)) {
+    /*
+     * `conflict` here is CR412 — the acknowledgment is missing, or the quote
+     * has been revised since it was given. It is NOT `version_conflict`
+     * (CR409), which is a genuine concurrency race where reloading is the
+     * right advice. Reloading will never resolve this one, so the operator is
+     * told what actually has to happen.
+     *
+     * Testing the code matters: an earlier version tested for "conflict"
+     * while the SQL raised CR409, so this branch never ran and the operator
+     * was sent to reload forever. Browser assertion L11 covers it.
+     */
+    if (result.code === "conflict" && row.payer_type === "merchant") {
+      result.message =
+        "This request cannot be confirmed without the payer's approval: its submission did not record the merchant approving this quote. Send it as a revised quote instead.";
+    }
+    return result;
+  }
+
+  return { ok: true, value: { request: result.value } };
+}
+
+/* -------------------------------------------- requote_delivery_request --- */
+
+/**
+ * Send a revised quote. The amount is recomputed here through the canonical
+ * pricing engine from the request's OWN stored shipment — no caller supplies a
+ * price, and the SQL independently re-checks that the line items sum to the
+ * subtotal before persisting.
+ *
+ * SCOPE LIMIT, stated rather than worked around: this command does not edit the
+ * shipment. It re-prices what is stored. So it changes the number only when the
+ * pricing policy itself has changed since submission. Correcting a merchant's
+ * mileage or weight and then re-pricing needs an Operations shipment-correction
+ * command, which is not in this slice and must not be improvised into this one.
+ */
+export async function requoteDeliveryRequest(params: {
+  actor: RequestActor;
+  requestId: string;
+  expectedVersion: number;
+  reason: string;
+}): Promise<CommandResult<{ request: DeliveryRequestRow }>> {
+  const op = "requoteDeliveryRequest";
+
+  const reason = typeof params.reason === "string" ? params.reason.trim() : "";
+  if (reason.length === 0) {
+    return fail({
+      operation: op,
+      code: "invalid_input",
+      details: [{ code: "requote_reason_required", field: "reason" }],
+      message: "Say why the quote is being revised.",
+    });
+  }
+
+  const loaded = await loadForReview(op, params.actor, params.requestId, "requote_delivery_request");
+  if (isCommandFailure(loaded)) return loaded;
+  const { row, actorUserId } = loaded.value;
+
+  const quote = quoteFromRow(row, row.normalized_request_payload?.overnightRequested === true);
+  if (quote.quoteStatus !== "estimated") {
+    return fail({
+      operation: op,
+      code: "invalid_input",
+      detail: { quoteStatus: quote.quoteStatus, validationErrors: quote.validationErrors },
+      details: quote.validationErrors.map((code) => ({ code })),
+      message: "These shipment details cannot be priced, so no revised quote can be sent.",
+    });
+  }
+
+  const result = await callRpc(op, RPC.requote, {
+    p_request_id: params.requestId,
+    p_business_account_id: String(row.business_account_id),
+    p_expected_version: params.expectedVersion,
+    p_actor_user_id: actorUserId,
+    p_pricing_policy_version: quote.policyVersion,
+    p_delivery_subtotal_cents: quote.deliverySubtotalCents,
+    p_included_loaded_miles: quote.includedLoadedMiles,
+    p_billable_loaded_miles: quote.billableLoadedMiles,
+    p_quote_line_items: quote.lineItems,
+    p_requote_reason: reason,
+  });
+  if (isCommandFailure(result)) return result;
+
+  return { ok: true, value: { request: result.value } };
+}
+
+/* -------------------------------------------- decline_delivery_request --- */
+
+export async function declineDeliveryRequest(params: {
+  actor: RequestActor;
+  requestId: string;
+  expectedVersion: number;
+  reason: DeclineReason | string;
+  internalNote?: string | null;
+}): Promise<CommandResult<{ request: DeliveryRequestRow }>> {
+  const op = "declineDeliveryRequest";
+
+  if (!isDeclineReason(params.reason)) {
+    return fail({
+      operation: op,
+      code: "invalid_input",
+      details: [{ code: "decline_reason_unrecognized", field: "reason" }],
+      message: "Choose a reason Couranr could not confirm this delivery.",
+    });
+  }
+
+  const note = typeof params.internalNote === "string" ? params.internalNote.trim() : "";
+  // `other` is the escape hatch from an admittedly incomplete taxonomy
+  // (REV-002 is unresolved). It is only honest if it says something, so the
+  // note is required there and optional everywhere else.
+  if (params.reason === "other" && note.length === 0) {
+    return fail({
+      operation: op,
+      code: "invalid_input",
+      details: [{ code: "internal_note_required_for_other", field: "internalNote" }],
+      message: "Add a note explaining why this delivery could not be confirmed.",
+    });
+  }
+
+  const loaded = await loadForReview(op, params.actor, params.requestId, "decline_delivery_request");
+  if (isCommandFailure(loaded)) return loaded;
+  const { row, actorUserId } = loaded.value;
+
+  const result = await callRpc(op, RPC.decline, {
+    p_request_id: params.requestId,
+    p_business_account_id: String(row.business_account_id),
+    p_expected_version: params.expectedVersion,
+    p_actor_user_id: actorUserId,
+    p_decline_reason: params.reason,
+    p_internal_note: note.length > 0 ? note : null,
   });
   if (isCommandFailure(result)) return result;
 

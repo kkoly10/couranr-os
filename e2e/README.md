@@ -33,6 +33,10 @@ Screenshots and `results.json` land in `e2e/artifacts/` (gitignored).
 | F | MER-002 creates account + owner membership + workspace, asserted on **rows** |
 | G | a signed-in user cannot sit on another surface |
 | H | MER-005 and OPS-002 render for the right roles |
+| I | the legacy header is gone from canonical surfaces, kept on legacy ones |
+| J | the driver surface reads its own deliveries |
+| K | the canonical logo, not a font-rendered wordmark |
+| L | the three review outcomes (REV-001), end to end, asserted on rows |
 
 ## Rules this harness follows
 
@@ -75,3 +79,26 @@ grant — do not widen it.
 `seed.mjs clean` therefore removes the auth users but **cannot** remove
 workspaces or business accounts. Clear those through the Supabase MCP
 (`execute_sql`), scoped to `name like '%[E2E]%'`.
+
+## What group L leaves behind
+
+Group L creates **three delivery requests per run** — one per decision path,
+because each outcome is terminal — plus their events, and it cannot remove any
+of them. `service_role` has `select, insert, update` on
+`couranr_delivery_requests` and `select, insert` on its events: no DELETE, by
+design, so that neither a bug nor a compromised command can erase merchant
+history. Those rows then pin their `business_accounts` row through an
+`ON DELETE RESTRICT` foreign key, which in turn pins the merchant auth user.
+
+So a run ends with synthetic rows still in the connected project. They are all
+marked (`couranr-e2e-*` emails, `[E2E]` account names) and none of them is real
+merchant data, but they accumulate. Removing them needs the privileged path in
+`supabase/migrations/PROPOSED_couranr_e2e_cleanup.sql.review`, which is **not
+applied** and must not be applied without review.
+
+`CLEAN-residue` fails for exactly this reason. It is reported as its own
+assertion rather than folded into the others so it can never be mistaken for
+"everything was cleaned up".
+
+**Do not widen the grant to make this go away.** A DELETE grant on the request
+tables would remove the guarantee those tables exist to provide.

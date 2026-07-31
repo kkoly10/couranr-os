@@ -33,9 +33,9 @@ import { REVIEW_REASON_LABELS, formatCents, type DeliveryRequestView } from "@/l
  * OPS-002 — the Couranr Operations Queue.
  *
  * Lists requests in `pending_couranr_review`, oldest submission first. Opening
- * a request for review is the only action this release offers: accepting a
- * quote, requoting and declining are canonical states no command can reach yet,
- * so no button pretends otherwise.
+ * a request records that Couranr began the review and links through to OPS-003,
+ * where the outcome — confirm as quoted, revised quote, or could not confirm —
+ * is decided.
  */
 export function OperationsQueue() {
   const [requests, setRequests] = React.useState<DeliveryRequestView[] | null>(null);
@@ -125,7 +125,13 @@ export function OperationsQueue() {
                   <tr key={r.id}>
                     <td>{r.submittedAt ? new Date(r.submittedAt).toLocaleString() : "—"}</td>
                     <td>
-                      <Link href={`/business/deliveries/${r.id}`}>
+                      {/*
+                        OPS-003, not the merchant surface. Linking Operations
+                        at /business/… sent them to a route the surface guard
+                        redirects them off, which made the review workspace
+                        unreachable from the queue.
+                      */}
+                      <Link href={`/operations/deliveries/${r.id}`}>
                         {r.loadedMiles === null ? "—" : `${r.loadedMiles} mi`}
                       </Link>
                       {r.quote.reviewReasons.length > 0 ? (

@@ -1243,7 +1243,7 @@
     {
       "id": "REV-001",
       "category": "transition rules",
-      "decision": "A Couranr review outcome sets review_state AND fires one explicit, guarded coordinating transition on request_state. The two are separate regions that coordinate deliberately; they are not one column and they are not sealed off from each other.",
+      "decision": "A Couranr review outcome sets review_state AND fires one explicit guarded transition on request_state. Confirm-as-quoted is PAYER-DEPENDENT: a merchant-paid request goes straight to confirmed because the merchant already approved the exact displayed quote at submission; a customer-paid request waits on the customer.",
       "value": {
         "actor": "operations",
         "preconditions": {
@@ -1256,26 +1256,40 @@
           {
             "command": "couranr_accept_delivery_request_as_quoted",
             "ui_label": "Confirm as quoted",
-            "review_state": "accepted_as_quoted",
-            "request_state": "awaiting_quote_acceptance",
-            "guard": "a server-computed quote exists (quote_status = 'estimated' and delivery_subtotal_cents is not null); the caller supplies no amount",
-            "rationale": "Couranr confirming the price does not end the request: payers.capture_timing is 'after_couranr_confirmation' and the Master Package gives merchant and customer the right to approve their own quote, so the request waits on the payer."
+            "payer_dependent": true,
+            "outcomes": [
+              {
+                "payer_type": "merchant",
+                "review_state": "accepted_as_quoted",
+                "request_state": "confirmed",
+                "rationale": "The merchant approved the exact displayed quote when submitting. Operations confirmed it without changing the price, so a second merchant approval would be redundant.",
+                "additional_guard": "the immutable submission event must carry acknowledgment = true, and the current quote must be the submitted, unrevised quote"
+              },
+              {
+                "payer_type": "customer",
+                "review_state": "accepted_as_quoted",
+                "request_state": "awaiting_quote_acceptance",
+                "rationale": "The merchant cannot approve a customer-paid quote on the customer's behalf. The customer must still review and approve the price."
+              }
+            ],
+            "guard": "a server-computed quote exists; the caller supplies no amount"
           },
           {
             "command": "couranr_requote_delivery_request",
             "ui_label": "Send revised quote",
+            "payer_dependent": false,
             "review_state": "requoted",
             "request_state": "quote_revision_required",
             "guard": "subtotal recomputed server-side through the canonical pricing engine; line items must sum to it",
-            "rationale": "A revised quote is issued and the payer must approve it. CUS-005 'Revised Quote Approval' is that screen. quote_revision_required is the revised-quote track, distinct from a first-time acceptance."
+            "rationale": "A changed quote always requires fresh approval from the payer, for either payer type."
           },
           {
             "command": "couranr_decline_delivery_request",
             "ui_label": "Could not confirm service",
+            "payer_dependent": false,
             "review_state": "declined",
             "request_state": "declined",
-            "guard": "a structured decline reason is required; an internal note is optional",
-            "rationale": "The only unambiguous mapping: both vocabularies carry 'declined' and Master Package section 9 names the action 'could not confirm service'."
+            "guard": "a structured decline reason is required; an internal note is optional"
           }
         ],
         "onward_transitions_not_in_this_decision": {
@@ -1289,11 +1303,38 @@
           "no order or delivery conversion",
           "no payment authorization or capture",
           "merchants may read an outcome but never write one"
-        ]
+        ],
+        "merchant_quote_acknowledgment": {
+          "required_before": "the merchant-paid direct transition to confirmed",
+          "captured_at": "submit_delivery_request",
+          "mer_006_copy": "I approve this delivery estimate if Couranr confirms it without changes.",
+          "recorded_in": "immutable submission event metadata",
+          "fields": [
+            "payer_type",
+            "pricing_policy_version",
+            "delivery_subtotal_cents",
+            "quote_status",
+            "acknowledgment"
+          ],
+          "source_of_truth": "the server-stored quote; a browser-supplied subtotal is never trusted or recorded",
+          "absent_behaviour": "return a stable conflict requiring payer approval; never silently confirm"
+        },
+        "state_meaning": {
+          "confirmed": "Couranr confirmed the request and the unchanged quote.",
+          "does_not_mean": [
+            "payment authorized",
+            "payment captured",
+            "merchant ready",
+            "scheduled",
+            "assigned",
+            "dispatched"
+          ],
+          "note": "Payment, readiness and fulfillment remain separate state groups and continue to gate delivery creation."
+        }
       },
       "status": "decided",
       "authority_file": "docs/couranr-mvp/REVIEW_OUTCOME_STATE_DESIGN.md",
-      "authority_section": "STA-001 state vocabularies; TRN-001 actor authority; Master Package sections 8 and 9",
+      "authority_section": "Owner decision 2026-07-31; STA-001 vocabularies; TRN-001 actor authority",
       "affected_routes": [
         "/operations/queue",
         "/operations/deliveries/[id]",
@@ -1322,16 +1363,77 @@
       },
       "implementation_phase": "6",
       "acceptance_criteria": [
-        "each outcome is a named server command with the actor verified as operations/admin",
-        "each sets review_state and request_state in one transaction with an event row",
+        "confirm-as-quoted is payer-dependent: merchant -> confirmed, customer -> awaiting_quote_acceptance",
+        "a merchant-paid confirm requires the acknowledgment in the submission event and an unrevised quote",
+        "a missing acknowledgment returns a stable conflict, never a silent confirm",
+        "requote and decline behave identically for both payer types",
+        "each outcome sets review_state and request_state in one transaction with an event row",
         "version compare-and-set rejects a stale write with a conflict",
         "accept uses the current server-computed quote and accepts no amount from the caller",
-        "requote recomputes through the canonical pricing engine",
-        "decline requires a structured reason",
-        "merchants can read the outcome on MER-007 and cannot write one"
+        "merchants can read the outcome on MER-007 and cannot write one",
+        "confirmed creates no order, no delivery, and authorizes no payment"
       ],
-      "derived_not_delivered": true,
-      "derivation_note": "No delivered package defines these transitions. Checked: Master Package section 8, the v1.0 package registry, and TRN-001 — all give the vocabularies and actor authority, none gives the transition graph. Designed from the UML orthogonal-region coordination pattern and the freight approval convention; see the design document for sources."
+      "derivation_note": "The transition graph is not defined by any delivered package — Master Package section 8, the v1.0 package registry and TRN-001 all give vocabularies and actor authority only. It was drafted from the UML orthogonal-region coordination pattern and freight approval convention, then DECIDED BY THE OWNER on 2026-07-31, who made confirm-as-quoted payer-dependent. The UML material is supporting rationale, not authority.",
+      "owner_approved": true,
+      "owner_approved_on": "2026-07-31"
+    },
+    {
+      "id": "REV-002",
+      "category": "transition rules",
+      "decision": "UNRESOLVED — no authority defines the vocabulary of reasons Couranr could not confirm a delivery. A minimal placeholder set drawn from codes already in the tree ships so the decline command can require a structured reason; it is not canonical.",
+      "value": {
+        "canonical_taxonomy": null,
+        "shipped_placeholder": [
+          "outside_service_area",
+          "over_max_automatic_miles",
+          "over_max_automatic_weight",
+          "overnight_not_offered_in_this_release",
+          "other"
+        ],
+        "provenance": "Every placeholder code except `other` is vocabulary already in the tree: `outside_service_area` from the service_area_review_state values (STA-001), the other three verbatim from ReviewReasonCode in lib/couranr/pricing/types.ts. None was invented as a business category.",
+        "escape_hatch": "`other` requires a non-empty internal note, so a decline the placeholder set cannot name still records why.",
+        "not_covered": null
+      },
+      "status": "unresolved",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§8 States — names the review vocabulary (pending / accepted_as_quoted / requoted / declined) but no decline reasons",
+      "affected_routes": [
+        "/api/couranr/operations/delivery-requests/[id]/decline",
+        "/operations/requests"
+      ],
+      "affected_screen_ids": [
+        "OPS-003",
+        "MER-007"
+      ],
+      "affected_database_objects": [
+        "public.couranr_decline_delivery_request",
+        "public.couranr_delivery_request_events.metadata"
+      ],
+      "affected_code_paths": [
+        "lib/couranr/requests/states.ts",
+        "lib/couranr/requests/commands.ts",
+        "components/couranr/requests/ReviewOutcomeActions.tsx"
+      ],
+      "conflict_with_current_code": {
+        "code_value": "DECLINE_REASONS — five placeholder codes",
+        "code_location": "lib/couranr/requests/states.ts",
+        "resolution": "Cannot be inferred. The placeholder ships so the command can enforce a structured reason; it must be replaced, not extended by guesswork.",
+        "remediation_commit": null
+      },
+      "implementation_phase": "3",
+      "acceptance_criteria": [
+        "An owner-approved decline reason vocabulary replaces DECLINE_REASONS before Couranr Operations declines a real merchant request.",
+        "Operational reasons a dispatcher actually needs — no driver available, outside operating hours, merchant account on hold, duplicate request — are decided rather than guessed.",
+        "Any code removed from the placeholder set is checked against existing event rows before it is dropped, because the event log is append-only."
+      ],
+      "missing": "No delivered package states why Couranr may decline. The Master Package §8 and the package registry both give the review vocabulary and the actor authority but stop at `declined` as a single outcome, with no reason taxonomy under it.",
+      "blocked_screen_ids": [
+        "OPS-003"
+      ],
+      "blocked_commits": [
+        "any release where Couranr Operations declines a real merchant request"
+      ],
+      "notes": "Raised while implementing REV-001. Recorded so the placeholder is visibly a gap rather than a silent decision."
     },
     {
       "id": "PRF-001",

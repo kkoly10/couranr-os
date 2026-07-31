@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isActorDenied, resolveRequestActor } from "@/lib/couranr/requests/actor";
-import { isCommandFailure, submitDeliveryRequest } from "@/lib/couranr/requests/commands";
+import { declineDeliveryRequest, isCommandFailure } from "@/lib/couranr/requests/commands";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
 import { toDeliveryRequestView } from "@/lib/couranr/requests/view";
 
@@ -8,11 +8,14 @@ export const dynamic = "force-dynamic";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+const MAX_NOTE = 1000;
+
 /**
- * POST — submit a draft for Couranr review.
+ * POST — Couranr could not confirm service (REV-001).
  *
- * Submitting creates NO order, NO delivery row and NO payment. It moves the
- * request to `pending_couranr_review` and nothing else.
+ * The reason is a code from a fixed allow-list, validated in the command layer;
+ * the internal note is optional except for `other`, and is never shown to the
+ * merchant by this slice. Both are recorded in the append-only event log.
  */
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   if (!UUID_RE.test(params.id)) {
@@ -26,29 +29,27 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return routeFailure("invalid_input", "Expected a JSON body.");
   }
 
-  const businessAccountId = String(body?.businessAccountId ?? "");
-  if (!UUID_RE.test(businessAccountId)) {
-    return routeFailure("invalid_input", "A business account is required.");
-  }
-
   const expectedVersion = Number(body?.expectedVersion);
   if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
     return routeFailure("invalid_input", "A request version is required.");
   }
 
-  const actor = await resolveRequestActor(req, businessAccountId);
+  const internalNote = typeof body?.internalNote === "string" ? body.internalNote.trim() : "";
+  if (internalNote.length > MAX_NOTE) {
+    return routeFailure("invalid_input", `Keep the note under ${MAX_NOTE} characters.`);
+  }
+
+  const actor = await resolveRequestActor(req, null);
   if (isActorDenied(actor)) return routeFailure(actor.code, actor.error);
 
-  const result = await submitDeliveryRequest({
+  const result = await declineDeliveryRequest({
     actor: actor.actor,
-    businessAccountId,
     requestId: params.id,
     expectedVersion,
-    // MER-006's approval checkbox. `=== true` so a missing field, a string
-    // "true", or any other truthy value fails closed — the request still
-    // submits, but confirming it will require the payer's approval rather
-    // than being confirmed on the strength of a malformed body.
-    merchantAcknowledged: body?.merchantAcknowledged === true,
+    // Passed through unvalidated on purpose: the command owns the allow-list,
+    // so there is one place that decides what a legal reason is.
+    reason: body?.reason,
+    internalNote: internalNote.length > 0 ? internalNote : null,
   });
 
   if (isCommandFailure(result)) return failureResponse(result);

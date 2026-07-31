@@ -90,14 +90,18 @@ describe("canonical screen registry", () => {
       "MER-006",
       "MER-007",
       "OPS-002",
+      // OPS-003's review workspace ships with Commit O. Managed dispatch —
+      // vehicle, driver and schedule selection — is still absent, so the flag
+      // covers the review outcomes only.
+      "OPS-003",
       "PUB-002",
       "PUB-003",
     ]);
 
     const p = implementationProgress();
     expect(p.total).toBe(66);
-    expect(p.implemented).toBe(7);
-    expect(p.remaining).toBe(59);
+    expect(p.implemented).toBe(8);
+    expect(p.remaining).toBe(58);
     expect(p.coreTotal).toBe(62);
   });
 

@@ -1,4 +1,8 @@
-# Review-outcome state transitions — derived design
+# Review-outcome state transitions
+
+**Owner-approved 2026-07-31.** Drafted from the sources below, then decided by the
+owner, who made confirm-as-quoted payer-dependent. The UML and freight material
+is **supporting rationale, not authority** — the owner decision is the authority.
 
 Registry record: **REV-001**.
 
@@ -14,10 +18,10 @@ checked all three sources that could have:
 | root `02_DECISION_REGISTRY.json` → `TRN-001` | "no arbitrary target status; every transition is a named server command" | any transition |
 
 All three answer *who* may act and *what the state names are*. None answers
-*which `request_state` an accept, requote or decline moves to*. This design is
-therefore **derived, not delivered**, and is marked as such in the registry
-(`derived_not_delivered: true`) so no future reader mistakes it for something
-that shipped in a package.
+*which `request_state` an accept, requote or decline moves to*. The transition graph was therefore drafted rather than inherited, and then
+**decided by the owner on 2026-07-31**. `REV-001` carries `owner_approved: true`.
+No future reader should treat the reasoning below as the authority; it is why the
+options looked the way they did, not why one was chosen.
 
 ## The question
 
@@ -72,38 +76,68 @@ does not forbid one **explicit, named, guarded** transition per command.
   Rejected" with the approve and reject actions on the pending state.
   ([Oracle NetSuite, order quote approval workflow](https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/article_163878389082.html))
 
-## The design
+## The design (owner-approved)
 
-Each outcome sets `review_state` **and** fires one explicit guarded transition
-on `request_state`, in a single transaction with an event row.
+Each outcome sets `review_state` **and** fires one explicit guarded transition on
+`request_state`, in a single transaction with an event row.
 
-| Command | UI label (OPS-002) | `review_state` | `request_state` |
-|---|---|---|---|
-| `couranr_accept_delivery_request_as_quoted` | Confirm as quoted | `accepted_as_quoted` | `awaiting_quote_acceptance` |
-| `couranr_requote_delivery_request` | Send revised quote | `requoted` | `quote_revision_required` |
-| `couranr_decline_delivery_request` | Could not confirm service | `declined` | `declined` |
+| Command | UI label | `payer_type` | `review_state` | `request_state` |
+|---|---|---|---|---|
+| `couranr_accept_delivery_request_as_quoted` | Confirm as quoted | **merchant** | `accepted_as_quoted` | **`confirmed`** |
+| | | **customer** | `accepted_as_quoted` | `awaiting_quote_acceptance` |
+| `couranr_requote_delivery_request` | Send revised quote | either | `requoted` | `quote_revision_required` |
+| `couranr_decline_delivery_request` | Could not confirm service | either | `declined` | `declined` |
 
-Preconditions for all three: `request_state = pending_couranr_review`,
-`review_state = pending`, and a matching `version` (compare-and-set).
+Preconditions for all: `request_state = pending_couranr_review`,
+`review_state = pending`, matching `version`.
 
-### Why each target
+### Why confirm-as-quoted is payer-dependent
 
-**Accept → `awaiting_quote_acceptance`.** Couranr confirming the price does not
-end the request, because the payer has not agreed yet. Two repo sources say the
-payer step exists: the registry's `payers.capture_timing` is
-`after_couranr_confirmation`, and Master Package §8 gives the merchant "approve
-merchant-paid quotes" and the customer "approve customer-paid quote". This is
-the SAP TM "Awaiting Approval" position exactly.
+**Merchant-paid → `confirmed`.** The merchant approved the exact displayed quote
+when they submitted. Operations confirmed it *without changing the price*, so a
+second merchant approval would ask the same party to approve the same number
+twice. This is the owner's decision and it overrides the draft, which had both
+payer types waiting.
 
-**Requote → `quote_revision_required`.** A revised quote is issued and the payer
-must approve it; `CUS-005 Revised Quote Approval` is that screen, and
-`OPS-004 Requote & Promotional Credit` is the operator side. Both a first
-acceptance and a revision end in payer approval, which is why the vocabulary
-carries two distinct states — one per track — rather than one shared waiting
-state.
+**Customer-paid → `awaiting_quote_acceptance`.** The merchant cannot approve a
+customer-paid quote on the customer's behalf. The customer must still see and
+approve the price. `CUS-005 Revised Quote Approval` and the hosted payment page
+are that path.
 
-**Decline → `declined`.** The only unambiguous mapping. Both vocabularies carry
-`declined`, and Master Package §9 names the action "could not confirm service".
+### The acknowledgment that makes the merchant shortcut safe
+
+Skipping an approval step is only sound if the approval genuinely happened
+earlier. So the merchant-paid direct transition to `confirmed` is gated on proof:
+
+- `MER-006` submission copy states plainly:
+  *"I approve this delivery estimate if Couranr confirms it without changes."*
+- The acknowledgment is recorded in the **immutable submission event metadata**
+  with `payer_type`, `pricing_policy_version`, `delivery_subtotal_cents`,
+  `quote_status` and `acknowledgment = true`.
+- Only the **server-stored** quote is recorded. A browser-supplied subtotal is
+  never trusted and never written.
+
+`couranr_accept_delivery_request_as_quoted` verifies, for a merchant-paid
+request: the acknowledgment exists, the current quote **is** the submitted quote,
+the quote was not revised, the expected version matches, and both states are at
+their preconditions. **If the acknowledgment is absent it does not silently
+confirm** — it returns a stable conflict requiring payer approval.
+
+That conflict has its **own SQLSTATE, `CR412`**, separate from the `CR409` a
+stale `version` raises. Both are "conflicts", but they need opposite advice: a
+concurrency race is fixed by reloading, and a missing acknowledgment never is.
+While both shared CR409 the operator was told "reload and try again" for a
+condition reloading cannot change — a loop with no exit. Browser assertion
+`L11` covers it. `CR412` classifies to the public code `conflict`;
+`CR409` classifies to `version_conflict`.
+
+### What `confirmed` means, and does not
+
+`request_state = confirmed` means Couranr confirmed the request and the unchanged
+quote. It does **not** mean payment authorized, payment captured, merchant ready,
+scheduled, assigned or dispatched. Payment, readiness and fulfillment remain
+separate state groups and continue to gate delivery creation — which is exactly
+the independence `STA-001` is protecting.
 
 ### Onward, and explicitly not in this slice
 
@@ -123,11 +157,12 @@ delivery.**
 - Operations/admin only. Merchants read the outcome on MER-007, never write one.
 - Compare-and-set on `version` turns a stale write into a conflict, not a
   silent overwrite.
+- A refused confirm writes **nothing** — no state change, no version bump, no
+  event. Asserted on rows, not on copy (`L9`, `L10`, `L12`).
 
-## What would change this
+## Resolved
 
-If the owner decides the payer step does not exist for merchant-paid deliveries
-— that Couranr confirming a merchant-paid quote goes straight to `confirmed` —
-then accept would target `confirmed` when `payer_type = 'merchant'`. That is a
-product decision, not a modelling one, and it is the single most likely
-amendment to this record.
+The draft flagged one likely amendment: whether merchant-paid deliveries have a
+payer approval step. The owner decided on 2026-07-31 that they do not, and that
+the submission acknowledgment is what makes skipping it safe. That is now the
+design above rather than an open question.

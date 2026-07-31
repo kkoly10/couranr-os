@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isActorDenied, resolveRequestActor } from "@/lib/couranr/requests/actor";
-import { isCommandFailure, submitDeliveryRequest } from "@/lib/couranr/requests/commands";
+import {
+  acceptDeliveryRequestAsQuoted,
+  isCommandFailure,
+} from "@/lib/couranr/requests/commands";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
 import { toDeliveryRequestView } from "@/lib/couranr/requests/view";
 
@@ -9,10 +12,17 @@ export const dynamic = "force-dynamic";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
- * POST — submit a draft for Couranr review.
+ * POST — Couranr confirms the request at its stored quote (REV-001).
  *
- * Submitting creates NO order, NO delivery row and NO payment. It moves the
- * request to `pending_couranr_review` and nothing else.
+ * The route accepts NO amount and NO target state. The price comes off the
+ * stored request inside the SQL command, and the command name alone selects
+ * where the request lands: `confirmed` for a merchant-paid request whose
+ * submission recorded the merchant approving this quote, and
+ * `awaiting_quote_acceptance` for a customer-paid one, because a merchant
+ * cannot approve a price on the customer's behalf.
+ *
+ * Confirming authorizes no payment, captures no payment, and creates no order
+ * and no delivery.
  */
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   if (!UUID_RE.test(params.id)) {
@@ -26,29 +36,18 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     return routeFailure("invalid_input", "Expected a JSON body.");
   }
 
-  const businessAccountId = String(body?.businessAccountId ?? "");
-  if (!UUID_RE.test(businessAccountId)) {
-    return routeFailure("invalid_input", "A business account is required.");
-  }
-
   const expectedVersion = Number(body?.expectedVersion);
   if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
     return routeFailure("invalid_input", "A request version is required.");
   }
 
-  const actor = await resolveRequestActor(req, businessAccountId);
+  const actor = await resolveRequestActor(req, null);
   if (isActorDenied(actor)) return routeFailure(actor.code, actor.error);
 
-  const result = await submitDeliveryRequest({
+  const result = await acceptDeliveryRequestAsQuoted({
     actor: actor.actor,
-    businessAccountId,
     requestId: params.id,
     expectedVersion,
-    // MER-006's approval checkbox. `=== true` so a missing field, a string
-    // "true", or any other truthy value fails closed — the request still
-    // submits, but confirming it will require the payer's approval rather
-    // than being confirmed on the strength of a malformed body.
-    merchantAcknowledged: body?.merchantAcknowledged === true,
   });
 
   if (isCommandFailure(result)) return failureResponse(result);

@@ -46,6 +46,30 @@ export const requestsFor = (accountId) =>
     .order("created_at", { ascending: false })
     .then(unwrap("requestsFor"));
 
+/** The full review-relevant shape of one request, read back from the row. */
+export const requestById = (id) =>
+  admin
+    .from("couranr_delivery_requests")
+    .select(
+      "id,request_state,review_state,readiness_state,version,payer_type,quote_status," +
+        "delivery_subtotal_cents,pricing_policy_version,payment_due_cents"
+    )
+    .eq("id", id)
+    .maybeSingle()
+    .then(({ data, error }) => {
+      if (error) throw new Error(`requestById: ${error.message}`);
+      return data;
+    });
+
+/** The append-only audit trail for one request, oldest first. */
+export const eventsFor = (id) =>
+  admin
+    .from("couranr_delivery_request_events")
+    .select("id,command,actor_type,from_state,to_state,metadata,created_at")
+    .eq("request_id", id)
+    .order("created_at", { ascending: true })
+    .then(unwrap("eventsFor"));
+
 /**
  * Exact counts of the REAL production tables, so the suite can prove it touched
  * none of them. `head: true` fetches the count without transferring rows.

@@ -138,7 +138,10 @@ describe("canonical routes cannot leak a database detail", () => {
       "app/api/couranr/me/business-accounts/route.ts",
       "app/api/couranr/me/landing/route.ts",
       "app/api/couranr/me/workspace/route.ts",
+      "app/api/couranr/operations/delivery-requests/[id]/accept-as-quoted/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/begin-review/route.ts",
+      "app/api/couranr/operations/delivery-requests/[id]/decline/route.ts",
+      "app/api/couranr/operations/delivery-requests/[id]/requote/route.ts",
       "app/api/couranr/operations/queue/route.ts",
     ]);
   });

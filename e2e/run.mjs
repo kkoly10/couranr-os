@@ -23,7 +23,15 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { BASE_URL, SHIPMENT, USERS } from "./fixtures.mjs";
 import { relaySupabase } from "./supabaseRelay.mjs";
-import { accountsCreatedBy, membershipsFor, realDataCounts, workspacesFor } from "./db.mjs";
+import {
+  accountsCreatedBy,
+  eventsFor,
+  membershipsFor,
+  realDataCounts,
+  requestById,
+  requestsFor,
+  workspacesFor,
+} from "./db.mjs";
 import { cleanupAll } from "./seed.mjs";
 import { KEY_SOURCE, SUPABASE_URL as ADMIN_SUPABASE_URL } from "./admin.mjs";
 
@@ -954,7 +962,311 @@ browser = await chromium.launch({
   args: ["--no-proxy-server", "--disable-quic"],
 });
 
-const ALL = { A: groupA, B: groupB, C: groupC, D: groupD, E: groupE, F: groupF, G: groupG, H: groupH, I: groupI, J: groupJ, K: groupK };
+
+/* ================================== L. REVIEW OUTCOMES (REV-001, Commit O) */
+
+/**
+ * The full review lifecycle, driven end to end in the browser:
+ *
+ *   merchant fills MER-005 -> sees the quote on MER-006 -> submits
+ *   Couranr Operations opens OPS-002 -> begins review -> decides on OPS-003
+ *   merchant reads the outcome on MER-007
+ *
+ * Every assertion about what happened is made against the ROW and the
+ * append-only EVENT, not against page text. A screen that renders "Confirmed"
+ * while the request is still `pending_couranr_review` is exactly the defect
+ * this group exists to catch, and page text cannot distinguish the two.
+ *
+ * The three decision paths are exercised on three SEPARATE requests, because
+ * each is terminal — a declined request cannot then be confirmed.
+ */
+
+/** Fills MER-005 and returns the request id, or null if it never got created. */
+async function createRequestThroughUi(page, accountId, { acknowledge }) {
+  const before = await requestsFor(accountId);
+  const beforeIds = new Set(before.map((r) => r.id));
+
+  await page.goto(`${BASE_URL}/business/deliveries/new`, { waitUntil: "domcontentloaded" });
+  await page.getByLabel("Loaded miles").waitFor({ state: "visible", timeout: 25000 });
+
+  /**
+   * Labels are NOT matched exactly. `Field` appends a required marker, so the
+   * rendered label text is "Street address*" and "Loaded miles*", while an
+   * optional field reads "Suite, unit or floor (optional)". An exact match
+   * finds nothing — which is how the first version of this helper timed out.
+   */
+  const fill = (label, value) => page.getByLabel(label).first().fill(value);
+  // Pickup and Dropoff use the SAME field labels, so they are scoped by card.
+  const card = (title) =>
+    page.locator(".cr-card").filter({ has: page.getByRole("heading", { name: title }) }).first();
+  const inCard = (title, label, value) => card(title).getByLabel(label).first().fill(value);
+
+  await inCard("Pickup", "Street address", SHIPMENT.pickup.line1);
+  await inCard("Pickup", "City", SHIPMENT.pickup.city);
+  await inCard("Pickup", "State", SHIPMENT.pickup.region);
+  await inCard("Pickup", "ZIP", SHIPMENT.pickup.postalCode);
+  await inCard("Dropoff", "Street address", SHIPMENT.dropoff.line1);
+  await inCard("Dropoff", "City", SHIPMENT.dropoff.city);
+  await inCard("Dropoff", "State", SHIPMENT.dropoff.region);
+  await inCard("Dropoff", "ZIP", SHIPMENT.dropoff.postalCode);
+  await fill("Loaded miles", SHIPMENT.loadedMiles);
+  await fill("Weight (lb)", SHIPMENT.weightLb);
+
+  await page.getByRole("button", { name: /calculate estimate/i }).click();
+  await page.getByRole("button", { name: /submit for couranr review/i }).waitFor({
+    state: "visible",
+    timeout: 25000,
+  });
+
+  // MER-006's acknowledgment. Present only for a merchant-paid priced quote.
+  const ack = page.getByLabel(/I approve this delivery estimate/i);
+  const ackVisible = (await ack.count()) > 0;
+  if (acknowledge && ackVisible) await ack.check();
+
+  await page.getByRole("button", { name: /submit for couranr review/i }).click();
+  await page.waitForURL((u) => /\/business\/deliveries\/[0-9a-f-]{36}$/.test(u.pathname), {
+    timeout: 25000,
+  }).catch(() => {});
+
+  const after = await requestsFor(accountId);
+  const fresh = after.find((r) => !beforeIds.has(r.id));
+  return { id: fresh?.id ?? null, ackVisible };
+}
+
+/**
+ * OPS-002: records that Couranr opened the request. Kept SEPARATE from the
+ * decision because it bumps `version` — bracketing a refusal around both would
+ * report the begin-review bump as if the refused command had written. That is
+ * precisely what the first version of assertion L10 did.
+ */
+async function openForReview(page, requestId) {
+  await page.goto(`${BASE_URL}/operations/queue`, { waitUntil: "domcontentloaded" });
+  const openBtn = page
+    .locator("tr", { has: page.locator(`a[href$="${requestId}"]`) })
+    .getByRole("button", { name: /open for review/i });
+  await openBtn.waitFor({ state: "visible", timeout: 25000 });
+  await openBtn.click();
+  await page.waitForTimeout(1500);
+}
+
+/** Opens OPS-003 and clicks exactly one decision. */
+async function decideAsOps(page, requestId, decision, { reason, note, alreadyOpen = false } = {}) {
+  if (!alreadyOpen) await openForReview(page, requestId);
+
+  // OPS-003, the operations surface. A merchant URL would be redirected away.
+  await page.goto(`${BASE_URL}/operations/deliveries/${requestId}`, { waitUntil: "domcontentloaded" });
+  await page.getByText("Couranr review decision").waitFor({ state: "visible", timeout: 25000 });
+
+  if (decision === "accept") {
+    await page.getByRole("button", { name: /^confirm as quoted$/i }).click();
+  } else if (decision === "requote") {
+    await page.getByRole("button", { name: /^send revised quote$/i }).click();
+    await page.getByLabel(/why is the quote being revised/i).fill(reason);
+    await page.getByRole("button", { name: /^send revised quote$/i }).last().click();
+  } else {
+    await page.getByRole("button", { name: /could not confirm service/i }).click();
+    if (reason) await page.getByLabel(/reason couranr could not confirm/i).selectOption(reason);
+    if (note) await page.getByLabel(/internal note/i).fill(note);
+    await page.getByRole("button", { name: /record that couranr could not confirm/i }).click();
+  }
+  await page.waitForTimeout(2000);
+}
+
+async function groupL() {
+  console.log("\n\x1b[1mL — review outcomes: confirm as quoted, revised quote, could not confirm\x1b[0m");
+
+  const accounts = await accountsCreatedBy(USER_IDS.merchant);
+  if (accounts.length === 0) {
+    inconclusive("L0", "review-outcome flow", "the merchant fixture has no business account");
+    return;
+  }
+  const accountId = accounts[0].id;
+
+  /* --- L1..L4  merchant-paid, acknowledged -> confirmed ------------------ */
+  let acceptId = null;
+  {
+    const { ctx, page } = await freshContext();
+    await signIn(page, USERS.merchant, { expectLanding: "/business" });
+    const made = await createRequestThroughUi(page, accountId, { acknowledge: true });
+    acceptId = made.id;
+    check("L1", "MER-006 offers the quote acknowledgment for a merchant-paid priced quote",
+      made.ackVisible, `checkboxPresent=${made.ackVisible}`);
+    await shot(page, "L1-mer006-acknowledgment");
+
+    if (!acceptId) {
+      inconclusive("L2", "submission persisted", "no new request row appeared after submit");
+    } else {
+      const row = await requestById(acceptId);
+      check("L2", "submitting moved the ROW to pending_couranr_review with review pending",
+        row?.request_state === "pending_couranr_review" && row?.review_state === "pending",
+        `request_state=${row?.request_state} review_state=${row?.review_state}`);
+
+      const ev = await eventsFor(acceptId);
+      const submit = ev.filter((e) => e.command === "submit_delivery_request").pop();
+      check("L3", "the submission event records acknowledgment=true against the SERVER-stored quote",
+        submit?.metadata?.acknowledgment === true &&
+          submit?.metadata?.deliverySubtotalCents === row?.delivery_subtotal_cents &&
+          submit?.metadata?.pricingPolicyVersion === row?.pricing_policy_version,
+        `ack=${submit?.metadata?.acknowledgment} eventSubtotal=${submit?.metadata?.deliverySubtotalCents} rowSubtotal=${row?.delivery_subtotal_cents}`);
+    }
+    await ctx.close();
+  }
+
+  if (acceptId) {
+    const { ctx, page } = await freshContext();
+    await signIn(page, USERS.ops, { expectLanding: "/operations" });
+    await decideAsOps(page, acceptId, "accept");
+    await shot(page, "L4-ops-confirmed");
+
+    const row = await requestById(acceptId);
+    check("L4", "confirm as quoted moves a merchant-paid request to confirmed / accepted_as_quoted",
+      row?.request_state === "confirmed" && row?.review_state === "accepted_as_quoted",
+      `request_state=${row?.request_state} review_state=${row?.review_state}`);
+
+    // The state that must NOT have moved. `confirmed` is a review conclusion,
+    // not a payment or dispatch one.
+    check("L5", "confirming authorizes no payment and does not touch readiness",
+      row?.payment_due_cents === null && row?.readiness_state === "not_confirmed",
+      `payment_due_cents=${row?.payment_due_cents} readiness=${row?.readiness_state}`);
+
+    const ev = await eventsFor(acceptId);
+    const acc = ev.find((e) => e.command === "accept_delivery_request_as_quoted");
+    check("L6", "the decision is recorded in the append-only log as an operations action",
+      acc?.actor_type === "operations" && acc?.to_state === "confirmed" &&
+        acc?.from_state === "pending_couranr_review",
+      `actor=${acc?.actor_type} ${acc?.from_state}->${acc?.to_state}`);
+    await ctx.close();
+  } else {
+    inconclusive("L4", "confirm as quoted", "no request was created to confirm");
+  }
+
+  /* --- L7  the merchant sees what confirmed MEANS ------------------------ */
+  if (acceptId) {
+    const { ctx, page } = await freshContext();
+    await signIn(page, USERS.merchant, { expectLanding: "/business" });
+    await page.goto(`${BASE_URL}/business/deliveries/${acceptId}`, { waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(3000);
+    const said = await page.getByText(/Nothing has been charged yet/i).count();
+    const badge = await page.getByText("Confirmed", { exact: true }).count();
+    check("L7", "MER-007 shows the outcome AND says no payment was taken",
+      said > 0 && badge > 0, `chargedCopy=${said} confirmedBadge=${badge}`);
+    // The decision panel is Operations-only.
+    const panel = await page.getByText("Couranr review decision").count();
+    check("L8", "a merchant is never shown the review decision panel", panel === 0,
+      `panelHits=${panel}`);
+    await shot(page, "L7-mer007-outcome");
+    await ctx.close();
+  } else {
+    inconclusive("L7", "MER-007 outcome copy", "no confirmed request to display");
+  }
+
+  /* --- L9..L11  NO acknowledgment -> the confirm is REFUSED -------------- */
+  let noAckId = null;
+  {
+    const { ctx, page } = await freshContext();
+    await signIn(page, USERS.merchant, { expectLanding: "/business" });
+    const made = await createRequestThroughUi(page, accountId, { acknowledge: false });
+    noAckId = made.id;
+    await ctx.close();
+  }
+
+  if (noAckId) {
+    const { ctx, page } = await freshContext();
+    await signIn(page, USERS.ops, { expectLanding: "/operations" });
+    // Open the review FIRST, then snapshot. begin_delivery_request_review
+    // legitimately bumps `version`; the refusal must be measured against the
+    // state that existed immediately before the confirm was attempted.
+    await openForReview(page, noAckId);
+    const before = await requestById(noAckId);
+    await decideAsOps(page, noAckId, "accept", { alreadyOpen: true });
+    await shot(page, "L9-confirm-refused");
+
+    const after = await requestById(noAckId);
+    check("L9", "an unacknowledged merchant-paid request is NOT silently confirmed",
+      after?.request_state === "pending_couranr_review" && after?.review_state === "pending",
+      `request_state=${after?.request_state} review_state=${after?.review_state}`);
+    check("L10", "the refusal changed nothing at all — same version, same quote",
+      after?.version === before?.version &&
+        after?.delivery_subtotal_cents === before?.delivery_subtotal_cents,
+      `version ${before?.version}->${after?.version}`);
+
+    const shown = await page.getByText(/without the payer's approval/i).count();
+    check("L11", "the operator is told the payer's approval is required, not a generic error",
+      shown > 0, `conflictCopyHits=${shown}`);
+
+    const ev = await eventsFor(noAckId);
+    check("L12", "a refused confirm writes NO event to the append-only log",
+      ev.filter((e) => e.command === "accept_delivery_request_as_quoted").length === 0,
+      `acceptEvents=${ev.filter((e) => e.command === "accept_delivery_request_as_quoted").length}`);
+
+    /* --- L13  the same request can still be requoted -------------------- */
+    await decideAsOps(page, noAckId, "requote", {
+      reason: "E2E: distance recomputed after review",
+      alreadyOpen: true,
+    });
+    await shot(page, "L13-requoted");
+    const requoted = await requestById(noAckId);
+    check("L13", "a revised quote moves the request to quote_revision_required / requoted",
+      requoted?.request_state === "quote_revision_required" && requoted?.review_state === "requoted",
+      `request_state=${requoted?.request_state} review_state=${requoted?.review_state}`);
+
+    const rev = (await eventsFor(noAckId)).find((e) => e.command === "requote_delivery_request");
+    check("L14", "the requote event records the reason and both amounts",
+      rev?.metadata?.reason === "E2E: distance recomputed after review" &&
+        typeof rev?.metadata?.previousSubtotalCents === "number" &&
+        typeof rev?.metadata?.revisedSubtotalCents === "number",
+      `reason=${rev?.metadata?.reason} prev=${rev?.metadata?.previousSubtotalCents} next=${rev?.metadata?.revisedSubtotalCents}`);
+    check("L15", "a requote still authorizes no payment",
+      requoted?.payment_due_cents === null, `payment_due_cents=${requoted?.payment_due_cents}`);
+    await ctx.close();
+  } else {
+    inconclusive("L9", "unacknowledged confirm is refused", "no request was created");
+  }
+
+  /* --- L16..L18  decline ------------------------------------------------ */
+  let declineId = null;
+  {
+    const { ctx, page } = await freshContext();
+    await signIn(page, USERS.merchant, { expectLanding: "/business" });
+    const made = await createRequestThroughUi(page, accountId, { acknowledge: true });
+    declineId = made.id;
+    await ctx.close();
+  }
+
+  if (declineId) {
+    const { ctx, page } = await freshContext();
+    await signIn(page, USERS.ops, { expectLanding: "/operations" });
+    await decideAsOps(page, declineId, "decline", {
+      reason: "outside_service_area",
+      note: "E2E synthetic decline",
+    });
+    await shot(page, "L16-declined");
+
+    const row = await requestById(declineId);
+    check("L16", "could-not-confirm moves the request to declined / declined",
+      row?.request_state === "declined" && row?.review_state === "declined",
+      `request_state=${row?.request_state} review_state=${row?.review_state}`);
+
+    const ev = (await eventsFor(declineId)).find((e) => e.command === "decline_delivery_request");
+    check("L17", "the decline event records the structured reason and the internal note",
+      ev?.metadata?.reason === "outside_service_area" &&
+        ev?.metadata?.internalNote === "E2E synthetic decline",
+      `reason=${ev?.metadata?.reason} note=${ev?.metadata?.internalNote}`);
+
+    // A terminal outcome must not offer another decision.
+    await page.goto(`${BASE_URL}/operations/deliveries/${declineId}`, { waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(2500);
+    const stillOffering = await page.getByRole("button", { name: /^confirm as quoted$/i }).count();
+    check("L18", "a decided request offers no further decision", stillOffering === 0,
+      `confirmButtons=${stillOffering}`);
+    await shot(page, "L18-terminal");
+    await ctx.close();
+  } else {
+    inconclusive("L16", "decline", "no request was created to decline");
+  }
+}
+
+const ALL = { A: groupA, B: groupB, C: groupC, D: groupD, E: groupE, F: groupF, G: groupG, H: groupH, I: groupI, J: groupJ, K: groupK, L: groupL };
 
 let REAL_AFTER = null;
 let cleanup = null;

@@ -85,7 +85,7 @@ export const CANONICAL_SCREENS: CanonicalScreen[] = [
   { id: "DRV-010", name: "Vehicle profile", group: "driver", routes: ["/driver/vehicle"], tier: "core", phase: "7", viewport: "mobile-primary", implemented: false },
   { id: "OPS-001", name: "Operations dashboard", group: "operations", routes: ["/operations"], tier: "core", phase: "7–10", viewport: "desktop-primary", implemented: false },
   { id: "OPS-002", name: "Queue and managed dispatch", group: "operations", routes: ["/operations/queue", "/operations/deliveries"], tier: "core", phase: "7", viewport: "desktop-primary", implemented: true },
-  { id: "OPS-003", name: "Delivery review workspace", group: "operations", routes: ["/operations/deliveries/[id]"], tier: "core", phase: "7", viewport: "desktop-primary", implemented: false },
+  { id: "OPS-003", name: "Delivery review workspace", group: "operations", routes: ["/operations/deliveries/[id]"], tier: "core", phase: "7", viewport: "desktop-primary", implemented: true },
   { id: "OPS-004", name: "Requote and promotional credit", group: "operations", routes: ["/operations/deliveries/[id]?panel=requote"], tier: "core", phase: "6–7", viewport: "desktop-primary", implemented: false },
   { id: "OPS-005", name: "Operations messages and support inbox", group: "operations", routes: ["/operations/messages", "/operations/support"], tier: "core", phase: "8–9", viewport: "desktop-primary", implemented: false },
   { id: "OPS-006", name: "Couranr Ghost Operations", group: "operations", routes: ["/operations/ghost"], tier: "core", phase: "9", viewport: "desktop-primary", implemented: false },

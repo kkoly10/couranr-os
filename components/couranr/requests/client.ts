@@ -132,6 +132,12 @@ export function submitDeliveryRequestFromBrowser(input: {
   id: string;
   businessAccountId: string;
   expectedVersion: number;
+  /**
+   * MER-006's approval. Sent as a plain flag, never with an amount — the
+   * server records the acknowledgment against the quote IT holds, so what the
+   * browser thinks the price is cannot enter the record.
+   */
+  merchantAcknowledged?: boolean;
 }) {
   return call<{ request: DeliveryRequestView }>(
     `/api/couranr/delivery-requests/${input.id}/submit`,
@@ -140,6 +146,7 @@ export function submitDeliveryRequestFromBrowser(input: {
       body: {
         businessAccountId: input.businessAccountId,
         expectedVersion: input.expectedVersion,
+        merchantAcknowledged: input.merchantAcknowledged === true,
       },
     }
   );
@@ -174,6 +181,45 @@ export function beginReview(input: { id: string; expectedVersion: number }) {
   return call<{ request: DeliveryRequestView }>(
     `/api/couranr/operations/delivery-requests/${input.id}/begin-review`,
     { method: "POST", body: { expectedVersion: input.expectedVersion } }
+  );
+}
+
+/* ------------------------------------------------- review outcomes (REV-001)
+ *
+ * None of these sends an amount or a target state. The command name is the
+ * decision; the server owns both the price and where the request lands.
+ */
+
+export function acceptAsQuoted(input: { id: string; expectedVersion: number }) {
+  return call<{ request: DeliveryRequestView }>(
+    `/api/couranr/operations/delivery-requests/${input.id}/accept-as-quoted`,
+    { method: "POST", body: { expectedVersion: input.expectedVersion } }
+  );
+}
+
+export function requoteRequest(input: { id: string; expectedVersion: number; reason: string }) {
+  return call<{ request: DeliveryRequestView }>(
+    `/api/couranr/operations/delivery-requests/${input.id}/requote`,
+    { method: "POST", body: { expectedVersion: input.expectedVersion, reason: input.reason } }
+  );
+}
+
+export function declineRequest(input: {
+  id: string;
+  expectedVersion: number;
+  reason: string;
+  internalNote?: string;
+}) {
+  return call<{ request: DeliveryRequestView }>(
+    `/api/couranr/operations/delivery-requests/${input.id}/decline`,
+    {
+      method: "POST",
+      body: {
+        expectedVersion: input.expectedVersion,
+        reason: input.reason,
+        internalNote: input.internalNote ?? "",
+      },
+    }
   );
 }
 

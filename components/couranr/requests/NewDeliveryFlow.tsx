@@ -33,7 +33,7 @@ import {
   type ApiFailure,
   type BusinessAccountOption,
 } from "./client";
-import type { DeliveryRequestView } from "@/lib/couranr/requests/view";
+import { formatCents, type DeliveryRequestView } from "@/lib/couranr/requests/view";
 
 /**
  * MER-005 (Create delivery with Smart Intake) and MER-006 (Delivery review and
@@ -106,6 +106,13 @@ export function NewDeliveryFlow() {
 
   const [request, setRequest] = React.useState<DeliveryRequestView | null>(null);
   const [busy, setBusy] = React.useState(false);
+  /**
+   * MER-006's quote approval. Unticked by default and never pre-ticked: an
+   * approval the merchant did not actively give is not an approval, and the
+   * whole point of recording it is that Couranr can later confirm the price
+   * without asking again.
+   */
+  const [approveQuote, setApproveQuote] = React.useState(false);
   const [failure, setFailure] = React.useState<ApiFailure | null>(null);
   const [fieldErrors, setFieldErrors] = React.useState<FieldErrors>({});
 
@@ -186,6 +193,10 @@ export function NewDeliveryFlow() {
       return;
     }
     setRequest(result.value.request);
+    // A fresh estimate is a fresh number. An approval given for the previous
+    // price must not carry over silently onto this one, so the tick is cleared
+    // and the merchant approves what they are now being shown.
+    setApproveQuote(false);
     goToStep("review");
   }
 
@@ -197,6 +208,10 @@ export function NewDeliveryFlow() {
       id: request.id,
       businessAccountId,
       expectedVersion: request.version,
+      // Only meaningful when this business is paying and there is a priced
+      // quote to approve. Sent as false otherwise so the server never records
+      // an approval of a number the merchant was not shown.
+      merchantAcknowledged: canAcknowledge(request) && approveQuote,
     });
     setBusy(false);
     if (isApiFailure(result)) {
@@ -282,6 +297,32 @@ export function NewDeliveryFlow() {
             <li>You can track the request from your deliveries list.</li>
           </ul>
         </Card>
+
+        {/*
+          MER-006 quote acknowledgment (REV-001).
+
+          Ticking this is what lets Couranr confirm the request at this exact
+          price without coming back for a second approval. Leaving it unticked
+          is a supported choice, not an error: the request still submits, and
+          Couranr will send it back as a revised quote for approval instead.
+          That is why it is optional and unticked by default.
+        */}
+        {canAcknowledge(request) ? (
+          <Card>
+            <CardHeader
+              title="Approve this estimate"
+              description="Optional. It lets Couranr confirm your delivery without asking you again."
+            />
+            <CheckboxRow
+              label="I approve this delivery estimate if Couranr confirms it without changes."
+              hint={`If Couranr changes anything about the price, this approval does not apply and Couranr will send you a revised quote to approve. Estimate: ${formatCents(
+                request.quote.deliverySubtotalCents
+              )}.`}
+              checked={approveQuote}
+              onChange={(e) => setApproveQuote(e.target.checked)}
+            />
+          </Card>
+        ) : null}
 
         <Cluster gap={3}>
           <Button variant="primary" loading={busy} onClick={onSubmitForReview}>
@@ -530,5 +571,22 @@ function AddressCard({
         </Field>
       </Stack>
     </Card>
+  );
+}
+
+/**
+ * Is there something for the merchant to approve?
+ *
+ * Only when this business is the payer AND the server produced an actual
+ * priced estimate. A customer-paid request is not the merchant's to approve,
+ * and a request headed for manual review has no number yet — offering a
+ * checkbox in either case would collect an approval that means nothing and
+ * that `couranr_accept_delivery_request_as_quoted` would refuse to honour.
+ */
+function canAcknowledge(request: DeliveryRequestView): boolean {
+  return (
+    request.payerType === "merchant" &&
+    request.quote.status === "estimated" &&
+    request.quote.deliverySubtotalCents !== null
   );
 }

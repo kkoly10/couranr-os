@@ -175,6 +175,11 @@ export function classifyDatabaseError(err: any): PublicErrorCode {
       return "not_found";
     case "CR409":
       return "version_conflict";
+    case "CR412":
+      // A precondition the caller can act on, NOT a concurrency race. Kept
+      // distinct from version_conflict because "reload and try again" is
+      // actively wrong advice here — reloading changes nothing.
+      return "conflict";
     case "CR422":
       // The server passed itself an inconsistent quote. That is our bug, not
       // the caller's input, so it must not read as a validation failure.

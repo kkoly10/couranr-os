@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import {
+  Alert,
   Badge,
   Card,
   CardHeader,
@@ -18,6 +19,7 @@ import {
   PermissionDeniedState,
 } from "@/components/couranr/states";
 import { QuoteSummary } from "./QuoteSummary";
+import { ReviewOutcomeActions } from "./ReviewOutcomeActions";
 import {
   fetchDeliveryRequest,
   fetchMyBusinessAccounts,
@@ -37,12 +39,45 @@ import { REQUEST_STATE_LABELS, type DeliveryRequestView } from "@/lib/couranr/re
 
 const STATE_TONE: Record<string, "neutral" | "info" | "success" | "warning" | "danger"> = {
   draft: "neutral",
+  awaiting_merchant_confirmation: "warning",
+  awaiting_quote_acceptance: "warning",
   pending_couranr_review: "info",
   quote_revision_required: "warning",
   confirmed: "success",
   declined: "danger",
   cancelled: "neutral",
   closed: "neutral",
+};
+
+/**
+ * MER-007 outcome copy (REV-001).
+ *
+ * `confirmed` is the dangerous one: on its own it reads as "paid, scheduled
+ * and on its way". It means none of those — payment, readiness and
+ * fulfillment are separate state groups and this slice touches none of them.
+ * So the outcome is always spelled out rather than left to a one-word badge.
+ */
+const OUTCOME_COPY: Record<string, { tone: "info" | "success" | "warning" | "danger"; title: string; body: string }> = {
+  confirmed: {
+    tone: "success",
+    title: "Couranr confirmed this delivery at the quoted price",
+    body: "Nothing has been charged yet, and no driver has been assigned. Couranr will contact you about scheduling.",
+  },
+  awaiting_quote_acceptance: {
+    tone: "warning",
+    title: "Couranr confirmed the quote — waiting for the recipient to approve it",
+    body: "This delivery is paid by the recipient, so Couranr is waiting for them to approve the price before anything is scheduled.",
+  },
+  quote_revision_required: {
+    tone: "warning",
+    title: "Couranr sent a revised quote",
+    body: "The price changed after review, so this delivery needs a fresh approval before it can go ahead.",
+  },
+  declined: {
+    tone: "danger",
+    title: "Couranr could not confirm this delivery",
+    body: "Nothing was charged. Contact Couranr Support if you would like to discuss alternatives.",
+  },
 };
 
 function addressLines(a: any): string[] {
@@ -59,6 +94,17 @@ export function DeliveryRequestDetail({ id }: { id: string }) {
   const [events, setEvents] = React.useState<any[]>([]);
   const [failure, setFailure] = React.useState<ApiFailure | null>(null);
   const [loading, setLoading] = React.useState(true);
+  /**
+   * Whether this viewer read the request WITHOUT a business scope. Only
+   * Couranr Operations can: `canActOnDeliveryRequest` denies an unscoped read
+   * to a merchant (`not_a_member`), so a successful unscoped read identifies
+   * the viewer.
+   *
+   * This only decides whether the decision panel is drawn. It is not the
+   * security boundary — every review command re-checks the actor server-side
+   * and answers 403 to a merchant regardless of what the browser rendered.
+   */
+  const [isOperations, setIsOperations] = React.useState(false);
 
   React.useEffect(() => {
     let cancelled = false;
@@ -80,6 +126,7 @@ export function DeliveryRequestDetail({ id }: { id: string }) {
         if (!isApiFailure(r)) {
           setRequest(r.value.request);
           setEvents(r.value.events ?? []);
+          setIsOperations(businessAccountId === undefined);
           setLoading(false);
           return;
         }
@@ -133,6 +180,14 @@ export function DeliveryRequestDetail({ id }: { id: string }) {
             </Badge>
           }
         />
+        {OUTCOME_COPY[request.requestState] ? (
+          <Alert
+            tone={OUTCOME_COPY[request.requestState].tone}
+            title={OUTCOME_COPY[request.requestState].title}
+          >
+            {OUTCOME_COPY[request.requestState].body}
+          </Alert>
+        ) : null}
         <Grid columns={3}>
           <Detail label="Created" value={new Date(request.createdAt).toLocaleString()} />
           <Detail
@@ -184,6 +239,20 @@ export function DeliveryRequestDetail({ id }: { id: string }) {
       </Card>
 
       <QuoteSummary request={request} />
+
+      {isOperations ? (
+        <ReviewOutcomeActions
+          request={request}
+          onUpdated={(next) => {
+            setRequest(next);
+            // The decision appended an event. Re-read so the history below
+            // shows it instead of going stale until the next full load.
+            fetchDeliveryRequest({ id }).then((r) => {
+              if (!isApiFailure(r)) setEvents(r.value.events ?? []);
+            });
+          }}
+        />
+      ) : null}
 
       <Card>
         <CardHeader title="History" description="Every change Couranr recorded for this request." />
