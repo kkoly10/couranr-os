@@ -1,0 +1,2048 @@
+{
+  "$schema_version": "1.0",
+  "product": "Couranr — local delivery infrastructure for local businesses",
+  "generated_from": {
+    "authority_order": [
+      "Couranr_Claude_Code_Master_Package.md",
+      "UI_SCREEN_REGISTRY.md",
+      "ui_screen_registry.json",
+      "existing approved implementation packages",
+      "current code as shipped-state evidence only"
+    ],
+    "rule": "Written specification controls behavior. Current code is never authority when it conflicts with a higher source."
+  },
+  "status_values": [
+    "decided",
+    "unresolved",
+    "intentionally_deferred"
+  ],
+  "decisions": [
+    {
+      "id": "PRC-001",
+      "category": "pricing",
+      "decision": "Standard delivery base price covers the first three loaded miles.",
+      "value": {
+        "base_price_cents": 2299,
+        "covers_loaded_miles": 3,
+        "currency": "USD",
+        "computed": "server-side",
+        "stored_as": "integer cents"
+      },
+      "status": "decided",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§4 Pricing registry — Standard delivery",
+      "affected_routes": [
+        "/estimate",
+        "/pricing",
+        "/business/deliveries/new",
+        "/pay/[token]"
+      ],
+      "affected_screen_ids": [
+        "PUB-004",
+        "PUB-008",
+        "MER-005",
+        "MER-006",
+        "PUB-005"
+      ],
+      "affected_database_objects": [
+        "public.deliveries",
+        "public.orders"
+      ],
+      "affected_code_paths": [
+        "lib/delivery/policy.ts:13",
+        "lib/delivery/pricing.ts"
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "base_price_cents": 1500
+        },
+        "code_location": "lib/delivery/policy.ts:13 (DELIVERY_BASE_FEE = 15)",
+        "resolution": "Written authority wins. Code is the defect.",
+        "remediation_commit": "separate reviewable pricing commit after this registry is accepted"
+      },
+      "implementation_phase": "3",
+      "acceptance_criteria": [
+        "A quote for <=3 loaded miles with no surcharges totals 2299 cents.",
+        "All money is computed server-side and stored in integer cents.",
+        "No client-supplied amount is trusted."
+      ]
+    },
+    {
+      "id": "MIL-001",
+      "category": "included mileage",
+      "decision": "Three loaded miles are included in the base price.",
+      "value": {
+        "included_loaded_miles": 3,
+        "measurement": "loaded miles",
+        "validation": "server-side distance validation required"
+      },
+      "status": "decided",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§4 Pricing registry — Standard delivery",
+      "affected_routes": [
+        "/estimate",
+        "/business/deliveries/new"
+      ],
+      "affected_screen_ids": [
+        "PUB-004",
+        "MER-005",
+        "MER-006"
+      ],
+      "affected_database_objects": [
+        "public.deliveries"
+      ],
+      "affected_code_paths": [
+        "lib/delivery/policy.ts:14",
+        "app/api/delivery/start-checkout/route.ts"
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "included_miles": 4
+        },
+        "code_location": "lib/delivery/policy.ts:14 (DELIVERY_INCLUDED_MILES = 4)",
+        "resolution": "Written authority wins. Code is the defect.",
+        "remediation_commit": "separate reviewable pricing commit"
+      },
+      "implementation_phase": "3",
+      "acceptance_criteria": [
+        "Mile 4 is the first billable additional mile."
+      ]
+    },
+    {
+      "id": "MIL-002",
+      "category": "mileage tiers",
+      "decision": "Additional loaded miles are billed in tiers; beyond 100 miles the request is captured for a manual final quote.",
+      "value": {
+        "tiers": [
+          {
+            "from_mile": 4,
+            "to_mile": 10,
+            "per_mile_cents": 225
+          },
+          {
+            "from_mile": 11,
+            "to_mile": 25,
+            "per_mile_cents": 300
+          },
+          {
+            "from_mile": 26,
+            "to_mile": 50,
+            "per_mile_cents": 350
+          },
+          {
+            "from_mile": 51,
+            "to_mile": 75,
+            "per_mile_cents": 400
+          },
+          {
+            "from_mile": 76,
+            "to_mile": 100,
+            "per_mile_cents": 475
+          }
+        ],
+        "over_100_miles": {
+          "behaviour": "capture request for manual final quote",
+          "auto_quote": false
+        }
+      },
+      "status": "decided",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§4 Pricing registry — Standard delivery",
+      "affected_routes": [
+        "/estimate",
+        "/pricing",
+        "/business/deliveries/new"
+      ],
+      "affected_screen_ids": [
+        "PUB-004",
+        "PUB-008",
+        "MER-006"
+      ],
+      "affected_database_objects": [
+        "public.deliveries"
+      ],
+      "affected_code_paths": [
+        "lib/delivery/policy.ts:15",
+        "lib/delivery/pricing.ts"
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "flat_per_mile_cents": 175,
+          "tiers": null
+        },
+        "code_location": "lib/delivery/policy.ts:15 (DELIVERY_PER_MILE_RATE = 1.75)",
+        "resolution": "Written authority wins. Code has a single flat rate and no tiers at all.",
+        "remediation_commit": "separate reviewable pricing commit"
+      },
+      "implementation_phase": "3",
+      "acceptance_criteria": [
+        "A 12-mile quote bills miles 4-10 at 225 and miles 11-12 at 300.",
+        "A 120-mile request produces no automatic quote and is flagged for manual quoting."
+      ]
+    },
+    {
+      "id": "SUR-001",
+      "category": "surcharges",
+      "decision": "Service-level, stop, signature, weight, waiting, return, cancellation and attempt charges are fixed and additive.",
+      "value": {
+        "service_level_cents": {
+          "priority": 700,
+          "rush": 1200,
+          "overnight": 3000
+        },
+        "rush_and_overnight_stack": false,
+        "additional_stop_cents": 800,
+        "signature_cents": 300,
+        "photo_or_pin_proof_cents": 0,
+        "weight_cents": [
+          {
+            "from_lb": 26,
+            "to_lb": 50,
+            "cents": 1000
+          },
+          {
+            "from_lb": 51,
+            "to_lb": 75,
+            "cents": 2500,
+            "note": "or SUV-bulky class"
+          },
+          {
+            "from_lb": 76,
+            "to_lb": 150,
+            "cents": 5000,
+            "note": "or pickup/cargo-van class"
+          },
+          {
+            "from_lb": 151,
+            "to_lb": 200,
+            "cents": 8500,
+            "note": "or XL class"
+          }
+        ],
+        "over_200_lb": {
+          "behaviour": "Couranr review and manual quote"
+        },
+        "waiting": {
+          "included_minutes": 10,
+          "per_minute_cents_after": 75
+        },
+        "tolls_and_parking": "at cost",
+        "tip": {
+          "driver_share_percent": 100
+        },
+        "rounding": {
+          "nearest_cents": 25,
+          "condition": "when the accepted pricing policy requires it",
+          "preserve": "exact inputs and line items"
+        }
+      },
+      "status": "decided",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§4 Pricing registry — Service-level charges; Additional charges",
+      "affected_routes": [
+        "/estimate",
+        "/business/deliveries/new",
+        "/operations/deliveries/[id]"
+      ],
+      "affected_screen_ids": [
+        "PUB-004",
+        "MER-006",
+        "OPS-003",
+        "OPS-004"
+      ],
+      "affected_database_objects": [
+        "public.deliveries"
+      ],
+      "affected_code_paths": [
+        "lib/delivery/policy.ts",
+        "lib/delivery/pricing.ts"
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "stop_cents": 600,
+          "rush_cents": 1000,
+          "signature_cents": 500,
+          "heavy_item_cents": 1500,
+          "heavy_threshold_lb": 50,
+          "max_weight_lb": 100
+        },
+        "code_location": "lib/delivery/policy.ts:16-22",
+        "resolution": "Written authority wins on every value. Code has no priority tier, no overnight, a single heavy-item surcharge instead of four weight bands, and a 100 lb hard cap where authority defines bands to 200 lb plus manual review.",
+        "remediation_commit": "separate reviewable pricing commit"
+      },
+      "implementation_phase": "3",
+      "acceptance_criteria": [
+        "Rush and overnight can never both apply to one delivery.",
+        "Waiting is free for 10 minutes then billed per minute.",
+        "A 210 lb request produces no automatic quote."
+      ]
+    },
+    {
+      "id": "SUR-002",
+      "category": "surcharges",
+      "decision": "Route Saver is a multi-stop product with a public starting price.",
+      "value": {
+        "requirements": {
+          "merchant_pickups": 1,
+          "min_stops": 3,
+          "compatible_delivery_window": true,
+          "route_order_controlled_by": "Couranr"
+        },
+        "public_starting_price_cents_per_stop": 1699,
+        "pilot_payer": "merchant normally pays"
+      },
+      "status": "decided",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§4 Pricing registry — Route Saver",
+      "affected_routes": [
+        "/pricing",
+        "/operations/deliveries/[id]"
+      ],
+      "affected_screen_ids": [
+        "PUB-008",
+        "OPS-003"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [],
+      "conflict_with_current_code": {
+        "code_value": null,
+        "code_location": "not implemented",
+        "resolution": "Net-new. No conflict.",
+        "remediation_commit": "post-slice-1"
+      },
+      "implementation_phase": "3",
+      "acceptance_criteria": [
+        "Route Saver requires at least three stops from one merchant pickup."
+      ]
+    },
+    {
+      "id": "PRC-002",
+      "category": "pricing",
+      "decision": "Internal driver-cost benchmarks are stored separately from customer pricing and are not an automatic payable.",
+      "value": {
+        "separation": "internal cost estimates stored separately from customer price",
+        "is_automatic_payable": false,
+        "benchmark_cents": {
+          "first_three_miles": 1550,
+          "per_mile": {
+            "4-10": 165,
+            "11-25": 230,
+            "26-50": 275,
+            "51-75": 320,
+            "76-100": 380
+          },
+          "priority": 500,
+          "rush": 800,
+          "additional_stop": 600,
+          "weight_26_50_lb": 700,
+          "signature": 200,
+          "waiting_per_minute": 50
+        },
+        "tolls_and_parking": "reimbursed",
+        "tips_driver_share_percent": 100
+      },
+      "status": "decided",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§4 Pricing registry — Internal economics",
+      "affected_routes": [
+        "/operations/analytics",
+        "/operations/payments"
+      ],
+      "affected_screen_ids": [
+        "OPS-013",
+        "OPS-009"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [],
+      "conflict_with_current_code": {
+        "code_value": null,
+        "code_location": "not implemented",
+        "resolution": "Net-new.",
+        "remediation_commit": "post-slice-1"
+      },
+      "implementation_phase": "5",
+      "acceptance_criteria": [
+        "Customer price and internal cost are never the same field.",
+        "Internal cost is never shown on a customer or merchant surface."
+      ]
+    },
+    {
+      "id": "PRC-003",
+      "category": "pricing",
+      "decision": "Promotional credit never overwrites the standard quote.",
+      "value": {
+        "overwrite_standard_quote": false,
+        "must_record": [
+          "standard_quote",
+          "amount_paid",
+          "couranr_promotional_credit",
+          "reason",
+          "market",
+          "category",
+          "campaign",
+          "approver"
+        ]
+      },
+      "status": "decided",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§4 Pricing registry — Promotional credit",
+      "affected_routes": [
+        "/operations/deliveries/[id]"
+      ],
+      "affected_screen_ids": [
+        "OPS-004"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [],
+      "conflict_with_current_code": {
+        "code_value": null,
+        "code_location": "not implemented",
+        "resolution": "Net-new.",
+        "remediation_commit": "post-slice-1"
+      },
+      "implementation_phase": "5",
+      "acceptance_criteria": [
+        "Applying credit leaves the standard quote intact and records all eight fields."
+      ]
+    },
+    {
+      "id": "PAY-001",
+      "category": "payer rules",
+      "decision": "Either the merchant or the customer may pay for any delivery; onboarding captures a default only.",
+      "value": {
+        "onboarding_options": [
+          "customer usually pays",
+          "my business usually pays",
+          "it depends on the order"
+        ],
+        "default": "it depends on the order",
+        "both_available_per_delivery": true,
+        "customer_account_required": false,
+        "split_payments_in_mvp": false
+      },
+      "status": "decided",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§7 Merchant-paid and customer-paid workflows",
+      "affected_routes": [
+        "/business/onboarding",
+        "/business/deliveries/new",
+        "/pay/[token]",
+        "/request/[merchantSlug]"
+      ],
+      "affected_screen_ids": [
+        "MER-002",
+        "MER-005",
+        "MER-006",
+        "PUB-005",
+        "PUB-004"
+      ],
+      "affected_database_objects": [
+        "public.orders"
+      ],
+      "affected_code_paths": [],
+      "conflict_with_current_code": {
+        "code_value": null,
+        "code_location": "no payer model exists; legacy checkout is single-path",
+        "resolution": "Net-new.",
+        "remediation_commit": "slice 1+"
+      },
+      "implementation_phase": "4",
+      "acceptance_criteria": [
+        "Every delivery records its payer explicitly.",
+        "No delivery can be split across two payers."
+      ]
+    },
+    {
+      "id": "PAY-002",
+      "category": "payer rules",
+      "decision": "Payer changes are permitted by lifecycle stage.",
+      "value": {
+        "before_authorization": "allowed",
+        "after_authorization": "cancel old obligation and create new",
+        "after_capture": "refund or new charge, requires Couranr Operations",
+        "after_pickup": "normally not allowed"
+      },
+      "status": "decided",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§7 — Payer changes",
+      "affected_routes": [
+        "/operations/deliveries/[id]"
+      ],
+      "affected_screen_ids": [
+        "OPS-003",
+        "OPS-004"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [],
+      "conflict_with_current_code": {
+        "code_value": null,
+        "code_location": "not implemented",
+        "resolution": "Net-new.",
+        "remediation_commit": "post-slice-1"
+      },
+      "implementation_phase": "5",
+      "acceptance_criteria": [
+        "A payer change after capture cannot be performed without Operations."
+      ]
+    },
+    {
+      "id": "CAP-001",
+      "category": "authorization and capture timing",
+      "decision": "Payment is authorized before Couranr review and captured only after Couranr confirms schedule and vehicle.",
+      "value": {
+        "order": [
+          "quote generated",
+          "quote accepted",
+          "payment method confirmed",
+          "payment authorized",
+          "merchant marks ready",
+          "Couranr review",
+          "Couranr confirms schedule and vehicle",
+          "payment captured",
+          "delivery created and assigned"
+        ],
+        "capture_before_couranr_confirmation": false,
+        "customer_payment_before_merchant_validation": false
+      },
+      "status": "decided",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§7 Merchant-paid; Customer-paid merchant link; Customer-initiated hosted request",
+      "affected_routes": [
+        "/pay/[token]",
+        "/business/deliveries/new",
+        "/operations/queue"
+      ],
+      "affected_screen_ids": [
+        "PUB-005",
+        "MER-006",
+        "OPS-002",
+        "OPS-010"
+      ],
+      "affected_database_objects": [
+        "public.orders",
+        "public.deliveries",
+        "public.stripe_webhook_events"
+      ],
+      "affected_code_paths": [
+        "app/api/delivery/start-checkout/route.ts",
+        "app/api/stripe/webhook/route.ts"
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "model": "Stripe Checkout Session, immediate payment, no separate authorize/capture step"
+        },
+        "code_location": "app/api/delivery/start-checkout/route.ts",
+        "resolution": "Written authority wins. The legacy flow has no authorization/capture separation and no Couranr review gate. app/api/delivery/complete (unauthenticated capture) was retired in commit 3c4e1ca.",
+        "remediation_commit": "payments slice, after slice 1"
+      },
+      "implementation_phase": "4-5",
+      "acceptance_criteria": [
+        "No capture occurs before a recorded Couranr confirmation.",
+        "A customer is never asked to pay before merchant validation."
+      ]
+    },
+    {
+      "id": "CAN-001",
+      "category": "cancellation",
+      "decision": "Cancellation charges depend on lifecycle stage.",
+      "value": {
+        "before_authorization": {
+          "charge_cents": 0
+        },
+        "after_authorization_before_confirmation": {
+          "charge_cents": 0,
+          "action": "release"
+        },
+        "couranr_cannot_confirm": {
+          "charge_cents": 0,
+          "action": "release"
+        },
+        "after_confirmation_before_arrival": {
+          "charge_cents": 800
+        },
+        "after_arrival_package_or_merchant_unavailable": {
+          "charge_cents": 1500,
+          "note": "failed pickup attempt fee plus approved waiting"
+        },
+        "after_pickup": {
+          "charge": "original delivery plus applicable return"
+        }
+      },
+      "status": "decided",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§11 Delivery lifecycle — Cancellation",
+      "affected_routes": [
+        "/help/[token]",
+        "/operations/deliveries/[id]"
+      ],
+      "affected_screen_ids": [
+        "CUS-002",
+        "OPS-003"
+      ],
+      "affected_database_objects": [
+        "public.orders"
+      ],
+      "affected_code_paths": [],
+      "conflict_with_current_code": {
+        "code_value": null,
+        "code_location": "no cancellation fee model exists",
+        "resolution": "Net-new.",
+        "remediation_commit": "exceptions slice"
+      },
+      "implementation_phase": "7",
+      "acceptance_criteria": [
+        "Cancelling before authorization never creates a charge."
+      ]
+    },
+    {
+      "id": "REF-001",
+      "category": "refunds",
+      "decision": "Returns are charged at a percentage of the original delivery with a floor; delivery refunds are Operations-controlled.",
+      "value": {
+        "return_charge_percent_of_original": 70,
+        "return_minimum_cents": 1499,
+        "automatic_free_redelivery": false,
+        "requires": [
+          "structured reason",
+          "evidence",
+          "notifications",
+          "payment obligation",
+          "merchant return PIN",
+          "condition photo",
+          "timestamp",
+          "receipt"
+        ],
+        "delivery_refund_authority": "Couranr Operations"
+      },
+      "status": "decided",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§11 Delivery lifecycle — Return; §8 authority",
+      "affected_routes": [
+        "/operations/refunds",
+        "/help/[token]"
+      ],
+      "affected_screen_ids": [
+        "OPS-011",
+        "CUS-002",
+        "CUS-007"
+      ],
+      "affected_database_objects": [
+        "public.orders"
+      ],
+      "affected_code_paths": [],
+      "conflict_with_current_code": {
+        "code_value": null,
+        "code_location": "not implemented",
+        "resolution": "Net-new.",
+        "remediation_commit": "exceptions slice"
+      },
+      "implementation_phase": "7",
+      "acceptance_criteria": [
+        "A return never falls below the minimum charge.",
+        "No refund path exists outside Operations."
+      ]
+    },
+    {
+      "id": "REF-002",
+      "category": "refunds",
+      "decision": "Merchandise price and merchandise refunds are the merchant's responsibility, not Couranr's.",
+      "value": {
+        "couranr_charges_for": [
+          "delivery",
+          "approved operating charges"
+        ],
+        "merchant_responsible_for": [
+          "product price",
+          "product refund"
+        ]
+      },
+      "status": "decided",
+      "authority_file": "UI_SCREEN_REGISTRY.md",
+      "authority_section": "§3 Global content and behavior corrections",
+      "affected_routes": [
+        "/pricing",
+        "/help/[token]"
+      ],
+      "affected_screen_ids": [
+        "PUB-008",
+        "CUS-007"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [],
+      "conflict_with_current_code": {
+        "code_value": null,
+        "code_location": "n/a",
+        "resolution": "Copy constraint.",
+        "remediation_commit": "marketing slice"
+      },
+      "implementation_phase": "10",
+      "acceptance_criteria": [
+        "No customer-facing copy implies Couranr refunds merchandise."
+      ]
+    },
+    {
+      "id": "HRS-001",
+      "category": "service hours",
+      "decision": "Standard fulfilment runs weekdays with a same-day cutoff.",
+      "value": {
+        "days": [
+          "Monday",
+          "Tuesday",
+          "Wednesday",
+          "Thursday",
+          "Friday"
+        ],
+        "standard_window": {
+          "start": "06:00",
+          "end": "18:00",
+          "timezone_status": "unresolved"
+        },
+        "earliest_pickup": "06:00",
+        "same_day_request_cutoff": "16:00",
+        "after_cutoff": "normally next business day",
+        "friday_after_cutoff": "normally Monday unless closure or observed holiday",
+        "all_times_are_estimates": true,
+        "availability_states": [
+          "standard",
+          "same-day",
+          "priority",
+          "rush",
+          "overnight",
+          "scheduled only",
+          "temporarily closed",
+          "weather-limited"
+        ]
+      },
+      "status": "decided",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§3 Markets and operating model — Hours",
+      "affected_routes": [
+        "/estimate",
+        "/how-it-works",
+        "/operations/settings"
+      ],
+      "affected_screen_ids": [
+        "PUB-004",
+        "PUB-011",
+        "OPS-016"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [],
+      "conflict_with_current_code": {
+        "code_value": null,
+        "code_location": "no operating-hours model exists in code",
+        "resolution": "Net-new.",
+        "remediation_commit": "availability slice"
+      },
+      "implementation_phase": "3",
+      "acceptance_criteria": [
+        "A request after the cutoff is offered the next business day.",
+        "A Friday post-cutoff request is offered Monday."
+      ]
+    },
+    {
+      "id": "HRS-002",
+      "category": "service hours",
+      "decision": "The timezone for all operating hours is not stated by any authority.",
+      "value": null,
+      "status": "unresolved",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§3 Hours — states clock times but no timezone",
+      "affected_routes": [
+        "/estimate",
+        "/operations/settings"
+      ],
+      "affected_screen_ids": [
+        "PUB-004",
+        "OPS-016"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [],
+      "conflict_with_current_code": {
+        "code_value": null,
+        "code_location": "n/a",
+        "resolution": "Cannot be inferred.",
+        "remediation_commit": null
+      },
+      "implementation_phase": "3",
+      "acceptance_criteria": [
+        "A named IANA timezone is recorded before any cutoff logic ships."
+      ],
+      "missing": "No authority states the timezone for 06:00, 18:00 or the 16:00 cutoff. The markets span a single US region, but the registry must not infer America/New_York without a decision.",
+      "blocked_screen_ids": [
+        "PUB-004",
+        "OPS-016"
+      ],
+      "blocked_commits": [
+        "availability slice",
+        "any same-day cutoff enforcement"
+      ]
+    },
+    {
+      "id": "OVN-001",
+      "category": "overnight behavior",
+      "decision": "Overnight is request-only, Couranr-enabled, surcharged, and never stacks with rush.",
+      "value": {
+        "window": {
+          "start": "18:00",
+          "end": "06:00"
+        },
+        "availability": "request-only when Couranr enables and confirms",
+        "surcharge_cents": 3000,
+        "stacks_with_rush": false,
+        "no_overnight_fee_when": "delay is solely caused by Couranr"
+      },
+      "status": "decided",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§3 Hours; §4 Service-level charges; §11 Weather",
+      "affected_routes": [
+        "/estimate",
+        "/business/deliveries/new",
+        "/operations/settings"
+      ],
+      "affected_screen_ids": [
+        "PUB-004",
+        "MER-006",
+        "OPS-016"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [],
+      "conflict_with_current_code": {
+        "code_value": {
+          "overnight": "not implemented"
+        },
+        "code_location": "lib/delivery/policy.ts has no overnight concept",
+        "resolution": "Net-new.",
+        "remediation_commit": "pricing commit"
+      },
+      "implementation_phase": "3",
+      "acceptance_criteria": [
+        "Selecting overnight disables rush and vice versa."
+      ]
+    },
+    {
+      "id": "MKT-001",
+      "category": "launch markets",
+      "decision": "Four named initial markets plus surrounding areas; Maryland is excluded from initial marketing.",
+      "value": {
+        "marketed_markets": [
+          "Washington, DC",
+          "Stafford",
+          "Woodbridge",
+          "Fredericksburg"
+        ],
+        "plus": "surrounding areas",
+        "excluded_from_initial_marketing": [
+          "Maryland"
+        ],
+        "public_copy": "Local business delivery across DC, Stafford, Woodbridge, Fredericksburg, and surrounding areas."
+      },
+      "status": "decided",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§3 Markets and operating model — Initial marketed markets",
+      "affected_routes": [
+        "/service-areas",
+        "/",
+        "/estimate"
+      ],
+      "affected_screen_ids": [
+        "PUB-010",
+        "PUB-001",
+        "PUB-004"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [
+        "lib/serviceArea.ts:1-4"
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "model": "60-mile radius from Stafford",
+          "named_markets": null
+        },
+        "code_location": "lib/serviceArea.ts:1-4",
+        "resolution": "Written authority wins. Code implements a single radius with no market concept.",
+        "remediation_commit": "separate reviewable service-area commit"
+      },
+      "implementation_phase": "3",
+      "acceptance_criteria": [
+        "Public copy names the four markets and never markets Maryland."
+      ]
+    },
+    {
+      "id": "SVC-001",
+      "category": "service-area logic",
+      "decision": "Out-of-area requests are captured and reviewed, never silently rejected by ZIP code.",
+      "value": {
+        "model": "named markets plus surrounding areas",
+        "out_of_area_behaviour": "capture request for Couranr review",
+        "silent_zip_rejection": false,
+        "extended_distance": "available subject to review"
+      },
+      "status": "decided",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§3 Markets and operating model",
+      "affected_routes": [
+        "/estimate",
+        "/service-areas",
+        "/operations/queue"
+      ],
+      "affected_screen_ids": [
+        "PUB-004",
+        "PUB-010",
+        "OPS-002"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [
+        "lib/serviceArea.ts"
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "behaviour": "hard radius boundary"
+        },
+        "code_location": "lib/serviceArea.ts",
+        "resolution": "Written authority wins. A radius check that rejects is the opposite of capture-and-review.",
+        "remediation_commit": "separate reviewable service-area commit"
+      },
+      "implementation_phase": "3",
+      "acceptance_criteria": [
+        "An out-of-area request produces a captured record, not a rejection."
+      ]
+    },
+    {
+      "id": "SVC-002",
+      "category": "service-area logic",
+      "decision": "The precise geographic boundary of each named market, and of 'surrounding areas', is not defined by any authority.",
+      "value": null,
+      "status": "unresolved",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§3 — names markets but supplies no boundary definition",
+      "affected_routes": [
+        "/estimate",
+        "/service-areas"
+      ],
+      "affected_screen_ids": [
+        "PUB-004",
+        "PUB-010"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [
+        "lib/serviceArea.ts"
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "radius_miles": 60,
+          "origin": "Stafford"
+        },
+        "code_location": "lib/serviceArea.ts:1-4",
+        "resolution": "The code's radius is shipped-state evidence only, not an authority for the boundary.",
+        "remediation_commit": null
+      },
+      "implementation_phase": "3",
+      "acceptance_criteria": [
+        "Each market has an explicit boundary definition (ZIP set, polygon or radius) recorded before service-area logic ships."
+      ],
+      "missing": "No authority defines how a market boundary is determined: no ZIP lists, no polygons, no per-market radii, and no definition of 'surrounding areas'.",
+      "blocked_screen_ids": [
+        "PUB-010",
+        "PUB-004"
+      ],
+      "blocked_commits": [
+        "service-area commit",
+        "any automatic in-area/out-of-area determination"
+      ]
+    },
+    {
+      "id": "TRM-001",
+      "category": "terminology",
+      "decision": "Couranr-institutional language only; no founder or personal-operator voice, and no unverified proof claims.",
+      "value": {
+        "use": [
+          "Couranr review",
+          "Couranr confirmation",
+          "Couranr Operations Queue",
+          "Couranr-managed dispatch",
+          "Couranr Support"
+        ],
+        "never_claim": [
+          "24/7 support",
+          "on-time guarantee",
+          "buyer protection",
+          "trusted by thousands",
+          "delivery volume",
+          "customer count",
+          "ratings"
+        ],
+        "no_public_support_phone": true,
+        "support_response_target_minutes": 15,
+        "support_target_applies": "during operating hours",
+        "roles": {
+          "merchant": "merchant",
+          "customer": "customer",
+          "driver": "driver",
+          "operations": "Couranr Operations"
+        },
+        "wordmark": "lowercase couranr"
+      },
+      "status": "decided",
+      "authority_file": "UI_SCREEN_REGISTRY.md",
+      "authority_section": "§2 MVP visual system; §3 Global content and behavior corrections",
+      "affected_routes": [
+        "/",
+        "/pricing",
+        "/businesses",
+        "/how-it-works",
+        "/help/[token]"
+      ],
+      "affected_screen_ids": [
+        "PUB-001",
+        "PUB-008",
+        "PUB-009",
+        "PUB-011",
+        "PUB-007"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [
+        "components/couranr/shell/shells.tsx"
+      ],
+      "conflict_with_current_code": {
+        "code_value": null,
+        "code_location": "n/a",
+        "resolution": "Copy constraint; shells already comply.",
+        "remediation_commit": "marketing slice"
+      },
+      "implementation_phase": "10",
+      "acceptance_criteria": [
+        "No surface claims 24/7 support or any guarantee.",
+        "No founder or personal-operator language appears anywhere."
+      ]
+    },
+    {
+      "id": "STA-001",
+      "category": "order states",
+      "decision": "Request, payment, readiness and review are INDEPENDENT state groups, not one mixed status column.",
+      "value": {
+        "request": [
+          "draft",
+          "awaiting_merchant_confirmation",
+          "awaiting_quote_acceptance",
+          "pending_couranr_review",
+          "quote_revision_required",
+          "confirmed",
+          "declined",
+          "cancelled",
+          "closed"
+        ],
+        "payment": [
+          "not_started",
+          "payment_method_saved",
+          "requires_action",
+          "authorized",
+          "capture_pending",
+          "captured",
+          "failed",
+          "cancelled",
+          "partially_refunded",
+          "refunded"
+        ],
+        "readiness": [
+          "not_confirmed",
+          "preparing",
+          "ready",
+          "not_ready",
+          "unavailable"
+        ],
+        "review": [
+          "not_required",
+          "pending",
+          "accepted_as_quoted",
+          "requoted",
+          "declined"
+        ],
+        "incident": [
+          "none",
+          "reported",
+          "under_review",
+          "awaiting_evidence",
+          "resolved",
+          "closed"
+        ]
+      },
+      "status": "decided",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§8 Canonical states and authority",
+      "affected_routes": [
+        "/business/deliveries/[id]",
+        "/operations/deliveries/[id]"
+      ],
+      "affected_screen_ids": [
+        "MER-007",
+        "OPS-003"
+      ],
+      "affected_database_objects": [
+        "public.orders"
+      ],
+      "affected_code_paths": [
+        "lib/delivery/transitions.ts"
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "orders.status": [
+            "pending",
+            "cancelled"
+          ],
+          "model": "single mixed status column"
+        },
+        "code_location": "public.orders.status; lib/delivery/transitions.ts",
+        "resolution": "Written authority wins. The live schema has one status column carrying only 'pending' and 'cancelled'; the authority requires five independent groups. §15 explicitly lists the mixed status model for replacement.",
+        "remediation_commit": "state-model migration, reviewed separately"
+      },
+      "implementation_phase": "4-5",
+      "acceptance_criteria": [
+        "Payment state can advance without changing request state.",
+        "No single column encodes payment and fulfilment together."
+      ]
+    },
+    {
+      "id": "STA-002",
+      "category": "delivery states",
+      "decision": "Fulfilment has a fourteen-value vocabulary.",
+      "value": {
+        "fulfillment": [
+          "not_scheduled",
+          "scheduled",
+          "assigned",
+          "en_route_to_pickup",
+          "at_pickup",
+          "picked_up",
+          "in_transit",
+          "at_dropoff",
+          "delivered",
+          "attempt_failed",
+          "return_required",
+          "returning",
+          "returned",
+          "cancelled"
+        ]
+      },
+      "status": "decided",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§8 Canonical states — Fulfillment",
+      "affected_routes": [
+        "/driver/deliveries/[id]",
+        "/track/[token]",
+        "/operations/deliveries/[id]"
+      ],
+      "affected_screen_ids": [
+        "DRV-002",
+        "PUB-006",
+        "OPS-003"
+      ],
+      "affected_database_objects": [
+        "public.deliveries"
+      ],
+      "affected_code_paths": [
+        "lib/delivery/transitions.ts"
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "implemented": [
+            "pending",
+            "assigned",
+            "in_transit",
+            "completed",
+            "cancelled"
+          ],
+          "live_data": [
+            "pending",
+            "cancelled"
+          ]
+        },
+        "code_location": "lib/delivery/transitions.ts:DELIVERY_STATUSES",
+        "resolution": "Written authority wins. The current five-value set is a subset that also uses 'completed' where the authority says 'delivered', and omits every en-route, attempt-failed and return state.",
+        "remediation_commit": "state-model migration"
+      },
+      "implementation_phase": "6",
+      "acceptance_criteria": [
+        "Every one of the fourteen values is representable.",
+        "'delivered' replaces 'completed' as the terminal success state."
+      ]
+    },
+    {
+      "id": "TRN-001",
+      "category": "transition rules",
+      "decision": "No browser sends an arbitrary target status; every transition is a named server command with a verified actor.",
+      "value": {
+        "arbitrary_target_status_from_client": false,
+        "named_server_command_required": true,
+        "actor_authority": {
+          "merchant": [
+            "create/edit requests",
+            "confirm merchandise order",
+            "mark readiness",
+            "approve merchant-paid quotes",
+            "request changes",
+            "message"
+          ],
+          "customer": [
+            "confirm address",
+            "approve customer-paid quote",
+            "select allowed handoff",
+            "request help"
+          ],
+          "driver": [
+            "execute assigned fulfillment transitions",
+            "capture required proof",
+            "send delivery messages"
+          ],
+          "operations": [
+            "review",
+            "schedule",
+            "vehicle",
+            "assignment",
+            "requote",
+            "return",
+            "delivery refunds",
+            "incidents",
+            "audited overrides"
+          ]
+        }
+      },
+      "status": "decided",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§8 Canonical states and authority; UI_SCREEN_REGISTRY.md §10",
+      "affected_routes": [
+        "/driver/deliveries/[id]",
+        "/operations/deliveries/[id]"
+      ],
+      "affected_screen_ids": [
+        "DRV-002",
+        "OPS-003"
+      ],
+      "affected_database_objects": [
+        "public.deliveries",
+        "public.delivery_admin_events"
+      ],
+      "affected_code_paths": [
+        "app/api/delivery/mark-in-transit/route.ts",
+        "lib/delivery/transitions.ts"
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "status": "partially aligned"
+        },
+        "code_location": "app/api/delivery/mark-in-transit/route.ts",
+        "resolution": "Aligned as of commit 3c4e1ca: the route is now a verified server command with an allow-listed transition and a fixed target status. The remaining gap is that the transition table covers five states, not the authority's fourteen.",
+        "remediation_commit": "state-model migration"
+      },
+      "implementation_phase": "6",
+      "acceptance_criteria": [
+        "No route accepts a status value from a request body.",
+        "Every transition records an actor and an audit event."
+      ]
+    },
+    {
+      "id": "PRF-001",
+      "category": "proof requirements",
+      "decision": "Pickup and delivery proof requirements are fixed by handoff type; face and ID-document photos are forbidden.",
+      "value": {
+        "pickup_requires": [
+          "merchant pickup PIN",
+          "package count",
+          "shipment photo",
+          "condition photo",
+          "merchant/staff identity",
+          "timestamp",
+          "location",
+          "actual vehicle"
+        ],
+        "large_or_unusual_also_requires": [
+          "dimensions",
+          "securement photo",
+          "loading participants",
+          "equipment",
+          "existing damage",
+          "acknowledgement"
+        ],
+        "delivery_proof": {
+          "direct_handoff": [
+            "recipient PIN",
+            "first name",
+            "timestamp",
+            "location"
+          ],
+          "signature": [
+            "signature",
+            "signer name",
+            "timestamp",
+            "location"
+          ],
+          "leave_at_door": [
+            "merchant permission",
+            "customer authorization",
+            "safe location",
+            "weather suitability",
+            "photo",
+            "timestamp",
+            "location"
+          ]
+        },
+        "forbidden": [
+          "face photos",
+          "ID-document photos"
+        ],
+        "material_discrepancy": "pauses pickup and may require requote"
+      },
+      "status": "decided",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§11 Delivery lifecycle, proof, exceptions, and returns",
+      "affected_routes": [
+        "/driver/deliveries/[id]",
+        "/track/[token]"
+      ],
+      "affected_screen_ids": [
+        "DRV-003",
+        "DRV-004",
+        "DRV-006",
+        "CUS-006"
+      ],
+      "affected_database_objects": [
+        "public.delivery_photos",
+        "storage.buckets['delivery-photos']"
+      ],
+      "affected_code_paths": [
+        "app/api/customer/upload-pickup-photo/route.ts"
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "captured": [
+            "single pickup photo"
+          ],
+          "pin": null,
+          "count": null
+        },
+        "code_location": "app/api/customer/upload-pickup-photo/route.ts",
+        "resolution": "Written authority wins. Current code captures one photo and no PIN, count, condition or location.",
+        "remediation_commit": "driver execution slice"
+      },
+      "implementation_phase": "6",
+      "acceptance_criteria": [
+        "No proof flow requests a face or ID-document photo.",
+        "Leave-at-door requires recorded permission and authorization."
+      ]
+    },
+    {
+      "id": "PHO-001",
+      "category": "photo access",
+      "decision": "Proof media is private and reachable only through an authorized, short-lived signed URL.",
+      "value": {
+        "bucket_public": false,
+        "authorized_viewers": [
+          "Couranr Operations admin",
+          "assigned driver",
+          "owning customer"
+        ],
+        "url_type": "short-lived signed URL",
+        "ttl_seconds": {
+          "admin": 900,
+          "driver": 600,
+          "customer": 600
+        },
+        "persist_signed_urls": false,
+        "notification_copy_may_contain_proof_urls": false
+      },
+      "status": "decided",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§15 Legacy quarantine (replace public proof storage); §17 Analytics (no proof URLs); UI_SCREEN_REGISTRY.md §7",
+      "affected_routes": [
+        "/track/[token]",
+        "/operations/deliveries/[id]",
+        "/driver/deliveries/[id]"
+      ],
+      "affected_screen_ids": [
+        "CUS-006",
+        "OPS-003",
+        "DRV-006"
+      ],
+      "affected_database_objects": [
+        "storage.buckets['delivery-photos']",
+        "public.delivery_photos"
+      ],
+      "affected_code_paths": [
+        "lib/delivery/deliveryAccess.ts",
+        "lib/delivery/deliveryPhotoRef.ts",
+        "app/api/delivery/photo-url/route.ts"
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "status": "aligned"
+        },
+        "code_location": "lib/delivery/deliveryPhotoRef.ts",
+        "resolution": "Already implemented in commit d1ec6cc: bucket private (Security-DB P0), signed URLs issued after an authorization check, and assertPersistableRef refuses to persist any URL.",
+        "remediation_commit": null
+      },
+      "implementation_phase": "6",
+      "acceptance_criteria": [
+        "No proof URL is persisted or logged.",
+        "An unauthorized caller receives the same response as for a missing delivery."
+      ]
+    },
+    {
+      "id": "ASN-001",
+      "category": "driver assignment",
+      "decision": "Dispatch is Couranr-managed; there is no driver marketplace, self-selection, bidding, or automatic assignment.",
+      "value": {
+        "initial_assignment_method": "couranr_managed",
+        "public_driver_marketplace": false,
+        "driver_self_selection": false,
+        "bidding": false,
+        "automatic_assignment_without_operations_command": false,
+        "vehicle_selection_by": "Couranr Operations",
+        "store": [
+          "recommended capabilities",
+          "recommended vehicle when applicable",
+          "selected vehicle",
+          "override reason"
+        ]
+      },
+      "status": "decided",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§9 Vehicle and dispatch model; UI_SCREEN_REGISTRY.md §3",
+      "affected_routes": [
+        "/operations/queue",
+        "/operations/vehicles",
+        "/driver"
+      ],
+      "affected_screen_ids": [
+        "OPS-002",
+        "OPS-008",
+        "DRV-001"
+      ],
+      "affected_database_objects": [
+        "public.deliveries"
+      ],
+      "affected_code_paths": [
+        "app/api/admin/courier/deliveries/[id]/assign-driver/route.ts"
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "unauthenticated_assign_route": "retired"
+        },
+        "code_location": "app/api/delivery/assign-driver (deleted in 3c4e1ca)",
+        "resolution": "The unauthenticated assignment route was retired; the authorized Operations route remains. No vehicle-capability model exists yet.",
+        "remediation_commit": "dispatch slice"
+      },
+      "implementation_phase": "5",
+      "acceptance_criteria": [
+        "No driver can self-assign.",
+        "Every assignment records the selecting operator."
+      ]
+    },
+    {
+      "id": "GAT-001",
+      "category": "launch gates",
+      "decision": "Launch requires all eleven release conditions to pass.",
+      "value": {
+        "gates": [
+          "zero P0 defects",
+          "zero core P1 defects",
+          "cross-tenant security passes",
+          "both payer flows pass",
+          "payment and ledger reconcile",
+          "proof and returns pass",
+          "driver assignment/state authority pass",
+          "backup verified",
+          "production canary passes",
+          "Operations can pause requests",
+          "Operations can pause AI"
+        ],
+        "ghost_drafts_may_launch_with_auto_replies_disabled": true
+      },
+      "status": "decided",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§18 Release authority",
+      "affected_routes": [],
+      "affected_screen_ids": [
+        "OPS-015",
+        "OPS-019"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [],
+      "conflict_with_current_code": {
+        "code_value": {
+          "p0_defects_open": 0,
+          "note": "four P0 database findings were closed in production by Security-DB P0 on 2026-07-30"
+        },
+        "code_location": "docs/couranr-mvp/security-db/SECURITY_DB_P0_AND_P1_PACKAGE.md",
+        "resolution": "Gate 1 is currently satisfied for the four database P0s. Remaining gates are unmet.",
+        "remediation_commit": null
+      },
+      "implementation_phase": "10",
+      "acceptance_criteria": [
+        "Every gate has recorded evidence before the canary."
+      ]
+    },
+    {
+      "id": "FLG-001",
+      "category": "feature flags",
+      "decision": "Specific capabilities must be independently switchable by Couranr Operations.",
+      "value": {
+        "required_switches": [
+          {
+            "key": "overnight_enabled",
+            "authority": "§3 Hours — overnight only when Couranr enables and confirms",
+            "default_at_launch": false
+          },
+          {
+            "key": "ai_auto_reply_enabled",
+            "authority": "§18 — Ghost drafts may launch while auto-replies remain disabled",
+            "default_at_launch": false
+          },
+          {
+            "key": "request_intake_paused",
+            "authority": "§18 — Operations can pause requests",
+            "default_at_launch": false
+          },
+          {
+            "key": "ai_global_kill_switch",
+            "authority": "§18 — Operations can pause AI",
+            "default_at_launch": false
+          }
+        ],
+        "availability_states_are_operational_not_flags": true
+      },
+      "status": "decided",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§3 Hours; §13 AI systems; §18 Release authority",
+      "affected_routes": [
+        "/operations/settings"
+      ],
+      "affected_screen_ids": [
+        "OPS-015",
+        "OPS-016",
+        "OPS-019"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [],
+      "conflict_with_current_code": {
+        "code_value": {
+          "flag_system": null
+        },
+        "code_location": "no feature-flag mechanism exists in the repository",
+        "resolution": "Net-new.",
+        "remediation_commit": "operations settings slice"
+      },
+      "implementation_phase": "9",
+      "acceptance_criteria": [
+        "Each switch is togglable without a deploy.",
+        "The AI kill switch stops all AI output immediately."
+      ]
+    },
+    {
+      "id": "FLG-002",
+      "category": "feature flags",
+      "decision": "The storage mechanism, scope and audit model for feature flags is not specified.",
+      "value": null,
+      "status": "unresolved",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§18 names the capabilities but not their implementation",
+      "affected_routes": [
+        "/operations/settings"
+      ],
+      "affected_screen_ids": [
+        "OPS-015"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [],
+      "conflict_with_current_code": {
+        "code_value": null,
+        "code_location": "n/a",
+        "resolution": "Cannot be inferred.",
+        "remediation_commit": null
+      },
+      "implementation_phase": "9",
+      "acceptance_criteria": [
+        "Flag storage, per-market scoping and audit behaviour are decided before the Operations settings screen ships."
+      ],
+      "missing": "No authority states whether flags are global or per-market, where they are stored, who may change them, or whether changes are audited.",
+      "blocked_screen_ids": [
+        "OPS-015",
+        "OPS-016",
+        "OPS-019"
+      ],
+      "blocked_commits": [
+        "operations settings slice"
+      ]
+    },
+    {
+      "id": "LEG-001",
+      "category": "legacy-route treatment",
+      "decision": "PUB-001 '/' is occupied by a legacy marketing page; the canonical homepage cannot be created until it is replaced or moved.",
+      "value": {
+        "canonical_route": "/",
+        "screen_id": "PUB-001",
+        "occupied_by": "app/page.tsx",
+        "authority_disposition": "replace",
+        "current_state": "canonical page not created; route excluded from canonical navigation"
+      },
+      "status": "decided",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§15 Legacy quarantine — Replace; §16 Target routes",
+      "affected_routes": [
+        "/"
+      ],
+      "affected_screen_ids": [
+        "PUB-001"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [
+        "app/page.tsx",
+        "lib/couranr/navigation.ts:ROUTE_COLLISIONS"
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "route_owner": "app/page.tsx (legacy multiservice marketing)"
+        },
+        "code_location": "app/page.tsx",
+        "resolution": "Creating app/(couranr)/(public)/page.tsx would produce a duplicate-route build failure. Recorded and excluded rather than silently dropped.",
+        "remediation_commit": "marketing slice"
+      },
+      "implementation_phase": "10",
+      "acceptance_criteria": [
+        "Exactly one page resolves '/' and it is the canonical PUB-001."
+      ]
+    },
+    {
+      "id": "LEG-002",
+      "category": "legacy-route treatment",
+      "decision": "DRV-001 '/driver' is occupied by a legacy driver page; canonical driver subroutes coexist with it today.",
+      "value": {
+        "canonical_route": "/driver",
+        "screen_id": "DRV-001",
+        "occupied_by": "app/driver/page.tsx",
+        "authority_disposition": "replace",
+        "current_state": "canonical /driver not created; /driver/messages, /driver/availability and /driver/vehicle exist under the canonical shell",
+        "known_inconsistency": "the legacy /driver page and the canonical driver subroutes render different shells"
+      },
+      "status": "decided",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§15 Legacy quarantine — Replace; §16 Target routes",
+      "affected_routes": [
+        "/driver"
+      ],
+      "affected_screen_ids": [
+        "DRV-001"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [
+        "app/driver/page.tsx",
+        "app/driver/layout.tsx",
+        "lib/couranr/navigation.ts:ROUTE_COLLISIONS"
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "route_owner": "app/driver/page.tsx (legacy)"
+        },
+        "code_location": "app/driver/page.tsx",
+        "resolution": "Same duplicate-route constraint as LEG-001.",
+        "remediation_commit": "driver execution slice"
+      },
+      "implementation_phase": "6",
+      "acceptance_criteria": [
+        "'/driver' renders the canonical driver shell.",
+        "No two shells serve routes under the same role prefix."
+      ]
+    },
+    {
+      "id": "LEG-003",
+      "category": "legacy-route treatment",
+      "decision": "Named legacy routes are disabled or redirected.",
+      "value": {
+        "disable": [
+          "/api/delivery/assign-driver",
+          "/api/delivery/mark-in-transit",
+          "/api/auto/*",
+          "/api/docs/*"
+        ],
+        "redirect": [
+          {
+            "from": "/courier/quote",
+            "to": "/estimate"
+          },
+          {
+            "from": "/courier/checkout",
+            "to": "/business/deliveries/new"
+          },
+          {
+            "from": "/dashboard/business/deliveries",
+            "to": "/business/deliveries"
+          }
+        ],
+        "no_dual_write": true,
+        "new_requests_never_create_legacy_orders": true
+      },
+      "status": "decided",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§15 Legacy quarantine — Disable; Redirect",
+      "affected_routes": [
+        "/courier/quote",
+        "/courier/checkout",
+        "/dashboard/business/deliveries"
+      ],
+      "affected_screen_ids": [
+        "PUB-004",
+        "MER-005",
+        "MER-004"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [
+        "app/api/delivery/mark-in-transit/route.ts",
+        "app/courier",
+        "app/dashboard/business"
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "assign_driver": "deleted",
+          "mark_in_transit": "rebuilt as a verified server command, not disabled"
+        },
+        "code_location": "commit 3c4e1ca",
+        "resolution": "PARTIAL CONFLICT. §15 says disable /api/delivery/mark-in-transit; it was instead rebuilt as a verified server command because a live driver caller exists (app/driver/deliveries/page.tsx). Disabling it would have broken the only working driver action. The authority's intent - no unauthenticated arbitrary status write - is satisfied. Flagged for explicit confirmation.",
+        "remediation_commit": "confirm during driver execution slice"
+      },
+      "implementation_phase": "6",
+      "acceptance_criteria": [
+        "No redirect target 404s.",
+        "No new request writes a legacy order row."
+      ]
+    },
+    {
+      "id": "CLS-001",
+      "category": "canonical/deferred/archive classification",
+      "decision": "Sixty-six screens are canonical MVP; a named set of explorations is post-MVP or reference-only; the auto and docs domains are archived from active runtime.",
+      "value": {
+        "canonical_screens": 66,
+        "core": 62,
+        "mvp_complete": 4,
+        "mvp_complete_ids": [
+          "OPS-014",
+          "OPS-017",
+          "OPS-018",
+          "OPS-021"
+        ],
+        "archived_domains": [
+          "auto rental",
+          "document services",
+          "subscription packages",
+          "mixed jobs",
+          "docs usage",
+          "old pricing"
+        ],
+        "post_mvp_examples": [
+          "bulk deliveries dashboard",
+          "public API/integrations console",
+          "merchant report builder",
+          "SLA coverage dashboard",
+          "driver incentives",
+          "driver payouts",
+          "driver leaderboard"
+        ],
+        "rejected_for_pilot": [
+          "subscription plan management"
+        ],
+        "no_post_mvp_screen_in_navigation": true
+      },
+      "status": "decided",
+      "authority_file": "UI_SCREEN_REGISTRY.md",
+      "authority_section": "§4 Route and screen registry; §9 Deferred and noncanonical visual inventory; §10 UI completion definition",
+      "affected_routes": [],
+      "affected_screen_ids": [
+        "OPS-014",
+        "OPS-017",
+        "OPS-018",
+        "OPS-021"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [
+        "lib/couranr/screens.ts",
+        "app/auto",
+        "app/docs"
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "auto_pages": 21,
+          "docs_pages": 11,
+          "still_in_active_runtime": true
+        },
+        "code_location": "app/auto/**, app/docs/**",
+        "resolution": "Written authority wins: both domains are archive targets. They remain in the runtime today and are not extended.",
+        "remediation_commit": "legacy quarantine commit"
+      },
+      "implementation_phase": "11",
+      "acceptance_criteria": [
+        "No auto or docs route is reachable from canonical navigation.",
+        "All 66 canonical screens exist before the canary."
+      ]
+    },
+    {
+      "id": "PRC-004",
+      "category": "pricing",
+      "decision": "The exact condition under which the nearest-$0.25 rounding rule applies is not defined.",
+      "value": {
+        "rounding_increment_cents": 25,
+        "condition": null,
+        "known": "Final total is rounded to the nearest $0.25 'when the accepted pricing policy requires it'."
+      },
+      "status": "unresolved",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§4 Pricing registry — Additional charges (final paragraph)",
+      "affected_routes": [
+        "/estimate",
+        "/business/deliveries/new"
+      ],
+      "affected_screen_ids": [
+        "PUB-004",
+        "MER-006"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [
+        "lib/delivery/pricing.ts"
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "rounding": "none"
+        },
+        "code_location": "lib/delivery/pricing.ts",
+        "resolution": "Code performs no $0.25 rounding.",
+        "remediation_commit": null
+      },
+      "implementation_phase": "3",
+      "acceptance_criteria": [
+        "The rounding trigger is stated explicitly before quoting ships."
+      ],
+      "missing": "The authority says rounding applies 'when the accepted pricing policy requires it' without stating which policy, which totals, or whether rounding is up, down or nearest-half.",
+      "blocked_screen_ids": [
+        "PUB-004",
+        "MER-006",
+        "PUB-005"
+      ],
+      "blocked_commits": [
+        "pricing commit"
+      ]
+    },
+    {
+      "id": "TAX-001",
+      "category": "pricing",
+      "decision": "Tax treatment of the delivery charge is not addressed by any authority.",
+      "value": null,
+      "status": "unresolved",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§4 Pricing registry — no tax line exists",
+      "affected_routes": [
+        "/pay/[token]",
+        "/business/settings/billing"
+      ],
+      "affected_screen_ids": [
+        "PUB-005",
+        "MER-016"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [],
+      "conflict_with_current_code": {
+        "code_value": {
+          "tax": "not modelled"
+        },
+        "code_location": "no tax handling exists",
+        "resolution": "Cannot be inferred.",
+        "remediation_commit": null
+      },
+      "implementation_phase": "4",
+      "acceptance_criteria": [
+        "Tax treatment is decided before any real customer is charged."
+      ],
+      "missing": "No authority states whether delivery is taxable in the launch markets, who remits, or how tax appears on a receipt.",
+      "blocked_screen_ids": [
+        "PUB-005",
+        "MER-016"
+      ],
+      "blocked_commits": [
+        "payments slice"
+      ]
+    },
+    {
+      "id": "TRM-002",
+      "category": "terminology",
+      "decision": "Merchant team role names exist in the schema but their permissions are not defined by any authority.",
+      "value": {
+        "declared_roles": [
+          "owner",
+          "manager",
+          "dispatcher",
+          "viewer",
+          "billing"
+        ],
+        "permissions_per_role": null
+      },
+      "status": "unresolved",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§8 defines actor authority by actor TYPE, not by merchant team role",
+      "affected_routes": [
+        "/business/settings/team"
+      ],
+      "affected_screen_ids": [
+        "MER-015"
+      ],
+      "affected_database_objects": [
+        "public.business_members"
+      ],
+      "affected_code_paths": [
+        "lib/businessAccount.ts:11-41"
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "membership": "binary",
+          "role_column_read_by_code": false
+        },
+        "code_location": "lib/businessAccount.ts:11-41",
+        "resolution": "Code treats membership as binary and reads no role. Not an authority.",
+        "remediation_commit": null
+      },
+      "implementation_phase": "4",
+      "acceptance_criteria": [
+        "Each of the five roles has an explicit permission set before MER-015 ships."
+      ],
+      "missing": "The five role names appear in the database schema, but no authority states what each may do.",
+      "blocked_screen_ids": [
+        "MER-015"
+      ],
+      "blocked_commits": [
+        "merchant team and permissions slice"
+      ]
+    },
+    {
+      "id": "OVN-002",
+      "category": "overnight behavior",
+      "decision": "The request-and-enable mechanism for overnight is not specified.",
+      "value": null,
+      "status": "unresolved",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§3 Hours — 'when Couranr enables and confirms it'",
+      "affected_routes": [
+        "/estimate",
+        "/operations/settings"
+      ],
+      "affected_screen_ids": [
+        "PUB-004",
+        "OPS-016"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [],
+      "conflict_with_current_code": {
+        "code_value": null,
+        "code_location": "not implemented",
+        "resolution": "Cannot be inferred.",
+        "remediation_commit": null
+      },
+      "implementation_phase": "3",
+      "acceptance_criteria": [
+        "The overnight request and enablement path is defined before overnight is offered."
+      ],
+      "missing": "No authority states how a merchant requests overnight, how Couranr enables it (per market, per merchant, or globally), or how confirmation is communicated.",
+      "blocked_screen_ids": [
+        "PUB-004",
+        "OPS-016"
+      ],
+      "blocked_commits": [
+        "availability slice"
+      ]
+    },
+    {
+      "id": "GAT-002",
+      "category": "launch gates",
+      "decision": "Overnight and Route Saver are available but intentionally not part of the first vertical slice.",
+      "value": {
+        "deferred_from_first_slice": [
+          "overnight",
+          "Route Saver",
+          "promotional credit",
+          "incidents and claims",
+          "Ghost Operations"
+        ],
+        "reason": "each depends on a decision or a subsystem that is not yet built",
+        "still_canonical_mvp": true
+      },
+      "status": "intentionally_deferred",
+      "authority_file": "UI_SCREEN_REGISTRY.md",
+      "authority_section": "§8 Implementation order",
+      "affected_routes": [
+        "/operations/ghost",
+        "/operations/incidents"
+      ],
+      "affected_screen_ids": [
+        "OPS-006",
+        "OPS-012",
+        "OPS-021"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [],
+      "conflict_with_current_code": {
+        "code_value": null,
+        "code_location": "n/a",
+        "resolution": "Sequencing decision, not a conflict.",
+        "remediation_commit": null
+      },
+      "implementation_phase": "7-9",
+      "acceptance_criteria": [
+        "These ship before broad pilot scaling, not before the first slice."
+      ]
+    },
+    {
+      "id": "AIS-001",
+      "category": "feature flags",
+      "decision": "AI may never execute a price, payment, address, delivery state, cancellation, refund, return, incident, claim, vehicle or safety decision.",
+      "value": {
+        "ai_execution_forbidden_for": [
+          "price",
+          "payment",
+          "address",
+          "delivery state",
+          "cancellation",
+          "refund",
+          "return",
+          "incident",
+          "claim",
+          "vehicle",
+          "safety"
+        ],
+        "direct_sql": false,
+        "tool_broker": "allowlisted",
+        "auto_reply_minimum_confidence_percent": 95,
+        "auto_reply_requires_verifier_pass": true
+      },
+      "status": "decided",
+      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_section": "§13 AI systems; UI_SCREEN_REGISTRY.md §3",
+      "affected_routes": [
+        "/operations/ghost",
+        "/operations/settings"
+      ],
+      "affected_screen_ids": [
+        "OPS-006",
+        "OPS-019",
+        "OPS-021"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [],
+      "conflict_with_current_code": {
+        "code_value": {
+          "ai_system": null
+        },
+        "code_location": "no AI system exists in the repository",
+        "resolution": "Net-new.",
+        "remediation_commit": "AI slice"
+      },
+      "implementation_phase": "9",
+      "acceptance_criteria": [
+        "No AI code path can write to a money, state or address field."
+      ]
+    }
+  ]
+}
