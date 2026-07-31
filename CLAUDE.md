@@ -31,8 +31,10 @@ Plus seven unauthenticated API routes, two of which touch money: `/api/create-ch
 
 ### Authority chain — the specification wins over the code, always
 
-1. `02_DECISION_REGISTRY.json` — **does not exist in the repo.** Rank-1 authority for pricing, hours, payer behavior, states, terminology, launch gates. Phase 1 product work cannot start without it.
-2. `Couranr_Claude_Code_Master_Package.md` (repo root) — inlines the master implementation spec, cutover matrix, phased plan, AI/communication spec, and release matrix.
+1. `02_DECISION_REGISTRY.json` **at the repo root** — rank-1 authority for pricing, hours, payer behavior, states, terminology, launch gates. 40 decision records. It DOES exist; an earlier note here said it did not, and that was wrong long enough to matter.
+
+   **There is a second file with the same name.** `couranr_claude_code_package/02_DECISION_REGISTRY.json` is the original v1.0 topic-keyed source (9 KB, no `decisions[]`), unpacked for provenance only. The root file (72 KB) is the expanded generation derived from it and is a verified superset — every pricing value and every state vocabulary in the package copy is present at root, enforced by `tests/decision-registry-provenance.test.ts`. **Cite the root file.** A grep that lands on the package copy will find fewer decisions and no transition rules.
+2. `Couranr_Claude_Code_Master_Package.md` (repo root) — inlines the master implementation spec, cutover matrix, phased plan, AI/communication spec, and release matrix. Verified: it contains the full text of `00_README`, `01_MASTER_IMPLEMENTATION_SPEC`, `03_REPO_CUTOVER_MATRIX`, `04_PHASED_EXECUTION_PLAN`, `05_AI_COMMUNICATION_SPEC`, `06_RELEASE_ACCEPTANCE_MATRIX` and `07_CLAUDE_CODE_START_PROMPT` from the package. `08_WORK_BREAKDOWN.csv` is NOT inlined and exists only in `couranr_claude_code_package/`.
 3. `UI_SCREEN_REGISTRY.md` (repo root) — 66 canonical MVP screens, their routes, tiers, phases, and required states.
 4. `docs/couranr-mvp/platform-baseline-v1.1/` — platform, dependency, migration-order and rollback authority.
 

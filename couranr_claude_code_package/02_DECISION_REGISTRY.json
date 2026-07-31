@@ -1,0 +1,351 @@
+{
+  "package_version": "1.0",
+  "release_name": "Couranr Merchant Delivery MVP \u2014 Pilot Release 1",
+  "repository": "kkoly10/couranr-os",
+  "positioning": {
+    "category": "local business delivery infrastructure",
+    "promise": "Receive the order however you already receive it. Couranr handles what happens after the order is ready.",
+    "merchant_of_record": "merchant",
+    "monthly_fee_during_pilot": false,
+    "signup_fee_during_pilot": false,
+    "product_sales_commission": false
+  },
+  "terminology": {
+    "review": "Couranr review",
+    "availability": "Couranr availability",
+    "confirmation": "Couranr confirms delivery",
+    "vehicle": "Couranr assigns an appropriate vehicle",
+    "queue": "Couranr Operations Queue",
+    "price_adjustment": "Couranr price adjustment",
+    "subsidy": "Couranr promotional credit",
+    "decline": "Couranr could not confirm service",
+    "dispatch": "Couranr-managed dispatch",
+    "support": "Couranr Support",
+    "forbidden_public_terms": [
+      "founder review",
+      "founder availability",
+      "founder accepts delivery",
+      "founder queue",
+      "founder pricing override",
+      "founder-funded pilot",
+      "founder declined request",
+      "founder manual dispatch",
+      "founder support"
+    ]
+  },
+  "markets": {
+    "initial_marketed": [
+      "washington_dc",
+      "stafford",
+      "woodbridge",
+      "fredericksburg",
+      "surrounding_area"
+    ],
+    "maryland_initially_marketed": false,
+    "public_copy": "Local business delivery across DC, Stafford, Woodbridge, Fredericksburg, and surrounding areas.",
+    "supporting_copy": "Same-day, next-day, scheduled, overnight, bulky, and extended-distance delivery\u2014managed by Couranr.",
+    "outside_market": "capture_and_review"
+  },
+  "hours": {
+    "days": [
+      "monday",
+      "tuesday",
+      "wednesday",
+      "thursday",
+      "friday"
+    ],
+    "standard_start": "06:00",
+    "standard_end": "18:00",
+    "same_day_cutoff": "16:00",
+    "after_cutoff_default": "next_business_day",
+    "friday_after_cutoff_default": "monday_unless_closure",
+    "overnight_window": "18:00-06:00",
+    "overnight_surcharge_cents": 3000,
+    "rush_and_overnight_stack": false,
+    "support_response_target_minutes": 15,
+    "time_promises_are_estimates": true
+  },
+  "pricing": {
+    "currency": "USD",
+    "base_first_3_loaded_miles_cents": 2299,
+    "distance_tiers": [
+      {
+        "start_mile": 4,
+        "end_mile": 10,
+        "cents_per_mile": 225
+      },
+      {
+        "start_mile": 11,
+        "end_mile": 25,
+        "cents_per_mile": 300
+      },
+      {
+        "start_mile": 26,
+        "end_mile": 50,
+        "cents_per_mile": 350
+      },
+      {
+        "start_mile": 51,
+        "end_mile": 75,
+        "cents_per_mile": 400
+      },
+      {
+        "start_mile": 76,
+        "end_mile": 100,
+        "cents_per_mile": 475
+      }
+    ],
+    "over_100_miles": "manual_final_quote",
+    "priority_cents": 700,
+    "rush_cents": 1200,
+    "overnight_cents": 3000,
+    "additional_stop_cents": 800,
+    "signature_cents": 300,
+    "weight_tiers": [
+      {
+        "min_lbs": 0,
+        "max_lbs": 25,
+        "cents": 0
+      },
+      {
+        "min_lbs": 26,
+        "max_lbs": 50,
+        "cents": 1000
+      },
+      {
+        "min_lbs": 51,
+        "max_lbs": 75,
+        "cents": 2500
+      },
+      {
+        "min_lbs": 76,
+        "max_lbs": 150,
+        "cents": 5000
+      },
+      {
+        "min_lbs": 151,
+        "max_lbs": 200,
+        "cents": 8500
+      }
+    ],
+    "over_200_lbs": "couranr_review_manual_quote",
+    "wait_included_minutes": 10,
+    "wait_cents_per_minute_after_included": 75,
+    "return_percent": 70,
+    "return_minimum_cents": 1499,
+    "cancellation_after_confirmation_cents": 800,
+    "failed_pickup_attempt_cents": 1500,
+    "tolls_and_parking": "at_cost",
+    "tips": "100_percent_driver",
+    "rounding_increment_cents": 25,
+    "route_saver": {
+      "minimum_stops": 3,
+      "start_cents_per_stop": 1699,
+      "single_merchant_pickup": true,
+      "couranr_controls_order": true
+    }
+  },
+  "payers": {
+    "onboarding_options": [
+      "customer",
+      "merchant",
+      "ask_each_time"
+    ],
+    "default": "ask_each_time",
+    "one_payer_per_mvp_delivery": true,
+    "split_payments": "post_mvp",
+    "customer_account_required": false,
+    "capture_timing": "after_couranr_confirmation",
+    "payer_change_after_authorization": "cancel_old_obligation_and_create_new"
+  },
+  "states": {
+    "request": [
+      "draft",
+      "awaiting_merchant_confirmation",
+      "awaiting_quote_acceptance",
+      "pending_couranr_review",
+      "quote_revision_required",
+      "confirmed",
+      "declined",
+      "cancelled",
+      "closed"
+    ],
+    "payment": [
+      "not_started",
+      "payment_method_saved",
+      "requires_action",
+      "authorized",
+      "capture_pending",
+      "captured",
+      "failed",
+      "cancelled",
+      "partially_refunded",
+      "refunded"
+    ],
+    "readiness": [
+      "not_confirmed",
+      "preparing",
+      "ready",
+      "not_ready",
+      "unavailable"
+    ],
+    "review": [
+      "not_required",
+      "pending",
+      "accepted_as_quoted",
+      "requoted",
+      "declined"
+    ],
+    "fulfillment": [
+      "not_scheduled",
+      "scheduled",
+      "assigned",
+      "en_route_to_pickup",
+      "at_pickup",
+      "picked_up",
+      "in_transit",
+      "at_dropoff",
+      "delivered",
+      "attempt_failed",
+      "return_required",
+      "returning",
+      "returned",
+      "cancelled"
+    ],
+    "incident": [
+      "none",
+      "reported",
+      "under_review",
+      "awaiting_evidence",
+      "resolved",
+      "closed"
+    ]
+  },
+  "proof": {
+    "pickup_required": [
+      "pickup_pin",
+      "package_count",
+      "shipment_photo",
+      "condition_photo",
+      "timestamp",
+      "location",
+      "actual_vehicle"
+    ],
+    "direct_handoff": [
+      "recipient_pin",
+      "recipient_first_name",
+      "timestamp",
+      "location"
+    ],
+    "signature": [
+      "signature",
+      "signer_name",
+      "timestamp",
+      "location"
+    ],
+    "leave_at_door": [
+      "prior_authorization",
+      "safe_location",
+      "photo",
+      "timestamp",
+      "location"
+    ],
+    "private_storage_required": true,
+    "offline_pending_sync_required": true
+  },
+  "communication": {
+    "public_support_phone_at_mvp": false,
+    "primary_support": "in_app",
+    "merchant_to_support": true,
+    "merchant_to_driver": "delivery_specific",
+    "customer_to_driver_direct": false,
+    "customer_delivery_help": true,
+    "support_response_target_minutes": 15,
+    "driving_mode_required": true,
+    "marketing_assistant_name": "Ask Couranr",
+    "merchant_assistant_name": "Couranr Assistant",
+    "internal_ai_name": "Couranr Ghost Operations",
+    "marketing_assistant_24_7": true
+  },
+  "ai": {
+    "smart_intake_inputs_mvp": [
+      "description",
+      "pasted_order",
+      "saved_preset",
+      "manual"
+    ],
+    "voice_and_image_intake": "post_launch",
+    "pricing_authority": false,
+    "final_vehicle_authority": false,
+    "delivery_acceptance_authority": false,
+    "auto_reply_allowed": true,
+    "auto_reply_min_final_confidence": 0.95,
+    "auto_reply_requires_verifier": true,
+    "direct_sql": false,
+    "controlled_tool_broker": true,
+    "kill_switch_required": true,
+    "human_required": [
+      "address_change",
+      "price_change",
+      "refund",
+      "damage_claim",
+      "cancellation_after_confirmation",
+      "return_decision",
+      "schedule_promise",
+      "vehicle_change",
+      "unsafe_or_restricted_item",
+      "fee_waiver",
+      "payment_dispute"
+    ]
+  },
+  "architecture": {
+    "database": "supabase_postgres",
+    "tenant_key": "business_account_id",
+    "schemas": [
+      "public",
+      "private",
+      "analytics"
+    ],
+    "rls_required": true,
+    "browser_authoritative_mutations": false,
+    "named_server_commands": true,
+    "optimistic_concurrency": true,
+    "idempotency_records": true,
+    "append_only_events": true,
+    "immutable_quotes": true,
+    "balanced_financial_ledger": true,
+    "private_storage": true,
+    "guest_tokens": "hashed_purpose_scoped_expiring",
+    "new_request_writes_legacy_orders": false
+  },
+  "legacy": {
+    "tag": "legacy-multiservice-2026-07-27",
+    "archive_branch": "archive/auto-docs-multiservice",
+    "implementation_branch": "feature/merchant-delivery-mvp",
+    "archive_business_lines": [
+      "auto_rental",
+      "document_services",
+      "subscription_packages",
+      "mixed_jobs"
+    ],
+    "disable_routes": [
+      "/api/delivery/assign-driver",
+      "/api/delivery/mark-in-transit",
+      "/api/auto/*",
+      "/api/docs/*"
+    ],
+    "redirect_routes": {
+      "/courier/quote": "/estimate",
+      "/courier/checkout": "/business/deliveries/new",
+      "/dashboard/business/deliveries": "/business/deliveries"
+    }
+  },
+  "release": {
+    "zero_open_p0": true,
+    "zero_core_p1": true,
+    "production_canary_required": true,
+    "database_backup_required": true,
+    "stripe_ledger_reconciliation_required": true,
+    "ghost_auto_reply_can_launch_disabled": true
+  }
+}

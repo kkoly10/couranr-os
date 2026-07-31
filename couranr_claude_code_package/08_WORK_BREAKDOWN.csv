@@ -1,0 +1,38 @@
+work_item_id,phase,domain,task,dependencies,priority,acceptance
+P0-001,0,Preservation,Create legacy tag and archive branch,,P0,Remote refs verified
+P0-002,0,Inventory,Generate route/schema/Stripe/storage/env inventories,P0-001,P1,All inventories committed
+P1-001,1,Containment,Disable direct assign-driver route,P0-002,P0,Unauthorized mutation impossible
+P1-002,1,Containment,Disable direct mark-in-transit route,P0-002,P0,Unauthorized mutation impossible
+P1-003,1,Containment,Disable auto/docs mutation routes,P0-002,P0,No active legacy mutation
+P1-004,1,Webhook,Create delivery-specific Stripe webhook boundary,P0-002,P0,No auto/docs imports
+P2-001,2,Database,Create private and analytics schemas,P1-001;P1-002;P1-003,P0,Migrations pass clean and upgrade
+P2-002,2,Security,Implement RLS and role functions,P2-001,P0,Cross-tenant tests pass
+P2-003,2,Platform,"Implement idempotency, audit, and guest tokens",P2-001,P0,Duplicate and token tests pass
+P3-001,3,Pricing,Create policy registry,P2-001,P0,Registry matches locked decisions
+P3-002,3,Pricing,Replace legacy pricing engine and tests,P3-001,P0,All pricing tests pass
+P4-001,4,Onboarding,Implement two-speed onboarding,P2-002;P3-001,P1,Test/live gating passes
+P4-002,4,Presets,Implement categories and versioned presets,P4-001,P1,Historical snapshots preserved
+P5-001,5,Intake,Implement Smart Intake schema and APIs,P4-002,P1,Extraction and fallback pass
+P5-002,5,Requests,Implement delivery requests and versions,P5-001,P0,No legacy order dual-write
+P6-001,6,Quotes,Implement immutable quote versions,P5-002;P3-002,P0,Accepted quote immutable
+P6-002,6,Payments,Implement obligations and payer flows,P6-001;P2-003,P0,Both payer E2E pass
+P6-003,6,Webhook,Implement Stripe reconciliation and dedupe,P6-002;P1-004,P0,Duplicate/out-of-order tests pass
+P6-004,6,Ledger,Implement balanced ledger and refunds,P6-003,P0,Stripe-ledger reconcile
+P7-001,7,Vehicles,Implement vehicle capability registry,P3-001,P1,Compatibility and selection stored
+P7-002,7,Operations,Implement Operations Queue and review,P6-004;P7-001,P1,Confirm/requote/decline pass
+P7-003,7,Driver,Implement assignment-scoped lifecycle,P7-002,P0,Driver isolation/state tests pass
+P7-004,7,Proof,Implement private proof and offline sync,P7-003,P0,Proof/recovery tests pass
+P7-005,7,Exceptions,Implement wait/cancel/return/incident/weather,P7-004,P0,Exception E2E pass
+P8-001,8,Messaging,Implement server-controlled conversations,P2-002,P1,Participant/privacy tests pass
+P8-002,8,Support,Implement deadlines and Operations Inbox,P8-001,P1,Operating/after-hours timers pass
+P8-003,8,Driver,Implement Driving Mode alert suppression,P8-001;P7-003,P1,No routine driving distraction
+P8-004,8,Customer,Implement secure Delivery Help,P8-001;P2-003,P1,One-delivery token scope passes
+P9-001,9,AI,Implement AI data broker and audit,P2-003;P8-001,P0,No direct SQL or cross-tenant access
+P9-002,9,AI,Implement Ghost drafts and operator coach,P9-001,P1,Context and draft tests pass
+P9-003,9,AI,Implement verifier and auto-reply gates,P9-002,P0,95% plus deterministic gates
+P9-004,9,Marketing,Implement Ask Couranr,P9-001;P3-002,P1,No private access and deterministic estimate
+P10-001,10,Analytics,Implement market/conversion/economics/support events,P6-004;P7-005;P8-002,P1,No PII and metrics reconcile
+P10-002,10,Observability,Implement payment/proof/support/security alerts,P10-001,P1,Actionable alerts visible
+P11-001,11,Cutover,Migrate selected fixtures and disable legacy runtime,P1-003;P10-002,P0,No dual write and route map correct
+P12-001,12,Release,Execute full acceptance matrix,P11-001,P0,Zero P0 and core P1
+P12-002,12,Canary,Complete controlled production canary,P12-001,P0,Stripe/proof/messages/ledger/analytics reconcile

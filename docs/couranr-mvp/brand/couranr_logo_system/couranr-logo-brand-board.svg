@@ -1,0 +1,24 @@
+<svg xmlns='http://www.w3.org/2000/svg' width='1600' height='1100' viewBox='0 0 1600 1100'>
+  <rect width='1600' height='1100' fill='#F7F8F5'/>
+  <text x='80' y='90' font-family='Inter Display' font-weight='800' font-size='42' fill='#0D1525'>Couranr Logo System</text>
+  <text x='80' y='132' font-family='Inter Display' font-size='20' fill='#667085'>Canonical v1.0 — use these supplied assets everywhere</text>
+  <rect x='80' y='180' width='920' height='300' rx='28' fill='#FFFFFF' stroke='#E3E7ED'/>
+  <text x='120' y='225' font-family='Inter Display' font-weight='700' font-size='22' fill='#0D1525'>Primary wordmark — light background</text>
+  <image href='file:///mnt/data/couranr_logo_system/svg/couranr-logo-primary.svg' x='120' y='270' width='800' height='220'/>
+  <rect x='1040' y='180' width='480' height='300' rx='28' fill='#0D1525'/>
+  <text x='1080' y='225' font-family='Inter Display' font-weight='700' font-size='22' fill='#FFFFFF'>Reverse — dark/photo background</text>
+  <image href='file:///mnt/data/couranr_logo_system/svg/couranr-logo-reverse.svg' x='1080' y='285' width='400' height='120'/>
+  <rect x='80' y='520' width='420' height='420' rx='28' fill='#FFFFFF' stroke='#E3E7ED'/>
+  <text x='120' y='565' font-family='Inter Display' font-weight='700' font-size='22' fill='#0D1525'>App and social mark</text>
+  <image href='file:///mnt/data/couranr_logo_system/svg/couranr-app-icon.svg' x='150' y='610' width='280' height='280'/>
+  <rect x='540' y='520' width='980' height='420' rx='28' fill='#FFFFFF' stroke='#E3E7ED'/>
+  <text x='580' y='565' font-family='Inter Display' font-weight='700' font-size='22' fill='#0D1525'>Brand rules</text>
+  <circle cx='600' cy='635' r='18' fill='#0D1525'/><text x='635' y='643' font-family='Inter Display' font-size='22' fill='#0D1525'>Couranr Navy  #0D1525</text>
+  <circle cx='600' cy='700' r='18' fill='#F4B740'/><text x='635' y='708' font-family='Inter Display' font-size='22' fill='#0D1525'>Couranr Gold  #F4B740</text>
+  <text x='580' y='780' font-family='Inter Display' font-weight='700' font-size='22' fill='#0D1525'>Use</text>
+  <text x='580' y='820' font-family='Inter Display' font-size='20' fill='#667085'>Primary on white · Reverse on dark photos · App mark for favicon/PWA</text>
+  <text x='580' y='870' font-family='Inter Display' font-weight='700' font-size='22' fill='#0D1525'>Never</text>
+  <text x='580' y='910' font-family='Inter Display' font-size='20' fill='#667085'>Retype · stretch · recolor · use the old C. or map-pin mark · redraw the accent</text>
+  <rect x='80' y='990' width='1440' height='2' fill='#E3E7ED'/>
+  <text x='80' y='1040' font-family='Inter Display' font-size='18' fill='#667085'>Outlined SVG paths — no font dependency. Approved for marketing, authentication, product, uniforms, and social media.</text>
+</svg>
