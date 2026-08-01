@@ -702,6 +702,8 @@ export async function getServicePlan(params: {
  * codebase that deliberately crosses every business account.
  */
 export type LifecycleQueueEntry = {
+  /** The live assignment for this entry's delivery, when there is one. */
+  assignment?: Record<string, any> | null;
   request: Record<string, any>;
   payment: Record<string, any> | null;
   servicePlan: Record<string, any> | null;
@@ -902,15 +904,55 @@ export async function listOperationsLifecycle(params: {
   const planMap = byRequest(plans.rows);
   const deliveryMap = byRequest(deliveries.rows);
 
+  /*
+   * Active assignments for the deliveries in this page, keyed by delivery id.
+   *
+   * Chunked on DELIVERY id rather than request id — the assignment table has no
+   * request_id, and adding one would be a second copy of a fact the delivery
+   * already holds. Only deliveries that exist are looked up, so an empty queue
+   * costs nothing.
+   */
+  const deliveryIds = deliveries.rows.map((d: any) => String(d.id));
+  const assignmentByDelivery = new Map<string, any>();
+  if (deliveryIds.length > 0) {
+    const dChunks: string[][] = [];
+    for (let i = 0; i < deliveryIds.length; i += CHUNK) dChunks.push(deliveryIds.slice(i, i + CHUNK));
+    const results = await Promise.all(
+      dChunks.map((batch) =>
+        supabaseAdmin
+          .from("couranr_delivery_assignments")
+          .select("id,delivery_id,driver_id,vehicle_id,assignment_state,assigned_at,version")
+          .eq("assignment_state", "active")
+          .in("delivery_id", batch)
+      )
+    );
+    const bad = results.find((r: any) => r.error);
+    if (bad) {
+      return fail({
+        operation: op,
+        code: "internal",
+        detail: (bad as any).error.message,
+        message: "The Couranr Operations Queue could not be loaded.",
+      });
+    }
+    for (const row of results.flatMap((r: any) => r.data ?? [])) {
+      assignmentByDelivery.set(String(row.delivery_id), row);
+    }
+  }
+
   return {
     ok: true,
     value: {
-      entries: rows.map((request) => ({
-        request,
-        payment: obMap.get(String(request.id)) ?? null,
-        servicePlan: planMap.get(String(request.id)) ?? null,
-        delivery: deliveryMap.get(String(request.id)) ?? null,
-      })),
+      entries: rows.map((request) => {
+        const delivery = deliveryMap.get(String(request.id)) ?? null;
+        return {
+          request,
+          payment: obMap.get(String(request.id)) ?? null,
+          servicePlan: planMap.get(String(request.id)) ?? null,
+          delivery,
+          assignment: delivery ? assignmentByDelivery.get(String(delivery.id)) ?? null : null,
+        };
+      }),
       total,
     },
   };

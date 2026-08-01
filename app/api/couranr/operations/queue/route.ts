@@ -32,6 +32,7 @@ export async function GET(req: NextRequest) {
       paymentState: row.payment?.payment_state ?? null,
       servicePlanConfirmed: row.servicePlan !== null,
       canonicalDeliveryExists: row.delivery !== null,
+      assignmentActive: Boolean(row.assignment),
     });
 
     return {
@@ -63,8 +64,20 @@ export async function GET(req: NextRequest) {
             scheduledPickupStart: row.delivery.scheduled_pickup_start,
             scheduledPickupEnd: row.delivery.scheduled_pickup_end,
             timezone: row.delivery.timezone,
-            /** No driver is assigned in this slice. Stated, not omitted. */
-            driverAssigned: false,
+            // Read from the live assignment row, never assumed. This used to
+            // be a hard-coded `false` with a comment saying dispatch did not
+            // exist yet; it does now, and a stale constant here would tell an
+            // operator a dispatched delivery still needs a driver.
+            driverAssigned: Boolean(row.assignment),
+            assignment: row.assignment
+              ? {
+                  id: row.assignment.id,
+                  driverId: row.assignment.driver_id,
+                  vehicleId: row.assignment.vehicle_id,
+                  assignedAt: row.assignment.assigned_at,
+                  version: row.assignment.version,
+                }
+              : null,
           }
         : null,
     };

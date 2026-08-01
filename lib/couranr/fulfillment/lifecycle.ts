@@ -43,8 +43,15 @@ export const LIFECYCLE_STAGES = [
    * only remaining step is conversion.
    */
   "captured_not_scheduled",
-  /** Money taken and a canonical delivery exists. Dispatch is later work. */
+  /** Money taken and a canonical delivery exists, waiting on dispatch. */
   "captured_scheduled",
+  /**
+   * A driver and a vehicle are committed to the delivery. Distinct from
+   * `captured_scheduled` because that stage is the queue's WORK — it is what
+   * an operator filters for when deciding what still needs a driver — and
+   * folding the two would hide the only thing dispatch changes.
+   */
+  "driver_assigned",
   /** Declined, cancelled, closed or not yet submitted. Not queue work. */
   "not_actionable",
 ] as const;
@@ -63,6 +70,8 @@ export const PAYABLE_REQUEST_STATES: readonly RequestState[] = [
  * than throw on a screen an operator is trying to work from.
  */
 export type LifecycleInput = {
+  /** A live assignment exists for the canonical delivery. */
+  assignmentActive?: boolean;
   requestState: string;
   readinessState: string;
   paymentState: string | null;
@@ -82,7 +91,11 @@ export type LifecycleInput = {
  * - Only then does the request state decide.
  */
 export function lifecycleStage(input: LifecycleInput): LifecycleStage {
-  if (input.canonicalDeliveryExists) return "captured_scheduled";
+  if (input.canonicalDeliveryExists) {
+    // Dispatch is the last thing that happens to a captured delivery in this
+    // slice, so it is checked first among the terminal-ish stages.
+    return input.assignmentActive ? "driver_assigned" : "captured_scheduled";
+  }
   if (input.paymentState === "capture_pending") return "capture_pending";
 
   /*
@@ -138,7 +151,9 @@ export const LIFECYCLE_STAGE_ORDER: Readonly<Record<LifecycleStage, number>> = {
   merchant_preparing: 6,
   awaiting_payment_authorization: 7,
   captured_scheduled: 8,
-  not_actionable: 9,
+  driver_assigned: 9,
+  // Always last: nothing here is queue work.
+  not_actionable: 10,
 };
 
 export const LIFECYCLE_STAGE_LABELS: Readonly<Record<LifecycleStage, string>> = {
@@ -150,7 +165,8 @@ export const LIFECYCLE_STAGE_LABELS: Readonly<Record<LifecycleStage, string>> = 
   capture_pending: "Capture pending",
   payment_reauthorization_required: "Payment authorization needs attention",
   captured_not_scheduled: "Captured — not yet scheduled",
-  captured_scheduled: "Captured — scheduled",
+  captured_scheduled: "Captured — needs a driver",
+  driver_assigned: "Driver assigned",
   not_actionable: "No action available",
 };
 
@@ -168,7 +184,8 @@ export const LIFECYCLE_STAGE_DESCRIPTIONS: Readonly<Record<LifecycleStage, strin
     "The provider ended this authorization. Nothing was taken. The payer must authorize again before this can be planned or captured.",
   captured_not_scheduled:
     "The payment was taken but no delivery exists yet. Finish scheduling — do not capture again.",
-  captured_scheduled: "Payment captured and the delivery is scheduled.",
+  captured_scheduled: "Payment captured and scheduled. No driver is assigned yet.",
+  driver_assigned: "A driver and vehicle are committed to this delivery.",
   not_actionable: "Closed, declined or cancelled.",
 };
 
@@ -199,6 +216,7 @@ export const LIFECYCLE_STAGE_TONE: Readonly<
   capture_pending: "warning",
   payment_reauthorization_required: "danger",
   captured_not_scheduled: "warning",
-  captured_scheduled: "success",
+  captured_scheduled: "warning",
+  driver_assigned: "success",
   not_actionable: "neutral",
 };

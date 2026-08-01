@@ -74,6 +74,7 @@ describe("OPS-002 lifecycle stage derivation", () => {
       at({ paymentState: "captured" }),
       at({ paymentState: "failed" }),
       at({ canonicalDeliveryExists: true }),
+      at({ canonicalDeliveryExists: true, assignmentActive: true }),
       at({ requestState: "declined" }),
     ]);
     expect([...reached].sort()).toEqual([...LIFECYCLE_STAGES].sort());
@@ -242,7 +243,9 @@ describe("OPS-002 stage metadata", () => {
     const ranks = QUEUE_STAGES.map((s) => LIFECYCLE_STAGE_ORDER[s]);
     expect(ranks).toEqual([...ranks].sort((a, b) => a - b));
     expect(QUEUE_STAGES[0]).toBe("pending_review");
-    expect(QUEUE_STAGES[QUEUE_STAGES.length - 1]).toBe("captured_scheduled");
+    // The most COMPLETE stage sorts last. Dispatch added one beyond
+    // `captured_scheduled`, which is now outstanding work rather than the end.
+    expect(QUEUE_STAGES[QUEUE_STAGES.length - 1]).toBe("driver_assigned");
   });
 
   /* Money taken is never a success cue until the delivery actually exists. */
@@ -254,7 +257,18 @@ describe("OPS-002 stage metadata", () => {
 
   it("capture_pending reads as a warning, never as success", () => {
     expect(LIFECYCLE_STAGE_TONE.capture_pending).toBe("warning");
-    expect(LIFECYCLE_STAGE_TONE.captured_scheduled).toBe("success");
+  });
+
+  it("only a dispatched delivery reads as success", () => {
+    /*
+     * `captured_scheduled` used to be the end of the road and was a success
+     * cue. Dispatch moved the finish line: a captured, scheduled delivery with
+     * no driver is OUTSTANDING WORK, and colouring it success tells an operator
+     * it is done when it still needs a driver. Same class of lie as calling a
+     * capture "scheduled" before the delivery exists.
+     */
+    expect(LIFECYCLE_STAGE_TONE.captured_scheduled).toBe("warning");
+    expect(LIFECYCLE_STAGE_TONE.driver_assigned).toBe("success");
   });
 
   /* The one stage where the correct action is none at all. */
