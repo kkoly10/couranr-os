@@ -5,8 +5,6 @@ import Stripe from "stripe";
 import {
   AUTHORIZING_INTENT_STATUS,
   HANDLED_STRIPE_EVENTS,
-  PAYMENT_STATES,
-  REACHABLE_PAYMENT_STATES,
   UNREACHABLE_PAYMENT_STATES,
   isHandledStripeEvent,
   isLinkRefusalReason,
@@ -114,20 +112,13 @@ describe("authorization only", () => {
     expect(PAYMENT_TS).not.toMatch(/from\("orders"\)|from\("deliveries"\)/);
   });
 
-  it("declares exactly which states this slice can reach", () => {
-    expect([...REACHABLE_PAYMENT_STATES, ...UNREACHABLE_PAYMENT_STATES].sort()).toEqual(
-      [...PAYMENT_STATES].sort()
-    );
-    expect([...UNREACHABLE_PAYMENT_STATES]).toEqual(["captured", "refunded"]);
-  });
-
-  it("agrees with the database CHECK on the payment vocabulary", () => {
-    const at = SQL.indexOf("couranr_po_payment_state_chk");
-    expect(at).toBeGreaterThan(-1);
-    const body = SQL.slice(at, SQL.indexOf("))", at) + 2);
-    const inSql = (body.match(/'([a-z_]+)'/g) || []).map((s) => s.slice(1, -1));
-    expect(inSql.sort()).toEqual([...PAYMENT_STATES].sort());
-  });
+  /*
+   * The vocabulary assertions moved to `couranr-payment-vocabulary.test.ts`
+   * when capture shipped and `payment_method_saved` / `partially_refunded`
+   * were preserved. Keeping a second copy here would mean two lists to update
+   * and one of them silently going stale — which is exactly what happened to
+   * the version that asserted `captured` was unreachable.
+   */
 });
 
 /* ================================================== no client amount ===== */

@@ -100,6 +100,8 @@ describe("server-only modules are unreachable from client code", () => {
     // If either side is empty the whole suite would pass vacuously.
     expect(clientModules.length).toBeGreaterThan(0);
     expect(serverOnlyModules.map(rel).sort()).toEqual([
+      // Holds the service-role client and the Stripe secret key.
+      "lib/couranr/fulfillment/commands.ts",
       "lib/couranr/onboarding/commands.ts",
       // The payment modules hold the service-role client, the Stripe secret
       // key and the token hashing. None may ever be reachable from a bundle.
@@ -156,6 +158,8 @@ describe("canonical server routes do not import the browser client", () => {
     expect(canonical.map(rel).sort()).toEqual([
       "app/api/couranr/delivery-requests/[id]/authorize-payment/route.ts",
       "app/api/couranr/delivery-requests/[id]/estimate/route.ts",
+      "app/api/couranr/delivery-requests/[id]/fulfillment/route.ts",
+      "app/api/couranr/delivery-requests/[id]/readiness/route.ts",
       "app/api/couranr/delivery-requests/[id]/reconcile-payment/route.ts",
       "app/api/couranr/delivery-requests/[id]/route.ts",
       "app/api/couranr/delivery-requests/[id]/submit/route.ts",
@@ -165,8 +169,10 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/me/workspace/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/accept-as-quoted/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/begin-review/route.ts",
+      "app/api/couranr/operations/delivery-requests/[id]/capture/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/decline/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/requote/route.ts",
+      "app/api/couranr/operations/delivery-requests/[id]/service-plan/route.ts",
       "app/api/couranr/operations/queue/route.ts",
       "app/api/couranr/pay/[token]/reconcile/route.ts",
       "app/api/couranr/pay/[token]/route.ts",

@@ -8,6 +8,13 @@ export const PAYMENT_STATES = [
   "not_started",
   "requires_action",
   "authorized",
+  /*
+   * Written BEFORE Stripe is called, which is what makes capture recoverable:
+   * a process that dies mid-capture leaves a row saying "the outcome is
+   * unknown" rather than "authorized", which would invite a second capture of
+   * money already taken.
+   */
+  "capture_pending",
   "failed",
   "cancelled",
   /*
@@ -19,6 +26,15 @@ export const PAYMENT_STATES = [
    */
   "captured",
   "refunded",
+  /*
+   * Vocabulary preservation, added 2026-08-01. Saved payment methods and
+   * partial refunds are NOT implemented: no command writes either, no route
+   * reaches one, and `couranr-payment-vocabulary.test.ts` asserts they have
+   * zero transition writers. They are declared so that shipping them later is
+   * a new transition rather than a CHECK rewrite on a table holding money.
+   */
+  "partially_refunded",
+  "payment_method_saved",
 ] as const;
 export type PaymentState = (typeof PAYMENT_STATES)[number];
 
@@ -27,12 +43,28 @@ export const REACHABLE_PAYMENT_STATES: readonly PaymentState[] = [
   "not_started",
   "requires_action",
   "authorized",
+  "capture_pending",
+  "captured",
   "failed",
   "cancelled",
 ];
 
 /** States this slice must never write. Capture and refund are later work. */
-export const UNREACHABLE_PAYMENT_STATES: readonly PaymentState[] = ["captured", "refunded"];
+/**
+ * Declared and unreachable.
+ *
+ * `captured` LEFT this list on 2026-08-01 when the capture command shipped —
+ * it is now reachable, through exactly one writer. The rest have no writer at
+ * all and a test proves it.
+ */
+export const UNREACHABLE_PAYMENT_STATES: readonly PaymentState[] = [
+  "refunded",
+  "partially_refunded",
+  "payment_method_saved",
+];
+
+/** Reachable only through the capture command, never from a browser claim. */
+export const CAPTURE_STATES: readonly PaymentState[] = ["capture_pending", "captured"];
 
 /**
  * The Stripe events the canonical webhook acts on, and what each one means for
