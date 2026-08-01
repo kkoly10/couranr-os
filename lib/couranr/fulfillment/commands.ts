@@ -222,7 +222,8 @@ export type CaptureOutcome = {
  * Step 1 first is the whole point. If this process dies at step 2 or 3, the
  * row says `capture_pending` — "a capture was started and the outcome is
  * unknown" — not `authorized`, which would invite a second capture of money
- * already taken. The webhook and `reconcileCapture` both converge on the same
+ * already taken. The webhook goes THROUGH `reconcileCapture` for exactly this
+ * state, so both routes out re-read the intent and converge on the same
  * terminal state, and Stripe's idempotency key means a retried call returns
  * the FIRST capture rather than performing a second.
  */
