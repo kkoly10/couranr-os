@@ -94,3 +94,20 @@ export function reconcileCaptureFromBrowser(input: { id: string }) {
     { method: "POST", body: {} }
   );
 }
+
+/**
+ * Issue a customer payment link for the current obligation.
+ *
+ * The raw token comes back EXACTLY ONCE and is never stored — the caller shows
+ * it to the merchant, who sends it. Issuing revokes every older live link for
+ * the request, so the previous one stops working immediately.
+ */
+export function issuePaymentLinkFromBrowser(input: {
+  id: string;
+  businessAccountId: string;
+}) {
+  return call<{ token: string; expiresAt: string; amountCents: number; paymentState: string }>(
+    `/api/couranr/delivery-requests/${input.id}/payment-link`,
+    { method: "POST", body: { businessAccountId: input.businessAccountId } }
+  );
+}

@@ -5,7 +5,11 @@ import { Alert, Badge, Button, Card, CardHeader, Cluster, Stack, Text } from "@/
 import { ErrorState } from "@/components/couranr/states";
 import { formatCents, type DeliveryRequestView } from "@/lib/couranr/requests/view";
 import { canChangeReadiness, READINESS_COMMANDS, type ReadinessState } from "@/lib/couranr/requests/states";
-import { setReadinessFromBrowser, type FulfillmentView } from "./client";
+import {
+  issuePaymentLinkFromBrowser,
+  setReadinessFromBrowser,
+  type FulfillmentView,
+} from "./client";
 import { isApiFailure, withReference } from "@/components/couranr/requests/client";
 
 /**
@@ -49,6 +53,8 @@ export function MerchantReadinessPanel({
 }) {
   const [busy, setBusy] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  /** Shown once. The raw token is never stored and cannot be re-read. */
+  const [issuedLink, setIssuedLink] = React.useState<string | null>(null);
 
   // Readiness only means anything once Couranr has confirmed the request.
   if (request.requestState !== "confirmed") return null;
@@ -82,6 +88,27 @@ export function MerchantReadinessPanel({
     onChanged();
   }
 
+  /*
+   * The provider SETTLED this capture as failed. Verified, not assumed — which
+   * is the only reason it is safe to tell a merchant nothing was taken.
+   */
+  const reauthorizationRequired = payment?.paymentState === "failed" && !delivery;
+  const customerPays = payment?.payerType === "customer";
+
+  async function generateLink() {
+    if (!businessAccountId) return;
+    setBusy("link");
+    setError(null);
+    const r = await issuePaymentLinkFromBrowser({ id: request.id, businessAccountId });
+    setBusy(null);
+    if (isApiFailure(r)) {
+      setError(withReference(r));
+      return;
+    }
+    setIssuedLink(`${window.location.origin}/pay/${r.value.token}`);
+    onChanged();
+  }
+
   return (
     <Card>
       <CardHeader
@@ -105,6 +132,50 @@ export function MerchantReadinessPanel({
             {new Date(delivery.scheduledPickupEnd).toLocaleString()} ({delivery.timezone}).
             Couranr will assign a driver.
           </Alert>
+        ) : null}
+
+        {reauthorizationRequired ? (
+          <Alert
+            tone="danger"
+            title={
+              customerPays
+                ? "Customer authorization needs attention"
+                : "Payment authorization needs attention"
+            }
+          >
+            The payment provider ended the authorization for this delivery.{" "}
+            <strong>Nothing was charged.</strong> Couranr cannot collect or schedule it until
+            it is authorized again.
+            {customerPays
+              ? " Generate a new secure payment link and send it to your recipient — the previous link no longer works."
+              : " Authorize again below to put a new hold in place."}
+          </Alert>
+        ) : null}
+
+        {reauthorizationRequired && customerPays ? (
+          <Stack gap={2}>
+            <Button
+              variant="primary"
+              loading={busy === "link"}
+              disabled={Boolean(busy)}
+              onClick={generateLink}
+            >
+              Generate new payment link
+            </Button>
+            {issuedLink ? (
+              <Alert tone="info" title="Send this link to your recipient">
+                {/*
+                  Shown ONCE. Only a SHA-256 hash of the token reaches the
+                  database, so Couranr cannot show it again — and issuing this
+                  one revoked the previous link.
+                */}
+                <Text size="sm">{issuedLink}</Text>
+                <Text size="xs" muted>
+                  Couranr cannot show this again. Generating another link replaces this one.
+                </Text>
+              </Alert>
+            ) : null}
+          </Stack>
         ) : null}
 
         {frozen && !delivery ? (

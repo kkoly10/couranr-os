@@ -113,6 +113,15 @@ function confirmedBody(
   if (state === "capture_pending") {
     return "Couranr is completing the payment for this delivery. No driver has been assigned yet.";
   }
+  /*
+   * A SETTLED failure. Saying "nothing was charged" here is safe precisely
+   * because `failed` is only reachable from a verified provider status —
+   * requires_payment_method via the terminal-resolution command, or a
+   * signature-verified payment_failed event. It is never assumed.
+   */
+  if (state === "failed") {
+    return "The payment provider ended the authorization for this delivery. Nothing was charged, and nothing is scheduled — it needs to be authorized again.";
+  }
   if (state === "authorized") {
     return "The payment is authorized — the amount is held, not taken. No driver has been assigned yet.";
   }

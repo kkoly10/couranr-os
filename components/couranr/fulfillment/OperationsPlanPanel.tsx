@@ -81,6 +81,13 @@ export function OperationsPlanPanel({
    */
   const capturedNotScheduled = payment?.paymentState === "captured" && !delivery;
 
+  /*
+   * The provider SETTLED this capture as failed. Nothing was taken, the hold
+   * is gone, and no amount of retrying on this surface changes that — the
+   * payer has to authorize again. Capture must never be offered here.
+   */
+  const reauthorizationRequired = payment?.paymentState === "failed" && !delivery;
+
   async function confirmPlan() {
     setBusy(true);
     setError(null);
@@ -174,6 +181,17 @@ export function OperationsPlanPanel({
           </Alert>
         ) : null}
 
+        {reauthorizationRequired ? (
+          <Alert tone="danger" title="The payment provider ended this authorization">
+            Nothing was taken — this is verified from the provider, not assumed. The hold no
+            longer exists, so this delivery cannot be planned or captured until the payer
+            authorizes again.
+            {payment?.payerType === "customer"
+              ? " This delivery is paid by the recipient, so the business needs to send them a new secure payment link."
+              : " The business needs to authorize again from their delivery screen."}
+          </Alert>
+        ) : null}
+
         {captureUnresolved ? (
           <Alert tone="warning" title="Couranr does not know whether this capture completed">
             The payment provider did not confirm the outcome. Do not capture again — check
@@ -195,7 +213,7 @@ export function OperationsPlanPanel({
           </Stack>
         ) : null}
 
-        {!delivery && !capturedNotScheduled && !captureUnresolved && (editing || !plan) ? (
+        {!delivery && !capturedNotScheduled && !captureUnresolved && !reauthorizationRequired && (editing || !plan) ? (
           <Stack gap={3}>
             <Grid columns={2}>
               <Field label="Pickup window start" required>
@@ -275,7 +293,7 @@ export function OperationsPlanPanel({
 
         {!delivery ? (
           <Cluster gap={3}>
-            {plan && !editing && !captureUnresolved && !capturedNotScheduled ? (
+            {plan && !editing && !captureUnresolved && !capturedNotScheduled && !reauthorizationRequired ? (
               <Button variant="ghost" onClick={() => setEditing(true)} disabled={busy}>
                 Change the plan
               </Button>
@@ -289,6 +307,15 @@ export function OperationsPlanPanel({
               <Button variant="primary" loading={busy} onClick={capture}>
                 Finish scheduling
               </Button>
+            ) : reauthorizationRequired ? (
+              /*
+               * No action on this surface. Recovery belongs to the payer, and
+               * offering anything capture-shaped here would suggest Operations
+               * can force a payment that no longer has an authorization.
+               */
+              <Text size="sm" muted>
+                Waiting for the payer to authorize again. No delivery was created.
+              </Text>
             ) : captureUnresolved ? (
               <Button variant="primary" loading={busy} onClick={reconcile}>
                 Check with the payment provider
@@ -301,7 +328,7 @@ export function OperationsPlanPanel({
           </Cluster>
         ) : null}
 
-        {!canCapture && !delivery && !captureUnresolved && !capturedNotScheduled ? (
+        {!canCapture && !delivery && !captureUnresolved && !capturedNotScheduled && !reauthorizationRequired ? (
           <Text size="xs" muted>
             {!plan
               ? "Confirm a service plan before capturing."
