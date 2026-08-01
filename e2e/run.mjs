@@ -2052,6 +2052,28 @@ async function groupN() {
 
   {
     /*
+     * The route must refuse a blind second capture, not just hide the button.
+     * `couranr_begin_payment_capture` returns the existing row for
+     * `capture_pending` rather than raising, so without a guard in the command
+     * layer a stale tab or a second operator walks straight on to a second
+     * `paymentIntents.capture` for an obligation whose outcome is unknown.
+     */
+    const capturesBefore = stripeCalls.filter((c) => c.path.endsWith("/capture")).length;
+    const r = await apiAs(
+      USERS.ops,
+      `/api/couranr/operations/delivery-requests/${requestId}/capture`,
+      { method: "POST", body: {} }
+    );
+    const capturesAfter = stripeCalls.filter((c) => c.path.endsWith("/capture")).length;
+    const ob = await obligationFor(requestId);
+    check("N15c", "a second capture while the outcome is unknown is refused before Stripe",
+      r.status === 409 && capturesAfter === capturesBefore &&
+        ob?.payment_state === "capture_pending",
+      `status=${r.status} newStripeCaptures=${capturesAfter - capturesBefore} payment=${ob?.payment_state}`);
+  }
+
+  {
+    /*
      * The merchant's money copy must track the payment, not the request
      * state. `confirmed` used to mean "nothing charged"; it now spans an
      * authorized hold, a capture in flight and a completed capture, and
@@ -2203,10 +2225,17 @@ async function groupN() {
 
     const captureCalls = stripeCalls.filter((c) => c.path.endsWith("/capture"));
     const newCaptures = captureCalls.length - captureCallsBefore;
-    const keys = new Set(captureCalls.slice(captureCallsBefore).map((c) => c.idempotencyKey));
-    const noAmount = captureCalls
-      .slice(captureCallsBefore)
-      .every((c) => c.form?.amount_to_capture === undefined);
+    const mine = captureCalls.slice(captureCallsBefore);
+    const keys = new Set(mine.map((c) => c.idempotencyKey));
+    const noAmount = mine.every((c) => c.form?.amount_to_capture === undefined);
+    /*
+     * One key per capture CYCLE. Stripe caches a completed request's response
+     * for 24 hours, so an obligation-only key would replay the first attempt's
+     * failure to every retry for a day and the reconcile route could achieve
+     * nothing. Within a cycle the key is stable, which is what makes two
+     * concurrent captures produce one charge.
+     */
+    const cycleScoped = mine.every((c) => /^couranr:capture:[0-9a-f-]{36}:v\d+$/.test(c.idempotencyKey ?? ""));
 
     check("N20a", "capture wrote nothing to the legacy orders or deliveries tables",
       noLegacy,
@@ -2216,11 +2245,15 @@ async function groupN() {
       scheduledOnly && noDriverField,
       `fulfillment_state=${delivery?.fulfillment_state} driverField=${!noDriverField}`);
 
-    // Two attempts — the injected outage and the recovery — under ONE
-    // idempotency key, and never an amount.
-    check("N20c", "Stripe saw two capture attempts under one idempotency key and no amount",
-      newCaptures === 2 && keys.size === 1 && noAmount,
-      `attempts=${newCaptures} distinctKeys=${keys.size} amountSent=${!noAmount}`);
+    /*
+     * Two attempts — the injected outage and the post-reconcile retry — in two
+     * DIFFERENT capture cycles, so two different keys, and never an amount.
+     * A single key across both would mean Stripe replays the first attempt's
+     * cached response and the retry can never succeed.
+     */
+    check("N20c", "each capture attempt carries its own cycle-scoped key, and no amount",
+      newCaptures === 2 && keys.size === 2 && cycleScoped && noAmount,
+      `attempts=${newCaptures} distinctKeys=${keys.size} cycleScoped=${cycleScoped} amountSent=${!noAmount}`);
   }
 
   /* --- N21  both surfaces agree, and the ledger is complete -------------- */

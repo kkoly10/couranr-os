@@ -298,9 +298,10 @@ function QueueRow({
             Open for review
           </Button>
         ) : stage === "capture_pending" ? (
-          <Text size="xs" muted>
-            Resolving — do not retry
-          </Text>
+          // A link, not a button: the action is to ASK the provider what
+          // happened, never to capture again. Leaving this row with no way
+          // forward at all was its own defect — the reconcile is on OPS-003.
+          <Link href={`/operations/deliveries/${r.id}`}>Do not retry — check the provider</Link>
         ) : (
           <Link href={`/operations/deliveries/${r.id}`}>
             {stage === "ready_for_planning"

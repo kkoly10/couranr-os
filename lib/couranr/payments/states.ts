@@ -118,6 +118,40 @@ export function reconcileActionForIntentStatus(status: string): ReconcileAction 
 }
 
 /**
+ * May a capture RESULT event be written for this intent status?
+ *
+ * The single predicate BOTH capture call sites must ask, because the event id
+ * `captureEventId.result` is not cycle-scoped: it is legal exactly once per
+ * (obligation, intent), on the assumption that it is only ever written for a
+ * terminal `succeeded`. Writing it for a `processing` intent spends that id on
+ * a rejection, and the reconcile that runs once the intent finally succeeds is
+ * then swallowed as a duplicate — stranding the obligation with the money
+ * taken and no delivery.
+ *
+ * This existed only inside `reconcileCapture` at first, and `capturePayment`
+ * wrote the same event with no guard at all. One predicate, asked in both
+ * places, is what stops that from happening again.
+ */
+export function mayWriteCaptureResult(intentStatus: string): boolean {
+  return reconcileActionForIntentStatus(intentStatus) === "complete";
+}
+
+/**
+ * The Stripe idempotency key for capturing an obligation's hold.
+ *
+ * Scoped to the capture CYCLE, matching `intentIdempotencyKey`. Within one
+ * cycle two concurrent calls share the key, so Stripe performs one capture and
+ * replays it — that is the double-charge guarantee. Across cycles the key
+ * differs, which is what makes the release-and-retry path work at all: Stripe
+ * caches a completed request's response for 24 hours, so an obligation-only
+ * key would replay the FIRST attempt's failure to every retry for a day and
+ * the reconcile route would be unable to achieve anything.
+ */
+export function captureIdempotencyKey(obligationId: string, obligationVersion: number): string {
+  return `couranr:capture:${obligationId}:v${obligationVersion}`;
+}
+
+/**
  * The provider event ids the capture workflow writes.
  *
  * `couranr_payment_events` is unique on (provider, provider_event_id), and the
@@ -126,19 +160,24 @@ export function reconcileActionForIntentStatus(status: string): ReconcileAction 
  * badly is silent: a colliding id means the command quietly does nothing.
  *
  * So the rule is that an id must identify the ATTEMPT, not the obligation.
- * `failed` and `notTaken` both end a capture cycle and both can legitimately
- * happen more than once for one obligation, so they carry the obligation
- * version — which `couranr_begin_payment_capture` bumps on every cycle. Keying
- * them on the obligation alone stranded the second failed cycle in
- * `capture_pending` with no exit.
+ * `notTaken` ends a capture cycle and can legitimately happen more than once
+ * for one obligation, so it carries the obligation version — which
+ * `couranr_begin_payment_capture` bumps on every cycle. Keying it on the
+ * obligation alone stranded the second failed cycle in `capture_pending` with
+ * no exit.
  *
  * `result` is deliberately NOT version-scoped: it is written only for a
  * SUCCEEDED intent, which is terminal, so a repeat genuinely is a duplicate
- * and swallowing it is correct.
+ * and swallowing it is correct. `mayWriteCaptureResult` is what holds that
+ * assumption up, and BOTH capture call sites must ask it.
+ *
+ * There is no `failed` id. A release used to be written straight from a 4xx in
+ * the capture path, which was wrong — a 409 idempotency conflict and a 400
+ * "already captured" are both 4xx and both mean money may well have moved. The
+ * only release now comes from `reconcileCapture`, after re-reading the intent,
+ * and it uses `notTaken`.
  */
 export const captureEventId = {
-  failed: (obligationId: string, obligationVersion: number, code: string) =>
-    `couranr:capture_failed:${obligationId}:v${obligationVersion}:${code}`,
   notTaken: (obligationId: string, obligationVersion: number) =>
     `couranr:capture_not_taken:${obligationId}:v${obligationVersion}`,
   result: (obligationId: string, paymentIntentId: string) =>

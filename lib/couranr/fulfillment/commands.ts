@@ -10,7 +10,13 @@ import { canActOnDeliveryRequest, type RequestActor } from "@/lib/couranr/reques
 import { REQUEST_VIEW_COLUMNS } from "@/lib/couranr/requests/commands";
 import { getStripeClient } from "@/lib/stripeClient";
 import type { ReadinessState } from "@/lib/couranr/requests/states";
-import { captureEventId, reconcileActionForIntentStatus } from "@/lib/couranr/payments/states";
+import {
+  captureEventId,
+  captureIdempotencyKey,
+  mayWriteCaptureResult,
+  reconcileActionForIntentStatus,
+} from "@/lib/couranr/payments/states";
+import { getObligationForRequest, isPaymentFailure } from "@/lib/couranr/payments/commands";
 
 assertServerOnly("lib/couranr/fulfillment/commands.ts");
 
@@ -203,9 +209,13 @@ export type CaptureOutcome = {
  *
  *   1. compare-and-set authorized -> capture_pending IN THE DATABASE, before
  *      Stripe is called
- *   2. call Stripe with an idempotency key derived from the obligation
- *   3. apply the verified result: capture_pending -> captured
+ *   2. call Stripe with an idempotency key scoped to this capture CYCLE
+ *   3. apply the verified result — only for a `succeeded` intent
  *   4. convert to a canonical delivery
+ *
+ * Nothing in this function ever releases a hold. An error here is not evidence
+ * about the money, so every failure leaves the obligation in `capture_pending`
+ * and `reconcileCapture` — which re-reads the intent — is the only way out.
  *
  * Step 1 first is the whole point. If this process dies at step 2 or 3, the
  * row says `capture_pending` — "a capture was started and the outcome is
@@ -257,6 +267,31 @@ export async function capturePayment(params: {
     };
   }
 
+  /*
+   * A capture is already in flight. Refuse, rather than call Stripe blind.
+   *
+   * `couranr_begin_payment_capture` deliberately RETURNS the existing row for
+   * `capture_pending` instead of raising, so without this check a second
+   * request — a stale tab, a second operator on the shared queue — walks
+   * straight on to `paymentIntents.capture` for an obligation whose outcome is
+   * unknown. The rule that "capture is withheld while the outcome is unknown"
+   * was enforced only in the browser; a route is not defended by a hidden
+   * button.
+   */
+  const inFlight = await getObligationForRequest({
+    requestId: params.requestId,
+    businessAccountId: params.businessAccountId,
+  });
+  if (!isPaymentFailure(inFlight) && inFlight.value.obligation?.payment_state === "capture_pending") {
+    return fail({
+      operation: op,
+      code: "conflict",
+      detail: { reason: "capture_already_in_flight" },
+      message:
+        "A capture for this delivery is already in progress. Do not capture again — check with the payment provider to resolve it.",
+    });
+  }
+
   const begun = await callRpc<Record<string, any>>(op, RPC.beginCapture, {
     p_request_id: params.requestId,
     p_actor_user_id: params.actor.userId,
@@ -266,6 +301,18 @@ export async function capturePayment(params: {
   const ob = begun.value;
   if (ob.payment_state === "captured") {
     return convertAfterCapture(op, params.requestId, ob as any);
+  }
+  /*
+   * Lost the race to a concurrent caller between the check above and here.
+   * The SQL handed back a row somebody else moved; do not call Stripe on it.
+   */
+  if (ob.payment_state !== "capture_pending") {
+    return fail({
+      operation: op,
+      code: "conflict",
+      detail: { reason: "unexpected_state_after_begin", state: ob.payment_state },
+      message: "This payment is not in a state Couranr can capture.",
+    });
   }
 
   const intentId = String(ob.provider_payment_intent_id ?? "");
@@ -283,51 +330,60 @@ export async function capturePayment(params: {
     // No amount is passed: capturing the full authorized amount is the
     // default, so there is no number here to get wrong.
     intent = await getStripeClient().paymentIntents.capture(intentId, undefined, {
-      idempotencyKey: `couranr:capture:${ob.id}`,
+      idempotencyKey: captureIdempotencyKey(String(ob.id), Number(ob.version)),
     });
   } catch (e: any) {
     /*
-     * A DEFINITE provider refusal releases the hold back to authorized so it
-     * can be retried. Anything else — a timeout, a socket error, an unknown
-     * shape — leaves it in capture_pending on purpose: we do not know whether
-     * Stripe took the money, and guessing "it failed" is how a captured
-     * payment gets captured twice.
+     * NO RELEASE FROM HERE. An error is not evidence about the money.
+     *
+     * This branch used to treat any 4xx as a definite refusal and release the
+     * hold back to `authorized` with "Nothing was taken." Two very ordinary
+     * 4xx responses mean the exact opposite:
+     *
+     *   409 idempotency_error         another request with this key is still
+     *                                 in flight — and that one may be
+     *                                 capturing the money right now
+     *   400 payment_intent_unexpected_state   the intent is already captured
+     *
+     * Releasing on either one hands the operator a false "nothing was taken"
+     * and re-arms the Capture button over money that has already moved.
+     *
+     * So every failure now leaves the obligation in `capture_pending` and the
+     * only way out is `reconcileCapture`, which does not guess from an HTTP
+     * status — it RE-READS the PaymentIntent and acts on what Stripe actually
+     * says. That is also the precondition `couranr_fail_payment_capture`
+     * documents for itself: "only ever called with a verified provider
+     * failure".
      */
-    const definite = typeof e?.statusCode === "number" && e.statusCode >= 400 && e.statusCode < 500;
-    if (definite) {
-      await callRpc(op, RPC.failCapture, {
-        p_obligation_id: ob.id,
-        /*
-         * Scoped to the obligation's CURRENT version, i.e. to this capture
-         * cycle. `couranr_begin_payment_capture` bumps the version each time
-         * it moves authorized -> capture_pending, so every attempt gets its
-         * own event id.
-         *
-         * Without `:v`, a second cycle that failed the same way would collide
-         * with the first release event, `couranr_fail_payment_capture` would
-         * swallow the `unique_violation` and return early, and the obligation
-         * would be stranded in capture_pending with no way out.
-         */
-        p_provider_event_id: captureEventId.failed(
-          String(ob.id),
-          Number(ob.version),
-          String(e?.code ?? "unknown")
-        ),
-        p_reason: String(e?.code ?? e?.type ?? "provider_error"),
-      });
-      return fail({
-        operation: op,
-        code: "conflict",
-        detail: { type: e?.type, code: e?.code, statusCode: e?.statusCode },
-        message: "The payment could not be captured. Nothing was taken.",
-      });
-    }
     return fail({
       operation: op,
       code: "internal",
-      detail: { type: e?.type, statusCode: e?.statusCode, message: e?.message },
+      detail: { type: e?.type, code: e?.code, statusCode: e?.statusCode, message: e?.message },
       message:
-        "Couranr could not confirm the capture with the payment provider. It will be resolved automatically — do not retry.",
+        "Couranr could not confirm the capture with the payment provider. Do not capture again — check with the provider to resolve it.",
+    });
+  }
+
+  /*
+   * Only a SUCCEEDED intent may spend the result event id.
+   *
+   * `captureEventId.result` is keyed on (obligation, intent) and is therefore
+   * legal exactly once. Under `automatic_payment_methods` a capture can resolve
+   * as `processing` rather than `succeeded`, and writing a rejection for that
+   * would burn the id — so the reconcile that runs once the intent finally
+   * succeeds would be swallowed as a duplicate and the obligation stranded
+   * with the money taken. `reconcileCapture` has always had this guard; this
+   * call site did not, which is exactly the sibling-enforcement-point mistake
+   * this codebase keeps making.
+   */
+  const status = String(intent.status ?? "");
+  if (!mayWriteCaptureResult(status)) {
+    return fail({
+      operation: op,
+      code: "internal",
+      detail: { intentStatus: status, intentId: String(intent.id ?? "") },
+      message:
+        "The payment provider has not finished this capture. Do not capture again — check with the provider to resolve it.",
     });
   }
 
@@ -335,14 +391,16 @@ export async function capturePayment(params: {
     p_obligation_id: ob.id,
     p_provider_event_id: captureEventId.result(String(ob.id), String(intent.id)),
     p_payment_intent_id: intent.id,
-    p_intent_status: String(intent.status ?? ""),
+    p_intent_status: status,
     p_amount_received: Number(intent.amount_received ?? intent.amount ?? 0),
     p_currency: String(intent.currency ?? ""),
   });
   if (isFulfillmentFailure(completed)) return completed;
 
   const applied = completed.value;
-  if (applied.outcome !== "applied" && applied.payment_state !== "captured") {
+  // Only `captured` may convert. A `duplicate` carries the state read at
+  // function entry, which is `capture_pending` in the stranded case.
+  if (applied.payment_state !== "captured") {
     return fail({
       operation: op,
       code: "conflict",
@@ -501,8 +559,19 @@ export async function reconcileCapture(params: {
   });
   if (isFulfillmentFailure(completed)) return completed;
 
+  /*
+   * ONLY `captured` converts.
+   *
+   * `duplicate` used to be accepted here as if it meant "already captured".
+   * It does not: `couranr_complete_payment_capture` returns the payment state
+   * it read at ENTRY, so a duplicate on a stranded obligation reports
+   * `capture_pending` — and `couranr_create_delivery_from_capture` then raises
+   * CR409 `payment_not_captured`, turning a recoverable state into a 409 the
+   * operator can do nothing with. The capture path's equivalent check requires
+   * `captured` and therefore fails safe; this copy had lost that property.
+   */
   const applied = completed.value;
-  if (applied.payment_state !== "captured" && applied.outcome !== "duplicate") {
+  if (applied.payment_state !== "captured") {
     return {
       ok: true,
       value: {

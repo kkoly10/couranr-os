@@ -16,8 +16,11 @@ import {
 import {
   AUTHORIZING_INTENT_STATUS,
   captureEventId,
+  captureIdempotencyKey,
+  mayWriteCaptureResult,
   reconcileActionForIntentStatus,
 } from "@/lib/couranr/payments/states";
+import { intentIdempotencyKey } from "@/lib/couranr/payments/stripe";
 import { REQUEST_VIEW_COLUMNS } from "@/lib/couranr/requests/commands";
 import { REQUEST_STATES } from "@/lib/couranr/requests/states";
 
@@ -263,17 +266,11 @@ describe("capture event ids", () => {
    */
   it("a release id is unique per capture cycle, not per obligation", () => {
     expect(captureEventId.notTaken(OB, 3)).not.toBe(captureEventId.notTaken(OB, 5));
-    expect(captureEventId.failed(OB, 3, "card_error")).not.toBe(
-      captureEventId.failed(OB, 5, "card_error")
-    );
   });
 
   /* Same cycle, same id — retrying within one attempt must stay idempotent. */
   it("the same cycle produces the same id", () => {
     expect(captureEventId.notTaken(OB, 3)).toBe(captureEventId.notTaken(OB, 3));
-    expect(captureEventId.failed(OB, 3, "card_error")).toBe(
-      captureEventId.failed(OB, 3, "card_error")
-    );
   });
 
   /*
@@ -287,11 +284,7 @@ describe("capture event ids", () => {
   });
 
   it("every id names both the obligation and what happened", () => {
-    for (const id of [
-      captureEventId.failed(OB, 2, "x"),
-      captureEventId.notTaken(OB, 2),
-      captureEventId.result(OB, PI),
-    ]) {
+    for (const id of [captureEventId.notTaken(OB, 2), captureEventId.result(OB, PI)]) {
       expect(id).toContain(OB);
       expect(id.startsWith("couranr:capture")).toBe(true);
     }
@@ -307,8 +300,97 @@ describe("capture event ids", () => {
     const handRolled = [...src.matchAll(/p_provider_event_id:\s*`/g)];
     expect(handRolled.length).toBe(0);
     expect(src).toContain("captureEventId.notTaken");
-    expect(src).toContain("captureEventId.failed");
     expect(src).toContain("captureEventId.result");
+  });
+});
+
+describe("capture write guards", () => {
+  /*
+   * The guard that must be asked at EVERY capture call site, not one.
+   * `reconcileCapture` had it and `capturePayment` did not, so a capture that
+   * resolved as `processing` burned the result event id on a rejection and the
+   * later successful reconcile was swallowed as a duplicate — money taken, no
+   * delivery, no exit.
+   */
+  it("only a succeeded intent may write a capture result", () => {
+    expect(mayWriteCaptureResult("succeeded")).toBe(true);
+    for (const s of [
+      "processing",
+      "requires_capture",
+      "requires_payment_method",
+      "requires_confirmation",
+      "requires_action",
+      "canceled",
+      "",
+      "something_new",
+    ]) {
+      expect(mayWriteCaptureResult(s)).toBe(false);
+    }
+  });
+
+  /*
+   * Source check across BOTH call sites. The predicate only protects anything
+   * if every caller of `completeCapture` asks it first — which is precisely
+   * the enforcement-point pair that was missed.
+   */
+  it("every completeCapture call site asks the guard first", () => {
+    const src = readFileSync(join(ROOT, "lib/couranr/fulfillment/commands.ts"), "utf8");
+    const callSites = [...src.matchAll(/RPC\.completeCapture/g)];
+    expect(callSites.length).toBe(2);
+    // One asks it directly, one through reconcileActionForIntentStatus.
+    const guards =
+      [...src.matchAll(/mayWriteCaptureResult/g)].length +
+      [...src.matchAll(/reconcileActionForIntentStatus/g)].length;
+    expect(guards).toBeGreaterThanOrEqual(callSites.length);
+  });
+
+  /*
+   * An HTTP status is not evidence about money. 409 (another request with this
+   * key is in flight) and 400 (already captured) are both 4xx and both mean a
+   * capture may well have happened, so the capture path must never release a
+   * hold from its error branch — only `reconcileCapture` may, after re-reading
+   * the intent.
+   */
+  it("the capture path never releases a hold from an HTTP status", () => {
+    const src = readFileSync(join(ROOT, "lib/couranr/fulfillment/commands.ts"), "utf8");
+    expect(src).not.toMatch(/statusCode\s*>=\s*400/);
+    const capturePayment = src.slice(
+      src.indexOf("export async function capturePayment"),
+      src.indexOf("async function convertAfterCapture")
+    );
+    expect(capturePayment).not.toContain("RPC.failCapture");
+    // The only release lives in reconcileCapture.
+    expect([...src.matchAll(/RPC\.failCapture/g)].length).toBe(1);
+  });
+});
+
+describe("capture idempotency key", () => {
+  const OB = "22222222-2222-4222-8222-222222222222";
+
+  /*
+   * Within a cycle the key is stable, so two concurrent captures produce ONE
+   * charge. Across cycles it differs, because Stripe caches a completed
+   * request's response for 24 hours — an obligation-only key would replay the
+   * first attempt's failure to every retry for a day, which would make the
+   * whole reconcile-and-retry path unable to achieve anything.
+   */
+  it("is stable within a capture cycle", () => {
+    expect(captureIdempotencyKey(OB, 4)).toBe(captureIdempotencyKey(OB, 4));
+  });
+
+  it("differs between capture cycles", () => {
+    expect(captureIdempotencyKey(OB, 4)).not.toBe(captureIdempotencyKey(OB, 6));
+  });
+
+  it("is cycle-scoped the same way the intent key is", () => {
+    expect(captureIdempotencyKey(OB, 4)).toBe(`couranr:capture:${OB}:v4`);
+    expect(intentIdempotencyKey({ id: OB } as any, 4)).toBe(`couranr:obligation:${OB}:v4`);
+  });
+
+  it("the command layer builds no capture idempotency key by hand", () => {
+    const src = readFileSync(join(ROOT, "lib/couranr/fulfillment/commands.ts"), "utf8");
+    expect(src).not.toMatch(/idempotencyKey:\s*`/);
+    expect(src).toContain("captureIdempotencyKey(");
   });
 });
 
