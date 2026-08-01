@@ -108,6 +108,8 @@ function intentJson(pi) {
     status: pi.status,
     client_secret: `${pi.id}_secret_${pi.id.slice(-6)}`,
     metadata: pi.metadata,
+    last_payment_error: pi.last_payment_error ?? null,
+    cancellation_reason: pi.cancellation_reason ?? null,
   };
 }
 
@@ -130,6 +132,36 @@ export function startStripeDouble(port = 12111) {
         // What a real manual-capture confirmation produces: funds HELD.
         pi.status = "requires_capture";
         pi.amount_capturable = pi.amount;
+        saveStore();
+        return json(200, intentJson(pi));
+      }
+
+      /*
+       * Control plane: put an intent into a specific status.
+       *
+       * Terminal capture resolution is only reachable when the PROVIDER
+       * reports requires_payment_method or canceled, and nothing in the app
+       * can produce those on demand. Without this the entire terminal branch
+       * is undrivable — which is exactly how it shipped unreachable.
+       *
+       * Control-plane only: never a /v1/ path, so it can never be mistaken for
+       * something the Stripe SDK called.
+       */
+      const setStatus = url.pathname.match(/^\/__control\/status\/(pi_[\w]+)$/);
+      if (setStatus) {
+        const pi = intents.get(setStatus[1]);
+        if (!pi) return json(404, { error: "no such intent" });
+        const next = url.searchParams.get("status") || "requires_payment_method";
+        pi.status = next;
+        if (next === "requires_capture") {
+          pi.amount_capturable = pi.amount;
+        } else if (next !== "succeeded") {
+          // A lost or dead authorization holds nothing.
+          pi.amount_capturable = 0;
+          pi.amount_received = 0;
+        }
+        if (next === "requires_payment_method") pi.last_payment_error = { code: "card_declined" };
+        if (next === "canceled") pi.cancellation_reason = "abandoned";
         saveStore();
         return json(200, intentJson(pi));
       }
