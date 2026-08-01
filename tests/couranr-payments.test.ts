@@ -60,15 +60,45 @@ describe("authorization only", () => {
     expect(PAYMENT_TS).toMatch(/capture/i);
   });
 
-  it("no payment SQL can write captured or refunded", () => {
-    for (const s of UNREACHABLE_PAYMENT_STATES) {
-      // The value exists in the CHECK, so shipping capture is a transition and
-      // not a constraint rewrite on a table holding money...
-      expect(SQL).toContain(`'${s}'`);
-      // ...but nothing assigns it.
-      expect(SQL).not.toMatch(new RegExp(`payment_state\\s*=\\s*'${s}'`));
-      expect(SQL).not.toMatch(new RegExp(`v_target\\s*:=\\s*'${s}'`));
-    }
+  /**
+   * Capture SHIPPED in the readiness/capture/conversion slice, so `captured`
+   * is now reachable — but only from one place. `refunded` still is not, and
+   * that is what this now guards. The earlier form of this test asserted that
+   * nothing could write `captured` at all; keeping it would have meant either
+   * a false green or deleting the guard, so it is narrowed to the invariant
+   * that still holds.
+   */
+  it("only one function may write captured, and nothing may write refunded", () => {
+    expect(SQL).toContain("'refunded'");
+    expect(SQL).not.toMatch(/payment_state\s*=\s*'refunded'/);
+    expect(SQL).not.toMatch(/v_target\s*:=\s*'refunded'/);
+
+    /*
+     * Only ASSIGNMENTS count. `payment_state = 'captured'` also appears inside
+     * the timestamp CHECK constraints, which are predicates, not writes —
+     * counting those made this report three writers when there is one.
+     */
+    const writers = [...SQL.matchAll(/set\s+payment_state\s*=\s*'captured'/g)];
+    expect(writers).toHaveLength(1);
+    const at = writers[0].index;
+    const fnStart = SQL.lastIndexOf("create function public.", at);
+    const fnName = SQL.slice(fnStart, SQL.indexOf("(", fnStart));
+    expect(fnName).toContain("couranr_complete_payment_capture");
+  });
+
+  it("capture is never reachable from a browser claim", () => {
+    // The capture command takes a verified provider result, and the state it
+    // requires beforehand is capture_pending — which only the server can set.
+    expect(SQL).toMatch(/p_intent_status <> 'succeeded'/);
+    expect(SQL).toMatch(/where id = v_ob\.id and payment_state = 'capture_pending'/);
+    /*
+     * Comment-stripped: `stripe.ts` names `.capture()` in the sentence that
+     * explains no wrapper for it exists. Asserting against raw text fails on
+     * the documentation instead of on the code — the fifth time in this repo.
+     */
+    const code = PAYMENT_TS.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    expect(code).not.toMatch(/\.capture\(/);
+    expect(PAYMENT_TS).toMatch(/\.capture\(\)/); // positive control: it IS in the prose
   });
 
   it("creates no order and no delivery", () => {

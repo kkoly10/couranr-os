@@ -70,6 +70,10 @@ export const REQUEST_COMMANDS = [
   "requote_delivery_request",
   "decline_delivery_request",
   "record_payer_quote_approval",
+  "begin_delivery_preparation",
+  "mark_delivery_ready",
+  "mark_delivery_not_ready",
+  "mark_delivery_unavailable",
 ] as const;
 export type RequestCommand = (typeof REQUEST_COMMANDS)[number];
 
@@ -98,6 +102,8 @@ type CommandRule = {
   capability: "create" | "submit" | "read" | "review" | "system";
   /** The review_state this command sets, when it decides a review outcome. */
   reviewState?: ReviewState;
+  /** The readiness_state this command sets, for the merchant readiness commands. */
+  readinessState?: ReadinessState;
 };
 
 export function isPayerDependent(
@@ -197,7 +203,78 @@ export const COMMAND_RULES: Readonly<Record<RequestCommand, CommandRule>> = {
     to: "confirmed",
     capability: "system",
   },
+
+  /* --- merchant readiness (owner-approved 2026-08-01) ------------------- */
+
+  /**
+   * Readiness is an INDEPENDENT state group (STA-001). These four commands
+   * move `readiness_state` and leave `request_state` exactly where it is —
+   * `to: "unchanged"` is the whole point, not an omission. A merchant saying
+   * "ready" does not confirm, pay for or schedule anything.
+   *
+   * All four require `confirmed`, because readiness only means something once
+   * Couranr has agreed to do the job, and all four are refused once capture
+   * has started or a delivery exists — at that point a driver is being planned
+   * around the answer, and changing it belongs to cancellation or incident
+   * handling rather than to an ordinary merchant action.
+   */
+  begin_delivery_preparation: {
+    from: ["confirmed"],
+    to: "unchanged",
+    capability: "submit",
+    readinessState: "preparing",
+  },
+  mark_delivery_ready: {
+    from: ["confirmed"],
+    to: "unchanged",
+    capability: "submit",
+    readinessState: "ready",
+  },
+  mark_delivery_not_ready: {
+    from: ["confirmed"],
+    to: "unchanged",
+    capability: "submit",
+    readinessState: "not_ready",
+  },
+  mark_delivery_unavailable: {
+    from: ["confirmed"],
+    to: "unchanged",
+    capability: "submit",
+    readinessState: "unavailable",
+  },
 };
+
+/**
+ * The owner-approved readiness transition graph (2026-08-01).
+ *
+ * `ready` is deliberately absent from `mark_delivery_ready`'s sources:
+ * re-marking a ready request is a conflict, not a no-op, so a stale tab cannot
+ * silently re-assert readiness over a newer state. The database enforces the
+ * same sets; `tests/couranr-readiness.test.ts` compares the two directly.
+ */
+export const READINESS_TRANSITIONS: Readonly<Record<ReadinessState, readonly ReadinessState[]>> = {
+  not_confirmed: ["preparing", "ready", "not_ready", "unavailable"],
+  preparing: ["ready", "not_ready", "unavailable"],
+  not_ready: ["preparing", "ready", "unavailable"],
+  unavailable: ["preparing", "ready"],
+  ready: ["preparing", "not_ready", "unavailable"],
+};
+
+export const READINESS_COMMANDS = [
+  { command: "begin_delivery_preparation", to: "preparing", label: "Preparing" },
+  { command: "mark_delivery_ready", to: "ready", label: "Ready for Couranr" },
+  { command: "mark_delivery_not_ready", to: "not_ready", label: "Not ready" },
+  { command: "mark_delivery_unavailable", to: "unavailable", label: "Unavailable" },
+] as const satisfies ReadonlyArray<{
+  command: RequestCommand;
+  to: ReadinessState;
+  label: string;
+}>;
+
+/** May readiness move from `from` to `to`? */
+export function canChangeReadiness(from: ReadinessState, to: ReadinessState): boolean {
+  return (READINESS_TRANSITIONS[from] ?? []).includes(to);
+}
 
 export type TransitionAllowed = { allowed: true; nextState: RequestState };
 export type TransitionDenied = {
