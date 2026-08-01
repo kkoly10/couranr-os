@@ -21,6 +21,10 @@ What IS proven, and how:
 | the Payment Element mounts, confirms once, and reconciles once | 13 DOM tests against the real Elements provider |
 | both payer paths work in a browser | 16 Playwright assertions, groups M1–M15 |
 | no capture or refund call is ever made | the Stripe double records every path it is sent |
+| a verified `requires_payment_method` or `canceled` settles a stuck capture, and every other status writes nothing | 24 Playwright assertions, group O1–O24 |
+| a `failed` obligation re-authorizes on the SAME intent; a `cancelled` one mints a new obligation and a new intent | O10, O11, O17, O18 |
+| a signed webhook cannot release a capture the provider is still running | O23 |
+| grants, constraint shapes and every refusal in the terminal command | `supabase/verification/terminal_capture_resolution.sql`, re-runnable and read-only |
 
 What is NOT proven:
 
@@ -28,6 +32,13 @@ What is NOT proven:
 - that a real card reaches `requires_capture`
 - that a real signed webhook arrives and verifies end to end
 - that the real Payment Element renders and takes a test card
+- that a real capture failure reports `requires_payment_method` rather than
+  some status this build maps to `wait`. The failed-capture status is the one
+  thing Stripe's PaymentIntent documentation does not state, so the closed
+  mapping's `fail` branch is reasoned from the lifecycle, not from a documented
+  guarantee. Everything unmapped waits and writes nothing, so an unexpected
+  status strands rather than settles — the safe direction, but it needs one
+  live observation to close.
 
 ### The gate
 
@@ -38,6 +49,19 @@ manual authorization reaches `requires_capture`; the signed webhook arrives;
 the obligation authorizes exactly once; capture happens only at the approved
 lifecycle point, for the correct amount and currency; duplicate events are
 harmless; and no test-mode or placeholder configuration remains.
+
+Add one terminal-resolution pass: cancel the PaymentIntent in the Stripe
+dashboard while the obligation is `capture_pending`, then run Operations'
+"Check with the payment provider" and confirm the obligation settles
+`cancelled`, the service plan cancels, every live payment link is revoked, and
+re-authorizing mints a NEW obligation on a NEW intent. Confirm the same for a
+failed authorization: it settles `failed`, and the merchant re-authorizes on
+the SAME intent.
+
+Note that a webhook arriving for a `capture_pending` obligation now costs one
+extra `paymentIntents.retrieve`. That is deliberate — Stripe does not guarantee
+event ordering, so the payload cannot be the evidence about a capture that may
+still be running — but it is worth seeing in the live rate-limit numbers.
 
 **Remove `STRIPE_API_BASE` from every deployed environment before launch.** It
 is refused when `NODE_ENV === "production"`, so it cannot redirect live
