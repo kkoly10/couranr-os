@@ -153,6 +153,31 @@ Work happens on the designated `claude/*` branch. `main` is `9c0a63bd5284e065978
 
 **Tag pushes fail with HTTP 403 in this environment.** Annotated tags, lightweight tags and `git push --tags` are all rejected by the git proxy while branch pushes to the same remote succeed in the same command, and no GitHub MCP tool creates tags or refs. The two required preservation tags exist locally only. Don't burn time re-litigating this — use a branch as the durable pointer, or ask the operator to create the tag in the GitHub UI.
 
+**PUSH IMMEDIATELY AFTER EVERY COMMIT. No exceptions.**
+
+This container is recycled without warning, and a recycle restores the repo
+from the REMOTE. A commit that exists only locally is not saved — it is
+pending deletion. This has already destroyed a completed database-layer
+commit mid-session: the work was committed, the container reset, and
+`git cat-file -t <sha>` came back `Not a valid object name`.
+
+`git commit` and `git push` are one step, not two. Do not batch pushes to the
+end of a slice, and do not leave a commit unpushed while running a long
+verification.
+
+**WRITE THE MIGRATION FILE AND COMMIT IT BEFORE CALLING `apply_migration`.**
+
+A migration applied through the Supabase MCP lives on the server and survives
+a container reset. Its `.sql` file does not. Applying first and writing the
+file afterwards means any reset in between leaves the database ahead of the
+repository with no record of what changed — which is exactly the
+"zero migrations, schema applied by hand through the SQL editor" condition
+this project is trying to climb out of.
+
+If it has already happened, recover by regenerating the file from the live
+schema — `pg_get_functiondef`, `pg_get_constraintdef`, `list_migrations` —
+rather than from memory, so the file provably matches what is running.
+
 ### Supabase MCP
 
 The connected project is **`Couranr -OS` (`zrdxlrlqxdslqpnoqmus`)**, PostgreSQL 17.6.1.063, `us-east-1`. Three other projects in the same org (`website builder`, `rental-software`, `dropshipping`) are **not** Couranr — check the ref before running anything.
@@ -162,6 +187,25 @@ Read-only catalog queries via `execute_sql` are the right way to establish datab
 **Never run an exploit or negative test against production data.** No marking a real order paid, altering a fee, deleting an address, or forging an audit event to prove a vulnerability. Use a Supabase branch, a restored scratch project, or synthetic fixtures.
 
 ### Research before deciding — validate reasoning against sources
+
+**Browse the internet BEFORE planning, and before starting a PR.** Not after,
+and not only when stuck. Open the current primary documentation for whatever
+the change touches — the pinned library version, the provider's API, the
+platform behaviour — and let the facts you find shape the plan while it is
+still cheap to change.
+
+**Improvise when what you find is better than the plan.** A plan written from
+memory is a hypothesis. If the current documentation shows a better mechanism,
+a newer supported shape, a constraint that makes the intended approach wrong,
+or simply a shorter correct path, take it and say in the report what changed
+and which source changed it. Following a plan you now know to be worse is not
+discipline, it is a slower way to be wrong.
+
+The boundary is unchanged: this governs TECHNICAL reasoning. It never
+overrides the authority chain, and it is never a route to settling an
+unresolved product decision. Pricing, hours, states, payer behaviour and
+terminology come from the registry and the Master Package; where those are
+silent the answer is still "unresolved", no matter what a web source says.
 
 Two situations require looking something up rather than reasoning from memory:
 
