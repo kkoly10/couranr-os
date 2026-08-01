@@ -196,6 +196,61 @@ function inconclusive(id, desc, why) {
   console.log(`  \x1b[33m INCONCL \x1b[0m ${id}  ${desc}\n           ${why}`);
 }
 
+/**
+ * Prints every canonical API call a page makes, and every browser-side error.
+ *
+ * Off unless `E2E_TRACE=1`, because a full run makes hundreds of calls. It
+ * exists because a setup step that silently does nothing is the hardest thing
+ * in this harness to diagnose: the readiness click in `toCapturePending`
+ * produced no POST at all, and the only way to tell "the handler never ran"
+ * from "the server refused" was to watch the wire.
+ *
+ * No header, cookie or body is printed — only method, path and status.
+ */
+const TRACE = process.env.E2E_TRACE === "1";
+function traceApi(page, tag) {
+  if (!TRACE) return;
+  page.on("request", (r) => {
+    const u = new URL(r.url(), BASE_URL);
+    if (u.pathname.startsWith("/api/couranr/")) {
+      console.log(`      [${tag}] -> ${r.method()} ${u.pathname}${u.search}`);
+    }
+  });
+  page.on("response", (r) => {
+    const u = new URL(r.url(), BASE_URL);
+    if (u.pathname.startsWith("/api/couranr/")) {
+      console.log(`      [${tag}] <- ${r.status()} ${u.pathname}`);
+    }
+  });
+  page.on("console", (m) => {
+    if (m.type() === "error" || m.type() === "warning") {
+      console.log(`      [${tag}] console.${m.type()}: ${m.text().slice(0, 200)}`);
+    }
+  });
+}
+
+/**
+ * Waits for a ROW to reach a state, and throws naming the step when it does not.
+ *
+ * A setup helper that swallows its own failure is how a broken prerequisite
+ * surfaces three steps later as an unrelated timeout — Group O spent two runs
+ * reporting "the Capture button is disabled" when the real fault was that the
+ * readiness click never reached the server. Page text is not consulted: the
+ * row is the fact.
+ */
+async function waitForRow(label, read, ok, timeoutMs = 20000) {
+  const deadline = Date.now() + timeoutMs;
+  let last = null;
+  for (;;) {
+    last = await read();
+    if (ok(last)) return last;
+    if (Date.now() > deadline) {
+      throw new Error(`${label}: never reached the expected state — last=${JSON.stringify(last)?.slice(0, 300)}`);
+    }
+    await new Promise((r) => setTimeout(r, 400));
+  }
+}
+
 function checkAuthKind(id, desc, actual, expected) {
   if (actual === "rate_limited") {
     // The assertion was NOT exercised. It must not contribute to a green
@@ -1968,9 +2023,20 @@ async function groupN() {
     const readyBtn = page.getByRole("button", { name: /^Ready for Couranr$/ });
     await readyBtn.waitFor({ state: "visible", timeout: 25000 });
     await readyBtn.click();
-    // The action removes itself: a readiness the request already has is not
-    // offered. Waiting for that is waiting for the write, not for a clock.
-    await readyBtn.waitFor({ state: "hidden", timeout: 30000 }).catch(() => {});
+    /*
+     * Wait for the ROW, and do it BEFORE closing the context.
+     *
+     * The obvious wait — for the button to disappear — is a trap here. `Button`
+     * swaps its label to "Working…" the instant `busy` is set, so the
+     * accessible name stops matching `^Ready for Couranr$` and "hidden"
+     * resolves within milliseconds of the click, long before the POST lands.
+     * Closing the context then ABORTS the request in flight: Group O did
+     * exactly that and the dev server logged no `/readiness` POST at all.
+     * Only `shot()` — several hundred milliseconds of screenshot — kept this
+     * one green, which is luck, not a test.
+     */
+    await waitForRow("N7 readiness", () => requestById(requestId),
+      (r) => r?.readiness_state === "ready").catch(() => null);
     await shot(page, "N7-mer007-ready");
     await ctx.close();
   }
@@ -2400,6 +2466,39 @@ async function setIntentStatus(intentId, status) {
   return r.ok;
 }
 
+/**
+ * Marks a request ready THROUGH THE MERCHANT UI, and proves the row moved.
+ *
+ * The wait is on the ROW and it happens BEFORE the context closes. Waiting for
+ * the button to disappear instead is what broke this for two runs: `Button`
+ * renders "Working…" as soon as `busy` is set, so the accessible name stops
+ * matching and "hidden" resolves milliseconds after the click — then
+ * `ctx.close()` aborted the `/readiness` POST mid-flight. The dev server
+ * logged the page's reads and then nothing at all, and the failure surfaced
+ * three steps later as a disabled Capture button.
+ *
+ * That the browser can mark ready at all is asserted on its own in N7; here it
+ * is setup, so it throws with the row attached rather than scoring anything.
+ */
+async function markReadyAsMerchant(requestId) {
+  const { ctx, page } = await freshContext();
+  traceApi(page, "O/merchant-ready");
+  await signIn(page, USERS.merchant, { expectLanding: "/business" });
+  await page.goto(`${BASE_URL}/business/deliveries/${requestId}`, { waitUntil: "domcontentloaded" });
+  const ready = page.getByRole("button", { name: /^Ready for Couranr$/ });
+  await ready.waitFor({ state: "visible", timeout: 25000 });
+  await ready.click();
+  try {
+    return await waitForRow(
+      `markReadyAsMerchant(${requestId})`,
+      () => requestById(requestId),
+      (r) => r?.readiness_state === "ready"
+    );
+  } finally {
+    await ctx.close();
+  }
+}
+
 /** Drives a fresh request all the way to capture_pending with an unknown outcome. */
 async function toCapturePending(accountId) {
   const requestId = await confirmedRequestFor(accountId);
@@ -2409,6 +2508,7 @@ async function toCapturePending(accountId) {
   // so the capture outcome is genuinely unknown.
   {
     const { ctx, page } = await freshContext();
+    traceApi(page, "O/merchant-pay");
     await mockStripeJs(page);
     await signIn(page, USERS.merchant, { expectLanding: "/business" });
     await page.goto(`${BASE_URL}/business/deliveries/${requestId}`, { waitUntil: "domcontentloaded" });
@@ -2419,20 +2519,26 @@ async function toCapturePending(accountId) {
     await page.getByRole("button", { name: /^Authorize \$/ }).click();
     await page.getByText(/Payment authorized/i).waitFor({ state: "visible", timeout: 25000 });
     /*
-     * Re-read before looking for Ready. The readiness panel only offers it
-     * once the fulfillment view reports `authorized`, and the payment panel's
-     * own success does not re-fetch that view — Group N used a fresh context
-     * here for the same reason.
+     * The ROW, and before the context closes.
+     *
+     * Every wait in this helper follows that shape now. Closing a context
+     * cancels whatever the page still has in flight, so a wait that satisfies
+     * itself on page text — a banner, a label change, a button that stopped
+     * matching — can close the browser out from under the request that was
+     * supposed to be the point. The row is the only fact that survives.
      */
-    await page.goto(`${BASE_URL}/business/deliveries/${requestId}`, { waitUntil: "domcontentloaded" });
-    const ready = page.getByRole("button", { name: /^Ready for Couranr$/ });
-    await ready.waitFor({ state: "visible", timeout: 25000 });
-    await ready.click();
-    await ready.waitFor({ state: "hidden", timeout: 30000 }).catch(() => {});
-    await ctx.close();
+    await waitForRow(
+      `toCapturePending(${requestId}) authorize`,
+      () => obligationFor(requestId),
+      (ob) => ob?.payment_state === "authorized"
+    ).finally(() => ctx.close());
   }
+
+  await markReadyAsMerchant(requestId);
+
   {
     const { ctx, page } = await freshContext();
+    traceApi(page, "O/ops-capture");
     await signIn(page, USERS.ops, { expectLanding: "/operations" });
     await page.goto(`${BASE_URL}/operations/deliveries/${requestId}`, { waitUntil: "domcontentloaded" });
     await page.getByText("Service plan and capture").waitFor({ state: "visible", timeout: 25000 });
@@ -2442,6 +2548,11 @@ async function toCapturePending(accountId) {
     await page.getByRole("button", { name: /^Confirm service plan$/ }).click();
     await page.getByRole("button", { name: /^Change the plan$/ })
       .waitFor({ state: "visible", timeout: 30000 }).catch(() => {});
+    await waitForRow(
+      `toCapturePending(${requestId}) service plan`,
+      () => servicePlansFor(requestId),
+      (plans) => plans.some((p) => p.plan_state === "confirmed")
+    );
 
     failNextCaptures(1);
     const cap = page.getByRole("button", { name: /^Capture .* and schedule$/ });
@@ -2449,12 +2560,24 @@ async function toCapturePending(accountId) {
     await cap.click();
     await page.getByText(/could not confirm the capture/i)
       .waitFor({ state: "visible", timeout: 30000 }).catch(() => {});
-    await ctx.close();
+    await waitForRow(
+      `toCapturePending(${requestId}) capture`,
+      () => obligationFor(requestId),
+      (ob) => ob?.payment_state === "capture_pending"
+    ).finally(() => ctx.close());
   }
   return requestId;
 }
 
-/** Clicks OPS-003's reconcile and waits for the panel to settle. */
+/**
+ * Clicks OPS-003's reconcile and waits for the OBLIGATION to settle.
+ *
+ * The context stays open — the caller asserts on what OPS-003 rendered — but
+ * the wait is on the row, so the caller is never racing the POST. Non-throwing
+ * on purpose: an obligation that deliberately stays `capture_pending` (an
+ * indeterminate provider status) is a result the assertions have to be able to
+ * observe, not a reason to abort the group.
+ */
 async function reconcileAsOps(requestId, settleOn) {
   const { ctx, page } = await freshContext();
   await signIn(page, USERS.ops, { expectLanding: "/operations" });
@@ -2465,6 +2588,9 @@ async function reconcileAsOps(requestId, settleOn) {
   if (settleOn) {
     await page.getByText(settleOn).waitFor({ state: "visible", timeout: 30000 }).catch(() => {});
   }
+  // `obligationFor` hides a cancelled obligation, so null also means "left".
+  await waitForRow(`reconcileAsOps(${requestId})`, () => obligationFor(requestId),
+    (ob) => ob?.payment_state !== "capture_pending").catch(() => null);
   return { ctx, page };
 }
 
@@ -2564,6 +2690,9 @@ async function groupO() {
         await mp.getByRole("button", { name: /^Authorize \$/ }).click();
         await mp.getByText(/Payment authorized/i)
           .waitFor({ state: "visible", timeout: 25000 }).catch(() => {});
+        // Before the close, so it cannot cancel the write it is waiting on.
+        await waitForRow(`O10 reauthorize(${failId})`, () => obligationFor(failId),
+          (ob) => ob?.payment_state === "authorized").catch(() => null);
       }
       await mctx.close();
     }
@@ -2584,6 +2713,8 @@ async function groupO() {
         await cap.click();
         await op.getByText(/Canonical delivery created/i)
           .waitFor({ state: "visible", timeout: 30000 }).catch(() => {});
+        await waitForRow(`O11 capture(${failId})`, () => obligationFor(failId),
+          (ob) => ob?.payment_state === "captured").catch(() => null);
       }
       await shot(op, "O11-recovered-and-captured");
       await octx.close();
@@ -2642,6 +2773,10 @@ async function groupO() {
       if (await a.count()) await a.click();
       await mp.locator("[data-stripe-element]").first()
         .waitFor({ state: "visible", timeout: 25000 }).catch(() => {});
+      // The element only mounts on a client secret the POST returned, but wait
+      // for the row anyway — this is the assertion's whole subject.
+      await waitForRow(`O17 new obligation(${cancelId})`, () => allObligationsFor(cancelId),
+        (all) => all.length > obs.length).catch(() => null);
       await shot(mp, "O17-new-obligation");
       await mctx.close();
     }
