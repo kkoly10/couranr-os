@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { DriverAssignmentCard } from "@/components/couranr/dispatch/DriverAssignmentCard";
 import {
   activeDelivery as pickActive,
   completedToday as pickCompletedToday,
@@ -89,6 +90,11 @@ export default function DriverDashboardPage() {
           </div>
         </div>
       )}
+
+      {/* The canonical Couranr assignment, from managed dispatch. Sits above
+          the legacy section rather than replacing it: this slice adds dispatch,
+          it does not redesign the driver screens. */}
+      <DriverAssignmentCard />
 
       {/* ACTIVE DELIVERY */}
       <div style={{ marginTop: 24, ...styles.card }}>

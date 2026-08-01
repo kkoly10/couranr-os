@@ -23,6 +23,7 @@ import { ReviewOutcomeActions } from "./ReviewOutcomeActions";
 import { MerchantPaymentPanel } from "@/components/couranr/payments/MerchantPaymentPanel";
 import { MerchantReadinessPanel } from "@/components/couranr/fulfillment/MerchantReadinessPanel";
 import { OperationsPlanPanel } from "@/components/couranr/fulfillment/OperationsPlanPanel";
+import { OperationsAssignmentPanel } from "@/components/couranr/dispatch/OperationsAssignmentPanel";
 import { fetchFulfillment, type FulfillmentView } from "@/components/couranr/fulfillment/client";
 import {
   fetchDeliveryRequest,
@@ -368,6 +369,12 @@ export function DeliveryRequestDetail({ id }: { id: string }) {
             });
           }}
         />
+      ) : null}
+
+      {/* OPS-003 managed dispatch. Only once a canonical delivery exists —
+          there is nothing to assign a driver to before that. */}
+      {isOperations && fulfillment?.delivery ? (
+        <OperationsAssignmentPanel deliveryId={fulfillment.delivery.id} />
       ) : null}
 
       {isOperations ? (
