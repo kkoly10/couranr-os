@@ -109,13 +109,49 @@ export const AUTHORIZING_INTENT_STATUS = "requires_capture" as const;
  * The default is `wait`, so a status this build has never heard of can never
  * move money's state in either direction.
  */
-export type ReconcileAction = "release" | "complete" | "wait";
+export type ReconcileAction = "release" | "complete" | "fail" | "cancel" | "wait";
 
+/**
+ * OWNER-APPROVED CLOSED MAPPING (2026-08-01) for a VERIFIED PaymentIntent —
+ * retrieved from Stripe, or carried by a signature-verified webhook.
+ *
+ *   requires_capture         release   funds still only HELD; the hold
+ *                                      survives and capture may be retried
+ *                                      under a new capture-cycle key
+ *   succeeded                complete  money taken; convert idempotently to
+ *                                      one canonical delivery
+ *   requires_payment_method  fail      the authorization is gone; the payer
+ *                                      must authorize again
+ *   canceled                 cancel    the intent is dead; the obligation
+ *                                      cannot be reused
+ *   anything else            wait      INDETERMINATE. Write nothing at all.
+ *
+ * `wait` stays the default, so a status Stripe adds tomorrow can never move
+ * money's state on its own. The difference between `wait` and a terminal
+ * action is the difference between "we do not know yet" and "we know, and the
+ * answer is final" — conflating them is what stranded capture_pending
+ * obligations with no exit.
+ */
 export function reconcileActionForIntentStatus(status: string): ReconcileAction {
   if (status === AUTHORIZING_INTENT_STATUS) return "release";
   if (status === "succeeded") return "complete";
+  if (status === "requires_payment_method") return "fail";
+  if (status === "canceled") return "cancel";
   return "wait";
 }
+
+/** The two actions the terminal-resolution command accepts. Nothing else. */
+export const TERMINAL_CAPTURE_ACTIONS: readonly ReconcileAction[] = ["fail", "cancel"];
+
+export function isTerminalCaptureAction(a: ReconcileAction): boolean {
+  return TERMINAL_CAPTURE_ACTIONS.includes(a);
+}
+
+/** Which payment state each terminal action lands on. Never sent by a caller. */
+export const TERMINAL_ACTION_RESULT_STATE: Readonly<Record<string, PaymentState>> = {
+  fail: "failed",
+  cancel: "cancelled",
+};
 
 /**
  * May a capture RESULT event be written for this intent status?
@@ -125,12 +161,11 @@ export function reconcileActionForIntentStatus(status: string): ReconcileAction 
  * (obligation, intent), on the assumption that it is only ever written for a
  * terminal `succeeded`. Writing it for a `processing` intent spends that id on
  * a rejection, and the reconcile that runs once the intent finally succeeds is
- * then swallowed as a duplicate — stranding the obligation with the money
- * taken and no delivery.
+ * then swallowed as a duplicate — money taken, no delivery, no exit.
  *
- * This existed only inside `reconcileCapture` at first, and `capturePayment`
+ * This lived only inside `reconcileCapture` at first, and `capturePayment`
  * wrote the same event with no guard at all. One predicate, asked in both
- * places, is what stops that from happening again.
+ * places, is what stops that recurring.
  */
 export function mayWriteCaptureResult(intentStatus: string): boolean {
   return reconcileActionForIntentStatus(intentStatus) === "complete";
@@ -142,10 +177,9 @@ export function mayWriteCaptureResult(intentStatus: string): boolean {
  * Scoped to the capture CYCLE, matching `intentIdempotencyKey`. Within one
  * cycle two concurrent calls share the key, so Stripe performs one capture and
  * replays it — that is the double-charge guarantee. Across cycles the key
- * differs, which is what makes the release-and-retry path work at all: Stripe
- * caches a completed request's response for 24 hours, so an obligation-only
- * key would replay the FIRST attempt's failure to every retry for a day and
- * the reconcile route would be unable to achieve anything.
+ * differs, which is what makes release-and-retry work at all: Stripe caches a
+ * completed request's response for 24 hours, so an obligation-only key would
+ * replay the FIRST attempt's failure to every retry for a day.
  */
 export function captureIdempotencyKey(obligationId: string, obligationVersion: number): string {
   return `couranr:capture:${obligationId}:v${obligationVersion}`;
@@ -159,29 +193,29 @@ export function captureIdempotencyKey(obligationId: string, obligationVersion: n
  * WITHOUT acting. That makes the id the idempotency key — and choosing it
  * badly is silent: a colliding id means the command quietly does nothing.
  *
- * So the rule is that an id must identify the ATTEMPT, not the obligation.
- * `notTaken` ends a capture cycle and can legitimately happen more than once
- * for one obligation, so it carries the obligation version — which
- * `couranr_begin_payment_capture` bumps on every cycle. Keying it on the
- * obligation alone stranded the second failed cycle in `capture_pending` with
- * no exit.
+ * So an id must identify the ATTEMPT, not the obligation. `notTaken` and
+ * `terminal` both end a capture cycle and can happen more than once for one
+ * obligation, so they carry the obligation version, which
+ * `couranr_begin_payment_capture` bumps on every cycle.
  *
  * `result` is deliberately NOT version-scoped: it is written only for a
- * SUCCEEDED intent, which is terminal, so a repeat genuinely is a duplicate
- * and swallowing it is correct. `mayWriteCaptureResult` is what holds that
- * assumption up, and BOTH capture call sites must ask it.
- *
- * There is no `failed` id. A release used to be written straight from a 4xx in
- * the capture path, which was wrong — a 409 idempotency conflict and a 400
- * "already captured" are both 4xx and both mean money may well have moved. The
- * only release now comes from `reconcileCapture`, after re-reading the intent,
- * and it uses `notTaken`.
+ * SUCCEEDED intent, which is terminal, so a repeat genuinely is a duplicate.
+ * `mayWriteCaptureResult` is what holds that assumption up.
  */
 export const captureEventId = {
   notTaken: (obligationId: string, obligationVersion: number) =>
     `couranr:capture_not_taken:${obligationId}:v${obligationVersion}`,
   result: (obligationId: string, paymentIntentId: string) =>
     `couranr:capture_result:${obligationId}:${paymentIntentId}`,
+  /*
+   * A terminal answer ends ONE capture attempt, and an obligation can reach
+   * capture_pending more than once — fail, re-authorize, capture again. Keying
+   * on the obligation alone would let the first terminal event swallow the
+   * second. The action is in the id too, so a fail and a cancel in one cycle
+   * are distinct rows.
+   */
+  terminal: (obligationId: string, obligationVersion: number, action: string) =>
+    `couranr:capture_terminal:${obligationId}:v${obligationVersion}:${action}`,
 } as const;
 
 /** Terminal for this slice — no further payer action is possible. */

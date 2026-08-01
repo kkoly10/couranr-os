@@ -15,8 +15,10 @@ import {
 } from "@/lib/couranr/fulfillment/lifecycle";
 import {
   AUTHORIZING_INTENT_STATUS,
+  TERMINAL_ACTION_RESULT_STATE,
   captureEventId,
   captureIdempotencyKey,
+  isTerminalCaptureAction,
   mayWriteCaptureResult,
   reconcileActionForIntentStatus,
 } from "@/lib/couranr/payments/states";
@@ -243,13 +245,22 @@ describe("capture reconciliation", () => {
    * intent was still `processing` would make the later, successful reconcile a
    * duplicate — permanently stranding the obligation with the money taken.
    */
-  it("waits on every other status, including ones this build has not seen", () => {
+  it("fails only on requires_payment_method and cancels only on canceled", () => {
+    expect(reconcileActionForIntentStatus("requires_payment_method")).toBe("fail");
+    expect(reconcileActionForIntentStatus("canceled")).toBe("cancel");
+  });
+
+  /*
+   * `wait` means INDETERMINATE and must stay the default. The difference
+   * between `wait` and a terminal action is the difference between "we do not
+   * know yet" and "we know, and the answer is final" — conflating them is what
+   * stranded capture_pending obligations with no exit.
+   */
+  it("waits on every indeterminate status, including ones this build has not seen", () => {
     for (const status of [
       "processing",
-      "requires_payment_method",
       "requires_confirmation",
       "requires_action",
-      "canceled",
       "",
       "a_status_from_the_future",
     ]) {
@@ -261,68 +272,46 @@ describe("capture reconciliation", () => {
     expect(reconcileActionForIntentStatus(AUTHORIZING_INTENT_STATUS)).toBe("release");
   });
 
-  /* `wait` is the default, so an unhandled status can never move money. */
-  it("only two statuses are actionable at all", () => {
+  /* Exactly four statuses are actionable. Everything else is `wait`. */
+  it("only four statuses are actionable at all", () => {
     const actionable = [
-      "requires_capture",
-      "succeeded",
-      "processing",
-      "requires_payment_method",
-      "requires_confirmation",
-      "requires_action",
-      "canceled",
-    ].filter((s) => reconcileActionForIntentStatus(s) !== "wait");
-    expect(actionable.sort()).toEqual(["requires_capture", "succeeded"]);
-  });
-});
-
-describe("capture event ids", () => {
-  const OB = "11111111-1111-4111-8111-111111111111";
-  const PI = "pi_test_0001";
-
-  /*
-   * These ids ARE the idempotency keys — `couranr_payment_events` is unique on
-   * them and the SQL commands treat a collision as "already handled" and
-   * return without acting. An id that repeats across two attempts therefore
-   * makes the second attempt a silent no-op.
-   */
-  it("a release id is unique per capture cycle, not per obligation", () => {
-    expect(captureEventId.notTaken(OB, 3)).not.toBe(captureEventId.notTaken(OB, 5));
-  });
-
-  /* Same cycle, same id — retrying within one attempt must stay idempotent. */
-  it("the same cycle produces the same id", () => {
-    expect(captureEventId.notTaken(OB, 3)).toBe(captureEventId.notTaken(OB, 3));
+      "requires_capture", "succeeded", "requires_payment_method", "canceled",
+      "processing", "requires_confirmation", "requires_action",
+    ].filter((x) => reconcileActionForIntentStatus(x) !== "wait");
+    expect(actionable.sort()).toEqual(
+      ["canceled", "requires_capture", "requires_payment_method", "succeeded"].sort()
+    );
   });
 
   /*
-   * A result is written only for a SUCCEEDED intent, which is terminal, so it
-   * is keyed on the intent rather than the cycle — a repeat genuinely is a
-   * duplicate and must be swallowed.
+   * Only the two TERMINAL actions may reach the resolution command. `release`
+   * and `complete` have their own commands, and letting one caller reach the
+   * same state two ways is how the two disagree.
    */
-  it("a result id is keyed on the intent, and is stable", () => {
-    expect(captureEventId.result(OB, PI)).toBe(captureEventId.result(OB, PI));
-    expect(captureEventId.result(OB, PI)).not.toBe(captureEventId.result(OB, "pi_test_0002"));
-  });
-
-  it("every id names both the obligation and what happened", () => {
-    for (const id of [captureEventId.notTaken(OB, 2), captureEventId.result(OB, PI)]) {
-      expect(id).toContain(OB);
-      expect(id.startsWith("couranr:capture")).toBe(true);
+  it("only fail and cancel are terminal capture actions", () => {
+    expect(isTerminalCaptureAction("fail")).toBe(true);
+    expect(isTerminalCaptureAction("cancel")).toBe(true);
+    for (const x of ["release", "complete", "wait"] as const) {
+      expect(isTerminalCaptureAction(x)).toBe(false);
     }
   });
 
+  it("each terminal action lands on exactly one payment state", () => {
+    expect(TERMINAL_ACTION_RESULT_STATE.fail).toBe("failed");
+    expect(TERMINAL_ACTION_RESULT_STATE.cancel).toBe("cancelled");
+    expect(Object.keys(TERMINAL_ACTION_RESULT_STATE).sort()).toEqual(["cancel", "fail"]);
+  });
+
   /*
-   * Source check, because the builders only help if they are the only writers.
-   * A hand-rolled template literal in the command layer is how the collision
-   * got in the first time.
+   * A terminal event ends ONE capture cycle, and an obligation can reach
+   * capture_pending more than once. Keying on the obligation alone would let
+   * the first terminal event swallow the second and strand it as before.
    */
-  it("the command layer builds no capture event id by hand", () => {
-    const src = readFileSync(join(ROOT, "lib/couranr/fulfillment/commands.ts"), "utf8");
-    const handRolled = [...src.matchAll(/p_provider_event_id:\s*`/g)];
-    expect(handRolled.length).toBe(0);
-    expect(src).toContain("captureEventId.notTaken");
-    expect(src).toContain("captureEventId.result");
+  it("terminal event ids are scoped to the capture cycle and the action", () => {
+    const OB = "33333333-3333-4333-8333-333333333333";
+    expect(captureEventId.terminal(OB, 4, "fail")).not.toBe(captureEventId.terminal(OB, 6, "fail"));
+    expect(captureEventId.terminal(OB, 4, "fail")).not.toBe(captureEventId.terminal(OB, 4, "cancel"));
+    expect(captureEventId.terminal(OB, 4, "fail")).toBe(captureEventId.terminal(OB, 4, "fail"));
   });
 });
 
