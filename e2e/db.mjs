@@ -97,8 +97,9 @@ export const obligationFor = (requestId) =>
         "provider_payment_intent_id,authorized_at,request_version,pricing_policy_version," +
         // The capture columns. Absent from this list, an assertion about them
         // reads `undefined` and fails against a row that is perfectly correct
-        // — which is exactly how N17 first failed.
-        "capture_requested_at,captured_at,captured_amount_cents"
+        // — which is exactly how N17 first failed, and how O2 then failed
+        // against a `failed_at` the database had stamped correctly.
+        "capture_requested_at,captured_at,captured_amount_cents,failed_at,cancelled_at"
     )
     .eq("request_id", requestId)
     .neq("payment_state", "cancelled")
@@ -218,7 +219,10 @@ export const allObligationsFor = (requestId) =>
     .from("couranr_payment_obligations")
     .select(
       "id,request_id,payment_state,amount_cents,captured_amount_cents,currency," +
-        "provider_payment_intent_id,capture_requested_at,captured_at,version"
+        "provider_payment_intent_id,capture_requested_at,captured_at,version," +
+        // Same rule as `obligationFor`: a stamp this list omits reads
+        // `undefined` and fails an assertion about a perfectly correct row.
+        "failed_at,cancelled_at"
     )
     .eq("request_id", requestId)
     .order("created_at", { ascending: true })
