@@ -25,6 +25,18 @@ import { BASE_URL, SHIPMENT, USERS } from "./fixtures.mjs";
 import { relaySupabase } from "./supabaseRelay.mjs";
 import {
   accountsCreatedBy,
+  activateDriver,
+  assignmentEventsFor,
+  assignmentsFor,
+  createDispatchVehicle,
+  deliveryById,
+  driverById,
+  ensureDriverProfile,
+  legacyVehicleCount,
+  markVehicleUnavailable,
+  setDriverAvailable,
+  suspendDriver,
+  vehicleById,
   allObligationsFor,
   deliveriesFor,
   deliveryEventsFor,
@@ -45,6 +57,33 @@ import { cleanupAll } from "./seed.mjs";
 import { startStripeDouble, capturedPaths, calls as stripeCalls, failNextCaptures } from "./stripeDouble.mjs";
 import { KEY_SOURCE, PUBLISHABLE_KEY, SUPABASE_URL as ADMIN_SUPABASE_URL } from "./admin.mjs";
 import { createClient as createUserScopedClient } from "@supabase/supabase-js";
+/*
+ * The driver-projection leak rule, mirrored from
+ * lib/couranr/dispatch/projection.ts.
+ *
+ * Node ESM cannot import the TypeScript module, so this is a copy — and a copy
+ * that drifts is worse than no check at all. `tests/couranr-dispatch.test.ts`
+ * reads THIS FILE and fails if any token in the library list is missing here,
+ * so the two cannot diverge silently.
+ */
+const PROJECTION_FORBIDDEN = [
+  "payment_obligation_id",
+  "captured_amount_cents",
+  "pricing_policy_version",
+  "business_account_id",
+  "service_plan_id",
+  "request_version",
+  "internalNote",
+  "internal_note",
+  "obligationId",
+  "capturedAmountCents",
+];
+const PROVIDER_ID_RE = /\b(pi|cus|seti|ch|sk|pk|whsec)_[A-Za-z0-9]{6,}/;
+function projectionLeaks(serialized) {
+  for (const t of PROJECTION_FORBIDDEN) if (serialized.includes(t)) return t;
+  const m = serialized.match(PROVIDER_ID_RE);
+  return m ? m[0] : null;
+}
 
 const PW = process.env.E2E_PLAYWRIGHT ?? "/opt/node22/lib/node_modules/playwright/index.mjs";
 const { chromium } = await import(PW);
@@ -2896,7 +2935,397 @@ async function groupO() {
     `before=${JSON.stringify(legacyBefore)} after=${JSON.stringify(legacyAfter)}`);
 }
 
-const ALL = { A: groupA, B: groupB, C: groupC, D: groupD, E: groupE, F: groupF, G: groupG, H: groupH, I: groupI, J: groupJ, K: groupK, L: groupL, M: groupM, N: groupN, O: groupO };
+
+/* ================= P. MANAGED DISPATCH ==================================== */
+
+/**
+ * Drives a fresh request all the way to a SCHEDULED canonical delivery.
+ *
+ * Same path as `toCapturePending` up to the capture, but with no injected
+ * fault, so the capture succeeds and the conversion creates the delivery.
+ */
+async function scheduledDeliveryFor(accountId) {
+  const requestId = await confirmedRequestFor(accountId);
+  if (!requestId) return null;
+
+  {
+    const { ctx, page } = await freshContext();
+    await mockStripeJs(page);
+    await signIn(page, USERS.merchant, { expectLanding: "/business" });
+    await page.goto(`${BASE_URL}/business/deliveries/${requestId}`, { waitUntil: "domcontentloaded" });
+    const a = page.getByRole("button", { name: /^Authorize \$/ });
+    await a.waitFor({ state: "visible", timeout: 25000 });
+    await a.click();
+    await page.locator("[data-stripe-element]").first().waitFor({ state: "visible", timeout: 25000 });
+    await page.getByRole("button", { name: /^Authorize \$/ }).click();
+    await page.getByText(/Payment authorized/i).waitFor({ state: "visible", timeout: 25000 });
+    await waitForRow(`scheduledDeliveryFor(${requestId}) authorize`, () => obligationFor(requestId),
+      (ob) => ob?.payment_state === "authorized").finally(() => ctx.close());
+  }
+
+  await markReadyAsMerchant(requestId);
+
+  {
+    const { ctx, page } = await freshContext();
+    await signIn(page, USERS.ops, { expectLanding: "/operations" });
+    await page.goto(`${BASE_URL}/operations/deliveries/${requestId}`, { waitUntil: "domcontentloaded" });
+    await page.getByText("Service plan and capture").waitFor({ state: "visible", timeout: 25000 });
+    await page.getByLabel(/Pickup window start/).fill("2026-09-21T09:00");
+    await page.getByLabel(/Pickup window end/).fill("2026-09-21T11:00");
+    await page.getByLabel(/Payload capacity/).fill("800");
+    await page.getByRole("button", { name: /^Confirm service plan$/ }).click();
+    await waitForRow(`scheduledDeliveryFor(${requestId}) plan`, () => servicePlansFor(requestId),
+      (plans) => plans.some((x) => x.plan_state === "confirmed"));
+
+    const cap = page.getByRole("button", { name: /^Capture .* and schedule$/ });
+    await cap.waitFor({ state: "visible", timeout: 25000 });
+    await cap.click();
+    await waitForRow(`scheduledDeliveryFor(${requestId}) delivery`, () => deliveriesFor(requestId),
+      (d) => d.length === 1 && d[0].fulfillment_state === "scheduled").finally(() => ctx.close());
+  }
+
+  const rows = await deliveriesFor(requestId);
+  return { requestId, delivery: rows[0] };
+}
+
+/** POSTs an assignment as a given fixture user. */
+function assignAs(user, deliveryId, body) {
+  return apiAs(user, `/api/couranr/operations/deliveries/${deliveryId}/assignment`, {
+    method: "POST",
+    body,
+  });
+}
+
+async function groupP() {
+  console.log("\n\x1b[1mP — managed dispatch: canonical drivers, vehicles and assignment\x1b[0m");
+
+  const accounts = await accountsCreatedBy(USER_IDS.merchant);
+  if (accounts.length === 0) {
+    inconclusive("P0", "managed dispatch", "the merchant fixture has no business account");
+    return;
+  }
+  const accountId = accounts[0].id;
+  const legacyBefore = await realDataCounts();
+  const legacyVehiclesBefore = await legacyVehicleCount();
+
+  /* ---- fixtures: one usable driver, and a fleet that exercises every refusal */
+
+  let driver = await ensureDriverProfile(USER_IDS.driver, "[E2E] Dispatch Driver");
+  driver = await activateDriver(driver.id, driver.version);
+  driver = await setDriverAvailable(driver.id, driver.version);
+
+  const goodVehicle = await createDispatchVehicle({
+    name: `[E2E] Van ${Date.now().toString(36)}`,
+    vehicleClass: "van",
+    payloadCapacityLb: 1200,
+  });
+  const smallVehicle = await createDispatchVehicle({
+    name: `[E2E] Underpowered ${Date.now().toString(36)}`,
+    vehicleClass: "van",
+    payloadCapacityLb: 10,
+  });
+  let offVehicle = await createDispatchVehicle({
+    name: `[E2E] Offline ${Date.now().toString(36)}`,
+    vehicleClass: "box_truck",
+    payloadCapacityLb: 5000,
+  });
+  offVehicle = await markVehicleUnavailable(offVehicle.id, offVehicle.version);
+
+  const made = await scheduledDeliveryFor(accountId);
+  if (!made) {
+    inconclusive("P1", "managed dispatch", "no request reached a scheduled canonical delivery");
+    return;
+  }
+  const deliveryId = made.delivery.id;
+  const v0 = made.delivery.version;
+
+  /* ---- P1..P3  who may command dispatch ------------------------------- */
+
+  {
+    const r = await assignAs(USERS.merchant, deliveryId, {
+      expectedVersion: v0, driverId: driver.id, vehicleId: goodVehicle.id,
+    });
+    const after = await assignmentsFor(deliveryId);
+    check("P1", "a merchant cannot assign a driver",
+      r.status === 403 && after.length === 0, `status=${r.status} assignments=${after.length}`);
+  }
+
+  {
+    // The driver the delivery would be assigned TO cannot assign themselves.
+    // There is no marketplace and no self-selection.
+    const r = await assignAs(USERS.driver, deliveryId, {
+      expectedVersion: v0, driverId: driver.id, vehicleId: goodVehicle.id,
+    });
+    const after = await assignmentsFor(deliveryId);
+    check("P2", "an ordinary driver cannot assign themselves",
+      r.status === 403 && after.length === 0, `status=${r.status} assignments=${after.length}`);
+  }
+
+  {
+    const ghost = "11111111-2222-4333-8444-555555555555";
+    const r = await assignAs(USERS.ops, ghost, {
+      expectedVersion: 1, driverId: driver.id, vehicleId: goodVehicle.id,
+    });
+    check("P3", "Operations cannot assign before a canonical delivery exists",
+      r.status === 404, `status=${r.status}`);
+  }
+
+  {
+    /*
+     * P4 — the captured-payment guard.
+     *
+     * A canonical delivery only EXISTS as a product of a successful capture, so
+     * an uncaptured one is not reachable through the application. What is
+     * reachable is the state just before it: an obligation in `capture_pending`
+     * with no delivery. Assignment is refused there, which is the same
+     * protection, reached by the same route, for a different stated reason.
+     *
+     * The `payment_not_captured` branch itself is asserted from the SQL in
+     * tests/couranr-dispatch.test.ts. Recorded rather than glossed: this is
+     * weaker than driving that exact branch.
+     */
+    const pendingId = await toCapturePending(accountId);
+    if (!pendingId) {
+      inconclusive("P4", "uncaptured delivery", "no request reached capture_pending");
+    } else {
+      const rows = await deliveriesFor(pendingId);
+      const r = await assignAs(USERS.ops, rows[0]?.id ?? "11111111-2222-4333-8444-555555555556", {
+        expectedVersion: 1, driverId: driver.id, vehicleId: goodVehicle.id,
+      });
+      check("P4", "Operations cannot assign a delivery whose payment did not complete",
+        rows.length === 0 && r.status === 404,
+        `deliveries=${rows.length} status=${r.status}`);
+    }
+  }
+
+  /* ---- P5..P8  the resource refusals ---------------------------------- */
+
+  {
+    let d2 = await ensureDriverProfile(USER_IDS.newMerchant, "[E2E] Suspended Driver");
+    d2 = await activateDriver(d2.id, d2.version);
+    d2 = await suspendDriver(d2.id, d2.version);
+    const r = await assignAs(USERS.ops, deliveryId, {
+      expectedVersion: v0, driverId: d2.id, vehicleId: goodVehicle.id,
+    });
+    const after = await assignmentsFor(deliveryId);
+    check("P5", "a suspended driver is refused",
+      r.status >= 400 && after.length === 0,
+      `status=${r.status} reason=${r.payload?.code ?? ""} assignments=${after.length}`);
+  }
+
+  {
+    // `pending` is the state a fresh profile starts in: never activated, so
+    // never assignable. Unavailable-by-state is asserted at P6.
+    let d3 = await ensureDriverProfile(USER_IDS.unconfirmed, "[E2E] Unavailable Driver");
+    const r = await assignAs(USERS.ops, deliveryId, {
+      expectedVersion: v0, driverId: d3.id, vehicleId: goodVehicle.id,
+    });
+    const after = await assignmentsFor(deliveryId);
+    check("P6", "a driver who is not available is refused",
+      r.status >= 400 && after.length === 0,
+      `status=${r.status} availability=${d3.availability_state} assignments=${after.length}`);
+  }
+
+  {
+    const r = await assignAs(USERS.ops, deliveryId, {
+      expectedVersion: v0, driverId: driver.id, vehicleId: offVehicle.id,
+    });
+    const after = await assignmentsFor(deliveryId);
+    check("P7", "an unavailable vehicle is refused",
+      r.status >= 400 && after.length === 0,
+      `status=${r.status} assignments=${after.length}`);
+  }
+
+  {
+    const r = await assignAs(USERS.ops, deliveryId, {
+      expectedVersion: v0, driverId: driver.id, vehicleId: smallVehicle.id,
+    });
+    const after = await assignmentsFor(deliveryId);
+    check("P8", "a vehicle under the committed payload capacity is refused",
+      r.status >= 400 && after.length === 0,
+      `status=${r.status} assignments=${after.length}`);
+  }
+
+  /* ---- P9..P14  the assignment itself, in the browser ----------------- */
+
+  {
+    const { ctx, page } = await freshContext();
+    await signIn(page, USERS.ops, { expectLanding: "/operations" });
+    await page.goto(`${BASE_URL}/operations/deliveries/${made.requestId}`, { waitUntil: "domcontentloaded" });
+    await page.getByText("Driver and vehicle").waitFor({ state: "visible", timeout: 25000 });
+    await page.getByLabel(/^Driver$/).selectOption(driver.id);
+    await page.getByLabel(/^Vehicle$/).selectOption(goodVehicle.id);
+    await page.getByRole("button", { name: /^Assign delivery$/ }).click();
+    await waitForRow("P9 assignment", () => assignmentsFor(deliveryId),
+      (a) => a.some((x) => x.assignment_state === "active")).catch(() => null);
+    await shot(page, "P9-ops003-assigned");
+    await ctx.close();
+  }
+
+  const assignments = await assignmentsFor(deliveryId);
+  const active = assignments.filter((a) => a.assignment_state === "active");
+  check("P9", "a compatible driver and vehicle can be assigned in the browser",
+    active.length === 1 && active[0].driver_id === driver.id && active[0].vehicle_id === goodVehicle.id,
+    `active=${active.length} driver=${active[0]?.driver_id === driver.id} vehicle=${active[0]?.vehicle_id === goodVehicle.id}`);
+  check("P10", "exactly one active assignment exists",
+    active.length === 1, `active=${active.length} total=${assignments.length}`);
+
+  const afterAssign = await deliveryById(deliveryId);
+  check("P11", "fulfillment moves scheduled -> assigned exactly once",
+    afterAssign?.fulfillment_state === "assigned" && afterAssign?.version === v0 + 1,
+    `state=${afterAssign?.fulfillment_state} version=${v0}->${afterAssign?.version}`);
+
+  {
+    const asgEvents = await assignmentEventsFor(deliveryId);
+    const dlvEvents = await deliveryEventsFor(deliveryId);
+    check("P12", "assignment and delivery events are both written",
+      asgEvents.some((e) => e.command === "assign_delivery") &&
+        dlvEvents.some((e) => e.command === "assign_delivery" && e.to_state === "assigned"),
+      `assignmentEvents=${asgEvents.length} deliveryEvents=${dlvEvents.length}`);
+  }
+
+  {
+    const d = await driverById(driver.id);
+    const v = await vehicleById(goodVehicle.id);
+    check("P13", "the assigned driver and vehicle are both marked on_delivery",
+      d?.availability_state === "on_delivery" && v?.availability_state === "on_delivery",
+      `driver=${d?.availability_state} vehicle=${v?.availability_state}`);
+  }
+
+  {
+    // Same delivery, same version: the idempotency key is identical, so this
+    // must return the SAME assignment rather than create a second.
+    const r = await assignAs(USERS.ops, deliveryId, {
+      expectedVersion: v0, driverId: driver.id, vehicleId: goodVehicle.id,
+    });
+    const after = await assignmentsFor(deliveryId);
+    check("P14", "a repeated assignment does not create a second active assignment",
+      after.filter((a) => a.assignment_state === "active").length === 1,
+      `status=${r.status} active=${after.filter((a) => a.assignment_state === "active").length}`);
+  }
+
+  /* ---- P15..P18  what each viewer may read ---------------------------- */
+
+  {
+    // A driver with no assignment must not be able to read this delivery by
+    // pointing at its id.
+    const r = await apiAs(USERS.newMerchant, `/api/couranr/driver/assignment?deliveryId=${deliveryId}`);
+    check("P15", "another account cannot read the assigned delivery",
+      r.status === 200 && r.payload?.assigned === null,
+      `status=${r.status} assigned=${JSON.stringify(r.payload?.assigned)?.slice(0, 40)}`);
+  }
+
+  let projection = null;
+  {
+    const r = await apiAs(USERS.driver, `/api/couranr/driver/assignment?deliveryId=${deliveryId}`);
+    projection = r.payload?.assigned ?? null;
+    check("P16", "the assigned driver reads the sanitized projection",
+      r.status === 200 && projection?.deliveryId === deliveryId &&
+        Boolean(projection?.pickup?.line1) && Boolean(projection?.dropoff?.line1),
+      `status=${r.status} deliveryId=${projection?.deliveryId === deliveryId}`);
+  }
+
+  {
+    const serialized = JSON.stringify(projection ?? {});
+    const leak = projectionLeaks(serialized);
+    check("P17", "the assigned driver sees no internal, tenant or payment field",
+      projection !== null && leak === null, `leak=${leak ?? "none"}`);
+  }
+
+  {
+    const { ctx, page } = await freshContext();
+    await signIn(page, USERS.ops, { expectLanding: "/operations" });
+    await page.goto(`${BASE_URL}/operations/deliveries/${made.requestId}`, { waitUntil: "domcontentloaded" });
+    await page.getByText("This delivery has a driver").waitFor({ state: "visible", timeout: 25000 }).catch(() => {});
+    const shown = await page.getByText("[E2E] Dispatch Driver").count();
+    check("P18", "Operations sees the same assigned driver the row records",
+      shown > 0, `driverNameOnScreen=${shown}`);
+    await shot(page, "P18-ops003-assignment-visible");
+    await ctx.close();
+  }
+
+  /* ---- P19..P22  replacement before pickup ---------------------------- */
+
+  const replacement = await createDispatchVehicle({
+    name: `[E2E] Replacement ${Date.now().toString(36)}`,
+    vehicleClass: "box_truck",
+    payloadCapacityLb: 3000,
+  });
+  /*
+   * A THIRD assignable identity. The dispatch model keys a driver profile on an
+   * auth user and never consults `profiles.role`, so any seeded account works
+   * as a synthetic second driver — and the fixture set has no spare one.
+   */
+  let driver2 = await ensureDriverProfile(USER_IDS.merchant, "[E2E] Second Driver");
+  driver2 = await activateDriver(driver2.id, driver2.version);
+  driver2 = await setDriverAvailable(driver2.id, driver2.version);
+
+  {
+    const r = await apiAs(USERS.ops, `/api/couranr/operations/deliveries/${deliveryId}/assignment`, {
+      method: "PUT",
+      body: {
+        replacedAssignmentId: active[0].id,
+        expectedAssignmentVersion: active[0].version,
+        driverId: driver2.id,
+        vehicleId: replacement.id,
+        reason: "e2e replacement",
+      },
+    });
+    const all = await assignmentsFor(deliveryId);
+    const replaced = all.find((a) => a.id === active[0].id);
+    const nowActive = all.filter((a) => a.assignment_state === "active");
+
+    check("P19", "reassignment before pickup closes the prior assignment",
+      replaced?.assignment_state === "replaced" && Boolean(replaced?.ended_at),
+      `status=${r.status} prior=${replaced?.assignment_state} ended=${Boolean(replaced?.ended_at)}`);
+
+    const oldD = await driverById(driver.id);
+    const oldV = await vehicleById(goodVehicle.id);
+    check("P20", "the previous driver and vehicle are released",
+      oldD?.availability_state === "available" && oldV?.availability_state === "available",
+      `driver=${oldD?.availability_state} vehicle=${oldV?.availability_state}`);
+
+    const newD = await driverById(driver2.id);
+    const newV = await vehicleById(replacement.id);
+    check("P21", "the new driver and vehicle become active on the delivery",
+      nowActive.length === 1 && nowActive[0].driver_id === driver2.id &&
+        nowActive[0].vehicle_id === replacement.id &&
+        newD?.availability_state === "on_delivery" && newV?.availability_state === "on_delivery",
+      `active=${nowActive.length} driver=${newD?.availability_state} vehicle=${newV?.availability_state}`);
+
+    const dlv = await deliveryById(deliveryId);
+    check("P22", "reassignment leaves the delivery assigned",
+      dlv?.fulfillment_state === "assigned",
+      `state=${dlv?.fulfillment_state}`);
+  }
+
+  /* ---- P23..P24  nothing beyond this slice moved ---------------------- */
+
+  {
+    const dlvEvents = await deliveryEventsFor(deliveryId);
+    const proofish = dlvEvents.filter((e) =>
+      /pickup|proof|photo|pin|transit|delivered|arriv/i.test(String(e.command))
+    );
+    const dlv = await deliveryById(deliveryId);
+    check("P23", "no pickup, proof or in-transit record is created by dispatch",
+      proofish.length === 0 && dlv?.fulfillment_state === "assigned",
+      `proofEvents=${proofish.length} state=${dlv?.fulfillment_state}`);
+  }
+
+  {
+    const legacyAfter = await realDataCounts();
+    const legacyVehiclesAfter = await legacyVehicleCount();
+    check("P24", "no legacy orders, deliveries or auto-rental vehicles were mutated",
+      legacyAfter.orders === legacyBefore.orders &&
+        legacyAfter.deliveries === legacyBefore.deliveries &&
+        legacyVehiclesAfter === legacyVehiclesBefore,
+      `orders=${legacyBefore.orders}->${legacyAfter.orders} ` +
+        `deliveries=${legacyBefore.deliveries}->${legacyAfter.deliveries} ` +
+        `autoVehicles=${legacyVehiclesBefore}->${legacyVehiclesAfter}`);
+  }
+}
+
+const ALL = { A: groupA, B: groupB, C: groupC, D: groupD, E: groupE, F: groupF, G: groupG, H: groupH, I: groupI, J: groupJ, K: groupK, L: groupL, M: groupM, N: groupN, O: groupO, P: groupP };
 
 let REAL_AFTER = null;
 let cleanup = null;

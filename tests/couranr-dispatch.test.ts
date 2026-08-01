@@ -17,6 +17,7 @@ import {
 } from "@/lib/couranr/dispatch/states";
 import {
   PROJECTION_ALLOWED_KEYS,
+  PROJECTION_FORBIDDEN_SUBSTRINGS,
   buildAssignedDeliveryProjection,
   projectionLeaks,
 } from "@/lib/couranr/dispatch/projection";
@@ -366,5 +367,23 @@ describe("drivers cannot act on dispatch", () => {
     );
     expect(route).toMatch(/export async function GET/);
     expect(route).not.toMatch(/export async function (POST|PUT|PATCH|DELETE)/);
+  });
+});
+
+/* ================= the harness copy may not drift from the library ======== */
+
+describe("the browser harness enforces the same leak rule", () => {
+  it("every forbidden token in the library appears in e2e/run.mjs", () => {
+    /*
+     * Node ESM cannot import projection.ts, so the harness carries a copy of
+     * the rule. A copy that drifts is worse than no check — this is what stops
+     * that. If the library adds a token and the harness does not, Group P would
+     * go on passing while no longer checking for it.
+     */
+    const harness = readFileSync(path.join(ROOT, "e2e/run.mjs"), "utf8");
+    for (const token of PROJECTION_FORBIDDEN_SUBSTRINGS) {
+      expect(harness, `e2e/run.mjs is missing the forbidden token ${token}`).toContain(token);
+    }
+    expect(harness).toContain("(pi|cus|seti|ch|sk|pk|whsec)_");
   });
 });

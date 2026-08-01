@@ -241,3 +241,145 @@ export const tokenStateFor = (requestId) =>
       if (error) throw new Error(`tokenStateFor: ${error.message}`);
       return data;
     });
+
+/* ------------------------------------------------- managed dispatch ----- */
+
+/**
+ * The canonical driver profile for a seeded auth user, created through the
+ * real command so the row is shaped exactly as production would shape it.
+ */
+export async function ensureDriverProfile(userId, displayName) {
+  const { data, error } = await admin.rpc("couranr_create_driver_profile", {
+    p_user_id: userId,
+    p_actor_user_id: userId,
+    p_display_name: displayName,
+    p_contact_phone: "555-0177",
+    p_market: "[E2E] market",
+  });
+  if (error) throw new Error(`ensureDriverProfile: ${error.message}`);
+  return data;
+}
+
+/** Moves a driver through the NAMED commands, never by setting a column. */
+export async function activateDriver(driverId, version) {
+  const { data, error } = await admin.rpc("couranr_activate_driver", {
+    p_driver_id: driverId,
+    p_expected_version: version,
+    p_actor_user_id: null,
+  });
+  if (error) throw new Error(`activateDriver: ${error.message}`);
+  return data;
+}
+
+export async function setDriverAvailable(driverId, version) {
+  const { data, error } = await admin.rpc("couranr_mark_driver_available", {
+    p_driver_id: driverId,
+    p_expected_version: version,
+    p_actor_user_id: null,
+  });
+  if (error) throw new Error(`setDriverAvailable: ${error.message}`);
+  return data;
+}
+
+export async function suspendDriver(driverId, version) {
+  const { data, error } = await admin.rpc("couranr_suspend_driver", {
+    p_driver_id: driverId,
+    p_expected_version: version,
+    p_actor_user_id: null,
+  });
+  if (error) throw new Error(`suspendDriver: ${error.message}`);
+  return data;
+}
+
+export async function createDispatchVehicle(spec) {
+  const { data, error } = await admin.rpc("couranr_create_dispatch_vehicle", {
+    p_actor_user_id: null,
+    p_name: spec.name,
+    p_vehicle_class: spec.vehicleClass,
+    p_payload_capacity_lb: spec.payloadCapacityLb,
+    p_assigned_driver_id: spec.assignedDriverId ?? null,
+    p_cargo_length_in: null,
+    p_cargo_width_in: null,
+    p_cargo_height_in: null,
+    p_enclosed: true,
+    p_has_ramp: false,
+    p_has_dolly: false,
+    p_has_tie_downs: false,
+    p_weather_protection: true,
+  });
+  if (error) throw new Error(`createDispatchVehicle: ${error.message}`);
+  return data;
+}
+
+export async function markVehicleUnavailable(vehicleId, version) {
+  const { data, error } = await admin.rpc("couranr_mark_vehicle_unavailable", {
+    p_vehicle_id: vehicleId,
+    p_expected_version: version,
+    p_actor_user_id: null,
+  });
+  if (error) throw new Error(`markVehicleUnavailable: ${error.message}`);
+  return data;
+}
+
+export const driverById = (id) =>
+  admin
+    .from("couranr_drivers")
+    .select("id,user_id,display_name,driver_state,availability_state,active,version")
+    .eq("id", id)
+    .maybeSingle()
+    .then(({ data, error }) => {
+      if (error) throw new Error(`driverById: ${error.message}`);
+      return data;
+    });
+
+export const vehicleById = (id) =>
+  admin
+    .from("couranr_dispatch_vehicles")
+    .select("id,name,vehicle_class,payload_capacity_lb,active,availability_state,version")
+    .eq("id", id)
+    .maybeSingle()
+    .then(({ data, error }) => {
+      if (error) throw new Error(`vehicleById: ${error.message}`);
+      return data;
+    });
+
+/** EVERY assignment for a delivery, oldest first — replaced ones included. */
+export const assignmentsFor = (deliveryId) =>
+  admin
+    .from("couranr_delivery_assignments")
+    .select(
+      "id,delivery_id,driver_id,vehicle_id,assignment_state,assigned_by,assigned_at," +
+        "ended_at,end_reason,version,created_at"
+    )
+    .eq("delivery_id", deliveryId)
+    .order("created_at", { ascending: true })
+    .then(unwrap("assignmentsFor"));
+
+export const assignmentEventsFor = (deliveryId) =>
+  admin
+    .from("couranr_assignment_events")
+    .select("id,assignment_id,delivery_id,command,actor_type,from_state,to_state,metadata,created_at")
+    .eq("delivery_id", deliveryId)
+    .order("created_at", { ascending: true })
+    .then(unwrap("assignmentEventsFor"));
+
+/** The canonical delivery row, by its own id. */
+export const deliveryById = (id) =>
+  admin
+    .from("couranr_deliveries")
+    .select("id,request_id,fulfillment_state,vehicle_id,vehicle_requirement,version")
+    .eq("id", id)
+    .maybeSingle()
+    .then(({ data, error }) => {
+      if (error) throw new Error(`deliveryById: ${error.message}`);
+      return data;
+    });
+
+/** Counts the legacy auto-rental fleet, so Group P can prove it never moved. */
+export async function legacyVehicleCount() {
+  const { count, error } = await admin
+    .from("vehicles")
+    .select("id", { count: "exact", head: true });
+  if (error) throw new Error(`legacyVehicleCount: ${error.message}`);
+  return count ?? -1;
+}
