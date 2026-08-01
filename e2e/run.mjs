@@ -299,7 +299,7 @@ async function apiAs(user, path, init = {}) {
  * attempted.
  */
 let stripeDouble = null;
-if (!groups || groups.includes("M") || groups.includes("N")) {
+if (!groups || groups.includes("M") || groups.includes("N") || groups.includes("O")) {
   stripeDouble = await startStripeDouble(
     Number((process.env.E2E_STRIPE_DOUBLE ?? "http://127.0.0.1:12111").split(":").pop())
   );
@@ -1534,6 +1534,26 @@ async function groupL() {
  */
 
 const DOUBLE_BASE = process.env.E2E_STRIPE_DOUBLE ?? "http://127.0.0.1:12111";
+
+/**
+ * The canonical webhook's signing secret, read the same way admin.mjs reads
+ * credentials. Needed to SIGN a test event: an unsigned request is refused
+ * before its body is parsed, so the guard assertion would prove nothing.
+ * The value is never logged.
+ */
+function webhookSecret() {
+  if (process.env.STRIPE_COURANR_WEBHOOK_SECRET) return process.env.STRIPE_COURANR_WEBHOOK_SECRET;
+  try {
+    const raw = readFileSync(new URL("../.env.local", import.meta.url), "utf8");
+    for (const line of raw.split("\n")) {
+      const m = /^STRIPE_COURANR_WEBHOOK_SECRET=(.*)$/.exec(line.trim());
+      if (m) return m[1];
+    }
+  } catch {
+    /* reported by the assertion itself */
+  }
+  return "";
+}
 const STRIPE_JS_MOCK = readFileSync(new URL("./stripeJsMock.js", import.meta.url), "utf8");
 
 /** Serves the Stripe.js mock and records what the page asked Stripe to do. */
@@ -2371,7 +2391,350 @@ function formatCentsForCopy(cents) {
   return `\\$${Math.floor(abs / 100)}\\.${String(abs % 100).padStart(2, "0")}`;
 }
 
-const ALL = { A: groupA, B: groupB, C: groupC, D: groupD, E: groupE, F: groupF, G: groupG, H: groupH, I: groupI, J: groupJ, K: groupK, L: groupL, M: groupM, N: groupN };
+
+/* ================= O. TERMINAL CAPTURE RESOLUTION (fail / cancel) ========= */
+
+/** Puts the double's intent into a status only the PROVIDER could report. */
+async function setIntentStatus(intentId, status) {
+  const r = await fetch(`${DOUBLE_BASE}/__control/status/${intentId}?status=${status}`);
+  return r.ok;
+}
+
+/** Drives a fresh request all the way to capture_pending with an unknown outcome. */
+async function toCapturePending(accountId) {
+  const requestId = await confirmedRequestFor(accountId);
+  if (!requestId) return null;
+
+  // Authorize (merchant-paid), mark ready, plan, then inject a provider outage
+  // so the capture outcome is genuinely unknown.
+  {
+    const { ctx, page } = await freshContext();
+    await mockStripeJs(page);
+    await signIn(page, USERS.merchant, { expectLanding: "/business" });
+    await page.goto(`${BASE_URL}/business/deliveries/${requestId}`, { waitUntil: "domcontentloaded" });
+    const a = page.getByRole("button", { name: /^Authorize \$/ });
+    await a.waitFor({ state: "visible", timeout: 25000 });
+    await a.click();
+    await page.locator("[data-stripe-element]").first().waitFor({ state: "visible", timeout: 25000 });
+    await page.getByRole("button", { name: /^Authorize \$/ }).click();
+    await page.getByText(/Payment authorized/i).waitFor({ state: "visible", timeout: 25000 });
+    const ready = page.getByRole("button", { name: /^Ready for Couranr$/ });
+    await ready.waitFor({ state: "visible", timeout: 25000 });
+    await ready.click();
+    await ready.waitFor({ state: "hidden", timeout: 30000 }).catch(() => {});
+    await ctx.close();
+  }
+  {
+    const { ctx, page } = await freshContext();
+    await signIn(page, USERS.ops, { expectLanding: "/operations" });
+    await page.goto(`${BASE_URL}/operations/deliveries/${requestId}`, { waitUntil: "domcontentloaded" });
+    await page.getByText("Service plan and capture").waitFor({ state: "visible", timeout: 25000 });
+    await page.getByLabel(/Pickup window start/).fill("2026-09-20T09:00");
+    await page.getByLabel(/Pickup window end/).fill("2026-09-20T11:00");
+    await page.getByLabel(/Payload capacity/).fill("800");
+    await page.getByRole("button", { name: /^Confirm service plan$/ }).click();
+    await page.getByRole("button", { name: /^Change the plan$/ })
+      .waitFor({ state: "visible", timeout: 30000 }).catch(() => {});
+
+    failNextCaptures(1);
+    const cap = page.getByRole("button", { name: /^Capture .* and schedule$/ });
+    await cap.waitFor({ state: "visible", timeout: 25000 });
+    await cap.click();
+    await page.getByText(/could not confirm the capture/i)
+      .waitFor({ state: "visible", timeout: 30000 }).catch(() => {});
+    await ctx.close();
+  }
+  return requestId;
+}
+
+/** Clicks OPS-003's reconcile and waits for the panel to settle. */
+async function reconcileAsOps(requestId, settleOn) {
+  const { ctx, page } = await freshContext();
+  await signIn(page, USERS.ops, { expectLanding: "/operations" });
+  await page.goto(`${BASE_URL}/operations/deliveries/${requestId}`, { waitUntil: "domcontentloaded" });
+  const btn = page.getByRole("button", { name: /^Check with the payment provider$/ });
+  await btn.waitFor({ state: "visible", timeout: 25000 });
+  await btn.click();
+  if (settleOn) {
+    await page.getByText(settleOn).waitFor({ state: "visible", timeout: 30000 }).catch(() => {});
+  }
+  return { ctx, page };
+}
+
+async function groupO() {
+  console.log("\n\x1b[1mO — terminal capture resolution: failed and cancelled\x1b[0m");
+
+  const accounts = await accountsCreatedBy(USER_IDS.merchant);
+  if (accounts.length === 0) {
+    inconclusive("O0", "terminal capture", "the merchant fixture has no business account");
+    return;
+  }
+  const accountId = accounts[0].id;
+  const legacyBefore = await realDataCounts();
+
+  /* ---- FAILED: requires_payment_method ------------------------------- */
+
+  const failId = await toCapturePending(accountId);
+  if (!failId) {
+    inconclusive("O1", "failed path", "no request reached capture_pending");
+  } else {
+    const pending = await obligationFor(failId);
+    const authorizedAtBefore = pending?.authorized_at;
+    const capturesBefore = stripeCalls.filter((c) => c.path.endsWith("/capture")).length;
+
+    // The provider settles it: the authorization is gone.
+    await setIntentStatus(pending.provider_payment_intent_id, "requires_payment_method");
+
+    const { ctx, page } = await reconcileAsOps(failId, /ended this authorization/i);
+    await shot(page, "O1-ops003-authorization-lost");
+    const capturesAfter = stripeCalls.filter((c) => c.path.endsWith("/capture")).length;
+    const captureOffered = await page.getByRole("button", { name: /^Capture .* and schedule$/ }).count();
+    await ctx.close();
+
+    const ob = await obligationFor(failId);
+    const deliveries = await deliveriesFor(failId);
+    const plans = await servicePlansFor(failId);
+
+    check("O1", "a verified requires_payment_method moves capture_pending to failed",
+      ob?.payment_state === "failed", `payment_state=${ob?.payment_state}`);
+    check("O2", "failed_at is stamped",
+      typeof ob?.failed_at === "string" && ob.failed_at.length > 0, `failed_at=${ob?.failed_at}`);
+    check("O3", "authorized_at survives as history, unchanged",
+      ob?.authorized_at === authorizedAtBefore && ob?.authorized_at !== null,
+      `before=${authorizedAtBefore} after=${ob?.authorized_at}`);
+    check("O4", "no canonical delivery is created", deliveries.length === 0,
+      `deliveries=${deliveries.length}`);
+    check("O5", "no second capture call was made to the provider",
+      capturesAfter === capturesBefore, `new=${capturesAfter - capturesBefore}`);
+    check("O6", "the confirmed service plan survives for the same obligation",
+      plans.filter((p) => p.plan_state === "confirmed").length === 1,
+      `confirmed=${plans.filter((p) => p.plan_state === "confirmed").length}`);
+    check("O7", "OPS-003 never offers Capture on a settled failure",
+      captureOffered === 0, `captureButtons=${captureOffered}`);
+
+    // MER-007 tells the merchant, and never claims money moved.
+    {
+      const { ctx: mctx, page: mp } = await freshContext();
+      await signIn(mp, USERS.merchant, { expectLanding: "/business" });
+      await mp.goto(`${BASE_URL}/business/deliveries/${failId}`, { waitUntil: "domcontentloaded" });
+      await mp.getByText(/authorization needs attention/i)
+        .waitFor({ state: "visible", timeout: 25000 }).catch(() => {});
+      const attention = await mp.getByText(/authorization needs attention/i).count();
+      const nothingCharged = await mp.getByText(/Nothing was charged/i).count();
+      check("O8", "MER-007 says authorization needs attention and that nothing was charged",
+        attention > 0 && nothingCharged > 0,
+        `attention=${attention} nothingCharged=${nothingCharged}`);
+      await shot(mp, "O8-mer007-reauthorize");
+      await mctx.close();
+    }
+
+    // The queue files it under its own recovery stage.
+    {
+      const { ctx: octx, page: op } = await freshContext();
+      await signIn(op, USERS.ops, { expectLanding: "/operations" });
+      const stage = await queueStageFor(op, failId);
+      check("O9", "OPS-002 files it under payment_reauthorization_required",
+        stage === "payment_reauthorization_required", `stage=${stage}`);
+      await shot(op, "O9-ops002-reauthorization-required");
+      await octx.close();
+    }
+
+    /* ---- recovery: verified requires_capture returns it to authorized -- */
+    await setIntentStatus(pending.provider_payment_intent_id, "requires_capture");
+    {
+      // Re-authorizing from MER-007 reaches the SAME obligation and intent,
+      // which is what Stripe documents for requires_payment_method.
+      const { ctx: mctx, page: mp } = await freshContext();
+      await mockStripeJs(mp);
+      await signIn(mp, USERS.merchant, { expectLanding: "/business" });
+      await mp.goto(`${BASE_URL}/business/deliveries/${failId}`, { waitUntil: "domcontentloaded" });
+      const a = mp.getByRole("button", { name: /^Authorize \$/ });
+      await a.waitFor({ state: "visible", timeout: 25000 }).catch(() => {});
+      if (await a.count()) {
+        await a.click();
+        await mp.locator("[data-stripe-element]").first()
+          .waitFor({ state: "visible", timeout: 25000 }).catch(() => {});
+        await mp.getByRole("button", { name: /^Authorize \$/ }).click();
+        await mp.getByText(/Payment authorized/i)
+          .waitFor({ state: "visible", timeout: 25000 }).catch(() => {});
+      }
+      await mctx.close();
+    }
+    const reauth = await obligationFor(failId);
+    check("O10", "a merchant can reauthorize the SAME failed obligation",
+      reauth?.payment_state === "authorized" && reauth?.id === pending?.id &&
+        reauth?.provider_payment_intent_id === pending?.provider_payment_intent_id,
+      `state=${reauth?.payment_state} sameObligation=${reauth?.id === pending?.id}`);
+
+    // And a later capture succeeds exactly once.
+    {
+      const { ctx: octx, page: op } = await freshContext();
+      await signIn(op, USERS.ops, { expectLanding: "/operations" });
+      await op.goto(`${BASE_URL}/operations/deliveries/${failId}`, { waitUntil: "domcontentloaded" });
+      const cap = op.getByRole("button", { name: /^Capture .* and schedule$/ });
+      await cap.waitFor({ state: "visible", timeout: 25000 }).catch(() => {});
+      if (await cap.count() && !(await cap.isDisabled())) {
+        await cap.click();
+        await op.getByText(/Canonical delivery created/i)
+          .waitFor({ state: "visible", timeout: 30000 }).catch(() => {});
+      }
+      await shot(op, "O11-recovered-and-captured");
+      await octx.close();
+    }
+    const finalOb = await obligationFor(failId);
+    const finalDeliveries = await deliveriesFor(failId);
+    check("O11", "after recovery a later capture succeeds exactly once",
+      finalOb?.payment_state === "captured" && finalDeliveries.length === 1,
+      `state=${finalOb?.payment_state} deliveries=${finalDeliveries.length}`);
+  }
+
+  /* ---- CANCELLED: canceled ------------------------------------------- */
+
+  const cancelId = await toCapturePending(accountId);
+  if (!cancelId) {
+    inconclusive("O12", "cancelled path", "no request reached capture_pending");
+  } else {
+    const pending = await obligationFor(cancelId);
+    // Give it a live payment link so revocation is observable.
+    await issueLinkForRequest(cancelId, accountId).catch(() => null);
+    await setIntentStatus(pending.provider_payment_intent_id, "canceled");
+
+    const { ctx, page } = await reconcileAsOps(cancelId, null);
+    await page.waitForTimeout(2500);
+    await shot(page, "O12-ops003-cancelled");
+    await ctx.close();
+
+    const obs = await allObligationsFor(cancelId);
+    const cancelled = obs.find((o) => o.id === pending.id);
+    const deliveries = await deliveriesFor(cancelId);
+    const plans = await servicePlansFor(cancelId);
+    const token = await tokenStateFor(cancelId);
+
+    check("O12", "a verified canceled moves capture_pending to cancelled",
+      cancelled?.payment_state === "cancelled", `payment_state=${cancelled?.payment_state}`);
+    check("O13", "cancelled_at is stamped",
+      typeof cancelled?.cancelled_at === "string" && cancelled.cancelled_at.length > 0,
+      `cancelled_at=${cancelled?.cancelled_at}`);
+    check("O14", "every live payment link is revoked",
+      token?.revoked_at !== null, `revoked_at=${token?.revoked_at} reason=${token?.revoked_reason}`);
+    check("O15", "the service plan that referenced the dead obligation is cancelled",
+      plans.filter((p) => p.plan_state === "confirmed").length === 0 &&
+        plans.some((p) => p.plan_state === "cancelled"),
+      `confirmed=${plans.filter((p) => p.plan_state === "confirmed").length} cancelled=${plans.filter((p) => p.plan_state === "cancelled").length}`);
+    check("O16", "no canonical delivery is created", deliveries.length === 0,
+      `deliveries=${deliveries.length}`);
+
+    /* ---- the next authorization mints a NEW obligation and intent ----- */
+    {
+      const { ctx: mctx, page: mp } = await freshContext();
+      await mockStripeJs(mp);
+      await signIn(mp, USERS.merchant, { expectLanding: "/business" });
+      await mp.goto(`${BASE_URL}/business/deliveries/${cancelId}`, { waitUntil: "domcontentloaded" });
+      const a = mp.getByRole("button", { name: /^Authorize \$/ });
+      await a.waitFor({ state: "visible", timeout: 25000 }).catch(() => {});
+      if (await a.count()) await a.click();
+      await mp.locator("[data-stripe-element]").first()
+        .waitFor({ state: "visible", timeout: 25000 }).catch(() => {});
+      await shot(mp, "O17-new-obligation");
+      await mctx.close();
+    }
+    const after = await allObligationsFor(cancelId);
+    const fresh = after.find((o) => o.id !== pending.id);
+    check("O17", "re-authorizing after a cancel creates a NEW obligation, not a 23505",
+      Boolean(fresh) && after.length === obs.length + 1,
+      `obligations=${obs.length}->${after.length}`);
+    check("O18", "the new obligation never reuses the dead PaymentIntent",
+      Boolean(fresh) && fresh.provider_payment_intent_id !== pending.provider_payment_intent_id,
+      `old=${pending.provider_payment_intent_id} new=${fresh?.provider_payment_intent_id}`);
+    check("O19", "the cancelled obligation is left intact as history",
+      after.find((o) => o.id === pending.id)?.payment_state === "cancelled",
+      `old state=${after.find((o) => o.id === pending.id)?.payment_state}`);
+  }
+
+  /* ---- INDETERMINATE and idempotency, at the route ------------------- */
+
+  const waitId = await toCapturePending(accountId);
+  if (!waitId) {
+    inconclusive("O20", "indeterminate statuses", "no request reached capture_pending");
+  } else {
+    const ob = await obligationFor(waitId);
+    for (const [id, status, label] of [
+      ["O20", "processing", "processing"],
+      ["O21", "a_status_from_the_future", "an unknown status"],
+    ]) {
+      await setIntentStatus(ob.provider_payment_intent_id, status);
+      const r = await apiAs(USERS.ops,
+        `/api/couranr/operations/delivery-requests/${waitId}/reconcile-capture`,
+        { method: "POST", body: {} });
+      const still = await obligationFor(waitId);
+      check(id, `${label} leaves the obligation in capture_pending and writes nothing`,
+        still?.payment_state === "capture_pending" && still?.version === ob.version,
+        `status=${r.status} state=${still?.payment_state} version=${ob.version}->${still?.version}`);
+    }
+
+    // Duplicate terminal events change nothing.
+    await setIntentStatus(ob.provider_payment_intent_id, "requires_payment_method");
+    await apiAs(USERS.ops,
+      `/api/couranr/operations/delivery-requests/${waitId}/reconcile-capture`,
+      { method: "POST", body: {} });
+    const once = await obligationFor(waitId);
+    const second = await apiAs(USERS.ops,
+      `/api/couranr/operations/delivery-requests/${waitId}/reconcile-capture`,
+      { method: "POST", body: {} });
+    const twice = await obligationFor(waitId);
+    check("O22", "a duplicate terminal resolution changes nothing",
+      once?.payment_state === "failed" && twice?.version === once?.version &&
+        twice?.payment_state === "failed",
+      `status=${second.status} version=${once?.version}->${twice?.version}`);
+  }
+
+  /* ---- the generic authorization webhook cannot bypass the rules ----- */
+
+  const guardId = await toCapturePending(accountId);
+  if (!guardId) {
+    inconclusive("O23", "webhook guard", "no request reached capture_pending");
+  } else {
+    const ob = await obligationFor(guardId);
+    const before = ob?.version;
+    const payload = JSON.stringify({
+      id: `evt_guard_${Date.now()}`,
+      object: "event",
+      type: "payment_intent.amount_capturable_updated",
+      data: { object: {
+        object: "payment_intent",
+        id: ob.provider_payment_intent_id,
+        status: "requires_capture",
+        amount: ob.amount_cents,
+        amount_capturable: ob.amount_cents,
+        currency: ob.currency,
+        metadata: {},
+      } },
+    });
+    const { default: Stripe } = await import("stripe");
+    const header = Stripe.webhooks.generateTestHeaderString({
+      payload, secret: webhookSecret(),
+    });
+    const res = await fetch(`${BASE_URL}/api/couranr/stripe/webhook`, {
+      method: "POST",
+      headers: { "stripe-signature": header, "content-type": "application/json" },
+      body: payload,
+    });
+    const body = await res.json().catch(() => ({}));
+    const after = await obligationFor(guardId);
+    check("O23",
+      "a SIGNED authorization webhook cannot move a capture_pending obligation back to authorized",
+      after?.payment_state === "capture_pending" && after?.version === before,
+      `http=${res.status} outcome=${body?.outcome} state=${after?.payment_state} version=${before}->${after?.version}`);
+  }
+
+  /* ---- nothing legacy was written ------------------------------------ */
+  const legacyAfter = await realDataCounts();
+  check("O24", "terminal resolution wrote nothing to the legacy orders or deliveries tables",
+    legacyAfter.orders === legacyBefore.orders && legacyAfter.deliveries === legacyBefore.deliveries,
+    `before=${JSON.stringify(legacyBefore)} after=${JSON.stringify(legacyAfter)}`);
+}
+
+const ALL = { A: groupA, B: groupB, C: groupC, D: groupD, E: groupE, F: groupF, G: groupG, H: groupH, I: groupI, J: groupJ, K: groupK, L: groupL, M: groupM, N: groupN, O: groupO };
 
 let REAL_AFTER = null;
 let cleanup = null;
