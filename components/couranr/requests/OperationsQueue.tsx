@@ -203,7 +203,7 @@ function StageSection({
               <th scope="col">Submitted</th>
               <th scope="col">Route</th>
               <th scope="col">Payment</th>
-              <th scope="col">Scheduled</th>
+              <th scope="col">Pickup window</th>
               <th scope="col">Amount</th>
               <th scope="col">Action</th>
             </tr>
@@ -237,7 +237,13 @@ function QueueRow({
   onBeginReview: (r: DeliveryRequestView) => void;
 }) {
   const r = entry.request;
-  const scheduled = entry.delivery ?? entry.servicePlan;
+  /*
+   * A PLANNED window is not a SCHEDULED one — the delivery dispatch acts on
+   * may not exist yet — so the column says which it is showing rather than
+   * presenting a service plan as though it were a booking.
+   */
+  const window_ = entry.delivery ?? entry.servicePlan;
+  const windowIsBooked = Boolean(entry.delivery);
 
   return (
     <tr data-request-id={r.id} data-stage={stage}>
@@ -272,11 +278,11 @@ function QueueRow({
         )}
       </td>
       <td>
-        {scheduled ? (
+        {window_ ? (
           <>
-            <Text size="sm">{new Date(scheduled.scheduledPickupStart).toLocaleString()}</Text>
+            <Text size="sm">{new Date(window_.scheduledPickupStart).toLocaleString()}</Text>
             <Text size="xs" muted>
-              {scheduled.timezone}
+              {window_.timezone} · {windowIsBooked ? "scheduled" : "planned"}
             </Text>
           </>
         ) : (

@@ -186,23 +186,48 @@ export function startStripeDouble(port = 12111) {
         const form = parseForm(body);
         calls.push({ path: url.pathname, method: "POST", form, idempotencyKey: key });
 
+        /*
+         * REPLAY FIRST, and replay failures too.
+         *
+         * "Stripe's idempotency works by saving the resulting status code and
+         * body of the first request made for any given idempotency key,
+         * regardless of whether it succeeded or failed. Subsequent requests
+         * with the same key return the same result, including 500 errors."
+         * (https://docs.stripe.com/api/idempotent_requests)
+         *
+         * The double used to memoise only successes, which quietly made the
+         * key look reusable after a failure. That is what let an
+         * obligation-scoped capture key pass Group N while, against real
+         * Stripe, every retry would have replayed the first attempt's failure
+         * for 24 hours and the reconcile-and-retry path could never have
+         * recovered anything. Modelling the replay is what makes the
+         * cycle-scoped key load-bearing in the suite rather than decorative.
+         */
+        if (key && captureByIdempotencyKey.has(key)) {
+          const memo = captureByIdempotencyKey.get(key);
+          if (memo.status >= 400) {
+            res.writeHead(memo.status, {
+              "content-type": "application/json",
+              "stripe-should-retry": "false",
+            });
+            return res.end(JSON.stringify(memo.body));
+          }
+          return json(200, intentJson(intents.get(memo.intentId)));
+        }
+
         if (failCaptures > 0) {
           failCaptures -= 1;
           // `stripe-should-retry: false` stops the SDK's own retry, so the
           // outage is exactly one attempt and the assertion counts are honest.
+          const body = {
+            error: { type: "api_error", message: "simulated provider outage" },
+          };
+          if (key) captureByIdempotencyKey.set(key, { status: 500, body });
           res.writeHead(500, {
             "content-type": "application/json",
             "stripe-should-retry": "false",
           });
-          return res.end(
-            JSON.stringify({
-              error: { type: "api_error", message: "simulated provider outage" },
-            })
-          );
-        }
-
-        if (key && captureByIdempotencyKey.has(key)) {
-          return json(200, intentJson(intents.get(captureByIdempotencyKey.get(key))));
+          return res.end(JSON.stringify(body));
         }
 
         const pi = intents.get(capture[1]);
@@ -217,29 +242,28 @@ export function startStripeDouble(port = 12111) {
          * over money that had already moved. Modelling the real refusal is
          * what makes the suite able to see that class of bug at all.
          */
-        if (pi.status === "succeeded") {
-          return json(400, {
+        const refuse = (message) => {
+          const body = {
             error: {
               type: "invalid_request_error",
               code: "payment_intent_unexpected_state",
-              message: "This PaymentIntent has already been captured.",
+              message,
             },
-          });
+          };
+          if (key) captureByIdempotencyKey.set(key, { status: 400, body });
+          return json(400, body);
+        };
+        if (pi.status === "succeeded") {
+          return refuse("This PaymentIntent has already been captured.");
         }
         if (pi.status !== "requires_capture") {
-          return json(400, {
-            error: {
-              type: "invalid_request_error",
-              code: "payment_intent_unexpected_state",
-              message: `intent status ${pi.status} is not capturable`,
-            },
-          });
+          return refuse(`intent status ${pi.status} is not capturable`);
         }
 
         pi.status = "succeeded";
         pi.amount_received = pi.amount;
         pi.amount_capturable = 0;
-        if (key) captureByIdempotencyKey.set(key, pi.id);
+        if (key) captureByIdempotencyKey.set(key, { status: 200, intentId: pi.id });
         saveStore();
         return json(200, intentJson(pi));
       }
