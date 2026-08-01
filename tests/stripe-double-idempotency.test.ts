@@ -1,5 +1,4 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-// @ts-expect-error — the harness double is plain ESM, deliberately untyped.
 import { startStripeDouble, failNextCaptures } from "../e2e/stripeDouble.mjs";
 
 /**
