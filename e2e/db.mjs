@@ -383,3 +383,49 @@ export async function legacyVehicleCount() {
   if (error) throw new Error(`legacyVehicleCount: ${error.message}`);
   return count ?? -1;
 }
+
+/** Every active assignment in the project, regardless of delivery. */
+export const allActiveAssignments = () =>
+  admin
+    .from("couranr_delivery_assignments")
+    .select("id,delivery_id,driver_id,vehicle_id,assignment_state,version")
+    .eq("assignment_state", "active")
+    .then(({ data, error }) => {
+      if (error) throw new Error(`allActiveAssignments: ${error.message}`);
+      return data ?? [];
+    });
+
+/**
+ * Moves an assignment onto another driver through the REAL command.
+ *
+ * Used by group P's setup to release a driver a crashed earlier run left
+ * `on_delivery`. Deliberately the product's own transition rather than an
+ * UPDATE: a harness that resets state by writing columns directly stops
+ * proving anything about the transitions it is meant to exercise, and
+ * `couranr_drivers` has no DELETE grant to widen instead.
+ */
+export async function replaceAssignmentAsOps(input) {
+  const { data, error } = await admin.rpc("couranr_replace_delivery_assignment", {
+    p_delivery_id: input.deliveryId,
+    p_expected_assignment_version: input.expectedAssignmentVersion,
+    p_actor_user_id: input.actorUserId,
+    p_driver_id: input.driverId,
+    p_vehicle_id: input.vehicleId,
+    p_reason: input.reason ?? "e2e harness reset",
+    p_idempotency_key: input.idempotencyKey ?? null,
+  });
+  if (error) throw new Error(`replaceAssignmentAsOps: ${error.message}`);
+  return data;
+}
+
+/** The driver profile belonging to an auth user, or null. */
+export const driverByUserId = (userId) =>
+  admin
+    .from("couranr_drivers")
+    .select("id,user_id,display_name,driver_state,availability_state,active,version")
+    .eq("user_id", userId)
+    .maybeSingle()
+    .then(({ data, error }) => {
+      if (error) throw new Error(`driverByUserId: ${error.message}`);
+      return data;
+    });

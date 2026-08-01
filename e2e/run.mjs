@@ -27,13 +27,16 @@ import {
   accountsCreatedBy,
   activateDriver,
   assignmentEventsFor,
+  allActiveAssignments,
   assignmentsFor,
   createDispatchVehicle,
   deliveryById,
   driverById,
+  driverByUserId,
   ensureDriverProfile,
   legacyVehicleCount,
   markVehicleUnavailable,
+  replaceAssignmentAsOps,
   setDriverAvailable,
   suspendDriver,
   vehicleById,
@@ -295,6 +298,28 @@ async function waitForRow(label, read, ok, timeoutMs = 20000) {
   }
 }
 
+/**
+ * Locates the control belonging to a `Field` by its EXACT label.
+ *
+ * `getByLabel` matches the label element's TEXT CONTENT, not its accessible
+ * name — `aria-hidden` is not honoured. `Field` renders its required marker as
+ * `<span aria-hidden="true">*</span>` INSIDE the `<label>`, so a required field
+ * labelled "Driver" has label text `"Driver*"` and an anchored `/^Driver$/`
+ * matches nothing at all. Group P burned a full run on exactly that: the panel
+ * had rendered correctly and the locator was wrong.
+ *
+ * Verified against Playwright directly — `/^Driver$/` returns 0 for that
+ * markup, `/^Driver\s*\*?$/` returns 1 — rather than assumed from the a11y
+ * spec, which would have predicted the opposite.
+ *
+ * An unanchored regex would paper over it, but then "Driver" would also match
+ * a field called "Driver notes". This stays exact and tolerates only the
+ * marker.
+ */
+function fieldLabel(scope, name) {
+  return scope.getByLabel(new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\*?$`));
+}
+
 function checkAuthKind(id, desc, actual, expected) {
   if (actual === "rate_limited") {
     // The assertion was NOT exercised. It must not contribute to a green
@@ -398,7 +423,13 @@ async function apiAs(user, path, init = {}) {
  * attempted.
  */
 let stripeDouble = null;
-if (!groups || groups.includes("M") || groups.includes("N") || groups.includes("O")) {
+/*
+ * Group P needs the double too: reaching a SCHEDULED canonical delivery means
+ * authorizing and capturing, and both go through the Stripe SDK. Running
+ * `--only=P` without it produced a StripeConnectionError on the first
+ * authorize — the group cannot reach its own subject without it.
+ */
+if (!groups || ["M", "N", "O", "P"].some((g) => groups.includes(g))) {
   stripeDouble = await startStripeDouble(
     Number((process.env.E2E_STRIPE_DOUBLE ?? "http://127.0.0.1:12111").split(":").pop())
   );
@@ -3008,6 +3039,63 @@ async function groupP() {
   const legacyBefore = await realDataCounts();
   const legacyVehiclesBefore = await legacyVehicleCount();
 
+  /* ---- recover from a run that did not finish ------------------------- */
+
+  /*
+   * A run that crashes between P9 and P19 leaves its driver `on_delivery`, and
+   * this slice has no command that ends an assignment except replacing it —
+   * driver execution is the next slice, so that is correct, not a gap.
+   * `couranr_assert_driver_mutable` then refuses to activate that driver, and
+   * every later run dies in setup before its first assertion. Group P died
+   * that way twice.
+   *
+   * So the suite releases what it left behind, through the product's own
+   * replace command, onto the RUN-UNIQUE onboarding identity — never by
+   * writing a column, and never by widening the missing DELETE grant. The park
+   * identity has to differ from the reassignment target below, or recovery
+   * would strand the very driver P19 needs.
+   */
+  /*
+   * Scoped to the drivers this run must REUSE. An assignment stranded on a
+   * run-unique identity from a dead run is harmless — nothing will ask that
+   * driver to work again — and releasing it would only strand the park driver
+   * instead, since one park identity can hold exactly one assignment.
+   */
+  const reusableUserIds = [USER_IDS.driver, USER_IDS.merchant, USER_IDS.unconfirmed];
+  const reusableDriverIds = new Set(
+    (await Promise.all(reusableUserIds.map((u) => driverByUserId(u))))
+      .filter(Boolean)
+      .map((d) => d.id)
+  );
+  const stale = (await allActiveAssignments()).filter((a) => reusableDriverIds.has(a.driver_id));
+  if (stale.length > 1) {
+    inconclusive("P0", "managed dispatch",
+      `${stale.length} reusable fixture drivers are still on delivery; one park identity ` +
+      `can release only one. Release the extras through the Operations replace command first.`);
+    return;
+  }
+  if (stale.length > 0) {
+    console.log(`  releasing ${stale.length} assignment(s) left by an earlier run`);
+    let park = await ensureDriverProfile(USER_IDS.newMerchant, "[E2E] Parking Driver");
+    if (park.driver_state !== "active") park = await activateDriver(park.id, park.version);
+    if (park.availability_state !== "available") park = await setDriverAvailable(park.id, park.version);
+    const parkVehicle = await createDispatchVehicle({
+      name: `[E2E] Parking ${Date.now().toString(36)}`,
+      vehicleClass: "box_truck",
+      payloadCapacityLb: 5000,
+    });
+    for (const a of stale) {
+      await replaceAssignmentAsOps({
+        deliveryId: a.delivery_id,
+        expectedAssignmentVersion: a.version,
+        actorUserId: USER_IDS.ops,
+        driverId: park.id,
+        vehicleId: parkVehicle.id,
+        idempotencyKey: `e2e-release-${a.id}`,
+      });
+    }
+  }
+
   /* ---- fixtures: one usable driver, and a fleet that exercises every refusal */
 
   let driver = await ensureDriverProfile(USER_IDS.driver, "[E2E] Dispatch Driver");
@@ -3101,7 +3189,7 @@ async function groupP() {
   /* ---- P5..P8  the resource refusals ---------------------------------- */
 
   {
-    let d2 = await ensureDriverProfile(USER_IDS.newMerchant, "[E2E] Suspended Driver");
+    let d2 = await ensureDriverProfile(USER_IDS.merchant, "[E2E] Suspended Driver");
     d2 = await activateDriver(d2.id, d2.version);
     d2 = await suspendDriver(d2.id, d2.version);
     const r = await assignAs(USERS.ops, deliveryId, {
@@ -3152,9 +3240,22 @@ async function groupP() {
     const { ctx, page } = await freshContext();
     await signIn(page, USERS.ops, { expectLanding: "/operations" });
     await page.goto(`${BASE_URL}/operations/deliveries/${made.requestId}`, { waitUntil: "domcontentloaded" });
-    await page.getByText("Driver and vehicle").waitFor({ state: "visible", timeout: 25000 });
-    await page.getByLabel(/^Driver$/).selectOption(driver.id);
-    await page.getByLabel(/^Vehicle$/).selectOption(goodVehicle.id);
+    /*
+     * Wait for the SELECTOR, not the card title. The panel's error branch
+     * renders the same "Driver and vehicle" heading, so waiting on the heading
+     * passes just as readily when the panel failed to load — and then fails
+     * three lines later as an unexplained locator timeout.
+     */
+    const driverField = fieldLabel(page, "Driver");
+    await driverField.waitFor({ state: "visible", timeout: 25000 }).catch(async () => {
+      // Say WHY on the way out rather than leaving a bare timeout behind.
+      await shot(page, "P9-ops003-no-form");
+      const card = page.locator(".cr-card", { hasText: "Driver and vehicle" });
+      const text = await card.innerText().catch(() => "(panel not on the page at all)");
+      throw new Error(`P9: the assignment form never rendered — panel said: ${text.slice(0, 400)}`);
+    });
+    await driverField.selectOption(driver.id);
+    await fieldLabel(page, "Vehicle").selectOption(goodVehicle.id);
     await page.getByRole("button", { name: /^Assign delivery$/ }).click();
     await waitForRow("P9 assignment", () => assignmentsFor(deliveryId),
       (a) => a.some((x) => x.assignment_state === "active")).catch(() => null);
@@ -3236,11 +3337,77 @@ async function groupP() {
     const { ctx, page } = await freshContext();
     await signIn(page, USERS.ops, { expectLanding: "/operations" });
     await page.goto(`${BASE_URL}/operations/deliveries/${made.requestId}`, { waitUntil: "domcontentloaded" });
-    await page.getByText("This delivery has a driver").waitFor({ state: "visible", timeout: 25000 }).catch(() => {});
-    const shown = await page.getByText("[E2E] Dispatch Driver").count();
+    /*
+     * Scoped to the ASSIGNED alert, not the page. A page-wide text match also
+     * hits the driver's own <option> in the still-rendered selector, so this
+     * assertion passed in the run where the assignment had actually failed —
+     * it was reading the dropdown, not the outcome.
+     */
+    const assignedAlert = page.locator(".cr-alert", { hasText: "This delivery has a driver" });
+    await assignedAlert.waitFor({ state: "visible", timeout: 25000 }).catch(() => {});
+    const alertText = await assignedAlert.innerText().catch(() => "");
     check("P18", "Operations sees the same assigned driver the row records",
-      shown > 0, `driverNameOnScreen=${shown}`);
+      alertText.includes("[E2E] Dispatch Driver") && alertText.includes(goodVehicle.name),
+      `alert=${alertText.slice(0, 140).replace(/\n/g, " | ")}`);
     await shot(page, "P18-ops003-assignment-visible");
+    await ctx.close();
+  }
+
+  /* ---- P25..P26  the driver's own screens, in a browser --------------- */
+
+  /*
+   * P16/P17 assert the projection as JSON. That is not the same claim as "the
+   * driver's screen shows the right thing and leaks nothing": a component can
+   * render a field the API sanitized out of its own payload, and a jsdom test
+   * would not catch it either. These two run BEFORE the replacement below,
+   * because P19 moves the assignment to a different driver.
+   */
+  {
+    const { ctx, page } = await freshContext();
+    traceApi(page, "P/driver");
+    await signIn(page, USERS.driver, { expectLanding: "/driver" });
+
+    const card = page.locator('[data-testid="drv001-assignment"]');
+    await card.waitFor({ state: "visible", timeout: 25000 }).catch(() => {});
+    const cardText = await card.innerText().catch(() => "");
+    const openLink = await page.getByRole("link", { name: /^Open assigned delivery$/ }).count();
+    // `innerText` reflects `text-transform`, so the heading reads
+    // "COURANR ASSIGNMENT" on screen. Matched case-insensitively rather than
+    // hard-coding the styled casing, which a CSS change would silently break.
+    check("P25", "DRV-001 shows the driver the assignment Couranr made, with no way to claim work",
+      /couranr assignment/i.test(cardText) &&
+        cardText.includes(SHIPMENT.pickup.line1) &&
+        openLink === 1 &&
+        !/accept|claim|bid|available job|browse/i.test(cardText),
+      `card=${cardText.slice(0, 160).replace(/\n/g, " | ")} openLink=${openLink}`);
+    await shot(page, "P25-drv001-assignment");
+
+    await page.goto(`${BASE_URL}/driver/deliveries/${deliveryId}`, { waitUntil: "domcontentloaded" });
+    /*
+     * Wait on the PICKUP ADDRESS, not on "Your delivery".
+     *
+     * `getByText` with a string is case-insensitive substring matching, and
+     * `LoadingState` renders its label — "Loading your delivery" — in a
+     * visually-hidden span that Playwright still counts as visible. So
+     * `getByText("Your delivery")` matched the SKELETON's own label and
+     * resolved instantly; the `ctx.close()` that followed then cancelled the
+     * in-flight projection fetch, which is why the server logged 200 and the
+     * browser never saw a response. Same failure mode as Group O's Capture
+     * button, reached by a different route.
+     */
+    const pickupLine = page.getByText(SHIPMENT.pickup.line1, { exact: false }).first();
+    await pickupLine.waitFor({ state: "visible", timeout: 25000 }).catch(async () => {
+      await shot(page, "P26-drv002-not-loaded");
+    });
+    const body = await page.locator("main").first().innerText().catch(() => "");
+    const rendered = projectionLeaks(body);
+    check("P26", "DRV-002 renders the assigned delivery and leaks nothing the projection dropped",
+      body.includes("Your delivery") &&
+        body.includes(SHIPMENT.pickup.line1) &&
+        body.includes(SHIPMENT.dropoff.line1) &&
+        rendered === null,
+      `pickup=${body.includes(SHIPMENT.pickup.line1)} dropoff=${body.includes(SHIPMENT.dropoff.line1)} leak=${rendered ?? "none"}`);
+    await shot(page, "P26-drv002-detail");
     await ctx.close();
   }
 
@@ -3252,11 +3419,26 @@ async function groupP() {
     payloadCapacityLb: 3000,
   });
   /*
-   * A THIRD assignable identity. The dispatch model keys a driver profile on an
-   * auth user and never consults `profiles.role`, so any seeded account works
-   * as a synthetic second driver — and the fixture set has no spare one.
+   * A THIRD assignable identity, and it must be the RUN-UNIQUE one.
+   *
+   * The dispatch model keys a driver profile on an auth user and never consults
+   * `profiles.role`, so any seeded account works as a synthetic driver. But
+   * this one ENDS the run holding the assignment, which parks it in
+   * `on_delivery` — and this slice has no command that ends an assignment
+   * except replacing it, by design, because driver execution is the next
+   * slice. `couranr_assert_driver_mutable` then refuses to activate that
+   * driver ever again, so a STABLE identity here poisons every subsequent run:
+   * P19 guarantees it, no crash required. Group P failed exactly this way on
+   * its second run.
+   *
+   * `spareDriver` is `pristine`, so the seed mints a fresh auth user for it
+   * each run and this profile is never reused. It is a SEPARATE identity from
+   * the recovery park driver at the top of this group: parking a stale
+   * assignment here would strand the driver this step needs. The identities
+   * that must stay reusable — USERS.driver and merchant — are both released by
+   * the replacement below and end the run available.
    */
-  let driver2 = await ensureDriverProfile(USER_IDS.merchant, "[E2E] Second Driver");
+  let driver2 = await ensureDriverProfile(USER_IDS.spareDriver, "[E2E] Second Driver");
   driver2 = await activateDriver(driver2.id, driver2.version);
   driver2 = await setDriverAvailable(driver2.id, driver2.version);
 
@@ -3368,9 +3550,18 @@ if (REAL_AFTER) {
 }
 
 // Three separate truths, because collapsing them hides the one that matters.
-check("CLEAN-privileged", "no PRIVILEGED synthetic fixture (admin/driver) survived the run",
+// A privileged fixture is deleted when it can be. When an append-only row pins
+// it — a driver profile keys on auth.users with ON DELETE RESTRICT, and there
+// is no DELETE grant on couranr_drivers — it is demoted to `customer` and
+// banned instead, both re-read to confirm. What must never survive is the
+// PRIVILEGE, not the row; widening the grant to delete the row is not a trade
+// this suite makes.
+check("CLEAN-privileged", "no PRIVILEGED synthetic fixture (admin/driver) kept its privilege or its ability to sign in",
   Boolean(cleanup && cleanup.privilegedClean),
-  cleanup ? `remaining=${(cleanup.privilegedRemaining ?? []).join(", ") || "none"}` : "cleanup did not run");
+  cleanup
+    ? `stillPrivileged=${(cleanup.privilegedRemaining ?? []).join(", ") || "none"}` +
+      ` neutralized=${(cleanup.privilegedNeutralized ?? []).join(", ") || "none"}`
+    : "cleanup did not run");
 
 check("CLEAN-behaviour", "cleanup itself completed without an unexpected failure",
   Boolean(cleanup && cleanup.ok),

@@ -78,6 +78,27 @@ export const USERS = {
   driver: { key: "driver", email: at("driver"), profileRole: "driver", confirmed: true, seedWorkspace: false, privileged: true },
 
   /**
+   * The second assignable driver for the reassignment path, and RUN-UNIQUE by
+   * necessity rather than convenience.
+   *
+   * Whoever holds the assignment when group P ends is left `on_delivery`, and
+   * this slice has no command that ends an assignment except replacing it —
+   * driver execution is the next slice. `couranr_assert_driver_mutable` then
+   * refuses to activate that driver ever again, so a stable identity in this
+   * role poisons every subsequent run. A fresh auth user per run costs one
+   * pinned row and keeps the suite re-runnable; the alternative is a DELETE
+   * grant on `couranr_drivers`, which is not a trade worth making for a test.
+   */
+  spareDriver: {
+    key: "spareDriver",
+    email: at("spare-driver"),
+    profileRole: "customer",
+    confirmed: true,
+    seedWorkspace: false,
+    pristine: true,
+  },
+
+  /**
    * Deliberately unconfirmed, so the "confirm your email" sign-in state is
    * exercised against a real Supabase response rather than a mocked one.
    */

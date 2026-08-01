@@ -40,6 +40,7 @@ Screenshots and `results.json` land in `e2e/artifacts/` (gitignored).
 | M | payment authorization on both payer paths, with Stripe mocked at both boundaries |
 | N | readiness, service plan, capture, recovery from an unknown capture, and the canonical delivery |
 | O | terminal capture resolution — a verified `failed` and a verified `canceled`, both recovery paths, and the guards that keep an indeterminate status waiting |
+| P | managed dispatch — who may assign, every resource refusal, the assignment itself in OPS-003, reassignment before pickup, and the sanitized driver projection on DRV-001 / DRV-002 |
 
 ## Rules this harness follows
 
@@ -179,3 +180,73 @@ written. Each result row carries an `ok` column — all must be true.
 
 It exists because these checks were originally run ad hoc and read out of a
 chat transcript, which is not verification anyone can repeat.
+
+## What group P adds
+
+Twenty-six assertions over managed dispatch: who may command it (a merchant
+cannot, and a driver cannot assign themselves — there is no marketplace), every
+resource refusal read from stored rows rather than from anything the browser
+sent, the assignment itself driven through OPS-003, reassignment before pickup,
+and the driver's own two screens.
+
+Three defects it found that every green unit test and typecheck had missed:
+
+- **`/api/couranr/driver/assignment` refused every driver.** It authenticated
+  with `resolveRequestActor(req, null)`, which is this codebase's spelling of
+  "Operations only", so DRV-001 and DRV-002 were unreachable by the only people
+  they exist for. Now `resolveUserId`; authorization never lived in that gate.
+- **Every assignment failed with 23514.** `couranr_dlve_command_chk` allowed one
+  value, and `couranr_assign_delivery` writes `assign_delivery`. Fixed by
+  migration `20260801210000`.
+- **A stale Supabase read served from Next's Data Cache.** See
+  `lib/supabaseAdmin.ts`.
+
+### Two locator traps this group walked into, both worth knowing
+
+**`getByLabel` matches the label's TEXT CONTENT, not its accessible name.**
+`aria-hidden` is not honoured, so a `Field` with `required` — which renders
+`<span aria-hidden="true">*</span>` inside the `<label>` — has label text
+`"Driver*"`, and `getByLabel(/^Driver$/)` matches nothing. Use `fieldLabel()`,
+which tolerates the marker and stays exact.
+
+**`getByText` with a string is case-insensitive SUBSTRING matching.**
+`getByText("Your delivery")` matched `LoadingState`'s own visually-hidden label
+`"Loading your delivery"` — which Playwright counts as visible — so the wait
+resolved against the skeleton and the `ctx.close()` that followed cancelled the
+projection fetch in flight. The server logged 200 and the browser never saw a
+response. Wait on content that only exists in the loaded state.
+
+### The fixture that must be run-unique, and why
+
+Whoever holds the assignment when group P ends is left `on_delivery`, and this
+slice has **no command that ends an assignment except replacing it** — driver
+execution is the next slice, so that is correct rather than a gap.
+`couranr_assert_driver_mutable` then refuses to activate that driver ever
+again, so a stable identity in that role poisons every later run. `spareDriver`
+is therefore `pristine`: a fresh auth user per run, pinned afterwards by its
+driver profile. That costs one residual user per run and keeps the suite
+re-runnable. The alternative is a DELETE grant on `couranr_drivers`, which is
+not a trade worth making for a test.
+
+A run that dies between P9 and P19 strands `USERS.driver` the same way, so
+group P's setup releases what an earlier run left behind — through the
+Operations replace command, onto the run-unique onboarding identity, never by
+writing a column. It is scoped to the drivers this run must reuse: an
+assignment stranded on a dead run-unique identity is harmless, and releasing it
+would only strand the park driver instead.
+
+## Privileged fixtures that cannot be deleted
+
+`couranr_drivers.user_id` references `auth.users` with `ON DELETE RESTRICT`, and
+`service_role` has no DELETE on `couranr_drivers`. Once the driver fixture has a
+profile, cleanup cannot remove that auth user.
+
+What must never survive is the PRIVILEGE, not the row. So cleanup **neutralizes**
+a privileged fixture it cannot delete: it sets `profiles.role` to `customer` and
+bans the auth user, then RE-READS both and only reports success if both took.
+`CLEAN-privileged` asserts that no privileged fixture kept its privilege or its
+ability to sign in; the surviving row is reported under `appendOnlyResidue`.
+
+The seed lifts the ban again (`ban_duration: 'none'`) and restores the role, so
+the next run signs in normally. Without that, every run after the first would
+fail to authenticate the driver and it would look like a broken auth flow.

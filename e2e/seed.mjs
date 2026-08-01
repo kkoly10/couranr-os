@@ -39,11 +39,18 @@ async function ensureUser(spec, password) {
   );
 
   if (existing) {
-    // Force password and confirmation back to this run's values, so a
-    // half-modified account from an earlier run cannot change a result.
+    // Force password, confirmation and ban state back to this run's values, so
+    // a half-modified account from an earlier run cannot change a result.
+    //
+    // `ban_duration: 'none'` is not decoration. Cleanup NEUTRALIZES a
+    // privileged fixture it cannot delete by banning it, so without this every
+    // run after the first would fail to sign the driver or ops fixture in —
+    // and the failure would look like a broken auth flow rather than a stale
+    // ban. `setProfileRole` restores the other half of the neutralization.
     const { error } = await admin.auth.admin.updateUserById(existing.id, {
       password,
       email_confirm: spec.confirmed,
+      ban_duration: "none",
     });
     if (error) throw new Error(`updateUser ${spec.key}: ${error.message}`);
     return { id: existing.id, created: false };
@@ -156,6 +163,7 @@ export async function cleanupAll({ quiet = false } = {}) {
     // behind an expected limitation.
     appendOnlyResidue: [],
     privilegedRemaining: [],
+    privilegedNeutralized: [],
   };
   const APPEND_ONLY = /permission denied for table (couranr_merchant_workspaces|couranr_delivery_requests|couranr_delivery_request_events)|violates foreign key constraint "couranr_mw_account_fk"/;
   const log = (m) => { if (!quiet) console.log(m); };
@@ -241,16 +249,54 @@ export async function cleanupAll({ quiet = false } = {}) {
   // 3. Residue check — the authority on whether cleanup actually worked.
   try {
     const left = await listSyntheticUsers();
-    // PRIVILEGED fixtures surviving is never acceptable and never "expected".
-    report.privilegedRemaining = left
-      .filter((u) => ["ops", "driver"].includes(u.user_metadata?.fixture))
-      .map((u) => u.email ?? u.id);
-    if (report.privilegedRemaining.length > 0) {
-      report.couldNotRemove.push(
-        `PRIVILEGED fixture(s) still present: ${report.privilegedRemaining.join(", ")}`
-      );
+    const privilegedLeft = left.filter((u) => ["ops", "driver"].includes(u.user_metadata?.fixture));
+
+    /*
+     * A privileged fixture that an append-only row pins cannot be deleted, and
+     * widening the grant that stops it is not on the table. Neutralize it
+     * instead: strip the privilege and revoke the ability to authenticate.
+     *
+     * Both halves are load-bearing and neither substitutes for the other. The
+     * ban stops the account being used; the demotion means that even if the
+     * ban were lifted the account is an ordinary customer. Neither is asserted
+     * from the write's return value — both are re-read below, because a
+     * swallowed update here would report a security failure as a success.
+     */
+    for (const u of privilegedLeft) {
+      const label = u.email ?? u.id;
+      try {
+        await admin.from("profiles").update({ role: "customer" }).eq("id", u.id);
+        await admin.auth.admin.updateUserById(u.id, { ban_duration: "876000h" });
+
+        const { data: prof } = await admin.from("profiles").select("role").eq("id", u.id);
+        const { data: got } = await admin.auth.admin.getUserById(u.id);
+        const demoted = prof?.[0]?.role === "customer";
+        const banned = Boolean(got?.user?.banned_until) &&
+          new Date(got.user.banned_until).getTime() > Date.now();
+
+        if (demoted && banned) {
+          report.privilegedNeutralized.push(label);
+          report.appendOnlyResidue.push(
+            `privileged fixture ${label} could not be deleted (pinned by an append-only row); ` +
+              `demoted to customer and banned until ${got.user.banned_until}`
+          );
+          report.manualCleanupRequired.push(
+            `auth user ${label} — neutralized, still needs the privileged delete path`
+          );
+        } else {
+          report.privilegedRemaining.push(label);
+          report.couldNotRemove.push(
+            `PRIVILEGED fixture ${label} survived and could NOT be neutralized ` +
+              `(demoted=${demoted} banned=${banned})`
+          );
+        }
+      } catch (e) {
+        report.privilegedRemaining.push(label);
+        report.couldNotRemove.push(`PRIVILEGED fixture ${label} survived; neutralize threw: ${e.message}`);
+      }
     }
-    const benign = left.length - report.privilegedRemaining.length;
+
+    const benign = left.length - privilegedLeft.length;
     if (benign > 0) report.appendOnlyResidue.push(`${benign} non-privileged synthetic user(s) still present`);
   } catch (e) {
     report.errors.push(`residue check: ${e.message}`);
@@ -276,6 +322,10 @@ export async function cleanupAll({ quiet = false } = {}) {
   for (const c of report.appendOnlyResidue) log(`        - ${c}`);
   log(`    PRIVILEGED fixtures left: ${report.privilegedRemaining.length}` +
       (report.privilegedRemaining.length ? "  <-- SECURITY FAILURE" : "  (none — good)"));
+  log(`    PRIVILEGED neutralized  : ${report.privilegedNeutralized.length}` +
+      (report.privilegedNeutralized.length
+        ? `  (demoted + banned: ${report.privilegedNeutralized.join(", ")})`
+        : ""));
   log(`    manual cleanup required : ${report.manualCleanupRequired.length}`);
   for (const m of report.manualCleanupRequired) log(`        - ${m}`);
   if (report.errors.length) { log(`    errors:`); for (const e of report.errors) log(`        - ${e}`); }

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * Regression tests for the clean-environment build failure.
@@ -113,5 +113,76 @@ describe("lazy clients fail clearly when actually used without config", () => {
     expect(() => (supabasePublic as any).from).toThrow(
       "NEXT_PUBLIC_SUPABASE_URL is required."
     );
+  });
+});
+
+/**
+ * Next patches global `fetch` in the App Router. With the default
+ * `fetchCache: 'auto'` and `revalidate: false` a GET can be cached
+ * indefinitely, and `dynamic = 'force-dynamic'` does not change that — the
+ * Next 14.2 docs describe it as forcing dynamic RENDERING and say nothing
+ * about the Data Cache, unlike `dynamic = 'error'` which spells its fetch
+ * equivalences out.
+ *
+ * `/api/couranr/driver/assignment` was observed answering `assigned: null`
+ * from a response cached before the assignment existed: a dev-server restart
+ * did not clear it and deleting `.next/cache/fetch-cache` (121 entries) did.
+ * Every PostgREST read is a GET whose filters live in the query string, so the
+ * cache key is stable per query — a delivery assignment or a payment state
+ * served from an indefinite cache is a correctness bug.
+ *
+ * Asserted on the fetch CALL, not by grepping the source, so a refactor that
+ * drops the option fails here rather than in production.
+ */
+describe("service-role traffic never enters Next's Data Cache", () => {
+  async function captureCalls(use: (client: any) => Promise<unknown>) {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "test-key-not-a-real-secret";
+
+    const calls: Array<{ url: string; init: any }> = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: any, init: any) => {
+      calls.push({ url: String(input?.url ?? input), init });
+      return new Response("[]", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as any;
+
+    try {
+      vi.resetModules();
+      const { supabaseAdmin } = await import("@/lib/supabaseAdmin");
+      // The stub response is deliberately not a valid payload for every API;
+      // what is under test is the request that went out, not the parse.
+      try {
+        await use(supabaseAdmin);
+      } catch {
+        /* ignored on purpose — see above */
+      }
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+    return calls;
+  }
+
+  it("sends cache: 'no-store' on a PostgREST read", async () => {
+    const calls = await captureCalls((c) => c.from("couranr_drivers").select("id"));
+    expect(calls.length, "no request was made — the assertion would be vacuous").toBeGreaterThan(0);
+    for (const c of calls) {
+      expect(c.init?.cache, `${c.url} was not sent with cache: no-store`).toBe("no-store");
+    }
+  });
+
+  /**
+   * The token check matters most. `resolveRequestActor` and `resolveUserId`
+   * both verify the caller's JWT with `auth.getUser(token)`; a cached response
+   * there would keep authenticating a token after it was revoked.
+   */
+  it("sends cache: 'no-store' on the auth token check too", async () => {
+    const calls = await captureCalls((c) => c.auth.getUser("a.fake.jwt"));
+    expect(calls.length, "no request was made — the assertion would be vacuous").toBeGreaterThan(0);
+    for (const c of calls) {
+      expect(c.init?.cache, `${c.url} was not sent with cache: no-store`).toBe("no-store");
+    }
   });
 });

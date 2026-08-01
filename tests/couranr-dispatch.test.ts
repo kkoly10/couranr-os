@@ -387,3 +387,112 @@ describe("the browser harness enforces the same leak rule", () => {
     expect(harness).toContain("(pi|cus|seti|ch|sk|pk|whsec)_");
   });
 });
+
+/* =========== every command written to an event table is allow-listed ====== */
+
+/**
+ * The bug this exists for: `couranr_dlve_command_chk` permitted exactly one
+ * value, `create_delivery_from_capture`, and `couranr_assign_delivery` writes
+ * `assign_delivery` into the same table. EVERY assignment therefore failed with
+ * `23514` and rolled the whole command back — no assignment row, no state
+ * change, a 500 to Operations. Typecheck, lint and 800 unit tests were green;
+ * only running the command found it.
+ *
+ * This reads the migrations the way Postgres will: it pulls the literal each
+ * INSERT puts in the `command` column and requires the CHECK constraint on that
+ * table to permit it. A new command with no matching allow-list entry fails
+ * here instead of at the first real assignment.
+ */
+const ALL_SQL = readdirSync(MIGRATIONS)
+  .filter((f) => f.endsWith(".sql") && !f.includes(".rollback."))
+  .sort()
+  .map((f) => readFileSync(path.join(MIGRATIONS, f), "utf8"))
+  .join("\n")
+  .replace(/\/\*[\s\S]*?\*\//g, "")
+  .replace(/^\s*--.*$/gm, "");
+
+/** Splits a VALUES list on TOP-LEVEL commas only — `jsonb_build_object(a, b)` is one value. */
+function splitTopLevel(s: string): string[] {
+  const out: string[] = [];
+  let depth = 0;
+  let quoted = false;
+  let cur = "";
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (quoted) {
+      cur += c;
+      if (c === "'") quoted = s[i + 1] === "'";
+      continue;
+    }
+    if (c === "'") { quoted = true; cur += c; continue; }
+    if (c === "(") depth++;
+    if (c === ")") depth--;
+    if (c === "," && depth === 0) { out.push(cur.trim()); cur = ""; continue; }
+    cur += c;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+
+/** The last allow-list defined for a named CHECK constraint; migrations apply in order. */
+function allowedCommands(constraintName: string): string[] | null {
+  const rx = new RegExp(
+    `constraint\\s+${constraintName}\\s+check\\s*\\(\\s*command\\s*(?:in\\s*\\(([^)]*)\\)|=\\s*('[^']*'))`,
+    "gi"
+  );
+  let last: RegExpExecArray | null = null;
+  for (let m = rx.exec(ALL_SQL); m; m = rx.exec(ALL_SQL)) last = m;
+  if (!last) return null;
+  const body = last[1] ?? last[2] ?? "";
+  return [...body.matchAll(/'([^']+)'/g)].map((m) => m[1]);
+}
+
+const EVENT_TABLES: Array<{ table: string; constraint: string }> = [
+  { table: "couranr_delivery_events", constraint: "couranr_dlve_command_chk" },
+  { table: "couranr_assignment_events", constraint: "couranr_ae_command_chk" },
+];
+
+describe("every command inserted into an event table is permitted by its CHECK", () => {
+  for (const { table, constraint } of EVENT_TABLES) {
+    it(`${table}: the allow-list is parseable and non-empty`, () => {
+      const allowed = allowedCommands(constraint);
+      expect(allowed, `no CHECK named ${constraint} was found`).not.toBeNull();
+      expect(allowed!.length).toBeGreaterThan(0);
+    });
+
+    it(`${table}: every inserted command literal is allow-listed`, () => {
+      const allowed = allowedCommands(constraint)!;
+      const rx = new RegExp(
+        `insert\\s+into\\s+public\\.${table}\\s*\\(([^)]*)\\)\\s*values\\s*\\(([\\s\\S]*?)\\)\\s*;`,
+        "gi"
+      );
+
+      const found: string[] = [];
+      for (let m = rx.exec(ALL_SQL); m; m = rx.exec(ALL_SQL)) {
+        const cols = m[1].split(",").map((c) => c.trim());
+        const idx = cols.indexOf("command");
+        expect(idx, `an insert into ${table} names no command column`).toBeGreaterThanOrEqual(0);
+        const value = splitTopLevel(m[2])[idx];
+        // A non-literal (a variable) cannot be checked statically; skip it
+        // rather than assert something untrue about it.
+        const literal = /^'([^']+)'$/.exec(value ?? "");
+        if (!literal) continue;
+        found.push(literal[1]);
+        expect(
+          allowed,
+          `${table} is written with command '${literal[1]}', which ${constraint} does not permit`
+        ).toContain(literal[1]);
+      }
+
+      // Without this the loop could pass by matching nothing at all.
+      expect(found.length, `no INSERT into ${table} was parsed`).toBeGreaterThan(0);
+    });
+  }
+
+  /** Positive control: the parser really would reject an unlisted command. */
+  it("rejects a command the allow-list does not contain", () => {
+    const allowed = allowedCommands("couranr_dlve_command_chk")!;
+    expect(allowed).toContain("assign_delivery");
+    expect(allowed).not.toContain("mark_picked_up");
+  });
+});

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isActorDenied, resolveRequestActor } from "@/lib/couranr/requests/actor";
+import { isActorDenied, resolveUserId } from "@/lib/couranr/requests/actor";
 import { getAssignedDeliveryForDriver, isDispatchFailure } from "@/lib/couranr/dispatch/commands";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
 
@@ -20,13 +20,21 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
  * assign, replace, cancel or self-select anything in this slice; every dispatch
  * mutation lives under /api/couranr/operations and is gated on the Operations
  * actor.
+ *
+ * Authentication is `resolveUserId`, NOT `resolveRequestActor(req, null)`.
+ * Passing null to the latter is this codebase's spelling of "Operations only",
+ * so using it here refused every driver with "Couranr Operations access
+ * required" — the whole DRV-001/DRV-002 surface was unreachable by the only
+ * people it exists for. Authorization is not weakened by the change: it never
+ * lived in the actor gate. It lives in `getAssignedDeliveryForDriver`, which
+ * starts from THIS user's driver profile and walks to their one active
+ * assignment, so an authenticated stranger gets `assigned: null` and learns
+ * nothing.
  */
 export async function GET(req: NextRequest) {
-  const actor = await resolveRequestActor(req, null);
-  if (isActorDenied(actor)) return routeFailure(actor.code, actor.error);
-
-  const userId = (actor.actor as any)?.userId;
-  if (!userId) return routeFailure("not_permitted", "Sign in to continue.");
+  const auth = await resolveUserId(req);
+  if (isActorDenied(auth)) return routeFailure(auth.code, auth.error);
+  const userId = auth.userId;
 
   const raw = req.nextUrl.searchParams.get("deliveryId");
   // A malformed id is treated as "no such assignment" rather than as a
