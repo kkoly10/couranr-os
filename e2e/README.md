@@ -124,3 +124,24 @@ against replay behaviour rather than assumed.
 `PAYMENT_REAL_STRIPE_VERIFICATION = PENDING_PRELAUNCH`. Nothing in group N
 proves Stripe accepts these requests, only that Couranr builds them correctly
 and reacts correctly to each response.
+
+## Database-level verification
+
+`supabase/verification/terminal_capture_resolution.sql` is a re-runnable,
+read-only proof of the money guarantees that live in PL/pgSQL and in CHECK
+constraints rather than in TypeScript — the ones green unit tests never touch.
+
+It asserts: `service_role`-only EXECUTE on the terminal-resolution command
+(via `has_function_privilege`, because `pg_default_acl` makes a bare GRANT a
+silent no-op and grantee rows miss privileges inherited through `PUBLIC`); that
+both stamp constraints are one-directional rather than biconditional; that
+every non-terminal PaymentIntent status is refused with CR422; that a mismatched
+intent, amount or currency is rejected; that the authorization webhook refuses a
+`capture_pending` obligation; and that the obligation idempotency key carries
+its generation.
+
+Every probe is expected to REFUSE, and the last section proves nothing was
+written. Each result row carries an `ok` column — all must be true.
+
+It exists because these checks were originally run ad hoc and read out of a
+chat transcript, which is not verification anyone can repeat.
