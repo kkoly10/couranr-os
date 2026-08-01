@@ -100,6 +100,10 @@ describe("server-only modules are unreachable from client code", () => {
     // If either side is empty the whole suite would pass vacuously.
     expect(clientModules.length).toBeGreaterThan(0);
     expect(serverOnlyModules.map(rel).sort()).toEqual([
+      // Holds the service-role client and every dispatch command. The driver
+      // projection is built here, so a bundle reaching this module would put
+      // the unsanitized delivery row within reach of a browser.
+      "lib/couranr/dispatch/commands.ts",
       // Holds the service-role client and the Stripe secret key.
       "lib/couranr/fulfillment/commands.ts",
       "lib/couranr/onboarding/commands.ts",
@@ -165,9 +169,11 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/delivery-requests/[id]/route.ts",
       "app/api/couranr/delivery-requests/[id]/submit/route.ts",
       "app/api/couranr/delivery-requests/route.ts",
+      "app/api/couranr/driver/assignment/route.ts",
       "app/api/couranr/me/business-accounts/route.ts",
       "app/api/couranr/me/landing/route.ts",
       "app/api/couranr/me/workspace/route.ts",
+      "app/api/couranr/operations/deliveries/[id]/assignment/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/accept-as-quoted/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/begin-review/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/capture/route.ts",
@@ -175,7 +181,10 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/operations/delivery-requests/[id]/reconcile-capture/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/requote/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/service-plan/route.ts",
+      "app/api/couranr/operations/drivers/route.ts",
       "app/api/couranr/operations/queue/route.ts",
+      "app/api/couranr/operations/vehicles/[id]/route.ts",
+      "app/api/couranr/operations/vehicles/route.ts",
       "app/api/couranr/pay/[token]/reconcile/route.ts",
       "app/api/couranr/pay/[token]/route.ts",
       "app/api/couranr/stripe/webhook/route.ts",
@@ -203,8 +212,8 @@ describe("canonical server routes do not import the browser client", () => {
    *             before the payload is parsed at all.
    */
   const TOKEN_AUTHORIZED = new Set([
-    "app/api/couranr/pay/[token]/route.ts",
     "app/api/couranr/pay/[token]/reconcile/route.ts",
+    "app/api/couranr/pay/[token]/route.ts",
   ]);
   const SIGNATURE_AUTHORIZED = new Set(["app/api/couranr/stripe/webhook/route.ts"]);
 

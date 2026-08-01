@@ -36,13 +36,35 @@ assertServerOnly("lib/couranr/dispatch/commands.ts");
 
 export const RPC = {
   createDriver: "couranr_create_driver_profile",
-  setDriverState: "couranr_set_driver_state",
-  setDriverAvailability: "couranr_update_driver_availability",
   createVehicle: "couranr_create_dispatch_vehicle",
   updateVehicle: "couranr_update_dispatch_vehicle",
   assign: "couranr_assign_delivery",
   replaceAssignment: "couranr_replace_delivery_assignment",
 } as const;
+
+/**
+ * One command per DESTINATION, exactly as the readiness slice does it.
+ *
+ * The destination selects the command; it is never passed to one. Every SQL
+ * function hard-codes where it lands, so there is no path by which a caller
+ * names a state — the first version of this file forwarded the target as an
+ * argument and `tests/couranr-server-only.test.ts` refused it.
+ */
+const DRIVER_STATE_RPC: Readonly<Record<string, string>> = {
+  active: "couranr_activate_driver",
+  suspended: "couranr_suspend_driver",
+  inactive: "couranr_deactivate_driver",
+};
+
+const DRIVER_AVAILABILITY_RPC: Readonly<Record<string, string>> = {
+  available: "couranr_mark_driver_available",
+  unavailable: "couranr_mark_driver_unavailable",
+};
+
+const VEHICLE_AVAILABILITY_RPC: Readonly<Record<string, string>> = {
+  available: "couranr_mark_vehicle_available",
+  unavailable: "couranr_mark_vehicle_unavailable",
+};
 
 const DRIVER_COLUMNS =
   "id,user_id,display_name,contact_phone,driver_state,availability_state,active,market,version,created_at,updated_at";
@@ -191,11 +213,20 @@ export async function setDriverState(params: {
   const gate = requireOperations(params.actor, op);
   if (isDispatchFailure(gate)) return gate;
 
-  const r = await callRpc<Record<string, any>>(op, RPC.setDriverState, {
+  const fn = DRIVER_STATE_RPC[params.driverState];
+  if (!fn) {
+    return fail({
+      operation: op,
+      code: "invalid_input",
+      detail: { to: params.driverState },
+      message: "That is not a driver state Couranr can set.",
+    });
+  }
+
+  const r = await callRpc<Record<string, any>>(op, fn, {
     p_driver_id: params.driverId,
     p_expected_version: params.expectedVersion,
     p_actor_user_id: gate.actor.userId,
-    p_driver_state: params.driverState,
   });
   if (isDispatchFailure(r)) return r;
   return { ok: true, value: { driver: r.value } };
@@ -211,11 +242,20 @@ export async function setDriverAvailability(params: {
   const gate = requireOperations(params.actor, op);
   if (isDispatchFailure(gate)) return gate;
 
-  const r = await callRpc<Record<string, any>>(op, RPC.setDriverAvailability, {
+  const fn = DRIVER_AVAILABILITY_RPC[params.availabilityState];
+  if (!fn) {
+    return fail({
+      operation: op,
+      code: "invalid_input",
+      detail: { to: params.availabilityState },
+      message: "That is not an availability Couranr can set.",
+    });
+  }
+
+  const r = await callRpc<Record<string, any>>(op, fn, {
     p_driver_id: params.driverId,
     p_expected_version: params.expectedVersion,
     p_actor_user_id: gate.actor.userId,
-    p_availability_state: params.availabilityState,
   });
   if (isDispatchFailure(r)) return r;
   return { ok: true, value: { driver: r.value } };
@@ -282,8 +322,6 @@ export async function updateDispatchVehicle(params: {
   expectedVersion: number;
   name?: string | null;
   payloadCapacityLb?: number | null;
-  active?: boolean | null;
-  availabilityState?: string | null;
 }): Promise<DispatchResult<{ vehicle: Record<string, any> }>> {
   const op = "updateDispatchVehicle";
   const gate = requireOperations(params.actor, op);
@@ -295,8 +333,39 @@ export async function updateDispatchVehicle(params: {
     p_actor_user_id: gate.actor.userId,
     p_name: params.name ?? null,
     p_payload_capacity_lb: params.payloadCapacityLb ?? null,
-    p_active: params.active ?? null,
-    p_availability_state: params.availabilityState ?? null,
+    // The editor changes DATA only. Availability and active are transitions and
+    // have their own named commands; the SQL refuses them here.
+    p_active: null,
+    p_availability_state: null,
+  });
+  if (isDispatchFailure(r)) return r;
+  return { ok: true, value: { vehicle: r.value } };
+}
+
+export async function setVehicleAvailability(params: {
+  actor: RequestActor;
+  vehicleId: string;
+  expectedVersion: number;
+  availabilityState: string;
+}): Promise<DispatchResult<{ vehicle: Record<string, any> }>> {
+  const op = "setVehicleAvailability";
+  const gate = requireOperations(params.actor, op);
+  if (isDispatchFailure(gate)) return gate;
+
+  const fn = VEHICLE_AVAILABILITY_RPC[params.availabilityState];
+  if (!fn) {
+    return fail({
+      operation: op,
+      code: "invalid_input",
+      detail: { to: params.availabilityState },
+      message: "That is not an availability Couranr can set.",
+    });
+  }
+
+  const r = await callRpc<Record<string, any>>(op, fn, {
+    p_vehicle_id: params.vehicleId,
+    p_expected_version: params.expectedVersion,
+    p_actor_user_id: gate.actor.userId,
   });
   if (isDispatchFailure(r)) return r;
   return { ok: true, value: { vehicle: r.value } };

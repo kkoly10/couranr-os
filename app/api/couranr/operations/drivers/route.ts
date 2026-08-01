@@ -74,37 +74,37 @@ export async function PATCH(req: NextRequest) {
     return routeFailure("invalid_input", "A current version is required.");
   }
 
-  const driverState = body?.driverState;
-  const availabilityState = body?.availabilityState;
-  if ((driverState == null) === (availabilityState == null)) {
+  const driver = body?.driver;
+  const availability = body?.availability;
+  if ((driver == null) === (availability == null)) {
     return routeFailure("invalid_input", "Set exactly one of driver state or availability.");
   }
 
   const actor = await resolveRequestActor(req, null);
   if (isActorDenied(actor)) return routeFailure(actor.code, actor.error);
 
-  if (driverState != null) {
-    if (!(DRIVER_STATES as readonly string[]).includes(String(driverState))) {
+  if (driver != null) {
+    if (!(DRIVER_STATES as readonly string[]).includes(String(driver))) {
       return routeFailure("invalid_input", "That is not a driver state Couranr can set.");
     }
     const r = await setDriverState({
       actor: actor.actor,
       driverId,
       expectedVersion,
-      driverState: String(driverState),
+      driverState: String(driver),
     });
     if (isDispatchFailure(r)) return failureResponse(r);
     return NextResponse.json(r.value);
   }
 
-  if (!SETTABLE_AVAILABILITY.includes(String(availabilityState) as any)) {
+  if (!SETTABLE_AVAILABILITY.includes(String(availability) as any)) {
     return routeFailure("invalid_input", "That is not an availability Couranr can set.");
   }
   const r = await setDriverAvailability({
     actor: actor.actor,
     driverId,
     expectedVersion,
-    availabilityState: String(availabilityState),
+    availabilityState: String(availability),
   });
   if (isDispatchFailure(r)) return failureResponse(r);
   return NextResponse.json(r.value);

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isActorDenied, resolveRequestActor } from "@/lib/couranr/requests/actor";
-import { isDispatchFailure, updateDispatchVehicle } from "@/lib/couranr/dispatch/commands";
+import {
+  isDispatchFailure,
+  setVehicleAvailability,
+  updateDispatchVehicle,
+} from "@/lib/couranr/dispatch/commands";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
 import { SETTABLE_AVAILABILITY } from "@/lib/couranr/dispatch/states";
 
@@ -29,15 +33,29 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
     return routeFailure("invalid_input", "A current version is required.");
   }
-  if (
-    body?.availabilityState != null &&
-    !SETTABLE_AVAILABILITY.includes(String(body.availabilityState) as any)
-  ) {
-    return routeFailure("invalid_input", "That is not an availability Couranr can set.");
-  }
-
   const actor = await resolveRequestActor(req, null);
   if (isActorDenied(actor)) return routeFailure(actor.code, actor.error);
+
+  /*
+   * `availability` names a DESTINATION and selects a named command; it is never
+   * forwarded to SQL. Editing data and changing a state are two different
+   * commands with two different audit meanings, so this route dispatches to
+   * one or the other rather than doing both at once.
+   */
+  const availability = body?.availability;
+  if (availability != null) {
+    if (!SETTABLE_AVAILABILITY.includes(String(availability) as any)) {
+      return routeFailure("invalid_input", "That is not an availability Couranr can set.");
+    }
+    const moved = await setVehicleAvailability({
+      actor: actor.actor,
+      vehicleId: params.id,
+      expectedVersion,
+      availabilityState: String(availability),
+    });
+    if (isDispatchFailure(moved)) return failureResponse(moved);
+    return NextResponse.json(moved.value);
+  }
 
   const capacity = Number(body?.payloadCapacityLb);
 
@@ -47,8 +65,6 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     expectedVersion,
     name: typeof body?.name === "string" ? body.name : null,
     payloadCapacityLb: Number.isFinite(capacity) && capacity > 0 ? Math.trunc(capacity) : null,
-    active: typeof body?.active === "boolean" ? body.active : null,
-    availabilityState: body?.availabilityState != null ? String(body.availabilityState) : null,
   });
   if (isDispatchFailure(r)) return failureResponse(r);
   return NextResponse.json(r.value);
