@@ -98,15 +98,41 @@ async function freshContext() {
   return { ctx, page };
 }
 
-/** Signs in through the real form and waits for the server-chosen landing. */
+/**
+ * Signs in through the real form and waits for the server-chosen landing.
+ *
+ * ONE bounded retry, and it is announced when it happens.
+ *
+ * This container intermittently fails DNS from the Next server to Supabase —
+ * `{"operation":"getLanding","code":"internal","detail":{"lookup":"profiles",
+ * "error":{"message":"DNS resolution failure"}}}` — and `/api/couranr/me/landing`
+ * correctly fails closed with a 500, so the page never navigates and every
+ * downstream assertion in that group dies on a setup step that is not what the
+ * group is testing. Signing in is itself proven by groups A and D; retrying it
+ * here recovers infrastructure noise without softening a single assertion.
+ *
+ * It is deliberately NOT silent: a retry prints, so a run that only passed on
+ * the second attempt says so.
+ */
 async function signIn(page, user, { expectLanding = null } = {}) {
-  await page.goto(`${BASE_URL}/sign-in`, { waitUntil: "domcontentloaded" });
-  await page.getByLabel("Email").waitFor({ state: "visible", timeout: 20000 });
-  await page.getByLabel("Email").fill(user.email);
-  await page.getByLabel("Password").fill(RUN_PASSWORD);
-  await page.getByRole("button", { name: /^sign in$/i }).click();
-  if (expectLanding) {
-    await page.waitForURL((u) => u.pathname.startsWith(expectLanding), { timeout: 25000 });
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    try {
+      await page.goto(`${BASE_URL}/sign-in`, { waitUntil: "domcontentloaded" });
+      await page.getByLabel("Email").waitFor({ state: "visible", timeout: 20000 });
+      await page.getByLabel("Email").fill(user.email);
+      await page.getByLabel("Password").fill(RUN_PASSWORD);
+      await page.getByRole("button", { name: /^sign in$/i }).click();
+      if (expectLanding) {
+        await page.waitForURL((u) => u.pathname.startsWith(expectLanding), { timeout: 25000 });
+      }
+      return page;
+    } catch (e) {
+      if (attempt === 2) throw e;
+      console.log(
+        `      [retry] sign-in as ${user.key} did not reach ${expectLanding ?? "a landing"} — ` +
+          `retrying once (${String(e.message).split("\n")[0]})`
+      );
+    }
   }
   return page;
 }
