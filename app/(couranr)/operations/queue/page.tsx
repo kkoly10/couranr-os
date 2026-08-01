@@ -6,15 +6,18 @@ export const metadata = { title: "Queue and managed dispatch — Couranr" };
 /**
  * OPS-002 — the Couranr Operations Queue.
  *
- * Managed dispatch (vehicle, driver and schedule selection) is the rest of this
- * screen and is not in this slice: no driver or vehicle assignment exists yet.
+ * The whole lifecycle, not just review: a request stays here from submission
+ * until it is captured and scheduled, grouped by what it is waiting on.
+ *
+ * Driver assignment is the rest of this screen and is not in this slice — a
+ * captured delivery is scheduled with no driver on it.
  */
 export default function Page() {
   return (
     <>
       <PageHeader
         title="Couranr Operations Queue"
-        description="Delivery requests waiting for Couranr review, oldest first."
+        description="Every delivery request Couranr still has work on, grouped by what it is waiting on."
       />
       <OperationsQueue />
     </>

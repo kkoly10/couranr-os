@@ -21,6 +21,9 @@ import {
 import { QuoteSummary } from "./QuoteSummary";
 import { ReviewOutcomeActions } from "./ReviewOutcomeActions";
 import { MerchantPaymentPanel } from "@/components/couranr/payments/MerchantPaymentPanel";
+import { MerchantReadinessPanel } from "@/components/couranr/fulfillment/MerchantReadinessPanel";
+import { OperationsPlanPanel } from "@/components/couranr/fulfillment/OperationsPlanPanel";
+import { fetchFulfillment, type FulfillmentView } from "@/components/couranr/fulfillment/client";
 import {
   fetchDeliveryRequest,
   fetchMyBusinessAccounts,
@@ -63,6 +66,8 @@ const OUTCOME_COPY: Record<string, { tone: "info" | "success" | "warning" | "dan
   confirmed: {
     tone: "success",
     title: "Couranr confirmed this delivery at the quoted price",
+    // Replaced by `confirmedBody` once payment exists — see below. This is the
+    // no-payment-yet case.
     body: "Nothing has been charged yet, and no driver has been assigned. Couranr will contact you about scheduling.",
   },
   awaiting_quote_acceptance: {
@@ -83,6 +88,29 @@ const OUTCOME_COPY: Record<string, { tone: "info" | "success" | "warning" | "dan
     body: "Nothing was charged. Contact Couranr Support if you would like to discuss alternatives.",
   },
 };
+
+/**
+ * What "confirmed" means RIGHT NOW, in money terms.
+ *
+ * `confirmed` used to be the end of the road, so the banner could safely say
+ * "Nothing has been charged yet". It no longer is: the same request state now
+ * spans an authorized hold, a capture in flight and a completed capture, and
+ * on the last two that sentence is simply false. The one thing that stays
+ * true at every stage is that no driver is assigned.
+ */
+function confirmedBody(fulfillment: FulfillmentView | null): string {
+  const state = fulfillment?.payment?.paymentState ?? null;
+  if (fulfillment?.delivery || state === "captured") {
+    return "The payment has been captured and this delivery is scheduled. No driver has been assigned yet.";
+  }
+  if (state === "capture_pending") {
+    return "Couranr is completing the payment for this delivery. No driver has been assigned yet.";
+  }
+  if (state === "authorized") {
+    return "The payment is authorized — the amount is held, not taken. No driver has been assigned yet.";
+  }
+  return OUTCOME_COPY.confirmed.body;
+}
 
 function addressLines(a: any): string[] {
   if (!a || typeof a !== "object") return [];
@@ -111,6 +139,27 @@ export function DeliveryRequestDetail({ id }: { id: string }) {
   const [isOperations, setIsOperations] = React.useState(false);
   /** Which business this viewer read the request as; null for Operations. */
   const [viewerBusinessAccountId, setViewerBusinessAccountId] = React.useState<string | null>(null);
+  /**
+   * Payment, plan and delivery for this request, from the one endpoint that
+   * serves both surfaces — so the merchant and Operations cannot be shown
+   * different answers about the same delivery.
+   */
+  const [fulfillment, setFulfillment] = React.useState<FulfillmentView | null>(null);
+
+  /**
+   * Re-read after any lifecycle action, so every panel agrees.
+   *
+   * A `useCallback` keyed on the request id, not a plain function: the initial
+   * load calls it too, and a fresh identity on every render would either make
+   * the load effect re-run forever or force a lie in its dependency list.
+   */
+  const reloadFulfillment = React.useCallback(
+    async (businessAccountId: string | null) => {
+      const r = await fetchFulfillment({ id, businessAccountId });
+      if (!isApiFailure(r)) setFulfillment(r.value);
+    },
+    [id]
+  );
 
   React.useEffect(() => {
     let cancelled = false;
@@ -134,6 +183,7 @@ export function DeliveryRequestDetail({ id }: { id: string }) {
           setEvents(r.value.events ?? []);
           setIsOperations(businessAccountId === undefined);
           setViewerBusinessAccountId(businessAccountId ?? null);
+          void reloadFulfillment(businessAccountId ?? null);
           setLoading(false);
           return;
         }
@@ -151,7 +201,7 @@ export function DeliveryRequestDetail({ id }: { id: string }) {
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, reloadFulfillment]);
 
   if (loading) {
     return (
@@ -194,7 +244,9 @@ export function DeliveryRequestDetail({ id }: { id: string }) {
           >
             {request.requestState === "declined"
               ? `${declineMessageFor(declineReasonCode(events))} Nothing was charged.`
-              : OUTCOME_COPY[request.requestState].body}
+              : request.requestState === "confirmed"
+                ? confirmedBody(fulfillment)
+                : OUTCOME_COPY[request.requestState].body}
           </Alert>
         ) : null}
         <Grid columns={3}>
@@ -254,6 +306,38 @@ export function DeliveryRequestDetail({ id }: { id: string }) {
         <MerchantPaymentPanel
           request={request}
           businessAccountId={viewerBusinessAccountId}
+        />
+      ) : null}
+
+      {/* MER-007 readiness, and the scheduled result once Couranr captures. */}
+      {!isOperations ? (
+        <MerchantReadinessPanel
+          request={request}
+          fulfillment={fulfillment}
+          businessAccountId={viewerBusinessAccountId}
+          onChanged={() => {
+            void reloadFulfillment(viewerBusinessAccountId);
+            void fetchDeliveryRequest({
+              id,
+              businessAccountId: viewerBusinessAccountId ?? undefined,
+            }).then((r) => {
+              if (!isApiFailure(r)) setRequest(r.value.request);
+            });
+          }}
+        />
+      ) : null}
+
+      {/* OPS-003 service plan, capture and the canonical delivery result. */}
+      {isOperations ? (
+        <OperationsPlanPanel
+          request={request}
+          fulfillment={fulfillment}
+          onChanged={() => {
+            void reloadFulfillment(null);
+            void fetchDeliveryRequest({ id }).then((r) => {
+              if (!isApiFailure(r)) setRequest(r.value.request);
+            });
+          }}
         />
       ) : null}
 

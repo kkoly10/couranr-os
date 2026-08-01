@@ -1,20 +1,89 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isActorDenied, resolveRequestActor } from "@/lib/couranr/requests/actor";
-import { isCommandFailure, listReviewQueue } from "@/lib/couranr/requests/commands";
+import { isFulfillmentFailure, listOperationsLifecycle } from "@/lib/couranr/fulfillment/commands";
+import { lifecycleStage } from "@/lib/couranr/fulfillment/lifecycle";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
 import { toDeliveryRequestView } from "@/lib/couranr/requests/view";
 
 export const dynamic = "force-dynamic";
 
-/** GET — OPS-002 Couranr Operations Queue. Operations only. */
+/**
+ * GET — OPS-002 Couranr Operations Queue.
+ *
+ * Returns every request Operations still has work on, each with the stage it
+ * is at. The stage is derived HERE from the request, obligation, plan and
+ * delivery rows rather than sent as a raw column, so the queue and the request
+ * detail screen cannot disagree about what a row is waiting on.
+ *
+ * Operations only — a merchant is refused before any query runs, because this
+ * read deliberately crosses business accounts.
+ */
 export async function GET(req: NextRequest) {
-  // null scope: this route is Operations-only, so no membership is consulted
-  // and a merchant is refused before any query runs.
   const actor = await resolveRequestActor(req, null);
   if (isActorDenied(actor)) return routeFailure(actor.code, actor.error);
 
-  const result = await listReviewQueue({ actor: actor.actor });
-  if (isCommandFailure(result)) return failureResponse(result);
+  const result = await listOperationsLifecycle({ actor: actor.actor });
+  if (isFulfillmentFailure(result)) return failureResponse(result);
 
-  return NextResponse.json({ requests: result.value.map(toDeliveryRequestView) });
+  const entries = result.value.entries.map((row) => {
+    const stage = lifecycleStage({
+      requestState: row.request.request_state,
+      readinessState: row.request.readiness_state,
+      paymentState: row.payment?.payment_state ?? null,
+      servicePlanConfirmed: row.servicePlan !== null,
+      canonicalDeliveryExists: row.delivery !== null,
+    });
+
+    return {
+      stage,
+      // The queue's request rows are a SUBSET of the columns the detail view
+      // selects, so the allow-list view model fills the absent ones with null
+      // rather than leaking anything the projection did not ask for.
+      request: toDeliveryRequestView(row.request),
+      payment: row.payment
+        ? {
+            paymentState: row.payment.payment_state,
+            payerType: row.payment.payer_type,
+            amountCents: row.payment.amount_cents,
+            currency: row.payment.currency,
+          }
+        : null,
+      servicePlan: row.servicePlan
+        ? {
+            scheduledPickupStart: row.servicePlan.scheduled_pickup_start,
+            scheduledPickupEnd: row.servicePlan.scheduled_pickup_end,
+            timezone: row.servicePlan.timezone,
+          }
+        : null,
+      delivery: row.delivery
+        ? {
+            id: row.delivery.id,
+            fulfillmentState: row.delivery.fulfillment_state,
+            capturedAmountCents: row.delivery.captured_amount_cents,
+            scheduledPickupStart: row.delivery.scheduled_pickup_start,
+            scheduledPickupEnd: row.delivery.scheduled_pickup_end,
+            timezone: row.delivery.timezone,
+            /** No driver is assigned in this slice. Stated, not omitted. */
+            driverAssigned: false,
+          }
+        : null,
+    };
+  });
+
+  return NextResponse.json({
+    entries,
+    /*
+     * How many rows are in the queue's states versus how many were returned.
+     * Reported rather than dropped: a queue that silently truncates reads as
+     * "that is everything", and the row an operator never sees is the one that
+     * is oldest and most overdue.
+     */
+    total: result.value.total,
+    truncated: result.value.total > entries.length,
+    /*
+     * Kept so the queue's existing "open for review" path is unchanged: it is
+     * exactly the pending-review subset this route used to return on its own.
+     */
+    requests: entries.filter((e) => e.stage === "pending_review").map((e) => e.request),
+  });
 }

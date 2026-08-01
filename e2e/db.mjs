@@ -94,7 +94,11 @@ export const obligationFor = (requestId) =>
     .from("couranr_payment_obligations")
     .select(
       "id,request_id,payer_type,amount_cents,currency,payment_state,version," +
-        "provider_payment_intent_id,authorized_at,request_version,pricing_policy_version"
+        "provider_payment_intent_id,authorized_at,request_version,pricing_policy_version," +
+        // The capture columns. Absent from this list, an assertion about them
+        // reads `undefined` and fails against a row that is perfectly correct
+        // — which is exactly how N17 first failed.
+        "capture_requested_at,captured_at,captured_amount_cents"
     )
     .eq("request_id", requestId)
     .neq("payment_state", "cancelled")
@@ -149,6 +153,76 @@ export async function issueLinkForRequest(requestId, businessAccountId) {
   if (error) throw new Error(`issueLinkForRequest: ${error.message}`);
   return raw;
 }
+
+/* ------------------------------------------- readiness, plan, delivery -- */
+
+/** EVERY service plan for a request, newest first — cancelled ones included. */
+export const servicePlansFor = (requestId) =>
+  admin
+    .from("couranr_service_plans")
+    .select(
+      "id,request_id,plan_state,request_version,payment_obligation_id," +
+        "scheduled_pickup_start,scheduled_pickup_end,timezone,vehicle_id,vehicle_requirement,version"
+    )
+    .eq("request_id", requestId)
+    .order("created_at", { ascending: false })
+    .then(unwrap("servicePlansFor"));
+
+/**
+ * EVERY canonical delivery for a request. Deliberately a list, not
+ * `maybeSingle()`: "exactly one delivery exists" is an assertion the suite has
+ * to be able to fail, and `maybeSingle()` would throw on the very row set that
+ * proves the defect.
+ */
+export const deliveriesFor = (requestId) =>
+  admin
+    .from("couranr_deliveries")
+    .select(
+      "id,request_id,business_account_id,payment_obligation_id,service_plan_id," +
+        "captured_amount_cents,currency,fulfillment_state,scheduled_pickup_start," +
+        "scheduled_pickup_end,timezone,vehicle_id,vehicle_requirement,request_version,version"
+    )
+    .eq("request_id", requestId)
+    .order("created_at", { ascending: true })
+    .then(unwrap("deliveriesFor"));
+
+/** The append-only payment ledger for one request, oldest first. */
+export const paymentEventsFor = (requestId) =>
+  admin
+    .from("couranr_payment_events")
+    .select(
+      "id,obligation_id,request_id,provider_event_id,event_type," +
+        "payment_state_before,payment_state_after,outcome,detail,created_at"
+    )
+    .eq("request_id", requestId)
+    .order("created_at", { ascending: true })
+    .then(unwrap("paymentEventsFor"));
+
+/** The append-only delivery log, oldest first. */
+export const deliveryEventsFor = (deliveryId) =>
+  admin
+    .from("couranr_delivery_events")
+    .select("id,delivery_id,command,actor_type,from_state,to_state,metadata,created_at")
+    .eq("delivery_id", deliveryId)
+    .order("created_at", { ascending: true })
+    .then(unwrap("deliveryEventsFor"));
+
+/**
+ * The obligation regardless of state, including a cancelled one.
+ *
+ * `obligationFor` filters cancelled out, which is right for the app and wrong
+ * for an assertion that has to be able to observe one.
+ */
+export const allObligationsFor = (requestId) =>
+  admin
+    .from("couranr_payment_obligations")
+    .select(
+      "id,request_id,payment_state,amount_cents,captured_amount_cents,currency," +
+        "provider_payment_intent_id,capture_requested_at,captured_at,version"
+    )
+    .eq("request_id", requestId)
+    .order("created_at", { ascending: true })
+    .then(unwrap("allObligationsFor"));
 
 /** The most recent payment link for a request, and why it stopped working. */
 export const tokenStateFor = (requestId) =>

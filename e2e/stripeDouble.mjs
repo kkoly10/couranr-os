@@ -56,9 +56,28 @@ function saveStore() {
 
 const intents = loadStore();
 const byIdempotencyKey = new Map();
+/** Capture replays, keyed the way real Stripe keys them: by idempotency key. */
+const captureByIdempotencyKey = new Map();
 export const calls = [];
 
 let seq = 0;
+
+/**
+ * Fault injection for capture, counted down per call.
+ *
+ * Set by `failNextCaptures(n)` from the suite. The response is a 500 with
+ * `stripe-should-retry: false`, which is the shape that produces an
+ * INDEFINITE failure in Couranr: the SDK gives up without retrying, the error
+ * carries statusCode 500, and `capturePayment` deliberately leaves the
+ * obligation in `capture_pending` because it does not know whether Stripe took
+ * the money. That is the exact case the recoverable workflow exists for, and
+ * it is unreachable without being able to make a capture fail.
+ */
+let failCaptures = 0;
+
+export function failNextCaptures(n = 1) {
+  failCaptures = n;
+}
 
 /**
  * A run-unique prefix for minted PaymentIntent ids.
@@ -83,6 +102,7 @@ function intentJson(pi) {
     object: "payment_intent",
     amount: pi.amount,
     amount_capturable: pi.amount_capturable,
+    amount_received: pi.amount_received ?? 0,
     currency: pi.currency,
     capture_method: pi.capture_method,
     status: pi.status,
@@ -153,6 +173,57 @@ export function startStripeDouble(port = 12111) {
         return json(200, intentJson(pi));
       }
 
+      /*
+       * Capture. Under manual capture this is the call that MOVES THE MONEY,
+       * so the double is as strict as the create path: it refuses to capture
+       * an intent that was never authorized, and it replays a repeated
+       * idempotency key instead of capturing twice — which is precisely the
+       * property Couranr's retry path depends on.
+       */
+      const capture = url.pathname.match(/^\/v1\/payment_intents\/(pi_[\w]+)\/capture$/);
+      if (capture && req.method === "POST") {
+        const key = req.headers["idempotency-key"];
+        const form = parseForm(body);
+        calls.push({ path: url.pathname, method: "POST", form, idempotencyKey: key });
+
+        if (failCaptures > 0) {
+          failCaptures -= 1;
+          // `stripe-should-retry: false` stops the SDK's own retry, so the
+          // outage is exactly one attempt and the assertion counts are honest.
+          res.writeHead(500, {
+            "content-type": "application/json",
+            "stripe-should-retry": "false",
+          });
+          return res.end(
+            JSON.stringify({
+              error: { type: "api_error", message: "simulated provider outage" },
+            })
+          );
+        }
+
+        if (key && captureByIdempotencyKey.has(key)) {
+          return json(200, intentJson(intents.get(captureByIdempotencyKey.get(key))));
+        }
+
+        const pi = intents.get(capture[1]);
+        if (!pi) return json(404, { error: { type: "invalid_request_error" } });
+        if (pi.status !== "requires_capture" && pi.status !== "succeeded") {
+          return json(400, {
+            error: {
+              type: "invalid_request_error",
+              message: `intent status ${pi.status} is not capturable`,
+            },
+          });
+        }
+
+        pi.status = "succeeded";
+        pi.amount_received = pi.amount;
+        pi.amount_capturable = 0;
+        if (key) captureByIdempotencyKey.set(key, pi.id);
+        saveStore();
+        return json(200, intentJson(pi));
+      }
+
       const retrieve = url.pathname.match(/^\/v1\/payment_intents\/(pi_[\w]+)$/);
       if (retrieve && req.method === "GET") {
         calls.push({ path: url.pathname, method: "GET" });
@@ -161,8 +232,9 @@ export function startStripeDouble(port = 12111) {
         return json(200, intentJson(pi));
       }
 
-      // Anything else is a call this slice should not be making — most
-      // importantly /capture. Recorded and refused.
+      // Anything else is a call Couranr should not be making — a refund, a
+      // customer, a saved payment method. Recorded and refused, so a call that
+      // appears here fails the run rather than passing quietly.
       calls.push({ path: url.pathname, method: req.method, unexpected: true });
       json(404, { error: { type: "invalid_request_error", message: "not implemented" } });
     });

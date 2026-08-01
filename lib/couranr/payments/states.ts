@@ -94,6 +94,57 @@ export function isHandledStripeEvent(t: unknown): t is HandledStripeEvent {
  */
 export const AUTHORIZING_INTENT_STATUS = "requires_capture" as const;
 
+/**
+ * What a reconcile may do with a PaymentIntent whose capture outcome is
+ * unknown. Pure, closed, and default-deny.
+ *
+ *   release   the funds are still only HELD, so the capture definitively did
+ *             not happen — put the obligation back to `authorized` so it can
+ *             be retried
+ *   complete  the money was taken — finish the capture and convert
+ *   wait      anything else, including `processing`. Write NOTHING: recording
+ *             a rejection now would make the same (obligation, intent) pair a
+ *             duplicate later and permanently strand the obligation
+ *
+ * The default is `wait`, so a status this build has never heard of can never
+ * move money's state in either direction.
+ */
+export type ReconcileAction = "release" | "complete" | "wait";
+
+export function reconcileActionForIntentStatus(status: string): ReconcileAction {
+  if (status === AUTHORIZING_INTENT_STATUS) return "release";
+  if (status === "succeeded") return "complete";
+  return "wait";
+}
+
+/**
+ * The provider event ids the capture workflow writes.
+ *
+ * `couranr_payment_events` is unique on (provider, provider_event_id), and the
+ * SQL commands treat a `unique_violation` as "already handled" and return
+ * WITHOUT acting. That makes the id the idempotency key — and choosing it
+ * badly is silent: a colliding id means the command quietly does nothing.
+ *
+ * So the rule is that an id must identify the ATTEMPT, not the obligation.
+ * `failed` and `notTaken` both end a capture cycle and both can legitimately
+ * happen more than once for one obligation, so they carry the obligation
+ * version — which `couranr_begin_payment_capture` bumps on every cycle. Keying
+ * them on the obligation alone stranded the second failed cycle in
+ * `capture_pending` with no exit.
+ *
+ * `result` is deliberately NOT version-scoped: it is written only for a
+ * SUCCEEDED intent, which is terminal, so a repeat genuinely is a duplicate
+ * and swallowing it is correct.
+ */
+export const captureEventId = {
+  failed: (obligationId: string, obligationVersion: number, code: string) =>
+    `couranr:capture_failed:${obligationId}:v${obligationVersion}:${code}`,
+  notTaken: (obligationId: string, obligationVersion: number) =>
+    `couranr:capture_not_taken:${obligationId}:v${obligationVersion}`,
+  result: (obligationId: string, paymentIntentId: string) =>
+    `couranr:capture_result:${obligationId}:${paymentIntentId}`,
+} as const;
+
 /** Terminal for this slice — no further payer action is possible. */
 export function isTerminalPaymentState(s: PaymentState): boolean {
   return s === "authorized" || s === "cancelled";

@@ -37,6 +37,8 @@ Screenshots and `results.json` land in `e2e/artifacts/` (gitignored).
 | J | the driver surface reads its own deliveries |
 | K | the canonical logo, not a font-rendered wordmark |
 | L | the three review outcomes (REV-001), end to end, asserted on rows |
+| M | payment authorization on both payer paths, with Stripe mocked at both boundaries |
+| N | readiness, service plan, capture, recovery from an unknown capture, and the canonical delivery |
 
 ## Rules this harness follows
 
@@ -102,3 +104,23 @@ assertion rather than folded into the others so it can never be mistaken for
 
 **Do not widen the grant to make this go away.** A DELETE grant on the request
 tables would remove the guarantee those tables exist to provide.
+
+Groups M and N add to the same residue: each leaves a payment obligation, and N
+additionally leaves a service plan and a canonical delivery. Same reason, same
+answer — none of those tables grants DELETE either, and `CLEAN-behaviour` fails
+alongside `CLEAN-residue` because the surviving request rows pin
+`business_accounts` through `ON DELETE RESTRICT`.
+
+## What group N mocks, and what it therefore does not prove
+
+Group N drives capture against the same local double as group M, extended with
+`POST /v1/payment_intents/:id/capture` and a fault injector. The injected fault
+is a **500 with `stripe-should-retry: false`** — the shape that makes Couranr
+treat the outcome as INDEFINITE, which is the only way to reach the
+`capture_pending` recovery path at all. The double honours idempotency keys on
+capture the way Stripe does, so "a retry does not charge twice" is asserted
+against replay behaviour rather than assumed.
+
+`PAYMENT_REAL_STRIPE_VERIFICATION = PENDING_PRELAUNCH`. Nothing in group N
+proves Stripe accepts these requests, only that Couranr builds them correctly
+and reacts correctly to each response.

@@ -179,8 +179,39 @@ export function fetchMyBusinessAccounts() {
   );
 }
 
+/** One row of OPS-002, with the stage the server derived for it. */
+export type QueueEntry = {
+  stage: string;
+  request: DeliveryRequestView;
+  payment: {
+    paymentState: string;
+    payerType: string;
+    amountCents: number;
+    currency: string;
+  } | null;
+  servicePlan: {
+    scheduledPickupStart: string;
+    scheduledPickupEnd: string;
+    timezone: string;
+  } | null;
+  delivery: {
+    id: string;
+    fulfillmentState: string;
+    capturedAmountCents: number;
+    scheduledPickupStart: string;
+    scheduledPickupEnd: string;
+    timezone: string;
+    driverAssigned: boolean;
+  } | null;
+};
+
 export function fetchReviewQueue() {
-  return call<{ requests: DeliveryRequestView[] }>("/api/couranr/operations/queue");
+  return call<{
+    entries: QueueEntry[];
+    total: number;
+    truncated: boolean;
+    requests: DeliveryRequestView[];
+  }>("/api/couranr/operations/queue");
 }
 
 export function beginReview(input: { id: string; expectedVersion: number }) {

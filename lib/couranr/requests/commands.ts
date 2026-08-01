@@ -81,7 +81,7 @@ export type CommandSuccess<T> = { ok: true; value: T };
 export type CommandResult<T> = CommandSuccess<T> | CommandFailure;
 
 /** The columns every read of a request selects. Never `select("*")`. */
-const REQUEST_COLUMNS = [
+const REQUEST_COLUMN_LIST = [
   "id",
   "business_account_id",
   "created_by",
@@ -117,7 +117,24 @@ const REQUEST_COLUMNS = [
   "pickup_address",
   "dropoff_address",
   "normalized_request_payload",
-].join(",");
+];
+
+const REQUEST_COLUMNS = REQUEST_COLUMN_LIST.join(",");
+
+/**
+ * Exactly the columns `toDeliveryRequestView` reads, and nothing else.
+ *
+ * Derived from the same list rather than retyped, so a projection that feeds
+ * the view model cannot silently omit a field the view reads — an omitted
+ * column comes back `undefined`, which the view would happily publish as an
+ * absent value rather than fail on.
+ *
+ * `created_by` and `normalized_request_payload` are dropped: the view never
+ * reads either, and the payload is the largest column on the table.
+ */
+export const REQUEST_VIEW_COLUMNS = REQUEST_COLUMN_LIST.filter(
+  (c) => c !== "created_by" && c !== "normalized_request_payload"
+).join(",");
 
 export type DeliveryRequestRow = Record<string, any>;
 

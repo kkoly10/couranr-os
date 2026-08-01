@@ -25,9 +25,14 @@ import { BASE_URL, SHIPMENT, USERS } from "./fixtures.mjs";
 import { relaySupabase } from "./supabaseRelay.mjs";
 import {
   accountsCreatedBy,
+  allObligationsFor,
+  deliveriesFor,
+  deliveryEventsFor,
   eventsFor,
   issueLinkForRequest,
   obligationFor,
+  paymentEventsFor,
+  servicePlansFor,
   setPayerType,
   tokenStateFor,
   membershipsFor,
@@ -37,8 +42,9 @@ import {
   workspacesFor,
 } from "./db.mjs";
 import { cleanupAll } from "./seed.mjs";
-import { startStripeDouble, capturedPaths } from "./stripeDouble.mjs";
-import { KEY_SOURCE, SUPABASE_URL as ADMIN_SUPABASE_URL } from "./admin.mjs";
+import { startStripeDouble, capturedPaths, calls as stripeCalls, failNextCaptures } from "./stripeDouble.mjs";
+import { KEY_SOURCE, PUBLISHABLE_KEY, SUPABASE_URL as ADMIN_SUPABASE_URL } from "./admin.mjs";
+import { createClient as createUserScopedClient } from "@supabase/supabase-js";
 
 const PW = process.env.E2E_PLAYWRIGHT ?? "/opt/node22/lib/node_modules/playwright/index.mjs";
 const { chromium } = await import(PW);
@@ -211,13 +217,63 @@ function loadSeedState() {
 
 const run = (g) => !groups || groups.includes(g);
 
+/* --------------------------------------------- route-level negative tests */
+
+/**
+ * Calls a canonical API route AS a fixture user, from Node.
+ *
+ * The browser proves what a person can do; this proves what the SERVER refuses
+ * when the browser is not the one asking. Hiding a button is not enforcement —
+ * "the merchant cannot mark ready before authorization" is only true if the
+ * route says no to a caller that skips the screen entirely.
+ *
+ * Node signs in with the PUBLISHABLE key, exactly as the page does. No secret
+ * is involved and none reaches Chromium. Tokens are cached because Supabase
+ * rate-limits sign-in, and a rate-limited attempt would make an assertion look
+ * like it ran when it never did.
+ */
+const TOKENS = new Map();
+async function tokenFor(user) {
+  if (TOKENS.has(user.email)) return TOKENS.get(user.email);
+  const client = createUserScopedClient(SUPABASE_URL, PUBLISHABLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data, error } = await client.auth.signInWithPassword({
+    email: user.email,
+    password: RUN_PASSWORD,
+  });
+  if (error) throw new Error(`tokenFor(${user.key}): ${error.message}`);
+  const token = data?.session?.access_token;
+  if (!token) throw new Error(`tokenFor(${user.key}): no session`);
+  TOKENS.set(user.email, token);
+  return token;
+}
+
+async function apiAs(user, path, init = {}) {
+  const token = await tokenFor(user);
+  const headers = { authorization: `Bearer ${token}` };
+  if (init.body !== undefined) headers["content-type"] = "application/json";
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: init.method ?? "GET",
+    headers,
+    body: init.body === undefined ? undefined : JSON.stringify(init.body),
+  });
+  let payload = null;
+  try {
+    payload = await res.json();
+  } catch {
+    payload = null;
+  }
+  return { status: res.status, payload };
+}
+
 /**
  * The local stand-in for api.stripe.com. Started here so a payment group can
  * assert on what the SDK actually sent — most importantly that no capture was
  * attempted.
  */
 let stripeDouble = null;
-if (!groups || groups.includes("M")) {
+if (!groups || groups.includes("M") || groups.includes("N")) {
   stripeDouble = await startStripeDouble(
     Number((process.env.E2E_STRIPE_DOUBLE ?? "http://127.0.0.1:12111").split(":").pop())
   );
@@ -1669,7 +1725,576 @@ async function groupM() {
   check("M15", "and no refund call either", unexpected.length === 0, unexpected.join(", "));
 }
 
-const ALL = { A: groupA, B: groupB, C: groupC, D: groupD, E: groupE, F: groupF, G: groupG, H: groupH, I: groupI, J: groupJ, K: groupK, L: groupL, M: groupM };
+/* ============================ N. READINESS, CAPTURE, CANONICAL DELIVERY == */
+
+/**
+ * The stage OPS-002 puts a request in, read from the row's own data attribute.
+ *
+ * The stage is computed on the SERVER and stamped onto the row, so this reads
+ * what an operator is actually looking at rather than re-deriving it here —
+ * a test that recomputed the stage would agree with itself no matter what the
+ * screen showed.
+ */
+async function queueStageFor(page, requestId) {
+  await page.goto(`${BASE_URL}/operations/queue`, { waitUntil: "domcontentloaded" });
+  const row = page.locator(`tr[data-request-id="${requestId}"]`);
+  await row.first().waitFor({ state: "attached", timeout: 25000 }).catch(() => {});
+  if ((await row.count()) === 0) return null;
+  return await row.first().getAttribute("data-stage");
+}
+
+/** Drives one request from submitted to confirmed, the way the product does. */
+async function confirmedRequestFor(accountId) {
+  const { ctx, page } = await freshContext();
+  await signIn(page, USERS.merchant, { expectLanding: "/business" });
+  const made = await createRequestThroughUi(page, accountId, { acknowledge: true });
+  await ctx.close();
+  if (!made.id) return null;
+
+  const { ctx: octx, page: opage } = await freshContext();
+  await signIn(opage, USERS.ops, { expectLanding: "/operations" });
+  await decideAsOps(opage, made.id, "accept");
+  await octx.close();
+  return made.id;
+}
+
+async function groupN() {
+  console.log("\n\x1b[1mN — readiness, service plan, capture and canonical delivery\x1b[0m");
+
+  const accounts = await accountsCreatedBy(USER_IDS.merchant);
+  if (accounts.length === 0) {
+    inconclusive("N0", "fulfillment flow", "the merchant fixture has no business account");
+    return;
+  }
+  const accountId = accounts[0].id;
+
+  // The legacy tables, counted before this group runs. The suite-wide SAFE
+  // check covers the whole run; this one localises any write to Group N.
+  const legacyBefore = await realDataCounts();
+  const captureCallsBefore = stripeCalls.filter((c) => c.path.endsWith("/capture")).length;
+
+  const requestId = await confirmedRequestFor(accountId);
+  if (!requestId) {
+    inconclusive("N1", "fulfillment flow", "no request reached confirmed");
+    return;
+  }
+
+  const confirmed = await requestById(requestId);
+  if (confirmed?.request_state !== "confirmed") {
+    inconclusive("N1", "fulfillment flow",
+      `request is ${confirmed?.request_state}, not confirmed`);
+    return;
+  }
+
+  /* --- N1..N3  readiness cannot precede authorization -------------------- */
+
+  {
+    const { ctx, page } = await freshContext();
+    await signIn(page, USERS.merchant, { expectLanding: "/business" });
+    await page.goto(`${BASE_URL}/business/deliveries/${requestId}`, {
+      waitUntil: "domcontentloaded",
+    });
+    await page.getByText("Preparation").first().waitFor({ state: "visible", timeout: 25000 });
+    const readyBtn = await page.getByRole("button", { name: /^Ready for Couranr$/ }).count();
+    const waiting = await page.getByText(/Waiting for payment authorization/i).count();
+    check("N1", "MER-007 offers no Ready before the payment is authorized",
+      readyBtn === 0 && waiting > 0,
+      `readyButtons=${readyBtn} waitingCopy=${waiting}`);
+    await shot(page, "N1-mer007-ready-withheld");
+    await ctx.close();
+  }
+
+  {
+    // Hiding a button is not enforcement. The ROUTE must refuse a caller that
+    // never saw the screen.
+    const r = await apiAs(USERS.merchant, `/api/couranr/delivery-requests/${requestId}/readiness`, {
+      method: "POST",
+      body: {
+        businessAccountId: accountId,
+        expectedVersion: confirmed.version,
+        readiness: "ready",
+      },
+    });
+    const after = await requestById(requestId);
+    check("N2", "the readiness route refuses Ready before authorization, and nothing moved",
+      r.status === 409 && after?.readiness_state === "not_confirmed" &&
+        after?.version === confirmed.version,
+      `status=${r.status} readiness=${after?.readiness_state} version=${after?.version}`);
+  }
+
+  {
+    const { ctx, page } = await freshContext();
+    await signIn(page, USERS.ops, { expectLanding: "/operations" });
+    const stage = await queueStageFor(page, requestId);
+    check("N3", "OPS-002 files an unauthorized request under awaiting payment authorization",
+      stage === "awaiting_payment_authorization", `stage=${stage}`);
+    await shot(page, "N3-ops002-awaiting-authorization");
+    await ctx.close();
+  }
+
+  /* --- N4  the merchant authorizes -------------------------------------- */
+
+  {
+    const { ctx, page } = await freshContext();
+    await mockStripeJs(page);
+    await signIn(page, USERS.merchant, { expectLanding: "/business" });
+    await page.goto(`${BASE_URL}/business/deliveries/${requestId}`, {
+      waitUntil: "domcontentloaded",
+    });
+    const authorize = page.getByRole("button", { name: /^Authorize \$/ });
+    await authorize.waitFor({ state: "visible", timeout: 25000 });
+    await authorize.click();
+    await page.locator("[data-stripe-element]").first().waitFor({ state: "visible", timeout: 25000 });
+    await page.getByRole("button", { name: /^Authorize \$/ }).click();
+    await page.getByText(/Payment authorized/i).waitFor({ state: "visible", timeout: 25000 });
+    await ctx.close();
+  }
+
+  const authorizedOb = await obligationFor(requestId);
+  check("N4", "the hold is authorized for the SERVER-stored quote, nothing captured",
+    authorizedOb?.payment_state === "authorized" &&
+      authorizedOb?.amount_cents === confirmed.delivery_subtotal_cents,
+    `state=${authorizedOb?.payment_state} amount=${authorizedOb?.amount_cents} quote=${confirmed.delivery_subtotal_cents}`);
+
+  /* --- N5..N6  merchant scope and optimistic concurrency ----------------- */
+
+  {
+    const before = await requestById(requestId);
+    const r = await apiAs(
+      USERS.newMerchant,
+      `/api/couranr/delivery-requests/${requestId}/readiness`,
+      {
+        method: "POST",
+        body: {
+          businessAccountId: accountId,
+          expectedVersion: before.version,
+          readiness: "preparing",
+        },
+      }
+    );
+    const after = await requestById(requestId);
+    check("N5", "a merchant outside the account cannot change another's readiness",
+      (r.status === 403 || r.status === 404) &&
+        after?.readiness_state === before?.readiness_state && after?.version === before?.version,
+      `status=${r.status} readiness=${after?.readiness_state}`);
+  }
+
+  {
+    const before = await requestById(requestId);
+    const r = await apiAs(USERS.merchant, `/api/couranr/delivery-requests/${requestId}/readiness`, {
+      method: "POST",
+      body: {
+        businessAccountId: accountId,
+        // A stale tab: the version this caller last saw is one behind.
+        expectedVersion: before.version - 1,
+        readiness: "preparing",
+      },
+    });
+    const after = await requestById(requestId);
+    check("N6", "a stale version is refused and writes nothing",
+      r.status === 409 && after?.version === before?.version &&
+        after?.readiness_state === before?.readiness_state,
+      `status=${r.status} version=${before?.version}->${after?.version}`);
+  }
+
+  /* --- N7  the merchant marks ready, in the browser ---------------------- */
+
+  {
+    const { ctx, page } = await freshContext();
+    await signIn(page, USERS.merchant, { expectLanding: "/business" });
+    await page.goto(`${BASE_URL}/business/deliveries/${requestId}`, {
+      waitUntil: "domcontentloaded",
+    });
+    const readyBtn = page.getByRole("button", { name: /^Ready for Couranr$/ });
+    await readyBtn.waitFor({ state: "visible", timeout: 25000 });
+    await readyBtn.click();
+    // The action removes itself: a readiness the request already has is not
+    // offered. Waiting for that is waiting for the write, not for a clock.
+    await readyBtn.waitFor({ state: "hidden", timeout: 30000 }).catch(() => {});
+    await shot(page, "N7-mer007-ready");
+    await ctx.close();
+  }
+
+  const readyRow = await requestById(requestId);
+  check("N7", "Ready is accepted once the money is held",
+    readyRow?.readiness_state === "ready", `readiness=${readyRow?.readiness_state}`);
+
+  {
+    const { ctx, page } = await freshContext();
+    await signIn(page, USERS.ops, { expectLanding: "/operations" });
+    const stage = await queueStageFor(page, requestId);
+    check("N8", "OPS-002 moves a ready, authorized request to ready for planning",
+      stage === "ready_for_planning", `stage=${stage}`);
+    await shot(page, "N8-ops002-ready-for-planning");
+    await ctx.close();
+  }
+
+  /* --- N9..N10  capture is refused before a service plan ----------------- */
+
+  {
+    const { ctx, page } = await freshContext();
+    await signIn(page, USERS.ops, { expectLanding: "/operations" });
+    await page.goto(`${BASE_URL}/operations/deliveries/${requestId}`, {
+      waitUntil: "domcontentloaded",
+    });
+    await page.getByText("Service plan and capture").waitFor({ state: "visible", timeout: 25000 });
+    const captureBtn = page.getByRole("button", { name: /^Capture .* and schedule$/ });
+    const disabled = await captureBtn.isDisabled();
+    const why = await page.getByText(/Confirm a service plan before capturing/i).count();
+    check("N9", "OPS-003 will not offer capture without a service plan, and says why",
+      disabled === true && why > 0, `disabled=${disabled} explanation=${why}`);
+    await shot(page, "N9-ops003-capture-blocked");
+    await ctx.close();
+  }
+
+  {
+    const r = await apiAs(
+      USERS.ops,
+      `/api/couranr/operations/delivery-requests/${requestId}/capture`,
+      { method: "POST", body: {} }
+    );
+    const ob = await obligationFor(requestId);
+    const deliveries = await deliveriesFor(requestId);
+    check("N10", "the capture route refuses without a plan; the hold is untouched",
+      r.status === 409 && ob?.payment_state === "authorized" && deliveries.length === 0,
+      `status=${r.status} payment=${ob?.payment_state} deliveries=${deliveries.length}`);
+  }
+
+  /* --- N11  Operations confirms the service plan ------------------------- */
+
+  {
+    const { ctx, page } = await freshContext();
+    await signIn(page, USERS.ops, { expectLanding: "/operations" });
+    await page.goto(`${BASE_URL}/operations/deliveries/${requestId}`, {
+      waitUntil: "domcontentloaded",
+    });
+    await page.getByText("Service plan and capture").waitFor({ state: "visible", timeout: 25000 });
+    await page.getByLabel(/Pickup window start/).fill("2026-09-15T09:00");
+    await page.getByLabel(/Pickup window end/).fill("2026-09-15T11:00");
+    await page.getByLabel(/Payload capacity/).fill("800");
+    await page.getByRole("button", { name: /^Confirm service plan$/ }).click();
+    // "Change the plan" only renders once a plan exists.
+    await page
+      .getByRole("button", { name: /^Change the plan$/ })
+      .waitFor({ state: "visible", timeout: 30000 })
+      .catch(() => {});
+    await shot(page, "N11-ops003-plan-confirmed");
+    await ctx.close();
+  }
+
+  const plans = await servicePlansFor(requestId);
+  const livePlan = plans.find((p) => p.plan_state === "confirmed") ?? null;
+  check("N11", "a confirmed plan exists for THIS generation and THIS obligation",
+    Boolean(livePlan) && livePlan.payment_obligation_id === authorizedOb?.id &&
+      livePlan.request_version === readyRow?.version,
+    `plans=${plans.length} planState=${livePlan?.plan_state} planVersion=${livePlan?.request_version} rowVersion=${readyRow?.version}`);
+
+  {
+    const { ctx, page } = await freshContext();
+    await signIn(page, USERS.ops, { expectLanding: "/operations" });
+    const stage = await queueStageFor(page, requestId);
+    check("N12", "OPS-002 shows service plan confirmed once a plan is in place",
+      stage === "service_plan_confirmed", `stage=${stage}`);
+    await shot(page, "N12-ops002-plan-confirmed");
+    await ctx.close();
+  }
+
+  /* --- N13..N15  a capture whose outcome is UNKNOWN ---------------------- */
+
+  /*
+   * The provider outage that the recoverable workflow exists for. The double
+   * answers 500, which is INDEFINITE: Couranr does not know whether Stripe took
+   * the money, so the obligation must stay in capture_pending rather than be
+   * released back to authorized, and no delivery may be created from it.
+   */
+  failNextCaptures(1);
+  {
+    const { ctx, page } = await freshContext();
+    await signIn(page, USERS.ops, { expectLanding: "/operations" });
+    await page.goto(`${BASE_URL}/operations/deliveries/${requestId}`, {
+      waitUntil: "domcontentloaded",
+    });
+    const captureBtn = page.getByRole("button", { name: /^Capture .* and schedule$/ });
+    await captureBtn.waitFor({ state: "visible", timeout: 25000 });
+    await captureBtn.click();
+    await page.getByText(/could not confirm the capture/i).waitFor({
+      state: "visible",
+      timeout: 30000,
+    }).catch(() => {});
+    await shot(page, "N13-capture-outcome-unknown");
+    await ctx.close();
+  }
+
+  const pendingOb = await obligationFor(requestId);
+  check("N13", "an unconfirmed capture stays capture_pending — never back to authorized",
+    pendingOb?.payment_state === "capture_pending" && pendingOb?.capture_requested_at !== null,
+    `payment_state=${pendingOb?.payment_state}`);
+
+  {
+    const deliveries = await deliveriesFor(requestId);
+    check("N14", "no canonical delivery is created while a capture is pending",
+      deliveries.length === 0, `deliveries=${deliveries.length}`);
+  }
+
+  {
+    const { ctx, page } = await freshContext();
+    await signIn(page, USERS.ops, { expectLanding: "/operations" });
+    const stage = await queueStageFor(page, requestId);
+    const row = page.locator(`tr[data-request-id="${requestId}"]`).first();
+    const retry = await row.getByRole("button").count();
+    const advice = await row.getByText(/do not retry/i).count();
+    check("N15", "OPS-002 shows capture pending and offers no retry button",
+      stage === "capture_pending" && retry === 0 && advice > 0,
+      `stage=${stage} buttons=${retry} advice=${advice}`);
+    await shot(page, "N15-ops002-capture-pending");
+    await ctx.close();
+  }
+
+  {
+    /*
+     * The merchant's money copy must track the payment, not the request
+     * state. `confirmed` used to mean "nothing charged"; it now spans an
+     * authorized hold, a capture in flight and a completed capture, and
+     * telling a merchant nothing has been charged while a capture is in
+     * flight is simply false.
+     */
+    const { ctx, page } = await freshContext();
+    await signIn(page, USERS.merchant, { expectLanding: "/business" });
+    await page.goto(`${BASE_URL}/business/deliveries/${requestId}`, {
+      waitUntil: "domcontentloaded",
+    });
+    await page
+      .getByText(/Couranr is completing the payment/i)
+      .waitFor({ state: "visible", timeout: 25000 })
+      .catch(() => {});
+    const stale = await page.getByText(/Nothing has been charged yet/i).count();
+    const accurate = await page.getByText(/Couranr is completing the payment/i).count();
+    check("N15b", "MER-007 never says nothing was charged while a capture is in flight",
+      stale === 0 && accurate > 0, `staleCopy=${stale} accurateCopy=${accurate}`);
+    await shot(page, "N15-mer007-capture-in-flight");
+    await ctx.close();
+  }
+
+  {
+    // Readiness is frozen: money may have moved and a driver is planned
+    // around the answer.
+    const before = await requestById(requestId);
+    const r = await apiAs(USERS.merchant, `/api/couranr/delivery-requests/${requestId}/readiness`, {
+      method: "POST",
+      body: {
+        businessAccountId: accountId,
+        expectedVersion: before.version,
+        readiness: "not_ready",
+      },
+    });
+    const after = await requestById(requestId);
+    check("N16", "readiness is frozen while a capture is in flight",
+      r.status === 409 && after?.readiness_state === "ready",
+      `status=${r.status} readiness=${after?.readiness_state}`);
+  }
+
+  /* --- N17..N18  recovery, and exactly one delivery ---------------------- */
+
+  /*
+   * The recovery is NOT a second capture. OPS-003 withholds Capture entirely
+   * while the outcome is unknown and offers only "Check with the payment
+   * provider", which reads the intent: still merely authorized, so the hold is
+   * released and a capture becomes possible again.
+   */
+  {
+    const { ctx, page } = await freshContext();
+    await signIn(page, USERS.ops, { expectLanding: "/operations" });
+    await page.goto(`${BASE_URL}/operations/deliveries/${requestId}`, {
+      waitUntil: "domcontentloaded",
+    });
+    const reconcileBtn = page.getByRole("button", { name: /^Check with the payment provider$/ });
+    await reconcileBtn.waitFor({ state: "visible", timeout: 25000 });
+    const captureOffered = await page
+      .getByRole("button", { name: /^Capture .* and schedule$/ })
+      .count();
+    check("N17a", "OPS-003 withholds Capture while the outcome is unknown and offers reconcile",
+      captureOffered === 0, `captureButtons=${captureOffered}`);
+    await shot(page, "N17-ops003-unresolved");
+
+    await reconcileBtn.click();
+    /*
+     * Wait for the OUTCOME, not for a duration. The panel re-reads after a
+     * successful reconcile, and the released hold is what brings the Capture
+     * button back — so this is both the synchronisation point and the proof
+     * that an operator can see the recovery happen. A fixed sleep passed in
+     * isolation and lost the race under a full-suite run.
+     */
+    await page
+      .getByRole("button", { name: /^Capture .* and schedule$/ })
+      .waitFor({ state: "visible", timeout: 30000 })
+      .catch(() => {});
+    await shot(page, "N17-ops003-released");
+    await ctx.close();
+  }
+
+  const releasedOb = await obligationFor(requestId);
+  check("N17b", "reconciling a capture the provider never took releases the hold",
+    releasedOb?.payment_state === "authorized" && releasedOb?.capture_requested_at === null,
+    `payment_state=${releasedOb?.payment_state} requestedAt=${releasedOb?.capture_requested_at}`);
+
+  {
+    const { ctx, page } = await freshContext();
+    await signIn(page, USERS.ops, { expectLanding: "/operations" });
+    await page.goto(`${BASE_URL}/operations/deliveries/${requestId}`, {
+      waitUntil: "domcontentloaded",
+    });
+    const captureBtn = page.getByRole("button", { name: /^Capture .* and schedule$/ });
+    await captureBtn.waitFor({ state: "visible", timeout: 25000 });
+    await captureBtn.click();
+    await page.getByText(/Canonical delivery created/i).waitFor({
+      state: "visible",
+      timeout: 30000,
+    }).catch(() => {});
+    await shot(page, "N17-ops003-captured");
+    await ctx.close();
+  }
+
+  const capturedOb = await obligationFor(requestId);
+  const deliveries = await deliveriesFor(requestId);
+  const delivery = deliveries[0] ?? null;
+
+  check("N17", "the retry captures the STORED amount, once",
+    capturedOb?.payment_state === "captured" &&
+      capturedOb?.captured_amount_cents === confirmed.delivery_subtotal_cents,
+    `state=${capturedOb?.payment_state} captured=${capturedOb?.captured_amount_cents} quote=${confirmed.delivery_subtotal_cents}`);
+
+  check("N18", "exactly one canonical delivery exists, for the captured amount",
+    deliveries.length === 1 &&
+      delivery?.captured_amount_cents === confirmed.delivery_subtotal_cents &&
+      delivery?.payment_obligation_id === authorizedOb?.id &&
+      delivery?.service_plan_id === livePlan?.id,
+    `deliveries=${deliveries.length} amount=${delivery?.captured_amount_cents} plan=${delivery?.service_plan_id === livePlan?.id}`);
+
+  /* --- N19  capturing again changes nothing ------------------------------ */
+
+  {
+    const capturesBefore = stripeCalls.filter((c) => c.path.endsWith("/capture")).length;
+    const r = await apiAs(
+      USERS.ops,
+      `/api/couranr/operations/delivery-requests/${requestId}/capture`,
+      { method: "POST", body: {} }
+    );
+    const again = await deliveriesFor(requestId);
+    const obs = await allObligationsFor(requestId);
+    const capturesAfter = stripeCalls.filter((c) => c.path.endsWith("/capture")).length;
+    check("N19", "capturing a second time creates no second delivery and no second charge",
+      r.status === 200 && again.length === 1 && again[0].id === delivery?.id &&
+        obs.filter((o) => o.payment_state === "captured").length === 1 &&
+        capturesAfter === capturesBefore,
+      `status=${r.status} deliveries=${again.length} newStripeCaptures=${capturesAfter - capturesBefore}`);
+  }
+
+  /* --- N20  what capture must NOT have done ------------------------------ */
+
+  {
+    const legacyAfter = await realDataCounts();
+    const noLegacy =
+      legacyAfter.orders === legacyBefore.orders &&
+      legacyAfter.deliveries === legacyBefore.deliveries;
+
+    // No driver column exists on the canonical delivery, and the row says so.
+    const scheduledOnly = delivery?.fulfillment_state === "scheduled";
+    const noDriverField = Object.keys(delivery ?? {}).every((k) => !/driver/i.test(k));
+
+    const captureCalls = stripeCalls.filter((c) => c.path.endsWith("/capture"));
+    const newCaptures = captureCalls.length - captureCallsBefore;
+    const keys = new Set(captureCalls.slice(captureCallsBefore).map((c) => c.idempotencyKey));
+    const noAmount = captureCalls
+      .slice(captureCallsBefore)
+      .every((c) => c.form?.amount_to_capture === undefined);
+
+    check("N20a", "capture wrote nothing to the legacy orders or deliveries tables",
+      noLegacy,
+      `before=${JSON.stringify(legacyBefore)} after=${JSON.stringify(legacyAfter)}`);
+
+    check("N20b", "the canonical delivery is scheduled with no driver assigned",
+      scheduledOnly && noDriverField,
+      `fulfillment_state=${delivery?.fulfillment_state} driverField=${!noDriverField}`);
+
+    // Two attempts — the injected outage and the recovery — under ONE
+    // idempotency key, and never an amount.
+    check("N20c", "Stripe saw two capture attempts under one idempotency key and no amount",
+      newCaptures === 2 && keys.size === 1 && noAmount,
+      `attempts=${newCaptures} distinctKeys=${keys.size} amountSent=${!noAmount}`);
+  }
+
+  /* --- N21  both surfaces agree, and the ledger is complete -------------- */
+
+  {
+    const { ctx, page } = await freshContext();
+    await signIn(page, USERS.merchant, { expectLanding: "/business" });
+    await page.goto(`${BASE_URL}/business/deliveries/${requestId}`, {
+      waitUntil: "domcontentloaded",
+    });
+    await page.getByText(/Couranr has scheduled this delivery/i).waitFor({
+      state: "visible",
+      timeout: 25000,
+    }).catch(() => {});
+    const merchantSaw = await page.getByText(/Couranr has scheduled this delivery/i).count();
+    const merchantAmount = await page
+      .getByText(new RegExp(formatCentsForCopy(delivery?.captured_amount_cents)))
+      .count();
+    check("N21", "MER-007 shows the same captured amount and scheduled window as Operations",
+      merchantSaw > 0 && merchantAmount > 0,
+      `scheduledCopy=${merchantSaw} amountCopy=${merchantAmount}`);
+
+    const stale = await page.getByText(/Nothing has been charged yet/i).count();
+    const captured = await page.getByText(/payment has been captured/i).count();
+    check("N21b", "and the status banner says the payment was captured, not that nothing was",
+      stale === 0 && captured > 0, `staleCopy=${stale} capturedCopy=${captured}`);
+    await shot(page, "N21-mer007-scheduled");
+    await ctx.close();
+  }
+
+  {
+    const { ctx, page } = await freshContext();
+    await signIn(page, USERS.ops, { expectLanding: "/operations" });
+    const stage = await queueStageFor(page, requestId);
+    check("N22", "OPS-002 shows the request as captured and scheduled",
+      stage === "captured_scheduled", `stage=${stage}`);
+    await shot(page, "N22-ops002-captured-scheduled");
+    await ctx.close();
+  }
+
+  {
+    /*
+     * The ledger is the record of what happened, so it must show BOTH capture
+     * attempts — the one whose outcome was unknown and the one that worked —
+     * and exactly one of them applying. Two requests is correct here; one
+     * would mean the failed attempt left no trace.
+     */
+    const ledger = await paymentEventsFor(requestId);
+    const requested = ledger.filter((e) => e.event_type === "couranr.capture.requested");
+    const released = ledger.filter((e) => e.event_type === "couranr.capture.failed");
+    const results = ledger.filter((e) => e.event_type === "couranr.capture.result");
+    const applied = results.filter((e) => e.outcome === "applied");
+    const dEvents = delivery ? await deliveryEventsFor(delivery.id) : [];
+    check("N23", "the ledger shows both attempts, one release, and exactly one applied capture",
+      requested.length === 2 && released.length === 1 && applied.length === 1 &&
+        results.length === 1 && dEvents.length === 1 &&
+        dEvents[0].command === "create_delivery_from_capture",
+      `requested=${requested.length} released=${released.length} results=${results.length} applied=${applied.length} deliveryEvents=${dEvents.length}`);
+
+    // The money moved exactly once, and the ledger says so in one place.
+    check("N23b", "no capture result was ever rejected or ignored",
+      results.every((e) => e.outcome === "applied"),
+      results.map((e) => e.outcome).join(","));
+  }
+}
+
+/** Integer cents → the string the UI renders, for a text assertion. */
+function formatCentsForCopy(cents) {
+  if (typeof cents !== "number") return "\\$0\\.00";
+  const abs = Math.abs(Math.trunc(cents));
+  return `\\$${Math.floor(abs / 100)}\\.${String(abs % 100).padStart(2, "0")}`;
+}
+
+const ALL = { A: groupA, B: groupB, C: groupC, D: groupD, E: groupE, F: groupF, G: groupG, H: groupH, I: groupI, J: groupJ, K: groupK, L: groupL, M: groupM, N: groupN };
 
 let REAL_AFTER = null;
 let cleanup = null;
