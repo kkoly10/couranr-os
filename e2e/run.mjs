@@ -2418,6 +2418,13 @@ async function toCapturePending(accountId) {
     await page.locator("[data-stripe-element]").first().waitFor({ state: "visible", timeout: 25000 });
     await page.getByRole("button", { name: /^Authorize \$/ }).click();
     await page.getByText(/Payment authorized/i).waitFor({ state: "visible", timeout: 25000 });
+    /*
+     * Re-read before looking for Ready. The readiness panel only offers it
+     * once the fulfillment view reports `authorized`, and the payment panel's
+     * own success does not re-fetch that view — Group N used a fresh context
+     * here for the same reason.
+     */
+    await page.goto(`${BASE_URL}/business/deliveries/${requestId}`, { waitUntil: "domcontentloaded" });
     const ready = page.getByRole("button", { name: /^Ready for Couranr$/ });
     await ready.waitFor({ state: "visible", timeout: 25000 });
     await ready.click();
