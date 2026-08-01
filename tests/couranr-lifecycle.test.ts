@@ -69,6 +69,7 @@ describe("OPS-002 lifecycle stage derivation", () => {
       at({ readinessState: "ready" }),
       at({ readinessState: "ready", servicePlanConfirmed: true }),
       at({ paymentState: "capture_pending" }),
+      at({ paymentState: "captured" }),
       at({ canonicalDeliveryExists: true }),
       at({ requestState: "declined" }),
     ]);
@@ -95,16 +96,32 @@ describe("OPS-002 lifecycle stage derivation", () => {
   });
 
   /*
-   * `captured` with no delivery row means the capture landed and conversion has
-   * not been observed. It must NOT fall back to a stage that offers Capture.
+   * `captured` with no delivery row means the money is TAKEN and conversion has
+   * not been observed. It must not fall back to a stage that offers Capture,
+   * and it must not claim to be scheduled — the delivery dispatch acts on does
+   * not exist.
    */
-  it("captured without a delivery is still captured_scheduled", () => {
+  it("captured without a delivery is its own stage, never scheduled", () => {
     expect(at({ paymentState: "captured", canonicalDeliveryExists: false })).toBe(
-      "captured_scheduled"
+      "captured_not_scheduled"
     );
     expect(
       at({ paymentState: "captured", servicePlanConfirmed: true, readinessState: "ready" })
-    ).toBe("captured_scheduled");
+    ).toBe("captured_not_scheduled");
+  });
+
+  /*
+   * Readiness gates the plan. `couranr_begin_payment_capture` refuses unless
+   * readiness is `ready`, so a planned request whose merchant has since said
+   * `not_ready` or `unavailable` must NOT be filed as ready to capture.
+   */
+  it("a plan does not outrank a merchant who is no longer ready", () => {
+    for (const readinessState of ["not_confirmed", "preparing", "not_ready", "unavailable"]) {
+      expect(at({ readinessState, servicePlanConfirmed: true })).toBe("merchant_preparing");
+    }
+    expect(at({ readinessState: "ready", servicePlanConfirmed: true })).toBe(
+      "service_plan_confirmed"
+    );
   });
 
   it("a canonical delivery outranks everything", () => {
@@ -189,6 +206,11 @@ describe("OPS-002 stage metadata", () => {
     expect(ranks).toEqual([...ranks].sort((a, b) => a - b));
     expect(QUEUE_STAGES[0]).toBe("pending_review");
     expect(QUEUE_STAGES[QUEUE_STAGES.length - 1]).toBe("captured_scheduled");
+  });
+
+  /* Money taken is never a success cue until the delivery actually exists. */
+  it("captured without a delivery reads as a warning, not success", () => {
+    expect(LIFECYCLE_STAGE_TONE.captured_not_scheduled).toBe("warning");
   });
 
   it("capture_pending reads as a warning, never as success", () => {

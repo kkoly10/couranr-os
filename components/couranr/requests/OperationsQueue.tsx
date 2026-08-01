@@ -135,9 +135,12 @@ export function OperationsQueue() {
                 The cap is stated, never silent. An operator who is shown 200 of
                 340 rows and told nothing believes they have seen the queue.
               */}
-              {total > entries.length
-                ? `Showing the ${entries.length} oldest of ${total} requests in flight.`
-                : `${entries.length} request${entries.length === 1 ? "" : "s"} in flight.`}
+              {(() => {
+                const inFlight = entries.filter((e) => e.stage !== "captured_scheduled").length;
+                return total > inFlight
+                  ? `Showing the ${inFlight} oldest of ${total} requests in flight, plus recently scheduled work.`
+                  : `${inFlight} request${inFlight === 1 ? "" : "s"} in flight.`;
+              })()}
             </Text>
             <Button size="sm" onClick={load}>
               Refresh
@@ -297,6 +300,8 @@ function QueueRow({
           <Button size="sm" variant="secondary" loading={busy} onClick={() => onBeginReview(r)}>
             Open for review
           </Button>
+        ) : stage === "captured_not_scheduled" ? (
+          <Link href={`/operations/deliveries/${r.id}`}>Finish scheduling</Link>
         ) : stage === "capture_pending" ? (
           // A link, not a button: the action is to ASK the provider what
           // happened, never to capture again. Leaving this row with no way

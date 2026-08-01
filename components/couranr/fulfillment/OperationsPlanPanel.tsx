@@ -69,6 +69,18 @@ export function OperationsPlanPanel({
    */
   const captureUnresolved = payment?.paymentState === "capture_pending" && !delivery;
 
+  /*
+   * Money TAKEN, no delivery. Conversion is idempotent and runs inside the
+   * capture command, so the way out is to run it again — it will short-circuit
+   * to the existing obligation and create the delivery.
+   *
+   * This state used to render as a dead end: `canCapture` was false, so the
+   * panel fell through to "The payment is not authorized." on a request whose
+   * payment had been captured, and offered nothing at all. Wrong on the fact
+   * and wrong on the action.
+   */
+  const capturedNotScheduled = payment?.paymentState === "captured" && !delivery;
+
   async function confirmPlan() {
     setBusy(true);
     setError(null);
@@ -154,6 +166,14 @@ export function OperationsPlanPanel({
           </Alert>
         ) : null}
 
+        {capturedNotScheduled ? (
+          <Alert tone="warning" title="Payment captured — this delivery is not scheduled yet">
+            {formatCents(payment.amountCents)} has been taken. The canonical delivery was not
+            created, so nothing is scheduled. Finish scheduling — do NOT capture again; the
+            money has already moved.
+          </Alert>
+        ) : null}
+
         {captureUnresolved ? (
           <Alert tone="warning" title="Couranr does not know whether this capture completed">
             The payment provider did not confirm the outcome. Do not capture again — check
@@ -175,7 +195,7 @@ export function OperationsPlanPanel({
           </Stack>
         ) : null}
 
-        {!delivery && (editing || !plan) ? (
+        {!delivery && !capturedNotScheduled && !captureUnresolved && (editing || !plan) ? (
           <Stack gap={3}>
             <Grid columns={2}>
               <Field label="Pickup window start" required>
@@ -255,12 +275,21 @@ export function OperationsPlanPanel({
 
         {!delivery ? (
           <Cluster gap={3}>
-            {plan && !editing && !captureUnresolved ? (
+            {plan && !editing && !captureUnresolved && !capturedNotScheduled ? (
               <Button variant="ghost" onClick={() => setEditing(true)} disabled={busy}>
                 Change the plan
               </Button>
             ) : null}
-            {captureUnresolved ? (
+            {capturedNotScheduled ? (
+              /*
+               * Calls the SAME capture command. It sees the obligation is
+               * already `captured`, skips Stripe entirely and runs the
+               * idempotent conversion — so this cannot take money twice.
+               */
+              <Button variant="primary" loading={busy} onClick={capture}>
+                Finish scheduling
+              </Button>
+            ) : captureUnresolved ? (
               <Button variant="primary" loading={busy} onClick={reconcile}>
                 Check with the payment provider
               </Button>
@@ -272,7 +301,7 @@ export function OperationsPlanPanel({
           </Cluster>
         ) : null}
 
-        {!canCapture && !delivery && !captureUnresolved ? (
+        {!canCapture && !delivery && !captureUnresolved && !capturedNotScheduled ? (
           <Text size="xs" muted>
             {!plan
               ? "Confirm a service plan before capturing."

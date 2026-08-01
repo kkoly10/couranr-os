@@ -79,11 +79,10 @@ export async function GET(req: NextRequest) {
      * is oldest and most overdue.
      */
     total: result.value.total,
-    truncated: result.value.total > entries.length,
     /*
-     * Kept so the queue's existing "open for review" path is unchanged: it is
-     * exactly the pending-review subset this route used to return on its own.
+     * Compares against the WORK entries only. Recently-scheduled rows are
+     * folded in on top of the window and are not part of what was truncated.
      */
-    requests: entries.filter((e) => e.stage === "pending_review").map((e) => e.request),
+    truncated: result.value.total > entries.filter((e) => e.stage !== "captured_scheduled").length,
   });
 }

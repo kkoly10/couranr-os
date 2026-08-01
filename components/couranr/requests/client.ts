@@ -206,12 +206,9 @@ export type QueueEntry = {
 };
 
 export function fetchReviewQueue() {
-  return call<{
-    entries: QueueEntry[];
-    total: number;
-    truncated: boolean;
-    requests: DeliveryRequestView[];
-  }>("/api/couranr/operations/queue");
+  return call<{ entries: QueueEntry[]; total: number; truncated: boolean }>(
+    "/api/couranr/operations/queue"
+  );
 }
 
 export function beginReview(input: { id: string; expectedVersion: number }) {

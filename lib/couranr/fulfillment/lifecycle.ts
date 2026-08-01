@@ -25,6 +25,14 @@ export const LIFECYCLE_STAGES = [
   "service_plan_confirmed",
   /** A capture was started and its outcome is not yet known. Do not retry. */
   "capture_pending",
+  /**
+   * Money TAKEN, and no canonical delivery yet. Distinct from
+   * `captured_scheduled` because calling it "scheduled" would be a lie about
+   * the one thing dispatch acts on — and distinct from `capture_pending`
+   * because there is nothing to ask the provider: the answer is known and the
+   * only remaining step is conversion.
+   */
+  "captured_not_scheduled",
   /** Money taken and a canonical delivery exists. Dispatch is later work. */
   "captured_scheduled",
   /** Declined, cancelled, closed or not yet submitted. Not queue work. */
@@ -69,10 +77,11 @@ export function lifecycleStage(input: LifecycleInput): LifecycleStage {
 
   /*
    * Captured with no delivery yet: the capture succeeded and conversion has
-   * not run (or has not been observed). It is still "money taken", so it must
-   * not fall through to a stage that offers Capture again.
+   * not run, or has not been observed. It is money TAKEN, so it must not fall
+   * through to a stage that offers Capture again — and it must not claim to be
+   * scheduled either, because the delivery dispatch acts on does not exist.
    */
-  if (input.paymentState === "captured") return "captured_scheduled";
+  if (input.paymentState === "captured") return "captured_not_scheduled";
 
   if (input.requestState === "pending_couranr_review") return "pending_review";
   if (!(PAYABLE_REQUEST_STATES as readonly string[]).includes(input.requestState)) {
@@ -80,9 +89,19 @@ export function lifecycleStage(input: LifecycleInput): LifecycleStage {
   }
 
   if (input.paymentState !== "authorized") return "awaiting_payment_authorization";
+
+  /*
+   * Readiness gates the plan, not the other way round.
+   *
+   * `couranr_begin_payment_capture` refuses unless `readiness_state = 'ready'`,
+   * so a request whose merchant has since said `not_ready` or `unavailable` is
+   * NOT capturable no matter how good its plan is. Reporting it as "planned and
+   * ready to capture" put a Capture action on a row the database would refuse,
+   * and contradicted what OPS-003 showed for the same request.
+   */
+  if (input.readinessState !== "ready") return "merchant_preparing";
   if (input.servicePlanConfirmed) return "service_plan_confirmed";
-  if (input.readinessState === "ready") return "ready_for_planning";
-  return "merchant_preparing";
+  return "ready_for_planning";
 }
 
 /** Queue ordering. Lower sorts first — the oldest blocked work at the top. */
@@ -91,10 +110,11 @@ export const LIFECYCLE_STAGE_ORDER: Readonly<Record<LifecycleStage, number>> = {
   ready_for_planning: 1,
   service_plan_confirmed: 2,
   capture_pending: 3,
-  merchant_preparing: 4,
-  awaiting_payment_authorization: 5,
-  captured_scheduled: 6,
-  not_actionable: 7,
+  captured_not_scheduled: 4,
+  merchant_preparing: 5,
+  awaiting_payment_authorization: 6,
+  captured_scheduled: 7,
+  not_actionable: 8,
 };
 
 export const LIFECYCLE_STAGE_LABELS: Readonly<Record<LifecycleStage, string>> = {
@@ -104,6 +124,7 @@ export const LIFECYCLE_STAGE_LABELS: Readonly<Record<LifecycleStage, string>> = 
   ready_for_planning: "Ready for planning",
   service_plan_confirmed: "Service plan confirmed",
   capture_pending: "Capture pending",
+  captured_not_scheduled: "Captured — not yet scheduled",
   captured_scheduled: "Captured — scheduled",
   not_actionable: "No action available",
 };
@@ -118,6 +139,8 @@ export const LIFECYCLE_STAGE_DESCRIPTIONS: Readonly<Record<LifecycleStage, strin
   service_plan_confirmed: "Planned and ready to capture the authorized amount.",
   capture_pending:
     "A capture is in flight and its outcome is not yet confirmed. Do not retry — Couranr will resolve it.",
+  captured_not_scheduled:
+    "The payment was taken but no delivery exists yet. Finish scheduling — do not capture again.",
   captured_scheduled: "Payment captured and the delivery is scheduled.",
   not_actionable: "Closed, declined or cancelled.",
 };
@@ -147,6 +170,7 @@ export const LIFECYCLE_STAGE_TONE: Readonly<
   ready_for_planning: "info",
   service_plan_confirmed: "info",
   capture_pending: "warning",
+  captured_not_scheduled: "warning",
   captured_scheduled: "success",
   not_actionable: "neutral",
 };

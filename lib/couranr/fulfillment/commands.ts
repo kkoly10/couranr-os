@@ -652,11 +652,42 @@ export async function listOperationsLifecycle(params: {
 
   const limit = Math.min(Math.max(params.limit ?? 200, 1), 200);
 
-  const {
-    data: requests,
-    error,
-    count,
-  } = (await supabaseAdmin
+  /*
+   * SCHEDULED WORK IS EXCLUDED FROM THE OLDEST-FIRST WINDOW.
+   *
+   * A captured, scheduled request stays in `confirmed` forever — no state
+   * change ever removes it — so with a single oldest-first query the window
+   * fills with finished work and new review work is starved out of Operations
+   * entirely. The queue would look healthy while nobody could see the newest
+   * submission.
+   *
+   * So completed rows are fetched separately, newest-first and capped, and are
+   * excluded from the work window by id.
+   *
+   * KNOWN LIMIT: the exclusion list is every canonical delivery, which grows
+   * without bound. It is tiny today and this keeps the query in one round trip;
+   * the durable fix is a database-side filter, which needs a reviewed
+   * migration. `truncated` reports the shortfall rather than hiding it.
+   */
+  const DONE_WINDOW = 25;
+  const { data: doneRows, error: doneErr } = (await supabaseAdmin
+    .from("couranr_deliveries")
+    .select("request_id,created_at")
+    .order("created_at", { ascending: false })) as { data: any[]; error: any };
+
+  if (doneErr) {
+    return fail({
+      operation: op,
+      code: "internal",
+      detail: doneErr.message,
+      message: "The Couranr Operations Queue could not be loaded.",
+    });
+  }
+
+  const doneIds = (doneRows ?? []).map((d) => String(d.request_id));
+  const recentDoneIds = doneIds.slice(0, DONE_WINDOW);
+
+  let workQuery = supabaseAdmin
     .from("couranr_delivery_requests")
     // The same allow-list the detail view is fed, so both screens render one
     // request from identical inputs.
@@ -667,7 +698,16 @@ export async function listOperationsLifecycle(params: {
       "confirmed",
       "awaiting_quote_acceptance",
       "quote_revision_required",
-    ])
+    ]);
+  if (doneIds.length > 0) {
+    workQuery = workQuery.not("id", "in", `(${doneIds.join(",")})`);
+  }
+
+  const {
+    data: requests,
+    error,
+    count,
+  } = (await workQuery
     /*
      * Oldest first, which is how a work queue is worked. `created_at` breaks
      * the tie so the page is stable rather than reordering between refreshes
@@ -686,8 +726,40 @@ export async function listOperationsLifecycle(params: {
     });
   }
 
-  const rows = requests ?? [];
-  const total = typeof count === "number" ? count : rows.length;
+  /*
+   * The most recently scheduled work, folded back in so Operations can still
+   * see what it just completed — capped, and newest-first, so it can never
+   * crowd out the work window again.
+   */
+  let doneRequests: any[] = [];
+  if (recentDoneIds.length > 0) {
+    const { data, error: recentErr } = (await supabaseAdmin
+      .from("couranr_delivery_requests")
+      .select(REQUEST_VIEW_COLUMNS)
+      .in("id", recentDoneIds)) as { data: any[]; error: any };
+    if (recentErr) {
+      return fail({
+        operation: op,
+        code: "internal",
+        detail: recentErr.message,
+        message: "The Couranr Operations Queue could not be loaded.",
+      });
+    }
+    // Preserve the newest-first order the delivery query established.
+    const rank = new Map(recentDoneIds.map((id, i) => [id, i]));
+    doneRequests = (data ?? []).sort(
+      (a, b) => (rank.get(String(a.id)) ?? 0) - (rank.get(String(b.id)) ?? 0)
+    );
+  }
+
+  const workRows = requests ?? [];
+  const rows = [...workRows, ...doneRequests];
+  /*
+   * `total` counts the WORK window only — the number the "showing the N oldest
+   * of M" notice is about. Folding completed rows into it would understate how
+   * much unworked queue is hidden.
+   */
+  const total = typeof count === "number" ? count : workRows.length;
   if (rows.length === 0) return { ok: true, value: { entries: [], total } };
 
   const ids = rows.map((r) => String(r.id));

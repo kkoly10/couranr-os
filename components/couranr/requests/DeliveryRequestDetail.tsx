@@ -98,7 +98,14 @@ const OUTCOME_COPY: Record<string, { tone: "info" | "success" | "warning" | "dan
  * on the last two that sentence is simply false. The one thing that stays
  * true at every stage is that no driver is assigned.
  */
-function confirmedBody(fulfillment: FulfillmentView | null): string {
+function confirmedBody(
+  fulfillment: FulfillmentView | null,
+  unavailable: boolean
+): string {
+  // Could not read the payment. Say so — do not assert anything about money.
+  if (unavailable) {
+    return "Couranr could not load the payment status for this delivery just now. Refresh, or contact Couranr Support.";
+  }
   const state = fulfillment?.payment?.paymentState ?? null;
   if (fulfillment?.delivery || state === "captured") {
     return "The payment has been captured and this delivery is scheduled. No driver has been assigned yet.";
@@ -145,6 +152,8 @@ export function DeliveryRequestDetail({ id }: { id: string }) {
    * different answers about the same delivery.
    */
   const [fulfillment, setFulfillment] = React.useState<FulfillmentView | null>(null);
+  /** The payment/plan/delivery read failed. Never rendered as "nothing yet". */
+  const [fulfillmentUnavailable, setFulfillmentUnavailable] = React.useState(false);
 
   /**
    * Re-read after any lifecycle action, so every panel agrees.
@@ -156,7 +165,18 @@ export function DeliveryRequestDetail({ id }: { id: string }) {
   const reloadFulfillment = React.useCallback(
     async (businessAccountId: string | null) => {
       const r = await fetchFulfillment({ id, businessAccountId });
-      if (!isApiFailure(r)) setFulfillment(r.value);
+      if (isApiFailure(r)) {
+        /*
+         * FAIL CLOSED. A swallowed failure left `fulfillment` null, and null
+         * is indistinguishable from "no payment exists" — so a merchant whose
+         * delivery had been captured and scheduled was shown "Nothing has been
+         * charged yet." Not knowing must never render as a fact about money.
+         */
+        setFulfillmentUnavailable(true);
+        return;
+      }
+      setFulfillmentUnavailable(false);
+      setFulfillment(r.value);
     },
     [id]
   );
@@ -245,7 +265,7 @@ export function DeliveryRequestDetail({ id }: { id: string }) {
             {request.requestState === "declined"
               ? `${declineMessageFor(declineReasonCode(events))} Nothing was charged.`
               : request.requestState === "confirmed"
-                ? confirmedBody(fulfillment)
+                ? confirmedBody(fulfillment, fulfillmentUnavailable)
                 : OUTCOME_COPY[request.requestState].body}
           </Alert>
         ) : null}

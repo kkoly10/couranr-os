@@ -2053,7 +2053,9 @@ async function groupN() {
 
   const pendingOb = await obligationFor(requestId);
   check("N13", "an unconfirmed capture stays capture_pending — never back to authorized",
-    pendingOb?.payment_state === "capture_pending" && pendingOb?.capture_requested_at !== null,
+    pendingOb?.payment_state === "capture_pending" &&
+      typeof pendingOb?.capture_requested_at === "string" &&
+      pendingOb.capture_requested_at.length > 0,
     `payment_state=${pendingOb?.payment_state}`);
 
   {
@@ -2182,7 +2184,9 @@ async function groupN() {
 
   const releasedOb = await obligationFor(requestId);
   check("N17b", "reconciling a capture the provider never took releases the hold",
-    releasedOb?.payment_state === "authorized" && releasedOb?.capture_requested_at === null,
+    releasedOb?.payment_state === "authorized" &&
+      releasedOb?.capture_requested_at === null &&
+      "capture_requested_at" in (releasedOb ?? {}),
     `payment_state=${releasedOb?.payment_state} requestedAt=${releasedOb?.capture_requested_at}`);
 
   {

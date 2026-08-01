@@ -207,10 +207,30 @@ export function startStripeDouble(port = 12111) {
 
         const pi = intents.get(capture[1]);
         if (!pi) return json(404, { error: { type: "invalid_request_error" } });
-        if (pi.status !== "requires_capture" && pi.status !== "succeeded") {
+        /*
+         * An already-captured intent under a NEW idempotency key is a 400
+         * `payment_intent_unexpected_state`, exactly as Stripe answers it.
+         *
+         * The double used to answer 200 here, which hid the case that made the
+         * old "any 4xx means nothing was taken" branch dangerous: that branch
+         * would have released a hold and told the operator nothing was taken
+         * over money that had already moved. Modelling the real refusal is
+         * what makes the suite able to see that class of bug at all.
+         */
+        if (pi.status === "succeeded") {
           return json(400, {
             error: {
               type: "invalid_request_error",
+              code: "payment_intent_unexpected_state",
+              message: "This PaymentIntent has already been captured.",
+            },
+          });
+        }
+        if (pi.status !== "requires_capture") {
+          return json(400, {
+            error: {
+              type: "invalid_request_error",
+              code: "payment_intent_unexpected_state",
               message: `intent status ${pi.status} is not capturable`,
             },
           });
