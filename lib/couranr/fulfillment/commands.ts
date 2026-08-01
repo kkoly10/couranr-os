@@ -13,6 +13,7 @@ import type { ReadinessState } from "@/lib/couranr/requests/states";
 import {
   captureEventId,
   captureIdempotencyKey,
+  isTerminalCaptureAction,
   mayWriteCaptureResult,
   reconcileActionForIntentStatus,
 } from "@/lib/couranr/payments/states";
@@ -40,6 +41,7 @@ export const RPC = {
   completeCapture: "couranr_complete_payment_capture",
   failCapture: "couranr_fail_payment_capture",
   createDelivery: "couranr_create_delivery_from_capture",
+  resolveTerminal: "couranr_resolve_terminal_capture_failure",
 } as const;
 
 /** Which command produces which readiness state. No target is ever passed. */
@@ -494,8 +496,71 @@ export async function reconcileCapture(params: {
     });
   }
 
-  const status = String(intent.status ?? "");
+  return applyVerifiedCaptureOutcome({
+    requestId: params.requestId,
+    obligationId: params.obligationId,
+    obligationVersion: params.obligationVersion,
+    intent,
+  });
+}
+
+/**
+ * THE ONE PLACE the closed capture mapping is applied.
+ *
+ * Both enforcement points call this and only this: the Operations reconcile
+ * route, and the canonical Stripe webhook when it finds an obligation already
+ * in `capture_pending`. Two copies of a five-way money mapping is two chances
+ * to disagree about what `canceled` means, and the disagreement would only
+ * show up as a stuck row.
+ *
+ * The caller supplies a VERIFIED intent — retrieved from Stripe, or carried by
+ * a signature-verified webhook. It never supplies a target state.
+ */
+export async function applyVerifiedCaptureOutcome(params: {
+  requestId: string;
+  obligationId: string;
+  obligationVersion: number;
+  intent: any;
+}): Promise<FulfillmentResult<CaptureOutcome>> {
+  const op = "applyVerifiedCaptureOutcome";
+  const intent = params.intent;
+  const status = String(intent?.status ?? "");
   const action = reconcileActionForIntentStatus(status);
+
+  /*
+   * TERMINAL. The provider has settled it: either the authorization is gone
+   * and the payer must start again, or the intent is dead and the obligation
+   * cannot be reused. One SQL command owns both, does the side effects in the
+   * same transaction, and refuses any status that is not one of these two.
+   */
+  if (isTerminalCaptureAction(action)) {
+    const failureCode =
+      String(intent?.last_payment_error?.code ?? intent?.cancellation_reason ?? "") || null;
+    const resolved = await callRpc<any>(op, RPC.resolveTerminal, {
+      p_obligation_id: params.obligationId,
+      p_provider_event_id: captureEventId.terminal(
+        params.obligationId,
+        params.obligationVersion,
+        action
+      ),
+      p_payment_intent_id: String(intent.id ?? ""),
+      p_intent_status: status,
+      p_amount: Number(intent.amount ?? 0),
+      p_currency: String(intent.currency ?? ""),
+      p_failure_code: failureCode,
+    });
+    if (isFulfillmentFailure(resolved)) return resolved;
+
+    return {
+      ok: true,
+      value: {
+        outcome: resolved.value.outcome === "applied" ? action : resolved.value.outcome,
+        obligationId: params.obligationId,
+        paymentState: resolved.value.payment_state ?? null,
+        deliveryId: null,
+      },
+    };
+  }
 
   /*
    * Stripe still holds the funds without having taken them, so the capture

@@ -180,6 +180,29 @@ export async function getObligationForRequest(params: {
   return { ok: true, value: { obligation: data ?? null } };
 }
 
+/**
+ * The live obligation for a PaymentIntent, by intent id.
+ *
+ * The webhook needs this BEFORE it applies anything: an obligation already in
+ * `capture_pending` belongs to capture reconciliation, not to the
+ * authorization state machine, and the only way to know is to look.
+ */
+export async function getObligationByIntentId(params: {
+  intentId: string;
+}): Promise<PaymentResult<{ obligation: ObligationRow | null }>> {
+  const op = "getObligationByIntentId";
+  const { data, error } = (await supabaseAdmin
+    .from(OBLIGATIONS_TABLE)
+    .select(
+      "id,request_id,business_account_id,payer_type,amount_cents,currency," +
+        "payment_state,provider_payment_intent_id,version"
+    )
+    .eq("provider_payment_intent_id", params.intentId)
+    .maybeSingle()) as { data: any; error: any };
+  if (error) return fail({ operation: op, code: "internal", detail: error.message });
+  return { ok: true, value: { obligation: data ?? null } };
+}
+
 /* ---------------------------------------------------- payment intents --- */
 
 /**

@@ -3,8 +3,13 @@ import type Stripe from "stripe";
 import { getStripeClient } from "@/lib/stripeClient";
 import {
   applyVerifiedIntentState,
+  getObligationByIntentId,
   isPaymentFailure,
 } from "@/lib/couranr/payments/commands";
+import {
+  applyVerifiedCaptureOutcome,
+  isFulfillmentFailure,
+} from "@/lib/couranr/fulfillment/commands";
 import { logServerFailure, newCorrelationId } from "@/lib/couranr/errors";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
 
@@ -86,6 +91,41 @@ export async function POST(req: NextRequest) {
     // Recorded nowhere and acted on not at all — this endpoint is only for
     // PaymentIntents. Acked so Stripe does not retry forever.
     return ack("not_a_payment_intent");
+  }
+
+  /*
+   * CAPTURE RECONCILIATION IS AUTHORITATIVE ONCE THE OBLIGATION IS
+   * capture_pending.
+   *
+   * The authorization state machine has no concept of an in-flight capture. An
+   * `amount_capturable_updated` applied there would move capture_pending back
+   * to `authorized` and re-arm Capture over money that may already have moved;
+   * a `payment_failed` or `canceled` would settle the state without clearing
+   * capture_requested_at, revoking live payment links or cancelling the
+   * service plan that referenced the dead obligation.
+   *
+   * So a capture_pending obligation goes through the SAME closed mapping the
+   * Operations reconcile route uses — literally the same function — and
+   * `couranr_apply_payment_intent_state` refuses it as a second line of
+   * defence if this check is ever bypassed.
+   */
+  const known = await getObligationByIntentId({ intentId: String(object.id ?? "") });
+  if (isPaymentFailure(known)) return failureResponse(known);
+
+  const inFlight = known.value.obligation;
+  if (inFlight && inFlight.payment_state === "capture_pending") {
+    const resolved = await applyVerifiedCaptureOutcome({
+      requestId: String(inFlight.request_id),
+      obligationId: String(inFlight.id),
+      obligationVersion: Number(inFlight.version),
+      intent: object,
+    });
+    if (isFulfillmentFailure(resolved)) return failureResponse(resolved);
+    return ack(resolved.value.outcome, {
+      paymentState: resolved.value.paymentState,
+      deliveryId: resolved.value.deliveryId,
+      via: "capture_reconciliation",
+    });
   }
 
   const result = await applyVerifiedIntentState({
