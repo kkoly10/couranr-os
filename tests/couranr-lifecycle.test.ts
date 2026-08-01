@@ -72,6 +72,7 @@ describe("OPS-002 lifecycle stage derivation", () => {
       at({ readinessState: "ready", servicePlanConfirmed: true }),
       at({ paymentState: "capture_pending" }),
       at({ paymentState: "captured" }),
+      at({ paymentState: "failed" }),
       at({ canonicalDeliveryExists: true }),
       at({ requestState: "declined" }),
     ]);
@@ -126,6 +127,38 @@ describe("OPS-002 lifecycle stage derivation", () => {
     );
   });
 
+  /*
+   * A settled failure is not the same as never having authorized. An
+   * obligation exists, carries its history, and Stripe documents that the same
+   * PaymentIntent can be re-confirmed with a different payment method, so this
+   * is a RECOVERY stage rather than a fresh-authorization one.
+   */
+  it("a failed payment is its own recovery stage, not awaiting authorization", () => {
+    expect(at({ paymentState: "failed" })).toBe("payment_reauthorization_required");
+    expect(at({ paymentState: "failed", readinessState: "ready" })).toBe(
+      "payment_reauthorization_required"
+    );
+    expect(at({ paymentState: "failed", servicePlanConfirmed: true })).toBe(
+      "payment_reauthorization_required"
+    );
+  });
+
+  /*
+   * A CANCELLED obligation is filtered out of the live-obligation read, so the
+   * request reads as needing authorization from scratch — which is exactly
+   * right: Stripe documents a canceled intent "can't be undone" and a new one
+   * must be created.
+   */
+  it("a cancelled obligation reads as needing authorization from scratch", () => {
+    expect(at({ paymentState: null })).toBe("awaiting_payment_authorization");
+  });
+
+  it("neither recovery stage offers capture or planning", () => {
+    for (const st of ["payment_reauthorization_required", "awaiting_payment_authorization"]) {
+      expect(["ready_for_planning", "service_plan_confirmed"]).not.toContain(st);
+    }
+  });
+
   it("a canonical delivery outranks everything", () => {
     for (const paymentState of [null, "authorized", "failed", "capture_pending", "captured"]) {
       expect(at({ paymentState, canonicalDeliveryExists: true })).toBe("captured_scheduled");
@@ -138,7 +171,9 @@ describe("OPS-002 lifecycle stage derivation", () => {
    * not present it as plannable work.
    */
   it("readiness never precedes authorization", () => {
-    for (const paymentState of [null, "not_started", "requires_action", "failed"]) {
+    // `failed` is deliberately absent: it is a settled failure with a
+    // recoverable obligation, which has its own stage.
+    for (const paymentState of [null, "not_started", "requires_action"]) {
       expect(at({ readinessState: "ready", paymentState })).toBe(
         "awaiting_payment_authorization"
       );
@@ -213,6 +248,8 @@ describe("OPS-002 stage metadata", () => {
   /* Money taken is never a success cue until the delivery actually exists. */
   it("captured without a delivery reads as a warning, not success", () => {
     expect(LIFECYCLE_STAGE_TONE.captured_not_scheduled).toBe("warning");
+    // A lost authorization is a failure, not a caution.
+    expect(LIFECYCLE_STAGE_TONE.payment_reauthorization_required).toBe("danger");
   });
 
   it("capture_pending reads as a warning, never as success", () => {

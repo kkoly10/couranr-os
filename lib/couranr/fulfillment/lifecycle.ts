@@ -26,6 +26,16 @@ export const LIFECYCLE_STAGES = [
   /** A capture was started and its outcome is not yet known. Do not retry. */
   "capture_pending",
   /**
+   * The provider settled a capture as FAILED: the authorization is gone and
+   * the payer has to authorize again. Distinct from
+   * `awaiting_payment_authorization` because an obligation exists, carries its
+   * history, and Stripe documents that the SAME PaymentIntent can be
+   * re-confirmed with a different payment method
+   * (https://docs.stripe.com/payments/paymentintents/lifecycle). Nothing can
+   * be captured or planned against it until that happens.
+   */
+  "payment_reauthorization_required",
+  /**
    * Money TAKEN, and no canonical delivery yet. Distinct from
    * `captured_scheduled` because calling it "scheduled" would be a lie about
    * the one thing dispatch acts on — and distinct from `capture_pending`
@@ -83,6 +93,19 @@ export function lifecycleStage(input: LifecycleInput): LifecycleStage {
    */
   if (input.paymentState === "captured") return "captured_not_scheduled";
 
+  /*
+   * A settled failure. The hold is gone, so this is NOT plannable work and NOT
+   * capturable, but an obligation still exists to recover — which is what
+   * separates it from `awaiting_payment_authorization`, where none does.
+   *
+   * A CANCELLED obligation deliberately does not land here: it is filtered out
+   * of the live-obligation read entirely, so the request correctly reads as
+   * needing authorization from scratch, which is exactly what a canceled
+   * intent requires — Stripe documents that a canceled intent "can't be
+   * undone" and a new one must be created.
+   */
+  if (input.paymentState === "failed") return "payment_reauthorization_required";
+
   if (input.requestState === "pending_couranr_review") return "pending_review";
   if (!(PAYABLE_REQUEST_STATES as readonly string[]).includes(input.requestState)) {
     return "not_actionable";
@@ -110,11 +133,12 @@ export const LIFECYCLE_STAGE_ORDER: Readonly<Record<LifecycleStage, number>> = {
   ready_for_planning: 1,
   service_plan_confirmed: 2,
   capture_pending: 3,
-  captured_not_scheduled: 4,
-  merchant_preparing: 5,
-  awaiting_payment_authorization: 6,
-  captured_scheduled: 7,
-  not_actionable: 8,
+  payment_reauthorization_required: 4,
+  captured_not_scheduled: 5,
+  merchant_preparing: 6,
+  awaiting_payment_authorization: 7,
+  captured_scheduled: 8,
+  not_actionable: 9,
 };
 
 export const LIFECYCLE_STAGE_LABELS: Readonly<Record<LifecycleStage, string>> = {
@@ -124,6 +148,7 @@ export const LIFECYCLE_STAGE_LABELS: Readonly<Record<LifecycleStage, string>> = 
   ready_for_planning: "Ready for planning",
   service_plan_confirmed: "Service plan confirmed",
   capture_pending: "Capture pending",
+  payment_reauthorization_required: "Payment authorization needs attention",
   captured_not_scheduled: "Captured — not yet scheduled",
   captured_scheduled: "Captured — scheduled",
   not_actionable: "No action available",
@@ -139,6 +164,8 @@ export const LIFECYCLE_STAGE_DESCRIPTIONS: Readonly<Record<LifecycleStage, strin
   service_plan_confirmed: "Planned and ready to capture the authorized amount.",
   capture_pending:
     "A capture is in flight and its outcome is not yet confirmed. Do not retry — Couranr will resolve it.",
+  payment_reauthorization_required:
+    "The provider ended this authorization. Nothing was taken. The payer must authorize again before this can be planned or captured.",
   captured_not_scheduled:
     "The payment was taken but no delivery exists yet. Finish scheduling — do not capture again.",
   captured_scheduled: "Payment captured and the delivery is scheduled.",
@@ -162,7 +189,7 @@ export const QUEUE_STAGES: readonly LifecycleStage[] = LIFECYCLE_STAGES.filter(
  * warning rather than a success: it is the stage that means "unknown".
  */
 export const LIFECYCLE_STAGE_TONE: Readonly<
-  Record<LifecycleStage, "neutral" | "info" | "success" | "warning">
+  Record<LifecycleStage, "neutral" | "info" | "success" | "warning" | "danger">
 > = {
   pending_review: "info",
   awaiting_payment_authorization: "neutral",
@@ -170,6 +197,7 @@ export const LIFECYCLE_STAGE_TONE: Readonly<
   ready_for_planning: "info",
   service_plan_confirmed: "info",
   capture_pending: "warning",
+  payment_reauthorization_required: "danger",
   captured_not_scheduled: "warning",
   captured_scheduled: "success",
   not_actionable: "neutral",
