@@ -205,21 +205,26 @@ function inconclusive(id, desc, why) {
  * produced no POST at all, and the only way to tell "the handler never ran"
  * from "the server refused" was to watch the wire.
  *
- * No header, cookie or body is printed — only method, path and status.
+ * No header, cookie or body is printed — only method, path and status, and the
+ * path is redacted first: a customer payment link carries its token as a PATH
+ * SEGMENT (`/api/couranr/pay/<token>/reconcile`), and that token is
+ * bearer-equivalent. Only its SHA-256 hash is ever stored, so printing the raw
+ * one to a log would be the only place it exists in the clear.
  */
 const TRACE = process.env.E2E_TRACE === "1";
+const safePath = (p) => p.replace(/(\/api\/couranr\/pay\/)[^/]+/, "$1<token>");
 function traceApi(page, tag) {
   if (!TRACE) return;
   page.on("request", (r) => {
     const u = new URL(r.url(), BASE_URL);
     if (u.pathname.startsWith("/api/couranr/")) {
-      console.log(`      [${tag}] -> ${r.method()} ${u.pathname}${u.search}`);
+      console.log(`      [${tag}] -> ${r.method()} ${safePath(u.pathname)}${u.search}`);
     }
   });
   page.on("response", (r) => {
     const u = new URL(r.url(), BASE_URL);
     if (u.pathname.startsWith("/api/couranr/")) {
-      console.log(`      [${tag}] <- ${r.status()} ${u.pathname}`);
+      console.log(`      [${tag}] <- ${r.status()} ${safePath(u.pathname)}`);
     }
   });
   page.on("console", (m) => {
