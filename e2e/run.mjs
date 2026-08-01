@@ -1169,7 +1169,21 @@ async function decideAsOps(page, requestId, decision, { reason, note, alreadyOpe
     if (note) await page.getByLabel(/internal note/i).fill(note);
     await page.getByRole("button", { name: /record that couranr could not confirm/i }).click();
   }
-  await page.waitForTimeout(2000);
+
+  /*
+   * Wait for the OUTCOME, not for a duration.
+   *
+   * All three decisions move the request out of `pending_couranr_review`, and
+   * the decision panel renders only for that state — so the panel going away
+   * IS the write having landed. A fixed 2s wait lost the race the first time a
+   * cold Next dev server compiled `/accept-as-quoted` on the request path: the
+   * POST returned 200 at 1977ms, the harness had already read the row, and the
+   * group reported "not confirmed" for a confirm that worked perfectly.
+   */
+  await page
+    .getByText("Couranr review decision")
+    .waitFor({ state: "hidden", timeout: 30000 })
+    .catch(() => {});
 }
 
 async function groupL() {
