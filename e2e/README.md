@@ -155,8 +155,9 @@ whole branch first shipped unreachable. It asserts both recovery paths as well
 as both failures: a `failed` obligation is re-authorized on the SAME
 PaymentIntent, and a `cancelled` one is replaced by a new obligation with a new
 intent. It also proves an indeterminate status writes nothing at all, and that
-a signature-verified authorization webhook cannot move a `capture_pending`
-obligation back to `authorized`.
+a signature-verified webhook claiming the hold is intact cannot release a
+capture the provider is still running — the signature proves the event is
+Stripe's, not that it is current, and Stripe does not guarantee delivery order.
 
 ## Database-level verification
 
