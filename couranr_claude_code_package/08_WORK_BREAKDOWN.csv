@@ -36,3 +36,8 @@ P10-002,10,Observability,Implement payment/proof/support/security alerts,P10-001
 P11-001,11,Cutover,Migrate selected fixtures and disable legacy runtime,P1-003;P10-002,P0,No dual write and route map correct
 P12-001,12,Release,Execute full acceptance matrix,P11-001,P0,Zero P0 and core P1
 P12-002,12,Canary,Complete controlled production canary,P12-001,P0,Stripe/proof/messages/ledger/analytics reconcile
+P10-003,10,Marketing,Replace legacy app/page.tsx with canonical PUB-001 homepage per MKT-002,P10-002,P1,Twelve approved sections in order and hero copy verbatim
+P10-004,10,Marketing,Build PUB-009 /businesses and PUB-011 /how-it-works per MKT-002,P10-003,P1,Pages deepen the homepage rather than restate it
+P10-005,10,Marketing,Build PUB-008 /pricing and PUB-010 /service-areas per MKT-002,P10-003,P1,Locked pricing and four named markets only
+P10-006,10,Marketing,Enforce MKT-002 prohibited-claim boundaries across public pages,P10-003;P10-004;P10-005,P0,No public string matches a prohibited claim
+P10-007,10,Marketing,Apply UI-TYP-001 typography to the canonical public surface,P10-003,P1,Public pages match the approved Couranr visual scale

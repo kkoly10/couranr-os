@@ -147,7 +147,7 @@
 - **Purpose:** Explain Couranr to local merchants and drive business-account creation or delivery estimation.
 - **Allowed actions:** Create business account; estimate delivery; open Ask Couranr; navigate to pricing, businesses, service areas, and how it works.
 - **Required states:** Default; mobile navigation; assistant closed/open; service-area notice.
-- **Authoritative source:** Spec §§2–4, 16
+- **Authoritative source:** Spec §§2–4, 16; copy and conversion authority docs/couranr-mvp/MARKETING_POSITIONING_AND_HOMEPAGE_BLUEPRINT.md (MKT-002)
 - **Mandatory correction/constraint:** Use the locked merchant-delivery positioning. No auto rental/docs, fake metrics, guarantees, phone support, subscriptions, or Maryland launch marketing.
 - **Canonical visual:** `canonical-mvp-images/public/PUB-001_marketing-homepage.png`
 
@@ -224,7 +224,7 @@
 - **Purpose:** Explain deterministic delivery pricing and approved surcharges.
 - **Allowed actions:** Estimate a delivery; create business account.
 - **Required states:** Standard; expanded pricing details; manual-quote notice.
-- **Authoritative source:** Spec §4, §16
+- **Authoritative source:** Spec §4, §16; copy and conversion authority docs/couranr-mvp/MARKETING_POSITIONING_AND_HOMEPAGE_BLUEPRINT.md (MKT-002)
 - **Mandatory correction/constraint:** Derive visually from PUB-001. First 3 miles $22.99; no monthly fee during pilot; all estimates subject to Couranr confirmation.
 - **Canonical visual:** `Derived from PUB-001 design system; no separate approved mock.`
 
@@ -235,7 +235,7 @@
 - **Purpose:** Show supported business categories and merchant-controlled ordering channels.
 - **Allowed actions:** Select category; create business account; estimate delivery.
 - **Required states:** Category tabs; general-business fallback.
-- **Authoritative source:** Spec §§2, 5, 16
+- **Authoritative source:** Spec §§2, 5, 16; copy and conversion authority docs/couranr-mvp/MARKETING_POSITIONING_AND_HOMEPAGE_BLUEPRINT.md (MKT-002)
 - **Mandatory correction/constraint:** Category changes recommendations, not eligibility. Do not advertise medical or prohibited categories.
 - **Canonical visual:** `Derived from PUB-001 design system; no separate approved mock.`
 
@@ -246,7 +246,7 @@
 - **Purpose:** Explain DC, Stafford, Woodbridge, Fredericksburg, surrounding areas, and review-based extended distance.
 - **Allowed actions:** Check route; estimate delivery.
 - **Required states:** Primary market; surrounding area; extended-distance review.
-- **Authoritative source:** Spec §3, §16
+- **Authoritative source:** Spec §3, §16; copy and conversion authority docs/couranr-mvp/MARKETING_POSITIONING_AND_HOMEPAGE_BLUEPRINT.md (MKT-002)
 - **Mandatory correction/constraint:** Maryland is not initially marketed. Do not use rigid ZIP rejection.
 - **Canonical visual:** `Derived from PUB-001 design system; no separate approved mock.`
 
@@ -257,7 +257,7 @@
 - **Purpose:** Explain request, payer, Couranr confirmation, pickup, tracking, proof, and support.
 - **Allowed actions:** Create account; estimate delivery.
 - **Required states:** Merchant-paid and customer-paid examples.
-- **Authoritative source:** Spec §§7, 11–12, 16
+- **Authoritative source:** Spec §§7, 11–12, 16; copy and conversion authority docs/couranr-mvp/MARKETING_POSITIONING_AND_HOMEPAGE_BLUEPRINT.md (MKT-002)
 - **Mandatory correction/constraint:** No instant-confirmation promise. Capture occurs after Couranr confirmation.
 - **Canonical visual:** `Derived from PUB-001 design system; no separate approved mock.`
 

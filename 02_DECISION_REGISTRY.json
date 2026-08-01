@@ -1806,7 +1806,9 @@
         "screen_id": "PUB-001",
         "occupied_by": "app/page.tsx",
         "authority_disposition": "replace",
-        "current_state": "canonical page not created; route excluded from canonical navigation"
+        "current_state": "canonical page not created; route excluded from canonical navigation",
+        "copy_authority": "docs/couranr-mvp/MARKETING_POSITIONING_AND_HOMEPAGE_BLUEPRINT.md (MKT-002)",
+        "replacement_mode": "structural replacement, not copy edit — the legacy page markets three legacy product lines to consumers, so no subset of it survives a copy rewrite"
       },
       "status": "decided",
       "authority_file": "Couranr_Claude_Code_Master_Package.md",
@@ -1832,7 +1834,8 @@
       },
       "implementation_phase": "10",
       "acceptance_criteria": [
-        "Exactly one page resolves '/' and it is the canonical PUB-001."
+        "Exactly one page resolves '/' and it is the canonical PUB-001.",
+        "The replacement is built from MKT-002's approved structure and copy, not by editing app/page.tsx in place."
       ]
     },
     {
@@ -2346,6 +2349,156 @@
       ],
       "supersedes_scope_of": "TRM-002",
       "note": "TRM-002 remains unresolved. This record bounds only delivery-request create/submit/read/review."
+    },
+    {
+      "id": "MKT-002",
+      "category": "merchant positioning and marketing claims",
+      "decision": "Couranr is positioned to independent local businesses as delivery infrastructure that lets them say yes to delivery without a marketplace, a fleet, or losing the customer relationship. Couranr enables merchants to serve more demand and must never claim to generate customers, leads or product sales.",
+      "value": {
+        "internal_category": "local delivery infrastructure for independent local businesses",
+        "core_position": "Couranr helps independent local businesses offer delivery without joining a marketplace, building a fleet or giving up their customer relationship.",
+        "emotional_promise": "Your customers want delivery. Now you can say yes.",
+        "operational_promise": "Receive the order however you already receive it. Couranr handles what happens after the order is ready.",
+        "supported_order_channels": [
+          "website",
+          "phone",
+          "text",
+          "social media",
+          "point of sale",
+          "storefront/in person",
+          "other merchant-controlled channels"
+        ],
+        "couranr_is_not": [
+          "the merchant's ecommerce platform",
+          "the owner of the product sale"
+        ],
+        "business_outcomes": [
+          "prevent pickup-only orders from being lost",
+          "serve customers who cannot easily visit the business",
+          "extend the practical area they can sell within",
+          "convert phone, social, website and storefront orders into deliveries",
+          "offer professional tracking and proof without operating a fleet",
+          "keep product revenue and ownership of the customer relationship"
+        ],
+        "approved_claim": "Serve more customers.",
+        "unapproved_claim": "Couranr brings you new customers.",
+        "unapproved_claim_unblocks_when": "marketplace or customer-acquisition functionality exists",
+        "differentiation_framing": "Local delivery should not stop at restaurant orders.",
+        "competitor_rules": [
+          "do not build the identity around attacking or naming a competitor throughout the page",
+          "do not claim those services categorically reject every listed business"
+        ],
+        "homepage_sections": [
+          "Hero - say yes to more orders",
+          "Pickup-only problem",
+          "Delivery is not only for restaurants",
+          "Keep selling through existing channels",
+          "Business-growth outcomes",
+          "Four-step Couranr workflow",
+          "Couranr-managed delivery and proof",
+          "Supported business categories",
+          "Pricing and pilot economics",
+          "Service areas",
+          "FAQ and claim boundaries",
+          "Closing conversion CTA"
+        ],
+        "hero_copy": {
+          "eyebrow": "Local delivery for independent businesses",
+          "headline": "Your customers want delivery. Now you can say yes.",
+          "supporting": "Keep taking orders through your website, phone, text, social media, POS or storefront. Couranr handles the delivery—from quote and payment to managed dispatch, tracking and proof.",
+          "primary_cta": "Create your business account",
+          "secondary_cta": "Estimate a delivery",
+          "trust_line": "No monthly fee during the pilot. No product-sales commission. You keep the sale and the customer relationship."
+        },
+        "closing_headline": "The next customer who asks, “Can you deliver?” deserves a better answer.",
+        "supporting_pages": {
+          "PUB-009": "/businesses - supported industries, use cases and merchant-controlled order channels",
+          "PUB-011": "/how-it-works - merchant-paid and customer-paid workflows, Couranr confirmation, dispatch, tracking and proof",
+          "PUB-008": "/pricing - locked delivery pricing and approved operating charges",
+          "PUB-010": "/service-areas - DC, Stafford, Woodbridge, Fredericksburg, surrounding areas and extended-distance review",
+          "PUB-004": "/estimate - primary public conversion action"
+        },
+        "supporting_pages_rule": "The supporting pages deepen the homepage rather than repeat it.",
+        "prohibited_claims": [
+          "Couranr brings merchants customers",
+          "guaranteed sales growth",
+          "guaranteed delivery times",
+          "instant confirmation",
+          "24/7 support",
+          "marketplace demand",
+          "thousands of users or deliveries",
+          "public driver bidding",
+          "product buyer protection",
+          "product refund responsibility",
+          "Maryland launch coverage",
+          "subscription pricing during the pilot"
+        ],
+        "responsibility_split": {
+          "merchant": "merchandise price, quality, availability, packaging, product refunds, customer relationship",
+          "couranr": "the delivery service and approved delivery-related charges"
+        },
+        "visual_direction": [
+          "use the canonical PUB-001 visual direction",
+          "inherit the typography and hierarchy established in the newer mocks",
+          "avoid generic startup copy",
+          "avoid glassmorphism, giant halos, emoji feature cards and fake metrics",
+          "show the flow from multiple merchant order channels into one Couranr delivery workflow",
+          "use real product screens only when they are legible and implemented",
+          "remain responsive and conversion-focused"
+        ],
+        "related_requirement": "UI-TYP-001 remains a separate but related implementation requirement.",
+        "depends_on": [
+          "MKT-001"
+        ],
+        "id_note": "Requested by the owner as MKT-001; that id was already held by the accepted launch-markets decision, which this record depends on rather than replaces."
+      },
+      "status": "decided",
+      "authority_file": "docs/couranr-mvp/MARKETING_POSITIONING_AND_HOMEPAGE_BLUEPRINT.md",
+      "authority_section": "§1-§10 — Couranr Merchant Growth Positioning",
+      "affected_routes": [
+        "/",
+        "/businesses",
+        "/how-it-works",
+        "/pricing",
+        "/service-areas"
+      ],
+      "affected_screen_ids": [
+        "PUB-001",
+        "PUB-008",
+        "PUB-009",
+        "PUB-010",
+        "PUB-011"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [
+        "app/page.tsx"
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "audience": "consumers and small teams",
+          "products_marketed": [
+            "Auto Rentals",
+            "Courier Delivery",
+            "Couranr Docs"
+          ],
+          "headline": "Local logistics and document support for busy people and small teams.",
+          "merchant_order_channels": null
+        },
+        "code_location": "app/page.tsx:1-352 (legacy mixed-product marketing homepage)",
+        "resolution": "Written authority wins. The page markets the wrong product to the wrong audience STRUCTURALLY, so it must be structurally replaced, not copy-polished. No subset of its seven sections survives a copy rewrite.",
+        "remediation_commit": "marketing slice (Phase 10, P10-003..P10-007) - not this commit"
+      },
+      "implementation_phase": "10",
+      "acceptance_criteria": [
+        "The homepage renders the twelve approved sections in order.",
+        "The hero uses the approved eyebrow, headline, supporting copy, both CTAs and the trust line verbatim.",
+        "The closing section uses the approved closing headline verbatim.",
+        "Every supported merchant order channel is named somewhere on the homepage.",
+        "No string on any public page matches a prohibited claim.",
+        "No competitor is named as an adversary anywhere on the page.",
+        "The four supporting pages deepen the homepage rather than restate it.",
+        "app/page.tsx has been structurally replaced, not edited in place."
+      ]
     }
   ]
 }
