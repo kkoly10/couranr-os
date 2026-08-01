@@ -124,7 +124,17 @@ One stylesheet: `app/globals.css`, 818 lines of plain CSS with 7 custom properti
 
 When the canonical design system arrives it must be **additive** — new route group, namespaced `--couranr-*` tokens (the existing `:root` already defines `--border`, `--muted`, `--card`, `--shadow` with different values, so unprefixed tokens would silently restyle every legacy page). Do not bulk-restyle legacy auto/docs pages.
 
-The 66 canonical screens reference `canonical-mvp-images/**` paths; **0 of 62 exist on disk**. The 91 UUID-named PNGs at the repo root are the raw source set. `docs/platform-dependency-baseline-v1-1` carries a `canonical-source-map.tsv` — **do not run or merge that workflow**: it references 9 source images that do not exist, conflicts with the registry on 6 screen IDs (it invents `OPS-008 driver-management` and drops `OPS-021 Ask Couranr lead inbox`), and it **deletes all 91 root PNGs** as a final step. Never delete a root PNG.
+The 66 canonical screens reference `canonical-mvp-images/**` paths; **13 of the 62 referenced files exist on disk** (an earlier note here said 0, which stopped being true once the delivered mockups landed). The 91 UUID-named PNGs at the repo root are the raw source set, and **`docs/couranr-mvp/ui-reference/CANONICAL_SCREEN_SOURCE_MAP.tsv` is the map to use** — 107 rows, every source present, all 66 screen IDs, with alternates recorded and non-MVP assets classified `BRAND:`/`EXTRA:`.
+
+`docs/platform-dependency-baseline-v1-1` carries a rival `canonical-source-map.tsv`. **Do not merge it** (PR #16, closed 2026-08-01) — not because it is dangerous to `main`, but because it is strictly worse and it re-arms a workflow:
+
+- 62 rows against 107; **9 of its sources do not exist**; it conflicts with the registry on 6 screen IDs, **invents** `driver-management` and `customer-hosted-delivery-request`, and **drops** `ask-couranr-lead-inbox` and `delivery-estimate-and-hosted-request`.
+- The 6 conflicts are **not** an off-by-one shift — displacements are `+5, +1, +1, +6` with two runs snapping back to `+0`. It is a fabricated ordering. All six screens now exist on disk under their **registry** names, so the registry is confirmed by the delivered art.
+- Its workflow adds an unconditional `find … -delete` matching **91 of 91** root PNGs. Scope it correctly: `checkout ref:` and `git push origin HEAD:` are both hardcoded to `docs/platform-dependency-baseline-v1-1`, so the blast radius is that branch, not `main`. It is currently unreachable only because `test -f "$source"` aborts on the first missing source — verified by a real run (`30569664998`, step 4 failed in 1s, step 5 skipped). Repairing the map arms it.
+
+**`main` carries its own copy of `materialize-canonical-ui-images.yml`.** It has no delete step, but it holds `contents: write`, `rm -f`s itself and pushes to the docs branch. It is inert *only* because its trigger path `docs/couranr-mvp/ui-reference/canonical-image-payload/READY` exists on no ref — that file lives solely in the unreachable commit `31e1728`. Restoring that payload to the docs branch fires it. Accidental safety, not a guard.
+
+Never delete a root PNG.
 
 ## Working practices
 
