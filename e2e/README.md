@@ -39,6 +39,7 @@ Screenshots and `results.json` land in `e2e/artifacts/` (gitignored).
 | L | the three review outcomes (REV-001), end to end, asserted on rows |
 | M | payment authorization on both payer paths, with Stripe mocked at both boundaries |
 | N | readiness, service plan, capture, recovery from an unknown capture, and the canonical delivery |
+| O | terminal capture resolution — a verified `failed` and a verified `canceled`, both recovery paths, and the guards that keep an indeterminate status waiting |
 
 ## Rules this harness follows
 
@@ -52,6 +53,17 @@ assertion that passes on an empty page is worse than no test.
 
 **Faults are injected at the browser, never in the database.** `page.route(…)`
 returns a 500 for the lookup under test. Nothing is broken server-side.
+
+**Wait for the ROW, and do it before the context closes.** Waiting on page text
+is how a green step hides a write that never happened. `Button` swaps its label
+to "Working…" the moment it is busy, so a `waitFor({state:"hidden"})` on
+`^Ready for Couranr$` resolves milliseconds after the click — and the
+`ctx.close()` that follows then cancels the POST in flight. Group O failed twice
+on a disabled Capture button before the wire trace showed the `/readiness` POST
+had never reached the server at all. `waitForRow` polls the row and throws
+naming the step, and every wait in the fulfillment path now runs before its
+context closes. Set `E2E_TRACE=1` to print each canonical API call (method,
+path, status — never a header or a body) and browser console errors.
 
 **Real data is never touched.** The suite counts `orders`, `deliveries`,
 `addresses` and `rentals` before and after and asserts they are identical.
@@ -124,6 +136,27 @@ against replay behaviour rather than assumed.
 `PAYMENT_REAL_STRIPE_VERIFICATION = PENDING_PRELAUNCH`. Nothing in group N
 proves Stripe accepts these requests, only that Couranr builds them correctly
 and reacts correctly to each response.
+
+One console error is expected and benign: the mocked Stripe.js confirms the
+intent with `fetch(<double>/__control/confirm/<id>, {method:"POST"})`, and the
+browser logs a CORS failure because the double sends no
+`Access-Control-Allow-Origin`. That blocks reading the RESPONSE, not sending the
+request — it is a simple request, so it is not preflighted and the double
+receives and applies it. The intent really does reach `requires_capture`, which
+is why the obligation reaches `authorized`; `E2E_TRACE=1` surfaces the error, so
+it is recorded here rather than chased again.
+
+## What group O adds
+
+Group O drives the two terminal capture outcomes the provider alone can
+report, using the double's `__control/status` plane — nothing in the app can
+produce `requires_payment_method` or `canceled` on demand, which is how the
+whole branch first shipped unreachable. It asserts both recovery paths as well
+as both failures: a `failed` obligation is re-authorized on the SAME
+PaymentIntent, and a `cancelled` one is replaced by a new obligation with a new
+intent. It also proves an indeterminate status writes nothing at all, and that
+a signature-verified authorization webhook cannot move a `capture_pending`
+obligation back to `authorized`.
 
 ## Database-level verification
 

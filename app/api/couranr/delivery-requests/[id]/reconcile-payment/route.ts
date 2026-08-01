@@ -48,7 +48,10 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const intentId = ob.value.obligation.provider_payment_intent_id;
   if (!intentId) return routeFailure("conflict", "Payment has not been set up yet.");
 
-  const applied = await reconcilePaymentIntent({ intentId: String(intentId) });
+  const applied = await reconcilePaymentIntent({
+    intentId: String(intentId),
+    obligationVersion: Number(ob.value.obligation.version),
+  });
   if (isPaymentFailure(applied)) return failureResponse(applied);
 
   return NextResponse.json({

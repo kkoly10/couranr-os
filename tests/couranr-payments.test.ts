@@ -193,9 +193,44 @@ describe("idempotency", () => {
   });
 
   it("a retrieve produces a deterministic, collidable event id", () => {
-    const a = syntheticEventId({ id: "pi_1", status: "requires_capture", amount_capturable: 2299 });
-    expect(a).toBe(syntheticEventId({ id: "pi_1", status: "requires_capture", amount_capturable: 2299 }));
-    expect(a).not.toBe(syntheticEventId({ id: "pi_1", status: "processing", amount_capturable: 0 }));
+    const pi = { id: "pi_1", status: "requires_capture", amount_capturable: 2299 };
+    const a = syntheticEventId(pi, 3);
+    expect(a).toBe(syntheticEventId(pi, 3));
+    expect(a).not.toBe(syntheticEventId({ id: "pi_1", status: "processing", amount_capturable: 0 }, 3));
+  });
+
+  it("the retrieve event id is scoped to the capture cycle", () => {
+    /*
+     * The SAME provider state, observed in a later cycle, must be a DIFFERENT
+     * id. Stripe documents a `requires_payment_method` intent as re-confirmable,
+     * so a `failed` obligation legitimately returns to `requires_capture` — and
+     * with a version-free id that re-observation collided with the one the
+     * first authorization had already written. The apply returned `duplicate`,
+     * the obligation stayed `failed`, and re-entering a card changed nothing.
+     */
+    const pi = { id: "pi_1", status: "requires_capture", amount_capturable: 2299 };
+    expect(syntheticEventId(pi, 7)).not.toBe(syntheticEventId(pi, 3));
+    expect(syntheticEventId(pi, 3)).toContain(":v3:");
+  });
+
+  it("the webhook resolves an in-flight capture by RETRIEVING, never from the payload", () => {
+    /*
+     * Stripe: "doesn't guarantee the delivery of events in the order that
+     * they're generated" and "use the API to retrieve any missing objects"
+     * (https://docs.stripe.com/webhooks). An `amount_capturable_updated`
+     * generated at authorization time can arrive after the capture request;
+     * mapped from its own payload it says `requires_capture`, releases the hold
+     * and re-arms Capture over a capture that is still running.
+     */
+    const route = readFileSync(
+      path.join(ROOT, "app/api/couranr/stripe/webhook/route.ts"),
+      "utf8"
+    );
+    expect(route).toMatch(/payment_state === "capture_pending"/);
+    expect(route).toMatch(/reconcileCapture\(\{/);
+    expect(route).not.toMatch(/applyVerifiedCaptureOutcome/);
+    // And the retrieve is keyed off the STORED intent id, not the payload's.
+    expect(route).toMatch(/inFlight\.provider_payment_intent_id/);
   });
 
   it("the database makes replay a constraint, not a check", () => {

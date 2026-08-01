@@ -507,14 +507,20 @@ export async function reconcileCapture(params: {
 /**
  * THE ONE PLACE the closed capture mapping is applied.
  *
- * Both enforcement points call this and only this: the Operations reconcile
- * route, and the canonical Stripe webhook when it finds an obligation already
- * in `capture_pending`. Two copies of a five-way money mapping is two chances
- * to disagree about what `canceled` means, and the disagreement would only
- * show up as a stuck row.
+ * Two copies of a five-way money mapping is two chances to disagree about what
+ * `canceled` means, and the disagreement would only ever show up as a stuck
+ * row. So both enforcement points — the Operations reconcile route and the
+ * canonical Stripe webhook, when it finds an obligation already in
+ * `capture_pending` — reach it through `reconcileCapture` above.
  *
- * The caller supplies a VERIFIED intent — retrieved from Stripe, or carried by
- * a signature-verified webhook. It never supplies a target state.
+ * Through `reconcileCapture`, and only through it, because the intent this
+ * takes must be one Couranr RETRIEVED. A signature-verified webhook proves the
+ * event is Stripe's; it does not prove the event is current, and Stripe does
+ * not guarantee delivery order. The webhook used to hand its own
+ * `event.data.object` straight in here — a late `amount_capturable_updated`
+ * then released the hold and re-armed Capture mid-capture.
+ *
+ * It never supplies a target state.
  */
 export async function applyVerifiedCaptureOutcome(params: {
   requestId: string;

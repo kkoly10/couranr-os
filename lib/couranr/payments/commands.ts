@@ -323,6 +323,13 @@ export async function applyVerifiedIntentState(params: {
  */
 export async function reconcilePaymentIntent(params: {
   intentId: string;
+  /**
+   * The obligation's version, i.e. WHICH cycle this observation belongs to.
+   * The event id is scoped to it so an obligation returning to a state it has
+   * held before — the ordinary `failed` -> re-confirm -> `requires_capture`
+   * recovery — is not swallowed as a duplicate of the first authorization.
+   */
+  obligationVersion: number;
 }): Promise<PaymentResult<ApplyOutcome>> {
   const op = "reconcilePaymentIntent";
   let pi;
@@ -333,7 +340,7 @@ export async function reconcilePaymentIntent(params: {
   }
 
   return applyVerifiedIntentState({
-    providerEventId: syntheticEventId(pi),
+    providerEventId: syntheticEventId(pi, params.obligationVersion),
     // Mapped to the event the state machine understands, so a retrieve and a
     // webhook take the same path and cannot disagree.
     eventType: isFullyAuthorized(pi, pi.amount ?? 0)

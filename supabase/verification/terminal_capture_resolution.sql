@@ -207,6 +207,49 @@ where n.nspname = 'public' and p.proname = 'couranr_create_payment_obligation';
 
 
 -- ---------------------------------------------------------------------
+-- 6b. THE SUPERSEDE GUARD.
+--
+--     `couranr_delivery_requests.version` is the optimistic-concurrency
+--     counter — readiness alone bumps it — so it can never stand in for "the
+--     quote changed". Migration 20260801100000 removed that comparison from
+--     `couranr_apply_readiness`; the same wrong test survived in
+--     `couranr_create_payment_obligation` and silently superseded the
+--     obligation on every re-authorization, stranding the confirmed service
+--     plan against a dead obligation so the delivery could never be captured.
+--
+--     Structural, because the behavioural proof is Group O (O10/O11/O14) and
+--     re-running it here would have to write. Both functions are checked, so
+--     the pattern cannot reappear in either.
+-- ---------------------------------------------------------------------
+select
+  'supersede_guard' as check_group,
+  p.proname || ' does not gate on request.version' as property,
+  position('request_version is not distinct from v_req.version' in p.prosrc) = 0 as compares_version_free,
+  position('request_version is not distinct from v_req.version' in p.prosrc) = 0 as ok
+from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public'
+  and p.proname in ('couranr_create_payment_obligation', 'couranr_apply_readiness')
+union all
+select
+  'supersede_guard',
+  'money in flight is never superseded by a create call',
+  position('payment_in_progress' in p.prosrc) > 0,
+  position('payment_in_progress' in p.prosrc) > 0
+from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public' and p.proname = 'couranr_create_payment_obligation'
+union all
+select
+  'supersede_guard',
+  'service_role only',
+  has_function_privilege('service_role', p.oid, 'execute'),
+  has_function_privilege('service_role', p.oid, 'execute')
+    and not has_function_privilege('authenticated', p.oid, 'execute')
+    and not has_function_privilege('anon', p.oid, 'execute')
+from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public' and p.proname = 'couranr_create_payment_obligation';
+
+
+-- ---------------------------------------------------------------------
 -- 7. NOTHING MOVED. Every probe above was expected to refuse. If any of them
 --    wrote, it shows up here.
 -- ---------------------------------------------------------------------

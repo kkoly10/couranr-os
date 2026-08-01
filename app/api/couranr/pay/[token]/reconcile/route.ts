@@ -47,7 +47,10 @@ export async function POST(_req: NextRequest, { params }: { params: { token: str
     return NextResponse.json({ valid: false, reason: "no_payment_intent" }, { status: 409 });
   }
 
-  const applied = await reconcilePaymentIntent({ intentId: String(intentId) });
+  const applied = await reconcilePaymentIntent({
+    intentId: String(intentId),
+    obligationVersion: Number(ob.value.obligation.version),
+  });
   if (isPaymentFailure(applied)) return failureResponse(applied);
 
   return NextResponse.json({

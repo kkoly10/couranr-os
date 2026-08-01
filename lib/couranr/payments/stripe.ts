@@ -110,11 +110,31 @@ export function isFullyAuthorized(
  * and therefore collides on the events table's unique index, so a retrieve is
  * exactly as idempotent as a webhook delivery and the two cannot double-apply
  * the same fact between them.
+ *
+ * SCOPED TO THE OBLIGATION VERSION, i.e. to which cycle is being observed.
+ * Without that, an obligation returning to a state it has held before could
+ * never be re-applied — and that is the ordinary recovery Stripe documents:
+ * a `requires_payment_method` intent is re-confirmable, so a `failed`
+ * obligation legitimately comes back to `requires_capture`. It produced the
+ * event id the FIRST authorization had already written, collided, and the
+ * apply returned `duplicate` with the obligation still `failed`. The merchant
+ * could re-enter their card as many times as they liked and nothing moved.
+ *
+ * Every other id in the ledger — `couranr:capture:<ob>:v<n>`,
+ * `couranr:attach:…`, `couranr:capture_terminal:<ob>:v<n>:<action>` — is
+ * already cycle-scoped. This one was the exception.
+ *
+ * Replay protection is unaffected: two retrieves of the same cycle still read
+ * the same version and still collide, and a retrieve after an apply lands on
+ * `already_in_state` rather than moving anything twice.
  */
-export function syntheticEventId(pi: {
-  id: string;
-  status: string;
-  amount_capturable?: number | null;
-}): string {
-  return `couranr:retrieve:${pi.id}:${pi.status}:${pi.amount_capturable ?? 0}`;
+export function syntheticEventId(
+  pi: {
+    id: string;
+    status: string;
+    amount_capturable?: number | null;
+  },
+  obligationVersion: number
+): string {
+  return `couranr:retrieve:${pi.id}:v${obligationVersion}:${pi.status}:${pi.amount_capturable ?? 0}`;
 }

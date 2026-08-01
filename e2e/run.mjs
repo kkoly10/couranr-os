@@ -2830,7 +2830,7 @@ async function groupO() {
       `status=${second.status} version=${once?.version}->${twice?.version}`);
   }
 
-  /* ---- the generic authorization webhook cannot bypass the rules ----- */
+  /* ---- a webhook PAYLOAD is never the evidence about a live capture --- */
 
   const guardId = await toCapturePending(accountId);
   if (!guardId) {
@@ -2838,6 +2838,21 @@ async function groupO() {
   } else {
     const ob = await obligationFor(guardId);
     const before = ob?.version;
+
+    /*
+     * The provider's ACTUAL state is indeterminate — the capture is still
+     * running — while the signed event claims the hold is intact. Stripe
+     * "doesn't guarantee the delivery of events in the order that they're
+     * generated" (https://docs.stripe.com/webhooks), so this is an ordinary
+     * late `amount_capturable_updated` from authorization time, not a forgery:
+     * the signature is real and the payload was true when it was generated.
+     *
+     * Believed, it releases the hold and re-arms Capture over a capture that
+     * has not finished. The route must retrieve the intent instead, see
+     * `processing`, and leave the obligation exactly where it is.
+     */
+    await setIntentStatus(ob.provider_payment_intent_id, "processing");
+
     const payload = JSON.stringify({
       id: `evt_guard_${Date.now()}`,
       object: "event",
@@ -2864,7 +2879,7 @@ async function groupO() {
     const body = await res.json().catch(() => ({}));
     const after = await obligationFor(guardId);
     check("O23",
-      "a SIGNED authorization webhook cannot move a capture_pending obligation back to authorized",
+      "a SIGNED webhook claiming the hold is intact cannot release a capture the provider is still running",
       after?.payment_state === "capture_pending" && after?.version === before,
       `http=${res.status} outcome=${body?.outcome} state=${after?.payment_state} version=${before}->${after?.version}`);
   }

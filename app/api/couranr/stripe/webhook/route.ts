@@ -7,8 +7,8 @@ import {
   isPaymentFailure,
 } from "@/lib/couranr/payments/commands";
 import {
-  applyVerifiedCaptureOutcome,
   isFulfillmentFailure,
+  reconcileCapture,
 } from "@/lib/couranr/fulfillment/commands";
 import { logServerFailure, newCorrelationId } from "@/lib/couranr/errors";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
@@ -108,17 +108,34 @@ export async function POST(req: NextRequest) {
    * Operations reconcile route uses — literally the same function — and
    * `couranr_apply_payment_intent_state` refuses it as a second line of
    * defence if this check is ever bypassed.
+   *
+   * AND THE PAYLOAD IS NOT THE EVIDENCE. This calls `reconcileCapture`, which
+   * RETRIEVES the intent, rather than mapping `event.data.object` directly.
+   * Stripe is explicit that it "doesn't guarantee the delivery of events in
+   * the order that they're generated" and tells you to "use the API to
+   * retrieve any missing objects" (https://docs.stripe.com/webhooks). An
+   * `amount_capturable_updated` generated at authorization time can therefore
+   * be delivered AFTER the capture request — and applied from its own payload
+   * it says `requires_capture`, releases the hold and re-arms Capture over a
+   * capture that is genuinely still running. That is precisely the hazard the
+   * paragraph above describes, and mapping the snapshot reintroduced it.
+   *
+   * A live retrieve costs one API call on an event that is rare by
+   * construction, and it makes the webhook and the operator's "Check with the
+   * payment provider" read the same fact from the same place.
    */
   const known = await getObligationByIntentId({ intentId: String(object.id ?? "") });
   if (isPaymentFailure(known)) return failureResponse(known);
 
   const inFlight = known.value.obligation;
   if (inFlight && inFlight.payment_state === "capture_pending") {
-    const resolved = await applyVerifiedCaptureOutcome({
+    // No actor: this is the provider talking, not an operator. `reconcileCapture`
+    // only enforces the operations check when an actor is supplied.
+    const resolved = await reconcileCapture({
       requestId: String(inFlight.request_id),
       obligationId: String(inFlight.id),
       obligationVersion: Number(inFlight.version),
-      intent: object,
+      paymentIntentId: String(inFlight.provider_payment_intent_id ?? object.id ?? ""),
     });
     if (isFulfillmentFailure(resolved)) return failureResponse(resolved);
     return ack(resolved.value.outcome, {
