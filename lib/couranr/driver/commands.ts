@@ -622,6 +622,12 @@ async function verifyHandoffCode(p: {
     p_delivery_id: p.deliveryId,
     p_code_kind: p.kind,
     p_code_digest: digest,
+    // Load-bearing. Without it the SQL scoped nothing to the caller, so ANY
+    // authenticated user holding a delivery UUID could burn all five attempts
+    // and lock a real delivery's credential — or consume it on a lucky guess.
+    // The command now derives the caller's own active assignment first, so a
+    // stranger's attempt never reaches the counter at all.
+    p_actor_user_id: p.userId,
   });
   if (!r.ok) return r;
 

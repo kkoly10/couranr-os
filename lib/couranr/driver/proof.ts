@@ -316,14 +316,28 @@ export type ProofMetadata = {
  * Operations, the assigned driver and the owning customer; the merchant is
  * deliberately not among them, so this is the widest shape they ever receive.
  */
-export async function listProofMetadata(deliveryId: string): Promise<ProofMetadata[]> {
-  const { data } = (await supabaseAdmin
+export async function listProofMetadata(
+  deliveryId: string
+): Promise<DriverResult<ProofMetadata[]>> {
+  const { data, error } = (await supabaseAdmin
     .from("couranr_delivery_proofs")
     .select("id,proof_stage,proof_type,finalized_at,storage_object_path")
     .eq("delivery_id", deliveryId)
-    .order("finalized_at", { ascending: true })) as { data: any };
+    .order("finalized_at", { ascending: true })) as { data: any; error: any };
 
-  return (data ?? []).map((r: any) => ({
+  // A failed read is NOT "there is no proof". Returning [] on an infrastructure
+  // fault would tell a merchant their driver never photographed anything — the
+  // same class of defect as rendering a failed workspace lookup as "you have no
+  // business", which this repo has already shipped once.
+  if (error) {
+    return driverFail({
+      operation: "listProofMetadata",
+      code: "internal",
+      detail: { reason: "proof_read_failed", message: error?.message },
+    });
+  }
+
+  const rows = (data ?? []).map((r: any) => ({
     proofId: String(r.id),
     proofStage: String(r.proof_stage),
     proofType: String(r.proof_type),
@@ -331,6 +345,8 @@ export async function listProofMetadata(deliveryId: string): Promise<ProofMetada
     // Whether media EXISTS is metadata; where it lives is not.
     hasMedia: Boolean(r.storage_object_path),
   }));
+
+  return { ok: true, value: rows };
 }
 
 /**
