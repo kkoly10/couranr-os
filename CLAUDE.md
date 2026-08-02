@@ -38,6 +38,12 @@ Plus seven unauthenticated API routes, two of which touch money: `/api/create-ch
 3. `UI_SCREEN_REGISTRY.md` (repo root) — 66 canonical MVP screens, their routes, tiers, phases, and required states.
 4. `docs/couranr-mvp/platform-baseline-v1.1/` — platform, dependency, migration-order and rollback authority.
 
+**How to use the chain, before writing governed behavior:**
+
+- **Search the root registry for the applicable decision ID first**, by topic, and read the decision in full. Do not implement pricing, hours, states, proof, terminology or a launch gate from the brief alone — the brief is a work order, the registry is the authority, and where they differ the difference is a decision to surface rather than a detail to resolve in code. The driver-execution slice found `PHO-001` (proof storage, viewers, signed-URL TTLs) and `PRF-001` (what pickup and each drop-off method require) only by looking; both govern behavior the brief also described, and one of them named the bucket to reuse.
+- **The package copy must stay consistent with the root registry** wherever both carry the same decision. `tests/decision-registry-provenance.test.ts` enforces that the root file is a superset. If a change would make them disagree, that is a registry change, not a code change.
+- **Current code is shipped-state evidence, not authority.** It tells you what is running today. The moment it conflicts with the registry, the Master Package or the screen registry, the code is the defect — record what it does, then implement what the authority says.
+
 **Legacy repository behavior never overrides these.** Where the code and the spec disagree, the spec is right and the code is the defect. Known live conflicts: pricing is `$15` base / 4 included miles / `$1.75` per mile (`lib/delivery/policy.ts:13-15`) against a specified `$22.99` / 3 miles / tiered `$2.25–$4.75`; the service area is a 60-mile radius from Stafford (`lib/serviceArea.ts:1-4`) rather than the four named markets; overnight is unimplemented. These are Phase 3 work — do not "fix" them opportunistically, and do not treat the code as evidence of intent.
 
 Product is being transformed from a mixed auto-rental / document-services / generic-courier app into one focused product: **Couranr, local delivery infrastructure for local businesses**. The auto and docs domains are legacy and slated for quarantine, not extension.

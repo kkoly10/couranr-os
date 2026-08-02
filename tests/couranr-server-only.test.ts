@@ -104,6 +104,12 @@ describe("server-only modules are unreachable from client code", () => {
       // projection is built here, so a bundle reaching this module would put
       // the unsanitized delivery row within reach of a browser.
       "lib/couranr/dispatch/commands.ts",
+      // Holds the handoff-code HMAC secret. A bundle reaching this module
+      // would ship the key that makes a six-digit PIN safe at all.
+      "lib/couranr/driver/codes.ts",
+      // Builds canonical proof object paths and holds the bucket name. Paths
+      // are the part of a private object that leaks furthest.
+      "lib/couranr/driver/proofPaths.ts",
       // Holds the service-role client and the Stripe secret key.
       "lib/couranr/fulfillment/commands.ts",
       "lib/couranr/onboarding/commands.ts",
