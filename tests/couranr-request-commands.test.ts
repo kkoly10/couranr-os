@@ -628,10 +628,13 @@ describe("a missing acknowledgment is a different conflict from a stale version"
       expect(c, "00000 is reserved").not.toBe("00000");
       expect(c.endsWith("000"), `${c} is a category code`).toBe(false);
     }
-    // CR403 comes from the workspace command; the rest from the request
-    // commands. Pinned as an exact set so a new code has to be added here
-    // deliberately and pass the legality rules above.
-    expect([...codes].sort()).toEqual(["CR403", "CR404", "CR409", "CR412", "CR422"]);
+    // CR400 comes from the driver-execution commands (malformed caller-supplied
+    // proof data that reaches SQL); CR403 from the workspace and driver
+    // commands; the rest from the request commands. Pinned as an exact set so a
+    // new code has to be added here deliberately and pass the legality rules
+    // above — CR400 does: five characters, legal alphabet, and it ends in "400"
+    // rather than the "000" that would make it a category code.
+    expect([...codes].sort()).toEqual(["CR400", "CR403", "CR404", "CR409", "CR412", "CR422"]);
   });
 
   /**
