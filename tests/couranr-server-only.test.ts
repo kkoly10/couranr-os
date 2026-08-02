@@ -107,6 +107,9 @@ describe("server-only modules are unreachable from client code", () => {
       // Holds the handoff-code HMAC secret. A bundle reaching this module
       // would ship the key that makes a six-digit PIN safe at all.
       "lib/couranr/driver/codes.ts",
+      // The single accessor for that secret. There is no fallback in it, so a
+      // client import would not "degrade" — it would ship the key itself.
+      "lib/couranr/driver/handoffSecret.ts",
       // Builds canonical proof object paths and holds the bucket name. Paths
       // are the part of a private object that leaks furthest.
       "lib/couranr/driver/proofPaths.ts",

@@ -1,8 +1,10 @@
 import { createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
 import { assertServerOnly } from "@/lib/couranr/serverOnly";
-import { requireEnv } from "@/lib/env";
+import { HANDOFF_SECRET_ENV, handoffSecret } from "@/lib/couranr/driver/handoffSecret";
 
 assertServerOnly("lib/couranr/driver/codes.ts");
+
+export { HANDOFF_SECRET_ENV };
 
 /**
  * Handoff codes: the merchant's pickup PIN and the recipient's drop-off PIN.
@@ -56,21 +58,14 @@ const DOMAIN: Record<CodeKind, string> = {
 };
 
 /**
- * Read at USE time, never at import. A module-scope read would throw during
- * `next build`'s page-data collection and make a clean clone unbuildable —
- * the exact failure `lib/env.ts` exists to prevent.
+ * Read at USE time through the single hardened accessor, which rejects an
+ * absent, empty, short or placeholder value and has no fallback of any kind.
  *
- * Read through `requireEnv` rather than `process.env.X!`. With the non-null
- * assertion a missing secret is `undefined`, and `createHmac` would then key
- * every digest on the literal string "undefined" — a silent, uniform,
- * attacker-known key. `requireEnv` throws instead, naming the variable and
- * never its value.
+ * The alternative — `process.env.X!` — is what makes a missing secret into the
+ * literal string "undefined" and keys every digest in the system on it: a
+ * silent, uniform, attacker-known key that still produces plausible digests.
  */
-export const HANDOFF_SECRET_ENV = "COURANR_HANDOFF_CODE_SECRET";
-
-function secret(): string {
-  return requireEnv(HANDOFF_SECRET_ENV);
-}
+const secret = handoffSecret;
 
 /**
  * A uniformly distributed six-digit code, leading zeros preserved.
@@ -157,3 +152,36 @@ export function verifyHandoffCode(input: {
 export function generateUploadNonce(): string {
   return randomBytes(16).toString("hex");
 }
+
+/**
+ * Removes anything that could be a handoff code from a string bound for a log
+ * line, a correlation record or an error detail.
+ *
+ * Defence in depth, and deliberately blunt. The commands are written so a raw
+ * code never reaches a diagnostic in the first place; this exists because
+ * "never" is a property of today's call graph, and the next person to add a
+ * `detail:` field will not re-derive it. Any run of exactly six digits is
+ * replaced — over-redacting a package count in a log line costs nothing, and
+ * under-redacting a PIN costs the credential.
+ */
+export function redactHandoffCodes(value: string): string {
+  if (typeof value !== "string") return value;
+  return value.replace(/(?<![0-9])[0-9]{6}(?![0-9])/g, "[redacted-code]");
+}
+
+/**
+ * The one place a raw code is allowed to exist in a response, and the shape
+ * that says so. Returned ONLY by an authorized issuance command; nothing reads
+ * it back afterwards, because nothing stores it.
+ */
+export type IssuedHandoffCode = {
+  code: string;
+  kind: CodeKind;
+  generation: number;
+  expiresAt: string;
+  /** Shown to whoever issued it. The code is not recoverable after this. */
+  warning: string;
+};
+
+export const CODE_SHOWN_ONCE_WARNING =
+  "Write this code down now — Couranr cannot show it again. Issue a new one if it is lost.";

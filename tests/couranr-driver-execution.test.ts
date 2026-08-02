@@ -269,10 +269,17 @@ describe("canonical proof paths", () => {
 
 /* ================================================= keyed handoff codes ==== */
 
+/**
+ * 48 bytes, high-entropy, and not a placeholder prefix — the accessor
+ * rejects anything under 32 bytes, anything beginning with a runbook word like
+ * "test" or "changeme", and anything with fewer than 8 distinct characters.
+ */
+const FIXTURE_SECRET = "K7pQ2vX9mZ4tR8wL6nB3hF5jD1sG0yC-aE_uI+oM/qW=";
+
 describe("handoff codes", () => {
   const SAVED = process.env.COURANR_HANDOFF_CODE_SECRET;
   beforeEach(() => {
-    process.env.COURANR_HANDOFF_CODE_SECRET = "test-secret-not-a-real-key";
+    process.env.COURANR_HANDOFF_CODE_SECRET = FIXTURE_SECRET;
   });
   afterEach(() => {
     if (SAVED === undefined) delete process.env.COURANR_HANDOFF_CODE_SECRET;
@@ -390,7 +397,7 @@ describe("handoff codes", () => {
       throw new Error("expected a throw");
     } catch (e: any) {
       expect(e.message).toContain(HANDOFF_SECRET_ENV);
-      expect(e.message).not.toContain("test-secret-not-a-real-key");
+      expect(e.message).not.toContain(FIXTURE_SECRET);
     }
   });
 
@@ -509,5 +516,121 @@ describe("no flow requires a face or an identity document", () => {
     for (const bad of FORBIDDEN) {
       expect(src, `${bad} appears in a driver module`).not.toContain(bad);
     }
+  });
+});
+
+/* ================================================= the secret contract ==== */
+
+/**
+ * A six-digit PIN has 10^6 possibilities. The only thing between a leaked
+ * database row and every pickup code in the system is that this key is not in
+ * it — so a fallback, a development default or a value generated at boot would
+ * each quietly remove the protection while every test stayed green.
+ */
+describe("COURANR_HANDOFF_CODE_SECRET", () => {
+  const SAVED = process.env.COURANR_HANDOFF_CODE_SECRET;
+  afterEach(() => {
+    if (SAVED === undefined) delete process.env.COURANR_HANDOFF_CODE_SECRET;
+    else process.env.COURANR_HANDOFF_CODE_SECRET = SAVED;
+  });
+
+  async function accessor() {
+    return import("@/lib/couranr/driver/handoffSecret");
+  }
+
+  it("fails closed when unset, and names only the variable", async () => {
+    const { handoffSecret, HANDOFF_SECRET_ENV } = await accessor();
+    delete process.env.COURANR_HANDOFF_CODE_SECRET;
+    expect(() => handoffSecret()).toThrow(HANDOFF_SECRET_ENV);
+  });
+
+  it("rejects empty and whitespace", async () => {
+    const { handoffSecret } = await accessor();
+    for (const v of ["", "   ", "\n"]) {
+      process.env.COURANR_HANDOFF_CODE_SECRET = v;
+      expect(() => handoffSecret()).toThrow();
+    }
+  });
+
+  it("rejects anything under 32 bytes of material", async () => {
+    const { handoffSecret, MIN_SECRET_BYTES } = await accessor();
+    expect(MIN_SECRET_BYTES).toBe(32);
+    process.env.COURANR_HANDOFF_CODE_SECRET = "aB3dE6gH9jK2mN5p";           // 16
+    expect(() => handoffSecret()).toThrow();
+    process.env.COURANR_HANDOFF_CODE_SECRET = "aB3dE6gH9jK2mN5pQ8sT1vW4yZ7c"; // 28
+    expect(() => handoffSecret()).toThrow();
+  });
+
+  /**
+   * Byte length, not character length. Thirty-two astral-plane characters are
+   * not thirty-two bytes of secret, and `String.length` cannot tell them apart.
+   */
+  it("measures bytes rather than characters", async () => {
+    const { handoffSecret } = await accessor();
+    const emoji = "🔑".repeat(9); // 9 chars, 36 bytes — long enough by bytes...
+    process.env.COURANR_HANDOFF_CODE_SECRET = emoji;
+    // ...but a single repeated character carries no entropy, so it is still out.
+    expect(() => handoffSecret()).toThrow();
+  });
+
+  it("rejects placeholders even when they are long enough", async () => {
+    const { handoffSecret } = await accessor();
+    for (const v of [
+      "changeme-changeme-changeme-changeme",
+      "placeholder-value-for-the-handoff-secret",
+      "your-secret-here-your-secret-here-abc",
+      "TODO-set-this-before-launch-please-ok",
+    ]) {
+      process.env.COURANR_HANDOFF_CODE_SECRET = v;
+      expect(() => handoffSecret(), `${v.slice(0, 12)}… was accepted`).toThrow();
+    }
+  });
+
+  it("rejects a long value with almost no distinct characters", async () => {
+    const { handoffSecret } = await accessor();
+    process.env.COURANR_HANDOFF_CODE_SECRET = "a".repeat(64);
+    expect(() => handoffSecret()).toThrow();
+  });
+
+  it("accepts a real key", async () => {
+    const { handoffSecret } = await accessor();
+    process.env.COURANR_HANDOFF_CODE_SECRET = FIXTURE_SECRET;
+    expect(handoffSecret()).toBe(FIXTURE_SECRET);
+  });
+
+  it("never puts the value, or any prefix of it, into the error", async () => {
+    const { handoffSecret } = await accessor();
+    process.env.COURANR_HANDOFF_CODE_SECRET = "shortbutdistinct";
+    try {
+      handoffSecret();
+      throw new Error("expected a throw");
+    } catch (e: any) {
+      expect(e.message).not.toContain("shortbutdistinct");
+      expect(e.message).not.toContain("shortbut");
+    }
+  });
+
+  it("has no fallback, default or self-generated value anywhere in the module", () => {
+    const src = readFileSync(path.join(ROOT, "lib/couranr/driver/handoffSecret.ts"), "utf8");
+    // A `||` or `??` after the env read is exactly how a dev default gets in.
+    expect(src).not.toMatch(/process\.env\[[^\]]+\]\s*(\|\||\?\?)/);
+    expect(src).not.toMatch(/randomBytes|randomUUID|generateKey/);
+    expect(src).not.toMatch(/NEXT_PUBLIC/);
+  });
+
+  it("the accessor is never reachable from client code", () => {
+    const src = readFileSync(path.join(ROOT, "lib/couranr/driver/handoffSecret.ts"), "utf8");
+    expect(src).toMatch(/^assertServerOnly\(/m);
+  });
+
+  /** Redaction is defence in depth for the next `detail:` someone adds. */
+  it("redacts anything six-digit-shaped from a diagnostic string", async () => {
+    process.env.COURANR_HANDOFF_CODE_SECRET = FIXTURE_SECRET;
+    const { redactHandoffCodes } = await import("@/lib/couranr/driver/codes");
+    expect(redactHandoffCodes("code 481920 rejected")).toBe("code [redacted-code] rejected");
+    expect(redactHandoffCodes("pin=000123")).toBe("pin=[redacted-code]");
+    // Not a six-digit run: left alone, so real diagnostics stay readable.
+    expect(redactHandoffCodes("order 12345")).toBe("order 12345");
+    expect(redactHandoffCodes("id 1234567")).toBe("id 1234567");
   });
 });
