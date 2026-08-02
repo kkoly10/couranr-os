@@ -106,9 +106,34 @@ describe("publicError", () => {
 
 describe("classifyDatabaseError", () => {
   it("maps the Couranr command SQLSTATEs", () => {
+    expect(classifyDatabaseError({ code: "CR400" })).toBe("invalid_input");
+    expect(classifyDatabaseError({ code: "CR403" })).toBe("not_permitted");
     expect(classifyDatabaseError({ code: "CR404" })).toBe("not_found");
     expect(classifyDatabaseError({ code: "CR409" })).toBe("version_conflict");
+    expect(classifyDatabaseError({ code: "CR412" })).toBe("conflict");
     expect(classifyDatabaseError({ code: "42501" })).toBe("not_permitted");
+  });
+
+  /**
+   * CR403 fell through `default` to `internal` until the driver-execution
+   * slice, so every "you may not do that" surfaced as HTTP 500. A refusal
+   * reported as a server fault tells the caller to retry something that will
+   * never succeed, and hides a real authorization boundary from the logs.
+   */
+  it("reports a forbidden command as a refusal, not as a server fault", () => {
+    expect(classifyDatabaseError({ code: "CR403" })).toBe("not_permitted");
+    expect(PUBLIC_STATUS[classifyDatabaseError({ code: "CR403" })]).toBe(403);
+  });
+
+  /**
+   * The CR400/CR422 split is the whole reason both exist. CR400 is "you sent
+   * something wrong"; CR422 is "we passed ourselves something inconsistent".
+   * Collapsing them would either blame the caller for our bug or hide our bug
+   * behind a 400 nobody investigates.
+   */
+  it("keeps caller error and internal invariant failure on opposite sides", () => {
+    expect(PUBLIC_STATUS[classifyDatabaseError({ code: "CR400" })]).toBeLessThan(500);
+    expect(PUBLIC_STATUS[classifyDatabaseError({ code: "CR422" })]).toBe(500);
   });
 
   /**

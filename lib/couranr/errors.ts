@@ -171,6 +171,20 @@ function sanitizeToken(value: string): string {
 export function classifyDatabaseError(err: any): PublicErrorCode {
   const code = typeof err?.code === "string" ? err.code : "";
   switch (code) {
+    case "CR400":
+      // The caller sent something this command cannot accept. Distinct from a
+      // route-level validation failure only in where it was caught: the SQL is
+      // the authority on its own preconditions, and a shape the database
+      // rejects must not read to the caller as our bug.
+      return "invalid_input";
+    case "CR403":
+      // Raised by the dispatch and driver commands for "this actor may not do
+      // this to this row". It was documented as the family's forbidden code
+      // from the first dispatch migration but never mapped, so every CR403
+      // fell through `default` and surfaced as HTTP 500 — a refusal reported
+      // as a server fault. The one working handler in the tree is a
+      // hand-written ternary at onboarding/commands.ts; this makes it general.
+      return "not_permitted";
     case "CR404":
       return "not_found";
     case "CR409":
@@ -183,6 +197,8 @@ export function classifyDatabaseError(err: any): PublicErrorCode {
     case "CR422":
       // The server passed itself an inconsistent quote. That is our bug, not
       // the caller's input, so it must not read as a validation failure.
+      // Reserved for INTERNAL INVARIANT failures only — a driver sending bad
+      // input gets CR400, never this.
       return "internal";
     case "42501": // insufficient_privilege
       return "not_permitted";
