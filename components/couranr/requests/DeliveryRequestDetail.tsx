@@ -24,6 +24,10 @@ import { MerchantPaymentPanel } from "@/components/couranr/payments/MerchantPaym
 import { MerchantReadinessPanel } from "@/components/couranr/fulfillment/MerchantReadinessPanel";
 import { OperationsPlanPanel } from "@/components/couranr/fulfillment/OperationsPlanPanel";
 import { OperationsAssignmentPanel } from "@/components/couranr/dispatch/OperationsAssignmentPanel";
+import { OperationsExecutionPanel } from "@/components/couranr/dispatch/OperationsExecutionPanel";
+import { MerchantProofPanel } from "@/components/couranr/dispatch/MerchantProofPanel";
+import { HandoffCodePanel } from "@/components/couranr/dispatch/HandoffCodePanel";
+import { DeliveryExecutionTimeline } from "@/components/couranr/dispatch/DeliveryExecutionTimeline";
 import { fetchFulfillment, type FulfillmentView } from "@/components/couranr/fulfillment/client";
 import {
   fetchDeliveryRequest,
@@ -357,6 +361,30 @@ export function DeliveryRequestDetail({ id }: { id: string }) {
         />
       ) : null}
 
+      {/* MER-007 execution. Only once a canonical delivery exists — before
+          that there is no driver, no state to follow and no proof.
+
+          The merchant sees WHAT HAPPENED and issues the two credentials. They
+          do not see proof media: PHO-001's authorized viewers are Operations,
+          the assigned driver and the owning customer, and the merchant is
+          deliberately not among them. */}
+      {!isOperations && fulfillment?.delivery ? (
+        <>
+          <DeliveryExecutionTimeline current={fulfillment.delivery.fulfillmentState} />
+          <HandoffCodePanel
+            deliveryId={fulfillment.delivery.id}
+            kind="merchant_pickup"
+            surface="merchant"
+          />
+          <HandoffCodePanel
+            deliveryId={fulfillment.delivery.id}
+            kind="recipient_dropoff"
+            surface="merchant"
+          />
+          <MerchantProofPanel deliveryId={fulfillment.delivery.id} />
+        </>
+      ) : null}
+
       {/* OPS-003 service plan, capture and the canonical delivery result. */}
       {isOperations ? (
         <OperationsPlanPanel
@@ -374,7 +402,22 @@ export function DeliveryRequestDetail({ id }: { id: string }) {
       {/* OPS-003 managed dispatch. Only once a canonical delivery exists —
           there is nothing to assign a driver to before that. */}
       {isOperations && fulfillment?.delivery ? (
-        <OperationsAssignmentPanel deliveryId={fulfillment.delivery.id} />
+        <OperationsAssignmentPanel
+          deliveryId={fulfillment.delivery.id}
+          // Assigning moves the delivery to `assigned`, which is what the
+          // execution panel below reads to offer pre-pickup unassignment.
+          onChanged={() => void reloadFulfillment(null)}
+        />
+      ) : null}
+
+      {/* OPS-003 execution: the timeline, both credentials, the discrepancy
+          blocker, pre-pickup unassignment and the 900-second proof viewer. */}
+      {isOperations && fulfillment?.delivery ? (
+        <OperationsExecutionPanel
+          deliveryId={fulfillment.delivery.id}
+          fulfillmentState={fulfillment.delivery.fulfillmentState}
+          onChanged={() => void reloadFulfillment(null)}
+        />
       ) : null}
 
       {isOperations ? (

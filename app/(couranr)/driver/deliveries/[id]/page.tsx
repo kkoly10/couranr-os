@@ -10,15 +10,29 @@ export const metadata = { title: "Assigned delivery — Couranr" };
  * The page passes the id through; the server decides whether this caller holds
  * that delivery, and answers "no assignment" rather than a permission error if
  * they do not — a 403 would confirm the delivery exists.
+ *
+ * DRV-005 Driving Mode is a `?mode=driving` variant of this same route, which
+ * is how UI_SCREEN_REGISTRY defines it. The mode is a presentation choice and
+ * carries no authority: the same sanitized projection backs both, and every
+ * mutation still goes through the same command.
  */
-export default function Page({ params }: { params: { id: string } }) {
+export default function Page({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams?: { mode?: string };
+}) {
+  const drivingMode = searchParams?.mode === "driving";
   return (
     <>
-      <PageHeader
-        title="Assigned delivery"
-        breadcrumbs={[{ label: "Dashboard", href: "/driver" }, { label: "Assigned delivery" }]}
-      />
-      <AssignedDeliveryDetail deliveryId={params.id} />
+      {!drivingMode ? (
+        <PageHeader
+          title="Assigned delivery"
+          breadcrumbs={[{ label: "Dashboard", href: "/driver" }, { label: "Assigned delivery" }]}
+        />
+      ) : null}
+      <AssignedDeliveryDetail deliveryId={params.id} drivingMode={drivingMode} />
     </>
   );
 }
