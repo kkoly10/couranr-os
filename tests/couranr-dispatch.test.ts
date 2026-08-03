@@ -278,6 +278,41 @@ describe("the assigned-driver projection", () => {
     // claim; null is the truth.
     expect(projection().shipment.packageCount).toBeNull();
   });
+
+  /*
+   * The version is not decoration — it is the ONLY thing that lets a driver
+   * issue their first command on a delivery. Omitting it shipped a DRV-002 that
+   * rendered every field correctly and offered a permanently disabled action
+   * reading "Couranr could not confirm this delivery's current version".
+   * Typecheck and the whole unit suite stayed green; only a browser caught it.
+   */
+  it("carries the delivery's own version, so the first command has a token to send", () => {
+    expect(projection().version).toBe(4);
+  });
+
+  it("reports a missing or nonsensical version as null rather than guessing 1", () => {
+    // Guessing would let a driver overwrite a delivery someone else had already
+    // moved — the exact race the version exists to prevent.
+    for (const bad of [undefined, null, 0, -1, 2.5, "4", Number.NaN]) {
+      const p = buildAssignedDeliveryProjection({
+        delivery: { ...LEAKY_DELIVERY, version: bad },
+        assignment: { id: "66666666-6666-4666-8666-666666666666", assigned_at: "2026-09-19T10:00:00Z" },
+        vehicle: null,
+        merchant: null,
+      });
+      expect(p.version, `version ${String(bad)} should not be accepted`).toBeNull();
+    }
+  });
+
+  it("exposes the delivery version WITHOUT exposing the request version", () => {
+    // Two different numbers with two different audiences. The row carries
+    // request_version 7; a driver may see neither it nor any other audit handle.
+    const p = projection();
+    expect(p.version).toBe(4);
+    expect(JSON.stringify(p)).not.toContain("request_version");
+    expect(projectionLeaks(JSON.stringify(p))).toBeNull();
+  });
+
 });
 
 /* ===================================== the invariants live in the database = */

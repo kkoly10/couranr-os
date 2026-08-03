@@ -162,6 +162,12 @@ export function setVehicleAvailabilityFromBrowser(input: {
  */
 export type AssignedDeliveryView = {
   deliveryId: string;
+  /**
+   * The compare-and-set token every driver command must send. Null only if the
+   * server could not determine one, in which case the action is blocked rather
+   * than sent with a guess — see `readDeliveryVersion`.
+   */
+  version: number | null;
   fulfillmentState: string;
   serviceLevel: string;
   scheduledPickupStart: string;
