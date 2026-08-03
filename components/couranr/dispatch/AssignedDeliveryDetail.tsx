@@ -21,6 +21,7 @@ import {
   FULFILLMENT_ORDER,
   FULFILLMENT_STATES,
   FULFILLMENT_TONES,
+  isDrivingState,
   PROOF_METHOD_LABELS,
   isFulfillmentState,
   isProofMethod,
@@ -40,6 +41,7 @@ import {
   type DriverCompletionReceipt,
 } from "./client";
 import { locationBody, useLocationCapture, type LocationState } from "./useLocationCapture";
+import { DrivingMode } from "./DrivingMode";
 import { DropoffProof } from "./DropoffProof";
 import { LocationBlock, PickupFlow, readDeliveryVersion } from "./PickupFlow";
 
@@ -64,7 +66,14 @@ import { LocationBlock, PickupFlow, readDeliveryVersion } from "./PickupFlow";
  * cannot choose their own work, and a screen that offers two next actions
  * invites picking the wrong one while moving.
  */
-export function AssignedDeliveryDetail({ deliveryId }: { deliveryId?: string }) {
+export function AssignedDeliveryDetail({
+  deliveryId,
+  drivingMode = false,
+}: {
+  deliveryId?: string;
+  /** DRV-005. A presentation mode only — it grants nothing and skips no check. */
+  drivingMode?: boolean;
+}) {
   const [response, setResponse] = React.useState<DriverAssignmentResponse | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [failure, setFailure] = React.useState<string | null>(null);
@@ -179,6 +188,7 @@ export function AssignedDeliveryDetail({ deliveryId }: { deliveryId?: string }) 
       return (
         <ActiveAssignment
           assigned={response.assigned}
+          drivingMode={drivingMode}
           location={location}
           busy={busy}
           setBusy={setBusy}
@@ -209,6 +219,7 @@ export function AssignedDeliveryDetail({ deliveryId }: { deliveryId?: string }) 
 
 function ActiveAssignment({
   assigned,
+  drivingMode,
   location,
   busy,
   setBusy,
@@ -219,6 +230,8 @@ function ActiveAssignment({
   reload,
 }: {
   assigned: AssignedDeliveryView;
+  /** DRV-005. Presentation only — it grants nothing and skips no check. */
+  drivingMode: boolean;
   location: LocationState;
   busy: boolean;
   setBusy: (v: boolean) => void;
@@ -283,6 +296,28 @@ function ActiveAssignment({
     }
     setKnownVersion({ deliveryId: assigned.deliveryId, version: r.value.delivery.version });
     await reload();
+  }
+
+  /*
+   * Driving Mode REPLACES the detail rather than sitting beside it. The point
+   * is fewer things to read while moving, so rendering both would defeat it.
+   *
+   * Honoured only while the delivery is actually travelling: `?mode=driving`
+   * on a stationary delivery falls through to the full detail rather than
+   * hiding the controls the driver stopped in order to use.
+   */
+  if (drivingMode && state !== null && isDrivingState(state)) {
+    return (
+      <DrivingMode
+        assigned={assigned}
+        location={location}
+        busy={busy}
+        error={actionError}
+        onArrive={() =>
+          arrive(state === "en_route_to_pickup" ? "arrive_at_pickup" : "arrive_at_dropoff")
+        }
+      />
+    );
   }
 
   return (

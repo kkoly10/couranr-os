@@ -100,9 +100,18 @@ export default function DriverDashboardPage() {
       <div style={{ marginTop: 24, ...styles.card }}>
         <h2 style={styles.sectionTitle}>Active Delivery</h2>
 
+        {/*
+          Scoped to THIS list on purpose. A driver can hold a live Couranr
+          assignment — shown in the card above, from managed dispatch — while
+          this legacy section, which reads a different table, is empty. The old
+          copy said "No active delivery assigned right now" underneath a card
+          naming a delivery, which is the same class of lie as rendering a
+          failed lookup as "you have no business".
+        */}
         {!activeDelivery && !failure && (
           <p style={{ marginTop: 10, color: "#555" }}>
-            No active delivery assigned right now.
+            Nothing in this list right now. Work Couranr has assigned you appears under Couranr
+            assignment above.
           </p>
         )}
 

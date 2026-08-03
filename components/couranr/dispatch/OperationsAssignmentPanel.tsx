@@ -58,7 +58,22 @@ function vehicleIneligibility(
   return null;
 }
 
-export function OperationsAssignmentPanel({ deliveryId }: { deliveryId: string }) {
+export function OperationsAssignmentPanel({
+  deliveryId,
+  onChanged,
+}: {
+  deliveryId: string;
+  /**
+   * Fired once the server has accepted an assignment or a replacement.
+   *
+   * An assignment moves the delivery `scheduled` → `assigned`, and the panels
+   * BELOW this one — the execution timeline, the pre-pickup unassign control —
+   * read that state from the parent, not from here. Without this the operator
+   * sees a driver named in this card while the card under it still says
+   * "Scheduled" and offers nothing, until they reload the page by hand.
+   */
+  onChanged?: () => void;
+}) {
   const [view, setView] = React.useState<DispatchPanelView | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
@@ -151,6 +166,9 @@ export function OperationsAssignmentPanel({ deliveryId }: { deliveryId: string }
     setDriverId("");
     setVehicleId("");
     await load();
+    // After this panel's own read, so a parent that re-renders it does not race
+    // a refetch that is still in flight.
+    onChanged?.();
   }
 
   return (
