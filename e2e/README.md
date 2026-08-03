@@ -41,6 +41,20 @@ Screenshots and `results.json` land in `e2e/artifacts/` (gitignored).
 | N | readiness, service plan, capture, recovery from an unknown capture, and the canonical delivery |
 | O | terminal capture resolution — a verified `failed` and a verified `canceled`, both recovery paths, and the guards that keep an indeterminate status waiting |
 | P | managed dispatch — who may assign, every resource refusal, the assignment itself in OPS-003, reassignment before pickup, and the sanitized driver projection on DRV-001 / DRV-002 |
+| Q | driver execution — the lifecycle `assigned → delivered` driven in the browser: both handoff codes, both pickup photos asserted against the STORED object, the completion gate, proof-method immutability, the sanitized receipt, and who may open proof media |
+
+**Group Q needs a location and does not need Stripe.** It calls
+`freshContext({ geo })`, which is opt-in precisely so groups A–P keep the
+context they have always had. It starts from a delivery that is already
+`scheduled` — rebuilding the payment chain would couple driver execution to
+Stripe, which groups M/N/O already prove and which cannot run without payment
+keys — and it logs whether it adopted an existing delivery or built one.
+
+**If a run dies between `at_pickup` and `delivered`, drive that delivery to
+`delivered` before re-running anything.** No command ends an assignment from
+`at_pickup` onward, so the driver stays `on_delivery` and every later run fails
+in setup. Group Q's recovery releases what it can and reports what it cannot; it
+will never write a column to unstick a fixture.
 
 ## Rules this harness follows
 
