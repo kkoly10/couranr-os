@@ -153,10 +153,309 @@ export function setVehicleAvailabilityFromBrowser(input: {
   );
 }
 
+/**
+ * The sanitized projection a driver may see while an assignment is ACTIVE.
+ *
+ * Mirrors `AssignedDeliveryProjection` in lib/couranr/dispatch/projection.ts,
+ * which is server-only and cannot be imported here. `tests/couranr-dispatch`
+ * holds the two in step; the allow-list on the server is the authority.
+ */
+export type AssignedDeliveryView = {
+  deliveryId: string;
+  fulfillmentState: string;
+  serviceLevel: string;
+  scheduledPickupStart: string;
+  scheduledPickupEnd: string;
+  timezone: string;
+  pickup: DeliveryAddressView;
+  dropoff: DeliveryAddressView;
+  merchant: { name: string; phone: string };
+  recipient: { name: string; phone: string };
+  shipment: {
+    packageCount: number | null;
+    declaredWeightLb: number | null;
+    additionalStops: number | null;
+  };
+  proof: { method: string; signatureRequired: boolean };
+  vehicleRequirement: { vehicleClass: string | null; maxPayloadLb: number | null };
+  assignment: {
+    assignmentId: string;
+    assignedAt: string;
+    vehicle: { id: string; name: string; vehicleClass: string } | null;
+  };
+};
+
+export type DeliveryAddressView = {
+  line1: string;
+  line2: string;
+  city: string;
+  region: string;
+  postalCode: string;
+  instructions: string;
+};
+
+/**
+ * What survives completion. Six fields, and the absences are the point: no
+ * address, no recipient contact, no merchant note, no money, no object path,
+ * no signed URL. A finished delivery stops being readable rather than
+ * lingering on a success screen.
+ */
+export type DriverCompletionReceipt = {
+  deliveryId: string;
+  assignmentId: string;
+  deliveredAt: string;
+  proofMethod: string;
+  pickupProofComplete: boolean;
+  deliveryProofComplete: boolean;
+};
+
+/**
+ * Three states, discriminated, and NONE of them means "the request failed".
+ *
+ * That distinction is the whole reason this is a union rather than a nullable
+ * field. `{ assigned: null }` collapsed "you have no work" and "we could not
+ * find out" into one shape, and this repo has already shipped a screen that
+ * rendered a failed lookup as "you have no business". A failure is an
+ * `ApiFailure` from `call`, and every consumer must handle it separately.
+ */
+export type DriverAssignmentResponse =
+  | { status: "active"; assigned: AssignedDeliveryView }
+  | { status: "recently_completed"; receipt: DriverCompletionReceipt }
+  | { status: "none"; assigned: null };
+
 /** The sanitized projection for the CALLING driver. No id is required. */
 export function fetchMyAssignment(deliveryId?: string) {
   const qs = deliveryId ? `?deliveryId=${encodeURIComponent(deliveryId)}` : "";
-  return call<{ assigned: any | null }>(`/api/couranr/driver/assignment${qs}`);
+  return call<DriverAssignmentResponse>(`/api/couranr/driver/assignment${qs}`);
+}
+
+/* ------------------------------------------------ driver execution calls -- */
+
+type Located = { latitude: number; longitude: number; accuracyM: number | null };
+
+export function startRouteToPickup(deliveryId: string, expectedVersion: number) {
+  return call<{ delivery: DeliveryStateView }>(
+    `/api/couranr/driver/deliveries/${deliveryId}/start-pickup-route`,
+    { method: "POST", body: { expectedVersion } }
+  );
+}
+
+export function arriveAtPickup(deliveryId: string, expectedVersion: number, at: Located) {
+  return call<{ delivery: DeliveryStateView }>(
+    `/api/couranr/driver/deliveries/${deliveryId}/arrive-at-pickup`,
+    { method: "POST", body: { expectedVersion, ...at } }
+  );
+}
+
+export function startRouteToDropoff(deliveryId: string, expectedVersion: number) {
+  return call<{ delivery: DeliveryStateView }>(
+    `/api/couranr/driver/deliveries/${deliveryId}/start-dropoff-route`,
+    { method: "POST", body: { expectedVersion } }
+  );
+}
+
+export function arriveAtDropoff(deliveryId: string, expectedVersion: number, at: Located) {
+  return call<{ delivery: DeliveryStateView }>(
+    `/api/couranr/driver/deliveries/${deliveryId}/arrive-at-dropoff`,
+    { method: "POST", body: { expectedVersion, ...at } }
+  );
+}
+
+export function completePickup(
+  deliveryId: string,
+  body: {
+    expectedVersion: number;
+    observedPackageCount: number;
+    staffFirstName: string;
+    confirmedVehicleId: string;
+    dimensions?: Record<string, unknown> | null;
+    loadingParticipants?: string | null;
+    loadingEquipment?: string | null;
+    existingDamage?: string | null;
+    driverAcknowledged?: boolean | null;
+  } & Located
+) {
+  return call<{ delivery: DeliveryStateView }>(
+    `/api/couranr/driver/deliveries/${deliveryId}/complete-pickup`,
+    { method: "POST", body }
+  );
+}
+
+export type CompletionResult = {
+  delivery: DeliveryStateView;
+  receipt: DriverCompletionReceipt | null;
+};
+
+export function completeDirectHandoff(
+  deliveryId: string,
+  body: { expectedVersion: number; recipientFirstName: string } & Located
+) {
+  return call<CompletionResult>(
+    `/api/couranr/driver/deliveries/${deliveryId}/complete-direct-handoff`,
+    { method: "POST", body }
+  );
+}
+
+export function completeSignature(
+  deliveryId: string,
+  body: { expectedVersion: number; signerFirstName: string } & Located
+) {
+  return call<CompletionResult>(
+    `/api/couranr/driver/deliveries/${deliveryId}/complete-signature`,
+    { method: "POST", body }
+  );
+}
+
+export function completeLeaveAtDoor(
+  deliveryId: string,
+  body: { expectedVersion: number; safeLocation: boolean; weatherSuitable: boolean } & Located
+) {
+  return call<CompletionResult>(
+    `/api/couranr/driver/deliveries/${deliveryId}/complete-leave-at-door`,
+    { method: "POST", body }
+  );
+}
+
+export function reportDiscrepancy(deliveryId: string, body: { reason: string; notes?: string }) {
+  return call<{ discrepancy: { discrepancyId: string; state: string; version: number } }>(
+    `/api/couranr/driver/deliveries/${deliveryId}/discrepancy`,
+    { method: "POST", body }
+  );
+}
+
+/** Closed outcomes only. No attempt count, no generation, no lock metadata. */
+export type PinAttempt = { outcome: "accepted" | "invalid" | "locked" | "expired" };
+
+export function verifyPickupCode(deliveryId: string, code: string) {
+  return call<PinAttempt>(`/api/couranr/driver/deliveries/${deliveryId}/verify-pickup-code`, {
+    method: "POST",
+    body: { code },
+  });
+}
+
+export function verifyRecipientCode(deliveryId: string, code: string) {
+  return call<PinAttempt>(`/api/couranr/driver/deliveries/${deliveryId}/verify-recipient-code`, {
+    method: "POST",
+    body: { code },
+  });
+}
+
+export type DeliveryStateView = {
+  deliveryId: string;
+  fulfillmentState: string;
+  version: number;
+};
+
+/** The raw code exists in THIS response and nowhere else, ever. */
+export type IssuedHandoffCodeView = {
+  code: string;
+  kind: "merchant_pickup" | "recipient_dropoff";
+  generation: number;
+  expiresAt: string;
+  warning: string;
+};
+
+export function issueMerchantPickupCode(deliveryId: string) {
+  return call<{ handoffCode: IssuedHandoffCodeView }>(
+    `/api/couranr/merchant/deliveries/${deliveryId}/pickup-code`,
+    { method: "POST", body: {} }
+  );
+}
+
+export function issueMerchantRecipientCode(deliveryId: string) {
+  return call<{ handoffCode: IssuedHandoffCodeView }>(
+    `/api/couranr/merchant/deliveries/${deliveryId}/recipient-code`,
+    { method: "POST", body: {} }
+  );
+}
+
+export function issueOperationsPickupCode(deliveryId: string) {
+  return call<{ handoffCode: IssuedHandoffCodeView }>(
+    `/api/couranr/operations/deliveries/${deliveryId}/pickup-code`,
+    { method: "POST", body: {} }
+  );
+}
+
+export function issueOperationsRecipientCode(deliveryId: string) {
+  return call<{ handoffCode: IssuedHandoffCodeView }>(
+    `/api/couranr/operations/deliveries/${deliveryId}/recipient-code`,
+    { method: "POST", body: {} }
+  );
+}
+
+/** Metadata only. There is no `url` and no `path` field, by construction. */
+export type ProofMetadataView = {
+  proofId: string;
+  proofStage: string;
+  proofType: string;
+  finalizedAt: string;
+  hasMedia: boolean;
+};
+
+export function fetchMerchantProof(deliveryId: string) {
+  return call<{ proof: ProofMetadataView[] }>(
+    `/api/couranr/merchant/deliveries/${deliveryId}/proof`
+  );
+}
+
+export function fetchOperationsProofUrl(proofId: string) {
+  return call<{ url: string; expiresInSeconds: number }>(
+    `/api/couranr/operations/proof/${proofId}/url`
+  );
+}
+
+export function unassignBeforePickup(
+  deliveryId: string,
+  body: { expectedVersion: number; reason: string }
+) {
+  return call<{ delivery: DeliveryStateView }>(
+    `/api/couranr/operations/deliveries/${deliveryId}/unassign`,
+    { method: "POST", body }
+  );
+}
+
+export function resolveDiscrepancySafeToContinue(
+  discrepancyId: string,
+  body: { expectedVersion: number; note?: string }
+) {
+  return call<{ discrepancy: { discrepancyId: string; state: string } }>(
+    `/api/couranr/operations/discrepancies/${discrepancyId}/safe-to-continue`,
+    { method: "POST", body }
+  );
+}
+
+/* ------------------------------------------------------------- proof I/O -- */
+
+export type ProofUploadTicketView = {
+  uploadId: string;
+  signedUrl: string;
+  token: string;
+  expectedBytes: number;
+  expectedMime: string;
+  expiresInSeconds: number;
+};
+
+export function requestProofUpload(
+  deliveryId: string,
+  body: { stage: string; proofType: string; expectedMime: string; expectedBytes: number }
+) {
+  return call<ProofUploadTicketView>(
+    `/api/couranr/driver/deliveries/${deliveryId}/proof-upload`,
+    { method: "POST", body }
+  );
+}
+
+export function finalizeProofUpload(body: {
+  uploadId: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  accuracyM?: number | null;
+  discrepancyId?: string | null;
+}) {
+  return call<{ proof: { proofId: string; proofStage: string; proofType: string; finalizedAt: string; byteSize: number | null } }>(
+    "/api/couranr/driver/proof/finalize",
+    { method: "POST", body }
+  );
 }
 
 export type { ApiResult };
