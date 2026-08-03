@@ -51,6 +51,16 @@ export function useProofUpload(params: {
   location: LocationState;
   discrepancyId?: string | null;
   onFinalized?: (proofId: string) => void;
+  /**
+   * A proof of this type the SERVER already holds, from a previous session.
+   *
+   * Requirements used to live only in this hook's state, so a reload at a
+   * loading dock told the driver to photograph a shipment Couranr had already
+   * recorded. Seeding from the server makes the form reflect what is actually
+   * stored. It is only ever a proof id the server itself returned — the hook
+   * never treats a client-side fact as proof.
+   */
+  recordedProofId?: string | null;
 }): ProofUploadState {
   const [status, setStatus] = React.useState<ProofUploadStatus>("idle");
   const [proofId, setProofId] = React.useState<string | null>(null);
@@ -63,6 +73,18 @@ export function useProofUpload(params: {
     setError(null);
     setByteSize(null);
   }, []);
+
+  /*
+   * Adopt a server-held proof once it arrives, and never overwrite work done in
+   * THIS session: a driver who is mid-upload must not have their state replaced
+   * by a slower background read. Only an idle hook is seeded.
+   */
+  const recorded = params.recordedProofId ?? null;
+  React.useEffect(() => {
+    if (!recorded) return;
+    setStatus((s) => (s === "idle" ? "finalized" : s));
+    setProofId((p) => p ?? recorded);
+  }, [recorded]);
 
   const upload = React.useCallback(
     async (file: File) => {

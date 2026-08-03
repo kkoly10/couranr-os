@@ -404,6 +404,19 @@ export function fetchMerchantProof(deliveryId: string) {
   );
 }
 
+/**
+ * What the CALLING DRIVER has already recorded on their own delivery.
+ *
+ * Lets the pickup form show requirements as met after a reload instead of
+ * demanding photographs Couranr already holds. Metadata only — same projection
+ * the merchant gets; opening an image is a separate, separately-scoped route.
+ */
+export function fetchMyProof(deliveryId: string) {
+  return call<{ proof: ProofMetadataView[] }>(
+    `/api/couranr/driver/deliveries/${deliveryId}/proof`
+  );
+}
+
 export function fetchOperationsProofUrl(proofId: string) {
   return call<{ url: string; expiresInSeconds: number }>(
     `/api/couranr/operations/proof/${proofId}/url`

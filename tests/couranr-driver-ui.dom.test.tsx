@@ -49,6 +49,7 @@ const reportDiscrepancy = vi.fn();
 const verifyPickupCode = vi.fn();
 const verifyRecipientCode = vi.fn();
 const fetchMerchantProof = vi.fn();
+const fetchMyProof = vi.fn();
 const fetchOperationsProofUrl = vi.fn();
 const issueMerchantPickupCode = vi.fn();
 const issueMerchantRecipientCode = vi.fn();
@@ -83,6 +84,7 @@ vi.mock("@/components/couranr/dispatch/client", async (importOriginal) => {
     verifyPickupCode: (...a: unknown[]) => verifyPickupCode(...a),
     verifyRecipientCode: (...a: unknown[]) => verifyRecipientCode(...a),
     fetchMerchantProof: (...a: unknown[]) => fetchMerchantProof(...a),
+    fetchMyProof: (...a: unknown[]) => fetchMyProof(...a),
     fetchOperationsProofUrl: (...a: unknown[]) => fetchOperationsProofUrl(...a),
     issueMerchantPickupCode: (...a: unknown[]) => issueMerchantPickupCode(...a),
     issueMerchantRecipientCode: (...a: unknown[]) => issueMerchantRecipientCode(...a),
@@ -275,6 +277,7 @@ const ALL_DOUBLES = [
   verifyPickupCode,
   verifyRecipientCode,
   fetchMerchantProof,
+  fetchMyProof,
   fetchOperationsProofUrl,
   issueMerchantPickupCode,
   issueMerchantRecipientCode,
@@ -286,6 +289,11 @@ const ALL_DOUBLES = [
 
 beforeEach(() => {
   for (const m of ALL_DOUBLES) m.mockReset();
+  // PickupFlow reads what the server already holds on mount. `mockReset` leaves
+  // a bare `undefined`, which would make every pickup test die on `.then` — so
+  // the DEFAULT is an empty, successful read: nothing recorded yet. Tests that
+  // care override it.
+  fetchMyProof.mockResolvedValue(ok({ proof: [] }));
   window.localStorage.clear();
   window.sessionStorage.clear();
 });
@@ -1688,5 +1696,91 @@ describe("the proof upload sends the server's own ticket", () => {
       "utf8"
     );
     expect(client).toMatch(/call<\{\s*upload:\s*ProofUploadTicketView\s*\}>/);
+  });
+});
+
+/* ================================== proof already recorded on the server === */
+
+/**
+ * A reload must not re-demand work Couranr already holds.
+ *
+ * The pickup requirements used to live only in this component's state, so a
+ * driver who photographed the shipment and then lost the tab at a loading dock
+ * was told to record it again — while the server held the proof and would have
+ * accepted the completion. Their only way out was to re-do the work.
+ *
+ * The failure direction matters too: a FAILED read must leave the requirement
+ * unmet. Telling a driver a photo is recorded when Couranr cannot confirm it is
+ * the worse of the two errors.
+ */
+describe("the pickup form reflects proof the server already holds", () => {
+  const assignedAtPickup = () =>
+    assignedView({ fulfillmentState: "at_pickup", proof: { method: "photo_or_pin", signatureRequired: false } });
+
+  const readyLocation = {
+    status: "ready", fix: { latitude: 38.42, longitude: -77.41, accuracyM: 8 },
+    message: "Location captured.", usable: true, request: vi.fn(),
+  } as LocationState;
+
+  async function renderPickup() {
+    return render(
+      <PickupFlow assigned={assignedAtPickup() as never} location={readyLocation} onCompleted={() => {}} />
+    );
+  }
+
+  it("stops asking for a photo the server already recorded", async () => {
+    fetchMyProof.mockResolvedValue(
+      ok({
+        proof: [
+          { proofId: "p-1", proofStage: "pickup", proofType: "shipment_photo",
+            finalizedAt: "2026-08-03T17:00:00Z", hasMedia: true },
+          { proofId: "p-2", proofStage: "pickup", proofType: "condition_photo",
+            finalizedAt: "2026-08-03T17:01:00Z", hasMedia: true },
+        ],
+      })
+    );
+    const { container } = await renderPickup();
+    await waitFor(() =>
+      expect(container.textContent ?? "").not.toMatch(/record a photo of the shipment/i)
+    );
+    expect(container.textContent ?? "").not.toMatch(/record a photo of the shipment's condition/i);
+  });
+
+  it("POSITIVE CONTROL: with nothing recorded it still asks for both", async () => {
+    fetchMyProof.mockResolvedValue(ok({ proof: [] }));
+    const { container } = await renderPickup();
+    await waitFor(() => expect(container.textContent ?? "").toMatch(/record a photo of the shipment/i));
+    expect(container.textContent ?? "").toMatch(/record a photo of the shipment's condition/i);
+  });
+
+  it("a FAILED read leaves the requirement unmet rather than claiming proof exists", async () => {
+    fetchMyProof.mockResolvedValue(fail(500));
+    const { container } = await renderPickup();
+    await waitFor(() => expect(container.textContent ?? "").toMatch(/record a photo of the shipment/i));
+  });
+
+  it("ignores proof from another stage", async () => {
+    // A drop-off photo is not a pickup photo, and must not satisfy this form.
+    fetchMyProof.mockResolvedValue(
+      ok({
+        proof: [
+          { proofId: "p-9", proofStage: "dropoff", proofType: "delivery_photo",
+            finalizedAt: "2026-08-03T18:00:00Z", hasMedia: true },
+        ],
+      })
+    );
+    const { container } = await renderPickup();
+    await waitFor(() => expect(container.textContent ?? "").toMatch(/record a photo of the shipment/i));
+  });
+
+  it("the driver proof route is scoped to the caller's own ACTIVE assignment", () => {
+    const route = readFileSync(
+      path.join(process.cwd(), "app/api/couranr/driver/deliveries/[id]/proof/route.ts"),
+      "utf8"
+    );
+    expect(route).toContain('.eq("assignment_state", "active")');
+    expect(route).toContain('.eq("driver_id", driver.id)');
+    // Metadata only: no path, no bucket, no signed URL on this route.
+    expect(route).not.toMatch(/signedProofUrl|storage_object_path|createSignedUrl/);
   });
 });

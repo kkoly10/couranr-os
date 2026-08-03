@@ -19,7 +19,7 @@ import {
   requiresLargeShipmentProof,
   type PinOutcome,
 } from "@/lib/couranr/driver/states";
-import { completePickup, verifyPickupCode, type AssignedDeliveryView } from "./client";
+import { completePickup, fetchMyProof, verifyPickupCode, type AssignedDeliveryView } from "./client";
 import { PickupDiscrepancy } from "./PickupDiscrepancy";
 import { locationBody, type LocationState } from "./useLocationCapture";
 import { useProofUpload, type ProofUploadState } from "./useProofUpload";
@@ -131,17 +131,45 @@ export function PickupFlow({
    */
   const [discrepancyReported, setDiscrepancyReported] = React.useState(false);
 
+  /*
+   * What Couranr ALREADY holds for this pickup.
+   *
+   * Without this the requirements lived only in this component's state, so a
+   * reload at a loading dock demanded photographs that were already stored and
+   * that the server would have accepted — the driver's only way out was to
+   * re-do work they had already done. A failed read deliberately leaves the
+   * requirements unmet rather than clearing them: telling a driver a photo is
+   * recorded when Couranr cannot confirm it is the worse error of the two.
+   */
+  const [recorded, setRecorded] = React.useState<Record<string, string>>({});
+  React.useEffect(() => {
+    let live = true;
+    void fetchMyProof(deliveryId).then((r) => {
+      if (!live || isApiFailure(r)) return;
+      const byType: Record<string, string> = {};
+      for (const p of r.value.proof ?? []) {
+        if (p.proofStage === "pickup" && !byType[p.proofType]) byType[p.proofType] = p.proofId;
+      }
+      setRecorded(byType);
+    });
+    return () => {
+      live = false;
+    };
+  }, [deliveryId]);
+
   const shipmentPhoto = useProofUpload({
     deliveryId,
     stage: "pickup",
     proofType: "shipment_photo",
     location,
+    recordedProofId: recorded.shipment_photo ?? null,
   });
   const conditionPhoto = useProofUpload({
     deliveryId,
     stage: "pickup",
     proofType: "condition_photo",
     location,
+    recordedProofId: recorded.condition_photo ?? null,
   });
   // Constructed unconditionally — a hook cannot be called behind an `if` — and
   // only RENDERED when the shipment triggers the large-or-unusual rules.
@@ -150,6 +178,7 @@ export function PickupFlow({
     stage: "pickup",
     proofType: "securement_photo",
     location,
+    recordedProofId: recorded.securement_photo ?? null,
   });
 
   /*
