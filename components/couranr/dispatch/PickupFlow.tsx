@@ -55,18 +55,25 @@ const PIN_OUTCOME_TONE: Record<PinOutcome, "success" | "warning" | "danger"> = {
 /**
  * The delivery version the optimistic-concurrency check needs.
  *
- * WHY THIS IS A DEFENSIVE READ. `AssignedDeliveryProjection` is a strict
- * allow-list and does not yet copy `couranr_deliveries.version`, so the shared
- * `AssignedDeliveryView` type does not declare the field — yet every driver
- * command requires an `expectedVersion` and refuses without one. Reading it
- * through `unknown` means this screen starts working the moment the projection
- * copies the column, and FAILS CLOSED until then: `null` blocks the action with
- * a visible reason rather than sending a guess. Guessing 1 would let a driver
+ * The projection now copies `couranr_deliveries.version`, so this reads a
+ * DECLARED field — but it still validates, because the value crosses the
+ * network and a malformed one must not become an `expectedVersion`.
+ *
+ * FAILS CLOSED, and that is the whole point: `null` blocks the action with a
+ * visible reason rather than sending a guess. Guessing 1 would let a driver
  * overwrite a delivery someone else had already moved, which is the exact thing
  * the version exists to prevent.
+ *
+ * This function was correct while the projection was not, and the result was a
+ * surface that rendered perfectly and could not be used. A fail-closed read is
+ * only safe when something actually supplies the value — see the projection's
+ * `version` note.
  */
 export function readDeliveryVersion(assigned: AssignedDeliveryView): number | null {
-  const raw = (assigned as unknown as Record<string, unknown>).version;
+  const raw: unknown = assigned?.version;
+  // The fallback is `null`, NEVER 1. A fabricated 1 matches a freshly created
+  // delivery, so guessing would pass every test and silently clobber a live one
+  // the driver never observed. `tests/couranr-dispatch.test.ts` pins this.
   return typeof raw === "number" && Number.isInteger(raw) && raw >= 1 ? raw : null;
 }
 

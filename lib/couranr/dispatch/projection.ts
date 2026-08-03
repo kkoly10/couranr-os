@@ -23,6 +23,25 @@
 
 export type AssignedDeliveryProjection = {
   deliveryId: string;
+  /**
+   * The delivery's OWN optimistic-concurrency token — not `request_version`,
+   * which stays withheld above.
+   *
+   * Deliberately driver-visible, and load-bearing: every driver command is a
+   * compare-and-set that must send the version it believes current. Without it
+   * in the projection the first command of a delivery has nothing to send, so
+   * DRV-002 rendered a permanently disabled "Start route to pickup" under
+   * "Couranr could not confirm this delivery's current version" — the entire
+   * execution flow was unreachable in a browser while typecheck and 956 unit
+   * tests stayed green. Only driving the page caught it.
+   *
+   * This discloses nothing new: every command response already returns
+   * `delivery.version` to this same driver. Null rather than a fake 0 when the
+   * row somehow lacks one, matching `shipment` below — a wrong version is
+   * rejected by the database, but a fabricated one would be a lie the client
+   * then acts on.
+   */
+  version: number | null;
   fulfillmentState: string;
   serviceLevel: string;
 
@@ -94,6 +113,11 @@ export function buildAssignedDeliveryProjection(input: {
 
   return {
     deliveryId: String(d.id ?? ""),
+    // Strict: a non-integer or a nonsensical version is absent, not coerced.
+    version:
+      typeof d.version === "number" && Number.isInteger(d.version) && d.version >= 1
+        ? d.version
+        : null,
     fulfillmentState: String(d.fulfillment_state ?? ""),
     serviceLevel: String(d.service_level ?? ""),
 
@@ -149,6 +173,7 @@ export function buildAssignedDeliveryProjection(input: {
  */
 export const PROJECTION_ALLOWED_KEYS: readonly string[] = [
   "deliveryId",
+  "version",
   "fulfillmentState",
   "serviceLevel",
   "scheduledPickupStart",
