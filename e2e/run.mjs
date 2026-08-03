@@ -56,6 +56,15 @@ import {
   requestsFor,
   workspacesFor,
 } from "./db.mjs";
+import {
+  handoffCodesFor,
+  proofsFor,
+  handoffRecordsFor,
+  discrepanciesFor,
+  couranrProofCounts,
+  unassignAsOps,
+  reusableScheduledDelivery,
+} from "./db.mjs";
 import { cleanupAll } from "./seed.mjs";
 import { startStripeDouble, capturedPaths, calls as stripeCalls, failNextCaptures } from "./stripeDouble.mjs";
 import { KEY_SOURCE, PUBLISHABLE_KEY, SUPABASE_URL as ADMIN_SUPABASE_URL } from "./admin.mjs";
@@ -131,14 +140,37 @@ let browser;
 const SUPABASE_URL =
   process.env.NEXT_PUBLIC_SUPABASE_URL ?? "https://zrdxlrlqxdslqpnoqmus.supabase.co";
 
-async function freshContext() {
-  const ctx = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+/**
+ * `geo` is OPT-IN, and both halves of it are required.
+ *
+ * Measured in this container against a localhost origin:
+ *
+ *   no options                        -> PERMISSION_DENIED ("User denied Geolocation")
+ *   geolocation only                  -> PERMISSION_DENIED
+ *   grantPermissions only             -> TIMEOUT (code 3)
+ *   geolocation + grantPermissions    -> a fix
+ *
+ * `useLocationCapture` maps a denial to `usable: false`, and both arrival
+ * commands plus `couranr_complete_pickup` hard-refuse without coordinates, so
+ * every driver-execution step needs this. It stays opt-in because this is the
+ * ONE context factory for groups A–P: granting a fixed position by default
+ * would silently change the branch any of them exercises.
+ */
+async function freshContext({ geo = null } = {}) {
+  const ctx = await browser.newContext({
+    viewport: { width: 1440, height: 1000 },
+    ...(geo ? { geolocation: geo } : {}),
+  });
+  if (geo) await ctx.grantPermissions(["geolocation"]);
   const page = await ctx.newPage();
   page.on("pageerror", (e) => console.log(`      [pageerror] ${e.message.slice(0, 160)}`));
   // The browser cannot egress in this container; see supabaseRelay.mjs.
   await relaySupabase(page, SUPABASE_URL);
   return { ctx, page };
 }
+
+/** Stafford VA, matching `SHIPMENT.pickup`. Evidence, never authority. */
+const GEO_STAFFORD = { latitude: 38.4221, longitude: -77.4083, accuracy: 12 };
 
 /**
  * Signs in through the real form and waits for the server-chosen landing.
@@ -429,7 +461,7 @@ let stripeDouble = null;
  * `--only=P` without it produced a StripeConnectionError on the first
  * authorize — the group cannot reach its own subject without it.
  */
-if (!groups || ["M", "N", "O", "P"].some((g) => groups.includes(g))) {
+if (!groups || ["M", "N", "O", "P", "Q"].some((g) => groups.includes(g))) {
   stripeDouble = await startStripeDouble(
     Number((process.env.E2E_STRIPE_DOUBLE ?? "http://127.0.0.1:12111").split(":").pop())
   );
@@ -3507,7 +3539,552 @@ async function groupP() {
   }
 }
 
-const ALL = { A: groupA, B: groupB, C: groupC, D: groupD, E: groupE, F: groupF, G: groupG, H: groupH, I: groupI, J: groupJ, K: groupK, L: groupL, M: groupM, N: groupN, O: groupO, P: groupP };
+
+/**
+ * Q — the driver lifecycle, assigned -> delivered, in a real browser.
+ *
+ * Everything before this group proved a delivery could be CREATED, paid for and
+ * assigned. This one proves it can be DONE: the driver drives, collects against
+ * a code the sender reads aloud, photographs the shipment, carries it, and hands
+ * it over against a second code. Every state change is asserted on the ROW, not
+ * on the page, because a screen that says "Delivered" while the database says
+ * `at_dropoff` is the failure this exists to catch.
+ *
+ * THIS GROUP NEEDS A LOCATION. `useLocationCapture` asks on demand and never on
+ * mount, so each located step presses "Share location" first — that is the
+ * product's design, not a workaround, and a harness that skips it scores a
+ * correctly-gated button as a defect.
+ *
+ * IT ALSO NEEDS PHOTOS THAT SURVIVE THE RELAY. `setInputFiles({buffer})` keeps
+ * the bytes in the page, `useProofUpload` reads them into an ArrayBuffer before
+ * anything else, and the PUT carries a raw body — a disk-backed multipart part
+ * is the shape that arrives empty. The assertion is the stored object's real
+ * byte count, never `put.ok`, which is the value that lied for the entire life
+ * of the flat-ticket bug.
+ *
+ * ORDERING IS LOAD-BEARING. A consumed code cannot be re-refused, a locked one
+ * cannot be unlocked within a run, unassignment closes at `at_pickup`, and every
+ * drop-off command is unreachable once the delivery is `delivered`.
+ */
+
+/** An 8x8 PNG held in memory. Real bytes, so the exact-size check is real. */
+const Q_PNG = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAYAAADED76LAAAAJUlEQVR4nGP8//8/AzGAiShV" +
+    "oxpHNY5qHNU4qnFU46jGwaIRAP//AwXk0nCLAAAAAElFTkSuQmCC",
+  "base64"
+);
+
+/** Presses "Share location" and waits for the CAPTURED state, not a stopwatch. */
+async function qShareLocation(page) {
+  const b = page.getByRole("button", { name: /share location/i }).first();
+  try {
+    await b.waitFor({ state: "visible", timeout: 15000 });
+  } catch {
+    return false; // this screen is not asking for a fix
+  }
+  await b.click();
+  // The control relabels to "Try again" once a fix lands, so wait on the state.
+  await page.getByText(/location captured/i).first().waitFor({ state: "visible", timeout: 20000 });
+  return true;
+}
+
+/**
+ * Issues a handoff code on an Operations screen and reads it once.
+ *
+ * The plaintext exists in exactly one place — the issue response — and the digit
+ * group renders SPACED for legibility ("2 2 4 6 7 0"), so `\b\d{6}\b` finds
+ * nothing on screen. Squeeze whitespace inside the right card before matching.
+ */
+async function qIssueCode(requestId, kind) {
+  const { ctx, page } = await freshContext();
+  try {
+    await signIn(page, USERS.ops, { expectLanding: "/operations" });
+    await page.goto(`${BASE_URL}/operations/deliveries/${requestId}`, {
+      waitUntil: "domcontentloaded",
+    });
+    const label = kind === "pickup" ? /^issue pickup code$/i : /^issue recipient code$/i;
+    const anchor = kind === "pickup" ? "Pickup code" : "Recipient code";
+    const b = page.getByRole("button", { name: label }).first();
+    await b.waitFor({ state: "visible", timeout: 30000 });
+    await b.click();
+    for (let i = 0; i < 40; i += 1) {
+      const t = (await page.textContent("body")) ?? "";
+      const idx = t.indexOf(anchor);
+      const seg = (idx >= 0 ? t.slice(idx, idx + 900) : t).replace(/\s+/g, "");
+      const m = seg.match(/(\d{6})/);
+      if (m) return m[1];
+      await page.waitForTimeout(500);
+    }
+    return null;
+  } finally {
+    await ctx.close();
+  }
+}
+
+/** Uploads one proof photo and waits for the SERVER's finalized row. */
+async function qUploadProof(page, deliveryId, labelRe, proofType) {
+  const before = (await proofsFor(deliveryId)).filter((p) => p.proof_type === proofType).length;
+  await page
+    .getByLabel(labelRe)
+    .setInputFiles({ name: `${proofType}.png`, mimeType: "image/png", buffer: Q_PNG });
+  return waitForRow(
+    `Q upload ${proofType}`,
+    () => proofsFor(deliveryId),
+    (rows) => rows.filter((p) => p.proof_type === proofType).length > before,
+    45000
+  );
+}
+
+async function groupQ() {
+  console.log("\n\x1b[1mQ — driver execution: assigned to delivered, with proof\x1b[0m");
+
+  const accounts = await accountsCreatedBy(USER_IDS.merchant);
+  if (accounts.length === 0) {
+    inconclusive("Q0", "driver lifecycle", "the merchant fixture has no business account");
+    return;
+  }
+  const accountId = accounts[0].id;
+  const legacyBefore = await realDataCounts();
+  const proofBefore = await couranrProofCounts();
+
+  /* ---- recovery: release what an earlier run left, where a command exists -- */
+
+  /*
+   * Deliberately partial, and it says so when it cannot help. From `at_pickup`
+   * onward NOTHING ends an assignment except completing the delivery:
+   * `couranr_unassign_delivery_before_pickup` closes at `at_pickup`, and
+   * `couranr_replace_delivery_assignment` refuses unless the delivery is still
+   * `assigned`. A stranded reusable driver is therefore reported, never unstuck
+   * by writing a column or widening a grant.
+   */
+  const reusableIds = new Set(
+    (await Promise.all([USER_IDS.driver, USER_IDS.merchant].map((u) => driverByUserId(u))))
+      .filter(Boolean)
+      .map((d) => d.id)
+  );
+  for (const a of (await allActiveAssignments()).filter((x) => reusableIds.has(x.driver_id))) {
+    const d = await deliveryById(a.delivery_id);
+    if (d.fulfillment_state === "assigned" || d.fulfillment_state === "en_route_to_pickup") {
+      console.log(`  releasing a stale assignment left in ${d.fulfillment_state}`);
+      await unassignAsOps({
+        deliveryId: a.delivery_id,
+        expectedVersion: d.version,
+        actorUserId: USER_IDS.ops,
+        reason: "e2e harness reset",
+      });
+    } else {
+      inconclusive(
+        "Q0",
+        "driver lifecycle",
+        `driver ${a.driver_id} is stranded on a delivery in ${d.fulfillment_state}; no command ` +
+          `ends an assignment from there. Drive it to delivered before re-running.`
+      );
+      return;
+    }
+  }
+
+  /* ---- fixtures ------------------------------------------------------- */
+
+  let driver = await ensureDriverProfile(USER_IDS.driver, "[E2E] Lifecycle Driver");
+  if (driver.driver_state !== "active") driver = await activateDriver(driver.id, driver.version);
+  if (driver.availability_state !== "available") {
+    driver = await setDriverAvailable(driver.id, driver.version);
+  }
+  const vehicle = await createDispatchVehicle({
+    name: `[E2E] Lifecycle Van ${Date.now().toString(36)}`,
+    vehicleClass: "van",
+    payloadCapacityLb: 1200,
+  });
+
+  /*
+   * Q begins where driver execution begins: a delivery already `scheduled`.
+   *
+   * Building one through the UI means request -> authorize -> mark ready ->
+   * service plan -> capture, which needs Stripe keys in the environment. That
+   * chain is what groups M/N/O exist to prove; making Q depend on it couples
+   * this group to a concern it does not test and makes it unrunnable whenever
+   * payment keys are absent — which is exactly what happened on its first run.
+   * So: adopt an existing scheduled delivery, and only build one if there is
+   * none. Either way the group SAYS which path it took.
+   */
+  let made = await reusableScheduledDelivery(accountId);
+  if (made) {
+    console.log(`  adopted an existing scheduled delivery ${made.delivery.id}`);
+  } else {
+    console.log("  no scheduled delivery available — building one through the UI");
+    made = await scheduledDeliveryFor(accountId);
+  }
+  if (!made) {
+    inconclusive("Q1", "driver lifecycle", "no request reached a scheduled canonical delivery");
+    return;
+  }
+  const deliveryId = made.delivery.id;
+  const requestId = made.requestId;
+
+  /* ---- Q1..Q3  only Operations may assign, and the driver sees it ------ */
+
+  {
+    const r = await assignAs(USERS.driver, deliveryId, {
+      expectedVersion: made.delivery.version,
+      driverId: driver.id,
+      vehicleId: vehicle.id,
+    });
+    check("Q1", "a driver cannot assign work to themselves",
+      r.status === 403, `status=${r.status}`);
+  }
+
+  await assignAs(USERS.ops, deliveryId, {
+    expectedVersion: made.delivery.version,
+    driverId: driver.id,
+    vehicleId: vehicle.id,
+  });
+  const assigned = await waitForRow("Q2 assignment", () => deliveryById(deliveryId),
+    (d) => d.fulfillment_state === "assigned");
+  check("Q2", "Operations assigned the delivery", Boolean(assigned),
+    `state=${assigned?.fulfillment_state}`);
+
+  {
+    const r = await apiAs(USERS.driver, "/api/couranr/driver/assignment");
+    check("Q3", "the assigned driver reads their own delivery, sanitized",
+      r.status === 200 && r.payload?.status === "active" &&
+      r.payload?.assigned?.deliveryId === deliveryId,
+      `status=${r.status} body=${JSON.stringify(r.payload).slice(0, 160)}`);
+    check("Q4", "the projection carries a version, so the first command has a token",
+      Number.isInteger(r.payload?.assigned?.version) && r.payload.assigned.version >= 1,
+      `version=${JSON.stringify(r.payload?.assigned?.version)}`);
+    // The money, tenant and audit handles must never reach a driver.
+    const leak = projectionLeaks(JSON.stringify(r.payload?.assigned ?? {}));
+    check("Q5", "the driver projection leaks no money, tenant or audit handle",
+      leak === null, `leaked=${leak}`);
+  }
+
+  {
+    const r = await apiAs(USERS.merchant, "/api/couranr/driver/assignment");
+    check("Q6", "a merchant asking the driver endpoint learns nothing",
+      r.status === 200 && r.payload?.status === "none",
+      `status=${r.status} body=${JSON.stringify(r.payload).slice(0, 120)}`);
+  }
+
+  /* ---- Q7..Q9  the road, driven in the browser ------------------------ */
+
+  const driverUrl = `${BASE_URL}/driver/deliveries/${deliveryId}`;
+
+  {
+    const { ctx, page } = await freshContext({ geo: GEO_STAFFORD });
+    try {
+      await signIn(page, USERS.driver, { expectLanding: "/driver" });
+      await page.goto(driverUrl, { waitUntil: "domcontentloaded" });
+
+      const start = page.getByRole("button", { name: /start route to pickup/i });
+      await start.waitFor({ state: "visible", timeout: 30000 });
+      check("Q7", "the next step is offered and actionable",
+        !(await start.isDisabled()),
+        (await page.textContent("body"))?.replace(/\s+/g, " ").slice(0, 200) ?? "");
+      await start.click();
+      const enRoute = await waitForRow("Q7 en route", () => deliveryById(deliveryId),
+        (d) => d.fulfillment_state === "en_route_to_pickup", 45000);
+      check("Q8", "pressing it moved the delivery to en_route_to_pickup",
+        Boolean(enRoute), `state=${enRoute?.fulfillment_state}`);
+
+      await page.goto(driverUrl, { waitUntil: "domcontentloaded" });
+      await qShareLocation(page);
+      const arrive = page.getByRole("button", { name: /arrived at pickup|i have arrived/i }).first();
+      await arrive.waitFor({ state: "visible", timeout: 25000 });
+      await arrive.click();
+      const atPickup = await waitForRow("Q9 at pickup", () => deliveryById(deliveryId),
+        (d) => d.fulfillment_state === "at_pickup", 45000);
+      check("Q9", "arriving at pickup is recorded with the driver's position",
+        Boolean(atPickup), `state=${atPickup?.fulfillment_state}`);
+    } finally {
+      await ctx.close();
+    }
+  }
+
+  /* ---- Q10..Q12  the pickup code -------------------------------------- */
+
+  const pickupCode = await qIssueCode(requestId, "pickup");
+  check("Q10", "Operations issued a pickup code and the screen revealed it once",
+    Boolean(pickupCode), `code read: ${pickupCode ? "6 digits" : "none"}`);
+  if (!pickupCode) {
+    inconclusive("Q11", "driver lifecycle", "no pickup code could be read; the rest cannot run");
+    return;
+  }
+
+  {
+    const codes = await handoffCodesFor(deliveryId);
+    // `active`, not "issued" — the CHECK allows active|consumed|superseded|
+    // locked|expired and nothing else. Asserting a state name from memory is
+    // how this assertion first read `undefined` and reported a false failure.
+    const live = codes.find((c) => c.code_kind === "merchant_pickup" && c.code_state === "active");
+    check("Q11", "only a DIGEST is stored — the plaintext is never persisted",
+      Boolean(live) && typeof live.code_digest === "string" &&
+      live.code_digest.length === 64 && !live.code_digest.includes(pickupCode),
+      `digestLen=${live?.code_digest?.length}`);
+  }
+
+  {
+    // A wrong code, on a synthetic delivery only. One attempt: the cap is five
+    // and a lock cannot be undone within a run.
+    const wrong = pickupCode === "000000" ? "111111" : "000000";
+    const r = await apiAs(USERS.driver,
+      `/api/couranr/driver/deliveries/${deliveryId}/verify-pickup-code`,
+      { method: "POST", body: { code: wrong } });
+    const after = (await handoffCodesFor(deliveryId))
+      .find((c) => c.code_kind === "merchant_pickup" && c.code_state === "active");
+    check("Q12", "a wrong code is refused and the attempt is recorded as data",
+      r.status === 200 && r.payload?.outcome === "invalid" && (after?.failed_attempts ?? 0) >= 1,
+      `outcome=${r.payload?.outcome} attempts=${after?.failed_attempts}`);
+  }
+
+  {
+    // A stranger cannot burn another delivery's attempts. This was a real hole:
+    // the SQL took no actor, so any authenticated user could lock a live code.
+    const before = (await handoffCodesFor(deliveryId))
+      .find((c) => c.code_kind === "merchant_pickup" && c.code_state === "active")?.failed_attempts ?? 0;
+    const r = await apiAs(USERS.merchant,
+      `/api/couranr/driver/deliveries/${deliveryId}/verify-pickup-code`,
+      { method: "POST", body: { code: "000000" } });
+    const after = (await handoffCodesFor(deliveryId))
+      .find((c) => c.code_kind === "merchant_pickup" && c.code_state === "active")?.failed_attempts ?? 0;
+    check("Q13", "a non-assigned actor cannot spend another delivery's attempts",
+      r.status !== 200 && after === before,
+      `status=${r.status} attempts ${before}->${after}`);
+  }
+
+  /* ---- Q14..Q20  the pickup itself ------------------------------------ */
+
+  {
+    const { ctx, page } = await freshContext({ geo: GEO_STAFFORD });
+    try {
+      await signIn(page, USERS.driver, { expectLanding: "/driver" });
+      await page.goto(driverUrl, { waitUntil: "domcontentloaded" });
+      await qShareLocation(page);
+
+      const pin = page.getByLabel(/six-digit pickup code/i);
+      await pin.waitFor({ state: "visible", timeout: 25000 });
+      await pin.fill(pickupCode);
+      await page.getByRole("button", { name: /^check code$/i }).click();
+      await page.getByText(/code accepted/i).first().waitFor({ state: "visible", timeout: 25000 });
+      const consumed = await waitForRow("Q14 code consumed", () => handoffCodesFor(deliveryId),
+        (rows) => rows.some((c) => c.code_kind === "merchant_pickup" && c.code_state === "consumed"),
+        30000);
+      check("Q14", "the correct code is accepted and the row is consumed",
+        Boolean(consumed), "");
+
+      const shipment = await qUploadProof(page, deliveryId, /photo of the shipment/i, "shipment_photo");
+      const shot = (shipment ?? []).find((p) => p.proof_type === "shipment_photo");
+      check("Q15", "the shipment photo reached storage and was finalized against it",
+        Boolean(shot) && shot.byte_size === Q_PNG.length && shot.storage_bucket === "delivery-photos",
+        `bytes=${shot?.byte_size} expected=${Q_PNG.length} bucket=${shot?.storage_bucket}`);
+      check("Q16", "proof is stored under the canonical versioned prefix",
+        typeof shot?.storage_object_path === "string" &&
+        shot.storage_object_path.startsWith(`canonical-proof/v1/${deliveryId}/`),
+        `path=${shot?.storage_object_path}`);
+      check("Q17", "the proof carries the position it was taken at, not 0/0",
+        Number(shot?.captured_latitude) !== 0 && Number(shot?.captured_longitude) !== 0 &&
+        Math.abs(Number(shot?.captured_latitude) - GEO_STAFFORD.latitude) < 0.01,
+        `lat=${shot?.captured_latitude} lng=${shot?.captured_longitude}`);
+
+      await qUploadProof(page, deliveryId, /photo of its condition/i, "condition_photo");
+      check("Q18", "the condition photo is a SECOND, separately recorded proof",
+        (await proofsFor(deliveryId)).filter((p) => p.proof_stage === "pickup").length >= 2, "");
+
+      await page.getByLabel(/packages you are collecting/i).fill("3");
+      await page.getByLabel(/first name of the person handing it over/i).fill("Robin");
+      await page.getByLabel(/i am loading this shipment into/i).check();
+
+      const complete = page.getByRole("button", { name: /^complete pickup$/i });
+      await complete.waitFor({ state: "visible", timeout: 20000 });
+      check("Q19", "complete pickup unlocks only once every requirement is met",
+        !(await complete.isDisabled()),
+        (await page.textContent("body"))?.replace(/\s+/g, " ").slice(0, 300) ?? "");
+      await complete.click();
+      const pickedUp = await waitForRow("Q20 picked up", () => deliveryById(deliveryId),
+        (d) => d.fulfillment_state === "picked_up", 60000);
+      check("Q20", "the pickup completes and the delivery is picked_up",
+        Boolean(pickedUp), `state=${pickedUp?.fulfillment_state}`);
+      check("Q21", "a pickup handoff record was written",
+        (await handoffRecordsFor(deliveryId)).some((r) => r.handoff_stage === "pickup"), "");
+    } finally {
+      await ctx.close();
+    }
+  }
+
+  /* ---- Q22  unassignment has closed ----------------------------------- */
+
+  {
+    const d = await deliveryById(deliveryId);
+    const r = await apiAs(USERS.ops,
+      `/api/couranr/operations/deliveries/${deliveryId}/unassign`,
+      { method: "POST", body: { expectedVersion: d.version, reason: "too late" } });
+    check("Q22", "a driver cannot be unassigned once the shipment is aboard",
+      r.status >= 400, `status=${r.status}`);
+  }
+
+  /* ---- Q23..Q25  transit and the drop-off ----------------------------- */
+
+  {
+    const { ctx, page } = await freshContext({ geo: GEO_STAFFORD });
+    try {
+      await signIn(page, USERS.driver, { expectLanding: "/driver" });
+      for (const [want, rx, id, desc] of [
+        ["in_transit", /start route to drop-?off|start dropoff route/i, "Q23",
+         "the driver sets off for the drop-off"],
+        ["at_dropoff", /arrived at drop-?off|i have arrived/i, "Q24",
+         "the driver arrives at the drop-off"],
+      ]) {
+        await page.goto(driverUrl, { waitUntil: "domcontentloaded" });
+        await qShareLocation(page);
+        const b = page.getByRole("button", { name: rx }).first();
+        await b.waitFor({ state: "visible", timeout: 25000 });
+        await b.click();
+        const moved = await waitForRow(`${id} ${want}`, () => deliveryById(deliveryId),
+          (d) => d.fulfillment_state === want, 45000);
+        check(id, desc, Boolean(moved), `state=${moved?.fulfillment_state}`);
+      }
+    } finally {
+      await ctx.close();
+    }
+  }
+
+  {
+    // PRF-001: this delivery is proven by recipient PIN. The other two
+    // completion commands must be unreachable, and a photo is NOT an
+    // alternative to the code.
+    const r = await apiAs(USERS.driver,
+      `/api/couranr/driver/deliveries/${deliveryId}/complete-leave-at-door`,
+      { method: "POST", body: { latitude: GEO_STAFFORD.latitude, longitude: GEO_STAFFORD.longitude, accuracyM: 12 } });
+    check("Q25", "the proof method is immutable — another completion path is refused",
+      r.status >= 400 && (await deliveryById(deliveryId)).fulfillment_state === "at_dropoff",
+      `status=${r.status}`);
+  }
+
+  /* ---- Q26..Q30  the handoff and what survives it --------------------- */
+
+  const recipientCode = await qIssueCode(requestId, "recipient");
+  check("Q26", "Operations issued a recipient code", Boolean(recipientCode), "");
+  if (!recipientCode) {
+    inconclusive("Q27", "driver lifecycle", "no recipient code could be read");
+    return;
+  }
+
+  {
+    const { ctx, page } = await freshContext({ geo: GEO_STAFFORD });
+    try {
+      await signIn(page, USERS.driver, { expectLanding: "/driver" });
+      await page.goto(driverUrl, { waitUntil: "domcontentloaded" });
+      await qShareLocation(page);
+
+      const pin = page.getByLabel(/recipient code/i).first();
+      await pin.waitFor({ state: "visible", timeout: 25000 });
+      await pin.fill(recipientCode);
+      await page.getByRole("button", { name: /^check code$/i }).first().click();
+      await page.getByText(/code accepted/i).first().waitFor({ state: "visible", timeout: 25000 });
+      check("Q27", "the recipient's code is accepted at the door", true, "");
+
+      const name = page.getByLabel(/first name of the person taking|person taking the shipment/i).first();
+      if (await name.count()) await name.fill("Alex");
+
+      const done = page.getByRole("button", { name: /complete handoff|complete delivery|complete drop-?off/i }).first();
+      await done.waitFor({ state: "visible", timeout: 20000 });
+      await done.click();
+      const delivered = await waitForRow("Q28 delivered", () => deliveryById(deliveryId),
+        (d) => d.fulfillment_state === "delivered", 60000);
+      check("Q28", "the delivery is delivered", Boolean(delivered),
+        `state=${delivered?.fulfillment_state}`);
+    } finally {
+      await ctx.close();
+    }
+  }
+
+  {
+    const asg = await assignmentsFor(deliveryId);
+    const drv = await driverById(driver.id);
+    check("Q29", "completion closes the assignment and releases the driver",
+      asg.every((a) => a.assignment_state !== "active") &&
+      drv.availability_state === "available",
+      `assignments=${JSON.stringify(asg.map((a) => a.assignment_state))} driver=${drv.availability_state}`);
+    check("Q30", "a drop-off handoff record names the method actually used",
+      (await handoffRecordsFor(deliveryId))
+        .some((r) => r.handoff_stage === "dropoff" && r.proof_method_used === "photo_or_pin"), "");
+  }
+
+  /* ---- Q31..Q35  the receipt, and who may see the media --------------- */
+
+  {
+    const r = await apiAs(USERS.driver, "/api/couranr/driver/assignment");
+    const receipt = r.payload?.receipt ?? {};
+    check("Q31", "a finished driver gets a receipt, not an empty state",
+      r.status === 200 && r.payload?.status === "recently_completed",
+      `status=${r.payload?.status}`);
+    check("Q32", "the receipt is six sanitized fields and nothing else",
+      JSON.stringify(Object.keys(receipt).sort()) ===
+      JSON.stringify(["assignmentId", "deliveredAt", "deliveryId", "deliveryProofComplete",
+                      "pickupProofComplete", "proofMethod"]),
+      `keys=${Object.keys(receipt).sort().join(",")}`);
+    const body = JSON.stringify(receipt);
+    check("Q33", "the receipt carries no address, no contact, no path and no URL",
+      !/canonical-proof|token=|https?:\/\//.test(body) &&
+      !body.includes(SHIPMENT.dropoff.line1) && projectionLeaks(body) === null,
+      body.slice(0, 200));
+  }
+
+  {
+    const r = await apiAs(USERS.merchant, `/api/couranr/merchant/deliveries/${deliveryId}/proof`);
+    const rows = r.payload?.proof ?? [];
+    const keys = new Set(rows.flatMap((p) => Object.keys(p)));
+    check("Q34", "the sender sees proof METADATA and never the media",
+      r.status === 200 && rows.length > 0 &&
+      !keys.has("url") && !keys.has("storageObjectPath") && !keys.has("storage_object_path") &&
+      !/canonical-proof|token=/.test(JSON.stringify(rows)),
+      `rows=${rows.length} keys=${[...keys].join(",")}`);
+  }
+
+  {
+    // A PHOTO proof specifically. A recipient-PIN record carries no image, so
+    // asking for its URL correctly 404s — reading `proofs[0]` unordered made
+    // this assertion fail against perfectly correct behaviour.
+    const proofs = await proofsFor(deliveryId);
+    const withMedia = proofs.find((p) => p.storage_object_path && p.byte_size > 0);
+    if (!withMedia) {
+      inconclusive("Q35", "driver lifecycle", "no proof with media exists to ask about");
+      return;
+    }
+    const opsUrl = await apiAs(USERS.ops, `/api/couranr/operations/proof/${withMedia.id}/url`);
+    const merchUrl = await apiAs(USERS.merchant, `/api/couranr/operations/proof/${withMedia.id}/url`);
+    check("Q35", "Operations may open proof media on a 900-second URL; the sender may not",
+      opsUrl.status === 200 && opsUrl.payload?.expiresInSeconds === 900 && merchUrl.status >= 400,
+      `ops=${opsUrl.status}/${opsUrl.payload?.expiresInSeconds} merchant=${merchUrl.status}`);
+  }
+
+  {
+    // The driver's access ends with the job: the route scopes to an ACTIVE
+    // assignment, and theirs is now completed.
+    const proofs = await proofsFor(deliveryId);
+    const shot = proofs.find((p) => p.storage_object_path && p.byte_size > 0) ?? proofs[0];
+    const r = await apiAs(USERS.driver, `/api/couranr/driver/proof/${shot.id}/url`);
+    check("Q36", "the driver's media access ends when the assignment does",
+      r.status >= 400, `status=${r.status}`);
+  }
+
+  /* ---- Q37  nothing legacy moved -------------------------------------- */
+
+  {
+    const legacyAfter = await realDataCounts();
+    const proofAfter = await couranrProofCounts();
+    check("Q37", "group Q mutated no legacy row",
+      JSON.stringify(legacyBefore) === JSON.stringify(legacyAfter),
+      `${JSON.stringify(legacyBefore)} -> ${JSON.stringify(legacyAfter)}`);
+    console.log(
+      `         proof rows ${proofBefore.proofs}->${proofAfter.proofs}, ` +
+      `uploads ${proofBefore.uploads}->${proofAfter.uploads}, ` +
+      `handoffs ${proofBefore.handoffs}->${proofAfter.handoffs}, ` +
+      `codes ${proofBefore.codes}->${proofAfter.codes}`
+    );
+  }
+}
+
+const ALL = { A: groupA, B: groupB, C: groupC, D: groupD, E: groupE, F: groupF, G: groupG, H: groupH, I: groupI, J: groupJ, K: groupK, L: groupL, M: groupM, N: groupN, O: groupO, P: groupP, Q: groupQ };
 
 let REAL_AFTER = null;
 let cleanup = null;

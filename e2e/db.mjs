@@ -429,3 +429,134 @@ export const driverByUserId = (userId) =>
       if (error) throw new Error(`driverByUserId: ${error.message}`);
       return data;
     });
+
+/* ------------------------------------------- driver execution and proof -- */
+
+/**
+ * Readers for the five driver-execution tables. All `select`; nothing here
+ * writes a column, because a harness that resets state by writing columns
+ * stops proving anything about the transitions it exists to exercise.
+ */
+
+export const handoffCodesFor = (deliveryId) =>
+  admin
+    .from("couranr_handoff_codes")
+    // `code_digest` is read only to assert the PLAINTEXT is never stored.
+    .select("id,code_kind,generation,code_state,failed_attempts,code_digest,expires_at,consumed_at,locked_at,superseded_at,version")
+    .eq("delivery_id", deliveryId)
+    .then(({ data, error }) => {
+      if (error) throw new Error(`handoffCodesFor: ${error.message}`);
+      return data ?? [];
+    });
+
+export const proofsFor = (deliveryId) =>
+  admin
+    .from("couranr_delivery_proofs")
+    .select("id,assignment_id,discrepancy_id,proof_stage,proof_type,storage_bucket,storage_object_path,byte_size,mime_type,captured_latitude,captured_longitude,captured_accuracy_m,finalized_at")
+    .eq("delivery_id", deliveryId)
+    .then(({ data, error }) => {
+      if (error) throw new Error(`proofsFor: ${error.message}`);
+      return data ?? [];
+    });
+
+export const handoffRecordsFor = (deliveryId) =>
+  admin
+    .from("couranr_handoff_records")
+    .select("id,handoff_stage,proof_method_used,recorded_at")
+    .eq("delivery_id", deliveryId)
+    .then(({ data, error }) => {
+      if (error) throw new Error(`handoffRecordsFor: ${error.message}`);
+      return data ?? [];
+    });
+
+export const discrepanciesFor = (deliveryId) =>
+  admin
+    .from("couranr_pickup_discrepancies")
+    .select("id,reason,notes,discrepancy_state,reported_at,resolved_at,version")
+    .eq("delivery_id", deliveryId)
+    .then(({ data, error }) => {
+      if (error) throw new Error(`discrepanciesFor: ${error.message}`);
+      return data ?? [];
+    });
+
+/**
+ * The bracket for "this group created exactly what it declared".
+ *
+ * The proof bucket is NOT empty at baseline — earlier verification left objects
+ * behind — so a group must compare a delta, never assume zero.
+ */
+export async function couranrProofCounts() {
+  const one = async (table) => {
+    const { count, error } = await admin.from(table).select("id", { count: "exact", head: true });
+    if (error) throw new Error(`couranrProofCounts(${table}): ${error.message}`);
+    return count ?? 0;
+  };
+  return {
+    proofs: await one("couranr_delivery_proofs"),
+    uploads: await one("couranr_proof_uploads"),
+    handoffs: await one("couranr_handoff_records"),
+    codes: await one("couranr_handoff_codes"),
+  };
+}
+
+/**
+ * Releases an assignment BEFORE pickup, through the product's own command.
+ *
+ * Deliberately the only recovery available, and it is deliberately partial:
+ * `couranr_unassign_delivery_before_pickup` closes at `at_pickup`, and
+ * `couranr_replace_delivery_assignment` refuses unless the delivery is still
+ * `assigned`. From `at_pickup` onward NOTHING ends an assignment except
+ * completing the delivery, so a group that strands a driver there must say so
+ * rather than reach for a column write or a wider grant.
+ */
+export async function unassignAsOps(input) {
+  const { data, error } = await admin.rpc("couranr_unassign_delivery_before_pickup", {
+    p_delivery_id: input.deliveryId,
+    p_expected_version: input.expectedVersion,
+    p_actor_user_id: input.actorUserId,
+    p_reason: input.reason ?? "e2e harness reset",
+  });
+  if (error) throw new Error(`unassignAsOps: ${error.message}`);
+  return data;
+}
+
+/**
+ * An existing canonical delivery sitting at `scheduled` with no active
+ * assignment, for a given business account.
+ *
+ * Group Q exercises DRIVER EXECUTION, which begins at `scheduled`. Driving the
+ * whole request -> authorize -> plan -> capture chain first would couple it to
+ * Stripe, which groups M/N/O already prove and which cannot run at all without
+ * payment keys in the environment. Adopting a delivery that is already there
+ * keeps Q focused on the thing it tests and runnable without them.
+ *
+ * Newest first, so a run picks up the freshest synthetic fixture.
+ */
+export async function reusableScheduledDelivery(businessAccountId) {
+  const { data: reqs, error: rErr } = await admin
+    .from("couranr_delivery_requests")
+    .select("id")
+    .eq("business_account_id", businessAccountId);
+  if (rErr) throw new Error(`reusableScheduledDelivery(requests): ${rErr.message}`);
+  const ids = (reqs ?? []).map((r) => r.id);
+  if (ids.length === 0) return null;
+
+  const { data: dels, error: dErr } = await admin
+    .from("couranr_deliveries")
+    .select("id,request_id,fulfillment_state,version,created_at")
+    .in("request_id", ids)
+    .eq("fulfillment_state", "scheduled")
+    .order("created_at", { ascending: false });
+  if (dErr) throw new Error(`reusableScheduledDelivery(deliveries): ${dErr.message}`);
+
+  for (const d of dels ?? []) {
+    const { data: asg, error: aErr } = await admin
+      .from("couranr_delivery_assignments")
+      .select("id")
+      .eq("delivery_id", d.id)
+      .eq("assignment_state", "active");
+    if (aErr) throw new Error(`reusableScheduledDelivery(assignments): ${aErr.message}`);
+    if ((asg ?? []).length === 0) return { requestId: d.request_id, delivery: d };
+  }
+  return null;
+}
