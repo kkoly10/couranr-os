@@ -1557,3 +1557,136 @@ describe("the delivery version is read, never invented", () => {
     expect(readDeliveryVersion(assignedView({ version: 1 }))).toBe(1);
   });
 });
+
+/* ============================================ the proof-upload contract === */
+
+/**
+ * The upload ticket is NESTED under `upload`, and reading it flat is invisible
+ * to every other kind of test.
+ *
+ * `requestProofUpload` was typed flat while the route returned
+ * `{ upload: … }`, so `ticket.value.signedUrl` was `undefined` at runtime.
+ * `fetch(undefined)` resolves against the PAGE url, Next answered with an HTML
+ * page and a 200, `put.ok` was therefore true, and the hook went on to
+ * "finalize" an object that had never been stored. Proof upload had never once
+ * worked — through a green typecheck, a green 1001-test suite, and a component
+ * suite whose only assertions about this function were that it had NOT been
+ * called.
+ *
+ * So this drives the SUCCESS path and asserts on the request that leaves the
+ * browser: the PUT must go to the signed URL the server issued, carrying the
+ * bytes, and finalize must receive the server's real upload id.
+ */
+describe("the proof upload sends the server's own ticket", () => {
+  const SIGNED = "https://example.supabase.co/storage/v1/object/upload/sign/delivery-photos/canonical-proof/v1/d/p/abc.png?token=t";
+  const UPLOAD_ID = "aaaaaaaa-1111-4111-8111-111111111111";
+
+  function grantTicket() {
+    requestProofUpload.mockResolvedValue(
+      // The REAL wire shape. A flat fixture here would re-hide the defect.
+      ok({
+        upload: {
+          uploadId: UPLOAD_ID,
+          signedUrl: SIGNED,
+          token: "t",
+          expectedBytes: 3,
+          expectedMime: "image/png",
+          expiresInSeconds: 900,
+        },
+      })
+    );
+    finalizeProofUpload.mockResolvedValue(
+      ok({
+        proof: {
+          proofId: "bbbbbbbb-2222-4222-8222-222222222222",
+          proofStage: "pickup",
+          proofType: "shipment_photo",
+          finalizedAt: "2026-08-03T17:06:14.972131+00:00",
+          byteSize: 3,
+        },
+      })
+    );
+  }
+
+  async function runUpload() {
+    const calls: Array<{ url: unknown; method?: string; bodyLen?: number }> = [];
+    const realFetch = global.fetch;
+    global.fetch = vi.fn(async (url: any, init: any) => {
+      calls.push({
+        url,
+        method: init?.method,
+        bodyLen: init?.body?.byteLength ?? init?.body?.length,
+      });
+      return { ok: true, status: 200 } as Response;
+    }) as never;
+
+    const { useProofUpload } = await import("@/components/couranr/dispatch/useProofUpload");
+    const location = {
+      status: "ready", fix: { latitude: 38.42, longitude: -77.41, accuracyM: 8 },
+      message: "Location captured.", usable: true, request: vi.fn(),
+    } as LocationState;
+
+    let hook: any;
+    function Probe() {
+      hook = useProofUpload({
+        deliveryId: "del-fixture-1", stage: "pickup", proofType: "shipment_photo", location,
+      });
+      return <span>{hook.status}</span>;
+    }
+    render(<Probe />);
+
+    const file = new File([new Uint8Array([1, 2, 3])], "s.png", { type: "image/png" });
+    await hook.upload(file);
+    global.fetch = realFetch;
+    return calls;
+  }
+
+  it("PUTs the bytes to the signed URL the server issued, not to undefined", async () => {
+    grantTicket();
+    const calls = await runUpload();
+
+    const put = calls.find((c) => c.method === "PUT");
+    expect(put, "no PUT was issued at all").toBeTruthy();
+    // The precise regression: `undefined` here became a same-origin request
+    // that Next answered 200, so the upload silently stored nothing.
+    expect(put!.url, "the PUT went somewhere other than the signed URL").toBe(SIGNED);
+    expect(String(put!.url)).not.toMatch(/undefined/);
+    expect(put!.bodyLen, "the PUT carried no bytes").toBe(3);
+  });
+
+  it("finalizes with the server's upload id, never the string \"undefined\"", async () => {
+    grantTicket();
+    await runUpload();
+
+    expect(finalizeProofUpload).toHaveBeenCalledTimes(1);
+    const [body] = finalizeProofUpload.mock.calls[0];
+    expect(body.uploadId).toBe(UPLOAD_ID);
+    expect(String(body.uploadId)).not.toBe("undefined");
+    // The location travels as evidence, and is never defaulted to 0/0.
+    expect(body.latitude).toBe(38.42);
+    expect(body.longitude).toBe(-77.41);
+  });
+
+  it("refuses to PUT anywhere when the ticket has no signed URL", async () => {
+    // A malformed grant must fail closed rather than fetch(undefined).
+    requestProofUpload.mockResolvedValue(ok({ upload: { uploadId: UPLOAD_ID } }));
+    const calls = await runUpload();
+    expect(calls.some((c) => c.method === "PUT"), "PUT issued without a signed URL").toBe(false);
+    expect(finalizeProofUpload).not.toHaveBeenCalled();
+  });
+
+  it("the route really does nest the ticket under `upload`", () => {
+    // Source-level, because the runtime shape above is a fixture and a fixture
+    // can drift from the server exactly as this one did.
+    const route = readFileSync(
+      path.join(process.cwd(), "app/api/couranr/driver/deliveries/[id]/proof-upload/route.ts"),
+      "utf8"
+    );
+    expect(route).toMatch(/NextResponse\.json\(\{\s*upload:/);
+    const client = readFileSync(
+      path.join(process.cwd(), "components/couranr/dispatch/client.ts"),
+      "utf8"
+    );
+    expect(client).toMatch(/call<\{\s*upload:\s*ProofUploadTicketView\s*\}>/);
+  });
+});

@@ -99,11 +99,23 @@ export function useProofUpload(params: {
         return;
       }
 
+      // `{ upload: … }` — the route's nested key, like every other driver route.
+      const grant = ticket.value.upload;
+      if (!grant?.signedUrl || !grant?.uploadId) {
+        // Reading the wrong key used to leave this undefined, and
+        // `fetch(undefined)` resolves against the PAGE url — Next answered with
+        // an HTML page and a 200, so the upload "succeeded" having stored
+        // nothing. Refuse explicitly rather than PUT to wherever that lands.
+        setStatus("failed");
+        setError("Couranr could not start that upload. Try again.");
+        return;
+      }
+
       setStatus("uploading");
       try {
         // A raw body, not FormData: multipart with a disk-backed part is the
         // shape that loses its bytes under the harness relay.
-        const put = await fetch(ticket.value.signedUrl, {
+        const put = await fetch(grant.signedUrl, {
           method: "PUT",
           headers: { "content-type": file.type },
           body: bytes,
@@ -121,7 +133,7 @@ export function useProofUpload(params: {
 
       setStatus("finalizing");
       const fin = await finalizeProofUpload({
-        uploadId: ticket.value.uploadId,
+        uploadId: grant.uploadId,
         latitude: params.location.fix?.latitude ?? null,
         longitude: params.location.fix?.longitude ?? null,
         accuracyM: params.location.fix?.accuracyM ?? null,

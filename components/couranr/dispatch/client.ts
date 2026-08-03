@@ -441,11 +441,23 @@ export type ProofUploadTicketView = {
   expiresInSeconds: number;
 };
 
+/**
+ * NESTED under `upload`, because every driver route nests under a named key and
+ * this one is no exception — `{ upload: … }`, exactly like `{ delivery: … }`,
+ * `{ discrepancy: … }` and `{ proof: … }`.
+ *
+ * It was typed FLAT here, which made `ticket.value.signedUrl` undefined at
+ * runtime. `fetch(undefined)` then resolved against the page URL, Next served
+ * an HTML page with a 200, so `put.ok` was true and the upload "succeeded"
+ * having stored nothing. Typecheck could not see it — the route is untyped
+ * JSON — and the component tests mocked this function, so they mocked the wrong
+ * shape too. Proof upload had never once worked.
+ */
 export function requestProofUpload(
   deliveryId: string,
   body: { stage: string; proofType: string; expectedMime: string; expectedBytes: number }
 ) {
-  return call<ProofUploadTicketView>(
+  return call<{ upload: ProofUploadTicketView }>(
     `/api/couranr/driver/deliveries/${deliveryId}/proof-upload`,
     { method: "POST", body }
   );
