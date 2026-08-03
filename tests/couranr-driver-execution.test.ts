@@ -634,3 +634,166 @@ describe("COURANR_HANDOFF_CODE_SECRET", () => {
     expect(redactHandoffCodes("id 1234567")).toBe("id 1234567");
   });
 });
+
+/* ==================================================== the API surface ===== */
+
+/**
+ * Structural guarantees over the routes themselves. The BEHAVIOURAL proofs for
+ * this layer live in `e2e/smokeHandoff.mjs`, which drives the real routes
+ * against the real database in two phases (secret absent / secret present).
+ * These are the properties a static read can establish, and they are the ones
+ * that would silently regress in a refactor.
+ */
+describe("the driver API surface", () => {
+  const ROUTES = (function walk(dir: string, out: string[] = []): string[] {
+    for (const e of readdirSync(dir)) {
+      const full = path.join(dir, e);
+      if (readFileSync ? require("node:fs").statSync(full).isDirectory() : false) walk(full, out);
+      else if (full.endsWith("route.ts")) out.push(full);
+    }
+    return out;
+  })(path.join(ROOT, "app/api/couranr"));
+
+  const SRC = new Map(ROUTES.map((f) => [path.relative(ROOT, f), readFileSync(f, "utf8")]));
+  const DRIVER_ROUTES = [...SRC.keys()].filter((f) => f.includes("/driver/"));
+  const NEW_ROUTES = [...SRC.keys()].filter(
+    (f) => f.includes("/driver/") || f.includes("/merchant/") || f.includes("/operations/")
+  );
+
+  it("finds the routes it is meant to police", () => {
+    // Without this the rest of the block could pass over an empty set.
+    expect(ROUTES.length).toBeGreaterThan(40);
+    expect(DRIVER_ROUTES.length).toBeGreaterThan(10);
+  });
+
+  /** No route may accept a destination. The command name IS the transition. */
+  it("no route reads a fulfillment target from the body", () => {
+    for (const [name, src] of SRC) {
+      for (const rx of [
+        /body\??\.\w*[Ss]tatus/,
+        /body\??\.\w*[Ss]tate/,
+        /body\??\.\w*fulfillment/i,
+        /body\??\.\w*target/i,
+      ]) {
+        expect(rx.test(src), `${name} reads ${rx} from the body`).toBe(false);
+      }
+    }
+  });
+
+  /**
+   * A browser-supplied driver id would defeat the identity model — for a DRIVER
+   * route. Operations' own assignment route legitimately takes one, because
+   * choosing the driver is the entire point of dispatch; that route is
+   * Operations-gated and is not in scope here.
+   */
+  it("no driver or merchant route accepts a driver id, proof method or timestamp", () => {
+    const scoped = [...SRC.keys()].filter(
+      (f) => f.includes("/driver/") || f.includes("/merchant/")
+    );
+    expect(scoped.length).toBeGreaterThan(10);
+    for (const name of scoped) {
+      const src = SRC.get(name)!;
+      expect(/body\??\.driverId/.test(src), `${name} accepts a driver id`).toBe(false);
+      expect(/body\??\.proofMethod/.test(src), `${name} accepts a proof method`).toBe(false);
+      expect(/body\??\.\w*[Tt]imestamp/.test(src), `${name} accepts a timestamp`).toBe(false);
+    }
+  });
+
+  /**
+   * A PIN in a path segment lands in access logs, proxy logs and browser
+   * history. It travels in a JSON body or not at all.
+   */
+  it("no route reads a code from the URL", () => {
+    for (const [name, src] of SRC) {
+      expect(/params\.\w*code/i.test(src), `${name} takes a code from the path`).toBe(false);
+      expect(
+        /searchParams\.get\(["'][^"']*code/i.test(src),
+        `${name} takes a code from the query`
+      ).toBe(false);
+    }
+  });
+
+  /**
+   * The rule is "no ENTITY LOOKUP before authentication", not "no await".
+   * `await req.json()` is body parsing and legitimately precedes the actor
+   * check — several payment-slice routes validate shape first so a malformed
+   * body is refused without a round trip. What must never precede auth is a
+   * database read.
+   */
+  it("no route touches the database before authenticating", () => {
+    for (const name of NEW_ROUTES) {
+      const src = SRC.get(name)!;
+      expect(/resolveUserId\(|resolveRequestActor\(/.test(src), `${name} has no auth`).toBe(true);
+      const body = src.slice(src.search(/export async function (GET|POST|PUT|PATCH)/));
+      const firstAuth = body.search(/await (resolveUserId|resolveRequestActor)\(/);
+      const firstDb = body.search(/supabaseAdmin/);
+      if (firstDb !== -1) {
+        expect(firstDb, `${name} queries the database before authenticating`).toBeGreaterThan(
+          firstAuth
+        );
+      }
+    }
+  });
+
+  it("every new route is dynamic, so an operational read is never cached", () => {
+    for (const name of NEW_ROUTES) {
+      expect(SRC.get(name)!, `${name} is not force-dynamic`).toMatch(
+        /export const dynamic = "force-dynamic"/
+      );
+    }
+  });
+
+  /** The merchant sees that proof exists; never where it lives. */
+  it("the merchant proof route returns no URL and no object path", () => {
+    const src = SRC.get("app/api/couranr/merchant/deliveries/[id]/proof/route.ts")!;
+    expect(src).not.toMatch(/signedProofUrl|createSignedUrl|storage_object_path/);
+    expect(src).toMatch(/listProofMetadata/);
+  });
+
+  /** Customer proof retrieval is deferred to the secure tracking slice. */
+  it("there is no customer proof route in this branch", () => {
+    for (const name of SRC.keys()) {
+      expect(name).not.toMatch(/\/customer\/.*proof/);
+      expect(name).not.toMatch(/\/track\//);
+    }
+  });
+
+  it("each viewer's signed-URL TTL is the decided value", async () => {
+    const { PROOF_URL_TTL_SECONDS } = await import("@/lib/couranr/driver/proofPaths");
+    const ops = SRC.get("app/api/couranr/operations/proof/[proofId]/url/route.ts")!;
+    const drv = SRC.get("app/api/couranr/driver/proof/[proofId]/url/route.ts")!;
+    expect(ops).toMatch(/viewer:\s*"operations"/);
+    expect(drv).toMatch(/viewer:\s*"driver"/);
+    expect(PROOF_URL_TTL_SECONDS.operations).toBe(900);
+    expect(PROOF_URL_TTL_SECONDS.driver).toBe(600);
+    expect(PROOF_URL_TTL_SECONDS.customer).toBe(600);
+  });
+
+  /**
+   * The verification hole that shipped in the first cut: the wrapper took a
+   * userId and never passed it, and the SQL took no actor at all. Anyone with a
+   * delivery UUID could burn five attempts and lock a live credential.
+   */
+  it("PIN verification passes the caller through to SQL", () => {
+    const cmds = readFileSync(path.join(ROOT, "lib/couranr/driver/commands.ts"), "utf8");
+    expect(cmds).toMatch(/couranr_verify_handoff_code/);
+    // The rpc call site, taken to the end of its argument object.
+    const at = cmds.indexOf('"couranr_verify_handoff_code"');
+    expect(at, "the verify rpc call was not found").toBeGreaterThan(-1);
+    expect(cmds.slice(at, at + 900)).toMatch(/p_actor_user_id:\s*p\.userId/);
+  });
+
+  it("the SQL verification command scopes to the caller's own assignment", () => {
+    // The LAST definition is the one the database holds; migrations apply in
+    // order, and the actor-scoped version supersedes the original.
+    // Anchored on the DEFINITION, not the name: `lastIndexOf` on the bare name
+    // lands on the trailing GRANT, whose text contains no function body at all
+    // and would make this assertion fail against perfectly correct SQL.
+    const at = SQL.lastIndexOf("create or replace function public.couranr_verify_handoff_code");
+    expect(at, "the verify function definition was not found").toBeGreaterThan(-1);
+    const fn = SQL.slice(at);
+    const body = fn.slice(0, fn.indexOf("end $fn$;") + 9);
+    expect(body).toMatch(/p_actor_user_id/);
+    expect(body).toMatch(/couranr_driver_assignment_for/);
+  });
+});
