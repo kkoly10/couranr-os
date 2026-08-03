@@ -11,3 +11,6 @@ node_modules
 e2e/.state.json
 e2e/artifacts/
 e2e/artifacts/
+
+# Smoke-gate fixture credentials (generated, never committed)
+e2e/.smoke.json
