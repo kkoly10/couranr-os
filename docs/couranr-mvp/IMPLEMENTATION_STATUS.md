@@ -102,15 +102,31 @@ Neither number should be quoted without its fraction.
 
 | status | count |
 |---|---|
-| `functional_verified` | 10 |
+| `functional_verified` | 11 |
 | `functional_unverified` | 5 |
-| `partial` | 3 |
+| `partial` | 5 |
 | `static_only` | 1 |
 | `placeholder_only` | 36 |
-| `missing` | 11 |
+| `missing` | 8 |
 | `deferred` / `retired_or_replaced` | 0 |
 
-**10 of 66 canonical screens are verified working in a browser.**
+**11 of 66 canonical screens are verified working in a browser.**
+
+The customer tracking slice moved three: `CUS-006` to `functional_verified`,
+and `PUB-006` and `CUS-008` to `partial`. All three were driven in a real
+browser — 54 assertions across nine scenarios — and all three are recorded
+with their gaps rather than rounded up:
+
+- **PUB-006** renders eight of its nine required states. `return` is
+  unreachable because no stored fulfillment state maps to it (STA-002 declares
+  the return states; the shipped ten-value vocabulary omits them and P7-005
+  has not started). Its "open Delivery Help" action has no destination yet.
+- **CUS-008** is READ-ONLY. It confirms address, handoff, leave-at-door
+  authorization and the window, and it locks after pickup; it has no edit
+  control, no handoff chooser and no save.
+- **CUS-006** is complete for the states the registry names. Its image branch
+  was driven with a SYNTHETIC proof, because no dropoff proof carrying an image
+  exists in the database — every completed delivery so far used the PIN path.
 
 These counts were revised DOWN after an independent adversarial pass disputed
 nine of them and was right on five. The corrections, each conservative:
@@ -193,8 +209,9 @@ message/conversation, incident or idempotency.
 ## Launch blockers
 
 `GAT-001` requires all eleven release conditions. On the evidence here the
-blocking set is: the customer surface does not exist (10 `missing` screens, all
-`/track/[token]` or `/help/[token]`); refunds and the ledger do not exist; the
+blocking set is: the customer surface is half-built (`/track/[token]` ships in
+this slice; the 8 remaining `missing` screens are all `/help/[token]`); refunds
+and the ledger do not exist; the
 legacy runtime is still live; and real Stripe is unverified.
 
 ## Known legacy conflicts
@@ -250,13 +267,13 @@ Each browser group's two remaining failures are `CLEAN-behaviour` and
 
 ## Next recommended implementation slice
 
-**The customer surface: secure tracking and Delivery Help — `/track/[token]`
-and `/help/[token]`.**
+**Delivery Help — `/help/[token]`.** (The tracking half of this slice,
+`/track/[token]`, has shipped; what follows describes what remains.)
 
 Why it is next:
 
-1. It is the largest contiguous hole. Ten canonical screens have **no page at
-   all**, and every one of them is on these two routes.
+1. It is the largest contiguous hole left. Eight canonical screens have **no
+   page at all**, and every one of them is on this route.
 2. Everything it needs already exists and is verified. Deliveries reach
    `delivered` with proof (Group Q); `couranr_payment_access_tokens` already
    provides the token-scoped access pattern; `PHO-001` already names the person
@@ -270,11 +287,17 @@ Why it is next:
 **Work items it would close:** `P8-004` (secure Delivery Help), and the
 customer-facing half of `P7-004` proof viewing.
 
-**Screen IDs it would close:** `PUB-006`, `PUB-007`, `CUS-001`, `CUS-002`,
-`CUS-003`, `CUS-004`, `CUS-006`, `CUS-007`, `CUS-008` — and `CUS-005` moves from
-`functional_unverified` once the requote approval path is driven.
+**Screen IDs it would close:** `PUB-007`, `CUS-001`, `CUS-003`, `CUS-004` —
+and it would give `PUB-006` the Delivery Help destination it is currently
+`partial` without.
 
-That is 9 `missing` screens closed and 1 verified, against a foundation that is
+`CUS-002` (cancellation and return) and `CUS-007` (return and refund status)
+CANNOT close in that slice: both describe returns and delivery-charge refunds,
+and `P6-004` (ledger and refunds) and `P7-005` (exceptions) are `not_started`.
+A help page that renders those two as working screens would be the same
+overstatement this file exists to prevent.
+
+That is 4 of the 8 remaining `missing` screens, against a foundation that is
 already proven.
 
 ## Keeping this file honest

@@ -18,8 +18,12 @@ export const dynamic = "force-dynamic";
  */
 export default function Page({ params }: { params: { token: string } }) {
   return (
-    <main className="cr-shell__main" style={{ maxWidth: 560, margin: "0 auto", padding: "2rem 1rem" }}>
+    // A <div>, NOT a <main>: the public shell already renders the page's
+    // `<main id="cr-main">` landmark. This page nested a second one, giving
+    // the document two main landmarks. Found by driving /track/[token], which
+    // had copied the same shape.
+    <div style={{ maxWidth: 560, margin: "0 auto", padding: "2rem 1rem" }}>
       <PaymentLinkPage token={params.token} />
-    </main>
+    </div>
   );
 }

@@ -236,6 +236,8 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/pay/[token]/reconcile/route.ts",
       "app/api/couranr/pay/[token]/route.ts",
       "app/api/couranr/stripe/webhook/route.ts",
+      "app/api/couranr/track/[token]/proof/[proofId]/url/route.ts",
+      "app/api/couranr/track/[token]/route.ts",
     ]);
   });
 
@@ -251,17 +253,41 @@ describe("canonical server routes do not import the browser client", () => {
    * here rather than exempted by a pattern, so a genuinely unauthenticated
    * route cannot join them by accident:
    *
-   *   TOKEN     `/pay/[token]` — the link IS the authorization: 256 random
-   *             bits, stored only as a SHA-256 hash, scoped to one request and
-   *             one action, expiring within 7 days and revoked when the quote
-   *             changes. A customer has no Couranr account to sign in to.
+   *   TOKEN     `/pay/[token]` and `/track/[token]` — the link IS the
+   *             authorization: 256 random bits, stored only as a SHA-256 hash,
+   *             scoped to one request and one audience, expiring, and
+   *             revocable. A customer has no Couranr account to sign in to.
    *   SIGNATURE the Stripe webhook — authorized by verifying Stripe's
    *             signature over the raw bytes with our own signing secret,
    *             before the payload is parsed at all.
+   *
+   * Membership is not enough to pass. Each token route must be shown BELOW to
+   * validate the token's shape before any lookup AND to resolve it through a
+   * named redeem path — otherwise "add the file to the set" would be a way to
+   * ship an unauthenticated route.
    */
-  const TOKEN_AUTHORIZED = new Set([
-    "app/api/couranr/pay/[token]/reconcile/route.ts",
-    "app/api/couranr/pay/[token]/route.ts",
+  const TOKEN_AUTHORIZED = new Map<string, { shape: RegExp; redeem: RegExp }>([
+    [
+      "app/api/couranr/pay/[token]/reconcile/route.ts",
+      { shape: /isWellFormedToken\(/, redeem: /redeemPaymentLink\(/ },
+    ],
+    [
+      "app/api/couranr/pay/[token]/route.ts",
+      { shape: /isWellFormedToken\(/, redeem: /redeemPaymentLink\(/ },
+    ],
+    [
+      "app/api/couranr/track/[token]/route.ts",
+      // `loadTrackingView` redeems internally and then loads only the rows the
+      // sanitized projection needs.
+      { shape: /isWellFormedTrackingToken\(/, redeem: /loadTrackingView\(/ },
+    ],
+    [
+      "app/api/couranr/track/[token]/proof/[proofId]/url/route.ts",
+      // The proof route needs a SECOND check beyond redeeming: `signedProofUrl`
+      // does no scoping of its own, so the proof must be proved to belong to
+      // this token's delivery before anything is minted.
+      { shape: /isWellFormedTrackingToken\(/, redeem: /authorizeProofForToken\(/ },
+    ],
   ]);
   const SIGNATURE_AUTHORIZED = new Set(["app/api/couranr/stripe/webhook/route.ts"]);
 
@@ -270,11 +296,12 @@ describe("canonical server routes do not import the browser client", () => {
       const src = SOURCE.get(file) ?? "";
       const name = rel(file);
 
-      if (TOKEN_AUTHORIZED.has(name)) {
+      const tokenRule = TOKEN_AUTHORIZED.get(name);
+      if (tokenRule) {
         // It must actually redeem the token, and reject a malformed one
         // before any lookup happens.
-        expect(src, `${name} does not redeem its token`).toMatch(/redeemPaymentLink\(/);
-        expect(src, `${name} does not validate the token shape`).toMatch(/isWellFormedToken\(/);
+        expect(src, `${name} does not redeem its token`).toMatch(tokenRule.redeem);
+        expect(src, `${name} does not validate the token shape`).toMatch(tokenRule.shape);
         continue;
       }
       if (SIGNATURE_AUTHORIZED.has(name)) {

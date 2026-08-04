@@ -306,14 +306,21 @@ export async function loadTrackingView(params: {
  * recipient may see.
  *
  * The proof-URL endpoint needs this before it mints anything: a proof id is a
- * uuid a customer could have from another delivery's page, and the id alone
- * must never be sufficient. Returns the storage reference for the caller to
- * sign — that reference never enters a projection or a response body.
+ * uuid, and a uuid a customer holds from one delivery's page must not resolve
+ * against another's. `signedProofUrl` deliberately does NO scoping — it looks
+ * a proof up by id and signs it — so the authorization has to happen here or
+ * it does not happen at all.
+ *
+ * Returns the proof id back, not the storage reference. The bucket and the
+ * object path never leave this module: the caller passes the id to the
+ * centralized minting function, which is the one place that knows the TTL
+ * policy, so there is no second implementation of "sign a proof object" and
+ * no path in a response body.
  */
 export async function authorizeProofForToken(params: {
   rawToken: string;
   proofId: string;
-}): Promise<TrackingResult<{ bucket: string; path: string } | null>> {
+}): Promise<TrackingResult<{ proofId: string } | null>> {
   const op = "authorizeProofForToken";
 
   const redeemed = await redeemTrackingLink({ rawToken: params.rawToken });
@@ -324,7 +331,7 @@ export async function authorizeProofForToken(params: {
 
   const q = await supabaseAdmin
     .from("couranr_delivery_proofs")
-    .select("id, storage_bucket, storage_object_path")
+    .select("id, storage_object_path")
     .eq("id", params.proofId)
     // The scope. Both filters are load-bearing: the delivery is what the token
     // authorizes, and `dropoff` is what a recipient may see of it.
@@ -334,10 +341,9 @@ export async function authorizeProofForToken(params: {
   if (q.error) {
     return fail({ operation: op, code: classifyDatabaseError(q.error), detail: q.error });
   }
-  if (!q.data?.storage_bucket || !q.data?.storage_object_path) return { ok: true, value: null };
+  // A recipient PIN record is proof with nothing to look at. Not an error and
+  // not authorized either — there is no object to sign.
+  if (!q.data?.storage_object_path) return { ok: true, value: null };
 
-  return {
-    ok: true,
-    value: { bucket: String(q.data.storage_bucket), path: String(q.data.storage_object_path) },
-  };
+  return { ok: true, value: { proofId: String(q.data.id) } };
 }

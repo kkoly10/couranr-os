@@ -564,3 +564,51 @@ describe("the migration keeps the project's grant discipline", () => {
     expect(rb).toContain("drop table if exists public.couranr_delivery_access_tokens;");
   });
 });
+
+/* =====================================================================
+ * Landmarks
+ * ===================================================================== */
+
+describe("no canonical page nests a second main landmark", () => {
+  /**
+   * The shells already render `<main id="cr-main">`. Two public pages nested a
+   * second `<main>` inside it, which is invalid and leaves assistive technology
+   * with no single "the content" target. A browser run found it — nothing in
+   * typecheck, lint or 1091 unit tests could have.
+   *
+   * Scoped to the canonical `app/(couranr)` tree. The legacy auto and docs
+   * pages are quarantine targets and are not this rule's business.
+   */
+  function pageFiles(dir: string, out: string[] = []): string[] {
+    for (const entry of fs.readdirSync(dir)) {
+      const full = path.join(dir, entry);
+      if (fs.statSync(full).isDirectory()) pageFiles(full, out);
+      else if (entry === "page.tsx" || entry === "layout.tsx") out.push(full);
+    }
+    return out;
+  }
+
+  const CANONICAL_APP = path.join(REPO, "app/(couranr)");
+  const files = pageFiles(CANONICAL_APP);
+
+  it("finds the pages it is meant to police", () => {
+    expect(files.length).toBeGreaterThan(10);
+  });
+
+  it("declares <main> only in a layout, never in a page", () => {
+    // Comments stripped first: both fixed pages EXPLAIN the rule in prose that
+    // quotes `<main id="cr-main">`, and matching that would fail the file that
+    // documents why it complies.
+    const code = (f: string) =>
+      fs
+        .readFileSync(f, "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/^\s*\/\/.*$/gm, "");
+
+    const offenders = files
+      .filter((f) => path.basename(f) === "page.tsx")
+      .filter((f) => /<main[\s>]/.test(code(f)))
+      .map((f) => path.relative(REPO, f));
+    expect(offenders, `pages nesting a second <main>:\n  ${offenders.join("\n  ")}`).toEqual([]);
+  });
+});

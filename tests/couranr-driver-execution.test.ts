@@ -750,12 +750,22 @@ describe("the driver API surface", () => {
     expect(src).toMatch(/listProofMetadata/);
   });
 
-  /** Customer proof retrieval is deferred to the secure tracking slice. */
-  it("there is no customer proof route in this branch", () => {
+  /**
+   * Customer proof retrieval SHIPPED in the tracking slice, so the assertion
+   * that it did not exist is gone. What replaces it is the property that
+   * assertion was standing in for: a customer reaches proof through the
+   * token-scoped tracking route and through NOTHING under `/api/couranr/driver`
+   * or the legacy `/customer` tree.
+   */
+  it("customer proof lives only behind the tracking token", () => {
     for (const name of SRC.keys()) {
       expect(name).not.toMatch(/\/customer\/.*proof/);
-      expect(name).not.toMatch(/\/track\//);
     }
+    const track = SRC.get("app/api/couranr/track/[token]/proof/[proofId]/url/route.ts");
+    expect(track, "the customer proof route is missing").toBeTruthy();
+    // It authorizes the proof against the token's own delivery BEFORE minting.
+    expect(track!).toMatch(/authorizeProofForToken\(/);
+    expect(track!).toMatch(/viewer:\s*"customer"/);
   });
 
   it("each viewer's signed-URL TTL is the decided value", async () => {
