@@ -52,7 +52,7 @@ No other value is permitted, and the validator fails the build on any other.
 | API routes | 122 total, 51 canonical under `app/api/couranr` |
 | API routes with no auth/gate/signature/token marker | **2 of 122**, both legacy |
 | Ungated **canonical** routes | **0** |
-| Test files / cases | 35 files, **1013 passing** |
+| Test files / cases | 36 files, **1043 passing** |
 | Live public tables / views | 54 / 6 |
 | `couranr_*` tables / functions | 18 / 62 |
 | Tables with RLS disabled | **0** |
@@ -102,14 +102,30 @@ Neither number should be quoted without its fraction.
 
 | status | count |
 |---|---|
-| `functional_verified` | 15 |
-| `functional_unverified` | 4 |
-| `partial` | 1 |
+| `functional_verified` | 10 |
+| `functional_unverified` | 5 |
+| `partial` | 3 |
+| `static_only` | 1 |
 | `placeholder_only` | 36 |
-| `missing` | 10 |
-| `static_only` / `deferred` / `retired_or_replaced` | 0 |
+| `missing` | 11 |
+| `deferred` / `retired_or_replaced` | 0 |
 
-**15 of 66 canonical screens are verified working in a browser.**
+**10 of 66 canonical screens are verified working in a browser.**
+
+These counts were revised DOWN after an independent adversarial pass disputed
+nine of them and was right on five. The corrections, each conservative:
+
+- **DRV-004 and DRV-005** were claimed `functional_verified` citing Group Q.
+  Group Q contains **zero** assertions mentioning discrepancy or driving mode —
+  they were rendered by a scratchpad smoke, which is not harness evidence.
+- **OPS-002** declares **two** routes and one of them,
+  `/operations/deliveries`, is a `ScreenPlaceholder` self-identifying as
+  `screenId="OPS-002"`. The ledger recorded only the first route, so the
+  validator could not see it. This is a known limitation: the ledger carries one
+  `current_page_path` per screen.
+- **MER-005** is "Create delivery with Smart Intake"; no extraction exists
+  (P5-001 is `not_started`), so its required purpose is unmet.
+- **OPS-008** is asserted by Group P at the API level, not in a browser.
 
 ## What is actually complete
 
@@ -138,12 +154,14 @@ Neither number should be quoted without its fraction.
   `couranr-pricing-2026-07-31`, but `lib/delivery/policy.ts` is still present
   and still reachable through legacy courier routes. **Two pricing engines are
   live at once.**
-- **P7-002 Operations** — OPS-002 and OPS-003 work; 11 of 14 Operations pages
-  are placeholders.
+- **P7-002 Operations** — OPS-003 is verified; OPS-002 is `partial` because one
+  of its two declared routes, `/operations/deliveries`, is a placeholder.
+  11 of 14 Operations pages are placeholders.
 - **P7-004 proof** — private proof is complete and verified; **offline sync,
   the second half of the same work item, does not exist**.
-- **P8-003 Driving Mode** — the reduced screen exists and is verified; alert
-  suppression is not implemented.
+- **P8-003 Driving Mode** — the reduced screen exists and is mounted, but it is
+  `functional_unverified`: Group Q contains no driving-mode assertion. Alert
+  suppression is not implemented at all.
 
 ## Placeholder-only
 
@@ -210,7 +228,7 @@ anon key. Verified at this SHA, they are not:
 |---|---|
 | `npm run lint` | 0 |
 | `npm run typecheck` | 0 |
-| `npm run test:run` | 1013 passed, 35 files |
+| `npm run test:run` | 1043 passed, 36 files |
 | `npm run build` | compiled, 91 static pages |
 | Browser Group Q | 37/37 |
 | Browser Group P | 28/30 |

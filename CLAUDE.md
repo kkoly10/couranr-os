@@ -66,7 +66,7 @@ page may be classified functional.**
 counts in `IMPLEMENTATION_STATUS.md` in the SAME commit.** The test enforces the
 shape; it cannot enforce that you remembered.
 
-As of `401b3ee`: 9 of 42 work items `complete_verified` (21.4%), and 15 of 66
+As of `401b3ee`: 9 of 42 work items `complete_verified` (21.4%), and 10 of 66
 screens `functional_verified`. 28 of the 41 canonical pages are placeholders.
 
 ### Authority chain — the specification wins over the code, always
