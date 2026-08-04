@@ -985,19 +985,54 @@ describe("HARDENING — defects the adversarial verification confirmed", () => {
     );
   });
 
-  it("every migration in THIS slice has a paired rollback", () => {
-    // Not a repo-wide rule: 20 migrations predating this slice have no
-    // rollback. This asserts consistency within the slice, which shipped
-    // 150000 with one and then 160000 and 170000 without.
+  it("EVERY forward migration has a paired rollback", () => {
+    // This was scoped to the slice when 20 older migrations had none. They all
+    // have one now, so the rule is repo-wide and the test says so.
     const files = readdirSync(MIGRATIONS);
-    const mine = files.filter(
-      (f) =>
-        /^202608041[5-8]0000_/.test(f) && f.endsWith(".sql") && !f.includes(".rollback.")
+    const forward = files.filter(
+      (f) => f.endsWith(".sql") && !f.includes(".rollback.")
     );
-    expect(mine.length, "the slice's migrations must be found").toBe(4);
-    const missing = mine.filter(
+    expect(forward.length).toBeGreaterThanOrEqual(35);
+    const missing = forward.filter(
       (f) => !files.includes(f.replace(/\.sql$/, ".rollback.sql"))
     );
-    expect(missing).toEqual([]);
+    expect(
+      missing,
+      `forward migrations with no rollback:\n  ${missing.join("\n  ")}`
+    ).toEqual([]);
   });
+
+  it("a table-dropping rollback drops in FK-dependency order", () => {
+    // Reverse-creation order is NOT dependency order: couranr_delivery_proofs
+    // references couranr_pickup_discrepancies, so the discrepancy table must go
+    // LAST despite being created last. The first generated version got this
+    // backwards and the full reverse sequence failed on it.
+    const rb = readFileSync(
+      path.join(
+        MIGRATIONS,
+        "20260802030000_couranr_dispatch_driver_execution_tables.rollback.sql"
+      ),
+      "utf8"
+    );
+    const order = [...rb.matchAll(/drop table if exists public\.(\w+)/g)].map((m) => m[1]);
+    expect(order.indexOf("couranr_delivery_proofs")).toBeLessThan(
+      order.indexOf("couranr_pickup_discrepancies")
+    );
+    // And every drop is RESTRICT, so a surviving dependent fails loudly rather
+    // than being cascaded away.
+    expect(rb).not.toMatch(/drop table[^;]*cascade/i);
+  });
+
+  it("a rollback removes the FKs its own migration attached to older tables", () => {
+    // 20260801190000 adds two FKs onto tables 20260801083000 created, inside a
+    // DO block. Missing them made the reverse sequence fail with "cannot drop
+    // table couranr_dispatch_vehicles because other objects depend on it".
+    const rb = readFileSync(
+      path.join(MIGRATIONS, "20260801190000_couranr_managed_dispatch.rollback.sql"),
+      "utf8"
+    );
+    expect(rb).toContain("couranr_dlv_dispatch_vehicle_fk");
+    expect(rb).toContain("couranr_sp_dispatch_vehicle_fk");
+  });
+
 });
