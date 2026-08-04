@@ -1,4 +1,10 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import {
+  generateAccessToken,
+  hashAccessToken,
+  hashesEqual as sharedHashesEqual,
+  isWellFormedAccessToken,
+  TOKEN_BYTES as SHARED_TOKEN_BYTES,
+} from "@/lib/couranr/accessTokens";
 import { assertServerOnly } from "@/lib/couranr/serverOnly";
 
 assertServerOnly("lib/couranr/payments/tokens.ts");
@@ -6,54 +12,40 @@ assertServerOnly("lib/couranr/payments/tokens.ts");
 /**
  * Customer payment-link tokens.
  *
- * The raw token exists in exactly two places and neither is durable: the
- * response that hands the link to whoever is sending it, and the URL the
- * customer opens. It is NEVER written to the database, a log line, an event
- * metadata blob or an analytics payload. What the database holds is a SHA-256
- * hash, and `couranr_pat_hash_shape_chk` refuses anything that is not 64 hex
- * characters — so a raw token cannot be stored there even by mistake.
+ * The entropy, the hash and the accepted shape now live in
+ * `lib/couranr/accessTokens.ts`, shared with the customer tracking link. The
+ * names here are unchanged and so is every value they produce — this module is
+ * the payment-specific policy (its TTL) plus the vocabulary its callers
+ * already import.
  *
- * A database leak therefore yields no usable link.
+ * The security properties are the shared module's, restated because they are
+ * what the payment routes depend on: the raw token is never persisted, logged
+ * or recoverable; the database holds a SHA-256 hash; and
+ * `couranr_pat_hash_shape_chk` refuses anything that is not 64 hex characters,
+ * so a raw token cannot be stored there even by mistake.
  */
 
-/** 32 bytes = 256 bits of entropy, URL-safe. Guessing is not a threat model. */
-export const TOKEN_BYTES = 32;
+export const TOKEN_BYTES = SHARED_TOKEN_BYTES;
 
-/** Seven days is the ceiling. The SQL clamps to it as well. */
+/**
+ * Seven days is the ceiling, and it is a PAYMENT constraint: it bounds how
+ * long an authorization may sit unclaimed. The tracking link is read-only and
+ * carries its own, longer ceiling — see `lib/couranr/tracking/tokens.ts`.
+ */
 export const TOKEN_TTL_DAYS = 7;
 
 export function generatePaymentToken(): string {
-  return randomBytes(TOKEN_BYTES).toString("base64url");
+  return generateAccessToken();
 }
 
-/** Lower-case hex, which is the shape the database CHECK enforces. */
 export function hashPaymentToken(raw: string): string {
-  return createHash("sha256").update(raw, "utf8").digest("hex");
+  return hashAccessToken(raw);
 }
 
-/**
- * Constant-time compare for a hash pair.
- *
- * Lookup is by hash equality in SQL, which is not constant time — but the
- * token is 256 random bits, so a timing oracle on the index buys an attacker
- * nothing. This exists for the places that do compare two hashes in process,
- * where the cheap habit is the right one.
- */
 export function hashesEqual(a: string, b: string): boolean {
-  if (typeof a !== "string" || typeof b !== "string") return false;
-  const ab = Buffer.from(a, "utf8");
-  const bb = Buffer.from(b, "utf8");
-  if (ab.length !== bb.length) return false;
-  return timingSafeEqual(ab, bb);
+  return sharedHashesEqual(a, b);
 }
-
-/**
- * A token is only ever accepted from a path segment. Anything that is not the
- * base64url alphabet is rejected before it reaches a query, so a hash is never
- * computed over attacker-shaped input and no lookup is attempted for it.
- */
-const TOKEN_RE = /^[A-Za-z0-9_-]{16,128}$/;
 
 export function isWellFormedToken(v: unknown): v is string {
-  return typeof v === "string" && TOKEN_RE.test(v);
+  return isWellFormedAccessToken(v);
 }

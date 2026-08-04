@@ -100,6 +100,10 @@ describe("server-only modules are unreachable from client code", () => {
     // If either side is empty the whole suite would pass vacuously.
     expect(clientModules.length).toBeGreaterThan(0);
     expect(serverOnlyModules.map(rel).sort()).toEqual([
+      // The entropy and SHA-256 behind every link that authorizes by URL. A
+      // bundle reaching it would ship the hashing a browser must never do and
+      // invite a client-side "verify this token" that skips the database.
+      "lib/couranr/accessTokens.ts",
       // Holds the service-role client and every dispatch command. The driver
       // projection is built here, so a bundle reaching this module would put
       // the unsanitized delivery row within reach of a browser.
@@ -129,6 +133,12 @@ describe("server-only modules are unreachable from client code", () => {
       "lib/couranr/payments/tokens.ts",
       "lib/couranr/requests/actor.ts",
       "lib/couranr/requests/commands.ts",
+      // The customer tracking link. `commands.ts` holds the service-role
+      // client and the whole recipient read; `tokens.ts` holds the hashing.
+      // A tracking link travels further than any other Couranr URL, so a
+      // browser must never hold the code that resolves one.
+      "lib/couranr/tracking/commands.ts",
+      "lib/couranr/tracking/tokens.ts",
     ]);
   });
 
