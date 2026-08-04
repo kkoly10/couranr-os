@@ -104,6 +104,11 @@ describe("server-only modules are unreachable from client code", () => {
       // bundle reaching it would ship the hashing a browser must never do and
       // invite a client-side "verify this token" that skips the database.
       "lib/couranr/accessTokens.ts",
+      // Holds the service-role client and every conversation command. A bundle
+      // reaching it would ship the write path for messages — and the module
+      // that calls `couranr_conversation_thread`, which is the one door to a
+      // message body in the entire system.
+      "lib/couranr/conversations/commands.ts",
       // Holds the service-role client and every dispatch command. The driver
       // projection is built here, so a bundle reaching this module would put
       // the unsanitized delivery row within reach of a browser.
