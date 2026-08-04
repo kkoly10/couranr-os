@@ -21,3 +21,8 @@ e2e/.smoke.json
 # ignored: it is working material, not a deliverable. Anything worth keeping is
 # promoted into tests/ deliberately, wired into vitest.config.ts, and reviewed.
 .attack/
+
+# Verification-agent scratch that lands in tests/. The review agents write
+# throwaway integration probes named zz-*.test.ts against their own scratch
+# databases; they are not repo tests and must not join the suite or the commit.
+tests/zz-*.test.ts

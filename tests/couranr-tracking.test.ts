@@ -561,7 +561,13 @@ describe("the migration keeps the project's grant discipline", () => {
       "utf8"
     );
     expect(rb).toContain("refusing to drop couranr_delivery_access_tokens");
-    expect(rb).toContain("drop table if exists public.couranr_delivery_access_tokens;");
+    // Matched on the statement PREFIX, not the whole line: an explicit
+    // RESTRICT was added to every table drop in every rollback, and an
+    // assertion pinned to the exact terminating semicolon broke on a change
+    // that made the file strictly safer.
+    expect(rb).toMatch(
+      /drop table if exists public\.couranr_delivery_access_tokens\s+restrict;/
+    );
   });
 });
 

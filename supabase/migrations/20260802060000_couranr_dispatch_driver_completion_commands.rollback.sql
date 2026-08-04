@@ -17,7 +17,12 @@ begin
      where p.pronamespace = 'public'::regnamespace
        and p.proname = any (array['couranr_complete_pickup', 'couranr_finish_delivered', 'couranr_assert_dropoff_ready', 'couranr_complete_direct_handoff_delivery', 'couranr_complete_signature_delivery', 'couranr_complete_leave_at_door_delivery', 'couranr_unassign_delivery_before_pickup', 'couranr_driver_completion_receipt'])
   loop
-    execute 'drop function if exists ' || r.sig || ' cascade';
+    -- No CASCADE. DROP FUNCTION ... CASCADE silently removes CHECK
+    -- constraints and triggers that depend on the function; RESTRICT (the
+    -- default) fails loudly instead, which is the same reason every table
+    -- drop in these rollbacks is RESTRICT. The generator was inconsistent
+    -- with itself here.
+    execute 'drop function if exists ' || r.sig;
   end loop;
 end $$;
 

@@ -38,6 +38,6 @@ drop function if exists public.couranr_revoke_delivery_access_tokens(uuid, text)
 drop function if exists public.couranr_redeem_delivery_access_token(text);
 drop function if exists public.couranr_issue_delivery_access_token(uuid, text, integer);
 
-drop table if exists public.couranr_delivery_access_tokens;
+drop table if exists public.couranr_delivery_access_tokens restrict;
 
 commit;

@@ -38,9 +38,9 @@ drop function if exists public.couranr_apply_payment_intent_state(
 drop function if exists public.couranr_attach_payment_intent(uuid, integer, text);
 drop function if exists public.couranr_create_payment_obligation(uuid, uuid, text);
 
-drop table if exists public.couranr_payment_access_tokens;
-drop table if exists public.couranr_payment_events;
-drop table if exists public.couranr_payment_obligations;
+drop table if exists public.couranr_payment_access_tokens restrict;
+drop table if exists public.couranr_payment_events restrict;
+drop table if exists public.couranr_payment_obligations restrict;
 drop type  if exists public.couranr_payment_apply_result;
 
 -- Narrow the request event allow-list. Refuses rather than rewriting history.
