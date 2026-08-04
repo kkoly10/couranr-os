@@ -247,7 +247,16 @@ export type ConversationSummary = {
   responseDueAt: string | null;
   firstCouranrResponseAt: string | null;
   deliveryId: string | null;
-  unreadCount: number;
+  /**
+   * Whether the thread changed since this participant last read it.
+   *
+   * A BOOLEAN, not a count, and named so. Computing a real count here would
+   * mean reading messages through the visibility rule for every row in the
+   * list — and a count that included messages the viewer may not see would
+   * itself be a leak. `readThread` returns a genuine count for the one thread
+   * being viewed, where the messages have already been filtered.
+   */
+  hasUnread: boolean;
   updatedAt: string;
 };
 
@@ -317,8 +326,7 @@ export async function listConversations(params: {
       responseDueAt: c.response_due_at,
       firstCouranrResponseAt: c.first_couranr_response_at,
       deliveryId: c.delivery_id,
-      // Unread iff the thread changed after this participant last read it.
-      unreadCount: !lastRead || c.updated_at > lastRead ? 1 : 0,
+      hasUnread: !lastRead || c.updated_at > lastRead,
       updatedAt: c.updated_at,
     };
   });
@@ -377,8 +385,10 @@ export async function listOperationsInbox(): Promise<
       responseDueAt: c.response_due_at,
       firstCouranrResponseAt: c.first_couranr_response_at,
       deliveryId: c.delivery_id,
-      // Operations sees the thread, not a per-participant read state.
-      unreadCount: 0,
+      // Operations reads the queue, not a per-participant read state: the
+      // inbox is shared, so "unread" is not a property one operator owns.
+      // Reported as false rather than as a fake zero count.
+      hasUnread: false,
       updatedAt: c.updated_at,
     }))
     .sort((a, b) => {
@@ -427,19 +437,35 @@ export async function refreshDueStates(now: Date = new Date()): Promise<
     });
   }
 
-  let dueSoon = 0;
-  let overdue = 0;
+  // Group by TARGET STATE and issue one UPDATE per group — at most two round
+  // trips regardless of how many threads moved.
+  //
+  // The previous shape awaited one UPDATE per changed row inside the loop, so a
+  // busy queue could issue hundreds of sequential round trips inside a GET that
+  // a person is waiting on. Two operators opening the inbox at the same moment
+  // duplicated the entire pass.
+  const moving: Record<string, string[]> = { due_soon: [], overdue: [], on_time: [] };
 
   for (const c of rows.data || []) {
     const next = dueStateAt(new Date((c as any).received_at), now);
     if (next === (c as any).due_state) continue;
+    moving[next].push((c as any).id);
+  }
+
+  let dueSoon = 0;
+  let overdue = 0;
+
+  for (const [state, ids] of Object.entries(moving)) {
+    if (ids.length === 0) continue;
 
     const { error } = await supabaseAdmin
       .from("couranr_conversations")
-      .update({ due_state: next })
-      .eq("id", (c as any).id);
+      .update({ due_state: state })
+      .in("id", ids);
 
     if (error) {
+      // Logged, not raised. A stale mark is a smaller problem than an inbox
+      // that will not open, and the caller treats this as best-effort.
       logServerFailure({
         correlationId: newCorrelationId(),
         operation: "conversations.refreshDueStates.update",
@@ -448,8 +474,9 @@ export async function refreshDueStates(now: Date = new Date()): Promise<
       });
       continue;
     }
-    if (next === "due_soon") dueSoon++;
-    if (next === "overdue") overdue++;
+
+    if (state === "due_soon") dueSoon = ids.length;
+    if (state === "overdue") overdue = ids.length;
   }
 
   return { ok: true, value: { dueSoon, overdue } };

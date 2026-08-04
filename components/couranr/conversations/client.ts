@@ -36,7 +36,7 @@ export type ConversationSummary = {
   responseDueAt: string | null;
   firstCouranrResponseAt: string | null;
   deliveryId: string | null;
-  unreadCount: number;
+  hasUnread: boolean;
   updatedAt: string;
 };
 
@@ -69,6 +69,7 @@ export type ThreadView = {
   };
   viewerKind: ParticipantKind;
   messages: ThreadMessage[];
+  /** A GENUINE count: these messages have already passed the visibility rule. */
   unreadCount: number;
 };
 

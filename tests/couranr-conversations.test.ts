@@ -89,7 +89,21 @@ function functionBody(src: string, declaration: string): string {
     }
   }
 
-  const open = src.indexOf("{", i);
+  // Skip the RETURN TYPE. `Promise<ConversationResult<{ dueSoon: number }>>`
+  // contains a `{` that is not the body — the third distinct way this helper
+  // has been wrong, after slicing to the first "\n}" and to the parameter
+  // object. Walk to the first `{` that sits outside any angle brackets.
+  let angle = 0;
+  let open = -1;
+  for (let k = i + 1; k < src.length; k++) {
+    const ch = src[k];
+    if (ch === "<") angle++;
+    else if (ch === ">") angle = Math.max(0, angle - 1);
+    else if (ch === "{" && angle === 0) {
+      open = k;
+      break;
+    }
+  }
   if (open < 0) return "";
 
   let depth = 0;
@@ -742,5 +756,124 @@ describe("REGRESSIONS — defects adversarial review found in this slice", () =>
     // It must still exclude drafts and non-participant visibility.
     expect(upTo).toContain("m.authorship <> 'ai_draft'");
     expect(upTo).toContain("m.visibility = 'participants'");
+  });
+});
+
+/* ═══════════ defects found reviewing this slice's own work ════════════════ */
+
+describe("SELF-REVIEW — defects found reviewing the messaging screens", () => {
+  /**
+   * `unreadCount` meant three different things under one name: a genuine count
+   * in readThread, a 1-or-0 boolean in listConversations, and a hardcoded 0 in
+   * listOperationsInbox. All three flowed into one exported summary shape, so a
+   * caller rendering "you have N unread" would have got a real count on one
+   * screen, always "1" on another and always "0" on the third.
+   */
+  it("the conversation SUMMARY carries a boolean, not a fake count", () => {
+    const summary = COMMANDS.slice(COMMANDS.indexOf("export type ConversationSummary"));
+    const shape = summary.slice(0, summary.indexOf("};"));
+    expect(shape).toContain("hasUnread: boolean");
+    expect(shape, "a summary must not claim to carry a count it cannot compute").not.toMatch(
+      /unreadCount\s*:\s*number/
+    );
+  });
+
+  it("no summary is built with a 1-or-0 standing in for a count", () => {
+    expect(COMMANDS).not.toMatch(/unreadCount:\s*!?[A-Za-z.]+\s*\?\s*1\s*:\s*0/);
+    expect(COMMANDS).not.toMatch(/unreadCount:\s*0\s*,/);
+  });
+
+  it("readThread still returns a GENUINE count", () => {
+    // The one place a count is honest: those messages have already passed the
+    // visibility rule, so counting them cannot reveal an invisible message.
+    const body = functionBody(COMMANDS, "export async function readThread");
+    expect(body).toContain("unreadCount");
+    expect(body).toMatch(/\.filter\([\s\S]*?\)\.length/);
+  });
+
+  /**
+   * `refreshDueStates` awaited one UPDATE per changed row inside its loop, and
+   * runs on every Operations inbox GET. A busy queue meant hundreds of
+   * sequential round trips inside a request a person is waiting on, and two
+   * operators opening the inbox duplicated the whole pass.
+   */
+  it("due-state writes are batched, not one round trip per row", () => {
+    const body = functionBody(COMMANDS, "export async function refreshDueStates");
+
+    // Must address rows in sets.
+    expect(body).toMatch(/\.in\(\s*["']id["']\s*,/);
+
+    // And must NOT await an update inside a loop over the fetched rows.
+    const rowLoop = body.slice(body.indexOf("for (const c of rows.data"));
+    const untilNextLoop = rowLoop.slice(0, rowLoop.indexOf("for (const ["));
+    expect(
+      untilNextLoop,
+      "an update inside the per-row loop is the amplification this fixes"
+    ).not.toContain(".update(");
+  });
+
+  it("the batched update is bounded by the number of due states, not rows", () => {
+    const body = functionBody(COMMANDS, "export async function refreshDueStates");
+    // One update per target state — at most three, whatever the row count.
+    const updates = [...body.matchAll(/\.update\(/g)];
+    expect(updates.length).toBe(1);
+  });
+});
+
+/* ══════════════════ the test helper needs its own test ════════════════════ */
+
+describe("functionBody — the helper four assertions depend on", () => {
+  /**
+   * This helper has been wrong THREE times in this file's history, each time
+   * silently: it returned a slice that did not contain the code being asserted
+   * about, so the assertion passed while inspecting the wrong text.
+   *
+   *   1. `slice(start, indexOf("\n}"))` truncated at a nested block.
+   *   2. `indexOf("{")` grabbed the destructured PARAMETER type.
+   *   3. `indexOf("{")` after the parameter list grabbed the RETURN type in
+   *      `Promise<ConversationResult<{ dueSoon: number }>>`.
+   *
+   * Each was caught only by an assertion failing for an unrelated reason. A
+   * helper with that record does not get to be untested.
+   */
+  const SAMPLE = `
+export async function alpha(params: { a: string; b: number }): Promise<Result<{ x: number }>> {
+  const inner = { nested: true };
+  if (inner.nested) {
+    return { ok: true };
+  }
+  return MARKER_ALPHA;
+}
+
+export function beta() {
+  return MARKER_BETA;
+}
+`;
+
+  it("returns the BODY, not the parameter object", () => {
+    const body = functionBody(SAMPLE, "export async function alpha");
+    expect(body).toContain("MARKER_ALPHA");
+    expect(body, "the parameter type is not the body").not.toContain("a: string; b: number");
+  });
+
+  it("returns the BODY, not the return-type annotation", () => {
+    const body = functionBody(SAMPLE, "export async function alpha");
+    expect(body, "the return type is not the body").not.toContain("Result<");
+  });
+
+  it("spans the WHOLE body, past nested blocks that close in column 0", () => {
+    const body = functionBody(SAMPLE, "export async function alpha");
+    // A truncating slice would stop at the `if` block and miss the last return.
+    expect(body).toContain("MARKER_ALPHA");
+    expect(body).toContain("nested: true");
+  });
+
+  it("does not run past the end of the function it was asked for", () => {
+    const body = functionBody(SAMPLE, "export async function alpha");
+    expect(body, "beta's body must not be included").not.toContain("MARKER_BETA");
+  });
+
+  it("returns empty rather than a wrong slice when the declaration is absent", () => {
+    expect(functionBody(SAMPLE, "export function gamma")).toBe("");
   });
 });

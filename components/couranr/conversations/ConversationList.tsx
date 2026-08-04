@@ -117,7 +117,7 @@ export function ConversationList({ emptyBody }: { emptyBody: string }) {
             <Stack gap={2}>
               <Heading level={3}>{KIND_LABEL[c.kind] ?? "Conversation"}</Heading>
               <Stack gap={2}>
-                {c.unreadCount > 0 ? <Badge tone="info">Unread</Badge> : null}
+                {c.hasUnread ? <Badge tone="info">Unread</Badge> : null}
                 {c.dueState !== "on_time" ? (
                   <Badge tone={DUE_TONE[c.dueState] ?? "neutral"}>
                     {c.dueState === "overdue" ? "Overdue" : "Due soon"}
