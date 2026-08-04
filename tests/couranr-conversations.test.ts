@@ -55,6 +55,42 @@ const stripSql = (s: string) => s.replace(/^\s*--.*$/gm, "");
 const SQL = stripSql(readFileSync(path.join(MIGRATIONS, MIGRATION_NAME), "utf8"));
 const flat = (s: string) => s.replace(/\s+/g, " ").toLowerCase();
 
+/** Every forward migration, in the order the database applies them. */
+const FORWARD_SQL_FILES = readdirSync(MIGRATIONS)
+  .filter((f) => f.endsWith(".sql") && !f.includes(".rollback."))
+  .sort();
+
+/**
+ * The EFFECTIVE text of a `create or replace function`, taken from the LAST
+ * migration that defines it.
+ *
+ * Asserting against a hardcoded filename is how a passing test comes to
+ * validate dead code. `couranr_conversation_thread` is created in
+ * 20260804150000 and REPLACED in 20260804170000, so every reader assertion
+ * pinned to the 150000 text was checking a body the database no longer runs —
+ * including the tenure clause, which 170000 deliberately changed. The tests
+ * stayed green either way, which is the whole problem.
+ *
+ * Resolving by application order means a future migration that replaces a
+ * function is checked, and one that leaves it alone changes nothing.
+ */
+function effectiveFunctionSql(name: string): string {
+  let found = "";
+  for (const file of FORWARD_SQL_FILES) {
+    const sql = stripSql(readFileSync(path.join(MIGRATIONS, file), "utf8"));
+    const re = new RegExp(
+      `create\\s+or\\s+replace\\s+function\\s+public\\.${name}\\b[\\s\\S]*?\\$\\$;`,
+      "gi"
+    );
+    const hits = [...sql.matchAll(re)];
+    if (hits.length > 0) found = hits[hits.length - 1][0];
+  }
+  return found;
+}
+
+/** The reader as the database actually runs it, not as one file once wrote it. */
+const READER_SQL = effectiveFunctionSql("couranr_conversation_thread");
+
 const COMMANDS_RAW = readFileSync(
   path.join(ROOT, "lib/couranr/conversations/commands.ts"),
   "utf8"
@@ -226,6 +262,7 @@ describe("exclusion point 1 of 4 — initial queries", () => {
   });
 
   it("the reader returns a composite, never `returns table`", () => {
+    expect(flat(READER_SQL)).toContain("returns setof public.couranr_conversation_messages");
     // `returns table (...)` declares OUT parameters, and an OUT parameter whose
     // name collides with a column raises 42702 at call time. That shipped a
     // payment function dead in this repo once already.
@@ -235,10 +272,20 @@ describe("exclusion point 1 of 4 — initial queries", () => {
   });
 
   it("the reader excludes ai_draft unconditionally and windows by tenure", () => {
-    const sql = flat(SQL);
+    // Against the EFFECTIVE reader — the last migration that defines it — not
+    // the file that first created it. Pinned to 20260804150000 this passed
+    // while checking a body 20260804170000 had already replaced.
+    expect(READER_SQL, "the reader must be resolvable").not.toBe("");
+    const sql = flat(READER_SQL);
     expect(sql).toContain("m.authorship <> 'ai_draft'");
     expect(sql).toContain("m.created_at >= p.joined_at");
     expect(sql).toContain("p.left_at is null");
+  });
+
+  it("the EFFECTIVE reader is the one 20260804170000 defines, not 150000's", () => {
+    // A guard on the resolver itself. If it silently fell back to the first
+    // definition, every assertion above would go back to checking dead text.
+    expect(flat(READER_SQL)).toContain("p.participant_kind <> 'driver'");
   });
 });
 
@@ -293,7 +340,7 @@ describe("the participant x visibility rule", () => {
   it("the TypeScript table and the SQL predicate agree", () => {
     // They are two expressions of one rule and must not drift. The SQL is the
     // authority; this asserts the mirror still matches it.
-    const sql = flat(SQL);
+    const sql = flat(READER_SQL);
     expect(sql).toContain("m.visibility = 'couranr_internal' and p.participant_kind = 'operations'");
     expect(sql).toContain(
       "m.visibility = 'driver_and_couranr' and p.participant_kind in ('driver', 'operations')"
@@ -875,5 +922,82 @@ export function beta() {
 
   it("returns empty rather than a wrong slice when the declaration is absent", () => {
     expect(functionBody(SAMPLE, "export function gamma")).toBe("");
+  });
+});
+
+/* ═════════ hardening: defects from the full adversarial verification ══════ */
+
+describe("HARDENING — defects the adversarial verification confirmed", () => {
+  const HARDEN_NAME = "20260804180000_couranr_conversation_hardening.sql";
+  const HARDEN = stripSql(readFileSync(path.join(MIGRATIONS, HARDEN_NAME), "utf8"));
+
+  it("every trigger function is revoked from anon and authenticated", () => {
+    // 20260804150000 revokes its three HELPER functions and says in a comment
+    // that the revoke is load-bearing because pg_default_acl grants EXECUTE on
+    // every new public function. It then missed the two TRIGGER functions it
+    // created in the same file, and 170000 missed the third.
+    const sql = flat(HARDEN);
+    for (const fn of [
+      "couranr_cvp_enforce_kind()",
+      "couranr_cvm_enforce_visibility()",
+      "couranr_cv_kind_immutable()",
+      "couranr_cvp_tenure_monotone()",
+    ]) {
+      expect(sql, `${fn} must be revoked`).toContain(
+        `revoke all on function public.${fn} from public, anon, authenticated`
+      );
+    }
+  });
+
+  it("participant tenure can only ever narrow", () => {
+    const sql = flat(HARDEN);
+    expect(sql).toContain("before update of left_at, joined_at");
+    // Reopening a departed row kept its ORIGINAL joined_at, so a driver
+    // unassigned and reopened read the whole history of a delivery that was
+    // someone else's while they were away.
+    expect(sql).toContain("old.left_at is not null and new.left_at is null");
+    expect(sql).toContain("new.joined_at < old.joined_at");
+  });
+
+  it("authorship is tied to the message's own conversation", () => {
+    const sql = flat(HARDEN);
+    expect(sql).toContain("unique (id, conversation_id)");
+    expect(sql).toContain("foreign key (author_participant_id, conversation_id)");
+  });
+
+  it("the audit guard is an ALLOW-list with a value cap, not a key denylist", () => {
+    // A denylist of five key names cannot be complete: `{"topic": "<the entire
+    // message>"}` passed the old one, verified on a live cluster. An allow-list
+    // is complete by construction, and the length cap stops an allowed key from
+    // carrying 4000 characters of body.
+    const sql = flat(HARDEN);
+    expect(sql).toContain("couranr_jsonb_audit_shape_ok");
+    expect(sql).toContain("<> all (select lower(x) from unnest(p_keys) x)");
+    expect(sql).toContain("length(node #>> '{}') > p_max_len");
+  });
+
+  it("the original denylist CHECK is kept alongside, not replaced", () => {
+    // Two cheap independent checks beat one clever one.
+    expect(flat(SQL)).toContain("couranr_cve_no_body_chk");
+    expect(flat(HARDEN)).toContain("couranr_cve_audit_shape_chk");
+    expect(flat(HARDEN), "the denylist must not be dropped").not.toContain(
+      "drop constraint if exists couranr_cve_no_body_chk"
+    );
+  });
+
+  it("every migration in THIS slice has a paired rollback", () => {
+    // Not a repo-wide rule: 20 migrations predating this slice have no
+    // rollback. This asserts consistency within the slice, which shipped
+    // 150000 with one and then 160000 and 170000 without.
+    const files = readdirSync(MIGRATIONS);
+    const mine = files.filter(
+      (f) =>
+        /^202608041[5-8]0000_/.test(f) && f.endsWith(".sql") && !f.includes(".rollback.")
+    );
+    expect(mine.length, "the slice's migrations must be found").toBe(4);
+    const missing = mine.filter(
+      (f) => !files.includes(f.replace(/\.sql$/, ".rollback.sql"))
+    );
+    expect(missing).toEqual([]);
   });
 });
