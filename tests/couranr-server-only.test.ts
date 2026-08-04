@@ -109,6 +109,10 @@ describe("server-only modules are unreachable from client code", () => {
       // that calls `couranr_conversation_thread`, which is the one door to a
       // message body in the entire system.
       "lib/couranr/conversations/commands.ts",
+      // Holds the Delivery Help token hashing and the service-role client. A
+      // bundle reaching it would ship the code that turns a URL into authority,
+      // and invite a client-side "verify this token" that skips the database.
+      "lib/couranr/conversations/help.ts",
       // Holds the service-role client and every dispatch command. The driver
       // projection is built here, so a bundle reaching this module would put
       // the unsanitized delivery row within reach of a browser.
@@ -190,6 +194,10 @@ describe("canonical server routes do not import the browser client", () => {
    */
   it("covers every canonical route", () => {
     expect(canonical.map(rel).sort()).toEqual([
+      "app/api/couranr/conversations/[id]/messages/route.ts",
+      "app/api/couranr/conversations/[id]/read/route.ts",
+      "app/api/couranr/conversations/[id]/route.ts",
+      "app/api/couranr/conversations/route.ts",
       "app/api/couranr/delivery-requests/[id]/authorize-payment/route.ts",
       "app/api/couranr/delivery-requests/[id]/estimate/route.ts",
       "app/api/couranr/delivery-requests/[id]/fulfillment/route.ts",
@@ -215,6 +223,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/driver/deliveries/[id]/verify-recipient-code/route.ts",
       "app/api/couranr/driver/proof/[proofId]/url/route.ts",
       "app/api/couranr/driver/proof/finalize/route.ts",
+      "app/api/couranr/help/[token]/route.ts",
       "app/api/couranr/me/business-accounts/route.ts",
       "app/api/couranr/me/landing/route.ts",
       "app/api/couranr/me/workspace/route.ts",
@@ -234,6 +243,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/operations/delivery-requests/[id]/service-plan/route.ts",
       "app/api/couranr/operations/discrepancies/[id]/safe-to-continue/route.ts",
       "app/api/couranr/operations/drivers/route.ts",
+      "app/api/couranr/operations/inbox/route.ts",
       "app/api/couranr/operations/proof/[proofId]/url/route.ts",
       "app/api/couranr/operations/queue/route.ts",
       "app/api/couranr/operations/vehicles/[id]/route.ts",
@@ -292,6 +302,14 @@ describe("canonical server routes do not import the browser client", () => {
       // does no scoping of its own, so the proof must be proved to belong to
       // this token's delivery before anything is minted.
       { shape: /isWellFormedTrackingToken\(/, redeem: /authorizeProofForToken\(/ },
+    ],
+    [
+      // PUB-007 Delivery Help. Unauthenticated by design: the recipient of a
+      // delivery has no account, so the token IS the credential. The shape is
+      // checked in the route before any database work, exactly as the tracking
+      // route does, so junk URLs cannot be used to probe timing.
+      "app/api/couranr/help/[token]/route.ts",
+      { shape: /isWellFormedHelpToken\(/, redeem: /redeemHelpToken\(/ },
     ],
   ]);
   const SIGNATURE_AUTHORIZED = new Set(["app/api/couranr/stripe/webhook/route.ts"]);

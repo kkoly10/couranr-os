@@ -11,6 +11,7 @@ import {
   type CustomerTopic,
   type ParticipantKind,
   type Visibility,
+  dueStateAt,
   memberMayPost,
   responseDueAt,
 } from "./states";
@@ -232,6 +233,226 @@ export async function readThread(params: {
       unreadCount,
     },
   };
+}
+
+/* ------------------------------------------------------------- listing */
+
+export type ConversationSummary = {
+  id: string;
+  kind: ConversationKind;
+  status: string;
+  waitingOn: string | null;
+  urgency: string;
+  dueState: string;
+  responseDueAt: string | null;
+  firstCouranrResponseAt: string | null;
+  deliveryId: string | null;
+  unreadCount: number;
+  updatedAt: string;
+};
+
+/**
+ * Lists the conversations the calling user participates in.
+ *
+ * TENANCY COMES FROM THE PARTICIPANT ROWS, never from a caller-supplied
+ * business id. A route that accepted `?businessAccountId=` would be one
+ * forgotten check away from a cross-tenant read; here the only threads that can
+ * appear are the ones the caller has a live participant row in.
+ *
+ * The unread count is derived from `last_read_at` against the thread's own
+ * `updated_at` rather than by counting messages, because counting would require
+ * reading rows this caller may not be allowed to see — and a count that
+ * includes invisible messages is itself a leak.
+ */
+export async function listConversations(params: {
+  userId: string;
+}): Promise<ConversationResult<ConversationSummary[]>> {
+  const parts = await supabaseAdmin
+    .from("couranr_conversation_participants")
+    .select("conversation_id, last_read_at")
+    .eq("user_id", params.userId)
+    .is("left_at", null);
+
+  if (parts.error) {
+    return fail({
+      code: classifyDatabaseError(parts.error),
+      operation: "conversations.listConversations.participants",
+      detail: parts.error,
+    });
+  }
+
+  const ids = (parts.data || []).map((p: any) => p.conversation_id);
+  if (ids.length === 0) return { ok: true, value: [] };
+
+  const lastReadBy = new Map<string, string | null>(
+    (parts.data || []).map((p: any) => [p.conversation_id, p.last_read_at])
+  );
+
+  const rows = await supabaseAdmin
+    .from("couranr_conversations")
+    .select(
+      "id, kind, status, waiting_on, urgency, due_state, response_due_at, " +
+        "first_couranr_response_at, delivery_id, updated_at"
+    )
+    .in("id", ids)
+    .order("updated_at", { ascending: false });
+
+  if (rows.error) {
+    return fail({
+      code: classifyDatabaseError(rows.error),
+      operation: "conversations.listConversations.rows",
+      detail: rows.error,
+    });
+  }
+
+  const value: ConversationSummary[] = (rows.data || []).map((c: any) => {
+    const lastRead = lastReadBy.get(c.id);
+    return {
+      id: c.id,
+      kind: c.kind,
+      status: c.status,
+      waitingOn: c.waiting_on,
+      urgency: c.urgency,
+      dueState: c.due_state,
+      responseDueAt: c.response_due_at,
+      firstCouranrResponseAt: c.first_couranr_response_at,
+      deliveryId: c.delivery_id,
+      // Unread iff the thread changed after this participant last read it.
+      unreadCount: !lastRead || c.updated_at > lastRead ? 1 : 0,
+      updatedAt: c.updated_at,
+    };
+  });
+
+  return { ok: true, value };
+}
+
+/**
+ * The Couranr Operations Inbox — P8-002.
+ *
+ * A PROJECTION, not a fourth conversation kind. UI_SCREEN_REGISTRY.md:604
+ * states OPS-005's purpose as "Unify merchant, driver, and customer-help
+ * conversations with delivery context and priority", so the Inbox is a view
+ * across all three kinds rather than a thing a conversation can be.
+ *
+ * This deliberately crosses business accounts, which is why it refuses any
+ * caller who is not Operations before a single row is read — the same shape
+ * `/api/couranr/operations/queue` already uses.
+ *
+ * ORDERING IS THE PRODUCT. Overdue first, then due soon, then by urgency, then
+ * oldest deadline: an inbox sorted by recency would bury the thread that has
+ * been waiting longest, which is the only one the 15-minute target is about.
+ */
+export async function listOperationsInbox(): Promise<
+  ConversationResult<ConversationSummary[]>
+> {
+  const rows = await supabaseAdmin
+    .from("couranr_conversations")
+    .select(
+      "id, kind, status, waiting_on, urgency, due_state, response_due_at, " +
+        "first_couranr_response_at, delivery_id, updated_at"
+    )
+    .not("status", "in", "(resolved,closed)")
+    .order("response_due_at", { ascending: true, nullsFirst: false })
+    .limit(200);
+
+  if (rows.error) {
+    return fail({
+      code: classifyDatabaseError(rows.error),
+      operation: "conversations.listOperationsInbox",
+      detail: rows.error,
+    });
+  }
+
+  const RANK: Record<string, number> = { overdue: 0, due_soon: 1, on_time: 2 };
+  const URGENCY: Record<string, number> = { safety: 0, urgent: 1, routine: 2 };
+
+  const value: ConversationSummary[] = (rows.data || [])
+    .map((c: any) => ({
+      id: c.id,
+      kind: c.kind,
+      status: c.status,
+      waitingOn: c.waiting_on,
+      urgency: c.urgency,
+      dueState: c.due_state,
+      responseDueAt: c.response_due_at,
+      firstCouranrResponseAt: c.first_couranr_response_at,
+      deliveryId: c.delivery_id,
+      // Operations sees the thread, not a per-participant read state.
+      unreadCount: 0,
+      updatedAt: c.updated_at,
+    }))
+    .sort((a, b) => {
+      const d = (RANK[a.dueState] ?? 3) - (RANK[b.dueState] ?? 3);
+      if (d !== 0) return d;
+      const u = (URGENCY[a.urgency] ?? 3) - (URGENCY[b.urgency] ?? 3);
+      if (u !== 0) return u;
+      return (a.responseDueAt || "9999") < (b.responseDueAt || "9999") ? -1 : 1;
+    });
+
+  return { ok: true, value };
+}
+
+/**
+ * Recomputes `due_state` for every open thread with a deadline — P8-002.
+ *
+ * "At 10 minutes mark due soon; at 15 overdue." A stored due state has to be
+ * refreshed by something, because no query runs at minute 10.
+ *
+ * Only threads Couranr has NOT yet answered are considered: once
+ * `first_couranr_response_at` is set the target has been met, and the spec
+ * measures the FIRST response, not every subsequent one.
+ *
+ * WHAT THIS DOES NOT DO: roll a deadline forward to the next operating period.
+ * HRS-002 is unresolved — "A named IANA timezone is recorded before any cutoff
+ * logic ships" — so every thread is treated as if it arrived in hours. That
+ * marks an after-hours thread overdue sooner than the spec requires, never
+ * later, which is the safe direction to be wrong in.
+ */
+export async function refreshDueStates(now: Date = new Date()): Promise<
+  ConversationResult<{ dueSoon: number; overdue: number }>
+> {
+  const rows = await supabaseAdmin
+    .from("couranr_conversations")
+    .select("id, received_at, due_state")
+    .is("first_couranr_response_at", null)
+    .not("received_at", "is", null)
+    .not("status", "in", "(resolved,closed)")
+    .limit(500);
+
+  if (rows.error) {
+    return fail({
+      code: classifyDatabaseError(rows.error),
+      operation: "conversations.refreshDueStates",
+      detail: rows.error,
+    });
+  }
+
+  let dueSoon = 0;
+  let overdue = 0;
+
+  for (const c of rows.data || []) {
+    const next = dueStateAt(new Date((c as any).received_at), now);
+    if (next === (c as any).due_state) continue;
+
+    const { error } = await supabaseAdmin
+      .from("couranr_conversations")
+      .update({ due_state: next })
+      .eq("id", (c as any).id);
+
+    if (error) {
+      logServerFailure({
+        correlationId: newCorrelationId(),
+        operation: "conversations.refreshDueStates.update",
+        code: classifyDatabaseError(error),
+        detail: error,
+      });
+      continue;
+    }
+    if (next === "due_soon") dueSoon++;
+    if (next === "overdue") overdue++;
+  }
+
+  return { ok: true, value: { dueSoon, overdue } };
 }
 
 /* -------------------------------------------------------------- the write */

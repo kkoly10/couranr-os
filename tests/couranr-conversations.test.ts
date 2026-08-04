@@ -676,3 +676,71 @@ describe("POSITIVE CONTROLS — these assertions can actually fail", () => {
     expect(hit).toBe(true);
   });
 });
+
+/* ═══════════════ regressions found by adversarial review ══════════════════ */
+
+describe("REGRESSIONS — defects adversarial review found in this slice", () => {
+  const FIX_NAME = "20260804170000_couranr_conversation_kind_and_tenure.sql";
+  const FIX = stripSql(readFileSync(path.join(MIGRATIONS, FIX_NAME), "utf8"));
+
+  it("the correction migration is present in the sequence", () => {
+    expect(readdirSync(MIGRATIONS)).toContain(FIX_NAME);
+  });
+
+  /**
+   * CRITICAL. `couranr_conversations.kind` was mutable, and both matrix gates
+   * are write-time triggers on the PARTICIPANT and MESSAGE tables. So one
+   * `update ... set kind = 'delivery_chat'` on a delivery_help thread stranded
+   * the existing customer participant, after which a driver and a merchant
+   * could be inserted cleanly — and the sanctioned reader handed the customer's
+   * gate code to both. The migration claimed this was "a SCHEMA property rather
+   * than a convention"; it was not.
+   */
+  it("a conversation kind cannot change", () => {
+    const sql = flat(FIX);
+    expect(sql).toContain("before update of kind on public.couranr_conversations");
+    expect(sql).toContain("new.kind is distinct from old.kind");
+    // CR403 -> not_permitted. A refusal, not a 500.
+    expect(sql).toContain("errcode = 'cr403'");
+  });
+
+  /**
+   * HIGH. `m.created_at >= p.joined_at` was documented as a driver rule but
+   * carried no participant_kind qualifier, so it windowed merchants, Operations
+   * and customers too. Operations escalated into an existing thread read ZERO
+   * messages while the merchant in the same thread read two — which defeats
+   * OPS-005's stated purpose of unifying conversations.
+   */
+  it("the tenure window applies to drivers ONLY", () => {
+    expect(flat(FIX)).toContain(
+      "(p.participant_kind <> 'driver' or m.created_at >= p.joined_at)"
+    );
+  });
+
+  it("the driver window is still enforced, not merely removed", () => {
+    // The fix must narrow the rule, not delete it. A driver reassigned onto a
+    // delivery must not receive the history of someone else's.
+    const sql = flat(FIX);
+    expect(sql).toContain("m.created_at >= p.joined_at");
+    expect(sql).toContain("p.participant_kind <> 'driver'");
+  });
+
+  /**
+   * The customer's reader must NOT be windowed at all. A Delivery Help token
+   * rotates, and a new token means a new participant row with a later
+   * joined_at — windowing would hide the customer's own earlier messages from
+   * them the moment their link was reissued.
+   */
+  it("the Delivery Help reader is not windowed by joined_at", () => {
+    const help = stripSql(
+      readFileSync(path.join(MIGRATIONS, "20260804160000_couranr_delivery_help.sql"), "utf8")
+    );
+    const fn = flat(help);
+    const body = fn.slice(fn.indexOf("function public.couranr_help_thread"));
+    const upTo = body.slice(0, body.indexOf("$$;"));
+    expect(upTo).not.toContain("m.created_at >= p.joined_at");
+    // It must still exclude drafts and non-participant visibility.
+    expect(upTo).toContain("m.authorship <> 'ai_draft'");
+    expect(upTo).toContain("m.visibility = 'participants'");
+  });
+});
