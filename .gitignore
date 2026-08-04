@@ -14,3 +14,10 @@ e2e/artifacts/
 
 # Smoke-gate fixture credentials (generated, never committed)
 e2e/.smoke.json
+
+# Adversarial verification scratch. The review agents write live integration
+# attacks here — they run the real command modules against a throwaway local
+# Postgres, with their own shim and setup script. Same reason e2e/artifacts is
+# ignored: it is working material, not a deliverable. Anything worth keeping is
+# promoted into tests/ deliberately, wired into vitest.config.ts, and reviewed.
+.attack/
