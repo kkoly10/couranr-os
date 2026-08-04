@@ -1,5 +1,12 @@
 # 00 — Current-state inventory
 
+> **Historical baseline — not current status.**
+> Captured at 4137303 2026-07-30. The counts, gaps and warnings below
+> describe the repository as it was THEN and are preserved as evidence of that
+> baseline. Several are now false — notably the four P0 database issues, which
+> are closed. For the current implementation state see
+> [`IMPLEMENTATION_STATUS.md`](./IMPLEMENTATION_STATUS.md).
+
 **Repository:** `kkoly10/couranr-os` @ `9c0a63bd5284e065978860b8893c170478fab1f5`
 **Captured:** Commit 0, Phase 0 · **Branch:** `claude/couranr-phase-0-readiness`
 

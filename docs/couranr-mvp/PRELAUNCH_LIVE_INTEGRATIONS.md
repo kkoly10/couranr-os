@@ -1,5 +1,16 @@
 # Integrations that still need a live smoke test
 
+> **This document is CURRENT, not historical.** It is the live register of
+> external prelaunch obligations, and its headline claim still holds at
+> `401b3ee`: `PAYMENT_REAL_STRIPE_VERIFICATION = PENDING_PRELAUNCH`. No real
+> Stripe call has been made by this codebase.
+>
+> Two supporting details below are dated — the test counts predate the current
+> suite (now 1043 tests across 36 files), and browser coverage has since grown
+> to groups A–Q. The obligations themselves are unchanged. The ledger records
+> the same two items as `complete_pending_external`: `P6-002` and `P6-003`.
+> See [`IMPLEMENTATION_STATUS.md`](./IMPLEMENTATION_STATUS.md).
+
 Everything below is **implemented and verified against a double or a
 deterministic test**. What is missing in each case is confirmation from the
 real third party. This list exists so that gap is tracked in one place instead

@@ -10,7 +10,7 @@ A deliverable is **not done** until it has been verified against its requirement
 2. **Enumerate ALL enforcement points when you change a default, a gate, a grant, or any shared behavior.** Grep for every call site and reader of the thing you changed and confirm they ALL agree. In this codebase the sibling you forget is usually: the browser Supabase client vs. the service-role client, the policy vs. the table `GRANT`, the direct role grant vs. the `PUBLIC` grant it inherits through, `doc_requests` vs. the `docs_requests` view, or one of the 18 module-scope client constructions. List the sites you checked.
 3. **Verify BOTH sides of every dual path.** Two clients, two schemas, two admin predicates, two upload routes that build different URL shapes — never assume the second mirrors the first.
 4. **Prove claims; don't assert them.** Every factual statement about the codebase or the database must be backed by a command you ran (`grep`, a catalog query, a test) whose output you saw. If you didn't check it, say "unverified." For database claims prefer `has_table_privilege` / `has_function_privilege` over reading `information_schema` grantee rows — grantee rows miss privileges inherited through `PUBLIC`.
-5. **Green tests are necessary, not sufficient.** There are 10 unit tests total and they cover pricing arithmetic, a UUID regex, and one status resolver. They will stay green through almost any defect. Reason explicitly about the invariant your change must preserve and add a test that would have caught the specific bug.
+5. **Green tests are necessary, not sufficient.** There are **1043 tests across 36 files** now, and they still stay green through almost any defect that lives outside their reach: proof upload was dead for its entire life behind a green typecheck and a green suite, because the only assertions about it were that a mocked function had NOT been called. Reason explicitly about the invariant your change must preserve and add a test that would have caught the specific bug.
 6. **Do a dedicated adversarial review pass scoped to the ACTUAL diff of THIS deliverable.** Ask "what did I change, and what class of bug could this exact change introduce?" and go looking for it.
 7. **Report what you verified and how** — the commands and their results — not "all good." State any part you could NOT verify and why.
 
@@ -20,14 +20,54 @@ If any step surfaces a flaw, fix it and re-run the protocol before declaring don
 
 **NOT launch-ready. NO-GO for public launch, production customer onboarding, or real customer data** (as of 2026-07). This is *not* a greenfield pre-launch repo — the connected Supabase project holds real rows: 42 `orders`, 29 `deliveries`, 94 `addresses`, 28 `rentals`, 46 renter-license files. Treat the database as production data with production consequences.
 
-Four **P0 database issues are open and reachable from a browser using the public anon key**, independent of any application route:
+The four P0 database issues earlier revisions of this file listed as open are
+**all CLOSED**, verified at `401b3ee` by catalog query:
 
-1. `orders` — the owning customer can rewrite `payment_status`, `total_cents`, `paid_at`, `status`, `business_account_id` and the Stripe identifiers. (They cannot change `customer_id`; Postgres substitutes `USING` for an omitted `WITH CHECK`.)
-2. Four tables have RLS disabled with full `anon` DML: `addresses` (94 real addresses), `delivery_admin_events` (the audit trail), `stripe_webhook_events`, `rental_verifications`.
-3. ~~The `delivery-photos` storage bucket is public with no policies.~~ **CLOSED.** It is now `public = false` with a 10 MB `file_size_limit` and an allow-list of `image/jpeg, image/png, image/webp, image/heic`. Private with no policies means service-role only, which is the correct posture. It holds real objects now (11 at last count — canonical delivery proof), so it is no longer latent either. Verified by `select id, public, file_size_limit, allowed_mime_types from storage.buckets`. **`vehicle-images` is still `public = true`** and is a separate, open item.
-4. `deliveries` — the assigned driver can rewrite `status` and all five fee columns.
+| # | the old claim | measured now |
+|---|---|---|
+| 1 | the owning customer can rewrite `orders` money columns | `authenticated` holds **no** UPDATE/INSERT/DELETE on `orders`; policies are SELECT-only plus an `is_admin()`-gated ALL |
+| 2 | `addresses`, `delivery_admin_events`, `stripe_webhook_events`, `rental_verifications` have RLS disabled with full `anon` DML | all four have `relrowsecurity = true`, zero policies, and `anon` holds no SELECT/INSERT/UPDATE/DELETE. **0 of 54 public tables have RLS disabled** |
+| 3 | the `delivery-photos` bucket is public with no policies | `public = false`, 10 MB `file_size_limit`, MIME allow-list of jpeg/png/webp/heic |
+| 4 | the assigned driver can rewrite `deliveries` status and fee columns | `authenticated` holds **no** UPDATE/INSERT/DELETE on `deliveries` |
 
-Plus seven unauthenticated API routes, two of which touch money: `/api/create-checkout-session` (arbitrary-amount Stripe Checkout) and `/api/delivery/complete` (payment capture). Remediation is designed in the Security-DB package but **not applied**. Do not start framework, auth, Stripe, or UI work ahead of it.
+Prefer `has_table_privilege` over grantee rows when you re-check these — the
+table GRANT, not the policy, is what actually closed them.
+
+**What is still open on the security surface:**
+
+- `vehicle-images` is the **one remaining public bucket** (7 buckets total).
+- Two legacy API routes have no gate: `app/api/auto/vehicles` (read-only GET)
+  and `app/api/special-request` (POST that only `console.log`s, which puts
+  caller-supplied contact details into server logs).
+- **56 legacy page routes and 26 legacy `auto`/`docs` API routes are still
+  live.** The legacy runtime has not been cut over.
+- Two pricing engines are simultaneously reachable — the canonical one and
+  `lib/delivery/policy.ts` behind the legacy courier routes.
+
+The two unauthenticated money routes this file used to name —
+`/api/create-checkout-session` and `/api/delivery/complete` — **no longer
+exist**. So does `/api/delivery/assign-driver` and `/api/test-email`.
+
+### Current status source of truth
+
+**Do not infer current state from this file, a commit message, or the existence
+of a route.** Three files carry it, regenerated against a named SHA:
+
+- [`docs/couranr-mvp/IMPLEMENTATION_STATUS.md`](docs/couranr-mvp/IMPLEMENTATION_STATUS.md) — human-readable current state
+- [`docs/couranr-mvp/IMPLEMENTATION_LEDGER.csv`](docs/couranr-mvp/IMPLEMENTATION_LEDGER.csv) — one row per authoritative work item (42)
+- [`docs/couranr-mvp/SCREEN_IMPLEMENTATION_LEDGER.csv`](docs/couranr-mvp/SCREEN_IMPLEMENTATION_LEDGER.csv) — one row per canonical screen (66)
+
+`tests/couranr-implementation-ledger.test.ts` enforces their structure: closed
+status vocabularies, every work item and screen exactly once, evidence required
+for every `complete_verified` row, and **no screen backed by a `ScreenPlaceholder`
+page may be classified functional.**
+
+**Whenever a work item materially changes status, update its ledger row and the
+counts in `IMPLEMENTATION_STATUS.md` in the SAME commit.** The test enforces the
+shape; it cannot enforce that you remembered.
+
+As of `401b3ee`: 9 of 42 work items `complete_verified` (21.4%), and 15 of 66
+screens `functional_verified`. 28 of the 41 canonical pages are placeholders.
 
 ### Authority chain — the specification wins over the code, always
 
@@ -62,9 +102,9 @@ npm run check        # lint && typecheck && test:run && build
 
 There are **8 scripts**. The platform baseline specifies 32, and the release matrix names 13 gate commands of which 11 do not exist (`check:routes`, `check:rls`, `check:legacy-imports`, `test:security`, `test:payments`, `db:reset`, …). Do not invent a script that pretends to pass — a check that cannot fail is worse than no check.
 
-**`npm run build` fails in a clean container.** `app/api/auto/create-checkout-session/route.ts:9` constructs a Supabase client at module scope; `next build`'s page-data collection imports it and the constructor throws `supabaseUrl is required` when env vars are absent. **18 module-scope client constructions across 15 files** share this shape, including `app/api/stripe/webhook/route.ts:15`, `app/api/delivery/start-checkout/route.ts:17` and `lib/auth.ts:4`. `lib/supabaseAdmin.ts:4-7` already documents the lazy-initialization fix, so the correct pattern exists in-tree. With production env vars present the build succeeds — but it is not reproducible from a clean clone, which conflicts with the baseline's CI requirement.
+**`npm run build` succeeds with no `.env.local` present** — verified twice at `401b3ee` in a container that had none, compiling 91 static pages. The old failure (a module-scope Supabase client whose constructor threw `supabaseUrl is required` during page-data collection) is fixed for the build path. `lib/supabaseAdmin.ts` is the lazy pattern to copy. ~61 module-scope `createClient(` call sites still exist across `app/` and `lib/`; they no longer break the build, but they remain the reason a route can hold a client it never re-scopes.
 
-Tests use **Vitest**, not Jest and not `node:test`. Files live in `tests/*.test.ts`, `environment: "node"`, alias `@` → repo root (`vitest.config.ts`). There is no jsdom, no Testing Library, no Playwright config, and no Vitest `projects`, so the four `test:*` project suites the baseline expects cannot run yet.
+Tests use **Vitest**, not Jest and not `node:test`. Files live in `tests/*.test.ts(x)`, alias `@` → repo root. **jsdom IS configured** — `environmentMatchGlobs` applies it to `tests/**/*.dom.test.tsx` while everything else stays in `node` — and **@testing-library/react and @testing-library/user-event ARE installed**. Browser tests run through **Playwright** from `e2e/run.mjs` (groups A–Q), not through a Vitest project. `testTimeout` is 15s because a jsdom render can miss the 5s default under parallel load. There is still no Vitest `projects` config, so the four `test:*` project suites the baseline names do not exist.
 
 **Runtime versions drift two ways now:** local Node 22, **CI Node 24** (`.github/workflows/ci.yml:35`) which matches the target. The old CI-Node-20 mismatch is fixed. There is still no `.nvmrc`, `.node-version`, `engines`, or `packageManager`, and `package-lock.json` is lockfileVersion 2 against a target of 3 — so a dependency whose engines require ≥24 installs in CI and fails locally.
 
@@ -72,7 +112,7 @@ Tests use **Vitest**, not Jest and not `node:test`. Files live in `tests/*.test.
 
 ## Migrations and the database
 
-**There are zero migrations.** `supabase/` does not exist and the connected project's migration history is empty — the entire live schema was applied by hand through the SQL editor. Consequences: there is no reproducible `db:reset`, no generated types (`types/database.generated.ts` does not exist, so every Supabase query is untyped), and `docs/business-portal-schema.sql` documents 9 tables while the database has 36 tables and 6 views — roughly **21% documentation coverage**.
+**Migrations exist and are fully applied.** `supabase/migrations/` holds **38 files — 29 forward plus 9 `.rollback.sql`** — and the live project reports **30 applied**, which is those 29 plus the `remote_schema` baseline. Every forward migration has an applied row. Still missing: generated types (`types/database.generated.ts` does not exist, so every Supabase query is untyped) and a reproducible `db:reset`. The live database now has **54 public tables and 6 views**, of which **18 are `couranr_*`** with **62 `couranr_*` functions**.
 
 Do not write a migration without it being reviewed first. When migrations do land they must be additive (`add column if not exists`, `create table if not exists`) and must never drop a table, drop a column, or delete data.
 
@@ -90,7 +130,7 @@ Known code/database drift: `business_pricing_profiles` is queried by `lib/busine
 | **Ad-hoc inline service-role `createClient`** | **~45 duplicated call sites** | the real consolidation work |
 | Anon client + forwarded Bearer token | 6 admin routes | e.g. `app/api/admin/drivers/route.ts:14` |
 
-**62 of 76 API routes use the service-role key**, which bypasses RLS entirely — every one must re-scope its own queries. **10 of 76 have no authentication check at all.**
+**67 of 122 API routes use the service-role key**, which bypasses RLS entirely — every one must re-scope its own queries. **Only 2 of 122 have no auth, gate, signature or token marker**, both legacy (`app/api/auto/vehicles`, a read-only GET, and `app/api/special-request`, a POST that only `console.log`s its caller's contact details). **Zero canonical routes under `app/api/couranr` are ungated.**
 
 **The bug to know about:** six server-context files import the `"use client"` browser client. A browser client in a server route carries no JWT, so it authenticates as **`anon`**, not `authenticated`. Affected: `lib/delivery/authorizeDeliveryPayment.ts:2`, `lib/stripe/capturePayment.ts:2`, `lib/delivery/completeDelivery.ts:1`, `lib/delivery/getDeliveryByOrderId.ts:1`, `lib/getUserRole.ts:1`, `app/api/delivery/complete/route.ts:3`. This is why `/api/delivery/complete` returns 403 and has almost certainly never captured a payment.
 
@@ -120,7 +160,7 @@ Seven buckets. **`vehicle-images` is the only public one now** — `delivery-pho
 
 ### Routes
 
-58 page routes, 76 API routes. Domains: auto rental (21 pages / 31 APIs), document services (11 / 17), courier-delivery (14 / 6), plus auth, dashboard and marketing. Auto and docs are **legacy — quarantine targets, not extension points**.
+**97 page routes and 122 API routes.** 41 pages are canonical under `app/(couranr)` — but **28 of those 41 render `ScreenPlaceholder`**, so a canonical route existing proves nothing about the capability behind it. **56 pages are legacy** and still live, along with 26 legacy `auto`/`docs` API routes. Auto and docs are **legacy — quarantine targets, not extension points**.
 
 Of the 43 canonical target routes in the Master Package, **2 exist** (`/`, `/driver`) and 41 do not. Target names differ from actual: `/sign-in` and `/sign-up` vs. the existing `/login` and `/signup`.
 
@@ -282,7 +322,7 @@ So: **seed data, start the dev server, drive the UI, assert on what rendered.** 
 
 - **Amounts are integer cents, computed server-side.** `app/api/delivery/start-checkout/route.ts:180-186` is the model: it recomputes the price server-side and discards the client's `totalCents` entirely. Never trust a client-supplied amount — `/api/create-checkout-session:10` does, and that is the P0.
 - **Distance is validated server-side** via Google Maps (`getDrivingMiles`, `start-checkout:54-92`). `/api/delivery/quote:21-47` does **not** validate its `miles` input — don't copy that route.
-- **Every state transition should be a named server command** with the actor verified, the current state checked, and the transition allow-listed. No route should accept an arbitrary target status; `/api/delivery/mark-in-transit` currently does, with no auth at all.
+- **Every state transition should be a named server command** with the actor verified, the current state checked, and the transition allow-listed. No route should accept an arbitrary target status. `/api/delivery/mark-in-transit` was the counter-example and has since been hardened: it resolves the actor with `getUserFromRequest`, requires the assigned driver or an Operations admin, checks `canTransition`, guards the write on the current state and records the event — and its target status is fixed by the route, never read from the body. It has **no automated test**, so it is recorded `complete_unverified` in the ledger.
 - **To test whether a composite/row result exists, use `row is distinct from null`.** `row is not null` is true only when every field is non-null, so it reports `false` for any valid draft — a draft has a null `submitted_at`. The four `couranr_*` command functions all return a composite.
 - **A server-side Supabase client must opt out of Next's Data Cache.** Next patches global `fetch` in the App Router; with the default `fetchCache: 'auto'` and `revalidate: false` a GET can be cached indefinitely, and `dynamic = "force-dynamic"` does **not** change that — the Next 14.2 docs describe it as forcing dynamic *rendering* and say nothing about the Data Cache, unlike `dynamic = 'error'`, which spells its fetch equivalences out. Every PostgREST read is a GET with its filters in the query string, so the cache key is stable per query. `/api/couranr/driver/assignment` was observed answering `assigned: null` from a response cached before the assignment existed — a dev-server restart did not clear it and deleting `.next/cache/fetch-cache` did. `lib/supabaseAdmin.ts` now passes `global: { fetch }` forcing `cache: "no-store"`, which supabase-js threads into PostgREST, auth, storage and functions alike. The ~45 ad-hoc inline service-role clients in legacy routes do **not** have this and carry the same hazard.
 - **`getByLabel` matches label TEXT, `getByText` matches case-insensitive SUBSTRINGS.** Neither uses the accessible name, so `aria-hidden` is ignored: a required `Field` renders `"Driver*"` and `/^Driver$/` matches nothing (use `fieldLabel()` in `e2e/run.mjs`). And `getByText("Your delivery")` matches `LoadingState`'s visually-hidden `"Loading your delivery"`, so a wait resolves against the skeleton and the following `ctx.close()` cancels the fetch in flight. Wait on content that exists only in the loaded state.

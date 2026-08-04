@@ -1,5 +1,12 @@
 # 00 — Environment inventory (names only, no values)
 
+> **Historical baseline — not current status.**
+> Captured at 4137303 2026-07-30. The counts, gaps and warnings below
+> describe the repository as it was THEN and are preserved as evidence of that
+> baseline. Several are now false — notably the four P0 database issues, which
+> are closed. For the current implementation state see
+> [`IMPLEMENTATION_STATUS.md`](./IMPLEMENTATION_STATUS.md).
+
 Variables referenced in code. **No value is recorded here.** `.env.example` at the repo root carries the NAMES only.
 
 ## Client-exposed (8)

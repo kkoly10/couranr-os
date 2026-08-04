@@ -1,5 +1,12 @@
 # 00 — Stripe inventory
 
+> **Historical baseline — not current status.**
+> Captured at 4137303 2026-07-30. The counts, gaps and warnings below
+> describe the repository as it was THEN and are preserved as evidence of that
+> baseline. Several are now false — notably the four P0 database issues, which
+> are closed. For the current implementation state see
+> [`IMPLEMENTATION_STATUS.md`](./IMPLEMENTATION_STATUS.md).
+
 12 files import the `stripe` SDK. `@stripe/stripe-js` and `@stripe/react-stripe-js` are declared but have **zero imports**.
 
 ## SDK initialisation — inconsistent
