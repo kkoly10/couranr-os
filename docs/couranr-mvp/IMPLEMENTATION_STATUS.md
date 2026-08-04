@@ -7,8 +7,20 @@ file wins, and the two CSV ledgers beside it carry the per-item detail.
 | | |
 |---|---|
 | Branch | `main` |
-| Verified at SHA | `401b3eea5cd96bb09d224f3b113ba6091bba807d` |
+| Counts re-measured at SHA | `c929cc3a8e630bd11ac0a98ff3800a16ee77c140` |
+| Per-item status last verified at SHA | `401b3eea5cd96bb09d224f3b113ba6091bba807d` |
 | Verified at (UTC) | 2026-08-04 |
+| Active slice | [`ACTIVE_EXECUTION_SLICE.md`](./ACTIVE_EXECUTION_SLICE.md) |
+
+**The two SHAs mean different things and are deliberately not collapsed.** The
+repository-state counts in the table below were re-measured at `c929cc3` by
+re-running each command. The per-item statuses in the two ledgers were last
+verified at `401b3ee`, and their `last_verified_sha` columns still say so —
+raising them to `c929cc3` would assert that all 42 work items and 66 screens
+were re-verified at this SHA, which they were not. `c929cc3` adds the SEC-001
+hotfix, which changes no work item and no screen: it is a security correction to
+`profiles`, not a Phase 8 deliverable. Three screen rows carry `1b3a1c9` from
+the customer tracking slice.
 | Ledgers | [`IMPLEMENTATION_LEDGER.csv`](./IMPLEMENTATION_LEDGER.csv) · [`SCREEN_IMPLEMENTATION_LEDGER.csv`](./SCREEN_IMPLEMENTATION_LEDGER.csv) |
 | Validator | `tests/couranr-implementation-ledger.test.ts` |
 
@@ -45,19 +57,32 @@ No other value is permitted, and the validator fails the build on any other.
 
 | measure | count |
 |---|---|
-| Migration files | 38 (29 forward + 9 `.rollback.sql`) |
-| Applied migrations (live) | 30 = 29 forward + the `remote_schema` baseline — **every forward migration is applied** |
-| Page routes | 97 total — 41 canonical under `app/(couranr)`, 56 legacy |
-| Canonical pages rendering `ScreenPlaceholder` | 28 of 41 |
-| API routes | 122 total, 51 canonical under `app/api/couranr` |
-| API routes with no auth/gate/signature/token marker | **2 of 122**, both legacy |
+| Migration files | 42 (31 forward + 11 `.rollback.sql`) |
+| Applied migrations (live) | 32 = 31 forward + the `remote_schema` baseline — **every forward migration is applied** |
+| Page routes | 98 total — 42 canonical under `app/(couranr)`, 56 legacy |
+| Canonical pages rendering `ScreenPlaceholder` | 28 of 42 |
+| API routes | 124 total, 53 canonical under `app/api/couranr` |
+| API routes with no auth/gate/signature/token marker | **18 of 124**, all legacy — see the note below |
 | Ungated **canonical** routes | **0** |
-| Test files / cases | 36 files, **1043 passing** |
-| Live public tables / views | 54 / 6 |
-| `couranr_*` tables / functions | 18 / 62 |
+| Test files / cases | 38 files, **1103 passing** |
+| Live public tables / views | 55 / 6 |
+| `couranr_*` tables / functions | 19 / 65 |
 | Tables with RLS disabled | **0** |
 | Storage buckets / public | 7 / **1** (`vehicle-images`) |
 | Local Node / CI Node | v22.22.2 / 24 |
+
+**The ungated-route figure changed derivation, not just value.** The previous
+entry read "2 of 122, both legacy". Re-deriving it at this SHA — flagging every
+`app/api/**/route.ts` that matches none of `requireAdmin`,
+`resolveRequestActor`, `resolveUserId`, `isActorDenied`, `getUser(`,
+`getSession(`, `authorization`, `bearer`, `constructEvent`, `signature`,
+`redeem*Token`, `TEST_MODE`, `IS_PROD` — yields **18**, all under
+`app/api/auto`, `app/api/docs` or `app/api/special-request`. The marker set that
+produced "2" is not recorded anywhere, so the two numbers are not comparable and
+the older one is not reproducible. **The canonical figure reproduces exactly: 0
+ungated routes under `app/api/couranr`**, which is the number that gates
+Couranr work. The legacy 18 are quarantine targets, not extension points, and
+are recorded here so the figure is honest rather than flattering.
 
 ## Work items — 42 total
 
