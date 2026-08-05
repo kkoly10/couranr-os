@@ -1036,3 +1036,124 @@ describe("HARDENING — defects the adversarial verification confirmed", () => {
   });
 
 });
+
+/* ═════════ P8-002: the clock stops only on a deliverable reply ════════════ */
+
+describe("the response clock — an invisible reply must not stop it", () => {
+  /**
+   * CONFIRMED HIGH, found by adversarial verification with an A/B and a
+   * control. `stampDeadlines` took only `{conversationId, actorKind}`, so the
+   * `visibility` computed one screen earlier in `sendMessage` never reached it.
+   * ANY Operations message stamped `first_couranr_response_at` and forced
+   * `due_state = 'on_time'` — including a `couranr_internal` note, which by
+   * design reaches nobody.
+   *
+   * `refreshDueStates` filters on `first_couranr_response_at is null`, so once
+   * stamped the thread was excluded from recomputation FOREVER: it left the
+   * overdue queue while the merchant was still waiting. That defeats P8-002's
+   * own acceptance criterion, "Operating/after-hours timers pass".
+   *
+   * The finding also noted that not one of the suite's `it(` blocks exercised
+   * either function, which is why it survived. These are those tests.
+   */
+  const stamp = functionBody(COMMANDS, "async function stampDeadlines");
+
+  it("stampDeadlines RECEIVES the visibility", () => {
+    const sig = COMMANDS.slice(
+      COMMANDS.indexOf("async function stampDeadlines"),
+      COMMANDS.indexOf("async function stampDeadlines") + 400
+    );
+    expect(sig).toMatch(/visibility:\s*Visibility/);
+  });
+
+  it("sendMessage PASSES the visibility it computed", () => {
+    const send = functionBody(COMMANDS, "export async function sendMessage");
+    const call = send.slice(send.indexOf("stampDeadlines({"));
+    expect(call.slice(0, 200)).toContain("visibility");
+  });
+
+  it("the gate asks about the AWAITING party, never the author", () => {
+    // canSee("operations", …) is true for every visibility, so asking about the
+    // author would make the check vacuously true and reintroduce the defect.
+    expect(stamp).toContain("canSee(awaiting, params.visibility)");
+    expect(stamp).not.toMatch(/canSee\(\s*["']operations["']/);
+    expect(stamp).not.toMatch(/canSee\(\s*params\.actorKind/);
+  });
+
+  it("the clock is only stamped when the reply reaches the waiting party", () => {
+    const idxReaches = stamp.indexOf("const reaches");
+    const idxStamp = stamp.indexOf("first_couranr_response_at = now");
+    const idxStampAlt = stamp.indexOf("patch.first_couranr_response_at");
+    expect(idxReaches).toBeGreaterThan(-1);
+    expect(Math.max(idxStamp, idxStampAlt)).toBeGreaterThan(idxReaches);
+    expect(stamp).toMatch(/if\s*\(\s*reaches\s*\)/);
+  });
+
+  it("waiting_on is DERIVED, not hardcoded to merchant", () => {
+    // The old `patch.waiting_on = "merchant"` was wrong in a delivery_chat
+    // answered for a driver: it flipped the thread to the merchant regardless
+    // of who had actually been waiting.
+    expect(stamp).not.toMatch(/waiting_on\s*=\s*["']merchant["']/);
+    expect(stamp).toContain("patch.waiting_on = awaiting");
+  });
+
+  it("the asking party's kind is recorded when the clock starts", () => {
+    // It can only be known at that moment, and the deliverability check is
+    // impossible without it.
+    expect(stamp).toContain("patch.awaiting_reply_kind = params.actorKind");
+    expect(flat(readFileSync(
+      path.join(MIGRATIONS, "20260804190000_couranr_conversation_awaiting_reply.sql"),
+      "utf8"
+    ))).toContain("add column if not exists awaiting_reply_kind");
+  });
+
+  /**
+   * The predicate itself, over the whole matrix. This is the arithmetic the
+   * A/B demonstrated: a merchant waiting on Couranr is reached by
+   * `participants` and by `merchant_and_couranr`, and by nothing else.
+   */
+  it("only a visibility the waiting party can see counts as a response", () => {
+    const cases: Array<[ParticipantKind, Visibility, boolean]> = [
+      ["merchant", "participants", true],
+      ["merchant", "merchant_and_couranr", true],
+      ["merchant", "couranr_internal", false],
+      ["merchant", "driver_and_couranr", false],
+      ["driver", "participants", true],
+      ["driver", "driver_and_couranr", true],
+      ["driver", "couranr_internal", false],
+      ["driver", "merchant_and_couranr", false],
+      ["customer", "participants", true],
+      ["customer", "couranr_internal", false],
+    ];
+    for (const [waiting, visibility, expected] of cases) {
+      expect(canSee(waiting, visibility), `${waiting} / ${visibility}`).toBe(expected);
+    }
+  });
+
+  it("the customer write path records the awaiting kind too", () => {
+    // couranr_help_post_message stamps these fields in SQL rather than in
+    // TypeScript. Without the column set there, every Operations reply to a
+    // Delivery Help thread would fail the check and never stop the clock.
+    const sql = flat(
+      readFileSync(
+        path.join(MIGRATIONS, "20260804190000_couranr_conversation_awaiting_reply.sql"),
+        "utf8"
+      )
+    );
+    expect(sql).toContain("awaiting_reply_kind = coalesce(c.awaiting_reply_kind, 'customer')");
+  });
+
+  it("operations can never be the party awaiting a reply", () => {
+    // Couranr does not wait on itself, and allowing it would let a thread be
+    // marked as awaiting a reply from the party whose reply is measured.
+    const sql = flat(
+      readFileSync(
+        path.join(MIGRATIONS, "20260804190000_couranr_conversation_awaiting_reply.sql"),
+        "utf8"
+      )
+    );
+    const m = sql.match(/awaiting_reply_kind in \(([^)]*)\)/);
+    expect(m).not.toBeNull();
+    expect(m![1]).not.toContain("operations");
+  });
+});

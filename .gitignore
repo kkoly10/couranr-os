@@ -26,3 +26,4 @@ e2e/.smoke.json
 # throwaway integration probes named zz-*.test.ts against their own scratch
 # databases; they are not repo tests and must not join the suite or the commit.
 tests/zz-*.test.ts
+tests/scratch/

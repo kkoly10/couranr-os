@@ -11,6 +11,7 @@ import {
   type CustomerTopic,
   type ParticipantKind,
   type Visibility,
+  canSee,
   dueStateAt,
   memberMayPost,
   responseDueAt,
@@ -637,6 +638,7 @@ export async function sendMessage(
   await stampDeadlines({
     conversationId: params.conversationId,
     actorKind: participant.value.participantKind,
+    visibility,
   });
 
   // (6) AI enqueue. LAST, and its failure is swallowed by construction:
@@ -703,12 +705,19 @@ export async function recordEvent(params: {
 async function stampDeadlines(params: {
   conversationId: string;
   actorKind: ParticipantKind;
+  /**
+   * REQUIRED. Whether a reply stops the clock depends on whether the waiting
+   * party can actually see it, and that is a visibility question. Omitting it
+   * is what let a `couranr_internal` note — which by design reaches nobody —
+   * mark a thread answered and remove it from the overdue queue forever.
+   */
+  visibility: Visibility;
 }): Promise<void> {
   const now = new Date();
 
   const current = await supabaseAdmin
     .from("couranr_conversations")
-    .select("id, received_at, first_couranr_response_at")
+    .select("id, received_at, first_couranr_response_at, awaiting_reply_kind")
     .eq("id", params.conversationId)
     .maybeSingle();
 
@@ -717,15 +726,38 @@ async function stampDeadlines(params: {
   const patch: Record<string, unknown> = { updated_at: now.toISOString() };
 
   if (params.actorKind === "operations") {
-    if (!current.data.first_couranr_response_at) {
-      patch.first_couranr_response_at = now.toISOString();
-      patch.due_state = "on_time";
+    const awaiting = (current.data as any).awaiting_reply_kind as ParticipantKind | null;
+
+    // THE CLOCK STOPS ONLY ON SOMETHING THE WAITING PARTY RECEIVES.
+    //
+    // `canSee` is asked about the AWAITING party, never about `operations` —
+    // Operations can see every visibility, so asking about the author would
+    // make this check vacuously true and reintroduce the defect.
+    //
+    // A thread with nobody awaiting a reply is not one Couranr owes an answer
+    // to, so there is no clock to stop.
+    const reaches = awaiting !== null && canSee(awaiting, params.visibility);
+
+    if (reaches) {
+      if (!current.data.first_couranr_response_at) {
+        patch.first_couranr_response_at = now.toISOString();
+        patch.due_state = "on_time";
+      }
+      // Derived, not hardcoded. The previous `waiting_on = "merchant"` was
+      // wrong in a delivery_chat answered for a driver: it flipped the thread
+      // to the merchant regardless of who had actually been waiting.
+      patch.waiting_on = awaiting;
+      patch.awaiting_reply_kind = null;
     }
-    patch.waiting_on = "merchant";
+    // Otherwise: an internal note, or a reply addressed to a party other than
+    // the one waiting. The thread stays outstanding and keeps ageing, for the
+    // same reason the spec says an automated acknowledgement does not count.
   } else if (!current.data.received_at) {
     patch.received_at = now.toISOString();
     patch.response_due_at = responseDueAt(now).toISOString();
     patch.waiting_on = "couranr";
+    // Recorded here because this is the only moment the asking party is known.
+    patch.awaiting_reply_kind = params.actorKind;
   }
 
   const { error } = await supabaseAdmin
