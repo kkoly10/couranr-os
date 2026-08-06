@@ -13,7 +13,8 @@
     "check": "npm run lint && npm run typecheck && npm run test:run && npm run build",
     "db:disposable": "node e2e/disposable/up.mjs",
     "db:disposable:down": "node e2e/disposable/up.mjs --down",
-    "test:deploy-safety": "node e2e/disposable/deploymentSafety.mjs"
+    "test:deploy-safety": "node e2e/disposable/deploymentSafety.mjs",
+    "test:cus-fragments": "node e2e/disposable/customerHelpFragments.mjs"
   },
   "dependencies": {
     "@stripe/react-stripe-js": "^2.7.0",
