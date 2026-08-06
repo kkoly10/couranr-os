@@ -18,7 +18,7 @@ as a reason to build something the package does not require.
 | Reconciled at | `40129ee06d96bfdcd85bb653397d2553a1fa5b98` — **16** commits ahead of base, 0 behind |
 | Since then | two documentation commits: the reconciliation itself, and this PR-number record. No code, no migration. |
 | Target PR | [#22](https://github.com/kkoly10/couranr-os/pull/22), draft |
-| Status | **`frozen` — feature work stopped; reconciliation and verification only** |
+| Status | **`hardening`** — the freeze held for production; HRS-002 and TRM-002 were resolved by the owner and implemented, and the deployment path was proven and fixed |
 | Reconciliation | [`PHASE8_RECONCILIATION.md`](./PHASE8_RECONCILIATION.md) |
 
 The base SHA is the SEC-001 hotfix merge (PR #21). The Phase 8 branch is rebased
@@ -178,7 +178,7 @@ project. All 12 checks in
 
 **Condition for unblocking.** Met.
 
-### HRS-002 — the operating-hours timezone is unresolved — **OPEN**
+### HRS-002 — the operating-hours timezone — **RESOLVED 2026-08-06**
 
 **Evidence.** `02_DECISION_REGISTRY.json` records `HRS-002` as `unresolved`
 with the acceptance criterion *"A named IANA timezone is recorded before any
@@ -208,7 +208,7 @@ timezone-free half — `received_at`, `response_due_at`,
 minutes, all of which are pure elapsed-time arithmetic — and the next-operating-
 period field is created but never written.
 
-### TRM-002 — the five merchant roles have no permission sets — **OPEN**
+### TRM-002 — merchant role permissions — **RESOLVED 2026-08-06**
 
 **Evidence.** `02_DECISION_REGISTRY.json` records `TRM-002` as `unresolved`:
 *"Each of the five roles has an explicit permission set before MER-015 ships."*
@@ -260,6 +260,39 @@ Both proven by A1–A3b and A12–A12d in §7.1.
 **The standing consequence.** `CLAUDE.md` now carries an execution-verification
 rule, and no Phase 8 item may be promoted on file existence, static SQL checks,
 source scans or a stubbed browser.
+
+### The hardening pass, and what it changed
+
+`HRS-002` and `TRM-002` were both `unresolved` and both blocked Phase 8. The
+owner decided them on 2026-08-06 and both are now implemented:
+
+- **HRS-002 = America/New_York.** The support clock runs in OPERATING minutes.
+  A Friday 17:58 message is due Monday 06:13, not Friday 18:13. Implemented on
+  BOTH sides of a dual path — `stampDeadlines` in TypeScript and
+  `couranr_help_post_message` in SQL, which set its own flat deadline and would
+  otherwise have left every customer-initiated thread on the old clock. The two
+  implementations were executed against each other on the same instants and
+  agree, including both 2026 DST crossings.
+- **TRM-002.** owner, manager and dispatcher read and send; viewer and billing
+  have NO access. The read half is the substantive change: the code previously
+  said in as many words that "a viewer or billing member may read a thread and
+  may not post to it".
+
+**A P0 was found while proving the deployment path.** `supabase db push` treats
+every `*.rollback.sql` in `supabase/migrations/` as a migration to APPLY, and
+`.rollback.sql` sorts BEFORE `.sql`, so it ran the DROP script first and then
+died on a duplicate version. Separately, 35 of 38 repo migration versions are
+absent from production's ledger. Both are addressed in PR #23, split out so the
+safety fix can merge without waiting for Phase 8 review.
+
+**A disposable database replaces the production dependency.** `e2e/disposable/`
+starts empty, applies every migration, verifies nine fidelity properties
+against production semantics, and destroys itself — so the acceptance matrix no
+longer needs DELETE on a project holding 42 real orders.
+
+**Still unresolved, and still not implementable:** `OVN-002` (the overnight
+request-and-enable mechanism), the holiday and closure calendar `HRS-001`
+refers to but never enumerates, and `FLG-001`'s `overnight_enabled` switch.
 
 ## 7. Verification matrix
 

@@ -7,8 +7,8 @@ file wins, and the two CSV ledgers beside it carry the per-item detail.
 | | |
 |---|---|
 | Branch | `claude/couranr-phase-8-conversations` |
-| Counts re-measured at SHA | `40129ee06d96bfdcd85bb653397d2553a1fa5b98` |
-| Per-item status last verified at SHA | `40129ee` for the Phase 8 rows; `401b3ee` for the rest |
+| Counts re-measured at SHA | `4e0bce874614be57118e869bf9802937ca1c1da4` |
+| Per-item status last verified at SHA | `4e0bce8` for the Phase 8 rows; `401b3ee` for the rest |
 | Verified at (UTC) | 2026-08-06 |
 | Active slice | [`ACTIVE_EXECUTION_SLICE.md`](./ACTIVE_EXECUTION_SLICE.md) |
 | Reconciliation | [`PHASE8_RECONCILIATION.md`](./PHASE8_RECONCILIATION.md) |
@@ -16,16 +16,17 @@ file wins, and the two CSV ledgers beside it carry the per-item detail.
 | Validator | `tests/couranr-implementation-ledger.test.ts` |
 
 **The SHAs mean different things and are deliberately not collapsed.** The
-repository-state counts in the table below were re-measured at `40129ee` by
+repository-state counts in the table below were re-measured at `4e0bce8` by
 re-running each command. Per-row statuses each carry the SHA at which that row
-was actually last verified. Raising them all to `40129ee` would assert a
+was actually last verified. Raising them all to `4e0bce8` would assert a
 re-verification of 42 work items and 66 screens that did not happen.
 
 Every SHA appearing in either ledger, in full, with what it covers:
 
 | SHA | rows | what was verified at it |
 |---|---|---|
-| `40129ee06d96bfdcd85bb653397d2553a1fa5b98` | 4 work items, 6 screens | this Phase 8 slice — `P8-001`, `P8-002`, `P8-004`, `P2-003`; `PUB-007`, `CUS-001`, `CUS-003`, `MER-012`, `DRV-008`, `OPS-005` |
+| `4e0bce874614be57118e869bf9802937ca1c1da4` | 4 work items, 3 screens | the Phase 8 HARDENING pass — HRS-002, TRM-002, the disposable database, the deployment-path fix; `MER-012`, `DRV-008`, `OPS-005` |
+| `40129ee06d96bfdcd85bb653397d2553a1fa5b98` | 3 screens | the Phase 8 reconciliation — `PUB-007`, `CUS-001`, `CUS-003` |
 | `401b3eea5cd96bb09d224f3b113ba6091bba807d` | 38 work items, 57 screens | the baseline inventory pass |
 | `1b3a1c90c88a554f1ac1ff1e6a6d06a97d602150` | 3 screens | the customer tracking slice — `PUB-006`, `CUS-006`, `CUS-008` |
 
@@ -73,14 +74,14 @@ No other value is permitted, and the validator fails the build on any other.
 
 | measure | count |
 |---|---|
-| Migration files | 76 (38 forward + 38 `.rollback.sql`) — **every forward migration now has a rollback** |
+| Migration files | 39 forward in `supabase/migrations/` + 39 in `supabase/rollbacks/` — **paired, and rollbacks are out of the deployment's reach** |
 | Applied migrations (live) | 38 = the `remote_schema` baseline + 31 pre-Phase-8 forward + **6 Phase 8 rows** |
 | Page routes | 99 total — 43 canonical under `app/(couranr)`, 56 legacy |
 | Canonical pages rendering `ScreenPlaceholder` | 25 of 43 |
 | API routes | 131 total, 60 canonical under `app/api/couranr` |
 | API routes with no auth/gate/signature/token marker | **18 of 131**, all legacy — see the note below |
 | Ungated **canonical** routes | **0** |
-| Test files / cases | 40 files, **1231 passing** |
+| Test files / cases | 41 files, **1285 passing** |
 | Live public tables / views | 60 / 6 |
 | `couranr_*` tables / functions | 24 / 78 |
 | Tables with RLS disabled | **0** |
@@ -95,9 +96,11 @@ fresh replay from the repository produces 39 rows where production has 38. The
 schemas are identical; only the ledger differs. See `PHASE8_RECONCILIATION.md`
 §5, drift D-2.
 
-**The rollback pairing gap is closed.** 20 forward migrations had no rollback;
-all 38 now do, and `tests/couranr-migrations.test.ts` fails the build if a new
-forward migration lands without one.
+**The rollback pairing gap is closed, and the rollbacks MOVED.** 20 forward
+migrations had no rollback; all 39 now do. They live in `supabase/rollbacks/`
+because the Supabase CLI treats any `<timestamp>_name.sql` in
+`supabase/migrations/` as a migration to APPLY — and `.rollback.sql` sorts
+BEFORE `.sql`, so a deployment ran the DROP script first. See PR #23.
 
 **The ungated-route marker set was WIDENED, and it had a false positive.**
 Re-deriving at this SHA with the previously recorded marker set —
@@ -120,8 +123,8 @@ figure is honest rather than flattering.
 |---|---|
 | `complete_verified` | 9 |
 | `complete_pending_external` | 2 |
-| `complete_unverified` | 3 |
-| `partial` | 8 |
+| `complete_unverified` | 4 |
+| `partial` | 7 |
 | `placeholder_only` | 2 |
 | `not_started` | 18 |
 | `blocked` | 0 |
@@ -135,7 +138,7 @@ By phase: P0 2 · P1 4 · P2 3 · P3 2 · P4 2 · P5 2 · P6 4 · P7 5 · P8 4 �
 | item | from | to | why not higher |
 |---|---|---|---|
 | `P8-001` messaging | `not_started` | `complete_unverified` | the schema, commands, routes and three screens exist and the database surface passes 26/26 executable checks, but no browser has driven MER-012, DRV-008 or OPS-005 |
-| `P8-002` deadlines and Operations Inbox | `not_started` | `partial` | **blocked on `HRS-002`** — its acceptance criterion is an after-hours cutoff and no IANA timezone is decided, so the after-hours branch is not implemented at all |
+| `P8-002` deadlines and Operations Inbox | `not_started` | `complete_unverified` | **`HRS-002` is now RESOLVED** — America/New_York, owner decision 2026-08-06. The after-hours branch is implemented, in TypeScript *and* in SQL. Still not `complete_verified`: OPS-005 has never been driven in a browser |
 | `P8-004` secure Delivery Help | `not_started` | `complete_unverified` | end-to-end proven unstubbed (A12–A12d) for the bare route; the `#address-change` and `#recipient-unavailable` fragment paths that CUS-001 and CUS-003 depend on were never driven unstubbed |
 | `P2-003` platform primitives | `partial` | `partial` (narrowed) | message idempotency and the conversation audit trail now exist; a general-purpose idempotency table still does not |
 
@@ -273,10 +276,6 @@ nine of them and was right on five. The corrections, each conservative:
   failing update up to 20 times by dropping columns.
 - **P8-001 messaging** — `complete_unverified`. Built and passing 26/26
   executable database checks; no browser has driven MER-012, DRV-008 or OPS-005.
-- **P8-002 support deadlines and Operations Inbox** — blocked on `HRS-002`.
-  The deadline clock, the `waiting_on` transitions and the Operations Inbox
-  query all work; the after-hours branch its acceptance criterion names cannot
-  be written until a timezone is decided.
 - **P8-004 secure Delivery Help** — `complete_unverified`. The bare route is
   proven unstubbed end to end; the two fragment paths are not.
 - **P3-001 / P3-002 pricing** — the canonical engine exists and emits
@@ -337,21 +336,38 @@ blocking set is: the customer surface is still incomplete (5 `missing` screens
 remain, 3 of them on `/help/[token]`); refunds and the ledger do not exist; the
 legacy runtime is still live; and real Stripe is unverified.
 
-**Two unresolved decision records now block work directly, not just describe
-it.** They are recorded here because Phase 8 hit both and neither may be
-answered by implementation:
+**The two decision records that blocked Phase 8 are RESOLVED.** The owner
+decided both on 2026-08-06 and both are recorded in the root registry, which
+moves `unresolved` from 7 to 5:
 
-- **`HRS-002`** — no IANA timezone is decided, so no cutoff can be computed.
-  `P8-002`'s after-hours acceptance criterion is unimplementable, which is why
-  it is `partial` and not complete. The response deadline that *is* implemented
-  is a flat 15 minutes with no business-hours branch.
-- **`TRM-002`** — the five merchant roles (`owner`, `manager`, `dispatcher`,
-  `viewer`, `billing`) have no permission sets. `MER-012` gates posting to
-  `owner|manager|dispatcher` **by analogy with `DRP-001`**, which is a defensible
-  guess and not a resolved decision. It is recorded as such rather than
-  presented as specified behaviour.
+- **`HRS-002` — America/New_York**, for every operating hour and support
+  deadline, across every market, with the boundary fixed: 06:00 inclusive,
+  18:00 exclusive. `P8-002`'s after-hours criterion is implementable and
+  implemented; the support clock now runs in OPERATING minutes, so a Friday
+  17:58 message is due Monday 06:13 rather than Friday 18:13.
+- **`TRM-002` — an explicit permission set per role.** owner, manager and
+  dispatcher read and send; viewer and billing have **no conversation access**.
+  The prior allow-list was reasoned by analogy to `DRP-001`; the registry
+  withdraws that analogy in writing. The substantive change is the read half —
+  a viewer could previously read any support thread in their business.
 
-`GAT-002` (incidents and claims) remains `intentionally_deferred`.
+**Three remain unresolved and still constrain work**, and none may be answered
+by implementation:
+
+- **`OVN-002`** — the overnight request-and-enable mechanism. `OVN-001` decides
+  the overnight *window* and that window is implemented as a clock predicate;
+  nothing decides how a merchant requests overnight or how Couranr enables it.
+  Naming a timezone did not resolve it, and a provenance test pins it so a
+  later edit cannot let overnight enablement be invented in code.
+- **Holidays and closures.** `HRS-001` says "normally Monday unless closure or
+  observed holiday", and no authority enumerates either. A holiday is treated
+  as an ordinary operating day, which marks a thread overdue too *soon* — the
+  safe direction — and is recorded rather than guessed.
+- **`FLG-001`'s `overnight_enabled` switch** is required to exist and default
+  false. It does not exist; no feature-flag mechanism exists at all.
+
+`GAT-002` (incidents and claims) remains `intentionally_deferred`, and it
+independently defers overnight from the first slice.
 
 ## Known legacy conflicts
 
@@ -459,11 +475,11 @@ So, in order:
 3. **Fix `issueTrackingLink`'s missing caller** under `PUB-006`, not here.
    `/track/[token]` has the identical dead-on-arrival shape `/help/[token]` had.
 
-**What cannot be fixed by implementation, and must be decided:** `HRS-002`
-(timezone → `P8-002`'s after-hours criterion) and `TRM-002` (merchant role
-permission sets → the `MER-012` posting gate). Both are unresolved in the
-registry. Guessing them in code is how a "defensible analogy" becomes an
-undocumented product decision.
+**What cannot be fixed by implementation, and must be decided:** `OVN-002`
+(the overnight request-and-enable mechanism), the holiday and closure calendar
+`HRS-001` refers to but never enumerates, and `FLG-001`'s `overnight_enabled`
+switch, which is required to exist and does not. `HRS-002` and `TRM-002` were
+the two blocking this slice and the owner has now decided both.
 
 `CUS-002` (cancellation and return) and `CUS-007` (return and refund status)
 still CANNOT close: both describe returns and delivery-charge refunds, and
