@@ -406,25 +406,24 @@ export async function inviteMember(params: {
 /**
  * Resolve an email to a user id.
  *
- * `listUsers` is paginated and has no server-side email filter in the version
- * pinned here, so this walks pages and compares case-insensitively. Bounded at
- * 20 pages so a large project cannot turn one invite into an unbounded scan;
- * the bound is reported as "not found", which is the safe direction.
+ * Goes through `couranr_find_user_id_by_email`, a service-role-only
+ * SECURITY DEFINER function that does one indexed equality against
+ * `auth.users` and returns an id or nothing.
+ *
+ * It replaced an `auth.admin.listUsers()` page-walk, for two reasons that both
+ * turned out to matter. It was O(all users in the project) for a single invite,
+ * with an arbitrary page cap that would have started reporting "not found" for
+ * real accounts once the project outgrew it. And it depended on GoTrue's admin
+ * API, which meant the invite path could not be exercised anywhere GoTrue is
+ * not running — including the disposable stack, where the first run of the
+ * team harness failed on exactly this call.
  */
 async function findUserIdByEmail(email: string): Promise<string | null | "error"> {
-  try {
-    for (let page = 1; page <= 20; page += 1) {
-      const res = await supabaseAdmin.auth.admin.listUsers({ page, perPage: 200 });
-      if (res.error) return "error";
-      const users = res.data?.users ?? [];
-      const hit = users.find((u: any) => String(u.email ?? "").toLowerCase() === email);
-      if (hit) return String(hit.id);
-      if (users.length < 200) return null;
-    }
-    return null;
-  } catch {
-    return "error";
-  }
+  const { data, error } = (await supabaseAdmin.rpc("couranr_find_user_id_by_email", {
+    p_email: email,
+  })) as { data: any; error: any };
+  if (error) return "error";
+  return data ? String(data) : null;
 }
 
 /**

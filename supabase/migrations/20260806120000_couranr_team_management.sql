@@ -168,6 +168,33 @@ begin
 end
 $fn$;
 
+/*
+ * Resolve a sign-up email to a user id.
+ *
+ * SECURITY DEFINER because `auth.users` is granted to nobody; granted to
+ * service_role alone, which can already enumerate every user through the auth
+ * admin API. This is strictly NARROWER than that: it takes an address the
+ * caller already typed and returns an id or nothing. No email, no metadata and
+ * no other user's existence is disclosed.
+ *
+ * It replaces a `auth.admin.listUsers()` page-walk in the invite command. That
+ * version paged through every account in the project to find one address —
+ * O(all users) for a single invite, bounded only by an arbitrary page cap that
+ * silently reported "not found" once it was hit. This is one indexed equality.
+ */
+create or replace function public.couranr_find_user_id_by_email(p_email text)
+returns uuid
+language sql
+stable
+security definer
+set search_path = ''
+as $fn$
+  select id
+    from auth.users
+   where lower(email) = lower(btrim(p_email))
+   limit 1;
+$fn$;
+
 -- ---------------------------------------------------------------------
 -- 3. Commands
 -- ---------------------------------------------------------------------
@@ -579,6 +606,7 @@ begin
   foreach fn in array array[
     'public.couranr_lock_and_count_active_owners(uuid)',
     'public.couranr_require_active_member(uuid, uuid)',
+    'public.couranr_find_user_id_by_email(text)',
     'public.couranr_invite_member(uuid, uuid, uuid, text, text)',
     'public.couranr_accept_member_invite(uuid, uuid)',
     'public.couranr_change_member_role(uuid, uuid, uuid, text)',
