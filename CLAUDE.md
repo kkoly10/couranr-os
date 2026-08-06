@@ -244,6 +244,42 @@ Read-only catalog queries via `execute_sql` are the right way to establish datab
 
 **Never run an exploit or negative test against production data.** No marking a real order paid, altering a fee, deleting an address, or forging an audit event to prove a vulnerability. Use a Supabase branch, a restored scratch project, or synthetic fixtures.
 
+### Cost discipline — verify hard, report short
+
+The owner stopped this session in 2026-08 because a batch burned ~4M subagent
+tokens and hours of wall clock. The verification was not the problem; the
+machinery around it was. Keep the things that have actually caught defects and
+drop the things that only produced narrative.
+
+**Keep, because each of these caught a real bug that reading did not:**
+
+- `npm run check` (lint, both typechecks, tests, build) before every push. Read
+  `Test Files X passed (Y)` and require X = Y — a stale `node_modules` once
+  dropped 84 tests while printing "1548 passed", which reads as success.
+- Executing SQL against the disposable database. A migration that applies is
+  not a migration that works: `test:release` caught a hold that could never be
+  released again, and only a concurrency probe caught the mutex.
+- Driving the UI or the route in a real browser. This found a nested-key read
+  and a broken replay path that 1632 green tests and a clean typecheck missed.
+- Verifying a production claim with a catalog query rather than an apply's
+  success flag.
+
+**Drop, unless the owner asks:**
+
+- Multi-agent workflows and subagent fleets. One adversarial review cost 2.2M
+  tokens. It did find two real defects — so if a slice touches money and you
+  cannot get independent eyes any other way, ask first and say what it will
+  cost. Never as routine.
+- PR activity subscriptions. Every bot deployment notification wakes the
+  session with a full context load; a day of them is dozens of wakes carrying
+  no information.
+- Scheduled check-ins that re-read state and re-report.
+- Long reports. A few lines: what changed, what proves it, what is still open.
+
+The rule of thumb: **spend on execution, not on narration.** Running the thing
+is cheap and finds defects; describing it at length is expensive and finds
+none.
+
 ### Research before deciding — validate reasoning against sources
 
 **Browse the internet BEFORE planning, and before starting a PR.** Not after,
