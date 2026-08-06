@@ -155,6 +155,7 @@ export type WorkspaceSettingsView = {
   /** Null when this business predates the Couranr workspace profile. */
   workspace: {
     businessCategory: string;
+    secondaryCategories: string[];
     pickupAddress: unknown;
     contactPhone: string | null;
     payerDefault: string;
@@ -198,7 +199,10 @@ export async function getWorkspaceSettings(params: {
   const ws = await supabaseAdmin
     .from("couranr_merchant_workspaces")
     .select(
-      "business_category,pickup_address,contact_phone,payer_default,policies_version,policies_accepted_at"
+      // ONE STRING LITERAL, deliberately. supabase-js infers `data`'s shape by
+      // parsing this at compile time; splitting it with `+` defeats that and
+      // every field below becomes a type error against GenericStringError.
+      "business_category,secondary_categories,category_registry_version,pickup_address,contact_phone,payer_default,policies_version,policies_accepted_at"
     )
     .eq("business_account_id", params.businessAccountId)
     .maybeSingle();
@@ -223,6 +227,9 @@ export async function getWorkspaceSettings(params: {
       workspace: ws.data
         ? {
             businessCategory: String(ws.data.business_category ?? ""),
+            secondaryCategories: Array.isArray(ws.data.secondary_categories)
+              ? ws.data.secondary_categories.map(String)
+              : [],
             pickupAddress: ws.data.pickup_address ?? null,
             contactPhone: ws.data.contact_phone ?? null,
             payerDefault: String(ws.data.payer_default ?? "merchant"),

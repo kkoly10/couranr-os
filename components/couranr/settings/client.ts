@@ -18,6 +18,7 @@ export type WorkspaceSettingsView = {
   timezone: string;
   workspace: {
     businessCategory: string;
+    secondaryCategories: string[];
     pickupAddress: any;
     contactPhone: string | null;
     payerDefault: string;
@@ -48,6 +49,7 @@ export function saveSettings(input: {
   businessAccountId: string;
   name?: string;
   businessCategory?: string;
+  secondaryCategories?: string[];
   pickupAddress?: unknown;
   contactPhone?: string;
   payerDefault?: string;
