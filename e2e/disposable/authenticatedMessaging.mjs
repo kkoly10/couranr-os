@@ -584,7 +584,16 @@ async function main() {
     for (const role of ["viewer", "billing"]) {
       const page = await signIn(merchant[role].email);
       await page.goto(`${BASE}/business/messages`, { waitUntil: "domcontentloaded" });
-      await page.getByText("No messages yet").waitFor({ state: "visible", timeout: 30_000 });
+      // Wait for the list to RESOLVE — either outcome — rather than for the
+      // empty state specifically. A hard wait on "No messages yet" aborts the
+      // whole run when the rule regresses, instead of reporting the failure it
+      // exists to report. Verified by mutating `memberMayRead` to return true:
+      // the wait timed out and killed the run at 12 checks.
+      await Promise.race([
+        page.getByText("No messages yet").waitFor({ state: "visible", timeout: 30_000 }),
+        page.getByRole("button", { name: /^Open$/ }).first()
+          .waitFor({ state: "visible", timeout: 30_000 }),
+      ]).catch(() => {});
 
       const openButtons = await page.getByRole("button", { name: /^Open$/ }).count();
       check(
@@ -721,7 +730,12 @@ async function main() {
     const driver2Part = addParticipant(chatId, "driver", driver2.id, null);
 
     await driverPage.goto(`${BASE}/driver/messages`, { waitUntil: "domcontentloaded" });
-    await driverPage.getByText("No messages yet").waitFor({ state: "visible", timeout: 30_000 });
+    // Either outcome, so a regression is REPORTED rather than aborting the run.
+    await Promise.race([
+      driverPage.getByText("No messages yet").waitFor({ state: "visible", timeout: 30_000 }),
+      driverPage.getByRole("button", { name: /^Open$/ }).first()
+        .waitFor({ state: "visible", timeout: 30_000 }),
+    ]).catch(() => {});
     const afterLeaveCards = await driverPage.getByRole("button", { name: /^Open$/ }).count();
     check(
       "D7",

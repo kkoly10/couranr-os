@@ -449,11 +449,11 @@ export async function listOperationsInbox(): Promise<
  * `first_couranr_response_at` is set the target has been met, and the spec
  * measures the FIRST response, not every subsequent one.
  *
- * WHAT THIS DOES NOT DO: roll a deadline forward to the next operating period.
- * HRS-002 is unresolved — "A named IANA timezone is recorded before any cutoff
- * logic ships" — so every thread is treated as if it arrived in hours. That
- * marks an after-hours thread overdue sooner than the spec requires, never
- * later, which is the safe direction to be wrong in.
+ * The elapsed time is measured in OPERATING minutes. HRS-002 is decided —
+ * America/New_York, Monday-Friday 06:00-18:00 — so `dueStateAt` counts only the
+ * minutes Couranr was open. An earlier revision of this comment said the
+ * deadline could not roll over because the zone was unresolved; it was true
+ * then and is not now. A thread received Friday 17:58 is not overdue at 18:13.
  */
 export async function refreshDueStates(now: Date = new Date()): Promise<
   ConversationResult<{ dueSoon: number; overdue: number }>

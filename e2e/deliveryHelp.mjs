@@ -57,7 +57,10 @@ const OK_PAYLOAD = {
     "other",
   ],
   supportTargetMinutes: 15,
-  operatingHoursApplied: false,
+  // Matches what the route actually returns since HRS-002 was decided
+  // (app/api/couranr/help/[token]/route.ts:65). A stub that keeps asserting the
+  // old contract is the exact false confidence this file is meant to avoid.
+  operatingHoursApplied: true,
   supportPhone: null,
 };
 

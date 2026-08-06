@@ -21,17 +21,22 @@ import { isApiFailure, listConversations, type ConversationSummary } from "./cli
  * pending; AI answered; human review; after-hours; closed" (MER-012) and
  * "Unread; driving suppressed; AI draft; human support; closed" (DRV-008).
  *
- * Three of those cannot be rendered yet and are NOT faked:
- *   * "after-hours" needs HRS-002, which is unresolved. The server reports
- *     `operatingHoursApplied: false` and no surface claims otherwise.
+ * "after-hours" IS assessed now. HRS-002 was decided on 2026-08-06 —
+ * America/New_York, Monday-Friday 06:00-18:00 — so the due and overdue marks
+ * this list renders are computed in OPERATING minutes and a thread received at
+ * 02:00 is not marked overdue at 02:15. An earlier revision of this comment
+ * said the opposite and was correct when written.
+ *
+ * Two of the required states still cannot be rendered and are NOT faked:
  *   * "AI answered" / "AI draft" need P8-003's assistant, which is not built.
  *     An AI draft is excluded from every participant read by design, so this
  *     screen could not show one even if drafts existed.
  *   * "driving suppressed" is P8-003 alert suppression, also not built.
  *
- * What IS rendered: unread, waiting-on, due state, and closed. Showing a state
- * this slice cannot compute would be worse than omitting it — a merchant who
- * believes "after-hours" was assessed will draw the wrong conclusion from it.
+ * What IS rendered: unread, waiting-on, due state (on the operating clock), and
+ * closed. Showing a state this slice cannot compute would be worse than
+ * omitting it — a merchant who believes an AI answered will draw the wrong
+ * conclusion from it.
  */
 
 const DUE_TONE: Record<string, "neutral" | "info" | "warning" | "danger"> = {

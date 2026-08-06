@@ -35,13 +35,17 @@ import { fetchHelp, newIdempotencyKey, sendHelpMessage, type HelpView } from "./
  *     or "guaranteed".
  *   * TRM-001: no 24/7 claim, no founder voice. It is Couranr that replies.
  *
- * AFTER-HOURS IS NOT RENDERED, deliberately rather than by omission. HRS-002 is
- * `unresolved` — "A named IANA timezone is recorded before any cutoff logic
- * ships" — so the server reports `operatingHoursApplied: false` and this page
- * states the window without claiming the current moment is inside or outside
- * it. Rendering "we are closed" from a guessed timezone would be worse than
- * saying nothing, because a customer who believes nobody is reading will stop
- * writing.
+ * AFTER-HOURS IS STILL NOT RENDERED, and the reason has CHANGED. It used to be
+ * that HRS-002 was unresolved, so the zone was unknown and the server reported
+ * `operatingHoursApplied: false`; guessing a zone to say "we are closed" would
+ * have been worse than saying nothing. HRS-002 was decided on 2026-08-06
+ * (America/New_York) and the route now reports `true`, so the deadline this
+ * page's target refers to is computed on the operating clock.
+ *
+ * What is missing now is simply the indicator: this page still states the
+ * window without saying whether the current moment is inside it. That is
+ * UNBUILT, not declined — recorded here so the next person does not read a
+ * stale justification and conclude the decision is still open.
  */
 
 const TOPIC_LABELS: Record<CustomerTopic, string> = {
