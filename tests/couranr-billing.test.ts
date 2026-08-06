@@ -120,11 +120,28 @@ describe("the total is what was TAKEN, never what was held", () => {
   });
 
   it("prefers the CAPTURED amount over the authorized one", () => {
-    // A capture can settle for less than it held. Using the authorization
-    // would overstate what a merchant paid — the worst direction to be wrong
-    // in on a billing screen.
+    // Using the authorization would overstate what a merchant paid — the worst
+    // direction to be wrong in on a billing screen.
+    //
+    // THIS INPUT CANNOT OCCUR TODAY. `couranr_po_captured_amount_chk` requires
+    // `captured_amount_cents = amount_cents`, so the two never differ — the
+    // disposable database refused a fixture that tried to seed a partial
+    // capture. The branch is kept because it is right the day that constraint
+    // is relaxed, and this test documents it rather than implying partial
+    // captures are a thing that happens here.
     const rs = [record({ state: "charged", amountCents: 5000, capturedAmountCents: 2299 })];
     expect(totalChargedCents(rs)).toBe(2299);
+  });
+
+  it("the constraint that makes that branch unreachable really is in the schema", () => {
+    // If this ever disappears, partial captures become possible and the
+    // preference above stops being theoretical.
+    const sql = readFileSync(
+      path.join(ROOT, "supabase/migrations/20260801083000_couranr_service_plan_and_deliveries.sql"),
+      "utf8"
+    );
+    expect(sql).toMatch(/couranr_po_captured_amount_chk/);
+    expect(sql).toMatch(/captured_amount_cents\s*=\s*amount_cents/);
   });
 
   it("falls back to the authorized amount only when no captured amount exists", () => {

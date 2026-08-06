@@ -259,10 +259,18 @@ export type BillingView = {
  * The total Couranr has actually taken.
  *
  * Sums ONLY `charged` records, and prefers `capturedAmountCents` over the
- * authorized amount — a capture can settle for less than it held, and the
- * authorized figure is what was reserved, not what was taken. A total built
- * from authorizations would overstate what a merchant has paid, which on a
- * billing screen is the worst direction to be wrong in.
+ * authorized amount — the authorized figure is what was reserved, not what was
+ * taken. A total built from authorizations would overstate what a merchant has
+ * paid, which on a billing screen is the worst direction to be wrong in.
+ *
+ * THE PREFERENCE IS CURRENTLY UNREACHABLE, and saying so is the point.
+ * `couranr_po_captured_amount_chk` requires `captured_amount_cents =
+ * amount_cents`, so the two cannot differ and no partial capture can exist —
+ * measured, not assumed: the disposable database refused a fixture that tried
+ * to seed one (`e2e/disposable/billingRecords.mjs`, check F1). The preference
+ * stays because it is free and it is right the day that constraint is relaxed;
+ * it is documented because a reader would otherwise conclude partial captures
+ * happen here.
  */
 export function totalChargedCents(records: readonly ChargeRecord[]): number {
   return records

@@ -4,7 +4,7 @@
  "authority_sha": "f26d857fb797b008fc5772700d65a4e5c181f259",
  "production_migration_head": "20260806120648",
  "active_batch": "B03",
- "active_capability": "ACP-018 complete; B03 remaining: ACP-023 (MER-010/011 presets)",
+ "active_capability": "B03 capabilities all attempted; ACP-023 shipped as its reachable half",
  "open_pr": 27,
  "completed_capabilities": [
   "ACP-001",
@@ -26,13 +26,15 @@
   "ACP-021",
   "ACP-022",
   "ACP-020",
-  "ACP-018"
+  "ACP-018",
+  "ACP-023-charge-record-half"
  ],
  "carried_forward": {
   "ACP-006": "canonical token system pre-exists and matches the spec palette; table/chart/upload primitives land with first consumers",
   "ACP-015": "PUB-004 estimate: the anonymous priced endpoint needs the REAL maps provider for server-validated distance (external gate this container cannot exercise) plus net-new rate limiting; do not ship a priced surface on an unverified distance path",
   "ACP-016-telemetry-half": "consented conversion events land with the analytics substrate (B11), never as a stub",
-  "expired-token-refresh-browser-scenario": "needs a short-TTL override in the disposable gateway"
+  "expired-token-refresh-browser-scenario": "needs a short-TTL override in the disposable gateway",
+  "ACP-023-payment-methods-and-refunds": "MER-016's other two required states have no source. Default payment method needs a Stripe Customer AND a SetupIntent with the customer id persisted here (Stripe, Save a customer's payment method, Setup Intents API variant) - a payments integration against an SDK frozen at 15.x. Refunds are REF-001, Operations-only, phase 7, and land with ACP-033 in B05."
  },
  "blocked_capabilities": [],
  "decision_queue": [
@@ -102,7 +104,8 @@
   "b03": "PR #27 (B03 -> b02 branch, draft). VERIFIED: ACP-017 MER-001 27/27; ACP-019 MER-004 25/25; ACP-021 MER-014/MER-015 41/41 (incl. the concurrent last-owner race); ACP-022 MER-013 24/24 (incl. decoding the rendered QR); ACP-020 MER-008/MER-009 34/34 (incl. the PII-in-HTML assertion that caught FIND-B03-003). REMAINING: ACP-018 MER-003 activation checklist, a net-new state machine. ACP-023 MER-016 billing waits on ACP-041; MER-010/011 presets are B04 (ACP-025).",
   "dependencies_added": "qrcode-generator 2.0.4 (runtime, zero deps) for MER-013 QR encoding; jsqr 1.4.0 (dev only) so the harness decodes the rendered QR instead of eyeballing it. Both exact-pinned. Surfaced here because the MER-013 contract named the QR dependency as a decision to surface.",
   "migration_version_drift": "apply_migration stamps its own timestamp, so production versions (2026080612xxxx) differ from the repo filenames (20260806100000/120000/130000/150000). The NAMES match exactly, so which migration ran is unambiguous, but `supabase db diff` will see version skew. Not corrected by hand: rewriting supabase_migrations.schema_migrations is riskier than the drift it would fix.",
-  "acp_018": "MER-003 live activation: 64/64 unstubbed signed-in browser checks (e2e/disposable/activation.mjs). Two REAL defects were found by building the run rather than by reading the code: (1) nothing called record_test_delivery, so the checklist could never be completed by anyone; (2) the route gated every POST on activation.request (owner/manager) while couranr_record_test_delivery gates on owner/manager/dispatcher - one of the two was dead. A test now parses the SQL role tuples and asserts they equal the capability matrix. A third gap was closed pre-emptively: any active member, including a read-only viewer, could record the business's consent to Couranr's delivery terms."
+  "acp_018": "MER-003 live activation: 64/64 unstubbed signed-in browser checks (e2e/disposable/activation.mjs). Two REAL defects were found by building the run rather than by reading the code: (1) nothing called record_test_delivery, so the checklist could never be completed by anyone; (2) the route gated every POST on activation.request (owner/manager) while couranr_record_test_delivery gates on owner/manager/dispatcher - one of the two was dead. A test now parses the SQL role tuples and asserts they equal the capability matrix. A third gap was closed pre-emptively: any active member, including a read-only viewer, could record the business's consent to Couranr's delivery terms.",
+  "acp_023": "MER-016 shipped as `partial`, 39/39 browser checks on the reachable half. TAX-001 is UNRESOLVED and lists MER-016 in its own blocked_screen_ids - no authority states whether delivery is taxable, who remits, or how tax appears on a receipt - so no receipt is issued and the screen says it is not a tax document. TWO SPEC CONTRADICTIONS, recorded not resolved: (1) the ACP-023 capability row sits in B03 while the spec's own screen table puts MER-016 in B05, and ACP-033 (B05 balanced ledger) also names MER-016 - B05 is the coherent reading; (2) ACP-023 lists ACP-041 as a dependency, which is B07 Driving Mode safety suppression and is plainly a typo. Also found by fixture: couranr_po_captured_amount_chk forbids a partial capture, so the total's preference for the captured amount is correct-in-advance but unreachable - labelled in code rather than left implying otherwise."
  },
  "applied_to_production": [
   {
