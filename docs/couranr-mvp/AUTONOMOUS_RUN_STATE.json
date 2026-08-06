@@ -5,7 +5,7 @@
   "production_migration_head": "20260806010000",
   "active_batch": "B01",
   "active_capability": "ACP-003",
-  "open_pr": null,
+  "open_pr": 24,
   "completed_capabilities": ["ACP-001", "ACP-002"],
   "blocked_capabilities": [],
   "decision_queue": [
