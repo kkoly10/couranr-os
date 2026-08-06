@@ -142,6 +142,17 @@ export function startGateway() {
       return;
     }
 
+    // Instrumentation, opt-in. The app and a direct probe both traverse this
+    // process, so it is the one place their requests can be compared byte for
+    // byte instead of reasoned about.
+    if (process.env.COURANR_GATEWAY_TRACE) {
+      const auth = req.headers.authorization || "";
+      console.log(
+        `[gw] ${req.method} ${target} auth=${auth ? auth.slice(0, 24) + "..." : "<none>"} ` +
+          `apikey=${req.headers.apikey ? "yes" : "no"} accept=${req.headers.accept || "<none>"}`
+      );
+    }
+
     const upstream = http.request(
       {
         host: "127.0.0.1",
@@ -151,6 +162,13 @@ export function startGateway() {
         headers: { ...req.headers, host: `127.0.0.1:${POSTGREST_PORT}` },
       },
       (up) => {
+        if (process.env.COURANR_GATEWAY_TRACE) {
+          let body = "";
+          up.on("data", (c) => (body += c.toString().slice(0, 300)));
+          up.on("end", () =>
+            console.log(`[gw] <- ${up.statusCode} ${body.slice(0, 220)}`)
+          );
+        }
         res.writeHead(up.statusCode || 502, up.headers);
         up.pipe(res);
       }

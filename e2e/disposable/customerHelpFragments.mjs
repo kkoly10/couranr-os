@@ -300,6 +300,13 @@ async function main() {
     // pointing at a host Chromium cannot reach here — the server half renders
     // and the client half never does. Its own distDir, so a developer's .next
     // is never clobbered.
+    // The build cache MUST be discarded. NEXT_PUBLIC_* are inlined into the
+    // client bundle, so webpack's cache holds whatever key the LAST build used
+    // — and reusing it silently shipped a stale literal that PostgREST rejected
+    // with PGRST301 "Expected 3 parts; got 1". A harness that bakes env into a
+    // bundle can never reuse a bundle built with different env.
+    rmSync(path.join(ROOT, DIST), { recursive: true, force: true });
+
     console.log("  building the application against the disposable stack...");
     execFileSync("npx", ["next", "build"], {
       cwd: ROOT,
