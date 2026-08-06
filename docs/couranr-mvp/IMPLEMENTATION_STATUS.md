@@ -25,6 +25,7 @@ Every SHA appearing in either ledger, in full, with what it covers:
 
 | SHA | rows | what was verified at it |
 |---|---|---|
+| `ec4a2af8f7c1de0bee4e3c021b50c875acdd6633` | 4 work items, 5 screens | the B02 PUBLIC LAUNCH SURFACE — `P10-003/004/005/006`; `PUB-001/008/009/010/011`. 68/68 unstubbed browser checks at both spec viewports, verbatim MKT-002 copy, mutation-tested claims scanner |
 | `a115f9212364bab0951053c73877952674ee07d6` | 3 work items, 4 screens | the AUTHENTICATED MESSAGING pass — `P8-001`, `P8-002`, `P8-004`; `MER-012`, `DRV-008`, `OPS-005`, `PUB-007`. 51/51 unstubbed signed-in browser checks, plus the acceptance matrix made re-runnable at 27/27 twice from an empty database |
 | `c2cac8b9ffeaaf7e9a6a528a9eac5d057a2801f9` | 1 work item | the B01 platform batch — `P2-001` private/analytics schemas, executed against a disposable database; production apply pending owner approval |
 | `ced8af8130ebf8c556360c6d74d09d7338e38e5c` | 2 screens | `CUS-001` and `CUS-003`, unstubbed against a disposable database — 11/11 |
@@ -89,8 +90,8 @@ No other value is permitted, and the validator fails the build on any other.
 |---|---|
 | Migration files | **40** forward in `supabase/migrations/` + **40** in `supabase/rollbacks/` — paired, rollbacks out of the deployment's reach. The 40th (`20260806100000`, private/analytics schemas) is **pending production approval** |
 | Applied migrations (live) | **39 — one row per forward migration, every version matching its filename.** The ledger was repaired and `20260806010000` applied on 2026-08-06 |
-| Page routes | 99 total — 43 canonical under `app/(couranr)`, 56 legacy |
-| Canonical pages rendering `ScreenPlaceholder` | 25 of 43 |
+| Page routes | 99 total — **44** canonical under `app/(couranr)`, 55 legacy (the legacy homepage was replaced by canonical `PUB-001` under LEG-001) |
+| Canonical pages rendering `ScreenPlaceholder` | **21 of 44** — the five B02 public pages left the placeholder set |
 | API routes | 131 total, 60 canonical under `app/api/couranr` |
 | API routes with no auth/gate/signature/token marker | **18 of 131**, all legacy — see the note below |
 | Ungated **canonical** routes | **0** |
@@ -135,12 +136,12 @@ figure is honest rather than flattering.
 
 | status | count |
 |---|---|
-| `complete_verified` | 12 |
+| `complete_verified` | 16 |
 | `complete_pending_external` | 3 |
 | `complete_unverified` | 1 |
 | `partial` | 7 |
-| `placeholder_only` | 2 |
-| `not_started` | 17 |
+| `placeholder_only` | 0 |
+| `not_started` | 15 |
 | `blocked` | 0 |
 | `deferred_by_decision` | 0 |
 | `retired_or_superseded` | 0 |
@@ -177,8 +178,8 @@ neither is being quietly folded into it.
 
 ```
 verified completion = complete_verified / applicable work items
-                    = 12 / 42
-                    = 28.6%
+                    = 16 / 42
+                    = 38.1%
 ```
 
 Nothing is `deferred_by_decision` or `retired_or_superseded`, so the denominator
@@ -190,8 +191,8 @@ external verification:
 
 ```
 implemented incl. pending-external = (complete_verified + complete_pending_external) / applicable
-                                   = (12 + 2) / 42
-                                   = 33.3%
+                                   = (16 + 3) / 42
+                                   = 45.2%
 ```
 
 Neither number should be quoted without its fraction.
@@ -200,11 +201,11 @@ Neither number should be quoted without its fraction.
 
 | status | count |
 |---|---|
-| `functional_verified` | 15 |
+| `functional_verified` | 20 |
 | `functional_unverified` | 5 |
 | `partial` | 7 |
-| `static_only` | 1 |
-| `placeholder_only` | 33 |
+| `static_only` | 0 |
+| `placeholder_only` | 29 |
 | `missing` | 5 |
 | `deferred` / `retired_or_replaced` | 0 |
 
