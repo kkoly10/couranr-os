@@ -22,7 +22,32 @@
  */
 
 import crypto from "node:crypto";
-import { up, down, psql } from "./up.mjs";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { up, down, psql, dbUrl } from "./up.mjs";
+
+const execFileAsync = promisify(execFile);
+
+/**
+ * Run a statement in its OWN process, so two can genuinely overlap.
+ *
+ * `psql()` is synchronous, so it cannot express a race. The concurrent-save
+ * test below needs two transactions alive at the same time — which is the only
+ * way to tell a `for update` lock apart from a version check that happens to
+ * pass twice.
+ */
+async function psqlAsync(statement) {
+  try {
+    const { stdout } = await execFileAsync(
+      "/usr/lib/postgresql/16/bin/psql",
+      [dbUrl(), "-tA", "-q", "-v", "ON_ERROR_STOP=1", "-c", statement],
+      { timeout: 30_000 }
+    );
+    return { ok: true, out: String(stdout).trim() };
+  } catch (e) {
+    return { ok: false, err: String(e.stderr || e.message) };
+  }
+}
 
 let pass = 0;
 let fail = 0;
@@ -220,6 +245,152 @@ try {
          values ('${biz}','${owner}','pre-${crypto.randomUUID()}','[PRE] none','draft',
                  'not_confirmed','not_required','not_quoted','{}'::jsonb,'{}'::jsonb)
          returning (preset_id is null)::text`) === "true");
+
+  /* ══════════════ the NAMED COMMANDS, every one CALLED ══════════════ */
+
+  const mgr = sql(`insert into auth.users (email) values ('pre-mgr@couranr.invalid') returning id`);
+  sql(`insert into public.profiles (id,email,role) values ('${mgr}','pre-mgr@couranr.invalid','customer')`);
+  const disp = sql(`insert into auth.users (email) values ('pre-disp@couranr.invalid') returning id`);
+  sql(`insert into public.profiles (id,email,role) values ('${disp}','pre-disp@couranr.invalid','customer')`);
+  for (const [u, r] of [[owner, "owner"], [mgr, "manager"], [disp, "dispatcher"]]) {
+    sql(`insert into public.business_members (business_account_id,user_id,role,status,joined_at)
+         values ('${biz}','${u}','${r}','active',now())`);
+  }
+
+  console.log("\nCommands — create, and the baseline it must not take from the caller");
+  const made = sql(
+    `select (public.couranr_create_merchant_preset('${biz}','${owner}','From Couranr',
+       '{"commonItem":"Bouquet"}'::jsonb,'${gp}')).id`
+  );
+  check("C1", "create records the global's CURRENT version as the baseline, not a caller's claim",
+    sql(`select source_version from public.couranr_merchant_presets where id='${made}'`) === "2");
+  check("C2", "and version 1 is in the history — a preset with a hole at v1 breaks day-one deliveries",
+    sql(`select count(*) from public.couranr_merchant_preset_versions
+          where merchant_preset_id='${made}' and version=1`) === "1");
+
+  expectRaise("C3", "a dispatcher may not manage presets",
+    `select public.couranr_create_merchant_preset('${biz}','${disp}','Nope','{}'::jsonb,null)`,
+    /CR403|role_may_not_manage_presets/);
+  expectRaise("C4", "an empty name is refused",
+    `select public.couranr_create_merchant_preset('${biz}','${owner}','  ','{}'::jsonb,null)`,
+    /CR400|preset_name_required/);
+  expectRaise("C5", "an unknown source preset is refused",
+    `select public.couranr_create_merchant_preset('${biz}','${owner}','X','{}'::jsonb,
+       '00000000-0000-4000-8000-000000000000')`,
+    /CR404|source_preset_not_found/);
+
+  console.log("\nUpdate — optimistic concurrency, MER-011's version conflict");
+  sql(`select public.couranr_update_merchant_preset('${biz}','${mgr}','${made}','From Couranr',
+        '{"commonItem":"Bouquet","handling":"Upright"}'::jsonb,1)`);
+  check("U1", "a manager may save, and the version advances",
+    sql(`select version from public.couranr_merchant_presets where id='${made}'`) === "2");
+  check("U2", "the new version is appended to the history",
+    sql(`select count(*) from public.couranr_merchant_preset_versions
+          where merchant_preset_id='${made}'`) === "2");
+  expectRaise("U3", "a STALE expected version is refused — a colleague's save is not overwritten",
+    `select public.couranr_update_merchant_preset('${biz}','${owner}','${made}','X','{}'::jsonb,1)`,
+    /CR409|preset_version_conflict/);
+  expectRaise("U4", "and a null expected version is refused rather than treated as 'any'",
+    `select public.couranr_update_merchant_preset('${biz}','${owner}','${made}','X','{}'::jsonb,null)`,
+    /CR409|preset_version_conflict/);
+  expectRaise("U5", "a forbidden field is refused by the CHECK even through the command",
+    `select public.couranr_update_merchant_preset('${biz}','${owner}','${made}','X',
+       '{"finalPrice":2299}'::jsonb,2)`,
+    /couranr_mp_body_chk/);
+
+  console.log("\nAdopt — the ONLY path a global update reaches a merchant preset");
+  check("A1", "before adopting, the merchant still holds their own body",
+    sql(`select (body->>'handling')||','||source_version::text
+           from public.couranr_merchant_presets where id='${made}'`) === "Upright,2");
+  sql(`update public.couranr_category_presets
+          set body='{"commonItem":"Bouquet","handling":"Keep cool","packageCount":2}'::jsonb,
+              version=version+1 where id='${gp}'`);
+  check("A2", "a global bump does NOT touch the merchant row",
+    sql(`select (body->>'handling')||','||version::text||','||source_version::text
+           from public.couranr_merchant_presets where id='${made}'`) === "Upright,2,2");
+  sql(`select public.couranr_adopt_preset_recommendation('${biz}','${owner}','${made}',2)`);
+  check("A3", "adopting takes the global body and re-baselines the source version",
+    sql(`select (body->>'handling')||','||source_version::text||','||version::text
+           from public.couranr_merchant_presets where id='${made}'`) === "Keep cool,3,3");
+  check("A4", "and the merchant's OWN previous body is still in the history",
+    sql(`select body->>'handling' from public.couranr_merchant_preset_versions
+          where merchant_preset_id='${made}' and version=2`) === "Upright");
+  expectRaise("A5", "adopting when there is nothing to adopt is a CONFLICT, not a silent success",
+    `select public.couranr_adopt_preset_recommendation('${biz}','${owner}','${made}',3)`,
+    /CR409|no_recommendation_to_adopt/);
+  const ownMade = sql(
+    `select (public.couranr_create_merchant_preset('${biz}','${owner}','Ours only','{}'::jsonb,null)).id`
+  );
+  expectRaise("A6", "a merchant-created preset has nothing to adopt FROM",
+    `select public.couranr_adopt_preset_recommendation('${biz}','${owner}','${ownMade}',1)`,
+    /CR409|preset_has_no_couranr_source/);
+
+  console.log("\nDuplicate and archive");
+  const copy = sql(
+    `select (public.couranr_duplicate_merchant_preset('${biz}','${owner}','${made}','From Couranr copy')).id`
+  );
+  check("D1", "a copy of a CUSTOMIZED preset is merchant-created — one baseline, one preset",
+    sql(`select coalesce(source_category_preset_id::text,'NULL')||','||coalesce(source_version::text,'NULL')
+           from public.couranr_merchant_presets where id='${copy}'`) === "NULL,NULL");
+  check("D2", "the copy carries the body and starts its own history at 1",
+    sql(`select (body->>'handling')||','||version::text from public.couranr_merchant_presets
+          where id='${copy}'`) === "Keep cool,1");
+
+  sql(`select public.couranr_set_merchant_preset_archived('${biz}','${owner}','${copy}',true)`);
+  check("D3", "archiving stamps the row rather than deleting it",
+    sql(`select (archived_at is not null)::text from public.couranr_merchant_presets
+          where id='${copy}'`) === "true");
+  check("D4", "and the archived name is free again",
+    sql(`select (public.couranr_create_merchant_preset('${biz}','${owner}','From Couranr copy',
+           '{}'::jsonb,null)).id`) !== "");
+  expectRaise("D5", "an archived preset cannot be edited",
+    `select public.couranr_update_merchant_preset('${biz}','${owner}','${copy}','X','{}'::jsonb,1)`,
+    /CR409|preset_is_archived/);
+
+  console.log("\nTHE LOCK — two saves at the same version, at the same moment");
+  {
+    /*
+     * The check alone is not enough and this is the only test that can show
+     * it. Without `for update`, both transactions read version N, both find
+     * their expected version matching, and both write N+1 — the check passes
+     * TWICE and the second save silently destroys the first. With the lock the
+     * second blocks, re-reads under READ COMMITTED, sees N+1 and is refused.
+     */
+    const raceTarget = sql(
+      `select (public.couranr_create_merchant_preset('${biz}','${owner}','Race target','{}'::jsonb,null)).id`
+    );
+    const before = sql(`select version from public.couranr_merchant_presets where id='${raceTarget}'`);
+
+    const [a, b] = await Promise.all([
+      psqlAsync(`select public.couranr_update_merchant_preset('${biz}','${owner}','${raceTarget}',
+                   'Race A','{"commonItem":"A"}'::jsonb,${before})`),
+      psqlAsync(`select public.couranr_update_merchant_preset('${biz}','${mgr}','${raceTarget}',
+                   'Race B','{"commonItem":"B"}'::jsonb,${before})`),
+    ]);
+
+    const winners = [a, b].filter((r) => r.ok).length;
+    check("L1", "EXACTLY ONE of two concurrent saves succeeds",
+      winners === 1, `${winners} succeeded`);
+    check("L2", "and the loser is refused with a version conflict, not a crash",
+      [a, b].some((r) => !r.ok && /preset_version_conflict/.test(r.err)),
+      [a, b].find((r) => !r.ok)?.err?.split("\n").find((l) => l.includes("ERROR"))?.slice(0, 80) ?? "");
+    check("L3", "the version advanced by exactly one, not two",
+      sql(`select version from public.couranr_merchant_presets where id='${raceTarget}'`) ===
+        String(Number(before) + 1));
+    check("L4", "and the history holds one row per version — no lost write",
+      sql(`select count(*) from public.couranr_merchant_preset_versions
+            where merchant_preset_id='${raceTarget}'`) === String(Number(before) + 1));
+  }
+
+  console.log("\nCross-tenant");
+  const biz2 = sql(
+    `insert into public.business_accounts (name,slug,status) values ('[PRE] other','pre-other','active') returning id`
+  );
+  sql(`insert into public.business_members (business_account_id,user_id,role,status,joined_at)
+       values ('${biz2}','${owner}','owner','active',now())`);
+  expectRaise("X1", "an owner of another business cannot edit this one's preset",
+    `select public.couranr_update_merchant_preset('${biz2}','${owner}','${made}','X','{}'::jsonb,3)`,
+    /CR404|preset_not_found/);
 
   console.log(`\n  ${pass} passed, ${fail} failed`);
   if (fail) process.exitCode = 1;
