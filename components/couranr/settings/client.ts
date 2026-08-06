@@ -121,3 +121,39 @@ export function acceptInvitation(businessAccountId: string): Promise<ApiResult<{
     body: { businessAccountId },
   });
 }
+
+/* ----------------------------------------------------------- MER-013 ---- */
+
+export type WebsiteToolsView = {
+  businessAccountId: string;
+  name: string;
+  slug: string | null;
+  status: string;
+  embed: { label: string; color: string; width: number; variant: string };
+  viewer: { role: string; status: string };
+};
+
+export function fetchWebsiteTools(
+  businessAccountId: string
+): Promise<ApiResult<WebsiteToolsView>> {
+  return call(`/api/couranr/merchant/website-tools?${tenant(businessAccountId)}`);
+}
+
+/**
+ * Saves the design and the status together.
+ *
+ * Carries no URL and no slug: the server derives the hosted link from the
+ * business's own slug, so nothing a browser sends can point the published
+ * button at another address.
+ */
+export function saveWebsiteTools(input: {
+  businessAccountId: string;
+  /** publish | disable | save_draft — never a target status. */
+  action: string;
+  embed: { label: string; color: string; width: number; variant: string };
+}): Promise<ApiResult<WebsiteToolsView>> {
+  return call(`/api/couranr/merchant/website-tools?${tenant(input.businessAccountId)}`, {
+    method: "PUT",
+    body: { action: input.action, embed: input.embed },
+  });
+}

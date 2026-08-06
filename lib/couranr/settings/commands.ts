@@ -12,6 +12,11 @@ import {
   type SettingsCapability,
 } from "@/lib/couranr/settings/permissions";
 import { normalizeAddressInput } from "@/lib/couranr/onboarding/workspace";
+import {
+  DEFAULT_EMBED,
+  WEBSITE_TOOL_STATUSES,
+  validateEmbed,
+} from "@/lib/couranr/settings/websiteTools";
 
 assertServerOnly("lib/couranr/settings/commands.ts");
 
@@ -531,4 +536,148 @@ export async function setMemberStatus(params: {
   });
   if (isSettingsFailure(r)) return r;
   return { ok: true, value: { member: r.value } };
+}
+
+/* ----------------------------------------------------------- MER-013 ---- */
+
+export type WebsiteToolsView = {
+  businessAccountId: string;
+  name: string;
+  slug: string | null;
+  status: string;
+  embed: {
+    label: string;
+    color: string;
+    width: number;
+    variant: string;
+  };
+  viewer: { role: string; status: string };
+};
+
+/**
+ * Read the website-tool config.
+ *
+ * The ABSENCE of a row is the draft state, not an error — every merchant who
+ * has never opened this screen has no row — so a missing row returns defaults
+ * with `status: "draft"`. An actual query error still fails closed.
+ */
+export async function getWebsiteTools(params: {
+  actor: ActorMembership;
+  businessAccountId: string;
+}): Promise<SettingsResult<WebsiteToolsView>> {
+  const op = "getWebsiteTools";
+
+  const denied = requireCapability(op, params.actor, "website_tools.read");
+  if (denied) return denied;
+
+  const account = await supabaseAdmin
+    .from("business_accounts")
+    .select("id,name,slug")
+    .eq("id", params.businessAccountId)
+    .maybeSingle();
+
+  if (account.error) {
+    return fail({ operation: op, code: "internal", detail: { lookup: "business_accounts", error: account.error } });
+  }
+  if (!account.data) {
+    return fail({ operation: op, code: "not_found", detail: { businessAccountId: params.businessAccountId } });
+  }
+
+  const config = await supabaseAdmin
+    .from("couranr_website_tool_configs")
+    .select("status,embed_label,embed_color,embed_width,embed_variant")
+    .eq("business_account_id", params.businessAccountId)
+    .maybeSingle();
+
+  // An ERROR is not "no row". Only the second means "still a draft".
+  if (config.error) {
+    return fail({
+      operation: op,
+      code: "internal",
+      detail: { lookup: "couranr_website_tool_configs", error: config.error },
+    });
+  }
+
+  return {
+    ok: true,
+    value: {
+      businessAccountId: params.businessAccountId,
+      name: String(account.data.name ?? ""),
+      slug: account.data.slug ?? null,
+      status: config.data ? String(config.data.status) : "draft",
+      embed: {
+        label: config.data ? String(config.data.embed_label) : DEFAULT_EMBED.label,
+        color: config.data ? String(config.data.embed_color) : DEFAULT_EMBED.color,
+        width: config.data ? Number(config.data.embed_width) : DEFAULT_EMBED.width,
+        variant: config.data ? String(config.data.embed_variant) : DEFAULT_EMBED.variant,
+      },
+      viewer: { role: params.actor.role, status: params.actor.status },
+    },
+  };
+}
+
+/**
+ * The actions this screen offers, and the status each one produces.
+ *
+ * A caller names an ACTION; it never names a status. This is the repository's
+ * standing rule — `/api/delivery/mark-in-transit` accepting an arbitrary target
+ * state is the counter-example the convention exists to prevent — and
+ * `tests/couranr-server-only.test.ts` enforces it over every canonical route.
+ */
+const WEBSITE_TOOL_ACTIONS: Readonly<Record<string, string>> = {
+  publish: "published",
+  disable: "disabled",
+  save_draft: "draft",
+};
+
+export async function saveWebsiteTools(params: {
+  actor: ActorMembership;
+  businessAccountId: string;
+  action: string;
+  embed: { label: string; color: string; width: number; variant: string };
+}): Promise<SettingsResult<{ config: Record<string, any> }>> {
+  const op = "saveWebsiteTools";
+
+  const denied = requireCapability(op, params.actor, "website_tools.publish");
+  if (denied) return denied;
+
+  // Validated with the SAME pure function the screen uses, so the browser and
+  // the server cannot disagree about what a renderable embed is. The database
+  // CHECK constraints are the third and final say.
+  const problems = validateEmbed({
+    label: params.embed.label,
+    color: params.embed.color,
+    width: params.embed.width,
+    variant: params.embed.variant as any,
+  });
+  if (problems.length > 0) {
+    return fail({
+      operation: op,
+      code: "invalid_input",
+      detail: { problems },
+      message: problems[0].message,
+    });
+  }
+
+  const resolvedStatus = WEBSITE_TOOL_ACTIONS[params.action];
+  if (!resolvedStatus || !(WEBSITE_TOOL_STATUSES as readonly string[]).includes(resolvedStatus)) {
+    return fail({
+      operation: op,
+      code: "invalid_input",
+      detail: { field: "action" },
+      message: "That is not an action Couranr recognises.",
+    });
+  }
+
+  const r = await callRpc<Record<string, any>>(op, "couranr_save_website_tool_config", {
+    p_business_account_id: params.businessAccountId,
+    p_actor_user_id: params.actor.userId,
+    p_status: resolvedStatus,
+    p_embed_label: params.embed.label,
+    p_embed_color: params.embed.color,
+    p_embed_width: params.embed.width,
+    p_embed_variant: params.embed.variant,
+  });
+  if (isSettingsFailure(r)) return r;
+  return { ok: true, value: { config: r.value } };
 }

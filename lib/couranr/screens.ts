@@ -69,7 +69,7 @@ export const CANONICAL_SCREENS: CanonicalScreen[] = [
   { id: "MER-010", name: "Presets list", group: "merchant", routes: ["/business/presets"], tier: "core", phase: "4", viewport: "desktop-first", implemented: false },
   { id: "MER-011", name: "Preset builder", group: "merchant", routes: ["/business/presets?edit=[id]"], tier: "core", phase: "4", viewport: "desktop-first", implemented: false },
   { id: "MER-012", name: "Merchant messages and support", group: "merchant", routes: ["/business/messages"], tier: "core", phase: "8–9", viewport: "desktop-first", implemented: false },
-  { id: "MER-013", name: "Website tools", group: "merchant", routes: ["/business/website-tools"], tier: "core", phase: "10", viewport: "desktop-first", implemented: false },
+  { id: "MER-013", name: "Website tools", group: "merchant", routes: ["/business/website-tools"], tier: "core", phase: "10", viewport: "desktop-first", implemented: true },
   { id: "MER-014", name: "Merchant settings", group: "merchant", routes: ["/business/settings"], tier: "core", phase: "4–8", viewport: "desktop-first", implemented: true },
   { id: "MER-015", name: "Team and permissions", group: "merchant", routes: ["/business/settings/team"], tier: "core", phase: "4", viewport: "desktop-first", implemented: true },
   { id: "MER-016", name: "Billing settings", group: "merchant", routes: ["/business/settings/billing"], tier: "core", phase: "6", viewport: "desktop-first", implemented: false },

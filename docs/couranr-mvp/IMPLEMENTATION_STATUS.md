@@ -25,6 +25,7 @@ Every SHA appearing in either ledger, in full, with what it covers:
 
 | SHA | rows | what was verified at it |
 |---|---|---|
+| `e9ac2408e4bd22e294bc588de9511d97c8d07db7` | 1 screen | `MER-013` website tools built on this SHA — hosted link, QR, embed generator and publish states. Recorded `functional_unverified` until its disposable-stack run (which decodes the generated QR rather than eyeballing it) is attached |
 | `e4dd7e2afa29f35ac161985e915db112cbeaedb8` | 2 screens | `MER-014` and `MER-015` — 41/41 unstubbed signed-in browser checks on the disposable stack, including the CONCURRENT double-demote race (two parallel demotes returned 200/409, leaving one active owner where a TypeScript-only guard would have left none), the invite/accept round trip asserted on both rows and both audit events, and the five probes measuring what the un-applied hardening migration actually changes |
 | `c9e0fe573da29177fa72979911a7e60bf3beb0df` | 2 screens | `MER-014` and `MER-015` built — settings, team management, and the SQL last-owner protection. Recorded `functional_unverified` until the disposable-stack run (which includes the concurrent double-demote race) is attached. Also carries migration `20260806130000`, the business_members RLS hardening, which is NOT applied to production |
 | `08f59f8d0cc062c36252a7295f86513618187965` | 1 screen | `MER-004` — 25/25 unstubbed signed-in browser checks on the disposable stack: three separate state-group badges equal to the database facts on the control row, facet independence, inline mark-ready to row + audit event, the stale-tab conflict with no state change, duplicate prefill, viewer/tenant/anonymous refusals, injected-500 error state |
@@ -206,10 +207,10 @@ Neither number should be quoted without its fraction.
 | status | count |
 |---|---|
 | `functional_verified` | 24 |
-| `functional_unverified` | 5 |
+| `functional_unverified` | 6 |
 | `partial` | 7 |
 | `static_only` | 0 |
-| `placeholder_only` | 25 |
+| `placeholder_only` | 24 |
 | `missing` | 5 |
 | `deferred` / `retired_or_replaced` | 0 |
 

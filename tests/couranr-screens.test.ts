@@ -98,6 +98,7 @@ describe("canonical screen registry", () => {
       "MER-007",
       // MER-014 and MER-015 are the B03 settings and team screens; MER-015
       // brings the team-management capability that did not previously exist.
+      "MER-013",
       "MER-014",
       "MER-015",
       "OPS-002",
@@ -121,8 +122,8 @@ describe("canonical screen registry", () => {
 
     const p = implementationProgress();
     expect(p.total).toBe(66);
-    expect(p.implemented).toBe(20);
-    expect(p.remaining).toBe(46);
+    expect(p.implemented).toBe(21);
+    expect(p.remaining).toBe(45);
     expect(p.coreTotal).toBe(62);
   });
 

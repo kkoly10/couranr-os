@@ -61,6 +61,14 @@ export const SETTINGS_CAPABILITIES = [
   "team.grant_owner",
   /** Disable a member's access, and restore it. */
   "team.set_member_status",
+  /** See the MER-013 hosted link, QR and embed settings. */
+  "website_tools.read",
+  /**
+   * Change the embed and the publish status. Settings-shaped rather than
+   * dispatch-shaped, so dispatcher is excluded — a dispatcher moves
+   * deliveries, they do not decide what a merchant's public site says.
+   */
+  "website_tools.publish",
 ] as const;
 export type SettingsCapability = (typeof SETTINGS_CAPABILITIES)[number];
 
@@ -82,6 +90,8 @@ const MATRIX: Readonly<Record<MemberRole, readonly SettingsCapability[]>> = {
     "team.change_role",
     "team.grant_owner",
     "team.set_member_status",
+    "website_tools.read",
+    "website_tools.publish",
   ],
   manager: [
     "settings.read",
@@ -90,10 +100,12 @@ const MATRIX: Readonly<Record<MemberRole, readonly SettingsCapability[]>> = {
     "team.invite",
     "team.change_role",
     "team.set_member_status",
+    "website_tools.read",
+    "website_tools.publish",
   ],
-  dispatcher: ["settings.read", "team.read"],
-  viewer: ["settings.read", "team.read"],
-  billing: ["settings.read", "team.read"],
+  dispatcher: ["settings.read", "team.read", "website_tools.read"],
+  viewer: ["settings.read", "team.read", "website_tools.read"],
+  billing: ["settings.read", "team.read", "website_tools.read"],
 };
 
 /**
