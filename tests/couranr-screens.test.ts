@@ -96,6 +96,10 @@ describe("canonical screen registry", () => {
       "MER-005",
       "MER-006",
       "MER-007",
+      // MER-014 and MER-015 are the B03 settings and team screens; MER-015
+      // brings the team-management capability that did not previously exist.
+      "MER-014",
+      "MER-015",
       "OPS-002",
       // OPS-003's review workspace ships with Commit O. Managed dispatch —
       // vehicle, driver and schedule selection — is still absent, so the flag
@@ -117,8 +121,8 @@ describe("canonical screen registry", () => {
 
     const p = implementationProgress();
     expect(p.total).toBe(66);
-    expect(p.implemented).toBe(18);
-    expect(p.remaining).toBe(48);
+    expect(p.implemented).toBe(20);
+    expect(p.remaining).toBe(46);
     expect(p.coreTotal).toBe(62);
   });
 

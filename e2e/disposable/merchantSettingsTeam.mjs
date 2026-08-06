@@ -167,6 +167,13 @@ async function main() {
 
     console.log("Hardening migration 20260806130000 — measured, not assumed");
     {
+      /*
+       * NOTE ON BOOLEAN TEXT, learned the hard way twice in this repository:
+       * `psql -tA` prints a bare boolean as 't'/'f', but `boolean || ','`
+       * casts it to 'true'/'false'. Concatenated probes must therefore be
+       * compared against the WORD, not the letter. Every multi-value probe
+       * below concatenates, so every expectation reads 'true'/'false'.
+       */
       const grants = sql(
         `select
            has_table_privilege('authenticated','public.business_members','INSERT') || ','
@@ -176,7 +183,7 @@ async function main() {
         || has_table_privilege('authenticated','public.business_accounts','UPDATE')`
       );
       check("H1", "anon and authenticated hold NO write grant on business_members/accounts",
-        grants === "f,f,f,f,f", grants);
+        grants === "false,false,false,false,false", grants);
 
       const svc = sql(
         `select has_table_privilege('service_role','public.business_members','UPDATE')`
@@ -203,7 +210,8 @@ async function main() {
         `select has_table_privilege('authenticated','public.couranr_team_events','SELECT') || ','
              || has_table_privilege('service_role','public.couranr_team_events','INSERT')`
       );
-      check("H5", "the team audit table is service_role-only", teamEvents === "f,t", teamEvents);
+      check("H5", "the team audit table is service_role-only",
+        teamEvents === "false,true", teamEvents);
     }
 
     /* ───────────────────────────── fixtures ───────────────────────────── */
@@ -215,22 +223,37 @@ async function main() {
        values ('[TEAM] disposable business', 'team-disposable', 'active', 'America/New_York')
        returning id`
     );
-    sql(
-      `insert into public.couranr_merchant_workspaces
-         (business_account_id, created_by, idempotency_key, business_category,
-          pickup_address, contact_phone, payer_default, policies_version, policies_accepted_at)
-       select '${bizId}', id, 'team-ws-${crypto.randomUUID()}', 'general_local_business',
-              '{"line1":"1 Seed St","city":"Stafford","region":"VA","postalCode":"22554"}'::jsonb,
-              '540-555-0100', 'merchant', 'couranr-policies-2026-07', now()
-         from auth.users limit 1`
-    );
 
+    // The identities come FIRST. An earlier version created the workspace with
+    // `insert ... select ... from auth.users limit 1` before any user existed:
+    // the select matched nothing, the insert wrote zero rows, and the settings
+    // screen then correctly rendered "verification required" for a business
+    // that was supposed to have a profile. The bug was in the fixture, and the
+    // screen was right — which is exactly why the workspace row is asserted
+    // below rather than assumed.
     const owner = { id: makeUser("e2e-team-owner@couranr.invalid"), email: "e2e-team-owner@couranr.invalid" };
     const owner2 = { id: makeUser("e2e-team-owner2@couranr.invalid"), email: "e2e-team-owner2@couranr.invalid" };
     const manager = { id: makeUser("e2e-team-manager@couranr.invalid"), email: "e2e-team-manager@couranr.invalid" };
     const viewer = { id: makeUser("e2e-team-viewer@couranr.invalid"), email: "e2e-team-viewer@couranr.invalid" };
     const invitee = { id: makeUser("e2e-team-invitee@couranr.invalid"), email: "e2e-team-invitee@couranr.invalid" };
     const outsider = { id: makeUser("e2e-team-outsider@couranr.invalid"), email: "e2e-team-outsider@couranr.invalid" };
+
+    // Now that a real user exists to own it, the workspace profile — and the
+    // row is ASSERTED, not assumed, because its absence is a legitimate state
+    // this screen renders and a silent miss would look like a passing test.
+    sql(
+      `insert into public.couranr_merchant_workspaces
+         (business_account_id, created_by, idempotency_key, business_category,
+          pickup_address, contact_phone, payer_default, policies_version, policies_accepted_at)
+       values ('${bizId}', '${owner.id}', 'team-ws-${crypto.randomUUID()}',
+               'general_local_business',
+               '{"line1":"1 Seed St","city":"Stafford","region":"VA","postalCode":"22554"}'::jsonb,
+               '540-555-0100', 'merchant', 'couranr-policies-2026-07', now())`
+    );
+    if (sql(`select count(*) from public.couranr_merchant_workspaces
+              where business_account_id='${bizId}'`) !== "1") {
+      throw new Error("fixture failed: the workspace profile row was not created");
+    }
 
     const ownerMemberId = addMember(bizId, owner.id, "owner");
     addMember(bizId, manager.id, "manager");

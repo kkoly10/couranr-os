@@ -25,6 +25,7 @@ Every SHA appearing in either ledger, in full, with what it covers:
 
 | SHA | rows | what was verified at it |
 |---|---|---|
+| `c9e0fe573da29177fa72979911a7e60bf3beb0df` | 2 screens | `MER-014` and `MER-015` built — settings, team management, and the SQL last-owner protection. Recorded `functional_unverified` until the disposable-stack run (which includes the concurrent double-demote race) is attached. Also carries migration `20260806130000`, the business_members RLS hardening, which is NOT applied to production |
 | `08f59f8d0cc062c36252a7295f86513618187965` | 1 screen | `MER-004` — 25/25 unstubbed signed-in browser checks on the disposable stack: three separate state-group badges equal to the database facts on the control row, facet independence, inline mark-ready to row + audit event, the stale-tab conflict with no state change, duplicate prefill, viewer/tenant/anonymous refusals, injected-500 error state |
 | `32893e21401a6f056821c4caaa7858460c7356b8` | 1 screen | `MER-001` — 27/27 unstubbed signed-in browser checks on the disposable stack: all five registry states screenshot-backed, degraded payments derived through the SAME `lifecycleStage` the Operations queue uses, mark-ready asserted to the row + version + audit event, viewer refusal (403, row untouched) and cross-tenant refusal proven server-side |
 | `ec4a2af8f7c1de0bee4e3c021b50c875acdd6633` | 4 work items, 5 screens | the B02 PUBLIC LAUNCH SURFACE — `P10-003/004/005/006`; `PUB-001/008/009/010/011`. 68/68 unstubbed browser checks at both spec viewports, verbatim MKT-002 copy, mutation-tested claims scanner |
@@ -204,10 +205,10 @@ Neither number should be quoted without its fraction.
 | status | count |
 |---|---|
 | `functional_verified` | 22 |
-| `functional_unverified` | 5 |
+| `functional_unverified` | 7 |
 | `partial` | 7 |
 | `static_only` | 0 |
-| `placeholder_only` | 27 |
+| `placeholder_only` | 25 |
 | `missing` | 5 |
 | `deferred` / `retired_or_replaced` | 0 |
 
