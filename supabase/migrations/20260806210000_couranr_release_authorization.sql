@@ -99,6 +99,12 @@ begin
   if v_ob.payment_state <> 'authorized' then
     raise exception 'only_an_authorized_hold_may_be_released' using errcode = 'CR409';
   end if;
+  -- UNREACHABLE, and kept deliberately. couranr_po_authorized_needs_intent_chk
+  -- is `payment_state <> 'authorized' OR provider_payment_intent_id IS NOT NULL`,
+  -- so the database already forbids the row this branch describes - proven by
+  -- R19 in e2e/disposable/releaseAuthorization.mjs, which gets 23514 trying to
+  -- insert one. Defence in depth against that CHECK being relaxed later, not a
+  -- live path, and no test claims to cover it.
   if v_ob.provider_payment_intent_id is null then
     raise exception 'obligation_has_no_payment_intent' using errcode = 'CR422';
   end if;
