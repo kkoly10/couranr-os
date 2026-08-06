@@ -38,6 +38,7 @@ const EXPECTED: Record<string, SettingsCapability[]> = {
     "activation.read",
     "activation.request",
     "activation.record_test_delivery",
+    "billing.read",
     "customers.read",
     "customers.write",
   ],
@@ -53,6 +54,7 @@ const EXPECTED: Record<string, SettingsCapability[]> = {
     "activation.read",
     "activation.request",
     "activation.record_test_delivery",
+    "billing.read",
     "customers.read",
     "customers.write",
   ],
@@ -77,6 +79,7 @@ const EXPECTED: Record<string, SettingsCapability[]> = {
     "team.read",
     "website_tools.read",
     "activation.read",
+    "billing.read",
     "customers.read",
   ],
 };

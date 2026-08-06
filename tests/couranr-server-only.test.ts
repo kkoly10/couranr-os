@@ -108,6 +108,11 @@ describe("server-only modules are unreachable from client code", () => {
       // the one call that can put a workspace LIVE. A browser must never hold
       // the code that grants activation.
       "lib/couranr/activation/commands.ts",
+      // Reads every charge Couranr raised against a business. Read-only, but
+      // it holds the service-role client and the cross-tenant filter that IS
+      // the boundary — service_role bypasses RLS, so a browser holding this
+      // would read any business's money.
+      "lib/couranr/billing/commands.ts",
       // Holds the service-role client and every conversation command. A bundle
       // reaching it would ship the write path for messages — and the module
       // that calls `couranr_conversation_thread`, which is the one door to a
@@ -244,6 +249,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/me/team/[memberId]/route.ts",
       "app/api/couranr/me/team/route.ts",
       "app/api/couranr/me/workspace/route.ts",
+      "app/api/couranr/merchant/billing/route.ts",
       "app/api/couranr/merchant/customers/route.ts",
       "app/api/couranr/merchant/deliveries/[id]/pickup-code/route.ts",
       "app/api/couranr/merchant/deliveries/[id]/proof/route.ts",

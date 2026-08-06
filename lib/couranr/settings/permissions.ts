@@ -97,6 +97,17 @@ export const SETTINGS_CAPABILITIES = [
    * `couranr-activation` asserts the two lists match so they cannot drift.
    */
   "activation.record_test_delivery",
+  /**
+   * See the MER-016 billing records — what Couranr charged, per delivery.
+   *
+   * Owner, manager and BILLING. This is the one capability the `billing` role
+   * exists for: TRM-002 describes it as a read-only billing contact, and a
+   * billing contact who cannot see the charges is not a billing contact.
+   * Dispatcher and viewer are excluded — a dispatcher moves deliveries and a
+   * viewer watches them; neither needs the money record, and least privilege
+   * is the bound this whole module is written to.
+   */
+  "billing.read",
   /** See the MER-008 customer book. */
   "customers.read",
   /**
@@ -131,6 +142,7 @@ const MATRIX: Readonly<Record<MemberRole, readonly SettingsCapability[]>> = {
     "activation.read",
     "activation.request",
     "activation.record_test_delivery",
+    "billing.read",
     "customers.read",
     "customers.write",
   ],
@@ -146,6 +158,7 @@ const MATRIX: Readonly<Record<MemberRole, readonly SettingsCapability[]>> = {
     "activation.read",
     "activation.request",
     "activation.record_test_delivery",
+    "billing.read",
     "customers.read",
     "customers.write",
   ],
@@ -170,6 +183,7 @@ const MATRIX: Readonly<Record<MemberRole, readonly SettingsCapability[]>> = {
     "team.read",
     "website_tools.read",
     "activation.read",
+    "billing.read",
     "customers.read",
   ],
 };
