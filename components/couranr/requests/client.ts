@@ -179,6 +179,13 @@ export function fetchMyBusinessAccounts() {
   );
 }
 
+/** MER-004's list read. Newest first; the route's command caps the page. */
+export function fetchDeliveryRequests(input: { businessAccountId: string }) {
+  return call<{ requests: DeliveryRequestView[] }>(
+    `/api/couranr/delivery-requests?businessAccountId=${encodeURIComponent(input.businessAccountId)}`
+  );
+}
+
 /** One row of OPS-002, with the stage the server derived for it. */
 export type QueueEntry = {
   stage: string;

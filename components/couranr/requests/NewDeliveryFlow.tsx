@@ -34,6 +34,7 @@ import {
   type BusinessAccountOption,
 } from "./client";
 import { formatCents, type DeliveryRequestView } from "@/lib/couranr/requests/view";
+import { DUPLICATE_STORAGE_KEY } from "@/lib/couranr/requests/listFilters";
 
 /**
  * MER-005 (Create delivery with Smart Intake) and MER-006 (Delivery review and
@@ -121,6 +122,54 @@ export function NewDeliveryFlow() {
   // request.
   const idempotencyKey = React.useRef<string>("");
   if (idempotencyKey.current === "") idempotencyKey.current = newIdempotencyKey();
+
+  /**
+   * MER-004 "duplicate": prefill from the row the merchant chose, handed over
+   * in sessionStorage. Applied in an effect (not in initializers) so the
+   * server-rendered HTML and the first client render agree — a seeded
+   * initializer would hydrate against unseeded markup. The key is removed on
+   * first read, so a later plain visit starts blank. Everything here is only
+   * a FORM DEFAULT: pricing happens server-side on calculate, exactly as if
+   * the merchant had typed it.
+   */
+  const duplicateApplied = React.useRef(false);
+  React.useEffect(() => {
+    if (duplicateApplied.current) return;
+    duplicateApplied.current = true;
+    if (searchParams.get("duplicate") !== "1") return;
+    let raw: string | null = null;
+    try {
+      raw = sessionStorage.getItem(DUPLICATE_STORAGE_KEY);
+      sessionStorage.removeItem(DUPLICATE_STORAGE_KEY);
+    } catch {
+      return;
+    }
+    if (!raw) return;
+    let seed: any;
+    try {
+      seed = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    const seededAddress = (v: any) => {
+      const a = { ...EMPTY_ADDRESS };
+      for (const k of Object.keys(a) as (keyof typeof EMPTY_ADDRESS)[]) {
+        if (v && typeof v[k] === "string") a[k] = v[k];
+      }
+      return a;
+    };
+    setPickup(seededAddress(seed.pickupAddress));
+    setDropoff(seededAddress(seed.dropoffAddress));
+    if (typeof seed.recipientName === "string") setRecipientName(seed.recipientName);
+    if (typeof seed.recipientPhone === "string") setRecipientPhone(seed.recipientPhone);
+    if (typeof seed.recipientEmail === "string") setRecipientEmail(seed.recipientEmail);
+    if (Number.isFinite(seed.loadedMiles)) setLoadedMiles(String(seed.loadedMiles));
+    if (Number.isFinite(seed.weightLb)) setWeightLb(String(seed.weightLb));
+    if (Number.isFinite(seed.additionalStops)) setAdditionalStops(String(seed.additionalStops));
+    if (typeof seed.serviceLevel === "string") setServiceLevel(seed.serviceLevel);
+    if (typeof seed.proofMethod === "string") setProofMethod(seed.proofMethod);
+    setSignatureRequired(seed.signatureRequired === true);
+  }, [searchParams]);
 
   React.useEffect(() => {
     let cancelled = false;

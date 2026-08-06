@@ -60,7 +60,7 @@ export const CANONICAL_SCREENS: CanonicalScreen[] = [
   { id: "MER-001", name: "Merchant dashboard", group: "merchant", routes: ["/business"], tier: "core", phase: "4–10", viewport: "desktop-first", implemented: true },
   { id: "MER-002", name: "Merchant onboarding", group: "merchant", routes: ["/business/onboarding"], tier: "core", phase: "4", viewport: "desktop-first", implemented: true },
   { id: "MER-003", name: "Live activation checklist", group: "merchant", routes: ["/business/onboarding?step=activation"], tier: "core", phase: "4", viewport: "desktop-first", implemented: false },
-  { id: "MER-004", name: "Deliveries list", group: "merchant", routes: ["/business/deliveries"], tier: "core", phase: "5–8", viewport: "desktop-first", implemented: false },
+  { id: "MER-004", name: "Deliveries list", group: "merchant", routes: ["/business/deliveries"], tier: "core", phase: "5–8", viewport: "desktop-first", implemented: true },
   { id: "MER-005", name: "Create delivery with Smart Intake", group: "merchant", routes: ["/business/deliveries/new"], tier: "core", phase: "5", viewport: "desktop-first", implemented: true },
   { id: "MER-006", name: "Delivery review and quote", group: "merchant", routes: ["/business/deliveries/new?step=review"], tier: "core", phase: "6", viewport: "desktop-first", implemented: true },
   { id: "MER-007", name: "Delivery detail", group: "merchant", routes: ["/business/deliveries/[id]"], tier: "core", phase: "5–8", viewport: "desktop-first", implemented: true },

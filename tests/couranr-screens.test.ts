@@ -88,9 +88,11 @@ describe("canonical screen registry", () => {
       // PUB-005 and CUS-005 are the same route; CUS-005 is it at
       // ?mode=requote. Both ship with the payment authorization slice.
       "CUS-005",
-      // MER-001 is the B03 dashboard — a composition of existing endpoints.
+      // MER-001 and MER-004 are the B03 dashboard and deliveries list —
+      // compositions of existing endpoints.
       "MER-001",
       "MER-002",
+      "MER-004",
       "MER-005",
       "MER-006",
       "MER-007",
@@ -115,8 +117,8 @@ describe("canonical screen registry", () => {
 
     const p = implementationProgress();
     expect(p.total).toBe(66);
-    expect(p.implemented).toBe(17);
-    expect(p.remaining).toBe(49);
+    expect(p.implemented).toBe(18);
+    expect(p.remaining).toBe(48);
     expect(p.coreTotal).toBe(62);
   });
 
