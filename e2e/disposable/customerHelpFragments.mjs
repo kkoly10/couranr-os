@@ -37,6 +37,37 @@
  *
  * ---------------------------------------------------------------------------
  * KNOWN BLOCKER — THIS RUN DOES NOT PASS. DO NOT CITE IT AS EVIDENCE.
+ *
+ * CAUSE IDENTIFIED, FIX NOT YET FOUND. The page renders, and what it renders
+ * is the REFUSAL:
+ *
+ *     "Delivery Help
+ *      This help link is not available.
+ *      If you are expecting a delivery, the business that arranged it can send
+ *      you a new link."
+ *
+ * That is `NOT_AVAILABLE`, the single message `redeemHelpToken` returns for
+ * unknown, revoked and expired alike. So the page and the route are working;
+ * the TOKEN is being rejected. 0 selects, 0 textareas, 305 characters of body —
+ * captured unconditionally rather than inferred.
+ *
+ * RULED OUT by reading lib/couranr/conversations/help.ts rather than guessing:
+ * the seed uses the same algorithm the product does —
+ * `randomBytes(32).toString("base64url")` hashed with sha256 hex — and a
+ * 43-character base64url string satisfies `isWellFormedHelpToken`'s
+ * `/^[A-Za-z0-9_-]{40,90}$/`. The row carries a 14-day `expires_at` and a null
+ * `revoked_at`, so `couranr_redeem_help_token`'s three refusal conditions are
+ * all false against the row as inserted.
+ *
+ * STILL OPEN, and the next thing to measure rather than reason about: what the
+ * `/rest/v1/rpc/couranr_redeem_help_token` call actually returns through the
+ * gateway. The strongest candidate is the service-role key — the harness passes
+ * the literal string "disposable-local-service", which is not a JWT, and
+ * PostgREST's handling of a non-JWT Bearer token decides whether the RPC ever
+ * runs. Configuring a `jwt-secret` and signing a real service-role JWT would
+ * remove that whole class. NOT YET TRIED, and stated as a candidate rather
+ * than a diagnosis, because the last confident diagnosis in this file was
+ * wrong.
  * ---------------------------------------------------------------------------
  *
  * Measured state: C1 "passes", C2 fails because the topic `<select>` never
@@ -82,7 +113,7 @@
  */
 
 import { execFileSync, spawn } from "node:child_process";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -167,8 +198,11 @@ function seed(marker) {
              now(), now() + interval '1 hour', 'America/New_York', '{}'::jsonb)
      returning id`
   );
-  // The token is minted by the REAL command, the same one the Operations route
-  // calls, so issuance is exercised rather than a row being faked.
+  // The raw token and its hash are produced by the SAME algorithm as
+  // lib/couranr/conversations/help.ts — randomBytes(32).toString("base64url")
+  // and sha256 hex — verified by reading that file, not assumed. The row is
+  // inserted directly rather than through couranr_issue_help_token; an earlier
+  // comment here claimed otherwise and was wrong.
   const raw = crypto.randomBytes(32).toString("base64url");
   sql(
     `insert into public.couranr_help_access_tokens
@@ -258,8 +292,24 @@ async function main() {
     const pageA = await browser.newPage();
     await pageA.goto(`${BASE}/help/${a.raw}#address-change`, { waitUntil: "networkidle" });
 
+    // UNCONDITIONAL DIAGNOSTIC. The previous three runs failed while I reasoned
+    // about what the page might be showing. Capture it instead.
     const bodyA = await pageA.innerText("body");
-    check("C1", "CUS-001 renders for a live token with the fragment", /Delivery Help/i.test(bodyA), bodyA.slice(0, 60));
+    const htmlA = await pageA.content();
+    const selectCount = await pageA.locator("select").count();
+    const textareaCount = await pageA.locator("textarea").count();
+    writeFileSync(path.join(SHOTS, "DIAG-innerText.txt"), bodyA);
+    writeFileSync(path.join(SHOTS, "DIAG-page.html"), htmlA);
+    await pageA.screenshot({ path: path.join(SHOTS, "DIAG-render.png"), fullPage: true });
+    console.log(`  DIAG selects=${selectCount} textareas=${textareaCount} bodyLen=${bodyA.length}`);
+    console.log(`  DIAG innerText head: ${JSON.stringify(bodyA.slice(0, 400))}`);
+
+    // C1 must assert something that exists ONLY in the loaded help form. The
+    // earlier /Delivery Help/i matched the marketing nav, so it was asserting a
+    // LINK, not the page.
+    check("C1", "CUS-001 renders the help FORM, not merely a page mentioning it",
+      selectCount === 1 && textareaCount === 1,
+      `${selectCount} select(s), ${textareaCount} textarea(s)`);
 
     // BROWSER SIDE: the fragment preselected the topic.
     const selectedA = await pageA.locator("select").inputValue();
