@@ -1107,6 +1107,32 @@ export async function releaseAuthorization(params: {
   });
   if (!done.ok) return done;
 
+  /*
+   * A `rejected` outcome is NOT a success, and reporting it as one is the worst
+   * answer available here.
+   *
+   * `complete` returns `rejected` when the intent id does not match the
+   * obligation, or when the obligation is no longer `authorized` — and by the
+   * time it says so, STRIPE HAS ALREADY BEEN CANCELLED. Returning 200 would tell
+   * the operator the hold was released while the row still says `authorized`
+   * and nothing was recorded: the two systems disagree and the one person who
+   * could reconcile them has been told there is nothing to look at.
+   *
+   * `ignored` IS a success — it means the release was already recorded, by an
+   * earlier attempt or by the webhook.
+   */
+  const outcome = String(done.value?.outcome ?? "");
+  if (outcome === "rejected") {
+    return fail({
+      operation: op,
+      code: "conflict",
+      detail: { reason: "complete_rejected", rejected: done.value?.rejected_reason ?? null },
+      message:
+        "The hold was cancelled at the payment provider but Couranr could not record it. " +
+        "Do not retry — send this to Couranr Support to reconcile.",
+    });
+  }
+
   return {
     ok: true,
     value: {

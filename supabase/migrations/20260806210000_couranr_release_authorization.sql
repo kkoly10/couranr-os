@@ -30,8 +30,9 @@
 --     assert released funds that are still held, and NOTHING would correct it -
 --     no webhook fires for a cancel that never happened.
 --
--- So: `begin` gates and guards WITHOUT changing payment_state, the caller
--- cancels at Stripe, and `complete` records the outcome. If the process dies
+-- So: `begin` gates and guards WITHOUT changing payment_state (it bumps only
+-- `version`, to give the attempt an identity), the caller cancels at Stripe,
+-- and `complete` records the outcome. If the process dies
 -- between them the obligation stays `authorized` - truthful, still held, and
 -- self-healing, because the existing webhook maps a real `payment_intent.canceled`
 -- to `cancelled` on its own.
@@ -112,10 +113,39 @@ begin
     raise exception 'version_or_state_conflict' using errcode = 'CR409';
   end if;
 
-  -- Append-only record that a release was authorised by a named operator, at a
-  -- known version. Version-scoped per the captureEventId convention in
-  -- lib/couranr/payments/states.ts, so a retry after a failed Stripe call is a
-  -- distinct row rather than a swallowed duplicate.
+  /*
+   * BUMP THE VERSION FIRST, so this ATTEMPT has an identity.
+   *
+   * This is not bookkeeping - it is what makes a retry possible, and getting it
+   * wrong made the first version of this command worse than not having it.
+   *
+   * The event id below is version-scoped, copying the captureEventId convention
+   * in lib/couranr/payments/states.ts. That convention works for capture ONLY
+   * because couranr_begin_payment_capture bumps the version on every cycle.
+   * This command originally did not, on the reasoning that a release should not
+   * move the row - so a second attempt rebuilt the SAME id and died on
+   * couranr_pe_provider_event_uniq with 23505. Measured, not theorised: attempt
+   * one returned `applied` with version still 1, attempt two returned
+   * `23505 duplicate key value violates unique constraint`.
+   *
+   * The consequence was that ONE failed Stripe call made a hold permanently
+   * un-releasable - strictly worse than shipping nothing, because the operator
+   * has a button that can never work again.
+   *
+   * payment_state is still NOT changed here; that part of the design stands.
+   * Only `version` moves, which is exactly what "a distinct attempt" means.
+   */
+  update public.couranr_payment_obligations
+     set version    = version + 1,
+         updated_at = now()
+   where id = p_obligation_id
+     and version = p_expected_version
+     and payment_state = 'authorized'
+  returning * into v_ob;
+  if not found then
+    raise exception 'version_or_state_conflict' using errcode = 'CR409';
+  end if;
+
   insert into public.couranr_payment_events (
     obligation_id, request_id, provider, provider_event_id, event_type,
     payment_state_before, payment_state_after, outcome, detail
@@ -127,7 +157,6 @@ begin
     jsonb_build_object('reason', btrim(p_reason), 'actorUserId', p_actor_user_id)
   );
 
-  -- payment_state is deliberately NOT changed here. See the header.
   return row('applied', v_ob.id, v_ob.request_id, v_ob.payment_state, null,
              null)::public.couranr_payment_apply_result;
 end

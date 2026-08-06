@@ -31,6 +31,9 @@
  *   R19  the SCHEMA forbids an authorized hold with no intent (23514),
  *        which makes the command's own CR422 intent guard unreachable
  *   R20  anon/authenticated hold no EXECUTE on either command
+ *   R21  begin bumps the version, giving each ATTEMPT an identity
+ *   R22  a SECOND begin succeeds — the retry after a failed Stripe call
+ *   R23  ... and writes a DISTINCT event rather than colliding (23505)
  */
 import crypto from "node:crypto";
 import { up, down, psql } from "./up.mjs";
@@ -176,6 +179,35 @@ function main() {
       "1",
     );
 
+    /*
+     * R21-R23 — THE RETRY AFTER A FAILED STRIPE CALL.
+     *
+     * These exist because the first version of this migration made a hold
+     * PERMANENTLY un-releasable. `begin` did not bump the version, its event id
+     * was version-scoped, and so a second attempt rebuilt the same id and died
+     * on couranr_pe_provider_event_uniq with 23505 — forever. One failed Stripe
+     * call and the operator had a button that could never work again.
+     *
+     * Nothing in the original 20 checks touched this, because they only ever
+     * called `begin` once per obligation. Four independent adversarial-review
+     * lenses found it; no test did. That is the gap these close.
+     */
+    eq(
+      "R21", "begin bumped the version, giving the attempt an identity",
+      one(`select version from public.couranr_payment_obligations where id='${a.obligationId}'`),
+      "2",
+    );
+    eq(
+      "R22", "a SECOND begin succeeds — the retry after a failed Stripe call",
+      one(beginSql(ops, 2, "stripe timed out, trying again")), "applied",
+    );
+    eq(
+      "R23", "... and it wrote a DISTINCT begun event, not a duplicate",
+      one(`select count(distinct provider_event_id) from public.couranr_payment_events
+            where obligation_id='${a.obligationId}' and event_type='couranr.release.begun'`),
+      "2",
+    );
+
     // ---- complete --------------------------------------------------------
     const doneSql = (intent, status) =>
       `select (public.couranr_complete_payment_release('${a.obligationId}', '${intent}', '${status}')).outcome`;
@@ -208,7 +240,8 @@ function main() {
       "t",
     );
     eq("R15", "a replayed complete is ignored, not an error", one(doneSql(a.intent, "canceled")), "ignored");
-    eq("R16", "a replayed begin on a released hold is ignored", one(beginSql(ops, 2, "again")), "ignored");
+    eq("R16", "a replayed begin on a released hold is ignored",
+       one(beginSql(ops, 99, "again")), "ignored");  // state is checked before version
 
     // ---- states that may NOT be released ---------------------------------
     for (const [id, state] of [["R17", "capture_pending"], ["R18", "captured"]]) {
