@@ -69,6 +69,14 @@ export const SETTINGS_CAPABILITIES = [
    * deliveries, they do not decide what a merchant's public site says.
    */
   "website_tools.publish",
+  /** See the MER-008 customer book. */
+  "customers.read",
+  /**
+   * Create, edit and archive customer records. Includes dispatcher because a
+   * dispatcher already creates and submits deliveries under DRP-001, and a
+   * customer record is the recipient half of that same job.
+   */
+  "customers.write",
 ] as const;
 export type SettingsCapability = (typeof SETTINGS_CAPABILITIES)[number];
 
@@ -92,6 +100,8 @@ const MATRIX: Readonly<Record<MemberRole, readonly SettingsCapability[]>> = {
     "team.set_member_status",
     "website_tools.read",
     "website_tools.publish",
+    "customers.read",
+    "customers.write",
   ],
   manager: [
     "settings.read",
@@ -102,10 +112,18 @@ const MATRIX: Readonly<Record<MemberRole, readonly SettingsCapability[]>> = {
     "team.set_member_status",
     "website_tools.read",
     "website_tools.publish",
+    "customers.read",
+    "customers.write",
   ],
-  dispatcher: ["settings.read", "team.read", "website_tools.read"],
-  viewer: ["settings.read", "team.read", "website_tools.read"],
-  billing: ["settings.read", "team.read", "website_tools.read"],
+  dispatcher: [
+    "settings.read",
+    "team.read",
+    "website_tools.read",
+    "customers.read",
+    "customers.write",
+  ],
+  viewer: ["settings.read", "team.read", "website_tools.read", "customers.read"],
+  billing: ["settings.read", "team.read", "website_tools.read", "customers.read"],
 };
 
 /**

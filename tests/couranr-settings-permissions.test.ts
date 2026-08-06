@@ -35,6 +35,8 @@ const EXPECTED: Record<string, SettingsCapability[]> = {
     "team.set_member_status",
     "website_tools.read",
     "website_tools.publish",
+    "customers.read",
+    "customers.write",
   ],
   manager: [
     "settings.read",
@@ -45,10 +47,18 @@ const EXPECTED: Record<string, SettingsCapability[]> = {
     "team.set_member_status",
     "website_tools.read",
     "website_tools.publish",
+    "customers.read",
+    "customers.write",
   ],
-  dispatcher: ["settings.read", "team.read", "website_tools.read"],
-  viewer: ["settings.read", "team.read", "website_tools.read"],
-  billing: ["settings.read", "team.read", "website_tools.read"],
+  dispatcher: [
+    "settings.read",
+    "team.read",
+    "website_tools.read",
+    "customers.read",
+    "customers.write",
+  ],
+  viewer: ["settings.read", "team.read", "website_tools.read", "customers.read"],
+  billing: ["settings.read", "team.read", "website_tools.read", "customers.read"],
 };
 
 describe("the five roles have an explicit settings permission set (TRM-002 acceptance)", () => {

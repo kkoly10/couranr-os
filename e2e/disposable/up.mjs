@@ -189,12 +189,27 @@ export function verifyFidelity() {
       () => one("select rolbypassrls from pg_roles where rolname='service_role'") === "t"],
     ["pg_default_acl grants exist",
       () => Number(one("select count(*) from pg_default_acl")) >= 3],
-    // 24 at the production head, plus `couranr_team_events` from the MER-015
-    // migration (20260806120000), which is committed but NOT yet applied to
-    // production — so the disposable stack is deliberately one ahead here.
-    ["25 couranr_ tables",
+    /*
+     * 24 at the production head, plus the two `couranr_`-prefixed tables from
+     * migrations that are committed but NOT yet applied to production:
+     * `couranr_team_events` (20260806120000, MER-015) and
+     * `couranr_website_tool_configs` (20260806150000, MER-013). The disposable
+     * stack is deliberately ahead of production by exactly those.
+     *
+     * `merchant_customers` and `customer_addresses` (20260806160000) are NOT
+     * counted here: their names come from the canonical data model and carry
+     * no `couranr_` prefix. They are asserted by name below instead, so this
+     * probe cannot silently stop covering them.
+     */
+    ["26 couranr_ tables",
       () => one(`select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace
-                 where n.nspname='public' and c.relkind='r' and c.relname like 'couranr%'`) === "25"],
+                 where n.nspname='public' and c.relkind='r' and c.relname like 'couranr%'`) === "26"],
+    ["the merchant-customer tables exist and are service_role-only",
+      () =>
+        one(`select has_table_privilege('service_role','public.merchant_customers','INSERT')
+                 || ',' || has_table_privilege('authenticated','public.merchant_customers','SELECT')
+                 || ',' || has_table_privilege('anon','public.customer_addresses','SELECT')`)
+        === "true,false,false"],
     ["couranr_ functions present",
       () => Number(one(`select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
                         where n.nspname='public' and p.proname like 'couranr%'`)) >= 78],
