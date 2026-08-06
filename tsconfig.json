@@ -15,7 +15,7 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "jsx": "preserve",
+    "jsx": "react-jsx",
     "incremental": true,
     // ✅ ADD THESE TWO
     "baseUrl": ".",
@@ -36,7 +36,9 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     ".next-disposable/types/**/*.ts",
-    ".next-probe/types/**/*.ts"
+    ".next-probe/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    ".next-disposable/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

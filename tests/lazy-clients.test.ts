@@ -135,7 +135,7 @@ describe("lazy clients fail clearly when actually used without config", () => {
  * drops the option fails here rather than in production.
  */
 describe("service-role traffic never enters Next's Data Cache", () => {
-  async function captureCalls(use: (client: any) => Promise<unknown>) {
+  async function captureCalls(exercise: (client: any) => Promise<unknown>) {
     process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
     process.env.SUPABASE_SERVICE_ROLE_KEY = "test-key-not-a-real-secret";
 
@@ -155,7 +155,7 @@ describe("service-role traffic never enters Next's Data Cache", () => {
       // The stub response is deliberately not a valid payload for every API;
       // what is under test is the request that went out, not the parse.
       try {
-        await use(supabaseAdmin);
+        await exercise(supabaseAdmin);
       } catch {
         /* ignored on purpose — see above */
       }

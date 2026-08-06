@@ -2,7 +2,10 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
 /**
- * Session refresh — the ONE thing this middleware does.
+ * Session refresh — the ONE thing this proxy does.
+ *
+ * Next 16 renamed middleware.ts to proxy.ts (Node runtime only, which this
+ * always was in spirit — nothing here needs edge).
  *
  * Net-new with the @supabase/ssr migration (ACP-004): the app previously had
  * no middleware and therefore NO session-refresh path anywhere — an expired
@@ -32,7 +35,7 @@ import { createServerClient } from "@supabase/ssr";
  * keep the session fresh; the three legacy cookie-auth routes validate their
  * own cookies exactly as they did when no middleware existed.
  */
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) return NextResponse.next();
