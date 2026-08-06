@@ -49,5 +49,8 @@
     "jsdom": "^30.0.1",
     "typescript": "^5.4.5",
     "vitest": "^1.6.0"
+  },
+  "engines": {
+    "node": ">=24"
   }
 }
