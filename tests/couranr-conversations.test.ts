@@ -5,6 +5,8 @@ import {
   AUTHORSHIPS,
   CONVERSATION_KINDS,
   CONVERSATION_POST_ROLES,
+  CONVERSATION_READ_ROLES,
+  MERCHANT_CONVERSATION_PERMISSIONS,
   CUSTOMER_TOPICS,
   DUE_SOON_MINUTES,
   MESSAGE_MAY_NOT_MUTATE,
@@ -15,6 +17,7 @@ import {
   dueStateAt,
   isReadableInThread,
   memberMayPost,
+  memberMayRead,
   nextOperatingPeriodAt,
   responseDueAt,
   type ParticipantKind,
@@ -688,15 +691,115 @@ describe("the message write discharges Master Package:490", () => {
     expect(COMMANDS).not.toContain("CR422");
   });
 
-  it("refuses a viewer or billing member, mirroring DRP-001", () => {
+  /**
+   * TRM-002, decided by the owner 2026-08-06. This block replaces a single
+   * assertion that mirrored DRP-001 "by analogy" while TRM-002 was unresolved.
+   *
+   * The SEND half is unchanged in effect. The READ half is new, and it closes a
+   * real hole: commands.ts said in as many words that "a viewer or billing
+   * member may read a thread and may not post to it", so a viewer could open
+   * any support thread in their business and read customer contact details,
+   * address concerns and Couranr internal context.
+   */
+  it("TRM-002 send: owner, manager and dispatcher only", () => {
     expect([...CONVERSATION_POST_ROLES]).toEqual(["owner", "manager", "dispatcher"]);
     expect(memberMayPost("owner")).toBe(true);
     expect(memberMayPost("manager")).toBe(true);
     expect(memberMayPost("dispatcher")).toBe(true);
     expect(memberMayPost("viewer")).toBe(false);
     expect(memberMayPost("billing")).toBe(false);
-    expect(memberMayPost(null)).toBe(false);
-    expect(memberMayPost("admin")).toBe(false);
+  });
+
+  it("TRM-002 read: viewer and billing are refused READING, not merely sending", () => {
+    expect([...CONVERSATION_READ_ROLES]).toEqual(["owner", "manager", "dispatcher"]);
+    expect(memberMayRead("owner")).toBe(true);
+    expect(memberMayRead("manager")).toBe(true);
+    expect(memberMayRead("dispatcher")).toBe(true);
+    // The assertions that would have failed before this change.
+    expect(memberMayRead("viewer")).toBe(false);
+    expect(memberMayRead("billing")).toBe(false);
+  });
+
+  it("both predicates FAIL CLOSED on an unknown or absent role", () => {
+    // A sixth role added to the schema before TRM-002 is extended must be
+    // refused, not admitted. A permission table that defaults open is how a new
+    // role silently gains access.
+    for (const bogus of [null, undefined, "", "admin", "Owner", "OWNER", "sixth_role"]) {
+      expect(memberMayRead(bogus as any), `read ${JSON.stringify(bogus)}`).toBe(false);
+      expect(memberMayPost(bogus as any), `send ${JSON.stringify(bogus)}`).toBe(false);
+    }
+  });
+
+  it("the permission table matches the registry record exactly", () => {
+    // The code must not drift from the decision. Read the registry rather than
+    // restating it here, so the two cannot disagree.
+    const registry = JSON.parse(
+      readFileSync(path.join(ROOT, "02_DECISION_REGISTRY.json"), "utf8")
+    );
+    const trm = registry.decisions.find((d: any) => d.id === "TRM-002");
+    expect(trm.status).toBe("decided");
+    for (const [role, perms] of Object.entries<any>(trm.value.permissions_per_role)) {
+      expect(memberMayRead(role), `${role} read`).toBe(perms.conversation_read);
+      expect(memberMayPost(role), `${role} send`).toBe(perms.conversation_send);
+    }
+    // Every declared role is covered — a role in the schema with no entry is
+    // the gap TRM-002 existed to close.
+    for (const role of trm.value.declared_roles) {
+      expect(MERCHANT_CONVERSATION_PERMISSIONS[role], `${role} has no entry`).toBeTruthy();
+    }
+  });
+
+  it("the READ gate sits at resolveParticipant, so every read path inherits it", () => {
+    // readThread, sendMessage and markThreadRead all funnel through
+    // resolveParticipant. Gating there is what makes it impossible for a new
+    // caller to forget.
+    const resolver = functionBody(COMMANDS, "export async function resolveParticipant");
+    expect(resolver).toContain("memberMayRead");
+    // ...and it refuses with not_found, never not_permitted: `not_permitted`
+    // would confirm the thread exists and belongs to the caller's business.
+    const gate = resolver.slice(resolver.indexOf("memberMayRead"));
+    expect(gate).toContain('code: "not_found"');
+    expect(gate).not.toContain('code: "not_permitted"');
+  });
+
+  it("the LIST path applies the same rule — a list that names what it hides is a disclosure", () => {
+    const list = functionBody(COMMANDS, "export async function listConversations");
+    expect(list).toContain("memberMayRead");
+    // It must select member_role, or the predicate has nothing to read.
+    expect(list).toContain("member_role");
+  });
+
+  it("no conversation module still justifies its allow-list by analogy to DRP-001", () => {
+    /**
+     * The registry withdrew that analogy explicitly, so no module may present
+     * DRP-001 as the CURRENT authority. A historical note explaining what was
+     * withdrawn is valuable and is allowed — deleting it would lose the reason
+     * the permission set looks the way it does.
+     *
+     * The rule is therefore: the old justification must be gone, and any
+     * surviving DRP-001 mention must sit beside the withdrawal.
+     */
+    const dir = path.join(ROOT, "lib/couranr/conversations");
+    for (const file of readdirSync(dir)) {
+      const src = readFileSync(path.join(dir, file), "utf8");
+
+      // The exact phrasings that presented the analogy as live.
+      expect(src, `${file}: TRM-002 is decided`).not.toContain("TRM-002 is unresolved");
+      expect(src, `${file}: the analogy is withdrawn`).not.toContain("mirroring DRP-001");
+      expect(src, `${file}: the analogy is withdrawn`).not.toContain("DRP-001 allow-list");
+
+      // Any remaining mention must be adjacent to the withdrawal, and the file
+      // must name TRM-002 as the authority.
+      if (src.includes("DRP-001")) {
+        expect(src, `${file} mentions DRP-001 but never TRM-002`).toContain("TRM-002");
+        const at = src.indexOf("DRP-001");
+        const around = src.slice(Math.max(0, at - 600), at + 600);
+        expect(
+          /withdraw|not a decision|previous|prior/i.test(around),
+          `${file}: the DRP-001 mention at ${at} does not read as historical`
+        ).toBe(true);
+      }
+    }
   });
 
   it("does not distinguish 'not yours' from 'does not exist'", () => {

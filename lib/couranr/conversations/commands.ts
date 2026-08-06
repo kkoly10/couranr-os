@@ -15,6 +15,7 @@ import {
   dueStateAt,
   nextOperatingPeriodAt,
   memberMayPost,
+  memberMayRead,
   responseDueAt,
 } from "./states";
 import {
@@ -134,6 +135,30 @@ export async function resolveParticipant(params: {
     // Deliberately the same refusal a nonexistent conversation produces. A
     // caller must not be able to distinguish "this thread is not yours" from
     // "there is no such thread" — that difference is an existence oracle.
+    return fail({
+      code: "not_found",
+      operation: "conversations.resolveParticipant",
+      message: "That conversation is not available.",
+    });
+  }
+
+  // TRM-002 READ GATE. Every read path funnels through here — readThread,
+  // sendMessage and markThreadRead all call it — so gating once covers all
+  // three and no future caller can bypass it by forgetting.
+  //
+  // A viewer or billing member previously COULD read: the role was checked
+  // only before a write. A support thread carries customer contact details,
+  // address concerns and Couranr internal context, so read is not the safe
+  // default.
+  //
+  // The refusal is `not_found`, deliberately IDENTICAL to the one a
+  // nonexistent conversation and a non-participant produce. `not_permitted`
+  // would confirm the thread exists and that the caller's own business owns
+  // it — an existence oracle differing only in who is asking.
+  if (
+    data.participant_kind === "merchant" &&
+    !memberMayRead(data.member_role)
+  ) {
     return fail({
       code: "not_found",
       operation: "conversations.resolveParticipant",
@@ -280,7 +305,11 @@ export async function listConversations(params: {
 }): Promise<ConversationResult<ConversationSummary[]>> {
   const parts = await supabaseAdmin
     .from("couranr_conversation_participants")
-    .select("conversation_id, last_read_at")
+    // `member_role` is selected so TRM-002 can be applied here too. Without it
+    // a viewer's list would still show every thread's subject, unread count and
+    // due state — the row would simply refuse to open. A list that names what
+    // it will not show is still a disclosure.
+    .select("conversation_id, last_read_at, participant_kind, member_role")
     .eq("user_id", params.userId)
     .is("left_at", null);
 
@@ -292,11 +321,17 @@ export async function listConversations(params: {
     });
   }
 
-  const ids = (parts.data || []).map((p: any) => p.conversation_id);
+  // TRM-002: drop the rows resolveParticipant would refuse, using the same
+  // predicate rather than a second copy of the rule.
+  const visible = (parts.data || []).filter(
+    (p: any) => p.participant_kind !== "merchant" || memberMayRead(p.member_role)
+  );
+
+  const ids = visible.map((p: any) => p.conversation_id);
   if (ids.length === 0) return { ok: true, value: [] };
 
   const lastReadBy = new Map<string, string | null>(
-    (parts.data || []).map((p: any) => [p.conversation_id, p.last_read_at])
+    visible.map((p: any) => [p.conversation_id, p.last_read_at])
   );
 
   const rows = await supabaseAdmin
@@ -510,8 +545,9 @@ export type SentMessage = {
  *   1. authenticated — the caller's user id comes from a validated Bearer
  *      token upstream, never from the request body;
  *   2. participant check — `resolveParticipant`, which reads the row;
- *   3. role check — TRM-002 is unresolved, so this uses the narrow
- *      already-approved DRP-001 allow-list rather than inventing an answer;
+ *   3. role check — TRM-002, decided by the owner 2026-08-06: owner, manager
+ *      and dispatcher may send; viewer and billing have no access at all and
+ *      are refused one step earlier, at the participant read;
  *   4. idempotency — a scoped UNIQUE, with the duplicate resolved to the prior
  *      message id rather than surfaced as an error;
  *   5. audit — an events row, whose CHECK refuses a body at any depth;
@@ -547,8 +583,9 @@ export async function sendMessage(
   });
   if (isConversationFailure(participant)) return participant;
 
-  // (3) role check. A viewer or billing member may read a thread and may not
-  // post to it, mirroring lib/couranr/requests/permissions.ts.
+  // (3) role check. TRM-002: owner, manager and dispatcher may send. viewer and
+  // billing reach neither this line nor the participant read above — they are
+  // refused in resolveParticipant.
   if (
     participant.value.participantKind === "merchant" &&
     !memberMayPost(participant.value.memberRole)

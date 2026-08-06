@@ -249,23 +249,68 @@ export const MESSAGE_MAY_NOT_MUTATE = [
 /* ----------------------------------------------------------- role authority */
 
 /**
- * Which merchant roles may POST to a conversation.
+ * TRM-002 — merchant team role permissions for conversations.
  *
- * TRM-002 is `unresolved`: "Each of the five roles has an explicit permission
- * set before MER-015 ships." The spec says merchant support "includes
- * authorized merchant roles and Couranr", so which roles are authorized is
- * precisely the open decision — this module does not get to make it.
+ * DECIDED BY THE OWNER, 2026-08-06. Recorded in the root
+ * `02_DECISION_REGISTRY.json`; `tests/decision-registry-provenance.test.ts`
+ * pins the record and this table is asserted against it.
  *
- * What it does instead is mirror the already-approved DRP-001 shape from
- * lib/couranr/requests/permissions.ts, where owner/manager/dispatcher may write
- * and every active member may read. Starting narrow is the reversible choice:
- * widening later is additive, narrowing later takes away an ability people have
- * been using.
+ *   owner       read + send
+ *   manager     read + send
+ *   dispatcher  read + send
+ *   viewer      NO ACCESS
+ *   billing     NO ACCESS
+ *
+ * THIS REPLACES AN ANALOGY, AND CHANGES BEHAVIOUR.
+ *
+ * The previous allow-list was the same three roles, but it was reasoned by
+ * analogy to DRP-001 request authority because TRM-002 was `unresolved`. An
+ * analogy is not a decision, and the registry now withdraws it explicitly.
+ *
+ * The substantive change is the READ half. The old model gated SENDING only —
+ * `commands.ts` said in as many words that "a viewer or billing member may read
+ * a thread and may not post to it". A support thread carries customer contact
+ * details, address concerns and Couranr internal context, so read is not the
+ * safe default. Both are refused now.
  */
-export const CONVERSATION_POST_ROLES = ["owner", "manager", "dispatcher"] as const;
+export const MERCHANT_CONVERSATION_PERMISSIONS: Record<
+  string,
+  { read: boolean; send: boolean }
+> = {
+  owner: { read: true, send: true },
+  manager: { read: true, send: true },
+  dispatcher: { read: true, send: true },
+  viewer: { read: false, send: false },
+  billing: { read: false, send: false },
+};
+
+/** The roles TRM-002 grants send. Derived, so the two can never disagree. */
+export const CONVERSATION_POST_ROLES = Object.freeze(
+  Object.keys(MERCHANT_CONVERSATION_PERMISSIONS).filter(
+    (r) => MERCHANT_CONVERSATION_PERMISSIONS[r].send
+  )
+) as readonly string[];
+
+/** The roles TRM-002 grants read. */
+export const CONVERSATION_READ_ROLES = Object.freeze(
+  Object.keys(MERCHANT_CONVERSATION_PERMISSIONS).filter(
+    (r) => MERCHANT_CONVERSATION_PERMISSIONS[r].read
+  )
+) as readonly string[];
+
+/**
+ * FAILS CLOSED. An unrecognised role — null, a typo, or a sixth role added to
+ * the schema before TRM-002 is extended — is refused rather than allowed. A
+ * permission table that defaults open is how a new role silently gains access.
+ */
+export function memberMayRead(role: string | null | undefined): boolean {
+  if (typeof role !== "string") return false;
+  return MERCHANT_CONVERSATION_PERMISSIONS[role]?.read === true;
+}
 
 export function memberMayPost(role: string | null | undefined): boolean {
-  return typeof role === "string" && (CONVERSATION_POST_ROLES as readonly string[]).includes(role);
+  if (typeof role !== "string") return false;
+  return MERCHANT_CONVERSATION_PERMISSIONS[role]?.send === true;
 }
 
 /* -------------------------------------------------------------- type guards */
