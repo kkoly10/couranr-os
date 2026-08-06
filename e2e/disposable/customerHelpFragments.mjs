@@ -36,40 +36,47 @@
  * afterwards, and holds no real data at any point.
  *
  * ---------------------------------------------------------------------------
- * KNOWN BLOCKER — THIS RUN DOES NOT YET PASS. READ BEFORE CITING IT.
+ * KNOWN BLOCKER — THIS RUN DOES NOT PASS. DO NOT CITE IT AS EVIDENCE.
  * ---------------------------------------------------------------------------
  *
- * Current state, measured: C1 PASSES — the page renders for a live token
- * against the disposable database with nothing stubbed. C2 then fails, because
- * the topic `<select>` never appears; `locator.inputValue()` waits its full 30
- * seconds and times out.
+ * Measured state: C1 "passes", C2 fails because the topic `<select>` never
+ * appears — `locator.inputValue()` waits its full 30 seconds and times out.
  *
- * THE CAUSE IS NOT THE TEST. `NEXT_PUBLIC_*` variables are INLINED INTO THE
- * BUNDLE AT BUILD TIME, not read at runtime. `.next` here was built against
- * the real project, so the browser client still points at the Supabase host —
- * which Chromium in this container cannot reach at all. The server half works
- * (it reads `process.env` at runtime, which is why C1 renders), the client
- * half cannot, and the form that the client renders after its fetch never
- * arrives.
+ * C1 IS ALMOST CERTAINLY A FALSE PASS, AND IS NOT EVIDENCE OF ANYTHING.
+ * It matches `/Delivery Help/i` anywhere in `innerText`, and the text it
+ * actually captured begins "Skip to main content / Pricing / For businesses /
+ * Service areas" — the marketing shell's navigation. A nav or footer link is
+ * enough to satisfy that regex, so C1 may be asserting that a LINK exists while
+ * the help page itself never rendered. This is the documented `getByText`
+ * substring trap, reproduced here by me. It must be replaced by a wait on
+ * something that exists ONLY in the loaded help form before this file is
+ * trusted at all.
  *
- * THE FIX is to rebuild with the disposable URL baked in before starting:
+ * A DIAGNOSIS I GOT WRONG, RECORDED SO IT IS NOT RETRIED.
+ * I attributed the missing `<select>` to `NEXT_PUBLIC_*` being inlined at build
+ * time — the bundle pointing at the real Supabase host, unreachable from
+ * Chromium here. That reasoning is sound in general and it was NOT the cause:
+ * the harness now rebuilds with the gateway URL baked in, into its own
+ * `distDir`, and the run fails identically. The build-time-env fix is retained
+ * because it is correct and necessary, but it did not move the needle, and the
+ * real cause is still unidentified.
  *
- *     NEXT_PUBLIC_SUPABASE_URL=$GATEWAY npm run build
+ * What is NOT yet ruled out: the page rendering a refusal or an error state
+ * whose copy also contains "Delivery Help"; the token being rejected by
+ * `couranr_redeem_help_token` through the gateway; hydration never completing;
+ * or the form being gated behind a state the harness never reaches. The next
+ * step is to screenshot and dump `innerText` unconditionally on failure rather
+ * than reason about it.
  *
- * and only then `next start`. That is a ~2 minute build inside a run that
- * already takes several minutes, so it belongs in the harness rather than in a
- * caller's head.
+ * CUS-001 AND CUS-003 REMAIN UNPROMOTED IN BOTH LEDGERS.
  *
- * UNTIL THAT LANDS AND THE RUN IS GREEN, CUS-001 AND CUS-003 STAY UNPROMOTED
- * IN BOTH LEDGERS. One passing check out of ten is not evidence for a screen.
- *
- * Two harness defects were found and fixed getting this far, both mine:
+ * Two harness defects WERE found and fixed getting this far, both mine:
  *   - the Next server was spawned with stdio "pipe" and never drained, so it
  *     blocked once the OS pipe buffer filled — 15 minutes, no output, SIGTERM;
  *   - `psql` returned the command tag as well as the value, so every
  *     `insert ... returning id` yielded "<uuid>\nINSERT 0 1" and the tag was
- *     carried into the next statement. It surfaced as
- *     `invalid input syntax for type uuid`, one layer away from the cause.
+ *     carried into the next statement, surfacing as
+ *     `invalid input syntax for type uuid` one layer from its cause.
  *
  * Run:  node e2e/disposable/customerHelpFragments.mjs
  */
@@ -84,6 +91,8 @@ import { startPostgrest, startGateway, waitForPostgrest } from "./gateway.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const SHOTS = path.join(ROOT, "e2e/screenshots/disposable-cus");
+/** Build output for the harness only — never the developer's `.next`. */
+const DIST = ".next-disposable";
 const PGRST_BIN =
   process.env.COURANR_POSTGREST ||
   "/tmp/claude-0/-home-user-couranr-os/3ba65fdb-c110-5366-92d6-85568b408343/scratchpad/prst/postgrest";
@@ -204,12 +213,29 @@ async function main() {
       NODE_ENV: "production",
     };
 
+    // Build with the gateway URL baked in. NEXT_PUBLIC_* are inlined at build
+    // time, so a build made against the real project leaves the browser client
+    // pointing at a host Chromium cannot reach here — the server half renders
+    // and the client half never does. Its own distDir, so a developer's .next
+    // is never clobbered.
+    console.log("  building the application against the disposable stack...");
+    execFileSync("npx", ["next", "build"], {
+      cwd: ROOT,
+      env: { ...env, COURANR_DIST_DIR: DIST },
+      stdio: "ignore",
+      timeout: 600_000,
+    });
+
     console.log("  starting the application against it...");
     // stdio "ignore", NOT "pipe". A piped child whose output nobody drains
     // blocks forever once the OS pipe buffer fills — which is exactly what
     // happened on the first run: 15 minutes, no output, SIGTERM. Next logs
     // every request, so the buffer fills in seconds.
-    devServer = spawn("npx", ["next", "start", "-p", "3311"], { cwd: ROOT, env, stdio: "ignore" });
+    devServer = spawn("npx", ["next", "start", "-p", "3311"], {
+      cwd: ROOT,
+      env: { ...env, COURANR_DIST_DIR: DIST },
+      stdio: "ignore",
+    });
     const BASE = "http://127.0.0.1:3311";
     const deadline = Date.now() + 90_000;
     let live = false;

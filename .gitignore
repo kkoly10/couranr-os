@@ -27,3 +27,4 @@ e2e/.smoke.json
 # databases; they are not repo tests and must not join the suite or the commit.
 tests/zz-*.test.ts
 tests/scratch/
+.next-disposable/
