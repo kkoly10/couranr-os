@@ -510,14 +510,17 @@ So, in order:
 1. **Make the acceptance matrix repeatable.** Today it can be run once and then
    refuses, because it cannot delete its own fixtures. A scratch or branch
    project is the cleanest answer and touches no production row; a scoped
-   `SECURITY DEFINER` purge limited to marked rows is the cheapest. A proposal
-   sits at `supabase/migrations/PROPOSED_couranr_e2e_cleanup.sql.review` and is
-   **not applied** — the freeze forbids another Phase 8 migration until the PR
-   is open.
+   `SECURITY DEFINER` purge limited to marked rows is the cheapest. **DONE, and
+   by neither of those routes.** The matrix now runs against a disposable
+   database that starts empty and is destroyed afterwards, so no grant was
+   widened: `supabase/migrations/PROPOSED_couranr_e2e_cleanup.sql.review`
+   remains **unapplied**.
 2. **Close the two verification gaps this slice recorded rather than hid** —
    the `CUS-001`/`CUS-003` fragment paths, and a browser run against `MER-012`,
-   `DRV-008` and `OPS-005`. That is what would move `P8-001` and `P8-004` from
-   `complete_unverified` to `complete_verified`.
+   `DRV-008` and `OPS-005`. **DONE**: 11/11 and 51/51, both unstubbed, which
+   moved `P8-001`, `P8-002` and `P8-004` to `complete_verified`. Driving the
+   messaging screens is also what revealed that two of them have no data path in
+   production — see the work-items section.
 3. **Fix `issueTrackingLink`'s missing caller** under `PUB-006`, not here.
    `/track/[token]` has the identical dead-on-arrival shape `/help/[token]` had.
 

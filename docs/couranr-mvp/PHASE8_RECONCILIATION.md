@@ -181,9 +181,11 @@ correct. Recorded against PUB-006 in the screen ledger.
 
 ## Executable acceptance matrix
 
-`e2e/phase8Acceptance.mjs`. **26 of 26 behavioural checks passed** against the
-connected project with synthetic `[P8ACC]` fixtures, including the real
-`/help/[token]` browser flow with **no stub on the Couranr API or database**.
+`e2e/phase8Acceptance.mjs`. **27 of 27 checks pass on two consecutive runs from
+an empty database**, including the real `/help/[token]` browser flow with **no
+stub on the Couranr API or database**. It first passed 26/26 against the
+connected project with synthetic `[P8ACC]` fixtures and then had to be disarmed;
+what changed is below.
 
 | id | proof |
 |---|---|

@@ -31,7 +31,7 @@ execution-control documents, and all seven Phase 8 migrations were applied to
 production before the branch was merged. No further Phase 8 migration may be
 applied until: the reconciliation is complete (**done**), these tracking files
 reflect the branch (**done — this commit**), the executable acceptance matrix
-passes (**done, 26/26, with the repeatability caveat in §7**), and the Phase 8
+passes (**done — 27/27, twice, and re-runnable now; see §7.3**), and the Phase 8
 PR is open with the complete diff.
 
 **No improvised rollback was attempted, and none is needed.** A clean replay of
@@ -123,10 +123,12 @@ Current-state ledgers, which record measured status and never requirements:
 2. **`P8-001` conversation foundation** — the schema, the participant model, the
    four visibility values, the named server command every message write goes
    through, and the message-specific idempotency and audit primitives that close
-   out `P2-003`'s remaining work. **Built.** `complete_unverified`: the privacy
+   out `P2-003`'s remaining work. **Built.** `complete_verified`: the privacy
    boundary is structural (no role holds SELECT on the message table; one
-   `SECURITY DEFINER` reader; a direct `select *` raises 42501) and proven by
-   execution, but three of its screens have never been driven in a browser.
+   `SECURITY DEFINER` reader; a direct `select *` raises 42501), proven by
+   execution, and now driven signed-in in a real browser — 51/51, with the
+   TRM-002 half mutation tested. What is NOT built, and is recorded in §7.5
+   rather than folded in: nothing creates a merchant or driver conversation.
 3. **`P8-002` deadlines and Operations Inbox** — the five deadline fields the
    spec names, the due-state transitions, and the Operations Inbox. **Built,
    `partial`.** The elapsed-time half works and the invisible-reply clock defect
@@ -334,7 +336,8 @@ exact command that proves it. A row with no command is not verified, and says so
 the evidence class that let `P8-004` ship with two defects that made it
 impossible to use. Every row below is a function *invoked* against the live
 project with synthetic `[P8ACC]` fixtures by `e2e/phase8Acceptance.mjs`, or a
-catalog read. 26 of 26 checks pass.
+catalog read. This table records the ORIGINAL project run at `40129ee`, 26 of 26.
+The same checks now pass 27 of 27 on a disposable database, twice — see §7.3.
 
 | requirement | enforcement point | proof | result | SHA |
 |---|---|---|---|---|
@@ -376,11 +379,13 @@ the waiting party cannot see was permanently removing a thread from the overdue
 queue; the fix adds `awaiting_reply_kind` and gates the stop on `canSee`. It was
 proven live during the session with an A/B sharing one control — both arms
 overdue, Arm A (visible reply) stops the clock, Arm B (internal-only) stays
-overdue. That run is real evidence, but it is **not part of the 26-check matrix
-and is not re-runnable**, and the only coverage standing at this SHA is a
-static source assertion in `tests/couranr-conversations.test.ts:1103`. Static
-assertions do not promote anything here, so this is recorded as an executed
-one-off pending its addition to the matrix.
+overdue. That run was real evidence but was not re-runnable, and the only
+standing coverage was a static source assertion in
+`tests/couranr-conversations.test.ts:1103`. **That gap is now closed by
+execution**: `O11` asserts an internal note does NOT stop the clock and `O15`
+asserts a participant-visible reply does and returns the thread to the waiting
+party, both in a browser and both read back from
+`couranr_conversations.first_couranr_response_at`, `due_state` and `waiting_on`.
 
 ### 7.1a The authenticated messaging pass — `a115f92`
 
