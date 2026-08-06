@@ -31,7 +31,9 @@ const ROLLBACK_NAME = "20260804120000_sec001_profiles_role_privilege.rollback.sq
 const stripSql = (s: string) => s.replace(/^\s*--.*$/gm, "");
 
 const FORWARD = stripSql(readFileSync(path.join(MIGRATIONS, FORWARD_NAME), "utf8"));
-const ROLLBACK = stripSql(readFileSync(path.join(MIGRATIONS, ROLLBACK_NAME), "utf8"));
+const ROLLBACK = stripSql(
+  readFileSync(path.join(ROOT, "supabase/rollbacks", ROLLBACK_NAME), "utf8")
+);
 
 /** Every forward migration in sequence order. Rollbacks are never applied. */
 const ALL_FORWARD = readdirSync(MIGRATIONS)
@@ -120,7 +122,7 @@ describe("SEC-001 — profiles.role is not self-assignable", () => {
   });
 
   it("the paired rollback exists and restores the policy by recreating it", () => {
-    expect(readdirSync(MIGRATIONS)).toContain(ROLLBACK_NAME);
+    expect(readdirSync(path.join(ROOT, "supabase/rollbacks"))).toContain(ROLLBACK_NAME);
 
     // ALTER POLICY leaves omitted clauses unchanged, so `alter policy ... using
     // (...)` would NOT clear the WITH CHECK the forward migration added. Only a
