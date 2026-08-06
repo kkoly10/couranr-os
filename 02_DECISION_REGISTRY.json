@@ -769,8 +769,8 @@
         "single_zone_for_all_markets": true
       },
       "status": "decided",
-      "authority_file": "owner decision recorded in 02_DECISION_REGISTRY.json",
-      "authority_section": "Owner decision, 2026-08-06. Supersedes the earlier 'not stated by any authority' finding.",
+      "authority_file": "02_DECISION_REGISTRY.json",
+      "authority_section": "Owner decision, 2026-08-06, recorded directly in this registry. Supersedes the earlier finding that no authority stated it.",
       "affected_routes": [
         "/estimate",
         "/operations/settings"
@@ -2178,8 +2178,8 @@
         "no_access_means": "viewer and billing are refused BOTH reading and sending. A role that can read a support thread can read customer contact details and Couranr internal context, so read is not the safe default."
       },
       "status": "decided",
-      "authority_file": "owner decision recorded in 02_DECISION_REGISTRY.json",
-      "authority_section": "Owner decision, 2026-08-06. Supersedes the earlier 'not defined by any authority' finding.",
+      "authority_file": "02_DECISION_REGISTRY.json",
+      "authority_section": "Owner decision, 2026-08-06, recorded directly in this registry. Supersedes the earlier finding that no authority stated it.",
       "affected_routes": [
         "/business/settings/team",
         "/business/messages"
