@@ -4,7 +4,7 @@
   "authority_sha": "f26d857fb797b008fc5772700d65a4e5c181f259",
   "production_migration_head": "20260806010000",
   "active_batch": "B03",
-  "active_capability": "ACP-019",
+  "active_capability": "ACP-021",
   "open_pr": 27,
   "completed_capabilities": [
     "ACP-001",
@@ -21,7 +21,8 @@
     "ACP-013",
     "ACP-014",
     "ACP-016-scanner-half",
-    "ACP-017"
+    "ACP-017",
+    "ACP-019"
   ],
   "carried_forward": {
     "ACP-006": "canonical token system pre-exists and matches the spec palette; table/chart/upload primitives land with first consumers",
@@ -41,7 +42,23 @@
     "AI-PROVIDER",
     "OBS-PROVIDER"
   ],
-  "p0_findings": [],
+  "p0_findings": [
+    {
+      "id": "FIND-B03-001",
+      "severity": "P1 (within-tenant privilege escalation; not anonymous-reachable)",
+      "finding": "business_members carries an ALL policy (business_members_manage_owner_manager) whose USING/WITH CHECK validate only the ACTOR (active owner OR MANAGER of the business), never the row being written, while authenticated holds full DML on the table. Per catalog reads at 2026-08-06, an active MANAGER can insert/update/delete any membership row in their business directly from an authenticated browser client - self-promotion to owner, removal of owners - bypassing the named-command architecture and making the registry-required last-owner protection unenforceable at the data layer.",
+      "evidence": "pg_policy + has_table_privilege + pg_get_functiondef reads on production (execute_sql, read-only); app_is_business_member/app_is_admin are SECURITY DEFINER so no 42P17 recursion barrier protects the path",
+      "runtime_confirmation": "deliberately NOT run against production (no exploit against real data); to be reproduced and measured on the disposable stack in the ACP-021 harness",
+      "proposed_fix": "owner-gated hardening migration: drop or row-constrain the ALL policy (named server commands are the sanctioned mutation path) and revoke authenticated/anon DML on business_members; must be reviewed before apply"
+    },
+    {
+      "id": "FIND-B03-002",
+      "severity": "latent defect, fail-closed",
+      "finding": "business_accounts_update_owner_manager policy contains a correlation bug: its EXISTS compares bm.business_account_id = bm.id (the membership row's own two uuid columns, effectively never equal) instead of correlating to business_accounts.id - so the policy silently reduces to app_is_admin() and owners/managers cannot update their business row through the RLS path.",
+      "evidence": "pg_get_expr(polqual) read on production",
+      "proposed_fix": "same owner-gated hardening migration; MER-014 settings writes go through service_role named commands and are unaffected"
+    }
+  ],
   "production_changes_pending_approval": [
     {
       "operation": "apply migration 20260806100000_couranr_private_and_analytics_schemas to production",
@@ -60,6 +77,6 @@
     "gap_intake": "ACP-002 protocol active: any discovered requirement with no work-item row becomes ACP-GAP-### in IMPLEMENTATION_LEDGER-adjacent notes before implementation continues",
     "owner_gates_standing": "no production migration apply, no production ledger repair, no real Stripe money, no secret rotation, no bucket made public, no batch-PR merge, no canary \u2014 each needs explicit owner approval for the exact operation",
     "b02": "PRs stacked: #24 (B00) -> #25 (B01) -> #26 (B02); all draft, merges owner-gated; every batch verified at its head",
-    "b03": "PR #27 (B03 -> b02 branch, draft). ACP-017 MER-001 verified 27/27 at 32893e2. Build order per the in-repo contracts: ACP-019 MER-004 next, then ACP-021 MER-014/015 (needs the invite/last-owner migration), ACP-020 MER-008/009, ACP-022 MER-013, ACP-018 MER-003 last (net-new state machine). ACP-023 MER-016 waits on ACP-041 billing substrate."
+    "b03": "PR #27 (B03 -> b02 branch, draft). ACP-017 MER-001 verified 27/27 at 32893e2; ACP-019 MER-004 verified 25/25 at 08f59f8. Next: ACP-021 MER-014/015 (live-shape check DONE - business_members/business_accounts match the documented shape, slug UNIQUE confirmed; two RLS findings recorded in p0_findings; invites + last-owner CR409 migration to design), then ACP-020 MER-008/009, ACP-022 MER-013, ACP-018 MER-003 last (net-new state machine). ACP-023 MER-016 waits on ACP-041 billing substrate."
   }
 }
