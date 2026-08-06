@@ -128,7 +128,11 @@ async function main() {
     };
 
     console.log("  starting the application against it...");
-    devServer = spawn("npx", ["next", "start", "-p", "3311"], { cwd: ROOT, env, stdio: "pipe" });
+    // stdio "ignore", NOT "pipe". A piped child whose output nobody drains
+    // blocks forever once the OS pipe buffer fills — which is exactly what
+    // happened on the first run: 15 minutes, no output, SIGTERM. Next logs
+    // every request, so the buffer fills in seconds.
+    devServer = spawn("npx", ["next", "start", "-p", "3311"], { cwd: ROOT, env, stdio: "ignore" });
     const BASE = "http://127.0.0.1:3311";
     const deadline = Date.now() + 90_000;
     let live = false;
