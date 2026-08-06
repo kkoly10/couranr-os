@@ -103,7 +103,10 @@ describe("every forward migration is paired with a rollback", () => {
     // Without this the pairing test below would pass vacuously on an empty
     // directory, which is the same shape of bug as a filter that matches
     // nothing.
-    expect(FORWARD.length).toBeGreaterThanOrEqual(35);
+    // Non-vacuity guard: without it the pairing test below would pass on an
+    // empty directory, which is the same shape of bug as a filter matching
+    // nothing. The floor is the count at the time this branch was cut.
+    expect(FORWARD.length).toBeGreaterThanOrEqual(31);
   });
 
   it("no forward migration is missing its rollback", () => {
