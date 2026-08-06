@@ -80,7 +80,7 @@ No other value is permitted, and the validator fails the build on any other.
 | measure | count |
 |---|---|
 | Migration files | 39 forward in `supabase/migrations/` + 39 in `supabase/rollbacks/` — **paired, and rollbacks are out of the deployment's reach** |
-| Applied migrations (live) | 38 = the `remote_schema` baseline + 31 pre-Phase-8 forward + **6 Phase 8 rows** |
+| Applied migrations (live) | **39 — one row per forward migration, every version matching its filename.** The ledger was repaired and `20260806010000` applied on 2026-08-06 |
 | Page routes | 99 total — 43 canonical under `app/(couranr)`, 56 legacy |
 | Canonical pages rendering `ScreenPlaceholder` | 25 of 43 |
 | API routes | 131 total, 60 canonical under `app/api/couranr` |
@@ -93,13 +93,13 @@ No other value is permitted, and the validator fails the build on any other.
 | Storage buckets / public | 7 / **1** (`vehicle-images`) |
 | Local Node / CI Node | v22.22.2 / 24 |
 
-**"38 files, 38 applied" is a coincidence, not lockstep.** The 38 forward files
-are 31 pre-Phase-8 plus this slice's 7. The 38 applied rows are the baseline
-plus 31 plus **6**, because `20260804200000` and `20260804210000` were applied
-to production as a single row named `couranr_help_hardening_and_token_fk`. A
-fresh replay from the repository produces 39 rows where production has 38. The
-schemas are identical; only the ledger differs. See `PHASE8_RECONCILIATION.md`
-§5, drift D-2.
+**REPOSITORY AND PRODUCTION ARE NOW IN LOCKSTEP.** 39 forward migrations, 39
+ledger rows, every version equal to its filename. Before the repair only **3 of
+38** matched — migrations had been applied through the MCP path, which stamps
+its own timestamp, so `20260804150000_couranr_conversations.sql` was recorded as
+`20260804154141`. The repair inserted the 35 repository versions as applied and
+removed the 35 orphan stamps; no schema object was touched, verified by counting
+tables, functions and rows before and after.
 
 **The rollback pairing gap is closed, and the rollbacks MOVED.** 20 forward
 migrations had no rollback; all 39 now do. They live in `supabase/rollbacks/`
