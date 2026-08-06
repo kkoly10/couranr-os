@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "repository": "kkoly10/couranr-os",
   "authority_sha": "f26d857fb797b008fc5772700d65a4e5c181f259",
-  "production_migration_head": "20260806010000",
+  "production_migration_head": "20260806120648",
   "active_batch": "B03",
   "active_capability": "ACP-018",
   "open_pr": 27,
@@ -52,14 +52,16 @@
       "finding": "business_members carries an ALL policy (business_members_manage_owner_manager) whose USING/WITH CHECK validate only the ACTOR (active owner OR MANAGER of the business), never the row being written, while authenticated holds full DML on the table. Per catalog reads at 2026-08-06, an active MANAGER can insert/update/delete any membership row in their business directly from an authenticated browser client - self-promotion to owner, removal of owners - bypassing the named-command architecture and making the registry-required last-owner protection unenforceable at the data layer.",
       "evidence": "pg_policy + has_table_privilege + pg_get_functiondef reads on production (execute_sql, read-only); app_is_business_member/app_is_admin are SECURITY DEFINER so no 42P17 recursion barrier protects the path",
       "runtime_confirmation": "deliberately NOT run against production (no exploit against real data); to be reproduced and measured on the disposable stack in the ACP-021 harness",
-      "proposed_fix": "owner-gated hardening migration: drop or row-constrain the ALL policy (named server commands are the sanctioned mutation path) and revoke authenticated/anon DML on business_members; must be reviewed before apply"
+      "proposed_fix": "owner-gated hardening migration: drop or row-constrain the ALL policy (named server commands are the sanctioned mutation path) and revoke authenticated/anon DML on business_members; must be reviewed before apply",
+      "status": "CLOSED in production 2026-08-06 by migration couranr_business_members_rls_hardening (production version 20260806120629); the closure was measured with has_table_privilege and pg_policy after the apply, not assumed."
     },
     {
       "id": "FIND-B03-002",
       "severity": "latent defect, fail-closed",
       "finding": "business_accounts_update_owner_manager policy contains a correlation bug: its EXISTS compares bm.business_account_id = bm.id (the membership row's own two uuid columns, effectively never equal) instead of correlating to business_accounts.id - so the policy silently reduces to app_is_admin() and owners/managers cannot update their business row through the RLS path.",
       "evidence": "pg_get_expr(polqual) read on production",
-      "proposed_fix": "same owner-gated hardening migration; MER-014 settings writes go through service_role named commands and are unaffected"
+      "proposed_fix": "same owner-gated hardening migration; MER-014 settings writes go through service_role named commands and are unaffected",
+      "status": "CLOSED in production 2026-08-06 by migration couranr_business_members_rls_hardening (production version 20260806120629); the closure was measured with has_table_privilege and pg_policy after the apply, not assumed."
     },
     {
       "id": "FIND-B03-003",
@@ -72,34 +74,11 @@
   ],
   "production_changes_pending_approval": [
     {
-      "operation": "apply migration 20260806100000_couranr_private_and_analytics_schemas to production",
-      "prepared": "forward + rollback committed at c2cac8b; executed against a disposable database including the rollback and its RESTRICT fail-safe; additive only, touches no existing object or row",
-      "expected_effect": "two new schemas (private, analytics), service_role-only, not exposed through PostgREST; production ledger 39 -> 40",
-      "rollback": "supabase/rollbacks/20260806100000_...rollback.sql \u2014 refuses if the schemas hold objects"
-    },
-    {
-      "operation": "apply migration 20260806120000_couranr_team_management to production",
-      "prepared": "forward + rollback committed; executed against a disposable database across three full runs; additive only - creates couranr_team_events, six named commands and one email-lookup function, touches no existing column and deletes no row",
-      "expected_effect": "MER-015 team management becomes operable; production ledger 40 -> 41",
-      "rollback": "supabase/rollbacks/20260806120000_...rollback.sql - RESTRICT, refuses if the audit trail holds rows"
-    },
-    {
-      "operation": "apply migration 20260806130000_couranr_business_members_rls_hardening to production",
-      "prepared": "forward + rollback committed; verified on the disposable stack, whose bootstrap reproduces production's policies INCLUDING both defects, so the before/after is real",
-      "expected_effect": "closes FIND-B03-001 (a manager can rewrite any membership row in their business from a browser) and corrects FIND-B03-002's self-comparison; every business_members caller in the repo uses service_role, verified by grep, so no application path changes",
-      "rollback": "supabase/rollbacks/20260806130000_...rollback.sql - RESTORES THE ESCALATION by design; the header says so"
-    },
-    {
-      "operation": "apply migration 20260806150000_couranr_website_tool_configs to production",
-      "prepared": "forward + rollback committed; executed against a disposable database; additive only - one new table and one command, touches no existing object",
-      "expected_effect": "MER-013 publish states become persistable; production ledger 41 -> 42",
-      "rollback": "supabase/rollbacks/20260806150000_...rollback.sql - RESTRICT, refuses if merchants have saved designs"
-    },
-    {
       "operation": "apply migration 20260806160000_couranr_merchant_customers to production",
-      "prepared": "forward + rollback committed; executed against a disposable database across two full runs; additive only - two new tables and four commands, touches no existing object and deletes no row",
-      "expected_effect": "MER-008/MER-009 customer records become persistable; production ledger 42 -> 43",
-      "rollback": "supabase/rollbacks/20260806160000_...rollback.sql - RESTRICT, refuses if merchants have saved customer records"
+      "status": "BLOCKED BY THE PERMISSION CLASSIFIER, not by the owner. The owner approved the apply; the apply_migration tool call for this one migration was denied by the auto-mode classifier and no workaround was attempted.",
+      "prepared": "forward + rollback committed; executed against a disposable database across two full runs; additive only - two new tables and four commands",
+      "consequence_while_unapplied": "MER-008/MER-009 READ correctly (the customer list derives from couranr_delivery_requests), but creating or archiving a customer record fails against production.",
+      "rollback": "supabase/rollbacks/20260806160000_...rollback.sql - RESTRICT"
     }
   ],
   "last_full_gate": {
@@ -113,6 +92,33 @@
     "owner_gates_standing": "no production migration apply, no production ledger repair, no real Stripe money, no secret rotation, no bucket made public, no batch-PR merge, no canary \u2014 each needs explicit owner approval for the exact operation",
     "b02": "PRs stacked: #24 (B00) -> #25 (B01) -> #26 (B02); all draft, merges owner-gated; every batch verified at its head",
     "b03": "PR #27 (B03 -> b02 branch, draft). VERIFIED: ACP-017 MER-001 27/27; ACP-019 MER-004 25/25; ACP-021 MER-014/MER-015 41/41 (incl. the concurrent last-owner race); ACP-022 MER-013 24/24 (incl. decoding the rendered QR); ACP-020 MER-008/MER-009 34/34 (incl. the PII-in-HTML assertion that caught FIND-B03-003). REMAINING: ACP-018 MER-003 activation checklist, a net-new state machine. ACP-023 MER-016 billing waits on ACP-041; MER-010/011 presets are B04 (ACP-025).",
-    "dependencies_added": "qrcode-generator 2.0.4 (runtime, zero deps) for MER-013 QR encoding; jsqr 1.4.0 (dev only) so the harness decodes the rendered QR instead of eyeballing it. Both exact-pinned. Surfaced here because the MER-013 contract named the QR dependency as a decision to surface."
-  }
+    "dependencies_added": "qrcode-generator 2.0.4 (runtime, zero deps) for MER-013 QR encoding; jsqr 1.4.0 (dev only) so the harness decodes the rendered QR instead of eyeballing it. Both exact-pinned. Surfaced here because the MER-013 contract named the QR dependency as a decision to surface.",
+    "migration_version_drift": "apply_migration stamps its own timestamp, so production versions (2026080612xxxx) differ from the repo filenames (20260806100000/120000/130000/150000). The NAMES match exactly, so which migration ran is unambiguous, but `supabase db diff` will see version skew. Not corrected by hand: rewriting supabase_migrations.schema_migrations is riskier than the drift it would fix."
+  },
+  "applied_to_production": [
+    {
+      "file": "20260806100000_couranr_private_and_analytics_schemas.sql",
+      "production_version": "20260806120353",
+      "name": "couranr_private_and_analytics_schemas",
+      "verified": "both schemas exist"
+    },
+    {
+      "file": "20260806120000_couranr_team_management.sql",
+      "production_version": "20260806120616",
+      "name": "couranr_team_management",
+      "verified": "couranr_team_events present; 6 member functions; full-line SQL comments outside function bodies were stripped to fit the apply payload after asserting the 9-function set was identical"
+    },
+    {
+      "file": "20260806130000_couranr_business_members_rls_hardening.sql",
+      "production_version": "20260806120629",
+      "name": "couranr_business_members_rls_hardening",
+      "verified": "MEASURED AFTER APPLY: authenticated UPDATE on business_members=false, anon DELETE=false, authenticated UPDATE on business_accounts=false, service_role UPDATE=true, ALL policy is now business_members_manage_admin_only, business_accounts policy correlates to business_accounts.id. FIND-B03-001 and FIND-B03-002 are CLOSED."
+    },
+    {
+      "file": "20260806150000_couranr_website_tool_configs.sql",
+      "production_version": "20260806120648",
+      "name": "couranr_website_tool_configs",
+      "verified": "table present"
+    }
+  ]
 }
