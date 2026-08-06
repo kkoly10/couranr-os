@@ -10,6 +10,16 @@ import {
   removedFieldsMessage,
   stripForbiddenFields,
 } from "@/lib/couranr/presets/fields";
+import {
+  PRESET_STATES,
+  PRESET_STATE_DESCRIPTIONS,
+  PRESET_STATE_LABELS,
+  PRESET_STATE_TONE,
+  builderState,
+  hasSuggestedUpdate,
+  presetState,
+  saveIsBlocked,
+} from "@/lib/couranr/presets/states";
 
 const ROOT = path.resolve(__dirname, "..");
 
@@ -204,5 +214,146 @@ describe("the merchant is told what a preset is NOT", () => {
     // The deliberate over-strictness is a decision someone may want to revisit;
     // it must stay explained rather than become folklore.
     expect(src).toContain("stricter than the sentence requires");
+  });
+});
+
+describe("MER-010 — the five list states are DERIVED, never stored", () => {
+  /**
+   * A stored flag drifts from the rows it describes. "Update suggested"
+   * drifting means a merchant is either nagged about an update that does not
+   * exist, or never told about one that does.
+   */
+  it("declares exactly the five the registry requires", () => {
+    expect([...PRESET_STATES]).toEqual([
+      "couranr_global",
+      "customized",
+      "update_suggested",
+      "merchant_created",
+      "archived",
+    ]);
+  });
+
+  it("a Couranr global preset is a suggestion", () => {
+    expect(presetState({ isGlobal: true })).toBe("couranr_global");
+  });
+
+  it("no source means merchant-created", () => {
+    expect(presetState({ sourcePresetId: null })).toBe("merchant_created");
+  });
+
+  it("a source at the current version is customized, not stale", () => {
+    expect(
+      presetState({ sourcePresetId: "g", sourceVersion: 2, currentSourceVersion: 2 })
+    ).toBe("customized");
+  });
+
+  it("a source the global has moved PAST suggests an update", () => {
+    expect(
+      presetState({ sourcePresetId: "g", sourceVersion: 1, currentSourceVersion: 3 })
+    ).toBe("update_suggested");
+    expect(
+      hasSuggestedUpdate({ sourcePresetId: "g", sourceVersion: 1, currentSourceVersion: 3 })
+    ).toBe(true);
+  });
+
+  it("an UNKNOWN current version is not an update — a failed lookup must not nag", () => {
+    for (const now of [null, undefined, NaN as any]) {
+      expect(
+        presetState({ sourcePresetId: "g", sourceVersion: 1, currentSourceVersion: now }),
+        String(now)
+      ).toBe("customized");
+    }
+  });
+
+  it("ARCHIVED outranks everything, including a pending update", () => {
+    // Telling a merchant to review an update to something they retired is
+    // noise about a thing they already decided.
+    expect(
+      presetState({
+        archivedAt: "2026-08-06T00:00:00Z",
+        sourcePresetId: "g",
+        sourceVersion: 1,
+        currentSourceVersion: 9,
+        isGlobal: true,
+      })
+    ).toBe("archived");
+  });
+
+  it("every state has a label, a tone and a sentence", () => {
+    for (const s of PRESET_STATES) {
+      expect(PRESET_STATE_LABELS[s], s).toBeTruthy();
+      expect(PRESET_STATE_TONE[s], s).toBeTruthy();
+      expect(PRESET_STATE_DESCRIPTIONS[s], s).toBeTruthy();
+    }
+  });
+
+  it("the update-suggested copy says NOTHING WAS CHANGED on its own", () => {
+    // The no-overwrite rule is invisible to a merchant unless someone tells
+    // them it held.
+    expect(PRESET_STATE_DESCRIPTIONS.update_suggested).toMatch(/nothing of yours was changed/i);
+    expect(PRESET_STATE_DESCRIPTIONS.update_suggested).toMatch(/only if you want it/i);
+  });
+
+  it("archiving is explained as not-offered, never as deleted", () => {
+    expect(PRESET_STATE_DESCRIPTIONS.archived).toMatch(/deliveries that used it are unaffected/i);
+    expect(PRESET_STATE_DESCRIPTIONS.archived).not.toMatch(/delete|remove/i);
+  });
+});
+
+describe("MER-011 — the builder's states", () => {
+  const base = {
+    storedVersion: 2,
+    loadedVersion: 2,
+    dirty: false,
+    recommendationAvailable: false,
+  };
+
+  it("nothing stored yet is new", () => {
+    expect(builderState({ ...base, storedVersion: null })).toBe("new");
+  });
+
+  it("a VERSION CONFLICT outranks everything else", () => {
+    /**
+     * A merchant editing a preset someone else already saved must be told
+     * before anything else: their next save would overwrite a colleague's
+     * work with a body built from a version that no longer exists.
+     */
+    const conflicted = {
+      storedVersion: 5,
+      loadedVersion: 2,
+      dirty: true,
+      recommendationAvailable: true,
+    };
+    expect(builderState(conflicted)).toBe("version_conflict");
+    expect(saveIsBlocked(conflicted)).toBe(true);
+  });
+
+  it("a recommendation outranks `edited`", () => {
+    // Information a merchant may want BEFORE they finish; a nag afterwards is
+    // a nag about work they have already redone.
+    expect(builderState({ ...base, dirty: true, recommendationAvailable: true })).toBe(
+      "recommendation_available"
+    );
+  });
+
+  it("a changed form is edited", () => {
+    expect(builderState({ ...base, dirty: true })).toBe("edited");
+  });
+
+  it("a saved, current, UNCHANGED form is NO state at all", () => {
+    /**
+     * Not "edited". A state machine that reports the nearest state rather
+     * than no state is how a screen shows "unsaved changes" to someone who
+     * changed nothing — and once that happens the badge means nothing on the
+     * occasions it is true.
+     */
+    expect(builderState(base)).toBeNull();
+    expect(saveIsBlocked(base)).toBe(false);
+  });
+
+  it("saving is blocked ONLY by a conflict", () => {
+    expect(saveIsBlocked({ ...base, storedVersion: null })).toBe(false);
+    expect(saveIsBlocked({ ...base, dirty: true })).toBe(false);
+    expect(saveIsBlocked({ ...base, recommendationAvailable: true })).toBe(false);
   });
 });
