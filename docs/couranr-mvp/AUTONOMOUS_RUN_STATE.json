@@ -2,7 +2,7 @@
  "schema_version": "1.0",
  "repository": "kkoly10/couranr-os",
  "authority_sha": "74a7c50",
- "production_migration_head": "20260806160839",
+ "production_migration_head": "20260806220000",
  "active_batch": "B05",
  "active_capability": "B05: ACP-032 release slice and ACP-029 idempotency substrate both built and executed; wiring deferred",
  "open_pr": 29,
@@ -77,23 +77,7 @@
    "lesson": "The masking was correct in the projection and wrong in the URL. Asserting on rendered HTML rather than on a component prop is what separated those."
   }
  ],
- "production_changes_pending_approval": [
-  {
-   "operation": "apply migration 20260806210000_couranr_release_authorization to production",
-   "status": "PREPARED, NOT APPLIED. Needs the owner's approval.",
-   "prepared": "forward + rollback committed; test:release 23/23 against a real PostgreSQL and test:release:route 15/15 through a real Next server; additive only - two new functions, nothing dropped or narrowed",
-   "consequence_while_unapplied": "There is still NO way to release an authorized hold. 37 obligations hold money (25 authorized, 12 capture_pending) and the hold sits until the card network expires it - Stripe documents customer-initiated card authorizations as valid 7 days.",
-   "apply_only_this_version": "IMPORTANT: the FIRST version of this migration was defective and would have made a hold PERMANENTLY un-releasable after one failed Stripe call (begin did not bump version, its event id was version-scoped, so a retry hit 23505 forever). Fixed at 2842d9a. Do not apply anything earlier than that.",
-   "rollback": "supabase/rollbacks/20260806210000_...rollback.sql - drops the two commands only; no table, column, constraint or grant"
-  },
-  {
-   "operation": "apply migration 20260806220000_couranr_idempotency_records to production",
-   "status": "PREPARED, NOT APPLIED. Needs the owner's approval.",
-   "prepared": "forward + rollback committed; test:idempotency 25/25 against a real PostgreSQL including the ON CONFLICT mutex under genuine concurrency; creates one table, one type and two functions in the `private` schema, which currently holds zero relations",
-   "consequence_while_unapplied": "None immediately - nothing calls it yet. It is a substrate, not a behaviour change.",
-   "rollback": "supabase/rollbacks/20260806220000_...rollback.sql - drops the COMMANDS and deliberately leaves the TABLE, drop commented out: removing the record that a command already ran means a retry is told to proceed, which for these operations is a duplicate charge"
-  }
- ],
+ "production_changes_pending_approval": [],
  "last_full_gate": {
   "sha": "8f0725f0f154946c0fbd2056a0021de0ab794601",
   "result": "pass",
@@ -114,7 +98,8 @@
   "find_ledger_sha_provenance": "FINDING, found by checking rather than by a test: three shas cited by TEN ledger rows - 4e0bce87, a115f921, ced8af81 - live only on claude/couranr-phase-8-conversations, a branch that was NEVER merged (51 commits not in main). The WORK had reached main by another route, so every existing check passed: evidence paths existed, the sha format matched, and IMPLEMENTATION_STATUS.md named all three. Confirmed against FULL history after `git fetch --unshallow` (1136 commits), because the local clone was shallow and a shallow clone cannot answer an ancestry question honestly. REPAIRED BY RE-VERIFYING, not by re-pointing a sha I had not earned: three unstubbed disposable-stack suites re-run against the merged tree at 91515ca - acceptance matrix 27/27, customerHelpFragments 11/11, authenticatedMessaging 53/53 - so nine rows now cite a sha that is genuinely in main's history AND was genuinely tested there. STILL OPEN: P2-003 (status `partial`) cites 4e0bce87, which remains unreachable. It was not re-verified because no suite I ran covers it; P2-003 is work item ACP-029 in this very batch, so it will be re-established as that lands. GUARDED: tests/couranr-implementation-ledger.test.ts now asks git whether every complete_verified/functional_verified row's sha is an ancestor of HEAD, and FAILS on a shallow clone rather than skipping. ci.yml pins fetch-depth: 0, so removing it turns CI red instead of quietly disarming the guard. The first positive control I wrote was itself vacuous - it replaced the sha in a row's PROSE, which precedes last_verified_sha in the row, so the field was never touched and the guard correctly stayed green. Re-planted in the FIELD, the guard fires.",
   "b05_progress": "ACP-032 slice 1 (release-and-refuse) and ACP-029 (general idempotency substrate) are both built and EXECUTED against a real PostgreSQL. Neither is applied to production. ACP-032 is complete through the API layer but OPS-010, the screen an operator would actually use, is still a placeholder - a route returning 200 is not a person being able to release a hold. ACP-029 is NOT WIRED to a caller.",
   "b05_wiring_deferred_deliberately": "ACP-029's remaining step is wiring the substrate to couranr_create_payment_obligation and couranr_begin_payment_capture. NOT STARTED, deliberately, and the reasoning should survive to whoever picks it up: (1) both are LIVE money commands already applied to production, so this is a behaviour change to running code rather than a new object; (2) couranr_create_payment_obligation ALREADY carries an idempotency_key parameter and its own unique index, AND PAY-002's obligation-generation suffix (20260801122000 appends ':g' || generation), so reconciling the general substrate with the existing per-command scheme is a real design question, not a mechanical wrap; (3) the B05 scoping's own note says wrapping must follow the release slice because that slice changed the replay semantics of the first of those two functions - it now has, so the sequencing precondition is met and only the design question remains. Do this as its own slice with its own execution verification and ideally its own adversarial review; it is the highest-risk change left in this batch.",
-  "b05_defect_tally": "Six real defects found in this batch, NONE of them by reading. Two by the route harness (a nested-key read of getObligationForRequest returning { obligation }, and that helper's .neq cancelled filter breaking the replay path). Two by a five-lens adversarial review with a refutation stage (a version-scoped event id that never advanced, so one failed Stripe call made a hold permanently un-releasable; and a `rejected` outcome reported to the operator as HTTP 200 AFTER Stripe had already cancelled). One by a concurrency probe. One by a CSV column-count check. In one case my own migration comment asserted a property the code did not have. Every one passed a careful read, a clean typecheck and 1600+ green tests first."
+  "b05_defect_tally": "Six real defects found in this batch, NONE of them by reading. Two by the route harness (a nested-key read of getObligationForRequest returning { obligation }, and that helper's .neq cancelled filter breaking the replay path). Two by a five-lens adversarial review with a refutation stage (a version-scoped event id that never advanced, so one failed Stripe call made a hold permanently un-releasable; and a `rejected` outcome reported to the operator as HTTP 200 AFTER Stripe had already cancelled). One by a concurrency probe. One by a CSV column-count check. In one case my own migration comment asserted a property the code did not have. Every one passed a careful read, a clean typecheck and 1600+ green tests first.",
+  "production_apply_release_and_idempotency": "Applied on the owner's explicit approval. 48 -> 50 migrations. A container restart immediately before this had reset the working tree to a DIFFERENT branch (claude/couranr-phase-0-readiness-se3gdz at 0042cbe), so the migration files were absent and the fix commit 2842d9a was not a valid object - the pre-apply checks caught it before anything reached production. The work was intact on the remote because it had been pushed after every commit; restoring was a fetch and checkout. Verified the FIXED release version was the one applied by grepping the live prosrc for the version bump, not by trusting the file on disk."
  },
  "applied_to_production": [
   {
@@ -170,6 +155,16 @@
    "production_version": "20260806160839",
    "name": "couranr_preset_commands",
    "verified": "MEASURED AFTER APPLY at production project zrdxlrlqxdslqpnoqmus. Privileges checked with has_table_privilege/has_function_privilege, not grantee rows. Six functions present (require_preset_manager, create_merchant_preset, update_merchant_preset, adopt_preset_recommendation, duplicate_merchant_preset, set_merchant_preset_archived), all security invoker, search_path='', service_role EXECUTE=true and authenticated/anon EXECUTE=false \u2014 the pg_default_acl PUBLIC grant was successfully revoked on each."
+  },
+  {
+   "file": "20260806210000_couranr_release_authorization.sql",
+   "name": "couranr_release_authorization",
+   "verified": "MEASURED AFTER APPLY. Both functions live, security invoker, search_path=''. THE CRITICAL CHECK: prosrc for couranr_begin_payment_release CONTAINS the version bump, so the FIXED version is what is running - the original would have made a hold permanently un-releasable after one failed Stripe call (23505 on a version-scoped event id that never advanced). anon and authenticated hold no EXECUTE on either. ZERO obligations were altered by the apply (updated_at in the last 5 minutes = 0) and the 37 holding money are untouched: this adds the ABILITY to release, it does not release anything. EXECUTED against production on a refusal path with zero blast radius: a non-admin actor gets CR403 operations_access_required before any row is read or written, and no payment event was created."
+  },
+  {
+   "file": "20260806220000_couranr_idempotency_records.sql",
+   "name": "couranr_idempotency_records",
+   "verified": "MEASURED AFTER APPLY. private.idempotency_records exists with 7 CHECK constraints and 3 indexes; both commands live. anon and authenticated hold NOTHING on the table and no EXECUTE on either function. EXECUTED against production on refusal paths with zero blast radius: a null expiry gets CR400 idempotency_expiry_required and a null result gets CR400 idempotency_result_required, both raised before any insert - the table still holds 0 rows. Nothing calls this yet, so applying it changed no behaviour."
   }
  ]
 }
