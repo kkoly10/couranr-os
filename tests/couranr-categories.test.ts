@@ -11,6 +11,7 @@ import {
   isBusinessCategory,
   isCategoryValidationFailed,
   validateCategorySelection,
+  validateSecondarySelection,
 } from "@/lib/couranr/categories/registry";
 
 const ROOT = path.resolve(__dirname, "..");
@@ -169,6 +170,59 @@ describe("one primary, up to three secondary", () => {
     for (const v of [null, undefined, 1, {}, [], true]) {
       expect(isBusinessCategory(v)).toBe(false);
     }
+  });
+});
+
+describe("a secondary-only edit is validated without inventing a primary", () => {
+  /**
+   * A merchant changing only their secondaries sends no primary. The overlap
+   * rule — a secondary may not repeat the primary — is deliberately NOT
+   * checked on this path, because the caller does not know the primary and
+   * having it send back one it read earlier is a read-then-write race: a
+   * concurrent primary change between the read and the write would be silently
+   * reverted. `couranr_set_business_categories` checks it under a row lock
+   * instead, and `e2e/disposable/businessCategories.mjs` R4 proves it fires.
+   */
+  it("accepts up to three, deduplicating", () => {
+    const r = validateSecondarySelection([
+      "repair_and_electronics",
+      "repair_and_electronics",
+      "furniture_and_home_goods",
+    ]);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value).toEqual(["repair_and_electronics", "furniture_and_home_goods"]);
+  });
+
+  it("refuses a fourth and an unknown value", () => {
+    expect(
+      validateSecondarySelection([
+        "repair_and_electronics",
+        "furniture_and_home_goods",
+        "books_cards_collectibles_hobby",
+        "printing_signage_promotional",
+      ]).ok
+    ).toBe(false);
+    expect(validateSecondarySelection(["nope"]).ok).toBe(false);
+  });
+
+  it("accepts an empty list — clearing every secondary is a real edit", () => {
+    const r = validateSecondarySelection([]);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value).toEqual([]);
+  });
+
+  it("does NOT check the primary overlap, and the SQL does", () => {
+    // If this path ever started checking it, it could only do so against a
+    // primary supplied by the caller — which is the race described above.
+    const src = readFileSync(path.join(ROOT, "lib/couranr/categories/registry.ts"), "utf8");
+    const fn = src.slice(src.indexOf("export function validateSecondarySelection"));
+    expect(fn.slice(0, fn.indexOf("\n}"))).not.toMatch(/primary/);
+    const sql = readFileSync(
+      path.join(ROOT, "supabase/migrations/20260806180000_couranr_business_categories.sql"),
+      "utf8"
+    );
+    expect(sql).toMatch(/for update/);
+    expect(sql).toMatch(/v_primary = any\(v_secondary\)/);
   });
 });
 

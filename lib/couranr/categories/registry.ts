@@ -156,6 +156,40 @@ export function validateCategorySelection(input: CategorySelection): CategoryVal
 }
 
 /**
+ * Validate a SECONDARY-ONLY edit, where the primary is not being changed.
+ *
+ * The overlap rule — a secondary may not repeat the primary — is deliberately
+ * NOT checked here, because this path does not know the primary. It is checked
+ * in `couranr_set_business_categories` under a row lock, against the primary
+ * actually stored at write time. Checking it here would mean the caller
+ * sending back a primary it read earlier, which is a read-then-write race: a
+ * concurrent primary change between the read and the write would be silently
+ * reverted.
+ *
+ * So this validates exactly what it can see — the values, the count and
+ * distinctness — and leaves the cross-field rule to the only place that can
+ * evaluate it correctly.
+ */
+export function validateSecondarySelection(
+  secondary: readonly string[]
+): { ok: true; value: BusinessCategory[] } | { ok: false; reason: string } {
+  const out: BusinessCategory[] = [];
+  for (const raw of secondary ?? []) {
+    if (!isBusinessCategory(raw)) {
+      return { ok: false, reason: "One of the categories you chose is not one Couranr offers." };
+    }
+    if (!out.includes(raw)) out.push(raw);
+  }
+  if (out.length > MAX_SECONDARY_CATEGORIES) {
+    return {
+      ok: false,
+      reason: `Choose up to ${MAX_SECONDARY_CATEGORIES} secondary categories.`,
+    };
+  }
+  return { ok: true, value: out };
+}
+
+/**
  * What a merchant is told a category DOES.
  *
  * Rendered on every screen that asks for one. It exists so no merchant ever

@@ -13,6 +13,12 @@ import {
 } from "@/lib/couranr/settings/permissions";
 import { normalizeAddressInput } from "@/lib/couranr/onboarding/workspace";
 import {
+  CATEGORY_REGISTRY_VERSION,
+  isCategoryValidationFailed,
+  validateCategorySelection,
+  validateSecondarySelection,
+} from "@/lib/couranr/categories/registry";
+import {
   DEFAULT_EMBED,
   WEBSITE_TOOL_STATUSES,
   validateEmbed,
@@ -41,6 +47,7 @@ export const TEAM_RPC = {
   disable: "couranr_disable_member",
   reactivate: "couranr_reactivate_member",
   updateProfile: "couranr_update_workspace_profile",
+  setCategories: "couranr_set_business_categories",
 } as const;
 
 export type SettingsFailure = {
@@ -225,6 +232,87 @@ export async function getWorkspaceSettings(params: {
       viewer: { role: params.actor.role, status: params.actor.status },
     },
   };
+}
+
+/**
+ * ACP-024 — set the primary and secondary categories.
+ *
+ * Its own command rather than more fields on `updateWorkspaceProfile`,
+ * mirroring the SQL: `couranr_set_business_categories` exists separately
+ * because the create function's signature could not be extended without
+ * minting an overload, and because categories are edited from settings long
+ * after onboarding.
+ *
+ * The REGISTRY VERSION is stamped from the governed module, never from the
+ * request — a merchant cannot claim to have chosen under an edition they were
+ * not shown. Same rule as the activation acknowledgements.
+ *
+ * A null `primary` means "leave it alone", and the SQL resolves the effective
+ * primary under a row lock. Sending the current primary back from the client
+ * would be a read-then-write race.
+ */
+export async function setBusinessCategories(params: {
+  actor: ActorMembership;
+  businessAccountId: string;
+  primary?: string;
+  secondary: readonly string[];
+}): Promise<SettingsResult<{ workspace: Record<string, any> }>> {
+  const op = "setBusinessCategories";
+
+  const denied = requireCapability(op, params.actor, "settings.write");
+  if (denied) return denied;
+
+  /*
+   * Validated here so a merchant gets the module's sentence rather than a
+   * SQLSTATE. The database re-checks all of it regardless: the validator is
+   * what produces good copy, the CHECKs are what make the rule true for the
+   * callers that never come through here.
+   *
+   * TWO PATHS, because a partial edit is legitimate. When no primary is sent
+   * the merchant is changing only their secondaries, and the overlap rule is
+   * left to the SQL — it is the only place that can evaluate it against the
+   * primary actually stored at write time, under the row lock.
+   */
+  let primary: string | null = null;
+  let secondary: string[] = [];
+
+  if (params.primary === undefined) {
+    const v = validateSecondarySelection(params.secondary ?? []);
+    if (!v.ok) {
+      return fail({
+        operation: op,
+        code: "invalid_input",
+        detail: { reason: v.reason },
+        message: v.reason,
+      });
+    }
+    secondary = v.value;
+  } else {
+    const v = validateCategorySelection({
+      primary: params.primary,
+      secondary: params.secondary ?? [],
+    });
+    if (isCategoryValidationFailed(v)) {
+      return fail({
+        operation: op,
+        code: "invalid_input",
+        detail: { reason: v.reason },
+        message: v.reason,
+      });
+    }
+    primary = v.value.primary;
+    secondary = v.value.secondary;
+  }
+
+  const r = await callRpc<Record<string, any>>(op, TEAM_RPC.setCategories, {
+    p_business_account_id: params.businessAccountId,
+    p_actor_user_id: params.actor.userId,
+    p_primary: primary,
+    p_secondary: secondary,
+    p_registry_version: CATEGORY_REGISTRY_VERSION,
+  });
+  if (isSettingsFailure(r)) return r;
+  return { ok: true, value: { workspace: r.value } };
 }
 
 export async function updateWorkspaceProfile(params: {

@@ -104,7 +104,13 @@ try {
        array['printing_signage_promotional','repair_and_electronics','furniture_and_home_goods','books_cards_collectibles_hobby'],null)`, /CR400|too_many/);
   expectRaise("R4", "a secondary repeating the primary is refused",
     `select public.couranr_set_business_categories('${biz}','${owner}','repair_and_electronics',array['repair_and_electronics'],null)`, /CR400|repeats_primary/);
-  expectRaise("R5", "an empty primary is refused",
+  sql(`select public.couranr_set_business_categories('${biz}','${owner}',null,array['event_rentals_and_supplies'],null)`);
+  check("C5", "a NULL primary keeps the stored one — a partial edit is not a revert",
+    sql(`select business_category||','||array_to_string(secondary_categories,'|')
+           from public.couranr_merchant_workspaces where business_account_id='${biz}'`)
+    === "repair_and_electronics,event_rentals_and_supplies");
+
+  expectRaise("R5", "an EXPLICITLY blank primary is refused, unlike a null one",
     `select public.couranr_set_business_categories('${biz}','${owner}','   ',array[]::text[],null)`, /CR400|primary_category_required/);
   expectRaise("R6", "an unknown category is refused by the table CHECK",
     `select public.couranr_set_business_categories('${biz}','${owner}','general_local_business',array['not_a_category'],null)`, /couranr_mw_secondary_values_chk/);

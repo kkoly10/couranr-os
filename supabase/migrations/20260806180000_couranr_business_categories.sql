@@ -134,6 +134,7 @@ declare
   v_actor_role text;
   v_ws         public.couranr_merchant_workspaces;
   v_secondary  text[];
+  v_primary    text;
 begin
   v_actor_role := public.couranr_require_active_member(p_business_account_id, p_actor_user_id);
 
@@ -144,9 +145,27 @@ begin
     raise exception 'role_may_not_change_settings' using errcode = 'CR403';
   end if;
 
-  if p_primary is null or btrim(p_primary) = '' then
+  -- Lock the row and resolve the EFFECTIVE primary before validating against
+  -- it. A merchant editing only their secondaries sends no primary, and having
+  -- the caller read the current one first and send it back would be a
+  -- read-then-write race: a concurrent primary change between the read and the
+  -- write would be silently reverted to the value the first caller had seen.
+  select * into v_ws
+    from public.couranr_merchant_workspaces
+   where business_account_id = p_business_account_id
+   for update;
+
+  if not found then
+    raise exception 'workspace_not_found' using errcode = 'CR404';
+  end if;
+
+  -- A null primary means "leave it alone". An EXPLICITLY blank one is a
+  -- caller sending a field it meant to fill, and is refused rather than
+  -- quietly treated as absent.
+  if p_primary is not null and btrim(p_primary) = '' then
     raise exception 'primary_category_required' using errcode = 'CR400';
   end if;
+  v_primary := coalesce(nullif(btrim(p_primary), ''), v_ws.business_category);
 
   -- Duplicates are STRIPPED, not refused: ticking a box twice meant ticking it
   -- once. The order the merchant chose is preserved.
@@ -165,12 +184,12 @@ begin
   -- A secondary equal to the primary is REFUSED rather than stripped, because
   -- stripping would silently give the merchant one category where they believe
   -- they have two.
-  if p_primary = any(v_secondary) then
+  if v_primary = any(v_secondary) then
     raise exception 'secondary_category_repeats_primary' using errcode = 'CR400';
   end if;
 
   update public.couranr_merchant_workspaces
-     set business_category         = p_primary,
+     set business_category         = v_primary,
          secondary_categories      = v_secondary,
          category_registry_version = coalesce(nullif(btrim(p_registry_version), ''),
                                               category_registry_version),
@@ -178,16 +197,12 @@ begin
    where business_account_id = p_business_account_id
   returning * into v_ws;
 
-  if not found then
-    raise exception 'workspace_not_found' using errcode = 'CR404';
-  end if;
-
   return v_ws;
 end
 $fn$;
 
 comment on function public.couranr_set_business_categories(uuid, uuid, text, text[], text) is
-  'Sets a workspace primary category and up to three secondary categories. Owner/manager only. Duplicates are stripped; a secondary equal to the primary is refused. Recommendation only - nothing may gate a capability on these values. SECURITY INVOKER, service_role only.';
+  'Sets a workspace primary category and up to three secondary categories. A null primary keeps the stored one, resolved under a row lock so a partial edit cannot revert a concurrent change. Owner/manager only. Duplicates are stripped; a secondary equal to the primary is refused. Recommendation only - nothing may gate a capability on these values. SECURITY INVOKER, service_role only.';
 
 -- ---------------------------------------------------------------------
 -- 5. Execution grants
