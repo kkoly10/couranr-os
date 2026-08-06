@@ -103,10 +103,17 @@ const GATEWAY_PORT = Number(process.env.COURANR_GATEWAY_PORT || 55434);
  *
  * This is REAL crypto, not a bypass: PostgREST verifies the signature against
  * this secret and derives the role from the verified `role` claim. A forged or
- * unsigned token is rejected exactly as in production. The secret is generated
- * per run, never leaves the machine, and is not any project's key.
+ * unsigned token is rejected exactly as in production. The secret never leaves
+ * the machine and is not any project's key.
+ *
+ * Per run by default. `COURANR_DISPOSABLE_JWT_SECRET` pins it so a harness can
+ * REUSE a previous `next build` — `NEXT_PUBLIC_SUPABASE_ANON_KEY` is inlined
+ * into the client bundle, so a fresh secret invalidates any cached build and
+ * every rebuild costs minutes. It is a local-only value either way and is not
+ * any project's key.
  */
-export const JWT_SECRET = crypto.randomBytes(32).toString("hex");
+export const JWT_SECRET =
+  process.env.COURANR_DISPOSABLE_JWT_SECRET || crypto.randomBytes(32).toString("hex");
 
 export function signJwt(payload, secret) {
   const enc = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
@@ -240,9 +247,34 @@ async function rpc(name, args) {
   return text === "" ? null : JSON.parse(text);
 }
 
+/**
+ * CORS, and why it is not optional here.
+ *
+ * The browser calls this gateway CROSS-ORIGIN: the page is served from
+ * `127.0.0.1:3312` and supabase-js posts to `127.0.0.1:55434`. A JSON POST
+ * triggers a preflight, and without these headers Chromium refuses the request
+ * before it is ever sent — which surfaced as `AuthRetryableFetchError` and
+ * rendered as "Could not reach Couranr" on the sign-in screen, with nothing in
+ * any server log because no request arrived. Supabase's own edge sends the same
+ * headers, so this reproduces production rather than relaxing it: CORS is a
+ * browser-side rule about who may READ a response, never an authorization
+ * check, and every request below is still authenticated exactly as before.
+ */
+const CORS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET, POST, PATCH, PUT, DELETE, OPTIONS, HEAD",
+  "access-control-allow-headers":
+    "authorization, apikey, content-type, x-client-info, x-supabase-api-version, " +
+    "prefer, accept-profile, content-profile, range, range-unit, x-requested-with",
+  "access-control-expose-headers":
+    "content-range, content-length, content-location, x-supabase-api-version",
+  "access-control-max-age": "86400",
+};
+
 function sendJson(res, status, body) {
   const payload = JSON.stringify(body);
   res.writeHead(status, {
+    ...CORS,
     "content-type": "application/json; charset=utf-8",
     "content-length": Buffer.byteLength(payload),
   });
@@ -422,6 +454,14 @@ export function startGateway() {
     // The only rewrite: strip the Supabase REST prefix.
     const target = req.url.replace(/^\/rest\/v1/, "") || "/";
 
+    // Preflight. Answered before anything else and without a body, exactly as
+    // the Supabase edge does.
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, { ...CORS, "content-length": "0" });
+      res.end();
+      return;
+    }
+
     if (req.url.startsWith("/auth/v1")) {
       if (process.env.COURANR_GATEWAY_TRACE) {
         console.log(`[gw] ${req.method} ${req.url} (auth)`);
@@ -465,13 +505,14 @@ export function startGateway() {
             console.log(`[gw] <- ${up.statusCode} ${body.slice(0, 220)}`)
           );
         }
-        res.writeHead(up.statusCode || 502, up.headers);
+        // PostgREST's own headers, plus CORS — the browser reads this response
+        // cross-origin too, not only the auth one.
+        res.writeHead(up.statusCode || 502, { ...up.headers, ...CORS });
         up.pipe(res);
       }
     );
     upstream.on("error", (e) => {
-      res.writeHead(502, { "content-type": "application/json" });
-      res.end(JSON.stringify({ message: `gateway upstream error: ${e.message}` }));
+      sendJson(res, 502, { message: `gateway upstream error: ${e.message}` });
     });
     req.pipe(upstream);
   });

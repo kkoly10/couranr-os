@@ -217,14 +217,29 @@ async function main() {
     // NEXT_PUBLIC_* are inlined at build time, so the webpack cache holds
     // whatever key the LAST build used. Reusing it once shipped a stale literal
     // that PostgREST rejected with PGRST301.
-    rmSync(path.join(ROOT, DIST), { recursive: true, force: true });
-    console.log("  building the application against the disposable stack...");
-    execFileSync("npx", ["next", "build"], {
-      cwd: ROOT,
-      env: { ...env, COURANR_DIST_DIR: DIST },
-      stdio: "ignore",
-      timeout: 900_000,
-    });
+    //
+    // COURANR_REUSE_BUILD is for iterating on THIS file, and it is safe only
+    // when COURANR_DISPOSABLE_JWT_SECRET pins the anon key that is baked into
+    // the bundle. Refused otherwise rather than silently producing a run whose
+    // browser half cannot authenticate.
+    const reuse = process.env.COURANR_REUSE_BUILD === "1";
+    if (reuse && !process.env.COURANR_DISPOSABLE_JWT_SECRET) {
+      throw new Error(
+        "COURANR_REUSE_BUILD=1 requires COURANR_DISPOSABLE_JWT_SECRET — the anon key is inlined at build time"
+      );
+    }
+    if (!reuse) {
+      rmSync(path.join(ROOT, DIST), { recursive: true, force: true });
+      console.log("  building the application against the disposable stack...");
+      execFileSync("npx", ["next", "build"], {
+        cwd: ROOT,
+        env: { ...env, COURANR_DIST_DIR: DIST },
+        stdio: "ignore",
+        timeout: 900_000,
+      });
+    } else {
+      console.log("  REUSING the previous build (COURANR_REUSE_BUILD=1)");
+    }
 
     console.log("  starting the application against it...");
     devServer = spawn("npx", ["next", "start", "-p", String(PORT)], {
@@ -365,8 +380,30 @@ async function main() {
       await emailField.fill(email);
       await fieldLabel(page, "Password").fill(PASSWORD);
       await page.getByRole("button", { name: /^Sign in$/ }).click();
-      await page.waitForURL((u) => !u.pathname.startsWith("/sign-in"), { timeout: 45_000 });
-      return page;
+
+      // POLL THE URL rather than `waitForURL`. `router.replace` is a soft,
+      // same-document navigation in the App Router, and `waitForURL` also waits
+      // for a "load" event that a soft navigation never fires — measured: the
+      // first run timed out at 45s having already signed in.
+      const deadline = Date.now() + 45_000;
+      while (Date.now() < deadline) {
+        if (!new URL(page.url()).pathname.startsWith("/sign-in")) return page;
+        await page.waitForTimeout(250);
+      }
+
+      // Say WHAT the page is showing on the way out. Three earlier sessions in
+      // this repository were spent reasoning about a screen nobody had looked at.
+      const text = await page.innerText("body").catch(() => "(no body)");
+      await page
+        .screenshot({ path: path.join(SHOTS, `SIGNIN-FAIL-${email.split("@")[0]}.png`), fullPage: true })
+        .catch(() => {});
+      writeFileSync(
+        path.join(SHOTS, `SIGNIN-FAIL-${email.split("@")[0]}.txt`),
+        `url=${page.url()}\n\n${text}`
+      );
+      throw new Error(
+        `sign-in for ${email} never left /sign-in. url=${page.url()} page said: ${text.slice(0, 500)}`
+      );
     }
 
     /**
@@ -445,12 +482,20 @@ async function main() {
       await page.getByRole("button", { name: /^Open$/ }).first()
         .waitFor({ state: "visible", timeout: 30_000 });
 
+      // Derived from the fixture, not hardcoded: the owner is in three threads
+      // (both support threads and the delivery chat) while the manager and the
+      // dispatcher are in one. A literal count here was wrong on the first run
+      // and would have been wrong again the next time a fixture changed.
+      const expected = sql(
+        `select count(*) from public.couranr_conversation_participants
+          where user_id = '${merchant[role].id}' and left_at is null`
+      );
       const cards = await page.getByRole("button", { name: /^Open$/ }).count();
       check(
         `M-${role}-2`,
-        `${role} sees their business's threads (TRM-002: read allowed)`,
-        cards === 2,
-        `${cards} thread(s)`
+        `${role} sees exactly the threads they participate in (TRM-002: read allowed)`,
+        Number(expected) >= 1 && cards === Number(expected),
+        `${cards} rendered / ${expected} participant row(s)`
       );
       await page.screenshot({
         path: path.join(SHOTS, `M-${role}-list.png`),
