@@ -88,6 +88,8 @@ describe("canonical screen registry", () => {
       // PUB-005 and CUS-005 are the same route; CUS-005 is it at
       // ?mode=requote. Both ship with the payment authorization slice.
       "CUS-005",
+      // MER-001 is the B03 dashboard — a composition of existing endpoints.
+      "MER-001",
       "MER-002",
       "MER-005",
       "MER-006",
@@ -97,15 +99,24 @@ describe("canonical screen registry", () => {
       // vehicle, driver and schedule selection — is still absent, so the flag
       // covers the review outcomes only.
       "OPS-003",
+      // PUB-001 and PUB-008..011 are the B02 public launch surface; PUB-007 is
+      // the Phase 8 Delivery Help page. All six were browser-verified before
+      // these flags caught up — the flags had lagged the screen ledger.
+      "PUB-001",
       "PUB-002",
       "PUB-003",
       "PUB-005",
+      "PUB-007",
+      "PUB-008",
+      "PUB-009",
+      "PUB-010",
+      "PUB-011",
     ]);
 
     const p = implementationProgress();
     expect(p.total).toBe(66);
-    expect(p.implemented).toBe(10);
-    expect(p.remaining).toBe(56);
+    expect(p.implemented).toBe(17);
+    expect(p.remaining).toBe(49);
     expect(p.coreTotal).toBe(62);
   });
 
