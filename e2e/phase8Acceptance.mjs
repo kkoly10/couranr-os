@@ -495,8 +495,16 @@ export async function main() {
       // NO page.route. Every request goes to the real route and the real database.
       await page.goto(`${BASE}/help/${tokB}`, { waitUntil: "networkidle" });
       const body = await page.innerText("body");
-      check("A12", "the real /help/[token] flow renders unstubbed",
-        /Delivery Help/i.test(body) && !/not available/i.test(body), body.slice(0, 70));
+      // Assert the FORM, not the phrase. `/Delivery Help/i` also matches the
+      // marketing navigation, so the old condition passed on a page rendering a
+      // refusal — the same false pass `customerHelpFragments.mjs` C1 had, found
+      // there by looking at the screenshot. The topic select and the message
+      // textarea exist only in the loaded help form.
+      const selects = await page.locator("select").count();
+      const textareas = await page.locator("textarea").count();
+      check("A12", "the real /help/[token] flow renders the help FORM unstubbed",
+        selects === 1 && textareas === 1 && !/not available/i.test(body),
+        `${selects} select(s), ${textareas} textarea(s)`);
       await page.screenshot({ path: path.join(SHOTS, "A12-live.png"), fullPage: true });
 
       const typed = `${MARK} typed in a real browser`;
