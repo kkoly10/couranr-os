@@ -122,8 +122,12 @@ create table public.couranr_activation_events (
   metadata            jsonb not null default '{}'::jsonb,
   created_at          timestamptz not null default now(),
 
-  constraint couranr_ae_actor_chk check (actor_type in ('merchant', 'operations')),
-  constraint couranr_ae_command_chk check (command in (
+  -- `couranr_actev_*`, NOT `couranr_ae_*`: `couranr_assignment_events` already
+  -- owns that prefix, and a shared constraint name broke a test that looks
+  -- constraints up BY NAME. Two tables abbreviating to the same two letters is
+  -- exactly the kind of collision that is invisible until something searches.
+  constraint couranr_actev_actor_chk check (actor_type in ('merchant', 'operations')),
+  constraint couranr_actev_command_chk check (command in (
     'accept_acknowledgement',
     'verify_contact',
     'record_test_delivery',
@@ -135,7 +139,7 @@ create table public.couranr_activation_events (
 comment on table public.couranr_activation_events is
   'Append-only audit of every activation transition, including who granted or blocked it.';
 
-create index couranr_ae_business_idx
+create index couranr_actev_business_idx
   on public.couranr_activation_events (business_account_id, created_at desc);
 
 alter table public.couranr_workspace_activations enable row level security;
