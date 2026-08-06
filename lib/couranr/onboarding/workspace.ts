@@ -213,7 +213,9 @@ export function normalizeWorkspaceInput(raw: unknown): WorkspaceResult {
     errors.push({ code: "policies_not_accepted", field: "policiesAccepted" });
   }
 
-  if (errors.length > 0 || !pickupAddress || !name) {
+  // `!contactPhone` is semantically redundant (it always pushed an error
+  // above) but it is what lets the return site prove contactPhone: string.
+  if (errors.length > 0 || !pickupAddress || !name || !contactPhone) {
     return { ok: false, errors };
   }
 

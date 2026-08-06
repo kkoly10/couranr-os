@@ -24,7 +24,8 @@
     "test:cus-fragments": "node e2e/disposable/customerHelpFragments.mjs",
     "test:messaging": "node e2e/disposable/authenticatedMessaging.mjs",
     "test:auth-gateway": "node e2e/disposable/authGateway.mjs",
-    "test:acceptance": "node e2e/disposable/acceptanceMatrix.mjs"
+    "test:acceptance": "node e2e/disposable/acceptanceMatrix.mjs",
+    "typecheck:canonical": "tsc --noEmit -p tsconfig.canonical.json"
   },
   "dependencies": {
     "@stripe/react-stripe-js": "3.1.1",

@@ -111,7 +111,8 @@ const FOCUSABLE =
 function useOverlayBehaviour(
   open: boolean,
   onClose: () => void,
-  panelRef: React.RefObject<HTMLElement>
+  // React 19: useRef<T>(null) yields RefObject<T | null>; this hook only reads.
+  panelRef: React.RefObject<HTMLElement | null>
 ) {
   React.useEffect(() => {
     if (!open) return;
