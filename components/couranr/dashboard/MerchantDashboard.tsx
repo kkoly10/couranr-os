@@ -44,6 +44,16 @@ import {
   fulfillmentToLifecycleInput,
   type DashboardAttention,
 } from "@/lib/couranr/dashboard/attention";
+import {
+  fetchActivation,
+  type ActivationView,
+} from "@/components/couranr/activation/ActivationChecklist";
+import {
+  ACTIVATION_STATE_DESCRIPTIONS,
+  ACTIVATION_STATE_LABELS,
+  ACTIVATION_STATE_TONE,
+  type ActivationState,
+} from "@/lib/couranr/activation/states";
 
 /**
  * MER-001 — the merchant dashboard. A COMPOSITION of endpoints that already
@@ -61,9 +71,12 @@ import {
  *    Operations queue uses — never a second reading of the row.
  *  - Messages: `hasUnread` is a boolean by design; this renders badges, never
  *    an invented number.
- *  - Activation: a truthful static banner. No activation state exists anywhere
- *    in the system (MER-003 is unbuilt), so every workspace IS a test
- *    workspace and the banner says exactly that.
+ *  - Activation: the REAL state from MER-003's endpoint. It used to be a
+ *    static "live activation is not yet available" banner, which was true
+ *    only while no activation state existed anywhere; MER-003 made that
+ *    sentence false, so it reads the row. A workspace that is live says
+ *    nothing here, and a workspace whose state could not be READ says it
+ *    could not be read rather than guessing "test workspace".
  */
 
 /**
@@ -100,6 +113,19 @@ function attentionAlertTone(
   return t === "neutral" ? "warning" : t;
 }
 
+/**
+ * Same shape for activation: `not_started` is the tone "neutral", which
+ * `Alert` does not render. It becomes "info" rather than "warning" — a
+ * workspace that has not begun activation is not in trouble.
+ */
+function activationAlertTone(
+  state: ActivationState
+): "info" | "success" | "warning" | "danger" {
+  const t = ACTIVATION_STATE_TONE[state];
+  if (!t || t === "neutral") return "info";
+  return t;
+}
+
 export function MerchantDashboard() {
   const router = useRouter();
 
@@ -114,6 +140,9 @@ export function MerchantDashboard() {
 
   const [fanout, setFanout] = React.useState<FanoutEntry[] | null>(null);
   const [fanoutTruncatedTo, setFanoutTruncatedTo] = React.useState<number | null>(null);
+
+  const [activation, setActivation] = React.useState<ActivationView | null>(null);
+  const [activationUnknown, setActivationUnknown] = React.useState(false);
 
   const [reloadKey, setReloadKey] = React.useState(0);
 
@@ -148,6 +177,20 @@ export function MerchantDashboard() {
     setConversationsError(null);
     setFanout(null);
     setFanoutTruncatedTo(null);
+    setActivation(null);
+    setActivationUnknown(false);
+
+    // Activation is a per-workspace fact, read once per selected account.
+    fetchActivation(businessAccountId).then((r) => {
+      if (cancelled) return;
+      if (isApiFailure(r)) {
+        // We do not know whether this workspace is live. Saying "test
+        // workspace" here would be a claim with nothing behind it.
+        setActivationUnknown(true);
+        return;
+      }
+      setActivation(r.value);
+    });
 
     call<{ requests: DeliveryRequestView[] }>(
       `/api/couranr/delivery-requests?businessAccountId=${encodeURIComponent(businessAccountId)}`
@@ -272,16 +315,43 @@ export function MerchantDashboard() {
   return (
     <Stack gap={6}>
       {/*
-        Required state: ACTIVATION INCOMPLETE. Honest by construction: nothing
-        in the system can activate a workspace yet (no activation state exists;
-        MER-003 is not built), so every workspace is a test workspace and this
-        banner is simply true. It must not become a checklist with invented
-        progress.
+        Required state: ACTIVATION INCOMPLETE — now the real row, not a static
+        sentence. Three cases, and each says only what is known:
+          - read and not live  → the activation state, in its own words
+          - read and live      → nothing; the dashboard is just the dashboard
+          - could NOT be read  → says so. It does not fall back to "test
+            workspace", because that would be asserting the very thing the
+            failed read left unknown.
+        No progress bar and no percentage: the checklist itself is the only
+        place that enumerates steps.
       */}
-      <Alert tone="info" title="Test workspace">
-        Live activation is not yet available. Everything you create here is part
-        of your Couranr test workspace.
-      </Alert>
+      {activationUnknown ? (
+        <Alert tone="info" title="Activation status unavailable">
+          Couranr could not check whether this workspace is live right now.{" "}
+          <Link href="/business/onboarding?step=activation">Open activation</Link>.
+        </Alert>
+      ) : null}
+      {activation && activation.state !== "live" ? (
+        <Alert
+          tone={activationAlertTone(activation.state as ActivationState)}
+          title={
+            ACTIVATION_STATE_LABELS[activation.state as ActivationState] ??
+            "Test workspace"
+          }
+        >
+          {ACTIVATION_STATE_DESCRIPTIONS[activation.state as ActivationState] ?? ""}
+          {/*
+            `blocked`'s description ends "the reason is below", so the reason
+            has to actually be below — on this screen too, not only on the
+            checklist that sentence was written for.
+          */}
+          {activation.blockedReason ? ` ${activation.blockedReason}` : ""}{" "}
+          <Link href="/business/onboarding?step=activation">
+            {activation.canRequest ? "Ask Couranr to activate" : "Go live"}
+          </Link>
+          .
+        </Alert>
+      ) : null}
 
       {accounts.length > 1 ? (
         <Card>

@@ -69,6 +69,22 @@ export const SETTINGS_CAPABILITIES = [
    * deliveries, they do not decide what a merchant's public site says.
    */
   "website_tools.publish",
+  /** See the MER-003 activation checklist and how far it has got. */
+  "activation.read",
+  /**
+   * Accept the activation acknowledgements, confirm the operations contact,
+   * and ask Couranr to review the workspace.
+   *
+   * Narrow — owner and manager — because every act behind it BINDS THE
+   * BUSINESS: the acknowledgements are recorded consent to Couranr's delivery
+   * terms, prohibited-item policy and liability position, and the request is
+   * the merchant asking to start taking real, chargeable deliveries. A
+   * read-only viewer accepting terms on the business's behalf would be a
+   * consent record with no authority behind it, which is worse than no record
+   * at all. Same shape and same bound as `settings.write`, and for the same
+   * reason DRP-001 gives for keeping writes to a subset.
+   */
+  "activation.request",
   /** See the MER-008 customer book. */
   "customers.read",
   /**
@@ -100,6 +116,8 @@ const MATRIX: Readonly<Record<MemberRole, readonly SettingsCapability[]>> = {
     "team.set_member_status",
     "website_tools.read",
     "website_tools.publish",
+    "activation.read",
+    "activation.request",
     "customers.read",
     "customers.write",
   ],
@@ -112,6 +130,8 @@ const MATRIX: Readonly<Record<MemberRole, readonly SettingsCapability[]>> = {
     "team.set_member_status",
     "website_tools.read",
     "website_tools.publish",
+    "activation.read",
+    "activation.request",
     "customers.read",
     "customers.write",
   ],
@@ -119,11 +139,24 @@ const MATRIX: Readonly<Record<MemberRole, readonly SettingsCapability[]>> = {
     "settings.read",
     "team.read",
     "website_tools.read",
+    "activation.read",
     "customers.read",
     "customers.write",
   ],
-  viewer: ["settings.read", "team.read", "website_tools.read", "customers.read"],
-  billing: ["settings.read", "team.read", "website_tools.read", "customers.read"],
+  viewer: [
+    "settings.read",
+    "team.read",
+    "website_tools.read",
+    "activation.read",
+    "customers.read",
+  ],
+  billing: [
+    "settings.read",
+    "team.read",
+    "website_tools.read",
+    "activation.read",
+    "customers.read",
+  ],
 };
 
 /**

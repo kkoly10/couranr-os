@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isActorDenied, resolveRequestActor } from "@/lib/couranr/requests/actor";
 import { settingsActorFrom } from "@/lib/couranr/settings/commands";
+import { memberMay } from "@/lib/couranr/settings/permissions";
 import {
   acceptAcknowledgement,
   getActivation,
@@ -18,8 +19,13 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 /**
  * MER-003 — the merchant's own activation checklist.
  *
- * Reading it is available to any active member; the acts that bind the
- * business are narrowed inside the commands and again in SQL.
+ * Reading it is available to any active member (`activation.read`); the acts
+ * that BIND the business — accepting terms, confirming the operations contact,
+ * asking Couranr to go live — need `activation.request`, which is owner and
+ * manager only. The database independently refuses a caller who is not an
+ * active member at all, so a route that forgot this check would still not let
+ * a stranger sign anything; this check is what keeps a read-only VIEWER from
+ * signing on the business's behalf.
  */
 export async function GET(req: NextRequest) {
   const businessAccountId = req.nextUrl.searchParams.get("businessAccountId") ?? "";
@@ -31,7 +37,7 @@ export async function GET(req: NextRequest) {
   if (isActorDenied(resolved)) return routeFailure(resolved.code, resolved.error);
 
   const actor = settingsActorFrom(resolved);
-  if (!actor || actor.status !== "active") {
+  if (!actor || !memberMay(actor, "activation.read")) {
     return routeFailure("not_permitted", "You do not have access to this business.");
   }
 
@@ -58,8 +64,11 @@ export async function POST(req: NextRequest) {
   if (isActorDenied(resolved)) return routeFailure(resolved.code, resolved.error);
 
   const actor = settingsActorFrom(resolved);
-  if (!actor) {
-    return routeFailure("not_permitted", "You do not have access to this business.");
+  if (!actor || !memberMay(actor, "activation.request")) {
+    return routeFailure(
+      "not_permitted",
+      "Only an owner or a manager can accept Couranr's terms or request activation."
+    );
   }
 
   let body: any = null;

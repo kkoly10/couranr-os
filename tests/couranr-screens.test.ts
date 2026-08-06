@@ -92,6 +92,10 @@ describe("canonical screen registry", () => {
       // compositions of existing endpoints.
       "MER-001",
       "MER-002",
+      // MER-003 is the B03 live activation checklist — the first state in the
+      // system that distinguishes a test workspace from a live one, and the
+      // reason MER-001's activation banner stopped being a static sentence.
+      "MER-003",
       "MER-004",
       "MER-005",
       "MER-006",
@@ -124,8 +128,8 @@ describe("canonical screen registry", () => {
 
     const p = implementationProgress();
     expect(p.total).toBe(66);
-    expect(p.implemented).toBe(23);
-    expect(p.remaining).toBe(43);
+    expect(p.implemented).toBe(24);
+    expect(p.remaining).toBe(42);
     expect(p.coreTotal).toBe(62);
   });
 

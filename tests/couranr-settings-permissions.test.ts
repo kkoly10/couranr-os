@@ -35,6 +35,8 @@ const EXPECTED: Record<string, SettingsCapability[]> = {
     "team.set_member_status",
     "website_tools.read",
     "website_tools.publish",
+    "activation.read",
+    "activation.request",
     "customers.read",
     "customers.write",
   ],
@@ -47,6 +49,8 @@ const EXPECTED: Record<string, SettingsCapability[]> = {
     "team.set_member_status",
     "website_tools.read",
     "website_tools.publish",
+    "activation.read",
+    "activation.request",
     "customers.read",
     "customers.write",
   ],
@@ -54,11 +58,24 @@ const EXPECTED: Record<string, SettingsCapability[]> = {
     "settings.read",
     "team.read",
     "website_tools.read",
+    "activation.read",
     "customers.read",
     "customers.write",
   ],
-  viewer: ["settings.read", "team.read", "website_tools.read", "customers.read"],
-  billing: ["settings.read", "team.read", "website_tools.read", "customers.read"],
+  viewer: [
+    "settings.read",
+    "team.read",
+    "website_tools.read",
+    "activation.read",
+    "customers.read",
+  ],
+  billing: [
+    "settings.read",
+    "team.read",
+    "website_tools.read",
+    "activation.read",
+    "customers.read",
+  ],
 };
 
 describe("the five roles have an explicit settings permission set (TRM-002 acceptance)", () => {
@@ -163,6 +180,40 @@ describe("role descriptions state the TRM-002 consequence, not marketing copy", 
       expect(ROLE_DESCRIPTIONS[role].toLowerCase()).toContain("messages");
     });
   }
+});
+
+describe("activation is readable by everyone and bindable by almost nobody", () => {
+  /**
+   * MER-003 records CONSENT. Accepting Couranr's delivery terms, the
+   * prohibited-item policy and the liability position is the business
+   * agreeing to something, and asking for activation is the business asking
+   * to start taking real chargeable deliveries. A `viewer` is defined as
+   * read-only; a consent row signed by one would be a record with no
+   * authority behind it. So the read and the act are deliberately split.
+   */
+  for (const role of MEMBER_ROLES) {
+    it(`${role} may READ activation`, () => {
+      expect(memberMay({ role, status: "active" }, "activation.read")).toBe(true);
+    });
+  }
+
+  it("only owner and manager may accept terms or request activation", () => {
+    const may = MEMBER_ROLES.filter((r) =>
+      memberMay({ role: r, status: "active" }, "activation.request")
+    );
+    expect([...may].sort()).toEqual(["manager", "owner"]);
+  });
+
+  it("activation.request is exactly as narrow as settings.write", () => {
+    // If someone widens one without the other, the two stop meaning the same
+    // thing — "may bind this business" — and this fails.
+    for (const role of MEMBER_ROLES) {
+      expect(
+        memberMay({ role, status: "active" }, "activation.request"),
+        role
+      ).toBe(memberMay({ role, status: "active" }, "settings.write"));
+    }
+  });
 });
 
 describe("the module states its own bound", () => {
