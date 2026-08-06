@@ -25,7 +25,7 @@ Every SHA appearing in either ledger, in full, with what it covers:
 
 | SHA | rows | what was verified at it |
 |---|---|---|
-| `62a3674c975df938685a4cc6a2ade20152744c8d` | 1 screen | `MER-001` built on top of this SHA as a composition of existing endpoints — unit tests, lint and both typechecks green; browser verification on the disposable stack still pending, so the row is `functional_unverified` |
+| `32893e21401a6f056821c4caaa7858460c7356b8` | 1 screen | `MER-001` — 27/27 unstubbed signed-in browser checks on the disposable stack: all five registry states screenshot-backed, degraded payments derived through the SAME `lifecycleStage` the Operations queue uses, mark-ready asserted to the row + version + audit event, viewer refusal (403, row untouched) and cross-tenant refusal proven server-side |
 | `ec4a2af8f7c1de0bee4e3c021b50c875acdd6633` | 4 work items, 5 screens | the B02 PUBLIC LAUNCH SURFACE — `P10-003/004/005/006`; `PUB-001/008/009/010/011`. 68/68 unstubbed browser checks at both spec viewports, verbatim MKT-002 copy, mutation-tested claims scanner |
 | `a115f9212364bab0951053c73877952674ee07d6` | 3 work items, 4 screens | the AUTHENTICATED MESSAGING pass — `P8-001`, `P8-002`, `P8-004`; `MER-012`, `DRV-008`, `OPS-005`, `PUB-007`. 51/51 unstubbed signed-in browser checks, plus the acceptance matrix made re-runnable at 27/27 twice from an empty database |
 | `c2cac8b9ffeaaf7e9a6a528a9eac5d057a2801f9` | 1 work item | the B01 platform batch — `P2-001` private/analytics schemas, executed against a disposable database; production apply pending owner approval |
@@ -202,15 +202,15 @@ Neither number should be quoted without its fraction.
 
 | status | count |
 |---|---|
-| `functional_verified` | 20 |
+| `functional_verified` | 21 |
 | `functional_unverified` | 5 |
 | `partial` | 7 |
 | `static_only` | 0 |
-| `placeholder_only` | 29 |
+| `placeholder_only` | 28 |
 | `missing` | 5 |
 | `deferred` / `retired_or_replaced` | 0 |
 
-**15 of 66 canonical screens are verified working in a browser.**
+**16 of 66 canonical screens are verified working in a browser.**
 
 Phase 8's messaging screens have all now been driven in a real browser, signed
 in, with no `page.route` anywhere — and **that is exactly why two of them are

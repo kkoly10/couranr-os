@@ -264,7 +264,7 @@ async function main() {
        values ('merchant_support', '${bizA}', 'open', 'routine', 'merchant',
                now() - interval '1 hour',
                public.couranr_add_operating_minutes(now() - interval '1 hour', 15),
-               'couranr', 'on_time')
+               'merchant', 'on_time')
        returning id`
     );
     sql(
@@ -357,6 +357,15 @@ async function main() {
     await ownerPage.getByText("No deliveries yet").waitFor({ state: "hidden", timeout: 30_000 }).catch(() => {});
     const deliveriesCard = ownerPage.locator(".cr-card", { hasText: "Open deliveries for" });
     await deliveriesCard.waitFor({ state: "visible", timeout: 30_000 });
+    // The card renders a skeleton until the list call resolves, and the
+    // attention alerts render only after the fulfillment fan-out completes —
+    // wait for CONTENT from each async source before snapshotting any text.
+    // The first run of this harness read the card mid-skeleton and failed
+    // seven rendering checks that were actually fine.
+    await deliveriesCard.getByText("Draft", { exact: true })
+      .waitFor({ state: "visible", timeout: 30_000 }).catch(() => {});
+    await ownerPage.getByText("Payment authorization needs attention")
+      .waitFor({ state: "visible", timeout: 30_000 }).catch(() => {});
     const cardText = (await deliveriesCard.innerText()).replace(/\s+/g, " ");
 
     check("D5", "the truthful test-workspace banner renders (activation incomplete)",
@@ -409,6 +418,13 @@ async function main() {
     const viewerPage = await openDashboard(viewer.email);
     const viewerCard = viewerPage.locator(".cr-card", { hasText: "Open deliveries for" });
     await viewerCard.waitFor({ state: "visible", timeout: 30_000 });
+    // Same rule as the owner page: wait for each async section's content —
+    // the read-only preparation card (fulfillment fan-out) and the messages
+    // tile's empty body (conversations) — before snapshotting.
+    await viewerPage.getByText("can mark this ready")
+      .waitFor({ state: "visible", timeout: 30_000 }).catch(() => {});
+    await viewerPage.getByText("Delivery chats and Couranr Support conversations appear here")
+      .waitFor({ state: "visible", timeout: 30_000 }).catch(() => {});
     const viewerText = (await viewerPage.innerText("body")).replace(/\s+/g, " ");
 
     check("R1", "viewer sees NO Create-delivery action",
