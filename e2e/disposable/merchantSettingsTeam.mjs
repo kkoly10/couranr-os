@@ -71,7 +71,8 @@ const sql = (q) => psql(q).trim();
 const esc = (s) => String(s).replace(/'/g, "''");
 
 function fieldLabel(scope, name) {
-  return scope.getByLabel(new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\*?$`));
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return scope.getByLabel(new RegExp(`^${escaped}(\\s*\\*|\\s*\\(optional\\))?$`));
 }
 
 function makeUser(email, profileRole = "customer") {

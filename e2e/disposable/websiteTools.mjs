@@ -66,8 +66,17 @@ function check(id, description, ok, detail = "") {
 const sql = (q) => psql(q).trim();
 const esc = (s) => String(s).replace(/'/g, "''");
 
+/**
+ * `Field` decorates every label: required ones get a "*", and NON-required
+ * ones get " (optional)" (components/couranr/forms.tsx:55-64). `getByLabel`
+ * matches label TEXT rather than the accessible name, so `aria-hidden` on the
+ * asterisk is ignored and a bare /^Link$/ matches neither shape. This accepts
+ * both — which is what the first run of this harness discovered by timing out
+ * on a field that was rendering perfectly well.
+ */
 function fieldLabel(scope, name) {
-  return scope.getByLabel(new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\*?$`));
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return scope.getByLabel(new RegExp(`^${escaped}(\\s*\\*|\\s*\\(optional\\))?$`));
 }
 
 function makeUser(email) {

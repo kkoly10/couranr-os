@@ -65,7 +65,8 @@ const esc = (s) => String(s).replace(/'/g, "''");
 
 /** Same label helper as the other harnesses: `Field` renders "Email*". */
 function fieldLabel(scope, name) {
-  return scope.getByLabel(new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\*?$`));
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return scope.getByLabel(new RegExp(`^${escaped}(\\s*\\*|\\s*\\(optional\\))?$`));
 }
 
 /* ------------------------------------------------------------------ seeding */
