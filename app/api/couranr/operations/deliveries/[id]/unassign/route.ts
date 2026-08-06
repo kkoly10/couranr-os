@@ -22,7 +22,8 @@ const MAX_REASON = 200;
  * removes work from someone who was counting on it, and an unassignment with
  * no recorded reason is unreviewable a week later.
  */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const actor = await resolveRequestActor(req, null);
   if (isActorDenied(actor)) return routeFailure(actor.code, actor.error);
 

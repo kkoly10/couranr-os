@@ -18,7 +18,8 @@ export const metadata = { title: "Delivery review workspace — Couranr" };
  * Managed dispatch — vehicle, driver and schedule selection — is the rest of
  * this screen and is not in this slice.
  */
-export default function Page({ params }: { params: { id: string } }) {
+export default async function Page(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   return (
     <>
       <PageHeader

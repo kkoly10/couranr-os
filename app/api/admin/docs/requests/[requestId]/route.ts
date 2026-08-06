@@ -78,10 +78,8 @@ function normalizeFileName(row: any, idx: number) {
   );
 }
 
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { requestId: string } }
-) {
+export async function GET(req: NextRequest, props: { params: Promise<{ requestId: string }> }) {
+  const params = await props.params;
   try {
     await requireAdmin(req);
 

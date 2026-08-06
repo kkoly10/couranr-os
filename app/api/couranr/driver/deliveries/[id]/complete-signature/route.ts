@@ -51,7 +51,8 @@ function coordinates(
  * command with `signature_required` until that proof exists — so the evidence
  * cannot be asserted by the same request that claims the delivery is done.
  */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await resolveUserId(req);
   if (isActorDenied(auth)) return routeFailure(auth.code, auth.error);
 

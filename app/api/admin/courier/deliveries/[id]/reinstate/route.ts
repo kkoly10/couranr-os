@@ -10,7 +10,7 @@ function env(name: string) {
   return v;
 }
 
-export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
+export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   try {
     const admin = await requireAdmin(req);
     const supabaseSrv = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), (process.env.SUPABASE_SECRET_KEY ?? env("SUPABASE_SERVICE_ROLE_KEY")));
@@ -18,7 +18,7 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
     const { data: before, error: bErr } = await supabaseSrv
       .from("deliveries")
       .select("id,status,driver_id,delivery_notes")
-      .eq("id", ctx.params.id)
+      .eq("id", (await ctx.params).id)
       .single();
 
     if (bErr || !before) return NextResponse.json({ error: "Delivery not found" }, { status: 404 });
@@ -29,11 +29,11 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
       delivery_notes: before.delivery_notes || null,
     };
 
-    const { error: upErr } = await supabaseSrv.from("deliveries").update(patch).eq("id", ctx.params.id);
+    const { error: upErr } = await supabaseSrv.from("deliveries").update(patch).eq("id", (await ctx.params).id);
     if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
 
     await supabaseSrv.from("delivery_admin_events").insert({
-      delivery_id: ctx.params.id,
+      delivery_id: (await ctx.params).id,
       admin_user_id: admin.id,
       event_type: "reinstate_delivery",
       before_json: before,

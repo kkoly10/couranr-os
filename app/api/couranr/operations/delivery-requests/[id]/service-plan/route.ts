@@ -17,7 +17,8 @@ const VEHICLE_CLASSES = ["car", "van", "box_truck", "cargo_bike"];
  * Whether the requirement can actually carry the shipment is decided in the
  * database against the STORED weight, not here and not by the caller.
  */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   if (!UUID_RE.test(params.id)) return routeFailure("not_found", "Delivery request not found.");
 
   let body: any;

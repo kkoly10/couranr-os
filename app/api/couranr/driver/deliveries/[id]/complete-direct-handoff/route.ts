@@ -54,7 +54,8 @@ function coordinates(
  * The recipient's FIRST NAME only. Couranr never asks a driver to record a
  * full name, and nothing here accepts one.
  */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await resolveUserId(req);
   if (isActorDenied(auth)) return routeFailure(auth.code, auth.error);
 

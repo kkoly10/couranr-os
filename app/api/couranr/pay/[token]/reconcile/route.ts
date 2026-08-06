@@ -23,7 +23,8 @@ export const dynamic = "force-dynamic";
  * and the other collides on the event id — so this is a latency optimisation,
  * never the only path to `authorized`.
  */
-export async function POST(_req: NextRequest, { params }: { params: { token: string } }) {
+export async function POST(_req: NextRequest, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   if (!isWellFormedToken(params.token)) {
     return NextResponse.json({ valid: false, reason: "not_found" }, { status: 404 });
   }

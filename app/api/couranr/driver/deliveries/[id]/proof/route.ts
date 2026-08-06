@@ -33,7 +33,8 @@ const NOT_YOURS = "That delivery is not assigned to you.";
  * image remains a separate, separately-scoped route with its own 600-second
  * TTL, so widening this one cannot widen media access.
  */
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await resolveUserId(req);
   if (isActorDenied(auth)) return routeFailure(auth.code, auth.error);
 

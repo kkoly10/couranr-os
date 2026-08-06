@@ -19,11 +19,11 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
  * A non-participant and a nonexistent id produce the SAME refusal. Two
  * different answers would let a caller enumerate conversation ids.
  */
-export async function GET(req: NextRequest, ctx: { params: { id: string } }) {
+export async function GET(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const user = await resolveUserId(req);
   if (isActorDenied(user)) return routeFailure(user.code, user.error);
 
-  const id = ctx.params?.id || "";
+  const id = (await ctx.params)?.id || "";
   if (!UUID_RE.test(id)) {
     // Same message the participant check gives, so a malformed id is not
     // distinguishable from one that simply is not the caller's.

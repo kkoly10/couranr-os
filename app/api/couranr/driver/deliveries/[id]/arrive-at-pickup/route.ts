@@ -54,7 +54,8 @@ function coordinates(
  * attached to the transition, and the caller's own assignment is what decides
  * whether the transition may happen at all.
  */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await resolveUserId(req);
   if (isActorDenied(auth)) return routeFailure(auth.code, auth.error);
 

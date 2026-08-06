@@ -23,7 +23,7 @@ function firstRow(v: any) {
 
 export async function GET(
   req: NextRequest,
-  ctx: { params: { id: string } }
+  ctx: { params: Promise<{ id: string }> }
 ) {
   try {
     await requireAdmin(req);
@@ -40,7 +40,7 @@ export async function GET(
          pickup_address:pickup_address_id (label,address_line,city,state,zip),
          dropoff_address:dropoff_address_id (label,address_line,city,state,zip)`
       )
-      .eq("id", ctx.params.id)
+      .eq("id", (await ctx.params).id)
       .single();
 
     if (error || !data) {
@@ -53,7 +53,7 @@ export async function GET(
     const { data: events } = await supabaseSrv
       .from("delivery_admin_events")
       .select("id,event_type,created_at,admin_user_id,before_json,after_json")
-      .eq("delivery_id", ctx.params.id)
+      .eq("delivery_id", (await ctx.params).id)
       .order("created_at", { ascending: false })
       .limit(50);
 
@@ -80,7 +80,7 @@ export async function GET(
 
 export async function PATCH(
   req: NextRequest,
-  ctx: { params: { id: string } }
+  ctx: { params: Promise<{ id: string }> }
 ) {
   try {
     const admin = await requireAdmin(req);
@@ -114,7 +114,7 @@ export async function PATCH(
     const { data: existing, error: getErr } = await supabaseSrv
       .from("deliveries")
       .select("id,status,recipient_name,recipient_phone,delivery_notes,driver_id")
-      .eq("id", ctx.params.id)
+      .eq("id", (await ctx.params).id)
       .single();
 
     if (getErr || !existing) {
@@ -143,14 +143,14 @@ export async function PATCH(
     const { error: upErr } = await supabaseSrv
       .from("deliveries")
       .update(patch)
-      .eq("id", ctx.params.id);
+      .eq("id", (await ctx.params).id);
 
     if (upErr) {
       return NextResponse.json({ error: upErr.message }, { status: 500 });
     }
 
     await supabaseSrv.from("delivery_admin_events").insert({
-      delivery_id: ctx.params.id,
+      delivery_id: (await ctx.params).id,
       admin_user_id: admin.id,
       event_type: "edit_delivery",
       before_json: beforeJson,

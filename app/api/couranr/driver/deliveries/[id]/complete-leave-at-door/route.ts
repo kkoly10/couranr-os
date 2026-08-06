@@ -52,7 +52,8 @@ function coordinates(
  * The delivery photo is not asserted here either; it is finalized as a
  * drop-off proof first, and the SQL refuses until it exists.
  */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await resolveUserId(req);
   if (isActorDenied(auth)) return routeFailure(auth.code, auth.error);
 

@@ -16,13 +16,14 @@ export const metadata = { title: "Assigned delivery — Couranr" };
  * carries no authority: the same sanitized projection backs both, and every
  * mutation still goes through the same command.
  */
-export default function Page({
-  params,
-  searchParams,
-}: {
-  params: { id: string };
-  searchParams?: { mode?: string };
-}) {
+export default async function Page(
+  props: {
+    params: Promise<{ id: string }>;
+    searchParams?: Promise<{ mode?: string }>;
+  }
+) {
+  const searchParams = await props.searchParams;
+  const params = await props.params;
   const drivingMode = searchParams?.mode === "driving";
   return (
     <>

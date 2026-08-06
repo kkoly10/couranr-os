@@ -19,7 +19,8 @@ export const dynamic = "force-dynamic";
  * Unauthenticated: the token in the path is the authorization. The page reads
  * nothing from the query string that changes what it shows.
  */
-export default function Page({ params }: { params: { token: string } }) {
+export default async function Page(props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   return (
     // A <div>, NOT a <main>. The public shell already renders the page's
     // `<main id="cr-main">` landmark, and a nested one gives the document two

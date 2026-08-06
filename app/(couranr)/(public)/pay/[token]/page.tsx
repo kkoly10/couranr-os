@@ -16,7 +16,8 @@ export const dynamic = "force-dynamic";
  * nothing from the query string that changes what it shows — whether this is a
  * revised quote is the server's answer, not the URL's claim.
  */
-export default function Page({ params }: { params: { token: string } }) {
+export default async function Page(props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   return (
     // A <div>, NOT a <main>: the public shell already renders the page's
     // `<main id="cr-main">` landmark. This page nested a second one, giving

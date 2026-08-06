@@ -15,11 +15,11 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
  * PARTICIPANT: a merchant opening a thread does not mark it read for the driver
  * or for Operations.
  */
-export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
+export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const user = await resolveUserId(req);
   if (isActorDenied(user)) return routeFailure(user.code, user.error);
 
-  const id = ctx.params?.id || "";
+  const id = (await ctx.params)?.id || "";
   if (!UUID_RE.test(id)) {
     return routeFailure("not_found", "That conversation is not available.");
   }

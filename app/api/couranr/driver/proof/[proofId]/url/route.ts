@@ -35,7 +35,8 @@ const NO_MEDIA = "There is no image for that proof.";
  * a driver — inside the proof policy, so no caller can lengthen the life of a
  * URL to private media.
  */
-export async function GET(req: NextRequest, { params }: { params: { proofId: string } }) {
+export async function GET(req: NextRequest, props: { params: Promise<{ proofId: string }> }) {
+  const params = await props.params;
   const auth = await resolveUserId(req);
   if (isActorDenied(auth)) return routeFailure(auth.code, auth.error);
 

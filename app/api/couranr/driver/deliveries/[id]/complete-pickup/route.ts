@@ -77,7 +77,8 @@ function optionalText(value: unknown, limit: number): string | null | undefined 
  * the string "false" is truthy in JavaScript, and this flag is what stands
  * behind a driver's statement that they checked the load.
  */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await resolveUserId(req);
   if (isActorDenied(auth)) return routeFailure(auth.code, auth.error);
 

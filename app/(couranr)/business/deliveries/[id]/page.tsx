@@ -4,7 +4,8 @@ import { DeliveryRequestDetail } from "@/components/couranr/requests/DeliveryReq
 export const metadata = { title: "Delivery detail — Couranr" };
 
 /** MER-007 — delivery detail. */
-export default function Page({ params }: { params: { id: string } }) {
+export default async function Page(props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   return (
     <>
       <PageHeader
