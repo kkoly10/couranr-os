@@ -324,6 +324,9 @@ async function main() {
       cwd: ROOT,
       env: { ...env, COURANR_DIST_DIR: DIST },
       stdio: "ignore",
+      // Own process group, so teardown can kill the whole tree. `npx` is a
+      // wrapper: killing it alone orphans the real next-server.
+      detached: true,
     });
     const BASE = "http://127.0.0.1:3311";
     const deadline = Date.now() + 90_000;
@@ -471,7 +474,19 @@ async function main() {
     check("XX", "the run completed", false, String(e.message || e).slice(0, 200));
   } finally {
     if (browser) await browser.close().catch(() => {});
-    if (devServer) devServer.kill("SIGTERM");
+    // Kill the process GROUP, not the wrapper. `npx next start` spawns a child;
+    // SIGTERM to the wrapper orphaned the real next-server, which kept holding
+    // port 3311. Every later run's wait-for-live loop was then satisfied by
+    // that stale process, still carrying the environment from before the fix —
+    // which is why three correct fixes in a row appeared to change nothing.
+    // Confirmed by pgrep finding an orphan alive between runs.
+    if (devServer) {
+      try {
+        process.kill(-devServer.pid, "SIGTERM");
+      } catch {
+        devServer.kill("SIGTERM");
+      }
+    }
     if (gateway?.server) gateway.server.close();
     if (pgrst) pgrst.kill("SIGTERM");
     // The whole point: cleanup is destruction, not a DELETE grant.
