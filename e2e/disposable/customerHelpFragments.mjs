@@ -59,15 +59,35 @@
  * `revoked_at`, so `couranr_redeem_help_token`'s three refusal conditions are
  * all false against the row as inserted.
  *
- * STILL OPEN, and the next thing to measure rather than reason about: what the
- * `/rest/v1/rpc/couranr_redeem_help_token` call actually returns through the
- * gateway. The strongest candidate is the service-role key — the harness passes
- * the literal string "disposable-local-service", which is not a JWT, and
- * PostgREST's handling of a non-JWT Bearer token decides whether the RPC ever
- * runs. Configuring a `jwt-secret` and signing a real service-role JWT would
- * remove that whole class. NOT YET TRIED, and stated as a candidate rather
- * than a diagnosis, because the last confident diagnosis in this file was
- * wrong.
+ * MEASURED AT THE RPC BOUNDARY, AND HALF-FIXED.
+ *
+ * A direct probe answered the question the four previous runs could not:
+ *
+ *   direct SQL call to couranr_redeem_help_token   -> the three ids, correct
+ *   same call through the gateway, pre-fix         -> HTTP 500,
+ *                                     PGRST300 "Server lacks JWT secret"
+ *
+ * supabase-js always sends `Authorization: Bearer <key>`, and PostgREST refuses
+ * a Bearer token outright when no `jwt-secret` is configured. The route's error
+ * handling collapsed that into the generic "This help link is not available.",
+ * which is why the symptom looked for four runs like a rejected token while the
+ * function was working perfectly the whole time.
+ *
+ * gateway.mjs now configures a per-run HS256 secret and signs real service-role
+ * and anon JWTs with it. RE-PROBED AFTER THE FIX:
+ *
+ *   same call through the gateway, post-fix        -> HTTP 200
+ *     [{"out_token_id":"...","out_delivery_id":"...","out_conversation_id":"..."}]
+ *
+ * So redemption over HTTP is CONFIRMED WORKING.
+ *
+ * STILL FAILING, AND NOT YET DIAGNOSED: the full app run renders the same
+ * refusal. Something between the Next server and the gateway still differs from
+ * the direct probe. `.env.local` is present in this checkout and Next loads it,
+ * which is one candidate for the passed-in keys being overridden — but that is
+ * a GUESS and is written here as one. Two confident diagnoses in this file were
+ * already wrong; the next step is to log what the server route actually sends
+ * and receives, not to reason about it.
  * ---------------------------------------------------------------------------
  *
  * Measured state: C1 "passes", C2 fails because the topic `<select>` never
@@ -118,7 +138,13 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { up, down, psql, dbUrl } from "./up.mjs";
-import { startPostgrest, startGateway, waitForPostgrest } from "./gateway.mjs";
+import {
+  startPostgrest,
+  startGateway,
+  waitForPostgrest,
+  SERVICE_ROLE_JWT,
+  ANON_JWT,
+} from "./gateway.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const SHOTS = path.join(ROOT, "e2e/screenshots/disposable-cus");
@@ -241,8 +267,10 @@ async function main() {
     const env = {
       ...process.env,
       NEXT_PUBLIC_SUPABASE_URL: gateway.url,
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: "disposable-local-anon",
-      SUPABASE_SERVICE_ROLE_KEY: "disposable-local-service",
+      // Real HS256 JWTs signed with the secret PostgREST verifies against.
+      // The literal strings used before produced PGRST300 on every call.
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ANON_JWT,
+      SUPABASE_SERVICE_ROLE_KEY: SERVICE_ROLE_JWT,
       PORT: "3311",
       NODE_ENV: "production",
     };

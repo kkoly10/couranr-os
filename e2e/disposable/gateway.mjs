@@ -43,6 +43,7 @@
  */
 
 import http from "node:http";
+import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import { writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
@@ -61,6 +62,43 @@ const GATEWAY_PORT = Number(process.env.COURANR_GATEWAY_PORT || 55434);
  * Those are made with `has_table_privilege` against the real GRANTs, which the
  * migrations set and `bootstrap.sql` reproduces including `pg_default_acl`.
  */
+/**
+ * A local-only HS256 secret and the service-role JWT signed with it.
+ *
+ * WHY THIS EXISTS, MEASURED NOT GUESSED. PostgREST answered every RPC with
+ * HTTP 500 `PGRST300 "Server lacks JWT secret"`, because supabase-js always
+ * sends `Authorization: Bearer <key>` and PostgREST refuses a Bearer token when
+ * no `jwt-secret` is configured. The route's error handling turned that into
+ * the generic "This help link is not available.", which is why the symptom
+ * looked like a rejected token for four runs. Calling the function directly in
+ * SQL returned its three ids correctly the whole time.
+ *
+ * This is REAL crypto, not a bypass: PostgREST verifies the signature against
+ * this secret and derives the role from the verified `role` claim. A forged or
+ * unsigned token is rejected exactly as in production. The secret is generated
+ * per run, never leaves the machine, and is not any project's key.
+ */
+export const JWT_SECRET = crypto.randomBytes(32).toString("hex");
+
+function signJwt(payload, secret) {
+  const enc = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
+  const head = enc({ alg: "HS256", typ: "JWT" });
+  const body = enc(payload);
+  const sig = crypto.createHmac("sha256", secret).update(`${head}.${body}`).digest("base64url");
+  return `${head}.${body}.${sig}`;
+}
+
+/** Signed the same way Supabase signs a service key: HS256, `role` claim. */
+export const SERVICE_ROLE_JWT = signJwt(
+  { role: "service_role", iss: "couranr-disposable", iat: 1735689600, exp: 2051222400 },
+  JWT_SECRET
+);
+
+export const ANON_JWT = signJwt(
+  { role: "anon", iss: "couranr-disposable", iat: 1735689600, exp: 2051222400 },
+  JWT_SECRET
+);
+
 export function startPostgrest({ dbUrl, binary, workDir }) {
   mkdirSync(workDir, { recursive: true });
   const conf = path.join(workDir, "postgrest.conf");
@@ -73,6 +111,8 @@ export function startPostgrest({ dbUrl, binary, workDir }) {
       `server-port = ${POSTGREST_PORT}`,
       `server-host = "127.0.0.1"`,
       `db-pool = 4`,
+      // Without this PostgREST rejects every Bearer token with PGRST300.
+      `jwt-secret = "${JWT_SECRET}"`,
       "",
     ].join("\n")
   );
