@@ -3,15 +3,30 @@
   "repository": "kkoly10/couranr-os",
   "authority_sha": "f26d857fb797b008fc5772700d65a4e5c181f259",
   "production_migration_head": "20260806010000",
-  "active_batch": "B02",
-  "active_capability": "ACP-009",
-  "open_pr": 24,
+  "active_batch": "B03",
+  "active_capability": "ACP-017",
+  "open_pr": 26,
   "completed_capabilities": [
-    "ACP-001", "ACP-002", "ACP-003", "ACP-004", "ACP-005", "ACP-007", "ACP-008"
+    "ACP-001",
+    "ACP-002",
+    "ACP-003",
+    "ACP-004",
+    "ACP-005",
+    "ACP-007",
+    "ACP-008",
+    "ACP-009",
+    "ACP-010",
+    "ACP-011",
+    "ACP-012",
+    "ACP-013",
+    "ACP-014",
+    "ACP-016-scanner-half"
   ],
   "carried_forward": {
-    "ACP-006": "the canonical --couranr-* token system and primitives pre-exist and match the spec palette exactly; table/chart/upload primitives and the visual-diff harness land with their first consumers in B02/B11 rather than being invented without one",
-    "expired-token-refresh-browser-scenario": "the refresh_token grant is proven at the gateway (20/20) and proxy.ts runs getUser on every page load in the 53/53 harness, but no browser scenario yet forces an EXPIRED access token through the refresh path; needs a short-TTL override in the disposable gateway"
+    "ACP-006": "canonical token system pre-exists and matches the spec palette; table/chart/upload primitives land with first consumers",
+    "ACP-015": "PUB-004 estimate: the anonymous priced endpoint needs the REAL maps provider for server-validated distance (external gate this container cannot exercise) plus net-new rate limiting; do not ship a priced surface on an unverified distance path",
+    "ACP-016-telemetry-half": "consented conversion events land with the analytics substrate (B11), never as a stub",
+    "expired-token-refresh-browser-scenario": "needs a short-TTL override in the disposable gateway"
   },
   "blocked_capabilities": [],
   "decision_queue": [
@@ -31,7 +46,7 @@
       "operation": "apply migration 20260806100000_couranr_private_and_analytics_schemas to production",
       "prepared": "forward + rollback committed at c2cac8b; executed against a disposable database including the rollback and its RESTRICT fail-safe; additive only, touches no existing object or row",
       "expected_effect": "two new schemas (private, analytics), service_role-only, not exposed through PostgREST; production ledger 39 -> 40",
-      "rollback": "supabase/rollbacks/20260806100000_...rollback.sql — refuses if the schemas hold objects"
+      "rollback": "supabase/rollbacks/20260806100000_...rollback.sql \u2014 refuses if the schemas hold objects"
     }
   ],
   "last_full_gate": {
@@ -42,6 +57,7 @@
   "notes": {
     "b00_integration": "PR #22 squash-merged as f26d857 per spec section 2; branch ref claude/couranr-phase-8-conversations retained so ledger evidence SHAs stay reachable",
     "gap_intake": "ACP-002 protocol active: any discovered requirement with no work-item row becomes ACP-GAP-### in IMPLEMENTATION_LEDGER-adjacent notes before implementation continues",
-    "owner_gates_standing": "no production migration apply, no production ledger repair, no real Stripe money, no secret rotation, no bucket made public, no batch-PR merge, no canary — each needs explicit owner approval for the exact operation"
+    "owner_gates_standing": "no production migration apply, no production ledger repair, no real Stripe money, no secret rotation, no bucket made public, no batch-PR merge, no canary \u2014 each needs explicit owner approval for the exact operation",
+    "b02": "PRs stacked: #24 (B00) -> #25 (B01) -> #26 (B02); all draft, merges owner-gated; every batch verified at its head"
   }
 }
