@@ -17,7 +17,7 @@ as a reason to build something the package does not require.
 | Active branch | `claude/couranr-phase-8-conversations` |
 | Branch HEAD | `40129ee06d96bfdcd85bb653397d2553a1fa5b98` |
 | Commits ahead / behind | **16 / 0** |
-| Target PR | opened as a draft immediately after this commit — number recorded in a follow-up, since a commit cannot contain its own PR |
+| Target PR | [#22](https://github.com/kkoly10/couranr-os/pull/22), draft |
 | Status | **`frozen` — feature work stopped; reconciliation and verification only** |
 | Reconciliation | [`PHASE8_RECONCILIATION.md`](./PHASE8_RECONCILIATION.md) |
 
