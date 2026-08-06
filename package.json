@@ -29,8 +29,8 @@
   "dependencies": {
     "@stripe/react-stripe-js": "^2.7.0",
     "@stripe/stripe-js": "^4.5.0",
-    "@supabase/auth-helpers-nextjs": "^0.10.0",
-    "@supabase/supabase-js": "^2.45.4",
+    "@supabase/ssr": "0.12.4",
+    "@supabase/supabase-js": "2.112.1",
     "jszip": "^3.10.1",
     "next": "14.2.5",
     "react": "18.3.1",

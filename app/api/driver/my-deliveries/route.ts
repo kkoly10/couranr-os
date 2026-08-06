@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
-import { createRouteHandlerClient } from "@supabase/auth-helpers-nextjs";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { logServerFailure, newCorrelationId } from "@/lib/couranr/errors";
 import {
@@ -26,7 +25,7 @@ export const dynamic = "force-dynamic";
  */
 export async function GET() {
   const correlationId = newCorrelationId();
-  const supabase = createRouteHandlerClient({ cookies });
+  const supabase = await createSupabaseServerClient();
 
   // 1. A valid session. getUser() revalidates the JWT with Supabase rather than
   //    decoding the cookie, so a forged or stale cookie fails here.

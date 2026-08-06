@@ -1,18 +1,20 @@
 // app/portal/page.tsx
 import { redirect } from "next/navigation";
-import { cookies } from "next/headers";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
 export default async function PortalRedirectPage() {
-  const supabase = createServerComponentClient({ cookies });
+  const supabase = await createSupabaseServerClient();
 
+  // getUser(), not getSession(): this page GATES access, and getSession()
+  // decodes the cookie without revalidating the JWT. Upgraded during the
+  // @supabase/ssr migration rather than ported as-was.
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (!session) {
+  if (!user) {
     redirect("/login?next=/portal");
   }
 
@@ -20,7 +22,7 @@ export default async function PortalRedirectPage() {
   const { data: profile } = await supabase
     .from("profiles")
     .select("role")
-    .eq("id", session.user.id)
+    .eq("id", user.id)
     .single();
 
   const role = profile?.role;
