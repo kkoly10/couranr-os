@@ -15,8 +15,8 @@ as a reason to build something the package does not require.
 | Base branch | `main` |
 | Base SHA | `c929cc3a8e630bd11ac0a98ff3800a16ee77c140` |
 | Active branch | `claude/couranr-phase-8-conversations` |
-| Branch HEAD | `40129ee06d96bfdcd85bb653397d2553a1fa5b98` |
-| Commits ahead / behind | **16 / 0** |
+| Reconciled at | `40129ee06d96bfdcd85bb653397d2553a1fa5b98` — **16** commits ahead of base, 0 behind |
+| Since then | two documentation commits: the reconciliation itself, and this PR-number record. No code, no migration. |
 | Target PR | [#22](https://github.com/kkoly10/couranr-os/pull/22), draft |
 | Status | **`frozen` — feature work stopped; reconciliation and verification only** |
 | Reconciliation | [`PHASE8_RECONCILIATION.md`](./PHASE8_RECONCILIATION.md) |
