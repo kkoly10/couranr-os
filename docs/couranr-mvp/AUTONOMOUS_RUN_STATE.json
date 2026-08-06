@@ -4,7 +4,7 @@
   "authority_sha": "f26d857fb797b008fc5772700d65a4e5c181f259",
   "production_migration_head": "20260806010000",
   "active_batch": "B03",
-  "active_capability": "ACP-021",
+  "active_capability": "ACP-022",
   "open_pr": 27,
   "completed_capabilities": [
     "ACP-001",
@@ -22,7 +22,8 @@
     "ACP-014",
     "ACP-016-scanner-half",
     "ACP-017",
-    "ACP-019"
+    "ACP-019",
+    "ACP-021"
   ],
   "carried_forward": {
     "ACP-006": "canonical token system pre-exists and matches the spec palette; table/chart/upload primitives land with first consumers",
@@ -65,6 +66,18 @@
       "prepared": "forward + rollback committed at c2cac8b; executed against a disposable database including the rollback and its RESTRICT fail-safe; additive only, touches no existing object or row",
       "expected_effect": "two new schemas (private, analytics), service_role-only, not exposed through PostgREST; production ledger 39 -> 40",
       "rollback": "supabase/rollbacks/20260806100000_...rollback.sql \u2014 refuses if the schemas hold objects"
+    },
+    {
+      "operation": "apply migration 20260806120000_couranr_team_management to production",
+      "prepared": "forward + rollback committed; executed against a disposable database across three full runs; additive only - creates couranr_team_events, six named commands and one email-lookup function, touches no existing column and deletes no row",
+      "expected_effect": "MER-015 team management becomes operable; production ledger 40 -> 41",
+      "rollback": "supabase/rollbacks/20260806120000_...rollback.sql - RESTRICT, refuses if the audit trail holds rows"
+    },
+    {
+      "operation": "apply migration 20260806130000_couranr_business_members_rls_hardening to production",
+      "prepared": "forward + rollback committed; verified on the disposable stack, whose bootstrap reproduces production's policies INCLUDING both defects, so the before/after is real",
+      "expected_effect": "closes FIND-B03-001 (a manager can rewrite any membership row in their business from a browser) and corrects FIND-B03-002's self-comparison; every business_members caller in the repo uses service_role, verified by grep, so no application path changes",
+      "rollback": "supabase/rollbacks/20260806130000_...rollback.sql - RESTORES THE ESCALATION by design; the header says so"
     }
   ],
   "last_full_gate": {
@@ -77,6 +90,6 @@
     "gap_intake": "ACP-002 protocol active: any discovered requirement with no work-item row becomes ACP-GAP-### in IMPLEMENTATION_LEDGER-adjacent notes before implementation continues",
     "owner_gates_standing": "no production migration apply, no production ledger repair, no real Stripe money, no secret rotation, no bucket made public, no batch-PR merge, no canary \u2014 each needs explicit owner approval for the exact operation",
     "b02": "PRs stacked: #24 (B00) -> #25 (B01) -> #26 (B02); all draft, merges owner-gated; every batch verified at its head",
-    "b03": "PR #27 (B03 -> b02 branch, draft). ACP-017 MER-001 verified 27/27 at 32893e2; ACP-019 MER-004 verified 25/25 at 08f59f8. Next: ACP-021 MER-014/015 (live-shape check DONE - business_members/business_accounts match the documented shape, slug UNIQUE confirmed; two RLS findings recorded in p0_findings; invites + last-owner CR409 migration to design), then ACP-020 MER-008/009, ACP-022 MER-013, ACP-018 MER-003 last (net-new state machine). ACP-023 MER-016 waits on ACP-041 billing substrate."
+    "b03": "PR #27 (B03 -> b02 branch, draft). ACP-017 MER-001 27/27 at 32893e2; ACP-019 MER-004 25/25 at 08f59f8; ACP-021 MER-014/MER-015 41/41 at e4dd7e2 including the concurrent last-owner race. Next: ACP-022 MER-013 website tools (slug now surfaced through listActiveMemberships; needs a config table, QR generation and an explicit 'goes live when hosted requests launch' state because /request/[merchantSlug] is PUB-004's work), then ACP-020 MER-008/009, ACP-018 MER-003 last. ACP-023 MER-016 waits on ACP-041."
   }
 }

@@ -372,7 +372,7 @@ async function main() {
     console.log("MER-014 — the unverified-workspace state");
     const unverified = await open(unverifiedOwner.email, "/business/settings");
     await unverified
-      .getByText("This business needs Couranr verification")
+      .getByText("This business needs Couranr verification").first()
       .waitFor({ state: "visible", timeout: 30_000 });
     check("S7", "a business with no workspace profile renders verification-required",
       true);
@@ -414,7 +414,12 @@ async function main() {
     await fieldLabel(ownerTeam, "Email address").fill(invitee.email);
     await fieldLabel(ownerTeam, "Role").selectOption("dispatcher");
     await ownerTeam.getByRole("button", { name: "Send invitation" }).click();
-    await ownerTeam.getByText("Invitation created").waitFor({ state: "visible", timeout: 20_000 });
+    // `exact` matters: the alert renders the phrase twice — once as its title
+    // and once inside the sentence naming the address — and a loose match is a
+    // Playwright strict-mode violation rather than a product problem.
+    await ownerTeam
+      .getByText("Invitation created", { exact: true })
+      .waitFor({ state: "visible", timeout: 20_000 });
 
     {
       const row = sql(
@@ -442,7 +447,7 @@ async function main() {
     // The invitee's own side: they see and accept it.
     const inviteePage = await open(invitee.email, "/business/settings/team");
     await inviteePage
-      .getByText("You have been invited to [TEAM] disposable business")
+      .getByText("You have been invited to [TEAM] disposable business").first()
       .waitFor({ state: "visible", timeout: 30_000 });
     check("T5", "the invitee sees their own pending invitation", true);
     await inviteePage.screenshot({ path: path.join(SHOTS, "MER-015-invitee-view.png"), fullPage: true });
@@ -532,7 +537,7 @@ async function main() {
     // The UI renders the refusal, not a silent no-op.
     {
       const page = await open(owner.email, "/business/settings/team");
-      await page.getByText("Last owner protection").waitFor({ state: "visible", timeout: 30_000 });
+      await page.getByText("Last owner protection").first().waitFor({ state: "visible", timeout: 30_000 });
       check("L5", "the UI explains last-owner protection BEFORE it is hit", true);
       await page.screenshot({ path: path.join(SHOTS, "MER-015-last-owner.png"), fullPage: true });
     }
@@ -592,7 +597,7 @@ async function main() {
         })
       );
       await page.goto(`${BASE}/business/settings/team`, { waitUntil: "domcontentloaded" });
-      await page.getByText("Your team did not load").waitFor({ state: "visible", timeout: 30_000 });
+      await page.getByText("Your team did not load").first().waitFor({ state: "visible", timeout: 30_000 });
       const body = await page.innerText("body");
       check("F1", "the error state renders with its reference", body.includes("e2e-team-err"));
       check("F2", "it does NOT claim the business has no team members",

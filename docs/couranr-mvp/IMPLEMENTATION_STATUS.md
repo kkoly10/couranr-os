@@ -25,6 +25,7 @@ Every SHA appearing in either ledger, in full, with what it covers:
 
 | SHA | rows | what was verified at it |
 |---|---|---|
+| `e4dd7e2afa29f35ac161985e915db112cbeaedb8` | 2 screens | `MER-014` and `MER-015` — 41/41 unstubbed signed-in browser checks on the disposable stack, including the CONCURRENT double-demote race (two parallel demotes returned 200/409, leaving one active owner where a TypeScript-only guard would have left none), the invite/accept round trip asserted on both rows and both audit events, and the five probes measuring what the un-applied hardening migration actually changes |
 | `c9e0fe573da29177fa72979911a7e60bf3beb0df` | 2 screens | `MER-014` and `MER-015` built — settings, team management, and the SQL last-owner protection. Recorded `functional_unverified` until the disposable-stack run (which includes the concurrent double-demote race) is attached. Also carries migration `20260806130000`, the business_members RLS hardening, which is NOT applied to production |
 | `08f59f8d0cc062c36252a7295f86513618187965` | 1 screen | `MER-004` — 25/25 unstubbed signed-in browser checks on the disposable stack: three separate state-group badges equal to the database facts on the control row, facet independence, inline mark-ready to row + audit event, the stale-tab conflict with no state change, duplicate prefill, viewer/tenant/anonymous refusals, injected-500 error state |
 | `32893e21401a6f056821c4caaa7858460c7356b8` | 1 screen | `MER-001` — 27/27 unstubbed signed-in browser checks on the disposable stack: all five registry states screenshot-backed, degraded payments derived through the SAME `lifecycleStage` the Operations queue uses, mark-ready asserted to the row + version + audit event, viewer refusal (403, row untouched) and cross-tenant refusal proven server-side |
@@ -204,15 +205,15 @@ Neither number should be quoted without its fraction.
 
 | status | count |
 |---|---|
-| `functional_verified` | 22 |
-| `functional_unverified` | 7 |
+| `functional_verified` | 24 |
+| `functional_unverified` | 5 |
 | `partial` | 7 |
 | `static_only` | 0 |
 | `placeholder_only` | 25 |
 | `missing` | 5 |
 | `deferred` / `retired_or_replaced` | 0 |
 
-**17 of 66 canonical screens are verified working in a browser.**
+**19 of 66 canonical screens are verified working in a browser.**
 
 Phase 8's messaging screens have all now been driven in a real browser, signed
 in, with no `page.route` anywhere — and **that is exactly why two of them are

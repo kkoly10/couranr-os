@@ -171,6 +171,8 @@ export type BusinessAccountOption = {
   businessAccountId: string;
   name: string;
   role: string;
+  /** MER-013's hosted-request link name. Null until a business has one. */
+  slug: string | null;
 };
 
 export function fetchMyBusinessAccounts() {
