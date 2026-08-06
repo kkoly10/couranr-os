@@ -1,0 +1,55 @@
+-- ---------------------------------------------------------------------
+-- ROLLBACK for 20260806190000_couranr_delivery_presets
+--
+-- READ THIS BEFORE RUNNING IT.
+--
+-- `couranr_delivery_requests.preset_snapshot` is the ONLY record of what a
+-- preset said at the moment a delivery was created. That is the entire reason
+-- it is a snapshot and not a reference. Dropping it does not lose a cache — it
+-- loses the answer to "what did the merchant actually agree to?" for every
+-- delivery ever made from a preset, permanently, and the Master Package's
+-- Phase 4 acceptance says explicitly that historical preset snapshots remain.
+--
+-- `couranr_merchant_preset_versions` is append-only history for the same
+-- reason. A delivery citing version 3 can only be explained by the row that
+-- says what version 3 held.
+--
+-- To DISABLE presets rather than erase them, run section 1 only. With the
+-- tables ungranted nothing can write a preset, which stops the feature while
+-- keeping every snapshot and every version.
+-- ---------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------
+-- 1. Stop the feature. Destroys nothing.
+-- ---------------------------------------------------------------------
+revoke insert, update on table public.couranr_category_presets         from service_role;
+revoke insert, update on table public.couranr_merchant_presets         from service_role;
+revoke insert         on table public.couranr_merchant_preset_versions from service_role;
+
+-- ---------------------------------------------------------------------
+-- 2. DESTRUCTIVE — see the note above. Uncomment deliberately.
+-- ---------------------------------------------------------------------
+--
+-- alter table public.couranr_delivery_requests
+--   drop constraint if exists couranr_dr_preset_body_chk;
+-- alter table public.couranr_delivery_requests
+--   drop constraint if exists couranr_dr_preset_source_chk;
+-- alter table public.couranr_delivery_requests
+--   drop constraint if exists couranr_dr_preset_pair_chk;
+--
+-- -- THIS IS THE LINE THAT DESTROYS THE HISTORY.
+-- alter table public.couranr_delivery_requests
+--   drop column if exists preset_snapshot;
+-- alter table public.couranr_delivery_requests
+--   drop column if exists preset_source;
+-- alter table public.couranr_delivery_requests
+--   drop column if exists preset_version;
+-- alter table public.couranr_delivery_requests
+--   drop column if exists preset_id;
+--
+-- drop table if exists public.couranr_merchant_preset_versions;
+-- drop table if exists public.couranr_merchant_presets;
+-- drop table if exists public.couranr_category_presets;
+--
+-- -- Only droppable once every CHECK referencing it is gone.
+-- drop function if exists public.couranr_preset_body_is_clean(jsonb);
