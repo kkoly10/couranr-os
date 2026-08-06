@@ -35,6 +35,42 @@
  * NO PRODUCTION ROW IS TOUCHED. The database is created empty, destroyed
  * afterwards, and holds no real data at any point.
  *
+ * ---------------------------------------------------------------------------
+ * KNOWN BLOCKER — THIS RUN DOES NOT YET PASS. READ BEFORE CITING IT.
+ * ---------------------------------------------------------------------------
+ *
+ * Current state, measured: C1 PASSES — the page renders for a live token
+ * against the disposable database with nothing stubbed. C2 then fails, because
+ * the topic `<select>` never appears; `locator.inputValue()` waits its full 30
+ * seconds and times out.
+ *
+ * THE CAUSE IS NOT THE TEST. `NEXT_PUBLIC_*` variables are INLINED INTO THE
+ * BUNDLE AT BUILD TIME, not read at runtime. `.next` here was built against
+ * the real project, so the browser client still points at the Supabase host —
+ * which Chromium in this container cannot reach at all. The server half works
+ * (it reads `process.env` at runtime, which is why C1 renders), the client
+ * half cannot, and the form that the client renders after its fetch never
+ * arrives.
+ *
+ * THE FIX is to rebuild with the disposable URL baked in before starting:
+ *
+ *     NEXT_PUBLIC_SUPABASE_URL=$GATEWAY npm run build
+ *
+ * and only then `next start`. That is a ~2 minute build inside a run that
+ * already takes several minutes, so it belongs in the harness rather than in a
+ * caller's head.
+ *
+ * UNTIL THAT LANDS AND THE RUN IS GREEN, CUS-001 AND CUS-003 STAY UNPROMOTED
+ * IN BOTH LEDGERS. One passing check out of ten is not evidence for a screen.
+ *
+ * Two harness defects were found and fixed getting this far, both mine:
+ *   - the Next server was spawned with stdio "pipe" and never drained, so it
+ *     blocked once the OS pipe buffer filled — 15 minutes, no output, SIGTERM;
+ *   - `psql` returned the command tag as well as the value, so every
+ *     `insert ... returning id` yielded "<uuid>\nINSERT 0 1" and the tag was
+ *     carried into the next statement. It surfaced as
+ *     `invalid input syntax for type uuid`, one layer away from the cause.
+ *
  * Run:  node e2e/disposable/customerHelpFragments.mjs
  */
 
@@ -72,17 +108,58 @@ const sha256 = (s) => crypto.createHash("sha256").update(s).digest("hex");
  * issuance rather than faking a row.
  */
 function seed(marker) {
+  // couranr_deliveries has 19 NOT NULL columns with no default, three of them
+  // FKs into request -> obligation -> plan. Building the chain IS the work:
+  // each NOT NULL is the schema stating what a delivery actually requires, and
+  // the first version of this function skipped them and failed on the insert.
+  // The column set mirrors e2e/phase8Acceptance.mjs, which built the same chain
+  // against the project.
   const businessId = sql(
     `insert into public.business_accounts (name, status)
      values ('${marker} business', 'active') returning id`
   );
-  const deliveryId = sql(
-    `insert into public.couranr_deliveries
-       (business_account_id, delivery_state, timezone)
-     values ('${businessId}', 'created', 'America/New_York')
+  const userId = sql(
+    `insert into auth.users (email) values ('${marker.toLowerCase().replace(/[^a-z0-9]/g, "")}@example.test')
      returning id`
   );
-  // Raw token generated here, hash stored — the same shape the route uses.
+  const requestId = sql(
+    `insert into public.couranr_delivery_requests
+       (business_account_id, created_by, idempotency_key, recipient_name)
+     values ('${businessId}', '${userId}', 'disp-${marker}-${Date.now()}', '${marker} recipient')
+     returning id`
+  );
+  const obligationId = sql(
+    `insert into public.couranr_payment_obligations
+       (request_id, business_account_id, payer_type, request_version,
+        pricing_policy_version, amount_cents, idempotency_key)
+     values ('${requestId}', '${businessId}', 'merchant', 1, 'disposable', 1000,
+             'disp-po-${marker}-${Date.now()}')
+     returning id`
+  );
+  const planId = sql(
+    `insert into public.couranr_service_plans
+       (request_id, business_account_id, payment_obligation_id, request_version,
+        scheduled_pickup_start, scheduled_pickup_end, timezone, vehicle_requirement)
+     values ('${requestId}', '${businessId}', '${obligationId}', 1,
+             now(), now() + interval '1 hour', 'America/New_York', '{}'::jsonb)
+     returning id`
+  );
+  const deliveryId = sql(
+    `insert into public.couranr_deliveries
+       (request_id, business_account_id, payment_obligation_id, service_plan_id,
+        request_version, pricing_policy_version, captured_amount_cents, currency,
+        pickup_address, dropoff_address, recipient, shipment,
+        service_level, signature_required, proof_method,
+        scheduled_pickup_start, scheduled_pickup_end, timezone, vehicle_requirement)
+     values ('${requestId}', '${businessId}', '${obligationId}', '${planId}',
+             1, 'disposable', 1000, 'usd',
+             '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb,
+             'standard', false, 'photo_or_pin',
+             now(), now() + interval '1 hour', 'America/New_York', '{}'::jsonb)
+     returning id`
+  );
+  // The token is minted by the REAL command, the same one the Operations route
+  // calls, so issuance is exercised rather than a row being faked.
   const raw = crypto.randomBytes(32).toString("base64url");
   sql(
     `insert into public.couranr_help_access_tokens

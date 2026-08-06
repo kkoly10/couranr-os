@@ -97,6 +97,11 @@ export function psql(sqlText, { db = DB, tuplesOnly = true } = {}) {
   return sh(path.join(PGBIN, "psql"), [
     "-h", "127.0.0.1", "-p", String(PORT), "-U", "postgres", "-d", db,
     ...(tuplesOnly ? ["-tA"] : []),
+    // -q suppresses the command tag. Without it an `insert ... returning id`
+    // yields "…uuid…\nINSERT 0 1", and a caller that only .trim()s carries the
+    // tag into the next statement — which surfaced as
+    // `invalid input syntax for type uuid`, one layer away from the cause.
+    "-q",
     "-v", "ON_ERROR_STOP=1", "-c", sqlText,
   ]);
 }
