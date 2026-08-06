@@ -15,6 +15,7 @@ import {
 import { CheckboxRow, Field, Input, Select, Textarea } from "@/components/couranr/forms";
 import { CardSkeleton, EmptyState, ErrorState, LoadingState } from "@/components/couranr/states";
 import { BUSINESS_CATEGORIES } from "@/lib/couranr/onboarding/workspace";
+import { MAX_SECONDARY_CATEGORIES } from "@/lib/couranr/categories/registry";
 import {
   isApiFailure,
   newIdempotencyKey,
@@ -72,6 +73,7 @@ export function OnboardingForm() {
   >({ status: "loading" });
   const [name, setName] = React.useState("");
   const [businessCategory, setBusinessCategory] = React.useState("");
+  const [secondaryCategories, setSecondaryCategories] = React.useState<string[]>([]);
   const [pickup, setPickup] = React.useState({ ...EMPTY_ADDRESS });
   const [contactPhone, setContactPhone] = React.useState("");
   const [payerDefault, setPayerDefault] = React.useState("merchant");
@@ -126,6 +128,7 @@ export function OnboardingForm() {
       workspace: {
         name,
         businessCategory,
+        secondaryCategories,
         pickupAddress: pickup,
         contactPhone,
         payerDefault,
@@ -217,7 +220,13 @@ export function OnboardingForm() {
                 <Select
                   {...p}
                   value={businessCategory}
-                  onChange={(e) => setBusinessCategory(e.target.value)}
+                  onChange={(e) => {
+                    const next = e.target.value;
+                    setBusinessCategory(next);
+                    // Keep the two lists from ever colliding, rather than
+                    // letting the merchant submit a pair the server refuses.
+                    setSecondaryCategories((prev) => prev.filter((v) => v !== next));
+                  }}
                 >
                   <option value="">Choose a category</option>
                   {BUSINESS_CATEGORIES.map((c) => (
@@ -228,6 +237,44 @@ export function OnboardingForm() {
                 </Select>
               )}
             </Field>
+
+            {/*
+              Up to three more (Master Package section 5). Only offered once a
+              primary exists — asking "what else?" before "what?" is a form
+              that reads out of order, and every option here has to exclude
+              the primary anyway.
+            */}
+            {businessCategory ? (
+              <Stack gap={1}>
+                <Text size="sm">
+                  <strong>Also (up to {MAX_SECONDARY_CATEGORIES})</strong>{" "}
+                  <Text as="span" size="xs" muted>
+                    Optional · {secondaryCategories.length} of{" "}
+                    {MAX_SECONDARY_CATEGORIES} chosen
+                  </Text>
+                </Text>
+                {BUSINESS_CATEGORIES.filter((c) => c.value !== businessCategory).map((c) => {
+                  const chosen = secondaryCategories.includes(c.value);
+                  const full = secondaryCategories.length >= MAX_SECONDARY_CATEGORIES;
+                  return (
+                    <CheckboxRow
+                      key={c.value}
+                      label={c.label}
+                      checked={chosen}
+                      disabled={!chosen && full}
+                      onChange={() =>
+                        setSecondaryCategories((prev) =>
+                          prev.includes(c.value)
+                            ? prev.filter((v) => v !== c.value)
+                            : [...prev, c.value]
+                        )
+                      }
+                    />
+                  );
+                })}
+              </Stack>
+            ) : null}
+
             <Field label="Contact phone" required error={fieldErrors.contactPhone}>
               {(p) => (
                 <Input

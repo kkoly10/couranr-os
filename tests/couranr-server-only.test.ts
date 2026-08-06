@@ -153,6 +153,10 @@ describe("server-only modules are unreachable from client code", () => {
       "lib/couranr/payments/commands.ts",
       "lib/couranr/payments/stripe.ts",
       "lib/couranr/payments/tokens.ts",
+      // Holds the service-role client and every preset write. A preset shapes
+      // what every future delivery is prefilled with, so a browser reaching
+      // this would let anyone rewrite the defaults for a whole business.
+      "lib/couranr/presets/commands.ts",
       "lib/couranr/requests/actor.ts",
       "lib/couranr/requests/commands.ts",
       // MER-014/MER-015. Holds the service-role client AND the auth admin API
@@ -254,6 +258,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/merchant/deliveries/[id]/pickup-code/route.ts",
       "app/api/couranr/merchant/deliveries/[id]/proof/route.ts",
       "app/api/couranr/merchant/deliveries/[id]/recipient-code/route.ts",
+      "app/api/couranr/merchant/presets/route.ts",
       "app/api/couranr/merchant/website-tools/route.ts",
       "app/api/couranr/operations/activation/route.ts",
       "app/api/couranr/operations/deliveries/[id]/assignment/route.ts",

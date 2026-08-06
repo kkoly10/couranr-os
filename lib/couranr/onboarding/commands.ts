@@ -9,6 +9,7 @@ import {
 import type { CommandFailure, CommandResult } from "@/lib/couranr/requests/commands";
 import { isCommandFailure } from "@/lib/couranr/requests/commands";
 import { isWorkspaceFailure, normalizeWorkspaceInput } from "./workspace";
+import { CATEGORY_REGISTRY_VERSION } from "@/lib/couranr/categories/registry";
 
 assertServerOnly("lib/couranr/onboarding/commands.ts");
 
@@ -22,6 +23,7 @@ assertServerOnly("lib/couranr/onboarding/commands.ts");
  */
 
 export const CREATE_WORKSPACE_RPC = "couranr_create_merchant_workspace";
+export const SET_CATEGORIES_RPC = "couranr_set_business_categories";
 
 /**
  * Profile roles that run Couranr, and therefore must not own a merchant.
@@ -139,10 +141,44 @@ export async function createMerchantWorkspace(params: {
     return fail({ operation: op, code: "internal", detail: { reason: "no row returned" } });
   }
 
+  /*
+   * SECONDARY CATEGORIES, as a second call (ACP-024).
+   *
+   * `couranr_create_merchant_workspace` predates them and its signature could
+   * not be extended without minting an overload, so the secondaries are set
+   * by their own command immediately afterwards, server-side, within the same
+   * request rather than as a second round trip from the browser.
+   *
+   * IT IS NOT ATOMIC WITH THE CREATE, and that is a deliberate, survivable
+   * gap rather than an oversight: if it fails, the merchant has a real
+   * workspace with a valid PRIMARY category and no secondaries — a state they
+   * can see and fix from settings. Failing the whole onboarding over an
+   * optional field would be worse, so the failure is logged and the workspace
+   * is still returned.
+   */
+  const businessAccountId = String(data.business_account_id);
+  if (draft.secondaryCategories.length > 0) {
+    const secondary = await supabaseAdmin.rpc(SET_CATEGORIES_RPC, {
+      p_business_account_id: businessAccountId,
+      p_actor_user_id: params.ownerUserId,
+      p_primary: draft.businessCategory,
+      p_secondary: draft.secondaryCategories,
+      p_registry_version: CATEGORY_REGISTRY_VERSION,
+    });
+    if (secondary.error) {
+      logServerFailure({
+        correlationId: newCorrelationId(),
+        operation: `${op}.secondaryCategories`,
+        code: "internal",
+        detail: { businessAccountId, code: secondary.error.code },
+      });
+    }
+  }
+
   return {
     ok: true,
     value: {
-      businessAccountId: String(data.business_account_id),
+      businessAccountId,
       workspaceId: String(data.id),
       businessCategory: String(data.business_category),
       payerDefault: String(data.payer_default),

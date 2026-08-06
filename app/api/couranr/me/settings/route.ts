@@ -3,6 +3,7 @@ import { isActorDenied, resolveRequestActor } from "@/lib/couranr/requests/actor
 import {
   getWorkspaceSettings,
   isSettingsFailure,
+  setBusinessCategories,
   settingsActorFrom,
   updateWorkspaceProfile,
 } from "@/lib/couranr/settings/commands";
@@ -69,12 +70,37 @@ export async function PATCH(req: NextRequest) {
     return routeFailure("invalid_input", "Send a JSON body.");
   }
 
+  /*
+   * CATEGORIES GO THROUGH THEIR OWN COMMAND (ACP-024).
+   *
+   * `couranr_update_workspace_profile` can still set the primary, but it knows
+   * nothing about the secondary list or its rules. Routing both through the
+   * profile update would let a caller change the primary to a value that
+   * collides with a stored secondary — a state the CHECK forbids, so the write
+   * would fail on a constraint rather than with a sentence a merchant can act
+   * on. So whenever a secondary list is sent, the pair is set together by the
+   * command that validates them together.
+   */
+  if (Array.isArray(body?.secondaryCategories)) {
+    const categories = await setBusinessCategories({
+      actor,
+      businessAccountId,
+      primary:
+        typeof body?.businessCategory === "string" ? body.businessCategory : undefined,
+      secondary: body.secondaryCategories.filter((v: unknown) => typeof v === "string"),
+    });
+    if (isSettingsFailure(categories)) return failureResponse(categories);
+  }
+
   const result = await updateWorkspaceProfile({
     actor,
     businessAccountId,
     name: typeof body?.name === "string" ? body.name : undefined,
+    // Already applied above when a secondary list came with it.
     businessCategory:
-      typeof body?.businessCategory === "string" ? body.businessCategory : undefined,
+      !Array.isArray(body?.secondaryCategories) && typeof body?.businessCategory === "string"
+        ? body.businessCategory
+        : undefined,
     pickupAddress: body?.pickupAddress ?? undefined,
     contactPhone: typeof body?.contactPhone === "string" ? body.contactPhone : undefined,
     payerDefault: typeof body?.payerDefault === "string" ? body.payerDefault : undefined,

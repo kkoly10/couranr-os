@@ -15,7 +15,7 @@ import {
   Text,
   buttonClassName,
 } from "@/components/couranr/primitives";
-import { Field, Input, Select } from "@/components/couranr/forms";
+import { CheckboxRow, Field, Input, Select } from "@/components/couranr/forms";
 import { CardSkeleton, EmptyState, ErrorState, LoadingState } from "@/components/couranr/states";
 import {
   fetchMyBusinessAccounts,
@@ -26,6 +26,10 @@ import {
 } from "@/components/couranr/requests/client";
 import { fetchSettings, saveSettings, type WorkspaceSettingsView } from "./client";
 import { BUSINESS_CATEGORIES } from "@/lib/couranr/onboarding/workspace";
+import {
+  CATEGORY_PURPOSE_COPY,
+  MAX_SECONDARY_CATEGORIES,
+} from "@/lib/couranr/categories/registry";
 import { memberMay } from "@/lib/couranr/settings/permissions";
 
 /**
@@ -91,6 +95,7 @@ export function MerchantSettings() {
 
   const [name, setName] = React.useState("");
   const [category, setCategory] = React.useState("");
+  const [secondary, setSecondary] = React.useState<string[]>([]);
   const [phone, setPhone] = React.useState("");
   const [payerDefault, setPayerDefault] = React.useState("merchant");
   const [address, setAddress] = React.useState<AddressForm>({ ...EMPTY_ADDRESS });
@@ -124,6 +129,7 @@ export function MerchantSettings() {
     setView(v);
     setName(v.name);
     setCategory(v.workspace?.businessCategory ?? "");
+    setSecondary(v.workspace?.secondaryCategories ?? []);
     setPhone(v.workspace?.contactPhone ?? "");
     setPayerDefault(v.workspace?.payerDefault ?? "merchant");
     setAddress(addressFrom(v.workspace?.pickupAddress));
@@ -215,6 +221,8 @@ export function MerchantSettings() {
   const dirty =
     name !== view.name ||
     category !== (view.workspace?.businessCategory ?? "") ||
+    JSON.stringify(secondary) !==
+      JSON.stringify(view.workspace?.secondaryCategories ?? []) ||
     phone !== (view.workspace?.contactPhone ?? "") ||
     payerDefault !== (view.workspace?.payerDefault ?? "merchant") ||
     JSON.stringify(address) !== JSON.stringify(addressFrom(view.workspace?.pickupAddress));
@@ -227,6 +235,7 @@ export function MerchantSettings() {
       businessAccountId,
       name,
       businessCategory: category,
+      secondaryCategories: secondary,
       pickupAddress: address,
       contactPhone: phone,
       payerDefault,
@@ -416,23 +425,75 @@ export function MerchantSettings() {
 
               <Grid columns={2}>
                 <Card>
-                  <CardHeader title="Business category" />
-                  <Field label="Category" required>
-                    {(p) => (
-                      <Select
-                        {...p}
-                        value={category}
-                        disabled={!mayWrite}
-                        onChange={(e) => setCategory(e.target.value)}
-                      >
-                        {BUSINESS_CATEGORIES.map((c) => (
-                          <option key={c.value} value={c.value}>
-                            {c.label}
-                          </option>
-                        ))}
-                      </Select>
-                    )}
-                  </Field>
+                  <CardHeader
+                    title="Business category"
+                    description={CATEGORY_PURPOSE_COPY}
+                  />
+                  <Stack gap={3}>
+                    <Field label="Primary category" required>
+                      {(p) => (
+                        <Select
+                          {...p}
+                          value={category}
+                          disabled={!mayWrite}
+                          onChange={(e) => {
+                            const next = e.target.value;
+                            setCategory(next);
+                            // A secondary that becomes the primary would be
+                            // refused by the command AND by a CHECK. Dropping
+                            // it here means the merchant sees the consequence
+                            // of their own change instead of an error about a
+                            // field they did not touch.
+                            setSecondary((prev) => prev.filter((v) => v !== next));
+                          }}
+                        >
+                          {BUSINESS_CATEGORIES.map((c) => (
+                            <option key={c.value} value={c.value}>
+                              {c.label}
+                            </option>
+                          ))}
+                        </Select>
+                      )}
+                    </Field>
+
+                    {/*
+                      Up to three more (Master Package section 5). Checkboxes
+                      rather than a multi-select: a merchant has to be able to
+                      SEE which are chosen and how many remain, and a
+                      multi-select on a phone hides both.
+                    */}
+                    <Stack gap={1}>
+                      <Text size="sm">
+                        <strong>
+                          Also (up to {MAX_SECONDARY_CATEGORIES})
+                        </strong>{" "}
+                        <Text as="span" size="xs" muted>
+                          {secondary.length} of {MAX_SECONDARY_CATEGORIES} chosen
+                        </Text>
+                      </Text>
+                      {BUSINESS_CATEGORIES.filter((c) => c.value !== category).map((c) => {
+                        const chosen = secondary.includes(c.value);
+                        const full = secondary.length >= MAX_SECONDARY_CATEGORIES;
+                        return (
+                          <CheckboxRow
+                            key={c.value}
+                            label={c.label}
+                            checked={chosen}
+                            // A box that cannot be ticked is DISABLED rather
+                            // than silently ignored on submit.
+                            disabled={!mayWrite || (!chosen && full)}
+                            onChange={() =>
+                              setSecondary((prev) =>
+                                prev.includes(c.value)
+                                  ? prev.filter((v) => v !== c.value)
+                                  : [...prev, c.value]
+                              )
+                            }
+                          />
+                        );
+                      })}
+                    </Stack>
+                  </Stack>
                 </Card>
 
                 <Card>

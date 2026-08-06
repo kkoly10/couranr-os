@@ -2,7 +2,7 @@
  "schema_version": "1.0",
  "repository": "kkoly10/couranr-os",
  "authority_sha": "f26d857fb797b008fc5772700d65a4e5c181f259",
- "production_migration_head": "20260806120648",
+ "production_migration_head": "20260806160839",
  "active_batch": "B03",
  "active_capability": "B03 capabilities all attempted; ACP-023 shipped as its reachable half",
  "open_pr": 27,
@@ -75,22 +75,7 @@
    "lesson": "The masking was correct in the projection and wrong in the URL. Asserting on rendered HTML rather than on a component prop is what separated those."
   }
  ],
- "production_changes_pending_approval": [
-  {
-   "operation": "apply migration 20260806160000_couranr_merchant_customers to production",
-   "status": "BLOCKED BY THE PERMISSION CLASSIFIER, not by the owner. The owner approved the apply; the apply_migration tool call for this one migration was denied by the auto-mode classifier and no workaround was attempted.",
-   "prepared": "forward + rollback committed; executed against a disposable database across two full runs; additive only - two new tables and four commands",
-   "consequence_while_unapplied": "MER-008/MER-009 READ correctly (the customer list derives from couranr_delivery_requests), but creating or archiving a customer record fails against production.",
-   "rollback": "supabase/rollbacks/20260806160000_...rollback.sql - RESTRICT"
-  },
-  {
-   "operation": "apply migration 20260806170000_couranr_workspace_activation to production",
-   "status": "PREPARED, NOT APPLIED. Needs the owner's approval for this exact migration.",
-   "prepared": "forward + rollback committed; executed against a disposable database across three full runs; additive only - three new tables and six commands",
-   "consequence_while_unapplied": "MER-003 renders 'Activation status unavailable' against production and no workspace can be activated. MER-001's banner reports the status as unknown rather than guessing, so nothing false is shown.",
-   "rollback": "supabase/rollbacks/20260806170000_...rollback.sql - the acknowledgements table is a record of CONSENT and the rollback warns before dropping it"
-  }
- ],
+ "production_changes_pending_approval": [],
  "last_full_gate": {
   "sha": "8f0725f0f154946c0fbd2056a0021de0ab794601",
   "result": "pass",
@@ -103,9 +88,10 @@
   "b02": "PRs stacked: #24 (B00) -> #25 (B01) -> #26 (B02); all draft, merges owner-gated; every batch verified at its head",
   "b03": "PR #27 (B03 -> b02 branch, draft). VERIFIED: ACP-017 MER-001 27/27; ACP-019 MER-004 25/25; ACP-021 MER-014/MER-015 41/41 (incl. the concurrent last-owner race); ACP-022 MER-013 24/24 (incl. decoding the rendered QR); ACP-020 MER-008/MER-009 34/34 (incl. the PII-in-HTML assertion that caught FIND-B03-003). REMAINING: ACP-018 MER-003 activation checklist, a net-new state machine. ACP-023 MER-016 billing waits on ACP-041; MER-010/011 presets are B04 (ACP-025).",
   "dependencies_added": "qrcode-generator 2.0.4 (runtime, zero deps) for MER-013 QR encoding; jsqr 1.4.0 (dev only) so the harness decodes the rendered QR instead of eyeballing it. Both exact-pinned. Surfaced here because the MER-013 contract named the QR dependency as a decision to surface.",
-  "migration_version_drift": "apply_migration stamps its own timestamp, so production versions (2026080612xxxx) differ from the repo filenames (20260806100000/120000/130000/150000). The NAMES match exactly, so which migration ran is unambiguous, but `supabase db diff` will see version skew. Not corrected by hand: rewriting supabase_migrations.schema_migrations is riskier than the drift it would fix.",
+  "migration_version_drift": "apply_migration stamps its own timestamp, so production versions do not match repo filename prefixes. MEASURED: 21 of 48 applied rows carry an MCP stamp; 27 carry a repo-shaped stamp. The NAMES match the repo files exactly in every case, so which migration ran is never ambiguous. Two consequences to know. (1) `supabase db diff`/`db push` sees version skew and would consider those repo files unapplied. (2) The MCP stamps also reorder this slice relative to the repo: production ran merchant_customers, business_categories, delivery_presets, workspace_activation, preset_commands, whereas the repo filenames order workspace_activation second. Checked and harmless \u2014 workspace_activation depends only on business_accounts, couranr_delivery_requests, couranr_merchant_workspaces, couranr_require_active_member and profiles, none of which come from the categories or presets migrations, and neither of those depends on activation. Both orderings are valid. Not corrected by hand: rewriting supabase_migrations.schema_migrations is an owner-gated production-ledger repair and is riskier than the drift it would fix. If a re-push ever does replay these, couranr_workspace_activation opens with a guard that RAISES when the table already exists, so it fails loudly rather than corrupting silently.",
   "acp_018": "MER-003 live activation: 64/64 unstubbed signed-in browser checks (e2e/disposable/activation.mjs). Two REAL defects were found by building the run rather than by reading the code: (1) nothing called record_test_delivery, so the checklist could never be completed by anyone; (2) the route gated every POST on activation.request (owner/manager) while couranr_record_test_delivery gates on owner/manager/dispatcher - one of the two was dead. A test now parses the SQL role tuples and asserts they equal the capability matrix. A third gap was closed pre-emptively: any active member, including a read-only viewer, could record the business's consent to Couranr's delivery terms.",
-  "acp_023": "MER-016 shipped as `partial`, 39/39 browser checks on the reachable half. TAX-001 is UNRESOLVED and lists MER-016 in its own blocked_screen_ids - no authority states whether delivery is taxable, who remits, or how tax appears on a receipt - so no receipt is issued and the screen says it is not a tax document. TWO SPEC CONTRADICTIONS, recorded not resolved: (1) the ACP-023 capability row sits in B03 while the spec's own screen table puts MER-016 in B05, and ACP-033 (B05 balanced ledger) also names MER-016 - B05 is the coherent reading; (2) ACP-023 lists ACP-041 as a dependency, which is B07 Driving Mode safety suppression and is plainly a typo. Also found by fixture: couranr_po_captured_amount_chk forbids a partial capture, so the total's preference for the captured amount is correct-in-advance but unreachable - labelled in code rather than left implying otherwise."
+  "acp_023": "MER-016 shipped as `partial`, 39/39 browser checks on the reachable half. TAX-001 is UNRESOLVED and lists MER-016 in its own blocked_screen_ids - no authority states whether delivery is taxable, who remits, or how tax appears on a receipt - so no receipt is issued and the screen says it is not a tax document. TWO SPEC CONTRADICTIONS, recorded not resolved: (1) the ACP-023 capability row sits in B03 while the spec's own screen table puts MER-016 in B05, and ACP-033 (B05 balanced ledger) also names MER-016 - B05 is the coherent reading; (2) ACP-023 lists ACP-041 as a dependency, which is B07 Driving Mode safety suppression and is plainly a typo. Also found by fixture: couranr_po_captured_amount_chk forbids a partial capture, so the total's preference for the captured amount is correct-in-advance but unreachable - labelled in code rather than left implying otherwise.",
+  "production_apply_2026_08_06": "All five prepared migrations applied to production on the owner's second explicit 'Apply migrations' approval. The classifier block recorded against couranr_merchant_customers in the previous run did not recur. Comments were stripped from the four larger files before apply (payload size), matching the precedent set by couranr_team_management; the SQL is otherwise byte-equivalent to the committed forward migrations. Post-apply sweep: 48 migrations applied, 0 of the public tables have RLS disabled, and no browser role holds any privilege on any of the eight new tables. MINIFICATION VERIFIED, not assumed: production prosrc for all 19 functions was normalized (strip -- comments, collapse whitespace) and md5'd in SQL, the same normalization was applied to the function bodies parsed out of the five committed .sql files, and all 19 hashes MATCH with no function present on one side only. All 9 declared indexes also exist with their partial WHERE predicates intact. So the comment stripping removed only comments - the live schema is semantically identical to the repo."
  },
  "applied_to_production": [
   {
@@ -131,6 +117,36 @@
    "production_version": "20260806120648",
    "name": "couranr_website_tool_configs",
    "verified": "table present"
+  },
+  {
+   "file": "20260806160000_couranr_merchant_customers.sql",
+   "production_version": "20260806160353",
+   "name": "couranr_merchant_customers",
+   "verified": "MEASURED AFTER APPLY at production project zrdxlrlqxdslqpnoqmus. Privileges checked with has_table_privilege/has_function_privilege, not grantee rows. Tables merchant_customers and customer_addresses exist, relrowsecurity=true, 0 policies. service_role SELECT/INSERT/UPDATE=true, DELETE=false. anon and authenticated hold no SELECT/INSERT/UPDATE/DELETE on either. Functions couranr_create_merchant_customer(uuid,uuid,text,text,text,text,text,text,text), couranr_update_merchant_customer(uuid,uuid,uuid,integer,text,text,text,text,text,text,text), couranr_set_customer_archived(uuid,uuid,uuid,boolean), couranr_add_customer_address(uuid,uuid,uuid,text,jsonb,text) all present, security invoker, search_path='', service_role EXECUTE only. NOTE: these two tables are named WITHOUT the couranr_ prefix, unlike every other table in this slice."
+  },
+  {
+   "file": "20260806170000_couranr_workspace_activation.sql",
+   "production_version": "20260806160757",
+   "name": "couranr_workspace_activation",
+   "verified": "MEASURED AFTER APPLY at production project zrdxlrlqxdslqpnoqmus. Privileges checked with has_table_privilege/has_function_privilege, not grantee rows. Tables couranr_workspace_activations, couranr_activation_acknowledgements, couranr_activation_events exist, relrowsecurity=true, 0 policies. Append-only enforced by privilege, not comment: acknowledgements and events hold service_role SELECT/INSERT=true but UPDATE=false and DELETE=false; workspace_activations holds UPDATE=true, DELETE=false. anon and authenticated hold nothing on all three. Six functions present (lock_activation, accept_activation_ack, verify_activation_contact, record_test_delivery, request_activation, decide_activation), all security invoker, search_path='', service_role EXECUTE only. Constraints couranr_wa_state_chk (5 states), couranr_wa_blocked_has_reason_chk, couranr_aa_once_key, couranr_actev_actor_chk, couranr_actev_command_chk all match source."
+  },
+  {
+   "file": "20260806180000_couranr_business_categories.sql",
+   "production_version": "20260806160443",
+   "name": "couranr_business_categories",
+   "verified": "MEASURED AFTER APPLY at production project zrdxlrlqxdslqpnoqmus. Privileges checked with has_table_privilege/has_function_privilege, not grantee rows. couranr_merchant_workspaces.secondary_categories exists as text[] NOT NULL DEFAULT '{}', category_registry_version exists as text nullable. All four CHECKs present with the intended definitions: couranr_mw_secondary_count_chk (<=3), couranr_mw_secondary_values_chk (11-value allow-list), couranr_mw_secondary_not_primary_chk, couranr_mw_secondary_distinct_chk. couranr_text_array_is_distinct and couranr_set_business_categories present, service_role EXECUTE only. EXECUTED against production with literals (pure functions, no rows touched): is_distinct(['a','a'])=false, (['a','b'])=true, (null)=true."
+  },
+  {
+   "file": "20260806190000_couranr_delivery_presets.sql",
+   "production_version": "20260806160522",
+   "name": "couranr_delivery_presets",
+   "verified": "MEASURED AFTER APPLY at production project zrdxlrlqxdslqpnoqmus. Privileges checked with has_table_privilege/has_function_privilege, not grantee rows. Tables couranr_category_presets, couranr_merchant_presets, couranr_merchant_preset_versions exist, relrowsecurity=true, 0 policies. The append-only history table is enforced by privilege: couranr_merchant_preset_versions holds service_role SELECT/INSERT=true, UPDATE=false, DELETE=false. The two mutable preset tables hold UPDATE=true, DELETE=false. anon and authenticated hold nothing on all three. Four preset columns added to couranr_delivery_requests. Constraints couranr_mp_source_pair_chk, couranr_dr_preset_pair_chk, couranr_dr_preset_source_chk, and the three body CHECKs all match source. EXECUTED against production with literals: body_is_clean('{}')=true, (null)=true, ({'commonItem':'suit'})=true, ({'weight_lbs':12})=false, ({'itemValue':500})=false, ({'vehicle_id':'x'})=false \u2014 so the concept-not-spelling matcher works on the live database, not only on the disposable one."
+  },
+  {
+   "file": "20260806200000_couranr_preset_commands.sql",
+   "production_version": "20260806160839",
+   "name": "couranr_preset_commands",
+   "verified": "MEASURED AFTER APPLY at production project zrdxlrlqxdslqpnoqmus. Privileges checked with has_table_privilege/has_function_privilege, not grantee rows. Six functions present (require_preset_manager, create_merchant_preset, update_merchant_preset, adopt_preset_recommendation, duplicate_merchant_preset, set_merchant_preset_archived), all security invoker, search_path='', service_role EXECUTE=true and authenticated/anon EXECUTE=false \u2014 the pg_default_acl PUBLIC grant was successfully revoked on each."
   }
  ]
 }
