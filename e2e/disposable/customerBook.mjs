@@ -288,6 +288,8 @@ async function main() {
       check("C4", "the list HTML does NOT contain the real email",
         !html.includes(REAL_EMAIL));
       check("C5", "but it DOES show a masked form", html.includes("•••"));
+      check("C5b", "the customer LINKS carry an opaque key, not an identity",
+        !/customer=(email|phone|name)%3A/.test(html) && /customer=[0-9a-f]{32}/.test(html));
     }
 
     check("C6", "the active-delivery badge is present for the open request",
@@ -315,8 +317,13 @@ async function main() {
       await page.getByText("Delivery history").waitFor({ state: "visible", timeout: 20_000 });
 
       const body = await page.innerText("body");
+      // `innerText` does NOT include <input> values — they are not text nodes —
+      // so the unmasked contact is read from the field itself. The first run of
+      // this harness failed here against a detail page that was rendering the
+      // email perfectly well.
+      const shownEmail = await fieldLabel(page, "Email").inputValue();
       check("D1", "the DETAIL unmasks contact details (the merchant's own data)",
-        body.includes(REAL_EMAIL));
+        shownEmail === REAL_EMAIL, shownEmail);
       check("D2", "conflicting-address state is raised for two distinct dropoffs",
         body.includes("More than one delivery address"));
       check("D3", "both addresses are listed",
@@ -420,9 +427,12 @@ async function main() {
       check("X1", "a member of business B cannot read A's customers",
         r.status === 403, `status=${r.status}`);
       // Cross-tenant KEY guessing: a valid key from A, asked for under B.
+      // A well-formed opaque key that is simply not one of B's — proving the
+      // resolver matches only against candidates the caller's business owns.
+      const foreignKey = "0".repeat(32);
       const r2 = await api(
         emptyOwner.email,
-        `/api/couranr/merchant/customers?businessAccountId=${bizB}&customer=${encodeURIComponent("email:" + REAL_EMAIL)}`
+        `/api/couranr/merchant/customers?businessAccountId=${bizB}&customer=${foreignKey}`
       );
       check("X2", "and A's customer key resolves to NOT-FOUND under B, never to A's record",
         r2.status === 404, `status=${r2.status}`);

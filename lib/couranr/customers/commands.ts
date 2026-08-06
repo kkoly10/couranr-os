@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { assertServerOnly } from "@/lib/couranr/serverOnly";
 import {
@@ -16,10 +17,20 @@ import {
   maskPhone,
   normalizeEmail,
   normalizePhone,
+  publicCustomerKey,
   type DuplicateWarning,
 } from "@/lib/couranr/customers/identity";
 
 assertServerOnly("lib/couranr/customers/commands.ts");
+
+const sha256 = (input: string) => createHash("sha256").update(input).digest("hex");
+
+/**
+ * The browser-facing key for one identity. Opaque and tenant-salted, so no
+ * recipient's phone or email ever reaches a URL, a log line or a referrer.
+ */
+const publicKey = (businessAccountId: string, internalKey: string) =>
+  publicCustomerKey(businessAccountId, internalKey, sha256);
 
 /**
  * MER-008 / MER-009 command layer.
@@ -217,10 +228,11 @@ export async function listCustomers(params: {
 
   // Stored records first, so a record with no deliveries still appears.
   for (const row of stored.data as any[]) {
-    const key =
+    const internal =
       identityKey({ name: row.display_name, email: row.email, phone: row.phone }) ??
       `customer:${row.id}`;
-    entries.set(key, {
+    const key = publicKey(params.businessAccountId, internal);
+    entries.set(internal, {
       key,
       customerId: String(row.id),
       displayName: String(row.display_name),
@@ -252,7 +264,7 @@ export async function listCustomers(params: {
       Object.assign(existing, derived);
     } else {
       entries.set(g.key, {
-        key: g.key,
+        key: publicKey(params.businessAccountId, g.key),
         customerId: null,
         displayName: g.name ?? g.email ?? g.phone ?? "Customer",
         maskedEmail: maskEmail(g.email),
@@ -274,8 +286,8 @@ export async function listCustomers(params: {
   });
 
   const duplicates = findDuplicates(
-    [...entries.values()].map((e) => {
-      const g = groups.get(e.key);
+    [...entries.entries()].map(([internal, e]) => {
+      const g = groups.get(internal);
       const s = (stored.data as any[]).find((row) => String(row.id) === e.customerId);
       return {
         key: e.key,
@@ -352,13 +364,24 @@ export async function getCustomer(params: {
   }
 
   const groups = groupRequests(requests.data as RequestRow[]);
-  const group = groups.get(params.key);
+
+  // The caller holds an OPAQUE key. Resolve it by hashing each candidate this
+  // business actually owns and comparing — so a key from another tenant simply
+  // matches nothing here rather than reaching across.
+  let group: ReturnType<typeof groupRequests> extends Map<string, infer V> ? V | undefined : never =
+    undefined as any;
+  for (const [internal, g] of groups.entries()) {
+    if (publicKey(params.businessAccountId, internal) === params.key) {
+      group = g as any;
+      break;
+    }
+  }
 
   const record = (stored.data as any[]).find((row) => {
-    const key =
+    const internal =
       identityKey({ name: row.display_name, email: row.email, phone: row.phone }) ??
       `customer:${row.id}`;
-    return key === params.key;
+    return publicKey(params.businessAccountId, internal) === params.key;
   });
 
   if (!group && !record) {

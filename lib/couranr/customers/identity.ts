@@ -144,6 +144,28 @@ export function findDuplicates(
   return out;
 }
 
+/**
+ * The key a customer is addressed by IN A URL.
+ *
+ * `identityKey` embeds the raw identifier — `phone:5405550142` — which is
+ * fine as an internal grouping key and NOT fine in a link. A browser-visible
+ * key ends up in the address bar, in history, in referrer headers and in
+ * server logs, and the registry forbids unnecessary PII in the list view. A
+ * first run of the customer-book harness caught exactly that: the real phone
+ * number was present in the rendered list HTML, inside the Open link.
+ *
+ * So the public key is a digest, salted with the business account id so the
+ * same person in two workspaces produces two unrelated keys. It is computed
+ * SERVER-SIDE only; the browser never sees an identity it can reverse.
+ */
+export function publicCustomerKey(
+  businessAccountId: string,
+  key: string,
+  sha256: (input: string) => string
+): string {
+  return sha256(`${businessAccountId}:${key}`).slice(0, 32);
+}
+
 /** Masks an email for the LIST view: `k•••@example.com`. */
 export function maskEmail(raw: string | null | undefined): string | null {
   const value = normalizeEmail(raw);
