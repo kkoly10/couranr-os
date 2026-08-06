@@ -25,7 +25,7 @@ Every SHA appearing in either ledger, in full, with what it covers:
 
 | SHA | rows | what was verified at it |
 |---|---|---|
-| `8561875f6820cc681fb6e7a373bdc7d89a994b7b` | 2 screens | `MER-008` and `MER-009` built on this SHA — the customer book joining stored records to delivery history derived from real requests. Recorded `functional_unverified` until its disposable-stack run is attached. Carries migration `20260806160000` (merchant_customers, customer_addresses), NOT applied to production |
+| `cd697e48889389b5365562d4e7f3c82413c10ea9` | 2 screens | `MER-008` and `MER-009` — 34/34 unstubbed signed-in browser checks. PII asserted against RENDERED HTML: a first run caught a REAL LEAK (the internal grouping key put a recipient's phone number inside every Open link) and the browser now receives a tenant-salted digest. Archive proven not to be a delete by an unchanged row count. Carries migration `20260806160000`, NOT applied to production |
 | `981748b95c0916b15274eb8ef20be1bb1b41f4db` | 1 screen | `MER-013` website tools — 24/24 unstubbed signed-in browser checks, including the rendered QR DECODED back to the merchant's real link (browser-rasterized pixels through jsqr), publish/disable asserted on the row, an invalid embed persisting nothing, and a body naming a status instead of an action refused 400 |
 | `e4dd7e2afa29f35ac161985e915db112cbeaedb8` | 2 screens | `MER-014` and `MER-015` — 41/41 unstubbed signed-in browser checks on the disposable stack, including the CONCURRENT double-demote race (two parallel demotes returned 200/409, leaving one active owner where a TypeScript-only guard would have left none), the invite/accept round trip asserted on both rows and both audit events, and the five probes measuring what the un-applied hardening migration actually changes |
 | `c9e0fe573da29177fa72979911a7e60bf3beb0df` | 2 screens | `MER-014` and `MER-015` built — settings, team management, and the SQL last-owner protection. Recorded `functional_unverified` until the disposable-stack run (which includes the concurrent double-demote race) is attached. Also carries migration `20260806130000`, the business_members RLS hardening, which is NOT applied to production |
@@ -207,15 +207,15 @@ Neither number should be quoted without its fraction.
 
 | status | count |
 |---|---|
-| `functional_verified` | 25 |
-| `functional_unverified` | 7 |
+| `functional_verified` | 27 |
+| `functional_unverified` | 5 |
 | `partial` | 7 |
 | `static_only` | 0 |
 | `placeholder_only` | 22 |
 | `missing` | 5 |
 | `deferred` / `retired_or_replaced` | 0 |
 
-**20 of 66 canonical screens are verified working in a browser.**
+**22 of 66 canonical screens are verified working in a browser.**
 
 Phase 8's messaging screens have all now been driven in a real browser, signed
 in, with no `page.route` anywhere — and **that is exactly why two of them are

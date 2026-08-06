@@ -4,7 +4,7 @@
   "authority_sha": "f26d857fb797b008fc5772700d65a4e5c181f259",
   "production_migration_head": "20260806010000",
   "active_batch": "B03",
-  "active_capability": "ACP-020",
+  "active_capability": "ACP-018",
   "open_pr": 27,
   "completed_capabilities": [
     "ACP-001",
@@ -24,7 +24,8 @@
     "ACP-017",
     "ACP-019",
     "ACP-021",
-    "ACP-022"
+    "ACP-022",
+    "ACP-020"
   ],
   "carried_forward": {
     "ACP-006": "canonical token system pre-exists and matches the spec palette; table/chart/upload primitives land with first consumers",
@@ -59,6 +60,14 @@
       "finding": "business_accounts_update_owner_manager policy contains a correlation bug: its EXISTS compares bm.business_account_id = bm.id (the membership row's own two uuid columns, effectively never equal) instead of correlating to business_accounts.id - so the policy silently reduces to app_is_admin() and owners/managers cannot update their business row through the RLS path.",
       "evidence": "pg_get_expr(polqual) read on production",
       "proposed_fix": "same owner-gated hardening migration; MER-014 settings writes go through service_role named commands and are unaffected"
+    },
+    {
+      "id": "FIND-B03-003",
+      "severity": "P2 (PII exposure in a merchant-facing URL; FIXED before any deploy, never reached production)",
+      "finding": "The MER-008 customer list rendered the internal grouping key (phone:5405550142) inside every customer link, placing a real recipient phone number in the page HTML, the address bar, browser history, referrer headers and any path-logging middleware. The registry forbids unnecessary PII in list view.",
+      "evidence": "e2e/disposable/customerBook.mjs check C3 against rendered HTML on the first run; the code had been read twice without the leak being noticed",
+      "status": "FIXED at cd697e4 before the screen was ever promoted or deployed. The browser now receives publicCustomerKey: a sha-256 digest salted with the business account id, truncated to 32 hex, computed server-side only. C5b asserts links carry an opaque key.",
+      "lesson": "The masking was correct in the projection and wrong in the URL. Asserting on rendered HTML rather than on a component prop is what separated those."
     }
   ],
   "production_changes_pending_approval": [
@@ -85,6 +94,12 @@
       "prepared": "forward + rollback committed; executed against a disposable database; additive only - one new table and one command, touches no existing object",
       "expected_effect": "MER-013 publish states become persistable; production ledger 41 -> 42",
       "rollback": "supabase/rollbacks/20260806150000_...rollback.sql - RESTRICT, refuses if merchants have saved designs"
+    },
+    {
+      "operation": "apply migration 20260806160000_couranr_merchant_customers to production",
+      "prepared": "forward + rollback committed; executed against a disposable database across two full runs; additive only - two new tables and four commands, touches no existing object and deletes no row",
+      "expected_effect": "MER-008/MER-009 customer records become persistable; production ledger 42 -> 43",
+      "rollback": "supabase/rollbacks/20260806160000_...rollback.sql - RESTRICT, refuses if merchants have saved customer records"
     }
   ],
   "last_full_gate": {
@@ -97,7 +112,7 @@
     "gap_intake": "ACP-002 protocol active: any discovered requirement with no work-item row becomes ACP-GAP-### in IMPLEMENTATION_LEDGER-adjacent notes before implementation continues",
     "owner_gates_standing": "no production migration apply, no production ledger repair, no real Stripe money, no secret rotation, no bucket made public, no batch-PR merge, no canary \u2014 each needs explicit owner approval for the exact operation",
     "b02": "PRs stacked: #24 (B00) -> #25 (B01) -> #26 (B02); all draft, merges owner-gated; every batch verified at its head",
-    "b03": "PR #27 (B03 -> b02 branch, draft). VERIFIED: ACP-017 MER-001 27/27 at 32893e2; ACP-019 MER-004 25/25 at 08f59f8; ACP-021 MER-014/MER-015 41/41 at e4dd7e2 (incl. the concurrent last-owner race); ACP-022 MER-013 24/24 at 981748b (incl. decoding the rendered QR). Remaining in B03: ACP-020 MER-008/009 customers (fully net-new data layer - merchant_customers and customer_addresses do not exist), then ACP-018 MER-003 activation (net-new state machine). ACP-023 MER-016 waits on ACP-041 billing substrate. MER-010/011 presets are B04 (ACP-025).",
+    "b03": "PR #27 (B03 -> b02 branch, draft). VERIFIED: ACP-017 MER-001 27/27; ACP-019 MER-004 25/25; ACP-021 MER-014/MER-015 41/41 (incl. the concurrent last-owner race); ACP-022 MER-013 24/24 (incl. decoding the rendered QR); ACP-020 MER-008/MER-009 34/34 (incl. the PII-in-HTML assertion that caught FIND-B03-003). REMAINING: ACP-018 MER-003 activation checklist, a net-new state machine. ACP-023 MER-016 billing waits on ACP-041; MER-010/011 presets are B04 (ACP-025).",
     "dependencies_added": "qrcode-generator 2.0.4 (runtime, zero deps) for MER-013 QR encoding; jsqr 1.4.0 (dev only) so the harness decodes the rendered QR instead of eyeballing it. Both exact-pinned. Surfaced here because the MER-013 contract named the QR dependency as a decision to surface."
   }
 }
