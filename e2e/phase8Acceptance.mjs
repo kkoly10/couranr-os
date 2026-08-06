@@ -18,20 +18,36 @@
  * stubbed. A constraint that only fires on INSERT is invisible to all of them.
  *
  * ---------------------------------------------------------------------------
- * SAFETY
+ * TWO TARGETS, TWO DIFFERENT GUARANTEES
  * ---------------------------------------------------------------------------
  *
- * Runs against the CONNECTED PROJECT, which holds real data. Therefore:
+ * PROJECT MODE (the default) runs against the CONNECTED PROJECT, which holds
+ * real data. Therefore:
  *
  *   * every row created here carries the marker [P8ACC] in a name field;
  *   * NOTHING REAL IS EVER MUTATED — no update, no delete, no repurposing of an
  *     existing row. Only new rows, only next to the real ones;
+ *   * a PREFLIGHT refuses to seed anything the harness could not remove;
  *   * cleanup runs in a finally block and reports anything it could not remove;
  *   * real-row counts are taken before and after and asserted equal;
  *   * the service key is read from .env.local, used only in Node, and never
  *     passed to the browser, a URL, a log line or a screenshot.
  *
- * Run: node e2e/phase8Acceptance.mjs        (expects `npm run dev` on :3000)
+ * That protection is also why this file was DISARMED: `service_role` holds
+ * DELETE on no `couranr_*` table — they are append-only by design — so the
+ * preflight refuses, correctly, and the matrix could not be re-run on demand.
+ *
+ * DISPOSABLE MODE (`E2E_DISPOSABLE=1`) runs against a database that was created
+ * empty and is destroyed afterwards, so cleanup is `rm -rf` rather than a
+ * privilege — and the fix is a throwaway database rather than a production
+ * DELETE grant or the proposed cleanup migration. In that mode the preflight
+ * and the cleanup are replaced by ONE assertion that actually matters there:
+ * that the target is not a Supabase-hosted project. Everything between the
+ * fixtures and the teardown — every check — is identical in both modes.
+ *
+ * Run against the project:     node e2e/phase8Acceptance.mjs
+ *                              (expects `npm run dev` on :3000)
+ * Run disposable, end to end:  node e2e/disposable/acceptanceMatrix.mjs
  */
 
 import { createClient } from "@supabase/supabase-js";
@@ -39,7 +55,6 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
 
-const BASE = process.env.E2E_BASE_URL || "http://localhost:3000";
 const MARK = "[P8ACC]";
 const SHOTS = path.resolve("e2e/artifacts/phase8-acceptance");
 
@@ -53,7 +68,20 @@ function check(id, name, ok, detail = "") {
 }
 const redact = (s) => String(s).replace(/[A-Za-z0-9_-]{40,}/g, "<redacted>");
 
+/**
+ * Where to point.
+ *
+ * Explicit env wins so a disposable driver can pass its own stack without
+ * writing a `.env.local` — which would be a file with a service key in it, and
+ * the harness that reads one is the harness that leaks one.
+ */
 function env() {
+  if (process.env.E2E_SUPABASE_URL && process.env.E2E_SUPABASE_SERVICE_KEY) {
+    return {
+      url: process.env.E2E_SUPABASE_URL,
+      key: process.env.E2E_SUPABASE_SERVICE_KEY,
+    };
+  }
   const raw = readFileSync(".env.local", "utf8");
   const get = (k) => {
     const m = raw.match(new RegExp(`^${k}=(.+)$`, "m"));
@@ -192,17 +220,45 @@ async function cleanup(sb, chains) {
 
 /* ─────────────────────────────── the matrix ─────────────────────────────── */
 
-async function main() {
+export async function main() {
   const { url, key } = env();
+  const BASE = process.env.E2E_BASE_URL || "http://localhost:3000";
+  const disposable = process.env.E2E_DISPOSABLE === "1";
   const sb = createClient(url, key, { auth: { persistSession: false } });
 
-  const before = {
-    orders: (await sb.from("orders").select("id", { count: "exact", head: true })).count,
-    deliveries: (await sb.from("deliveries").select("id", { count: "exact", head: true })).count,
-    couranrDeliveries: (await sb.from("couranr_deliveries").select("id", { count: "exact", head: true })).count,
-  };
-  console.log(`  baseline: ${before.orders} orders / ${before.deliveries} deliveries / ` +
-              `${before.couranrDeliveries} couranr_deliveries\n`);
+  // The one assertion that matters in disposable mode, made BEFORE anything is
+  // written: a database that is about to be destroyed must not be a hosted
+  // project. `E2E_DISPOSABLE=1` turns off the cleanup guarantees, so pointing it
+  // at the connected project would disarm exactly the protection this file
+  // exists to provide.
+  if (disposable) {
+    const host = (() => {
+      try {
+        return new URL(url).hostname;
+      } catch {
+        return "";
+      }
+    })();
+    const local = host === "127.0.0.1" || host === "localhost" || host === "::1";
+    check("Z0", "disposable mode targets a LOCAL database, never a hosted project", local, host);
+    if (!local) {
+      console.log("\n  REFUSING TO RUN. E2E_DISPOSABLE=1 against a non-local host.");
+      process.exit(1);
+    }
+  }
+
+  const before = disposable
+    ? null
+    : {
+        orders: (await sb.from("orders").select("id", { count: "exact", head: true })).count,
+        deliveries: (await sb.from("deliveries").select("id", { count: "exact", head: true })).count,
+        couranrDeliveries: (await sb.from("couranr_deliveries").select("id", { count: "exact", head: true }))
+          .count,
+      };
+  if (before) {
+    console.log(`  baseline: ${before.orders} orders / ${before.deliveries} deliveries / ` +
+                `${before.couranrDeliveries} couranr_deliveries\n`);
+  }
 
   /**
    * PREFLIGHT: refuse to seed what cannot be removed.
@@ -226,7 +282,12 @@ async function main() {
     "couranr_delivery_requests",
   ];
   const undeletable = [];
-  for (const t of BLOCKERS) {
+  // Skipped in disposable mode, and skipped for a stated reason rather than
+  // quietly: the preflight asks "can I remove what I create", and there the
+  // answer is `rm -rf` on the whole cluster. Running it would refuse correctly
+  // and for the wrong question, since the disposable database reproduces the
+  // very grants that make it refuse.
+  for (const t of disposable ? [] : BLOCKERS) {
     // A delete matching zero rows still raises 42501 when the grant is absent,
     // so this is a capability probe that touches nothing.
     const r = await sb.from(t).delete().eq("id", randomUUID());
@@ -247,7 +308,7 @@ async function main() {
     console.log("    -- deliveries, service plans, obligations, requests, businesses.");
     process.exit(1);
   }
-  check("P0", "the harness can delete every table it seeds", true);
+  if (!disposable) check("P0", "the harness can delete every table it seeds", true);
 
   const chains = [];
   try {
@@ -466,22 +527,28 @@ async function main() {
   } catch (e) {
     check("XX", "the matrix ran to completion", false, redact(e.message));
   } finally {
-    const left = await cleanup(sb, chains);
-    check("Z1", "every seeded row was removed", left.length === 0, left.join("; "));
+    if (!disposable) {
+      const left = await cleanup(sb, chains);
+      check("Z1", "every seeded row was removed", left.length === 0, left.join("; "));
 
-    const after = {
-      orders: (await sb.from("orders").select("id", { count: "exact", head: true })).count,
-      deliveries: (await sb.from("deliveries").select("id", { count: "exact", head: true })).count,
-      couranrDeliveries: (await sb.from("couranr_deliveries").select("id", { count: "exact", head: true })).count,
-    };
-    check("Z2", "real data is untouched",
-      after.orders === before.orders && after.deliveries === before.deliveries &&
-      after.couranrDeliveries === before.couranrDeliveries,
-      `${after.orders}/${after.deliveries}/${after.couranrDeliveries}`);
+      const after = {
+        orders: (await sb.from("orders").select("id", { count: "exact", head: true })).count,
+        deliveries: (await sb.from("deliveries").select("id", { count: "exact", head: true })).count,
+        couranrDeliveries: (await sb.from("couranr_deliveries").select("id", { count: "exact", head: true }))
+          .count,
+      };
+      check("Z2", "real data is untouched",
+        after.orders === before.orders && after.deliveries === before.deliveries &&
+        after.couranrDeliveries === before.couranrDeliveries,
+        `${after.orders}/${after.deliveries}/${after.couranrDeliveries}`);
 
-    const stray = await sb.from("business_accounts")
-      .select("id", { count: "exact", head: true }).like("name", `${MARK}%`);
-    check("Z3", "no marked fixture left behind", (stray.count ?? 0) === 0, `${stray.count}`);
+      const stray = await sb.from("business_accounts")
+        .select("id", { count: "exact", head: true }).like("name", `${MARK}%`);
+      check("Z3", "no marked fixture left behind", (stray.count ?? 0) === 0, `${stray.count}`);
+    }
+    // In disposable mode the caller destroys the cluster. Cleanup by deletion is
+    // not attempted here, because attempting it would fail on exactly the
+    // append-only grants the disposable database faithfully reproduces.
   }
 
   const failed = results.filter((r) => !r.ok);
@@ -490,11 +557,20 @@ async function main() {
   if (failed.length) {
     console.log("\n  FAILED:");
     for (const f of failed) console.log(`    ${f.id}  ${f.name} ${f.detail}`);
-    process.exit(1);
   }
+  // Returned rather than `process.exit`, so a caller that owns a database can
+  // tear it down before the process ends. The CLI entry below still exits
+  // non-zero, so nothing that ran this file before behaves differently.
+  return { total: results.length, failed: failed.length };
 }
 
-main().catch((e) => {
-  console.error(redact(e.stack || e.message));
-  process.exit(1);
-});
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main()
+    .then(({ failed }) => {
+      if (failed) process.exit(1);
+    })
+    .catch((e) => {
+      console.error(redact(e.stack || e.message));
+      process.exit(1);
+    });
+}
