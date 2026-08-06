@@ -173,6 +173,41 @@ describe("the two decision registries stay in their documented relationship", ()
    * flips OVN-002 to decided without an owner saying so, overnight enablement
    * would be invented in code.
    */
+  /**
+   * THE SELF-CONTRADICTION THIS ALMOST SHIPPED.
+   *
+   * HRS-002 was flipped to `decided` with the zone recorded, while
+   * HRS-001.value.standard_window.timezone_status still read the literal
+   * string "unresolved". The rank-1 authority disagreed with itself about
+   * whether the timezone was known, and nothing checked the two against each
+   * other. Caught by an independent review pass, not by this suite.
+   */
+  it("HRS-001's window agrees with HRS-002 that the timezone is resolved", () => {
+    const hrs001 = root.decisions.find((d: any) => d.id === "HRS-001");
+    const hrs002 = root.decisions.find((d: any) => d.id === "HRS-002");
+    const w = hrs001.value.standard_window;
+    expect(w.timezone_status).toBe("resolved");
+    expect(w.timezone).toBe(hrs002.value.timezone);
+    expect(w.timezone_decided_by).toBe("HRS-002");
+  });
+
+  /**
+   * OVN-001's window is the EXACT COMPLEMENT of HRS-001's. That is what forces
+   * the end-exclusive boundary: 18:00 belongs to overnight, so if the standard
+   * window also claimed it, a single instant would sit in both and a 3000-cent
+   * surcharge would attach or not depending on evaluation order.
+   */
+  it("the standard and overnight windows tile the day with no overlap and no gap", () => {
+    const hrs001 = root.decisions.find((d: any) => d.id === "HRS-001");
+    const ovn001 = root.decisions.find((d: any) => d.id === "OVN-001");
+    expect(ovn001.value.window.start).toBe(hrs001.value.standard_window.end);
+    expect(ovn001.value.window.end).toBe(hrs001.value.standard_window.start);
+    // ...and the boundary rule is stated on both sides, not left to the reader.
+    expect(hrs001.value.standard_window.boundary_semantics).toMatch(/end exclusive/i);
+    const hrs002 = root.decisions.find((d: any) => d.id === "HRS-002");
+    expect(hrs002.value.boundary_semantics).toMatch(/end exclusive/i);
+  });
+
   it("OVN-002 remains unresolved — a timezone does not decide the overnight enablement mechanism", () => {
     const o = root.decisions.find((d: any) => d.id === "OVN-002");
     expect(o.status).toBe("unresolved");

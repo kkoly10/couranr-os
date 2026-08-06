@@ -695,7 +695,10 @@
         "standard_window": {
           "start": "06:00",
           "end": "18:00",
-          "timezone_status": "unresolved"
+          "timezone_status": "resolved",
+          "timezone": "America/New_York",
+          "timezone_decided_by": "HRS-002",
+          "boundary_semantics": "start inclusive, end exclusive. 18:00 belongs to OVN-001's overnight window, not to this one."
         },
         "earliest_pickup": "06:00",
         "same_day_request_cutoff": "16:00",
