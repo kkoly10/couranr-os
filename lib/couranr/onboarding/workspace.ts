@@ -14,6 +14,8 @@
 import {
   BUSINESS_CATEGORIES as CATEGORY_REGISTRY,
   CATEGORY_LABELS,
+  isCategoryValidationFailed,
+  validateCategorySelection,
   type BusinessCategory,
 } from "@/lib/couranr/categories/registry";
 
@@ -56,6 +58,8 @@ export type WorkspaceDraft = {
   name: string;
   slugBase: string;
   businessCategory: BusinessCategory;
+  /** Up to three more (ACP-024). Optional: onboarding may capture none. */
+  secondaryCategories: BusinessCategory[];
   pickupAddress: WorkspaceAddress;
   contactPhone: string;
   payerDefault: "merchant" | "customer";
@@ -222,6 +226,31 @@ export function normalizeWorkspaceInput(raw: unknown): WorkspaceResult {
     errors.push({ code: "unknown_business_category", field: "businessCategory" });
   }
 
+  /*
+   * Secondary categories (ACP-024). Validated through the governed module so
+   * onboarding and settings refuse exactly the same things — the rules live in
+   * one place, and the database re-checks all of them regardless.
+   *
+   * The primary-overlap rule is checked HERE, unlike the settings path: at
+   * onboarding the primary is being chosen in the same submission, so there is
+   * no stored value to race against.
+   */
+  const rawSecondary = Array.isArray((r as any).secondaryCategories)
+    ? (r as any).secondaryCategories.filter((v: unknown) => typeof v === "string")
+    : [];
+  let secondaryCategories: BusinessCategory[] = [];
+  if (rawSecondary.length > 0) {
+    const validated = validateCategorySelection({
+      primary: businessCategory,
+      secondary: rawSecondary,
+    });
+    if (isCategoryValidationFailed(validated)) {
+      errors.push({ code: "unknown_business_category", field: "secondaryCategories" });
+    } else {
+      secondaryCategories = validated.value.secondary;
+    }
+  }
+
   const normalizedAddress = normalizeAddressInput(r.pickupAddress);
   const pickupAddress: WorkspaceAddress | null = normalizedAddress.ok
     ? normalizedAddress.value
@@ -258,6 +287,7 @@ export function normalizeWorkspaceInput(raw: unknown): WorkspaceResult {
       name,
       slugBase: toSlugBase(name),
       businessCategory: businessCategory as BusinessCategory,
+      secondaryCategories,
       pickupAddress,
       contactPhone,
       payerDefault: payerDefault as "merchant" | "customer",

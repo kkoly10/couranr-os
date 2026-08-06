@@ -259,12 +259,45 @@ describe("the onboarding command", () => {
     expect(route).not.toMatch(/body\??\.\w*[Uu]serId/);
   });
 
-  it("goes through one rpc call and performs no direct insert", () => {
-    expect((code.match(/supabaseAdmin\.rpc\(/g) || []).length).toBe(1);
+  it("goes through NAMED COMMANDS only and performs no direct insert", () => {
+    /**
+     * This asserted ONE rpc call until ACP-024. It is now two, and the second
+     * one is named here so a third cannot appear unnoticed:
+     *
+     *   couranr_create_merchant_workspace  — the atomic create
+     *   couranr_set_business_categories    — the secondary categories
+     *
+     * The create function's signature could not be extended without minting
+     * an overload, so the secondaries are a second command. What has NOT
+     * changed, and is the point of this test, is that onboarding still writes
+     * nothing directly: no insert, no update, no table reached by name.
+     */
+    expect((code.match(/supabaseAdmin\.rpc\(/g) || []).length).toBe(2);
+    expect(code).toMatch(/CREATE_WORKSPACE_RPC = "couranr_create_merchant_workspace"/);
+    expect(code).toMatch(/SET_CATEGORIES_RPC = "couranr_set_business_categories"/);
     expect(code).not.toMatch(/\.insert\(/);
     expect(code).not.toMatch(/\.update\(/);
     expect(code).not.toMatch(/from\("business_accounts"\)/);
     expect(code).not.toMatch(/from\("business_members"\)/);
+  });
+
+  it("a failed category write does NOT fail the workspace, and says why", () => {
+    /**
+     * The two calls are NOT atomic. That is deliberate and survivable: a
+     * failure leaves a real workspace with a valid PRIMARY category and no
+     * secondaries — visible and fixable from settings. Failing the whole
+     * onboarding over an optional field would be worse.
+     *
+     * The risk is that someone later "tidies" this into a hard failure, or
+     * into a silent swallow with no record. So both halves are asserted: the
+     * failure is LOGGED, and it does not return.
+     */
+    const raw = readFileSync(path.join(ROOT, "lib/couranr/onboarding/commands.ts"), "utf8");
+    const tail = raw.slice(raw.indexOf("SECONDARY CATEGORIES, as a second call"));
+    expect(tail).toMatch(/IT IS NOT ATOMIC WITH THE CREATE/);
+    const block = tail.slice(tail.indexOf("if (secondary.error)"), tail.indexOf("return {"));
+    expect(block).toMatch(/logServerFailure/);
+    expect(block, "a failed category write must not abort onboarding").not.toMatch(/return fail\(/);
   });
 
   it("blocks Operations owners before calling the database too", () => {
