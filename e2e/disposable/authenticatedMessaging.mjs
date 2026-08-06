@@ -362,6 +362,38 @@ async function main() {
     addMessage(chatId, chatOwnerPart, BEFORE_BODY, "participants", "now() - interval '3 hours'");
     addMessage(chatId, chatOwnerPart, AFTER_BODY, "participants", "now() - interval '10 minutes'");
 
+    // ── H: delivery_help, so OPS-005's stated purpose — "Unify merchant,
+    //    driver, and customer-help conversations" — is tested against all
+    //    THREE kinds rather than the two a merchant surface produces.
+    const helpTokenId = sql(
+      `insert into public.couranr_help_access_tokens
+         (token_hash, delivery_id, business_account_id, expires_at)
+       values ('${crypto.createHash("sha256").update(crypto.randomUUID()).digest("hex")}',
+               '${deliveryId}', '${businessId}', now() + interval '14 days')
+       returning id`
+    );
+    const helpId = sql(
+      `insert into public.couranr_conversations
+         (kind, business_account_id, delivery_id, status, urgency, waiting_on,
+          received_at, response_due_at, awaiting_reply_kind, due_state)
+       values ('delivery_help', '${businessId}', '${deliveryId}', 'open', 'safety', 'couranr',
+               now() - interval '30 days',
+               public.couranr_add_operating_minutes(now() - interval '30 days', 15),
+               'customer', 'on_time')
+       returning id`
+    );
+    // A customer participant carries a token, never a user id — the identity
+    // CHECK on the participant table enforces exactly that.
+    const helpCustomerPart = sql(
+      `insert into public.couranr_conversation_participants
+         (conversation_id, participant_kind, user_id, access_token_id)
+       values ('${helpId}', 'customer', null, '${helpTokenId}')
+       returning id`
+    );
+    addParticipant(helpId, "operations", ops.id, null);
+    addMessage(helpId, helpCustomerPart, "[MSG] nobody is at the address and the gate is locked",
+      "participants", "now() - interval '30 days'");
+
     console.log("  fixtures ready\n");
 
     /* ─────────────────────────── browser helpers ─────────────────────── */
@@ -444,6 +476,20 @@ async function main() {
     /** Opens the first conversation card and waits for the thread composer. */
     async function openFirstThread(page) {
       await page.getByRole("button", { name: /^Open$/ }).first().click();
+      await fieldLabel(page, "Your message").waitFor({ state: "visible", timeout: 20_000 });
+    }
+
+    /**
+     * Opens the card whose kind label matches, rather than whichever sorts
+     * first. The Operations inbox orders overdue-then-urgency, so "the first
+     * card" moved the moment a `safety` customer-help thread joined the
+     * fixtures — an index-based click would silently have asserted against a
+     * different thread.
+     */
+    async function openThreadLabelled(page, label) {
+      const card = page.locator(".cr-card", { hasText: label });
+      await card.first().waitFor({ state: "visible", timeout: 20_000 });
+      await card.first().getByRole("button", { name: /^Open$/ }).click();
       await fieldLabel(page, "Your message").waitFor({ state: "visible", timeout: 20_000 });
     }
 
@@ -754,27 +800,33 @@ async function main() {
     const inboxText = await opsPage.innerText("body");
     await opsPage.screenshot({ path: path.join(SHOTS, "O2-inbox.png"), fullPage: true });
 
-    // Crossing business accounts is the point of this screen: it shows threads
-    // no single merchant owns all of.
+    // OPS-005's purpose verbatim: "Unify merchant, driver, and customer-help
+    // conversations with delivery context and priority." So the assertion is
+    // that all THREE kind labels render, not merely that some rows do.
     const inboxCards = await opsPage.getByRole("button", { name: /^Open$/ }).count();
     check(
       "O2",
-      "the inbox unifies all three conversation kinds it can see",
-      inboxCards === 3,
+      "the inbox unifies all three conversation kinds — merchant support, merchant–driver, customer help",
+      inboxCards === 4 &&
+        /Merchant support/.test(inboxText) &&
+        /Merchant–driver/.test(inboxText) &&
+        /Customer help/.test(inboxText),
       `${inboxCards} thread(s)`
     );
 
+    // The card badge AND the header count, so a badge rendered against the
+    // wrong thread would not satisfy both.
     check(
       "O3",
-      "the 30-day-old thread renders Overdue",
-      /Overdue/.test(inboxText),
-      "badge present"
+      "two 30-day-old threads render Overdue, and the header counts them",
+      /Overdue/.test(inboxText) && /2 overdue/.test(inboxText),
+      "badge and count"
     );
     check(
       "O4",
-      "a thread 12 operating minutes old renders Due soon",
-      /Due soon/.test(inboxText),
-      "badge present"
+      "a thread 12 operating minutes old renders Due soon, and the header counts it",
+      /Due soon/.test(inboxText) && /1 due soon/.test(inboxText),
+      "badge and count"
     );
     // Both halves: the badge came from a due_state the SERVER recomputed on
     // read, not from the value seeded (both were seeded 'on_time').
@@ -814,14 +866,25 @@ async function main() {
          from public.couranr_conversations where id = '${supportId}'`
     );
 
-    // Open the OVERDUE thread specifically: it is ordered first server-side.
-    await openFirstThread(opsPage);
+    // The manager's read mark, captured BEFORE the owner reads anything in this
+    // section. O17 compares against it, so the assertion can actually fail.
+    const managerReadBefore = sql(
+      `select coalesce(last_read_at::text, 'null')
+         from public.couranr_conversation_participants
+        where conversation_id = '${supportId}' and user_id = '${merchant.manager.id}'`
+    );
+
+    await openThreadLabelled(opsPage, "Merchant support");
     const opsSelects = await opsPage.locator("select").count();
+    // Confirm WHICH thread was opened before writing to it. Without this, every
+    // later assertion that queries `supportId` by id could pass against a
+    // different thread's screen — a false green that looks identical.
+    const opsOpenedRight = (await opsPage.innerText("body")).includes("second pickup window");
     check(
       "O9",
-      "Operations IS offered the visibility control a merchant is not",
-      opsSelects === 1,
-      `${opsSelects} select(s)`
+      "Operations opened the merchant support thread and IS offered the visibility control",
+      opsSelects === 1 && opsOpenedRight,
+      `${opsSelects} select(s), correct thread=${opsOpenedRight}`
     );
 
     const NOTE_BODY = "[MSG] internal: check the merchant's contract tier before replying";
@@ -862,9 +925,10 @@ async function main() {
     // The merchant in the SAME thread must not see it.
     const ownerPage = await signIn(merchant.owner.email);
     await ownerPage.goto(`${BASE}/business/messages`, { waitUntil: "domcontentloaded" });
-    await ownerPage.getByRole("button", { name: /^Open$/ }).first()
-      .waitFor({ state: "visible", timeout: 30_000 });
-    await openFirstThread(ownerPage);
+    // "Overdue" identifies the support thread uniquely among the owner's three:
+    // the second support thread is due_soon and the delivery chat has no
+    // deadline. The kind label alone matches two cards.
+    await openThreadLabelled(ownerPage, "Overdue");
     const ownerThreadText = await ownerPage.innerText("body");
     check(
       "O13",
@@ -882,9 +946,7 @@ async function main() {
 
     // ── the participant-visible reply, which DOES stop the clock ────────
     await opsPage.goto(`${BASE}/operations/messages`, { waitUntil: "domcontentloaded" });
-    await opsPage.getByRole("button", { name: /^Open$/ }).first()
-      .waitFor({ state: "visible", timeout: 30_000 });
-    await openFirstThread(opsPage);
+    await openThreadLabelled(opsPage, "Merchant support");
     const REPLY_BODY = "[MSG] Couranr here — we can add the second pickup window from Monday";
     await opsPage.locator("select").selectOption("participants");
     await sendReply(opsPage, REPLY_BODY);
@@ -914,16 +976,22 @@ async function main() {
       ownerLastRead === "set",
       ownerLastRead
     );
-    const otherLastRead = sql(
-      `select case when last_read_at is null then 'null' else 'set' end
+    const managerReadAfter = sql(
+      `select coalesce(last_read_at::text, 'null')
          from public.couranr_conversation_participants
         where conversation_id = '${supportId}' and user_id = '${merchant.manager.id}'`
     );
+    const ownerReadAfter = sql(
+      `select coalesce(last_read_at::text, 'null')
+         from public.couranr_conversation_participants
+        where conversation_id = '${supportId}' and user_id = '${merchant.owner.id}'`
+    );
     check(
       "O17",
-      "read state is per participant — the manager's row is unaffected by the owner reading",
-      otherLastRead === "set" || otherLastRead === "null",
-      `manager last_read=${otherLastRead}`
+      "read state is PER PARTICIPANT — the owner reading left the manager's mark untouched",
+      managerReadAfter === managerReadBefore && ownerReadAfter !== managerReadAfter,
+      `manager ${managerReadBefore === managerReadAfter ? "unchanged" : "CHANGED"}, ` +
+        `owner ${ownerReadAfter === managerReadAfter ? "same as manager" : "distinct"}`
     );
 
     // ── the refusal that defines the screen ─────────────────────────────
