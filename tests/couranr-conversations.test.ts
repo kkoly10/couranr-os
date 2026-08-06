@@ -50,6 +50,9 @@ import {
 
 const ROOT = path.resolve(__dirname, "..");
 const MIGRATIONS = path.join(ROOT, "supabase/migrations");
+// Rollbacks moved out of supabase/migrations/: the Supabase CLI treats any
+// <timestamp>_name.sql there as a migration to APPLY, rollbacks included.
+const ROLLBACKS_DIR = path.resolve(MIGRATIONS, "../rollbacks");
 const MIGRATION_NAME = "20260804150000_couranr_conversations.sql";
 
 const stripSql = (s: string) => s.replace(/^\s*--.*$/gm, "");
@@ -1036,13 +1039,15 @@ describe("HARDENING — defects the adversarial verification confirmed", () => {
   it("EVERY forward migration has a paired rollback", () => {
     // This was scoped to the slice when 20 older migrations had none. They all
     // have one now, so the rule is repo-wide and the test says so.
-    const files = readdirSync(MIGRATIONS);
-    const forward = files.filter(
+    // The two now live in different directories, so the pairing is checked
+    // ACROSS them rather than within one listing.
+    const forward = readdirSync(MIGRATIONS).filter(
       (f) => f.endsWith(".sql") && !f.includes(".rollback.")
     );
+    const rollbacks = readdirSync(ROLLBACKS_DIR);
     expect(forward.length).toBeGreaterThanOrEqual(35);
     const missing = forward.filter(
-      (f) => !files.includes(f.replace(/\.sql$/, ".rollback.sql"))
+      (f) => !rollbacks.includes(f.replace(/\.sql$/, ".rollback.sql"))
     );
     expect(
       missing,
@@ -1057,7 +1062,7 @@ describe("HARDENING — defects the adversarial verification confirmed", () => {
     // backwards and the full reverse sequence failed on it.
     const rb = readFileSync(
       path.join(
-        MIGRATIONS,
+        ROLLBACKS_DIR,
         "20260802030000_couranr_dispatch_driver_execution_tables.rollback.sql"
       ),
       "utf8"
@@ -1076,7 +1081,7 @@ describe("HARDENING — defects the adversarial verification confirmed", () => {
     // DO block. Missing them made the reverse sequence fail with "cannot drop
     // table couranr_dispatch_vehicles because other objects depend on it".
     const rb = readFileSync(
-      path.join(MIGRATIONS, "20260801190000_couranr_managed_dispatch.rollback.sql"),
+      path.join(ROLLBACKS_DIR, "20260801190000_couranr_managed_dispatch.rollback.sql"),
       "utf8"
     );
     expect(rb).toContain("couranr_dlv_dispatch_vehicle_fk");

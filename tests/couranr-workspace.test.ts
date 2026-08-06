@@ -11,6 +11,9 @@ import {
 
 const ROOT = path.resolve(__dirname, "..");
 const MIGRATIONS = path.resolve(ROOT, "supabase/migrations");
+// Rollbacks moved out of supabase/migrations/: the Supabase CLI treats any
+// <timestamp>_name.sql there as a migration to APPLY, rollbacks included.
+const ROLLBACKS_DIR = path.resolve(MIGRATIONS, "../rollbacks");
 const MIG_NAME = readdirSync(MIGRATIONS).filter((f) =>
   f.endsWith("_couranr_merchant_workspace.sql")
 )[0];
@@ -229,7 +232,7 @@ describe("workspace migration", () => {
 
   it("has a rollback that drops only the new objects", () => {
     const rollback = readFileSync(
-      path.join(MIGRATIONS, "20260731061356_couranr_merchant_workspace.rollback.sql"),
+      path.join(ROLLBACKS_DIR, "20260731061356_couranr_merchant_workspace.rollback.sql"),
       "utf8"
     ).replace(/^\s*--.*$/gm, "");
     expect(rollback).toMatch(/drop function if exists public\.couranr_create_merchant_workspace/);

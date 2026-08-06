@@ -557,7 +557,7 @@ describe("the migration keeps the project's grant discipline", () => {
 
   it("has a rollback that refuses while links are live", () => {
     const rb = fs.readFileSync(
-      path.join(REPO, "supabase/migrations/20260804090000_couranr_delivery_access_tokens.rollback.sql"),
+      path.join(REPO, "supabase/rollbacks/20260804090000_couranr_delivery_access_tokens.rollback.sql"),
       "utf8"
     );
     expect(rb).toContain("refusing to drop couranr_delivery_access_tokens");

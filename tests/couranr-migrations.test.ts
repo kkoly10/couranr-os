@@ -16,17 +16,87 @@ import { describe, expect, it } from "vitest";
  * verified: 35/35 forward into an empty database, 34/35 back, zero `couranr_`
  * tables and zero `couranr_` functions surviving. The one refusal is
  * deliberate and is asserted below by name.
+ *
+ * ROLLBACKS LIVE IN supabase/rollbacks/, NOT BESIDE THE MIGRATIONS.
+ *
+ * They used to sit in `supabase/migrations/`, and that was a live deployment
+ * hazard rather than an aesthetic one. The Supabase CLI treats any file
+ * matching `<timestamp>_name.sql` as a migration to APPLY, and
+ * `20260731045417_couranr_delivery_requests.rollback.sql` matches. It saw 76
+ * files where the repository has 38.
+ *
+ * Worse, `.rollback.sql` sorts BEFORE `.sql` (`r` < `s`), so a deployment ran
+ * the rollback FIRST. Observed against an empty database, verbatim:
+ *
+ *     Applying migration 20260731045417_couranr_delivery_requests.rollback.sql...
+ *     Applying migration 20260731045417_couranr_delivery_requests.sql...
+ *     ERROR: duplicate key value violates unique constraint "schema_migrations_pkey"
+ *
+ * The DROP script executed, claimed the version, and the real migration then
+ * collided on it. `e2e/disposable/deploymentSafety.mjs` reproduces this and
+ * asserts the fix.
  */
 
 const ROOT = path.resolve(__dirname, "..");
 const MIGRATIONS = path.join(ROOT, "supabase/migrations");
+const ROLLBACKS_DIR = path.join(ROOT, "supabase/rollbacks");
 
-const ALL = readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql"));
-const FORWARD = ALL.filter((f) => !f.includes(".rollback."));
-const ROLLBACKS = ALL.filter((f) => f.includes(".rollback."));
+const FORWARD = readdirSync(MIGRATIONS).filter(
+  (f) => f.endsWith(".sql") && !f.includes(".rollback.")
+);
+const ROLLBACKS = readdirSync(ROLLBACKS_DIR).filter((f) => f.endsWith(".rollback.sql"));
+const ALL = [...FORWARD, ...ROLLBACKS];
 
-const read = (f: string) => readFileSync(path.join(MIGRATIONS, f), "utf8");
+/** Reads from whichever directory the file belongs to. */
+const read = (f: string) =>
+  readFileSync(path.join(f.includes(".rollback.") ? ROLLBACKS_DIR : MIGRATIONS, f), "utf8");
 const stripSql = (s: string) => s.replace(/^\s*--.*$/gm, "");
+
+/**
+ * THE RULE WHOSE ABSENCE LET A DROP SCRIPT BECOME A DEPLOYMENT STEP.
+ *
+ * Everything else in this file polices what a rollback CONTAINS. Nothing
+ * policed where it LIVES, so 38 rollback files sat in the directory the
+ * deployment command reads, and a full green suite said nothing.
+ */
+describe("no rollback is reachable by the deployment command", () => {
+  /** The Supabase CLI's own rule for what counts as a migration file. */
+  const CLI_MIGRATION_PATTERN = /^\d{14}_.+\.sql$/;
+
+  it("supabase/migrations/ contains no rollback file", () => {
+    const strays = readdirSync(MIGRATIONS).filter((f) => f.includes(".rollback."));
+    expect(
+      strays,
+      "a rollback in supabase/migrations/ WILL be executed by `supabase db push`, " +
+        "and because .rollback.sql sorts before .sql it runs BEFORE its own migration"
+    ).toEqual([]);
+  });
+
+  it("the CLI would see exactly the forward migrations", () => {
+    const seen = readdirSync(MIGRATIONS).filter((f) => CLI_MIGRATION_PATTERN.test(f));
+    expect(seen.length).toBe(FORWARD.length);
+    expect(seen.sort()).toEqual([...FORWARD].sort());
+  });
+
+  it("POSITIVE CONTROL: the CLI pattern really does match a rollback filename", () => {
+    // If this ever stops matching, the rule above becomes vacuous and the
+    // hazard could return unnoticed.
+    expect(
+      CLI_MIGRATION_PATTERN.test("20260731045417_couranr_delivery_requests.rollback.sql")
+    ).toBe(true);
+    // ...and it sorts BEFORE the forward file, which is why it ran first.
+    const pair = [
+      "20260731045417_couranr_delivery_requests.sql",
+      "20260731045417_couranr_delivery_requests.rollback.sql",
+    ].sort();
+    expect(pair[0]).toBe("20260731045417_couranr_delivery_requests.rollback.sql");
+  });
+
+  it("every file in supabase/rollbacks/ is a rollback, and nothing else", () => {
+    const wrong = readdirSync(ROLLBACKS_DIR).filter((f) => !f.endsWith(".rollback.sql"));
+    expect(wrong, "supabase/rollbacks/ must hold only *.rollback.sql").toEqual([]);
+  });
+});
 
 describe("every forward migration is paired with a rollback", () => {
   it("finds a migration set to police", () => {
