@@ -1022,13 +1022,29 @@ export async function releaseAuthorization(params: {
     });
   }
 
-  const existing = await getObligationForRequest({
-    requestId: params.requestId,
-    businessAccountId: params.businessAccountId,
-  });
-  if (isPaymentFailure(existing)) return existing as unknown as FulfillmentFailure;
+  /*
+   * Read the obligation DIRECTLY rather than through getObligationForRequest.
+   *
+   * That helper filters `.neq("payment_state", "cancelled")`, which is right
+   * for the authorization flow it serves and wrong here: after a successful
+   * release the obligation IS cancelled, so a replay would find nothing and be
+   * told "there is no payment on this delivery" instead of "already released".
+   * The whole point of the replay path is that a retrying operator is told what
+   * happened.
+   *
+   * Scoped to business_account_id as well as request_id, so a request id from
+   * one tenant cannot reach another tenant's obligation.
+   */
+  const { data: ob, error: obError } = (await supabaseAdmin
+    .from("couranr_payment_obligations")
+    .select("id,request_id,business_account_id,payment_state,provider_payment_intent_id,version")
+    .eq("request_id", params.requestId)
+    .eq("business_account_id", params.businessAccountId)
+    .maybeSingle()) as { data: any; error: any };
 
-  const ob: any = existing.value;
+  if (obError) {
+    return fail({ operation: op, code: "internal", detail: { reason: "obligation_read", message: obError.message } });
+  }
   if (!ob) {
     return fail({
       operation: op,
@@ -1036,6 +1052,10 @@ export async function releaseAuthorization(params: {
       detail: { reason: "no_obligation" },
       message: "There is no payment on this delivery.",
     });
+  }
+
+  if (ob.payment_state === "cancelled") {
+    return { ok: true, value: { obligationId: String(ob.id), paymentState: "cancelled" } };
   }
 
   const begun = await callRpc<any>(op, "couranr_begin_payment_release", {

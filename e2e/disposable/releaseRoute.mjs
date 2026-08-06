@@ -1,0 +1,341 @@
+/**
+ * ACP-032 release — the ROUTE, unstubbed, end to end.
+ *
+ * `releaseAuthorization.mjs` calls the two SQL commands directly and proves the
+ * database half. This proves the OTHER half: that a real HTTP request, carrying
+ * a real bearer token, through a real Next server, reaches those commands and
+ * cancels a real (doubled) PaymentIntent — and that the gates hold at the
+ * route, which is a different place from where the SQL gate lives.
+ *
+ * That distinction is not academic here. This codebase has already shipped a
+ * case where the route's capability was one role narrower than the SQL's, so
+ * one of the two was dead. Testing the SQL alone would not have found it.
+ *
+ * WHAT THIS DOES NOT PROVE. The Stripe half runs against `e2e/stripeDouble.mjs`
+ * through the `STRIPE_API_BASE` seam. It proves the request Couranr builds is
+ * well formed and that Couranr handles the documented responses. It proves
+ * NOTHING about Stripe accepting it. That closes only with test-mode keys.
+ *
+ *   E1   an anonymous caller is refused
+ *   E2   a merchant owner is refused — the route gate, not the SQL gate
+ *   E3   ... and the obligation is untouched after both refusals
+ *   E4   a missing reason is refused
+ *   E5   an oversized reason is refused
+ *   E6   Operations releases the hold — 200
+ *   E7   ... the DOUBLE actually received POST /v1/payment_intents/{id}/cancel
+ *   E8   ... the intent at the double is now `canceled`
+ *   E9   ... the obligation is `cancelled` with cancelled_at set
+ *   E10  ... and both release events were appended
+ *   E11  a replay returns 200 and does NOT call Stripe a second time
+ *   E12  a captured hold cannot be released — the double would refuse it too
+ *   E13  no database detail leaks into any response body
+ *
+ * Run:  node e2e/disposable/releaseRoute.mjs
+ */
+
+import { spawn } from "node:child_process";
+import { openSync } from "node:fs";
+import path from "node:path";
+import crypto from "node:crypto";
+import { fileURLToPath } from "node:url";
+import { up, down, psql, dbUrl } from "./up.mjs";
+import {
+  startPostgrest,
+  startGateway,
+  waitForPostgrest,
+  SERVICE_ROLE_JWT,
+  ANON_JWT,
+} from "./gateway.mjs";
+import { startStripeDouble } from "../stripeDouble.mjs";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const PGRST_BIN =
+  process.env.COURANR_POSTGREST ||
+  "/tmp/claude-0/-home-user-couranr-os/3ba65fdb-c110-5366-92d6-85568b408343/scratchpad/prst/postgrest";
+
+const PORT = 3319;
+const STRIPE_PORT = 3320;
+const BASE = `http://127.0.0.1:${PORT}`;
+const PASSWORD = "disposable-release-1";
+const APP_LOG = "/tmp/claude-0/-home-user-couranr-os/3ba65fdb-c110-5366-92d6-85568b408343/scratchpad/relroute-app.log";
+
+let passed = 0;
+let failed = 0;
+const check = (id, d, ok, detail = "") => {
+  ok ? passed++ : failed++;
+  console.log(`  ${ok ? "PASS" : "FAIL"}  ${id}  ${d}${detail ? `  [${detail}]` : ""}`);
+};
+
+const one = (sql) => psql(sql).trim();
+const esc = (s) => String(s).replace(/'/g, "''");
+
+async function main() {
+  console.log("ACP-032 — release a hold, through the real route, unstubbed\n");
+
+  let pgrst;
+  let gateway;
+  let appServer;
+  let stripe;
+
+  try {
+    console.log("  bringing up the disposable database...");
+    const info = up({ quiet: true });
+    console.log(`  ${info.migrationsApplied} migrations applied`);
+
+    pgrst = startPostgrest({
+      dbUrl: dbUrl(),
+      binary: PGRST_BIN,
+      workDir: "/var/lib/postgresql/couranr-disposable/pgrst",
+    });
+    if (!(await waitForPostgrest())) throw new Error("PostgREST did not start");
+    gateway = await startGateway();
+
+    stripe = await startStripeDouble(STRIPE_PORT);
+    const stripeBase = `http://127.0.0.1:${STRIPE_PORT}`;
+    console.log(`  stripe double at ${stripeBase}`);
+
+    const env = {
+      ...process.env,
+      NEXT_PUBLIC_SUPABASE_URL: gateway.url,
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ANON_JWT,
+      SUPABASE_SERVICE_ROLE_KEY: SERVICE_ROLE_JWT,
+      STRIPE_SECRET_KEY: "sk_test_disposable",
+      STRIPE_API_BASE: stripeBase,
+      PORT: String(PORT),
+      /*
+       * DEVELOPMENT, not production, and that is forced on us by a SAFETY
+       * FEATURE rather than by convenience.
+       *
+       * lib/stripeClient.ts:apiBaseOverride() refuses STRIPE_API_BASE outright
+       * when NODE_ENV === "production", so that a misconfigured env var can
+       * never redirect live payment traffic. Every other disposable harness
+       * runs production because none of them touch Stripe; this one must not,
+       * or the SDK talks to api.stripe.com, the container cannot reach it, and
+       * the failure looks like a bug in the release code.
+       *
+       * Running dev also removes the build step: this harness drives API routes
+       * over fetch and never loads a client bundle, so nothing here depends on
+       * NEXT_PUBLIC_* being inlined at build time.
+       */
+      NODE_ENV: "development",
+    };
+
+    console.log("  starting the application (dev, so the Stripe seam engages)...");
+    const appLog = openSync(APP_LOG, "w");
+    appServer = spawn("npx", ["next", "dev", "-p", String(PORT)], {
+      cwd: ROOT,
+      env,
+      stdio: ["ignore", appLog, appLog],
+      detached: true,
+    });
+    const deadline = Date.now() + 120_000;
+    let live = false;
+    while (Date.now() < deadline && !live) {
+      try {
+        live = (await fetch(BASE, { redirect: "manual" })).status < 500;
+      } catch {
+        await new Promise((r) => setTimeout(r, 500));
+      }
+    }
+    if (!live) throw new Error("the application did not start");
+
+    /* ---------------------------------------------------------- fixture */
+
+    function actor(email, role) {
+      const id = one(`insert into auth.users (email) values ('${esc(email)}') returning id`);
+      psql(
+        `insert into public.profiles (id, email, role)
+         values ('${id}', '${esc(email)}', '${role}')
+         on conflict (id) do update set role = excluded.role`,
+      );
+      // The disposable stack ships its own helper for this; hand-rolling a
+      // bcrypt update here would drift from whatever the gateway expects.
+      psql(`select public.couranr_disposable_set_password('${id}', '${esc(PASSWORD)}')`);
+      return id;
+    }
+
+    const tag = crypto.randomUUID().slice(0, 8);
+    const businessId = one(
+      `insert into public.business_accounts (name, slug, status)
+       values ('Release Route Co', 'rel-route-${tag}', 'active') returning id`,
+    );
+    const opsEmail = `ops+${tag}@e2e.couranr.test`;
+    const merEmail = `mer+${tag}@e2e.couranr.test`;
+    const opsId = actor(opsEmail, "admin");
+    const merId = actor(merEmail, "merchant");
+    psql(
+      `insert into public.business_members (business_account_id, user_id, role, status, joined_at)
+       values ('${businessId}', '${merId}', 'owner', 'active', now())`,
+    );
+
+    /** Create a request + obligation, and a matching intent AT THE DOUBLE. */
+    async function seed(state) {
+      const requestId = one(
+        `insert into public.couranr_delivery_requests
+           (business_account_id, created_by, idempotency_key, recipient_name,
+            request_state, readiness_state, review_state, submitted_at,
+            quote_status, delivery_subtotal_cents, pricing_policy_version,
+            pickup_address, dropoff_address, loaded_miles, weight_lb)
+         values ('${businessId}', '${merId}', 'rel-${crypto.randomUUID()}', 'Route Fixture',
+                 'confirmed', 'ready', 'pending', now(),
+                 'estimated', 2299, 'disposable',
+                 '{"line1":"12 Test St","city":"Stafford","region":"VA","postalCode":"22554"}'::jsonb,
+                 '{"line1":"9 Drop Ct","city":"Woodbridge","region":"VA","postalCode":"22191"}'::jsonb,
+                 5, 20)
+         returning id`,
+      );
+      // Make the double hold a real intent, so cancel has something to act on.
+      const created = await fetch(`${stripeBase}/v1/payment_intents`, {
+        method: "POST",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          amount: "2299",
+          currency: "usd",
+          capture_method: "manual",
+        }).toString(),
+      });
+      const intent = await created.json();
+      if (state === "captured") {
+        await fetch(`${stripeBase}/v1/payment_intents/${intent.id}/capture`, { method: "POST" });
+      }
+      const stamped = ["authorized", "capture_pending", "captured"].includes(state);
+      const obligationId = one(
+        `insert into public.couranr_payment_obligations
+           (request_id, business_account_id, payer_type, request_version,
+            pricing_policy_version, amount_cents, currency, payment_state,
+            provider_payment_intent_id, idempotency_key,
+            authorized_at, captured_at, captured_amount_cents)
+         values ('${requestId}', '${businessId}', 'merchant', 1, 'disposable',
+                 2299, 'usd', '${state}', '${intent.id}',
+                 'obl-${crypto.randomUUID()}',
+                 ${stamped ? "now()" : "null"},
+                 ${state === "captured" ? "now()" : "null"},
+                 ${state === "captured" ? 2299 : "null"})
+         returning id`,
+      );
+      return { requestId, obligationId, intentId: intent.id };
+    }
+
+    async function tokenFor(email) {
+      const r = await fetch(`${gateway.url}/auth/v1/token?grant_type=password`, {
+        method: "POST",
+        headers: { "content-type": "application/json", apikey: ANON_JWT },
+        body: JSON.stringify({ email, password: PASSWORD }),
+      });
+      if (!r.ok) throw new Error(`token for ${email}: ${r.status}`);
+      return (await r.json()).access_token;
+    }
+
+    async function release(email, requestId, body) {
+      const headers = { "content-type": "application/json" };
+      if (email) headers.authorization = `Bearer ${await tokenFor(email)}`;
+      const r = await fetch(
+        `${BASE}/api/couranr/operations/delivery-requests/${requestId}/release`,
+        { method: "POST", headers, body: JSON.stringify(body) },
+      );
+      let json = null;
+      try {
+        json = await r.json();
+      } catch {
+        /* no body */
+      }
+      return { status: r.status, body: json, raw: JSON.stringify(json ?? {}) };
+    }
+
+    const bodies = [];
+    const stripeCalls = () => stripe.calls.map((c) => `${c.method} ${c.path}`);
+
+    /* ------------------------------------------------------------ gates */
+
+    const a = await seed("authorized");
+
+    const anon = await release(null, a.requestId, { reason: "x" });
+    bodies.push(anon.raw);
+    check("E1", "an anonymous caller is refused", anon.status === 401 || anon.status === 403, `${anon.status}`);
+
+    const asMerchant = await release(merEmail, a.requestId, { reason: "let me out" });
+    bodies.push(asMerchant.raw);
+    check("E2", "a merchant owner is refused at the ROUTE", asMerchant.status === 403, `${asMerchant.status}`);
+
+    check(
+      "E3", "... and the obligation is untouched",
+      one(`select payment_state from public.couranr_payment_obligations where id='${a.obligationId}'`) ===
+        "authorized",
+    );
+
+    const noReason = await release(opsEmail, a.requestId, {});
+    bodies.push(noReason.raw);
+    check("E4", "a missing reason is refused", noReason.status === 400, `${noReason.status}`);
+
+    const longReason = await release(opsEmail, a.requestId, { reason: "z".repeat(501) });
+    bodies.push(longReason.raw);
+    check("E5", "an oversized reason is refused", longReason.status === 400, `${longReason.status}`);
+
+    check(
+      "E5b", "no Stripe call was made by any refusal",
+      !stripeCalls().some((c) => c.includes("/cancel")),
+      stripeCalls().filter((c) => c.includes("cancel")).join(",") || "none",
+    );
+
+    /* ---------------------------------------------------------- release */
+
+    const ok = await release(opsEmail, a.requestId, { reason: "customer cancelled before pickup" });
+    bodies.push(ok.raw);
+    check("E6", "Operations releases the hold", ok.status === 200, `${ok.status} ${ok.raw.slice(0, 80)}`);
+    check(
+      "E7", "the DOUBLE received the cancel call",
+      stripeCalls().includes(`POST /v1/payment_intents/${a.intentId}/cancel`),
+    );
+    {
+      const r = await fetch(`${stripeBase}/v1/payment_intents/${a.intentId}`);
+      const pi = await r.json();
+      check("E8", "the intent at the double is canceled", pi.status === "canceled", pi.status);
+    }
+    check(
+      "E9", "the obligation is cancelled with cancelled_at set",
+      one(`select (payment_state='cancelled' and cancelled_at is not null)
+             from public.couranr_payment_obligations where id='${a.obligationId}'`) === "t",
+    );
+    check(
+      "E10", "both release events were appended",
+      one(`select count(*) from public.couranr_payment_events
+            where obligation_id='${a.obligationId}'
+              and event_type in ('couranr.release.begun','couranr.release.completed')`) === "2",
+    );
+
+    const before = stripeCalls().filter((c) => c.includes("/cancel")).length;
+    const replay = await release(opsEmail, a.requestId, { reason: "again" });
+    bodies.push(replay.raw);
+    const after = stripeCalls().filter((c) => c.includes("/cancel")).length;
+    check("E11", "a replay is accepted and calls Stripe no second time",
+      replay.status === 200 && after === before, `${replay.status}, cancels ${before}->${after}`);
+
+    /* ------------------------------------------------- captured refuses */
+
+    const cap = await seed("captured");
+    const capRes = await release(opsEmail, cap.requestId, { reason: "too late" });
+    bodies.push(capRes.raw);
+    check("E12", "a captured hold cannot be released", capRes.status >= 400, `${capRes.status}`);
+
+    /* ------------------------------------------------------- no leakage */
+
+    const forbidden = [
+      /couranr_[a-z_]+\(/i, /SQLSTATE/i, /CR4\d\d/, /pg_/i, /relation ".*" does not exist/i,
+      /sk_test/, /supabase/i, /postgres/i,
+    ];
+    const leaks = bodies.filter((b) => forbidden.some((f) => f.test(b)));
+    check("E13", "no database or provider detail leaks into a response", leaks.length === 0,
+      leaks[0]?.slice(0, 120) ?? "clean");
+
+    console.log(`\n  ${passed} passed, ${failed} failed\n`);
+  } finally {
+    try { if (appServer?.pid) process.kill(-appServer.pid, "SIGKILL"); } catch { /* gone */ }
+    try { stripe?.server?.close(); } catch { /* gone */ }
+    try { gateway?.close?.(); } catch { /* gone */ }
+    try { pgrst?.kill?.("SIGKILL"); } catch { /* gone */ }
+    down({ quiet: true });
+  }
+  process.exit(failed === 0 ? 0 : 1);
+}
+
+main();

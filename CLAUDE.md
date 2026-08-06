@@ -347,3 +347,13 @@ So: **seed data, start the dev server, drive the UI, assert on what rendered.** 
 - **Test-mode endpoints must be gated server-side.** `app/api/docs/test-mark-paid/route.ts:17-23,47-49` is the correct pattern: `if (IS_PROD || !TEST_MODE) return 403`. `/api/test-email` is the counter-example — unauthenticated, and it sends live mail to a hardcoded fallback address.
 - **Never expose secrets to the browser or put them in analytics, logs, or notification copy.** `NEXT_PUBLIC_SUPABASE_URL` is (correctly but confusingly) used as the URL for service-role clients throughout — the key is what must never cross the boundary.
 - **Say "Couranr", never founder or personal-operator language.** Use Couranr review, Couranr confirmation, Couranr Operations Queue, Couranr-managed dispatch, Couranr Support.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->
