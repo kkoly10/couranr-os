@@ -36,118 +36,36 @@
  * afterwards, and holds no real data at any point.
  *
  * ---------------------------------------------------------------------------
- * KNOWN BLOCKER — THIS RUN DOES NOT PASS. DO NOT CITE IT AS EVIDENCE.
- *
- * CAUSE IDENTIFIED, FIX NOT YET FOUND. The page renders, and what it renders
- * is the REFUSAL:
- *
- *     "Delivery Help
- *      This help link is not available.
- *      If you are expecting a delivery, the business that arranged it can send
- *      you a new link."
- *
- * That is `NOT_AVAILABLE`, the single message `redeemHelpToken` returns for
- * unknown, revoked and expired alike. So the page and the route are working;
- * the TOKEN is being rejected. 0 selects, 0 textareas, 305 characters of body —
- * captured unconditionally rather than inferred.
- *
- * RULED OUT by reading lib/couranr/conversations/help.ts rather than guessing:
- * the seed uses the same algorithm the product does —
- * `randomBytes(32).toString("base64url")` hashed with sha256 hex — and a
- * 43-character base64url string satisfies `isWellFormedHelpToken`'s
- * `/^[A-Za-z0-9_-]{40,90}$/`. The row carries a 14-day `expires_at` and a null
- * `revoked_at`, so `couranr_redeem_help_token`'s three refusal conditions are
- * all false against the row as inserted.
- *
- * MEASURED AT THE RPC BOUNDARY, AND HALF-FIXED.
- *
- * A direct probe answered the question the four previous runs could not:
- *
- *   direct SQL call to couranr_redeem_help_token   -> the three ids, correct
- *   same call through the gateway, pre-fix         -> HTTP 500,
- *                                     PGRST300 "Server lacks JWT secret"
- *
- * supabase-js always sends `Authorization: Bearer <key>`, and PostgREST refuses
- * a Bearer token outright when no `jwt-secret` is configured. The route's error
- * handling collapsed that into the generic "This help link is not available.",
- * which is why the symptom looked for four runs like a rejected token while the
- * function was working perfectly the whole time.
- *
- * gateway.mjs now configures a per-run HS256 secret and signs real service-role
- * and anon JWTs with it. RE-PROBED AFTER THE FIX:
- *
- *   same call through the gateway, post-fix        -> HTTP 200
- *     [{"out_token_id":"...","out_delivery_id":"...","out_conversation_id":"..."}]
- *
- * So redemption over HTTP is CONFIRMED WORKING.
- *
- * STILL FAILING, AND NOT YET DIAGNOSED: the full app run renders the same
- * refusal even though the same RPC returns 200 through the same gateway.
- *
- * THREE HYPOTHESES HAVE NOW BEEN DISPROVED BY MEASUREMENT. Recorded so nobody
- * spends time re-testing them:
- *
- *   1. "the browser bundle points at the real Supabase host, inlined at build
- *      time" — the harness now rebuilds against the gateway into its own
- *      distDir, and the run fails identically.
- *
- *   2. "the token is malformed or hashed differently" — the seed uses the same
- *      algorithm as lib/couranr/conversations/help.ts, and a direct SQL call to
- *      couranr_redeem_help_token returns its three ids correctly.
- *
- *   3. "`.env.local` overrides the passed-in keys" — measured directly by
- *      building with COURANR_DIST_DIR and grepping the output bundle for
- *      127.0.0.1:55434. THE PASSED-IN VALUE WON. Next does not override it.
- *
- * What IS established: the RPC works in SQL, and it works over HTTP through the
- * gateway with a signed service-role JWT (200, all three ids). The remaining
- * difference is between `fetch` and what supabase-js actually sends from inside
- * the Next server process.
- *
- * THE NEXT STEP IS INSTRUMENTATION, NOT ANOTHER HYPOTHESIS: log the request the
- * gateway receives from the app — method, path, headers, body — and compare it
- * byte for byte against the probe's. The gateway is the one place both paths
- * pass through, so it is the right place to look.
+ * STATUS: PASSING, 11/11. What it took, recorded so it is not re-learned.
  * ---------------------------------------------------------------------------
  *
- * Measured state: C1 "passes", C2 fails because the topic `<select>` never
- * appears — `locator.inputValue()` waits its full 30 seconds and times out.
+ * Five defects stood between this file and a green run. Three were in the
+ * harness, one was a false assertion, and one made the other fixes invisible:
  *
- * C1 IS ALMOST CERTAINLY A FALSE PASS, AND IS NOT EVIDENCE OF ANYTHING.
- * It matches `/Delivery Help/i` anywhere in `innerText`, and the text it
- * actually captured begins "Skip to main content / Pricing / For businesses /
- * Service areas" — the marketing shell's navigation. A nav or footer link is
- * enough to satisfy that regex, so C1 may be asserting that a LINK exists while
- * the help page itself never rendered. This is the documented `getByText`
- * substring trap, reproduced here by me. It must be replaced by a wait on
- * something that exists ONLY in the loaded help form before this file is
- * trusted at all.
+ *   1. The Next server was spawned with stdio "pipe" and never drained, so it
+ *      blocked once the OS pipe buffer filled. 15 minutes, no output, SIGTERM.
+ *   2. `psql` returned the command tag with the value, so every
+ *      `insert ... returning id` yielded "<uuid>\nINSERT 0 1" and the tag was
+ *      carried into the next statement — surfacing as `invalid input syntax
+ *      for type uuid`, one layer from its cause. Fixed with -q.
+ *   3. C1 asserted /Delivery Help/i anywhere in innerText, which the marketing
+ *      nav satisfies. It was asserting a LINK existed while the page rendered
+ *      a refusal. It now requires the select and textarea that exist only in
+ *      the loaded form.
+ *   4. PostgREST refuses a Bearer token outright when no `jwt-secret` is
+ *      configured — PGRST300 — and the route collapsed that into the generic
+ *      "This help link is not available." The gateway now signs real HS256
+ *      service-role and anon JWTs against a per-run secret.
+ *   5. `npx next start` spawns a CHILD. SIGTERM to the wrapper orphaned the
+ *      real next-server, which kept holding port 3311, and every later run's
+ *      wait-for-live loop was satisfied by that STALE process still carrying
+ *      the pre-fix environment. This is why 1, 2 and 4 each appeared to change
+ *      nothing. Spawned `detached` now, and teardown kills the process GROUP.
  *
- * A DIAGNOSIS I GOT WRONG, RECORDED SO IT IS NOT RETRIED.
- * I attributed the missing `<select>` to `NEXT_PUBLIC_*` being inlined at build
- * time — the bundle pointing at the real Supabase host, unreachable from
- * Chromium here. That reasoning is sound in general and it was NOT the cause:
- * the harness now rebuilds with the gateway URL baked in, into its own
- * `distDir`, and the run fails identically. The build-time-env fix is retained
- * because it is correct and necessary, but it did not move the needle, and the
- * real cause is still unidentified.
- *
- * What is NOT yet ruled out: the page rendering a refusal or an error state
- * whose copy also contains "Delivery Help"; the token being rejected by
- * `couranr_redeem_help_token` through the gateway; hydration never completing;
- * or the form being gated behind a state the harness never reaches. The next
- * step is to screenshot and dump `innerText` unconditionally on failure rather
- * than reason about it.
- *
- * CUS-001 AND CUS-003 REMAIN UNPROMOTED IN BOTH LEDGERS.
- *
- * Two harness defects WERE found and fixed getting this far, both mine:
- *   - the Next server was spawned with stdio "pipe" and never drained, so it
- *     blocked once the OS pipe buffer filled — 15 minutes, no output, SIGTERM;
- *   - `psql` returned the command tag as well as the value, so every
- *     `insert ... returning id` yielded "<uuid>\nINSERT 0 1" and the tag was
- *     carried into the next statement, surfacing as
- *     `invalid input syntax for type uuid` one layer from its cause.
+ * Three hypotheses were disproved by measurement before the real cause was
+ * found by instrumentation in a single run: build-time env inlining, a
+ * malformed token, and `.env.local` overriding the passed-in keys. The lesson
+ * is the ordering — one gateway trace beat four rounds of reasoning.
  *
  * Run:  node e2e/disposable/customerHelpFragments.mjs
  */

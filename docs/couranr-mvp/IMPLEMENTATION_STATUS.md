@@ -25,6 +25,7 @@ Every SHA appearing in either ledger, in full, with what it covers:
 
 | SHA | rows | what was verified at it |
 |---|---|---|
+| `ced8af8130ebf8c556360c6d74d09d7338e38e5c` | 2 screens | `CUS-001` and `CUS-003`, unstubbed against a disposable database — 11/11 |
 | `4e0bce874614be57118e869bf9802937ca1c1da4` | 4 work items, 3 screens | the Phase 8 HARDENING pass — HRS-002, TRM-002, the disposable database, the deployment-path fix; `MER-012`, `DRV-008`, `OPS-005` |
 | `40129ee06d96bfdcd85bb653397d2553a1fa5b98` | 3 screens | the Phase 8 reconciliation — `PUB-007`, `CUS-001`, `CUS-003` |
 | `401b3eea5cd96bb09d224f3b113ba6091bba807d` | 38 work items, 57 screens | the baseline inventory pass |
@@ -171,15 +172,15 @@ Neither number should be quoted without its fraction.
 
 | status | count |
 |---|---|
-| `functional_verified` | 12 |
-| `functional_unverified` | 10 |
+| `functional_verified` | 14 |
+| `functional_unverified` | 8 |
 | `partial` | 5 |
 | `static_only` | 1 |
 | `placeholder_only` | 33 |
 | `missing` | 5 |
 | `deferred` / `retired_or_replaced` | 0 |
 
-**12 of 66 canonical screens are verified working in a browser.**
+**14 of 66 canonical screens are verified working in a browser.**
 
 Phase 8 added exactly **one** to that number. `PUB-007` `/help/[token]` is
 `functional_verified` on the strength of `e2e/phase8Acceptance.mjs` A12–A12d:
