@@ -108,6 +108,28 @@ export const SETTINGS_CAPABILITIES = [
    * is the bound this whole module is written to.
    */
   "billing.read",
+  /**
+   * See and USE the MER-010 presets.
+   *
+   * Every active member, including dispatcher and viewer: a preset's whole
+   * purpose is to prefill a delivery, and a dispatcher who creates deliveries
+   * under DRP-001 but cannot see the presets would be retyping what the
+   * business already wrote down.
+   */
+  "presets.read",
+  /**
+   * Create, edit, duplicate, archive a preset, and adopt a Couranr update.
+   *
+   * Owner and manager. A preset shapes what EVERY future delivery is
+   * prefilled with, for everyone in the business — the same shape as
+   * `website_tools.publish`, where a dispatcher moves deliveries but does not
+   * decide what the business's configuration says. A dispatcher who spots a
+   * better default asks someone who can change it.
+   *
+   * `couranr_require_preset_manager` gates on the same two roles, and
+   * `couranr-presets` asserts the two lists match so they cannot drift.
+   */
+  "presets.write",
   /** See the MER-008 customer book. */
   "customers.read",
   /**
@@ -143,6 +165,8 @@ const MATRIX: Readonly<Record<MemberRole, readonly SettingsCapability[]>> = {
     "activation.request",
     "activation.record_test_delivery",
     "billing.read",
+    "presets.read",
+    "presets.write",
     "customers.read",
     "customers.write",
   ],
@@ -159,6 +183,8 @@ const MATRIX: Readonly<Record<MemberRole, readonly SettingsCapability[]>> = {
     "activation.request",
     "activation.record_test_delivery",
     "billing.read",
+    "presets.read",
+    "presets.write",
     "customers.read",
     "customers.write",
   ],
@@ -168,6 +194,7 @@ const MATRIX: Readonly<Record<MemberRole, readonly SettingsCapability[]>> = {
     "website_tools.read",
     "activation.read",
     "activation.record_test_delivery",
+    "presets.read",
     "customers.read",
     "customers.write",
   ],
@@ -176,6 +203,7 @@ const MATRIX: Readonly<Record<MemberRole, readonly SettingsCapability[]>> = {
     "team.read",
     "website_tools.read",
     "activation.read",
+    "presets.read",
     "customers.read",
   ],
   billing: [
@@ -184,6 +212,7 @@ const MATRIX: Readonly<Record<MemberRole, readonly SettingsCapability[]>> = {
     "website_tools.read",
     "activation.read",
     "billing.read",
+    "presets.read",
     "customers.read",
   ],
 };
