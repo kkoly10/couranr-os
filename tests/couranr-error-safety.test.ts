@@ -193,6 +193,7 @@ describe("canonical routes cannot leak a database detail", () => {
       "app/api/couranr/me/team/[memberId]/route.ts",
       "app/api/couranr/me/team/route.ts",
       "app/api/couranr/me/workspace/route.ts",
+      "app/api/couranr/merchant/customers/route.ts",
       "app/api/couranr/merchant/deliveries/[id]/pickup-code/route.ts",
       "app/api/couranr/merchant/deliveries/[id]/proof/route.ts",
       "app/api/couranr/merchant/deliveries/[id]/recipient-code/route.ts",

@@ -116,7 +116,11 @@ describe("server-only modules are unreachable from client code", () => {
       // Holds the service-role client and every dispatch command. The driver
       // projection is built here, so a bundle reaching this module would put
       // the unsanitized delivery row within reach of a browser.
-      "lib/couranr/dispatch/commands.ts",
+       // MER-008/MER-009. Holds the service-role client and the UNMASKED
+      // customer projection — a bundle reaching it would ship the read that
+      // returns every recipient's real email and phone.
+      "lib/couranr/customers/commands.ts",
+     "lib/couranr/dispatch/commands.ts",
       // Holds the handoff-code HMAC secret. A bundle reaching this module
       // would ship the key that makes a six-digit PIN safe at all.
       "lib/couranr/driver/codes.ts",
@@ -235,6 +239,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/me/team/[memberId]/route.ts",
       "app/api/couranr/me/team/route.ts",
       "app/api/couranr/me/workspace/route.ts",
+      "app/api/couranr/merchant/customers/route.ts",
       "app/api/couranr/merchant/deliveries/[id]/pickup-code/route.ts",
       "app/api/couranr/merchant/deliveries/[id]/proof/route.ts",
       "app/api/couranr/merchant/deliveries/[id]/recipient-code/route.ts",
