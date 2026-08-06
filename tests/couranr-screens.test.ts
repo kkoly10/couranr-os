@@ -104,10 +104,9 @@ describe("canonical screen registry", () => {
       // brings the team-management capability that did not previously exist.
       "MER-008",
       "MER-009",
-      // MER-010 and MER-011 are the B04 presets list and builder. Recorded
-      // functional_UNVERIFIED in the screen ledger: the layers beneath are
-      // executed (schema 24/24, commands 50/50 including a real concurrent
-      // race) but neither screen has been driven in a browser yet.
+      // MER-010 and MER-011 are the B04 presets list and builder, both
+      // browser-verified 30/30 — including the promise the whole slice turns
+      // on: a Couranr update never rewrites a merchant's customization.
       "MER-010",
       "MER-011",
       "MER-013",
