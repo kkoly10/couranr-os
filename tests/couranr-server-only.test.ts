@@ -104,6 +104,15 @@ describe("server-only modules are unreachable from client code", () => {
       // bundle reaching it would ship the hashing a browser must never do and
       // invite a client-side "verify this token" that skips the database.
       "lib/couranr/accessTokens.ts",
+      // MER-003. Holds the service-role client and couranr_decide_activation —
+      // the one call that can put a workspace LIVE. A browser must never hold
+      // the code that grants activation.
+      "lib/couranr/activation/commands.ts",
+      // Reads every charge Couranr raised against a business. Read-only, but
+      // it holds the service-role client and the cross-tenant filter that IS
+      // the boundary — service_role bypasses RLS, so a browser holding this
+      // would read any business's money.
+      "lib/couranr/billing/commands.ts",
       // Holds the service-role client and every conversation command. A bundle
       // reaching it would ship the write path for messages — and the module
       // that calls `couranr_conversation_thread`, which is the one door to a
@@ -116,7 +125,11 @@ describe("server-only modules are unreachable from client code", () => {
       // Holds the service-role client and every dispatch command. The driver
       // projection is built here, so a bundle reaching this module would put
       // the unsanitized delivery row within reach of a browser.
-      "lib/couranr/dispatch/commands.ts",
+       // MER-008/MER-009. Holds the service-role client and the UNMASKED
+      // customer projection — a bundle reaching it would ship the read that
+      // returns every recipient's real email and phone.
+      "lib/couranr/customers/commands.ts",
+     "lib/couranr/dispatch/commands.ts",
       // Holds the handoff-code HMAC secret. A bundle reaching this module
       // would ship the key that makes a six-digit PIN safe at all.
       "lib/couranr/driver/codes.ts",
@@ -142,6 +155,10 @@ describe("server-only modules are unreachable from client code", () => {
       "lib/couranr/payments/tokens.ts",
       "lib/couranr/requests/actor.ts",
       "lib/couranr/requests/commands.ts",
+      // MER-014/MER-015. Holds the service-role client AND the auth admin API
+      // — `listUsers` walks every account in the project to resolve an invite
+      // email, which is the last thing that may ever reach a browser bundle.
+      "lib/couranr/settings/commands.ts",
       // The customer tracking link. `commands.ts` holds the service-role
       // client and the whole recipient read; `tokens.ts` holds the hashing.
       // A tracking link travels further than any other Couranr URL, so a
@@ -224,12 +241,21 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/driver/proof/[proofId]/url/route.ts",
       "app/api/couranr/driver/proof/finalize/route.ts",
       "app/api/couranr/help/[token]/route.ts",
+      "app/api/couranr/me/activation/route.ts",
       "app/api/couranr/me/business-accounts/route.ts",
+      "app/api/couranr/me/invitations/route.ts",
       "app/api/couranr/me/landing/route.ts",
+      "app/api/couranr/me/settings/route.ts",
+      "app/api/couranr/me/team/[memberId]/route.ts",
+      "app/api/couranr/me/team/route.ts",
       "app/api/couranr/me/workspace/route.ts",
+      "app/api/couranr/merchant/billing/route.ts",
+      "app/api/couranr/merchant/customers/route.ts",
       "app/api/couranr/merchant/deliveries/[id]/pickup-code/route.ts",
       "app/api/couranr/merchant/deliveries/[id]/proof/route.ts",
       "app/api/couranr/merchant/deliveries/[id]/recipient-code/route.ts",
+      "app/api/couranr/merchant/website-tools/route.ts",
+      "app/api/couranr/operations/activation/route.ts",
       "app/api/couranr/operations/deliveries/[id]/assignment/route.ts",
       "app/api/couranr/operations/deliveries/[id]/help-link/route.ts",
       "app/api/couranr/operations/deliveries/[id]/pickup-code/route.ts",

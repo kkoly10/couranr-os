@@ -25,6 +25,14 @@ Every SHA appearing in either ledger, in full, with what it covers:
 
 | SHA | rows | what was verified at it |
 |---|---|---|
+| `807c8ed6316cf420dbffa171f5a65b1692dd6830` | 2 screens | `MER-016` billing records — 51/51 browser checks after self-review found the total AND the failed-payment alert were both computed from the 100-row page; and `OPS-007` activation slice — the review an operator decides from, built because the decide route was WRITE-ONLY and a decision made blind is not a review. 80/80 on the extended MER-003 run |
+| `cea45ae76c3964ae990344eeed0cb99ba50a703e` | 1 screen | `MER-003` live activation checklist — 64/64 unstubbed signed-in browser checks walking `not_started → in_progress → pending_couranr_review → blocked → live`, every step asserted in the page AND on the row. The property proven rather than asserted: the OWNER is refused at the Operations route (403, row unmoved) and `couranr_decide_activation` refuses them again when called directly as a superuser, so no merchant path reaches `live`. Building the run found two real defects — nothing called `record_test_delivery` so the checklist could never be completed, and the route's capability was one role narrower than the SQL's. Carries migration `20260806170000`, NOT applied to production |
+| `cd697e48889389b5365562d4e7f3c82413c10ea9` | 2 screens | `MER-008` and `MER-009` — 34/34 unstubbed signed-in browser checks. PII asserted against RENDERED HTML: a first run caught a REAL LEAK (the internal grouping key put a recipient's phone number inside every Open link) and the browser now receives a tenant-salted digest. Archive proven not to be a delete by an unchanged row count. Carries migration `20260806160000`, NOT applied to production |
+| `981748b95c0916b15274eb8ef20be1bb1b41f4db` | 1 screen | `MER-013` website tools — 24/24 unstubbed signed-in browser checks, including the rendered QR DECODED back to the merchant's real link (browser-rasterized pixels through jsqr), publish/disable asserted on the row, an invalid embed persisting nothing, and a body naming a status instead of an action refused 400 |
+| `e4dd7e2afa29f35ac161985e915db112cbeaedb8` | 2 screens | `MER-014` and `MER-015` — 41/41 unstubbed signed-in browser checks on the disposable stack, including the CONCURRENT double-demote race (two parallel demotes returned 200/409, leaving one active owner where a TypeScript-only guard would have left none), the invite/accept round trip asserted on both rows and both audit events, and the five probes measuring what the un-applied hardening migration actually changes |
+| `c9e0fe573da29177fa72979911a7e60bf3beb0df` | 2 screens | `MER-014` and `MER-015` built — settings, team management, and the SQL last-owner protection. Recorded `functional_unverified` until the disposable-stack run (which includes the concurrent double-demote race) is attached. Also carries migration `20260806130000`, the business_members RLS hardening, which is NOT applied to production |
+| `08f59f8d0cc062c36252a7295f86513618187965` | 1 screen | `MER-004` — 25/25 unstubbed signed-in browser checks on the disposable stack: three separate state-group badges equal to the database facts on the control row, facet independence, inline mark-ready to row + audit event, the stale-tab conflict with no state change, duplicate prefill, viewer/tenant/anonymous refusals, injected-500 error state |
+| `32893e21401a6f056821c4caaa7858460c7356b8` | 1 screen | `MER-001` — 27/27 unstubbed signed-in browser checks on the disposable stack: all five registry states screenshot-backed, degraded payments derived through the SAME `lifecycleStage` the Operations queue uses, mark-ready asserted to the row + version + audit event, viewer refusal (403, row untouched) and cross-tenant refusal proven server-side |
 | `ec4a2af8f7c1de0bee4e3c021b50c875acdd6633` | 4 work items, 5 screens | the B02 PUBLIC LAUNCH SURFACE — `P10-003/004/005/006`; `PUB-001/008/009/010/011`. 68/68 unstubbed browser checks at both spec viewports, verbatim MKT-002 copy, mutation-tested claims scanner |
 | `a115f9212364bab0951053c73877952674ee07d6` | 3 work items, 4 screens | the AUTHENTICATED MESSAGING pass — `P8-001`, `P8-002`, `P8-004`; `MER-012`, `DRV-008`, `OPS-005`, `PUB-007`. 51/51 unstubbed signed-in browser checks, plus the acceptance matrix made re-runnable at 27/27 twice from an empty database |
 | `c2cac8b9ffeaaf7e9a6a528a9eac5d057a2801f9` | 1 work item | the B01 platform batch — `P2-001` private/analytics schemas, executed against a disposable database; production apply pending owner approval |
@@ -201,15 +209,15 @@ Neither number should be quoted without its fraction.
 
 | status | count |
 |---|---|
-| `functional_verified` | 20 |
+| `functional_verified` | 27 |
 | `functional_unverified` | 5 |
 | `partial` | 7 |
 | `static_only` | 0 |
-| `placeholder_only` | 29 |
+| `placeholder_only` | 22 |
 | `missing` | 5 |
 | `deferred` / `retired_or_replaced` | 0 |
 
-**15 of 66 canonical screens are verified working in a browser.**
+**22 of 66 canonical screens are verified working in a browser.**
 
 Phase 8's messaging screens have all now been driven in a real browser, signed
 in, with no `page.route` anywhere — and **that is exactly why two of them are
@@ -251,7 +259,8 @@ against `c929cc3`, and three of them moved twice. Final positions: `PUB-007`,
 `missing` therefore falls 8 → 5. The five that remain are **not** all
 `/help/[token]`, as an earlier revision of this file asserted: they are
 `CUS-002`, `CUS-004`, `CUS-007` (help), plus `DRV-007` (offline sync) and
-`MER-003` (onboarding activation). `CUS-004` is authority-deferred;
+`MER-003` (onboarding activation). **`MER-003` has since shipped** at
+`cea45ae` — 64/64 browser checks — leaving four. `CUS-004` is authority-deferred;
 `CUS-002` and `CUS-007` describe returns and delivery-charge refunds, which
 `P6-004` and `P7-005` do not provide; `DRV-007` needs the unbuilt half of
 `P7-004`.

@@ -24,7 +24,7 @@ import { isApiFailure, withReference } from "@/components/couranr/requests/clien
  * there, so the screen can never suggest something the server will refuse.
  */
 
-const READINESS_LABEL: Record<string, string> = {
+export const READINESS_LABEL: Record<string, string> = {
   not_confirmed: "Not confirmed",
   preparing: "Preparing",
   ready: "Ready for Couranr",
@@ -32,7 +32,7 @@ const READINESS_LABEL: Record<string, string> = {
   unavailable: "Unavailable",
 };
 
-const READINESS_TONE: Record<string, "neutral" | "info" | "success" | "warning" | "danger"> = {
+export const READINESS_TONE: Record<string, "neutral" | "info" | "success" | "warning" | "danger"> = {
   not_confirmed: "neutral",
   preparing: "info",
   ready: "success",

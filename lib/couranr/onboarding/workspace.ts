@@ -151,6 +151,56 @@ function looksLikePhone(v: string): boolean {
   return digits.length >= 10 && digits.length <= 15;
 }
 
+/**
+ * Normalize a pickup address.
+ *
+ * EXTRACTED from `normalizeWorkspaceInput` so MER-014's settings edit and
+ * onboarding's capture cannot drift apart: an address changed on the settings
+ * screen has to end up shaped exactly like one captured at signup, or the
+ * pricing and dispatch code that reads it would meet two different objects.
+ *
+ * The rule is unchanged from the original inline version: line1, city, region
+ * and postalCode are all required; line2 and instructions are optional;
+ * `postal_code` is accepted as an alias for `postalCode`.
+ */
+/**
+ * `value` is null exactly when `reason` is set. Written as ONE SHAPE rather
+ * than a discriminated union because `tsconfig` sets `"strict": false`:
+ * without `strictNullChecks` a union does not narrow on `.ok`, so a caller
+ * writing `if (!r.ok) return r.reason` fails to compile. Same reasoning, and
+ * the same shape, as `NormalizedNext` in lib/couranr/auth/landing.ts.
+ */
+export type NormalizedAddress = {
+  ok: boolean;
+  value: WorkspaceAddress | null;
+  reason?: string;
+};
+
+export function normalizeAddressInput(raw: unknown): NormalizedAddress {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    return { ok: false, value: null, reason: "not_an_object" };
+  }
+  const a = raw as Record<string, unknown>;
+  const line1 = str(a.line1);
+  const city = str(a.city);
+  const region = str(a.region);
+  const postalCode = str(a.postalCode ?? a.postal_code);
+  if (!line1 || !city || !region || !postalCode) {
+    return { ok: false, value: null, reason: "missing_required_field" };
+  }
+  return {
+    ok: true,
+    value: {
+      line1,
+      line2: str(a.line2),
+      city,
+      region,
+      postalCode,
+      instructions: str(a.instructions),
+    },
+  };
+}
+
 export function normalizeWorkspaceInput(raw: unknown): WorkspaceResult {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
     return { ok: false, errors: [{ code: "not_an_object" }] };
@@ -173,28 +223,12 @@ export function normalizeWorkspaceInput(raw: unknown): WorkspaceResult {
     errors.push({ code: "unknown_business_category", field: "businessCategory" });
   }
 
-  const rawAddr = r.pickupAddress;
-  let pickupAddress: WorkspaceAddress | null = null;
-  if (rawAddr === null || typeof rawAddr !== "object" || Array.isArray(rawAddr)) {
+  const normalizedAddress = normalizeAddressInput(r.pickupAddress);
+  const pickupAddress: WorkspaceAddress | null = normalizedAddress.ok
+    ? normalizedAddress.value
+    : null;
+  if (!normalizedAddress.ok) {
     errors.push({ code: "invalid_pickup_address", field: "pickupAddress" });
-  } else {
-    const a = rawAddr as Record<string, unknown>;
-    const line1 = str(a.line1);
-    const city = str(a.city);
-    const region = str(a.region);
-    const postalCode = str(a.postalCode ?? a.postal_code);
-    if (!line1 || !city || !region || !postalCode) {
-      errors.push({ code: "invalid_pickup_address", field: "pickupAddress" });
-    } else {
-      pickupAddress = {
-        line1,
-        line2: str(a.line2),
-        city,
-        region,
-        postalCode,
-        instructions: str(a.instructions),
-      };
-    }
   }
 
   const contactPhone = str(r.contactPhone);

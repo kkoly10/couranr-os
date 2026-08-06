@@ -157,6 +157,12 @@ export type MembershipSummary = {
   businessAccountId: string;
   name: string;
   role: MemberRole;
+  /**
+   * The business's hosted-request link name. Null for a business that has no
+   * slug yet — which is possible, because the column is nullable and predates
+   * the workspace command that now always mints one.
+   */
+  slug: string | null;
 };
 
 /**
@@ -174,7 +180,12 @@ export type MembershipSummary = {
 export async function listActiveMemberships(userId: string): Promise<MembershipLookup> {
   const { data, error } = await supabaseAdmin
     .from("business_members")
-    .select("business_account_id,role,business_accounts(name)")
+    // `slug` is selected for MER-013: it is the merchant's hosted-request link
+    // name, and it existed in the database (unique, populated on every live
+    // account) while NO endpoint returned it. It is not a secret — it appears
+    // in a public URL by design — but it is still tenant-scoped here by the
+    // membership filter below, like every other field.
+    .select("business_account_id,role,business_accounts(name,slug)")
     .eq("user_id", userId)
     .eq("status", "active");
 
@@ -189,6 +200,7 @@ export async function listActiveMemberships(userId: string): Promise<MembershipL
       businessAccountId: String(row.business_account_id),
       name: String(row.business_accounts?.name ?? "Business account"),
       role: row.role as MemberRole,
+      slug: row.business_accounts?.slug ?? null,
     })),
   };
 }

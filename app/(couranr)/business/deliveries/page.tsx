@@ -1,17 +1,25 @@
-import { ScreenPlaceholder } from "@/components/couranr/shell/parts";
 import { PageHeader } from "@/components/couranr/shell/parts";
+import { DeliveriesList } from "@/components/couranr/requests/DeliveriesList";
 
-export const metadata = { title: "Deliveries list — Couranr" };
+export const metadata = { title: "Deliveries — Couranr" };
 
+/**
+ * MER-004 — the deliveries list.
+ *
+ * Purpose, from the registry: "Find and manage merchant delivery requests
+ * across request, payment, readiness, review, and fulfillment states."
+ * Mandatory constraint: never collapse the independent state groups into one
+ * merged status — each group renders as its own badge and filters on its own
+ * facet.
+ */
 export default function Page() {
   return (
     <>
-      <PageHeader title="Deliveries list" />
-      <ScreenPlaceholder
-        screenId="MER-004"
-        name="Deliveries list"
-        purpose="Find and manage merchant delivery requests across request, payment, readiness, review, and fulfillment states."
+      <PageHeader
+        title="Deliveries"
+        description="Every delivery request for your business, across all of its state groups."
       />
+      <DeliveriesList />
     </>
   );
 }

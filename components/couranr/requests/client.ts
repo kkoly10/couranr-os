@@ -171,11 +171,20 @@ export type BusinessAccountOption = {
   businessAccountId: string;
   name: string;
   role: string;
+  /** MER-013's hosted-request link name. Null until a business has one. */
+  slug: string | null;
 };
 
 export function fetchMyBusinessAccounts() {
   return call<{ businessAccounts: BusinessAccountOption[] }>(
     "/api/couranr/me/business-accounts"
+  );
+}
+
+/** MER-004's list read. Newest first; the route's command caps the page. */
+export function fetchDeliveryRequests(input: { businessAccountId: string }) {
+  return call<{ requests: DeliveryRequestView[] }>(
+    `/api/couranr/delivery-requests?businessAccountId=${encodeURIComponent(input.businessAccountId)}`
   );
 }
 
