@@ -12,6 +12,11 @@ import {
   derivedProgressState,
   type ActivationFacts,
 } from "@/lib/couranr/activation/states";
+import {
+  MEMBER_ROLES,
+  memberMay,
+  type SettingsCapability,
+} from "@/lib/couranr/settings/permissions";
 
 const ROOT = path.resolve(__dirname, "..");
 
@@ -141,6 +146,57 @@ describe("block reasons are merchant-safe copy derived from a code", () => {
       expect(msg).toBeTruthy();
       expect(msg).not.toContain("some_internal_note_key");
     }
+  });
+});
+
+describe("the route's capability and the SQL's role list are the same gate", () => {
+  /**
+   * Two gates guard every activation write: `memberMay(...)` in the route and
+   * `v_actor_role not in (...)` in the function. They are independent on
+   * purpose — but if they DISAGREE, one of them is dead code and nobody finds
+   * out which until a merchant is refused by a rule the screen never showed
+   * them. So the SQL's role tuples are parsed out of the migration and
+   * compared against the matrix.
+   */
+  const sql = readFileSync(
+    path.join(ROOT, "supabase/migrations/20260806170000_couranr_workspace_activation.sql"),
+    "utf8"
+  );
+
+  /** The roles named in the guard immediately following a function's header. */
+  function rolesGuarding(fn: string): string[] {
+    const at = sql.indexOf(`function public.${fn}(`);
+    expect(at, `${fn} is not in the migration`).toBeGreaterThan(-1);
+    const body = sql.slice(at);
+    const m = body.match(/v_actor_role not in \(([^)]*)\)/);
+    expect(m, `${fn} has no role guard`).toBeTruthy();
+    return m![1]
+      .split(",")
+      .map((s) => s.trim().replace(/^'|'$/g, ""))
+      .sort();
+  }
+
+  const CASES: [string, SettingsCapability][] = [
+    ["couranr_accept_activation_ack", "activation.request"],
+    ["couranr_verify_activation_contact", "activation.request"],
+    ["couranr_request_activation", "activation.request"],
+    ["couranr_record_test_delivery", "activation.record_test_delivery"],
+  ];
+
+  for (const [fn, capability] of CASES) {
+    it(`${fn} and ${capability} allow exactly the same roles`, () => {
+      const fromMatrix = MEMBER_ROLES.filter((r) =>
+        memberMay({ role: r, status: "active" }, capability)
+      ).sort();
+      expect(rolesGuarding(fn)).toEqual([...fromMatrix]);
+    });
+  }
+
+  it("recording a test delivery is the ONE write a dispatcher may do", () => {
+    // Not an oversight — it is the only act here that is not consent. If this
+    // ever flips, the comment in permissions.ts explaining why is wrong too.
+    expect(memberMay({ role: "dispatcher", status: "active" }, "activation.record_test_delivery")).toBe(true);
+    expect(memberMay({ role: "dispatcher", status: "active" }, "activation.request")).toBe(false);
   });
 });
 

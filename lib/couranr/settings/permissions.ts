@@ -85,6 +85,18 @@ export const SETTINGS_CAPABILITIES = [
    * reason DRP-001 gives for keeping writes to a subset.
    */
   "activation.request",
+  /**
+   * Point activation at a delivery this business already created, as its test
+   * delivery.
+   *
+   * One step wider than `activation.request` — it includes dispatcher —
+   * because it is NOT a consent act. It records that a delivery was made, and
+   * DRP-001 already says a dispatcher creates and submits deliveries; the
+   * person who ran the test is the obvious person to say which one it was.
+   * `couranr_record_test_delivery` gates on the same three roles, and
+   * `couranr-activation` asserts the two lists match so they cannot drift.
+   */
+  "activation.record_test_delivery",
   /** See the MER-008 customer book. */
   "customers.read",
   /**
@@ -118,6 +130,7 @@ const MATRIX: Readonly<Record<MemberRole, readonly SettingsCapability[]>> = {
     "website_tools.publish",
     "activation.read",
     "activation.request",
+    "activation.record_test_delivery",
     "customers.read",
     "customers.write",
   ],
@@ -132,6 +145,7 @@ const MATRIX: Readonly<Record<MemberRole, readonly SettingsCapability[]>> = {
     "website_tools.publish",
     "activation.read",
     "activation.request",
+    "activation.record_test_delivery",
     "customers.read",
     "customers.write",
   ],
@@ -140,6 +154,7 @@ const MATRIX: Readonly<Record<MemberRole, readonly SettingsCapability[]>> = {
     "team.read",
     "website_tools.read",
     "activation.read",
+    "activation.record_test_delivery",
     "customers.read",
     "customers.write",
   ],

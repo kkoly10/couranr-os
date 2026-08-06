@@ -64,11 +64,8 @@ export async function POST(req: NextRequest) {
   if (isActorDenied(resolved)) return routeFailure(resolved.code, resolved.error);
 
   const actor = settingsActorFrom(resolved);
-  if (!actor || !memberMay(actor, "activation.request")) {
-    return routeFailure(
-      "not_permitted",
-      "Only an owner or a manager can accept Couranr's terms or request activation."
-    );
+  if (!actor) {
+    return routeFailure("not_permitted", "You do not have access to this business.");
   }
 
   let body: any = null;
@@ -79,6 +76,25 @@ export async function POST(req: NextRequest) {
   }
 
   const action = String(body?.action ?? "");
+
+  /*
+   * The capability is chosen per ACTION, and it matches the role list the
+   * corresponding SQL function enforces — exactly, asserted by test. Recording
+   * a test delivery is the one act here that is not consent, so a dispatcher
+   * may do it; everything else binds the business and is owner/manager.
+   */
+  const capability =
+    action === "record_test_delivery"
+      ? ("activation.record_test_delivery" as const)
+      : ("activation.request" as const);
+  if (!memberMay(actor, capability)) {
+    return routeFailure(
+      "not_permitted",
+      action === "record_test_delivery"
+        ? "You do not have access to change this business's activation."
+        : "Only an owner or a manager can accept Couranr's terms or request activation."
+    );
+  }
 
   if (action === "accept") {
     const r = await acceptAcknowledgement({

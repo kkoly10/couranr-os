@@ -73,9 +73,12 @@ function post(businessAccountId: string, body: Record<string, unknown>) {
   );
 }
 
+type CandidateDelivery = { id: string; createdAt: string; recipientName: string | null };
+
 export function ActivationChecklist({
   businessAccountId,
   mayRequest,
+  mayRecordTestDelivery,
 }: {
   businessAccountId: string;
   /**
@@ -85,12 +88,20 @@ export function ActivationChecklist({
    * decides whether a control a member cannot use is drawn at all.
    */
   mayRequest: boolean;
+  /**
+   * Whether this member may point activation at an existing delivery. Wider
+   * than `mayRequest` by one role — a dispatcher runs the test delivery, so
+   * a dispatcher may say which one it was. See `activation.record_test_delivery`.
+   */
+  mayRecordTestDelivery: boolean;
 }) {
   const [view, setView] = React.useState<ActivationView | null>(null);
   const [error, setError] = React.useState<ApiFailure | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
   const [actionError, setActionError] = React.useState<string | null>(null);
   const [reloadKey, setReloadKey] = React.useState(0);
+  const [candidates, setCandidates] = React.useState<CandidateDelivery[] | null>(null);
+  const [chosenDelivery, setChosenDelivery] = React.useState("");
 
   React.useEffect(() => {
     if (!businessAccountId) return;
@@ -104,6 +115,39 @@ export function ActivationChecklist({
         return;
       }
       setView(r.value);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [businessAccountId, reloadKey]);
+
+  /*
+   * The deliveries this business has already created, so the test-delivery
+   * requirement can actually be SATISFIED from this screen. Without this the
+   * checklist offers a link out to "create a test delivery" and then has no
+   * way to hear that one was created — the requirement would sit unmet
+   * forever and no merchant could ever finish activation.
+   */
+  React.useEffect(() => {
+    if (!businessAccountId) return;
+    let cancelled = false;
+    setCandidates(null);
+    call<{ requests: CandidateDelivery[] }>(
+      `/api/couranr/delivery-requests?businessAccountId=${encodeURIComponent(businessAccountId)}`
+    ).then((r) => {
+      if (cancelled) return;
+      // A failure here is not an error state for the page: it only means the
+      // shortcut is unavailable, and the "create one" link still is.
+      if (isApiFailure(r)) {
+        setCandidates([]);
+        return;
+      }
+      const recent = r.value.requests
+        .slice()
+        .sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1))
+        .slice(0, 10);
+      setCandidates(recent);
+      if (recent.length > 0) setChosenDelivery(recent[0].id);
     });
     return () => {
       cancelled = true;
@@ -284,15 +328,58 @@ export function ActivationChecklist({
               Create one delivery in your test workspace so you have seen the
               whole flow. It is never dispatched and never charged.
             </Text>
-            {!testMet && mayAct ? (
-              <div>
-                <Link
-                  href="/business/deliveries/new"
-                  className={buttonClassName({ size: "sm", variant: "primary" })}
-                >
-                  Create a test delivery
-                </Link>
-              </div>
+            {!testMet && mayRecordTestDelivery && !isLive ? (
+              candidates && candidates.length > 0 ? (
+                <Stack gap={2}>
+                  <Field label="Which delivery" required>
+                    {(p) => (
+                      <Select
+                        {...p}
+                        value={chosenDelivery}
+                        onChange={(e) => setChosenDelivery(e.target.value)}
+                      >
+                        {candidates.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.recipientName || "No recipient name"} —{" "}
+                            {new Date(c.createdAt).toLocaleDateString()}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
+                  </Field>
+                  <Cluster gap={2}>
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      loading={busy === "test_delivery"}
+                      disabled={Boolean(busy) || !chosenDelivery}
+                      onClick={() =>
+                        run("test_delivery", {
+                          action: "record_test_delivery",
+                          requestId: chosenDelivery,
+                        })
+                      }
+                    >
+                      Use this delivery
+                    </Button>
+                    <Link
+                      href="/business/deliveries/new"
+                      className={buttonClassName({ size: "sm" })}
+                    >
+                      Create another
+                    </Link>
+                  </Cluster>
+                </Stack>
+              ) : (
+                <div>
+                  <Link
+                    href="/business/deliveries/new"
+                    className={buttonClassName({ size: "sm", variant: "primary" })}
+                  >
+                    Create a test delivery
+                  </Link>
+                </div>
+              )
             ) : null}
           </Stack>
         </Stack>
@@ -301,8 +388,10 @@ export function ActivationChecklist({
       {!isLive && !mayRequest ? (
         <Alert tone="info" title="Someone else has to do this part">
           Accepting Couranr&rsquo;s terms and asking to go live commits the
-          business, so only an owner or a manager can do it. You can follow the
-          progress here.
+          business, so only an owner or a manager can do that part.
+          {mayRecordTestDelivery
+            ? " You can still record the test delivery above."
+            : " You can follow the progress here."}
         </Alert>
       ) : null}
 
@@ -411,10 +500,9 @@ export function ActivationScreen() {
 
   const activeAccount =
     accounts.find((a) => a.businessAccountId === businessAccountId) ?? accounts[0];
-  const mayRequest = memberMay(
-    { role: activeAccount.role, status: "active" },
-    "activation.request"
-  );
+  const viewer = { role: activeAccount.role, status: "active" };
+  const mayRequest = memberMay(viewer, "activation.request");
+  const mayRecordTestDelivery = memberMay(viewer, "activation.record_test_delivery");
 
   return (
     <Stack gap={6}>
@@ -443,6 +531,7 @@ export function ActivationScreen() {
         key={activeAccount.businessAccountId}
         businessAccountId={activeAccount.businessAccountId}
         mayRequest={mayRequest}
+        mayRecordTestDelivery={mayRecordTestDelivery}
       />
     </Stack>
   );
