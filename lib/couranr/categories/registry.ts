@@ -170,9 +170,25 @@ export function validateCategorySelection(input: CategorySelection): CategoryVal
  * distinctness — and leaves the cross-field rule to the only place that can
  * evaluate it correctly.
  */
+export type SecondaryValidation =
+  | { ok: true; value: BusinessCategory[] }
+  | { ok: false; reason: string };
+
+/**
+ * `tsconfig` sets `"strict": false`, so `!r.ok` does NOT narrow this union —
+ * and the plain `tsc` and `next build` type-checks are the ones that catch it,
+ * NOT `tsconfig.canonical.json`, which is strict and narrows happily. Use the
+ * predicate.
+ */
+export function isSecondaryValidationFailed(
+  r: SecondaryValidation
+): r is { ok: false; reason: string } {
+  return r.ok === false;
+}
+
 export function validateSecondarySelection(
   secondary: readonly string[]
-): { ok: true; value: BusinessCategory[] } | { ok: false; reason: string } {
+): SecondaryValidation {
   const out: BusinessCategory[] = [];
   for (const raw of secondary ?? []) {
     if (!isBusinessCategory(raw)) {

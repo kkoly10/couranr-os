@@ -11,6 +11,7 @@ import {
   isBusinessCategory,
   isCategoryValidationFailed,
   validateCategorySelection,
+  isSecondaryValidationFailed,
   validateSecondarySelection,
 } from "@/lib/couranr/categories/registry";
 
@@ -189,26 +190,30 @@ describe("a secondary-only edit is validated without inventing a primary", () =>
       "repair_and_electronics",
       "furniture_and_home_goods",
     ]);
-    expect(r.ok).toBe(true);
-    if (r.ok) expect(r.value).toEqual(["repair_and_electronics", "furniture_and_home_goods"]);
+    expect(isSecondaryValidationFailed(r)).toBe(false);
+    if (!isSecondaryValidationFailed(r)) {
+      expect(r.value).toEqual(["repair_and_electronics", "furniture_and_home_goods"]);
+    }
   });
 
   it("refuses a fourth and an unknown value", () => {
     expect(
-      validateSecondarySelection([
-        "repair_and_electronics",
-        "furniture_and_home_goods",
-        "books_cards_collectibles_hobby",
-        "printing_signage_promotional",
-      ]).ok
-    ).toBe(false);
-    expect(validateSecondarySelection(["nope"]).ok).toBe(false);
+      isSecondaryValidationFailed(
+        validateSecondarySelection([
+          "repair_and_electronics",
+          "furniture_and_home_goods",
+          "books_cards_collectibles_hobby",
+          "printing_signage_promotional",
+        ])
+      )
+    ).toBe(true);
+    expect(isSecondaryValidationFailed(validateSecondarySelection(["nope"]))).toBe(true);
   });
 
   it("accepts an empty list — clearing every secondary is a real edit", () => {
     const r = validateSecondarySelection([]);
-    expect(r.ok).toBe(true);
-    if (r.ok) expect(r.value).toEqual([]);
+    expect(isSecondaryValidationFailed(r)).toBe(false);
+    if (!isSecondaryValidationFailed(r)) expect(r.value).toEqual([]);
   });
 
   it("does NOT check the primary overlap, and the SQL does", () => {

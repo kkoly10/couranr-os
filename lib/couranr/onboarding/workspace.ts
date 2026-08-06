@@ -11,31 +11,30 @@
  * merchant never finishes onboarding.
  */
 
+import {
+  BUSINESS_CATEGORIES as CATEGORY_REGISTRY,
+  CATEGORY_LABELS,
+  type BusinessCategory,
+} from "@/lib/couranr/categories/registry";
+
 /**
- * Verbatim from the Master Package merchant category registry. Category
- * controls initial recommendations, not eligibility.
+ * The category list, in the {value,label} shape the two `Select`s render.
  *
- * The database enforces the same list in `couranr_mw_category_chk`; the two
- * are compared directly by `tests/couranr-workspace.test.ts`, so they cannot
- * drift into a runtime insert failure.
+ * DERIVED, not declared. ACP-024 made `lib/couranr/categories/registry.ts` the
+ * single source — it is the one that carries the Master Package citation, the
+ * versioning and the drift guard against the database CHECK. This file used to
+ * hold its own copy of the same eleven pairs, which meant three lists that had
+ * to agree: this one, the registry, and the SQL. Two of them silently, because
+ * nothing compared them.
  */
-export const BUSINESS_CATEGORIES = [
-  { value: "dry_cleaning_laundry_tailoring", label: "Dry cleaning, laundry, tailoring" },
-  { value: "printing_signage_promotional", label: "Printing, signage, promotional products" },
-  { value: "boutique_clothing_shoes_accessories", label: "Boutique, clothing, shoes, accessories" },
-  { value: "florists_gifts_specialty_retail", label: "Florists, gifts, specialty retail" },
-  { value: "repair_and_electronics", label: "Repair and electronics" },
-  { value: "auto_parts_and_accessories", label: "Auto parts and accessories" },
-  { value: "furniture_and_home_goods", label: "Furniture and home goods" },
-  { value: "event_rentals_and_supplies", label: "Event rentals and supplies" },
-  { value: "bakeries_prepared_food_catering", label: "Bakeries, prepared food, catering" },
-  { value: "books_cards_collectibles_hobby", label: "Books, cards, collectibles, hobby" },
-  { value: "general_local_business", label: "General local business" },
-] as const;
+export const BUSINESS_CATEGORIES = CATEGORY_REGISTRY.map((value) => ({
+  value,
+  label: CATEGORY_LABELS[value],
+}));
 
-export type BusinessCategory = (typeof BUSINESS_CATEGORIES)[number]["value"];
+export type { BusinessCategory };
 
-const CATEGORY_VALUES: readonly string[] = BUSINESS_CATEGORIES.map((c) => c.value);
+const CATEGORY_VALUES: readonly string[] = CATEGORY_REGISTRY;
 
 /**
  * The policy text a merchant accepts. Bumping this string is the deliberate act

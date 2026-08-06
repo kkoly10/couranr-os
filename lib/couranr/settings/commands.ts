@@ -15,6 +15,7 @@ import { normalizeAddressInput } from "@/lib/couranr/onboarding/workspace";
 import {
   CATEGORY_REGISTRY_VERSION,
   isCategoryValidationFailed,
+  isSecondaryValidationFailed,
   validateCategorySelection,
   validateSecondarySelection,
 } from "@/lib/couranr/categories/registry";
@@ -278,7 +279,7 @@ export async function setBusinessCategories(params: {
 
   if (params.primary === undefined) {
     const v = validateSecondarySelection(params.secondary ?? []);
-    if (!v.ok) {
+    if (isSecondaryValidationFailed(v)) {
       return fail({
         operation: op,
         code: "invalid_input",
