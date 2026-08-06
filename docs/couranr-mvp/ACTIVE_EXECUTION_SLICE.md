@@ -13,7 +13,8 @@ as a reason to build something the package does not require.
 | | |
 |---|---|
 | Base branch | `main` |
-| Base SHA | `c929cc3a8e630bd11ac0a98ff3800a16ee77c140` |
+| Base SHA | `bf38d156ddcaae70f99c3a0c2d0e82efd0cf26a7` — PR #23 (migration hygiene) merged into main |
+| Previous base | `c929cc3a8e630bd11ac0a98ff3800a16ee77c140` (the SEC-001 hotfix, PR #21) |
 | Active branch | `claude/couranr-phase-8-conversations` |
 | Reconciled at | `40129ee06d96bfdcd85bb653397d2553a1fa5b98` — **16** commits ahead of base, 0 behind |
 | Since then | two documentation commits: the reconciliation itself, and this PR-number record. No code, no migration. |
@@ -42,6 +43,17 @@ confined to the migration ledger and is documented in the reconciliation §5.
 **An earlier report of "93 commits ahead" is withdrawn.** It was measured
 against a stale local `origin/main` ref. After `git fetch origin main` the count
 is 16.
+
+**PR #23 landed, and this branch MERGED main rather than rebasing onto it.** A
+rebase would have rewritten all 38 branch SHAs and invalidated the 16-commit
+table in `PHASE8_RECONCILIATION.md` along with every `last_verified_sha` in both
+ledgers. Preserving those is the reason #23 was cut from `main` as a separate
+branch instead of being carved out of this one's history. Verified after the
+merge: all five distinct ledger SHAs are still reachable objects.
+
+The migration-hygiene work — the 20 historical rollbacks, the relocation to
+`supabase/rollbacks/`, the location rules and `e2e/disposable/` — is now on
+`main` and is no longer this PR's to carry.
 
 ## 2. Authoritative work items
 

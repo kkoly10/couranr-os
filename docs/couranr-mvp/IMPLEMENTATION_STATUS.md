@@ -31,9 +31,13 @@ Every SHA appearing in either ledger, in full, with what it covers:
 | `401b3eea5cd96bb09d224f3b113ba6091bba807d` | 38 work items, 57 screens | the baseline inventory pass |
 | `1b3a1c90c88a554f1ac1ff1e6a6d06a97d602150` | 3 screens | the customer tracking slice — `PUB-006`, `CUS-006`, `CUS-008` |
 
-`c929cc3a8e630bd11ac0a98ff3800a16ee77c140` is this branch's base (the SEC-001
-hotfix merge, PR #21). It appears in no ledger row, because it changed no work
-item and no screen: it is a security correction to `profiles`.
+`bf38d156ddcaae70f99c3a0c2d0e82efd0cf26a7` is this branch's base — PR #23, the migration-hygiene fix that took
+rollback scripts out of the deployment's reach. Before it, the base was
+`c929cc3a8e630bd11ac0a98ff3800a16ee77c140` (the SEC-001 hotfix, PR #21).
+Neither appears in a ledger row, because neither changed a work item or a
+screen: one is a security correction to `profiles`, the other is deployment
+safety. The branch MERGED the new main rather than rebasing, so every
+`last_verified_sha` below still points at a reachable object.
 `tests/couranr-implementation-ledger.test.ts` requires every distinct ledger SHA
 to be named in this file, so this table cannot silently fall out of date.
 

@@ -7,6 +7,14 @@
 Every figure here is from a command whose output was read. Nothing is inferred
 from a filename or a commit message.
 
+**The base has since moved, and this document is deliberately NOT rewritten.**
+It records what was measured at `40129ee` against `c929cc3`, and that
+measurement is a historical fact. `main` is now
+`bf38d156ddcaae70f99c3a0c2d0e82efd0cf26a7` (PR #23, migration hygiene). The branch
+merged that rather than rebasing onto it, so every SHA in the commit table
+below is still a reachable object — which is the reason the merge was chosen
+over a rebase.
+
 **Why this exists.** Implementation and verification outran the execution-control
 documents, and branch migrations were applied to production before the branch
 was merged. The authority was never missing — `08_WORK_BREAKDOWN.csv`, the
