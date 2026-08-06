@@ -368,20 +368,28 @@ describe("no unresolved value appears in canonical placeholder content", () => {
   }
 
   /**
-   * Values that are UNRESOLVED or belong to a not-yet-implemented decision must
-   * not be baked into placeholder copy. Named markets are the specific case
-   * that regressed: PUB-010's placeholder listed all four.
+   * EVOLVED with B02 (2026-08-06). This began as a guard on PLACEHOLDER copy:
+   * unresolved values must not be baked into pages that were not yet built.
+   * The public pages are BUILT now and the decisions they render are decided —
+   * so the rule matured into the stronger form it was always pointing at:
+   * no decision-dependent LITERAL may appear in canonical UI source at all.
+   * Prices, mileage numbers, hours and market names reach the page ONLY
+   * through lib/couranr/public/governed.ts, whose agreement with the root
+   * registry is itself tested (couranr-public-claims.test.ts) — so a registry
+   * change propagates by changing ONE module, never by hunting copy.
+   *
+   * The old `per-mile` PHRASE ban is retired: MIL-002 is decided, and the
+   * phrase is not a value — the tier VALUES are still banned as literals.
    */
   const FORBIDDEN: { rx: RegExp; why: string }[] = [
-    { rx: /\bStafford\b/i, why: "named market (SVC-002 boundary unresolved)" },
-    { rx: /\bWoodbridge\b/i, why: "named market (SVC-002 boundary unresolved)" },
-    { rx: /\bFredericksburg\b/i, why: "named market (SVC-002 boundary unresolved)" },
-    { rx: /\bWashington,?\s*DC\b/i, why: "named market" },
-    { rx: /\bDC\b/, why: "named market" },
-    { rx: /\$\s?\d/, why: "price value" },
-    { rx: /\b\d+(\.\d+)?\s*miles?\b/i, why: "mileage value" },
-    { rx: /\bper[- ]mile\b/i, why: "mileage pricing" },
-    { rx: /\b\d{1,2}:\d{2}\s*(am|pm)?\b/i, why: "operating hour" },
+    { rx: /\bStafford\b/i, why: "named market literal (use MARKETED_MARKETS)" },
+    { rx: /\bWoodbridge\b/i, why: "named market literal (use MARKETED_MARKETS)" },
+    { rx: /\bFredericksburg\b/i, why: "named market literal (use MARKETED_MARKETS)" },
+    { rx: /\bWashington,?\s*DC\b/i, why: "named market literal" },
+    { rx: /\bDC\b/, why: "named market literal" },
+    { rx: /\$\s?\d/, why: "price literal (use governed cents + dollars())" },
+    { rx: /\b\d+(\.\d+)?\s*miles?\b/i, why: "mileage literal (use governed constants)" },
+    { rx: /\b\d{1,2}:\d{2}\s*(am|pm)?\b/i, why: "operating-hour literal (use governed copy)" },
     { rx: /\b(24\/7|guarantee[ds]?)\b/i, why: "forbidden claim" },
   ];
 
@@ -407,12 +415,16 @@ describe("no unresolved value appears in canonical placeholder content", () => {
     expect(offences, `decision-dependent values found:\n${offences.join("\n")}`).toEqual([]);
   });
 
-  it("keeps PUB-010's purpose neutral about launch markets", () => {
+  it("PUB-010 renders markets ONLY through the governed module", () => {
+    // The placeholder-era form of this test expected neutral copy with no
+    // market names. The page is BUILT now: the four MKT-001 markets render —
+    // but exclusively via MARKETED_MARKETS, so the source still contains no
+    // literal market name for a copy edit to de-sync from the registry.
     const p = path.join(CANON_DIR, "(public)", "service-areas", "page.tsx");
     const src = readFileSync(p, "utf8");
     const text = visibleText(src);
 
-    expect(text).toContain("active launch markets");
+    expect(src).toContain("MARKETED_MARKETS");
     expect(text).not.toContain("Stafford");
     expect(text).not.toContain("Woodbridge");
     expect(text).not.toContain("Fredericksburg");
