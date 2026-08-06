@@ -1,0 +1,239 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+import {
+  BUSINESS_CATEGORIES,
+  CATEGORY_LABELS,
+  CATEGORY_PURPOSE_COPY,
+  CATEGORY_REGISTRY_VERSION,
+  GENERAL_CATEGORY,
+  MAX_SECONDARY_CATEGORIES,
+  isBusinessCategory,
+  isCategoryValidationFailed,
+  validateCategorySelection,
+} from "@/lib/couranr/categories/registry";
+
+const ROOT = path.resolve(__dirname, "..");
+
+/**
+ * ACP-024 — the category registry.
+ *
+ * The rule this file protects is one sentence from Master Package §5:
+ * "Category controls initial recommendations, not eligibility." Everything
+ * else here is the shape of the selection.
+ */
+
+describe("the registry matches the authority and the database", () => {
+  it("holds the eleven categories the Master Package lists", () => {
+    expect(BUSINESS_CATEGORIES).toHaveLength(11);
+    expect(BUSINESS_CATEGORIES[BUSINESS_CATEGORIES.length - 1]).toBe(GENERAL_CATEGORY);
+  });
+
+  it("is EXACTLY the vocabulary the database already constrains", () => {
+    /**
+     * The eleven values are enforced by `couranr_mw_category_chk`. If this
+     * module ever grows a twelfth, every workspace write using it fails on a
+     * CHECK — at runtime, invisible to `tsc` and to any test that does not
+     * read the migration. So the migration is read and compared.
+     */
+    const sql = readFileSync(
+      path.join(ROOT, "supabase/migrations/20260731061356_couranr_merchant_workspace.sql"),
+      "utf8"
+    );
+    const m = sql.match(/couranr_mw_category_chk check \(business_category in \(([^)]*)\)/);
+    expect(m, "the category CHECK is not where this test expects it").toBeTruthy();
+    const fromDatabase = m![1]
+      .split(",")
+      .map((s) => s.trim().replace(/^'|'$/g, ""))
+      .filter(Boolean)
+      .sort();
+    expect(fromDatabase).toEqual([...BUSINESS_CATEGORIES].sort());
+  });
+
+  it("every category has a human label", () => {
+    for (const c of BUSINESS_CATEGORIES) {
+      expect(CATEGORY_LABELS[c], c).toBeTruthy();
+    }
+  });
+
+  it("the registry is versioned", () => {
+    expect(CATEGORY_REGISTRY_VERSION).toMatch(/^couranr-categories-\d{4}-\d{2}$/);
+  });
+});
+
+describe("one primary, up to three secondary", () => {
+  it("accepts a primary alone", () => {
+    const r = validateCategorySelection({ primary: "florists_gifts_specialty_retail", secondary: [] });
+    expect(isCategoryValidationFailed(r)).toBe(false);
+    if (!isCategoryValidationFailed(r)) {
+      expect(r.value.secondary).toEqual([]);
+    }
+  });
+
+  it("accepts exactly three secondary categories", () => {
+    const r = validateCategorySelection({
+      primary: "florists_gifts_specialty_retail",
+      secondary: [
+        "printing_signage_promotional",
+        "repair_and_electronics",
+        "furniture_and_home_goods",
+      ],
+    });
+    expect(isCategoryValidationFailed(r)).toBe(false);
+  });
+
+  it("REFUSES a fourth, and says how many are allowed", () => {
+    const r = validateCategorySelection({
+      primary: "florists_gifts_specialty_retail",
+      secondary: [
+        "printing_signage_promotional",
+        "repair_and_electronics",
+        "furniture_and_home_goods",
+        "books_cards_collectibles_hobby",
+      ],
+    });
+    expect(isCategoryValidationFailed(r)).toBe(true);
+    if (isCategoryValidationFailed(r)) {
+      expect(r.reason).toContain(String(MAX_SECONDARY_CATEGORIES));
+    }
+  });
+
+  it("refuses a secondary that repeats the primary", () => {
+    // The merchant believes they picked two things. They picked one.
+    const r = validateCategorySelection({
+      primary: "repair_and_electronics",
+      secondary: ["repair_and_electronics"],
+    });
+    expect(isCategoryValidationFailed(r)).toBe(true);
+  });
+
+  it("STRIPS a duplicated secondary rather than refusing it", () => {
+    // Ticking the same box twice meant ticking it once. Refusing is pedantry.
+    const r = validateCategorySelection({
+      primary: "repair_and_electronics",
+      secondary: ["furniture_and_home_goods", "furniture_and_home_goods"],
+    });
+    expect(isCategoryValidationFailed(r)).toBe(false);
+    if (!isCategoryValidationFailed(r)) {
+      expect(r.value.secondary).toEqual(["furniture_and_home_goods"]);
+    }
+  });
+
+  it("refuses an unknown category, in either position", () => {
+    expect(
+      isCategoryValidationFailed(validateCategorySelection({ primary: "nope", secondary: [] }))
+    ).toBe(true);
+    expect(
+      isCategoryValidationFailed(
+        validateCategorySelection({ primary: GENERAL_CATEGORY, secondary: ["nope"] })
+      )
+    ).toBe(true);
+  });
+
+  it("refuses a missing primary rather than defaulting to general", () => {
+    // Defaulting would record a category the merchant never chose, and
+    // categories drive what they are shown from then on.
+    for (const bad of ["", null, undefined]) {
+      const r = validateCategorySelection({ primary: bad as any, secondary: [] });
+      expect(isCategoryValidationFailed(r), String(bad)).toBe(true);
+    }
+  });
+
+  it("every failure is worded for a merchant, not for a log", () => {
+    const failures = [
+      validateCategorySelection({ primary: "", secondary: [] }),
+      validateCategorySelection({ primary: GENERAL_CATEGORY, secondary: ["nope"] }),
+      validateCategorySelection({ primary: GENERAL_CATEGORY, secondary: [GENERAL_CATEGORY] }),
+      validateCategorySelection({
+        primary: GENERAL_CATEGORY,
+        secondary: [
+          "printing_signage_promotional",
+          "repair_and_electronics",
+          "furniture_and_home_goods",
+          "books_cards_collectibles_hobby",
+        ],
+      }),
+    ];
+    for (const f of failures) {
+      expect(isCategoryValidationFailed(f)).toBe(true);
+      if (isCategoryValidationFailed(f)) {
+        expect(f.reason).toMatch(/^[A-Z]/);
+        expect(f.reason).toMatch(/\.$/);
+        // No identifier, no code, no snake_case leaking to a person.
+        expect(f.reason).not.toMatch(/_|invalid input|CR\d{3}/);
+      }
+    }
+  });
+
+  it("isBusinessCategory rejects non-strings without throwing", () => {
+    for (const v of [null, undefined, 1, {}, [], true]) {
+      expect(isBusinessCategory(v)).toBe(false);
+    }
+  });
+});
+
+describe("CATEGORY CONTROLS RECOMMENDATIONS, NOT ELIGIBILITY", () => {
+  /**
+   * Master Package §5, verbatim: "Category controls initial recommendations,
+   * not eligibility."
+   *
+   * If a category ever gates a capability, a merchant who picked the wrong one
+   * at onboarding is silently locked out of something, with no error that
+   * mentions categories and no way for them to find the cause. These are the
+   * tests that keep that from happening quietly.
+   */
+  it("the module exports no capability predicate at all", () => {
+    const src = readFileSync(path.join(ROOT, "lib/couranr/categories/registry.ts"), "utf8");
+    // A function whose name asks whether a category MAY do something.
+    expect(src).not.toMatch(/export function (can|may|isAllowed|isEligible)\w*/);
+    expect(src).not.toMatch(/eligib(le|ility)\s*[:=]/i);
+  });
+
+  it("nothing in pricing reads a business category", () => {
+    // Pricing is PRC-001/MIL-001/MIL-002/SUR-001 and none of them mention a
+    // category. A category-dependent price would be an invented decision.
+    for (const f of [
+      "lib/couranr/pricing/quote.ts",
+      "lib/couranr/public/governed.ts",
+    ]) {
+      const p = path.join(ROOT, f);
+      let src = "";
+      try {
+        src = readFileSync(p, "utf8");
+      } catch {
+        continue; // the file may not exist in every revision; absence is fine
+      }
+      expect(src, `${f} reads a business category`).not.toMatch(/business_category|BusinessCategory/);
+    }
+  });
+
+  it("nothing in the request/permission path reads a business category", () => {
+    for (const f of [
+      "lib/couranr/requests/permissions.ts",
+      "lib/couranr/requests/states.ts",
+      "lib/couranr/settings/permissions.ts",
+    ]) {
+      const src = readFileSync(path.join(ROOT, f), "utf8");
+      expect(src, `${f} reads a business category`).not.toMatch(
+        /business_category|BusinessCategory/
+      );
+    }
+  });
+
+  it("the merchant is TOLD it does not limit them", () => {
+    expect(CATEGORY_PURPOSE_COPY).toMatch(/never limits/i);
+    expect(CATEGORY_PURPOSE_COPY).toMatch(/suggest/i);
+  });
+
+  it("the module states the authority and the invariant", () => {
+    // Whitespace collapsed and comment continuation markers stripped, the
+    // lesson `couranr-activation` learned: a sentence wrapped across source
+    // lines is the sentence it reads as.
+    const src = readFileSync(path.join(ROOT, "lib/couranr/categories/registry.ts"), "utf8")
+      .replace(/^\s*\*\s?/gm, " ")
+      .replace(/\s+/g, " ")
+      .toLowerCase();
+    expect(src).toContain("category controls initial recommendations, not eligibility");
+    expect(src).toContain("no decision about categories");
+  });
+});
