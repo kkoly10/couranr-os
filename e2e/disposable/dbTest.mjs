@@ -157,6 +157,26 @@ function sectionRls() {
   check("RLS-10", "profiles_update_own carries its WITH CHECK",
     one(`select pg_get_expr(polwithcheck, polrelid) is not null from pg_policy
           where polname = 'profiles_update_own'`), "t");
+
+  // ACP-008 — the private/analytics boundary, EXECUTED not read: a probe
+  // table is created in each schema and the privilege actually measured, so
+  // the default-privilege statements are proven to do what they claim.
+  check("RLS-11", "anon and authenticated hold no USAGE on private or analytics",
+    one(`select bool_or(has_schema_privilege(r, s, 'USAGE'))
+           from unnest(array['anon','authenticated']) r,
+                unnest(array['private','analytics']) s`), "f");
+  check("RLS-12", "service_role holds USAGE on both",
+    one(`select bool_and(has_schema_privilege('service_role', s, 'USAGE'))
+           from unnest(array['private','analytics']) s`), "t");
+  psql("create table if not exists private.__acl_probe (id int); create table if not exists analytics.__acl_probe (id int);");
+  check("RLS-13", "a NEW table in private/analytics grants service_role DML and the world nothing",
+    one(`select bool_and(
+             has_table_privilege('service_role', t, 'SELECT')
+         and has_table_privilege('service_role', t, 'INSERT')
+         and not has_table_privilege('anon', t, 'SELECT')
+         and not has_table_privilege('authenticated', t, 'SELECT'))
+         from unnest(array['private.__acl_probe','analytics.__acl_probe']) t`), "t");
+  psql("drop table private.__acl_probe; drop table analytics.__acl_probe;");
 }
 
 /* -------------------------------------------------------------- integrity */
