@@ -132,13 +132,13 @@ export function OperationsInbox() {
         </Text>
       </Stack>
 
-      {/* Surfaced rather than hidden. Operations must not read an "on time"
-          mark as meaning the thread was assessed against operating hours —
-          HRS-002 is unresolved, so it was not. */}
+      {/* Kept as a fail-LOUD notice rather than deleted. HRS-002 is decided, so
+          this should never render; if a future change ever reports false again,
+          Operations is told the marks are elapsed-time only instead of silently
+          reading an out-of-hours thread as overdue. */}
       {!view.operatingHoursApplied ? (
         <Alert tone="info" title="Operating hours are not applied to these marks">
-          Due and overdue marks count elapsed time only. The after-hours rule is not in effect
-          until Couranr records an operating-hours timezone, so an out-of-hours thread will read as
+          Due and overdue marks count elapsed time only, so an out-of-hours thread will read as
           overdue sooner than the policy intends.
         </Alert>
       ) : null}

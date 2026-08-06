@@ -24,6 +24,15 @@
  * conversation INSTEAD OF a merchant support one, which is not what it is —
  * Operations participates in all three.
  */
+
+// HRS-002. Pure, dependency-free and browser-safe, like the rest of this module.
+import {
+  addOperatingMinutes,
+  isWithinOperatingHours,
+  nextOperatingPeriodStart,
+  operatingMinutesBetween,
+} from "@/lib/couranr/hours/operatingHours";
+
 export const CONVERSATION_KINDS = [
   "merchant_support",
   "delivery_chat",
@@ -108,9 +117,9 @@ export type DueState = (typeof DUE_STATES)[number];
 /**
  * "At 10 minutes mark due soon; at 15 overdue."
  *
- * Pure elapsed-time arithmetic, which is why it can ship while HRS-002 is
- * unresolved: minutes since receipt need no timezone. What DOES need one is the
- * next-operating-period rollover, and that is not computed anywhere.
+ * These are OPERATING minutes, not wall-clock minutes. `TRM-001` records
+ * `support_target_applies: "during operating hours"`, so the clock runs while
+ * Couranr is open and stops while it is closed.
  */
 export const DUE_SOON_MINUTES = 10;
 export const OVERDUE_MINUTES = 15;
@@ -118,31 +127,57 @@ export const OVERDUE_MINUTES = 15;
 /** The support target, stated as a normal response and never as a guarantee. */
 export const SUPPORT_TARGET_MINUTES = 15;
 
+/**
+ * HRS-002 IS NOW RESOLVED — the zone is America/New_York, decided by the owner
+ * on 2026-08-06 and recorded in the root `02_DECISION_REGISTRY.json`.
+ *
+ * An earlier revision of this file said the opposite, and said it at length:
+ * that the after-hours rules "cannot be applied without knowing which zone
+ * Monday-Friday 06:00-18:00 is expressed in". That was correct at the time.
+ * The deadline was a flat 15 wall-clock minutes, which was right for a message
+ * received at 2pm and wrong for one received at 2am.
+ *
+ * WHAT CHANGED, PRECISELY. For an ordinary in-hours message nothing changes —
+ * 10:00 + 15 is still 10:15, and the existing tests of that case pass
+ * unmodified. Only the cases the flat rule got wrong move:
+ *
+ *   Friday 17:58 -> was Friday 18:13 (thirteen minutes into a closed office),
+ *                   now Monday 06:13
+ *   Saturday 12:00 -> was Saturday 12:15, now Monday 06:15
+ *
+ * Both previously marked a thread overdue while nobody was meant to be
+ * answering, which is what made the Operations queue unusable outside hours.
+ */
 export function dueStateAt(receivedAt: Date, now: Date): DueState {
-  const minutes = (now.getTime() - receivedAt.getTime()) / 60_000;
+  const minutes = operatingMinutesBetween(receivedAt, now);
   if (minutes >= OVERDUE_MINUTES) return "overdue";
   if (minutes >= DUE_SOON_MINUTES) return "due_soon";
   return "on_time";
 }
 
 /**
- * The response deadline: 15 minutes after receipt.
- *
- * DELIBERATELY IGNORES OPERATING HOURS. The spec's after-hours rules — "Human
- * required ordinary cases wait until next operating period" — cannot be applied
- * without knowing which zone Monday–Friday 06:00–18:00 is expressed in, and
- * HRS-002 is `unresolved` with the acceptance criterion "A named IANA timezone
- * is recorded before any cutoff logic ships."
- *
- * So this returns the in-hours deadline unconditionally. That is WRONG for a
- * message received at 2am and right for one received at 2pm. It is wrong in the
- * safe direction — it marks a thread overdue sooner than the spec requires,
- * never later — but it is still a known gap, recorded in
- * docs/couranr-mvp/ACTIVE_EXECUTION_SLICE.md under HRS-002 rather than papered
- * over with a guessed zone.
+ * The response deadline: 15 OPERATING minutes after receipt, in
+ * America/New_York, rolling over any closed period.
  */
 export function responseDueAt(receivedAt: Date): Date {
-  return new Date(receivedAt.getTime() + OVERDUE_MINUTES * 60_000);
+  return addOperatingMinutes(receivedAt, OVERDUE_MINUTES);
+}
+
+/**
+ * The value for `couranr_conversations.next_operating_period_at`.
+ *
+ * The column has existed since `20260804150000` and was never written, because
+ * it is the one deadline field that genuinely needed the zone. It is written
+ * now.
+ *
+ * Returns null when the conversation was received DURING operating hours,
+ * because there is no rollover to record — a non-null value means "this arrived
+ * while Couranr was closed and the clock starts here", and writing the
+ * receipt instant into it for an in-hours message would erase that distinction.
+ */
+export function nextOperatingPeriodAt(receivedAt: Date): Date | null {
+  if (isWithinOperatingHours(receivedAt)) return null;
+  return nextOperatingPeriodStart(receivedAt);
 }
 
 /* ------------------------------------------------------ the visibility rule */

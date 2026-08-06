@@ -7,6 +7,7 @@ import {
   readHelpThread,
   redeemHelpToken,
 } from "@/lib/couranr/conversations/help";
+import { COURANR_TIMEZONE } from "@/lib/couranr/hours/operatingHours";
 import {
   CUSTOMER_TOPICS,
   SUPPORT_TARGET_MINUTES,
@@ -58,9 +59,11 @@ export async function GET(_req: NextRequest, ctx: { params: { token: string } })
     // "State the normal 15-minute response target during operating hours, not a
     // guarantee." — PUB-007's mandatory correction.
     supportTargetMinutes: SUPPORT_TARGET_MINUTES,
-    // HRS-002 is unresolved, so no after-hours state is computed. Reported
-    // rather than omitted, so the page cannot imply an assessment was made.
-    operatingHoursApplied: false,
+    // HRS-002 is decided (America/New_York). The response clock a customer is
+    // told about now runs in operating minutes, so a Sunday message is not
+    // recorded overdue fifteen minutes later.
+    operatingHoursApplied: true,
+    operatingTimezone: COURANR_TIMEZONE,
     // "No public support phone at MVP." Stated so no surface invents one.
     supportPhone: null,
   });

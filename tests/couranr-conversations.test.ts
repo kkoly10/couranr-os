@@ -15,6 +15,7 @@ import {
   dueStateAt,
   isReadableInThread,
   memberMayPost,
+  nextOperatingPeriodAt,
   responseDueAt,
   type ParticipantKind,
   type Visibility,
@@ -561,7 +562,10 @@ describe("the participant projection", () => {
 
 /* ════════════════════════ deadlines, without a timezone ═══════════════════ */
 
-describe("deadlines — the half that ships while HRS-002 is unresolved", () => {
+describe("deadlines — HRS-002 is RESOLVED and the clock runs in operating minutes", () => {
+  // 2026-08-04 12:00 UTC reads as Tuesday 08:00 EDT — comfortably inside the
+  // operating window, which is why the two assertions below are UNCHANGED from
+  // when the deadline was flat wall-clock time.
   const base = new Date("2026-08-04T12:00:00.000Z");
 
   it("marks due soon at 10 minutes and overdue at 15, per the spec", () => {
@@ -573,28 +577,72 @@ describe("deadlines — the half that ships while HRS-002 is unresolved", () => 
     expect(dueStateAt(base, new Date(base.getTime() + 15 * 60_000))).toBe("overdue");
   });
 
-  it("the response deadline is 15 minutes after receipt", () => {
+  it("the in-hours response deadline is unchanged: 15 minutes after receipt", () => {
     expect(responseDueAt(base).toISOString()).toBe("2026-08-04T12:15:00.000Z");
   });
 
-  it("ships NO operating-hours cutoff logic while HRS-002 is unresolved", () => {
-    // "A named IANA timezone is recorded before any cutoff logic ships."
-    // Nothing in the conversation modules may compute one.
+  /**
+   * These four replace a pair of guards that asserted the OPPOSITE — that no
+   * conversation module named a timezone and that `next_operating_period_at`
+   * was never written. Both were correct while HRS-002 was `unresolved` and its
+   * acceptance criterion read "A named IANA timezone is recorded before any
+   * cutoff logic ships."
+   *
+   * The owner recorded America/New_York on 2026-08-06, so the criterion is met
+   * and the guards are inverted rather than deleted: the risk is no longer
+   * "cutoff logic shipped too early", it is "cutoff logic shipped and is wrong".
+   */
+  it("the clock PAUSES outside operating hours — the case the flat rule got wrong", () => {
+    // Friday 2026-07-17 17:58 EDT. Two minutes before close.
+    const friLate = new Date("2026-07-17T21:58:00.000Z");
+    // Flat wall-clock would have said 18:13 Friday, inside a closed office.
+    expect(new Date(friLate.getTime() + 15 * 60_000).toISOString()).toBe(
+      "2026-07-17T22:13:00.000Z"
+    );
+    // Operating minutes roll the remainder to Monday morning.
+    expect(responseDueAt(friLate).toISOString()).toBe("2026-07-20T10:13:00.000Z");
+  });
+
+  it("a weekend thread is not overdue before Couranr reopens", () => {
+    const sat = new Date("2026-07-18T16:00:00.000Z"); // Sat 12:00 EDT
+    // Twenty wall-clock minutes later it is still Saturday: no operating time
+    // has elapsed, so it cannot be overdue. The flat rule called this overdue.
+    expect(dueStateAt(sat, new Date(sat.getTime() + 20 * 60_000))).toBe("on_time");
+    // Monday 06:15 EDT — fifteen operating minutes in — it is.
+    expect(dueStateAt(sat, new Date("2026-07-20T10:15:00.000Z"))).toBe("overdue");
+  });
+
+  it("next_operating_period_at IS written, and only for an after-hours arrival", () => {
+    expect(flat(SQL)).toContain("next_operating_period_at");
+    expect(COMMANDS).toContain("next_operating_period_at");
+    // Null in hours: there is no rollover to record.
+    expect(nextOperatingPeriodAt(base)).toBeNull();
+    // Non-null out of hours, and equal to the next opening.
+    const sat = new Date("2026-07-18T16:00:00.000Z");
+    expect(nextOperatingPeriodAt(sat)?.toISOString()).toBe("2026-07-20T10:00:00.000Z");
+  });
+
+  it("the conversation modules use the shared hours module, not their own arithmetic", () => {
+    // The original guard banned any timezone handling here. The real hazard now
+    // is a SECOND, divergent implementation: this module and the SQL function
+    // must agree, and they can only agree if there is one of each.
     const dir = path.join(ROOT, "lib/couranr/conversations");
     for (const file of readdirSync(dir)) {
       const src = readFileSync(path.join(dir, file), "utf8")
         .replace(/\/\*[\s\S]*?\*\//g, "")
         .replace(/^\s*\/\/.*$/gm, "");
-      expect(src, `${file} must not name a timezone`).not.toMatch(/America\/|UTC[+-]|toLocaleString/);
-      expect(src, `${file} must not implement operating hours`).not.toMatch(
-        /getDay\(\)|operatingHours|OPERATING_HOURS|nextOperatingPeriod/
+      expect(src, `${file} must not hardcode a zone or offset`).not.toMatch(
+        /America\/|UTC[+-]/
+      );
+      expect(src, `${file} must not roll its own weekday arithmetic`).not.toMatch(
+        /getDay\(\)|getUTCDay\(\)/
       );
     }
-  });
-
-  it("next_operating_period_at exists in the schema but is never written", () => {
-    expect(flat(SQL)).toContain("next_operating_period_at");
-    expect(COMMANDS).not.toContain("next_operating_period_at");
+    // The zone is named in exactly one place.
+    const hours = readFileSync(
+      path.join(ROOT, "lib/couranr/hours/operatingHours.ts"), "utf8"
+    );
+    expect(hours).toContain('COURANR_TIMEZONE = "America/New_York"');
   });
 });
 

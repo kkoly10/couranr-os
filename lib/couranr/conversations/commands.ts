@@ -13,6 +13,7 @@ import {
   type Visibility,
   canSee,
   dueStateAt,
+  nextOperatingPeriodAt,
   memberMayPost,
   responseDueAt,
 } from "./states";
@@ -633,8 +634,9 @@ export async function sendMessage(
     metadata: { visibility, authorship: "human", topic: params.topic ?? null },
   });
 
-  // Deadline bookkeeping. Only the two timezone-free fields are written;
-  // `next_operating_period_at` stays null until HRS-002 records a zone.
+  // Deadline bookkeeping. All three fields are written now that HRS-002 names
+  // the zone; `next_operating_period_at` was created in 20260804150000 and had
+  // never been written.
   await stampDeadlines({
     conversationId: params.conversationId,
     actorKind: participant.value.participantKind,
@@ -754,7 +756,16 @@ async function stampDeadlines(params: {
     // same reason the spec says an automated acknowledgement does not count.
   } else if (!current.data.received_at) {
     patch.received_at = now.toISOString();
+    // HRS-002: 15 OPERATING minutes in America/New_York, rolling over any
+    // closed period. A message received Friday 17:58 is due Monday 06:13, not
+    // Friday 18:13.
     patch.response_due_at = responseDueAt(now).toISOString();
+    // Non-null only when the message arrived while Couranr was CLOSED. That is
+    // what distinguishes "the clock starts later" from "the clock is already
+    // running", so an in-hours message must leave it null rather than record
+    // its own receipt instant.
+    const rollover = nextOperatingPeriodAt(now);
+    patch.next_operating_period_at = rollover ? rollover.toISOString() : null;
     patch.waiting_on = "couranr";
     // Recorded here because this is the only moment the asking party is known.
     patch.awaiting_reply_kind = params.actorKind;

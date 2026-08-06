@@ -7,6 +7,7 @@ import {
   refreshDueStates,
 } from "@/lib/couranr/conversations/commands";
 import { SUPPORT_TARGET_MINUTES } from "@/lib/couranr/conversations/states";
+import { COURANR_TIMEZONE } from "@/lib/couranr/hours/operatingHours";
 
 export const dynamic = "force-dynamic";
 
@@ -54,9 +55,11 @@ export async function GET(req: NextRequest) {
     // Stated as a normal response and never as a guarantee — PUB-007's
     // mandatory correction, which applies wherever the target is shown.
     supportTargetMinutes: SUPPORT_TARGET_MINUTES,
-    // HRS-002 is unresolved, so no operating-hours window is computed anywhere.
-    // Surfaced rather than hidden: a caller must not infer that a thread marked
-    // on-time has been assessed against operating hours.
-    operatingHoursApplied: false,
+    // HRS-002 is decided (America/New_York), so due and overdue marks ARE
+    // assessed against Monday-Friday 06:00-18:00 local. Still reported rather
+    // than assumed, because a caller must be able to tell which rule produced a
+    // mark without reading this file.
+    operatingHoursApplied: true,
+    operatingTimezone: COURANR_TIMEZONE,
   });
 }
