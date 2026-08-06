@@ -743,11 +743,34 @@
     {
       "id": "HRS-002",
       "category": "service hours",
-      "decision": "The timezone for all operating hours is not stated by any authority.",
-      "value": null,
-      "status": "unresolved",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
-      "authority_section": "§3 Hours — states clock times but no timezone",
+      "decision": "All Couranr operating hours and support deadlines are expressed in the IANA timezone America/New_York.",
+      "value": {
+        "timezone": "America/New_York",
+        "timezone_kind": "IANA",
+        "applies_to": [
+          "HRS-001 standard window 06:00-18:00",
+          "HRS-001 same-day request cutoff 16:00",
+          "OVN-001 overnight window 18:00-06:00",
+          "TRM-001 support_response_target_minutes during operating hours"
+        ],
+        "operating_days": [
+          "Monday",
+          "Tuesday",
+          "Wednesday",
+          "Thursday",
+          "Friday"
+        ],
+        "operating_window_local": {
+          "start": "06:00",
+          "end": "18:00"
+        },
+        "boundary_semantics": "start inclusive, end exclusive: 06:00:00 is inside, 18:00:00 is outside",
+        "observes_daylight_saving": true,
+        "single_zone_for_all_markets": true
+      },
+      "status": "decided",
+      "authority_file": "owner decision recorded in 02_DECISION_REGISTRY.json",
+      "authority_section": "Owner decision, 2026-08-06. Supersedes the earlier 'not stated by any authority' finding.",
       "affected_routes": [
         "/estimate",
         "/operations/settings"
@@ -756,27 +779,38 @@
         "PUB-004",
         "OPS-016"
       ],
-      "affected_database_objects": [],
-      "affected_code_paths": [],
+      "affected_database_objects": [
+        "public.couranr_conversations.next_operating_period_at"
+      ],
+      "affected_code_paths": [
+        "lib/couranr/hours/operatingHours.ts",
+        "lib/couranr/conversations/states.ts",
+        "lib/couranr/conversations/commands.ts"
+      ],
       "conflict_with_current_code": {
-        "code_value": null,
-        "code_location": "n/a",
-        "resolution": "Cannot be inferred.",
-        "remediation_commit": null
+        "code_value": {
+          "operating_hours_model": "none",
+          "response_deadline": "flat 15 minutes, no business-hours branch"
+        },
+        "code_location": "lib/couranr/conversations/states.ts responseDueAt",
+        "resolution": "Net-new. The flat elapsed-time deadline is replaced by an operating-hours-aware one.",
+        "remediation_commit": "phase 8 hardening"
       },
       "implementation_phase": "3",
       "acceptance_criteria": [
-        "A named IANA timezone is recorded before any cutoff logic ships."
+        "A named IANA timezone is recorded before any cutoff logic ships.",
+        "Operating hours are evaluated in America/New_York, not in the server's local zone and not in UTC.",
+        "A deadline that would fall outside the operating window rolls to the next operating period.",
+        "Saturday and Sunday are never operating periods.",
+        "Both daylight-saving transitions are handled: the spring-forward gap and the fall-back repeated hour.",
+        "06:00:00 local is inside the window and 18:00:00 local is outside it."
       ],
-      "missing": "No authority states the timezone for 06:00, 18:00 or the 16:00 cutoff. The markets span a single US region, but the registry must not infer America/New_York without a decision.",
-      "blocked_screen_ids": [
-        "PUB-004",
-        "OPS-016"
-      ],
-      "blocked_commits": [
-        "availability slice",
-        "any same-day cutoff enforcement"
-      ]
+      "decided_by": "owner",
+      "decided_at_utc": "2026-08-06",
+      "resolves": {
+        "previously": "unresolved",
+        "note": "This decision unblocks HRS-002's dependants only. OVN-002 (the overnight request-and-enable mechanism) remains unresolved and is NOT resolved by naming a timezone: the overnight WINDOW is decided by OVN-001, the ENABLEMENT MECHANISM is not decided by anything."
+      }
     },
     {
       "id": "OVN-001",
@@ -2108,7 +2142,7 @@
     {
       "id": "TRM-002",
       "category": "terminology",
-      "decision": "Merchant team role names exist in the schema but their permissions are not defined by any authority.",
+      "decision": "Each of the five merchant team roles has an explicit conversation permission set. owner, manager and dispatcher may read and send; viewer and billing have no conversation access at all.",
       "value": {
         "declared_roles": [
           "owner",
@@ -2117,43 +2151,76 @@
           "viewer",
           "billing"
         ],
-        "permissions_per_role": null
+        "permissions_per_role": {
+          "owner": {
+            "conversation_read": true,
+            "conversation_send": true
+          },
+          "manager": {
+            "conversation_read": true,
+            "conversation_send": true
+          },
+          "dispatcher": {
+            "conversation_read": true,
+            "conversation_send": true
+          },
+          "viewer": {
+            "conversation_read": false,
+            "conversation_send": false
+          },
+          "billing": {
+            "conversation_read": false,
+            "conversation_send": false
+          }
+        },
+        "scope": "conversations and messaging only. This decision does not define any other permission for these roles.",
+        "supersedes_analogy": "The prior owner|manager|dispatcher allow-list was reasoned by analogy to DRP-001 request authority. That analogy is withdrawn. This is an owner decision in its own right and the code must cite TRM-002, not DRP-001.",
+        "no_access_means": "viewer and billing are refused BOTH reading and sending. A role that can read a support thread can read customer contact details and Couranr internal context, so read is not the safe default."
       },
-      "status": "unresolved",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
-      "authority_section": "§8 defines actor authority by actor TYPE, not by merchant team role",
+      "status": "decided",
+      "authority_file": "owner decision recorded in 02_DECISION_REGISTRY.json",
+      "authority_section": "Owner decision, 2026-08-06. Supersedes the earlier 'not defined by any authority' finding.",
       "affected_routes": [
-        "/business/settings/team"
+        "/business/settings/team",
+        "/business/messages"
       ],
       "affected_screen_ids": [
-        "MER-015"
+        "MER-015",
+        "MER-012"
       ],
       "affected_database_objects": [
         "public.business_members"
       ],
       "affected_code_paths": [
-        "lib/businessAccount.ts:11-41"
+        "lib/businessAccount.ts",
+        "lib/couranr/conversations/states.ts",
+        "lib/couranr/conversations/commands.ts"
       ],
       "conflict_with_current_code": {
         "code_value": {
           "membership": "binary",
-          "role_column_read_by_code": false
+          "role_column_read_by_code": false,
+          "post_roles": "owner|manager|dispatcher, justified by analogy to DRP-001",
+          "read_gate": "none — membership alone granted read, so viewer and billing could read"
         },
-        "code_location": "lib/businessAccount.ts:11-41",
-        "resolution": "Code treats membership as binary and reads no role. Not an authority.",
-        "remediation_commit": null
+        "code_location": "lib/businessAccount.ts; lib/couranr/conversations/states.ts CONVERSATION_POST_ROLES",
+        "resolution": "Code must read the role column and refuse viewer and billing on BOTH read and send.",
+        "remediation_commit": "phase 8 hardening"
       },
       "implementation_phase": "4",
       "acceptance_criteria": [
-        "Each of the five roles has an explicit permission set before MER-015 ships."
+        "Each of the five roles has an explicit permission set before MER-015 ships.",
+        "A viewer is refused reading a conversation, not merely refused sending.",
+        "A billing member is refused reading a conversation, not merely refused sending.",
+        "owner, manager and dispatcher can each read and send.",
+        "The permission set is cited to TRM-002 in code, never to DRP-001."
       ],
-      "missing": "The five role names appear in the database schema, but no authority states what each may do.",
-      "blocked_screen_ids": [
-        "MER-015"
-      ],
-      "blocked_commits": [
-        "merchant team and permissions slice"
-      ]
+      "decided_by": "owner",
+      "decided_at_utc": "2026-08-06",
+      "resolves": {
+        "previously": "unresolved",
+        "note": "MER-015 is unblocked for its messaging permissions only."
+      }
     },
     {
       "id": "OVN-002",
