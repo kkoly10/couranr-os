@@ -16,10 +16,10 @@ as a reason to build something the package does not require.
 | Base SHA | `bf38d156ddcaae70f99c3a0c2d0e82efd0cf26a7` — PR #23 (migration hygiene) merged into main |
 | Previous base | `c929cc3a8e630bd11ac0a98ff3800a16ee77c140` (the SEC-001 hotfix, PR #21) |
 | Active branch | `claude/couranr-phase-8-conversations` |
-| Reconciled at | `40129ee06d96bfdcd85bb653397d2553a1fa5b98` — **16** commits ahead of base, 0 behind |
-| Since then | two documentation commits: the reconciliation itself, and this PR-number record. No code, no migration. |
+| Reconciled at | `40129ee06d96bfdcd85bb653397d2553a1fa5b98` — **16** commits ahead of the then-base, 0 behind |
+| Last verification SHA | `a115f9212364bab0951053c73877952674ee07d6` — the authenticated messaging pass |
 | Target PR | [#22](https://github.com/kkoly10/couranr-os/pull/22), draft |
-| Status | **`hardening`** — the freeze held for production; HRS-002 and TRM-002 were resolved by the owner and implemented, and the deployment path was proven and fixed |
+| Status | **`verified`** — every Phase 8 acceptance criterion is now proven by an executed run, and both remaining gaps are recorded rather than absorbed |
 | Reconciliation | [`PHASE8_RECONCILIATION.md`](./PHASE8_RECONCILIATION.md) |
 
 The base SHA is the SEC-001 hotfix merge (PR #21). The Phase 8 branch is rebased
@@ -65,9 +65,9 @@ never written back into the package.
 
 | work item | phase | domain | task (verbatim) | dependencies (verbatim) | priority | acceptance (verbatim) | measured status |
 |---|---|---|---|---|---|---|---|
-| `P8-001` | 8 | Messaging | Implement server-controlled conversations | `P2-002` | P1 | **Participant/privacy tests pass** | `complete_unverified` |
-| `P8-002` | 8 | Support | Implement deadlines and Operations Inbox | `P8-001` | P1 | **Operating/after-hours timers pass** | `partial` |
-| `P8-004` | 8 | Customer | Implement secure Delivery Help | `P8-001;P2-003` | P1 | **One-delivery token scope passes** | `complete_unverified` |
+| `P8-001` | 8 | Messaging | Implement server-controlled conversations | `P2-002` | P1 | **Participant/privacy tests pass** | `complete_verified` |
+| `P8-002` | 8 | Support | Implement deadlines and Operations Inbox | `P8-001` | P1 | **Operating/after-hours timers pass** | `complete_verified` |
+| `P8-004` | 8 | Customer | Implement secure Delivery Help | `P8-001;P2-003` | P1 | **One-delivery token scope passes** | `complete_verified` |
 | `P2-003` | 2 | Platform | Implement idempotency, audit, and guest tokens | `P2-001` | P0 | **Duplicate and token tests pass** | `partial` |
 
 **Why nothing here reads `complete_verified`.** The acceptance criteria are met
@@ -382,35 +382,95 @@ static source assertion in `tests/couranr-conversations.test.ts:1103`. Static
 assertions do not promote anything here, so this is recorded as an executed
 one-off pending its addition to the matrix.
 
+### 7.1a The authenticated messaging pass — `a115f92`
+
+`e2e/disposable/authenticatedMessaging.mjs`, **51/51, unstubbed and signed in**,
+from a database created empty with all 39 forward migrations and destroyed
+afterwards. No `page.route`. Every row pairs the browser with the database or
+with the route's actual status.
+
+| requirement | proof | result |
+|---|---|---|
+| TRM-002 read and send — owner, manager, dispatcher | `M-*-2` renders exactly the threads that role participates in, derived from the participant rows; `M-*-4` asserts the sent message reached `couranr_conversation_messages` authored by that role's own participant row | PASS |
+| TRM-002 no access — viewer, billing | `M-*-1` empty list; `M-*-2` the **control** proving they ARE live participants; `M-*-3` a direct read refused `404 not_found`, never `not_permitted`; `M-*-4` a direct post refused **and zero rows written** | PASS |
+| That the TRM-002 checks bind at all | **mutation test**: `memberMayRead` forced to `return true`, rebuilt, re-run — the run stops at 12 checks | PASS |
+| Driver tenure window | `D3`/`D4` see the after-join message and not the before-join one; `D5` the **control** proving both rows exist | PASS |
+| Access lost on replacement | `D7` empty list, `D8` read refused, `D9` post refused with zero rows written | PASS |
+| No inherited history | `D10` the replacement driver sees neither earlier message; `D11` the control proving their participant row is live | PASS |
+| OPS-005 unifies all three kinds | `O2` asserts the merchant-support, merchant–driver and customer-help labels all render | PASS |
+| Operating-clock marks | `O3`/`O4` badges **and** header counts; `O5` the server recomputed both due states on read from seeded `on_time` | PASS |
+| HRS-002 applied, not assumed | `O8` the elapsed-time-only notice does not render; `O20` the route reports `operatingHoursApplied: true`, `America/New_York` | PASS |
+| Internal notes reach only Operations | `O10` stored `couranr_internal`; `O12` Operations reads it; `O13` the merchant in the same thread does not; `O14` the control | PASS |
+| The clock stops only on something the waiting party receives | `O11` an internal note does NOT stop it; `O15` a participant-visible reply does and returns the thread to the merchant | PASS |
+| Read state is per participant | `O16`/`O17` the manager's mark is byte-identical before and after the owner reads, and distinct from the owner's | PASS |
+| Operations-only | `O18` a merchant owner 403; `O19` a driver 403 | PASS |
+
+The `/auth/v1` behind those sign-ins is proved separately:
+`e2e/disposable/authGateway.mjs`, **20/20** — a wrong password issues no token,
+an unknown address is refused byte-identically (no enumeration), and a foreign
+signature, a tampered payload, an `alg: "none"` header, an expired token and a
+validly signed token for a nonexistent user are each refused.
+
 ### 7.2 What is NOT verified, stated as such
 
 | requirement | why not |
 |---|---|
-| `P8-002` after-hours timers | **`HRS-002` unresolved.** No IANA timezone, so the branch is not implemented. The elapsed-time half (10-minute due-soon, 15-minute overdue) is verified. |
-| `MER-012`, `DRV-008`, `OPS-005` in a browser | **no browser has driven them at all.** Their commands are proven; the pages are not. |
-| `CUS-001` / `CUS-003` fragment preselection | A12 loaded the **bare** route and chose the topic with `selectOption`. The only evidence for `#address-change` / `#recipient-unavailable` is the **stubbed** `e2e/deliveryHelp.mjs` run. |
-| The acceptance matrix as a *repeatable* gate | it passed once and now refuses to run — see §7.3. |
+| GoTrue itself | **not obtainable in this container** — three documented attempts. `gateway.mjs` reimplements the two endpoints the application calls, on real bcrypt and real HS256, and `authGateway.mjs` proves 20 refusals against it. Sessions-as-rows, refresh-token reuse detection, MFA, email confirmation and rate limiting are NOT exercised, and neither is the auth-helpers cookie path against a real issuer. |
+| `MER-012` / `DRV-008` with production data | **there is none.** No code creates a `merchant_support` or `delivery_chat` conversation, or adds a merchant, driver or operations participant. Both screens are `partial` for that reason — see §7.5. |
+| Unassignment closing conversation access | `left_at` **has no writer**. The reader is proven; the write half does not exist — see §7.5. |
 | Groups N, O, P, Q at this SHA | not re-run; cited from earlier runs. |
+| The connected project's out-of-band state | the disposable runs exercise the same schema, not the same instance. |
 
-### 7.3 The acceptance matrix cannot clean up after itself
+### 7.3 The acceptance matrix is re-runnable now — 27/27, twice
 
-`service_role` holds DELETE on `business_accounts` and on **no** `couranr_*`
-table — they are append-only by design. The first run passed all 26 behavioural
-checks and then failed cleanup, leaving two fixture chains in a project holding
-42 real orders. Both were purged through a privileged path and production was
-verified back to baseline: 0 marked rows, 26 `couranr_deliveries`, 42 orders,
-29 legacy deliveries, 94 addresses.
+The blocker was real and is closed. `service_role` holds DELETE on
+`business_accounts` and on **no** `couranr_*` table — they are append-only by
+design — so the first run passed all 26 behavioural checks and then failed
+cleanup, leaving two fixture chains in a project holding 42 real orders. Both
+were purged through a privileged path and production was verified back to
+baseline: 0 marked rows, 26 `couranr_deliveries`, 42 orders, 29 legacy
+deliveries, 94 addresses.
 
-The preflight now probes the six tables cleanup needs and **refuses to seed**,
-printing the purge statements. Its first version probed `business_accounts`,
-which *can* be deleted, so it passed and the run seeded anyway — that is why the
-residue happened twice.
+**Neither wrong fix was taken.** No production DELETE grant, and
+`supabase/migrations/PROPOSED_couranr_e2e_cleanup.sql.review` stays unapplied.
 
-Three ways to make it repeatable, all **deferred under the freeze**: a scratch
-or branch project; a `SECURITY DEFINER` purge scoped to marked rows (proposed,
-unapplied, at `supabase/migrations/PROPOSED_couranr_e2e_cleanup.sql.review`); or
-a narrow DELETE grant to a dedicated harness role. Until one lands, 26/26 is
-**evidence obtained once**, not a gate that can be re-run on demand.
+`e2e/phase8Acceptance.mjs` now runs in two modes against the **same checks in
+the same order**. Project mode is unchanged and keeps every protection: the
+`[P8ACC]` marker, the delete-capability preflight, the cleanup, and Z1/Z2/Z3
+asserting the real row counts are identical afterwards. Disposable mode
+(`E2E_DISPOSABLE=1`, driven by `e2e/disposable/acceptanceMatrix.mjs`) targets a
+PostgreSQL created empty with all 39 forward migrations and destroyed
+afterwards; the preflight and cleanup are replaced by `Z0`, which **refuses to
+run unless the target host is local** — because that mode turns the cleanup
+guarantees off, and pointing it at the project would disarm exactly what the
+file exists to provide.
+
+`A12` was also a latent false pass and is fixed: it asserted `/Delivery Help/i`
+in the body, which the marketing navigation satisfies, so it would have passed
+on a page rendering a refusal. It now requires the topic select and the message
+textarea that exist only in the loaded help form.
+
+### 7.5 Two gaps this verification surfaced, belonging to no work item
+
+Both were found by driving the screens, and neither is inside any acceptance
+criterion in `08_WORK_BREAKDOWN.csv`. They are recorded here and in the screen
+ledger rather than absorbed into `P8-001`.
+
+1. **No conversation issuance.** The only `INSERT` into
+   `couranr_conversations` or `couranr_conversation_participants` anywhere in
+   `supabase/migrations`, `lib/` and `app/` is the Delivery Help redemption path
+   (`20260804160000:129,143` and `20260804200000:108,122`). Nothing creates a
+   `merchant_support` or `delivery_chat` thread; nothing adds a merchant, a
+   driver — not even on assignment — or an operations participant. `MER-012` and
+   `DRV-008` therefore render the empty state forever in production. This is the
+   same shape as `issueTrackingLink` in §7.4.
+2. **`left_at` has no writer.** Neither
+   `couranr_replace_delivery_assignment` nor
+   `couranr_unassign_delivery_before_pickup` touches
+   `couranr_conversation_participants` — 0 hits across all three dispatch
+   command migrations — so a replaced driver keeps conversation access. `D7`–`D10`
+   set `left_at` directly and therefore test the **reader**, which is the half
+   that exists.
 
 ### 7.4 Issuance commands and their real callers
 
@@ -425,7 +485,11 @@ a narrow DELETE grant to a dedicated harness role. Until one lands, 26/26 is
 `e2e/`, so no customer can be sent a `/track/[token]` link — the identical
 defect `P8-004` carried before this slice added an issuance route. It belongs to
 the `PUB-006` tracking slice and is **recorded there, not fixed here**;
-absorbing it would repeat the scope creep this freeze exists to stop.
+absorbing it would repeat the scope creep this freeze exists to stop. It is the
+**named next slice**, to start once PR #22 closes.
+
+§7.5 records two more of the same shape, found by driving the messaging screens:
+conversation issuance, and the missing `left_at` write.
 
 **Migration version drift, recorded rather than hidden.** The repository file is
 `supabase/migrations/20260804120000_sec001_profiles_role_privilege.sql`; the

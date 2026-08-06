@@ -200,31 +200,87 @@ connected project with synthetic `[P8ACC]` fixtures, including the real
 | A11/A11b | a second delivery gets its own conversation and cannot read the first's messages |
 | A12–A12d | the real unstubbed browser flow: renders, a typed message reaches the database, an unissued token is refused with no reason named |
 
-### A blocking limitation, stated rather than worked around
+### The blocking limitation is CLOSED — 27/27, twice, re-runnable
 
-**The matrix cannot clean up after itself against this project, and now refuses
-to run there.**
+**What was blocking.** `service_role` holds DELETE on `business_accounts` and on
+**no** `couranr_*` table — they are append-only by design. The first run passed
+all 26 behavioural checks and then failed cleanup, leaving two fixture chains in
+a project holding 42 real orders. They were removed through a privileged path;
+production was verified back to baseline (0 marked rows, 26
+`couranr_deliveries`, 42 orders, 29 legacy deliveries, 94 addresses). The
+preflight was then hardened to probe the six tables cleanup needs and refuse to
+seed — its first version probed `business_accounts`, which *can* be deleted, so
+it passed and the run seeded anyway, which is why the residue happened twice.
 
-`service_role` holds DELETE on `business_accounts` and on **no** `couranr_*`
-table — they are append-only by design. The first run passed all 26 behavioural
-checks and then failed cleanup, leaving two fixture chains in a project holding
-42 real orders. They were removed through a privileged path; production was
-verified back to baseline (0 marked rows, 26 `couranr_deliveries`, 42 orders,
-29 legacy deliveries, 94 addresses).
+**Neither wrong fix was taken.** No production DELETE grant was added, and
+`supabase/migrations/PROPOSED_couranr_e2e_cleanup.sql.review` remains unapplied.
 
-The preflight now probes the six tables cleanup needs and **refuses to seed**
-when it cannot delete them, printing the purge statements. Its first version
-probed `business_accounts`, which *can* be deleted, so it passed and the run
-seeded anyway — that is why the residue happened twice.
+**What closed it.** A database that starts empty and is destroyed afterwards, so
+cleanup is `rm -rf` rather than a privilege. `e2e/phase8Acceptance.mjs` now runs
+in two modes against the **same checks in the same order**:
 
-To make the matrix repeatable, one of these is needed, and all three are
-deferred under the freeze:
-1. a scratch or branch project to run against;
-2. a `couranr_purge_e2e_fixtures`-style SECURITY DEFINER purge scoped to marked
-   rows — a proposal already exists at
-   `supabase/migrations/PROPOSED_couranr_e2e_cleanup.sql.review`;
-3. a narrow DELETE grant to a dedicated harness role.
+| | project mode (default) | disposable mode (`E2E_DISPOSABLE=1`) |
+|---|---|---|
+| target | the connected project | PostgreSQL created empty, all 39 forward migrations, destroyed afterwards |
+| fixtures | `[P8ACC]`-marked, never mutating a real row | the whole database is synthetic |
+| preflight | refuses to seed what it cannot delete | `Z0` refuses to run unless the host is local |
+| cleanup | deletes every seeded chain, reports what it could not | destruction of the cluster |
+| after | `Z1`/`Z2`/`Z3` assert the real row counts are identical | n/a |
 
-Until then the recorded 26/26 stands as evidence obtained once, with the residue
-purged and production verified clean — not as a gate that can be re-run on
-demand.
+`e2e/disposable/acceptanceMatrix.mjs` is the driver: database, PostgREST, the
+Supabase-shaped gateway, `next build`, `next start`, two seeded profiles, run,
+destroy. **27 of 27 on two consecutive runs from an empty database** at
+`a115f9212364bab0951053c73877952674ee07d6`.
+
+`Z0` matters and is not ceremony: disposable mode turns the cleanup guarantees
+OFF, so pointing it at the connected project would disarm exactly the protection
+this file exists to record. It refuses on any non-local host before a single row
+is written.
+
+**`A12` was a latent false pass and is fixed.** It asserted `/Delivery Help/i`
+in the page body, which the marketing navigation satisfies — the same defect
+`customerHelpFragments.mjs` C1 had, found there by looking at the screenshot
+rather than at the code. It would have passed on a page rendering a refusal. It
+now requires the one topic select and the one message textarea that exist only
+in the loaded help form. The 27th check is `Z0`.
+
+### The authenticated messaging pass
+
+`e2e/disposable/authenticatedMessaging.mjs`, **51/51 unstubbed and signed in**,
+at the same SHA and on the same disposable stack. Chromium signs in through the
+real `/sign-in` form and drives `MER-012`, `DRV-008` and `OPS-005`. Every check
+pairs a browser assertion with the database row it implies or with the route's
+actual refusal status; the TRM-002 assertions were **mutation tested** by
+forcing `memberMayRead` to return `true`, which stops the run at 12 checks.
+
+The sign-in issuer is a reimplementation of two GoTrue endpoints — GoTrue could
+not be obtained in this container, three documented attempts — built on bcrypt
+against `auth.users.encrypted_password` and HS256 verified with
+`crypto.timingSafeEqual`. `e2e/disposable/authGateway.mjs` proves **20/20**
+refusals against it: a wrong password issues no token, an unknown address is
+refused byte-identically, and a foreign signature, a tampered payload, an
+`alg: "none"` header, an expired token and a validly signed token for a
+nonexistent user are each rejected. **GoTrue's own behaviour is not exercised**
+— sessions as rows, refresh-token reuse detection, MFA, email confirmation and
+rate limiting — and neither is the auth-helpers cookie path against a real
+issuer. State this wherever the run is cited.
+
+### Two gaps the verification surfaced
+
+Neither is inside any acceptance criterion in `08_WORK_BREAKDOWN.csv`, and
+neither is being folded into `P8-001`.
+
+1. **No conversation issuance.** The only `INSERT` into `couranr_conversations`
+   or `couranr_conversation_participants` anywhere in `supabase/migrations`,
+   `lib/` and `app/` is the Delivery Help redemption path. Nothing creates a
+   `merchant_support` or `delivery_chat` thread and nothing adds a merchant, a
+   driver — not even on assignment — or an operations participant. `MER-012` and
+   `DRV-008` are recorded `partial` for exactly that reason: every rule behind
+   them is proven and their data can never arrive.
+2. **`left_at` has no writer.** Neither `couranr_replace_delivery_assignment`
+   nor `couranr_unassign_delivery_before_pickup` touches the participant table,
+   so a replaced driver keeps conversation access in production. The `D7`–`D10`
+   checks set `left_at` directly and therefore test the reader, which is the
+   half that exists.
+
+Both are the same shape as `issueTrackingLink`, which is the named next slice.
