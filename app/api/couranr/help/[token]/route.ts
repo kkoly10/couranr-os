@@ -38,13 +38,13 @@ function refuse() {
   return routeFailure("not_found", "This help link is not available.");
 }
 
-export async function GET(_req: NextRequest, ctx: { params: { token: string } }) {
+export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: string }> }) {
   // Shape first, in the ROUTE, before any database work. A token that cannot be
   // well formed is refused without a query, so a flood of junk URLs cannot be
   // used to probe timing on the tokens table.
-  if (!isWellFormedHelpToken(ctx.params?.token)) return refuse();
+  if (!isWellFormedHelpToken((await ctx.params)?.token)) return refuse();
 
-  const link = await redeemHelpToken(ctx.params.token);
+  const link = await redeemHelpToken((await ctx.params).token);
   if (isHelpFailure(link)) return refuse();
 
   const thread = await readHelpThread(link.value.tokenId);
@@ -83,10 +83,10 @@ export async function GET(_req: NextRequest, ctx: { params: { token: string } })
  * update. "A message never directly mutates address, price, payer,
  * cancellation, return, proof, or state."
  */
-export async function POST(req: NextRequest, ctx: { params: { token: string } }) {
-  if (!isWellFormedHelpToken(ctx.params?.token)) return refuse();
+export async function POST(req: NextRequest, ctx: { params: Promise<{ token: string }> }) {
+  if (!isWellFormedHelpToken((await ctx.params)?.token)) return refuse();
 
-  const link = await redeemHelpToken(ctx.params.token);
+  const link = await redeemHelpToken((await ctx.params).token);
   if (isHelpFailure(link)) return refuse();
 
   let payload: any;

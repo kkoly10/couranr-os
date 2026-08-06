@@ -3,10 +3,16 @@
   "repository": "kkoly10/couranr-os",
   "authority_sha": "f26d857fb797b008fc5772700d65a4e5c181f259",
   "production_migration_head": "20260806010000",
-  "active_batch": "B01",
-  "active_capability": "ACP-003",
+  "active_batch": "B02",
+  "active_capability": "ACP-009",
   "open_pr": 24,
-  "completed_capabilities": ["ACP-001", "ACP-002"],
+  "completed_capabilities": [
+    "ACP-001", "ACP-002", "ACP-003", "ACP-004", "ACP-005", "ACP-007", "ACP-008"
+  ],
+  "carried_forward": {
+    "ACP-006": "the canonical --couranr-* token system and primitives pre-exist and match the spec palette exactly; table/chart/upload primitives and the visual-diff harness land with their first consumers in B02/B11 rather than being invented without one",
+    "expired-token-refresh-browser-scenario": "the refresh_token grant is proven at the gateway (20/20) and proxy.ts runs getUser on every page load in the 53/53 harness, but no browser scenario yet forces an EXPIRED access token through the refresh path; needs a short-TTL override in the disposable gateway"
+  },
   "blocked_capabilities": [],
   "decision_queue": [
     "SVC-002",
@@ -20,7 +26,14 @@
     "OBS-PROVIDER"
   ],
   "p0_findings": [],
-  "production_changes_pending_approval": [],
+  "production_changes_pending_approval": [
+    {
+      "operation": "apply migration 20260806100000_couranr_private_and_analytics_schemas to production",
+      "prepared": "forward + rollback committed at c2cac8b; executed against a disposable database including the rollback and its RESTRICT fail-safe; additive only, touches no existing object or row",
+      "expected_effect": "two new schemas (private, analytics), service_role-only, not exposed through PostgREST; production ledger 39 -> 40",
+      "rollback": "supabase/rollbacks/20260806100000_...rollback.sql — refuses if the schemas hold objects"
+    }
+  ],
   "last_full_gate": {
     "sha": "8f0725f0f154946c0fbd2056a0021de0ab794601",
     "result": "pass",

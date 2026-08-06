@@ -1,44 +1,24 @@
 // lib/supabaseClient.ts
 "use client";
 
-import { createClientComponentClient } from "@supabase/auth-helpers-nextjs";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { supabase as typedBrowserClient } from "@/lib/supabase/client";
 
 /**
- * Browser (cookie-session) Supabase client.
+ * COMPATIBILITY SHIM — the ~50 existing importers keep working unchanged.
  *
- * Lazily initialized behind a Proxy, for the same reason as
- * `lib/supabaseAdmin.ts`. `createClientComponentClient()` throws
+ * The real client now lives in `lib/supabase/client.ts` (@supabase/ssr,
+ * cookie-stored sessions, typed with the generated Database). This re-export
+ * WIDENS it back to an untyped `SupabaseClient` because several legacy queries
+ * name tables the live database does not have (`business_pricing_profiles`
+ * among them) and the typed client would fail the build on them — they are
+ * B12 quarantine targets, not tonight's fixes.
  *
- *     either NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY env
- *     variables or supabaseUrl and supabaseKey are required!
+ * New canonical code imports from `lib/supabase/client` and gets the types.
  *
- * when those vars are absent. This module is imported by 51 files, so
- * constructing at module scope meant every prerendered page that transitively
- * imported it failed `next build` in an environment without env vars.
- *
- * The Proxy keeps the import side-effect free; the client is built on first
- * property access, which in practice is inside a component or an event handler
- * in the browser, where NEXT_PUBLIC_* values have been inlined at build time.
- *
- * NOTE: this is the BROWSER client and carries no JWT when imported from a
- * server context — it authenticates as `anon`. Do not import it into a route
- * handler or a server component; use `lib/supabaseAdmin.ts` (service role) or a
- * request-scoped client instead.
+ * The warning below survives the rewrite because the hazard survives it:
+ * this is the BROWSER client. Imported from a server context it carries no
+ * session and authenticates as `anon`. Six legacy server files still do this
+ * (recorded in AUTONOMOUS_RUN_STATE.json); do not add a seventh.
  */
-
-type BrowserClient = ReturnType<typeof createClientComponentClient>;
-
-let cached: BrowserClient | null = null;
-
-function getClient(): BrowserClient {
-  if (!cached) cached = createClientComponentClient();
-  return cached;
-}
-
-export const supabase: BrowserClient = new Proxy({} as BrowserClient, {
-  get(_target, prop) {
-    const client = getClient();
-    const value = Reflect.get(client, prop);
-    return typeof value === "function" ? value.bind(client) : value;
-  },
-});
+export const supabase: SupabaseClient = typedBrowserClient as unknown as SupabaseClient;

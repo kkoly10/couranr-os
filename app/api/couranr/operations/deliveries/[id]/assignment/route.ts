@@ -20,7 +20,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
  * separately is how a screen ends up offering a driver who became busy between
  * two requests.
  */
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   if (!UUID_RE.test(params.id)) return routeFailure("not_found", "Delivery not found.");
 
   const actor = await resolveRequestActor(req, null);
@@ -41,7 +42,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
  * can do the job is read from the vehicle row against the plan's immutable
  * requirement.
  */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   if (!UUID_RE.test(params.id)) return routeFailure("not_found", "Delivery not found.");
 
   let body: any;
@@ -82,7 +84,8 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
  * audit record. Collapsing them would let a caller reach one by mistyping the
  * other.
  */
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   if (!UUID_RE.test(params.id)) return routeFailure("not_found", "Delivery not found.");
 
   let body: any;

@@ -19,7 +19,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
  * the path can only NARROW it. A driver naming someone else's delivery gets
  * the same refusal an unassigned driver gets.
  */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await resolveUserId(req);
   if (isActorDenied(auth)) return routeFailure(auth.code, auth.error);
 

@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strict": true,
+    "noEmit": true
+  },
+  "include": [
+    "types/**/*.ts",
+    "lib/couranr/**/*.ts",
+    "lib/supabase/**/*.ts",
+    "lib/supabaseAdmin.ts",
+    "components/couranr/**/*.ts",
+    "components/couranr/**/*.tsx",
+    "app/(couranr)/**/*.ts",
+    "app/(couranr)/**/*.tsx",
+    "app/api/couranr/**/*.ts"
+  ]
+}

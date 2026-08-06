@@ -48,10 +48,8 @@ async function insertEvent(
   }
 }
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { requestId: string } }
-) {
+export async function POST(req: NextRequest, props: { params: Promise<{ requestId: string }> }) {
+  const params = await props.params;
   try {
     await requireAdmin(req);
 

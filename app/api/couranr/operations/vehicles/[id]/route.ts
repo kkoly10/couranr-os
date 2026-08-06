@@ -19,7 +19,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
  * unavailable here; releasing it is what replacing the assignment does. The
  * SQL refuses that too, so the rule holds even if this route is bypassed.
  */
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   if (!UUID_RE.test(params.id)) return routeFailure("not_found", "Vehicle not found.");
 
   let body: any;

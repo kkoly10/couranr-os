@@ -80,10 +80,24 @@ describe("CI Node version", () => {
   }
 
   it("satisfies every locked engines.node constraint in the tree", () => {
+    // CI runs ubuntu (linux/x64). An OPTIONAL package whose os/cpu exclude
+    // that platform can never install there, so its engines row constrains
+    // nothing — Next 16's sharp ships per-platform binaries (e.g.
+    // @img/sharp-win32-ia32, engines ^20.9.0) that made this sweep fail for
+    // an artifact that will never exist on the runner.
+    const CI_OS = "linux";
+    const CI_CPU = "x64";
     const offenders: string[] = [];
     for (const [name, entry] of Object.entries<any>(LOCK.packages ?? {})) {
       const range = entry?.engines?.node;
       if (typeof range !== "string" || name === "") continue;
+      if (entry?.optional === true) {
+        const os: string[] | undefined = entry?.os;
+        const cpu: string[] | undefined = entry?.cpu;
+        const osExcludes = Array.isArray(os) && !os.includes(CI_OS);
+        const cpuExcludes = Array.isArray(cpu) && !cpu.includes(CI_CPU);
+        if (osExcludes || cpuExcludes) continue;
+      }
       if (!majorSatisfies(major, range)) offenders.push(`${name} requires ${range}`);
     }
     expect(offenders, `Node ${major} fails: ${offenders.join("; ")}`).toEqual([]);

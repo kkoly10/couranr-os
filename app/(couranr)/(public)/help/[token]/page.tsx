@@ -22,7 +22,8 @@ export const dynamic = "force-dynamic";
  * Unauthenticated: the token is the credential. The recipient of a delivery has
  * no account, which is the whole reason this surface exists.
  */
-export default function Page({ params }: { params: { token: string } }) {
+export default async function Page(props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   return (
     // A <div>, not a <main>: the public shell already renders the page's
     // `<main id="cr-main">` landmark, and nesting a second one leaves assistive

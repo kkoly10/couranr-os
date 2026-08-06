@@ -511,7 +511,41 @@ async function main() {
 
     /* ═══════════════════════════════ MER-012 ═══════════════════════════ */
 
-    console.log("MER-012 — merchant messages and support");
+    /* ─────────────── the @supabase/ssr cutover, proven not assumed ─────── */
+
+    console.log("Session storage — @supabase/ssr cookie format");
+    {
+      const probe = await signIn(ops.email);
+      const cookies = await probe.context().cookies();
+      const authCookies = cookies.filter((c) => /^sb-.*-auth-token/.test(c.name));
+      // A chunked session (name.0, name.1, …) carries the base64- prefix on
+      // chunk 0 only; an unchunked one carries it on the sole cookie. Either
+      // way, the cookie holding the START of the value must have it.
+      const head = authCookies.find((c) => !/\.\d+$/.test(c.name)) ||
+                   authCookies.find((c) => c.name.endsWith(".0"));
+      check(
+        "S1",
+        "the session lives in an sb-*-auth-token COOKIE with the ssr base64- prefix",
+        authCookies.length >= 1 && Boolean(head) && head.value.startsWith("base64-"),
+        `${authCookies.length} auth cookie(s); head=${head ? head.name : "<none>"} prefix=${head ? head.value.slice(0, 7) : ""}`
+      );
+      // localStorage must NOT be the session store any more — that was the
+      // auth-helpers/localStorage era, and a session invisible to the server
+      // is what made cookie-gated pages impossible.
+      const lsKeys = await probe.evaluate(() =>
+        Object.keys(window.localStorage).filter((k) => /^sb-.*-auth-token$/.test(k))
+      );
+      check(
+        "S2",
+        "the session is NOT in localStorage",
+        lsKeys.length === 0,
+        `${lsKeys.length} localStorage session key(s)`
+      );
+      await probe.context().close();
+      contexts.splice(contexts.indexOf(probe.context()), 1);
+    }
+
+    console.log("\nMER-012 — merchant messages and support");
 
     for (const role of ["owner", "manager", "dispatcher"]) {
       const page = await signIn(merchant[role].email);

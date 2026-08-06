@@ -39,14 +39,16 @@ function coordinates(
   if (hasLat) {
     latitude = toNumber(body.latitude);
     longitude = toNumber(body.longitude);
-    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) return null;
-    if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) return null;
+    // toNumber returns finite-or-null; the null comparison is the narrowing
+    // finiteness check (Number.isFinite does not narrow number | null).
+    if (latitude === null || latitude < -90 || latitude > 90) return null;
+    if (longitude === null || longitude < -180 || longitude > 180) return null;
   }
 
   let accuracyM: number | null = null;
   if (body?.accuracyM !== null && body?.accuracyM !== undefined) {
     accuracyM = toNumber(body.accuracyM);
-    if (!Number.isFinite(accuracyM) || accuracyM < 0) return null;
+    if (accuracyM === null || accuracyM < 0) return null;
   }
 
   return { latitude, longitude, accuracyM };

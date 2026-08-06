@@ -17,7 +17,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
  * This does NOT decide the outcome. Accept-as-quoted, requote and decline are
  * canonical states that no command in this release can reach.
  */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   if (!UUID_RE.test(params.id)) {
     return routeFailure("not_found", "Delivery request not found.");
   }

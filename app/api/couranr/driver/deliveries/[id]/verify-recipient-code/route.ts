@@ -22,7 +22,8 @@ const MAX_CODE_LENGTH = 32;
  * The code travels in the body only, and an over-long submission is answered
  * as `invalid` — the same answer a wrong code gets.
  */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await resolveUserId(req);
   if (isActorDenied(auth)) return routeFailure(auth.code, auth.error);
 

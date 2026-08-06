@@ -17,7 +17,8 @@ const MAX_NOTE = 1000;
  * the internal note is optional except for `other`, and is never shown to the
  * merchant by this slice. Both are recorded in the append-only event log.
  */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   if (!UUID_RE.test(params.id)) {
     return routeFailure("not_found", "Delivery request not found.");
   }

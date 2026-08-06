@@ -22,7 +22,8 @@ const MAX_REASON = 500;
  * The request lands in `quote_revision_required` for both payer types — a
  * changed price always needs the payer's fresh approval.
  */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   if (!UUID_RE.test(params.id)) {
     return routeFailure("not_found", "Delivery request not found.");
   }

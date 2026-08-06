@@ -31,13 +31,15 @@ function coordinates(
 ): { latitude: number; longitude: number; accuracyM: number | null } | null {
   const latitude = toNumber(body?.latitude);
   const longitude = toNumber(body?.longitude);
-  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) return null;
-  if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) return null;
+  // toNumber returns finite-or-null, so excluding null IS the finiteness
+  // check — and unlike Number.isFinite, the null comparison narrows the type.
+  if (latitude === null || latitude < -90 || latitude > 90) return null;
+  if (longitude === null || longitude < -180 || longitude > 180) return null;
 
   let accuracyM: number | null = null;
   if (body?.accuracyM !== null && body?.accuracyM !== undefined) {
     accuracyM = toNumber(body.accuracyM);
-    if (!Number.isFinite(accuracyM) || accuracyM < 0) return null;
+    if (accuracyM === null || accuracyM < 0) return null;
   }
 
   return { latitude, longitude, accuracyM };
@@ -51,7 +53,8 @@ function coordinates(
  * command with `signature_required` until that proof exists — so the evidence
  * cannot be asserted by the same request that claims the delivery is done.
  */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await resolveUserId(req);
   if (isActorDenied(auth)) return routeFailure(auth.code, auth.error);
 

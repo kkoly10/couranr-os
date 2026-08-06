@@ -31,7 +31,8 @@ function refusal() {
   return NextResponse.json({ resolved: false }, { status: 404 });
 }
 
-export async function GET(_req: NextRequest, { params }: { params: { token: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   // Shape-checked before a hash is computed, so a lookup is never attempted for
   // attacker-shaped input. Same answer as any other refusal.
   if (!isWellFormedTrackingToken(params.token)) return refusal();

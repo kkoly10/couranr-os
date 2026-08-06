@@ -35,8 +35,9 @@ function refusal() {
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { token: string; proofId: string } }
+  props: { params: Promise<{ token: string; proofId: string }> }
 ) {
+  const params = await props.params;
   if (!isWellFormedTrackingToken(params.token)) return refusal();
   if (!UUID_RE.test(params.proofId ?? "")) return refusal();
 

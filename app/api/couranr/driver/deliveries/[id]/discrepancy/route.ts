@@ -23,7 +23,8 @@ const MAX_NOTES = 1000;
  * The reason is one of a closed set, checked here so an unknown value cannot
  * reach a text column and become an unqueryable category of its own.
  */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await resolveUserId(req);
   if (isActorDenied(auth)) return routeFailure(auth.code, auth.error);
 

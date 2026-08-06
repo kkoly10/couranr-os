@@ -24,7 +24,8 @@ const MAX_TOKEN = 200;
  * object itself and compares, which is the only way a truncated upload — HTTP
  * 200 with a partial body — is ever caught.
  */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await resolveUserId(req);
   if (isActorDenied(auth)) return routeFailure(auth.code, auth.error);
 

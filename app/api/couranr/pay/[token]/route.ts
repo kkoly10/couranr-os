@@ -28,7 +28,8 @@ function refusal(reason: string, status = 404) {
 }
 
 /** GET — what this link is for: the quote the customer is being asked to approve. */
-export async function GET(_req: NextRequest, { params }: { params: { token: string } }) {
+export async function GET(_req: NextRequest, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   if (!isWellFormedToken(params.token)) return refusal("not_found");
 
   const r = await redeemPaymentLink({ rawToken: params.token });
@@ -58,7 +59,8 @@ export async function GET(_req: NextRequest, { params }: { params: { token: stri
 }
 
 /** POST — set up the PaymentIntent for this link and return its client secret. */
-export async function POST(_req: NextRequest, { params }: { params: { token: string } }) {
+export async function POST(_req: NextRequest, props: { params: Promise<{ token: string }> }) {
+  const params = await props.params;
   if (!isWellFormedToken(params.token)) return refusal("not_found");
 
   const r = await redeemPaymentLink({ rawToken: params.token });

@@ -28,7 +28,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
  * hash is — and it is not logged. A lost link is reissued, never recovered.
  * Callers must treat the response body as a credential.
  */
-export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
+export async function POST(req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const actor = await resolveRequestActor(req, null);
   if (isActorDenied(actor)) return routeFailure(actor.code, actor.error);
 
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest, ctx: { params: { id: string } }) {
     return routeFailure("not_permitted", "Only Couranr Operations can issue a help link.");
   }
 
-  const deliveryId = ctx.params?.id || "";
+  const deliveryId = (await ctx.params)?.id || "";
   if (!UUID_RE.test(deliveryId)) {
     return routeFailure("not_found", "That delivery is not available.");
   }

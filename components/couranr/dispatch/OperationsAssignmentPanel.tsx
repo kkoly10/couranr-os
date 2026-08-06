@@ -138,6 +138,11 @@ export function OperationsAssignmentPanel({
   });
 
   async function submit() {
+    // The render-scope `if (!delivery) return null` does not narrow inside
+    // this closure, and strictly it should not: the handler runs later. The
+    // guard is real, not a type appeasement — a click racing a reload would
+    // otherwise read .version off null.
+    if (!delivery) return;
     setBusy(true);
     setError(null);
     const r =

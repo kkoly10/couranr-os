@@ -21,7 +21,8 @@ const MAX_NOTE = 1000;
  * There is no "target state" in this body. The route names ONE outcome, so the
  * only thing a caller chooses is whether to invoke it.
  */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const actor = await resolveRequestActor(req, null);
   if (isActorDenied(actor)) return routeFailure(actor.code, actor.error);
 

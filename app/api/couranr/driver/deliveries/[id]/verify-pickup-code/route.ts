@@ -27,7 +27,8 @@ const MAX_CODE_LENGTH = 32;
  * code, so the response shape can never be used to probe what a valid one
  * looks like.
  */
-export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const params = await props.params;
   const auth = await resolveUserId(req);
   if (isActorDenied(auth)) return routeFailure(auth.code, auth.error);
 

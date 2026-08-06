@@ -1,11 +1,12 @@
 import { createClient } from "@supabase/supabase-js";
 import RentClient from "./RentClient";
 
-export default async function RentVehiclePage({
-  params,
-}: {
-  params: { vehicleId: string };
-}) {
+export default async function RentVehiclePage(
+  props: {
+    params: Promise<{ vehicleId: string }>;
+  }
+) {
+  const params = await props.params;
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     (process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)!
