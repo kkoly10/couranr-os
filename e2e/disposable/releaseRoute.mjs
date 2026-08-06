@@ -290,6 +290,10 @@ async function main() {
       const r = await fetch(`${stripeBase}/v1/payment_intents/${a.intentId}`);
       const pi = await r.json();
       check("E8", "the intent at the double is canceled", pi.status === "canceled", pi.status);
+      // The field that says whether money is still held. Real Stripe zeroes it
+      // on cancel; the double did not, until an adversarial review measured it.
+      check("E8b", "... and NOTHING remains capturable", pi.amount_capturable === 0,
+        `amount_capturable=${pi.amount_capturable}`);
     }
     check(
       "E9", "the obligation is cancelled with cancelled_at set",

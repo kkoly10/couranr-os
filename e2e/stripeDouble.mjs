@@ -339,10 +339,34 @@ export function startStripeDouble(port = 12111) {
           });
         }
 
+        /*
+         * ZERO amount_capturable, and PERSIST.
+         *
+         * Both were wrong in the first version of this branch, and an
+         * adversarial-review agent measured it: cancel returned
+         * {"status":"canceled","amount_capturable":2299}. Real Stripe releases
+         * the hold, so nothing remains capturable — this double was more
+         * permissive than reality on the ONE field that says whether money is
+         * still held. Nothing reads it on the release path today, which is why
+         * the finding was correctly refuted as a live defect; it is fixed
+         * anyway, because the next slice that DOES read it would pass here and
+         * fail against Stripe, and that is the whole failure mode a double
+         * exists to avoid.
+         *
+         * cancellation_reason is no longer invented. Real Stripe leaves it null
+         * for a manual cancel with no reason supplied; defaulting it to
+         * "requested_by_customer" asserted a fact about WHY the money moved
+         * that nobody stated.
+         *
+         * saveStore() matches every other mutating branch (:135, :165, :204,
+         * :299); omitting it left the store disagreeing with memory.
+         */
         pi.status = "canceled";
-        pi.cancellation_reason =
-          (parseForm(body) || {}).cancellation_reason || "requested_by_customer";
+        pi.amount_capturable = 0;
+        const cancelForm = parseForm(body) || {};
+        pi.cancellation_reason = cancelForm.cancellation_reason || null;
         intents.set(pi.id, pi);
+        saveStore();
         return json(200, intentJson(pi));
       }
 
