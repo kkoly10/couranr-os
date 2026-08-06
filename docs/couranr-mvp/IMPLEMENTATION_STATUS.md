@@ -25,6 +25,7 @@ Every SHA appearing in either ledger, in full, with what it covers:
 
 | SHA | rows | what was verified at it |
 |---|---|---|
+| `cea45ae76c3964ae990344eeed0cb99ba50a703e` | 1 screen | `MER-003` live activation checklist — 64/64 unstubbed signed-in browser checks walking `not_started → in_progress → pending_couranr_review → blocked → live`, every step asserted in the page AND on the row. The property proven rather than asserted: the OWNER is refused at the Operations route (403, row unmoved) and `couranr_decide_activation` refuses them again when called directly as a superuser, so no merchant path reaches `live`. Building the run found two real defects — nothing called `record_test_delivery` so the checklist could never be completed, and the route's capability was one role narrower than the SQL's. Carries migration `20260806170000`, NOT applied to production |
 | `cd697e48889389b5365562d4e7f3c82413c10ea9` | 2 screens | `MER-008` and `MER-009` — 34/34 unstubbed signed-in browser checks. PII asserted against RENDERED HTML: a first run caught a REAL LEAK (the internal grouping key put a recipient's phone number inside every Open link) and the browser now receives a tenant-salted digest. Archive proven not to be a delete by an unchanged row count. Carries migration `20260806160000`, NOT applied to production |
 | `981748b95c0916b15274eb8ef20be1bb1b41f4db` | 1 screen | `MER-013` website tools — 24/24 unstubbed signed-in browser checks, including the rendered QR DECODED back to the merchant's real link (browser-rasterized pixels through jsqr), publish/disable asserted on the row, an invalid embed persisting nothing, and a body naming a status instead of an action refused 400 |
 | `e4dd7e2afa29f35ac161985e915db112cbeaedb8` | 2 screens | `MER-014` and `MER-015` — 41/41 unstubbed signed-in browser checks on the disposable stack, including the CONCURRENT double-demote race (two parallel demotes returned 200/409, leaving one active owner where a TypeScript-only guard would have left none), the invite/accept round trip asserted on both rows and both audit events, and the five probes measuring what the un-applied hardening migration actually changes |
@@ -257,7 +258,8 @@ against `c929cc3`, and three of them moved twice. Final positions: `PUB-007`,
 `missing` therefore falls 8 → 5. The five that remain are **not** all
 `/help/[token]`, as an earlier revision of this file asserted: they are
 `CUS-002`, `CUS-004`, `CUS-007` (help), plus `DRV-007` (offline sync) and
-`MER-003` (onboarding activation). `CUS-004` is authority-deferred;
+`MER-003` (onboarding activation). **`MER-003` has since shipped** at
+`cea45ae` — 64/64 browser checks — leaving four. `CUS-004` is authority-deferred;
 `CUS-002` and `CUS-007` describe returns and delivery-charge refunds, which
 `P6-004` and `P7-005` do not provide; `DRV-007` needs the unbuilt half of
 `P7-004`.
