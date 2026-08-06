@@ -104,6 +104,12 @@ describe("canonical screen registry", () => {
       // brings the team-management capability that did not previously exist.
       "MER-008",
       "MER-009",
+      // MER-010 and MER-011 are the B04 presets list and builder. Recorded
+      // functional_UNVERIFIED in the screen ledger: the layers beneath are
+      // executed (schema 24/24, commands 50/50 including a real concurrent
+      // race) but neither screen has been driven in a browser yet.
+      "MER-010",
+      "MER-011",
       "MER-013",
       "MER-014",
       "MER-015",
@@ -128,8 +134,8 @@ describe("canonical screen registry", () => {
 
     const p = implementationProgress();
     expect(p.total).toBe(66);
-    expect(p.implemented).toBe(24);
-    expect(p.remaining).toBe(42);
+    expect(p.implemented).toBe(26);
+    expect(p.remaining).toBe(40);
     expect(p.coreTotal).toBe(62);
   });
 
