@@ -172,6 +172,83 @@ describe("one primary, up to three secondary", () => {
   });
 });
 
+describe("the migration enforces the same rules the validator does", () => {
+  /**
+   * The validator produces good copy for a merchant; the CHECKs make the rule
+   * true regardless of which caller wrote the row. Both must exist, because
+   * `service_role` bypasses RLS and the ~45 ad-hoc inline clients in legacy
+   * routes do not go through the validator at all.
+   *
+   * These are TEXT assertions on the file — a guard on the migration, not a
+   * guarantee about the database. The database half was executed against a
+   * real PostgreSQL: 18/18, including a direct UPDATE proving each CHECK
+   * fires, and proving the distinctness helper is still evaluated inside the
+   * CHECK after being revoked from PUBLIC.
+   */
+  const sql = readFileSync(
+    path.join(ROOT, "supabase/migrations/20260806180000_couranr_business_categories.sql"),
+    "utf8"
+  );
+
+  it("constrains the count, the values, the primary overlap and distinctness", () => {
+    for (const c of [
+      "couranr_mw_secondary_count_chk",
+      "couranr_mw_secondary_values_chk",
+      "couranr_mw_secondary_not_primary_chk",
+      "couranr_mw_secondary_distinct_chk",
+    ]) {
+      expect(sql, `${c} missing`).toContain(c);
+    }
+    expect(sql).toMatch(/cardinality\(secondary_categories\) <= 3/);
+  });
+
+  it("the SQL's value list is exactly this module's", () => {
+    // Two lists of eleven strings that must agree. A category added to the
+    // registry but not the CHECK fails at runtime on every write.
+    const m = sql.match(/couranr_mw_secondary_values_chk[\s\S]*?array\[([\s\S]*?)\]::text\[\]/);
+    expect(m, "the secondary-values CHECK is not where this test expects it").toBeTruthy();
+    const fromSql = m![1]
+      .split(",")
+      .map((s) => s.trim().replace(/^'|'$/g, ""))
+      .filter(Boolean)
+      .sort();
+    expect(fromSql).toEqual([...BUSINESS_CATEGORIES].sort());
+  });
+
+  it("is additive — it adds columns and drops nothing", () => {
+    expect(sql).toMatch(/add column if not exists secondary_categories/);
+    expect(sql).toMatch(/add column if not exists category_registry_version/);
+    expect(sql).not.toMatch(/drop (table|column)/i);
+  });
+
+  it("names `public` in its revokes, not just anon and authenticated", () => {
+    // `pg_default_acl` grants EXECUTE to PUBLIC on every new function in
+    // `public` on this project, so a revoke that omits `public` is a silent
+    // no-op that reads as protection.
+    const revokes = sql.match(/revoke all on function[\s\S]*?;/g) ?? [];
+    expect(revokes.length).toBeGreaterThanOrEqual(2);
+    for (const r of revokes) {
+      expect(r, `revoke omits public: ${r.slice(0, 80)}`).toMatch(/from public\b/);
+    }
+  });
+
+  it("the distinctness helper must be IMMUTABLE or it cannot sit in a CHECK", () => {
+    expect(sql).toMatch(/create or replace function public\.couranr_text_array_is_distinct[\s\S]*?immutable/);
+  });
+
+  it("the rollback warns before destroying a merchant's choices", () => {
+    const rb = readFileSync(
+      path.join(ROOT, "supabase/rollbacks/20260806180000_couranr_business_categories.rollback.sql"),
+      "utf8"
+    );
+    expect(rb).toMatch(/CHOICES A MERCHANT MADE/);
+    // The destructive half must be commented out, so running the file by
+    // reflex drops the command and not the data.
+    expect(rb).toMatch(/^--\s*alter table public\.couranr_merchant_workspaces$/m);
+    expect(rb).toMatch(/^drop function if exists public\.couranr_set_business_categories/m);
+  });
+});
+
 describe("CATEGORY CONTROLS RECOMMENDATIONS, NOT ELIGIBILITY", () => {
   /**
    * Master Package §5, verbatim: "Category controls initial recommendations,

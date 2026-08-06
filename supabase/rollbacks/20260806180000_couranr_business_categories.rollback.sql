@@ -1,0 +1,44 @@
+-- ---------------------------------------------------------------------
+-- ROLLBACK for 20260806180000_couranr_business_categories
+--
+-- READ THIS BEFORE RUNNING IT.
+--
+-- `secondary_categories` holds CHOICES A MERCHANT MADE. Dropping the column
+-- destroys them, and there is no other record: the value is not derivable from
+-- anything else, and re-running the forward migration brings the column back
+-- EMPTY. Every merchant would silently appear to have chosen no secondary
+-- categories, which is indistinguishable from a merchant who genuinely chose
+-- none.
+--
+-- If the intent is to disable the feature rather than erase the data, do NOT
+-- run section 2. Dropping the command in section 1 already makes the columns
+-- unwritable, which stops the feature while keeping what merchants told us.
+-- ---------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------
+-- 1. The command. Safe: it destroys no data.
+-- ---------------------------------------------------------------------
+drop function if exists public.couranr_set_business_categories(uuid, uuid, text, text[], text);
+
+-- ---------------------------------------------------------------------
+-- 2. The columns and their constraints. DESTRUCTIVE — see the note above.
+-- ---------------------------------------------------------------------
+-- Uncomment deliberately.
+--
+-- alter table public.couranr_merchant_workspaces
+--   drop constraint if exists couranr_mw_secondary_distinct_chk;
+-- alter table public.couranr_merchant_workspaces
+--   drop constraint if exists couranr_mw_secondary_not_primary_chk;
+-- alter table public.couranr_merchant_workspaces
+--   drop constraint if exists couranr_mw_secondary_values_chk;
+-- alter table public.couranr_merchant_workspaces
+--   drop constraint if exists couranr_mw_secondary_count_chk;
+--
+-- alter table public.couranr_merchant_workspaces
+--   drop column if exists category_registry_version;
+-- alter table public.couranr_merchant_workspaces
+--   drop column if exists secondary_categories;
+--
+-- -- The helper is only referenced by the distinctness CHECK above, so it can
+-- -- only be dropped once that constraint is gone.
+-- drop function if exists public.couranr_text_array_is_distinct(text[]);
