@@ -189,9 +189,12 @@ export function verifyFidelity() {
       () => one("select rolbypassrls from pg_roles where rolname='service_role'") === "t"],
     ["pg_default_acl grants exist",
       () => Number(one("select count(*) from pg_default_acl")) >= 3],
-    ["24 couranr_ tables",
+    // 24 at the production head, plus `couranr_team_events` from the MER-015
+    // migration (20260806120000), which is committed but NOT yet applied to
+    // production — so the disposable stack is deliberately one ahead here.
+    ["25 couranr_ tables",
       () => one(`select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace
-                 where n.nspname='public' and c.relkind='r' and c.relname like 'couranr%'`) === "24"],
+                 where n.nspname='public' and c.relkind='r' and c.relname like 'couranr%'`) === "25"],
     ["couranr_ functions present",
       () => Number(one(`select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
                         where n.nspname='public' and p.proname like 'couranr%'`)) >= 78],

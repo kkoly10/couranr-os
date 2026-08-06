@@ -142,6 +142,10 @@ describe("server-only modules are unreachable from client code", () => {
       "lib/couranr/payments/tokens.ts",
       "lib/couranr/requests/actor.ts",
       "lib/couranr/requests/commands.ts",
+      // MER-014/MER-015. Holds the service-role client AND the auth admin API
+      // — `listUsers` walks every account in the project to resolve an invite
+      // email, which is the last thing that may ever reach a browser bundle.
+      "lib/couranr/settings/commands.ts",
       // The customer tracking link. `commands.ts` holds the service-role
       // client and the whole recipient read; `tokens.ts` holds the hashing.
       // A tracking link travels further than any other Couranr URL, so a

@@ -156,6 +156,17 @@ create table if not exists public.business_accounts (
   updated_at    timestamptz not null default now()
 );
 
+-- `slug` is UNIQUE in the live project (business_accounts_slug_key). Without
+-- it here, `couranr_create_merchant_workspace`'s slug loop — which tries a
+-- candidate against the unique index rather than checking first — could never
+-- detect a collision, and a disposable run would pass where production fails.
+create unique index if not exists business_accounts_slug_key
+  on public.business_accounts (slug);
+
+-- The CHECK and UNIQUE constraints below are read from the live project's
+-- pg_constraint, not invented. They matter: the role/status checks are what
+-- refuse an invented role, and unique(business_account_id, user_id) is what
+-- makes an invite idempotent instead of duplicating a membership.
 create table if not exists public.business_members (
   id                  uuid primary key default gen_random_uuid(),
   business_account_id uuid not null references public.business_accounts(id) on delete cascade,
@@ -166,7 +177,14 @@ create table if not exists public.business_members (
   invited_by          uuid,
   joined_at           timestamptz,
   created_at          timestamptz not null default now(),
-  updated_at          timestamptz not null default now()
+  updated_at          timestamptz not null default now(),
+
+  constraint business_members_role_check check (role in (
+    'owner', 'manager', 'dispatcher', 'viewer', 'billing')),
+  constraint business_members_status_check check (status in (
+    'active', 'invited', 'disabled')),
+  constraint business_members_business_account_id_user_id_key
+    unique (business_account_id, user_id)
 );
 
 create table if not exists public.profiles (
@@ -219,6 +237,97 @@ create policy admin_all_profiles on public.profiles
 -- The baseline also grants `authenticated` DML on profiles. SEC-001 revokes
 -- UPDATE; without the grant existing first, the revoke is untestable.
 grant select, insert, update on public.profiles to authenticated;
+
+-- ── the business-tenancy predicates and their policies ─────────────────────
+--
+-- `app_is_admin` and `app_is_business_member` are reproduced VERBATIM from the
+-- live project (pg_get_functiondef, 2026-08-06). Both are SECURITY DEFINER
+-- there, which is what stops `business_members_select` from recursing when it
+-- calls a predicate that reads `business_members`.
+create or replace function public.app_is_admin()
+returns boolean language sql stable security definer set search_path to 'public'
+as $$
+  select exists (
+    select 1 from public.profiles p
+    where p.id = auth.uid() and p.role = 'admin'
+  );
+$$;
+
+create or replace function public.app_is_business_member(p_business_account_id uuid)
+returns boolean language sql stable security definer set search_path to 'public'
+as $$
+  select exists (
+    select 1 from public.business_members bm
+    where bm.business_account_id = p_business_account_id
+      and bm.user_id = auth.uid()
+      and bm.status = 'active'
+  )
+  or public.app_is_admin();
+$$;
+
+alter table public.business_accounts enable row level security;
+alter table public.business_members enable row level security;
+
+-- REPRODUCED WITH THEIR DEFECTS, deliberately, exactly as `profiles_update_own`
+-- above is created in its pre-SEC-001 form. These two policies are the live
+-- project's, including:
+--
+--   * business_members_manage_owner_manager validating only the ACTOR and
+--     never the row being written — which, with the DML grants below, lets an
+--     active manager rewrite any membership row in their business;
+--   * business_accounts_update_owner_manager comparing bm.business_account_id
+--     to bm.id, a self-comparison that is never true, so the policy silently
+--     reduces to app_is_admin().
+--
+-- Migration 20260806130000 fixes both. Reproducing the broken state here is
+-- what lets the disposable stack prove the fix does something: a bootstrap
+-- that started from the fixed state would assert nothing.
+drop policy if exists business_accounts_select on public.business_accounts;
+create policy business_accounts_select on public.business_accounts
+  for select using (public.app_is_business_member(id));
+
+drop policy if exists business_accounts_update_owner_manager on public.business_accounts;
+create policy business_accounts_update_owner_manager on public.business_accounts
+  for update using (
+    exists (
+      select 1 from public.business_members bm
+      where bm.business_account_id = bm.id
+        and bm.user_id = auth.uid()
+        and bm.status = 'active'
+        and bm.role in ('owner', 'manager')
+    ) or public.app_is_admin()
+  );
+
+drop policy if exists business_members_select on public.business_members;
+create policy business_members_select on public.business_members
+  for select using (public.app_is_business_member(business_account_id));
+
+drop policy if exists business_members_manage_owner_manager on public.business_members;
+create policy business_members_manage_owner_manager on public.business_members
+  for all using (
+    exists (
+      select 1 from public.business_members bm
+      where bm.business_account_id = business_members.business_account_id
+        and bm.user_id = auth.uid()
+        and bm.status = 'active'
+        and bm.role in ('owner', 'manager')
+    ) or public.app_is_admin()
+  )
+  with check (
+    exists (
+      select 1 from public.business_members bm
+      where bm.business_account_id = business_members.business_account_id
+        and bm.user_id = auth.uid()
+        and bm.status = 'active'
+        and bm.role in ('owner', 'manager')
+    ) or public.app_is_admin()
+  );
+
+-- The live project grants anon and authenticated full DML on both tables
+-- (has_table_privilege, 2026-08-06). Without these grants existing first, the
+-- hardening migration's revoke is untestable.
+grant select, insert, update, delete on public.business_members to anon, authenticated;
+grant select, insert, update, delete on public.business_accounts to anon, authenticated;
 
 -- ── the three functions the disposable /auth/v1 is built on ────────────────
 --
