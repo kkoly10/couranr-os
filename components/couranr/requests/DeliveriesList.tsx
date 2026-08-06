@@ -145,8 +145,6 @@ export function DeliveriesList() {
         .filter((q) => (PAYABLE_REQUEST_STATES as readonly string[]).includes(q.requestState))
         .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1));
       const checked = payable.slice(0, PAYMENT_CHECK_LIMIT);
-      setPaymentsTruncated(payable.length > checked.length);
-      setPaymentsChecked(checked.length);
 
       const views = await Promise.all(
         checked.map((q) => fetchFulfillment({ id: q.id, businessAccountId }))
@@ -158,7 +156,12 @@ export function DeliveriesList() {
         if (isApiFailure(v)) continue; // unreadable = unchecked, never guessed
         map.set(checked[i].id, v.value.payment ? v.value.payment.paymentState : null);
       }
+      // The scope note and the facts land TOGETHER. Announcing "checked" while
+      // the fan-out was still in flight made the page claim facts it did not
+      // yet hold — the first harness run caught exactly that.
       setPayments(map);
+      setPaymentsTruncated(payable.length > checked.length);
+      setPaymentsChecked(checked.length);
     });
 
     return () => {

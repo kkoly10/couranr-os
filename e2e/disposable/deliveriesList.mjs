@@ -59,8 +59,15 @@ function check(id, description, ok, detail = "") {
 const sql = (q) => psql(q).trim();
 const esc = (s) => String(s).replace(/'/g, "''");
 
+/**
+ * `Field` renders a required label as "Name*" and a NON-required one as
+ * "Name (optional)" — the matcher must accept both, and `getByLabel` matches
+ * label TEXT, not the accessible name. The optional suffix cost this harness
+ * its first facet run.
+ */
 function fieldLabel(scope, name) {
-  return scope.getByLabel(new RegExp(`^${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\*?$`));
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return scope.getByLabel(new RegExp(`^${escaped}( \\(optional\\))?\\s*\\*?$`));
 }
 
 /* ------------------------------------------------------------------ seeding */
