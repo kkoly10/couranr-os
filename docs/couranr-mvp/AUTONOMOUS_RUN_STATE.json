@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "repository": "kkoly10/couranr-os",
+  "authority_sha": "f26d857fb797b008fc5772700d65a4e5c181f259",
+  "production_migration_head": "20260806010000",
+  "active_batch": "B01",
+  "active_capability": "ACP-003",
+  "open_pr": 24,
+  "completed_capabilities": ["ACP-001", "ACP-002"],
+  "blocked_capabilities": [],
+  "decision_queue": [
+    "SVC-002",
+    "PRC-004",
+    "TAX-001",
+    "OVN-002",
+    "FLG-002",
+    "HOL-001",
+    "MED-001",
+    "AI-PROVIDER",
+    "OBS-PROVIDER"
+  ],
+  "p0_findings": [],
+  "production_changes_pending_approval": [],
+  "last_full_gate": {
+    "sha": "8f0725f0f154946c0fbd2056a0021de0ab794601",
+    "result": "pass",
+    "evidence": "lint 0 errors; tsc clean; 1285 tests/41 files; build 91 pages; CI validate success x2; tree at f26d857 is byte-identical so the gate transfers"
+  },
+  "notes": {
+    "b00_integration": "PR #22 squash-merged as f26d857 per spec section 2; branch ref claude/couranr-phase-8-conversations retained so ledger evidence SHAs stay reachable",
+    "gap_intake": "ACP-002 protocol active: any discovered requirement with no work-item row becomes ACP-GAP-### in IMPLEMENTATION_LEDGER-adjacent notes before implementation continues",
+    "owner_gates_standing": "no production migration apply, no production ledger repair, no real Stripe money, no secret rotation, no bucket made public, no batch-PR merge, no canary — each needs explicit owner approval for the exact operation"
+  }
+}

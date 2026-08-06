@@ -1,0 +1,4 @@
+test_id,capability_id,work_item_ids,screen_ids,severity,environment,commit_sha,result,evidence_paths,known_limit
+ACP-001-DB-01,ACP-001,P0-002;P12-001,,P0,production-readonly,f26d857fb797b008fc5772700d65a4e5c181f259,pass,B00/ACP-001/commands.txt,read-only catalog comparison only
+ACP-001-API-01,ACP-001,P0-002,,P0,github,f26d857fb797b008fc5772700d65a4e5c181f259,pass,B00/ACP-001/commands.txt,squash merge via GitHub API; branch ref retained
+ACP-001-UT-01,ACP-001,P0-002,,P1,local,f26d857fb797b008fc5772700d65a4e5c181f259,pass,B00/ACP-001/results.json,counts re-derived by command; tree identity makes Phase 8 gate transferable

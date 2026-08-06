@@ -1,0 +1,18 @@
+# ACP-001 — execution truth anchor, 2026-08-06
+# Production ledger (read-only, immediately before merge):
+#   mcp list_migrations -> 39 rows, head 20260806010000_couranr_operating_hours,
+#   every version equal to its repository filename.
+# Integration:
+#   PR #22 marked ready, then squash-merged (repo linear-history method,
+#   matching #21 c929cc3 and #23 bf38d15) -> main f26d857.
+git fetch origin main                              # bf38d15..f26d857
+git diff --stat 8f0725f f26d857                    # empty -> tree-identical
+ls supabase/migrations/*.sql | grep -vc rollback   # 39
+ls supabase/rollbacks/*.rollback.sql | wc -l       # 39
+find app -name 'page.tsx' | wc -l                  # 99
+find app/api -name 'route.ts' | wc -l              # 131
+find 'app/(couranr)' -name 'page.tsx' | wc -l      # 43
+grep -rl ScreenPlaceholder 'app/(couranr)' --include=page.tsx | wc -l  # 25
+find app/api/couranr -name 'route.ts' | wc -l      # 60
+# Ledger SHA reachability after squash (branch ref retained):
+for s in a115f92... ced8af8... 4e0bce8... 401b3ee... 1b3a1c9...; git cat-file -t  # all "commit"

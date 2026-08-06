@@ -1,0 +1,15 @@
+{
+  "main": "f26d857fb797b008fc5772700d65a4e5c181f259",
+  "tree_identical_to": "8f0725f0f154946c0fbd2056a0021de0ab794601",
+  "production_migrations": 39,
+  "repo_forward_migrations": 39,
+  "repo_rollbacks": 39,
+  "page_routes": 99,
+  "api_routes": 131,
+  "canonical_pages": 43,
+  "canonical_placeholders": 25,
+  "canonical_api_routes": 60,
+  "work_items_complete_verified": "12/42",
+  "screens_functional_verified": "15/66",
+  "ledger_shas_reachable": true
+}

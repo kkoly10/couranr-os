@@ -6,8 +6,8 @@ file wins, and the two CSV ledgers beside it carry the per-item detail.
 
 | | |
 |---|---|
-| Branch | `claude/couranr-phase-8-conversations` |
-| Counts re-measured at SHA | `4e0bce874614be57118e869bf9802937ca1c1da4` |
+| Branch | `main` — Phase 8 merged as `f26d857fb797b008fc5772700d65a4e5c181f259` (PR #22, squash; tree-identical to `8f0725f`) |
+| Counts re-measured at SHA | `4e0bce874614be57118e869bf9802937ca1c1da4`, re-confirmed at `f26d857` (99 pages / 131 API routes / 43 canonical / 25 placeholders) |
 | Per-item status last verified at SHA | `a115f92` for the Phase 8 messaging rows; `4e0bce8`, `ced8af8` and `1b3a1c9` for earlier slices; `401b3ee` for the rest |
 | Verified at (UTC) | 2026-08-06 |
 | Active slice | [`ACTIVE_EXECUTION_SLICE.md`](./ACTIVE_EXECUTION_SLICE.md) |
@@ -45,10 +45,13 @@ safety. The branch MERGED the new main rather than rebasing, so every
 `tests/couranr-implementation-ledger.test.ts` requires every distinct ledger SHA
 to be named in this file, so this table cannot silently fall out of date.
 
-**This file now describes a BRANCH, not `main`.** Phase 8 is unmerged. The
-database, however, is not: production already carries all seven Phase 8
-migrations. `PHASE8_RECONCILIATION.md` records that drift in full and proves
-production is schema-identical to a clean replay of this branch.
+**This file describes `main` again.** Phase 8 merged on 2026-08-06 as
+`f26d857` (PR #22, squash — the tree is byte-identical to the verified branch
+head `8f0725f`, so every result transfers). Repository and production agree:
+39 forward migrations, 39 production ledger rows, every version equal to its
+filename. The autonomous completion run that follows is governed by
+[`AUTONOMOUS_COMPLETION_EXECUTION_SPEC.md`](./AUTONOMOUS_COMPLETION_EXECUTION_SPEC.md)
+with live state in [`AUTONOMOUS_RUN_STATE.json`](./AUTONOMOUS_RUN_STATE.json).
 
 Every number below was counted at that SHA by a command whose output was read.
 None is quoted from an earlier report, a commit message or a plan.

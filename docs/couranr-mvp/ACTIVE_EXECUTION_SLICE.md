@@ -13,13 +13,12 @@ as a reason to build something the package does not require.
 | | |
 |---|---|
 | Base branch | `main` |
-| Base SHA | `bf38d156ddcaae70f99c3a0c2d0e82efd0cf26a7` — PR #23 (migration hygiene) merged into main |
-| Previous base | `c929cc3a8e630bd11ac0a98ff3800a16ee77c140` (the SEC-001 hotfix, PR #21) |
-| Active branch | `claude/couranr-phase-8-conversations` |
-| Reconciled at | `40129ee06d96bfdcd85bb653397d2553a1fa5b98` — **16** commits ahead of the then-base, 0 behind |
-| Last verification SHA | `a115f9212364bab0951053c73877952674ee07d6` — the authenticated messaging pass |
-| Target PR | [#22](https://github.com/kkoly10/couranr-os/pull/22), draft |
-| Status | **`verified`** — every Phase 8 acceptance criterion is now proven by an executed run, and both remaining gaps are recorded rather than absorbed |
+| Base SHA | `f26d857fb797b008fc5772700d65a4e5c181f259` — Phase 8 (PR #22) squash-merged 2026-08-06 |
+| Previous base | `bf38d156ddcaae70f99c3a0c2d0e82efd0cf26a7` (migration hygiene, PR #23) |
+| Phase 8 branch | `claude/couranr-phase-8-conversations` — retained (not deleted) so every ledger `last_verified_sha` stays reachable |
+| Last verification SHA | `a115f9212364bab0951053c73877952674ee07d6` — the authenticated messaging pass; tree at `f26d857` is byte-identical to head `8f0725f` |
+| Phase 8 PR | [#22](https://github.com/kkoly10/couranr-os/pull/22), **MERGED** |
+| Status | **Phase 8 CLOSED — the active slice is now the autonomous completion run** governed by [`AUTONOMOUS_COMPLETION_EXECUTION_SPEC.md`](./AUTONOMOUS_COMPLETION_EXECUTION_SPEC.md), batch `B01`, state in [`AUTONOMOUS_RUN_STATE.json`](./AUTONOMOUS_RUN_STATE.json) |
 | Reconciliation | [`PHASE8_RECONCILIATION.md`](./PHASE8_RECONCILIATION.md) |
 
 The base SHA is the SEC-001 hotfix merge (PR #21). The Phase 8 branch is rebased
