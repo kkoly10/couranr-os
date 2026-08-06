@@ -26,6 +26,7 @@ Every SHA appearing in either ledger, in full, with what it covers:
 | SHA | rows | what was verified at it |
 |---|---|---|
 | `a115f9212364bab0951053c73877952674ee07d6` | 3 work items, 4 screens | the AUTHENTICATED MESSAGING pass — `P8-001`, `P8-002`, `P8-004`; `MER-012`, `DRV-008`, `OPS-005`, `PUB-007`. 51/51 unstubbed signed-in browser checks, plus the acceptance matrix made re-runnable at 27/27 twice from an empty database |
+| `c2cac8b9ffeaaf7e9a6a528a9eac5d057a2801f9` | 1 work item | the B01 platform batch — `P2-001` private/analytics schemas, executed against a disposable database; production apply pending owner approval |
 | `ced8af8130ebf8c556360c6d74d09d7338e38e5c` | 2 screens | `CUS-001` and `CUS-003`, unstubbed against a disposable database — 11/11 |
 | `4e0bce874614be57118e869bf9802937ca1c1da4` | 1 work item | the Phase 8 HARDENING pass — HRS-002, TRM-002, the disposable database, the deployment-path fix. Its messaging rows have since moved to `a115f92` |
 | `401b3eea5cd96bb09d224f3b113ba6091bba807d` | 38 work items, 57 screens | the baseline inventory pass |
@@ -86,7 +87,7 @@ No other value is permitted, and the validator fails the build on any other.
 
 | measure | count |
 |---|---|
-| Migration files | 39 forward in `supabase/migrations/` + 39 in `supabase/rollbacks/` — **paired, and rollbacks are out of the deployment's reach** |
+| Migration files | **40** forward in `supabase/migrations/` + **40** in `supabase/rollbacks/` — paired, rollbacks out of the deployment's reach. The 40th (`20260806100000`, private/analytics schemas) is **pending production approval** |
 | Applied migrations (live) | **39 — one row per forward migration, every version matching its filename.** The ledger was repaired and `20260806010000` applied on 2026-08-06 |
 | Page routes | 99 total — 43 canonical under `app/(couranr)`, 56 legacy |
 | Canonical pages rendering `ScreenPlaceholder` | 25 of 43 |
@@ -98,7 +99,8 @@ No other value is permitted, and the validator fails the build on any other.
 | `couranr_*` tables / functions | 24 / 78 |
 | Tables with RLS disabled | **0** |
 | Storage buckets / public | 7 / **1** (`vehicle-images`) |
-| Local Node / CI Node | v22.22.2 / 24 |
+| Local Node / CI Node | v22.22.2 / 24 — `engines >=24`, `.nvmrc` 24, lockfileVersion **3** |
+| Framework (B01) | **Next 16.3.0 (Turbopack) / React 19.2.8 / @supabase/ssr 0.12.4 / supabase-js 2.112.1 / ESLint 9 flat config / strict canonical tsconfig** |
 
 **REPOSITORY AND PRODUCTION ARE NOW IN LOCKSTEP.** 39 forward migrations, 39
 ledger rows, every version equal to its filename. Before the repair only **3 of
@@ -134,11 +136,11 @@ figure is honest rather than flattering.
 | status | count |
 |---|---|
 | `complete_verified` | 12 |
-| `complete_pending_external` | 2 |
+| `complete_pending_external` | 3 |
 | `complete_unverified` | 1 |
 | `partial` | 7 |
 | `placeholder_only` | 2 |
-| `not_started` | 18 |
+| `not_started` | 17 |
 | `blocked` | 0 |
 | `deferred_by_decision` | 0 |
 | `retired_or_superseded` | 0 |
