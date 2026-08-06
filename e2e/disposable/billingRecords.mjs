@@ -13,11 +13,14 @@
  *
  * Plus the properties a screen about money has to get right:
  *
- *   - The total is what was TAKEN. The fixture holds $50.00 authorized but
- *     never captured, $99.00 failed and $40.00 cancelled alongside $52.99
- *     genuinely captured. The rendered total must be $52.99; summing the rows
- *     regardless of state gives $241.99, which is a merchant being told they
- *     paid nearly five times what they paid.
+ *   - The total is what was TAKEN, over EVERY capture. The fixture holds
+ *     $50.00 authorized but never captured, $99.00 failed and $40.00
+ *     cancelled, plus 122 real captures totalling $172.99 — deliberately more
+ *     rows than the 100-row page. Two ways to get this wrong are both
+ *     asserted against: summing regardless of state gives $241.99, and
+ *     summing the LISTED PAGE gives $52.99. The second is not hypothetical —
+ *     it is what this module did until review caught it, and with a five-row
+ *     fixture it looked perfect.
  *   - Cross-tenant. Another business's charges never appear, proven by
  *     seeding a second business with a distinctive amount and asserting the
  *     page never renders it.
@@ -350,6 +353,55 @@ async function main() {
     check("F1", "the schema FORBIDS a partial capture, so the captured amount always equals the hold",
       partialAllowed === "1", `${partialAllowed} constraint`);
 
+    /*
+     * THE PAGE-BOUNDARY BUSINESS — its own tenant, so the five-state business
+     * above stays small and readable.
+     *
+     * This exists because the first version of this module computed BOTH the
+     * total and the failed-payment alert from the 100-row page. With five rows
+     * each looked perfect. Here:
+     *
+     *   - one FAILED charge, seeded FIRST so it is the OLDEST row and falls
+     *     off the page entirely. The alert must still fire, because a failed
+     *     authorization stops a delivery being dispatched and a merchant who
+     *     is never told cannot fix it.
+     *   - 120 captures of $1.00 seeded after it, so the page is 100 captures
+     *     and the total must still be $120.00.
+     */
+    console.log("  seeding a second business past the 100-row page...");
+    const pagedBiz = sql(
+      `insert into public.business_accounts (name, slug, status)
+       values ('[BILL] paged business', 'bill-paged', 'active') returning id`
+    );
+    const pagedOwner = {
+      id: makeUser("e2e-bill-paged@couranr.invalid"),
+      email: "e2e-bill-paged@couranr.invalid",
+    };
+    addMember(pagedBiz, pagedOwner.id, "owner");
+
+    // OLDEST row: a failure that will be pushed off the page.
+    const rOldFail = makeRequest(pagedBiz, pagedOwner.id, "[BILL] OLD FAILURE");
+    makeObligation(rOldFail, pagedBiz, "failed", 8888);
+    for (let i = 0; i < 120; i++) {
+      const r = makeRequest(pagedBiz, pagedOwner.id, `[BILL] bulk ${i}`);
+      makeObligation(r, pagedBiz, "captured", 100);
+    }
+
+    const pagedRows = sql(
+      `select count(*) from public.couranr_payment_obligations
+        where business_account_id='${pagedBiz}'`
+    );
+    check("F2", "the paged business holds 121 obligation rows — 21 past the page",
+      pagedRows === "121", pagedRows);
+    const failedIsOldest = sql(
+      `select (payment_state = 'failed')::text from public.couranr_payment_obligations
+        where business_account_id='${pagedBiz}' order by created_at asc limit 1`
+    );
+    check("F3", "and its FAILED row is the oldest, so the page cannot contain it",
+      failedIsOldest === "true", failedIsOldest);
+
+    const PAGED_TOTAL = "$120.00";
+
     console.log("  fixtures ready\n");
 
     /* ─────────────────────────── browser helpers ─────────────────────── */
@@ -440,8 +492,10 @@ async function main() {
       // The assertion the whole fixture exists for.
       check("A4", `the total is what was TAKEN (${EXPECTED_TOTAL}), not what was held`,
         body.includes(EXPECTED_TOTAL), body.match(/\$[\d.,]+ charged/)?.[0] ?? "no total found");
-      check("A5", `it is NOT the sum of every row (${WRONG_TOTAL})`,
+      check("A5", `it is NOT the sum of every row regardless of state (${WRONG_TOTAL})`,
         !body.includes(WRONG_TOTAL));
+      check("A5b", "a business inside one page shows no truncation notice",
+        !/charges are listed below/i.test(body));
       check("A6", "the authorized-but-never-captured $50.00 is shown but NOT counted",
         body.includes("$50.00") && body.includes(EXPECTED_TOTAL));
 
@@ -542,11 +596,56 @@ async function main() {
         Object.keys(r.body ?? {}).join(","));
       check("D2", "the server computes the total — the client never sums it",
         r.body?.billing?.totalChargedCents === 5299, String(r.body?.billing?.totalChargedCents));
+      check("D2b", "the total is flagged complete",
+        r.body?.billing?.totalIsComplete === true, String(r.body?.billing?.totalIsComplete));
       check("D3", "and the payment-method state is server-stated",
         r.body?.billing?.paymentMethod === "none_on_file", String(r.body?.billing?.paymentMethod));
-      check("D4", "only this business's rows come back",
-        Array.isArray(r.body?.billing?.records) && r.body.billing.records.length === 5,
+      check("D4", "only this business's rows come back — the $777.77 marker is absent",
+        Array.isArray(r.body?.billing?.records) &&
+          r.body.billing.records.length === 5 &&
+          !JSON.stringify(r.body.billing).includes("77777"),
         String(r.body?.billing?.records?.length));
+    }
+
+    /* ════════ THE PAGE BOUNDARY — the two bugs review actually found ═══ */
+
+    console.log("\nPast the page boundary — where the first version was wrong twice");
+    {
+      const r = await api(pagedOwner.email, `/api/couranr/merchant/billing?businessAccountId=${pagedBiz}`);
+      check("P1", "the page holds 100 rows while 121 exist, and says so",
+        r.body?.billing?.records?.length === 100 && r.body?.billing?.recordCount === 121,
+        `page=${r.body?.billing?.records?.length} count=${r.body?.billing?.recordCount}`);
+
+      // BUG 1. Summing the page would give $100.00; the truth is $120.00.
+      check("P2", "the total covers EVERY capture, not the page it returned",
+        r.body?.billing?.totalChargedCents === 12000,
+        String(r.body?.billing?.totalChargedCents));
+
+      // BUG 2. The failed row is the oldest and is NOT in the page at all.
+      const failedInPage = (r.body?.billing?.records ?? []).some((x) => x.state === "failed");
+      check("P3", "the failed charge is genuinely absent from the returned page",
+        failedInPage === false, `failedInPage=${failedInPage}`);
+      check("P4", "yet the server still reports it — failedCount counts every row",
+        r.body?.billing?.failedCount === 1, String(r.body?.billing?.failedCount));
+
+      const pagedPage = await openBilling(pagedOwner.email);
+      await pagedPage.getByText("Delivery charges").first().waitFor({ state: "visible", timeout: 30_000 });
+      const body = await mainText(pagedPage);
+
+      check("P5", `the rendered total is ${PAGED_TOTAL}, not the page's $100.00`,
+        body.includes(PAGED_TOTAL) && !/\$100\.00\s*charged/.test(body),
+        body.match(/\$[\d.,]+ charged/)?.[0] ?? "no total found");
+      check("P6", "the truncated list is ANNOUNCED with both numbers",
+        /100 of 121 charges are listed/i.test(body) && /covers all 121/i.test(body));
+
+      // The assertion that matters most: a merchant is TOLD their delivery is
+      // blocked even though the failed charge is off the page.
+      check("P7", "the failed-payment alert still fires for an off-page failure",
+        /A payment did not go through/i.test(body));
+      check("P8", "and it says where to find it rather than pointing at a row that is not there",
+        /older than the charges listed above/i.test(body));
+
+      await pagedPage.screenshot({ path: path.join(SHOTS, "MER-016-paged.png"), fullPage: true });
     }
 
     /* ═══════════════════════ fail-closed on a bad read ═════════════════ */

@@ -216,10 +216,29 @@ export function BillingRecords() {
               description="What Couranr charged you for delivery. The price of what you sold is yours and never appears here."
               actions={
                 <Text size="sm">
-                  <strong>{formatCents(view.totalChargedCents)}</strong> charged
+                  <strong>{formatCents(view.totalChargedCents)}</strong>{" "}
+                  {view.totalIsComplete ? "charged" : "charged so far"}
                 </Text>
               }
             />
+            {/*
+              The total covers everything; the LIST does not. Saying which is
+              which is the whole point — a page that shows 100 of 340 charges
+              under a complete-looking total invites a merchant to conclude
+              the total is the sum of what they can see.
+            */}
+            {view.recordCount > view.records.length ? (
+              <Alert tone="info" title="Showing your most recent charges">
+                {view.records.length} of {view.recordCount} charges are listed
+                below. The total above covers all {view.recordCount}.
+              </Alert>
+            ) : null}
+            {!view.totalIsComplete ? (
+              <Alert tone="warning" title="This total is incomplete">
+                You have more charges than Couranr can total on this page.
+                Message Couranr Support for a full statement.
+              </Alert>
+            ) : null}
             {view.records.length === 0 ? (
               <EmptyState
                 title="Nothing has been charged yet"
@@ -275,11 +294,25 @@ export function BillingRecords() {
             rather than only as a row badge — a failed authorization stops a
             delivery being dispatched, which is the one thing on this page a
             merchant has to act on.
+
+            Driven by `failedCount`, which the server computes over EVERY row.
+            It used to read `records.some(...)` — the listed PAGE — so a
+            merchant whose failure was older than their most recent hundred
+            charges saw nothing at all about the delivery that was stuck.
           */}
-          {view.records.some((r) => r.state === "failed") ? (
-            <Alert tone={alertTone("failed")} title="A payment did not go through">
-              {CHARGE_RECORD_DESCRIPTIONS.failed} Open the delivery above to
-              authorize it again.
+          {view.failedCount > 0 ? (
+            <Alert
+              tone={alertTone("failed")}
+              title={
+                view.failedCount === 1
+                  ? "A payment did not go through"
+                  : `${view.failedCount} payments did not go through`
+              }
+            >
+              {CHARGE_RECORD_DESCRIPTIONS.failed}{" "}
+              {view.records.some((r) => r.state === "failed")
+                ? "Open the delivery above to authorize it again."
+                : "The affected deliveries are older than the charges listed above. Open them from your deliveries list to authorize again."}
             </Alert>
           ) : null}
 

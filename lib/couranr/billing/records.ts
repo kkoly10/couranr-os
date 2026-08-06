@@ -249,9 +249,37 @@ export type ChargeRecord = {
 export type BillingView = {
   businessAccountId: string;
   paymentMethod: PaymentMethodState;
+  /** The most recent page. NOT the whole history — see `recordCount`. */
   records: ChargeRecord[];
-  /** Cents actually charged, summed over `charged` records only. */
+  /**
+   * Cents actually charged, over EVERY captured obligation this business has —
+   * never over the page above.
+   *
+   * These are separate fields because they answer separate questions, and the
+   * first version of this module answered the second with the first: it summed
+   * the 100-row page and rendered it as the total. A merchant past 100
+   * deliveries would have been shown a total that silently understated what
+   * they had paid, with nothing on the screen saying it was partial. That is
+   * the exact shape CLAUDE.md warns about — a silent cap reads as "everything".
+   */
   totalChargedCents: number;
+  /** How many charge rows exist in total, so truncation can be ANNOUNCED. */
+  recordCount: number;
+  /**
+   * How many authorizations have FAILED, across every row — not just the page.
+   *
+   * Same reason the total gets its own query, and a sharper one: a failed
+   * authorization stops a delivery being dispatched. Deriving this from the
+   * listed page means a merchant whose failure is older than their most recent
+   * hundred charges is never told about the thing blocking their delivery.
+   */
+  failedCount: number;
+  /**
+   * False when even the total's own scan hit its bound. A total that could not
+   * be completed must say so rather than render as a smaller true-looking
+   * number.
+   */
+  totalIsComplete: boolean;
   gaps: readonly BillingGap[];
 };
 
@@ -272,7 +300,9 @@ export type BillingView = {
  * it is documented because a reader would otherwise conclude partial captures
  * happen here.
  */
-export function totalChargedCents(records: readonly ChargeRecord[]): number {
+export function totalChargedCents(
+  records: readonly Pick<ChargeRecord, "state" | "amountCents" | "capturedAmountCents">[]
+): number {
   return records
     .filter((r) => moneyWasTaken(r.state))
     .reduce((sum, r) => sum + (r.capturedAmountCents ?? r.amountCents), 0);

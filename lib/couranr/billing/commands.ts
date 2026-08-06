@@ -49,8 +49,18 @@ function fail(p: { operation: string; code: PublicErrorCode; detail?: unknown })
   return { ok: false, code: p.code, correlationId };
 }
 
-/** How many charge rows one page of this screen reads. */
-const RECORD_LIMIT = 100;
+/** How many charge rows the screen LISTS. Announced when it bites. */
+const RECORD_PAGE = 100;
+
+/**
+ * How many captured rows the TOTAL will scan.
+ *
+ * Deliberately far above the page size, because the total must not be a
+ * property of the page. If a business ever exceeds even this, the view says
+ * the total is incomplete rather than reporting a smaller number that looks
+ * exactly like a complete one.
+ */
+const TOTAL_SCAN_CAP = 5000;
 
 /**
  * Every charge Couranr has raised against this business.
@@ -65,15 +75,16 @@ export async function listBillingRecords(params: {
 }): Promise<BillingResult<BillingView>> {
   const op = "listBillingRecords";
 
-  const { data, error } = await supabaseAdmin
+  const { data, error, count } = await supabaseAdmin
     .from("couranr_payment_obligations")
     .select(
       "id,request_id,amount_cents,captured_amount_cents,currency,payment_state,payer_type," +
-        "created_at,authorized_at,captured_at,failed_at,cancelled_at"
+        "created_at,authorized_at,captured_at,failed_at,cancelled_at",
+      { count: "exact" }
     )
     .eq("business_account_id", params.businessAccountId)
     .order("created_at", { ascending: false })
-    .limit(RECORD_LIMIT);
+    .limit(RECORD_PAGE);
 
   if (error || !Array.isArray(data)) {
     // Fail closed. An empty list would read as "you have never been charged",
@@ -129,13 +140,75 @@ export async function listBillingRecords(params: {
     };
   });
 
+  /*
+   * THE TOTAL IS ITS OWN QUERY, over every captured obligation.
+   *
+   * It must never be computed from `records` above: that is one PAGE, and a
+   * merchant past `RECORD_PAGE` deliveries would be shown a total that
+   * silently understated what they had paid. Only captured rows are fetched,
+   * and `totalChargedCents` re-checks the state anyway — the filter lives in
+   * both places on purpose, so changing the query alone cannot start counting
+   * authorizations as money taken.
+   */
+  const totals = await supabaseAdmin
+    .from("couranr_payment_obligations")
+    .select("payment_state,amount_cents,captured_amount_cents", { count: "exact" })
+    .eq("business_account_id", params.businessAccountId)
+    .eq("payment_state", "captured")
+    .limit(TOTAL_SCAN_CAP);
+
+  if (totals.error || !Array.isArray(totals.data)) {
+    // Fail closed rather than fall back to the page's sum. A wrong total is
+    // worse than no page at all.
+    return fail({
+      operation: op,
+      code: "internal",
+      detail: { lookup: "couranr_payment_obligations totals", error: totals.error },
+    });
+  }
+
+  const capturedCount = totals.count ?? totals.data.length;
+
+  /*
+   * Failed authorizations, counted over EVERY row. `head: true` fetches no
+   * rows at all — only the count — because the screen needs to know THAT one
+   * failed, not which. Same reason as the total, and a sharper one: a failed
+   * authorization stops a delivery being dispatched, so a merchant whose
+   * failure fell off the page would never be told what is blocking them.
+   */
+  const failed = await supabaseAdmin
+    .from("couranr_payment_obligations")
+    .select("id", { count: "exact", head: true })
+    .eq("business_account_id", params.businessAccountId)
+    .eq("payment_state", "failed");
+
+  if (failed.error) {
+    return fail({
+      operation: op,
+      code: "internal",
+      detail: { lookup: "couranr_payment_obligations failed count", error: failed.error },
+    });
+  }
+
   return {
     ok: true,
     value: {
       businessAccountId: params.businessAccountId,
       paymentMethod: paymentMethodState(),
       records,
-      totalChargedCents: totalChargedCents(records),
+      totalChargedCents: totalChargedCents(
+        (totals.data as any[]).map((row) => ({
+          state: chargeRecordState(row.payment_state),
+          amountCents: Number(row.amount_cents),
+          capturedAmountCents:
+            row.captured_amount_cents === null || row.captured_amount_cents === undefined
+              ? null
+              : Number(row.captured_amount_cents),
+        }))
+      ),
+      recordCount: count ?? records.length,
+      failedCount: failed.count ?? 0,
+      totalIsComplete: capturedCount <= TOTAL_SCAN_CAP,
       gaps: BILLING_GAPS,
     },
   };

@@ -154,6 +154,69 @@ describe("the total is what was TAKEN, never what was held", () => {
   });
 });
 
+describe("the total is NOT a property of the listed page", () => {
+  /**
+   * The bug this describes, found reviewing the first version of this module:
+   * `listBillingRecords` read a 100-row page and then summed THAT page as the
+   * total. A merchant past 100 deliveries would have seen a total that
+   * silently understated what they had paid, under a heading that looked
+   * complete. The harness seeded five rows, so it passed.
+   *
+   * These assert the SHAPE that makes the bug impossible: the total comes from
+   * its own query over captured rows, and the view carries enough to tell a
+   * merchant the list is partial.
+   */
+  const src = code("lib/couranr/billing/commands.ts");
+
+  it("the total has its own query, filtered to captured, separate from the page", () => {
+    expect(src).toMatch(/\.eq\("payment_state",\s*"captured"\)/);
+    // The page's own limit must not be what bounds the total.
+    expect(src).toMatch(/TOTAL_SCAN_CAP/);
+    expect(src).toMatch(/RECORD_PAGE/);
+  });
+
+  it("the total is never computed from the `records` array", () => {
+    // The precise line that was wrong: `totalChargedCents(records)`.
+    expect(src).not.toMatch(/totalChargedCents\(\s*records\s*\)/);
+  });
+
+  it("the view carries the real record count so truncation can be announced", () => {
+    const shape = code("lib/couranr/billing/records.ts");
+    expect(shape).toMatch(/recordCount:\s*number/);
+    expect(shape).toMatch(/totalIsComplete:\s*boolean/);
+    expect(shape).toMatch(/failedCount:\s*number/);
+  });
+
+  it("the FAILED alert is driven by a count over every row, not by the page", () => {
+    /**
+     * The same bug in a second place, and the worse of the two: the alert
+     * read `records.some(r => r.state === "failed")`. A failed authorization
+     * stops a delivery being dispatched, so a merchant whose failure was
+     * older than their most recent hundred charges was never told what was
+     * blocking them. `e2e/disposable/billingRecords.mjs` P3/P4/P7 seed exactly
+     * that shape — a failure that IS off the page — and prove the alert fires.
+     */
+    expect(src).toMatch(/\.eq\("payment_state",\s*"failed"\)/);
+    expect(src).toMatch(/head:\s*true/);
+    const screen = code("components/couranr/billing/BillingRecords.tsx");
+    expect(screen).toMatch(/view\.failedCount\s*>\s*0/);
+    expect(screen).not.toMatch(/records\.some\(\(r\) => r\.state === "failed"\)\s*\?\s*\(\s*<Alert/);
+  });
+
+  it("the screen announces a truncated list and an incomplete total", () => {
+    const screen = code("components/couranr/billing/BillingRecords.tsx");
+    expect(screen).toMatch(/recordCount\s*>\s*view\.records\.length/);
+    expect(screen).toMatch(/!view\.totalIsComplete/);
+  });
+
+  it("a failed totals query fails closed rather than falling back to the page", () => {
+    // Falling back would produce a wrong number that looks right, which is the
+    // one outcome a billing screen must never have.
+    expect(src).toMatch(/totals\.error/);
+    expect(src).toMatch(/totals\.error \|\| !Array\.isArray\(totals\.data\)/);
+  });
+});
+
 describe("cents are formatted as cents, never as floats", () => {
   it("formats whole and part dollars", () => {
     expect(formatCents(2299)).toBe("$22.99");
