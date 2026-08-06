@@ -288,10 +288,38 @@ describe("ledger evidence points at real files", () => {
     expect(missing).toEqual([]);
   });
 
-  it("the status summary exists and names the same sha as the ledgers", () => {
+  /**
+   * This used to read `items[0].last_verified_sha` and assert the status file
+   * contained it — one arbitrary row out of 108. It passed while the status
+   * file described `main` at `c929cc3` and both ledgers had moved on to a Phase
+   * 8 branch, because row 0 happened not to be one of the rows that changed.
+   *
+   * A check that only inspects the row nobody edits cannot notice drift. Every
+   * DISTINCT sha in either ledger must be named in full, so adding a new
+   * verification sha to any row forces the summary to say what it covers.
+   */
+  it("the status summary names every distinct sha in either ledger, in full", () => {
     const md = read("docs/couranr-mvp/IMPLEMENTATION_STATUS.md");
-    const sha = items[0].last_verified_sha;
-    expect(md).toContain(sha);
+    const shas = [
+      ...new Set([
+        ...items.map((r) => r.last_verified_sha),
+        ...screens.map((r) => r.last_verified_sha),
+      ]),
+    ].filter(Boolean);
+
+    expect(shas.length).toBeGreaterThan(0);
+    // Abbreviations must not satisfy this: a 7-char prefix is ambiguous and is
+    // exactly how "401b3ee" slipped in while the full sha was absent.
+    for (const s of shas) expect(s).toMatch(/^[0-9a-f]{40}$/);
+
+    expect(shas.filter((s) => !md.includes(s))).toEqual([]);
+  });
+
+  it("POSITIVE CONTROL: a sha present in a ledger but absent from the summary is rejected", () => {
+    const md = read("docs/couranr-mvp/IMPLEMENTATION_STATUS.md");
+    const invented = "deadbeef".repeat(5); // 40 hex chars, in no ledger and no file
+    expect(invented).toMatch(/^[0-9a-f]{40}$/);
+    expect(md.includes(invented)).toBe(false);
   });
 });
 

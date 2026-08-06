@@ -15,12 +15,33 @@ as a reason to build something the package does not require.
 | Base branch | `main` |
 | Base SHA | `c929cc3a8e630bd11ac0a98ff3800a16ee77c140` |
 | Active branch | `claude/couranr-phase-8-conversations` |
-| Target PR | not yet opened |
-| Status | `active` |
+| Branch HEAD | `40129ee06d96bfdcd85bb653397d2553a1fa5b98` |
+| Commits ahead / behind | **16 / 0** |
+| Target PR | opened as a draft immediately after this commit — number recorded in a follow-up, since a commit cannot contain its own PR |
+| Status | **`frozen` — feature work stopped; reconciliation and verification only** |
+| Reconciliation | [`PHASE8_RECONCILIATION.md`](./PHASE8_RECONCILIATION.md) |
 
 The base SHA is the SEC-001 hotfix merge (PR #21). The Phase 8 branch is rebased
 onto it, so the conversation work is built on a repository where the admin
 predicate is no longer self-grantable.
+
+**The slice is FROZEN, and the reason is specific.** Implementation outran the
+execution-control documents, and all seven Phase 8 migrations were applied to
+production before the branch was merged. No further Phase 8 migration may be
+applied until: the reconciliation is complete (**done**), these tracking files
+reflect the branch (**done — this commit**), the executable acceptance matrix
+passes (**done, 26/26, with the repeatability caveat in §7**), and the Phase 8
+PR is open with the complete diff.
+
+**No improvised rollback was attempted, and none is needed.** A clean replay of
+all 38 forward migrations into a fresh PostgreSQL produces a schema *identical*
+to production across all 67 conversation and help objects — 5 tables, 14 foreign
+keys, 21 CHECK constraints, 18 indexes, 4 triggers, 11 functions. The drift is
+confined to the migration ledger and is documented in the reconciliation §5.
+
+**An earlier report of "93 commits ahead" is withdrawn.** It was measured
+against a stale local `origin/main` ref. After `git fetch origin main` the count
+is 16.
 
 ## 2. Authoritative work items
 
@@ -32,10 +53,17 @@ never written back into the package.
 
 | work item | phase | domain | task (verbatim) | dependencies (verbatim) | priority | acceptance (verbatim) | measured status |
 |---|---|---|---|---|---|---|---|
-| `P8-001` | 8 | Messaging | Implement server-controlled conversations | `P2-002` | P1 | **Participant/privacy tests pass** | `not_started` |
-| `P8-002` | 8 | Support | Implement deadlines and Operations Inbox | `P8-001` | P1 | **Operating/after-hours timers pass** | `not_started` |
-| `P8-004` | 8 | Customer | Implement secure Delivery Help | `P8-001;P2-003` | P1 | **One-delivery token scope passes** | `not_started` |
+| `P8-001` | 8 | Messaging | Implement server-controlled conversations | `P2-002` | P1 | **Participant/privacy tests pass** | `complete_unverified` |
+| `P8-002` | 8 | Support | Implement deadlines and Operations Inbox | `P8-001` | P1 | **Operating/after-hours timers pass** | `partial` |
+| `P8-004` | 8 | Customer | Implement secure Delivery Help | `P8-001;P2-003` | P1 | **One-delivery token scope passes** | `complete_unverified` |
 | `P2-003` | 2 | Platform | Implement idempotency, audit, and guest tokens | `P2-001` | P0 | **Duplicate and token tests pass** | `partial` |
+
+**Why nothing here reads `complete_verified`.** The acceptance criteria are met
+at the database layer and proven by execution (§7), but `complete_verified` in
+this repository additionally requires browser verification, and three of the
+six screens this slice built have never been driven in a browser at all.
+`P8-002` cannot reach it on any evidence: its criterion names an after-hours
+timer that `HRS-002` makes unwritable.
 
 Dependency readiness, measured:
 
@@ -78,17 +106,24 @@ Current-state ledgers, which record measured status and never requirements:
 
 ## 4. Ordered implementation
 
-1. **Security blocker resolution** — SEC-001. *Done: merged as `c929cc3`,
-   applied to the live project, 12/12 verification checks PASS.*
+1. **Security blocker resolution** — SEC-001. **Done:** merged as `c929cc3`,
+   applied to the live project, 12/12 verification checks PASS.
 2. **`P8-001` conversation foundation** — the schema, the participant model, the
    four visibility values, the named server command every message write goes
    through, and the message-specific idempotency and audit primitives that close
-   out `P2-003`'s remaining work.
+   out `P2-003`'s remaining work. **Built.** `complete_unverified`: the privacy
+   boundary is structural (no role holds SELECT on the message table; one
+   `SECURITY DEFINER` reader; a direct `select *` raises 42501) and proven by
+   execution, but three of its screens have never been driven in a browser.
 3. **`P8-002` deadlines and Operations Inbox** — the five deadline fields the
-   spec names, the due-state transitions, and the Operations Inbox.
-   **Partially blocked — see HRS-002 in §6.**
+   spec names, the due-state transitions, and the Operations Inbox. **Built,
+   `partial`.** The elapsed-time half works and the invisible-reply clock defect
+   is fixed; the after-hours half is **blocked by HRS-002 (§6)** and not written.
 4. **`P8-004` secure Delivery Help** — `/help/[token]`, scoped to one signed
-   token and one delivery.
+   token and one delivery. **Built and proven end to end unstubbed**, after two
+   defects that made it unusable were found and fixed (§6).
+5. **Reconciliation and freeze.** No further Phase 8 migration is applied until
+   the PR is open. See the header and `PHASE8_RECONCILIATION.md`.
 
 ## 5. Explicit scope
 
@@ -196,6 +231,36 @@ direction.
 **Condition for unblocking.** An explicit permission set per role recorded
 against `TRM-002`. The participant model must not be read as having decided it.
 
+### P8-004 was unreachable twice over — **RESOLVED**
+
+Recorded here because it is the finding that justifies the whole executable
+acceptance matrix, and because it names the evidence class that failed.
+
+**Two independent defects, either of which alone made the feature impossible to
+use.** (1) **Nothing ever called `issueHelpToken`** — the page, the route, the
+commands and the SQL were all present and correct, and no path minted a token,
+so no customer could receive a link. (2)
+`couranr_conversation_participants.access_token_id` was declared in
+`20260804150000` as `references public.couranr_delivery_access_tokens(id)` —
+the **tracking** token table — while `couranr_redeem_help_token` inserts a
+**help** token id, so every redemption failed with a foreign-key violation.
+
+**Why nothing caught them.** Every test of this slice was static: SQL text
+assertions, TypeScript source scans, and a browser run whose API layer was
+stubbed with `page.route`. Nothing invoked `couranr_redeem_help_token` against a
+real delivery. A migration that applies cleanly and a function that compiles
+prove nothing about a foreign key that only fires on INSERT.
+
+**Resolution.** `20260804210000` retargets the constraint, guarded by a `DO`
+block that raises `CR409` rather than dropping a constraint holding real rows;
+`app/api/couranr/operations/deliveries/[id]/help-link/route.ts` issues links,
+Operations-only, with a clamped TTL and the raw token returned exactly once.
+Both proven by A1–A3b and A12–A12d in §7.1.
+
+**The standing consequence.** `CLAUDE.md` now carries an execution-verification
+rule, and no Phase 8 item may be promoted on file existence, static SQL checks,
+source scans or a stubbed browser.
+
 ## 7. Verification matrix
 
 Every row is a requirement traced to the exact place it is enforced and the
@@ -217,9 +282,105 @@ exact command that proves it. A row with no command is not verified, and says so
 | No app code writes `profiles` | same test file | AST-free scan of `.from("profiles").update\|upsert\|delete` | 0 offenders | `c929cc3` |
 | Full suite green | — | `npm run test:run` | 38 files / 1103 tests pass | `c929cc3` |
 | Types clean | — | `npm run typecheck` after `rm -rf .next` | clean | `c929cc3` |
-| `P8-001` participant/privacy | not yet built | — | **not verified** | — |
-| `P8-002` operating/after-hours timers | not yet built | — | **not verified; after-hours half blocked by HRS-002** | — |
-| `P8-004` one-delivery token scope | not yet built | — | **not verified** | — |
+
+### 7.1 Phase 8 — executed against a real PostgreSQL
+
+**Static SQL assertions and source scans do not appear in this table.** They are
+the evidence class that let `P8-004` ship with two defects that made it
+impossible to use. Every row below is a function *invoked* against the live
+project with synthetic `[P8ACC]` fixtures by `e2e/phase8Acceptance.mjs`, or a
+catalog read. 26 of 26 checks pass.
+
+| requirement | enforcement point | proof | result | SHA |
+|---|---|---|---|---|
+| `P8-004` one-delivery token scope | `couranr_issue_help_token`, `couranr_help_access_tokens.delivery_id` | A1–A2: issue a token, assert exactly one delivery | PASS | `40129ee` |
+| A token resolves the right thread | `couranr_redeem_help_token` | A3/A3b: correct `delivery_help` conversation **and** participant | PASS | `40129ee` |
+| Concurrent first use does not 500 | `insert … on conflict do nothing` + `couranr_cv_one_thread_per_delivery_kind` | A4/A4b/A4c: **three concurrent** first redemptions → no error, ONE conversation, ONE participant | PASS | `40129ee` |
+| A customer message persists | `couranr_help_post_message` | A5: returns its own id, row present | PASS | `40129ee` |
+| Idempotency is per AUTHOR | `couranr_cvm_idempotency_uniq (conversation_id, author_participant_id, idempotency_key)` | A6/A6b: replay returns the CUSTOMER's id **with a colliding Operations internal note planted as the control** | PASS | `40129ee` |
+| `P8-001` participant/privacy | `couranr_help_thread`; no role holds SELECT on the message table | A7–A7d: no internal note and no AI draft in the customer thread; **`service_role` gets 42501 on `select *`** | PASS | `40129ee` |
+| Refusals are indistinguishable | one `CR404 help_link_not_available` for unknown/revoked/expired | A8–A8c: revoked and unissued refusals are **byte-identical** | PASS | `40129ee` |
+| A closed thread reopens, once | `status = case when … in ('resolved','closed') then 'open'` | A9/A9b: a new message reopens; a **replay does not repeat the transition** | PASS | `40129ee` |
+| One live customer participant | `couranr_cvp_live_token_uniq` | A10: duplicate refused with 23505 | PASS | `40129ee` |
+| Cross-delivery isolation | token → delivery → conversation chain | A11/A11b: delivery B gets its own thread and **cannot read A's messages** | PASS | `40129ee` |
+| `PUB-007` end to end, unstubbed | the real route + the real database | A12–A12d: renders for a live token; a message **typed in Chromium** lands in `couranr_conversation_messages`; an unissued token is refused naming no reason | PASS | `40129ee` |
+| The help token FK targets the help table | `couranr_cvp_help_token_fkey` | catalog read of `pg_constraint` (below), and A3 could not pass otherwise | `couranr_help_access_tokens` — PASS | `40129ee` |
+| Full suite green | — | `npm run test:run` | **40 files / 1231 tests pass** | `40129ee` |
+| Types clean | — | `npm run typecheck` | clean | `40129ee` |
+| Lint clean | — | `npm run lint` | 0 errors | `40129ee` |
+| Build | — | `npm run build` | compiled, 91 static pages | `40129ee` |
+| Every forward migration has a rollback | `tests/couranr-migrations.test.ts` | 13 repo-wide rules | 38/38 paired | `40129ee` |
+| Production == a clean branch replay | — | all 38 forward migrations into a fresh PostgreSQL, both schemas extracted and diffed | **67 objects each, empty diff** | `40129ee` |
+
+The FK catalog read, run at this SHA:
+
+```
+conname                    | references_table            | def
+couranr_cvp_help_token_fkey| couranr_help_access_tokens  | FOREIGN KEY (access_token_id)
+                           |                             |   REFERENCES couranr_help_access_tokens(id)
+```
+
+This is the constraint whose original form pointed at
+`couranr_delivery_access_tokens` — the **tracking** token table — which made
+every single help-link redemption fail with a foreign-key violation. `P8-004`
+was unreachable twice over: nothing minted a token, and no minted token could
+have been redeemed.
+
+**The clock defect is deliberately NOT in the table above.** An Operations reply
+the waiting party cannot see was permanently removing a thread from the overdue
+queue; the fix adds `awaiting_reply_kind` and gates the stop on `canSee`. It was
+proven live during the session with an A/B sharing one control — both arms
+overdue, Arm A (visible reply) stops the clock, Arm B (internal-only) stays
+overdue. That run is real evidence, but it is **not part of the 26-check matrix
+and is not re-runnable**, and the only coverage standing at this SHA is a
+static source assertion in `tests/couranr-conversations.test.ts:1103`. Static
+assertions do not promote anything here, so this is recorded as an executed
+one-off pending its addition to the matrix.
+
+### 7.2 What is NOT verified, stated as such
+
+| requirement | why not |
+|---|---|
+| `P8-002` after-hours timers | **`HRS-002` unresolved.** No IANA timezone, so the branch is not implemented. The elapsed-time half (10-minute due-soon, 15-minute overdue) is verified. |
+| `MER-012`, `DRV-008`, `OPS-005` in a browser | **no browser has driven them at all.** Their commands are proven; the pages are not. |
+| `CUS-001` / `CUS-003` fragment preselection | A12 loaded the **bare** route and chose the topic with `selectOption`. The only evidence for `#address-change` / `#recipient-unavailable` is the **stubbed** `e2e/deliveryHelp.mjs` run. |
+| The acceptance matrix as a *repeatable* gate | it passed once and now refuses to run — see §7.3. |
+| Groups N, O, P, Q at this SHA | not re-run; cited from earlier runs. |
+
+### 7.3 The acceptance matrix cannot clean up after itself
+
+`service_role` holds DELETE on `business_accounts` and on **no** `couranr_*`
+table — they are append-only by design. The first run passed all 26 behavioural
+checks and then failed cleanup, leaving two fixture chains in a project holding
+42 real orders. Both were purged through a privileged path and production was
+verified back to baseline: 0 marked rows, 26 `couranr_deliveries`, 42 orders,
+29 legacy deliveries, 94 addresses.
+
+The preflight now probes the six tables cleanup needs and **refuses to seed**,
+printing the purge statements. Its first version probed `business_accounts`,
+which *can* be deleted, so it passed and the run seeded anyway — that is why the
+residue happened twice.
+
+Three ways to make it repeatable, all **deferred under the freeze**: a scratch
+or branch project; a `SECURITY DEFINER` purge scoped to marked rows (proposed,
+unapplied, at `supabase/migrations/PROPOSED_couranr_e2e_cleanup.sql.review`); or
+a narrow DELETE grant to a dedicated harness role. Until one lands, 26/26 is
+**evidence obtained once**, not a gate that can be re-run on demand.
+
+### 7.4 Issuance commands and their real callers
+
+| command | defined | real caller |
+|---|---|---|
+| `issueHelpToken` | `lib/couranr/conversations/help.ts:238` | `app/api/couranr/operations/deliveries/[id]/help-link/route.ts:62` |
+| `issuePaymentLink` | `lib/couranr/payments/commands.ts:366` | `app/api/couranr/delivery-requests/[id]/payment-link/route.ts:78` |
+| `issueHandoffCode` | `lib/couranr/driver/commands.ts` | `…/recipient-code` and `…/pickup-code` |
+| `issueTrackingLink` | `lib/couranr/tracking/commands.ts:98` | **NONE** |
+
+`issueTrackingLink` has no caller anywhere in `app/`, `lib/`, `components/` or
+`e2e/`, so no customer can be sent a `/track/[token]` link — the identical
+defect `P8-004` carried before this slice added an issuance route. It belongs to
+the `PUB-006` tracking slice and is **recorded there, not fixed here**;
+absorbing it would repeat the scope creep this freeze exists to stop.
 
 **Migration version drift, recorded rather than hidden.** The repository file is
 `supabase/migrations/20260804120000_sec001_profiles_role_privilege.sql`; the
