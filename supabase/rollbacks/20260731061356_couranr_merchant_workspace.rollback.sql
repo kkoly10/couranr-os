@@ -33,6 +33,6 @@ drop function if exists public.couranr_create_merchant_workspace(
   uuid, text, text, text, text, jsonb, text, text, text
 );
 
-drop table if exists public.couranr_merchant_workspaces;
+drop table if exists public.couranr_merchant_workspaces restrict;
 
 commit;

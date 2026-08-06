@@ -33,7 +33,7 @@ begin
   end if;
 end $$;
 
-drop table if exists public.couranr_delivery_request_events;
-drop table if exists public.couranr_delivery_requests;
+drop table if exists public.couranr_delivery_request_events restrict;
+drop table if exists public.couranr_delivery_requests restrict;
 
 commit;

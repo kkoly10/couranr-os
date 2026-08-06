@@ -29,6 +29,7 @@ const COMMANDS_RAW = readFileSync(path.join(ROOT, "lib/couranr/requests/commands
 const COMMANDS = COMMANDS_RAW.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
 const MIGRATIONS = path.resolve(ROOT, "supabase/migrations");
+const ROLLBACKS_DIR = path.resolve(MIGRATIONS, "../rollbacks");
 const FN_MIGRATION_NAME = readdirSync(MIGRATIONS).filter((f) =>
   f.endsWith("_couranr_request_commands.sql")
 )[0];
@@ -351,7 +352,7 @@ describe("command functions migration", () => {
 
   it("has a rollback that drops only these four, by full signature", () => {
     const rollback = readFileSync(
-      path.join(MIGRATIONS, "20260731055802_couranr_request_commands.rollback.sql"),
+      path.join(ROLLBACKS_DIR, "20260731055802_couranr_request_commands.rollback.sql"),
       "utf8"
     ).replace(/^\s*--.*$/gm, "");
     const drops = Array.from(
@@ -557,7 +558,7 @@ describe("review outcome functions migration", () => {
 
   it("has a rollback that refuses to rewrite the append-only log", () => {
     const rb = readFileSync(
-      path.join(MIGRATIONS, "20260731180000_couranr_review_outcomes.rollback.sql"),
+      path.join(ROLLBACKS_DIR, "20260731180000_couranr_review_outcomes.rollback.sql"),
       "utf8"
     );
     expect(rb).toMatch(/refusing to narrow couranr_dre_command_chk/);
