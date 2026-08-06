@@ -29,6 +29,8 @@ const COMMANDS_RAW = readFileSync(path.join(ROOT, "lib/couranr/requests/commands
 const COMMANDS = COMMANDS_RAW.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
 const MIGRATIONS = path.resolve(ROOT, "supabase/migrations");
+// Rollbacks moved out of supabase/migrations/: the Supabase CLI treats any
+// <timestamp>_name.sql there as a migration to APPLY, rollbacks included.
 const ROLLBACKS_DIR = path.resolve(MIGRATIONS, "../rollbacks");
 const FN_MIGRATION_NAME = readdirSync(MIGRATIONS).filter((f) =>
   f.endsWith("_couranr_request_commands.sql")

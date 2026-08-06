@@ -106,6 +106,8 @@ There are **8 scripts**. The platform baseline specifies 32, and the release mat
 
 Tests use **Vitest**, not Jest and not `node:test`. Files live in `tests/*.test.ts(x)`, alias `@` → repo root. **jsdom IS configured** — `environmentMatchGlobs` applies it to `tests/**/*.dom.test.tsx` while everything else stays in `node` — and **@testing-library/react and @testing-library/user-event ARE installed**. Browser tests run through **Playwright** from `e2e/run.mjs` (groups A–Q), not through a Vitest project. `testTimeout` is 15s because a jsdom render can miss the 5s default under parallel load. There is still no Vitest `projects` config, so the four `test:*` project suites the baseline names do not exist.
 
+**There is no `db:test` and no pgTAP**, so nothing in `npm run check` ever executes a `couranr_*` command. The only way to call one today is to stand up a local cluster by hand — which is mandatory before a SQL command is done, and "Execution verification" below explains what it cost to learn that. `e2e/` drives the browser; nothing yet drives the SQL.
+
 **Runtime versions drift two ways now:** local Node 22, **CI Node 24** (`.github/workflows/ci.yml:35`) which matches the target. The old CI-Node-20 mismatch is fixed. There is still no `.nvmrc`, `.node-version`, `engines`, or `packageManager`, and `package-lock.json` is lockfileVersion 2 against a target of 3 — so a dependency whose engines require ≥24 installs in CI and fails locally.
 
 **CI is a real gate now.** `.github/workflows/ci.yml` triggers on `main`, `codex/**` **and `claude/**`**, and on pull requests into `main`, so work on a `claude/*` branch is validated before it merges rather than after. It runs `npm ci`, not `npm install` — a desynced lockfile fails the build instead of being silently resolved away. Both were true limitations once and are fixed; do not re-assert them. What CI still does **not** cover is the browser suite (`e2e/run.mjs`), which needs Supabase and Stripe credentials it does not have — so a green check means lint, typecheck, unit tests and build, never that a screen works.
@@ -288,6 +290,21 @@ The second row is where memory has actually failed. Both cost time and were one 
 **Pin the version when you search.** This repo is Next.js 14.2.5, React 18.3.1, TypeScript 5.9.3 with `"strict": false`, Vitest 1.6.1, Supabase JS 2.90.1, PostgreSQL 17.6.1.063, and **Stripe 15.12.0 frozen**. An answer written for Next 15, React 19 or a later Stripe SDK is wrong here even when it is correct in general. Prefer primary sources — PostgreSQL, Next.js and Supabase documentation — over aggregators.
 
 Research informs **technical** reasoning only. It never overrides the authority chain, and it is never a route to settling an unresolved product decision: where the registry is silent, the answer is still "unresolved".
+
+### Execution verification — MANDATORY for anything that touches the database
+
+**A SQL command is not done until it has been CALLED against a real database with a real row.** Applying cleanly proves the migration parses. Passing the suite proves the text matches what a test expects to read. Neither proves the thing runs.
+
+This rule exists because a foreign key on `couranr_conversation_participants` pointed at `couranr_delivery_access_tokens` when the function writing it inserted a `couranr_help_access_tokens` id. **Every Delivery Help redemption failed with a foreign-key violation, and P8-004 could never have worked for a single customer.** It survived 1230 passing tests, a full 35-migration forward-and-back round trip, and a browser run — because every test of that slice was static: SQL text assertions, TypeScript source scans, and a browser run whose API layer was stubbed with `page.route`. A constraint that only fires on `INSERT` is invisible to all of them.
+
+The defect class is specific and recurring: **anything that is only checked at execution time.** Foreign keys, `NOT NULL`s, `CHECK`s, defaults, trigger bodies, `%TYPE` mismatches, an `OUT` parameter colliding with a column name (42702), a composite `IS NOT NULL` on a row with a null field. Every one of these is invisible to a text assertion and fatal at runtime.
+
+So: **call the function, with a fixture that satisfies its constraints, and read what came back.** Every named command, every path through it, once.
+
+- A local PostgreSQL is enough and is free — `initdb` as the `postgres` user, apply the migration sequence, stub the two tables no migration creates (`business_accounts`, `auth.users`). Reproduce `pg_default_acl` and `service_role`'s `BYPASSRLS` or the grant tests prove nothing.
+- **Building the fixture IS the work.** A `NOT NULL` you have to satisfy to make the call is the schema telling you what the command actually requires. Three fixture failures in a row is not a reason to fall back to reading the code — it is the reason the bug is still there.
+- **A test that reads SQL text is a guard on the file, not a guarantee about the database.** Both are worth having. Only one of them catches this.
+- Report which functions you executed and which you could not, and why.
 
 ### Browser verification — MANDATORY for anything with a UI
 

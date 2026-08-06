@@ -50,8 +50,14 @@
  * WHAT THIS DOES NOT REPRODUCE — state it in any report that cites a run
  * ---------------------------------------------------------------------------
  *
- * GoTrue is not started, so there is no sign-in endpoint and no session
- * cookie. Every authenticated browser flow still needs the connected project.
+ * GoTrue is not started. `gateway.mjs` reimplements the two endpoints the
+ * application calls — bcrypt against `auth.users.encrypted_password`, HS256
+ * tokens verified with `crypto.timingSafeEqual`, and a `/auth/v1/user` that
+ * reads the real row — and `e2e/disposable/authGateway.mjs` proves 20 refusals
+ * against it. What that does NOT cover is GoTrue's own behaviour: sessions as
+ * rows, refresh-token reuse detection, MFA, email confirmation, rate limiting.
+ * A defect in GoTrue cannot be found here. Say so wherever a run is cited.
+ *
  * Storage is a table, not a storage API, so uploads are not exercised here.
  * Neither gap affects the database acceptance matrix, which invokes functions
  * directly, and both are recorded rather than papered over.
@@ -97,6 +103,11 @@ export function psql(sqlText, { db = DB, tuplesOnly = true } = {}) {
   return sh(path.join(PGBIN, "psql"), [
     "-h", "127.0.0.1", "-p", String(PORT), "-U", "postgres", "-d", db,
     ...(tuplesOnly ? ["-tA"] : []),
+    // -q suppresses the command tag. Without it an `insert ... returning id`
+    // yields "…uuid…\nINSERT 0 1", and a caller that only .trim()s carries the
+    // tag into the next statement — which surfaced as
+    // `invalid input syntax for type uuid`, one layer away from the cause.
+    "-q",
     "-v", "ON_ERROR_STOP=1", "-c", sqlText,
   ]);
 }

@@ -6,11 +6,49 @@ file wins, and the two CSV ledgers beside it carry the per-item detail.
 
 | | |
 |---|---|
-| Branch | `main` |
-| Verified at SHA | `401b3eea5cd96bb09d224f3b113ba6091bba807d` |
-| Verified at (UTC) | 2026-08-04 |
+| Branch | `claude/couranr-phase-8-conversations` |
+| Counts re-measured at SHA | `4e0bce874614be57118e869bf9802937ca1c1da4` |
+| Per-item status last verified at SHA | `a115f92` for the Phase 8 messaging rows; `4e0bce8`, `ced8af8` and `1b3a1c9` for earlier slices; `401b3ee` for the rest |
+| Verified at (UTC) | 2026-08-06 |
+| Active slice | [`ACTIVE_EXECUTION_SLICE.md`](./ACTIVE_EXECUTION_SLICE.md) |
+| Reconciliation | [`PHASE8_RECONCILIATION.md`](./PHASE8_RECONCILIATION.md) |
 | Ledgers | [`IMPLEMENTATION_LEDGER.csv`](./IMPLEMENTATION_LEDGER.csv) · [`SCREEN_IMPLEMENTATION_LEDGER.csv`](./SCREEN_IMPLEMENTATION_LEDGER.csv) |
 | Validator | `tests/couranr-implementation-ledger.test.ts` |
+
+**The SHAs mean different things and are deliberately not collapsed.** The
+repository-state counts in the table below were re-measured at `4e0bce8` by
+re-running each command. Per-row statuses each carry the SHA at which that row
+was actually last verified. Raising them all to `4e0bce8` would assert a
+re-verification of 42 work items and 66 screens that did not happen.
+
+Every SHA appearing in either ledger, in full, with what it covers:
+
+| SHA | rows | what was verified at it |
+|---|---|---|
+| `a115f9212364bab0951053c73877952674ee07d6` | 3 work items, 4 screens | the AUTHENTICATED MESSAGING pass — `P8-001`, `P8-002`, `P8-004`; `MER-012`, `DRV-008`, `OPS-005`, `PUB-007`. 51/51 unstubbed signed-in browser checks, plus the acceptance matrix made re-runnable at 27/27 twice from an empty database |
+| `ced8af8130ebf8c556360c6d74d09d7338e38e5c` | 2 screens | `CUS-001` and `CUS-003`, unstubbed against a disposable database — 11/11 |
+| `4e0bce874614be57118e869bf9802937ca1c1da4` | 1 work item | the Phase 8 HARDENING pass — HRS-002, TRM-002, the disposable database, the deployment-path fix. Its messaging rows have since moved to `a115f92` |
+| `401b3eea5cd96bb09d224f3b113ba6091bba807d` | 38 work items, 57 screens | the baseline inventory pass |
+| `1b3a1c90c88a554f1ac1ff1e6a6d06a97d602150` | 3 screens | the customer tracking slice — `PUB-006`, `CUS-006`, `CUS-008` |
+
+`40129ee06d96bfdcd85bb653397d2553a1fa5b98` no longer appears in any row: the
+`PUB-007` evidence it carried was a project run that could not be repeated, and
+it has been superseded by the re-runnable disposable matrix at `a115f92`.
+
+`bf38d156ddcaae70f99c3a0c2d0e82efd0cf26a7` is this branch's base — PR #23, the migration-hygiene fix that took
+rollback scripts out of the deployment's reach. Before it, the base was
+`c929cc3a8e630bd11ac0a98ff3800a16ee77c140` (the SEC-001 hotfix, PR #21).
+Neither appears in a ledger row, because neither changed a work item or a
+screen: one is a security correction to `profiles`, the other is deployment
+safety. The branch MERGED the new main rather than rebasing, so every
+`last_verified_sha` below still points at a reachable object.
+`tests/couranr-implementation-ledger.test.ts` requires every distinct ledger SHA
+to be named in this file, so this table cannot silently fall out of date.
+
+**This file now describes a BRANCH, not `main`.** Phase 8 is unmerged. The
+database, however, is not: production already carries all seven Phase 8
+migrations. `PHASE8_RECONCILIATION.md` records that drift in full and proves
+production is schema-identical to a clean replay of this branch.
 
 Every number below was counted at that SHA by a command whose output was read.
 None is quoted from an earlier report, a commit message or a plan.
@@ -45,42 +83,97 @@ No other value is permitted, and the validator fails the build on any other.
 
 | measure | count |
 |---|---|
-| Migration files | 38 (29 forward + 9 `.rollback.sql`) |
-| Applied migrations (live) | 30 = 29 forward + the `remote_schema` baseline — **every forward migration is applied** |
-| Page routes | 97 total — 41 canonical under `app/(couranr)`, 56 legacy |
-| Canonical pages rendering `ScreenPlaceholder` | 28 of 41 |
-| API routes | 122 total, 51 canonical under `app/api/couranr` |
-| API routes with no auth/gate/signature/token marker | **2 of 122**, both legacy |
+| Migration files | 39 forward in `supabase/migrations/` + 39 in `supabase/rollbacks/` — **paired, and rollbacks are out of the deployment's reach** |
+| Applied migrations (live) | **39 — one row per forward migration, every version matching its filename.** The ledger was repaired and `20260806010000` applied on 2026-08-06 |
+| Page routes | 99 total — 43 canonical under `app/(couranr)`, 56 legacy |
+| Canonical pages rendering `ScreenPlaceholder` | 25 of 43 |
+| API routes | 131 total, 60 canonical under `app/api/couranr` |
+| API routes with no auth/gate/signature/token marker | **18 of 131**, all legacy — see the note below |
 | Ungated **canonical** routes | **0** |
-| Test files / cases | 36 files, **1043 passing** |
-| Live public tables / views | 54 / 6 |
-| `couranr_*` tables / functions | 18 / 62 |
+| Test files / cases | 41 files, **1285 passing** |
+| Live public tables / views | 60 / 6 |
+| `couranr_*` tables / functions | 24 / 78 |
 | Tables with RLS disabled | **0** |
 | Storage buckets / public | 7 / **1** (`vehicle-images`) |
 | Local Node / CI Node | v22.22.2 / 24 |
+
+**REPOSITORY AND PRODUCTION ARE NOW IN LOCKSTEP.** 39 forward migrations, 39
+ledger rows, every version equal to its filename. Before the repair only **3 of
+38** matched — migrations had been applied through the MCP path, which stamps
+its own timestamp, so `20260804150000_couranr_conversations.sql` was recorded as
+`20260804154141`. The repair inserted the 35 repository versions as applied and
+removed the 35 orphan stamps; no schema object was touched, verified by counting
+tables, functions and rows before and after.
+
+**The rollback pairing gap is closed, and the rollbacks MOVED.** 20 forward
+migrations had no rollback; all 39 now do. They live in `supabase/rollbacks/`
+because the Supabase CLI treats any `<timestamp>_name.sql` in
+`supabase/migrations/` as a migration to APPLY — and `.rollback.sql` sorts
+BEFORE `.sql`, so a deployment ran the DROP script first. See PR #23.
+
+**The ungated-route marker set was WIDENED, and it had a false positive.**
+Re-deriving at this SHA with the previously recorded marker set —
+`requireAdmin`, `resolveRequestActor`, `resolveUserId`, `isActorDenied`,
+`getUser(`, `getSession(`, `authorization`, `bearer`, `constructEvent`,
+`signature`, `redeem*Token`, `TEST_MODE`, `IS_PROD` — flagged **one canonical
+route**, `app/api/couranr/pay/[token]/reconcile/route.ts`. Reading it shows it
+is gated: it calls `redeemPaymentLink({ rawToken: params.token })` at line 31
+and returns before doing anything if that fails. The `redeem\w*Token` pattern
+simply does not match `redeemPaymentLink`. The marker is now
+`redeem\w*(Token|Link)`, under which the canonical figure reproduces as **0**
+and the legacy figure is **18** — 9 `auto`, 8 `docs`, 1 `special-request`. The
+older "18 of 124" is the same 18 routes against a smaller total. The legacy 18
+are quarantine targets, not extension points, and are recorded here so the
+figure is honest rather than flattering.
 
 ## Work items — 42 total
 
 | status | count |
 |---|---|
-| `complete_verified` | 9 |
+| `complete_verified` | 12 |
 | `complete_pending_external` | 2 |
 | `complete_unverified` | 1 |
 | `partial` | 7 |
 | `placeholder_only` | 2 |
-| `not_started` | 21 |
+| `not_started` | 18 |
 | `blocked` | 0 |
 | `deferred_by_decision` | 0 |
 | `retired_or_superseded` | 0 |
 
 By phase: P0 2 · P1 4 · P2 3 · P3 2 · P4 2 · P5 2 · P6 4 · P7 5 · P8 4 · P9 4 · P10 7 · P11 1 · P12 2
 
+**What Phase 8 moved.** Three items reached `complete_verified` at `a115f92`,
+each against its own authoritative acceptance criterion from
+`08_WORK_BREAKDOWN.csv` — not against a looser reading of its title.
+
+| item | from | to | the criterion, and what proved it |
+|---|---|---|---|
+| `P8-001` messaging | `not_started` | `complete_verified` | *"Participant/privacy tests pass."* 51/51 unstubbed signed-in browser checks pairing every browser assertion with a database row or a route refusal, plus 27/27 on the re-runnable acceptance matrix and 93 unit cases. The TRM-002 assertions were **mutation tested** — forcing `memberMayRead` to return `true` stops the run at 12 checks |
+| `P8-002` deadlines and Operations Inbox | `not_started` | `complete_verified` | *"Operating/after-hours timers pass."* `HRS-002` resolved (America/New_York) and `20260806010000` applied to production; 36 unit cases with every instant computed independently by Python `zoneinfo`; and in a browser: the badges **and** the header counts, the server recomputing both due states on read, the fallback notice absent, an internal note not stopping the clock, a participant-visible reply stopping it |
+| `P8-004` secure Delivery Help | `not_started` | `complete_verified` | *"One-delivery token scope passes."* A2, A10, A11, A11b, A7d and A8c, driven twice from an empty database. The blocker was never the evidence — it was that the matrix could not be re-run. It can now |
+| `P2-003` platform primitives | `partial` | `partial` (narrowed) | message idempotency and the conversation audit trail now exist; a general-purpose idempotency table still does not |
+
+**A GAP THAT BELONGS TO NO WORK ITEM, surfaced by this verification.** No code
+anywhere creates a `merchant_support` or a `delivery_chat` conversation, and
+nothing adds a merchant, driver or operations participant to any thread. The
+only `INSERT` into `couranr_conversations` or
+`couranr_conversation_participants` across `supabase/migrations`, `lib/` and
+`app/` is the Delivery Help redemption path. The layer is proven; in production
+a merchant or driver would see the empty state forever. A second, narrower gap
+found the same way: `left_at` has no writer, so a **replaced driver keeps
+conversation access** — neither `couranr_replace_delivery_assignment` nor
+`couranr_unassign_delivery_before_pickup` touches the participant table. Both
+need their own slice; neither is inside `P8-001`'s stated criterion, and
+neither is being quietly folded into it.
+
+`P8-003` Driving Mode was already `partial` and this slice did not touch it.
+
 ### Verified completion
 
 ```
 verified completion = complete_verified / applicable work items
-                    = 9 / 42
-                    = 21.4%
+                    = 12 / 42
+                    = 28.6%
 ```
 
 Nothing is `deferred_by_decision` or `retired_or_superseded`, so the denominator
@@ -92,8 +185,8 @@ external verification:
 
 ```
 implemented incl. pending-external = (complete_verified + complete_pending_external) / applicable
-                                   = (9 + 2) / 42
-                                   = 26.2%
+                                   = (12 + 2) / 42
+                                   = 33.3%
 ```
 
 Neither number should be quoted without its fraction.
@@ -102,15 +195,60 @@ Neither number should be quoted without its fraction.
 
 | status | count |
 |---|---|
-| `functional_verified` | 11 |
+| `functional_verified` | 15 |
 | `functional_unverified` | 5 |
-| `partial` | 5 |
+| `partial` | 7 |
 | `static_only` | 1 |
-| `placeholder_only` | 36 |
-| `missing` | 8 |
+| `placeholder_only` | 33 |
+| `missing` | 5 |
 | `deferred` / `retired_or_replaced` | 0 |
 
-**11 of 66 canonical screens are verified working in a browser.**
+**15 of 66 canonical screens are verified working in a browser.**
+
+Phase 8's messaging screens have all now been driven in a real browser, signed
+in, with no `page.route` anywhere — and **that is exactly why two of them are
+recorded `partial` rather than promoted.** Driving them is what revealed that
+they have no data path in production.
+
+- **`OPS-005`** → `functional_verified`. The Operations inbox is reachable with
+  real data today, because Delivery Help *does* have an issuance path: an
+  operator issues a help link, a customer redeems it, the thread appears. 20
+  checks cover the three kind labels, the overdue and due-soon badges together
+  with the header counts, the server recomputing both due states on read, the
+  waiting party, urgency, internal-note isolation from the merchant in the same
+  thread, the clock-stop semantics, per-participant read state, and the 403 a
+  merchant owner and a driver each receive.
+- **`MER-012` and `DRV-008`** → `partial`, not `functional_verified`. Every rule
+  behind them is proven — TRM-002 read and send for owner, manager and
+  dispatcher; viewer and billing refused identically on read *and* post with
+  nothing written; the driver tenure window with a control proving the hidden
+  message exists; access lost on replacement; no inherited history for the
+  replacement driver. But **nothing in the product ever creates the thread they
+  would show.** A screen whose every state is correct and whose data can never
+  arrive is not functional, and calling it so is the exact rounding-up this
+  ledger exists to prevent.
+- **`PUB-007`**'s evidence was re-established. It rested on a project run that
+  could not be repeated, and its `A12` condition — `/Delivery Help/i` present in
+  the body — also matched the marketing navigation, so it would have passed on a
+  page rendering a refusal. It now asserts the help form itself and runs
+  re-runnably against a disposable database.
+- **`CUS-001` and `CUS-003`** were promoted earlier at `ced8af8` on their own
+  unstubbed 11/11 run; only their stale "after-hours blocked on HRS-002" note
+  changed here.
+
+**Six rows moved across Phase 8 as a whole**, measured by diffing this ledger
+against `c929cc3`, and three of them moved twice. Final positions: `PUB-007`,
+`CUS-001` and `CUS-003` `missing → functional_verified`; `OPS-005`
+`placeholder_only → functional_verified`; `MER-012` and `DRV-008`
+`placeholder_only → partial`.
+
+`missing` therefore falls 8 → 5. The five that remain are **not** all
+`/help/[token]`, as an earlier revision of this file asserted: they are
+`CUS-002`, `CUS-004`, `CUS-007` (help), plus `DRV-007` (offline sync) and
+`MER-003` (onboarding activation). `CUS-004` is authority-deferred;
+`CUS-002` and `CUS-007` describe returns and delivery-charge refunds, which
+`P6-004` and `P7-005` do not provide; `DRV-007` needs the unbuilt half of
+`P7-004`.
 
 The customer tracking slice moved three: `CUS-006` to `functional_verified`,
 and `PUB-006` and `CUS-008` to `partial`. All three were driven in a real
@@ -164,8 +302,20 @@ nine of them and was right on five. The corrections, each conservative:
 
 - **P1-003 legacy containment** — 26 `auto`/`docs` API routes remain; none
   returns 410.
-- **P2-003 platform primitives** — guest tokens exist
-  (`couranr_payment_access_tokens`); there is no idempotency or audit table.
+- **P2-003 platform primitives** — narrowed by Phase 8, not closed. Guest tokens
+  exist (`couranr_payment_access_tokens`, `couranr_help_access_tokens`);
+  message-scoped idempotency and a conversation audit trail
+  (`couranr_conversation_events`) now exist. What is still missing is the
+  **general-purpose** idempotency table the item asks for — the one that would
+  cover payment and webhook writes, where `resilientUpdateById` still retries a
+  failing update up to 20 times by dropping columns.
+- **P8-001 messaging** — `complete_verified` against its criterion, with a gap
+  that sits outside it: **no code creates a `merchant_support` or
+  `delivery_chat` conversation, or adds a merchant, driver or operations
+  participant.** Only Delivery Help redemption does. `MER-012` and `DRV-008` are
+  `partial` for that reason, and it needs its own slice.
+- **P8-004 secure Delivery Help** — `complete_verified`. The acceptance matrix
+  is re-runnable now, and both fragment paths are proven unstubbed.
 - **P3-001 / P3-002 pricing** — the canonical engine exists and emits
   `couranr-pricing-2026-07-31`, but `lib/delivery/policy.ts` is still present
   and still reachable through legacy courier routes. **Two pricing engines are
@@ -184,20 +334,31 @@ nine of them and was right on five. The corrections, each conservative:
 - **P10-004** `/businesses`, `/how-it-works`
 - **P10-005** `/pricing`, `/service-areas`
 
-## Not started — 21 items
+## Not started — 18 items
 
 `P2-001` private/analytics schemas · `P4-002` presets · `P5-001` Smart Intake ·
 `P6-001` immutable quote versions · `P6-004` ledger, refunds, promotional credit ·
-`P7-005` exceptions (wait/cancel/return/incident/weather) · `P8-001` messaging ·
-`P8-002` support deadlines and Operations Inbox · `P8-004` secure Delivery Help ·
+`P7-005` exceptions (wait/cancel/return/incident/weather) ·
 `P9-001`–`P9-004` all AI work · `P10-001` analytics · `P10-002` observability ·
 `P10-003` canonical homepage · `P10-006` MKT-002 claim boundaries ·
 `P10-007` UI-TYP-001 typography · `P11-001` legacy cutover ·
 `P12-001` acceptance matrix · `P12-002` canary.
 
 The database confirms these are not merely unwired: there is no `private` or
-`analytics` schema, and no table matching preset, quote-version, ledger, refund,
-message/conversation, incident or idempotency.
+`analytics` schema, and no table matching preset, quote-version, ledger, refund
+or incident.
+
+**The conversation and idempotency clause of that sentence no longer holds**, and
+that is the whole of what Phase 8 changed here: `couranr_conversations`,
+`couranr_conversation_participants`, `couranr_conversation_messages` and
+`couranr_conversation_events` now exist, and message idempotency is enforced by
+`couranr_cvm_idempotency_uniq` on `(conversation_id, author_participant_id,
+idempotency_key)`. That index is author-scoped deliberately: a table-wide
+`(conversation_id, idempotency_key)` let a customer's key collide with an
+Operations internal note in the same thread, which first returned the note's id
+in place of the customer's message and then, once the lookup was fixed, raised
+23505 → `internal` → HTTP 500. A replay means "this author sending this key
+again", and the lookup and the index now say the same thing.
 
 ## External prelaunch obligations
 
@@ -209,10 +370,42 @@ message/conversation, incident or idempotency.
 ## Launch blockers
 
 `GAT-001` requires all eleven release conditions. On the evidence here the
-blocking set is: the customer surface is half-built (`/track/[token]` ships in
-this slice; the 8 remaining `missing` screens are all `/help/[token]`); refunds
-and the ledger do not exist; the
+blocking set is: the customer surface is still incomplete (5 `missing` screens
+remain, 3 of them on `/help/[token]`); refunds and the ledger do not exist; the
 legacy runtime is still live; and real Stripe is unverified.
+
+**The two decision records that blocked Phase 8 are RESOLVED.** The owner
+decided both on 2026-08-06 and both are recorded in the root registry, which
+moves `unresolved` from 7 to 5:
+
+- **`HRS-002` — America/New_York**, for every operating hour and support
+  deadline, across every market, with the boundary fixed: 06:00 inclusive,
+  18:00 exclusive. `P8-002`'s after-hours criterion is implementable and
+  implemented; the support clock now runs in OPERATING minutes, so a Friday
+  17:58 message is due Monday 06:13 rather than Friday 18:13.
+- **`TRM-002` — an explicit permission set per role.** owner, manager and
+  dispatcher read and send; viewer and billing have **no conversation access**.
+  The prior allow-list was reasoned by analogy to `DRP-001`; the registry
+  withdraws that analogy in writing. The substantive change is the read half —
+  a viewer could previously read any support thread in their business.
+
+**Three remain unresolved and still constrain work**, and none may be answered
+by implementation:
+
+- **`OVN-002`** — the overnight request-and-enable mechanism. `OVN-001` decides
+  the overnight *window* and that window is implemented as a clock predicate;
+  nothing decides how a merchant requests overnight or how Couranr enables it.
+  Naming a timezone did not resolve it, and a provenance test pins it so a
+  later edit cannot let overnight enablement be invented in code.
+- **Holidays and closures.** `HRS-001` says "normally Monday unless closure or
+  observed holiday", and no authority enumerates either. A holiday is treated
+  as an ordinary operating day, which marks a thread overdue too *soon* — the
+  safe direction — and is recorded rather than guessed.
+- **`FLG-001`'s `overnight_enabled` switch** is required to exist and default
+  false. It does not exist; no feature-flag mechanism exists at all.
+
+`GAT-002` (incidents and claims) remains `intentionally_deferred`, and it
+independently defers overnight from the first slice.
 
 ## Known legacy conflicts
 
@@ -221,14 +414,19 @@ legacy runtime is still live; and real Stripe is unverified.
 - **56 legacy page routes and 26 legacy `auto`/`docs` API routes are live.**
 - **Two pricing engines** are simultaneously reachable (see P3-002).
 - The legacy multi-product Stripe webhook still exists beside the canonical one.
-- Two legacy API routes have no gate: `app/api/auto/vehicles` (read-only GET)
-  and `app/api/special-request` (POST that only `console.log`s — it writes
-  caller-supplied contact details to server logs).
+- **18 legacy API routes match no gate marker** — 9 `auto`, 8 `docs`, 1
+  `special-request`. An earlier revision of this file named only two of them.
+  The worst is still `app/api/special-request`: a POST that only `console.log`s,
+  writing caller-supplied contact details to server logs.
 
 ## The four P0 database issues are CLOSED
 
 Earlier documents state that four P0s are open and reachable with the public
-anon key. Verified at this SHA, they are not:
+anon key. Re-verified at `40129ee` with `has_table_privilege` — which counts
+privileges inherited through `PUBLIC`, unlike an `information_schema` grantee
+read — they are not. `authenticated` and `anon` both hold **no** UPDATE on
+`orders`, `deliveries`, `addresses`, `delivery_admin_events` **or** `profiles`,
+the last of which is the SEC-001 hotfix holding:
 
 | P0 | claim | measured |
 |---|---|---|
@@ -241,16 +439,20 @@ anon key. Verified at this SHA, they are not:
 
 ## Gates at this SHA
 
-| gate | result |
-|---|---|
-| `npm run lint` | 0 |
-| `npm run typecheck` | 0 |
-| `npm run test:run` | 1043 passed, 36 files |
-| `npm run build` | compiled, 91 static pages |
-| Browser Group Q | 37/37 |
-| Browser Group P | 28/30 |
-| Browser Group N | 33/35 |
-| Browser Group O | 26/28 |
+| gate | result | re-run at `a115f92`? |
+|---|---|---|
+| `npm run lint` | 0 errors (warnings only, `no-img-element` in legacy pages) | yes |
+| `npm run typecheck` | 0 | yes |
+| `npm run test:run` | **1285 passed, 41 files** | yes |
+| `npm run build` | compiled successfully, 91 static pages | yes |
+| **Phase 8 acceptance matrix** | **27/27, twice, from an empty database** (`e2e/disposable/acceptanceMatrix.mjs`) | yes — and it is re-runnable now |
+| **Authenticated messaging** | **51/51 unstubbed** (`e2e/disposable/authenticatedMessaging.mjs`) | yes |
+| **Disposable `/auth/v1` refusals** | **20/20** (`e2e/disposable/authGateway.mjs`) | yes |
+| **CUS-001 / CUS-003 fragments** | 11/11 | no — cited from `ced8af8`, twice |
+| Browser Group Q | 37/37 | no — cited from an earlier run |
+| Browser Group P | 28/30 | no — cited from an earlier run |
+| Browser Group N | 33/35 | no — cited from an earlier run |
+| Browser Group O | 26/28 | no — cited from an earlier run |
 
 Each browser group's two remaining failures are `CLEAN-behaviour` and
 `CLEAN-residue`, the standing non-functional residue condition caused by
@@ -258,47 +460,81 @@ Each browser group's two remaining failures are `CLEAN-behaviour` and
 
 ## Could not be verified in this run
 
-- The browser suite could not be re-run during the reconciliation itself:
-  `.env.local` is absent after a container recycle. The group results above are
-  from runs at this same SHA earlier in the session and are cited as such.
+- **The authenticated browser runs do not use GoTrue.** GoTrue could not be
+  obtained in this container — three attempts, each with its own reason — so
+  `e2e/disposable/gateway.mjs` reimplements the two endpoints the application
+  calls, on bcrypt against `auth.users.encrypted_password` and HS256 verified
+  with `crypto.timingSafeEqual`. `e2e/disposable/authGateway.mjs` proves 20
+  refusals against it, and PostgREST derives `authenticated` from the same
+  verified token. What is NOT exercised is GoTrue's own behaviour: sessions as
+  rows, refresh-token reuse detection, MFA, email confirmation, rate limiting.
+  Neither is the auth-helpers cookie path against a real issuer.
+- **The disposable runs exercise the disposable stack, not the connected
+  project.** The schema is the same — every forward migration plus
+  `bootstrap.sql` reproducing `pg_default_acl` and `service_role BYPASSRLS` —
+  but a defect that exists only in the project's out-of-band state would not be
+  found there.
+- **`MER-012` and `DRV-008` have no production data path**, so what was driven
+  is the screen against seeded rows. That is the finding, not a caveat on the
+  run: see the work-items section.
+- **Groups N, O, P and Q were not re-run at this SHA.** They are cited from
+  earlier runs and labelled as such in the table above.
 - `P1-002` (`/api/delivery/mark-in-transit`) reads as correctly hardened, but a
   grep of `tests/` and `e2e/` finds **no coverage at all**, so it is recorded
   `complete_unverified` rather than verified.
+- **`issueTrackingLink` has no caller.** `lib/couranr/tracking/commands.ts:98`
+  is unreachable from `app/`, `lib/`, `components/` or `e2e/`, so no customer
+  can be sent a `/track/[token]` link — the same defect `P8-004` carried before
+  this slice added an issuance route. It belongs to `PUB-006` and is recorded
+  there rather than absorbed into Phase 8.
 
 ## Next recommended implementation slice
 
-**Delivery Help — `/help/[token]`.** (The tracking half of this slice,
-`/track/[token]`, has shipped; what follows describes what remains.)
+**Not a feature slice. Make the evidence re-runnable, then merge Phase 8.**
 
-Why it is next:
+The previous revision of this section recommended Delivery Help. That slice is
+built. What it exposed is a gap in how this repository proves things, and
+building the next feature on top of it would repeat the failure:
 
-1. It is the largest contiguous hole left. Eight canonical screens have **no
-   page at all**, and every one of them is on this route.
-2. Everything it needs already exists and is verified. Deliveries reach
-   `delivered` with proof (Group Q); `couranr_payment_access_tokens` already
-   provides the token-scoped access pattern; `PHO-001` already names the person
-   receiving the delivery as an authorized proof-media viewer, and the
-   Operations viewer proves the signed-URL mechanism.
-3. Nothing else can close without it — a delivery product whose recipient
-   cannot see where their delivery is has no customer-visible outcome.
-4. It unblocks the exceptions work (P7-005) and support messaging (P8-004),
-   both of which are reached *through* Delivery Help.
+> `P8-004` shipped with **two independent defects that made it impossible to
+> use at all** — nothing called `issueHelpToken`, and
+> `couranr_conversation_participants.access_token_id` pointed at the *tracking*
+> token table, so every redemption failed on a foreign key. Both survived a
+> passing typecheck, a passing 1103-case suite, static SQL assertions, source
+> scans and a 22/22 browser run. All of that evidence was static or stubbed.
+> The first thing that ever invoked `couranr_redeem_help_token` against a real
+> delivery found both in one run.
 
-**Work items it would close:** `P8-004` (secure Delivery Help), and the
-customer-facing half of `P7-004` proof viewing.
+So, in order:
 
-**Screen IDs it would close:** `PUB-007`, `CUS-001`, `CUS-003`, `CUS-004` —
-and it would give `PUB-006` the Delivery Help destination it is currently
-`partial` without.
+1. **Make the acceptance matrix repeatable.** Today it can be run once and then
+   refuses, because it cannot delete its own fixtures. A scratch or branch
+   project is the cleanest answer and touches no production row; a scoped
+   `SECURITY DEFINER` purge limited to marked rows is the cheapest. **DONE, and
+   by neither of those routes.** The matrix now runs against a disposable
+   database that starts empty and is destroyed afterwards, so no grant was
+   widened: `supabase/migrations/PROPOSED_couranr_e2e_cleanup.sql.review`
+   remains **unapplied**.
+2. **Close the two verification gaps this slice recorded rather than hid** —
+   the `CUS-001`/`CUS-003` fragment paths, and a browser run against `MER-012`,
+   `DRV-008` and `OPS-005`. **DONE**: 11/11 and 51/51, both unstubbed, which
+   moved `P8-001`, `P8-002` and `P8-004` to `complete_verified`. Driving the
+   messaging screens is also what revealed that two of them have no data path in
+   production — see the work-items section.
+3. **Fix `issueTrackingLink`'s missing caller** under `PUB-006`, not here.
+   `/track/[token]` has the identical dead-on-arrival shape `/help/[token]` had.
+
+**What cannot be fixed by implementation, and must be decided:** `OVN-002`
+(the overnight request-and-enable mechanism), the holiday and closure calendar
+`HRS-001` refers to but never enumerates, and `FLG-001`'s `overnight_enabled`
+switch, which is required to exist and does not. `HRS-002` and `TRM-002` were
+the two blocking this slice and the owner has now decided both.
 
 `CUS-002` (cancellation and return) and `CUS-007` (return and refund status)
-CANNOT close in that slice: both describe returns and delivery-charge refunds,
-and `P6-004` (ledger and refunds) and `P7-005` (exceptions) are `not_started`.
-A help page that renders those two as working screens would be the same
+still CANNOT close: both describe returns and delivery-charge refunds, and
+`P6-004` (ledger and refunds) and `P7-005` (exceptions) are `not_started`. A
+help page that rendered those two as working screens would be the same
 overstatement this file exists to prevent.
-
-That is 4 of the 8 remaining `missing` screens, against a foundation that is
-already proven.
 
 ## Keeping this file honest
 

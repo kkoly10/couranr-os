@@ -156,6 +156,10 @@ describe("classifyDatabaseError", () => {
 describe("canonical routes cannot leak a database detail", () => {
   it("covers every canonical route", () => {
     expect(ROUTES.map(rel).sort()).toEqual([
+      "app/api/couranr/conversations/[id]/messages/route.ts",
+      "app/api/couranr/conversations/[id]/read/route.ts",
+      "app/api/couranr/conversations/[id]/route.ts",
+      "app/api/couranr/conversations/route.ts",
       "app/api/couranr/delivery-requests/[id]/authorize-payment/route.ts",
       "app/api/couranr/delivery-requests/[id]/estimate/route.ts",
       "app/api/couranr/delivery-requests/[id]/fulfillment/route.ts",
@@ -181,6 +185,7 @@ describe("canonical routes cannot leak a database detail", () => {
       "app/api/couranr/driver/deliveries/[id]/verify-recipient-code/route.ts",
       "app/api/couranr/driver/proof/[proofId]/url/route.ts",
       "app/api/couranr/driver/proof/finalize/route.ts",
+      "app/api/couranr/help/[token]/route.ts",
       "app/api/couranr/me/business-accounts/route.ts",
       "app/api/couranr/me/landing/route.ts",
       "app/api/couranr/me/workspace/route.ts",
@@ -188,6 +193,7 @@ describe("canonical routes cannot leak a database detail", () => {
       "app/api/couranr/merchant/deliveries/[id]/proof/route.ts",
       "app/api/couranr/merchant/deliveries/[id]/recipient-code/route.ts",
       "app/api/couranr/operations/deliveries/[id]/assignment/route.ts",
+      "app/api/couranr/operations/deliveries/[id]/help-link/route.ts",
       "app/api/couranr/operations/deliveries/[id]/pickup-code/route.ts",
       "app/api/couranr/operations/deliveries/[id]/recipient-code/route.ts",
       "app/api/couranr/operations/deliveries/[id]/unassign/route.ts",
@@ -200,6 +206,7 @@ describe("canonical routes cannot leak a database detail", () => {
       "app/api/couranr/operations/delivery-requests/[id]/service-plan/route.ts",
       "app/api/couranr/operations/discrepancies/[id]/safe-to-continue/route.ts",
       "app/api/couranr/operations/drivers/route.ts",
+      "app/api/couranr/operations/inbox/route.ts",
       "app/api/couranr/operations/proof/[proofId]/url/route.ts",
       "app/api/couranr/operations/queue/route.ts",
       "app/api/couranr/operations/vehicles/[id]/route.ts",

@@ -149,10 +149,13 @@ describe("DRP-001 delivery-request permission matrix", () => {
 
 describe("migration is additive and correctly scoped", () => {
   const DIR = path.resolve(__dirname, "../supabase/migrations");
+  // Rollbacks live in a sibling directory: the Supabase CLI would otherwise
+  // treat each one as a migration to APPLY, and run it before its own forward
+  // file. See tests/couranr-migrations.test.ts.
+  const ROLLBACK_DIR = path.resolve(__dirname, "../supabase/rollbacks");
   // Resolved by discovery, not by a hard-coded name: `apply_migration` assigns
   // its own timestamp version, so the file was renamed to match production.
   const NAMES = readdirSync(DIR).filter((f) => f.endsWith("_couranr_delivery_requests.sql"));
-  const ROLLBACK_DIR = path.resolve(__dirname, "../supabase/rollbacks");
   const ROLLBACK_NAMES = readdirSync(ROLLBACK_DIR).filter((f) =>
     f.endsWith("_couranr_delivery_requests.rollback.sql")
   );

@@ -86,6 +86,133 @@ describe("the two decision registries stay in their documented relationship", ()
     expect(rootRaw.includes(String(absurd))).toBe(false);
   });
 
+  /**
+   * HOURS. Added when the owner resolved HRS-002 (timezone = America/New_York).
+   *
+   * The package registry carries the hours VALUES but has never carried a
+   * timezone — `grep -c timezone` over it returns 0. So the package file is
+   * left exactly as delivered: it is provenance, and editing it would destroy
+   * the thing it exists to preserve. Consistency is enforced the other way
+   * round, by pinning that root still agrees with every hours value the
+   * package does carry.
+   *
+   * This check did not exist before. The suite verified pricing and state
+   * vocabularies only, so the two files could have disagreed about the
+   * operating window, the cutoff or the overnight surcharge and nothing would
+   * have failed.
+   */
+  it("every hours value in the package registry agrees with the root registry", () => {
+    const h = pkg.hours;
+    const hrs001 = root.decisions.find((d: any) => d.id === "HRS-001");
+    const ovn001 = root.decisions.find((d: any) => d.id === "OVN-001");
+    const trm001 = root.decisions.find((d: any) => d.id === "TRM-001");
+    expect(hrs001, "HRS-001").toBeTruthy();
+    expect(ovn001, "OVN-001").toBeTruthy();
+    expect(trm001, "TRM-001").toBeTruthy();
+
+    expect(hrs001.value.days.map((x: string) => x.toLowerCase())).toEqual(h.days);
+    expect(hrs001.value.standard_window.start).toBe(h.standard_start);
+    expect(hrs001.value.standard_window.end).toBe(h.standard_end);
+    expect(hrs001.value.same_day_request_cutoff).toBe(h.same_day_cutoff);
+
+    expect(`${ovn001.value.window.start}-${ovn001.value.window.end}`).toBe(h.overnight_window);
+    expect(ovn001.value.surcharge_cents).toBe(h.overnight_surcharge_cents);
+    expect(ovn001.value.stacks_with_rush).toBe(h.rush_and_overnight_stack);
+
+    expect(trm001.value.support_response_target_minutes).toBe(h.support_response_target_minutes);
+  });
+
+  /**
+   * The two decisions the owner resolved on 2026-08-06. Pinned so a later edit
+   * cannot quietly revert them to "unresolved" and re-open work that has now
+   * shipped against them.
+   */
+  it("HRS-002 records a named IANA timezone as a decided owner decision", () => {
+    const h = root.decisions.find((d: any) => d.id === "HRS-002");
+    expect(h.status).toBe("decided");
+    expect(h.value.timezone).toBe("America/New_York");
+    expect(h.value.timezone_kind).toBe("IANA");
+    expect(h.decided_by).toBe("owner");
+    // A decided record must not still carry the unresolved-only keys.
+    expect(h.missing).toBeUndefined();
+    expect(h.blocked_screen_ids).toBeUndefined();
+    // The window it governs must match HRS-001 rather than restate it differently.
+    const hrs001 = root.decisions.find((d: any) => d.id === "HRS-001");
+    expect(h.value.operating_window_local.start).toBe(hrs001.value.standard_window.start);
+    expect(h.value.operating_window_local.end).toBe(hrs001.value.standard_window.end);
+  });
+
+  it("TRM-002 records an explicit permission set for all five roles", () => {
+    const t = root.decisions.find((d: any) => d.id === "TRM-002");
+    expect(t.status).toBe("decided");
+    expect(t.decided_by).toBe("owner");
+    const perms = t.value.permissions_per_role;
+    expect(Object.keys(perms).sort()).toEqual(
+      ["billing", "dispatcher", "manager", "owner", "viewer"]
+    );
+    // Every declared role must have a set — a missing role is the gap TRM-002 existed to close.
+    for (const role of t.value.declared_roles) {
+      expect(perms[role], `role ${role} has no permission set`).toBeTruthy();
+      expect(typeof perms[role].conversation_read).toBe("boolean");
+      expect(typeof perms[role].conversation_send).toBe("boolean");
+    }
+    // viewer and billing are refused BOTH, not merely send.
+    for (const role of ["viewer", "billing"]) {
+      expect(perms[role].conversation_read, `${role} must not read`).toBe(false);
+      expect(perms[role].conversation_send, `${role} must not send`).toBe(false);
+    }
+    for (const role of ["owner", "manager", "dispatcher"]) {
+      expect(perms[role].conversation_read, `${role} must read`).toBe(true);
+      expect(perms[role].conversation_send, `${role} must send`).toBe(true);
+    }
+  });
+
+  /**
+   * OVN-002 is the trap next to HRS-002. Naming a timezone does NOT decide how
+   * a merchant requests overnight or how Couranr enables it. If a later change
+   * flips OVN-002 to decided without an owner saying so, overnight enablement
+   * would be invented in code.
+   */
+  /**
+   * THE SELF-CONTRADICTION THIS ALMOST SHIPPED.
+   *
+   * HRS-002 was flipped to `decided` with the zone recorded, while
+   * HRS-001.value.standard_window.timezone_status still read the literal
+   * string "unresolved". The rank-1 authority disagreed with itself about
+   * whether the timezone was known, and nothing checked the two against each
+   * other. Caught by an independent review pass, not by this suite.
+   */
+  it("HRS-001's window agrees with HRS-002 that the timezone is resolved", () => {
+    const hrs001 = root.decisions.find((d: any) => d.id === "HRS-001");
+    const hrs002 = root.decisions.find((d: any) => d.id === "HRS-002");
+    const w = hrs001.value.standard_window;
+    expect(w.timezone_status).toBe("resolved");
+    expect(w.timezone).toBe(hrs002.value.timezone);
+    expect(w.timezone_decided_by).toBe("HRS-002");
+  });
+
+  /**
+   * OVN-001's window is the EXACT COMPLEMENT of HRS-001's. That is what forces
+   * the end-exclusive boundary: 18:00 belongs to overnight, so if the standard
+   * window also claimed it, a single instant would sit in both and a 3000-cent
+   * surcharge would attach or not depending on evaluation order.
+   */
+  it("the standard and overnight windows tile the day with no overlap and no gap", () => {
+    const hrs001 = root.decisions.find((d: any) => d.id === "HRS-001");
+    const ovn001 = root.decisions.find((d: any) => d.id === "OVN-001");
+    expect(ovn001.value.window.start).toBe(hrs001.value.standard_window.end);
+    expect(ovn001.value.window.end).toBe(hrs001.value.standard_window.start);
+    // ...and the boundary rule is stated on both sides, not left to the reader.
+    expect(hrs001.value.standard_window.boundary_semantics).toMatch(/end exclusive/i);
+    const hrs002 = root.decisions.find((d: any) => d.id === "HRS-002");
+    expect(hrs002.value.boundary_semantics).toMatch(/end exclusive/i);
+  });
+
+  it("OVN-002 remains unresolved — a timezone does not decide the overnight enablement mechanism", () => {
+    const o = root.decisions.find((d: any) => d.id === "OVN-002");
+    expect(o.status).toBe("unresolved");
+  });
+
   it("the package copy is marked non-authoritative", () => {
     const note = readFileSync(path.join(ROOT, "couranr_claude_code_package/00_PROVENANCE.md"), "utf8");
     expect(note).toMatch(/NOT the authority/i);

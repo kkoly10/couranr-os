@@ -67,6 +67,12 @@ alter default privileges in schema public
 create table if not exists auth.users (
   id            uuid primary key default gen_random_uuid(),
   email         text unique,
+  -- REAL bcrypt, via pgcrypto. The disposable /auth/v1 verifies a password with
+  -- `crypt(candidate, encrypted_password) = encrypted_password`, exactly as
+  -- GoTrue does, so a wrong password genuinely fails rather than being waved
+  -- through. Storing a plaintext column here would make every auth assertion
+  -- in the harness meaningless.
+  encrypted_password text,
   raw_user_meta_data jsonb default '{}'::jsonb,
   created_at    timestamptz not null default now()
 );
@@ -213,3 +219,98 @@ create policy admin_all_profiles on public.profiles
 -- The baseline also grants `authenticated` DML on profiles. SEC-001 revokes
 -- UPDATE; without the grant existing first, the revoke is untestable.
 grant select, insert, update on public.profiles to authenticated;
+
+-- ── the three functions the disposable /auth/v1 is built on ────────────────
+--
+-- These stand in for GoTrue's password store, and ONLY for that. They are
+-- `security definer` because `auth.users` is granted to nobody here — which is
+-- the point: `authenticated` must not be able to read the user table, exactly
+-- as in production. The definer owner is `postgres`, so the function can read
+-- it while its callers cannot.
+--
+-- Execute is REVOKED from anon and authenticated immediately below. Without
+-- that revoke `pg_default_acl` would grant it to both, and the browser's own
+-- anon key could call the password oracle directly — which would make every
+-- refusal assertion in the harness worthless.
+--
+-- bcrypt at cost 6 rather than the usual 10: this is a throwaway database and
+-- a run that signs in six times should not spend seconds on key stretching.
+-- The ALGORITHM is real, and a wrong password genuinely fails.
+create or replace function public.couranr_disposable_set_password(
+  p_user_id uuid, p_password text
+) returns void language sql security definer
+set search_path = public, extensions, pg_temp
+as $$
+  update auth.users
+     set encrypted_password = extensions.crypt(p_password, extensions.gen_salt('bf', 6))
+   where id = p_user_id;
+$$;
+
+create or replace function public.couranr_disposable_verify_password(
+  p_email text, p_password text
+) returns uuid language sql stable security definer
+set search_path = public, extensions, pg_temp
+as $$
+  select u.id from auth.users u
+   where u.email = p_email
+     and u.encrypted_password is not null
+     and extensions.crypt(p_password, u.encrypted_password) = u.encrypted_password;
+$$;
+
+-- The body GoTrue returns from `GET /auth/v1/user`, built from the REAL row.
+-- The gateway composes nothing: it verifies the token signature and then asks
+-- this function who that `sub` actually is. A token for a deleted user
+-- therefore yields no user, which is what production does too.
+create or replace function public.couranr_disposable_auth_user(p_user_id uuid)
+returns jsonb language sql stable security definer
+set search_path = public, extensions, pg_temp
+as $$
+  select jsonb_build_object(
+    'id',                 u.id,
+    'aud',                'authenticated',
+    'role',               'authenticated',
+    'email',              u.email,
+    'email_confirmed_at', u.created_at,
+    'confirmed_at',       u.created_at,
+    'last_sign_in_at',    u.created_at,
+    'phone',              '',
+    'app_metadata',       jsonb_build_object(
+                            'provider', 'email',
+                            'providers', jsonb_build_array('email')
+                          ),
+    'user_metadata',      coalesce(u.raw_user_meta_data, '{}'::jsonb),
+    'identities',         '[]'::jsonb,
+    'created_at',         u.created_at,
+    'updated_at',         u.created_at,
+    'is_anonymous',       false
+  )
+  from auth.users u
+  where u.id = p_user_id;
+$$;
+
+-- `from public` is NOT redundant with `from anon, authenticated`, and leaving
+-- it out was a real defect here: PostgreSQL grants EXECUTE on a new function to
+-- PUBLIC by default, `alter default privileges` ADDS to that rather than
+-- replacing it, and A14 measured `authenticated` calling the password oracle
+-- through PostgREST with a 200 while the two named roles had been revoked. The
+-- explicit service_role grant from pg_default_acl survives this.
+revoke execute on function
+  public.couranr_disposable_set_password(uuid, text),
+  public.couranr_disposable_verify_password(text, text),
+  public.couranr_disposable_auth_user(uuid)
+from public, anon, authenticated;
+
+-- A probe, not a fixture: reports the role PostgREST actually SET and the uid
+-- it derived from the verified JWT. It is what turns "the token was accepted"
+-- into "the token was accepted AS THIS USER, as `authenticated`". Defined here
+-- rather than by a harness because PostgREST caches the schema at startup — a
+-- function created afterwards answers PGRST202 until a reload.
+create or replace function public.couranr_disposable_whoami()
+returns jsonb language sql stable
+as $$
+  select jsonb_build_object(
+    'db_role',  current_user,
+    'jwt_role', auth.role(),
+    'uid',      auth.uid()
+  )
+$$;
