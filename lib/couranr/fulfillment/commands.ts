@@ -975,3 +975,123 @@ export async function getCanonicalDelivery(params: {
   }
   return { ok: true, value: { delivery: data ?? null } };
 }
+
+/* ------------------------------------------------- release a hold ------ */
+
+/**
+ * Release an authorized hold back to the payer — ACP-032, CAN-001 `release`.
+ *
+ * Lives HERE, not in `lib/couranr/payments/`, and that is not a filing
+ * preference. `tests/couranr-payments.test.ts:51` forbids `.cancel(` anywhere
+ * in the payment modules, because that slice's strongest guarantee is about
+ * what is ABSENT: no capture wrapper, no refund wrapper, so no route can reach
+ * one by accident. Capture already lives in this module for the same reason,
+ * and a release belongs beside it.
+ *
+ * THE ORDER IS THE DESIGN. `begin` gates and guards but does NOT move
+ * payment_state; Stripe is called; `complete` records the outcome. Writing
+ * `cancelled` first and then failing the Stripe call would leave the row
+ * asserting released funds that are still held, with nothing to correct it —
+ * no webhook fires for a cancel that never happened. Failing this way round
+ * leaves the obligation truthfully `authorized`, and a real cancellation is
+ * still picked up by the existing `payment_intent.canceled` webhook.
+ */
+export async function releaseAuthorization(params: {
+  actor: RequestActor;
+  requestId: string;
+  businessAccountId: string;
+  reason: string;
+}): Promise<FulfillmentResult<{ obligationId: string; paymentState: string }>> {
+  const op = "releaseAuthorization";
+
+  const permission = canActOnDeliveryRequest(params.actor, "review", params.businessAccountId);
+  if (!permission.allowed || params.actor.kind !== "operations") {
+    return fail({
+      operation: op,
+      code: "not_permitted",
+      detail: { reason: "not_operations" },
+      message: "Only Couranr Operations can release a payment hold.",
+    });
+  }
+  if (!params.reason || !params.reason.trim()) {
+    return fail({
+      operation: op,
+      code: "invalid_input",
+      detail: { reason: "no_reason" },
+      message: "Say why this hold is being released.",
+    });
+  }
+
+  const existing = await getObligationForRequest({
+    requestId: params.requestId,
+    businessAccountId: params.businessAccountId,
+  });
+  if (isPaymentFailure(existing)) return existing as unknown as FulfillmentFailure;
+
+  const ob: any = existing.value;
+  if (!ob) {
+    return fail({
+      operation: op,
+      code: "not_found",
+      detail: { reason: "no_obligation" },
+      message: "There is no payment on this delivery.",
+    });
+  }
+
+  const begun = await callRpc<any>(op, "couranr_begin_payment_release", {
+    p_obligation_id: String(ob.id),
+    p_actor_user_id: params.actor.userId,
+    p_expected_version: Number(ob.version),
+    p_reason: params.reason.trim(),
+  });
+  if (!begun.ok) return begun;
+  // Already released by an earlier attempt or by the webhook. Hand back the
+  // settled state rather than calling Stripe again.
+  if (begun.value?.outcome === "ignored") {
+    return { ok: true, value: { obligationId: String(ob.id), paymentState: "cancelled" } };
+  }
+
+  const intentId = String(ob.provider_payment_intent_id ?? "");
+  let intent: any;
+  try {
+    intent = await getStripeClient().paymentIntents.cancel(intentId);
+  } catch (e: any) {
+    /*
+     * AN ERROR IS NOT EVIDENCE ABOUT THE MONEY — the same rule capture follows.
+     * `payment_intent_unexpected_state` means the intent is not where we
+     * thought, which covers BOTH "already cancelled" (release succeeded
+     * earlier) and "already succeeded" (money is gone; this is a refund, not a
+     * release). Guessing between them is exactly the mistake capture's own
+     * comment records. So ask Stripe what the intent actually says and let
+     * `complete` decide — it refuses any status that is not `canceled`.
+     */
+    try {
+      intent = await getStripeClient().paymentIntents.retrieve(intentId);
+    } catch {
+      return fail({
+        operation: op,
+        // Same code capture uses for a provider failure. `PublicErrorCode`
+        // has no upstream/unavailable member and inventing one would widen a
+        // closed vocabulary that routes map to HTTP.
+        code: "internal",
+        detail: { reason: "cancel_failed", type: e?.type, stripeCode: e?.code ?? null },
+        message: "The hold could not be released. Nothing was changed; try again.",
+      });
+    }
+  }
+
+  const done = await callRpc<any>(op, "couranr_complete_payment_release", {
+    p_obligation_id: String(ob.id),
+    p_payment_intent_id: intentId,
+    p_intent_status: String(intent?.status ?? ""),
+  });
+  if (!done.ok) return done;
+
+  return {
+    ok: true,
+    value: {
+      obligationId: String(ob.id),
+      paymentState: String(done.value?.payment_state ?? ""),
+    },
+  };
+}

@@ -300,6 +300,52 @@ export function startStripeDouble(port = 12111) {
         return json(200, intentJson(pi));
       }
 
+      /*
+       * POST /v1/payment_intents/{id}/cancel — ACP-032's release path.
+       *
+       * Modelled on the documented transitions rather than on what is
+       * convenient: an intent may be cancelled from requires_payment_method,
+       * requires_capture, requires_confirmation, requires_action or
+       * processing, and cancelling one that has already SUCCEEDED is an error.
+       * (https://docs.stripe.com/api/payment_intents/cancel)
+       *
+       * That last refusal is the one worth modelling. `succeeded` means the
+       * money is taken, so the correct answer is a refund, not a release — and
+       * a double that cheerfully cancelled it would let a bug through that
+       * real Stripe would reject.
+       */
+      const cancel = url.pathname.match(/^\/v1\/payment_intents\/(pi_[\w]+)\/cancel$/);
+      if (cancel && req.method === "POST") {
+        calls.push({ path: url.pathname, method: "POST", form: parseForm(body) });
+        const pi = intents.get(cancel[1]);
+        if (!pi) return json(404, { error: { type: "invalid_request_error" } });
+
+        if (pi.status === "succeeded") {
+          return json(400, {
+            error: {
+              type: "invalid_request_error",
+              code: "payment_intent_unexpected_state",
+              message: `You cannot cancel this PaymentIntent because it has a status of succeeded.`,
+            },
+          });
+        }
+        if (pi.status === "canceled") {
+          return json(400, {
+            error: {
+              type: "invalid_request_error",
+              code: "payment_intent_unexpected_state",
+              message: `You cannot cancel this PaymentIntent because it has a status of canceled.`,
+            },
+          });
+        }
+
+        pi.status = "canceled";
+        pi.cancellation_reason =
+          (parseForm(body) || {}).cancellation_reason || "requested_by_customer";
+        intents.set(pi.id, pi);
+        return json(200, intentJson(pi));
+      }
+
       const retrieve = url.pathname.match(/^\/v1\/payment_intents\/(pi_[\w]+)$/);
       if (retrieve && req.method === "GET") {
         calls.push({ path: url.pathname, method: "GET" });
