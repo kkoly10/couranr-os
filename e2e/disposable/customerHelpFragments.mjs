@@ -82,12 +82,32 @@
  * So redemption over HTTP is CONFIRMED WORKING.
  *
  * STILL FAILING, AND NOT YET DIAGNOSED: the full app run renders the same
- * refusal. Something between the Next server and the gateway still differs from
- * the direct probe. `.env.local` is present in this checkout and Next loads it,
- * which is one candidate for the passed-in keys being overridden — but that is
- * a GUESS and is written here as one. Two confident diagnoses in this file were
- * already wrong; the next step is to log what the server route actually sends
- * and receives, not to reason about it.
+ * refusal even though the same RPC returns 200 through the same gateway.
+ *
+ * THREE HYPOTHESES HAVE NOW BEEN DISPROVED BY MEASUREMENT. Recorded so nobody
+ * spends time re-testing them:
+ *
+ *   1. "the browser bundle points at the real Supabase host, inlined at build
+ *      time" — the harness now rebuilds against the gateway into its own
+ *      distDir, and the run fails identically.
+ *
+ *   2. "the token is malformed or hashed differently" — the seed uses the same
+ *      algorithm as lib/couranr/conversations/help.ts, and a direct SQL call to
+ *      couranr_redeem_help_token returns its three ids correctly.
+ *
+ *   3. "`.env.local` overrides the passed-in keys" — measured directly by
+ *      building with COURANR_DIST_DIR and grepping the output bundle for
+ *      127.0.0.1:55434. THE PASSED-IN VALUE WON. Next does not override it.
+ *
+ * What IS established: the RPC works in SQL, and it works over HTTP through the
+ * gateway with a signed service-role JWT (200, all three ids). The remaining
+ * difference is between `fetch` and what supabase-js actually sends from inside
+ * the Next server process.
+ *
+ * THE NEXT STEP IS INSTRUMENTATION, NOT ANOTHER HYPOTHESIS: log the request the
+ * gateway receives from the app — method, path, headers, body — and compare it
+ * byte for byte against the probe's. The gateway is the one place both paths
+ * pass through, so it is the right place to look.
  * ---------------------------------------------------------------------------
  *
  * Measured state: C1 "passes", C2 fails because the topic `<select>` never
