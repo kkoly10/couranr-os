@@ -163,6 +163,151 @@ export async function getActivation(params: {
   };
 }
 
+/** One workspace as Couranr Operations sees it in the review list. */
+export type ActivationQueueEntry = {
+  businessAccountId: string;
+  businessName: string;
+  state: string;
+  requestedAt: string | null;
+  blockedReason: string | null;
+  reviewedAt: string | null;
+};
+
+/** One accepted document, with WHO accepted it. */
+export type AcknowledgementRecord = {
+  kind: string;
+  version: string;
+  acceptedAt: string;
+  acceptedByUserId: string;
+  acceptedByEmail: string | null;
+  /** False when the merchant accepted a version Couranr no longer collects. */
+  isCurrent: boolean;
+};
+
+/**
+ * Every workspace Couranr Operations has activation work on.
+ *
+ * THIS EXISTS BECAUSE THE DECIDE ROUTE WAS WRITE-ONLY. An operator could
+ * grant or block a workspace but had no way to READ one — not the checklist,
+ * not the acknowledgements, not who accepted them — so the decision was made
+ * blind and there was no way to find a workspace awaiting review in the first
+ * place. Caught reviewing MER-003 rather than by any test, because a
+ * write-only surface is perfectly consistent with itself.
+ *
+ * `pending_couranr_review` first: that is the queue. The rest are readable so
+ * a blocked workspace can be revisited and a live one audited.
+ */
+export async function listActivationsForOperations(params: {
+  state?: string;
+}): Promise<ActivationResult<{ entries: ActivationQueueEntry[] }>> {
+  const op = "listActivationsForOperations";
+
+  let query = supabaseAdmin
+    .from("couranr_workspace_activations")
+    .select(
+      "business_account_id,activation_state,blocked_reason_code,requested_at,reviewed_at"
+    )
+    .order("requested_at", { ascending: true, nullsFirst: false })
+    .limit(200);
+
+  if (params.state) query = query.eq("activation_state", params.state);
+
+  const { data, error } = await query;
+  if (error || !Array.isArray(data)) {
+    return fail({
+      operation: op,
+      code: "internal",
+      detail: { lookup: "couranr_workspace_activations", error },
+    });
+  }
+
+  const ids = Array.from(new Set(data.map((r: any) => String(r.business_account_id))));
+  const names: Record<string, string> = {};
+  if (ids.length > 0) {
+    const accounts = await supabaseAdmin
+      .from("business_accounts")
+      .select("id,name")
+      .in("id", ids);
+    if (accounts.error || !Array.isArray(accounts.data)) {
+      return fail({ operation: op, code: "internal", detail: { lookup: "business_accounts" } });
+    }
+    for (const a of accounts.data as any[]) names[String(a.id)] = String(a.name ?? "");
+  }
+
+  return {
+    ok: true,
+    value: {
+      entries: data.map((row: any) => ({
+        businessAccountId: String(row.business_account_id),
+        // An account whose name could not be read is named as unknown rather
+        // than as an empty string an operator would read as "no name".
+        businessName: names[String(row.business_account_id)] || "(unnamed business)",
+        state: String(row.activation_state),
+        requestedAt: row.requested_at ?? null,
+        blockedReason:
+          String(row.activation_state) === "blocked"
+            ? blockReasonMessage(row.blocked_reason_code)
+            : null,
+        reviewedAt: row.reviewed_at ?? null,
+      })),
+    },
+  };
+}
+
+/**
+ * The acknowledgement records behind one workspace.
+ *
+ * An operator reviewing a request has to be able to see WHAT was accepted, at
+ * WHICH version, and by WHOM — a consent record whose acceptor is invisible is
+ * not evidence of anything. `isCurrent` is computed against the governed
+ * versions, so an operator can tell a stale acceptance from a fresh one.
+ */
+export async function getAcknowledgementRecords(params: {
+  businessAccountId: string;
+}): Promise<ActivationResult<{ acknowledgements: AcknowledgementRecord[] }>> {
+  const op = "getAcknowledgementRecords";
+
+  const { data, error } = await supabaseAdmin
+    .from("couranr_activation_acknowledgements")
+    .select("ack_kind,ack_version,accepted_at,accepted_by")
+    .eq("business_account_id", params.businessAccountId)
+    .order("accepted_at", { ascending: false });
+
+  if (error || !Array.isArray(data)) {
+    return fail({
+      operation: op,
+      code: "internal",
+      detail: { lookup: "couranr_activation_acknowledgements", error },
+    });
+  }
+
+  const userIds = Array.from(new Set(data.map((r: any) => String(r.accepted_by))));
+  const emails: Record<string, string | null> = {};
+  if (userIds.length > 0) {
+    const profiles = await supabaseAdmin.from("profiles").select("id,email").in("id", userIds);
+    if (profiles.error || !Array.isArray(profiles.data)) {
+      return fail({ operation: op, code: "internal", detail: { lookup: "profiles" } });
+    }
+    for (const p of profiles.data as any[]) emails[String(p.id)] = p.email ?? null;
+  }
+
+  return {
+    ok: true,
+    value: {
+      acknowledgements: data.map((row: any) => ({
+        kind: String(row.ack_kind),
+        version: String(row.ack_version),
+        acceptedAt: String(row.accepted_at),
+        acceptedByUserId: String(row.accepted_by),
+        acceptedByEmail: emails[String(row.accepted_by)] ?? null,
+        isCurrent:
+          ACKNOWLEDGEMENT_VERSIONS[row.ack_kind as AcknowledgementKind] ===
+          String(row.ack_version),
+      })),
+    },
+  };
+}
+
 export async function acceptAcknowledgement(params: {
   actor: ActorMembership;
   businessAccountId: string;

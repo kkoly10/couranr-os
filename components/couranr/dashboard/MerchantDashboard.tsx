@@ -189,7 +189,7 @@ export function MerchantDashboard() {
         setActivationUnknown(true);
         return;
       }
-      setActivation(r.value);
+      setActivation(r.value.activation);
     });
 
     call<{ requests: DeliveryRequestView[] }>(

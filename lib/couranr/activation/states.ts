@@ -221,6 +221,15 @@ export const BLOCK_REASONS: Readonly<Record<string, string>> = {
     "This workspace needs an additional review before it can go live. Couranr Support will be in touch.",
 };
 
+/**
+ * The closed list an operator may choose from, derived from `BLOCK_REASONS` so
+ * the two cannot drift into a code with no message behind it.
+ *
+ * A block reason is a CODE, never free text: the merchant reads the sentence
+ * above, so an operator's internal note can never reach them.
+ */
+export const BLOCK_REASON_CODES: readonly string[] = Object.keys(BLOCK_REASONS);
+
 export function blockReasonMessage(code: string | null | undefined): string {
   if (!code) return BLOCK_REASONS.additional_review_required;
   return BLOCK_REASONS[code] ?? BLOCK_REASONS.additional_review_required;

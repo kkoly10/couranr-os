@@ -60,14 +60,19 @@ export type ActivationView = {
   currentVersions: Record<string, string>;
 };
 
+/**
+ * Both read the `activation` KEY. Typing these flat is invisible to `tsc` —
+ * the routes return untyped JSON — and the failure would be silent rather
+ * than loud, which is how proof upload stayed dead for its entire life.
+ */
 export function fetchActivation(businessAccountId: string) {
-  return call<ActivationView>(
+  return call<{ activation: ActivationView }>(
     `/api/couranr/me/activation?businessAccountId=${encodeURIComponent(businessAccountId)}`
   );
 }
 
 function post(businessAccountId: string, body: Record<string, unknown>) {
-  return call<ActivationView>(
+  return call<{ activation: ActivationView }>(
     `/api/couranr/me/activation?businessAccountId=${encodeURIComponent(businessAccountId)}`,
     { method: "POST", body }
   );
@@ -114,7 +119,7 @@ export function ActivationChecklist({
         setError(r);
         return;
       }
-      setView(r.value);
+      setView(r.value.activation);
     });
     return () => {
       cancelled = true;
@@ -168,7 +173,7 @@ export function ActivationChecklist({
       setReloadKey((k) => k + 1);
       return;
     }
-    setView(r.value);
+    setView(r.value.activation);
   }
 
   if (error && error.status === 403) {

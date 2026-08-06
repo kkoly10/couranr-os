@@ -741,6 +741,105 @@ async function main() {
       await otherDash.screenshot({ path: path.join(SHOTS, "MER-001-not-started.png"), fullPage: true });
     }
 
+    /* ════ OPS-007 activation slice — Operations reviews before deciding ═══ */
+
+    console.log("\nOPS-007 — the review an operator actually makes the decision from");
+    {
+      /*
+       * This surface exists because the decide route was WRITE-ONLY. Every
+       * check here is a thing an operator could not see before.
+       */
+      const anon = await fetch(`${BASE}/api/couranr/operations/activation`);
+      check("Q0", "the queue is Operations-only — anonymous refused",
+        anon.status === 401, `status=${anon.status}`);
+      const asMerchant = await api(owner.email, "/api/couranr/operations/activation");
+      check("Q1", "and a merchant owner is refused the queue",
+        asMerchant.status === 403, `status=${asMerchant.status}`);
+
+      // `otherBiz` never activated; put it into review so the queue is real.
+      const q = await api(admin.email, "/api/couranr/operations/activation");
+      check("Q2", "an operator reads the queue", q.status === 200, `status=${q.status}`);
+      check("Q3", "and it is keyed under `entries`", Array.isArray(q.body?.entries),
+        Object.keys(q.body ?? {}).join(","));
+
+      // bizId is LIVE by now, so it must not be in the pending queue.
+      const pendingIds = (q.body?.entries ?? []).map((e) => e.businessAccountId);
+      check("Q4", "a LIVE workspace is not in the pending-review queue",
+        !pendingIds.includes(bizId), pendingIds.join(","));
+
+      const liveList = await api(admin.email, "/api/couranr/operations/activation?state=live");
+      const liveIds = (liveList.body?.entries ?? []).map((e) => e.businessAccountId);
+      check("Q5", "but it IS in the live list, with its business NAME resolved",
+        liveIds.includes(bizId) &&
+          (liveList.body.entries.find((e) => e.businessAccountId === bizId)?.businessName ?? "")
+            .includes("[ACT]"),
+        liveList.body?.entries?.find((e) => e.businessAccountId === bizId)?.businessName ?? "");
+
+      const bogus = await api(admin.email, "/api/couranr/operations/activation?state=whatever");
+      check("Q6", "an unrecognised state is REFUSED, not silently ignored",
+        bogus.status === 400, `status=${bogus.status}`);
+
+      // The detail: what the operator decides from.
+      const d = await api(admin.email, `/api/couranr/operations/activation?businessAccountId=${bizId}`);
+      check("Q7", "the detail nests under `activation` and `acknowledgements`",
+        d.status === 200 && d.body?.activation && Array.isArray(d.body?.acknowledgements),
+        Object.keys(d.body ?? {}).join(","));
+      check("Q8", "every requirement is visible to the operator",
+        (d.body?.activation?.requirements ?? []).length === 6,
+        String(d.body?.activation?.requirements?.length));
+
+      // The point of the consent record: WHO accepted, at WHICH version.
+      const acks = d.body?.acknowledgements ?? [];
+      check("Q9", "all four acceptances are returned with their acceptor and version",
+        acks.length === 4 &&
+          acks.every((a) => a.acceptedByUserId && a.version && a.acceptedAt),
+        `n=${acks.length}`);
+      check("Q10", "the acceptor is resolved to an email, not just an id",
+        acks.every((a) => a.acceptedByEmail === owner.email),
+        acks.map((a) => a.acceptedByEmail).join(","));
+      check("Q11", "and each is marked CURRENT against the governed versions",
+        acks.every((a) => a.isCurrent === true));
+
+      // And the screen an operator actually uses.
+      const opsPage = await open(admin.email, "/operations/merchants");
+      await opsPage.getByText("Activation review").first().waitFor({ state: "visible", timeout: 45_000 });
+      await opsPage.waitForTimeout(800);
+      const opsBody = await mainText(opsPage);
+      check("Q12", "the review screen says the decision is not automatic",
+        /goes live only when an operator grants it/i.test(opsBody));
+      check("Q13", "and OPS-007's unbuilt half is declared rather than stubbed",
+        /not built yet/i.test(await opsPage.innerText("body")));
+      await opsPage.screenshot({ path: path.join(SHOTS, "OPS-007-activation-review.png"), fullPage: true });
+
+      /*
+       * A merchant hitting the operations SCREEN never reaches the component
+       * at all: `SurfaceGuard` gates the whole operations surface and REDIRECTS
+       * them, so its "Taking you to the right place" is what renders and my
+       * component's own refusal copy never appears. The first version of this
+       * check asserted on the component's message and failed against behaviour
+       * that is exactly right — the guard is a better refusal than mine,
+       * because it never draws the page.
+       *
+       * What matters is asserted instead: they are moved off the surface and
+       * no workspace is ever rendered to them.
+       */
+      const merchantOnOps = await open(owner.email, "/operations/merchants");
+      await merchantOnOps.waitForTimeout(2500);
+      const mBody = await merchantOnOps.innerText("body");
+      const landedOn = new URL(merchantOnOps.url()).pathname;
+      check("Q14", "a merchant is redirected OFF the operations surface",
+        !landedOn.startsWith("/operations"), `landed on ${landedOn}`);
+      /*
+       * The redirect lands them on their OWN dashboard, where their OWN
+       * business name is entirely correct — the first version of this check
+       * banned it and failed against right behaviour. The real claim is that
+       * no operations CONTENT and no OTHER TENANT reaches them.
+       */
+      check("Q15", "no operations content and no other tenant reaches them",
+        !/Activation review/i.test(mBody) && !/\[ACT\] other business/.test(mBody));
+      await merchantOnOps.screenshot({ path: path.join(SHOTS, "OPS-007-merchant-refused.png"), fullPage: true });
+    }
+
     /* ═══════════ permissions — viewer, dispatcher, outsider ════════════ */
 
     console.log("\nPermissions — who may bind the business");

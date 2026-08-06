@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
 
   const result = await getActivation({ businessAccountId });
   if (isActivationFailure(result)) return failureResponse(result);
-  return NextResponse.json(result.value);
+  return NextResponse.json({ activation: result.value });
 }
 
 /**
@@ -120,9 +120,16 @@ export async function POST(req: NextRequest) {
     return routeFailure("invalid_input", "That is not an action Couranr recognises.");
   }
 
-  // Always answer with the fresh view, so the checklist renders what the
-  // database now holds rather than what the browser hoped it would.
+  /*
+   * Always answer with the fresh view, so the checklist renders what the
+   * database now holds rather than what the browser hoped it would.
+   *
+   * Nested under `activation`, like every canonical route. These two used to
+   * answer FLAT. Client and route agreed, so nothing was broken — but it is
+   * the exact shape that made proof upload silently dead, and it disagreed
+   * with the sibling billing route written the same day.
+   */
   const fresh = await getActivation({ businessAccountId });
   if (isActivationFailure(fresh)) return failureResponse(fresh);
-  return NextResponse.json(fresh.value);
+  return NextResponse.json({ activation: fresh.value });
 }
