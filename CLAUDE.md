@@ -10,7 +10,7 @@ A deliverable is **not done** until it has been verified against its requirement
 2. **Enumerate ALL enforcement points when you change a default, a gate, a grant, or any shared behavior.** Grep for every call site and reader of the thing you changed and confirm they ALL agree. In this codebase the sibling you forget is usually: the browser Supabase client vs. the service-role client, the policy vs. the table `GRANT`, the direct role grant vs. the `PUBLIC` grant it inherits through, `doc_requests` vs. the `docs_requests` view, or one of the 18 module-scope client constructions. List the sites you checked.
 3. **Verify BOTH sides of every dual path.** Two clients, two schemas, two admin predicates, two upload routes that build different URL shapes — never assume the second mirrors the first.
 4. **Prove claims; don't assert them.** Every factual statement about the codebase or the database must be backed by a command you ran (`grep`, a catalog query, a test) whose output you saw. If you didn't check it, say "unverified." For database claims prefer `has_table_privilege` / `has_function_privilege` over reading `information_schema` grantee rows — grantee rows miss privileges inherited through `PUBLIC`.
-5. **Green tests are necessary, not sufficient.** There are **1043 tests across 36 files** now, and they still stay green through almost any defect that lives outside their reach: proof upload was dead for its entire life behind a green typecheck and a green suite, because the only assertions about it were that a mocked function had NOT been called. Reason explicitly about the invariant your change must preserve and add a test that would have caught the specific bug.
+5. **Green tests are necessary, not sufficient.** There are **1629 tests across 51 files** now, and they still stay green through almost any defect that lives outside their reach: proof upload was dead for its entire life behind a green typecheck and a green suite, because the only assertions about it were that a mocked function had NOT been called. Reason explicitly about the invariant your change must preserve and add a test that would have caught the specific bug.
 6. **Do a dedicated adversarial review pass scoped to the ACTUAL diff of THIS deliverable.** Ask "what did I change, and what class of bug could this exact change introduce?" and go looking for it.
 7. **Report what you verified and how** — the commands and their results — not "all good." State any part you could NOT verify and why.
 
@@ -67,11 +67,11 @@ counts in `IMPLEMENTATION_STATUS.md` in the SAME commit.** The test enforces the
 shape; it cannot enforce that you remembered.
 
 As of `401b3ee`: 9 of 42 work items `complete_verified` (21.4%), and 10 of 66
-screens `functional_verified`. 28 of the 41 canonical pages are placeholders.
+screens `functional_verified`. 12 of the 44 canonical pages are placeholders.
 
 ### Authority chain — the specification wins over the code, always
 
-1. `02_DECISION_REGISTRY.json` **at the repo root** — rank-1 authority for pricing, hours, payer behavior, states, terminology, launch gates. **43 decision records** (92,872 bytes, sha256 `b4b158a0786e7e1bb4d79da59f1da7655ce1983c6fb3b26e57b887fa29470fc5`); an earlier note here said 40, and before that said the file did not exist at all. Count it, do not quote this number back.
+1. `02_DECISION_REGISTRY.json` **at the repo root** — rank-1 authority for pricing, hours, payer behavior, states, terminology, launch gates. **43 decision records** (96,889 bytes, sha256 `855469d96ee3fdf38419bf775a4f69c900df9cb82ad710c98ab3841af7ba98ee`, re-measured at `5221e3d`; the 92,872/`b4b158a0` fingerprint this line used to carry no longer matches the file); an earlier note here said 40, and before that said the file did not exist at all. Count it, do not quote this number back.
 
    **There is a second file with the same name.** `couranr_claude_code_package/02_DECISION_REGISTRY.json` is the original v1.0 topic-keyed source (9 KB, no `decisions[]`), unpacked for provenance only. The root file (72 KB) is the expanded generation derived from it and is a verified superset — every pricing value and every state vocabulary in the package copy is present at root, enforced by `tests/decision-registry-provenance.test.ts`. **Cite the root file.** A grep that lands on the package copy will find fewer decisions and no transition rules.
 2. `Couranr_Claude_Code_Master_Package.md` (repo root) — inlines the master implementation spec, cutover matrix, phased plan, AI/communication spec, and release matrix. Verified: it contains the full text of `00_README`, `01_MASTER_IMPLEMENTATION_SPEC`, `03_REPO_CUTOVER_MATRIX`, `04_PHASED_EXECUTION_PLAN`, `05_AI_COMMUNICATION_SPEC`, `06_RELEASE_ACCEPTANCE_MATRIX` and `07_CLAUDE_CODE_START_PROMPT` from the package. `08_WORK_BREAKDOWN.csv` is NOT inlined and exists only in `couranr_claude_code_package/`.
@@ -96,17 +96,17 @@ npm run build        # next build — FAILS without env vars, see below
 npm run lint         # next lint (ESLint 8 + next/core-web-vitals). Next 16 removes `next lint`.
 npm run typecheck    # tsc --noEmit — passes, but tsconfig has "strict": false
 npm run test         # vitest (watch)
-npm run test:run     # vitest run — 3 files, 10 tests
+npm run test:run     # vitest run — 51 files, 1629 tests
 npm run check        # lint && typecheck && test:run && build
 ```
 
-There are **8 scripts**. The platform baseline specifies 32, and the release matrix names 13 gate commands of which 11 do not exist (`check:routes`, `check:rls`, `check:legacy-imports`, `test:security`, `test:payments`, `db:reset`, …). Do not invent a script that pretends to pass — a check that cannot fail is worse than no check.
+There are **23 scripts**. The platform baseline specifies 32. Of the 13 gate commands the release matrix names, most now EXIST and pass: `check:routes`, `check:rls`, `check:legacy-imports`, `check:migrations`, `check:gates:controls`, `db:reset`, `db:test`, `test:deploy-safety`. Still absent: `test:security` and `test:payments`. Do not invent a script that pretends to pass — a check that cannot fail is worse than no check.
 
 **`npm run build` succeeds with no `.env.local` present** — verified twice at `401b3ee` in a container that had none, compiling 91 static pages. The old failure (a module-scope Supabase client whose constructor threw `supabaseUrl is required` during page-data collection) is fixed for the build path. `lib/supabaseAdmin.ts` is the lazy pattern to copy. ~61 module-scope `createClient(` call sites still exist across `app/` and `lib/`; they no longer break the build, but they remain the reason a route can hold a client it never re-scopes.
 
 Tests use **Vitest**, not Jest and not `node:test`. Files live in `tests/*.test.ts(x)`, alias `@` → repo root. **jsdom IS configured** — `environmentMatchGlobs` applies it to `tests/**/*.dom.test.tsx` while everything else stays in `node` — and **@testing-library/react and @testing-library/user-event ARE installed**. Browser tests run through **Playwright** from `e2e/run.mjs` (groups A–Q), not through a Vitest project. `testTimeout` is 15s because a jsdom render can miss the 5s default under parallel load. There is still no Vitest `projects` config, so the four `test:*` project suites the baseline names do not exist.
 
-**There is no `db:test` and no pgTAP**, so nothing in `npm run check` ever executes a `couranr_*` command. The only way to call one today is to stand up a local cluster by hand — which is mandatory before a SQL command is done, and "Execution verification" below explains what it cost to learn that. `e2e/` drives the browser; nothing yet drives the SQL.
+**`db:test` NOW EXISTS** (`node e2e/disposable/dbTest.mjs`, 35/35 passing, plus `check:rls` for the privilege subset) and stands up its own disposable PostgreSQL, so calling a `couranr_*` command is a one-liner rather than a manual cluster build. It is still not wired into `npm run check`, so `npm run check` alone still executes no `couranr_*` command. There is still no pgTAP — which is mandatory before a SQL command is done, and "Execution verification" below explains what it cost to learn that. `e2e/` drives the browser; nothing yet drives the SQL.
 
 **Runtime versions drift two ways now:** local Node 22, **CI Node 24** (`.github/workflows/ci.yml:35`) which matches the target. The old CI-Node-20 mismatch is fixed. There is still no `.nvmrc`, `.node-version`, `engines`, or `packageManager`, and `package-lock.json` is lockfileVersion 2 against a target of 3 — so a dependency whose engines require ≥24 installs in CI and fails locally.
 
@@ -114,7 +114,7 @@ Tests use **Vitest**, not Jest and not `node:test`. Files live in `tests/*.test.
 
 ## Migrations and the database
 
-**Migrations exist and are fully applied.** `supabase/migrations/` holds **38 files — 29 forward plus 9 `.rollback.sql`** — and the live project reports **30 applied**, which is those 29 plus the `remote_schema` baseline. Every forward migration has an applied row. Still missing: generated types (`types/database.generated.ts` does not exist, so every Supabase query is untyped) and a reproducible `db:reset`. The live database now has **54 public tables and 6 views**, of which **18 are `couranr_*`** with **62 `couranr_*` functions**.
+**Migrations exist and are fully applied.** `supabase/migrations/` holds **48 forward migrations**, with paired rollbacks in a separate `supabase/rollbacks/` directory (48 files), and the live project reports **48 applied**. Every forward migration has an applied row. Still missing: generated types (`types/database.generated.ts` does not exist, so every Supabase query is untyped) and a reproducible `db:reset`. The live database now has **54 public tables and 6 views**, of which **18 are `couranr_*`** with **62 `couranr_*` functions**.
 
 Do not write a migration without it being reviewed first. When migrations do land they must be additive (`add column if not exists`, `create table if not exists`) and must never drop a table, drop a column, or delete data.
 
@@ -126,15 +126,15 @@ Known code/database drift: `business_pricing_profiles` is queried by `lib/busine
 
 | Pattern | Where | Note |
 |---|---|---|
-| Browser cookie client | `lib/supabaseClient.ts:6` (`createClientComponentClient`) | `"use client"`, **46 importers** |
+| Browser cookie client | `lib/supabaseClient.ts:6` | `"use client"`, **47 importers** |
 | Auth-helper server/route clients | 4 sites | `app/driver/layout.tsx:11`, `app/portal/page.tsx:9`, `app/api/admin/deliveries/route.ts:8`, `app/api/driver/my-deliveries/route.ts:8` |
 | Service-role proxy | `lib/supabaseAdmin.ts:22-38` | lazy, correct |
-| **Ad-hoc inline service-role `createClient`** | **~45 duplicated call sites** | the real consolidation work |
+| **Ad-hoc inline service-role `createClient`** | **47 route files** | the real consolidation work |
 | Anon client + forwarded Bearer token | 6 admin routes | e.g. `app/api/admin/drivers/route.ts:14` |
 
-**67 of 122 API routes use the service-role key**, which bypasses RLS entirely — every one must re-scope its own queries. **Only 2 of 122 have no auth, gate, signature or token marker**, both legacy (`app/api/auto/vehicles`, a read-only GET, and `app/api/special-request`, a POST that only `console.log`s its caller's contact details). **Zero canonical routes under `app/api/couranr` are ungated.**
+**47 of 141 API routes use the service-role key**, which bypasses RLS entirely — every one must re-scope its own queries. **Only 2 of 141 have no auth, gate, signature or token marker**, both legacy (`app/api/auto/vehicles`, a read-only GET, and `app/api/special-request`, a POST that only `console.log`s its caller's contact details). **Zero canonical routes under `app/api/couranr` are ungated** — `npm run check:routes` measures this over all 70 canonical routes and is part of the gate.
 
-**The bug to know about:** six server-context files import the `"use client"` browser client. A browser client in a server route carries no JWT, so it authenticates as **`anon`**, not `authenticated`. Affected: `lib/delivery/authorizeDeliveryPayment.ts:2`, `lib/stripe/capturePayment.ts:2`, `lib/delivery/completeDelivery.ts:1`, `lib/delivery/getDeliveryByOrderId.ts:1`, `lib/getUserRole.ts:1`, `app/api/delivery/complete/route.ts:3`. This is why `/api/delivery/complete` returns 403 and has almost certainly never captured a payment.
+**The bug this section used to name is GONE, by deletion rather than by repair.** Six server-context files imported the `"use client"` browser client — a browser client in a server route carries no JWT, so it authenticates as **`anon`**, not `authenticated`, which is why `/api/delivery/complete` returned 403 and almost certainly never captured a payment. All six (`lib/delivery/authorizeDeliveryPayment.ts`, `lib/stripe/capturePayment.ts`, `lib/delivery/completeDelivery.ts`, `lib/delivery/getDeliveryByOrderId.ts`, `lib/getUserRole.ts`, `app/api/delivery/complete/route.ts`) no longer exist — measured at `304db8d`, along with **zero** current importers of the browser client anywhere under `lib/` or `app/api/`. Do not go looking for these files. The FAILURE MODE is still worth knowing, because nothing structurally prevents it from being reintroduced: there is no lint rule barring a `"use client"` import from a server module.
 
 ### Auth and roles
 
@@ -162,7 +162,7 @@ Seven buckets. **`vehicle-images` is the only public one now** — `delivery-pho
 
 ### Routes
 
-**97 page routes and 122 API routes.** 41 pages are canonical under `app/(couranr)` — but **28 of those 41 render `ScreenPlaceholder`**, so a canonical route existing proves nothing about the capability behind it. **56 pages are legacy** and still live, along with 26 legacy `auto`/`docs` API routes. Auto and docs are **legacy — quarantine targets, not extension points**.
+**99 page routes and 141 API routes.** 44 pages are canonical under `app/(couranr)` — but **12 of those 44 still render `ScreenPlaceholder`**, so a canonical route existing proves nothing about the capability behind it. **56 pages are legacy** and still live, along with 26 legacy `auto`/`docs` API routes. Auto and docs are **legacy — quarantine targets, not extension points**.
 
 Of the 43 canonical target routes in the Master Package, **2 exist** (`/`, `/driver`) and 41 do not. Target names differ from actual: `/sign-in` and `/sign-up` vs. the existing `/login` and `/signup`.
 
@@ -243,6 +243,42 @@ The connected project is **`Couranr -OS` (`zrdxlrlqxdslqpnoqmus`)**, PostgreSQL 
 Read-only catalog queries via `execute_sql` are the right way to establish database facts; `list_tables`, `list_migrations` and `get_advisors` are all useful. `get_advisors` output exceeds the tool's token cap — it is written to a file, so parse it with `python3`/`jq` rather than reading it whole.
 
 **Never run an exploit or negative test against production data.** No marking a real order paid, altering a fee, deleting an address, or forging an audit event to prove a vulnerability. Use a Supabase branch, a restored scratch project, or synthetic fixtures.
+
+### Cost discipline — verify hard, report short
+
+The owner stopped this session in 2026-08 because a batch burned ~4M subagent
+tokens and hours of wall clock. The verification was not the problem; the
+machinery around it was. Keep the things that have actually caught defects and
+drop the things that only produced narrative.
+
+**Keep, because each of these caught a real bug that reading did not:**
+
+- `npm run check` (lint, both typechecks, tests, build) before every push. Read
+  `Test Files X passed (Y)` and require X = Y — a stale `node_modules` once
+  dropped 84 tests while printing "1548 passed", which reads as success.
+- Executing SQL against the disposable database. A migration that applies is
+  not a migration that works: `test:release` caught a hold that could never be
+  released again, and only a concurrency probe caught the mutex.
+- Driving the UI or the route in a real browser. This found a nested-key read
+  and a broken replay path that 1632 green tests and a clean typecheck missed.
+- Verifying a production claim with a catalog query rather than an apply's
+  success flag.
+
+**Drop, unless the owner asks:**
+
+- Multi-agent workflows and subagent fleets. One adversarial review cost 2.2M
+  tokens. It did find two real defects — so if a slice touches money and you
+  cannot get independent eyes any other way, ask first and say what it will
+  cost. Never as routine.
+- PR activity subscriptions. Every bot deployment notification wakes the
+  session with a full context load; a day of them is dozens of wakes carrying
+  no information.
+- Scheduled check-ins that re-read state and re-report.
+- Long reports. A few lines: what changed, what proves it, what is still open.
+
+The rule of thumb: **spend on execution, not on narration.** Running the thing
+is cheap and finds defects; describing it at length is expensive and finds
+none.
 
 ### Research before deciding — validate reasoning against sources
 
@@ -347,3 +383,13 @@ So: **seed data, start the dev server, drive the UI, assert on what rendered.** 
 - **Test-mode endpoints must be gated server-side.** `app/api/docs/test-mark-paid/route.ts:17-23,47-49` is the correct pattern: `if (IS_PROD || !TEST_MODE) return 403`. `/api/test-email` is the counter-example — unauthenticated, and it sends live mail to a hardcoded fallback address.
 - **Never expose secrets to the browser or put them in analytics, logs, or notification copy.** `NEXT_PUBLIC_SUPABASE_URL` is (correctly but confusingly) used as the URL for service-role clients throughout — the key is what must never cross the boundary.
 - **Say "Couranr", never founder or personal-operator language.** Use Couranr review, Couranr confirmation, Couranr Operations Queue, Couranr-managed dispatch, Couranr Support.
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+# This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

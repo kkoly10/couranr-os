@@ -25,7 +25,10 @@
     "test:messaging": "node e2e/disposable/authenticatedMessaging.mjs",
     "test:auth-gateway": "node e2e/disposable/authGateway.mjs",
     "test:acceptance": "node e2e/disposable/acceptanceMatrix.mjs",
-    "typecheck:canonical": "tsc --noEmit -p tsconfig.canonical.json"
+    "typecheck:canonical": "tsc --noEmit -p tsconfig.canonical.json",
+    "test:release": "node e2e/disposable/releaseAuthorization.mjs",
+    "test:release:route": "node e2e/disposable/releaseRoute.mjs",
+    "test:idempotency": "node e2e/disposable/idempotencySubstrate.mjs"
   },
   "dependencies": {
     "@stripe/react-stripe-js": "3.1.1",
