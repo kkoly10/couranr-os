@@ -13,7 +13,8 @@
  * The db:test control is EXCLUDED here by default because it needs a full
  * disposable database bring-up (~40s); run it directly with
  * `node e2e/disposable/dbTest.mjs --rls-only --positive-control`.
- * `--with-db` includes it.
+ * `--with-db` includes it. `test:shell-chrome` is excluded for the same reason
+ * — it needs a dev server and a browser — and `--with-browser` includes it.
  */
 
 import { execFileSync } from "node:child_process";
@@ -26,10 +27,18 @@ const GATES = [
   ["check:routes", ["scripts/checkRoutes.mjs", "--positive-control"]],
   ["check:legacy-imports", ["scripts/checkLegacyImports.mjs", "--positive-control"]],
   ["check:migrations", ["scripts/checkMigrationsDestructive.mjs", "--positive-control"]],
+  ["check:mocks", ["scripts/checkMockMap.mjs", "--positive-control"]],
 ];
 
 if (process.argv.includes("--with-db")) {
   GATES.push(["db:test", ["e2e/disposable/dbTest.mjs", "--rls-only", "--positive-control"]]);
+}
+
+// test:shell-chrome needs a running dev server and a browser, so like db:test
+// it is opt-in rather than part of the default sweep. `--with-browser` reuses
+// a dev server on BASE_URL and only boots one when nothing answers.
+if (process.argv.includes("--with-browser")) {
+  GATES.push(["test:shell-chrome", ["e2e/shellChrome.mjs", "--positive-control"]]);
 }
 
 let failed = 0;

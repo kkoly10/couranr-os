@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -373,5 +374,89 @@ describe("POSITIVE CONTROLS: the validator can actually reject", () => {
   it("rejects a row with no last_verified_sha", () => {
     expect(/^[0-9a-f]{40}$/.test("")).toBe(false);
     expect(/^[0-9a-f]{40}$/.test("HEAD")).toBe(false);
+  });
+});
+
+/* --------------------------------------------- sha reachability -------- */
+
+/**
+ * A sha that is well formed, present in the summary, and absent from this
+ * branch's history is worse than no sha at all: it reads as provenance while
+ * describing code that nobody here is running.
+ *
+ * This is not hypothetical. After B00..B04 merged, three shas cited by ten rows
+ * — 4e0bce87, a115f921, ced8af81 — turned out to live only on
+ * `claude/couranr-phase-8-conversations`, a branch that was never merged. The
+ * WORK had reached main by another route, so every other check passed: the
+ * evidence paths existed, the format matched, the summary named all three. Only
+ * asking git whether the commit is an ancestor caught it.
+ */
+describe("ledger verification shas are reachable from this branch", () => {
+  /**
+   * `--is-ancestor` on a shallow clone answers about the fetched slice, not the
+   * history — so it would report a perfectly good sha as unreachable, or miss a
+   * bad one. `actions/checkout` is shallow BY DEFAULT, which is why ci.yml now
+   * pins `fetch-depth: 0`.
+   *
+   * A shallow repo therefore FAILS here rather than skipping. A guard that
+   * quietly opts out when it cannot see is the exact shape of the checks this
+   * repo has already been burned by.
+   */
+  const git = (args: string[]) =>
+    spawnSync("git", args, { cwd: ROOT, encoding: "utf8" });
+
+  const insideRepo = git(["rev-parse", "--is-inside-work-tree"]).stdout.trim() === "true";
+
+  it("has the full history needed to answer the question", () => {
+    expect(insideRepo, "not a git work tree — this guard cannot run").toBe(true);
+    expect(
+      git(["rev-parse", "--is-shallow-repository"]).stdout.trim(),
+      "shallow clone: set `fetch-depth: 0` on actions/checkout, or this guard is vacuous",
+    ).toBe("false");
+  });
+
+  /**
+   * Scoped to rows that CLAIM a passing verification. For those the sha is a
+   * factual assertion about code — "this passed, at this tree". On a `partial`
+   * or `not_started` row it is a weaker "last looked at here", so it is not
+   * held to the same bar.
+   */
+  const VERIFIED_ITEM = new Set(["complete_verified"]);
+  const VERIFIED_SCREEN = new Set(["functional_verified"]);
+
+  it("every complete_verified / functional_verified row names a sha in this history", () => {
+    const claims: { id: string; sha: string }[] = [
+      ...items
+        .filter((r) => VERIFIED_ITEM.has(r.status))
+        .map((r) => ({ id: r.work_item_id, sha: r.last_verified_sha })),
+      ...screens
+        .filter((r) => VERIFIED_SCREEN.has(r.implementation_status))
+        .map((r) => ({ id: r.screen_id, sha: r.last_verified_sha })),
+    ];
+
+    expect(claims.length, "no verified rows found — the filter is wrong").toBeGreaterThan(0);
+
+    const unreachable = claims
+      .filter(({ sha }) => /^[0-9a-f]{40}$/.test(sha))
+      .filter(({ sha }) => git(["merge-base", "--is-ancestor", sha, "HEAD"]).status !== 0)
+      .map(({ id, sha }) => {
+        const known = git(["cat-file", "-t", sha]).stdout.trim() === "commit";
+        return `${id}: ${sha.slice(0, 12)} (${known ? "commit exists but is not an ancestor" : "unknown object"})`;
+      });
+
+    expect(unreachable, "verified rows citing a sha outside this branch's history").toEqual([]);
+  });
+
+  it("POSITIVE CONTROL: a well-formed sha that is not an ancestor is rejected", () => {
+    // 40 hex chars, deliberately not a real object in this repo.
+    const invented = "deadbeef".repeat(5);
+    expect(invented).toMatch(/^[0-9a-f]{40}$/);
+    expect(git(["merge-base", "--is-ancestor", invented, "HEAD"]).status).not.toBe(0);
+  });
+
+  it("POSITIVE CONTROL: HEAD itself is reachable, so the checker is not just always failing", () => {
+    const head = git(["rev-parse", "HEAD"]).stdout.trim();
+    expect(head).toMatch(/^[0-9a-f]{40}$/);
+    expect(git(["merge-base", "--is-ancestor", head, "HEAD"]).status).toBe(0);
   });
 });

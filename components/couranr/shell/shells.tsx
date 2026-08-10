@@ -28,7 +28,7 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
   const items = navigationFor("public");
 
   return (
-    <div className="cr-shell">
+    <div className="cr-shell cr-shell--public">
       <SkipLink />
 
       <header className="cr-topbar">
@@ -59,10 +59,37 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
 
       <ShellMain>{children}</ShellMain>
 
-      <footer className="cr-container" style={{ paddingBlock: "var(--couranr-space-8)" }}>
-        <Text size="xs" muted>
-          Couranr — local delivery infrastructure for local businesses.
-        </Text>
+      {/* The PUB-001 mock closes on a navy footer carrying the reverse
+          wordmark and the public destinations. It links only to routes that
+          exist — the mock also shows Careers, Press and a Help Center, and a
+          dead link is worse than a short footer. It still renders no market,
+          pricing, hours or payer copy, per this file's header rule. */}
+      <footer className="cr-footer">
+        <div className="cr-container cr-footer__inner">
+          <div className="cr-footer__brand">
+            <Wordmark tone="dark" width={124} />
+            <Text size="xs">
+              Couranr — local delivery infrastructure for local businesses.
+            </Text>
+          </div>
+
+          <nav className="cr-footer__nav" aria-label="Footer">
+            <ul className="cr-footer__links">
+              {items.map((item) => (
+                <li key={item.href}>
+                  <Link href={item.href} className="cr-footer__link">
+                    {item.label}
+                  </Link>
+                </li>
+              ))}
+              <li>
+                <Link href="/sign-in" className="cr-footer__link">
+                  Sign in
+                </Link>
+              </li>
+            </ul>
+          </nav>
+        </div>
       </footer>
     </div>
   );

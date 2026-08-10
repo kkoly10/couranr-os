@@ -10,6 +10,20 @@ import {
 } from "@/components/couranr/primitives";
 import { AskCouranrLauncher } from "@/components/couranr/marketing/AskCouranr";
 import {
+  IconBox,
+  IconChat,
+  IconGlobe,
+  IconNoFee,
+  IconPerson,
+  IconPhone,
+  IconPlusCircle,
+  IconShare,
+  IconStore,
+  IconTag,
+  IconTerminal,
+  IconTruck,
+} from "@/components/couranr/marketing/MarketingIcons";
+import {
   BASE_PRICE_CENTS,
   INCLUDED_LOADED_MILES,
   MARKETS_PUBLIC_COPY,
@@ -40,15 +54,38 @@ export const metadata: Metadata = {
     "Keep taking orders through your own channels. Couranr handles the delivery — from quote and payment to managed dispatch, tracking and proof.",
 };
 
-/** MKT-002 §1 — all seven merchant-controlled channels, named. §10.4 requires every one. */
+/**
+ * MKT-002 §1 — all seven merchant-controlled channels, named. §10.4 requires
+ * every one. The approved mock renders them as an icon-card row; the icon is
+ * decoration and the governed name is the label.
+ */
 const CHANNELS = [
-  "Website",
-  "Phone",
-  "Text",
-  "Social media",
-  "Point of sale",
-  "Storefront / in person",
-  "Other channels you control",
+  { label: "Website", Icon: IconGlobe },
+  { label: "Phone", Icon: IconPhone },
+  { label: "Text", Icon: IconChat },
+  { label: "Social media", Icon: IconShare },
+  { label: "Point of sale", Icon: IconTerminal },
+  { label: "Storefront / in person", Icon: IconStore },
+  { label: "Other channels you control", Icon: IconPlusCircle },
+];
+
+/**
+ * The hero trust row. Three items, and between them they say exactly what the
+ * single governed trust sentence says — "No monthly fee during the pilot. No
+ * product-sales commission. You keep the sale and the customer relationship."
+ * The mock's layout, the blueprint's claims; no claim is added or dropped.
+ */
+const HERO_TRUST = [
+  { label: "No monthly fee during the pilot", Icon: IconNoFee },
+  { label: "No product-sales commission", Icon: IconTag },
+  { label: "You keep the sale and the customer relationship", Icon: IconPerson },
+];
+
+/** MKT-002 §4 — the three-actor order flow, as the mock's arrowed strip. */
+const FLOW = [
+  { label: "Customer orders from you", Icon: IconPerson },
+  { label: "You prepare the order", Icon: IconBox },
+  { label: "Couranr delivers it", Icon: IconTruck },
 ];
 
 const OUTCOMES = [
@@ -95,29 +132,81 @@ export default function Page() {
         </Text>
       </div>
 
-      {/* 1 — Hero. Copy VERBATIM from MKT-002 §4. */}
-      <section className="cr-mkt-hero" aria-labelledby="hero-h">
-        <p className="cr-mkt-eyebrow">Local delivery for independent businesses</p>
-        <h1 id="hero-h" className="cr-mkt-h1">
-          Your customers want delivery. Now you can say yes.
-        </h1>
-        <p className="cr-mkt-sub">
-          Keep taking orders through your website, phone, text, social media, POS or
-          storefront. Couranr handles the delivery—from quote and payment to managed
-          dispatch, tracking and proof.
-        </p>
-        <div className="cr-mkt-cta-row">
-          <Link href="/sign-up" className="cr-button cr-button--primary cr-button--lg">
-            Create your business account
-          </Link>
-          <Link href="/estimate" className="cr-button cr-button--secondary cr-button--lg">
-            Estimate a delivery
-          </Link>
+      {/* 1 — Hero. Copy VERBATIM from MKT-002 §4; the full-bleed photograph,
+          left-aligned column, scrim and trust row follow the approved PUB-001
+          mock (docs/couranr-mvp/MOCK_TO_SCREEN_MAP.md). The mock's own headline
+          reads "Your customers order from you." — the registry's headline
+          outranks it and is what renders. */}
+      <section className="cr-hero" aria-labelledby="hero-h">
+        {/*
+          Art direction, not just a resize. The wide photograph is 16:9; a
+          390px-wide viewport `cover`-crops it to a 0.5 aspect, which — measured
+          in Chromium, not guessed — showed roughly two fifths of its width and
+          landed on the driver's navy jacket, so the hero read as a flat navy
+          block with no photograph in it. The mock's mobile hero keeps the
+          handoff visible, so narrow viewports get a portrait-framed source
+          instead.
+
+          <picture> rather than next/image because art direction needs
+          `<source media>`, which next/image (14.2) cannot express: the two
+          alternatives are two <Image> elements toggled by CSS, where the hidden
+          one still downloads, or a client breakpoint check, which would move
+          the LCP image out of the server-rendered HTML. Both are worse. The
+          srcset below is pre-generated at build-time-stable sizes, so the image
+          optimizer is not on the critical path at all.
+        */}
+        <picture>
+          <source
+            media="(max-width: 640px)"
+            type="image/webp"
+            srcSet="/images/pub-001-hero-portrait-640.webp 640w, /images/pub-001-hero-portrait-900.webp 900w"
+            sizes="100vw"
+          />
+          <img
+            src="/images/pub-001-hero-wide-1600.webp"
+            srcSet="/images/pub-001-hero-wide-1024.webp 1024w, /images/pub-001-hero-wide-1600.webp 1600w"
+            sizes="100vw"
+            width={1600}
+            height={900}
+            alt="A florist hands a Couranr-branded parcel of flowers to a Couranr driver outside her shop."
+            fetchPriority="high"
+            decoding="async"
+            className="cr-hero__photo"
+          />
+        </picture>
+        {/* Carries the text contrast, so it is presentational, not content. */}
+        <div className="cr-hero__scrim" aria-hidden="true" />
+
+        <div className="cr-hero__body">
+          <p className="cr-hero__eyebrow">Local delivery for independent businesses</p>
+          <h1 id="hero-h" className="cr-hero__h1">
+            Your customers want delivery.{" "}
+            <span className="cr-hero__h1-accent">Now you can say yes.</span>
+          </h1>
+          <p className="cr-hero__sub">
+            Keep taking orders through your website, phone, text, social media, POS or
+            storefront. Couranr handles the delivery—from quote and payment to managed
+            dispatch, tracking and proof.
+          </p>
+          <div className="cr-hero__cta">
+            <Link href="/sign-up" className="cr-button cr-button--primary cr-button--lg">
+              Create your business account
+            </Link>
+            <Link href="/estimate" className="cr-button cr-button--inverse cr-button--lg">
+              Estimate a delivery
+            </Link>
+          </div>
+          <ul className="cr-hero__trust">
+            {HERO_TRUST.map(({ label, Icon }) => (
+              <li key={label} className="cr-hero__trust-item">
+                <span className="cr-hero__trust-icon">
+                  <Icon />
+                </span>
+                {label}
+              </li>
+            ))}
+          </ul>
         </div>
-        <p className="cr-mkt-trust">
-          No monthly fee during the pilot. No product-sales commission. You keep the
-          sale and the customer relationship.
-        </p>
       </section>
 
       {/* 2 — The pickup-only problem. */}
@@ -154,17 +243,25 @@ export default function Page() {
           Couranr never gets between you and your customer. Take the order anywhere
           you already do:
         </Text>
-        <ul className="cr-mkt-chips" aria-label="Order channels you control">
-          {CHANNELS.map((c) => (
-            <li key={c} className="cr-mkt-chip">
-              {c}
+        <ul className="cr-mkt-channels" aria-label="Order channels you control">
+          {CHANNELS.map(({ label, Icon }) => (
+            <li key={label} className="cr-mkt-channel">
+              <span className="cr-mkt-channel__icon">
+                <Icon />
+              </span>
+              <span className="cr-mkt-channel__label">{label}</span>
             </li>
           ))}
         </ul>
-        <ol className="cr-mkt-steps" aria-label="How an order flows">
-          <li>Customer orders from you</li>
-          <li>You prepare the order</li>
-          <li>Couranr delivers it</li>
+        <ol className="cr-mkt-flow-strip" aria-label="How an order flows">
+          {FLOW.map(({ label, Icon }) => (
+            <li key={label} className="cr-mkt-flow-strip__step">
+              <span className="cr-mkt-flow-strip__icon">
+                <Icon />
+              </span>
+              {label}
+            </li>
+          ))}
         </ol>
       </section>
 
@@ -203,7 +300,12 @@ export default function Page() {
         <div className="cr-mkt-payers">
           <Card className="cr-mkt-payer cr-mkt-payer--merchant">
             <Stack gap={2}>
-              <Heading level={3}>Your business pays</Heading>
+              <span className="cr-mkt-payer__head">
+                <span className="cr-mkt-payer__icon">
+                  <IconStore />
+                </span>
+                <Heading level={3}>Your business pays</Heading>
+              </span>
               <Text muted size="sm">
                 Use a saved payment method, see the delivery quote before you approve,
                 and keep a clean receipt for your books.
@@ -212,7 +314,12 @@ export default function Page() {
           </Card>
           <Card className="cr-mkt-payer cr-mkt-payer--customer">
             <Stack gap={2}>
-              <Heading level={3}>Your customer pays</Heading>
+              <span className="cr-mkt-payer__head">
+                <span className="cr-mkt-payer__icon">
+                  <IconPerson />
+                </span>
+                <Heading level={3}>Your customer pays</Heading>
+              </span>
               <Text muted size="sm">
                 Send a secure payment link. No Couranr account required — you see the
                 authorization status either way.
@@ -257,6 +364,15 @@ export default function Page() {
         <Heading level={2} id="s9-h">
           Pricing you can put on a sticky note
         </Heading>
+        {/* The mock leads this section with the price set large. The number is
+            still rendered from BASE_PRICE_CENTS — nothing here is typed in. */}
+        <div className="cr-mkt-price-band">
+          <p className="cr-mkt-price-band__label">Starting at</p>
+          <p className="cr-mkt-price-band__value">{dollars(BASE_PRICE_CENTS)}</p>
+          <p className="cr-mkt-price-band__note">
+            per delivery, covering the first {INCLUDED_LOADED_MILES} loaded miles
+          </p>
+        </div>
         <Text>
           Delivery starts at <strong>{dollars(BASE_PRICE_CENTS)}</strong>, which covers
           the first {INCLUDED_LOADED_MILES} loaded miles. Longer runs price by

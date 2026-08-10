@@ -300,6 +300,76 @@ export function startStripeDouble(port = 12111) {
         return json(200, intentJson(pi));
       }
 
+      /*
+       * POST /v1/payment_intents/{id}/cancel — ACP-032's release path.
+       *
+       * Modelled on the documented transitions rather than on what is
+       * convenient: an intent may be cancelled from requires_payment_method,
+       * requires_capture, requires_confirmation, requires_action or
+       * processing, and cancelling one that has already SUCCEEDED is an error.
+       * (https://docs.stripe.com/api/payment_intents/cancel)
+       *
+       * That last refusal is the one worth modelling. `succeeded` means the
+       * money is taken, so the correct answer is a refund, not a release — and
+       * a double that cheerfully cancelled it would let a bug through that
+       * real Stripe would reject.
+       */
+      const cancel = url.pathname.match(/^\/v1\/payment_intents\/(pi_[\w]+)\/cancel$/);
+      if (cancel && req.method === "POST") {
+        calls.push({ path: url.pathname, method: "POST", form: parseForm(body) });
+        const pi = intents.get(cancel[1]);
+        if (!pi) return json(404, { error: { type: "invalid_request_error" } });
+
+        if (pi.status === "succeeded") {
+          return json(400, {
+            error: {
+              type: "invalid_request_error",
+              code: "payment_intent_unexpected_state",
+              message: `You cannot cancel this PaymentIntent because it has a status of succeeded.`,
+            },
+          });
+        }
+        if (pi.status === "canceled") {
+          return json(400, {
+            error: {
+              type: "invalid_request_error",
+              code: "payment_intent_unexpected_state",
+              message: `You cannot cancel this PaymentIntent because it has a status of canceled.`,
+            },
+          });
+        }
+
+        /*
+         * ZERO amount_capturable, and PERSIST.
+         *
+         * Both were wrong in the first version of this branch, and an
+         * adversarial-review agent measured it: cancel returned
+         * {"status":"canceled","amount_capturable":2299}. Real Stripe releases
+         * the hold, so nothing remains capturable — this double was more
+         * permissive than reality on the ONE field that says whether money is
+         * still held. Nothing reads it on the release path today, which is why
+         * the finding was correctly refuted as a live defect; it is fixed
+         * anyway, because the next slice that DOES read it would pass here and
+         * fail against Stripe, and that is the whole failure mode a double
+         * exists to avoid.
+         *
+         * cancellation_reason is no longer invented. Real Stripe leaves it null
+         * for a manual cancel with no reason supplied; defaulting it to
+         * "requested_by_customer" asserted a fact about WHY the money moved
+         * that nobody stated.
+         *
+         * saveStore() matches every other mutating branch (:135, :165, :204,
+         * :299); omitting it left the store disagreeing with memory.
+         */
+        pi.status = "canceled";
+        pi.amount_capturable = 0;
+        const cancelForm = parseForm(body) || {};
+        pi.cancellation_reason = cancelForm.cancellation_reason || null;
+        intents.set(pi.id, pi);
+        saveStore();
+        return json(200, intentJson(pi));
+      }
+
       const retrieve = url.pathname.match(/^\/v1\/payment_intents\/(pi_[\w]+)$/);
       if (retrieve && req.method === "GET") {
         calls.push({ path: url.pathname, method: "GET" });

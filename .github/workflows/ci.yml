@@ -20,6 +20,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Full history, not the default depth-1 shallow clone.
+          # tests/couranr-implementation-ledger.test.ts asks git whether every
+          # verified row's last_verified_sha is an ancestor of HEAD. On a shallow
+          # clone that question has no meaningful answer, so the guard FAILS
+          # rather than skipping — which means dropping this line turns CI red
+          # instead of quietly disarming the check.
+          fetch-depth: 0
 
       # Node 24, not 20. The dependency tree requires it:
       #   jsdom@30.0.1  engines: ^22.22.2 || ^24.15.0 || >=26.0.0

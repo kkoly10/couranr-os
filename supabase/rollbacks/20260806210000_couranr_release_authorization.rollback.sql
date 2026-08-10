@@ -1,0 +1,32 @@
+-- ---------------------------------------------------------------------
+-- ROLLBACK for 20260806210000_couranr_release_authorization
+--
+-- SAFE. This drops two COMMANDS only — no table, no column, no row, and no
+-- change to any CHECK or grant on couranr_payment_obligations.
+--
+-- The forward migration deliberately introduced no new payment_state value,
+-- so there is nothing here to un-widen and no row that can be left holding a
+-- vocabulary this schema no longer understands.
+--
+-- WHAT RUNNING THIS COSTS YOU
+--
+-- Any obligation already moved to `cancelled` STAYS cancelled — that is a
+-- correct terminal state that predates this migration and the webhook has
+-- always been able to reach it via `payment_intent.canceled`. The
+-- `couranr.release.begun` and `couranr.release.completed` rows in
+-- couranr_payment_events also stay: that table is append-only by grant
+-- (service_role holds no DELETE), and the audit of who released what is
+-- exactly the thing you would least want a rollback to erase.
+--
+-- What you lose is the ABILITY to release. After running this, Couranr is
+-- back to the state this migration was written to fix: an authorized hold can
+-- be observed and recorded but never given back, and the payer's funds sit
+-- until the card network expires them. Do not run this as routine cleanup.
+--
+-- Drop order is irrelevant — neither function calls the other. `complete` is
+-- dropped first only so that, if you interrupt this file halfway, what
+-- survives is the guard rather than the writer.
+-- ---------------------------------------------------------------------
+
+drop function if exists public.couranr_complete_payment_release(uuid, text, text);
+drop function if exists public.couranr_begin_payment_release(uuid, uuid, integer, text);
