@@ -769,6 +769,169 @@
   text-align: center;
 }
 
+/* ── PUB-001 hero — built from the approved mock ───────────────────────────
+   docs/couranr-mvp/MOCK_TO_SCREEN_MAP.md maps PUB-001 to
+   0E4F029F-22C3…png (desktop) and 22D9363D-248B…png (mobile): a full-bleed
+   photograph, a dark left-to-right scrim, and a left-aligned copy column over
+   it. The registry's headline and trust claims render unchanged — only the
+   layout comes from the mock.
+
+   The hero must break out of `.cr-container`'s max-width while every other
+   section stays inside it, so it uses the centred-container escape hatch
+   (`margin-inline: calc(50% - 50vw)`). `100vw` includes the classic scrollbar
+   that Chromium on Linux paints, so that escape overshoots by ~15px and would
+   add a horizontal scrollbar; the clip below absorbs it.
+
+   That clip lives on `.cr-shell__main` in shell.css, which is also where the
+   pre-existing sticky-chrome bug got fixed — see the comment there. Nothing
+   about the hero needs a rule here beyond the escape itself. */
+
+.cr-hero {
+  position: relative;
+  isolation: isolate;
+  margin-inline: calc(50% - 50vw);
+  width: 100vw;
+  max-width: 100vw;
+  min-height: 30rem;
+  display: flex;
+  align-items: center;
+  padding-block: var(--couranr-space-12);
+  color: var(--couranr-text-inverse);
+  /* Paints before the photo decodes, so the white copy is never on white. */
+  background: var(--couranr-navy);
+}
+
+/* <picture> is an inline box; the <img> inside it is what must fill the hero,
+   so the wrapper is taken out of flow and the image absolutely covers it. */
+.cr-hero > picture {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  display: block;
+}
+.cr-hero__photo {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* Keeps the merchant/driver handoff in frame as the viewport narrows. */
+  object-position: 62% center;
+}
+
+.cr-hero__scrim {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(
+    100deg,
+    rgba(13, 21, 37, 0.94) 0%,
+    rgba(13, 21, 37, 0.86) 34%,
+    rgba(13, 21, 37, 0.5) 62%,
+    rgba(13, 21, 37, 0.28) 100%
+  );
+}
+
+.cr-hero__body {
+  width: 100%;
+  max-width: var(--couranr-container-max);
+  margin-inline: auto;
+  padding-inline: var(--couranr-space-4);
+}
+
+.cr-hero__eyebrow {
+  display: inline-block;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-size: 0.72rem;
+  font-weight: var(--couranr-weight-semibold);
+  color: var(--couranr-text-inverse);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: var(--couranr-radius-pill);
+  padding: 5px 13px;
+  margin: 0 0 var(--couranr-space-5);
+}
+
+.cr-hero__h1 {
+  font-size: clamp(2.1rem, 5.2vw, 3.5rem);
+  line-height: 1.06;
+  font-weight: var(--couranr-weight-bold);
+  letter-spacing: -0.02em;
+  margin: 0 0 var(--couranr-space-4);
+  max-width: 17ch;
+  color: var(--couranr-text-inverse);
+}
+.cr-hero__h1-accent { color: var(--couranr-gold); }
+
+.cr-hero__sub {
+  font-size: 1.05rem;
+  line-height: var(--couranr-leading-normal);
+  color: rgba(255, 255, 255, 0.87);
+  max-width: 40ch;
+  margin: 0 0 var(--couranr-space-6);
+}
+
+.cr-hero__cta { display: flex; gap: var(--couranr-space-3); flex-wrap: wrap; }
+
+.cr-hero__trust {
+  list-style: none;
+  margin: var(--couranr-space-8) 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--couranr-space-5) var(--couranr-space-8);
+}
+.cr-hero__trust-item {
+  display: flex;
+  align-items: center;
+  gap: var(--couranr-space-3);
+  font-size: 0.94rem;
+  line-height: 1.3;
+  max-width: 17rem;
+  color: rgba(255, 255, 255, 0.92);
+}
+.cr-hero__trust-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--couranr-radius-pill);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  color: var(--couranr-text-inverse);
+}
+
+@media (min-width: 768px) {
+  .cr-hero { min-height: 34rem; }
+  .cr-hero__body { padding-inline: var(--couranr-space-8); }
+}
+
+/* Narrow viewports. The first attempt stacked a near-opaque 0.82→0.9 vertical
+   scrim; driving it at 390px showed that erased the photograph entirely, which
+   the mobile mock does not do — it keeps the handoff visible behind the copy.
+   So: reframe to the handoff, and use a scrim that is heavy only where the
+   headline sits. Contrast was re-measured after the change, not assumed. */
+@media (max-width: 640px) {
+  .cr-hero { min-height: 32rem; }
+  .cr-hero__photo { object-position: center 32%; }
+  /* Tuned against measured contrast, not by eye: at 0.9/0.72/0.58 the painted
+     backdrop under the headline measured 13.5:1 against white — far past the
+     4.5:1 AA floor and dark enough that the photograph disappeared. Measured
+     again after this change, sampling the painted background with the copy
+     hidden: headline 10.06:1 white / 5.60:1 gold, subhead 7.41:1, trust row
+     8.11:1 — every region still clear of AA, with the handoff visible. */
+  .cr-hero__scrim {
+    background:
+      linear-gradient(
+        184deg,
+        rgba(13, 21, 37, 0.82) 0%,
+        rgba(13, 21, 37, 0.55) 52%,
+        rgba(13, 21, 37, 0.42) 100%
+      ),
+      linear-gradient(90deg, rgba(13, 21, 37, 0.34) 0%, rgba(13, 21, 37, 0) 82%);
+  }
+  .cr-hero__h1 { max-width: none; }
+  .cr-hero__cta .cr-button { width: 100%; }
+}
+
 .cr-mkt-hero { text-align: center; padding-block: var(--couranr-space-8) var(--couranr-space-6); }
 .cr-mkt-eyebrow {
   display: inline-block;
@@ -836,9 +999,111 @@
 }
 .cr-mkt-steps li:not(:last-child)::after { content: "→"; color: var(--couranr-text-muted); margin-left: var(--couranr-space-2); }
 
+/* ── channel cards + flow strip — from the PUB-001 mock ──────────────────── */
+
+.cr-mkt-channels {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: var(--couranr-space-3);
+}
+.cr-mkt-channel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--couranr-space-3);
+  text-align: center;
+  padding: var(--couranr-space-5) var(--couranr-space-3);
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-md);
+  background: var(--couranr-surface);
+}
+.cr-mkt-channel__icon { color: var(--couranr-route-blue); line-height: 0; }
+.cr-mkt-channel__label {
+  font-size: 0.9rem;
+  font-weight: var(--couranr-weight-medium);
+  color: var(--couranr-text);
+  text-wrap: balance;
+}
+
+.cr-mkt-flow-strip {
+  list-style: none;
+  margin: 0;
+  padding: var(--couranr-space-5) var(--couranr-space-4);
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-md);
+  background: var(--couranr-surface-sunken);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--couranr-space-4);
+}
+.cr-mkt-flow-strip__step {
+  display: flex;
+  align-items: center;
+  gap: var(--couranr-space-3);
+  font-size: 0.95rem;
+  font-weight: var(--couranr-weight-medium);
+  color: var(--couranr-text);
+}
+.cr-mkt-flow-strip__icon { color: var(--couranr-route-blue); line-height: 0; }
+/* The arrow is ornament between steps; the <ol> already carries the order. */
+.cr-mkt-flow-strip__step:not(:last-child)::after {
+  content: "→";
+  margin-left: var(--couranr-space-3);
+  color: var(--couranr-text-muted);
+}
+
+/* ── payer cards ─────────────────────────────────────────────────────────── */
+
 .cr-mkt-payers { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: var(--couranr-space-3); }
 .cr-mkt-payer--merchant { border-color: var(--couranr-gold); background: #fdf8ec; }
 .cr-mkt-payer--customer { border-color: var(--couranr-route-blue); background: #eef3fd; }
+.cr-mkt-payer__head { display: flex; align-items: center; gap: var(--couranr-space-3); }
+.cr-mkt-payer__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--couranr-radius-pill);
+  color: var(--couranr-text-inverse);
+}
+.cr-mkt-payer--merchant .cr-mkt-payer__icon { background: var(--couranr-gold); color: var(--couranr-navy); }
+.cr-mkt-payer--customer .cr-mkt-payer__icon { background: var(--couranr-route-blue); }
+
+/* ── pricing band ────────────────────────────────────────────────────────── */
+
+.cr-mkt-price-band {
+  border: 1px solid var(--couranr-border);
+  border-left: 4px solid var(--couranr-gold);
+  border-radius: var(--couranr-radius-md);
+  background: var(--couranr-surface);
+  padding: var(--couranr-space-5) var(--couranr-space-6);
+}
+.cr-mkt-price-band__label {
+  margin: 0;
+  font-size: var(--couranr-text-sm);
+  font-weight: var(--couranr-weight-medium);
+  color: var(--couranr-text-muted);
+}
+.cr-mkt-price-band__value {
+  margin: 2px 0 0;
+  font-size: clamp(2.25rem, 6vw, 3rem);
+  line-height: 1;
+  font-weight: var(--couranr-weight-bold);
+  letter-spacing: -0.02em;
+  color: var(--couranr-navy);
+}
+.cr-mkt-price-band__note {
+  margin: var(--couranr-space-2) 0 0;
+  font-size: var(--couranr-text-sm);
+  color: var(--couranr-text-muted);
+}
 
 .cr-mkt-closing {
   background: var(--couranr-navy);

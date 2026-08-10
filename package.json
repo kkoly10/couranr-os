@@ -18,6 +18,7 @@
     "check:rls": "node e2e/disposable/dbTest.mjs --rls-only",
     "check:routes": "node scripts/checkRoutes.mjs",
     "check:legacy-imports": "node scripts/checkLegacyImports.mjs",
+    "check:mocks": "node scripts/checkMockMap.mjs",
     "check:migrations": "vitest run tests/couranr-migrations.test.ts && node scripts/checkMigrationsDestructive.mjs",
     "check:gates:controls": "node scripts/positiveControls.mjs",
     "test:deploy-safety": "node e2e/disposable/deploymentSafety.mjs",
@@ -28,7 +29,8 @@
     "typecheck:canonical": "tsc --noEmit -p tsconfig.canonical.json",
     "test:release": "node e2e/disposable/releaseAuthorization.mjs",
     "test:release:route": "node e2e/disposable/releaseRoute.mjs",
-    "test:idempotency": "node e2e/disposable/idempotencySubstrate.mjs"
+    "test:idempotency": "node e2e/disposable/idempotencySubstrate.mjs",
+    "test:shell-chrome": "node e2e/shellChrome.mjs"
   },
   "dependencies": {
     "@stripe/react-stripe-js": "3.1.1",

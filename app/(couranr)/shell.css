@@ -14,13 +14,25 @@
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  /* The shell itself never scrolls sideways; wide children scroll internally. */
-  overflow-x: hidden;
 }
 
 .cr-shell__main {
   flex: 1 1 auto;
   min-width: 0;
+  /* Sideways containment lives HERE, not on .cr-shell.
+     `.cr-shell` used to carry `overflow-x: hidden`. A single non-visible
+     overflow value forces the other axis to compute to `auto`, which made the
+     shell a scroll container — and a `position: sticky` element sticks to its
+     nearest scroll container, not the viewport. Since the shell's scrollport
+     never scrolls (the page does), all four sticky chrome elements silently
+     stopped sticking: `.cr-topbar`, `.cr-sidebar`, `.cr-appbar` and
+     `.cr-driverbar`, in all five shells. Measured before the fix: the public
+     topbar's top went 0 → -1400 after a 1400px scroll.
+     All four are chrome OUTSIDE <main> and nothing sticky lives inside it, so
+     containing the overflow here fixes the sticky chrome and still stops wide
+     content from widening the page. `clip` rather than `hidden` so <main>
+     itself does not become a scroll container either. */
+  overflow-x: clip;
 }
 
 .cr-shell__content {
@@ -312,4 +324,56 @@
   font-family: var(--couranr-font-mono);
   font-size: var(--couranr-text-xs);
   color: var(--couranr-text-muted);
+}
+
+/* ── public footer — from the PUB-001 mock ────────────────────────────────
+   Navy band, reverse wordmark, public destinations. Unlike .cr-hero this needs
+   NO viewport escape: the footer is a direct child of the full-width
+   .cr-shell, not of the centred .cr-container, so it already runs edge to edge
+   (measured left=0, width=viewport at 1440 and 390). A `100vw` escape here
+   would overshoot by the scrollbar width and, sitting outside <main>, would
+   not be caught by the clip that absorbs the hero's. */
+
+.cr-footer {
+  margin-top: var(--couranr-space-16);
+  background: var(--couranr-navy);
+  color: var(--couranr-text-inverse);
+  padding-block: var(--couranr-space-10);
+}
+
+.cr-footer__inner {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--couranr-space-8);
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.cr-footer__brand {
+  display: flex;
+  flex-direction: column;
+  gap: var(--couranr-space-3);
+  max-width: 26rem;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.cr-footer__links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--couranr-space-3) var(--couranr-space-6);
+}
+
+.cr-footer__link {
+  color: rgba(255, 255, 255, 0.82);
+  font-size: var(--couranr-text-sm);
+  text-decoration: none;
+}
+.cr-footer__link:hover { color: var(--couranr-text-inverse); text-decoration: underline; }
+.cr-footer__link:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--couranr-navy), 0 0 0 4px var(--couranr-gold);
+  border-radius: 4px;
 }
