@@ -28,6 +28,7 @@ const GATES = [
   ["check:legacy-imports", ["scripts/checkLegacyImports.mjs", "--positive-control"]],
   ["check:migrations", ["scripts/checkMigrationsDestructive.mjs", "--positive-control"]],
   ["check:mocks", ["scripts/checkMockMap.mjs", "--positive-control"]],
+  ["check:visual-system", ["scripts/checkVisualSystem.mjs", "--positive-control"]],
 ];
 
 if (process.argv.includes("--with-db")) {
