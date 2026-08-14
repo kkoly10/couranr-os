@@ -20,6 +20,7 @@
     "check:legacy-imports": "node scripts/checkLegacyImports.mjs",
     "check:mocks": "node scripts/checkMockMap.mjs",
     "check:visual-system": "node scripts/checkVisualSystem.mjs",
+    "check:visual-registry": "node scripts/visualAuthorityRegistry.mjs",
     "check:migrations": "vitest run tests/couranr-migrations.test.ts && node scripts/checkMigrationsDestructive.mjs",
     "check:gates:controls": "node scripts/positiveControls.mjs",
     "test:deploy-safety": "node e2e/disposable/deploymentSafety.mjs",
