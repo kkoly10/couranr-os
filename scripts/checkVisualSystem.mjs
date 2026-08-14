@@ -3,23 +3,28 @@
  * `npm run check:visual-system` — validates the internal consistency of
  * docs/couranr-mvp/brand/COURANR_VISUAL_SYSTEM_V2_2.md.
  *
- * That document is a specification, not code, but §27.0's table is a contract
- * the PUB-001 implementation gets tested against: it fixes the thirteen governed
+ * That document is a specification, not code, but its governed section tables
+ * are a contract the implementation gets tested against: they fix the governed
  * `data-couranr-section` ids, the `data-composition` each must carry, and the
  * three DOM flags whose counts §32.3 asserts. A spec that quietly contradicts
  * itself produces an implementation that passes its own invented gate — which
  * is exactly the failure §27.0 was added to remove.
  *
+ * Five pages are governed now, not one: §27.0 for PUB-001 and §27.1 for
+ * PUB-008/009/010/011. Every table is checked the same way; only the numeric
+ * budgets differ, because §32.3 says the family pages' counts are page-specific
+ * and must not be copied from PUB-001.
+ *
  * So this re-derives, from the document text:
  *   - §27.0 has exactly EXPECTED_ROWS rows, numbered 1..n, with unique ids
+ *   - EVERY governed table numbers 1..n and has unique ids
  *   - every `data-composition` value is an approved §19 type (closed vocabulary)
- *   - no two adjacent sections share a composition        (§19 hard rule)
- *   - grid-dominant count <= 2                            (§19 hard rule)
- *   - image-led count >= 2                                (§27 / §1.12)
- *   - product-proof count >= 1                            (§27 / §1.14)
- *   - exactly one workflow-rail section                   (§32.3)
- *   - §25's composition_regions == the table's ids + `navigation`
- *   - §32.3's example id is on the table
+ *   - no two adjacent sections share a composition        (§19 hard rule, all pages)
+ *   - PUB-001: grid-dominant <= 2, image-led >= 2, product-proof >= 1,
+ *     exactly one workflow rail                           (§32.3's stated numbers)
+ *   - each §27.1 page: its own declared `**Budgets:**` line holds
+ *   - §25's composition_regions == PUB-001's ids + `navigation`
+ *   - §32.3's example id is on the PUB-001 table
  *   - no normative reference to a superseded version of this document
  *
  * `--positive-control` runs the same checks against an in-memory copy with one
@@ -31,6 +36,14 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import {
+  approvedCompositions,
+  budgetHolds,
+  budgets,
+  countFlag,
+  governedPages,
+  specRows,
+} from "./compositionContract.mjs";
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DOC = "docs/couranr-mvp/brand/COURANR_VISUAL_SYSTEM_V2_2.md";
@@ -52,63 +65,93 @@ function scan(doc) {
   const fail = [];
 
   /* ---- §19: the approved composition vocabulary ------------------------ */
-  const approved = new Set(
-    [...doc.matchAll(/^## 19\.\d+ (.+)$/gm)].map((m) => m[1].toLowerCase().replace(/ /g, "-")),
-  );
+  const approved = approvedCompositions(doc);
   if (approved.size === 0) fail.push("§19 declares no composition types");
 
-  /* ---- §27.0: the normative section table ------------------------------ */
-  const table = doc.match(/## 27\.0 Governed section identifiers[\s\S]*?\n\n(\| # [\s\S]*?)\n\n/);
-  if (!table) return { fail: ["§27.0 normative table not found"] };
+  /* ---- every governed table, §27.0 and §27.1 --------------------------- */
+  const pages = governedPages(doc);
+  const tables = new Map();
 
-  const rows = table[1]
-    .trim()
-    .split("\n")
-    .filter((r) => /^\|\s*\d+\s*\|/.test(r))
-    .map((r) => {
-      const c = r.replace(/^\||\|$/g, "").split("|").map((x) => x.trim());
-      const flag = (v) => v.replace(/\*\*/g, "");
-      return {
-        n: Number(c[0]),
-        id: c[1].replace(/`/g, ""),
-        composition: c[4].replace(/`/g, ""),
-        imageLed: flag(c[5]),
-        gridDominant: flag(c[6]),
-        productProof: flag(c[7]),
-      };
-    });
-
-  if (rows.length !== EXPECTED_ROWS) {
-    fail.push(`§27.0 has ${rows.length} rows, expected ${EXPECTED_ROWS}`);
-  }
-  if (rows.some((r, i) => r.n !== i + 1)) {
-    fail.push(`§27.0 rows are not numbered 1..${rows.length} in order`);
-  }
-  if (new Set(rows.map((r) => r.id)).size !== rows.length) fail.push("§27.0 has a duplicate section id");
-
-  for (const r of rows) {
-    if (!approved.has(r.composition)) {
-      fail.push(`section ${r.n} (${r.id}): "${r.composition}" is not an approved §19 type`);
+  for (const page of pages) {
+    let rows;
+    try {
+      rows = specRows(doc, page);
+    } catch (e) {
+      fail.push(e.message);
+      continue;
     }
-    for (const [k, v] of [["image-led", r.imageLed], ["grid-dominant", r.gridDominant], ["product-proof", r.productProof]]) {
-      if (v !== "true" && v !== "false") fail.push(`section ${r.n} (${r.id}): ${k} is "${v}", want true/false`);
+    tables.set(page.screen, rows);
+
+    if (rows.some((r, i) => r.n !== i + 1)) {
+      fail.push(`${page.screen}: rows are not numbered 1..${rows.length} in order`);
+    }
+    if (new Set(rows.map((r) => r.id)).size !== rows.length) {
+      fail.push(`${page.screen}: duplicate section id in the table`);
+    }
+
+    for (const r of rows) {
+      if (!approved.has(r.composition)) {
+        fail.push(`${page.screen} section ${r.n} (${r.id}): "${r.composition}" is not an approved §19 type`);
+      }
+      for (const [k, v] of [["image-led", r.imageLed], ["grid-dominant", r.gridDominant], ["product-proof", r.productProof]]) {
+        if (v !== "true" && v !== "false") {
+          fail.push(`${page.screen} section ${r.n} (${r.id}): ${k} is "${v}", want true/false`);
+        }
+      }
+    }
+
+    // §19's adjacency rule is universal — it is a property of the grammar, not
+    // of any one page's budget.
+    const adjacent = rows
+      .slice(1)
+      .map((r, i) => (r.composition === rows[i].composition ? `${rows[i].n}+${r.n} both "${r.composition}"` : null))
+      .filter(Boolean);
+    if (adjacent.length) {
+      fail.push(`${page.screen}: §19 forbids consecutive identical compositions — ${adjacent.join(", ")}`);
+    }
+
+    // Per-page budgets. §32.3 states PUB-001's numerically and says the family
+    // pages' are page-specific, so those come from their own declared line.
+    const rails = rows.filter((r) => r.composition === "workflow-rail").length;
+    if (page.screen === "PUB-001") {
+      if (rows.length !== EXPECTED_ROWS) {
+        fail.push(`§27.0 has ${rows.length} rows, expected ${EXPECTED_ROWS}`);
+      }
+      if (countFlag(rows, "gridDominant") > 2) fail.push(`PUB-001 grid-dominant: ${countFlag(rows, "gridDominant")}, cap is 2`);
+      if (countFlag(rows, "imageLed") < 2) fail.push(`PUB-001 image-led: ${countFlag(rows, "imageLed")}, floor is 2`);
+      if (countFlag(rows, "productProof") < 1) fail.push(`PUB-001 product-proof: ${countFlag(rows, "productProof")}, floor is 1`);
+      if (rails !== 1) fail.push(`PUB-001 workflow-rail sections: ${rails}, must be exactly 1`);
+      continue;
+    }
+
+    const budget = budgets(doc, page);
+    if (!budget) {
+      // A family page with no declared budget is the §32.3 hole reopening —
+      // "page-specific counts" with nothing written down is not a contract.
+      fail.push(`${page.screen}: §27.1 declares no **Budgets:** line, so its counts are unenforceable`);
+      continue;
+    }
+    const actual = {
+      gridDominant: countFlag(rows, "gridDominant"),
+      imageLed: countFlag(rows, "imageLed"),
+      productProof: countFlag(rows, "productProof"),
+      workflowRail: rails,
+    };
+    for (const [key, rule] of Object.entries(budget)) {
+      if (!budgetHolds(rule, actual[key])) {
+        fail.push(`${page.screen}: ${key} is ${actual[key]}, budget says ${rule.op} ${rule.n}`);
+      }
+    }
+    // §19's cap is a hard rule of the grammar; a page may declare a tighter
+    // budget than 2 but never a looser one.
+    if (actual.gridDominant > 2) {
+      fail.push(`${page.screen}: grid-dominant ${actual.gridDominant} exceeds §19's hard cap of 2`);
     }
   }
 
-  /* ---- the budgets §32.3 asserts --------------------------------------- */
-  const adjacent = rows
-    .slice(1)
-    .map((r, i) => (r.composition === rows[i].composition ? `${rows[i].n}+${r.n} both "${r.composition}"` : null))
-    .filter(Boolean);
-  if (adjacent.length) fail.push(`§19 forbids consecutive identical compositions: ${adjacent.join(", ")}`);
-
-  const count = (k) => rows.filter((r) => r[k] === "true").length;
-  if (count("gridDominant") > 2) fail.push(`grid-dominant sections: ${count("gridDominant")}, cap is 2`);
-  if (count("imageLed") < 2) fail.push(`image-led sections: ${count("imageLed")}, floor is 2`);
-  if (count("productProof") < 1) fail.push(`product-proof sections: ${count("productProof")}, floor is 1`);
-
+  const rows = tables.get("PUB-001") ?? [];
+  const count = (k) => countFlag(rows, k);
   const rails = rows.filter((r) => r.composition === "workflow-rail").length;
-  if (rails !== 1) fail.push(`workflow-rail sections: ${rails}, must be exactly 1`);
 
   /* ---- §25 must use the same vocabulary -------------------------------- */
   const regionsBlock = doc.match(/"composition_regions": \[([\s\S]*?)\]/);
@@ -211,7 +254,9 @@ function scan(doc) {
   return {
     fail,
     summary:
-      `${rows.length} sections, ${approved.size} approved compositions, ` +
+      `${pages.length} governed page(s) — ` +
+      pages.map((p) => `${p.screen}:${tables.get(p.screen)?.length ?? "?"}`).join(" ") +
+      `; ${approved.size} approved compositions; PUB-001 ` +
       `${count("imageLed")} image-led, ${count("gridDominant")} grid-dominant, ` +
       `${count("productProof")} product-proof, ${rails} workflow rail, 0 adjacent duplicates; ` +
       `§2 materialization ${materialized ? "landed (VIS-001)" : "MISSING"}`,

@@ -1,8 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { Button, Card, Heading, Stack, Table, TableScroll, Text } from "@/components/couranr/primitives";
-import { OVERNIGHT_WINDOW_COPY, dollars } from "@/lib/couranr/public/governed";
+import { Button } from "@/components/couranr/primitives";
+import {
+  CANCELLATION_CENTS,
+  OVERNIGHT_WINDOW_COPY,
+  RETURN_MINIMUM_CENTS,
+  RETURN_PERCENT_OF_ORIGINAL,
+  dollars,
+} from "@/lib/couranr/public/governed";
 
 /**
  * PUB-008's registry-required "expanded pricing details" state — a real
@@ -13,7 +19,33 @@ import { OVERNIGHT_WINDOW_COPY, dollars } from "@/lib/couranr/public/governed";
  * Overnight is listed with its surcharge but explicitly request-only: OVN-002
  * (the enablement mechanism) is unresolved, so there is no way to book it and
  * this page must not imply one.
+ *
+ * V3: the three bordered Cards became one ruled schedule. §27.1 caps this page
+ * at zero grid-dominant sections outside the two it names, and three cards of
+ * tables inside a disclosure was a card grid hiding behind a button. The
+ * cancellation and return amounts now render from `governed.ts` instead of
+ * being typed in — they were `800`, `1500`, `1499` and `70%` as literals, which
+ * agreed with CAN-001 and REF-001 only until either changed.
  */
+
+type Row = { label: string; value: React.ReactNode };
+
+function Schedule({ heading, rows }: { heading: string; rows: Row[] }) {
+  return (
+    <div className="cr-mkt-schedule__group">
+      <h3 className="cr-type-label">{heading}</h3>
+      <dl className="cr-mkt-schedule">
+        {rows.map((r) => (
+          <div key={r.label} className="cr-mkt-schedule__row">
+            <dt>{r.label}</dt>
+            <dd>{r.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  );
+}
+
 export function PricingDetails(props: {
   weightRows: { label: string; price: string }[];
   overnightCents: number;
@@ -25,113 +57,88 @@ export function PricingDetails(props: {
   const [open, setOpen] = React.useState(false);
 
   return (
-    <section aria-labelledby="pd-h" className="cr-mkt-section">
-      <Heading level={2} id="pd-h">
-        All approved charges
-      </Heading>
-      <div>
-        <Button
-          type="button"
-          variant="secondary"
-          aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
-        >
-          {open ? "Hide the full schedule" : "Show the full schedule"}
-        </Button>
+    <div className="cr-mkt-disclosure">
+      <Button
+        type="button"
+        variant="secondary"
+        aria-expanded={open}
+        aria-controls="cr-pricing-schedule"
+        onClick={() => setOpen((v) => !v)}
+      >
+        {open ? "Hide the full schedule" : "Show the full schedule"}
+      </Button>
+
+      {/* Rendered but hidden rather than unmounted, so the button's
+          aria-controls always points at a real element. */}
+      <div id="cr-pricing-schedule" hidden={!open} className="cr-mkt-disclosure__body">
+        <Schedule
+          heading="Weight and handling"
+          rows={[
+            ...props.weightRows.map((r) => ({ label: r.label, value: r.price })),
+            { label: "Over 200 lb", value: "Couranr review and manual quote" },
+          ]}
+        />
+
+        <Schedule
+          heading="Time and waiting"
+          rows={[
+            {
+              label: "Waiting time",
+              value: `First ${props.waitingIncludedMinutes} minutes included, then ${dollars(
+                props.waitingPerMinuteCents,
+              )}/minute`,
+            },
+            {
+              label: `Overnight (${OVERNIGHT_WINDOW_COPY})`,
+              value: `+${dollars(
+                props.overnightCents,
+              )} — request-only, when Couranr enables and confirms; never stacks with rush`,
+            },
+            { label: "Tolls and parking", value: "At cost" },
+            { label: "Tips", value: "100% to the driver" },
+          ]}
+        />
+
+        <Schedule
+          heading="Cancellation and returns"
+          rows={[
+            {
+              label: "Before Couranr confirmation",
+              value: `${dollars(
+                CANCELLATION_CENTS.afterAuthorizationBeforeConfirmation,
+              )} — the authorization is released`,
+            },
+            {
+              label: "After confirmation, before arrival",
+              value: dollars(CANCELLATION_CENTS.afterConfirmationBeforeArrival),
+            },
+            {
+              label: "After arrival, pickup unavailable",
+              value: `${dollars(
+                CANCELLATION_CENTS.afterArrivalUnavailable,
+              )} failed-attempt fee plus approved waiting`,
+            },
+            {
+              label: "Return after pickup",
+              value: `${RETURN_PERCENT_OF_ORIGINAL}% of the original delivery charge, minimum ${dollars(
+                RETURN_MINIMUM_CENTS,
+              )}`,
+            },
+          ]}
+        />
+
+        <Schedule
+          heading="Route Saver"
+          rows={[
+            {
+              label: `${props.routeSaverMinStops}+ stops from one pickup`,
+              value: `From ${dollars(
+                props.routeSaverFromCents,
+              )} per stop, with the route order controlled by Couranr. Arranged with Couranr Operations.`,
+            },
+          ]}
+        />
       </div>
-
-      {open ? (
-        <div className="cr-mkt-price-grid">
-          <Card>
-            <Stack gap={3}>
-              <Heading level={3}>Weight and handling</Heading>
-              <TableScroll>
-                <Table>
-                  <tbody>
-                    {props.weightRows.map((r) => (
-                      <tr key={r.label}>
-                        <td>{r.label}</td>
-                        <td>{r.price}</td>
-                      </tr>
-                    ))}
-                    <tr>
-                      <td>Over 200 lb</td>
-                      <td>Couranr review and manual quote</td>
-                    </tr>
-                  </tbody>
-                </Table>
-              </TableScroll>
-            </Stack>
-          </Card>
-
-          <Card>
-            <Stack gap={3}>
-              <Heading level={3}>Time and waiting</Heading>
-              <TableScroll>
-                <Table>
-                  <tbody>
-                    <tr>
-                      <td>Waiting time</td>
-                      <td>
-                        First {props.waitingIncludedMinutes} minutes included, then{" "}
-                        {dollars(props.waitingPerMinuteCents)}/minute
-                      </td>
-                    </tr>
-                    <tr>
-                      <td>Overnight ({OVERNIGHT_WINDOW_COPY})</td>
-                      <td>
-                        +{dollars(props.overnightCents)} — request-only, when Couranr
-                        enables and confirms; never stacks with Rush
-                      </td>
-                    </tr>
-                    <tr>
-                      <td>Tolls and parking</td>
-                      <td>At cost</td>
-                    </tr>
-                    <tr>
-                      <td>Tips</td>
-                      <td>100% to the driver</td>
-                    </tr>
-                  </tbody>
-                </Table>
-              </TableScroll>
-            </Stack>
-          </Card>
-
-          <Card>
-            <Stack gap={3}>
-              <Heading level={3}>Cancellation and returns</Heading>
-              <TableScroll>
-                <Table>
-                  <tbody>
-                    <tr>
-                      <td>Before Couranr confirmation</td>
-                      <td>{dollars(0)} — the authorization is released</td>
-                    </tr>
-                    <tr>
-                      <td>After confirmation, before arrival</td>
-                      <td>{dollars(800)}</td>
-                    </tr>
-                    <tr>
-                      <td>After arrival, pickup unavailable</td>
-                      <td>{dollars(1500)} failed-attempt fee plus approved waiting</td>
-                    </tr>
-                    <tr>
-                      <td>Return after pickup</td>
-                      <td>70% of the original delivery charge, minimum {dollars(1499)}</td>
-                    </tr>
-                  </tbody>
-                </Table>
-              </TableScroll>
-              <Text muted size="sm">
-                Route Saver: from {dollars(props.routeSaverFromCents)} per stop for{" "}
-                {props.routeSaverMinStops}+ stops from one pickup, with the route
-                order controlled by Couranr. Arranged with Couranr Operations.
-              </Text>
-            </Stack>
-          </Card>
-        </div>
-      ) : null}
-    </section>
+    </div>
   );
 }

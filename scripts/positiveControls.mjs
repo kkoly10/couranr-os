@@ -43,6 +43,7 @@ if (process.argv.includes("--with-browser")) {
   GATES.push(["test:shell-chrome", ["e2e/shellChrome.mjs", "--positive-control"]]);
   GATES.push(["test:fonts", ["e2e/fonts.mjs", "--positive-control"]]);
   GATES.push(["test:pub001", ["e2e/pub001Gates.mjs", "--positive-control"]]);
+  GATES.push(["test:pub-family", ["e2e/publicFamilyGates.mjs", "--positive-control"]]);
 }
 
 let failed = 0;

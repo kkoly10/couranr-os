@@ -2050,6 +2050,137 @@ A canonical logo/tagline signature may appear if the composition supports it, bu
 
 ---
 
+## 27.1 Public family composition contracts — PUB-008/009/010/011
+
+§32.3 says: *"For PUB-008/009/010/011, use the same metadata contract on their
+top-level marketing sections where the v2.2 composition grammar governs them.
+Their counts are page-specific; do not blindly copy PUB-001's numeric budgets
+unless this document explicitly applies them."*
+
+That left the hole §27.0 exists to close, four more times — a mandatory metadata
+contract with no normative list to check against, plus per-page budgets called
+"page-specific" without saying what they are. An implementer would invent both
+and then assert against what they invented. **These four tables are that list,
+and each page's `**Budgets:**` line is those counts, written to be parsed rather
+than read.**
+
+| screen | route | implementation |
+|---|---|---|
+| `PUB-008` | `/pricing` | `app/(couranr)/(public)/pricing/page.tsx` |
+| `PUB-009` | `/businesses` | `app/(couranr)/(public)/businesses/page.tsx` |
+| `PUB-010` | `/service-areas` | `app/(couranr)/(public)/service-areas/page.tsx` |
+| `PUB-011` | `/how-it-works` | `app/(couranr)/(public)/how-it-works/page.tsx` |
+
+Three rules govern all four, and they are the reason the budgets differ:
+
+1. **§19's adjacency rule and its cap of two grid-dominant sections are
+   universal.** They are properties of the grammar, not of a page. A page may
+   declare a tighter cap; none may declare a looser one.
+2. **PUB-001's floors are not.** Its `image-led >= 2` and `product-proof >= 1`
+   exist because the homepage carries the canonical photography and the product
+   composition. Applying them to `/pricing` would require inventing a
+   photograph and a product proof to satisfy a number, which is the
+   template-filling §28 bans. Where a floor is stated as `>= 0` below it is
+   stated deliberately, not forgotten.
+3. **MKT-002: the supporting pages deepen the homepage rather than repeat it.**
+   Each table's "required state / intent" column names what the page adds. A
+   section that would restate a homepage section verbatim is a defect in this
+   table, not a styling choice.
+
+**`grid-dominant` means the section's primary device is a repeating card or
+tile grid.** A `<table>` of pricing tiers is utility content under §19.7, not a
+card grid, and is recorded `false` — otherwise every data table on a pricing
+page would burn the page's entire §19 budget.
+
+Gate A cannot run on these four. `UI_SCREEN_REGISTRY.md` records each of them as
+*"Derived from PUB-001 design system; no separate approved mock"*, and §26's
+Gate A is a comparison against a canonical mock. §29 step 5 asks each sibling to
+be compared with its own mock "not merely with the golden screen" — where no
+such mock exists, the substitute is a family-coherence review against PUB-001's
+proven grammar plus the screen's own content contract in `UI_SCREEN_REGISTRY.md`.
+That review is recorded in `docs/couranr-mvp/brand/PUB-FAMILY_V3_REVIEW.md`, and
+§25's registry records these screens as `visual_authority: "derived"` naming
+PUB-001 as their source, which §25's rules require of any derived screen.
+
+### PUB-008 — pricing
+
+**Budgets:** grid-dominant <= 2 · image-led >= 0 · product-proof >= 0 · workflow-rail == 0
+
+Required states from `UI_SCREEN_REGISTRY.md`: Standard; expanded pricing
+details; manual-quote notice. The page deepens the homepage's pricing band,
+which states only the base price and that tiers exist.
+
+| # | `data-couranr-section` | required state / intent | device | `data-composition` (§19) | image-led | grid-dominant | product-proof |
+|---|---|---|---|---|---|---|---|
+| 1 | `pricing-hero` | Standard — the promise, not a card | oversized statement, no panel | `editorial-statement` | false | false | false |
+| 2 | `base-price` | Standard — PRC-001/MIL-001, the page's anchor fact | navy band, one number | `full-bleed-interruption` | false | false | false |
+| 3 | `mileage` | Standard — MIL-002's five tiers | data table | `structured-information-block` | false | false | false |
+| 4 | `service-levels` | Standard — SUR-001 service levels, OVN-001 | asymmetric lead + charge list | `split-story` | false | false | false |
+| 5 | `operating-charges` | Expanded pricing details — SUR-001 stops/signature/weight/waiting, SUR-002 | ruled schedule + disclosure | `structured-information-block` | false | false | false |
+| 6 | `manual-quote` | Manual-quote notice — MIL-002 over 100 mi, SUR-001 over 200 lb, SVC-001 | statement, always visible | `editorial-statement` | false | false | false |
+| 7 | `who-pays` | Standard — PAY-001, CAP-001 | asymmetric split | `split-story` | false | false | false |
+| 8 | `closing` | conversion | navy brand moment | `full-bleed-interruption` | false | false | false |
+
+### PUB-009 — businesses
+
+**Budgets:** grid-dominant <= 1 · image-led >= 0 · product-proof >= 0 · workflow-rail == 0
+
+Required states: category tabs; general-business fallback. PUB-001 now renders
+the eleven categories, so this page deepens rather than repeats: the selection
+mechanics (one primary, up to three secondary, version-stamped) and the
+recommendation-not-eligibility rule in full.
+
+| # | `data-couranr-section` | required state / intent | device | `data-composition` (§19) | image-led | grid-dominant | product-proof |
+|---|---|---|---|---|---|---|---|
+| 1 | `businesses-hero` | intent — the differentiation statement | oversized statement | `editorial-statement` | false | false | false |
+| 2 | `category-system` | Category tabs — all eleven, ACP-024 | the page's one card grid | `structured-information-block` | false | **true** | false |
+| 3 | `category-rule` | Category tabs — selection mechanics and the eligibility rule | asymmetric lead + rules | `split-story` | false | false | false |
+| 4 | `channels` | intent — MKT-002's seven merchant-controlled channels, deepened to what Couranr does not take | navy band | `full-bleed-interruption` | false | false | false |
+| 5 | `fallback` | General-business fallback — a first-class choice | statement | `editorial-statement` | false | false | false |
+| 6 | `closing` | conversion | navy brand moment | `full-bleed-interruption` | false | false | false |
+
+### PUB-010 — service areas
+
+**Budgets:** grid-dominant <= 1 · image-led >= 1 · product-proof >= 0 · workflow-rail == 0
+
+Required states: primary market; surrounding area; extended-distance review.
+The homepage shows the corridor small beside a paragraph; this page is where it
+is the subject. SVC-002 is unresolved, so no radius, polygon or ZIP list appears
+on either.
+
+| # | `data-couranr-section` | required state / intent | device | `data-composition` (§19) | image-led | grid-dominant | product-proof |
+|---|---|---|---|---|---|---|---|
+| 1 | `areas-hero` | intent — honest about being local | oversized statement | `editorial-statement` | false | false | false |
+| 2 | `corridor` | Primary market — MKT-001's four, at real relative positions | the corridor at full size | `image-narrative` | **true** | false | false |
+| 3 | `markets` | Primary market — the four named | the page's one card grid | `structured-information-block` | false | **true** | false |
+| 4 | `surrounding` | Surrounding area — distance is measured, not typed | asymmetric split | `split-story` | false | false | false |
+| 5 | `extended-review` | Extended-distance review — SVC-001, MIL-002 | ruled utility block | `structured-information-block` | false | false | false |
+| 6 | `closing` | conversion | navy brand moment | `full-bleed-interruption` | false | false | false |
+
+### PUB-011 — how it works
+
+**Budgets:** grid-dominant <= 0 · image-led >= 0 · product-proof >= 1 · workflow-rail == 1
+
+Required states: merchant-paid and customer-paid examples. The homepage shows a
+four-step rail and two payer cards; this page carries the full CAP-001 order and
+PRF-001's per-handoff-type proof requirements, neither of which appears there.
+
+`grid-dominant <= 0` is deliberate: this page is entirely process and evidence,
+and every card grid on it would be a process rendered as detached tiles — the
+anti-pattern §19.4 names by name.
+
+| # | `data-couranr-section` | required state / intent | device | `data-composition` (§19) | image-led | grid-dominant | product-proof |
+|---|---|---|---|---|---|---|---|
+| 1 | `works-hero` | intent — no instant-confirmation promise | oversized statement | `editorial-statement` | false | false | false |
+| 2 | `sequence` | intent — CAP-001's nine ordered steps | one connected rail | `workflow-rail` | false | false | false |
+| 3 | `payers` | Merchant-paid and customer-paid examples | asymmetric split, both sequences | `split-story` | false | false | false |
+| 4 | `confirmation` | intent — capture only after Couranr confirmation | navy band | `full-bleed-interruption` | false | false | false |
+| 5 | `proof` | intent — PRF-001 pickup and the three drop-off methods | product composition | `product-proof` | false | false | **true** |
+| 6 | `support` | intent — TRM-001's one approved support sentence | ruled utility block | `structured-information-block` | false | false | false |
+| 7 | `closing` | conversion | navy brand moment | `full-bleed-interruption` | false | false | false |
+
+---
+
 # 28. Anti-template rules
 
 Do not repeat this pattern across a marketing page:

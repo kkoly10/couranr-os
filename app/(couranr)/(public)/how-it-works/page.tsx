@@ -1,14 +1,29 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { Badge, Card, Grid, Heading, Stack, Text } from "@/components/couranr/primitives";
+import { Badge, Text } from "@/components/couranr/primitives";
+import { IconPerson, IconStore } from "@/components/couranr/marketing/MarketingIcons";
 import { SUPPORT_COPY } from "@/lib/couranr/public/governed";
 
 /**
  * PUB-011 — how Couranr works: request, payer, Couranr confirmation, pickup,
- * tracking, proof, support. Registry constraint enforced in the copy itself:
- * NO instant-confirmation promise — payment is authorized first and captured
- * only after Couranr confirmation. Required states: merchant-paid and
- * customer-paid examples, both rendered as parallel sequences.
+ * tracking, proof, support.
+ *
+ * Registry constraint enforced in the copy itself: NO instant-confirmation
+ * promise — payment is authorized first and captured only after Couranr
+ * confirmation. Required states: merchant-paid and customer-paid examples.
+ *
+ * COMPOSITION is governed by §27.1 — seven sections, one connected workflow
+ * rail, one product proof, and ZERO grid-dominant sections. That last budget is
+ * deliberate and is the whole point of the rebuild: this page is entirely
+ * process and evidence, and the version it replaces rendered the process as two
+ * bordered cards of numbered lists and the evidence as a three-card benefits
+ * grid — §19.4's "four detached identical cards when the content represents one
+ * process", twice over.
+ *
+ * MKT-002: the supporting pages deepen the homepage rather than repeat it. The
+ * homepage shows a four-step rail; this page carries CAP-001's full ordered
+ * sequence and PRF-001's per-handoff-type proof requirements, neither of which
+ * appears there.
  */
 
 export const metadata: Metadata = {
@@ -17,31 +32,114 @@ export const metadata: Metadata = {
     "Request, payment authorization, Couranr confirmation, managed pickup and delivery with live tracking and proof — for merchant-paid and customer-paid deliveries.",
 };
 
+/**
+ * CAP-001's `order`, verbatim in sequence and grouped for reading. The
+ * registry lists nine steps; the grouping below adds no step and drops none.
+ */
+const SEQUENCE = [
+  {
+    step: "1",
+    title: "Quote",
+    body: "The delivery is described and priced server-side, in exact cents. The quote is accepted before anything else happens.",
+  },
+  {
+    step: "2",
+    title: "Payment authorized",
+    body: "A payment method is confirmed and authorized. The money is held, not taken — nothing is captured at this point.",
+  },
+  {
+    step: "3",
+    title: "Marked ready",
+    body: "You prepare the order and mark it ready. Couranr does not dispatch against an order that is not.",
+  },
+  {
+    step: "4",
+    title: "Couranr review",
+    body: "Couranr Operations reads the request. This is a person, not a rule engine, and it is why an estimate is never an instant confirmation.",
+  },
+  {
+    step: "5",
+    title: "Couranr confirmation",
+    body: "Couranr confirms the schedule and the vehicle. Only now is payment captured.",
+  },
+  {
+    step: "6",
+    title: "Couranr-managed dispatch",
+    body: "The delivery is created and assigned to a Couranr-managed driver. There is no marketplace, no bidding and no self-selection.",
+  },
+];
+
 const MERCHANT_PAID = [
   "You create the delivery request in your Couranr workspace.",
-  "Your saved payment method is authorized for the server-computed quote. Nothing is captured yet.",
-  "Couranr reviews the request and confirms the schedule and vehicle. Only then is payment captured.",
-  "A Couranr-managed driver picks up with photo, PIN or signature proof.",
-  "You and your customer track the delivery live to a proven drop-off.",
+  "Your saved payment method is authorized for the server-computed quote.",
+  "Capture happens after Couranr confirms — you see authorization, confirmation and capture, in that order.",
+  "One clean delivery receipt for your books.",
 ];
 
 const CUSTOMER_PAID = [
-  "You create the request and send your customer a secure payment link — no Couranr account required.",
-  "Your customer authorizes payment on that link. You see the authorization status.",
-  "Couranr reviews and confirms — capture happens after Couranr confirmation, never before.",
-  "A Couranr-managed driver picks up with proof, exactly as in the merchant-paid flow.",
-  "Everyone tracks live; delivery completes with drop-off proof.",
+  "You create the request and send your customer a secure payment link.",
+  "Your customer authorizes payment on that link — no Couranr account required.",
+  "Capture happens after Couranr confirms here too. You see the authorization status without ever handling their card details.",
+  "The delivery proceeds identically from there.",
+];
+
+/**
+ * PRF-001, which fixes proof requirements BY HANDOFF TYPE. This is the page's
+ * product proof and the thing the homepage does not carry: the homepage names
+ * the four artifact kinds, this names what each drop-off method actually
+ * requires.
+ *
+ * The two forbidden items are stated, not omitted. A proof page that lists only
+ * what is collected reads as surveillance; the limit is the reassurance.
+ */
+const PICKUP_PROOF = [
+  "Merchant pickup PIN",
+  "Package count",
+  "Shipment photo",
+  "Condition photo",
+  "Timestamp and location",
+  "The actual vehicle",
+];
+
+const DELIVERY_PROOF = [
+  {
+    method: "Direct handoff",
+    requires: ["Recipient PIN", "First name", "Timestamp", "Location"],
+  },
+  {
+    method: "Signature",
+    requires: ["Signature", "Signer name", "Timestamp", "Location"],
+  },
+  {
+    method: "Leave at door",
+    requires: [
+      "Merchant permission",
+      "Customer authorization",
+      "A safe location",
+      "Weather suitability",
+      "Photo, timestamp and location",
+    ],
+  },
 ];
 
 export default function Page() {
   return (
     <div className="cr-mkt">
-      <section className="cr-mkt-hero" aria-labelledby="h-h">
+      {/* ─── 1 ─────────────────────── works-hero / editorial-statement ─── */}
+      <section
+        className="cr-mkt-editorial cr-mkt-editorial--hero"
+        aria-labelledby="w1-h"
+        data-couranr-section="works-hero"
+        data-composition="editorial-statement"
+        data-image-led="false"
+        data-grid-dominant="false"
+        data-product-proof="false"
+      >
         <p className="cr-mkt-eyebrow">How it works</p>
-        <h1 id="h-h" className="cr-mkt-h1">
+        <h1 id="w1-h" className="cr-type-statement">
           From &ldquo;can you deliver?&rdquo; to proof it arrived.
         </h1>
-        <p className="cr-mkt-sub">
+        <p className="cr-mkt-editorial__body cr-type-lead">
           One flow, two ways to pay. Every delivery is priced server-side, reviewed by
           Couranr, and captured only after Couranr confirms — an estimate is never an
           instant confirmation.
@@ -56,68 +154,222 @@ export default function Page() {
         </div>
       </section>
 
-      <section className="cr-mkt-section" aria-labelledby="h-flows-h">
-        <Heading level={2} id="h-flows-h">
-          Merchant-paid and customer-paid, side by side
-        </Heading>
+      {/* ─── 2 ──────────────────────────────── sequence / workflow-rail ─── */}
+      {/* §19.4: sequential steps visually connected, progression spatially
+          obvious. CAP-001's order, which is the page's spine. */}
+      <section
+        className="cr-mkt-section"
+        aria-labelledby="w2-h"
+        data-couranr-section="sequence"
+        data-composition="workflow-rail"
+        data-image-led="false"
+        data-grid-dominant="false"
+        data-product-proof="false"
+      >
+        <h2 id="w2-h" className="cr-type-marketing-section">
+          The order things happen in
+        </h2>
+        <Text muted className="cr-type-lead">
+          This sequence is fixed. Couranr cannot capture a payment before it has
+          confirmed the delivery, and it does not dispatch one it has not confirmed.
+        </Text>
+        <ol className="cr-mkt-rail cr-mkt-rail--long" aria-label="The order a Couranr delivery happens in">
+          {SEQUENCE.map((s) => (
+            <li key={s.step} className="cr-mkt-rail__step">
+              <span className="cr-mkt-rail__marker" aria-hidden="true">
+                {s.step}
+              </span>
+              <div className="cr-mkt-rail__content">
+                <h3 className="cr-type-card-title">{s.title}</h3>
+                <Text muted size="sm">
+                  {s.body}
+                </Text>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </section>
+
+      {/* ─── 3 ─────────────────────────────────── payers / split-story ─── */}
+      {/* Registry-required states: merchant-paid and customer-paid examples. */}
+      <section
+        className="cr-mkt-split"
+        aria-labelledby="w3-h"
+        data-couranr-section="payers"
+        data-composition="split-story"
+        data-image-led="false"
+        data-grid-dominant="false"
+        data-product-proof="false"
+      >
+        <div className="cr-mkt-split__lead">
+          <h2 id="w3-h" className="cr-type-marketing-section">
+            Two ways to pay, one delivery
+          </h2>
+          <Text muted className="cr-type-lead">
+            Chosen per delivery, not per account. Steps 3 to 6 above are identical
+            either way — only who authorizes changes.
+          </Text>
+        </div>
         <div className="cr-mkt-payers">
-          <Card className="cr-mkt-payer--merchant">
-            <Stack gap={3}>
-              <Badge tone="info">Your business pays</Badge>
-              <ol className="cr-mkt-flow">
-                {MERCHANT_PAID.map((s, i) => (
-                  <li key={i}>{s}</li>
-                ))}
-              </ol>
-            </Stack>
-          </Card>
-          <Card className="cr-mkt-payer--customer">
-            <Stack gap={3}>
-              <Badge tone="info">Your customer pays</Badge>
-              <ol className="cr-mkt-flow">
-                {CUSTOMER_PAID.map((s, i) => (
-                  <li key={i}>{s}</li>
-                ))}
-              </ol>
-            </Stack>
-          </Card>
+          <div className="cr-mkt-payer cr-mkt-payer--merchant">
+            <span className="cr-mkt-payer__head">
+              <span className="cr-mkt-payer__icon">
+                <IconStore />
+              </span>
+              <h3 className="cr-type-card-title">Your business pays</h3>
+            </span>
+            <ol className="cr-mkt-payer__steps">
+              {MERCHANT_PAID.map((s) => (
+                <li key={s}>{s}</li>
+              ))}
+            </ol>
+          </div>
+          <div className="cr-mkt-payer cr-mkt-payer--customer">
+            <span className="cr-mkt-payer__head">
+              <span className="cr-mkt-payer__icon">
+                <IconPerson />
+              </span>
+              <h3 className="cr-type-card-title">Your customer pays</h3>
+            </span>
+            <ol className="cr-mkt-payer__steps">
+              {CUSTOMER_PAID.map((s) => (
+                <li key={s}>{s}</li>
+              ))}
+            </ol>
+          </div>
         </div>
       </section>
 
-      <section className="cr-mkt-section" aria-labelledby="h-proof-h">
-        <Heading level={2} id="h-proof-h">
-          Tracking, proof and support
-        </Heading>
-        <Grid columns={3}>
-          <Card>
-            <Stack gap={2}>
-              <Heading level={3}>Live tracking</Heading>
-              <Text muted size="sm">
-                You and your customer follow the delivery from a secure link scoped to
-                that one delivery. All time windows and ETAs are estimates.
-              </Text>
-            </Stack>
-          </Card>
-          <Card>
-            <Stack gap={2}>
-              <Heading level={3}>Proof at both ends</Heading>
-              <Text muted size="sm">
-                Pickup and drop-off are documented with photo, PIN or signature —
-                chosen when the delivery is created, not improvised at the door.
-              </Text>
-            </Stack>
-          </Card>
-          <Card>
-            <Stack gap={2}>
-              <Heading level={3}>Couranr Support</Heading>
-              <Text muted size="sm">{SUPPORT_COPY}</Text>
-            </Stack>
-          </Card>
-        </Grid>
+      {/* ─── 4 ───────────────── confirmation / full-bleed-interruption ─── */}
+      <section
+        className="cr-mkt-band"
+        aria-labelledby="w4-h"
+        data-couranr-section="confirmation"
+        data-composition="full-bleed-interruption"
+        data-image-led="false"
+        data-grid-dominant="false"
+        data-product-proof="false"
+      >
+        <div className="cr-mkt-band__inner cr-mkt-band__inner--stacked">
+          <div className="cr-mkt-band__copy">
+            <h2 id="w4-h" className="cr-mkt-band__h2 cr-type-marketing-section">
+              An estimate is never an instant confirmation
+            </h2>
+            <p className="cr-mkt-band__body">
+              A price appears immediately because it is computed, not negotiated. A
+              confirmation appears when Couranr has read the request and committed a
+              schedule and a vehicle to it. Those are different events, and Couranr
+              will not blur them to look faster.
+            </p>
+            <p className="cr-mkt-band__note">
+              If Couranr cannot confirm, the authorization is released and you are not
+              charged. <Link href="/pricing">See the full pricing schedule →</Link>
+            </p>
+          </div>
+        </div>
       </section>
 
-      <section className="cr-mkt-closing" aria-labelledby="h-close-h">
-        <h2 id="h-close-h" className="cr-mkt-h2-inverse">
+      {/* ─── 5 ─────────────────────────────────── proof / product-proof ─── */}
+      {/* §19.5: a faithful live product composition, large enough to read, no
+          fabricated metrics. PRF-001's requirements by handoff type. */}
+      <section
+        className="cr-mkt-proof"
+        aria-labelledby="w5-h"
+        data-couranr-section="proof"
+        data-composition="product-proof"
+        data-image-led="false"
+        data-grid-dominant="false"
+        data-product-proof="true"
+      >
+        <div className="cr-mkt-proof__copy">
+          <h2 id="w5-h" className="cr-type-marketing-section">
+            What gets recorded, and what never does
+          </h2>
+          <Text muted className="cr-type-lead">
+            Proof requirements are fixed by handoff type before the driver arrives —
+            chosen when the delivery is created, not improvised at the door. Two
+            things are never collected, on any delivery: <strong>face photos</strong>{" "}
+            and <strong>ID-document photos</strong>.
+          </Text>
+        </div>
+        <div className="cr-mkt-proof__panel">
+          <div className="cr-mkt-proof__panel-head">
+            <span className="cr-type-label">Proof requirements</span>
+            <Badge tone="info">Fixed at creation</Badge>
+          </div>
+
+          <div className="cr-mkt-proof__group">
+            <h3 className="cr-type-label">At pickup, every time</h3>
+            <ul className="cr-mkt-proof__requires">
+              {PICKUP_PROOF.map((r) => (
+                <li key={r}>{r}</li>
+              ))}
+            </ul>
+            <Text muted size="sm">
+              A material discrepancy pauses the pickup and may require a requote —
+              Couranr does not carry something it cannot describe.
+            </Text>
+          </div>
+
+          {DELIVERY_PROOF.map((d) => (
+            <div key={d.method} className="cr-mkt-proof__group">
+              <h3 className="cr-type-label">{d.method}</h3>
+              <ul className="cr-mkt-proof__requires">
+                {d.requires.map((r) => (
+                  <li key={r}>{r}</li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* ─── 6 ─────────────────── support / structured-information-block ─── */}
+      <section
+        className="cr-mkt-section"
+        aria-labelledby="w6-h"
+        data-couranr-section="support"
+        data-composition="structured-information-block"
+        data-image-led="false"
+        data-grid-dominant="false"
+        data-product-proof="false"
+      >
+        <h2 id="w6-h" className="cr-type-marketing-section">
+          When something changes mid-delivery
+        </h2>
+        <dl className="cr-mkt-schedule">
+          <div className="cr-mkt-schedule__row cr-mkt-schedule__row--stacked">
+            <dt>Couranr Support</dt>
+            <dd>{SUPPORT_COPY}</dd>
+          </div>
+          <div className="cr-mkt-schedule__row cr-mkt-schedule__row--stacked">
+            <dt>Live tracking</dt>
+            <dd>
+              You and your customer follow the delivery from a secure link scoped to
+              that one delivery. All time windows and ETAs are estimates.
+            </dd>
+          </div>
+          <div className="cr-mkt-schedule__row cr-mkt-schedule__row--stacked">
+            <dt>Changes go through Couranr</dt>
+            <dd>
+              A change to a confirmed delivery is a Couranr decision, not a
+              driver&apos;s judgment call at the door.
+            </dd>
+          </div>
+        </dl>
+      </section>
+
+      {/* ─── 7 ─────────────────────── closing / full-bleed-interruption ─── */}
+      <section
+        className="cr-mkt-closing"
+        aria-labelledby="w7-h"
+        data-couranr-section="closing"
+        data-composition="full-bleed-interruption"
+        data-image-led="false"
+        data-grid-dominant="false"
+        data-product-proof="false"
+      >
+        <h2 id="w7-h" className="cr-mkt-h2-inverse cr-type-statement">
           Ready to say yes to delivery?
         </h2>
         <div className="cr-mkt-cta-row">

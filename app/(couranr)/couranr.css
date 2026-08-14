@@ -1722,6 +1722,17 @@
   --couranr-text-muted: var(--couranr-text-muted-tint);
 }
 
+/* `.cr-table thead th` paints --couranr-text-muted on --couranr-surface-sunken,
+   which is the same 4.45:1 pair as above and fails for exactly the same reason.
+   It was invisible until PUB-008's mileage tiers became a real table: axe found
+   it on `th:nth-child(1)` and `th:nth-child(2)` the first time the gate ran
+   over /pricing. This is the token pair, not the page, so it is fixed at the
+   component — every table in the canonical tree inherits the safe value. */
+.cr-table thead th {
+  --couranr-text-muted: var(--couranr-text-muted-tint);
+  color: var(--couranr-text-muted-tint);
+}
+
 /* Links inside a text block need a non-colour cue. The navy band's links are
    gold on navy — high contrast against the BACKGROUND, but nearly identical in
    luminance to the muted body text they sit inside, which is the comparison
@@ -1961,3 +1972,227 @@
 }
 .cr-mkt .cr-mkt-band__note a,
 .cr-mkt .cr-mkt-band__body a { color: var(--couranr-gold); }
+
+/* ═════════════════════════════════════════════════════════════════════════
+   V3 — the rest of the public marketing family (PUB-008/009/010/011).
+
+   §27.1 gives each page its own composition table and its own budgets. The
+   devices below are the ones those tables call for and PUB-001 did not need.
+   Everything else is reused: .cr-mkt-editorial, .cr-mkt-band, .cr-mkt-split,
+   .cr-mkt-narrative, .cr-mkt-rail, .cr-mkt-proof, .cr-mkt-closing.
+
+   The through-line is the ruled schedule replacing the bordered card. All four
+   pages were built out of Card grids — five card surfaces on /pricing alone —
+   and §19.7 permits panels only "where the content is genuinely discrete". A
+   charge and its amount are one row of a schedule, not a product tier.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/* ── the ruled schedule: a definition list that reads as one document ────── */
+
+.cr-mkt-schedule { margin: 0; padding: 0; }
+
+.cr-mkt-schedule__row {
+  display: grid;
+  gap: var(--couranr-space-1) var(--couranr-space-6);
+  grid-template-columns: 1fr;
+  padding-block: var(--couranr-space-4);
+  border-top: 1px solid var(--couranr-border);
+}
+.cr-mkt-schedule__row:last-child { border-bottom: 1px solid var(--couranr-border); }
+
+.cr-mkt-schedule__row dt {
+  margin: 0;
+  font-size: var(--couranr-text-base);
+  font-weight: var(--couranr-weight-semibold);
+  color: var(--couranr-text);
+}
+.cr-mkt-schedule__row dd {
+  margin: 0;
+  font-size: var(--couranr-text-sm);
+  line-height: var(--couranr-leading-normal);
+  color: var(--couranr-text-muted);
+}
+
+@media (min-width: 640px) {
+  /* Term left, value right — the shape a charge schedule wants. */
+  .cr-mkt-schedule__row { grid-template-columns: minmax(12rem, 2fr) 3fr; align-items: baseline; }
+  /* …except where the value is a sentence rather than an amount, which reads
+     better stacked under its own term than squeezed into a second column. */
+  .cr-mkt-schedule__row--stacked { grid-template-columns: 1fr; }
+}
+
+/* A charge that belongs WITH its term rather than in the value column: the
+   service-level ladder, where the amount is part of the name. */
+.cr-mkt-schedule__charge {
+  margin-left: var(--couranr-space-3);
+  font-family: var(--couranr-font-mono);
+  font-size: var(--couranr-text-sm);
+  font-weight: var(--couranr-weight-medium);
+  color: var(--couranr-route-blue);
+}
+
+.cr-mkt-schedule__group + .cr-mkt-schedule__group { margin-top: var(--couranr-space-6); }
+.cr-mkt-schedule__group h3 { margin: 0 0 var(--couranr-space-2); color: var(--couranr-text); }
+
+/* ── the disclosure (PUB-008's required "expanded pricing details") ─────── */
+
+.cr-mkt-disclosure { margin-top: var(--couranr-space-6); }
+.cr-mkt-disclosure__body {
+  margin-top: var(--couranr-space-5);
+  padding: var(--couranr-space-6);
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-lg);
+  background: var(--couranr-surface-sunken);
+  --couranr-text-muted: var(--couranr-text-muted-tint);
+}
+/* `hidden` is a presentation hint, and `display: grid` below would override it
+   if it were not restated. The panel stays in the DOM so the trigger's
+   aria-controls always resolves. */
+.cr-mkt-disclosure__body[hidden] { display: none; }
+
+/* ── an editorial statement that is a full-width notice, not a 24ch column ── */
+
+.cr-mkt-editorial--wide { max-width: 62ch; }
+
+/* ── PUB-010's named markets ────────────────────────────────────────────── */
+
+.cr-mkt-markets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--couranr-space-4);
+  grid-template-columns: 1fr;
+}
+.cr-mkt-market {
+  display: flex;
+  flex-direction: column;
+  gap: var(--couranr-space-1);
+  padding: var(--couranr-space-5);
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-lg);
+  background: var(--couranr-surface);
+}
+.cr-mkt-market__label {
+  font-size: var(--couranr-text-xs);
+  font-weight: var(--couranr-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--couranr-route-blue);
+}
+.cr-mkt-market__name { color: var(--couranr-text); }
+.cr-mkt-market__note {
+  font-size: var(--couranr-text-sm);
+  line-height: var(--couranr-leading-normal);
+  color: var(--couranr-text-muted);
+}
+
+@media (min-width: 640px) { .cr-mkt-markets { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1024px) { .cr-mkt-markets { grid-template-columns: repeat(4, 1fr); } }
+
+/* The corridor is the subject on PUB-010, not a supporting visual as on
+   PUB-001, so it is allowed to be much larger there. */
+.cr-mkt-map--large { max-width: 460px; }
+
+/* ── PUB-011's payer sequences, inside the split story ──────────────────── */
+
+.cr-mkt-payer__steps {
+  margin: 0;
+  padding-left: var(--couranr-space-5);
+  display: grid;
+  gap: var(--couranr-space-3);
+  font-size: var(--couranr-text-sm);
+  line-height: var(--couranr-leading-normal);
+  color: var(--couranr-text-muted);
+}
+
+/* ── PUB-011's proof requirements, inside the product-proof panel ───────── */
+
+.cr-mkt-proof__group {
+  padding: var(--couranr-space-5);
+  border-top: 1px solid var(--couranr-border);
+}
+.cr-mkt-proof__group h3 { margin: 0 0 var(--couranr-space-3); color: var(--couranr-text); }
+
+.cr-mkt-proof__requires {
+  list-style: none;
+  margin: 0 0 var(--couranr-space-2);
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--couranr-space-2);
+}
+.cr-mkt-proof__requires li {
+  padding: var(--couranr-space-2) var(--couranr-space-3);
+  border-radius: var(--couranr-radius-sm);
+  background: var(--couranr-surface-sunken);
+  font-size: var(--couranr-text-xs);
+  font-weight: var(--couranr-weight-medium);
+  color: var(--couranr-text);
+}
+
+/* ── a navy band that stacks copy above content instead of beside a figure ─ */
+
+.cr-mkt-band__inner--stacked { display: block; }
+.cr-mkt-band__inner--stacked .cr-mkt-band__copy { max-width: 62ch; }
+
+/* The channel strip on navy: same device, inverted surface. Contrast is
+   carried by the light tile, so the label keeps the ordinary text colour. */
+.cr-mkt-channelstrip--inverse {
+  margin-top: var(--couranr-space-6);
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* ── V3 corrections found by looking at the rendered pages ──────────────── */
+
+/*
+ * 1. An editorial statement used as a PAGE HERO.
+ *
+ * `.cr-mkt-editorial` clamps the whole section to 24ch, which is what makes
+ * PUB-001 section 2 a dramatic four-line statement. Reused as a page hero it
+ * clamped the eyebrow (wrapping "SIMPLE PER-DELIVERY PRICING" mid-phrase), the
+ * lead paragraph and the CTA row into the same 24ch column — and PUB-011's
+ * headline ran to EIGHT lines. Measured at 1440px, not guessed.
+ *
+ * The statement keeps a narrow measure because that is the effect; everything
+ * around it gets its own.
+ */
+.cr-mkt-editorial--hero { max-width: none; }
+.cr-mkt-editorial--hero > h1,
+.cr-mkt-editorial--hero > h2 { max-width: 18ch; }
+.cr-mkt-editorial--hero .cr-mkt-editorial__body { max-width: 54ch; }
+.cr-mkt-editorial--hero .cr-mkt-cta-row { justify-content: flex-start; }
+
+/*
+ * 2. A workflow rail longer than four steps.
+ *
+ * The desktop rail is `repeat(4, 1fr)`, so PUB-011's six CAP-001 steps wrapped
+ * to 4 + 2 with the connector spanning only the first row — a sequence that
+ * visibly broke in half, which is the opposite of §19.4's "progression is
+ * spatially obvious".
+ *
+ * A long sequence stays VERTICAL at every width rather than being squeezed into
+ * six columns. §19.4 asks for connected steps and an obvious progression; it
+ * does not ask for a horizontal one, and six 200px columns would have made the
+ * step bodies unreadable to satisfy a layout nobody required.
+ */
+.cr-mkt-rail--long { grid-template-columns: 1fr !important; gap: 0 !important; }
+.cr-mkt-rail--long .cr-mkt-rail__step {
+  grid-template-columns: 44px 1fr;
+  padding-block: var(--couranr-space-5);
+}
+.cr-mkt-rail--long .cr-mkt-rail__step::before,
+.cr-mkt-rail--long .cr-mkt-rail__step:first-child::before,
+.cr-mkt-rail--long .cr-mkt-rail__step:last-child::before {
+  display: block;
+  left: 21px;
+  right: auto;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  height: auto;
+}
+.cr-mkt-rail--long .cr-mkt-rail__step:first-child::before { top: 50%; }
+.cr-mkt-rail--long .cr-mkt-rail__step:last-child::before { bottom: 50%; }
+.cr-mkt-rail--long .cr-mkt-rail__content { margin-top: 0; max-width: 68ch; }

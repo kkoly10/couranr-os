@@ -34,7 +34,8 @@
     "test:idempotency": "node e2e/disposable/idempotencySubstrate.mjs",
     "test:shell-chrome": "node e2e/shellChrome.mjs",
     "test:fonts": "node e2e/fonts.mjs",
-    "test:pub001": "node e2e/pub001Gates.mjs"
+    "test:pub001": "node e2e/pub001Gates.mjs",
+    "test:pub-family": "node e2e/publicFamilyGates.mjs"
   },
   "dependencies": {
     "@stripe/react-stripe-js": "3.1.1",

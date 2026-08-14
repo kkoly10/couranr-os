@@ -54,6 +54,121 @@
         "The artboards are design exports, not browser screenshots. §26's pixel-diff policy therefore does not apply; Gate A is a named-region review and Gate B verifies real browser widths separately.",
         "Gate A recorded six intentional deviations, two of which close when the photography in PUB-001_PHOTOGRAPHY_BRIEF.md exists."
       ]
+    },
+    {
+      "screen_id": "PUB-008",
+      "surface_family": "public_marketing",
+      "route": "/pricing",
+      "canonical_sources": [],
+      "registry_declared_viewport_intent": "responsive",
+      "visual_authority": "derived",
+      "derived_from": {
+        "screen_id": "PUB-001",
+        "family": "public_marketing"
+      },
+      "derivation_basis": "UI_SCREEN_REGISTRY.md records this screen as \"Derived from PUB-001 design system; no separate approved mock.\" §26's Gate A is a comparison against a canonical mock and therefore cannot run; the substitute is the family-coherence review named below, against PUB-001's proven grammar plus this screen's own content contract.",
+      "composition_regions": [
+        "navigation",
+        "pricing-hero",
+        "base-price",
+        "mileage",
+        "service-levels",
+        "operating-charges",
+        "manual-quote",
+        "who-pays",
+        "closing"
+      ],
+      "mobile_reference": null,
+      "gate_a_review": "docs/couranr-mvp/brand/PUB-FAMILY_V3_REVIEW.md",
+      "notes": [
+        "Composition table and budgets: §27.1 of COURANR_VISUAL_SYSTEM_V2_2.md.",
+        "Gate B and Gate C run normally — they need a browser, not a mock."
+      ]
+    },
+    {
+      "screen_id": "PUB-009",
+      "surface_family": "public_marketing",
+      "route": "/businesses",
+      "canonical_sources": [],
+      "registry_declared_viewport_intent": "responsive",
+      "visual_authority": "derived",
+      "derived_from": {
+        "screen_id": "PUB-001",
+        "family": "public_marketing"
+      },
+      "derivation_basis": "UI_SCREEN_REGISTRY.md records this screen as \"Derived from PUB-001 design system; no separate approved mock.\" §26's Gate A is a comparison against a canonical mock and therefore cannot run; the substitute is the family-coherence review named below, against PUB-001's proven grammar plus this screen's own content contract.",
+      "composition_regions": [
+        "navigation",
+        "businesses-hero",
+        "category-system",
+        "category-rule",
+        "channels",
+        "fallback",
+        "closing"
+      ],
+      "mobile_reference": null,
+      "gate_a_review": "docs/couranr-mvp/brand/PUB-FAMILY_V3_REVIEW.md",
+      "notes": [
+        "Composition table and budgets: §27.1 of COURANR_VISUAL_SYSTEM_V2_2.md.",
+        "Gate B and Gate C run normally — they need a browser, not a mock."
+      ]
+    },
+    {
+      "screen_id": "PUB-010",
+      "surface_family": "public_marketing",
+      "route": "/service-areas",
+      "canonical_sources": [],
+      "registry_declared_viewport_intent": "responsive",
+      "visual_authority": "derived",
+      "derived_from": {
+        "screen_id": "PUB-001",
+        "family": "public_marketing"
+      },
+      "derivation_basis": "UI_SCREEN_REGISTRY.md records this screen as \"Derived from PUB-001 design system; no separate approved mock.\" §26's Gate A is a comparison against a canonical mock and therefore cannot run; the substitute is the family-coherence review named below, against PUB-001's proven grammar plus this screen's own content contract.",
+      "composition_regions": [
+        "navigation",
+        "areas-hero",
+        "corridor",
+        "markets",
+        "surrounding",
+        "extended-review",
+        "closing"
+      ],
+      "mobile_reference": null,
+      "gate_a_review": "docs/couranr-mvp/brand/PUB-FAMILY_V3_REVIEW.md",
+      "notes": [
+        "Composition table and budgets: §27.1 of COURANR_VISUAL_SYSTEM_V2_2.md.",
+        "Gate B and Gate C run normally — they need a browser, not a mock."
+      ]
+    },
+    {
+      "screen_id": "PUB-011",
+      "surface_family": "public_marketing",
+      "route": "/how-it-works",
+      "canonical_sources": [],
+      "registry_declared_viewport_intent": "responsive",
+      "visual_authority": "derived",
+      "derived_from": {
+        "screen_id": "PUB-001",
+        "family": "public_marketing"
+      },
+      "derivation_basis": "UI_SCREEN_REGISTRY.md records this screen as \"Derived from PUB-001 design system; no separate approved mock.\" §26's Gate A is a comparison against a canonical mock and therefore cannot run; the substitute is the family-coherence review named below, against PUB-001's proven grammar plus this screen's own content contract.",
+      "composition_regions": [
+        "navigation",
+        "works-hero",
+        "sequence",
+        "payers",
+        "confirmation",
+        "proof",
+        "support",
+        "closing"
+      ],
+      "mobile_reference": null,
+      "gate_a_review": "docs/couranr-mvp/brand/PUB-FAMILY_V3_REVIEW.md",
+      "notes": [
+        "Composition table and budgets: §27.1 of COURANR_VISUAL_SYSTEM_V2_2.md.",
+        "Gate B and Gate C run normally — they need a browser, not a mock."
+      ]
     }
   ],
   "photography": [

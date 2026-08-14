@@ -28,6 +28,7 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { governedPages, specRows } from "./compositionContract.mjs";
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = "docs/couranr-mvp/ui-reference/VISUAL_AUTHORITY_REGISTRY.json";
@@ -53,18 +54,15 @@ function pngSize(file) {
  * `navigation` is prepended because the artboard has a navigation band that the
  * shell renders and that carries no `data-couranr-section` — §27.0 says so
  * explicitly, and it is the one region that is deliberately not on the table.
+ *
+ * Takes a screen id since V3: §27.1 governs four more pages, and each has its
+ * own table.
  */
-function compositionRegions() {
+function compositionRegions(screen) {
   const doc = readFileSync(join(repo, SPEC), "utf8");
-  const table = doc.match(/## 27\.0 Governed section identifiers[\s\S]*?\n\n(\| # [\s\S]*?)\n\n/);
-  if (!table) throw new Error(`${SPEC}: §27.0 normative table not found`);
-  const ids = table[1]
-    .trim()
-    .split("\n")
-    .filter((r) => /^\|\s*\d+\s*\|/.test(r))
-    .map((r) => r.replace(/^\||\|$/g, "").split("|")[1].trim().replace(/`/g, ""));
-  if (!ids.length) throw new Error(`${SPEC}: §27.0 table parsed to zero rows`);
-  return ["navigation", ...ids];
+  const page = governedPages(doc).find((p) => p.screen === screen);
+  if (!page) throw new Error(`${SPEC}: ${screen} is not a governed page`);
+  return ["navigation", ...specRows(doc, page).map((r) => r.id)];
 }
 
 function mockMap() {
@@ -78,6 +76,19 @@ function mockMap() {
  * PUB-001's record, plus the photography PUB-001 actually renders. §21.2's
  * shape for the assets; §25's for the screen.
  */
+/**
+ * The four §27.1 family pages. Declared here rather than derived from the spec
+ * index so that adding a page to §27.1 without giving it a visual-authority
+ * record is a visible omission rather than a silent one — the validator below
+ * reports any governed page missing from this registry.
+ */
+const DERIVED = [
+  { screen_id: "PUB-008", route: "/pricing" },
+  { screen_id: "PUB-009", route: "/businesses" },
+  { screen_id: "PUB-010", route: "/service-areas" },
+  { screen_id: "PUB-011", route: "/how-it-works" },
+];
+
 function build() {
   const map = mockMap();
   const sources = map["PUB-001"];
@@ -140,7 +151,7 @@ function build() {
         registry_declared_viewport_intent: "responsive",
         visual_authority: "canonical",
         // Parsed from §27.0's normative table, not transcribed from it.
-        composition_regions: compositionRegions(),
+        composition_regions: compositionRegions("PUB-001"),
         mobile_reference: mobile?.path ?? null,
         gate_a_review: "docs/couranr-mvp/brand/PUB-001_GATE_A_REGION_REVIEW.md",
         notes: [
@@ -151,6 +162,34 @@ function build() {
             "the photography in PUB-001_PHOTOGRAPHY_BRIEF.md exists.",
         ],
       },
+      ...DERIVED.map((d) => ({
+        screen_id: d.screen_id,
+        surface_family: "public_marketing",
+        route: d.route,
+        // §25: "derived screens explicitly name the family/source they derive
+        // from." No canonical mock exists for any of these four —
+        // UI_SCREEN_REGISTRY.md says so for each — so recording an empty
+        // canonical_sources and a named derivation is the honest shape. A
+        // fabricated `primary` pointing at PUB-001's artboard would make the
+        // registry claim a mock that does not depict this screen.
+        canonical_sources: [],
+        registry_declared_viewport_intent: "responsive",
+        visual_authority: "derived",
+        derived_from: { screen_id: "PUB-001", family: "public_marketing" },
+        derivation_basis:
+          "UI_SCREEN_REGISTRY.md records this screen as \"Derived from PUB-001 " +
+          "design system; no separate approved mock.\" §26's Gate A is a " +
+          "comparison against a canonical mock and therefore cannot run; the " +
+          "substitute is the family-coherence review named below, against " +
+          "PUB-001's proven grammar plus this screen's own content contract.",
+        composition_regions: compositionRegions(d.screen_id),
+        mobile_reference: null,
+        gate_a_review: "docs/couranr-mvp/brand/PUB-FAMILY_V3_REVIEW.md",
+        notes: [
+          "Composition table and budgets: §27.1 of COURANR_VISUAL_SYSTEM_V2_2.md.",
+          "Gate B and Gate C run normally — they need a browser, not a mock.",
+        ],
+      })),
     ],
     photography: [
       {
@@ -202,6 +241,17 @@ function build() {
 function validate(reg) {
   const fail = [];
   const map = mockMap();
+  const doc = readFileSync(join(repo, SPEC), "utf8");
+  const governed = new Set(governedPages(doc).map((p) => p.screen));
+
+  // A page the spec governs but the registry does not record is the §25 gap
+  // that matters: the composition contract would be enforced with no record of
+  // which visual authority it answers to.
+  for (const g of governed) {
+    if (!reg.screens?.some((s) => s.screen_id === g)) {
+      fail.push(`${g} is governed by §27.0/§27.1 but has no visual-authority record`);
+    }
+  }
 
   if (!Array.isArray(reg.screens) || reg.screens.length === 0) {
     return ["registry declares no screens"];
@@ -211,7 +261,24 @@ function validate(reg) {
   if (new Set(ids).size !== ids.length) fail.push("duplicate screen_id in the registry");
 
   for (const s of reg.screens) {
-    if (!Array.isArray(s.canonical_sources) || s.canonical_sources.length === 0) {
+    // §25: "derived screens explicitly name the family/source they derive
+    // from", and the validator must check "derived screens declare their
+    // derivation". A derived screen legitimately has no canonical source, so
+    // the emptiness check applies only to canonical ones — but the derivation
+    // it must declare instead is checked here, not assumed.
+    if (s.visual_authority === "derived") {
+      if (!s.derived_from?.screen_id) {
+        fail.push(`${s.screen_id}: visual_authority "derived" but no derived_from.screen_id (§25)`);
+      } else if (!reg.screens.some((x) => x.screen_id === s.derived_from.screen_id)) {
+        fail.push(`${s.screen_id}: derives from "${s.derived_from.screen_id}", which is not in this registry`);
+      }
+      if (!s.derivation_basis) {
+        fail.push(`${s.screen_id}: visual_authority "derived" but no derivation_basis (§25)`);
+      }
+      if (Array.isArray(s.canonical_sources) && s.canonical_sources.length) {
+        fail.push(`${s.screen_id}: declared derived but also claims a canonical source`);
+      }
+    } else if (!Array.isArray(s.canonical_sources) || s.canonical_sources.length === 0) {
       fail.push(`${s.screen_id}: no canonical_sources`);
       continue;
     }
@@ -257,8 +324,8 @@ function validate(reg) {
      * the same treatment — re-derived from the spec on every run, never trusted
      * because it was correct when it was written.
      */
-    if (s.screen_id === "PUB-001") {
-      const want = compositionRegions();
+    if (governed.has(s.screen_id)) {
+      const want = compositionRegions(s.screen_id);
       const got = s.composition_regions ?? [];
       if (JSON.stringify(got) !== JSON.stringify(want)) {
         fail.push(

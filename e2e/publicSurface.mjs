@@ -215,8 +215,14 @@ async function main() {
     const areasText = await areas.innerText("body");
     check("A1", "all four MKT-001 markets render as primary-market cards",
       ["Washington, DC", "Stafford", "Woodbridge", "Fredericksburg"].every((m) => areasText.includes(m)));
+    // Case-INSENSITIVE, and the reason is a measured harness fact rather than
+    // laxity: `innerText` returns the RENDERED text, so a label styled
+    // `text-transform: uppercase` comes back as "PRIMARY MARKET". The state is
+    // named on the page; only its letter-case is a styling decision, and a
+    // required-state check that also asserts capitalisation fails the next time
+    // a designer picks small caps.
     check("A2", "the three required states render: primary / surrounding / extended review",
-      /Primary market/.test(areasText) && /Surrounding areas/.test(areasText) && /Extended-distance review/.test(areasText));
+      /Primary market/i.test(areasText) && /Surrounding areas/i.test(areasText) && /Extended-distance review/i.test(areasText));
     check("A3", "SVC-001: capture-for-review language, no ZIP rejection",
       /never silently rejects/.test(areasText) && !/we (do not|don't) serve/i.test(areasText));
     check("A4", "NO invented boundary: no radius, no ZIP list, no coverage map",
