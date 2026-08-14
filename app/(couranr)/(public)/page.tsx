@@ -135,6 +135,28 @@ const PROOF_TIMELINE = [
   { state: "Delivered", note: "Photo or signature proof recorded", done: false },
 ];
 
+/**
+ * The proof artifacts, added by Gate A's D-2. The artboard puts four of these
+ * beside the timeline, and it was right that a timeline alone under-sells what
+ * proof means — the states say a delivery moved, the artifacts say what was
+ * recorded.
+ *
+ * The mock also stamps each stage with a timestamp. Those are fixture data
+ * presented as a record, so they stay out: §19.5 and TRM-001 both forbid
+ * fabricated specifics on the public surface. What a proof TYPE is remains a
+ * fact about the product; what a particular delivery did is not.
+ *
+ * `photo: true` marks the one artifact whose mock rendition carries an actual
+ * photograph. It renders as a labelled tile until the imagery in
+ * PUB-001_PHOTOGRAPHY_BRIEF.md exists.
+ */
+const PROOF_ARTIFACTS = [
+  { label: "Recipient PIN", detail: "Four digits, verified at the door" },
+  { label: "Delivery photo", detail: "Captured at drop-off", photo: true },
+  { label: "Location", detail: "Recorded where it was left" },
+  { label: "Signature", detail: "When the delivery calls for one" },
+];
+
 const FAQ = [
   {
     q: "Who is responsible for what?",
@@ -485,6 +507,20 @@ export default function Page() {
               </li>
             ))}
           </ol>
+          {/* Gate A / D-2 — what gets recorded, beside what happened. */}
+          <ul className="cr-mkt-proof__artifacts" aria-label="What Couranr records as proof">
+            {PROOF_ARTIFACTS.map((a) => (
+              <li key={a.label} className="cr-mkt-proof__artifact">
+                <span className="cr-mkt-proof__artifact-label">{a.label}</span>
+                <span className="cr-mkt-proof__artifact-detail">{a.detail}</span>
+                {a.photo ? (
+                  <span className="cr-mkt-proof__artifact-slot" aria-hidden="true">
+                    image pending
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
         </div>
       </section>
 
