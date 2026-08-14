@@ -1058,20 +1058,24 @@
   margin: 0 0 var(--couranr-space-5);
 }
 
+/* Layout and colour only. The TYPE belongs to `.cr-type-hero` (§12.1), which
+   the element also carries.
+
+   These two rules previously both set `font-size`, and because both are
+   single-class selectors the later one in the file wins — which was this one.
+   Driving the page caught it: the mobile hero measured 33.6px (this rule's
+   2.1rem floor) where §12.1 and §21's mobile band both call for 48px. A role
+   class that a layout class silently overrides is a role class that does
+   nothing, so the layout rule no longer expresses type at all. */
 .cr-hero__h1 {
-  font-size: clamp(2.1rem, 5.2vw, 3.5rem);
-  line-height: 1.06;
-  font-weight: var(--couranr-weight-bold);
-  letter-spacing: -0.02em;
   margin: 0 0 var(--couranr-space-4);
   max-width: 17ch;
   color: var(--couranr-text-inverse);
 }
 .cr-hero__h1-accent { color: var(--couranr-gold); }
 
+/* Same split: `.cr-type-lead` (§12.7) owns the size, this owns the rest. */
 .cr-hero__sub {
-  font-size: 1.05rem;
-  line-height: var(--couranr-leading-normal);
   color: rgba(255, 255, 255, 0.87);
   max-width: 40ch;
   margin: 0 0 var(--couranr-space-6);
@@ -1364,3 +1368,320 @@
 .cr-visually-hidden-h { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 .cr-mkt-flow { margin: 0; padding-left: 1.25rem; display: flex; flex-direction: column; gap: 10px; font-size: 0.95rem; }
+
+/* ═════════════════════════════════════════════════════════════════════════
+   PUB-001 v2.2 compositions — §19's vocabulary, §27.0's per-section mapping
+
+   Six new compositions, one per §19 type the page uses beyond the hero. The
+   point of a small closed vocabulary is that repetition becomes visible, so
+   these are deliberately distinct from each other in silhouette, alignment and
+   content width — §19's hard rules forbid centring every section and using one
+   content width throughout.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/* ── §19.1 editorial statement — oversized type, generous space, no cards ── */
+
+.cr-mkt-editorial {
+  padding-block: var(--couranr-space-8);
+  max-width: 24ch;
+}
+.cr-mkt-editorial h2 { margin: 0 0 var(--couranr-space-5); color: var(--couranr-text); }
+.cr-mkt-editorial__body {
+  margin: 0;
+  color: var(--couranr-text-muted);
+  max-width: 54ch;
+}
+
+/* ── §19.2 image narrative — visual 40–65%, copy the rest, asymmetric ────── */
+
+.cr-mkt-narrative {
+  display: grid;
+  gap: var(--couranr-space-8);
+  align-items: center;
+}
+.cr-mkt-narrative__copy h2 { margin: 0 0 var(--couranr-space-4); color: var(--couranr-text); }
+.cr-mkt-narrative__copy p  { margin: 0; color: var(--couranr-text-muted); }
+.cr-mkt-narrative__visual { min-width: 0; }
+
+@media (min-width: 900px) {
+  /* 45/55 — deliberately not 50/50, per §19.3's "not automatically 50/50". */
+  .cr-mkt-narrative { grid-template-columns: 45fr 55fr; }
+  /* Reversing the second narrative stops two image narratives on one page from
+     reading as the same section twice. */
+  .cr-mkt-narrative--reverse .cr-mkt-narrative__copy   { order: 2; }
+  .cr-mkt-narrative--reverse .cr-mkt-narrative__visual { order: 1; }
+}
+
+.cr-mkt-map {
+  display: block;
+  width: 100%;
+  max-width: 340px;
+  height: auto;
+  margin-inline: auto;
+}
+
+/* The pending-photography slot. Visibly unfinished on purpose — a placeholder
+   that looks designed is a placeholder that ships. */
+.cr-mkt-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--couranr-space-2);
+  min-height: 18rem;
+  padding: var(--couranr-space-6);
+  text-align: center;
+  border: 2px dashed var(--couranr-border-strong);
+  border-radius: var(--couranr-radius-lg);
+  background: var(--couranr-surface-sunken);
+  color: var(--couranr-text-muted);
+}
+.cr-mkt-slot__label { font-weight: var(--couranr-weight-semibold); font-size: var(--couranr-text-sm); }
+.cr-mkt-slot__note  { font-size: var(--couranr-text-xs); }
+
+/* ── §19.3 split story — asymmetric, and NOT a three-card benefits grid ──── */
+
+.cr-mkt-split { display: grid; gap: var(--couranr-space-6); }
+.cr-mkt-split__lead h2 { margin: 0 0 var(--couranr-space-3); color: var(--couranr-text); }
+.cr-mkt-split__lead p  { margin: 0; }
+
+@media (min-width: 900px) {
+  .cr-mkt-split { grid-template-columns: 38fr 62fr; gap: var(--couranr-space-10); align-items: start; }
+}
+
+.cr-mkt-outcomes { list-style: none; margin: 0; padding: 0; }
+.cr-mkt-outcomes__item {
+  padding-block: var(--couranr-space-4);
+  border-top: 1px solid var(--couranr-border);
+  font-size: 1.0625rem;
+  line-height: var(--couranr-leading-normal);
+  color: var(--couranr-text);
+}
+.cr-mkt-outcomes__item:last-child { border-bottom: 1px solid var(--couranr-border); }
+
+/* ── §19.4 workflow rail — the steps are CONNECTED, not four tiles ───────── */
+
+.cr-mkt-rail { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+
+.cr-mkt-rail__step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  gap: var(--couranr-space-4);
+  padding-block: var(--couranr-space-5);
+}
+/* The rail itself: a line running THROUGH the markers, which is what makes the
+   progression spatial rather than four cards in a row. */
+.cr-mkt-rail__step::before {
+  content: "";
+  position: absolute;
+  left: 21px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--couranr-border);
+}
+.cr-mkt-rail__step:first-child::before { top: 50%; }
+.cr-mkt-rail__step:last-child::before  { bottom: 50%; }
+
+.cr-mkt-rail__marker {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  align-self: start;
+  border-radius: var(--couranr-radius-pill);
+  background: var(--couranr-navy);
+  color: var(--couranr-text-inverse);
+  font-family: var(--couranr-font-display);
+  font-weight: 650;
+  font-size: 1.0625rem;
+  font-variant-numeric: tabular-nums;
+}
+.cr-mkt-rail__content h3 { margin: 0 0 var(--couranr-space-2); color: var(--couranr-text); }
+
+@media (min-width: 1024px) {
+  /* Horizontal rail on desktop: the connector becomes the line between markers,
+     so the sequence still reads as one flow rather than four columns. */
+  .cr-mkt-rail { grid-template-columns: repeat(4, 1fr); gap: var(--couranr-space-5); }
+  .cr-mkt-rail__step { grid-template-columns: 1fr; padding-block: 0; }
+  .cr-mkt-rail__step::before,
+  /* The vertical layout trims the rail at both ends with `top: 50%` and
+     `bottom: 50%`. Those must be RESET here, not just overridden for the
+     general case — leaving them in place put step 1's connector at half the
+     step's height, which drew a line straight through the word "Request".
+     Caught by looking at the rendered page, not by reading the rule. */
+  .cr-mkt-rail__step:first-child::before,
+  .cr-mkt-rail__step:last-child::before {
+    left: 44px;
+    right: calc(var(--couranr-space-5) * -1);
+    top: 21px;
+    bottom: auto;
+    width: auto;
+    height: 2px;
+  }
+  /* Nothing follows the last marker, so it has no connector to draw. */
+  .cr-mkt-rail__step:last-child::before { display: none; }
+  .cr-mkt-rail__content { margin-top: var(--couranr-space-4); }
+}
+
+/* ── §19.5 product proof — real states, readable, no fabricated numbers ──── */
+
+.cr-mkt-proof { display: grid; gap: var(--couranr-space-8); align-items: center; }
+.cr-mkt-proof__copy h2 { margin: 0 0 var(--couranr-space-4); color: var(--couranr-text); }
+.cr-mkt-proof__copy p  { margin: 0; }
+
+@media (min-width: 900px) {
+  .cr-mkt-proof { grid-template-columns: 52fr 48fr; }
+}
+
+.cr-mkt-proof__panel {
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-lg);
+  background: var(--couranr-surface);
+  box-shadow: var(--couranr-shadow-md);
+  overflow: hidden;
+}
+.cr-mkt-proof__panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--couranr-space-3);
+  padding: var(--couranr-space-4) var(--couranr-space-5);
+  border-bottom: 1px solid var(--couranr-border);
+  background: var(--couranr-surface-sunken);
+  color: var(--couranr-text-muted);
+}
+
+.cr-mkt-proof__timeline { list-style: none; margin: 0; padding: var(--couranr-space-5); display: grid; gap: 0; }
+
+.cr-mkt-proof__event {
+  position: relative;
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: var(--couranr-space-3);
+  padding-block: var(--couranr-space-3);
+  align-items: baseline;
+}
+.cr-mkt-proof__event::before {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--couranr-border);
+}
+.cr-mkt-proof__event:first-child::before { top: 50%; }
+.cr-mkt-proof__event:last-child::before  { bottom: 50%; }
+
+/* Shape AND fill differ between done and pending, so the state never rests on
+   colour alone (§23.5). */
+.cr-mkt-proof__dot {
+  position: relative;
+  z-index: 1;
+  width: 12px;
+  height: 12px;
+  border-radius: var(--couranr-radius-pill);
+  border: 2px solid var(--couranr-border-strong);
+  background: var(--couranr-surface);
+  justify-self: center;
+  align-self: center;
+}
+.cr-mkt-proof__event--done .cr-mkt-proof__dot {
+  border-color: var(--couranr-success);
+  background: var(--couranr-success);
+  border-radius: 3px;
+}
+.cr-mkt-proof__state {
+  grid-column: 2;
+  font-weight: var(--couranr-weight-semibold);
+  font-size: var(--couranr-text-sm);
+  color: var(--couranr-text);
+}
+.cr-mkt-proof__note {
+  grid-column: 2;
+  font-size: var(--couranr-text-xs);
+  color: var(--couranr-text-muted);
+}
+.cr-mkt-proof__event:not(.cr-mkt-proof__event--done) .cr-mkt-proof__state {
+  color: var(--couranr-text-muted);
+}
+
+/* ── §19.6 full-bleed interruption — navy, high contrast, rhythm reset ───── */
+
+.cr-mkt-band {
+  margin-inline: calc(50% - 50vw);
+  width: 100vw;
+  max-width: 100vw;
+  padding-block: var(--couranr-space-12);
+  background: var(--couranr-navy);
+  color: var(--couranr-text-inverse);
+}
+.cr-mkt-band__inner {
+  width: 100%;
+  max-width: var(--couranr-container-max);
+  margin-inline: auto;
+  padding-inline: var(--couranr-space-4);
+  display: grid;
+  gap: var(--couranr-space-8);
+  align-items: center;
+}
+.cr-mkt-band__h2 { margin: 0 0 var(--couranr-space-4); color: var(--couranr-text-inverse); }
+.cr-mkt-band__body { margin: 0 0 var(--couranr-space-3); color: rgba(255,255,255,0.86); max-width: 52ch; line-height: var(--couranr-leading-normal); }
+.cr-mkt-band__note { margin: 0; color: rgba(255,255,255,0.7); font-size: var(--couranr-text-sm); }
+.cr-mkt-band__note a,
+.cr-mkt-band__body a { color: var(--couranr-gold); }
+
+.cr-mkt-band__figure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--couranr-space-2);
+  padding: var(--couranr-space-6);
+  border: 1px solid rgba(255,255,255,0.22);
+  border-radius: var(--couranr-radius-lg);
+  text-align: center;
+}
+.cr-mkt-band__label { font-size: var(--couranr-text-sm); color: rgba(255,255,255,0.7); }
+.cr-mkt-band__price { color: var(--couranr-gold); }
+
+@media (min-width: 900px) {
+  .cr-mkt-band__inner { grid-template-columns: 60fr 40fr; padding-inline: var(--couranr-space-8); }
+}
+
+/* ── §19.7 structured information block — FAQ as a ruled list, not cards ─── */
+
+.cr-mkt-faq { margin: 0; padding: 0; }
+.cr-mkt-faq__item { padding-block: var(--couranr-space-5); border-top: 1px solid var(--couranr-border); }
+.cr-mkt-faq__item:last-child { border-bottom: 1px solid var(--couranr-border); }
+.cr-mkt-faq dt { margin: 0 0 var(--couranr-space-2); color: var(--couranr-text); }
+.cr-mkt-faq dd { margin: 0; max-width: 68ch; }
+
+/* ── the channel strip: one system, not seven identical cards ────────────── */
+
+.cr-mkt-channelstrip {
+  list-style: none;
+  margin: 0;
+  padding: var(--couranr-space-2);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--couranr-space-2);
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-lg);
+  background: var(--couranr-surface);
+}
+.cr-mkt-channelstrip__item {
+  display: flex;
+  align-items: center;
+  gap: var(--couranr-space-2);
+  padding: var(--couranr-space-3) var(--couranr-space-4);
+  border-radius: var(--couranr-radius-sm);
+  background: var(--couranr-surface-sunken);
+  font-size: var(--couranr-text-sm);
+  font-weight: var(--couranr-weight-medium);
+  color: var(--couranr-text);
+  flex: 1 1 auto;
+}
+.cr-mkt-channelstrip__icon { color: var(--couranr-route-blue); line-height: 0; flex: none; }

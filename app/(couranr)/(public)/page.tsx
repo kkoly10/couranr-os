@@ -1,14 +1,8 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import {
-  Badge,
-  Card,
-  Grid,
-  Heading,
-  Stack,
-  Text,
-} from "@/components/couranr/primitives";
+import { Badge, Heading, Stack, Text } from "@/components/couranr/primitives";
 import { AskCouranrLauncher } from "@/components/couranr/marketing/AskCouranr";
+import { ServiceCorridorMap } from "@/components/couranr/marketing/ServiceCorridorMap";
 import {
   IconBox,
   IconChat,
@@ -35,17 +29,27 @@ import {
 } from "@/lib/couranr/public/governed";
 
 /**
- * PUB-001 — the Couranr marketing homepage. MKT-002's twelve approved
- * sections, in order (the ORDER is an acceptance criterion), hero copy
- * VERBATIM from the blueprint. Replaces the legacy multi-product
- * `app/page.tsx` under LEG-001's `authority_disposition: "replace"` —
- * structural replacement, not copy edit; the legacy page survives on
- * `archive/auto-docs-multiservice`.
+ * PUB-001 — the Couranr marketing homepage.
  *
- * EVERY number renders from lib/couranr/public/governed.ts, which cites its
- * decision IDs and is registry-tested. No metrics of any kind appear —
- * nothing measures them and TRM-001/MKT-002 prohibit them regardless.
- * tests/couranr-public-claims.test.ts scans this file's rendered copy.
+ * MKT-002's twelve approved sections, in order, with copy VERBATIM from the
+ * blueprint. Every number renders from lib/couranr/public/governed.ts. No
+ * metrics appear: nothing measures them and TRM-001/MKT-002 forbid them.
+ *
+ * The COMPOSITION of each section is governed separately, by §27.0 of
+ * docs/couranr-mvp/brand/COURANR_VISUAL_SYSTEM_V2_2.md. That table is the only
+ * source for the `data-couranr-section` ids and `data-composition` values
+ * below, and tests/couranr-homepage-composition.test.ts asserts this file
+ * against it — twelve sections in order, no two adjacent compositions equal, at
+ * most two grid-dominant, at least two image-led, at least one product proof,
+ * exactly one workflow rail.
+ *
+ * The version this replaces failed all four budgets: five card-grid sections,
+ * one image-led section, the four-step workflow rendered as four detached
+ * identical cards, and no product proof at all. That is the "mechanically
+ * coherent and commercially weak" pattern §0 names.
+ *
+ * The `data-*` attributes exist for verification, not styling. Nothing in CSS
+ * selects on them.
  */
 
 export const metadata: Metadata = {
@@ -54,11 +58,7 @@ export const metadata: Metadata = {
     "Keep taking orders through your own channels. Couranr handles the delivery — from quote and payment to managed dispatch, tracking and proof.",
 };
 
-/**
- * MKT-002 §1 — all seven merchant-controlled channels, named. §10.4 requires
- * every one. The approved mock renders them as an icon-card row; the icon is
- * decoration and the governed name is the label.
- */
+/** MKT-002 §1 — all seven merchant-controlled channels, named. §10.4 requires every one. */
 const CHANNELS = [
   { label: "Website", Icon: IconGlobe },
   { label: "Phone", Icon: IconPhone },
@@ -70,10 +70,8 @@ const CHANNELS = [
 ];
 
 /**
- * The hero trust row. Three items, and between them they say exactly what the
- * single governed trust sentence says — "No monthly fee during the pilot. No
- * product-sales commission. You keep the sale and the customer relationship."
- * The mock's layout, the blueprint's claims; no claim is added or dropped.
+ * The hero trust row. Between them these say exactly what the single governed
+ * trust sentence says — no claim added, none dropped.
  */
 const HERO_TRUST = [
   { label: "No monthly fee during the pilot", Icon: IconNoFee },
@@ -81,7 +79,6 @@ const HERO_TRUST = [
   { label: "You keep the sale and the customer relationship", Icon: IconPerson },
 ];
 
-/** MKT-002 §4 — the three-actor order flow, as the mock's arrowed strip. */
 const FLOW = [
   { label: "Customer orders from you", Icon: IconPerson },
   { label: "You prepare the order", Icon: IconBox },
@@ -120,6 +117,36 @@ const WORKFLOW = [
   },
 ];
 
+/**
+ * Section 7's product proof. §19.5 accepts "real Couranr UI OR a faithful live
+ * product composition" — this is the second, built from the same states the
+ * delivery-detail screen renders. It cannot go stale the way a screenshot does
+ * and cannot become the "unreadably small product screenshot" §28 bans.
+ *
+ * States only, never numbers. A fabricated metric here would breach TRM-001 and
+ * §19.5's own "no fake metrics" in one stroke.
+ */
+const PROOF_TIMELINE = [
+  { state: "Created", note: "Request received, priced server-side", done: true },
+  { state: "Payment authorized", note: "Held, not captured", done: true },
+  { state: "Couranr confirmation", note: "Schedule and vehicle confirmed", done: true },
+  { state: "Picked up", note: "Photo and PIN recorded at pickup", done: true },
+  { state: "In transit", note: "Live tracking shared with your customer", done: false },
+  { state: "Delivered", note: "Photo or signature proof recorded", done: false },
+];
+
+const FAQ = [
+  {
+    q: "Who is responsible for what?",
+    a: "You remain responsible for merchandise price, quality, availability, packaging, product refunds and the customer relationship. Couranr is responsible for the delivery service and approved delivery-related charges.",
+  },
+  {
+    q: "When does Couranr deliver?",
+    a: `${OPERATING_DAYS_COPY}, ${OPERATING_WINDOW_COPY}. Same-day requests by ${SAME_DAY_CUTOFF_COPY}; after the cutoff, delivery is normally the next business day. All time windows and ETAs are estimates, and every request is subject to Couranr confirmation.`,
+  },
+  { q: "What if something comes up mid-delivery?", a: SUPPORT_COPY },
+];
+
 export default function Page() {
   return (
     <div className="cr-mkt">
@@ -132,28 +159,27 @@ export default function Page() {
         </Text>
       </div>
 
-      {/* 1 — Hero. Copy VERBATIM from MKT-002 §4; the full-bleed photograph,
-          left-aligned column, scrim and trust row follow the approved PUB-001
-          mock (docs/couranr-mvp/MOCK_TO_SCREEN_MAP.md). The mock's own headline
-          reads "Your customers order from you." — the registry's headline
-          outranks it and is what renders. */}
-      <section className="cr-hero" aria-labelledby="hero-h">
+      {/* ─── 1 ─────────────────────────────── hero / image-integrated-hero ─── */}
+      <section
+        className="cr-hero"
+        aria-labelledby="hero-h"
+        data-couranr-section="hero"
+        data-composition="image-integrated-hero"
+        data-image-led="true"
+        data-grid-dominant="false"
+        data-product-proof="false"
+      >
         {/*
-          Art direction, not just a resize. The wide photograph is 16:9; a
-          390px-wide viewport `cover`-crops it to a 0.5 aspect, which — measured
-          in Chromium, not guessed — showed roughly two fifths of its width and
-          landed on the driver's navy jacket, so the hero read as a flat navy
-          block with no photograph in it. The mock's mobile hero keeps the
-          handoff visible, so narrow viewports get a portrait-framed source
-          instead.
+          Art direction, not a resize. The wide source is 16:9; a 390px viewport
+          `cover`-crops it to 0.5, which — measured in Chromium — showed about
+          two fifths of its width and landed on the driver's navy jacket, so the
+          hero read as a flat navy block. Narrow viewports get a portrait source.
 
           <picture> rather than next/image because art direction needs
-          `<source media>`, which next/image (14.2) cannot express: the two
-          alternatives are two <Image> elements toggled by CSS, where the hidden
-          one still downloads, or a client breakpoint check, which would move
-          the LCP image out of the server-rendered HTML. Both are worse. The
-          srcset below is pre-generated at build-time-stable sizes, so the image
-          optimizer is not on the critical path at all.
+          `<source media>`, which next/image cannot express. The alternatives are
+          two <Image> elements toggled by CSS, where the hidden one still
+          downloads, or a client breakpoint check, which moves the LCP image out
+          of the server-rendered HTML.
         */}
         <picture>
           <source
@@ -178,12 +204,14 @@ export default function Page() {
         <div className="cr-hero__scrim" aria-hidden="true" />
 
         <div className="cr-hero__body">
+          {/* §14.1 — the ONE approved eyebrow on this page. §14.3 forbids
+              inventing more; §14.5 caps the whole page at 2–3. */}
           <p className="cr-hero__eyebrow">Local delivery for independent businesses</p>
-          <h1 id="hero-h" className="cr-hero__h1">
+          <h1 id="hero-h" className="cr-hero__h1 cr-type-hero">
             Your customers want delivery.{" "}
             <span className="cr-hero__h1-accent">Now you can say yes.</span>
           </h1>
-          <p className="cr-hero__sub">
+          <p className="cr-hero__sub cr-type-lead">
             Keep taking orders through your website, phone, text, social media, POS or
             storefront. Couranr handles the delivery—from quote and payment to managed
             dispatch, tracking and proof.
@@ -209,47 +237,100 @@ export default function Page() {
         </div>
       </section>
 
-      {/* 2 — The pickup-only problem. */}
-      <section className="cr-mkt-section" aria-labelledby="s2-h">
-        <Heading level={2} id="s2-h">
+      {/* ─── 2 ──────────────────────── pickup-problem / editorial-statement ─── */}
+      <section
+        className="cr-mkt-editorial"
+        aria-labelledby="s2-h"
+        data-couranr-section="pickup-problem"
+        data-composition="editorial-statement"
+        data-image-led="false"
+        data-grid-dominant="false"
+        data-product-proof="false"
+      >
+        <h2 id="s2-h" className="cr-type-statement">
           Pickup-only means lost orders
-        </Heading>
-        <Text muted>
+        </h2>
+        <p className="cr-mkt-editorial__body cr-type-lead">
           Every week, customers who cannot make it to you ask one question: “Can you
           deliver?” Without an answer, the order walks. Couranr exists so a pickup-only
           business never has to say no again — without hiring a driver or standing up
           logistics.
-        </Text>
+        </p>
       </section>
 
-      {/* 3 — Not only restaurants. Never names or attacks a competitor. */}
-      <section className="cr-mkt-section" aria-labelledby="s3-h">
-        <Heading level={2} id="s3-h">
-          Local delivery should not stop at restaurant orders.
-        </Heading>
-        <Text muted>
-          Florists, bakeries, boutiques, hardware stores, print shops — most delivery
-          platforms were built around one kind of order. Couranr is built for the rest
-          of your main street.
-        </Text>
+      {/* ─── 3 ─────────────────────── category-breadth / image-narrative ─── */}
+      <section
+        className="cr-mkt-narrative"
+        aria-labelledby="s3-h"
+        data-couranr-section="category-breadth"
+        data-composition="image-narrative"
+        data-image-led="true"
+        data-grid-dominant="false"
+        data-product-proof="false"
+      >
+        <div className="cr-mkt-narrative__copy">
+          <h2 id="s3-h" className="cr-type-marketing-section">
+            Local delivery, built for more than restaurants.
+          </h2>
+          <p className="cr-type-lead">
+            Florists, bakeries, boutiques, hardware stores, print shops — most delivery
+            platforms were built around one kind of order. Couranr is built for the rest
+            of your main street.
+          </p>
+        </div>
+        {/*
+          IMAGE SLOT — awaiting IMG-01…04 from
+          docs/couranr-mvp/brand/PUB-001_PHOTOGRAPHY_BRIEF.md.
+
+          Rendered as a labelled placeholder rather than hidden, because a hidden
+          slot is one nobody remembers. §21.1 required inventorying before
+          sourcing: the repository owns exactly two photographs, both the same
+          florist-and-driver scene, and both are already spent on the hero.
+          Unsplash proved unreachable from this environment and the reachable CC0
+          pool returned frames banned by name in §21.5.
+
+          The page still meets §27's floor of two image-led sections, because
+          section 10 carries a real corridor map. When the four frames land this
+          becomes the 40–65% photographic half §19.2 describes.
+        */}
+        <div
+          className="cr-mkt-narrative__visual cr-mkt-slot"
+          role="img"
+          aria-label="Photography for this section has not been produced yet."
+        >
+          <span className="cr-mkt-slot__label">Photography pending</span>
+          <span className="cr-mkt-slot__note">
+            IMG-01 … IMG-04 · PUB-001_PHOTOGRAPHY_BRIEF.md
+          </span>
+        </div>
       </section>
 
-      {/* 4 — Keep selling through YOUR channels. All seven, named (§10.4). */}
-      <section className="cr-mkt-section" aria-labelledby="s4-h">
-        <Heading level={2} id="s4-h">
+      {/* ─── 4 ───────────────── order-channels / structured-information-block ─── */}
+      <section
+        className="cr-mkt-section"
+        aria-labelledby="s4-h"
+        data-couranr-section="order-channels"
+        data-composition="structured-information-block"
+        data-image-led="false"
+        data-grid-dominant="false"
+        data-product-proof="false"
+      >
+        <Heading level={2} id="s4-h" className="cr-type-marketing-section">
           Keep selling your way
         </Heading>
         <Text muted>
           Couranr never gets between you and your customer. Take the order anywhere
           you already do:
         </Text>
-        <ul className="cr-mkt-channels" aria-label="Order channels you control">
+        {/* §27 Section 4: "Do not render seven identical cards." A connected
+            strip that reads as one system, converging into one workflow. */}
+        <ul className="cr-mkt-channelstrip" aria-label="Order channels you control">
           {CHANNELS.map(({ label, Icon }) => (
-            <li key={label} className="cr-mkt-channel">
-              <span className="cr-mkt-channel__icon">
+            <li key={label} className="cr-mkt-channelstrip__item">
+              <span className="cr-mkt-channelstrip__icon">
                 <Icon />
               </span>
-              <span className="cr-mkt-channel__label">{label}</span>
+              <span className="cr-mkt-channelstrip__label">{label}</span>
             </li>
           ))}
         </ul>
@@ -265,90 +346,161 @@ export default function Page() {
         </ol>
       </section>
 
-      {/* 5 — Business-growth outcomes. No "brings you customers" claim. */}
-      <section className="cr-mkt-section" aria-labelledby="s5-h">
-        <Heading level={2} id="s5-h">
-          What delivery adds to your business
-        </Heading>
-        <Grid columns={3}>
+      {/* ─── 5 ──────────────────────────────────── outcomes / split-story ─── */}
+      <section
+        className="cr-mkt-split"
+        aria-labelledby="s5-h"
+        data-couranr-section="outcomes"
+        data-composition="split-story"
+        data-image-led="false"
+        data-grid-dominant="false"
+        data-product-proof="false"
+      >
+        <div className="cr-mkt-split__lead">
+          <Heading level={2} id="s5-h" className="cr-type-marketing-section">
+            What delivery adds to your business
+          </Heading>
+          <Text muted className="cr-type-lead">
+            Not a feature list — the things that change on the day you can answer yes.
+          </Text>
+        </div>
+        {/* §27 Section 5: "Do not default to a three-card benefits grid." One
+            ruled list carries six items without six boxes. */}
+        <ul className="cr-mkt-outcomes">
           {OUTCOMES.map((o) => (
-            <Card key={o} padding="default">
-              <Text size="sm">{o}</Text>
-            </Card>
+            <li key={o} className="cr-mkt-outcomes__item">
+              {o}
+            </li>
           ))}
-        </Grid>
+        </ul>
       </section>
 
-      {/* 6 — The four-step workflow, both payers. Capture AFTER confirmation. */}
-      <section className="cr-mkt-section" aria-labelledby="s6-h">
-        <Heading level={2} id="s6-h">
+      {/* ─── 6 ─────────────────────────────────── workflow / workflow-rail ─── */}
+      <section
+        className="cr-mkt-section"
+        aria-labelledby="s6-h"
+        data-couranr-section="workflow"
+        data-composition="workflow-rail"
+        data-image-led="false"
+        data-grid-dominant="false"
+        data-product-proof="false"
+      >
+        <Heading level={2} id="s6-h" className="cr-type-marketing-section">
           How a Couranr delivery works
         </Heading>
-        <Grid columns={4}>
+        {/* §19.4: sequential steps visually connected, progression spatially
+            obvious. The previous version rendered these as four detached
+            identical cards — the exact anti-pattern §19.4 names. */}
+        <ol className="cr-mkt-rail" aria-label="The four steps of a Couranr delivery">
           {WORKFLOW.map((w) => (
-            <Card key={w.step}>
-              <Stack gap={2}>
-                <Badge tone="info">Step {w.step}</Badge>
-                <Heading level={3}>{w.title}</Heading>
+            <li key={w.step} className="cr-mkt-rail__step">
+              <span className="cr-mkt-rail__marker" aria-hidden="true">
+                {w.step}
+              </span>
+              <div className="cr-mkt-rail__content">
+                <h3 className="cr-type-card-title">{w.title}</h3>
                 <Text muted size="sm">
                   {w.body}
                 </Text>
-              </Stack>
-            </Card>
+              </div>
+            </li>
           ))}
-        </Grid>
+        </ol>
         <div className="cr-mkt-payers">
-          <Card className="cr-mkt-payer cr-mkt-payer--merchant">
-            <Stack gap={2}>
-              <span className="cr-mkt-payer__head">
-                <span className="cr-mkt-payer__icon">
-                  <IconStore />
-                </span>
-                <Heading level={3}>Your business pays</Heading>
+          <div className="cr-mkt-payer cr-mkt-payer--merchant">
+            <span className="cr-mkt-payer__head">
+              <span className="cr-mkt-payer__icon">
+                <IconStore />
               </span>
-              <Text muted size="sm">
-                Use a saved payment method, see the delivery quote before you approve,
-                and keep a clean receipt for your books.
-              </Text>
-            </Stack>
-          </Card>
-          <Card className="cr-mkt-payer cr-mkt-payer--customer">
-            <Stack gap={2}>
-              <span className="cr-mkt-payer__head">
-                <span className="cr-mkt-payer__icon">
-                  <IconPerson />
-                </span>
-                <Heading level={3}>Your customer pays</Heading>
+              <h3 className="cr-type-card-title">Your business pays</h3>
+            </span>
+            <Text muted size="sm">
+              Use a saved payment method, see the delivery quote before you approve,
+              and keep a clean receipt for your books.
+            </Text>
+          </div>
+          <div className="cr-mkt-payer cr-mkt-payer--customer">
+            <span className="cr-mkt-payer__head">
+              <span className="cr-mkt-payer__icon">
+                <IconPerson />
               </span>
-              <Text muted size="sm">
-                Send a secure payment link. No Couranr account required — you see the
-                authorization status either way.
-              </Text>
-            </Stack>
-          </Card>
+              <h3 className="cr-type-card-title">Your customer pays</h3>
+            </span>
+            <Text muted size="sm">
+              Send a secure payment link. No Couranr account required — you see the
+              authorization status either way.
+            </Text>
+          </div>
         </div>
         <Text muted size="sm">
           You decide who pays for delivery, per delivery.
         </Text>
       </section>
 
-      {/* 7 — Managed delivery and proof. TRM-001 vocabulary. */}
-      <section className="cr-mkt-section" aria-labelledby="s7-h">
-        <Heading level={2} id="s7-h">
-          Couranr-managed, with proof
-        </Heading>
-        <Text muted>
-          Every delivery is dispatched and managed by Couranr — no public driver
-          marketplace, no bidding. Pickup and drop-off are documented with photo, PIN
-          or signature proof, and both you and your customer can watch the delivery
-          live. Anything that needs a change goes through Couranr confirmation, not a
-          driver&apos;s judgment call.
-        </Text>
+      {/* ─── 7 ────────────────────────────── product-proof / product-proof ─── */}
+      <section
+        className="cr-mkt-proof"
+        aria-labelledby="s7-h"
+        data-couranr-section="product-proof"
+        data-composition="product-proof"
+        data-image-led="false"
+        data-grid-dominant="false"
+        data-product-proof="true"
+      >
+        <div className="cr-mkt-proof__copy">
+          <Heading level={2} id="s7-h" className="cr-type-marketing-section">
+            Couranr-managed, with proof
+          </Heading>
+          <Text muted className="cr-type-lead">
+            Every delivery is dispatched and managed by Couranr — no public driver
+            marketplace, no bidding. Pickup and drop-off are documented with photo, PIN
+            or signature proof, and both you and your customer can watch the delivery
+            live. Anything that needs a change goes through Couranr confirmation, not a
+            driver&apos;s judgment call.
+          </Text>
+        </div>
+        {/* Built from the product's own states, at readable size. No numbers:
+            §19.5 and TRM-001 both forbid a fabricated metric, and a state
+            timeline is what the delivery-detail screen actually shows. */}
+        <div className="cr-mkt-proof__panel">
+          <div className="cr-mkt-proof__panel-head">
+            <span className="cr-type-label">Delivery timeline</span>
+            <Badge tone="info">Couranr review</Badge>
+          </div>
+          <ol className="cr-mkt-proof__timeline">
+            {PROOF_TIMELINE.map((t) => (
+              <li
+                key={t.state}
+                className={
+                  t.done
+                    ? "cr-mkt-proof__event cr-mkt-proof__event--done"
+                    : "cr-mkt-proof__event"
+                }
+              >
+                {/* Not colour alone (§23.5): the marker changes shape, and the
+                    row carries its state as text either way. */}
+                <span className="cr-mkt-proof__dot" aria-hidden="true" />
+                <span className="cr-mkt-proof__state">{t.state}</span>
+                <span className="cr-mkt-proof__note">{t.note}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
       </section>
 
-      {/* 8 — Supported categories. Recommendations, not eligibility. */}
-      <section className="cr-mkt-section" aria-labelledby="s8-h">
-        <Heading level={2} id="s8-h">
+      {/* ─── 8 ─────────────────── categories / structured-information-block ─── */}
+      {/* The ONE grid-dominant section the page is allowed. §27 Section 8:
+          "This may be one of the homepage's allowed card/grid-heavy sections." */}
+      <section
+        className="cr-mkt-section"
+        aria-labelledby="s8-h"
+        data-couranr-section="categories"
+        data-composition="structured-information-block"
+        data-image-led="false"
+        data-grid-dominant="true"
+        data-product-proof="false"
+      >
+        <Heading level={2} id="s8-h" className="cr-type-marketing-section">
           Built for more kinds of businesses
         </Heading>
         <Text muted>
@@ -359,95 +511,123 @@ export default function Page() {
         </Text>
       </section>
 
-      {/* 9 — Pricing. Only exactly computable numbers; tiers live on /pricing. */}
-      <section className="cr-mkt-section" aria-labelledby="s9-h">
-        <Heading level={2} id="s9-h">
-          Pricing you can put on a sticky note
-        </Heading>
-        {/* The mock leads this section with the price set large. The number is
-            still rendered from BASE_PRICE_CENTS — nothing here is typed in. */}
-        <div className="cr-mkt-price-band">
-          <p className="cr-mkt-price-band__label">Starting at</p>
-          <p className="cr-mkt-price-band__value">{dollars(BASE_PRICE_CENTS)}</p>
-          <p className="cr-mkt-price-band__note">
-            per delivery, covering the first {INCLUDED_LOADED_MILES} loaded miles
+      {/* ─── 9 ────────────────────────── pricing / full-bleed-interruption ─── */}
+      <section
+        className="cr-mkt-band"
+        aria-labelledby="s9-h"
+        data-couranr-section="pricing"
+        data-composition="full-bleed-interruption"
+        data-image-led="false"
+        data-grid-dominant="false"
+        data-product-proof="false"
+      >
+        <div className="cr-mkt-band__inner">
+          <div className="cr-mkt-band__copy">
+            <h2 id="s9-h" className="cr-mkt-band__h2 cr-type-marketing-section">
+              Pricing you can put on a sticky note
+            </h2>
+            <p className="cr-mkt-band__body">
+              Delivery starts at {dollars(BASE_PRICE_CENTS)}, which covers the first{" "}
+              {INCLUDED_LOADED_MILES} loaded miles. Longer runs price by published
+              per-mile tiers — computed server-side, in exact cents, before anyone
+              approves anything.
+            </p>
+            <p className="cr-mkt-band__note">
+              No monthly fee during the pilot. No product-sales commission.{" "}
+              <Link href="/pricing">See the full pricing schedule →</Link>
+            </p>
+          </div>
+          <div className="cr-mkt-band__figure">
+            <span className="cr-mkt-band__label">Starting at</span>
+            {/* Rendered from BASE_PRICE_CENTS. Nothing here is typed in. */}
+            <span className="cr-mkt-band__price cr-type-metric">
+              {dollars(BASE_PRICE_CENTS)}
+            </span>
+            <span className="cr-mkt-band__label">
+              per delivery · first {INCLUDED_LOADED_MILES} loaded miles
+            </span>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── 10 ───────────────────────────── service-area / image-narrative ─── */}
+      <section
+        className="cr-mkt-narrative cr-mkt-narrative--reverse"
+        aria-labelledby="s10-h"
+        data-couranr-section="service-area"
+        data-composition="image-narrative"
+        data-image-led="true"
+        data-grid-dominant="false"
+        data-product-proof="false"
+      >
+        <div className="cr-mkt-narrative__copy">
+          <h2 id="s10-h" className="cr-type-marketing-section">
+            Where Couranr operates
+          </h2>
+          <p className="cr-type-lead">
+            {MARKETS_PUBLIC_COPY} Outside those areas, requests are captured for Couranr
+            review rather than rejected.{" "}
+            <Link href="/service-areas">View service areas →</Link>
           </p>
         </div>
-        <Text>
-          Delivery starts at <strong>{dollars(BASE_PRICE_CENTS)}</strong>, which covers
-          the first {INCLUDED_LOADED_MILES} loaded miles. Longer runs price by
-          published per-mile tiers — computed server-side, in exact cents, before
-          anyone approves anything.
-        </Text>
-        <Text muted size="sm">
-          No monthly fee during the pilot. No product-sales commission.{" "}
-          <Link href="/pricing">See the full pricing schedule →</Link>
-        </Text>
+        <div className="cr-mkt-narrative__visual">
+          <ServiceCorridorMap className="cr-mkt-map" />
+        </div>
       </section>
 
-      {/* 10 — Service areas. MKT-001 verbatim, again; no boundary invention. */}
-      <section className="cr-mkt-section" aria-labelledby="s10-h">
-        <Heading level={2} id="s10-h">
-          Where Couranr operates
-        </Heading>
-        <Text muted>
-          {MARKETS_PUBLIC_COPY} Outside those areas, requests are captured for Couranr
-          review rather than rejected.{" "}
-          <Link href="/service-areas">View service areas →</Link>
-        </Text>
-      </section>
-
-      {/* 11 — FAQ and the responsibility split. */}
-      <section className="cr-mkt-section" aria-labelledby="s11-h">
-        <Heading level={2} id="s11-h">
+      {/* ─── 11 ──────────────────────── faq / structured-information-block ─── */}
+      <section
+        className="cr-mkt-section"
+        aria-labelledby="s11-h"
+        data-couranr-section="faq"
+        data-composition="structured-information-block"
+        data-image-led="false"
+        data-grid-dominant="false"
+        data-product-proof="false"
+      >
+        <Heading level={2} id="s11-h" className="cr-type-marketing-section">
           The fine print, in plain words
         </Heading>
-        <Stack gap={3}>
-          <Card>
-            <Stack gap={1}>
-              <Heading level={3}>Who is responsible for what?</Heading>
-              <Text muted size="sm">
-                You remain responsible for merchandise price, quality, availability,
-                packaging, product refunds and the customer relationship. Couranr is
-                responsible for the delivery service and approved delivery-related
-                charges.
-              </Text>
-            </Stack>
-          </Card>
-          <Card>
-            <Stack gap={1}>
-              <Heading level={3}>When does Couranr deliver?</Heading>
-              <Text muted size="sm">
-                {OPERATING_DAYS_COPY}, {OPERATING_WINDOW_COPY}. Same-day requests by{" "}
-                {SAME_DAY_CUTOFF_COPY}; after the cutoff, delivery is normally the next
-                business day. All time windows and ETAs are estimates, and every
-                request is subject to Couranr confirmation.
-              </Text>
-            </Stack>
-          </Card>
-          <Card>
-            <Stack gap={1}>
-              <Heading level={3}>What if something comes up mid-delivery?</Heading>
-              <Text muted size="sm">{SUPPORT_COPY}</Text>
-            </Stack>
-          </Card>
-        </Stack>
+        {/* §27 Section 11: "Do not style every FAQ item as a floating marketing
+            card if a simpler structure is clearer." A ruled list, not cards. */}
+        <dl className="cr-mkt-faq">
+          {FAQ.map(({ q, a }) => (
+            <div key={q} className="cr-mkt-faq__item">
+              <dt className="cr-type-card-title">{q}</dt>
+              <dd>
+                <Text muted size="sm">
+                  {a}
+                </Text>
+              </dd>
+            </div>
+          ))}
+        </dl>
       </section>
 
-      {/* 12 — Closing conversion. Headline VERBATIM. */}
-      <section className="cr-mkt-closing" aria-labelledby="s12-h">
-        <h2 id="s12-h" className="cr-mkt-h2-inverse">
-          The next customer who asks, &ldquo;Can you deliver?&rdquo; deserves a better
-          answer.
-        </h2>
-        <div className="cr-mkt-cta-row">
-          <Link href="/sign-up" className="cr-button cr-button--primary cr-button--lg">
-            Create your business account
-          </Link>
-          <Link href="/estimate" className="cr-button cr-button--inverse cr-button--lg">
-            Estimate a delivery
-          </Link>
-        </div>
+      {/* ─── 12 ──────────────────────── closing / full-bleed-interruption ─── */}
+      <section
+        className="cr-mkt-closing"
+        aria-labelledby="s12-h"
+        data-couranr-section="closing"
+        data-composition="full-bleed-interruption"
+        data-image-led="false"
+        data-grid-dominant="false"
+        data-product-proof="false"
+      >
+        <Stack gap={6}>
+          <h2 id="s12-h" className="cr-mkt-h2-inverse cr-type-statement">
+            The next customer who asks, &ldquo;Can you deliver?&rdquo; deserves a better
+            answer.
+          </h2>
+          <div className="cr-mkt-cta-row">
+            <Link href="/sign-up" className="cr-button cr-button--primary cr-button--lg">
+              Create your business account
+            </Link>
+            <Link href="/estimate" className="cr-button cr-button--inverse cr-button--lg">
+              Estimate a delivery
+            </Link>
+          </div>
+        </Stack>
       </section>
 
       <AskCouranrLauncher />
