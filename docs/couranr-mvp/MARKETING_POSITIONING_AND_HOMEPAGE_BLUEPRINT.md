@@ -106,6 +106,31 @@ generate customers, leads or product sales.
 Couranr serves independent local businesses whose products or operations do not
 fit restaurant-focused delivery marketplaces.
 
+### Approved differentiation statement
+
+> **"Local delivery, built for more than restaurants."**
+
+Added by `VIS-001` (root decision registry) per
+`docs/couranr-mvp/brand/COURANR_VISUAL_SYSTEM_V2_2.md` §2.3 and §4.5.
+
+This is the **concise commercial statement** — the short line a merchant
+remembers. It does **not** replace the framing above, which remains valid
+positioning context; the visual system's §2.3 says so explicitly.
+
+Usage: it belongs as a major editorial statement where the page explains
+category breadth — PUB-001's `category-breadth` section (§27.0 of the visual
+system). Do not shrink it into an eyebrow or a small label; §14 of the visual
+system prohibits that, and it is the specific failure this line was written to
+avoid.
+
+The three brand lines do different jobs and must not collapse into one:
+
+| Line | Job |
+|---|---|
+| Delivery made simple. | brand memory / logo lockup |
+| Your customers want delivery. Now you can say yes. | the sales promise (hero) |
+| Local delivery, built for more than restaurants. | the differentiation |
+
 ### Boundaries
 
 - Do **not** build the identity around attacking or naming Uber Eats, DoorDash

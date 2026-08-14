@@ -140,12 +140,66 @@ function scan(doc) {
     }
   }
 
+  /* ---- §2.5 materialization gate --------------------------------------- */
+  // §2 forbids treating the v2.2 typography as authoritative until the decision
+  // exists in the higher authorities. That gate is prose, so it is checked here
+  // instead — otherwise the whole point of §2 (a lower-ranked design file must
+  // not silently override a higher-ranked spec) survives only as good manners.
+  let materialized = false;
+  try {
+    const registry = JSON.parse(readFileSync(join(repo, "02_DECISION_REGISTRY.json"), "utf8"));
+    const vis = registry.decisions.find((e) => e.id === "VIS-001");
+    if (!vis) {
+      fail.push("§2.1 not materialized: no VIS-001 decision in 02_DECISION_REGISTRY.json");
+    } else {
+      materialized = true;
+      if (vis.status !== "decided") fail.push(`VIS-001 status is "${vis.status}", expected "decided"`);
+      for (const k of ["display_font", "body_font", "mono_font", "token_namespace", "accessibility_floor"]) {
+        if (!vis.value?.[k]) fail.push(`VIS-001 value is missing "${k}"`);
+      }
+      if (vis.value?.token_namespace !== "--couranr-*") {
+        fail.push(`VIS-001 records token_namespace "${vis.value?.token_namespace}", expected "--couranr-*"`);
+      }
+    }
+  } catch (e) {
+    fail.push(`could not read 02_DECISION_REGISTRY.json — ${e.message}`);
+  }
+
+  const uiReg = readFileSync(join(repo, "UI_SCREEN_REGISTRY.md"), "utf8");
+  if (/Typography:\*\* Geist Sans or Inter/.test(uiReg)) {
+    fail.push("§2.2 not materialized: UI_SCREEN_REGISTRY.md still says 'Geist Sans or Inter'");
+  }
+  for (const f of ["Martian Grotesk Variable", "Inter Variable", "Martian Mono"]) {
+    if (!uiReg.includes(f)) fail.push(`§2.2 not materialized: UI_SCREEN_REGISTRY.md does not name ${f}`);
+  }
+  if (!uiReg.includes("COURANR_VISUAL_SYSTEM_V2_2.md")) {
+    fail.push("§2.2 not materialized: UI_SCREEN_REGISTRY.md has no visual-system cross-reference");
+  }
+
+  // §2.3 — the differentiation statement must exist as approved marketing copy.
+  const blueprint = readFileSync(
+    join(repo, "docs/couranr-mvp/MARKETING_POSITIONING_AND_HOMEPAGE_BLUEPRINT.md"), "utf8");
+  if (!blueprint.includes("Local delivery, built for more than restaurants.")) {
+    fail.push("§2.3 not materialized: the approved differentiation statement is not in the marketing blueprint");
+  }
+  if (!blueprint.includes("Local delivery should not stop at restaurant orders.")) {
+    fail.push("§2.3 violated: the existing conceptual framing was removed, and §2.3 says to keep it");
+  }
+
+  // §2.4 — the brand guide's tagline rule must survive untouched.
+  const brand = readFileSync(
+    join(repo, "docs/couranr-mvp/brand/couranr_logo_system/BRAND_GUIDE.md"), "utf8");
+  if (!/DELIVERY MADE SIMPLE/.test(brand) || !/Do not use the tagline inside small headers/.test(brand)) {
+    fail.push("§2.4 violated: the BRAND_GUIDE tagline-lockup rule was removed or rewritten");
+  }
+
   return {
     fail,
     summary:
       `12 sections, ${approved.size} approved compositions, ` +
       `${count("imageLed")} image-led, ${count("gridDominant")} grid-dominant, ` +
-      `${count("productProof")} product-proof, ${rails} workflow rail, 0 adjacent duplicates`,
+      `${count("productProof")} product-proof, ${rails} workflow rail, 0 adjacent duplicates; ` +
+      `§2 materialization ${materialized ? "landed (VIS-001)" : "MISSING"}`,
   };
 }
 
