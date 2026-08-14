@@ -1685,3 +1685,55 @@
   flex: 1 1 auto;
 }
 .cr-mkt-channelstrip__icon { color: var(--couranr-route-blue); line-height: 0; flex: none; }
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Gate C fixes — found by running §26's accessibility gate, not by reading
+
+   1. MUTED TEXT ON TINTED SURFACES FAILS AA — repo-wide, not just here.
+
+      --couranr-text-muted (#667085) is a locked brand primitive (§7: "These
+      existing values remain unchanged"), and on white it is fine at 4.97:1.
+      On the tinted surfaces it is 4.46:1 (sunken) and 4.47:1 (info) — under
+      the 4.5:1 floor §23.2 sets. axe flagged four nodes; the cause is the
+      token pair, so every future component on a tint would inherit it.
+
+      The brand value is NOT changed. §8.1 allows a supporting neutral that is
+      "justified by an actual component, contrast-tested, and classified as
+      semantic/supporting". --couranr-text-muted-tint is one step darker along
+      the same hue and saturation (h 220.6°, s 0.132), computed rather than
+      eyeballed, and clears 4.5:1 on all five surfaces:
+
+        #656f84   5.05 white · 4.52 sunken · 4.54 info · 4.76 gold · 4.74 canvas
+
+      Tinted containers shadow --couranr-text-muted locally, so everything
+      inside inherits the safe value without any per-element discipline.
+
+   2. A LINK DISTINGUISHED ONLY BY COLOUR on the navy band — 1.09:1 against
+      the surrounding text, which is a WCAG AA failure and the same principle
+      as §23.5's "status never communicated by color alone".
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.cr-root { --couranr-text-muted-tint: #656f84; }
+
+.cr-mkt-slot,
+.cr-mkt-payer,
+.cr-mkt-proof__panel-head,
+.cr-mkt-channelstrip__item {
+  --couranr-text-muted: var(--couranr-text-muted-tint);
+}
+
+/* Links inside a text block need a non-colour cue. The navy band's links are
+   gold on navy — high contrast against the BACKGROUND, but nearly identical in
+   luminance to the muted body text they sit inside, which is the comparison
+   WCAG actually makes. */
+.cr-mkt-band__note a,
+.cr-mkt-band__body a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Below 400px the topbar sheds the secondary auth action; it lives in the
+   drawer footer instead. See the comment at the call site. */
+@media (max-width: 399px) {
+  .cr-topbar__signin { display: none; }
+}

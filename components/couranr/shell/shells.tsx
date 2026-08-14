@@ -39,7 +39,12 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
             <TopbarNav items={items} label="Main navigation" />
 
             <div className="cr-topbar__actions">
-              <Link href="/sign-in" className="cr-button cr-button--ghost cr-button--sm">
+              {/* Below 400px the bar cannot hold both auth actions plus the
+                  drawer toggle: measured 367px of content in a 360px viewport,
+                  which is where the 7px horizontal overflow came from. "Sign
+                  in" hides there and moves into the drawer footer instead, so
+                  nothing is lost — the primary action stays on the bar. */}
+              <Link href="/sign-in" className="cr-button cr-button--ghost cr-button--sm cr-topbar__signin">
                 Sign in
               </Link>
               <Link href="/sign-up" className="cr-button cr-button--primary cr-button--sm">
@@ -50,6 +55,11 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
                   items={items}
                   label="Main navigation"
                   triggerClassName="cr-icon-button cr-icon-button--on-surface"
+                  footer={
+                    <Link href="/sign-in" className="cr-button cr-button--inverse cr-button--lg">
+                      Sign in
+                    </Link>
+                  }
                 />
               </span>
             </div>
