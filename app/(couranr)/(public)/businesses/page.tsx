@@ -1,6 +1,11 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { Card, Grid, Heading, Stack, Text } from "@/components/couranr/primitives";
+import {
+  BUSINESS_CATEGORIES,
+  CATEGORY_LABELS,
+  GENERAL_CATEGORY,
+} from "@/lib/couranr/categories/registry";
 
 /**
  * PUB-009 — supported business categories and merchant-controlled channels.
@@ -19,20 +24,16 @@ export const metadata: Metadata = {
     "Local delivery for boutiques, florists, bakeries, printers, repair shops and more — through the ordering channels you already control.",
 };
 
-/** Master Package "Categories" — the initial registry, verbatim, all eleven. */
-const CATEGORIES = [
-  "Dry cleaning, laundry, tailoring",
-  "Printing, signage, promotional products",
-  "Boutique, clothing, shoes, accessories",
-  "Florists, gifts, specialty retail",
-  "Repair and electronics",
-  "Auto parts and accessories",
-  "Furniture and home goods",
-  "Event rentals and supplies",
-  "Bakeries, prepared food, catering",
-  "Books, cards, collectibles, hobby",
-  "General local business",
-];
+/**
+ * Master Package "Categories" — the initial registry, all eleven.
+ *
+ * Rendered FROM `lib/couranr/categories/registry.ts` rather than retyped here.
+ * This page and PUB-001 now both show the same eleven, and the registry module
+ * is the one the merchant onboarding form, the settings screen and the database
+ * check constraint already agree with — so the marketing copy cannot drift into
+ * advertising a category the product will not accept.
+ */
+const CATEGORIES = BUSINESS_CATEGORIES.map((c) => CATEGORY_LABELS[c]);
 
 const CHANNELS = [
   "Website",
@@ -78,13 +79,18 @@ export default function Page() {
         </Text>
         <Grid columns={3}>
           {CATEGORIES.map((c) => (
-            <Card key={c} className={c === "General local business" ? "cr-mkt-payer--merchant" : undefined}>
+            <Card
+              key={c}
+              className={
+                c === CATEGORY_LABELS[GENERAL_CATEGORY] ? "cr-mkt-payer--merchant" : undefined
+              }
+            >
               <Text size="sm">{c}</Text>
             </Card>
           ))}
         </Grid>
         <Text muted size="sm">
-          Not on the list? <strong>General local business</strong> is a first-class
+          Not on the list? <strong>{CATEGORY_LABELS[GENERAL_CATEGORY]}</strong> is a first-class
           choice, not a waiting room — every Couranr capability works without a
           specialty category.
         </Text>

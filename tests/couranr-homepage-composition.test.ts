@@ -32,7 +32,7 @@ type Row = {
   productProof: boolean;
 };
 
-/** §27.0's normative table — the twelve governed sections. */
+/** §27.0's normative table — the governed sections. */
 function specRows(): Row[] {
   const doc = readFileSync(SPEC, "utf8");
   const table = doc.match(/## 27\.0 Governed section identifiers[\s\S]*?\n\n(\| # [\s\S]*?)\n\n/);
@@ -104,11 +104,17 @@ describe("PUB-001 matches the §27.0 composition contract", () => {
   const spec = specRows();
   const page = pageRows();
 
-  it("the spec still declares exactly twelve governed sections", () => {
-    expect(spec).toHaveLength(12);
+  /**
+   * Thirteen since MKT-003 added `delivery-options`. Asserted, not derived:
+   * every other test here is a property of whatever rows it finds, so a section
+   * silently DISAPPEARING from both the spec and the page would pass all of
+   * them. This is the one that notices.
+   */
+  it("the spec still declares exactly thirteen governed sections", () => {
+    expect(spec).toHaveLength(13);
   });
 
-  it("the page renders exactly the twelve governed sections, in order", () => {
+  it("the page renders exactly the governed sections, in order", () => {
     expect(page.map((r) => r.id)).toEqual(spec.map((r) => r.id));
   });
 
@@ -171,8 +177,8 @@ describe("PUB-001 matches the §27.0 composition contract", () => {
  * failure this repository keeps rediscovering.
  */
 describe("the composition parsers cannot pass vacuously", () => {
-  it("finds twelve sections in the page source", () => {
-    expect(pageRows()).toHaveLength(12);
+  it("finds thirteen sections in the page source", () => {
+    expect(pageRows()).toHaveLength(13);
   });
 
   it("finds §19's vocabulary in the spec", () => {

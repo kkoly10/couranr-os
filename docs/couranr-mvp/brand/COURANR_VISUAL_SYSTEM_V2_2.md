@@ -103,6 +103,48 @@ Verified after: no adjacent duplicates; grid-dominant 1 (cap 2); image-led 3
 `data-composition` values members of §19; §25's thirteen regions reconcile to
 twelve sections plus `navigation`.
 
+### r3 — a thirteenth governed section, on the owner's decision
+
+Not a defect in this document. §27.0's table was correct for MKT-002's twelve;
+the owner changed MKT-002.
+
+Gate A's native-mock review found four sections on the canonical artboard that
+MKT-002's twelve does not carry, and resolved them as *"unrouted — adding a
+section is a content decision"* (D-6). The owner then directed that the
+implementation stay true to the mock, and approved building the artboard's
+**"Delivery options that fit your needs"** section. That decision is recorded in
+the root registry as **MKT-003**, which amends MKT-002 — §2's materialization
+rule, applied to a content change rather than a typography one: this table did
+not get to grow a row on its own authority.
+
+What changed here:
+
+- §27.0 gains row 9, `delivery-options`, between `categories` and `pricing` —
+  where the artboard puts it. Rows 9–12 renumber to 10–13.
+- Its `data-composition` is `split-story`, **not** the artboard's four-across
+  card row. The artboard stacks a card row (categories) directly on top of
+  another card row (options); §19's adjacent-duplicate rule is a hard rule, and
+  §0's whole complaint is about sections that read as one undifferentiated
+  slab. Gate A row 9 had already recorded the same judgment against the mock's
+  other card-heavy sections. The four options keep their icons, titles, bodies
+  and descriptor tags — what they lose is the fifth grid.
+- The §25 example array, the §32.3 attribute list and the `navigation`-is-a-
+  region note all move from twelve/thirteen to thirteen/fourteen.
+
+The other three artboard sections (Smart Intake, the support demonstration,
+"Why businesses choose Couranr") remain unbuilt and D-6 still covers them.
+`delivery-options` was separable because every value in it is already governed —
+SUR-001's service levels and weight bands, SUR-002's Route Saver, MIL-002's
+mileage tiers and manual-quote threshold, OVN-001's overnight window and
+surcharge — so it required no new product decision, only the content decision
+the owner made.
+
+Verified after: no adjacent duplicates; grid-dominant 1 (cap 2); image-led 3
+(floor 2); product-proof 1 (floor 1); exactly one workflow rail; all thirteen
+`data-composition` values members of §19; §25's fourteen regions reconcile to
+thirteen sections plus `navigation`. Re-derived by
+`npm run check:visual-system`, not by reading.
+
 ---
 
 # 0. Why this document exists
@@ -1645,7 +1687,7 @@ Use a record shape equivalent to:
   ],
   "registry_declared_viewport_intent": "responsive",
   "visual_authority": "canonical",
-  "_composition_regions_note": "Ids come from the normative table in §27.0 and nowhere else. `navigation` is an artboard region, not a governed section, so a PUB-001 record carries thirteen regions and twelve governed sections. Do not invent a region id.",
+  "_composition_regions_note": "Ids come from the normative table in §27.0 and nowhere else. `navigation` is an artboard region, not a governed section, so a PUB-001 record carries fourteen regions and thirteen governed sections. Do not invent a region id.",
   "composition_regions": [
     "navigation",
     "hero",
@@ -1656,6 +1698,7 @@ Use a record shape equivalent to:
     "workflow",
     "product-proof",
     "categories",
+    "delivery-options",
     "pricing",
     "service-area",
     "faq",
@@ -1776,8 +1819,8 @@ The approved 12-section information architecture and governed copy remain intact
 
 ## 27.0 Governed section identifiers — the normative list
 
-§32.3 requires a test asserting that *exactly the approved twelve governed
-sections are present in the approved order*. **This table is that list.** It is
+§32.3 requires a test asserting that *exactly the approved governed sections
+are present in the approved order*. **This table is that list.** It is
 the single normative vocabulary: `data-couranr-section` in the DOM, and
 `composition_regions` in §25's visual-authority registry, both use these ids and
 no others.
@@ -1804,16 +1847,17 @@ auditable.
 | 6 | `workflow` | Four-step workflow | connected workflow rail | `workflow-rail` | false | false | false |
 | 7 | `product-proof` | Managed delivery and proof | product proof + supporting narrative | `product-proof` | false | false | **true** |
 | 8 | `categories` | Supported business categories | selective category grid *or* image-based category system | `structured-information-block` | false | **true** | false |
-| 9 | `pricing` | Pricing and pilot economics | structured high-contrast information block | `full-bleed-interruption` | false | false | false |
-| 10 | `service-area` | Service areas | map / route visual | `image-narrative` | true | false | false |
-| 11 | `faq` | FAQ and claim boundaries | restrained utility | `structured-information-block` | false | false | false |
-| 12 | `closing` | Closing CTA | full-bleed brand moment | `full-bleed-interruption` | false | false | false |
+| 9 | `delivery-options` | *(none — MKT-003)* | artboard: "Delivery options that fit your needs", four discrete options | `split-story` | false | false | false |
+| 10 | `pricing` | Pricing and pilot economics | structured high-contrast information block | `full-bleed-interruption` | false | false | false |
+| 11 | `service-area` | Service areas | map / route visual | `image-narrative` | true | false | false |
+| 12 | `faq` | FAQ and claim boundaries | restrained utility | `structured-information-block` | false | false | false |
+| 13 | `closing` | Closing CTA | full-bleed brand moment | `full-bleed-interruption` | false | false | false |
 
 Resulting budgets, which are what §32.3 asserts:
 
 - adjacent duplicate compositions: **0** (§19 hard rule);
 - `data-grid-dominant="true"`: **1** — section 8 (§19 cap is 2);
-- `data-image-led="true"`: **3** — sections 1, 3, 10 (§27 floor is 2);
+- `data-image-led="true"`: **3** — sections 1, 3, 11 (§27 floor is 2);
 - `data-product-proof="true"`: **1** — section 7 (§27 floor is 1);
 - `workflow-rail`: exactly **1** — section 6.
 
@@ -1826,7 +1870,8 @@ Where the flags come from, so they are not taste:
 - §11 is `false` for grid because §27 Section 11 says *"Do not style every FAQ
   item as a floating marketing card."*
 
-**One interpretive call, flagged for the owner.** Section 9's §27 wording is
+**One interpretive call, flagged for the owner.** (Section numbering below is
+pre-MKT-003: what it calls section 9 is now section 10, `pricing`.) Section 9's §27 wording is
 *"structured high-contrast information block"*, whose name points at §19.7. But
 §27 also sanctions section 8 as a grid-heavy structured block, and §19's hard
 rules forbid two adjacent sections sharing a composition — so 8 and 9 cannot
@@ -1841,10 +1886,10 @@ drops to 0.
 Notes:
 
 - **`navigation` is a region, not a governed section.** §25's
-  `composition_regions` array carries thirteen entries because the artboard has
+  `composition_regions` array carries fourteen entries because the artboard has
   a navigation band; the shell renders it and it carries no
-  `data-couranr-section`. Twelve governed sections, thirteen artboard regions —
-  the counts are supposed to differ.
+  `data-couranr-section`. Thirteen governed sections, fourteen artboard
+  regions — the counts are supposed to differ.
 - The "Required composition" column is the composition type each section must
   resolve to, drawn from §19. Where §27 offers alternatives ("split story **or**
   editorial/product split"), this column records the one that must be asserted;
@@ -2208,7 +2253,7 @@ Required shape:
 >
 ```
 
-Required attributes on all twelve PUB-001 sections:
+Required attributes on all thirteen PUB-001 sections:
 - `data-couranr-section` — a governed section id, and **only** an id from the
   normative table in §27.0. An id absent from that table is a test failure, not
   a new section;
@@ -2220,7 +2265,7 @@ Required attributes on all twelve PUB-001 sections:
 The four-step section must additionally resolve to the workflow-rail composition (or an explicitly equivalent governed value tested as one connected workflow).
 
 Mandatory homepage tests:
-- exactly the twelve governed sections of §27.0 are present, in that table's
+- exactly the governed sections of §27.0 are present, in that table's
   order, with no extra or unknown `data-couranr-section` value;
 - each section's `data-composition` matches the required composition recorded
   for it in §27.0;

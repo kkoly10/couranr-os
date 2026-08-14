@@ -16,7 +16,7 @@ resulting noise as a fidelity number is the practice §24 names and forbids.
 | Reference | `5780C3C2-8EFC-4BDC-87AA-85CE667921D8.png` — 941×1672, full scroll |
 | Reference | `22D9363D-248B-41C0-8C4F-2D38CB3BF3D3.png` — 941×1672, mobile |
 | Source kind | design artboard — **not** a browser screenshot |
-| Implementation | `3025946` + `8ed25ac`, production build |
+| Implementation | `3025946` + `8ed25ac`, revised for MKT-003, production build |
 | Runtime widths | 360 · 390 · 768 · 1024 · 1280 · 1440 |
 | Evidence | `e2e/artifacts/pub001/` |
 
@@ -42,16 +42,26 @@ And it renders sections the blueprint has, in a different arrangement: pricing
 and coverage share one band rather than being two sections; the FAQ sits beside
 an Ask Couranr panel rather than above a floating launcher.
 
-**Resolution: the twelve stand.** §27 states the approved 12-section content
-architecture remains authoritative, and §3's conflict rule gives written
-specification control over content while the mock controls composition. A
-section is content. So the four extra sections are **out of scope for PUB-001**
-and are recorded here rather than built.
+**Resolution as first written: the twelve stand.** §27 states the approved
+12-section content architecture remains authoritative, and §3's conflict rule
+gives written specification control over content while the mock controls
+composition. A section is content. So the four extra sections were recorded
+here rather than built — not rejected, unrouted. And the note that closed it:
+*"If the owner wants them on the homepage, that is an MKT-002 amendment, not a
+visual decision, and it would change §27.0's table."*
 
-They are not rejected — they are unrouted. Several are real product surfaces
-that already exist (Smart Intake is MER-005; support is MER-012). If the owner
-wants them on the homepage, that is an MKT-002 amendment, not a visual
-decision, and it would change §27.0's table.
+**The owner amended it.** Directed to stay true to the mock, the owner approved
+building **"Delivery options that fit your needs"**. That is now **MKT-003** in
+the root decision registry, §27.0 carries a thirteenth row, and the section is
+built — see the revised D-6 below.
+
+The choice of that one section is not arbitrary. It was the only one of the
+four that required no new product decision: every number in it is already
+governed by SUR-001, SUR-002, MIL-002 and OVN-001, so building it is
+transcription from the registry rather than invention. The other three each
+need something nobody has decided — a Smart Intake parse and its example price,
+support-capability claims, a six-item "why choose us" row — and remain
+unbuilt.
 
 ---
 
@@ -90,7 +100,14 @@ Gifts, Auto Parts, Furniture & Home, Bakeries & Catering). The selected tab
 reveals a photograph, "Typical items", "Handling notes" and "Typical delivery
 details" including a distance band and vehicle class.
 
-**Implementation:** a heading, a paragraph, and a link to `/businesses`.
+**Implementation, now:** the heading the mock uses — "Built for real local
+businesses" — and **all eleven** governed categories, rendered from
+`lib/couranr/categories/registry.ts`, with the general fallback marked as a
+first-class choice and the purpose sentence beside them.
+
+**Implementation, before:** a heading, a paragraph, and a link.
+
+**What is still deviated:** the tab INTERACTION, and the per-tab content.
 
 **Cause:** two, and both are real.
 
@@ -100,11 +117,22 @@ frames is `PUB-001_PHOTOGRAPHY_BRIEF.md`. The mock's category strip is exactly
 where IMG-01…04 belong; the brief's four subjects and the mock's six tabs are
 the same idea.
 
-The tab content is also unresolved product data. "Typical delivery details"
-shows a distance band and a vehicle class per category — neither is governed.
-Rendering them would be inventing eligibility signals, which §27 Section 8
-explicitly forbids: *"Do not imply category controls eligibility where product
-authority says it does not."*
+The tab content is unresolved product data, and this was checked rather than
+assumed: grepping `lib/couranr/**` returns no module mapping a category to
+items, handling, distance or vehicle; the Decision Registry has no category
+record among its 45; and the one rule the Master Package does state is
+*"Category controls initial recommendations, not eligibility."* A tab strip
+whose panels differ would have to invent that difference. "Typical delivery
+details" shows a distance band and a vehicle class per category — rendering
+them would be inventing eligibility signals, which §27 Section 8 explicitly
+forbids: *"Do not imply category controls eligibility where product authority
+says it does not."*
+
+So the breadth claim is made the honest way — eleven visible at once instead of
+six behind tabs, which is more of the registry than the artboard showed. As a
+side effect `/businesses` now renders the same eleven from the same module
+instead of its own hand-typed copy, so the two public surfaces cannot drift
+into advertising different categories.
 
 **Closes when:** the photography lands. The tab content stays out until a
 decision governs it.
@@ -134,15 +162,24 @@ needs it" share a single row.
 **Implementation:** section 9 is a full-bleed navy pricing band; section 10 is
 an image narrative carrying the corridor map.
 
-**Cause:** MKT-002's twelve treats them as separate sections, and §27.0 assigns
-them different compositions precisely so two adjacent sections do not share
-one. Merging them would put two structured blocks side by side and lose the
-rhythm reset §19.6 exists to provide.
+**Cause:** MKT-002 treats them as separate sections, and §27.0 assigns them
+different compositions precisely so two adjacent sections do not share one.
+Merging them would put two structured blocks side by side and lose the rhythm
+reset §19.6 exists to provide.
 
 The substance agrees: the mock's price is $22.99 and its coverage map shows
 Washington DC, Woodbridge, Stafford and Fredericksburg running north-east to
 south-west. Both render from governed sources here — `BASE_PRICE_CENTS` and
 `MARKETED_MARKETS` — and the corridor geometry independently matches the mock's.
+
+**Closes partly now.** The two sections stay separate, but the part of the
+pairing that carried information — the assurance list beside the map — is
+built. THREE lines, not the mock's four: *"Loading assistance available"* is
+dropped because searching the Decision Registry and `lib/couranr/**` for
+loading assistance returns nothing, and shipping it would be advertising a
+service no authority defines. The three that ship each render from something
+governed — MIL-002's tiers and 100-mile threshold, `VEHICLE_CLASSES`, and
+CAP-001's confirm-before-capture.
 
 ### D-4 — the footer is one row, not four columns
 
@@ -176,12 +213,22 @@ shell rule revisited, which is a decision, not a style change.
 governs and that is not settled. The launcher is the shipped component and
 carries its own constraints. Recorded, not changed.
 
-### D-6 — four mock sections are not built
+### D-6 — three mock sections are not built (was four)
 
-Delivery options, the Smart Intake demonstration, the support demonstration,
-and the "Why businesses choose Couranr" row. See the headline finding above:
-MKT-002's twelve is the content authority, and adding a section is a content
-decision.
+**Closed for one of them.** "Delivery options that fit your needs" is built, as
+section 9, on the owner's decision recorded as MKT-003. Its composition is
+§19.3 split story rather than the artboard's four-across card row: the artboard
+stacks a card row (categories) directly above another card row (options), §19's
+adjacent-duplicate rule is a hard rule, and row 9 of the checklist above had
+already recorded the same judgment against the mock's other card-heavy
+sections. The options keep their icons, titles, bodies and descriptor tags.
+
+**Still open:** the Smart Intake demonstration, the support demonstration, and
+the "Why businesses choose Couranr" row. Each needs something no decision
+governs — the Smart Intake panel's parsed fields and its $24.85 example price,
+support-capability claims beyond TRM-001's single approved sentence, and six
+"why choose us" statements. Adding one is a content decision that belongs to
+the owner, the way MKT-003 was.
 
 ---
 
@@ -203,9 +250,10 @@ A review that only ratifies is not a review.
 
 ## Verdict
 
-**Gate A: pass with six recorded deviations**, four of which close when the
-photography lands or a route exists, and two of which are content decisions
-that belong to the owner rather than to this implementation.
+**Gate A: pass with six recorded deviations**, two of them now partly closed
+(D-1's category set, D-3's assurance list) and one of them substantially closed
+(D-6, by MKT-003). What remains open closes when the photography lands, a route
+exists, or the owner makes a content decision.
 
 No deviation is stylistic. Every one cites either MKT-002's section authority,
 a governed-data constraint, an unresolved decision, or a missing asset.

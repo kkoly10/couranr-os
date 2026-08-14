@@ -4,13 +4,16 @@ import { Badge, Heading, Stack, Text } from "@/components/couranr/primitives";
 import { AskCouranrLauncher } from "@/components/couranr/marketing/AskCouranr";
 import { ServiceCorridorMap } from "@/components/couranr/marketing/ServiceCorridorMap";
 import {
+  IconBolt,
   IconBox,
+  IconCalendar,
   IconChat,
   IconGlobe,
   IconNoFee,
   IconPerson,
   IconPhone,
   IconPlusCircle,
+  IconRoute,
   IconShare,
   IconStore,
   IconTag,
@@ -20,28 +23,53 @@ import {
 import {
   BASE_PRICE_CENTS,
   INCLUDED_LOADED_MILES,
+  MANUAL_QUOTE_OVER_MILES,
+  MANUAL_REVIEW_OVER_LB,
   MARKETS_PUBLIC_COPY,
   OPERATING_DAYS_COPY,
   OPERATING_WINDOW_COPY,
+  OVERNIGHT_WINDOW_COPY,
+  ROUTE_SAVER_FROM_CENTS_PER_STOP,
+  ROUTE_SAVER_MIN_STOPS,
   SAME_DAY_CUTOFF_COPY,
+  SERVICE_LEVEL_CENTS,
   SUPPORT_COPY,
+  WEIGHT_BANDS,
   dollars,
 } from "@/lib/couranr/public/governed";
+import {
+  BUSINESS_CATEGORIES,
+  CATEGORY_LABELS,
+  GENERAL_CATEGORY,
+  MAX_SECONDARY_CATEGORIES,
+} from "@/lib/couranr/categories/registry";
+import {
+  VEHICLE_CLASSES,
+  VEHICLE_CLASS_LABELS,
+} from "@/lib/couranr/dispatch/states";
 
 /**
  * PUB-001 — the Couranr marketing homepage.
  *
- * MKT-002's twelve approved sections, in order, with copy VERBATIM from the
+ * MKT-002's approved sections, in order, with copy VERBATIM from the
  * blueprint. Every number renders from lib/couranr/public/governed.ts. No
  * metrics appear: nothing measures them and TRM-001/MKT-002 forbid them.
+ *
+ * THIRTEEN sections, not MKT-002's original twelve. Section 9,
+ * `delivery-options`, is the owner amendment recorded as MKT-003: the canonical
+ * artboard carries a "Delivery options that fit your needs" section between the
+ * category system and the pricing band, every value in it is already governed
+ * (SUR-001 service levels and weight bands, SUR-002 Route Saver, MIL-002 tiers,
+ * OVN-001 overnight), and Gate A's D-6 said adding it was a content decision
+ * belonging to the owner. The owner made it.
  *
  * The COMPOSITION of each section is governed separately, by §27.0 of
  * docs/couranr-mvp/brand/COURANR_VISUAL_SYSTEM_V2_2.md. That table is the only
  * source for the `data-couranr-section` ids and `data-composition` values
  * below, and tests/couranr-homepage-composition.test.ts asserts this file
- * against it — twelve sections in order, no two adjacent compositions equal, at
- * most two grid-dominant, at least two image-led, at least one product proof,
- * exactly one workflow rail.
+ * against it — thirteen sections in order, no two adjacent compositions equal,
+ * at most two grid-dominant, at least two image-led, at least one product
+ * proof, exactly one workflow rail.
  *
  * The version this replaces failed all four budgets: five card-grid sections,
  * one image-led section, the four-step workflow rendered as four detached
@@ -155,6 +183,54 @@ const PROOF_ARTIFACTS = [
   { label: "Delivery photo", detail: "Captured at drop-off", photo: true },
   { label: "Location", detail: "Recorded where it was left" },
   { label: "Signature", detail: "When the delivery calls for one" },
+];
+
+/**
+ * Section 9 — the artboard's four delivery options, MKT-003.
+ *
+ * EVERY value below renders from `governed.ts`. Nothing here is typed in, and
+ * nothing here is new product surface: the four options are four ways to read
+ * decisions that already exist, which is why this section was buildable at all
+ * while the artboard's other three extra sections (Smart Intake, the support
+ * demonstration, "Why businesses choose Couranr") are still unbuilt.
+ *
+ * `tag` is the artboard's own short descriptor under each option. They are
+ * descriptors, not claims — none of them promises a time, and MKT-002's
+ * prohibited "guaranteed delivery times" and "instant confirmation" appear
+ * nowhere. Every option remains subject to Couranr confirmation, which the
+ * section's lead column states once rather than four times.
+ */
+const DELIVERY_OPTIONS = [
+  {
+    title: "Same-day and priority",
+    Icon: IconBolt,
+    body: `Requested by ${SAME_DAY_CUTOFF_COPY} on an operating day. Priority adds ${dollars(
+      SERVICE_LEVEL_CENTS.priority,
+    )}, rush adds ${dollars(SERVICE_LEVEL_CENTS.rush)}.`,
+    tag: "As soon as possible",
+  },
+  {
+    title: "Scheduled and next-day",
+    Icon: IconCalendar,
+    body: `Choose the day and window that works. After the ${SAME_DAY_CUTOFF_COPY} cutoff, delivery is normally the next business day — at no service-level surcharge.`,
+    tag: "Plan ahead",
+  },
+  {
+    title: "Bulky and extended-distance",
+    Icon: IconTruck,
+    body: `Weight adds from ${dollars(WEIGHT_BANDS[0].cents)} at ${
+      WEIGHT_BANDS[0].fromLb
+    } lb. Over ${MANUAL_REVIEW_OVER_LB} lb, or past ${MANUAL_QUOTE_OVER_MILES} loaded miles, the request is captured for Couranr review instead of an automatic quote.`,
+    tag: "Review and confirm",
+  },
+  {
+    title: "Route Saver",
+    Icon: IconRoute,
+    body: `From ${dollars(
+      ROUTE_SAVER_FROM_CENTS_PER_STOP,
+    )} per stop on runs of ${ROUTE_SAVER_MIN_STOPS} stops or more, with Couranr planning the route order.`,
+    tag: "Lower cost option",
+  },
 ];
 
 const FAQ = [
@@ -526,7 +602,27 @@ export default function Page() {
 
       {/* ─── 8 ─────────────────── categories / structured-information-block ─── */}
       {/* The ONE grid-dominant section the page is allowed. §27 Section 8:
-          "This may be one of the homepage's allowed card/grid-heavy sections." */}
+          "This may be one of the homepage's allowed card/grid-heavy sections."
+
+          ALL ELEVEN governed categories render, from
+          lib/couranr/categories/registry.ts. The artboard shows six as tabs,
+          each revealing a photograph, "Typical items", "Handling notes" and
+          "Typical delivery details" with a distance band and a vehicle class.
+
+          The tab INTERACTION is deliberately not built, and the reason is not
+          effort. Grepping lib/couranr/** for per-category data returns nothing:
+          no module maps a category to items, handling, distance or vehicle,
+          the Decision Registry has no category record at all, and the one rule
+          the Master Package does state is "Category controls initial
+          recommendations, not eligibility." A tab strip whose panels differ
+          would have to invent that difference, and §27 Section 8 forbids
+          exactly that — "Do not imply category controls eligibility where
+          product authority says it does not."
+
+          So the breadth claim is made the honest way: eleven visible at once
+          instead of six behind tabs, which is more of the registry than the
+          artboard showed, with the purpose sentence stating plainly that the
+          choice tunes suggestions and nothing else. Recorded as Gate A's D-1. */}
       <section
         className="cr-mkt-section"
         aria-labelledby="s8-h"
@@ -537,20 +633,98 @@ export default function Page() {
         data-product-proof="false"
       >
         <Heading level={2} id="s8-h" className="cr-type-marketing-section">
-          Built for more kinds of businesses
+          Built for real local businesses
         </Heading>
         <Text muted>
-          Choose the categories that fit your business — they tune Couranr&apos;s
-          recommendations, never your eligibility. General local businesses are
-          welcome without a category.{" "}
+          Pick one primary category and up to {MAX_SECONDARY_CATEGORIES} secondary
+          ones when you sign up. Your category tunes what Couranr suggests — it
+          never limits what you can send or what it costs.
+        </Text>
+        <ul className="cr-mkt-categories" aria-label="Supported business categories">
+          {BUSINESS_CATEGORIES.map((c) => (
+            <li
+              key={c}
+              className={
+                c === GENERAL_CATEGORY
+                  ? "cr-mkt-categories__item cr-mkt-categories__item--general"
+                  : "cr-mkt-categories__item"
+              }
+            >
+              {CATEGORY_LABELS[c]}
+            </li>
+          ))}
+        </ul>
+        <Text muted size="sm">
+          Not on the list? <strong>{CATEGORY_LABELS[GENERAL_CATEGORY]}</strong> is a
+          first-class choice, not a waiting room.{" "}
           <Link href="/businesses">See supported business types →</Link>
         </Text>
       </section>
 
-      {/* ─── 9 ────────────────────────── pricing / full-bleed-interruption ─── */}
+      {/* ─── 9 ───────────────────────────── delivery-options / split-story ─── */}
+      {/* MKT-003 — the artboard's "Delivery options that fit your needs",
+          between the category system and the pricing band exactly as it sits
+          there.
+
+          Composition is §19.3 split story, NOT the artboard's four-across card
+          row, and that is the one place this section departs from the mock. The
+          mock puts a card row (categories) directly above another card row
+          (options); §19's adjacent-duplicate rule is a hard rule and two
+          structured blocks in sequence read as one undifferentiated slab —
+          the pattern §0 calls "mechanically coherent and commercially weak".
+          Gate A row 9 already recorded the same judgment for the mock's other
+          card-heavy sections. The four options keep their icons, titles, bodies
+          and descriptor tags; what changes is that they hang off a lead column
+          instead of floating as a fifth grid. */}
+      <section
+        className="cr-mkt-options"
+        aria-labelledby="s9-h"
+        data-couranr-section="delivery-options"
+        data-composition="split-story"
+        data-image-led="false"
+        data-grid-dominant="false"
+        data-product-proof="false"
+      >
+        <div className="cr-mkt-options__lead">
+          <Heading level={2} id="s9-h" className="cr-type-marketing-section">
+            Delivery options that fit your needs
+          </Heading>
+          <Text muted className="cr-type-lead">
+            One request form, four ways to run it. Every option is priced
+            server-side before anyone approves it, and every one is subject to
+            Couranr confirmation.
+          </Text>
+          {/* OVN-001: request-only, Couranr-enabled, never stacked with rush.
+              OVN-002 (the request-and-enable mechanism) is UNRESOLVED, so there
+              is no button here and nothing implies overnight can be booked. */}
+          <p className="cr-mkt-options__note">
+            Overnight delivery — {OVERNIGHT_WINDOW_COPY}, {dollars(SERVICE_LEVEL_CENTS.overnight)}{" "}
+            — may be requested when Couranr confirms availability. It never stacks
+            with rush.
+          </p>
+        </div>
+        <ul className="cr-mkt-options__list">
+          {DELIVERY_OPTIONS.map(({ title, Icon, body, tag }) => (
+            <li key={title} className="cr-mkt-option">
+              <span className="cr-mkt-option__icon">
+                <Icon />
+              </span>
+              <div className="cr-mkt-option__body">
+                <h3 className="cr-type-card-title">{title}</h3>
+                <Text muted size="sm">
+                  {body}
+                </Text>
+              </div>
+              <span className="cr-mkt-option__tag">{tag}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
+      {/* ─── 10 ───────────────────────── pricing / full-bleed-interruption ─── */}
       <section
         className="cr-mkt-band"
-        aria-labelledby="s9-h"
+        aria-labelledby="s10-h"
         data-couranr-section="pricing"
         data-composition="full-bleed-interruption"
         data-image-led="false"
@@ -559,7 +733,7 @@ export default function Page() {
       >
         <div className="cr-mkt-band__inner">
           <div className="cr-mkt-band__copy">
-            <h2 id="s9-h" className="cr-mkt-band__h2 cr-type-marketing-section">
+            <h2 id="s10-h" className="cr-mkt-band__h2 cr-type-marketing-section">
               Pricing you can put on a sticky note
             </h2>
             <p className="cr-mkt-band__body">
@@ -586,10 +760,10 @@ export default function Page() {
         </div>
       </section>
 
-      {/* ─── 10 ───────────────────────────── service-area / image-narrative ─── */}
+      {/* ─── 11 ───────────────────────────── service-area / image-narrative ─── */}
       <section
         className="cr-mkt-narrative cr-mkt-narrative--reverse"
-        aria-labelledby="s10-h"
+        aria-labelledby="s11-h"
         data-couranr-section="service-area"
         data-composition="image-narrative"
         data-image-led="true"
@@ -597,12 +771,48 @@ export default function Page() {
         data-product-proof="false"
       >
         <div className="cr-mkt-narrative__copy">
-          <h2 id="s10-h" className="cr-type-marketing-section">
+          <h2 id="s11-h" className="cr-type-marketing-section">
             Where Couranr operates
           </h2>
           <p className="cr-type-lead">
             {MARKETS_PUBLIC_COPY} Outside those areas, requests are captured for Couranr
-            review rather than rejected.{" "}
+            review rather than rejected.
+          </p>
+          {/* Gate A / D-3. The artboard pairs pricing and coverage in one band
+              and puts four assurance lines beside the map. The two sections stay
+              separate — §27.0 assigns them different compositions precisely so
+              two structured blocks never sit adjacent — but the assurance list
+              was the part of the pairing that carried information, and it is
+              added here.
+
+              THREE lines, not the artboard's four. "Loading assistance
+              available" is dropped: grepping the Decision Registry and
+              lib/couranr/** for loading assistance returns nothing, so shipping
+              it would be inventing a service. The other three each render from
+              something governed — MIL-002's tiers, VEHICLE_CLASSES, and
+              CAP-001's confirm-before-capture. */}
+          <ul className="cr-mkt-assurances" aria-label="What coverage includes">
+            <li>
+              Local and extended-distance deliveries, priced by published mile
+              tiers to {MANUAL_QUOTE_OVER_MILES} loaded miles
+            </li>
+            <li>
+              {/* Sentence case, not four labels joined. `VEHICLE_CLASS_LABELS`
+                  are display labels for an operator's selector, so lowercasing
+                  all four put "cargo bike" at the head of a sentence; keeping
+                  all four capitalised read as four proper nouns. First as
+                  written, rest lowered, "or" before the last. */}
+              {(() => {
+                const labels = VEHICLE_CLASSES.map((c, i) =>
+                  i === 0 ? VEHICLE_CLASS_LABELS[c] : VEHICLE_CLASS_LABELS[c].toLowerCase(),
+                );
+                return `${labels.slice(0, -1).join(", ")} or ${labels[labels.length - 1]}`;
+              })()}{" "}
+              — matched to the delivery, not to the driver who bid first
+            </li>
+            <li>Couranr review before every pickup</li>
+          </ul>
+          <p>
             <Link href="/service-areas">View service areas →</Link>
           </p>
         </div>
@@ -611,17 +821,17 @@ export default function Page() {
         </div>
       </section>
 
-      {/* ─── 11 ──────────────────────── faq / structured-information-block ─── */}
+      {/* ─── 12 ──────────────────────── faq / structured-information-block ─── */}
       <section
         className="cr-mkt-section"
-        aria-labelledby="s11-h"
+        aria-labelledby="s12-h"
         data-couranr-section="faq"
         data-composition="structured-information-block"
         data-image-led="false"
         data-grid-dominant="false"
         data-product-proof="false"
       >
-        <Heading level={2} id="s11-h" className="cr-type-marketing-section">
+        <Heading level={2} id="s12-h" className="cr-type-marketing-section">
           The fine print, in plain words
         </Heading>
         {/* §27 Section 11: "Do not style every FAQ item as a floating marketing
@@ -640,10 +850,10 @@ export default function Page() {
         </dl>
       </section>
 
-      {/* ─── 12 ──────────────────────── closing / full-bleed-interruption ─── */}
+      {/* ─── 13 ──────────────────────── closing / full-bleed-interruption ─── */}
       <section
         className="cr-mkt-closing"
-        aria-labelledby="s12-h"
+        aria-labelledby="s13-h"
         data-couranr-section="closing"
         data-composition="full-bleed-interruption"
         data-image-led="false"
@@ -651,7 +861,7 @@ export default function Page() {
         data-product-proof="false"
       >
         <Stack gap={6}>
-          <h2 id="s12-h" className="cr-mkt-h2-inverse cr-type-statement">
+          <h2 id="s13-h" className="cr-mkt-h2-inverse cr-type-statement">
             The next customer who asks, &ldquo;Can you deliver?&rdquo; deserves a better
             answer.
           </h2>

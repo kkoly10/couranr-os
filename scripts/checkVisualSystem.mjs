@@ -4,21 +4,21 @@
  * docs/couranr-mvp/brand/COURANR_VISUAL_SYSTEM_V2_2.md.
  *
  * That document is a specification, not code, but §27.0's table is a contract
- * the PUB-001 implementation gets tested against: it fixes the twelve governed
+ * the PUB-001 implementation gets tested against: it fixes the thirteen governed
  * `data-couranr-section` ids, the `data-composition` each must carry, and the
  * three DOM flags whose counts §32.3 asserts. A spec that quietly contradicts
  * itself produces an implementation that passes its own invented gate — which
  * is exactly the failure §27.0 was added to remove.
  *
  * So this re-derives, from the document text:
- *   - §27.0 has exactly twelve rows, numbered 1..12, with unique ids
+ *   - §27.0 has exactly EXPECTED_ROWS rows, numbered 1..n, with unique ids
  *   - every `data-composition` value is an approved §19 type (closed vocabulary)
  *   - no two adjacent sections share a composition        (§19 hard rule)
  *   - grid-dominant count <= 2                            (§19 hard rule)
  *   - image-led count >= 2                                (§27 / §1.12)
  *   - product-proof count >= 1                            (§27 / §1.14)
  *   - exactly one workflow-rail section                   (§32.3)
- *   - §25's composition_regions == the twelve ids + `navigation`
+ *   - §25's composition_regions == the table's ids + `navigation`
  *   - §32.3's example id is on the table
  *   - no normative reference to a superseded version of this document
  *
@@ -35,6 +35,17 @@ import { dirname, join } from "node:path";
 const repo = join(dirname(fileURLToPath(import.meta.url)), "..");
 const DOC = "docs/couranr-mvp/brand/COURANR_VISUAL_SYSTEM_V2_2.md";
 const SELF_VERSION = "v2.2";
+
+/**
+ * How many rows §27.0 must carry.
+ *
+ * Thirteen since MKT-003 added `delivery-options`. This is asserted rather than
+ * derived so that a row silently DISAPPEARING from the table is caught: every
+ * other check here is a property of whatever rows it finds, and all of them
+ * pass happily on a table that lost a section. Changing this number is a
+ * content decision and belongs in 02_DECISION_REGISTRY.json first.
+ */
+const EXPECTED_ROWS = 13;
 
 /** The whole scan, pure in the document text, so the control can mutate a copy. */
 function scan(doc) {
@@ -67,8 +78,12 @@ function scan(doc) {
       };
     });
 
-  if (rows.length !== 12) fail.push(`§27.0 has ${rows.length} rows, expected 12`);
-  if (rows.some((r, i) => r.n !== i + 1)) fail.push("§27.0 rows are not numbered 1..12 in order");
+  if (rows.length !== EXPECTED_ROWS) {
+    fail.push(`§27.0 has ${rows.length} rows, expected ${EXPECTED_ROWS}`);
+  }
+  if (rows.some((r, i) => r.n !== i + 1)) {
+    fail.push(`§27.0 rows are not numbered 1..${rows.length} in order`);
+  }
   if (new Set(rows.map((r) => r.id)).size !== rows.length) fail.push("§27.0 has a duplicate section id");
 
   for (const r of rows) {
@@ -196,7 +211,7 @@ function scan(doc) {
   return {
     fail,
     summary:
-      `12 sections, ${approved.size} approved compositions, ` +
+      `${rows.length} sections, ${approved.size} approved compositions, ` +
       `${count("imageLed")} image-led, ${count("gridDominant")} grid-dominant, ` +
       `${count("productProof")} product-proof, ${rails} workflow rail, 0 adjacent duplicates; ` +
       `§2 materialization ${materialized ? "landed (VIS-001)" : "MISSING"}`,

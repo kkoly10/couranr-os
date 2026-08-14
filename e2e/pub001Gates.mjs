@@ -220,7 +220,7 @@ async function main() {
 
     check(res.status() === 200, `@${width} returns 200`);
     check(!m.hScroll, `@${width} no horizontal overflow (${m.scrollW}/${m.clientW})`);
-    check(m.sections === 12, `@${width} renders all twelve governed sections (${m.sections})`);
+    check(m.sections === 13, `@${width} renders all thirteen governed sections (${m.sections})`);
     check(m.ctaVisible, `@${width} the primary hero CTA is visible and unclipped`);
     check(m.smallTargets.length === 0, `@${width} button controls meet their §18 height (${m.smallTargets.join(", ") || "all pass"})`);
     check(errors.length === 0, `@${width} no console errors (${errors.slice(0, 1).join("") || "none"})`);

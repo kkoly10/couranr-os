@@ -2424,6 +2424,9 @@
       "id": "MKT-002",
       "category": "merchant positioning and marketing claims",
       "decision": "Couranr is positioned to independent local businesses as delivery infrastructure that lets them say yes to delivery without a marketplace, a fleet, or losing the customer relationship. Couranr enables merchants to serve more demand and must never claim to generate customers, leads or product sales.",
+      "amended_by": [
+        "MKT-003"
+      ],
       "value": {
         "internal_category": "local delivery infrastructure for independent local businesses",
         "core_position": "Couranr helps independent local businesses offer delivery without joining a marketplace, building a fleet or giving up their customer relationship.",
@@ -2560,7 +2563,7 @@
       },
       "implementation_phase": "10",
       "acceptance_criteria": [
-        "The homepage renders the twelve approved sections in order.",
+        "The homepage renders the approved sections in order — the twelve of this record, plus `delivery-options` as amended by MKT-003.",
         "The hero uses the approved eyebrow, headline, supporting copy, both CTAs and the trust line verbatim.",
         "The closing section uses the approved closing headline verbatim.",
         "Every supported merchant order channel is named somewhere on the homepage.",
@@ -2568,6 +2571,100 @@
         "No competitor is named as an adversary anywhere on the page.",
         "The four supporting pages deepen the homepage rather than restate it.",
         "app/page.tsx has been structurally replaced, not edited in place."
+      ]
+    },
+    {
+      "id": "MKT-003",
+      "category": "merchant positioning and marketing claims",
+      "decision": "The PUB-001 homepage carries a thirteenth governed section, `delivery-options`, rendering the canonical artboard's \"Delivery options that fit your needs\" between the category system and the pricing band. This amends MKT-002's twelve-section homepage architecture; it adds no new product claim, because every value the section renders is already decided by SUR-001, SUR-002, MIL-002 and OVN-001.",
+      "amends": "MKT-002",
+      "value": {
+        "section_id": "delivery-options",
+        "position": 9,
+        "position_rationale": "Where the canonical artboard puts it — directly after the category system and directly before the navy pricing band.",
+        "options": [
+          {
+            "title": "Same-day and priority",
+            "renders_from": [
+              "HRS-001 same-day cutoff",
+              "HRS-002 operating days",
+              "SUR-001 service_level_cents.priority",
+              "SUR-001 service_level_cents.rush"
+            ]
+          },
+          {
+            "title": "Scheduled and next-day",
+            "renders_from": [
+              "HRS-001 same-day cutoff",
+              "HRS-001 next-business-day behaviour"
+            ]
+          },
+          {
+            "title": "Bulky and extended-distance",
+            "renders_from": [
+              "SUR-001 weight_cents",
+              "SUR-001 manual review over 200 lb",
+              "MIL-002 over_100_miles manual quote"
+            ]
+          },
+          {
+            "title": "Route Saver",
+            "renders_from": [
+              "SUR-002 public_starting_price_cents_per_stop",
+              "SUR-002 requirements.min_stops",
+              "SUR-002 requirements.route_order_controlled_by"
+            ]
+          }
+        ],
+        "overnight_treatment": "Rendered as a conditional qualifier below the lead copy, never as a fifth bookable option: OVN-001 makes it request-only and Couranr-enabled, and OVN-002 (the request-and-enable mechanism) is UNRESOLVED. No control on the page offers to book it.",
+        "composition": "split-story",
+        "composition_rationale": "NOT the artboard's four-across card row. The artboard stacks a card row (categories) directly above another card row (options); §19's adjacent-duplicate rule is a hard rule of the visual system, and two structured blocks in sequence produce the undifferentiated slab §0 exists to prevent. The four options keep their icons, titles, bodies and descriptor tags.",
+        "new_claims": "none",
+        "artboard_sections_still_unbuilt": [
+          "Smart Intake demonstration (MER-005 surface)",
+          "Support demonstration (MER-012 surface)",
+          "Why businesses choose Couranr"
+        ],
+        "artboard_sections_still_unbuilt_reason": "Each would require product data or claims no decision governs. `delivery-options` was separable precisely because it required none."
+      },
+      "status": "decided",
+      "owner_approved": true,
+      "owner_approved_on": "2026-08-14",
+      "derivation_note": "Gate A's native-mock region review (docs/couranr-mvp/brand/PUB-001_GATE_A_REGION_REVIEW.md, deviation D-6) recorded four artboard sections as out of scope and stated that adding one is a content decision belonging to the owner rather than a visual decision. The owner directed the implementation to stay true to the mock and approved this section. Recorded here rather than absorbed as a style change, because §2 of the visual system forbids a lower-ranked design file overriding a higher-ranked spec without the decision landing in this registry first.",
+      "authority_file": "docs/couranr-mvp/brand/PUB-001_GATE_A_REGION_REVIEW.md",
+      "authority_section": "Headline finding; deviation D-6",
+      "affected_routes": [
+        "/"
+      ],
+      "affected_screen_ids": [
+        "PUB-001"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [
+        "app/(couranr)/(public)/page.tsx",
+        "app/(couranr)/couranr.css",
+        "components/couranr/marketing/MarketingIcons.tsx",
+        "docs/couranr-mvp/brand/COURANR_VISUAL_SYSTEM_V2_2.md",
+        "docs/couranr-mvp/ui-reference/VISUAL_AUTHORITY_REGISTRY.json",
+        "scripts/checkVisualSystem.mjs",
+        "tests/couranr-homepage-composition.test.ts"
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "governed_sections": 12,
+          "delivery_options_section": null
+        },
+        "code_location": "app/(couranr)/(public)/page.tsx (twelve data-couranr-section blocks); docs/couranr-mvp/brand/COURANR_VISUAL_SYSTEM_V2_2.md §27.0 (twelve rows)",
+        "resolution": "Not a code defect — the code was correct for MKT-002. This record changes the requirement, and the page, §27.0, §25's composition_regions, the composition test and the runtime gates are all moved to thirteen in the same commit so no enforcement point is left asserting the old count.",
+        "remediation_commit": "this commit"
+      },
+      "implementation_phase": "10",
+      "acceptance_criteria": [
+        "PUB-001 renders thirteen governed sections in §27.0's order, with `delivery-options` ninth.",
+        "Every price, threshold and window in the section renders from lib/couranr/public/governed.ts; no amount, mile count, weight or time is typed into the page.",
+        "The section adds no string matching any MKT-002 prohibited claim, and states no delivery time as a guarantee.",
+        "Overnight appears only as a request-subject-to-confirmation qualifier; no control offers to book it while OVN-002 is unresolved.",
+        "§27.0, §25's composition_regions, the composition test and the runtime gates all agree on thirteen — re-derived by `npm run check:visual-system`, not asserted by hand."
       ]
     },
     {
@@ -2597,7 +2694,7 @@
         "token_namespace": "--couranr-*",
         "token_namespace_rule": "No second custom-property namespace. A --cr-* token set was proposed in an earlier draft and is rejected: the tree already carries --couranr-* with hundreds of consumers, and two namespaces would disagree silently.",
         "accessibility_floor": "WCAG 2.2 AA, and no regression from the existing Couranr accessibility layer (focus ring, reduced motion, visually-hidden utility, skip link, 44px touch minimum, status never carried by color alone).",
-        "governed_homepage_sections": "Twelve, with fixed ids and compositions. The normative table is §27.0 of COURANR_VISUAL_SYSTEM_V2_2.md and is the only source for data-couranr-section values.",
+        "governed_homepage_sections": "Thirteen since MKT-003, with fixed ids and compositions. The normative table is §27.0 of COURANR_VISUAL_SYSTEM_V2_2.md and is the only source for data-couranr-section values.",
         "dark_mode": "Not in scope for this decision.",
         "proving_surface": "PUB-001, before propagation to any other surface family."
       },
@@ -2750,7 +2847,7 @@
         "No --cr-* custom property namespace exists anywhere in the canonical tree.",
         "The locked brand hexes are unchanged and the canonical logo asset is still used; no logo is recreated from a live font.",
         "The existing accessibility layer still passes: focus ring, reduced motion, visually-hidden, skip link, 44px touch floor, status not carried by color alone.",
-        "PUB-001 carries the twelve governed sections of §27.0 in order, each with its required data-composition, and the composition gate fails on an unknown id.",
+        "PUB-001 carries every governed section of §27.0 in order, each with its required data-composition, and the composition gate fails on an unknown id.",
         "PUB-001 shows at most two grid-dominant sections, at least two image-led sections, at least one product-proof composition, and one connected workflow rail.",
         "No visual-completion claim is made for any screen without native-mock region review, runtime responsive QA at real browser widths, and an accessibility pass.",
         "Propagation to another surface family does not begin until PUB-001 has passed all three gates."

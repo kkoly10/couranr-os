@@ -32,12 +32,39 @@ import { dirname, join } from "node:path";
 const repo = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = "docs/couranr-mvp/ui-reference/VISUAL_AUTHORITY_REGISTRY.json";
 const MAP = "docs/couranr-mvp/MOCK_TO_SCREEN_MAP.md";
+const SPEC = "docs/couranr-mvp/brand/COURANR_VISUAL_SYSTEM_V2_2.md";
 
 /** Reads width/height from a PNG's IHDR. No decoding, no dependency. */
 function pngSize(file) {
   const fd = readFileSync(join(repo, file));
   if (fd.readUInt32BE(0) !== 0x89504e47) throw new Error(`${file} is not a PNG`);
   return { width: fd.readUInt32BE(16), height: fd.readUInt32BE(20) };
+}
+
+/**
+ * PUB-001's composition regions, PARSED from §27.0's normative table.
+ *
+ * This list used to be transcribed here with a comment saying §27.0 was the
+ * only source for it. It was not: when MKT-003 added `delivery-options` to the
+ * table, `--write` regenerated the file with the stale twelve and the validator
+ * reported "validated". A transcription that claims to be a derivation is worse
+ * than an obvious duplicate, because the comment is what stops anyone checking.
+ *
+ * `navigation` is prepended because the artboard has a navigation band that the
+ * shell renders and that carries no `data-couranr-section` — §27.0 says so
+ * explicitly, and it is the one region that is deliberately not on the table.
+ */
+function compositionRegions() {
+  const doc = readFileSync(join(repo, SPEC), "utf8");
+  const table = doc.match(/## 27\.0 Governed section identifiers[\s\S]*?\n\n(\| # [\s\S]*?)\n\n/);
+  if (!table) throw new Error(`${SPEC}: §27.0 normative table not found`);
+  const ids = table[1]
+    .trim()
+    .split("\n")
+    .filter((r) => /^\|\s*\d+\s*\|/.test(r))
+    .map((r) => r.replace(/^\||\|$/g, "").split("|")[1].trim().replace(/`/g, ""));
+  if (!ids.length) throw new Error(`${SPEC}: §27.0 table parsed to zero rows`);
+  return ["navigation", ...ids];
 }
 
 function mockMap() {
@@ -112,22 +139,8 @@ function build() {
         })),
         registry_declared_viewport_intent: "responsive",
         visual_authority: "canonical",
-        // §27.0's normative table is the only source for these ids.
-        composition_regions: [
-          "navigation",
-          "hero",
-          "pickup-problem",
-          "category-breadth",
-          "order-channels",
-          "outcomes",
-          "workflow",
-          "product-proof",
-          "categories",
-          "pricing",
-          "service-area",
-          "faq",
-          "closing",
-        ],
+        // Parsed from §27.0's normative table, not transcribed from it.
+        composition_regions: compositionRegions(),
         mobile_reference: mobile?.path ?? null,
         gate_a_review: "docs/couranr-mvp/brand/PUB-001_GATE_A_REGION_REVIEW.md",
         notes: [
@@ -233,6 +246,27 @@ function validate(reg) {
     if (s.mobile_reference && !existsSync(join(repo, s.mobile_reference))) {
       fail.push(`${s.screen_id}: mobile_reference "${s.mobile_reference}" does not exist`);
     }
+
+    /*
+     * The regions on disk must still be §27.0's, in §27.0's order.
+     *
+     * This check did not exist, and its absence is why `--write` could emit a
+     * stale twelve-region list after MKT-003 added a thirteenth section and
+     * still print "validated": the validator only ever re-measured PNGs. A
+     * region list is exactly as much a derived fact as a dimension is, and gets
+     * the same treatment — re-derived from the spec on every run, never trusted
+     * because it was correct when it was written.
+     */
+    if (s.screen_id === "PUB-001") {
+      const want = compositionRegions();
+      const got = s.composition_regions ?? [];
+      if (JSON.stringify(got) !== JSON.stringify(want)) {
+        fail.push(
+          `${s.screen_id}: composition_regions disagree with §27.0 — ` +
+            `registry has [${got.join(", ")}], §27.0 gives [${want.join(", ")}]`,
+        );
+      }
+    }
   }
 
   for (const p of reg.photography ?? []) {
@@ -271,19 +305,33 @@ if (!existsSync(join(repo, OUT))) {
 const reg = JSON.parse(readFileSync(join(repo, OUT), "utf8"));
 
 if (process.argv.includes("--positive-control")) {
-  // Corrupt a measured dimension. §25's whole point is that this cannot pass.
-  const broken = JSON.parse(JSON.stringify(reg));
-  broken.screens[0].canonical_sources[0].width_px = 1448; // the wrong number v2.1 shipped
-  const fail = validate(broken);
-  if (fail.some((f) => f.includes("but the file measures"))) {
-    console.log(
-      `check:visual-registry positive control ok — a copied dimension (1448) was rejected: ` +
-        `"${fail.find((f) => f.includes("but the file measures"))}"`,
-    );
-    process.exit(0);
+  // Two plants, because this file now derives two kinds of fact from outside
+  // itself and both have already been wrong once in this repository.
+  const controls = [
+    {
+      what: "a copied dimension (1448, the number v2.1 shipped)",
+      plant: (r) => { r.screens[0].canonical_sources[0].width_px = 1448; },
+      expect: "but the file measures",
+    },
+    {
+      what: "a dropped composition region",
+      plant: (r) => { r.screens[0].composition_regions = r.screens[0].composition_regions.slice(0, -1); },
+      expect: "composition_regions disagree with §27.0",
+    },
+  ];
+  for (const c of controls) {
+    const broken = JSON.parse(JSON.stringify(reg));
+    c.plant(broken);
+    const fail = validate(broken);
+    const hit = fail.find((f) => f.includes(c.expect));
+    if (!hit) {
+      console.error(`positive control FAILED — ${c.what} was not detected`);
+      console.error(fail.length ? fail.join("\n") : "  (the validator reported nothing at all)");
+      process.exit(1);
+    }
+    console.log(`check:visual-registry positive control ok — ${c.what} was rejected: "${hit}"`);
   }
-  console.error("positive control FAILED — a wrong dimension was not detected");
-  process.exit(1);
+  process.exit(0);
 }
 
 const fail = validate(reg);

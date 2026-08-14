@@ -1782,3 +1782,182 @@
   font-size: var(--couranr-text-xs);
   color: var(--couranr-text-muted);
 }
+
+/* ═════════════════════════════════════════════════════════════════════════
+   MKT-003 — section 9, `delivery-options`, and the two artboard regions Gate A
+   had recorded as deviations D-1 and D-3.
+
+   Section 9 is §19.3 split story, not the artboard's four-across card row. The
+   artboard stacks a card row (categories) directly on top of another card row
+   (options); §19's adjacent-duplicate rule is a hard rule, and two structured
+   blocks in sequence read as one slab. The four options keep everything the
+   artboard gives them except the fifth grid.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.cr-mkt-options { display: grid; gap: var(--couranr-space-6); }
+.cr-mkt-options__lead h2 { margin: 0 0 var(--couranr-space-3); color: var(--couranr-text); }
+.cr-mkt-options__lead p  { margin: 0; }
+
+/* The overnight qualifier. Set apart from the lead copy because OVN-001 makes
+   it conditional — request-only, when Couranr confirms availability — and a
+   conditional read as body copy reads as an offer. */
+/* `.cr-mkt-options__lead p` zeroes the margin at (0,1,1); this needs to beat
+   it without !important, so it is scoped to the lead as well. */
+.cr-mkt-options__lead .cr-mkt-options__note {
+  margin-top: var(--couranr-space-5);
+  padding: var(--couranr-space-4);
+  border-left: 3px solid var(--couranr-gold);
+  border-radius: 0 var(--couranr-radius-sm) var(--couranr-radius-sm) 0;
+  background: var(--couranr-surface-sunken);
+  font-size: var(--couranr-text-sm);
+  line-height: var(--couranr-leading-normal);
+  color: var(--couranr-text-muted);
+  --couranr-text-muted: var(--couranr-text-muted-tint);
+}
+
+@media (min-width: 900px) {
+  /* 38/62, matching the other split story on this page. Not 50/50 — §19.3. */
+  .cr-mkt-options { grid-template-columns: 38fr 62fr; gap: var(--couranr-space-10); align-items: start; }
+}
+
+.cr-mkt-options__list { list-style: none; margin: 0; padding: 0; }
+
+/* Ruled rows rather than four bordered tiles, the same device section 5 uses
+   for its outcomes — the shared rule is what makes them read as one set of
+   options instead of four competing offers. */
+.cr-mkt-option {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  gap: var(--couranr-space-2) var(--couranr-space-4);
+  align-items: start;
+  padding-block: var(--couranr-space-5);
+  border-top: 1px solid var(--couranr-border);
+}
+.cr-mkt-option:last-child { border-bottom: 1px solid var(--couranr-border); }
+
+.cr-mkt-option__icon {
+  grid-row: 1 / span 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--couranr-radius-md);
+  background: var(--couranr-surface-sunken);
+  color: var(--couranr-route-blue);
+  line-height: 0;
+  flex: none;
+}
+.cr-mkt-option__body h3 { margin: 0 0 var(--couranr-space-1); color: var(--couranr-text); }
+.cr-mkt-option__body p  { margin: 0; }
+
+/* The artboard's short descriptor under each option. Muted and small: it is a
+   label for the option, not a claim about it. */
+.cr-mkt-option__tag {
+  align-self: start;
+  font-size: var(--couranr-text-xs);
+  font-weight: var(--couranr-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--couranr-text-muted);
+}
+
+@media (min-width: 640px) {
+  /* The tag moves to its own column on the right, where the artboard has it. */
+  .cr-mkt-option { grid-template-columns: 40px 1fr auto; }
+  .cr-mkt-option__icon { grid-row: 1; }
+  .cr-mkt-option__tag { justify-self: end; padding-top: 2px; }
+}
+
+/* Gate A / D-1 — the eleven governed categories, section 8.
+
+   A wrapped chip set, not an eleven-cell card grid: the claim is breadth, and
+   eleven equal-weight cards make each category look like a product tier. This
+   is the ONE grid-dominant section the page is allowed. */
+.cr-mkt-categories {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--couranr-space-3);
+  grid-template-columns: 1fr;
+}
+.cr-mkt-categories__item {
+  padding: var(--couranr-space-4);
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-md);
+  background: var(--couranr-surface);
+  font-size: var(--couranr-text-sm);
+  font-weight: var(--couranr-weight-medium);
+  line-height: var(--couranr-leading-normal);
+  color: var(--couranr-text);
+}
+/* The general fallback is marked as a first-class choice, not the leftover at
+   the end of the list — registry.ts calls it "a real category rather than a
+   blank" and the copy beside the grid says the same thing. */
+.cr-mkt-categories__item--general {
+  border-color: var(--couranr-gold);
+  background: var(--couranr-surface-sunken);
+}
+
+@media (min-width: 640px) { .cr-mkt-categories { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 900px) { .cr-mkt-categories { grid-template-columns: repeat(3, 1fr); } }
+
+/* Gate A / D-3 — the coverage assurances beside the corridor map. */
+.cr-mkt-assurances {
+  list-style: none;
+  margin: var(--couranr-space-5) 0 var(--couranr-space-5);
+  padding: 0;
+  display: grid;
+  gap: var(--couranr-space-3);
+}
+.cr-mkt-assurances li {
+  position: relative;
+  padding-left: var(--couranr-space-6);
+  font-size: var(--couranr-text-sm);
+  line-height: var(--couranr-leading-normal);
+  color: var(--couranr-text);
+}
+/* A drawn tick rather than a ✓ character: the character inherits the body font
+   and renders at a different weight in each fallback. Decorative — the list
+   semantics carry the meaning. */
+.cr-mkt-assurances li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.45em;
+  width: 12px;
+  height: 7px;
+  border-left: 2px solid var(--couranr-route-blue);
+  border-bottom: 2px solid var(--couranr-route-blue);
+  transform: rotate(-45deg);
+}
+
+/* Inline links in marketing prose.
+ *
+ * Found by auditing computed styles on the built page, not by reading: of the
+ * four non-button links on PUB-001, three resolved to the colour of the text
+ * around them with no underline — `rgb(13,21,37)` in the service-area notice
+ * and `rgb(102,112,133)` in sections 8 and 11. A `<Text muted>` wrapper sets
+ * `color` on the paragraph and the anchor inherits it, so the only thing
+ * marking those as links was the "→" glyph in their label.
+ *
+ * That is the same defect the navy band's links already carry a fix for a few
+ * rules above, and the same principle as §23.5's "status never communicated by
+ * color alone" — read in the harder direction, since here there was no colour
+ * difference to rely on either.
+ *
+ * §18 says "Links: Route Blue where appropriate", and Route Blue clears 4.5:1
+ * on all three light surfaces — 5.17 white, 4.85 canvas, 4.63 sunken — so it
+ * is used together with an underline rather than instead of one.
+ *
+ * The navy band is deliberately excluded: its links are Gold on Navy and
+ * already underlined, and Route Blue on Navy would fail.
+ */
+.cr-mkt a:not([class]) {
+  color: var(--couranr-route-blue);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.cr-mkt .cr-mkt-band__note a,
+.cr-mkt .cr-mkt-band__body a { color: var(--couranr-gold); }

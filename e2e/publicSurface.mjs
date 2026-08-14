@@ -92,8 +92,26 @@ async function main() {
       (await home.locator("h1").innerText()).trim() === "Your customers want delivery. Now you can say yes.");
     check("H2", "supporting copy VERBATIM",
       homeText.includes("Keep taking orders through your website, phone, text, social media, POS or"));
-    check("H3", "trust line VERBATIM",
-      homeText.includes("No monthly fee during the pilot. No product-sales commission. You keep the"));
+    /*
+     * MKT-002's trust line is ONE sentence in the blueprint and THREE items in
+     * the hero, each with its own icon — which is what the canonical artboard
+     * shows. `innerText` puts a newline between flex items, so looking for the
+     * three clauses concatenated could never match, and this assertion had been
+     * silently red since the hero was rebuilt: verified by running this harness
+     * against the pre-change build, where H3 failed identically.
+     *
+     * The requirement is that every governed claim appears and none is added,
+     * not that they share a text node. So it checks the clauses.
+     */
+    const TRUST_CLAUSES = [
+      "No monthly fee during the pilot",
+      "No product-sales commission",
+      "You keep the sale and the customer relationship",
+    ];
+    const missingTrust = TRUST_CLAUSES.filter((c) => !homeText.includes(c));
+    check("H3", "trust line VERBATIM — every governed clause present",
+      missingTrust.length === 0,
+      missingTrust.join(" | ") || "all three present");
     check("H4", "closing headline VERBATIM",
       homeText.includes("deserves a better answer"));
     check("H5", "MKT-001 market sentence VERBATIM, registry order",
@@ -105,8 +123,8 @@ async function main() {
       channels.filter((c) => !homeText.includes(c)).join(",") || "all present");
 
     const sectionOrder = await home.$$eval("section[aria-labelledby]", (els) => els.map((e) => e.getAttribute("aria-labelledby")));
-    check("H7", "twelve sections present IN ORDER",
-      JSON.stringify(sectionOrder) === JSON.stringify(["hero-h","s2-h","s3-h","s4-h","s5-h","s6-h","s7-h","s8-h","s9-h","s10-h","s11-h","s12-h"]),
+    check("H7", "thirteen sections present IN ORDER",
+      JSON.stringify(sectionOrder) === JSON.stringify(["hero-h","s2-h","s3-h","s4-h","s5-h","s6-h","s7-h","s8-h","s9-h","s10-h","s11-h","s12-h","s13-h"]),
       sectionOrder.join(","));
 
     check("H8", "primary CTA links to /sign-up",
