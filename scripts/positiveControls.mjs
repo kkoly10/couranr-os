@@ -40,6 +40,7 @@ if (process.argv.includes("--with-db")) {
 // a dev server on BASE_URL and only boots one when nothing answers.
 if (process.argv.includes("--with-browser")) {
   GATES.push(["test:shell-chrome", ["e2e/shellChrome.mjs", "--positive-control"]]);
+  GATES.push(["test:fonts", ["e2e/fonts.mjs", "--positive-control"]]);
 }
 
 let failed = 0;

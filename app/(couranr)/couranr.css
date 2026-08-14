@@ -17,6 +17,64 @@
    (.card, .page, .container), so there is no selector collision either.
    ===================================================================== */
 
+/* =====================================================================
+   Fonts — VIS-001, visual system §9–§10
+
+   Self-hosted, not CDN-linked. §10 requires the governed families to actually
+   render: "A CSS stack that silently falls through to system-ui is a failure."
+   A third-party stylesheet is one outage or one Content-Security-Policy change
+   away from exactly that, so the three files ship in public/fonts/ with their
+   OFL notices beside them.
+
+   All three are SIL OFL-1.1 — Martian Grotesk and Martian Mono from Evil
+   Martians, Inter from Rasmus Andersson — free for commercial and web use,
+   variable cuts included. Redistribution in this repository is what the
+   licence is for; the notices are in public/fonts/*-OFL.txt.
+
+   The weight and width RANGES below are what expose the variable axes to the
+   browser. Without them a `font-stretch: 112.5%` in a type role is inert, and
+   §10.2 exists because writing that declaration and assuming it worked is the
+   predictable mistake. Measured from the actual files with fontTools:
+
+     Martian Grotesk VF   wght 100–1000   wdth 75–200   (default 400 / 100)
+     Inter                wght 100–900                  (default 400)
+     Martian Mono         wght 100–800    wdth 75–112.5 (default 400 / 112.5)
+
+   Martian Mono is subset to the 106 characters §9.3 lets it render — ids,
+   timestamps, code-like values — which takes it from 144KB to 25KB. The other
+   two carry their full charsets because marketing and product copy are not a
+   closed character set.
+   ===================================================================== */
+
+@font-face {
+  font-family: "Martian Grotesk Variable";
+  src: url("/fonts/MartianGrotesk-Variable.woff2") format("woff2");
+  font-weight: 100 1000;
+  font-stretch: 75% 200%;
+  font-style: normal;
+  /* `swap`, not `optional`: §1.6 makes system fallback a failure, so the font
+     must be used even when it arrives late. The layout preloads it to keep the
+     swap off the critical path. */
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Inter Variable";
+  src: url("/fonts/Inter-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Martian Mono";
+  src: url("/fonts/MartianMono-Variable.woff2") format("woff2");
+  font-weight: 100 800;
+  font-stretch: 75% 112.5%;
+  font-style: normal;
+  font-display: swap;
+}
+
 .cr-root {
   /* ---- Brand ---------------------------------------------------- */
   --couranr-navy: #0d1525;
@@ -50,11 +108,25 @@
   --couranr-focus-ring: 0 0 0 2px var(--couranr-surface),
     0 0 0 4px var(--couranr-route-blue);
 
-  /* ---- Typography (§2: Geist Sans or Inter, sentence case) ------- */
-  --couranr-font-sans: "Geist Sans", "Inter", ui-sans-serif, system-ui,
+  /* ---- Typography — VIS-001, visual system §9.0 ------------------
+     Martian Grotesk is the voice, Inter the workhorse, Martian Mono only for
+     operational identifiers. UI_SCREEN_REGISTRY.md §2 was amended in the same
+     commit as the VIS-001 decision, so no authority still says "Geist Sans or
+     Inter". */
+  --couranr-font-display: "Martian Grotesk Variable", "Martian Grotesk",
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+  --couranr-font-body: "Inter Variable", "Inter", ui-sans-serif, system-ui,
     -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --couranr-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo,
-    Consolas, monospace;
+  /* RECONCILED, not duplicated. This name already existed with a different
+     value; §9.0 names two active definitions disagreeing as the failure mode,
+     so the old declaration is replaced here rather than shadowed elsewhere. */
+  --couranr-font-mono: "Martian Mono", ui-monospace, SFMono-Regular, "SF Mono",
+    Menlo, Consolas, monospace;
+  /* Backward-compatible alias. `--couranr-font-sans` has consumers throughout
+     the canonical tree, including `.cr-root`'s own `font-family` below; they
+     keep resolving, now to the body family, until each is migrated. */
+  --couranr-font-sans: var(--couranr-font-body);
 
   --couranr-text-xs: 0.75rem;    /* 12 */
   --couranr-text-sm: 0.875rem;   /* 14 */
@@ -63,6 +135,32 @@
   --couranr-text-xl: 1.375rem;   /* 22 */
   --couranr-text-2xl: 1.75rem;   /* 28 */
   --couranr-text-3xl: 2.25rem;   /* 36 */
+
+  /* ---- v2.2 type scale (§11.1) -----------------------------------
+     Added alongside the --couranr-text-* steps rather than replacing them:
+     §31 step 4 says preserve old tokens while consumers still use them, and
+     --couranr-text-* has consumers across every surface. The intended
+     hierarchy is 96 → 72 → 52 → 38 → 28 → 20/18 → 16 → 14/13, against the
+     previous flat ceiling where 36px was the top of everything. */
+  --couranr-type-hero-min: 3rem;               /* 48 */
+  --couranr-type-hero-max: 6rem;               /* 96 */
+  --couranr-type-statement-min: 2.5rem;        /* 40 */
+  --couranr-type-statement-max: 4.5rem;        /* 72 */
+  --couranr-type-marketing-section-min: 2rem;  /* 32 */
+  --couranr-type-marketing-section-max: 3.25rem; /* 52 */
+  --couranr-type-page-title-min: 1.875rem;     /* 30 */
+  --couranr-type-page-title-max: 2.375rem;     /* 38 */
+  --couranr-type-section-min: 1.4375rem;       /* 23 */
+  --couranr-type-section-max: 1.75rem;         /* 28 */
+  --couranr-type-card-title: 1.125rem;         /* 18 */
+  --couranr-type-card-title-lg: 1.25rem;       /* 20 */
+  --couranr-type-lead-min: 1.125rem;           /* 18 */
+  --couranr-type-lead-max: 1.375rem;           /* 22 */
+  --couranr-type-body: 1rem;                   /* 16 */
+  --couranr-type-small: 0.875rem;              /* 14 */
+  --couranr-type-label: 0.8125rem;             /* 13 */
+  --couranr-type-metric-min: 2rem;             /* 32 */
+  --couranr-type-metric-max: 3rem;             /* 48 */
 
   --couranr-leading-tight: 1.25;
   --couranr-leading-normal: 1.55;
@@ -207,6 +305,116 @@
 .cr-heading--2 { font-size: var(--couranr-text-2xl); }
 .cr-heading--3 { font-size: var(--couranr-text-xl); }
 .cr-heading--4 { font-size: var(--couranr-text-lg); }
+
+/* ── v2.2 typography roles (§12) ───────────────────────────────────────────
+   Additive. `.cr-heading--*` still exists and still works; these are the roles
+   §13 assigns per surface, and PUB-001 is the first consumer. Martian carries
+   display and significant headings, Inter everything else.
+
+   `font-stretch` here is load-bearing, not decoration: it drives the wdth axis
+   declared in the @font-face block above. §32.2 requires a browser test that a
+   width-varied specimen measurably differs from a default-width one, because a
+   font-stretch that silently does nothing looks identical to one that works. */
+
+.cr-type-hero {
+  font-family: var(--couranr-font-display);
+  font-size: clamp(var(--couranr-type-hero-min), 7vw, var(--couranr-type-hero-max));
+  font-weight: 700;
+  font-stretch: 112.5%;
+  line-height: 0.96;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+}
+
+.cr-type-statement {
+  font-family: var(--couranr-font-display);
+  font-size: clamp(var(--couranr-type-statement-min), 5vw, var(--couranr-type-statement-max));
+  font-weight: 675;
+  font-stretch: 106%;
+  line-height: 0.99;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+
+.cr-type-marketing-section {
+  font-family: var(--couranr-font-display);
+  font-size: clamp(
+    var(--couranr-type-marketing-section-min), 4vw,
+    var(--couranr-type-marketing-section-max)
+  );
+  font-weight: 650;
+  line-height: 1.03;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+
+.cr-type-page-title {
+  font-family: var(--couranr-font-display);
+  font-size: clamp(var(--couranr-type-page-title-min), 3vw, var(--couranr-type-page-title-max));
+  font-weight: 650;
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+}
+
+.cr-type-section-title {
+  font-family: var(--couranr-font-display);
+  font-size: clamp(var(--couranr-type-section-min), 2vw, var(--couranr-type-section-max));
+  font-weight: 600;
+  line-height: 1.12;
+  letter-spacing: -0.015em;
+}
+
+.cr-type-card-title {
+  font-family: var(--couranr-font-display);
+  font-size: var(--couranr-type-card-title);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+.cr-type-card-title--lg { font-size: var(--couranr-type-card-title-lg); }
+
+.cr-type-lead {
+  font-family: var(--couranr-font-body);
+  font-size: clamp(var(--couranr-type-lead-min), 2vw, var(--couranr-type-lead-max));
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.cr-type-body {
+  font-family: var(--couranr-font-body);
+  font-size: var(--couranr-type-body);
+  font-weight: 400;
+  line-height: 1.55;
+}
+
+/* §12.9: sentence case by default — no automatic text-transform. */
+.cr-type-label {
+  font-family: var(--couranr-font-body);
+  font-size: var(--couranr-type-label);
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+/* §12.10 / §24: real data only. No fabricated marketing metrics. */
+.cr-type-metric {
+  font-family: var(--couranr-font-display);
+  font-size: clamp(var(--couranr-type-metric-min), 3vw, var(--couranr-type-metric-max));
+  font-weight: 650;
+  font-stretch: 87.5%;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* §9.3: operational identifiers only — ids, code-like values, some timestamps.
+   Narrowed off the 112.5% default because §6.3's Command Center wants density
+   and the wdth axis reaches 75%. */
+.cr-type-identifier {
+  font-family: var(--couranr-font-mono);
+  font-stretch: 87.5%;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
 
 .cr-text { margin: 0; }
 .cr-text--sm   { font-size: var(--couranr-text-sm); }
