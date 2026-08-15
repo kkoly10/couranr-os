@@ -477,6 +477,53 @@ Each browser group's two remaining failures are `CLEAN-behaviour` and
 `CLEAN-residue`, the standing non-functional residue condition caused by
 `couranr_merchant_workspaces` having no DELETE grant.
 
+## Visual system v2.2 — program state
+
+Not on `main`. This section describes the branch
+`claude/couranr-visual-system-v2-2`, and it is here so the visual program's
+state is recorded next to the functional one rather than only in the brand
+folder.
+
+**The machine-checked source is
+[`ui-reference/VISUAL_AUTHORITY_REGISTRY.json`](./ui-reference/VISUAL_AUTHORITY_REGISTRY.json),
+regenerated and validated by `npm run check:visual-registry`.** This table is a
+summary of it; the registry wins.
+
+| §34 slice | State |
+|---|---|
+| V0 authority normalization | done — VIS-001 in the root registry, UI registry amended |
+| V1 foundation | done — three fonts self-hosted, deterministic, width axis proven in a browser |
+| V2 PUB-001 proving surface | done — rebuilt, Gates A/B/C pass |
+| V3 remaining public family | done — PUB-008/009/010/011 under §27.1, Gates B/C pass, Gate A n/a (no mocks) |
+| V4–V6 product families | typography and grammar propagated via `data-couranr-surface`; **golden-screen Gate A/B/C not run** |
+| V7 reconciliation | registry complete for 66/66 screens; ledgers updated here; **no aliases removed** |
+
+**66 visual-authority records exist. 5 have a Gate A record.** A record means the
+screen's sources and dimensions are known, not that it was reviewed. The check
+prints the split on every run so `66/66` cannot read as `66 reviewed`.
+
+**Blocked, one cause.** The product families' gates need an authenticated
+browser. Every product route is behind an access gate; with no session the
+shells render chrome only — measured at `/business`, `/operations` and
+`/driver`, whose DOM carries `.cr-sidebar*` classes and no `.cr-heading` or
+`.cr-text` node. `e2e/disposable/merchantDashboard.mjs` signs a real merchant
+in and aborts after applying its 50 migrations because its PostgREST binary is
+absent from the container. `npm run test:fonts` prints an `UNVERIFIED` line per
+surface on every run rather than counting those assertions as passed.
+
+**Nothing was removed in V7, deliberately.** §34.1's wording is "remove obsolete
+visual aliases only where SAFE", and none currently is: `--couranr-font-sans`
+is the compatibility body alias §9 keeps during migration and has live
+consumers, and `.cr-heading--N` is what the whole product tree still renders.
+Removing either today would be a silent restyle, not a cleanup.
+
+**Still open in the document beyond §34:** photography IMG-01…05 (owner-supplied,
+blocks Gate A deviations D-1 and D-2 on PUB-001), and the optional
+`couranr.tokens.css` extraction, which §34.1 lists as deferrable and which buys
+nothing while every token already lives in one file.
+
+---
+
 ## Could not be verified in this run
 
 - **The authenticated browser runs do not use GoTrue.** GoTrue could not be

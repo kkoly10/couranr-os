@@ -145,6 +145,48 @@ Verified after: no adjacent duplicates; grid-dominant 1 (cap 2); image-led 3
 thirteen sections plus `navigation`. Re-derived by
 `npm run check:visual-system`, not by reading.
 
+### r4 — §27.1, the two missing test families, and the program state
+
+Not defects in this document, except the first.
+
+1. **§32.3 delegated a contract it never defined.** It required the metadata
+   contract on PUB-008/009/010/011 and said their counts were "page-specific"
+   without saying what they are — the §27.0 hole, four more times. **§27.1** is
+   now four normative tables and four machine-readable `**Budgets:**` lines,
+   parsed by `scripts/compositionContract.mjs`, which is the single parser for
+   all five pages: the spec self-check, the unit suite and the browser harness
+   all read it. Two parsers would be two chances to disagree about what this
+   document says, and the disagreement would look like a passing gate.
+
+2. **§32.1 and §32.4 had no implementation.** Six of the eight test families
+   existed. Their absence was not theoretical: VIS-001's fourth acceptance
+   criterion bans a `--cr-*` namespace, and nineteen usages of three
+   `--cr-btn-*` names had been live since before that criterion was written.
+   They are `--couranr-btn-*` now, and `tests/couranr-visual-tokens.test.ts`
+   asserts all eight of §32.1's points plus §32.4 in both directions — no
+   `SectionEyebrow` component, AND the governed eyebrow copy still present.
+
+3. **§13's budgets are bound at the shell, not per screen.** `cr-type-*` had
+   zero consumers outside the public route group; all 55 product screens were
+   still on the pre-v2.2 sizes. Each shell declares `data-couranr-surface`, and
+   §12's role rules gain those surfaces in their existing selector lists — one
+   declaration block, several selectors, no second copy of a value to drift.
+   Operations deliberately gets a Martian page title and nothing else, per §13
+   and §6.3, and a test asserts that absence.
+
+4. **§25's registry is complete** — 66 of 66 registered screens, 50 canonical
+   with measured dimensions and 16 derived from their family's golden screen.
+   A screen with two or more mapped sources gets `role: "unclassified"` on every
+   source rather than a guessed primary, because §25 permits marking one "only
+   when the current empirical map/authority supports that choice" and with two
+   undifferentiated exports it does not.
+
+What is NOT done, and why, is recorded in
+`docs/couranr-mvp/IMPLEMENTATION_STATUS.md` and
+`docs/couranr-mvp/brand/PRODUCT_FAMILIES_V4_V6_REVIEW.md`: the product
+families' Gate A/B/C need an authenticated browser, and the harness that
+provides one cannot start PostgREST in this container.
+
 ---
 
 # 0. Why this document exists
