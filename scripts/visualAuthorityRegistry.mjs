@@ -33,6 +33,38 @@ import { governedPages, specRows } from "./compositionContract.mjs";
 const repo = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = "docs/couranr-mvp/ui-reference/VISUAL_AUTHORITY_REGISTRY.json";
 const MAP = "docs/couranr-mvp/MOCK_TO_SCREEN_MAP.md";
+const SCREENS = "UI_SCREEN_REGISTRY.md";
+
+/** Which family a screen id belongs to, and that family's golden screen (§29). */
+const FAMILY = {
+  PUB: { family: "public_marketing", golden: "PUB-001" },
+  MER: { family: "merchant", golden: "MER-001" },
+  OPS: { family: "operations", golden: "OPS-002" },
+  DRV: { family: "driver", golden: "DRV-001" },
+  CUS: { family: "customer_token", golden: "CUS-006" },
+};
+
+/**
+ * The canonical screen table, read from UI_SCREEN_REGISTRY.md.
+ *
+ * Route and viewport intent come from the registry rather than being typed
+ * here — §25 says one visual-authority record per REGISTERED screen, so the
+ * registry is what decides which screens exist.
+ */
+function registeredScreens() {
+  const doc = readFileSync(join(repo, SCREENS), "utf8");
+  const rows = doc
+    .split("\n")
+    .filter((l) => /^\|\s*(PUB|MER|DRV|OPS|CUS)-\d+\s*\|/.test(l))
+    .map((l) => l.replace(/^\||\|$/g, "").split("|").map((c) => c.trim()));
+  if (!rows.length) throw new Error(`${SCREENS}: no screen rows parsed`);
+  return rows.map((c) => ({
+    screen_id: c[0],
+    name: c[1],
+    route: c[2].replace(/`/g, ""),
+    viewport_intent: (c[5] || "responsive").toLowerCase(),
+  }));
+}
 const SPEC = "docs/couranr-mvp/brand/COURANR_VISUAL_SYSTEM_V2_2.md";
 
 /** Reads width/height from a PNG's IHDR. No decoding, no dependency. */
@@ -82,12 +114,145 @@ function mockMap() {
  * record is a visible omission rather than a silent one — the validator below
  * reports any governed page missing from this registry.
  */
+const GOVERNED_PAGES = new Set(
+  governedPages(readFileSync(join(repo, SPEC), "utf8")).map((p) => p.screen),
+);
+
 const DERIVED = [
   { screen_id: "PUB-008", route: "/pricing" },
   { screen_id: "PUB-009", route: "/businesses" },
   { screen_id: "PUB-010", route: "/service-areas" },
   { screen_id: "PUB-011", route: "/how-it-works" },
 ];
+
+/**
+ * Every registered screen's visual-authority record.
+ *
+ * §25: "one visual-authority record per registered screen" and "all canonical
+ * screens have a visual authority record by the time the full registry phase is
+ * complete". §34.1 allowed the other 65 to be deferred until PUB-001 was
+ * approved; this completes them.
+ *
+ * The hard part is ROLES, and the honest answer is to refuse to guess.
+ * PUB-001's three artboards have declared roles because they were opened and
+ * identified — two of them are the same 941x1672 and an orientation heuristic
+ * got them backwards once already. For the other 65 nobody has done that, so:
+ *
+ *   - ONE mapped source  -> role "primary". Unambiguous: there is nothing else
+ *     it could be, and §25 permits marking a primary when the empirical map
+ *     supports the choice.
+ *   - TWO OR MORE        -> every source gets role "unclassified" and
+ *     `mobile_reference` stays null. §25 says to "mark one primary only when
+ *     the current empirical map/authority supports that choice", and with two
+ *     undifferentiated exports it does not. A guessed primary would be a wrong
+ *     fact in a registry other work is meant to trust, which is the exact
+ *     failure the PUB-001 comment above records.
+ *
+ * Screens with no mapped source at all are `derived` from their family's golden
+ * screen (§29's table), which §25 requires to be named explicitly.
+ *
+ * Dimensions are read from every file's PNG header. None is copied from
+ * anywhere.
+ */
+function buildScreens(pub001Measured, pub001Mobile) {
+  const map = mockMap();
+  const out = [];
+
+  for (const screen of registeredScreens()) {
+    const fam = FAMILY[screen.screen_id.slice(0, 3)];
+    if (!fam) throw new Error(`${screen.screen_id}: unknown surface family prefix`);
+
+    // PUB-001 keeps its hand-declared roles and its Gate A record.
+    if (screen.screen_id === "PUB-001") {
+      out.push({
+        screen_id: "PUB-001",
+        surface_family: fam.family,
+        route: screen.route,
+        canonical_sources: pub001Measured.map((m) => ({
+          path: m.path,
+          role: m.role,
+          width_px: m.width,
+          height_px: m.height,
+          source_kind: "design_artboard",
+        })),
+        registry_declared_viewport_intent: screen.viewport_intent,
+        visual_authority: "canonical",
+        composition_regions: compositionRegions("PUB-001"),
+        mobile_reference: pub001Mobile?.path ?? null,
+        gate_a_review: "docs/couranr-mvp/brand/PUB-001_GATE_A_REGION_REVIEW.md",
+        notes: [
+          "The artboards are design exports, not browser screenshots. §26's " +
+            "pixel-diff policy therefore does not apply; Gate A is a named-region " +
+            "review and Gate B verifies real browser widths separately.",
+          "Gate A recorded six intentional deviations, two of which close when " +
+            "the photography in PUB-001_PHOTOGRAPHY_BRIEF.md exists.",
+        ],
+      });
+      continue;
+    }
+
+    const sources = map[screen.screen_id] ?? [];
+    const governed = GOVERNED_PAGES.has(screen.screen_id);
+
+    if (sources.length === 0) {
+      out.push({
+        screen_id: screen.screen_id,
+        surface_family: fam.family,
+        route: screen.route,
+        canonical_sources: [],
+        registry_declared_viewport_intent: screen.viewport_intent,
+        visual_authority: "derived",
+        derived_from: { screen_id: fam.golden, family: fam.family },
+        derivation_basis:
+          "MOCK_TO_SCREEN_MAP.md maps no canonical source to this screen, so " +
+          "§26's Gate A has nothing to compare against. It inherits its family " +
+          "grammar from the golden screen named above (§29).",
+        ...(governed ? { composition_regions: compositionRegions(screen.screen_id) } : {}),
+        mobile_reference: null,
+        ...(governed
+          ? { gate_a_review: "docs/couranr-mvp/brand/PUB-FAMILY_V3_REVIEW.md" }
+          : {}),
+        notes: governed
+          ? [
+              "Composition table and budgets: §27.1 of COURANR_VISUAL_SYSTEM_V2_2.md.",
+              "Gate B and Gate C run normally — they need a browser, not a mock.",
+            ]
+          : ["No Gate A review has been performed for this screen."],
+      });
+      continue;
+    }
+
+    const single = sources.length === 1;
+    out.push({
+      screen_id: screen.screen_id,
+      surface_family: fam.family,
+      route: screen.route,
+      canonical_sources: sources.map((path) => ({
+        path,
+        role: single ? "primary" : "unclassified",
+        ...(() => {
+          const { width, height } = pngSize(path);
+          return { width_px: width, height_px: height };
+        })(),
+        source_kind: "design_artboard",
+      })),
+      registry_declared_viewport_intent: screen.viewport_intent,
+      visual_authority: "canonical",
+      mobile_reference: null,
+      notes: single
+        ? ["No Gate A review has been performed for this screen."]
+        : [
+            `${sources.length} mapped sources with no declared roles. §25 permits ` +
+              "marking a primary only when the empirical map supports the choice, " +
+              "and it does not here — open them, identify each, and declare the " +
+              "roles rather than inferring them from dimensions.",
+            "No Gate A review has been performed for this screen.",
+          ],
+    });
+  }
+
+  return out;
+}
 
 function build() {
   const map = mockMap();
@@ -133,64 +298,12 @@ function build() {
       "to re-verify, `-- --write` to regenerate.",
     generator: "scripts/visualAuthorityRegistry.mjs",
     scope:
-      "PUB-001 and the photography it renders. §34.1 defers the remaining 65 " +
-      "screens until after PUB-001 is approved; this file is intentionally " +
-      "incomplete and the validator reports the gap.",
-    screens: [
-      {
-        screen_id: "PUB-001",
-        surface_family: "public_marketing",
-        route: "/",
-        canonical_sources: measured.map((m) => ({
-          path: m.path,
-          role: m.role,
-          width_px: m.width,
-          height_px: m.height,
-          source_kind: "design_artboard",
-        })),
-        registry_declared_viewport_intent: "responsive",
-        visual_authority: "canonical",
-        // Parsed from §27.0's normative table, not transcribed from it.
-        composition_regions: compositionRegions("PUB-001"),
-        mobile_reference: mobile?.path ?? null,
-        gate_a_review: "docs/couranr-mvp/brand/PUB-001_GATE_A_REGION_REVIEW.md",
-        notes: [
-          "The artboards are design exports, not browser screenshots. §26's " +
-            "pixel-diff policy therefore does not apply; Gate A is a named-region " +
-            "review and Gate B verifies real browser widths separately.",
-          "Gate A recorded six intentional deviations, two of which close when " +
-            "the photography in PUB-001_PHOTOGRAPHY_BRIEF.md exists.",
-        ],
-      },
-      ...DERIVED.map((d) => ({
-        screen_id: d.screen_id,
-        surface_family: "public_marketing",
-        route: d.route,
-        // §25: "derived screens explicitly name the family/source they derive
-        // from." No canonical mock exists for any of these four —
-        // UI_SCREEN_REGISTRY.md says so for each — so recording an empty
-        // canonical_sources and a named derivation is the honest shape. A
-        // fabricated `primary` pointing at PUB-001's artboard would make the
-        // registry claim a mock that does not depict this screen.
-        canonical_sources: [],
-        registry_declared_viewport_intent: "responsive",
-        visual_authority: "derived",
-        derived_from: { screen_id: "PUB-001", family: "public_marketing" },
-        derivation_basis:
-          "UI_SCREEN_REGISTRY.md records this screen as \"Derived from PUB-001 " +
-          "design system; no separate approved mock.\" §26's Gate A is a " +
-          "comparison against a canonical mock and therefore cannot run; the " +
-          "substitute is the family-coherence review named below, against " +
-          "PUB-001's proven grammar plus this screen's own content contract.",
-        composition_regions: compositionRegions(d.screen_id),
-        mobile_reference: null,
-        gate_a_review: "docs/couranr-mvp/brand/PUB-FAMILY_V3_REVIEW.md",
-        notes: [
-          "Composition table and budgets: §27.1 of COURANR_VISUAL_SYSTEM_V2_2.md.",
-          "Gate B and Gate C run normally — they need a browser, not a mock.",
-        ],
-      })),
-    ],
+      "Every registered screen in UI_SCREEN_REGISTRY.md, plus the photography " +
+      "PUB-001 renders. Screens with no mapped canonical source are recorded as " +
+      "derived from their family's golden screen (§29). A record's presence " +
+      "means its sources and dimensions are known — NOT that Gate A has been " +
+      "run on it; each record's notes say which.",
+    screens: buildScreens(measured, mobile),
     photography: [
       {
         asset_id: "photo-florist-driver-handoff-wide",
@@ -410,7 +523,10 @@ if (fail.length) {
 const total = Object.keys(mockMap()).length;
 console.log(
   `check-visual-registry: ok — ${reg.screens.length}/${total} screens recorded ` +
-    `(§34.1 defers the rest), every dimension matches its file, ` +
+    `(${reg.screens.filter((s) => s.visual_authority === "canonical").length} canonical, ` +
+    `${reg.screens.filter((s) => s.visual_authority === "derived").length} derived, ` +
+    `${reg.screens.filter((s) => s.gate_a_review).length} with a Gate A record), ` +
+    `every dimension matches its file, ` +
     `${reg.photography.length} photography asset(s) with provenance, ` +
     `${reg.pending_photography.length} slot(s) pending`,
 );
