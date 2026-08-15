@@ -517,9 +517,9 @@
    ===================================================================== */
 
 .cr-button {
-  --cr-btn-bg: var(--couranr-navy);
-  --cr-btn-fg: var(--couranr-text-inverse);
-  --cr-btn-border: transparent;
+  --couranr-btn-bg: var(--couranr-navy);
+  --couranr-btn-fg: var(--couranr-text-inverse);
+  --couranr-btn-border: transparent;
 
   display: inline-flex;
   align-items: center;
@@ -528,10 +528,10 @@
   min-height: var(--couranr-control-height);
   min-width: var(--couranr-touch-min);
   padding: 0 var(--couranr-space-5);
-  border: 1px solid var(--cr-btn-border);
+  border: 1px solid var(--couranr-btn-border);
   border-radius: var(--couranr-radius-md);
-  background: var(--cr-btn-bg);
-  color: var(--cr-btn-fg);
+  background: var(--couranr-btn-bg);
+  color: var(--couranr-btn-fg);
   font-family: inherit;
   font-size: var(--couranr-text-base);
   font-weight: var(--couranr-weight-medium);
@@ -552,27 +552,27 @@
 }
 
 .cr-button--primary {
-  --cr-btn-bg: var(--couranr-gold);
-  --cr-btn-fg: var(--couranr-navy);
+  --couranr-btn-bg: var(--couranr-gold);
+  --couranr-btn-fg: var(--couranr-navy);
 }
 .cr-button--secondary {
-  --cr-btn-bg: var(--couranr-surface);
-  --cr-btn-fg: var(--couranr-text);
-  --cr-btn-border: var(--couranr-border-strong);
+  --couranr-btn-bg: var(--couranr-surface);
+  --couranr-btn-fg: var(--couranr-text);
+  --couranr-btn-border: var(--couranr-border-strong);
 }
 .cr-button--ghost {
-  --cr-btn-bg: transparent;
-  --cr-btn-fg: var(--couranr-text);
-  --cr-btn-border: transparent;
+  --couranr-btn-bg: transparent;
+  --couranr-btn-fg: var(--couranr-text);
+  --couranr-btn-border: transparent;
 }
 .cr-button--destructive {
-  --cr-btn-bg: var(--couranr-danger);
-  --cr-btn-fg: var(--couranr-text-inverse);
+  --couranr-btn-bg: var(--couranr-danger);
+  --couranr-btn-fg: var(--couranr-text-inverse);
 }
 .cr-button--link {
-  --cr-btn-bg: transparent;
-  --cr-btn-fg: var(--couranr-route-blue);
-  --cr-btn-border: transparent;
+  --couranr-btn-bg: transparent;
+  --couranr-btn-fg: var(--couranr-route-blue);
+  --couranr-btn-border: transparent;
   min-height: auto;
   padding: 0;
   text-decoration: underline;

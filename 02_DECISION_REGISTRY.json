@@ -2844,7 +2844,7 @@
         "Exactly one typography direction exists in the authority chain; UI_SCREEN_REGISTRY.md no longer says 'Geist Sans or Inter'.",
         "A browser test proves the hero computes to Martian Grotesk and body copy computes to Inter; system fallback is a failure, not a pass.",
         "A browser test proves the Martian width axis is applied — a width-varied specimen differs measurably from the default-width specimen.",
-        "No --cr-* custom property namespace exists anywhere in the canonical tree.",
+        "No --cr-* custom property namespace exists anywhere in the canonical tree, asserted by tests/couranr-visual-tokens.test.ts rather than by inspection.",
         "The locked brand hexes are unchanged and the canonical logo asset is still used; no logo is recreated from a live font.",
         "The existing accessibility layer still passes: focus ring, reduced motion, visually-hidden, skip link, 44px touch floor, status not carried by color alone.",
         "PUB-001 carries every governed section of §27.0 in order, each with its required data-composition, and the composition gate fails on an unknown id.",
