@@ -28,7 +28,7 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
   const items = navigationFor("public");
 
   return (
-    <div className="cr-shell cr-shell--public">
+    <div className="cr-shell cr-shell--public" data-couranr-surface="public">
       <SkipLink />
 
       <header className="cr-topbar">
@@ -128,7 +128,7 @@ export function CustomerTokenShell({
   helpHref?: string;
 }) {
   return (
-    <div className="cr-shell">
+    <div className="cr-shell" data-couranr-surface="customer">
       <SkipLink />
 
       <header className="cr-tokenbar">
@@ -173,7 +173,7 @@ export function MerchantShell({
   const signOut = <SignOutButton />;
 
   return (
-    <div className="cr-shell cr-shell--sidebar">
+    <div className="cr-shell cr-shell--sidebar" data-couranr-surface="merchant">
       <SkipLink />
 
       <aside className="cr-sidebar">
@@ -240,7 +240,7 @@ export function DriverShell({
   const items = navigationFor("driver");
 
   return (
-    <div className="cr-shell cr-shell--driver">
+    <div className="cr-shell cr-shell--driver" data-couranr-surface="driver">
       <SkipLink />
 
       <header className="cr-driverbar">
@@ -295,7 +295,7 @@ export function OperationsShell({
   const signOut = <SignOutButton />;
 
   return (
-    <div className="cr-shell cr-shell--sidebar">
+    <div className="cr-shell cr-shell--sidebar" data-couranr-surface="operations">
       <SkipLink />
 
       <aside className="cr-sidebar">

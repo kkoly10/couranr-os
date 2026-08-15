@@ -348,7 +348,30 @@
   text-wrap: balance;
 }
 
-.cr-type-page-title {
+/*
+ * §13's per-surface typography budgets, bound at the SHELL rather than screen
+ * by screen. `data-couranr-surface` is declared once per shell in shells.tsx,
+ * so all 55 product screens inherit the governed roles without 55 edits — and
+ * §29's "a golden screen constrains family grammar" is enforced by the grammar
+ * itself rather than by everyone remembering.
+ *
+ * The selectors are ADDED to the role rules rather than duplicated as new ones:
+ * one declaration block, several selectors, no second copy of a value to drift.
+ *
+ * §13 differs per family and the split below is exactly its list, which is why
+ * this is four rules and not one blanket `.cr-heading--1 { Martian }`:
+ *   Merchant     — page title, section title, entity title
+ *   Operations   — page title and selected real counters ONLY. Inter for
+ *                  queues, filters, tables, actions, audit data. §6.3 warns
+ *                  against display type inside dense operational surfaces.
+ *   Driver       — page/state title
+ *   Customer     — important state/title only
+ */
+.cr-type-page-title,
+[data-couranr-surface="merchant"] .cr-page-header .cr-heading--1,
+[data-couranr-surface="operations"] .cr-page-header .cr-heading--1,
+[data-couranr-surface="driver"] .cr-page-header .cr-heading--1,
+[data-couranr-surface="customer"] .cr-page-header .cr-heading--1 {
   font-family: var(--couranr-font-display);
   font-size: clamp(var(--couranr-type-page-title-min), 3vw, var(--couranr-type-page-title-max));
   font-weight: 650;
@@ -356,7 +379,11 @@
   letter-spacing: -0.02em;
 }
 
-.cr-type-section-title {
+/* Merchant only. §13 gives Operations page titles and counters and nothing
+   else, and §6.2's own warning — "avoid marketing-size display type inside
+   dense workflow screens" — is why this stops at level 2. */
+.cr-type-section-title,
+[data-couranr-surface="merchant"] .cr-heading--2 {
   font-family: var(--couranr-font-display);
   font-size: clamp(var(--couranr-type-section-min), 2vw, var(--couranr-type-section-max));
   font-weight: 600;
@@ -364,7 +391,10 @@
   letter-spacing: -0.015em;
 }
 
-.cr-type-card-title {
+/* §6.2: "Martian for page/section/entity headings". Level 3 is the entity
+   title in this tree — a card's subject, a delivery, a customer. */
+.cr-type-card-title,
+[data-couranr-surface="merchant"] .cr-heading--3 {
   font-family: var(--couranr-font-display);
   font-size: var(--couranr-type-card-title);
   font-weight: 600;
@@ -409,7 +439,16 @@
 /* §9.3: operational identifiers only — ids, code-like values, some timestamps.
    Narrowed off the 112.5% default because §6.3's Command Center wants density
    and the wdth axis reaches 75%. */
-.cr-type-identifier {
+/* §9: Martian Mono "only where monospace improves scanning" — operational
+   identifiers. `.cr-text--numeric` is how this tree already marks them, and it
+   was setting tabular figures in the BODY face, so the tokens were declared and
+   then not used by the thing they were for. Product surfaces only: a price on a
+   marketing page is editorial, not an identifier. */
+.cr-type-identifier,
+[data-couranr-surface="merchant"] .cr-text--numeric,
+[data-couranr-surface="operations"] .cr-text--numeric,
+[data-couranr-surface="driver"] .cr-text--numeric,
+[data-couranr-surface="customer"] .cr-text--numeric {
   font-family: var(--couranr-font-mono);
   font-stretch: 87.5%;
   font-variant-numeric: tabular-nums;

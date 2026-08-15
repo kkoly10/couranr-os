@@ -297,6 +297,68 @@ async function main() {
       `${real.a.toFixed(1)}px vs fallback ${fake.a.toFixed(1)}px`,
   );
 
+  /* ---- 6. §13's per-surface budgets, in a real browser ------------------ */
+  //
+  // The propagation for 55 product screens is four selectors in couranr.css
+  // keyed on `data-couranr-surface`. A unit test proves the CSS says the right
+  // thing; only a browser proves the shell actually stamps the attribute.
+  //
+  // The computed FONT on a product page title cannot be measured in this
+  // container, and the reason is recorded rather than worked around. Every
+  // product route is behind an access gate; with no session the shells render
+  // chrome only — measured, not assumed: the DOM at /business, /operations and
+  // /driver contains `.cr-sidebar*` classes and no `.cr-heading` or `.cr-text`
+  // node at all. The authenticated harness that would reach one exists
+  // (e2e/disposable/merchantDashboard.mjs signs in for real) and aborts here
+  // after applying its 50 migrations because its PostgREST binary is absent.
+  //
+  // So this asserts what a browser CAN establish — the marker the whole
+  // cascade hangs off — and prints an explicit UNVERIFIED line for the rest.
+  // Not a skip: it is counted and reported in the summary on every run.
+  console.log("\n§13 per-surface typography budgets");
+
+  const DISPLAY = "Martian Grotesk Variable";
+  const unverified = [];
+
+  for (const [route, surface] of [
+    ["/business", "merchant"],
+    ["/operations", "operations"],
+    ["/driver", "driver"],
+  ]) {
+    const tab = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+    const res = await tab.goto(`${BASE}${route}`, { waitUntil: "commit" });
+    await tab
+      .waitForSelector(".cr-page-header .cr-heading--1", { state: "attached", timeout: 3000 })
+      .catch(() => {});
+
+    const m = await tab.evaluate(() => {
+      const root = document.querySelector("[data-couranr-surface]");
+      const h = document.querySelector(".cr-page-header .cr-heading--1");
+      return {
+        surface: root?.getAttribute("data-couranr-surface") ?? null,
+        pageTitle: h ? getComputedStyle(h).fontFamily : null,
+      };
+    });
+
+    check(res.status() === 200, `${route} returns 200`);
+    check(
+      m.surface === surface,
+      `${route} stamps data-couranr-surface="${surface}" (${m.surface})`,
+    );
+
+    if (m.pageTitle) {
+      check(
+        m.pageTitle.includes(DISPLAY),
+        `${surface} page title computes to Martian (${m.pageTitle.slice(0, 40)})`,
+      );
+    } else {
+      unverified.push(`${surface}: no page title rendered without a session`);
+      console.log(`  ??    ${surface} page-title font UNVERIFIED — access-gated, no session available`);
+    }
+
+    await tab.close();
+  }
+
   await browser.close();
   stopApp();
 
@@ -304,6 +366,15 @@ async function main() {
     console.error(`\n${failures.length} failure(s):`);
     for (const f of failures) console.error(`  - ${f}`);
     process.exit(1);
+  }
+  if (unverified.length) {
+    console.log(`\ntest:fonts: all assertions passed, ${unverified.length} UNVERIFIED:`);
+    for (const u of unverified) console.log(`  ?  ${u}`);
+    console.log(
+      "  reason: product routes are access-gated and the authenticated harness " +
+        "(e2e/disposable/merchantDashboard.mjs) cannot start PostgREST in this container.",
+    );
+    return;
   }
   console.log(`\ntest:fonts: all assertions passed`);
 }

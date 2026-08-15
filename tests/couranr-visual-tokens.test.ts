@@ -330,3 +330,106 @@ describe("MUTATION CONTROLS — these checks can actually reject", () => {
     ).toBeGreaterThan(0);
   });
 });
+
+/**
+ * §13 — the per-surface typography budgets, bound at the shell.
+ *
+ * The five shells each declare `data-couranr-surface`, and couranr.css adds
+ * those surfaces to the §12 role rules. That is the whole propagation mechanism
+ * for 55 product screens, so both halves are asserted: a shell that loses its
+ * marker, or a role rule that stops naming a surface, silently reverts a whole
+ * family to the pre-v2.2 heading sizes with nothing else going red.
+ */
+describe("§13 — surface families and their type budgets", () => {
+  const SHELLS = readFileSync(
+    path.join(ROOT, "components/couranr/shell/shells.tsx"),
+    "utf8",
+  );
+  const SURFACES = ["public", "merchant", "operations", "driver", "customer"] as const;
+
+  it("all five shells declare their surface family", () => {
+    const declared = [...SHELLS.matchAll(/data-couranr-surface="([a-z]+)"/g)].map((m) => m[1]);
+    expect(declared.sort()).toEqual([...SURFACES].sort());
+  });
+
+  it("the surface names match §6's five families", () => {
+    const spec = readFileSync(
+      path.join(ROOT, "docs/couranr-mvp/brand/COURANR_VISUAL_SYSTEM_V2_2.md"),
+      "utf8",
+    );
+    // §6 titles them in prose; VIS-001 records the machine names.
+    const reg = JSON.parse(readFileSync(path.join(ROOT, "02_DECISION_REGISTRY.json"), "utf8"));
+    const vis = reg.decisions.find((d: { id: string }) => d.id === "VIS-001");
+    const families = Object.keys(vis.value.surface_families);
+    // `auth` has no shell of its own — it renders inside the public shell —
+    // and `public_marketing`/`customer_token` are the registry's longer names.
+    const mapped = families
+      .map((f: string) => f.replace("public_marketing", "public").replace("customer_token", "customer"))
+      .filter((f: string) => f !== "auth");
+    expect(mapped.sort()).toEqual([...SURFACES].sort());
+    expect(spec).toContain("# 6. Surface families");
+  });
+
+  /**
+   * §13's list, transcribed once. The assertions below check the CSS agrees.
+   * Operations deliberately gets ONLY the page title: §13 gives it "page title;
+   * selected real counters" and Inter for everything else.
+   */
+  const EXPECT_MARTIAN: Record<string, string[]> = {
+    merchant: [".cr-page-header .cr-heading--1", ".cr-heading--2", ".cr-heading--3"],
+    operations: [".cr-page-header .cr-heading--1"],
+    driver: [".cr-page-header .cr-heading--1"],
+    customer: [".cr-page-header .cr-heading--1"],
+  };
+
+  it.each(Object.entries(EXPECT_MARTIAN))(
+    "%s gets exactly its §13 Martian selectors",
+    (surface, selectors) => {
+      const found = [
+        ...LIVE_CSS.matchAll(
+          new RegExp(`\\[data-couranr-surface="${surface}"\\]\\s+([^,{]+)[,{]`, "g"),
+        ),
+      ]
+        .map((m) => m[1].trim())
+        // The identifier rule is Martian MONO, a separate role from the
+        // display headings this budget is about.
+        .filter((sel) => sel !== ".cr-text--numeric");
+      expect(found.sort()).toEqual([...selectors].sort());
+    },
+  );
+
+  it("operations never gets a Martian section or entity heading", () => {
+    // The rule §6.3 states outright: no display type inside dense operational
+    // surfaces. Asserted as an absence, because that is what would rot.
+    expect(LIVE_CSS).not.toMatch(/\[data-couranr-surface="operations"\]\s+\.cr-heading--[234]/);
+  });
+
+  it("every product surface renders identifiers in the mono face", () => {
+    for (const s of ["merchant", "operations", "driver", "customer"]) {
+      expect(
+        LIVE_CSS,
+        `${s} does not bind .cr-text--numeric to the mono face`,
+      ).toContain(`[data-couranr-surface="${s}"] .cr-text--numeric`);
+    }
+    // …and the PUBLIC surface does not: a price on a marketing page is
+    // editorial, not an operational identifier.
+    expect(LIVE_CSS).not.toContain('[data-couranr-surface="public"] .cr-text--numeric');
+  });
+
+  it("the bound selectors sit in the same block as the role they extend", () => {
+    // The point of extending the role rule rather than writing a parallel one
+    // is that there is no second copy of the values to drift. If these ever
+    // separate, the propagation is duplicated rather than shared.
+    for (const [role, surface] of [
+      ["cr-type-page-title", "merchant"],
+      ["cr-type-section-title", "merchant"],
+      ["cr-type-card-title", "merchant"],
+      ["cr-type-identifier", "operations"],
+    ] as const) {
+      const block = LIVE_CSS.match(new RegExp(`\\.${role},[^{]*\\{[^}]*\\}`));
+      expect(block, `.${role} has no extended selector list`).toBeTruthy();
+      expect(block![0]).toContain(`[data-couranr-surface="${surface}"]`);
+      expect(block![0]).toContain("--couranr-font-");
+    }
+  });
+});
