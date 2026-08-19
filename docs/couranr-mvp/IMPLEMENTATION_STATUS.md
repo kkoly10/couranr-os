@@ -502,14 +502,33 @@ summary of it; the registry wins.
 screen's sources and dimensions are known, not that it was reviewed. The check
 prints the split on every run so `66/66` cannot read as `66 reviewed`.
 
-**Blocked, one cause.** The product families' gates need an authenticated
-browser. Every product route is behind an access gate; with no session the
-shells render chrome only — measured at `/business`, `/operations` and
-`/driver`, whose DOM carries `.cr-sidebar*` classes and no `.cr-heading` or
-`.cr-text` node. `e2e/disposable/merchantDashboard.mjs` signs a real merchant
-in and aborts after applying its 50 migrations because its PostgREST binary is
-absent from the container. `npm run test:fonts` prints an `UNVERIFIED` line per
-surface on every run rather than counting those assertions as passed.
+**The PostgREST blocker is CLOSED.** The disposable harnesses defaulted to a
+binary path inside one container's ephemeral scratchpad, so all fourteen aborted
+on any other machine — after applying 50 migrations, which made a missing
+dependency look like a database failure. `npm run provision:postgrest` pulls the
+official binary from the Docker Hub registry over plain HTTPS (GitHub Releases
+is 403 through the proxy), verifies each layer against the digest the manifest
+names, and installs it on PATH. No Docker daemon required; there isn't one.
+
+A second defect sat behind it: `tsconfig.json` includes `.next/types/**/*.ts`,
+so a build into `.next-disposable` still type-checked stale route types a
+previous `.next` had left behind and never regenerated — TS2307 on files nobody
+edited. Twelve harnesses now clear both directories.
+
+**What that unhid.** `MER-001`'s harness had been asserting copy the
+application deliberately removed: a static *"Live activation is not yet
+available"* banner that `MER-003` replaced with the real activation state, and a
+*"Test workspace"* title that is only the fallback for an unmapped state. Both
+assertions outlived the code by ten migrations and nobody noticed, because
+nobody could run the harness. `D5` now asserts the banner's words against the
+row in the database, the way `D3d` does for counts. **30/30, authenticated and
+unstubbed.**
+
+**Merchant typography is now measured, not inferred** — `T1`–`T3` in that
+harness read the computed font on a real signed-in `/business`: the shell stamps
+`merchant`, the page title computes to Martian Grotesk Variable, body copy to
+Inter. Operations and Driver still have no equivalent authenticated harness, so
+`npm run test:fonts` reports exactly those two as UNVERIFIED and names why.
 
 **Nothing was removed in V7, deliberately.** §34.1's wording is "remove obsolete
 visual aliases only where SAFE", and none currently is: `--couranr-font-sans`

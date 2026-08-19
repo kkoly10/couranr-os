@@ -352,8 +352,16 @@ async function main() {
         `${surface} page title computes to Martian (${m.pageTitle.slice(0, 40)})`,
       );
     } else {
-      unverified.push(`${surface}: no page title rendered without a session`);
-      console.log(`  ??    ${surface} page-title font UNVERIFIED — access-gated, no session available`);
+      // Merchant IS verified, just not here: e2e/disposable/merchantDashboard.mjs
+      // measures it (T1-T3) on a real signed-in page against a disposable
+      // Postgres + PostgREST. Operations and Driver have no equivalent
+      // authenticated harness yet, so they remain genuinely unverified.
+      const where =
+        surface === "merchant"
+          ? "verified instead by e2e/disposable/merchantDashboard.mjs T2/T3"
+          : "no authenticated harness for this surface yet";
+      if (surface !== "merchant") unverified.push(`${surface}: ${where}`);
+      console.log(`  ??    ${surface} page-title font not measurable here — ${where}`);
     }
 
     await tab.close();
@@ -371,8 +379,9 @@ async function main() {
     console.log(`\ntest:fonts: all assertions passed, ${unverified.length} UNVERIFIED:`);
     for (const u of unverified) console.log(`  ?  ${u}`);
     console.log(
-      "  reason: product routes are access-gated and the authenticated harness " +
-        "(e2e/disposable/merchantDashboard.mjs) cannot start PostgREST in this container.",
+      "  reason: product routes are access-gated. Merchant is covered by " +
+        "e2e/disposable/merchantDashboard.mjs; Operations and Driver need an " +
+        "equivalent authenticated harness. Run `npm run provision:postgrest` first.",
     );
     return;
   }

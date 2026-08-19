@@ -35,13 +35,17 @@ import {
   SERVICE_ROLE_JWT,
   ANON_JWT,
 } from "./gateway.mjs";
+import { postgrestTarget } from "../../scripts/provisionPostgrest.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const SHOTS = path.join(ROOT, "e2e/screenshots/customer-book");
 const DIST = ".next-disposable";
-const PGRST_BIN =
-  process.env.COURANR_POSTGREST ||
-  "/tmp/claude-0/-home-user-couranr-os/3ba65fdb-c110-5366-92d6-85568b408343/scratchpad/prst/postgrest";
+// Resolved by scripts/provisionPostgrest.mjs, never a session scratchpad.
+// The previous default was a path inside ONE container's ephemeral
+// scratchpad, so this harness aborted on every other machine — after
+// applying 50 migrations, which made a missing dependency look like a
+// database failure. `npm run provision:postgrest` puts it on PATH.
+const PGRST_BIN = postgrestTarget();
 
 const PORT = 3317;
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -132,6 +136,13 @@ async function main() {
 
     if (process.env.COURANR_REUSE_BUILD !== "1") {
       rmSync(path.join(ROOT, DIST), { recursive: true, force: true });
+      // ALSO the default .next. tsconfig includes `.next/types/**/*.ts`, so a
+      // build into a DIFFERENT distDir still type-checks whatever route types a
+      // previous build left there — and never regenerates them. A stale
+      // `.next/types/app/page.ts` for a route that has since moved into the
+      // (couranr) group fails the disposable build with TS2307 on a file nobody
+      // edited. Measured: `rm -rf .next` is the difference between red and green.
+      rmSync(path.join(ROOT, ".next"), { recursive: true, force: true });
       console.log("  building the application against the disposable stack...");
       execFileSync("npx", ["next", "build"], {
         cwd: ROOT,

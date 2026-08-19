@@ -23,6 +23,7 @@
     "check:visual-registry": "node scripts/visualAuthorityRegistry.mjs",
     "check:migrations": "vitest run tests/couranr-migrations.test.ts && node scripts/checkMigrationsDestructive.mjs",
     "check:gates:controls": "node scripts/positiveControls.mjs",
+    "provision:postgrest": "node scripts/provisionPostgrest.mjs",
     "test:deploy-safety": "node e2e/disposable/deploymentSafety.mjs",
     "test:cus-fragments": "node e2e/disposable/customerHelpFragments.mjs",
     "test:messaging": "node e2e/disposable/authenticatedMessaging.mjs",
