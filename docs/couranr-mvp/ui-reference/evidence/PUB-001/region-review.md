@@ -101,6 +101,47 @@ See `native-mock-references.md`.
 
 ---
 
+## Three defects the self-review found after the correction pass
+
+Recorded here because "the gates were green" is exactly what was true before
+each of them was found, and the mechanism that found each one is the point.
+
+**The bottom bar's clearance was on the wrong element, and it leaked to four
+other pages.** It was written as
+`.cr-shell--public .cr-shell__main { padding-bottom: 88px }`. Measured at 390px:
+`main` and `footer` are SIBLINGS, so that only inserted 88px between the page
+content and the footer, and the footer's last link still sat under the bar
+(`lastFooterLinkCoveredByBar: true`). And the selector is scoped to the public
+SHELL while the bar is rendered by PUB-001 alone, so `/pricing`, `/sign-in` and
+`/estimate` each carried 88px of dead space above their footers with no bar to
+fill it. Now `.cr-shell--public:has(.cr-mobilebar) .cr-footer`, which is the
+element the bar actually covers, on the pages that actually have one. `:has()` is
+Baseline Widely available (December 2023, per MDN).
+
+**Gate C was measuring a colour the page does not paint, over the wrong
+photograph.** It sampled the hero backdrop at 1440 only, and reported a fixed
+gold figure for the headline accent — but at 1440 the accent is WHITE. The gold
+accent and the gold pill exist only below 768px, over a *different* crop, and
+neither was ever measured. Gate C now samples at **both** art-directed widths and
+compares each region against the colour `getComputedStyle` reports there, with a
+region's own translucent fill composited into the backdrop rather than sampled
+(the sampling pass hides the copy and would take the fill with it). Ten
+measurements now, where there were four.
+
+**Which immediately found a real AA failure.** The mobile gold pill — reproduced
+faithfully from the artboard — measures **1.80:1** on the bare photograph against
+the 4.5:1 floor. White would have been 3.30:1 in the same position, so the colour
+was not the cause: that crop is bright where the pill sits. It has a translucent
+navy ground now and measures 5.88:1. Deviation 18.
+
+A fourth finding was a defect in the gate itself rather than the page: at 390 a
+third of the trust row's sample box came back as the white mobile bar and the
+gold CTA, because a Playwright element screenshot includes fixed chrome painted
+over the element. Measured 1.00:1; the photograph alone gives 8.58:1. The
+sampling pass hides the fixed chrome now. Whether chrome sits over scrolled
+content is a real question, but it is an occlusion question, and it is answered
+by the bar rather than by this gate.
+
 ## Two defects this pass found that the ledger did not list
 
 Both were invisible to every gate and to the artboards, and both were found by
@@ -171,8 +212,18 @@ Three native `<details>` disclosures in the FAQ, so the new accordion needs no
 ARIA and no JavaScript.
 
 Gate C's own sampled contrast, measured from the painted hero pixels rather than
-assumed from the scrim: headline 5.56:1, accent 3.10:1 (floor 3 for large text),
-subhead 15.09:1, trust row 11.41:1.
+assumed from the scrim, **at both art-directed widths and in the colour each
+region actually renders**:
+
+| region | @1440 | @390 |
+|---|---|---|
+| headline | 5.56:1 white | 9.47:1 white |
+| headline accent | 6.41:1 white | 5.00:1 **gold** |
+| small label | 17.95:1 white | 5.88:1 **gold on rgba(13,21,37,.82)** |
+| subhead | 15.09:1 white | 5.51:1 white |
+| trust row | 11.41:1 white | 8.56:1 white |
+
+Floors: 3:1 for the headline and its accent (large text), 4.5:1 for the rest.
 
 ## Typography — `typography-proof.json`
 

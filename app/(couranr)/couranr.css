@@ -2426,6 +2426,14 @@
   .cr-hero__label {
     color: var(--couranr-gold);
     border-color: var(--couranr-gold);
+    /* The pill needs its own ground here, and this is a measurement rather
+       than a taste: the mobile crop is a different, brighter photograph, and
+       gold over it measured 1.80:1 where §23.2 wants 4.5:1 for normal text.
+       White would not have saved it either — over the same pixels white is
+       3.30:1. The desktop pill sits on a dark part of its own crop and clears
+       17.95:1 with no fill at all, which is why this is scoped to mobile.
+       Re-measured after the change, not assumed. */
+    background: rgba(13, 21, 37, 0.82);
   }
 }
 
@@ -2496,15 +2504,34 @@
   }
   .cr-mobilebar__cta { display: inline-flex; flex: 1 1 auto; }
   /* The launcher stops being a floating object and becomes a control in the
-     bar; only its panel still floats. */
-  .cr-askc { position: static; flex: none; }
+     bar. Its panel is ABSOLUTE against the launcher rather than fixed at a
+     typed offset from the viewport: the bar's height is 73px plus whatever the
+     safe-area inset is, so any literal here would be a guess that drifts the
+     moment the bar's padding changes. */
+  .cr-askc { position: relative; flex: none; }
   .cr-askc__panel {
-    position: fixed;
-    right: var(--couranr-space-4);
-    bottom: 88px;
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + var(--couranr-space-3));
   }
-  /* The bar covers the end of the page, so the page has to end above it. */
-  .cr-shell--public .cr-shell__main { padding-bottom: 88px; }
+}
+
+/* The bar is fixed over the bottom of the VIEWPORT, so what it covers is the
+   end of the DOCUMENT — which is the footer, not the main element. This was
+   `.cr-shell--public .cr-shell__main { padding-bottom: 88px }`, and that was
+   wrong twice over, both measured rather than reasoned:
+     1. `main` and `footer` are siblings, so padding on main only inserted 88px
+        between the page content and the footer and left the footer's last link
+        under the bar (`lastFooterLinkCoveredByBar: true` at 390px);
+     2. it was scoped to the public SHELL, so /pricing, /sign-in, /estimate and
+        the rest carried 88px of dead space above their footers with no bar to
+        fill it — the bar is rendered by PUB-001 alone.
+   `:has()` is Baseline Widely available (December 2023), so the scoping is the
+   selector rather than a class the page has to remember to set. */
+@media (max-width: 767px) {
+  .cr-shell--public:has(.cr-mobilebar) .cr-footer {
+    padding-bottom: calc(var(--couranr-space-10) + 88px);
+  }
 }
 
 /* ═════════════════════════════════════════════════════════════════════════

@@ -18,7 +18,8 @@
  *   landmarks present · keyboard reaches the primary action and focus is
  *   visible · prefers-reduced-motion honoured · measured contrast on text over
  *   photography, sampled from the PAINTED pixels rather than assumed from the
- *   scrim's opacity (§23.2: "Do not assume a Navy scrim automatically passes").
+ *   scrim's opacity (§23.2: "Do not assume a Navy scrim automatically passes"),
+ *   at BOTH art-directed widths and in the colour each region actually renders.
  *
  * Runs against a PRODUCTION build. `next dev` reports 403s on its own chunks
  * and a failed HMR socket, and reading that noise as signal is how the earlier
@@ -127,20 +128,66 @@ const ratio = (a, b) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
  * photograph, by screenshotting the hero with the COPY HIDDEN and sampling the
  * painted background where the copy sits. Reading the scrim's alpha instead
  * would answer a different question — the photograph underneath varies.
+ *
+ * EACH REGION IS MEASURED AGAINST THE COLOUR IT ACTUALLY RENDERS IN, read from
+ * `getComputedStyle` at this viewport. That is not a refinement: the hero is
+ * art-directed, so the headline accent is white at desktop and GOLD below
+ * 768px, and the small label is white at desktop and gold below it. This used
+ * to report a fixed `gold` figure computed against the DESKTOP backdrop and
+ * label it "hero headline accent" — a colour that is not painted at that width,
+ * measured over a photograph that is not the one it appears on. The crop below
+ * 768px is a different source file. §23.2 says do not assume the scrim passes;
+ * measuring the wrong crop is the same mistake one level down.
  */
 async function heroContrast(page) {
   const hero = await page.locator(".cr-hero").boundingBox();
   const regions = {};
-  for (const [key, sel] of [["headline", "#hero-h"], ["subhead", ".cr-hero__sub"], ["trust", ".cr-hero__trust"]]) {
+  const colors = {};
+  for (const [key, sel] of [
+    ["headline", "#hero-h"],
+    ["accent", ".cr-hero__h1-accent"],
+    ["label", ".cr-hero__label"],
+    ["subhead", ".cr-hero__sub"],
+    ["trust", ".cr-hero__trust"],
+  ]) {
     const bb = await page.locator(sel).boundingBox();
+    if (!bb) continue;
     regions[key] = {
       x: Math.max(0, Math.round(bb.x - hero.x)),
       y: Math.max(0, Math.round(bb.y - hero.y)),
       w: Math.round(bb.width),
       h: Math.round(bb.height),
     };
+    colors[key] = await page.locator(sel).evaluate((e) => {
+      const cs = getComputedStyle(e);
+      const nums = (v) => (v.match(/\d+(\.\d+)?/g) || []).map(Number);
+      const c = nums(cs.color);
+      const bg = nums(cs.backgroundColor);
+      return {
+        color: [c[0], c[1], c[2]],
+        // A region with its OWN translucent fill — the hero pill has one below
+        // 768px — is not read against the photograph. WCAG compares the glyph
+        // to the colour composited immediately behind it, which is
+        // fill-over-photo. The fill is composited in here rather than sampled,
+        // because the sampling pass hides the copy and would take the fill with
+        // it. Transparent regions get alpha 0 and are unaffected.
+        fill: bg.length >= 3 ? [bg[0], bg[1], bg[2], bg.length > 3 ? bg[3] : 1] : [0, 0, 0, 0],
+      };
+    });
   }
-  await page.addStyleTag({ content: ".cr-hero__body{visibility:hidden!important}" });
+  /* The copy is hidden so the PHOTOGRAPH behind it can be sampled — and the
+     page's fixed chrome is hidden with it. Below 768px `.cr-mobilebar` is
+     pinned to the viewport bottom and an element screenshot of `.cr-hero`
+     includes anything painted over it, so a third of the trust row's box came
+     back as the white bar and the gold CTA: measured 1.00:1 where the photo
+     alone gives 8.58:1. Whether fixed chrome sits over scrolled content is a
+     real question, but it is an OCCLUSION question, not a text-contrast one,
+     and it is answered by the mobile bar carrying both bottom-anchored objects
+     rather than by this gate. */
+  await page.addStyleTag({
+    content:
+      ".cr-hero__body,.cr-mobilebar,.cr-askc{visibility:hidden!important}",
+  });
   const shot = await page.locator(".cr-hero").screenshot();
   const px = await page.evaluate(
     async ({ b64, regions }) => {
@@ -167,14 +214,20 @@ async function heroContrast(page) {
   const result = {};
   for (const [k, data] of Object.entries(px)) {
     if (!data) { result[k] = null; continue; }
+    const [fr, fg, fb, fa] = colors[k].fill;
+    const over = (channel, sampled) => fa * channel + (1 - fa) * sampled;
     const ls = [];
-    for (let i = 0; i < data.length; i += 4) ls.push(lum(data[i], data[i + 1], data[i + 2]));
+    for (let i = 0; i < data.length; i += 4) {
+      ls.push(lum(over(fr, data[i]), over(fg, data[i + 1]), over(fb, data[i + 2])));
+    }
     ls.sort((a, b) => a - b);
     // 99th percentile: the brightest realistic backdrop, not a single stray pixel.
     const worst = ls[Math.floor(ls.length * 0.99)];
+    const [r, g, bl] = colors[k].color;
     result[k] = {
-      white: ratio(lum(255, 255, 255), worst),
-      gold: ratio(lum(244, 183, 64), worst),
+      ratio: ratio(lum(r, g, bl), worst),
+      color: `rgb(${r}, ${g}, ${bl})`,
+      fill: colors[k].fill[3] > 0 ? `rgba(${colors[k].fill.join(", ")})` : null,
     };
   }
   return result;
@@ -382,21 +435,30 @@ async function main() {
   check(seconds <= 0.001, `reduced motion collapses transitions (${motion} = ${seconds}s)`);
   await page.emulateMedia({ reducedMotion: null });
 
-  /* Contrast over the photograph, measured from painted pixels. */
-  await page.reload({ waitUntil: "networkidle" });
-  await page.evaluate(() => document.fonts.ready);
-  const contrast = await heroContrast(page);
-  for (const [region, c] of Object.entries(contrast)) {
-    if (!c) { check(false, `hero ${region}: could not sample the painted background`); continue; }
-    // The headline is large text (3:1 floor); subhead and trust row are normal (4.5:1).
-    const floor = region === "headline" ? 3 : 4.5;
-    check(
-      c.white >= floor,
-      `hero ${region} over photography: ${c.white.toFixed(2)}:1 white (floor ${floor})`,
-    );
-    if (region === "headline") {
-      check(c.gold >= 3, `hero headline accent: ${c.gold.toFixed(2)}:1 gold (floor 3 for large text)`);
+  /* Contrast over the photograph, measured from painted pixels — AT BOTH
+     art-directed widths. The hero swaps both its photographic crop and two of
+     its text colours below 768px, so a single desktop measurement leaves the
+     gold accent and the gold pill, which exist only on mobile, unmeasured over
+     the crop they actually appear on. */
+  for (const width of [1440, 390]) {
+    const cpage =
+      width === 1440 ? page : await browser.newPage({ viewport: { width, height: 844 } });
+    if (cpage !== page) await cpage.goto(`${BASE}/`, { waitUntil: "networkidle" });
+    await cpage.reload({ waitUntil: "networkidle" });
+    await cpage.evaluate(() => document.fonts.ready);
+    const contrast = await heroContrast(cpage);
+    for (const [region, c] of Object.entries(contrast)) {
+      if (!c) { check(false, `@${width} hero ${region}: could not sample the painted background`); continue; }
+      // Headline and its accent are large text (3:1 floor). The pill, the
+      // subhead and the trust row are normal text (4.5:1).
+      const floor = region === "headline" || region === "accent" ? 3 : 4.5;
+      check(
+        c.ratio >= floor,
+        `@${width} hero ${region} over photography: ${c.ratio.toFixed(2)}:1 ` +
+          `as painted (${c.color}${c.fill ? ` on ${c.fill}` : ""}, floor ${floor})`,
+      );
     }
+    if (cpage !== page) await cpage.close();
   }
 
   await page.screenshot({ path: path.join(ART, "gate-c-desktop.png"), fullPage: true });
