@@ -103,8 +103,11 @@ export default function Page() {
         data-grid-dominant="false"
         data-product-proof="false"
       >
-        {/* §14.5 caps eyebrows per page; this page spends its one here. */}
-        <p className="cr-mkt-eyebrow">Simple per-delivery pricing</p>
+        {/* No eyebrow. This screen has no canonical mock, and the fidelity
+            amendment §6 retires the shared marketing eyebrow: one label on
+            PUB-001 never authorised the pattern here. Deliberately NOT
+            replaced with a pill, chip or small caps rule — the hierarchy is
+            the statement type and the whitespace under it. */}
         <h1 id="p1-h" className="cr-type-statement">
           Clear pricing before approval.
         </h1>

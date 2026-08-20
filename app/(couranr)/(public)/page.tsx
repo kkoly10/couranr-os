@@ -302,9 +302,11 @@ export default function Page() {
         <div className="cr-hero__scrim" aria-hidden="true" />
 
         <div className="cr-hero__body">
-          {/* §14.1 — the ONE approved eyebrow on this page. §14.3 forbids
-              inventing more; §14.5 caps the whole page at 2–3. */}
-          <p className="cr-hero__eyebrow">Local delivery for independent businesses</p>
+          {/* Mock-supported: the artboard shows this pill in the hero. §14.5's
+              "2-3 eyebrows per page" budget is DELETED by the fidelity
+              amendment — there is no allowance to spend, only a mock to
+              match. */}
+          <p className="cr-hero__label">Local delivery for independent businesses</p>
           <h1 id="hero-h" className="cr-hero__h1 cr-type-hero">
             Your customers want delivery.{" "}
             <span className="cr-hero__h1-accent">Now you can say yes.</span>

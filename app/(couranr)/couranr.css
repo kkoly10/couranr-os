@@ -1084,7 +1084,19 @@
   padding-inline: var(--couranr-space-4);
 }
 
-.cr-hero__eyebrow {
+/* PUB-001's hero contextual label — the artboard visibly shows a rounded,
+   bordered, uppercase pill above the headline, so this treatment is
+   mock-supported and stays. Renamed from `.cr-hero__eyebrow` because the WORD
+   is what got institutionalised: a "marketing eyebrow" reads as a reusable
+   pattern, and it was reused on four screens with no mock. This is one label on
+   one screen.
+
+   COPY CONFLICT, UNRESOLVED AND NOT MINE TO SETTLE (amendment §5.1): the
+   artboard's pill reads DELIVERY MADE SIMPLE — the approved tagline lockup —
+   while MKT-002 specifies the hero eyebrow copy this renders. Written authority
+   controls copy, so MKT-002's text stays and the geometry follows the mock. The
+   owner resolves which one the hero should carry. */
+.cr-hero__label {
   display: inline-block;
   text-transform: uppercase;
   letter-spacing: 0.09em;
@@ -1184,18 +1196,12 @@
 }
 
 .cr-mkt-hero { text-align: center; padding-block: var(--couranr-space-8) var(--couranr-space-6); }
-.cr-mkt-eyebrow {
-  display: inline-block;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--couranr-route-blue);
-  border: 1px solid var(--couranr-border);
-  border-radius: 999px;
-  padding: 4px 12px;
-  margin-bottom: var(--couranr-space-4);
-}
+/* `.cr-mkt-eyebrow` is RETIRED — fidelity amendment §6. It was a shared public
+   marketing eyebrow on five pages, generalised from one contextual label the
+   PUB-001 artboard shows in its hero. Four of those five screens have no
+   canonical mock at all, so the pattern was inherited from nothing. The rule is
+   deleted rather than left unused: an unused class is one import away from
+   coming back, and tests/couranr-visual-tokens.test.ts now fails if it does. */
 .cr-mkt-h1 {
   font-size: clamp(2rem, 5vw, 3.25rem);
   line-height: 1.1;

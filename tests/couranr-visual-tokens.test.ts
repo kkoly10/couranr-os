@@ -243,11 +243,27 @@ describe("§32.1 — the canonical logo", () => {
   });
 });
 
-describe("§32.4 — the eyebrow rule", () => {
-  it("no universal SectionEyebrow marketing primitive exists", () => {
-    // §32.4: "Do not create a universal `SectionEyebrow` marketing primitive.
-    // A static test may prohibit that component name/pattern while allowing
-    // explicit governed copy such as the PUB-001 hero eyebrow."
+describe("§32.4 + fidelity amendment §6 — the eyebrow rule", () => {
+  /*
+   * The rule CHANGED, and the old test enforced the old one.
+   *
+   * v2.2 §14.5 allowed "2-3 eyebrows per page" and this file asserted `<= 3`.
+   * Under that budget the implementation generalised one contextual label —
+   * which the PUB-001 artboard genuinely shows in its hero — into a shared
+   * `.cr-mkt-eyebrow` class on FIVE public pages, four of which have no
+   * canonical mock at all. The budget did not catch it. The budget authorised
+   * it.
+   *
+   * COURANR_VISUAL_FIDELITY_AMENDMENT.md §3.3 deletes the allowance:
+   * "There is no shared/public marketing eyebrow pattern by default." A label
+   * is permitted only where that screen's canonical mock visibly contains one,
+   * or written authority requires it, and its styling stays screen-specific.
+   *
+   * So this asserts a SHAPE, not a count.
+   */
+
+  it("no universal eyebrow component exists", () => {
+    // §32.4's original rule, unchanged: no `SectionEyebrow` primitive.
     const offenders: string[] = [];
     for (const f of CANON_FILES.filter((f) => f.endsWith(".tsx"))) {
       const src = readFileSync(f, "utf8");
@@ -260,21 +276,58 @@ describe("§32.4 — the eyebrow rule", () => {
     expect(offenders, offenders.join("\n")).toEqual([]);
   });
 
-  it("the governed eyebrows themselves are still allowed and still present", () => {
-    // The counterpart §32.4 asks for explicitly: the rule bans a COMPONENT,
-    // not the copy. If this ever goes red the ban has been over-applied.
-    const home = readFileSync(path.join(CANON, "(public)/page.tsx"), "utf8");
-    expect(home).toContain("Local delivery for independent businesses");
+  it("no SHARED marketing eyebrow class exists or is used", () => {
+    // The class this branch created and spread. Retired by amendment §6, and
+    // deleted rather than left unused — an unused class is one import away
+    // from returning.
+    const offenders: string[] = [];
+    for (const f of CANON_FILES) {
+      const src = live(readFileSync(f, "utf8"));
+      if (/cr-mkt-eyebrow/.test(src)) offenders.push(path.relative(ROOT, f));
+    }
+    expect(offenders, `shared eyebrow reintroduced in: ${offenders.join(", ")}`).toEqual([]);
   });
 
-  it("no page spends more than the §14.5 eyebrow budget", () => {
-    // §14.5 caps a page at two to three. Counted per page rather than
-    // repo-wide, because the cap is a per-page one.
+  it("exactly ONE public screen carries a contextual label, and it is PUB-001", () => {
+    // PUB-001's artboard visibly shows a rounded bordered pill above the
+    // headline, so the treatment is mock-supported and stays. Nothing else has
+    // a mock, so nothing else may have one.
+    const carrying: string[] = [];
     for (const f of CANON_FILES.filter((f) => /\(public\)[\\/].*page\.tsx$/.test(f))) {
-      const src = readFileSync(f, "utf8");
-      const n = (src.match(/className="cr-(mkt|hero__)eyebrow"/g) || []).length;
-      expect(n, `${path.relative(ROOT, f)} renders ${n} eyebrows`).toBeLessThanOrEqual(3);
+      if (/cr-hero__label/.test(readFileSync(f, "utf8"))) {
+        carrying.push(path.relative(ROOT, f));
+      }
     }
+    expect(carrying).toEqual(["app/(couranr)/(public)/page.tsx"]);
+  });
+
+  it("the retired eyebrow was not swapped for another small-label pattern", () => {
+    // Amendment §6: "Do not replace removed eyebrows with pills, chips, tiny
+    // uppercase labels, badge components, or decorative rules." Checked as an
+    // absence on the four screens the label was removed from, because a
+    // like-for-like swap is the obvious way to defeat this rule.
+    const RETIRED = ["businesses", "service-areas", "how-it-works", "pricing"];
+    for (const page of RETIRED) {
+      const src = readFileSync(
+        path.join(CANON, `(public)/${page}/page.tsx`),
+        "utf8",
+      );
+      const heroBlock = src.slice(0, src.indexOf("</section>"));
+      for (const banned of ["cr-mkt-chip", "cr-badge", "cr-mkt-eyebrow", "cr-hero__label"]) {
+        expect(
+          heroBlock.includes(banned),
+          `${page} hero reintroduces "${banned}" where the eyebrow was removed`,
+        ).toBe(false);
+      }
+    }
+  });
+
+  it("the governed hero copy is still present", () => {
+    // The ban is on the PATTERN, not the copy. If this goes red the removal
+    // was over-applied. MKT-002's descriptor stays until the owner resolves
+    // the mock-vs-MKT-002 copy conflict recorded in amendment §5.1.
+    const home = readFileSync(path.join(CANON, "(public)/page.tsx"), "utf8");
+    expect(home).toContain("Local delivery for independent businesses");
   });
 });
 

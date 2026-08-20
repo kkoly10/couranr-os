@@ -135,7 +135,11 @@ export default function Page() {
         data-grid-dominant="false"
         data-product-proof="false"
       >
-        <p className="cr-mkt-eyebrow">How it works</p>
+        {/* No eyebrow. This screen has no canonical mock, and the fidelity
+            amendment §6 retires the shared marketing eyebrow: one label on
+            PUB-001 never authorised the pattern here. Deliberately NOT
+            replaced with a pill, chip or small caps rule — the hierarchy is
+            the statement type and the whitespace under it. */}
         <h1 id="w1-h" className="cr-type-statement">
           From &ldquo;can you deliver?&rdquo; to proof it arrived.
         </h1>
