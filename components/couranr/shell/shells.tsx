@@ -24,12 +24,26 @@ import { SignOutButton } from "@/components/couranr/auth/SignOutButton";
 
 /* ------------------------------------------------------------ 1. Public */
 
-export function PublicShell({ children }: { children: React.ReactNode }) {
+export function PublicShell({
+  children,
+  notice,
+}: {
+  children: React.ReactNode;
+  /**
+   * Full-bleed bar rendered ABOVE the header — the placement both PUB-001
+   * artboards show. A SLOT, deliberately: this shell renders no market,
+   * pricing, hours or payer copy of its own (see the file header), so the
+   * caller supplies the content and the shell supplies only the geometry.
+   */
+  notice?: React.ReactNode;
+}) {
   const items = navigationFor("public");
 
   return (
     <div className="cr-shell cr-shell--public" data-couranr-surface="public">
       <SkipLink />
+
+      {notice ? <div className="cr-topnotice">{notice}</div> : null}
 
       <header className="cr-topbar">
         <Container>
@@ -39,15 +53,16 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
             <TopbarNav items={items} label="Main navigation" />
 
             <div className="cr-topbar__actions">
-              {/* Below 400px the bar cannot hold both auth actions plus the
-                  drawer toggle: measured 367px of content in a 360px viewport,
-                  which is where the 7px horizontal overflow came from. "Sign
-                  in" hides there and moves into the drawer footer instead, so
-                  nothing is lost — the primary action stays on the bar. */}
-              <Link href="/sign-in" className="cr-button cr-button--ghost cr-button--sm cr-topbar__signin">
+              {/* Drift ledger `public-header` (RESTYLE): below the drawer
+                  breakpoint the artboard shows a hamburger and nothing else —
+                  no "Sign in", no primary CTA in the bar. Both hide there and
+                  move into the drawer, whose footer carries them at full size.
+                  Nothing is lost and the 360px bar stops being the crowded
+                  three-control row that produced its earlier 7px overflow. */}
+              <Link href="/sign-in" className="cr-button cr-button--ghost cr-button--sm cr-topbar__auth">
                 Sign in
               </Link>
-              <Link href="/sign-up" className="cr-button cr-button--primary cr-button--sm">
+              <Link href="/sign-up" className="cr-button cr-button--primary cr-button--sm cr-topbar__auth">
                 Create business account
               </Link>
               <span className="cr-topbar__toggle">
@@ -56,9 +71,14 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
                   label="Main navigation"
                   triggerClassName="cr-icon-button cr-icon-button--on-surface"
                   footer={
-                    <Link href="/sign-in" className="cr-button cr-button--inverse cr-button--lg">
-                      Sign in
-                    </Link>
+                    <div className="cr-drawer-auth">
+                      <Link href="/sign-up" className="cr-button cr-button--primary cr-button--lg">
+                        Create business account
+                      </Link>
+                      <Link href="/sign-in" className="cr-button cr-button--inverse cr-button--lg">
+                        Sign in
+                      </Link>
+                    </div>
                   }
                 />
               </span>
@@ -69,11 +89,23 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
 
       <ShellMain>{children}</ShellMain>
 
-      {/* The PUB-001 mock closes on a navy footer carrying the reverse
-          wordmark and the public destinations. It links only to routes that
-          exist — the mock also shows Careers, Press and a Help Center, and a
-          dead link is worse than a short footer. It still renders no market,
-          pricing, hours or payer copy, per this file's header rule. */}
+      {/* Drift ledger `footer` (RESTYLE): the artboard's footer is a brand
+          column beside LABELLED destination columns, not one undifferentiated
+          row of links.
+
+          THREE destination columns beside the brand, not the artboard's four.
+          Its "Company" column (About, Careers, Press, Privacy Policy) has no
+          routes, and a dead link is worse than a short footer. Its "Now
+          serving" column lists the markets — MKT-001 owns those and SVC-002
+          (the boundary) is unresolved, and this file's header rule is that no
+          shell renders market copy; PUB-001 renders it in the notice slot
+          above, where the caller supplies it. The three social accounts and the
+          copyright line are likewise omitted: no account exists, and the legal
+          entity name is not a settled fact.
+
+          `<nav>` per column rather than headings, so each group carries its
+          label as a landmark name without adding four more <h2>s under the
+          page's own heading tree. */}
       <footer className="cr-footer">
         <div className="cr-container cr-footer__inner">
           <div className="cr-footer__brand">
@@ -83,22 +115,52 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
             </Text>
           </div>
 
-          <nav className="cr-footer__nav" aria-label="Footer">
-            <ul className="cr-footer__links">
-              {items.map((item) => (
-                <li key={item.href}>
-                  <Link href={item.href} className="cr-footer__link">
-                    {item.label}
+          <div className="cr-footer__cols">
+            <nav className="cr-footer__col" aria-label="Product">
+              <p className="cr-footer__coltitle">Product</p>
+              <ul className="cr-footer__links">
+                {items.map((item) => (
+                  <li key={item.href}>
+                    <Link href={item.href} className="cr-footer__link">
+                      {item.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+
+            <nav className="cr-footer__col" aria-label="Get started">
+              <p className="cr-footer__coltitle">Get started</p>
+              <ul className="cr-footer__links">
+                <li>
+                  <Link href="/estimate" className="cr-footer__link">
+                    Estimate a delivery
                   </Link>
                 </li>
-              ))}
-              <li>
-                <Link href="/sign-in" className="cr-footer__link">
-                  Sign in
-                </Link>
-              </li>
-            </ul>
-          </nav>
+                <li>
+                  <Link href="/sign-up" className="cr-footer__link">
+                    Create business account
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/sign-in" className="cr-footer__link">
+                    Sign in
+                  </Link>
+                </li>
+              </ul>
+            </nav>
+
+            <nav className="cr-footer__col" aria-label="Support">
+              <p className="cr-footer__coltitle">Support</p>
+              <ul className="cr-footer__links">
+                <li>
+                  <Link href="/help" className="cr-footer__link">
+                    Couranr Support
+                  </Link>
+                </li>
+              </ul>
+            </nav>
+          </div>
         </div>
       </footer>
     </div>

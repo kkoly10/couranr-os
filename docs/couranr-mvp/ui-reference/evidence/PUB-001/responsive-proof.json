@@ -1,0 +1,144 @@
+{
+  "generated_by": "scripts/captureEvidence.mjs",
+  "phase": "after",
+  "port": 3111,
+  "url": "http://127.0.0.1:3111/",
+  "widths": {
+    "360": {
+      "horizontalOverflow": false,
+      "scrollWidth": 360,
+      "clientWidth": 360,
+      "governedSections": 14,
+      "navigation": "drawer",
+      "headerAuthActionsVisible": false,
+      "heroSource": "pub-001-hero-portrait-640.webp",
+      "mobileBottomBar": true,
+      "askCouranrTrigger": {
+        "width": 48,
+        "height": 48
+      },
+      "topbarTopAtRest": 90,
+      "topbarTopAfter2000pxScroll": 0,
+      "anchorsAndControlsUnder44pxHigh": [
+        "A",
+        "cr-wordmark",
+        "cr-footer__link"
+      ]
+    },
+    "390": {
+      "horizontalOverflow": false,
+      "scrollWidth": 390,
+      "clientWidth": 390,
+      "governedSections": 14,
+      "navigation": "drawer",
+      "headerAuthActionsVisible": false,
+      "heroSource": "pub-001-hero-portrait-640.webp",
+      "mobileBottomBar": true,
+      "askCouranrTrigger": {
+        "width": 48,
+        "height": 48
+      },
+      "topbarTopAtRest": 90,
+      "topbarTopAfter2000pxScroll": 0,
+      "anchorsAndControlsUnder44pxHigh": [
+        "A",
+        "cr-wordmark",
+        "cr-footer__link"
+      ]
+    },
+    "768": {
+      "horizontalOverflow": false,
+      "scrollWidth": 768,
+      "clientWidth": 768,
+      "governedSections": 14,
+      "navigation": "drawer",
+      "headerAuthActionsVisible": false,
+      "heroSource": "pub-001-hero-wide-1024.webp",
+      "mobileBottomBar": false,
+      "askCouranrTrigger": {
+        "width": 163,
+        "height": 49
+      },
+      "topbarTopAtRest": 68,
+      "topbarTopAfter2000pxScroll": 0,
+      "anchorsAndControlsUnder44pxHigh": [
+        "cr-topnotice__link",
+        "A",
+        "cr-wordmark",
+        "cr-footer__link"
+      ]
+    },
+    "1024": {
+      "horizontalOverflow": false,
+      "scrollWidth": 1024,
+      "clientWidth": 1024,
+      "governedSections": 14,
+      "navigation": "inline",
+      "headerAuthActionsVisible": true,
+      "heroSource": "pub-001-hero-wide-1024.webp",
+      "mobileBottomBar": false,
+      "askCouranrTrigger": {
+        "width": 163,
+        "height": 49
+      },
+      "topbarTopAtRest": 47,
+      "topbarTopAfter2000pxScroll": 0,
+      "anchorsAndControlsUnder44pxHigh": [
+        "cr-topnotice__link",
+        "cr-button cr-button--ghost cr-button--sm cr-topbar__auth",
+        "cr-button cr-button--primary cr-button--sm cr-topbar__auth",
+        "A",
+        "cr-wordmark",
+        "cr-footer__link"
+      ]
+    },
+    "1280": {
+      "horizontalOverflow": false,
+      "scrollWidth": 1280,
+      "clientWidth": 1280,
+      "governedSections": 14,
+      "navigation": "inline",
+      "headerAuthActionsVisible": true,
+      "heroSource": "pub-001-hero-wide-1600.webp",
+      "mobileBottomBar": false,
+      "askCouranrTrigger": {
+        "width": 163,
+        "height": 49
+      },
+      "topbarTopAtRest": 47,
+      "topbarTopAfter2000pxScroll": 0,
+      "anchorsAndControlsUnder44pxHigh": [
+        "cr-topnotice__link",
+        "cr-button cr-button--ghost cr-button--sm cr-topbar__auth",
+        "cr-button cr-button--primary cr-button--sm cr-topbar__auth",
+        "A",
+        "cr-wordmark",
+        "cr-footer__link"
+      ]
+    },
+    "1440": {
+      "horizontalOverflow": false,
+      "scrollWidth": 1440,
+      "clientWidth": 1440,
+      "governedSections": 14,
+      "navigation": "inline",
+      "headerAuthActionsVisible": true,
+      "heroSource": "pub-001-hero-wide-1600.webp",
+      "mobileBottomBar": false,
+      "askCouranrTrigger": {
+        "width": 163,
+        "height": 49
+      },
+      "topbarTopAtRest": 47,
+      "topbarTopAfter2000pxScroll": 0,
+      "anchorsAndControlsUnder44pxHigh": [
+        "cr-topnotice__link",
+        "cr-button cr-button--ghost cr-button--sm cr-topbar__auth",
+        "cr-button cr-button--primary cr-button--sm cr-topbar__auth",
+        "A",
+        "cr-wordmark",
+        "cr-footer__link"
+      ]
+    }
+  }
+}

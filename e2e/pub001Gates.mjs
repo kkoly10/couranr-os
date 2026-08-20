@@ -43,6 +43,8 @@ const BASE = `http://127.0.0.1:${PORT}`;
 const ART = path.join(ROOT, "e2e/artifacts/pub001");
 const CONTROL = process.argv.includes("--positive-control");
 
+import { governedPages, specRows } from "../scripts/compositionContract.mjs";
+
 const require = createRequire(import.meta.url);
 const { chromium } = require(
   process.env.PLAYWRIGHT_PATH || "/opt/node22/lib/node_modules/playwright",
@@ -51,6 +53,20 @@ const AXE_SOURCE = readFileSync(require.resolve("axe-core/axe.min.js"), "utf8");
 
 /** §24.1 — the widths public marketing must be verified at. */
 const WIDTHS = [360, 390, 768, 1024, 1280, 1440];
+
+/**
+ * How many governed sections PUB-001 must render, READ FROM §27.0 rather than
+ * retyped. It was the literal 13, which meant the gate agreed with itself while
+ * §27.0 said fourteen — the same failure mode §27.0 exists to remove.
+ */
+const GOVERNED_SECTIONS = (() => {
+  const spec = readFileSync(
+    path.join(ROOT, "docs/couranr-mvp/brand/COURANR_VISUAL_SYSTEM_V2_2.md"),
+    "utf8",
+  );
+  const page = governedPages(spec).find((p) => p.screen === "PUB-001");
+  return specRows(spec, page).length;
+})();
 
 const failures = [];
 const check = (ok, message) => {
@@ -220,7 +236,10 @@ async function main() {
 
     check(res.status() === 200, `@${width} returns 200`);
     check(!m.hScroll, `@${width} no horizontal overflow (${m.scrollW}/${m.clientW})`);
-    check(m.sections === 13, `@${width} renders all thirteen governed sections (${m.sections})`);
+    check(
+      m.sections === GOVERNED_SECTIONS,
+      `@${width} renders all ${GOVERNED_SECTIONS} governed sections (${m.sections})`,
+    );
     check(m.ctaVisible, `@${width} the primary hero CTA is visible and unclipped`);
     check(m.smallTargets.length === 0, `@${width} button controls meet their §18 height (${m.smallTargets.join(", ") || "all pass"})`);
     check(errors.length === 0, `@${width} no console errors (${errors.slice(0, 1).join("") || "none"})`);
@@ -240,8 +259,29 @@ async function main() {
     const before = await page.locator(".cr-topbar").evaluate((e) => Math.round(e.getBoundingClientRect().top));
     await page.evaluate(() => window.scrollTo(0, 2000));
     await page.waitForTimeout(150);
-    const after = await page.locator(".cr-topbar").evaluate((e) => Math.round(e.getBoundingClientRect().top));
-    check(after === before, `sticky topbar holds at top ${before} after a 2000px scroll (got ${after})`);
+    /* This asserted `after === before`, which was only ever true because the
+     * topbar happened to start at viewport top 0. The drift ledger moved the
+     * notice bar ABOVE the header, so the topbar now starts 47px down and
+     * pins at 0 — correct sticky behaviour that the old equality read as a
+     * failure. What sticky actually promises is: pinned at the CSS `top`
+     * offset, still on screen, on a page that really scrolled. */
+    const stick = await page.locator(".cr-topbar").evaluate((e) => {
+      const b = e.getBoundingClientRect();
+      const cs = getComputedStyle(e);
+      return {
+        top: Math.round(b.top),
+        bottom: Math.round(b.bottom),
+        position: cs.position,
+        offset: Math.round(parseFloat(cs.top) || 0),
+        scrolled: Math.round(window.scrollY),
+      };
+    });
+    check(stick.scrolled > 1000, `the page actually scrolled (${stick.scrolled}px)`);
+    check(
+      stick.position === "sticky" && stick.top === stick.offset && stick.bottom > 0,
+      `sticky topbar pins at its ${stick.offset}px offset after a 2000px scroll ` +
+        `(position ${stick.position}, top ${stick.top}, bottom ${stick.bottom}; started at ${before})`,
+    );
     await page.close();
   }
 

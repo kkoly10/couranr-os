@@ -105,12 +105,29 @@ describe.each(PAGES)("$screen ($route) matches its normative table", (page) => {
     }
   });
 
-  it("no two adjacent sections share a composition (§19 hard rule)", () => {
-    const clashes = rendered
-      .slice(1)
-      .map((r, i) => (r.composition === rendered[i].composition ? `${rendered[i].id}+${r.id}` : null))
-      .filter(Boolean);
-    expect(clashes).toEqual([]);
+  /**
+   * §19's adjacency rule, as COURANR_VISUAL_FIDELITY_AMENDMENT.md §3.1 leaves
+   * it: a DRIFT DIAGNOSTIC, not a hard rule.
+   *
+   * This asserted `[]` and, on PUB-001, that is what forced `delivery-options`
+   * to `split-story` and `pricing` to `full-bleed-interruption` — away from the
+   * card row and the light card the artboard actually shows. Amendment §9:
+   * "A test must never make the implementation less faithful to the canonical
+   * design."
+   *
+   * So the expectation is derived from the SPEC's own table rather than fixed
+   * at zero. An adjacency the normative table sanctions is allowed; one the
+   * page invents still fails, which is the drift this was written to catch. A
+   * page with no canonical mock has no sanctioned adjacency in its table, so
+   * for PUB-008/009/010/011 this is still, in effect, `[]`.
+   */
+  it("introduces no adjacent duplicate composition the table does not sanction", () => {
+    const adjacent = (rows: { id: string; composition: string }[]) =>
+      rows
+        .slice(1)
+        .map((r, i) => (r.composition === rows[i].composition ? `${rows[i].id}+${r.id}` : null))
+        .filter(Boolean);
+    expect(adjacent(rendered)).toEqual(adjacent(spec));
   });
 
   it("never exceeds §19's hard cap of two grid-dominant sections", () => {
@@ -139,7 +156,8 @@ describe.each(PAGES)("$screen ($route) matches its normative table", (page) => {
     if (page.screen === "PUB-001") {
       // §32.3 states these numerically for the homepage, so they are asserted
       // here rather than read from a budget line.
-      expect(spec).toHaveLength(13);
+      // Fourteen since §27.0 r6 promoted `payer-choice` to its own section.
+      expect(spec).toHaveLength(14);
       expect(countFlag(rendered, "imageLed"), "image-led floor is 2").toBeGreaterThanOrEqual(2);
       expect(countFlag(rendered, "productProof"), "product-proof floor is 1").toBeGreaterThanOrEqual(1);
       expect(

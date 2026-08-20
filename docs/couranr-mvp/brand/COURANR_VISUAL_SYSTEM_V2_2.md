@@ -233,6 +233,37 @@ re-litigates it: `VIS-001`'s typography, the self-hosted Martian/Inter/Martian
 Mono implementation, the `--couranr-*` namespace, the locked colours, the
 canonical logo, and the accessibility, responsive and shell work.
 
+### r6 — §27.0 reconciled against the artboard pixels
+
+r5 changed the precedence; this applies it. The PUB-001 drift ledger
+(`docs/couranr-mvp/ui-reference/PUB_001_VISUAL_DRIFT_LEDGER.csv`) compared
+twenty-four regions against the two canonical artboards, and §27.0's table
+moves to what they show:
+
+- **A fourteenth governed section, `payer-choice`.** In the artboard the two
+  payer cards sit under their own centred heading between the workflow rail and
+  the proof composition. The branch had them appended to the workflow section
+  with the heading demoted to a trailing line of body copy. There is no owner
+  content decision here — the copy is the sentence that was already on the page
+  — so unlike r3's `delivery-options` this is a composition correction, not a
+  new claim.
+- **`delivery-options` returns to `structured-information-block`.** This is the
+  case r5 named. The artboard shows four bordered cards in a row; `split-story`
+  existed only to avoid an adjacent duplicate.
+- **`pricing` returns to `structured-information-block`.** The artboard shows a
+  light bordered card paired with coverage, not a navy band. Same cause: the
+  navy mapping was chosen to satisfy §19.6's rhythm reset and the adjacency
+  rule, and the mock contradicts both. This closes the "one interpretive call,
+  flagged for the owner" that §27.0 has carried since r1.
+- **Adjacent duplicates are now counted, not forbidden.** Two remain, both the
+  artboard's own sequence. `tests/couranr-public-composition.test.ts` reports
+  the count and asserts only that the page agrees with this table — amendment
+  §9: "A test must never make the implementation less faithful to the canonical
+  design."
+
+Region counts change with the section count: fourteen governed sections,
+fifteen artboard regions in §25's `composition_regions`.
+
 The standalone recovery document that preceded the amendment is **not** a second
 authority; its useful methods are incorporated in the amendment and its stale
 branch assumptions are not.
@@ -1779,7 +1810,7 @@ Use a record shape equivalent to:
   ],
   "registry_declared_viewport_intent": "responsive",
   "visual_authority": "canonical",
-  "_composition_regions_note": "Ids come from the normative table in §27.0 and nowhere else. `navigation` is an artboard region, not a governed section, so a PUB-001 record carries fourteen regions and thirteen governed sections. Do not invent a region id.",
+  "_composition_regions_note": "Ids come from the normative table in §27.0 and nowhere else. `navigation` is an artboard region, not a governed section, so a PUB-001 record carries fifteen regions and fourteen governed sections. Do not invent a region id.",
   "composition_regions": [
     "navigation",
     "hero",
@@ -1788,6 +1819,7 @@ Use a record shape equivalent to:
     "order-channels",
     "outcomes",
     "workflow",
+    "payer-choice",
     "product-proof",
     "categories",
     "delivery-options",
@@ -1937,20 +1969,25 @@ auditable.
 | 4 | `order-channels` | Existing order channels | channel flow / structured strip | `structured-information-block` | false | false | false |
 | 5 | `outcomes` | Business outcomes | split story *or* editorial/product split | `split-story` | false | false | false |
 | 6 | `workflow` | Four-step workflow | connected workflow rail | `workflow-rail` | false | false | false |
-| 7 | `product-proof` | Managed delivery and proof | product proof + supporting narrative | `product-proof` | false | false | **true** |
-| 8 | `categories` | Supported business categories | selective category grid *or* image-based category system | `structured-information-block` | false | **true** | false |
-| 9 | `delivery-options` | *(none — MKT-003)* | artboard: "Delivery options that fit your needs", four discrete options | `split-story` | false | false | false |
-| 10 | `pricing` | Pricing and pilot economics | structured high-contrast information block | `full-bleed-interruption` | false | false | false |
-| 11 | `service-area` | Service areas | map / route visual | `image-narrative` | true | false | false |
-| 12 | `faq` | FAQ and claim boundaries | restrained utility | `structured-information-block` | false | false | false |
-| 13 | `closing` | Closing CTA | full-bleed brand moment | `full-bleed-interruption` | false | false | false |
+| 7 | `payer-choice` | *(none — drift ledger)* | artboard: "You decide who pays for delivery", two tinted payer cards | `structured-information-block` | false | false | false |
+| 8 | `product-proof` | Managed delivery and proof | product proof + supporting narrative | `product-proof` | false | false | **true** |
+| 9 | `categories` | Supported business categories | selective category grid *or* image-based category system | `structured-information-block` | false | **true** | false |
+| 10 | `delivery-options` | *(none — MKT-003)* | artboard: "Delivery options that fit your needs", four discrete options | `structured-information-block` | false | false | false |
+| 11 | `pricing` | Pricing and pilot economics | structured high-contrast information block | `structured-information-block` | false | false | false |
+| 12 | `service-area` | Service areas | map / route visual | `image-narrative` | true | false | false |
+| 13 | `faq` | FAQ and claim boundaries | restrained utility | `structured-information-block` | false | false | false |
+| 14 | `closing` | Closing CTA | full-bleed brand moment | `full-bleed-interruption` | false | false | false |
 
 Resulting budgets, which are what §32.3 asserts:
 
-- adjacent duplicate compositions: **0** (§19 hard rule);
-- `data-grid-dominant="true"`: **1** — section 8 (§19 cap is 2);
-- `data-image-led="true"`: **3** — sections 1, 3, 11 (§27 floor is 2);
-- `data-product-proof="true"`: **1** — section 7 (§27 floor is 1);
+- adjacent duplicate compositions: **2** — `categories`+`delivery-options` and
+  `delivery-options`+`pricing`. Both are the artboard's own sequence, and
+  COURANR_VISUAL_FIDELITY_AMENDMENT.md §3.1 demotes §19's adjacency prohibition
+  from a hard rule to a **drift diagnostic**. The test reports the count; it no
+  longer fails on it. See r6 below.
+- `data-grid-dominant="true"`: **1** — section 9 (§19 cap is 2);
+- `data-image-led="true"`: **3** — sections 1, 3, 12 (§27 floor is 2);
+- `data-product-proof="true"`: **1** — section 8 (§27 floor is 1);
 - `workflow-rail`: exactly **1** — section 6.
 
 Where the flags come from, so they are not taste:
@@ -1962,25 +1999,29 @@ Where the flags come from, so they are not taste:
 - §11 is `false` for grid because §27 Section 11 says *"Do not style every FAQ
   item as a floating marketing card."*
 
-**One interpretive call, flagged for the owner.** (Section numbering below is
-pre-MKT-003: what it calls section 9 is now section 10, `pricing`.) Section 9's §27 wording is
-*"structured high-contrast information block"*, whose name points at §19.7. But
-§27 also sanctions section 8 as a grid-heavy structured block, and §19's hard
-rules forbid two adjacent sections sharing a composition — so 8 and 9 cannot
-both be `structured-information-block`. Section 9 is therefore mapped to
-`full-bleed-interruption` (§19.6: navy, strong contrast, large editorial
-statement), which matches both the "high-contrast" wording and the pricing band
-in the approved mock. If the owner prefers section 9 to stay a structured
-block, section 8 must move to its *"image-based category system"* alternative
-(`image-narrative`, `image-led=true`, `grid-dominant=false`) and the grid count
-drops to 0.
+**The interpretive call that was flagged for the owner is now closed, against
+this document.** It read: `pricing`'s §27 wording is *"structured high-contrast
+information block"*, whose name points at §19.7 — but §27 also sanctions
+`categories` as a grid-heavy structured block, and §19's hard rules forbid two
+adjacent sections sharing a composition, so both could not be
+`structured-information-block`. `pricing` was therefore mapped to
+`full-bleed-interruption` (§19.6: navy, strong contrast).
+
+The drift ledger settled it by looking at the artboard, which shows **no navy
+at `pricing`** — it is a light bordered card paired with coverage, and navy
+appears at `closing`. So the mapping was a consequence of the adjacency budget
+and not of the design. The amendment reverses the precedence
+(COURANR_VISUAL_FIDELITY_AMENDMENT.md §1, §5.7): the mock governs composition,
+this document governs only where the mock is silent. `pricing` is
+`structured-information-block`, `categories` keeps its grid, and the adjacent
+duplicates that result are recorded as diagnostics rather than removed.
 
 Notes:
 
 - **`navigation` is a region, not a governed section.** §25's
-  `composition_regions` array carries fourteen entries because the artboard has
-  a navigation band; the shell renders it and it carries no
-  `data-couranr-section`. Thirteen governed sections, fourteen artboard
+  `composition_regions` array carries one more entry than this table because the
+  artboard has a navigation band; the shell renders it and it carries no
+  `data-couranr-section`. Fourteen governed sections, fifteen artboard
   regions — the counts are supposed to differ.
 - The "Required composition" column is the composition type each section must
   resolve to, drawn from §19. Where §27 offers alternatives ("split story **or**

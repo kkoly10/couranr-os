@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { Badge, Heading, Stack, Text } from "@/components/couranr/primitives";
+import { Badge, Heading, Text } from "@/components/couranr/primitives";
 import { AskCouranrLauncher } from "@/components/couranr/marketing/AskCouranr";
 import { ServiceCorridorMap } from "@/components/couranr/marketing/ServiceCorridorMap";
 import {
@@ -248,15 +248,6 @@ const FAQ = [
 export default function Page() {
   return (
     <div className="cr-mkt">
-      {/* Required state: service-area notice. MKT-001 copy verbatim; SVC-002 is
-          unresolved so there is no radius, polygon, ZIP list or checker here. */}
-      <div className="cr-mkt-notice">
-        <Text size="sm">
-          {MARKETS_PUBLIC_COPY}{" "}
-          <Link href="/service-areas">View service areas →</Link>
-        </Text>
-      </div>
-
       {/* ─── 1 ─────────────────────────────── hero / image-integrated-hero ─── */}
       <section
         className="cr-hero"
@@ -319,6 +310,15 @@ export default function Page() {
           <div className="cr-hero__cta">
             <Link href="/sign-up" className="cr-button cr-button--primary cr-button--lg">
               Create your business account
+              {/* Drift ledger `hero-cta`: the mobile artboard puts a right
+                  arrow inside the primary button. Markup rather than a CSS
+                  `::after`, because a generated glyph is read into the
+                  button's accessible name in Chrome and Safari and "Create
+                  your business account right arrow" is noise. Hidden at
+                  desktop widths, where the artboard has no arrow. */}
+              <span className="cr-hero__cta-arrow" aria-hidden="true">
+                →
+              </span>
             </Link>
             <Link href="/estimate" className="cr-button cr-button--inverse cr-button--lg">
               Estimate a delivery
@@ -406,8 +406,22 @@ export default function Page() {
       </section>
 
       {/* ─── 4 ───────────────── order-channels / structured-information-block ─── */}
+      {/* Drift ledger `order-channels` (REBUILD). The artboard shows SIX
+          discrete bordered tiles, icon above a centred label, separated by
+          gaps, with the section heading and subcopy centred above them — not
+          one enclosing container. The flat `.cr-mkt-channelstrip` this replaces
+          was written to satisfy §27 Section 4's "do not render seven identical
+          cards"; the fidelity amendment §5.2 answers that directly: "If the
+          current branch uses a single flat `channelstrip` where the mock shows
+          discrete tiles, the current branch is the drift."
+
+          SEVEN tiles, not the artboard's six. MKT-002 §10.4 requires every
+          merchant-controlled channel be named, and the artboard splits social
+          into Instagram and Facebook brand marks while dropping "point of sale"
+          and "other channels you control". Written authority governs the count;
+          the mock governs the geometry (amendment §1). */}
       <section
-        className="cr-mkt-section"
+        className="cr-mkt-section cr-mkt-section--centred"
         aria-labelledby="s4-h"
         data-couranr-section="order-channels"
         data-composition="structured-information-block"
@@ -422,18 +436,22 @@ export default function Page() {
           Couranr never gets between you and your customer. Take the order anywhere
           you already do:
         </Text>
-        {/* §27 Section 4: "Do not render seven identical cards." A connected
-            strip that reads as one system, converging into one workflow. */}
-        <ul className="cr-mkt-channelstrip" aria-label="Order channels you control">
+        <ul className="cr-mkt-channels" aria-label="Order channels you control">
           {CHANNELS.map(({ label, Icon }) => (
-            <li key={label} className="cr-mkt-channelstrip__item">
-              <span className="cr-mkt-channelstrip__icon">
+            <li key={label} className="cr-mkt-channel">
+              <span className="cr-mkt-channel__icon">
                 <Icon />
               </span>
-              <span className="cr-mkt-channelstrip__label">{label}</span>
+              <span className="cr-mkt-channel__label">{label}</span>
             </li>
           ))}
         </ul>
+        {/* Ledger `order-flow`: one tinted rounded container holding three
+            icon-and-label groups with arrow glyphs between them. Confirmed
+            against the artboard pixels and KEPT — amendment §5.3: "Do not
+            classify 'bordered strip' as bad merely because it is a container."
+            The label wraps to two lines there, so it is not centred with the
+            icon; the icon sits to its left. */}
         <ol className="cr-mkt-flow-strip" aria-label="How an order flows">
           {FLOW.map(({ label, Icon }) => (
             <li key={label} className="cr-mkt-flow-strip__step">
@@ -506,6 +524,38 @@ export default function Page() {
             </li>
           ))}
         </ol>
+      </section>
+
+      {/* ─── 7 ──────────────── payer-choice / structured-information-block ─── */}
+      {/* Drift ledger `payer-choice` (RESTYLE): "Centre the heading." In the
+          artboard this is its own section — a centred h2 over two tinted cards
+          with circular icons — not a tail appended to the workflow rail, which
+          is where the branch had put it. Promoting it is what centring the
+          heading actually means; a second h2 nested under the rail's own
+          heading would have been the wrong shape.
+
+          The heading is the governed sentence that was already on the page,
+          promoted from body copy. No new claim.
+
+          The artboard also embeds a product mini-composition inside each card —
+          a saved VISA •••• 4242, a $24.85 quote, a couranr.com/pay/… link with
+          a Copy control. Those are fixture data presented as a record. TRM-001
+          and §19.5 forbid fabricated specifics on the public surface, so the
+          cards carry what each payer route IS and not what one delivery cost.
+          Amendment §5.4's recovery target — tint, border, radius, icon geometry
+          and title/body hierarchy — is what is reproduced. */}
+      <section
+        className="cr-mkt-section cr-mkt-section--centred"
+        aria-labelledby="s7-h"
+        data-couranr-section="payer-choice"
+        data-composition="structured-information-block"
+        data-image-led="false"
+        data-grid-dominant="false"
+        data-product-proof="false"
+      >
+        <Heading level={2} id="s7-h" className="cr-type-marketing-section">
+          You decide who pays for delivery, per delivery.
+        </Heading>
         <div className="cr-mkt-payers">
           <div className="cr-mkt-payer cr-mkt-payer--merchant">
             <span className="cr-mkt-payer__head">
@@ -532,15 +582,12 @@ export default function Page() {
             </Text>
           </div>
         </div>
-        <Text muted size="sm">
-          You decide who pays for delivery, per delivery.
-        </Text>
       </section>
 
-      {/* ─── 7 ────────────────────────────── product-proof / product-proof ─── */}
+      {/* ─── 8 ────────────────────────────── product-proof / product-proof ─── */}
       <section
         className="cr-mkt-proof"
-        aria-labelledby="s7-h"
+        aria-labelledby="s8-h"
         data-couranr-section="product-proof"
         data-composition="product-proof"
         data-image-led="false"
@@ -548,7 +595,7 @@ export default function Page() {
         data-product-proof="true"
       >
         <div className="cr-mkt-proof__copy">
-          <Heading level={2} id="s7-h" className="cr-type-marketing-section">
+          <Heading level={2} id="s8-h" className="cr-type-marketing-section">
             Couranr-managed, with proof
           </Heading>
           <Text muted className="cr-type-lead">
@@ -602,7 +649,7 @@ export default function Page() {
         </div>
       </section>
 
-      {/* ─── 8 ─────────────────── categories / structured-information-block ─── */}
+      {/* ─── 9 ─────────────────── categories / structured-information-block ─── */}
       {/* The ONE grid-dominant section the page is allowed. §27 Section 8:
           "This may be one of the homepage's allowed card/grid-heavy sections."
 
@@ -624,17 +671,25 @@ export default function Page() {
           So the breadth claim is made the honest way: eleven visible at once
           instead of six behind tabs, which is more of the registry than the
           artboard showed, with the purpose sentence stating plainly that the
-          choice tunes suggestions and nothing else. Recorded as Gate A's D-1. */}
+          choice tunes suggestions and nothing else. Recorded as Gate A's D-1.
+
+          Drift ledger `categories` was VERIFY on exactly this question and is
+          now KEEP. What the ledger asked to verify was whether the artboard's
+          tab content could be reproduced; grepping again confirms it cannot —
+          no module maps a category to items, handling, a distance band or a
+          vehicle class, and inventing them is the eligibility signal §27
+          Section 8 forbids. The one part of the row that WAS a straightforward
+          defect, the uncentred heading, is fixed here. */}
       <section
-        className="cr-mkt-section"
-        aria-labelledby="s8-h"
+        className="cr-mkt-section cr-mkt-section--centred"
+        aria-labelledby="s9-h"
         data-couranr-section="categories"
         data-composition="structured-information-block"
         data-image-led="false"
         data-grid-dominant="true"
         data-product-proof="false"
       >
-        <Heading level={2} id="s8-h" className="cr-type-marketing-section">
+        <Heading level={2} id="s9-h" className="cr-type-marketing-section">
           Built for real local businesses
         </Heading>
         <Text muted>
@@ -663,49 +718,40 @@ export default function Page() {
         </Text>
       </section>
 
-      {/* ─── 9 ───────────────────────────── delivery-options / split-story ─── */}
+      {/* ─── 10 ──────────────────────── delivery-options / structured-block ─── */}
       {/* MKT-003 — the artboard's "Delivery options that fit your needs",
           between the category system and the pricing band exactly as it sits
           there.
 
-          Composition is §19.3 split story, NOT the artboard's four-across card
-          row, and that is the one place this section departs from the mock. The
-          mock puts a card row (categories) directly above another card row
-          (options); §19's adjacent-duplicate rule is a hard rule and two
-          structured blocks in sequence read as one undifferentiated slab —
-          the pattern §0 calls "mechanically coherent and commercially weak".
-          Gate A row 9 already recorded the same judgment for the mock's other
-          card-heavy sections. The four options keep their icons, titles, bodies
-          and descriptor tags; what changes is that they hang off a lead column
-          instead of floating as a fifth grid. */}
+          Drift ledger `delivery-options` (REBUILD). THE CANONICAL CASE. This
+          section was a §19.3 split story for one reason, recorded in the code
+          comment it replaces: the artboard puts a card row (categories)
+          directly above another card row (options), and §19's adjacent-
+          duplicate rule forbade two structured blocks in sequence. That was a
+          budget, not a design judgment. Amendment §3.1 demotes the adjacency
+          prohibition to a drift diagnostic and §5.7 names this exact change:
+          "If the mock explicitly supports the original composition, revert the
+          budget-driven reinterpretation." It does, so it is reverted — four
+          bordered cards in one row, heading centred, overnight footnote
+          centred beneath, which is what the artboard shows. */}
       <section
-        className="cr-mkt-options"
-        aria-labelledby="s9-h"
+        className="cr-mkt-section cr-mkt-section--centred"
+        aria-labelledby="s10-h"
         data-couranr-section="delivery-options"
-        data-composition="split-story"
+        data-composition="structured-information-block"
         data-image-led="false"
         data-grid-dominant="false"
         data-product-proof="false"
       >
-        <div className="cr-mkt-options__lead">
-          <Heading level={2} id="s9-h" className="cr-type-marketing-section">
-            Delivery options that fit your needs
-          </Heading>
-          <Text muted className="cr-type-lead">
-            One request form, four ways to run it. Every option is priced
-            server-side before anyone approves it, and every one is subject to
-            Couranr confirmation.
-          </Text>
-          {/* OVN-001: request-only, Couranr-enabled, never stacked with rush.
-              OVN-002 (the request-and-enable mechanism) is UNRESOLVED, so there
-              is no button here and nothing implies overnight can be booked. */}
-          <p className="cr-mkt-options__note">
-            Overnight delivery — {OVERNIGHT_WINDOW_COPY}, {dollars(SERVICE_LEVEL_CENTS.overnight)}{" "}
-            — may be requested when Couranr confirms availability. It never stacks
-            with rush.
-          </p>
-        </div>
-        <ul className="cr-mkt-options__list">
+        <Heading level={2} id="s10-h" className="cr-type-marketing-section">
+          Delivery options that fit your needs
+        </Heading>
+        <Text muted className="cr-type-lead">
+          One request form, four ways to run it. Every option is priced
+          server-side before anyone approves it, and every one is subject to
+          Couranr confirmation.
+        </Text>
+        <ul className="cr-mkt-options">
           {DELIVERY_OPTIONS.map(({ title, Icon, body, tag }) => (
             <li key={title} className="cr-mkt-option">
               <span className="cr-mkt-option__icon">
@@ -716,169 +762,285 @@ export default function Page() {
                 <Text muted size="sm">
                   {body}
                 </Text>
+                <span className="cr-mkt-option__tag">{tag}</span>
               </div>
-              <span className="cr-mkt-option__tag">{tag}</span>
             </li>
           ))}
         </ul>
+        {/* OVN-001: request-only, Couranr-enabled, never stacked with rush.
+            OVN-002 (the request-and-enable mechanism) is UNRESOLVED, so there
+            is no button here and nothing implies overnight can be booked. The
+            artboard puts this same footnote under the card row, prefixed by a
+            clock glyph. */}
+        <p className="cr-mkt-options__note">
+          Overnight delivery — {OVERNIGHT_WINDOW_COPY}, {dollars(SERVICE_LEVEL_CENTS.overnight)}{" "}
+          — may be requested when Couranr confirms availability. It never stacks
+          with rush.
+        </p>
       </section>
 
-      {/* ─── 10 ───────────────────────── pricing / full-bleed-interruption ─── */}
-      <section
-        className="cr-mkt-band"
-        aria-labelledby="s10-h"
-        data-couranr-section="pricing"
-        data-composition="full-bleed-interruption"
-        data-image-led="false"
-        data-grid-dominant="false"
-        data-product-proof="false"
-      >
-        <div className="cr-mkt-band__inner">
-          <div className="cr-mkt-band__copy">
-            <h2 id="s10-h" className="cr-mkt-band__h2 cr-type-marketing-section">
-              Pricing you can put on a sticky note
-            </h2>
-            <p className="cr-mkt-band__body">
-              Delivery starts at {dollars(BASE_PRICE_CENTS)}, which covers the first{" "}
-              {INCLUDED_LOADED_MILES} loaded miles. Longer runs price by published
-              per-mile tiers — computed server-side, in exact cents, before anyone
-              approves anything.
-            </p>
-            <p className="cr-mkt-band__note">
-              No monthly fee during the pilot. No product-sales commission.{" "}
-              <Link href="/pricing">See the full pricing schedule →</Link>
-            </p>
-          </div>
-          <div className="cr-mkt-band__figure">
-            <span className="cr-mkt-band__label">Starting at</span>
-            {/* Rendered from BASE_PRICE_CENTS. Nothing here is typed in. */}
-            <span className="cr-mkt-band__price cr-type-metric">
-              {dollars(BASE_PRICE_CENTS)}
-            </span>
-            <span className="cr-mkt-band__label">
-              per delivery · first {INCLUDED_LOADED_MILES} loaded miles
-            </span>
-          </div>
-        </div>
-      </section>
+      {/* ─── 11 + 12 ─────────────────────────── pricing ∥ service-area ─── */}
+      {/* Drift ledger `pricing` (REBUILD) and `service-areas` (RESTYLE). The
+          artboard puts these two side by side as a pair of LIGHT bordered
+          cards. The branch had pricing as a navy full-bleed band — the ledger
+          records why: it was chosen to satisfy §19.6's rhythm reset, and §27.0
+          says so in as many words ("Section 9 is therefore mapped to
+          full-bleed-interruption … so 8 and 9 cannot both be
+          structured-information-block"). That is a budget, and amendment §5.7
+          reverts budget-driven reinterpretations the mock contradicts. The
+          artboard shows no navy here; the closing band is where navy lives.
 
-      {/* ─── 11 ───────────────────────────── service-area / image-narrative ─── */}
-      <section
-        className="cr-mkt-narrative cr-mkt-narrative--reverse"
-        aria-labelledby="s11-h"
-        data-couranr-section="service-area"
-        data-composition="image-narrative"
-        data-image-led="true"
-        data-grid-dominant="false"
-        data-product-proof="false"
-      >
-        <div className="cr-mkt-narrative__copy">
-          <h2 id="s11-h" className="cr-type-marketing-section">
+          Two <section> elements inside one grid wrapper, rather than one merged
+          section: §27.0's identifiers are a normative list and merging would
+          have deleted one of them from the DOM to achieve a layout. */}
+      <div className="cr-mkt-pair">
+        <section
+          className="cr-mkt-card"
+          aria-labelledby="s11-h"
+          data-couranr-section="pricing"
+          data-composition="structured-information-block"
+          data-image-led="false"
+          data-grid-dominant="false"
+          data-product-proof="false"
+        >
+          <h2 id="s11-h" className="cr-mkt-card__h2 cr-type-section-title">
+            Pricing you can put on a sticky note
+          </h2>
+          <div className="cr-mkt-pricecard">
+            <div className="cr-mkt-pricecard__figure">
+              <span className="cr-mkt-pricecard__label">Starting at</span>
+              {/* Rendered from BASE_PRICE_CENTS. Nothing here is typed in. */}
+              <span className="cr-mkt-pricecard__price cr-type-metric">
+                {dollars(BASE_PRICE_CENTS)}
+              </span>
+            </div>
+            {/* The artboard's five ticked lines. Each is a fact already stated
+                elsewhere on this page or rendered from governed.ts — none is a
+                new claim, and the pilot qualifier stays on the fee line. */}
+            <ul className="cr-mkt-assurances" aria-label="What the base price covers">
+              <li>Includes the first {INCLUDED_LOADED_MILES} loaded miles</li>
+              <li>Distance and optional surcharges may apply</li>
+              <li>Customer or business can pay, per delivery</li>
+              <li>Bulky and extended-distance requests go through Couranr review</li>
+              <li>No monthly fee during the pilot, no product-sales commission</li>
+            </ul>
+          </div>
+          <p className="cr-mkt-card__note">
+            Every quote is computed server-side, in exact cents, before anyone
+            approves anything. <Link href="/pricing">See the full pricing schedule →</Link>
+          </p>
+          <Link
+            href="/estimate"
+            className="cr-button cr-button--primary cr-button--lg cr-mkt-card__cta"
+          >
+            Estimate a delivery
+          </Link>
+        </section>
+
+        <section
+          className="cr-mkt-card"
+          aria-labelledby="s12-h"
+          data-couranr-section="service-area"
+          data-composition="image-narrative"
+          data-image-led="true"
+          data-grid-dominant="false"
+          data-product-proof="false"
+        >
+          <h2 id="s12-h" className="cr-mkt-card__h2 cr-type-section-title">
             Where Couranr operates
           </h2>
-          <p className="cr-type-lead">
-            {MARKETS_PUBLIC_COPY} Outside those areas, requests are captured for Couranr
-            review rather than rejected.
-          </p>
-          {/* Gate A / D-3. The artboard pairs pricing and coverage in one band
-              and puts four assurance lines beside the map. The two sections stay
-              separate — §27.0 assigns them different compositions precisely so
-              two structured blocks never sit adjacent — but the assurance list
-              was the part of the pairing that carried information, and it is
-              added here.
-
-              THREE lines, not the artboard's four. "Loading assistance
-              available" is dropped: grepping the Decision Registry and
-              lib/couranr/** for loading assistance returns nothing, so shipping
-              it would be inventing a service. The other three each render from
-              something governed — MIL-002's tiers, VEHICLE_CLASSES, and
-              CAP-001's confirm-before-capture. */}
-          <ul className="cr-mkt-assurances" aria-label="What coverage includes">
-            <li>
-              Local and extended-distance deliveries, priced by published mile
-              tiers to {MANUAL_QUOTE_OVER_MILES} loaded miles
-            </li>
-            <li>
-              {/* Sentence case, not four labels joined. `VEHICLE_CLASS_LABELS`
-                  are display labels for an operator's selector, so lowercasing
-                  all four put "cargo bike" at the head of a sentence; keeping
-                  all four capitalised read as four proper nouns. First as
-                  written, rest lowered, "or" before the last. */}
-              {(() => {
-                const labels = VEHICLE_CLASSES.map((c, i) =>
-                  i === 0 ? VEHICLE_CLASS_LABELS[c] : VEHICLE_CLASS_LABELS[c].toLowerCase(),
-                );
-                return `${labels.slice(0, -1).join(", ")} or ${labels[labels.length - 1]}`;
-              })()}{" "}
-              — matched to the delivery, not to the driver who bid first
-            </li>
-            <li>Couranr review before every pickup</li>
-          </ul>
-          <p>
+          <div className="cr-mkt-coverage">
+            <div className="cr-mkt-coverage__visual">
+              <ServiceCorridorMap className="cr-mkt-map" />
+            </div>
+            {/* THREE lines, not the artboard's four. "Loading assistance
+                available" is dropped: grepping the Decision Registry and
+                lib/couranr/** for loading assistance returns nothing, so
+                shipping it would be inventing a service. The other three each
+                render from something governed — MIL-002's tiers,
+                VEHICLE_CLASSES, and CAP-001's confirm-before-capture. */}
+            <ul className="cr-mkt-assurances" aria-label="What coverage includes">
+              <li>
+                Local and extended-distance deliveries, priced by published mile
+                tiers to {MANUAL_QUOTE_OVER_MILES} loaded miles
+              </li>
+              <li>
+                {/* Sentence case, not four labels joined. `VEHICLE_CLASS_LABELS`
+                    are display labels for an operator's selector, so lowercasing
+                    all four put "cargo bike" at the head of a sentence; keeping
+                    all four capitalised read as four proper nouns. First as
+                    written, rest lowered, "or" before the last. */}
+                {(() => {
+                  const labels = VEHICLE_CLASSES.map((c, i) =>
+                    i === 0 ? VEHICLE_CLASS_LABELS[c] : VEHICLE_CLASS_LABELS[c].toLowerCase(),
+                  );
+                  return `${labels.slice(0, -1).join(", ")} or ${labels[labels.length - 1]}`;
+                })()}{" "}
+                — matched to the delivery, not to the driver who bid first
+              </li>
+              <li>Couranr review before every pickup</li>
+            </ul>
+          </div>
+          <p className="cr-mkt-card__note">
+            {MARKETS_PUBLIC_COPY} Outside those areas, requests are captured for
+            Couranr review rather than rejected.{" "}
             <Link href="/service-areas">View service areas →</Link>
           </p>
-        </div>
-        <div className="cr-mkt-narrative__visual">
-          <ServiceCorridorMap className="cr-mkt-map" />
-        </div>
-      </section>
+        </section>
+      </div>
 
-      {/* ─── 12 ──────────────────────── faq / structured-information-block ─── */}
-      <section
-        className="cr-mkt-section"
-        aria-labelledby="s12-h"
-        data-couranr-section="faq"
-        data-composition="structured-information-block"
-        data-image-led="false"
-        data-grid-dominant="false"
-        data-product-proof="false"
-      >
-        <Heading level={2} id="s12-h" className="cr-type-marketing-section">
-          The fine print, in plain words
-        </Heading>
-        {/* §27 Section 11: "Do not style every FAQ item as a floating marketing
-            card if a simpler structure is clearer." A ruled list, not cards. */}
-        <dl className="cr-mkt-faq">
-          {FAQ.map(({ q, a }) => (
-            <div key={q} className="cr-mkt-faq__item">
-              <dt className="cr-type-card-title">{q}</dt>
-              <dd>
-                <Text muted size="sm">
-                  {a}
-                </Text>
-              </dd>
-            </div>
-          ))}
-        </dl>
-      </section>
+      {/* ─── 13 ─────────────────────── faq / structured-information-block ─── */}
+      {/* Drift ledger `faq` (REBUILD) and `ask-couranr` (VERIFY → resolved).
+          The artboard pairs a bordered FAQ card of COLLAPSED accordion rows
+          with an "Ask Couranr" card. The branch had a ruled definition list
+          with every answer expanded, citing §27 Section 11 ("Do not style every
+          FAQ item as a floating marketing card if a simpler structure is
+          clearer") — but that rule argues against per-item cards, which the
+          artboard does not have either. One card containing collapsible rows is
+          what the pixels show, and amendment §1 gives the mock the composition.
 
-      {/* ─── 13 ──────────────────────── closing / full-bleed-interruption ─── */}
+          `<details>`/`<summary>`: the disclosure is native, so it is keyboard
+          operable, exposed to assistive technology, and printable/findable when
+          the browser expands it for find-in-page. No client component and no
+          JavaScript for a chevron.
+
+          THE ASK COURANR RESOLUTION. The artboard's card says "Get quick
+          answers from Couranr Assistant" over four prompt chips, two of them
+          sparkle-marked as AI answers. AIS-001 does not settle that Couranr can
+          answer anything, the assistant is Phase 9 work, and the execution
+          spec's AI-PROVIDER row mandates a disabled/manual fallback — so the
+          card is built to the artboard's geometry and position while saying
+          what is true. Every chip is real navigation to a route that exists,
+          the assistant's absence is stated in the card rather than implied by
+          its silence, and there is no input that pretends to accept a question. */}
+      <div className="cr-mkt-pair">
+        <section
+          className="cr-mkt-card"
+          aria-labelledby="s13-h"
+          data-couranr-section="faq"
+          data-composition="structured-information-block"
+          data-image-led="false"
+          data-grid-dominant="false"
+          data-product-proof="false"
+        >
+          <h2 id="s13-h" className="cr-mkt-card__h2 cr-type-section-title">
+            The fine print, in plain words
+          </h2>
+          {/* THREE questions, not the artboard's five. The other two ("What
+              areas does Couranr serve?", "How does delivery proof work?") have
+              no governed answer text; answering them here would be writing
+              product policy in a marketing file. */}
+          <div className="cr-mkt-faq">
+            {FAQ.map(({ q, a }) => (
+              <details key={q} className="cr-mkt-faq__item">
+                <summary className="cr-mkt-faq__q cr-type-card-title">{q}</summary>
+                <div className="cr-mkt-faq__a">
+                  <Text muted size="sm">
+                    {a}
+                  </Text>
+                </div>
+              </details>
+            ))}
+          </div>
+        </section>
+
+        <aside className="cr-mkt-card" aria-labelledby="askc-h">
+          <h2 id="askc-h" className="cr-mkt-card__h2 cr-mkt-card__h2--start cr-type-section-title">
+            Ask Couranr
+          </h2>
+          <Text muted size="sm">
+            The Ask Couranr assistant is not live yet. {SUPPORT_COPY}
+          </Text>
+          <ul className="cr-mkt-asklinks">
+            <li>
+              <Link href="/service-areas" className="cr-mkt-asklink">
+                Check your service areas
+              </Link>
+            </li>
+            <li>
+              <Link href="/pricing" className="cr-mkt-asklink">
+                Explain pricing
+              </Link>
+            </li>
+            <li>
+              <Link href="/estimate" className="cr-mkt-asklink">
+                Estimate a delivery
+              </Link>
+            </li>
+            <li>
+              <Link href="/sign-up" className="cr-mkt-asklink">
+                Create a business account
+              </Link>
+            </li>
+          </ul>
+          <p className="cr-mkt-card__note">
+            <Link href="/help">More questions? Contact Couranr Support →</Link>
+          </p>
+        </aside>
+      </div>
+
+      {/* ─── 14 ─────────────────────── closing / full-bleed-interruption ─── */}
+      {/* Drift ledger `closing-cta` (RESTYLE): navy IS mock-supported here —
+          unlike the pricing region — but the artboard sets the copy LEFT with
+          the two buttons on the RIGHT of the same row, not centred over them.
+          `--split` is a PUB-001 modifier: the other four public pages keep the
+          centred treatment until step 9 propagates this one, and amendment §11
+          puts that after owner visual approval.
+
+          The artboard also carries a supporting line under the headline
+          ("Create your free business workspace and test the workflow…"). It is
+          not written anywhere in the authority chain, so it is not typed in
+          here — recorded as a deviation rather than invented. */}
       <section
-        className="cr-mkt-closing"
-        aria-labelledby="s13-h"
+        className="cr-mkt-closing cr-mkt-closing--split"
+        aria-labelledby="s14-h"
         data-couranr-section="closing"
         data-composition="full-bleed-interruption"
         data-image-led="false"
         data-grid-dominant="false"
         data-product-proof="false"
       >
-        <Stack gap={6}>
-          <h2 id="s13-h" className="cr-mkt-h2-inverse cr-type-statement">
+        <div className="cr-mkt-closing__copy">
+          <h2 id="s14-h" className="cr-mkt-h2-inverse cr-type-statement">
             The next customer who asks, &ldquo;Can you deliver?&rdquo; deserves a better
             answer.
           </h2>
-          <div className="cr-mkt-cta-row">
-            <Link href="/sign-up" className="cr-button cr-button--primary cr-button--lg">
-              Create your business account
-            </Link>
-            <Link href="/estimate" className="cr-button cr-button--inverse cr-button--lg">
-              Estimate a delivery
-            </Link>
-          </div>
-        </Stack>
+        </div>
+        <div className="cr-mkt-cta-row">
+          <Link href="/sign-up" className="cr-button cr-button--primary cr-button--lg">
+            Create your business account
+          </Link>
+          <Link href="/estimate" className="cr-button cr-button--inverse cr-button--lg">
+            Estimate a delivery
+          </Link>
+        </div>
       </section>
 
-      <AskCouranrLauncher />
+      {/* Drift-ledger row `hero-cta` (REBUILD): the mobile artboard pins a
+          primary action to the bottom of the viewport. Rendered last so it
+          follows the page content in the tab order rather than interrupting it.
+
+          THE ASK COURANR LAUNCHER LIVES IN HERE, and that is the fix for a
+          problem the artboard could not show. Both are bottom-anchored and
+          fixed, so on a 390px viewport the floating launcher landed on top of
+          the hero's full-width primary CTA and covered the end of its label.
+          Putting them in one bar means the bar is the only bottom-anchored
+          object on mobile and nothing floats over the page at all: the CTA
+          takes the row, the launcher sits beside it, and the space is already
+          reserved by the main element's bottom padding.
+
+          At desktop widths the bar is not a bar — the CTA hides, the wrapper
+          stops being fixed, and `.cr-askc` keeps its own bottom-right position
+          exactly as the artboard shows it. */}
+      <div className="cr-mobilebar">
+        <Link
+          href="/sign-up"
+          className="cr-button cr-button--primary cr-button--lg cr-mobilebar__cta"
+        >
+          Create your business account
+        </Link>
+        <AskCouranrLauncher />
+      </div>
     </div>
   );
 }

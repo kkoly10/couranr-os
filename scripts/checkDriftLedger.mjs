@@ -136,26 +136,50 @@ const text = readFileSync(join(repo, LEDGER), "utf8");
 const doc = readFileSync(join(repo, AMENDMENT), "utf8");
 
 if (process.argv.includes("--positive-control")) {
+  /* Every plant must actually change the text. When the ledger reached all-KEEP
+   * the two controls that grepped for a literal `,REBUILD,` and for a surviving
+   * `VERIFY` row silently planted NOTHING and would have reported a pass on an
+   * unchanged file — the exact shape of "a check that cannot fail". Each plant
+   * is now asserted to have modified the input before its result is read. */
+  const reclassify = (t, to) => t.replace(/^(footer,)([\s\S]*?),KEEP,/m, `$1$2,${to},`);
   const controls = [
     ["an unknown classification", (t) => t.replace(",KEEP,", ",LOOKS_FINE,"), "is not one of"],
-    ["a REBUILD with no required_change", (t) => t.replace(/,REBUILD,"[^"]*"/, ',REBUILD,""'), "no required_change"],
+    ["a non-KEEP row with no required_change", (t) => reclassify(t, "REBUILD"), "no required_change"],
     ["a dropped region", (t) => t.split("\n").filter((l) => !l.startsWith("footer,")).join("\n"), "regions disagree"],
     ["a mock file that does not exist", (t) => t.replace(/0E4F029F-[0-9A-F-]+\.png/, "NOT-A-REAL-FILE.png"), "does not exist"],
+    [
+      "a REBUILD against a region with no artboard",
+      (t) => t.replace(/^(pickup-problem,)([\s\S]*?),KEEP,/m, "$1$2,REBUILD,"),
+      "names no canonical reference",
+    ],
   ];
   let bad = 0;
   for (const [what, plant, expect] of controls) {
-    const { fail } = scan(plant(text), doc);
+    const planted = plant(text);
+    if (planted === text) {
+      console.error(`positive control FAILED — could not plant ${what}; the control tested nothing`);
+      bad++;
+      continue;
+    }
+    const { fail } = scan(planted, doc);
     const hit = fail.find((f) => f.includes(expect));
     if (!hit) { console.error(`positive control FAILED — ${what} was not detected`); bad++; }
     else console.log(`check:drift-ledger positive control ok — ${what} was rejected: "${hit.slice(0, 110)}"`);
   }
   // And the promotion rule, which the ordinary scan deliberately does not apply.
-  const { fail } = scan(text, doc, { promote: true });
-  if (!fail.some((f) => f.includes("still VERIFY"))) {
-    console.error("positive control FAILED — --promote did not reject an unresolved VERIFY row");
+  // The live ledger is all-KEEP, so this plants the VERIFY row it must reject.
+  const unresolved = reclassify(text, "VERIFY");
+  if (unresolved === text) {
+    console.error("positive control FAILED — could not plant an unresolved VERIFY row");
     bad++;
   } else {
-    console.log("check:drift-ledger positive control ok — --promote rejects an unresolved VERIFY row");
+    const { fail } = scan(unresolved, doc, { promote: true });
+    if (!fail.some((f) => f.includes("still VERIFY"))) {
+      console.error("positive control FAILED — --promote did not reject an unresolved VERIFY row");
+      bad++;
+    } else {
+      console.log("check:drift-ledger positive control ok — --promote rejects an unresolved VERIFY row");
+    }
   }
   process.exit(bad ? 1 : 0);
 }

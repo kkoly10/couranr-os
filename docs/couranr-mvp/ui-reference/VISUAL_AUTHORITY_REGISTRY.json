@@ -40,6 +40,7 @@
         "order-channels",
         "outcomes",
         "workflow",
+        "payer-choice",
         "product-proof",
         "categories",
         "delivery-options",
@@ -52,7 +53,8 @@
       "gate_a_review": "docs/couranr-mvp/brand/PUB-001_GATE_A_REGION_REVIEW.md",
       "notes": [
         "The artboards are design exports, not browser screenshots. §26's pixel-diff policy therefore does not apply; Gate A is a named-region review and Gate B verifies real browser widths separately.",
-        "Gate A recorded six intentional deviations, two of which close when the photography in PUB-001_PHOTOGRAPHY_BRIEF.md exists."
+        "Gate A recorded six intentional deviations, two of which close when the photography in PUB-001_PHOTOGRAPHY_BRIEF.md exists.",
+        "Gate A is SUPERSEDED for this screen by the pixel-first region drift ledger COURANR_VISUAL_FIDELITY_AMENDMENT.md §4 specifies: docs/couranr-mvp/ui-reference/PUB_001_VISUAL_DRIFT_LEDGER.csv. The gate_a_review file above remains as the record of what it found."
       ]
     },
     {

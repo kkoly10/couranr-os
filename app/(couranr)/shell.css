@@ -180,6 +180,18 @@
 
 .cr-sidebar__footer { margin-top: auto; }
 
+/* The public drawer's footer carries BOTH auth actions since the drift ledger
+   moved them off the mobile bar. Scoped to its own element rather than added to
+   `.cr-sidebar__footer`, which the merchant, driver and operations drawers and
+   both desktop sidebars also use — turning that into a stretch flex column
+   would have resized their sign-out buttons for a change none of them asked
+   for. */
+.cr-drawer-auth {
+  display: flex;
+  flex-direction: column;
+  gap: var(--couranr-space-3);
+}
+
 /* Mobile/tablet header that replaces the sidebar below 1024px. */
 .cr-appbar {
   position: sticky;
@@ -341,12 +353,21 @@
   padding-block: var(--couranr-space-10);
 }
 
+/* Brand column beside the destination columns, which is the artboard's
+   geometry. It was `display:flex; justify-content:space-between`, which gave
+   the brand's `max-width:26rem` the whole free run of the row and squeezed the
+   three columns into one stack against the right edge. */
 .cr-footer__inner {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: var(--couranr-space-8);
-  justify-content: space-between;
-  align-items: flex-start;
+  grid-template-columns: 1fr;
+  align-items: start;
+}
+@media (min-width: 900px) {
+  .cr-footer__inner {
+    grid-template-columns: minmax(0, 17rem) minmax(0, 1fr);
+    gap: var(--couranr-space-10);
+  }
 }
 
 .cr-footer__brand {
@@ -357,13 +378,30 @@
   color: rgba(255, 255, 255, 0.72);
 }
 
+/* Drift ledger `footer` (RESTYLE): the artboard's footer is a brand column
+   beside LABELLED destination columns, not one row of links. Three columns
+   here, not the artboard's four — the reason each of the missing ones is
+   missing is recorded in shells.tsx, where the markup is. */
+.cr-footer__cols {
+  display: grid;
+  gap: var(--couranr-space-6) var(--couranr-space-8);
+  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+}
+.cr-footer__col { display: flex; flex-direction: column; gap: var(--couranr-space-3); }
+.cr-footer__coltitle {
+  margin: 0;
+  font-size: var(--couranr-text-sm);
+  font-weight: var(--couranr-weight-semibold);
+  color: var(--couranr-text-inverse);
+}
+
 .cr-footer__links {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--couranr-space-3) var(--couranr-space-6);
+  flex-direction: column;
+  gap: var(--couranr-space-3);
 }
 
 .cr-footer__link {

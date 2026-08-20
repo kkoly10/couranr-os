@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { Button, Card, Heading, Stack, Text } from "@/components/couranr/primitives";
+import { IconChat } from "./MarketingIcons";
 import { SUPPORT_COPY } from "@/lib/couranr/public/governed";
 
 /**
@@ -15,6 +16,16 @@ import { SUPPORT_COPY } from "@/lib/couranr/public/governed";
  * true — questions reach Couranr Support during operating hours — and offers
  * the real navigation paths. NO fake chat input, no fabricated responses, no
  * pretend typing indicator.
+ *
+ * THE TRIGGER IS A CIRCULAR ICON BUTTON BELOW 768px. Both the artboard and the
+ * desktop implementation use a labelled pill, and the mobile artboard keeps the
+ * label — but an artboard is a static composition and cannot show what a fixed
+ * 145px-wide pill does in a live 390px viewport: it lands on top of the hero's
+ * primary CTA and covers the end of its label. A floating launcher that
+ * occludes a call to action is a functional defect the mock could not depict.
+ * The label survives as the button's accessible name, so nothing is lost to
+ * assistive technology, and the icon is the chat glyph the artboard's own pill
+ * carries.
  */
 export function AskCouranrLauncher() {
   const [open, setOpen] = React.useState(false);
@@ -51,7 +62,10 @@ export function AskCouranrLauncher() {
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
       >
-        Ask Couranr
+        <span className="cr-askc__icon" aria-hidden="true">
+          <IconChat />
+        </span>
+        <span className="cr-askc__label">Ask Couranr</span>
       </button>
     </div>
   );

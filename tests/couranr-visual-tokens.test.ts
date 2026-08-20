@@ -486,3 +486,137 @@ describe("§13 — surface families and their type budgets", () => {
     }
   });
 });
+
+/**
+ * Every `cr-*` class the canonical tree RENDERS has at least one rule.
+ *
+ * A class with no rule at all is either a typo or dead markup, and nothing else
+ * in this suite can see either. It found two live ones the first time it ran:
+ * `.cr-mkt-channelstrip__label`, rendered on PUB-009 with no rule anywhere, and
+ * `.cr-mkt-closing__copy`.
+ *
+ * It does NOT catch the payer-card defect the test below it was written for —
+ * `.cr-mkt-payer` did have a rule, a Gate C token override — and that is worth
+ * stating rather than implying otherwise.
+ *
+ * Scope: `className` attributes only, string literals only. An `id` or an
+ * `aria-controls` value is not a class, and a class assembled at runtime from a
+ * variable cannot be resolved statically — an earlier draft that also swept
+ * bare `"cr-…"` string literals reported `cr-main` and `cr-pricing-schedule`,
+ * which are both element ids, one of them inside a comment.
+ */
+describe("every rendered cr-* class is defined", () => {
+  /** `className="…"`, `className={…}`, and the string literals inside either. */
+  function classExpressions(src: string): string[] {
+    const out: string[] = [];
+    for (let i = src.indexOf("className="); i >= 0; i = src.indexOf("className=", i + 1)) {
+      const j = i + "className=".length;
+      if (src[j] === '"' || src[j] === "'") {
+        const end = src.indexOf(src[j], j + 1);
+        if (end > 0) out.push(src.slice(j, end + 1));
+      } else if (src[j] === "{") {
+        let depth = 0;
+        let k = j;
+        for (; k < src.length; k++) {
+          if (src[k] === "{") depth++;
+          else if (src[k] === "}" && --depth === 0) break;
+        }
+        out.push(src.slice(j + 1, k));
+      }
+    }
+    return out;
+  }
+
+  const used = new Map<string, string>();
+  for (const file of CANON_FILES.filter((f) => f.endsWith(".tsx"))) {
+    const src = readFileSync(file, "utf8");
+    for (const expr of classExpressions(src)) {
+      for (const m of expr.matchAll(/["'`]([^"'`]*)["'`]/g)) {
+        // An interpolation is marked, not deleted: `cr-stack--${gap}` must be
+        // skipped whole. Replacing `${…}` with a SPACE instead left the prefix
+        // `cr-stack--` behind and reported nine primitives as undefined.
+        for (const c of m[1].replace(/\$\{[^}]*\}/g, "\u0000").split(/\s+/)) {
+          if (c.includes("\u0000")) continue;
+          if (c.startsWith("cr-") && !used.has(c)) used.set(c, path.relative(ROOT, file));
+        }
+      }
+    }
+  }
+
+  it("finds the classes to check at all", () => {
+    // A selector bug in the scanner above would make every assertion below pass
+    // on an empty set. An earlier draft did exactly that and reported 9.
+    expect(used.size).toBeGreaterThan(150);
+  });
+
+  it.each([...used].map(([cls, file]) => [cls, file]))(
+    "%s has a rule (used in %s)",
+    (cls) => {
+      // Both stylesheets, comments stripped: a selector quoted in a comment is
+      // documentation, not a rule.
+      const defined = new RegExp(`\\.${cls}(?![A-Za-z0-9_-])`).test(LIVE_CSS + "\n" + LIVE_SHELL);
+      expect(defined, `.${cls} is rendered but no rule defines it`).toBe(true);
+    },
+  );
+});
+
+/**
+ * A `border-color` that nothing gives a border to.
+ *
+ * The defect: `.cr-mkt-payer--merchant` and `.cr-mkt-payer--customer` set
+ * `border-color` and `background`, and there was NO `.cr-mkt-payer` base rule —
+ * no `border-width`, no `border-style`, no `padding`, no radius. `border-color`
+ * alone renders nothing, because the initial `border-style` is `none`. Both
+ * PUB-001 payer cards painted their tint edge to edge with the text touching
+ * it, on a page whose every gate was green: the typecheck has nothing to check,
+ * axe reads contrast and not padding, Gate B measures overflow and target size,
+ * and the composition test asserts `data-*` attributes. It took putting a
+ * screenshot beside the artboard to see it.
+ *
+ * This is the general shape of that bug and it is statically decidable: a rule
+ * that sets `border-color` without also establishing a border is a no-op unless
+ * some OTHER rule gives the same element one. Usually that other rule is the
+ * base class the modifier extends, which is why the base class is what is
+ * looked for.
+ *
+ * Zero hits on the current stylesheets; two when the base rule is deleted.
+ */
+describe("no border-color that nothing gives a border to", () => {
+  const rules = [...(LIVE_CSS + "\n" + LIVE_SHELL).matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => ({
+    sel: m[1].trim().replace(/\s+/g, " "),
+    body: m[2],
+  }));
+  // `border:`, `border-top:` … and the longhands that make a border render.
+  const establishes = (b: string) =>
+    /(^|[;\s])border(-(top|right|bottom|left))?\s*:/.test(b) || /border-(width|style)\s*:/.test(b);
+
+  it("scans a plausible number of rules", () => {
+    expect(rules.length).toBeGreaterThan(300);
+  });
+
+  it("every border-color declaration lands on an element that has a border", () => {
+    const problems: string[] = [];
+    for (const r of rules) {
+      if (!/border(-(top|right|bottom|left))?-color\s*:/.test(r.body)) continue;
+      if (establishes(r.body)) continue;
+      for (const target of r.sel.split(",").map((s) => s.trim())) {
+        const leafSel = target.split(/\s+/).pop()!;
+        const classes = leafSel.match(/\.[A-Za-z0-9_-]+/g);
+        if (!classes) continue;
+        const leaf = classes[classes.length - 1];
+        const base = leaf.replace(/--[A-Za-z0-9_-]+$/, "");
+        const bordered = rules.some(
+          (o) =>
+            o !== r &&
+            establishes(o.body) &&
+            o.sel.split(",").some((s) => {
+              const l = s.trim().split(/\s+/).pop()!;
+              return l === leaf || l === base || l.endsWith(base);
+            }),
+        );
+        if (!bordered) problems.push(`${target} sets a border-color but nothing gives ${base} a border`);
+      }
+    }
+    expect(problems).toEqual([]);
+  });
+});

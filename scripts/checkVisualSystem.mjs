@@ -58,11 +58,21 @@ const SELF_VERSION = "v2.2";
  * pass happily on a table that lost a section. Changing this number is a
  * content decision and belongs in 02_DECISION_REGISTRY.json first.
  */
-const EXPECTED_ROWS = 13;
+const EXPECTED_ROWS = 14;
+
+/**
+ * The screens with a canonical artboard. COURANR_VISUAL_FIDELITY_AMENDMENT.md
+ * §3.1 demotes §19's adjacency prohibition to a drift diagnostic FOR THESE, and
+ * §12 leaves it in force for the family pages, which have no independent mock
+ * and derive from the public family instead.
+ */
+const HAS_CANONICAL_MOCK = new Set(["PUB-001"]);
 
 /** The whole scan, pure in the document text, so the control can mutate a copy. */
 function scan(doc) {
   const fail = [];
+  /** Reported, never fatal. See the adjacency block below. */
+  const diagnostics = [];
 
   /* ---- §19: the approved composition vocabulary ------------------------ */
   const approved = approvedCompositions(doc);
@@ -100,14 +110,24 @@ function scan(doc) {
       }
     }
 
-    // §19's adjacency rule is universal — it is a property of the grammar, not
-    // of any one page's budget.
+    /* §19's adjacency rule.
+     *
+     * It used to be enforced on every page as "a property of the grammar". The
+     * amendment splits that: on a screen WITH a canonical mock it is a drift
+     * DIAGNOSTIC, because the artboard's own sequence may contain adjacent
+     * duplicates and a gate that forbids them forces the screen away from the
+     * design (§3.1, §5.7 — `delivery-options` and `pricing` are the two it
+     * forced on this branch). On a screen with no mock the rule still governs,
+     * which is where the anti-template grammar is doing its intended job. */
     const adjacent = rows
       .slice(1)
       .map((r, i) => (r.composition === rows[i].composition ? `${rows[i].n}+${r.n} both "${r.composition}"` : null))
       .filter(Boolean);
-    if (adjacent.length) {
-      fail.push(`${page.screen}: §19 forbids consecutive identical compositions — ${adjacent.join(", ")}`);
+    diagnostics.push(...adjacent.map((a) => `${page.screen}: adjacent duplicate composition — ${a}`));
+    if (adjacent.length && !HAS_CANONICAL_MOCK.has(page.screen)) {
+      fail.push(
+        `${page.screen}: §19 forbids consecutive identical compositions on a screen with no canonical mock — ${adjacent.join(", ")}`,
+      );
     }
 
     // Per-page budgets. §32.3 states PUB-001's numerically and says the family
@@ -253,12 +273,14 @@ function scan(doc) {
 
   return {
     fail,
+    diagnostics,
     summary:
       `${pages.length} governed page(s) — ` +
       pages.map((p) => `${p.screen}:${tables.get(p.screen)?.length ?? "?"}`).join(" ") +
       `; ${approved.size} approved compositions; PUB-001 ` +
       `${count("imageLed")} image-led, ${count("gridDominant")} grid-dominant, ` +
-      `${count("productProof")} product-proof, ${rails} workflow rail, 0 adjacent duplicates; ` +
+      `${count("productProof")} product-proof, ${rails} workflow rail, ` +
+      `${diagnostics.length} adjacent duplicate(s); ` +
       `§2 materialization ${materialized ? "landed (VIS-001)" : "MISSING"}`,
   };
 }
@@ -266,26 +288,53 @@ function scan(doc) {
 const doc = readFileSync(join(repo, DOC), "utf8");
 
 if (process.argv.includes("--positive-control")) {
-  // Copy section 6's composition onto section 7. The adjacency rule must fire.
-  const broken = doc.replace(
-    /(\| 7 \| `product-proof` \|[^|]*\|[^|]*\| )`product-proof`/,
-    "$1`workflow-rail`",
+  let bad = 0;
+  const control = (what, plant, expect, where = "fail") => {
+    const broken = plant(doc);
+    if (broken === doc) {
+      console.error(`positive control could not plant a violation — ${what}`);
+      bad++;
+      return;
+    }
+    const result = scan(broken);
+    const hit = result[where].find((f) => f.includes(expect));
+    if (!hit) {
+      console.error(`positive control FAILED — ${what} was not detected`);
+      console.error(result[where].length ? result[where].join("\n") : "  (nothing reported at all)");
+      bad++;
+    } else {
+      console.log(`check:visual-system positive control ok — ${what}: "${hit.slice(0, 110)}"`);
+    }
+  };
+
+  // A planted adjacency on a FAMILY page, which has no canonical mock, must
+  // still be fatal — that is where §19's grammar still governs.
+  control(
+    "an adjacent duplicate on a page with no canonical mock",
+    // PUB-011 row 2 (`sequence`, a `workflow-rail`) copied onto row 1's
+    // `editorial-statement`, so rows 1 and 2 collide.
+    (d) => d.replace(/(\| 2 \| `sequence` \|[^|]*\|[^|]*\| )`workflow-rail`/, "$1`editorial-statement`"),
+    "no canonical mock",
   );
-  if (broken === doc) {
-    console.error("positive control could not plant a violation — §27.0 row 7 not matched");
-    process.exit(1);
-  }
-  const { fail } = scan(broken);
-  if (!fail.some((f) => f.includes("consecutive identical compositions"))) {
-    console.error("positive control FAILED — a planted adjacent duplicate was not detected");
-    console.error(fail.length ? fail.join("\n") : "  (the scan reported nothing at all)");
-    process.exit(1);
-  }
-  console.log(`check:visual-system positive control ok — planted adjacency violation was flagged`);
-  process.exit(0);
+  // On PUB-001 the same shape must be REPORTED and must not be fatal — a gate
+  // that fails here is the gate that forced `pricing` to navy.
+  control(
+    "an adjacent duplicate on PUB-001 is reported as a diagnostic",
+    (d) => d.replace(/(\| 8 \| `product-proof` \|[^|]*\|[^|]*\| )`product-proof`/, "$1`structured-information-block`"),
+    "adjacent duplicate composition",
+    "diagnostics",
+  );
+  // And a row that silently disappears is still caught by the row count.
+  control(
+    "a dropped §27.0 row",
+    (d) => d.replace(/\n\| 7 \| `payer-choice` \|[^\n]*/, ""),
+    "expected 14",
+  );
+  process.exit(bad ? 1 : 0);
 }
 
-const { fail, summary } = scan(doc);
+const { fail, diagnostics, summary } = scan(doc);
+for (const d of diagnostics) console.log(`  diagnostic  ${d}`);
 if (fail.length) {
   console.error(`check-visual-system: ${fail.length} problem(s) in ${DOC}\n`);
   for (const f of fail) console.error(`  - ${f}`);

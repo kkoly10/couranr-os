@@ -1008,14 +1008,6 @@
 
 .cr-mkt { display: flex; flex-direction: column; gap: var(--couranr-space-8); }
 
-.cr-mkt-notice {
-  background: var(--couranr-surface-sunken);
-  border: 1px solid var(--couranr-border);
-  border-radius: var(--couranr-radius, 12px);
-  padding: var(--couranr-space-3) var(--couranr-space-4);
-  text-align: center;
-}
-
 /* ── PUB-001 hero — built from the approved mock ───────────────────────────
    docs/couranr-mvp/MOCK_TO_SCREEN_MAP.md maps PUB-001 to
    0E4F029F-22C3…png (desktop) and 22D9363D-248B…png (mobile): a full-bleed
@@ -1032,6 +1024,16 @@
    That clip lives on `.cr-shell__main` in shell.css, which is also where the
    pre-existing sticky-chrome bug got fixed — see the comment there. Nothing
    about the hero needs a rule here beyond the escape itself. */
+
+/* The shell gives its content a vertical pad (`.cr-shell__content`,
+   space-6 / space-8), which left a 24–32px cream seam between the header and
+   the photograph. Both artboards butt the hero straight against the header, so
+   the first child of the marketing page cancels that pad. Scoped to
+   `:first-child` so a hero anywhere else keeps its rhythm. */
+.cr-mkt > .cr-hero:first-child { margin-top: calc(-1 * var(--couranr-space-6)); }
+@media (min-width: 1024px) {
+  .cr-mkt > .cr-hero:first-child { margin-top: calc(-1 * var(--couranr-space-8)); }
+}
 
 .cr-hero {
   position: relative;
@@ -1220,6 +1222,18 @@
 
 .cr-mkt-section { display: flex; flex-direction: column; gap: var(--couranr-space-4); }
 
+/* Drift ledger: the artboard centres the heading and subcopy of
+   `order-channels`, `payer-choice`, `categories` and `delivery-options`. A
+   modifier rather than a base change — `.cr-mkt-section` is also the left-
+   aligned shape used by the four family pages, which step 9 propagates to. */
+.cr-mkt-section--centred { align-items: center; text-align: center; }
+.cr-mkt-section--centred > h2,
+.cr-mkt-section--centred > p { max-width: 62ch; }
+/* The children that are layouts, not copy, must still fill the section. */
+.cr-mkt-section--centred > ul,
+.cr-mkt-section--centred > ol,
+.cr-mkt-section--centred > div { align-self: stretch; text-align: left; }
+
 .cr-mkt-chips { display: flex; flex-wrap: wrap; gap: var(--couranr-space-2); list-style: none; padding: 0; margin: 0; }
 .cr-mkt-chip {
   border: 1px solid var(--couranr-border-strong);
@@ -1317,7 +1331,24 @@
 
 /* ── payer cards ─────────────────────────────────────────────────────────── */
 
-.cr-mkt-payers { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: var(--couranr-space-3); }
+/* Amendment §5.4: these are mock-supported objects and the recovery target is
+   fidelity of tint, border, radius, icon geometry and title/body hierarchy.
+   There was no base `.cr-mkt-payer` rule at all — the modifiers set a
+   `border-color` with no border-width and no padding, so both cards painted
+   their tint edge to edge with the text touching it. */
+.cr-mkt-payers { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: var(--couranr-space-4); }
+.cr-mkt-payer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--couranr-space-3);
+  padding: var(--couranr-space-5);
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-md);
+  background: var(--couranr-surface);
+  text-align: left;
+}
+.cr-mkt-payer h3 { margin: 0; }
+.cr-mkt-payer p  { margin: 0; }
 .cr-mkt-payer--merchant { border-color: var(--couranr-gold); background: #fdf8ec; }
 .cr-mkt-payer--customer { border-color: var(--couranr-route-blue); background: #eef3fd; }
 .cr-mkt-payer__head { display: flex; align-items: center; gap: var(--couranr-space-3); }
@@ -1384,6 +1415,9 @@
 .cr-askc { position: fixed; right: 16px; bottom: 16px; z-index: 40; display: flex; flex-direction: column; align-items: flex-end; gap: var(--couranr-space-2); }
 .cr-askc__panel { width: min(20rem, calc(100vw - 32px)); }
 .cr-askc__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--couranr-space-2);
   border: none;
   border-radius: 999px;
   background: var(--couranr-navy);
@@ -1395,7 +1429,36 @@
   box-shadow: 0 4px 14px rgba(13, 21, 37, 0.28);
   min-height: 44px;
 }
+.cr-askc__icon { display: flex; line-height: 0; }
+.cr-askc__icon svg { width: 18px; height: 18px; }
 .cr-askc__pill:hover { background: #1a2740; }
+
+/* Below 768px the launcher is a circular icon button, not a labelled pill.
+   A fixed 145px pill at 390px lands on the hero's primary CTA and covers the
+   end of its label — an occlusion a static artboard cannot show. The label
+   stays as the accessible name via `.cr-visually-hidden`, so the button is
+   still "Ask Couranr" to a screen reader, and 48px clears §23.6's 44px floor.
+   The panel it opens is unchanged. */
+@media (max-width: 767px) {
+  .cr-askc__pill {
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    justify-content: center;
+  }
+  .cr-askc__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+  .cr-askc__icon svg { width: 22px; height: 22px; }
+}
 
 /* Pricing page (PUB-008) */
 .cr-mkt-price-hero { font-size: clamp(2.5rem, 6vw, 3.5rem); font-weight: 700; color: var(--couranr-navy); line-height: 1; }
@@ -1579,13 +1642,15 @@
 
 /* ── §19.5 product proof — real states, readable, no fabricated numbers ──── */
 
-.cr-mkt-proof { display: grid; gap: var(--couranr-space-8); align-items: center; }
+/* Drift ledger `product-proof` (RESTYLE): "Reconcile the timeline to the
+   artboard's horizontal five-stage geometry." The artboard runs the stages
+   LEFT TO RIGHT under one heading, with the artifact tiles beside them, so the
+   copy sits above the panel rather than in a column next to it — six states
+   need the full width to read horizontally. Below 900px the timeline returns to
+   the vertical stack, which is the only shape six states fit in on a phone. */
+.cr-mkt-proof { display: grid; gap: var(--couranr-space-6); }
 .cr-mkt-proof__copy h2 { margin: 0 0 var(--couranr-space-4); color: var(--couranr-text); }
-.cr-mkt-proof__copy p  { margin: 0; }
-
-@media (min-width: 900px) {
-  .cr-mkt-proof { grid-template-columns: 52fr 48fr; }
-}
+.cr-mkt-proof__copy p  { margin: 0; max-width: 78ch; }
 
 .cr-mkt-proof__panel {
   border: 1px solid var(--couranr-border);
@@ -1627,6 +1692,7 @@
 .cr-mkt-proof__event:first-child::before { top: 50%; }
 .cr-mkt-proof__event:last-child::before  { bottom: 50%; }
 
+
 /* Shape AND fill differ between done and pending, so the state never rests on
    colour alone (§23.5). */
 .cr-mkt-proof__dot {
@@ -1658,6 +1724,44 @@
 }
 .cr-mkt-proof__event:not(.cr-mkt-proof__event--done) .cr-mkt-proof__state {
   color: var(--couranr-text-muted);
+}
+
+@media (min-width: 900px) {
+  .cr-mkt-proof__timeline {
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    gap: var(--couranr-space-2);
+  }
+  .cr-mkt-proof__event {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    grid-template-rows: 24px auto auto;
+    justify-items: center;
+    text-align: center;
+    padding-block: 0;
+    gap: var(--couranr-space-2);
+  }
+  /* The connector becomes the rule BETWEEN two markers rather than the rule
+     below one, so it is drawn from each event's centre to the next event's
+     centre and the last event draws none. */
+  .cr-mkt-proof__event::before {
+    left: 50%;
+    /* Centre to centre: half this cell, the column gap, half the next. `-50%`
+       alone stops one gap short and reads as a broken rule. */
+    right: calc(-50% - var(--couranr-space-2));
+    top: 11px;
+    bottom: auto;
+    width: auto;
+    height: 2px;
+  }
+  /* `:first-child::before { top: 50% }` and `:last-child::before
+     { bottom: 50% }` are the vertical rules and out-specify the block above,
+     so both are reset here rather than left to cascade. */
+  .cr-mkt-proof__event:first-child::before { top: 11px; }
+  .cr-mkt-proof__event:last-child::before { display: none; bottom: auto; }
+  .cr-mkt-proof__state,
+  .cr-mkt-proof__note { grid-column: 1; }
+  .cr-mkt-proof__note { text-wrap: balance; }
 }
 
 /* ── §19.6 full-bleed interruption — navy, high contrast, rhythm reset ───── */
@@ -1703,11 +1807,10 @@
 
 /* ── §19.7 structured information block — FAQ as a ruled list, not cards ─── */
 
+/* The row treatment lives with the other drift-ledger corrections at the foot
+   of this file; `.cr-mkt-faq` is now a plain wrapper around <details> rows and
+   the <dl> rules that used to be here have no element left to match. */
 .cr-mkt-faq { margin: 0; padding: 0; }
-.cr-mkt-faq__item { padding-block: var(--couranr-space-5); border-top: 1px solid var(--couranr-border); }
-.cr-mkt-faq__item:last-child { border-bottom: 1px solid var(--couranr-border); }
-.cr-mkt-faq dt { margin: 0 0 var(--couranr-space-2); color: var(--couranr-text); }
-.cr-mkt-faq dd { margin: 0; max-width: 68ch; }
 
 /* ── the channel strip: one system, not seven identical cards ────────────── */
 
@@ -1735,6 +1838,10 @@
   flex: 1 1 auto;
 }
 .cr-mkt-channelstrip__icon { color: var(--couranr-route-blue); line-height: 0; flex: none; }
+/* The label carried no rule at all; the item's own font settings were doing the
+   work and the span was decoration. It owns its own wrapping now, which is what
+   a label class is for. */
+.cr-mkt-channelstrip__label { text-wrap: balance; }
 
 /* ═════════════════════════════════════════════════════════════════════════
    Gate C fixes — found by running §26's accessibility gate, not by reading
@@ -1793,10 +1900,14 @@
   text-underline-offset: 3px;
 }
 
-/* Below 400px the topbar sheds the secondary auth action; it lives in the
-   drawer footer instead. See the comment at the call site. */
-@media (max-width: 399px) {
-  .cr-topbar__signin { display: none; }
+/* Drift ledger `public-header` (RESTYLE): below the drawer breakpoint the
+   artboard's bar carries a wordmark and a hamburger and nothing else. Both auth
+   actions hide here and are rendered at full size in the drawer footer, which
+   also retires the 400px special case that used to drop only "Sign in" — the
+   crowded three-control 360px bar is what produced its 7px overflow.
+   See the comment at the call site in shells.tsx. */
+@media (max-width: 899px) {
+  .cr-topbar__auth { display: none; }
 }
 
 /* Gate A / D-2 — proof artifacts. The artboard shows these beside the timeline:
@@ -1813,6 +1924,12 @@
   margin-top: var(--couranr-space-2);
   padding-top: var(--couranr-space-5);
   --couranr-text-muted: var(--couranr-text-muted-tint);
+}
+
+/* Four across at the width the artboard shows them at, beside the timeline
+   rather than stacked two-by-two under it. */
+@media (min-width: 900px) {
+  .cr-mkt-proof__artifacts { grid-template-columns: repeat(4, 1fr); }
 }
 .cr-mkt-proof__artifact {
   display: flex;
@@ -1845,59 +1962,40 @@
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
-   MKT-003 — section 9, `delivery-options`, and the two artboard regions Gate A
-   had recorded as deviations D-1 and D-3.
+   MKT-003 — `delivery-options`, rebuilt against the artboard.
 
-   Section 9 is §19.3 split story, not the artboard's four-across card row. The
-   artboard stacks a card row (categories) directly on top of another card row
-   (options); §19's adjacent-duplicate rule is a hard rule, and two structured
-   blocks in sequence read as one slab. The four options keep everything the
-   artboard gives them except the fifth grid.
+   This was a §19.3 split story for one stated reason: the artboard stacks a
+   card row (categories) directly on top of another card row (options), and
+   §19's adjacent-duplicate rule forbade it. The fidelity amendment demotes that
+   rule to a diagnostic (§3.1) and names this exact change as one to revert
+   (§5.7), so the four-across bordered card row is back — icon chip left of a
+   title, body beneath, short descriptor tag under the body, heading centred
+   above, overnight footnote centred below.
    ═════════════════════════════════════════════════════════════════════════ */
 
-.cr-mkt-options { display: grid; gap: var(--couranr-space-6); }
-.cr-mkt-options__lead h2 { margin: 0 0 var(--couranr-space-3); color: var(--couranr-text); }
-.cr-mkt-options__lead p  { margin: 0; }
-
-/* The overnight qualifier. Set apart from the lead copy because OVN-001 makes
-   it conditional — request-only, when Couranr confirms availability — and a
-   conditional read as body copy reads as an offer. */
-/* `.cr-mkt-options__lead p` zeroes the margin at (0,1,1); this needs to beat
-   it without !important, so it is scoped to the lead as well. */
-.cr-mkt-options__lead .cr-mkt-options__note {
-  margin-top: var(--couranr-space-5);
-  padding: var(--couranr-space-4);
-  border-left: 3px solid var(--couranr-gold);
-  border-radius: 0 var(--couranr-radius-sm) var(--couranr-radius-sm) 0;
-  background: var(--couranr-surface-sunken);
-  font-size: var(--couranr-text-sm);
-  line-height: var(--couranr-leading-normal);
-  color: var(--couranr-text-muted);
-  --couranr-text-muted: var(--couranr-text-muted-tint);
+.cr-mkt-options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--couranr-space-4);
+  grid-template-columns: 1fr;
 }
+@media (min-width: 640px) { .cr-mkt-options { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1024px) { .cr-mkt-options { grid-template-columns: repeat(4, 1fr); } }
 
-@media (min-width: 900px) {
-  /* 38/62, matching the other split story on this page. Not 50/50 — §19.3. */
-  .cr-mkt-options { grid-template-columns: 38fr 62fr; gap: var(--couranr-space-10); align-items: start; }
-}
-
-.cr-mkt-options__list { list-style: none; margin: 0; padding: 0; }
-
-/* Ruled rows rather than four bordered tiles, the same device section 5 uses
-   for its outcomes — the shared rule is what makes them read as one set of
-   options instead of four competing offers. */
 .cr-mkt-option {
   display: grid;
   grid-template-columns: 40px 1fr;
-  gap: var(--couranr-space-2) var(--couranr-space-4);
+  gap: var(--couranr-space-3);
   align-items: start;
-  padding-block: var(--couranr-space-5);
-  border-top: 1px solid var(--couranr-border);
+  padding: var(--couranr-space-5);
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-md);
+  background: var(--couranr-surface);
 }
-.cr-mkt-option:last-child { border-bottom: 1px solid var(--couranr-border); }
 
 .cr-mkt-option__icon {
-  grid-row: 1 / span 2;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1909,13 +2007,14 @@
   line-height: 0;
   flex: none;
 }
-.cr-mkt-option__body h3 { margin: 0 0 var(--couranr-space-1); color: var(--couranr-text); }
+.cr-mkt-option__body { display: flex; flex-direction: column; gap: var(--couranr-space-2); }
+.cr-mkt-option__body h3 { margin: 0; color: var(--couranr-text); }
 .cr-mkt-option__body p  { margin: 0; }
 
 /* The artboard's short descriptor under each option. Muted and small: it is a
    label for the option, not a claim about it. */
 .cr-mkt-option__tag {
-  align-self: start;
+  margin-top: var(--couranr-space-1);
   font-size: var(--couranr-text-xs);
   font-weight: var(--couranr-weight-semibold);
   letter-spacing: 0.04em;
@@ -1923,11 +2022,21 @@
   color: var(--couranr-text-muted);
 }
 
-@media (min-width: 640px) {
-  /* The tag moves to its own column on the right, where the artboard has it. */
-  .cr-mkt-option { grid-template-columns: 40px 1fr auto; }
-  .cr-mkt-option__icon { grid-row: 1; }
-  .cr-mkt-option__tag { justify-self: end; padding-top: 2px; }
+/* The overnight qualifier. Set apart from the card row because OVN-001 makes it
+   conditional — request-only, when Couranr confirms availability — and a
+   conditional read as body copy reads as an offer. */
+.cr-mkt-options__note {
+  margin: var(--couranr-space-2) 0 0;
+  padding: var(--couranr-space-3) var(--couranr-space-4);
+  border: 1px solid var(--couranr-border);
+  border-left: 3px solid var(--couranr-gold);
+  border-radius: 0 var(--couranr-radius-sm) var(--couranr-radius-sm) 0;
+  background: var(--couranr-surface-sunken);
+  font-size: var(--couranr-text-sm);
+  line-height: var(--couranr-leading-normal);
+  color: var(--couranr-text-muted);
+  --couranr-text-muted: var(--couranr-text-muted-tint);
+  text-align: left;
 }
 
 /* Gate A / D-1 — the eleven governed categories, section 8.
@@ -2253,3 +2362,347 @@
 .cr-mkt-rail--long .cr-mkt-rail__step:first-child::before { top: 50%; }
 .cr-mkt-rail--long .cr-mkt-rail__step:last-child::before { bottom: 50%; }
 .cr-mkt-rail--long .cr-mkt-rail__content { margin-top: 0; max-width: 68ch; }
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Drift-ledger corrections — PUB-001, from the artboard pixels.
+
+   Every rule below cites the ledger row it closes. The ledger is
+   docs/couranr-mvp/ui-reference/PUB_001_VISUAL_DRIFT_LEDGER.csv and it is the
+   authority for these, not §19's budgets — fidelity amendment §1.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/* ── row `top-notice` (REBUILD) ─────────────────────────────────────────────
+   Was a bordered rounded box inside the page content, below the header. Both
+   artboards show a full-bleed bar ABOVE the header. The desktop bar is cream
+   with a Route Blue link; the mobile bar is NAVY with white text — that is not
+   a mistake in the mock, both artboards agree, so both are reproduced. */
+.cr-topnotice {
+  background: var(--couranr-canvas);
+  border-bottom: 1px solid var(--couranr-border);
+}
+.cr-topnotice__inner {
+  display: flex;
+  align-items: center;
+  gap: var(--couranr-space-2);
+  margin: 0 auto;
+  padding: var(--couranr-space-3) var(--couranr-space-4);
+  max-width: var(--couranr-container-max);
+  font-size: var(--couranr-text-sm);
+  color: var(--couranr-text);
+}
+.cr-topnotice__icon { display: flex; flex: none; line-height: 0; }
+.cr-topnotice__icon svg { width: 16px; height: 16px; }
+.cr-topnotice__text { min-width: 0; }
+/* Right-aligned, as the artboard has it, and pushed by the text rather than
+   floated so it never collides on a narrow bar. */
+.cr-topnotice__link {
+  margin-left: auto;
+  flex: none;
+  color: var(--couranr-route-blue);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  .cr-topnotice { background: var(--couranr-navy); border-bottom-color: transparent; }
+  .cr-topnotice__inner { color: var(--couranr-text-inverse); }
+  /* The mobile artboard shows the sentence only — no link on the bar, because
+     there is no room for it beside the text at 390px. */
+  .cr-topnotice__link { display: none; }
+}
+
+/* ── row `hero-small-label` ─────────────────────────────────────────────────
+   Geometry is mock-supported and unchanged. The mobile artboard renders the
+   pill in GOLD rather than white, so that treatment is reproduced.
+
+   The TEXT deliberately does NOT follow the artboard, and this is an authority
+   decision rather than a preference: the artboard's pill reads DELIVERY MADE
+   SIMPLE, and BRAND_GUIDE.md line 10 says "Do not use the tagline inside small
+   headers" while VIS-001 says "Use the canonical supplied lockup; do not
+   recreate with typed text." A typed tagline inside a small header breaks both.
+   MKT-002's consumer descriptor stays. */
+@media (max-width: 767px) {
+  .cr-hero__label {
+    color: var(--couranr-gold);
+    border-color: var(--couranr-gold);
+  }
+}
+
+.cr-hero__cta-arrow { display: none; }
+
+/* ── row `hero-trust` ───────────────────────────────────────────────────────
+   The circles are MOCK-SUPPORTED on desktop (amendment §5.5 says so outright,
+   and the earlier recovery document was wrong to list them as invented). The
+   MOBILE artboard draws the same three glyphs in GOLD with no ring around
+   them, so that is what mobile gets. Colour is not carrying the meaning —
+   each item states its claim in words beside the glyph. */
+@media (max-width: 767px) {
+  .cr-hero__trust-icon {
+    color: var(--couranr-gold);
+    border-color: transparent;
+    width: auto;
+    height: auto;
+  }
+}
+
+/* ── row `hero-headline` ────────────────────────────────────────────────────
+   Both artboards are canonical and they differ on purpose: the desktop accent
+   clause is WHITE, the mobile accent clause is GOLD. Art direction, the same
+   as the hero's two photographic crops — not a conflict to pick a winner from. */
+.cr-hero__h1-accent { color: var(--couranr-text-inverse); }
+@media (max-width: 767px) {
+  .cr-hero__h1-accent { color: var(--couranr-gold); }
+}
+
+/* ── row `hero-cta` (REBUILD) ───────────────────────────────────────────────
+   The mobile artboard stacks the two hero buttons FULL WIDTH, and pins a
+   primary action to the bottom of the viewport. The implementation had neither. */
+@media (max-width: 767px) {
+  .cr-hero__cta { flex-direction: column; align-items: stretch; }
+  .cr-hero__cta > .cr-button { width: 100%; }
+  .cr-hero__cta-arrow { display: inline; margin-left: var(--couranr-space-3); }
+}
+
+/* The sticky bottom CTA the mobile artboard shows, and the Ask Couranr
+   launcher, in ONE bar.
+
+   They were separate fixed elements and both are bottom-anchored, so at 390px
+   the launcher sat on top of the hero's full-width primary CTA and covered the
+   end of its label. A static artboard cannot show an occlusion, which is why
+   this is a correction the pixels did not ask for. One bar means mobile has
+   exactly one bottom-anchored object and nothing floats over the page.
+
+   Desktop never renders the bar — the hero's own buttons are always reachable
+   there — and `.cr-askc` keeps the bottom-right position the artboard gives it. */
+.cr-mobilebar__cta { display: none; }
+
+@media (max-width: 767px) {
+  .cr-mobilebar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    /* Below --couranr-z-drawer (40) on purpose: an open mobile menu must cover
+       this, not sit under it. */
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    gap: var(--couranr-space-3);
+    padding: var(--couranr-space-3) var(--couranr-space-4)
+             calc(var(--couranr-space-3) + env(safe-area-inset-bottom, 0px));
+    background: var(--couranr-surface);
+    border-top: 1px solid var(--couranr-border);
+  }
+  .cr-mobilebar__cta { display: inline-flex; flex: 1 1 auto; }
+  /* The launcher stops being a floating object and becomes a control in the
+     bar; only its panel still floats. */
+  .cr-askc { position: static; flex: none; }
+  .cr-askc__panel {
+    position: fixed;
+    right: var(--couranr-space-4);
+    bottom: 88px;
+  }
+  /* The bar covers the end of the page, so the page has to end above it. */
+  .cr-shell--public .cr-shell__main { padding-bottom: 88px; }
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   PUB-001 drift-ledger corrections — paired cards, FAQ disclosure, split
+   closing band.
+
+   COURANR_VISUAL_FIDELITY_AMENDMENT.md §1: written authority controls copy and
+   behaviour, the canonical mock controls screen composition and geometry, and
+   v2.2 governs only where the mock is silent. Everything in this block is the
+   second of those — the artboard's geometry, reproduced.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/* Two sections side by side in one row. A wrapper rather than a merged
+   section, because §27.0's `data-couranr-section` ids are a normative list and
+   merging would delete one of them from the DOM to achieve a layout. */
+.cr-mkt-pair {
+  display: grid;
+  gap: var(--couranr-space-6);
+  grid-template-columns: 1fr;
+  align-items: stretch;
+}
+@media (min-width: 1024px) { .cr-mkt-pair { grid-template-columns: 1fr 1fr; } }
+
+/* The artboard's light bordered card. Deliberately NOT the `Card` primitive:
+   these are page sections, and a card primitive inside a <section> would put a
+   landmark inside a decoration. */
+.cr-mkt-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--couranr-space-4);
+  padding: var(--couranr-space-6);
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-lg);
+  background: var(--couranr-surface);
+}
+/* §12.5's scale, not §12.3's. `.cr-type-marketing-section` clamps to 32–52px,
+   which is a full-width section heading; inside a half-width card it rendered a
+   three-line 54px headline where the artboard shows a single ~24px line. §12.5
+   is a SCALE role — its surface binding adds the merchant `h2` to it, it does
+   not reserve the class for that surface. */
+.cr-mkt-card__h2 { margin: 0; color: var(--couranr-text); text-align: center; }
+/* The artboard centres three of the four card headings and sets "Ask Couranr"
+   left, above its own left-aligned copy. */
+.cr-mkt-card__h2--start { text-align: left; }
+.cr-mkt-card__note {
+  margin: 0;
+  font-size: var(--couranr-text-sm);
+  line-height: var(--couranr-leading-normal);
+  color: var(--couranr-text-muted);
+}
+/* The card's foot. `margin-top:auto` is what keeps the two cards' CTAs level
+   when their bodies differ in height. */
+.cr-mkt-card__cta { margin-top: auto; justify-content: center; text-align: center; }
+
+/* ── pricing card ───────────────────────────────────────────────────────── */
+
+.cr-mkt-pricecard {
+  display: grid;
+  gap: var(--couranr-space-4);
+  grid-template-columns: 1fr;
+  align-items: start;
+}
+@media (min-width: 480px) { .cr-mkt-pricecard { grid-template-columns: minmax(9rem, 34fr) 66fr; } }
+
+/* The price sits in its own bordered inset in the artboard, not loose on the
+   card. */
+.cr-mkt-pricecard__figure {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--couranr-space-1);
+  padding: var(--couranr-space-5) var(--couranr-space-4);
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-md);
+  background: var(--couranr-surface);
+  text-align: center;
+}
+.cr-mkt-pricecard__label {
+  font-size: var(--couranr-text-sm);
+  font-weight: var(--couranr-weight-semibold);
+  color: var(--couranr-text-muted);
+}
+.cr-mkt-pricecard__price { color: var(--couranr-navy); }
+
+/* ── coverage card ──────────────────────────────────────────────────────── */
+
+.cr-mkt-coverage {
+  display: grid;
+  gap: var(--couranr-space-4);
+  grid-template-columns: 1fr;
+  align-items: center;
+}
+@media (min-width: 480px) { .cr-mkt-coverage { grid-template-columns: 44fr 56fr; } }
+.cr-mkt-coverage__visual {
+  padding: var(--couranr-space-3);
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-md);
+  background: var(--couranr-surface-sunken);
+}
+
+/* ── FAQ disclosure ─────────────────────────────────────────────────────── */
+
+/* Native <details>. The artboard's rows are COLLAPSED with a chevron; using the
+   platform's own disclosure means the affordance is keyboard operable and
+   announced without a client component or a line of JavaScript. */
+.cr-mkt-faq__item { border-top: 1px solid var(--couranr-border); }
+.cr-mkt-faq__item:last-child { border-bottom: 1px solid var(--couranr-border); }
+
+.cr-mkt-faq__q {
+  display: flex;
+  align-items: center;
+  gap: var(--couranr-space-3);
+  padding-block: var(--couranr-space-4);
+  /* §23.6's 44px target, met by the row itself rather than by an icon. */
+  min-height: var(--couranr-touch-min);
+  margin: 0;
+  color: var(--couranr-text);
+  cursor: pointer;
+  list-style: none;
+}
+/* Safari renders a disclosure triangle through a pseudo-element the standard
+   `list-style: none` does not reach. */
+.cr-mkt-faq__q::-webkit-details-marker { display: none; }
+.cr-mkt-faq__q::after {
+  content: "";
+  margin-left: auto;
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid var(--couranr-text-muted);
+  border-bottom: 2px solid var(--couranr-text-muted);
+  transform: rotate(45deg) translate(-2px, -2px);
+  transition: transform 160ms ease;
+}
+.cr-mkt-faq__item[open] > .cr-mkt-faq__q::after {
+  transform: rotate(225deg) translate(-2px, -2px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .cr-mkt-faq__q::after { transition: none; }
+}
+.cr-mkt-faq__q:focus-visible {
+  outline: none;
+  box-shadow: var(--couranr-focus-ring);
+  border-radius: var(--couranr-radius-sm);
+}
+.cr-mkt-faq__a { padding-bottom: var(--couranr-space-4); }
+.cr-mkt-faq__a p { margin: 0; max-width: 68ch; }
+
+/* ── Ask Couranr card ───────────────────────────────────────────────────── */
+
+/* The artboard's prompt chips. Every one is real navigation to a route that
+   exists — AIS-001 does not settle that Couranr can answer a typed question,
+   so nothing here accepts one. */
+.cr-mkt-asklinks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--couranr-space-2);
+}
+.cr-mkt-asklink {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--couranr-touch-min);
+  padding: 0 var(--couranr-space-4);
+  border: 1px solid var(--couranr-border-strong);
+  border-radius: 999px;
+  background: var(--couranr-surface);
+  font-size: var(--couranr-text-sm);
+  font-weight: var(--couranr-weight-medium);
+  color: var(--couranr-route-blue);
+  text-decoration: none;
+}
+.cr-mkt-asklink:hover { background: var(--couranr-surface-sunken); text-decoration: underline; }
+.cr-mkt-asklink:focus-visible {
+  outline: none;
+  box-shadow: var(--couranr-focus-ring);
+}
+
+/* ── closing band, split ────────────────────────────────────────────────── */
+
+/* The artboard sets the closing copy LEFT with the two buttons to its RIGHT on
+   the same row. A PUB-001 modifier: the four family pages keep the centred
+   treatment until amendment §11 step 9 propagates this one. */
+@media (min-width: 900px) {
+  .cr-mkt-closing--split {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--couranr-space-8);
+    text-align: left;
+    padding-inline: var(--couranr-space-8);
+  }
+  /* Without `min-width: 0` a long unbroken word in the headline sets the flex
+     item's minimum and pushes the button column off the band. */
+  .cr-mkt-closing--split .cr-mkt-closing__copy { min-width: 0; }
+  .cr-mkt-closing--split .cr-mkt-h2-inverse { margin: 0; max-width: 22ch; }
+  .cr-mkt-closing--split .cr-mkt-cta-row { flex: none; }
+}
