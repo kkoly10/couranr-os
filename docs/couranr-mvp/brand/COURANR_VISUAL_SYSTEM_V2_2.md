@@ -187,6 +187,56 @@ What is NOT done, and why, is recorded in
 families' Gate A/B/C need an authenticated browser, and the harness that
 provides one cannot start PostgREST in this container.
 
+### r5 — the mock outranks this document where the mock is explicit
+
+An owner amendment, `COURANR_VISUAL_FIDELITY_AMENDMENT.md`, lands beside this
+file and **changes its precedence**. Read it before applying §19, §27.0 or
+§27.1 to any screen that has a canonical mock.
+
+The correction it makes is one this document earned. §19's anti-template rules
+were written to stop the implementation defaulting to card grids, and they did.
+But a rule that can *force* a composition is a rule that can force a screen away
+from the design it was supposed to implement, and on this branch it did exactly
+that at least once: `delivery-options` was mapped to `split-story` **because
+`categories` was already a `structured-information-block` and §19 forbids
+adjacent duplicates** — not because the artboard shows a split story. The
+artboard shows a four-across card row. The budget won and the mock lost.
+
+The amended rule:
+
+> Written product authority controls behaviour, copy, pricing, permissions,
+> state, safety and claims. **The canonical mock controls screen-specific visual
+> composition, geometry, hierarchy, photography, spacing, component shape and
+> visual rhythm.** This document controls reusable implementation mechanics
+> **only where the mock is silent.**
+
+Concretely, inside this document:
+
+- **§19's adjacency prohibition** and **§27.0/§27.1's numeric budgets** become
+  *drift diagnostics*. They may detect a problem and may govern a screen with no
+  visual reference. They may not force a canonical screen away from an explicit
+  mock treatment.
+- **`data-composition` is descriptive, not generative.** Where the vocabulary
+  cannot describe what the mock shows, extend it narrowly or record a
+  screen-specific value — do not redesign the screen to fit the enum.
+- **§14.5's eyebrow budget is DELETED.** There is no "2–3 per page" allowance
+  and no shared public marketing eyebrow pattern. A small label is permitted
+  only where that screen's canonical mock visibly contains one, or written
+  authority requires it, and its styling stays screen-specific. One label on
+  PUB-001 never authorised `.cr-mkt-eyebrow` on four more pages, and this branch
+  did that.
+- **§26's Gate A** is superseded for PUB-001 by the pixel-first region drift
+  ledger the amendment specifies.
+
+What the amendment explicitly does NOT reopen, and this log records so nobody
+re-litigates it: `VIS-001`'s typography, the self-hosted Martian/Inter/Martian
+Mono implementation, the `--couranr-*` namespace, the locked colours, the
+canonical logo, and the accessibility, responsive and shell work.
+
+The standalone recovery document that preceded the amendment is **not** a second
+authority; its useful methods are incorporated in the amendment and its stale
+branch assumptions are not.
+
 ---
 
 # 0. Why this document exists
