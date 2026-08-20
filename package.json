@@ -21,6 +21,7 @@
     "check:mocks": "node scripts/checkMockMap.mjs",
     "check:visual-system": "node scripts/checkVisualSystem.mjs",
     "check:visual-registry": "node scripts/visualAuthorityRegistry.mjs",
+    "check:drift-ledger": "node scripts/checkDriftLedger.mjs",
     "check:migrations": "vitest run tests/couranr-migrations.test.ts && node scripts/checkMigrationsDestructive.mjs",
     "check:gates:controls": "node scripts/positiveControls.mjs",
     "provision:postgrest": "node scripts/provisionPostgrest.mjs",

@@ -30,6 +30,7 @@ const GATES = [
   ["check:mocks", ["scripts/checkMockMap.mjs", "--positive-control"]],
   ["check:visual-system", ["scripts/checkVisualSystem.mjs", "--positive-control"]],
   ["check:visual-registry", ["scripts/visualAuthorityRegistry.mjs", "--positive-control"]],
+  ["check:drift-ledger", ["scripts/checkDriftLedger.mjs", "--positive-control"]],
 ];
 
 if (process.argv.includes("--with-db")) {

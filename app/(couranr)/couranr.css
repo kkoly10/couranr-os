@@ -1430,6 +1430,11 @@
   padding-block: var(--couranr-space-8);
   max-width: 24ch;
 }
+/* h1 AND h2. The family heroes render an h1 here and only h2 was covered, so
+   the headline fell back to the UA default margin — measured at 48.24px,
+   which is 0.67em of a very large font rather than anything designed. It
+   read as a void above the headline and nothing below it. */
+.cr-mkt-editorial h1,
 .cr-mkt-editorial h2 { margin: 0 0 var(--couranr-space-5); color: var(--couranr-text); }
 .cr-mkt-editorial__body {
   margin: 0;
@@ -2207,7 +2212,14 @@
 .cr-mkt-editorial--hero > h1,
 .cr-mkt-editorial--hero > h2 { max-width: 18ch; }
 .cr-mkt-editorial--hero .cr-mkt-editorial__body { max-width: 54ch; }
-.cr-mkt-editorial--hero .cr-mkt-cta-row { justify-content: flex-start; }
+/* The CTA row had NO top margin and sat flush against the last line of the
+   lead paragraph — measured gap: 0px. Gate B never saw it because nothing
+   overflowed and axe never saw it because contrast was fine; it took looking
+   at the rendered hero. */
+.cr-mkt-editorial--hero .cr-mkt-cta-row {
+  justify-content: flex-start;
+  margin-top: var(--couranr-space-6);
+}
 
 /*
  * 2. A workflow rail longer than four steps.
