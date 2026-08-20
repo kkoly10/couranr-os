@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { isActiveRoute, type NavItem } from "@/lib/couranr/navigation";
@@ -13,6 +14,16 @@ import { Wordmark } from "./parts";
  * focus while open, closes on Escape, closes on backdrop click, and restores
  * focus to the trigger on close — the same behaviour as the Dialog primitive,
  * implemented here so the shell has no dependency on it.
+ *
+ * THE OVERLAY IS PORTALLED OUT OF THE HEADER, and that is load-bearing rather
+ * than tidy. In the markup it sits inside `.cr-topbar`, which is
+ * `position: sticky; z-index: 30` and therefore its own stacking context — so
+ * the overlay's `z-index: 40` was scoped INSIDE that 30, and every root-level
+ * fixed element at 30 or above painted over an `aria-modal="true"` dialog. On
+ * PUB-001 at 390px that was the Ask Couranr launcher (40) and the sticky CTA
+ * bar (30), the second of which covered the drawer's own "Sign in" button. A
+ * z-index cannot climb out of an ancestor's stacking context; the element has
+ * to leave it.
  */
 
 const FOCUSABLE =
@@ -39,6 +50,17 @@ export function MobileNav({
   triggerClassName?: string;
 }) {
   const [open, setOpen] = React.useState(false);
+  /**
+   * `.cr-root` — NOT `document.body`. Every `--couranr-*` token is declared on
+   * `.cr-root`, so a drawer portalled to the body renders with no tokens at
+   * all: no panel background, no text colour, no scrim. `.cr-root` is
+   * `position: static; z-index: auto`, so it is not itself a stacking context
+   * and moving the overlay there is enough to escape `.cr-topbar`'s.
+   */
+  const [portalTarget, setPortalTarget] = React.useState<Element | null>(null);
+  React.useEffect(() => {
+    setPortalTarget(document.querySelector(".cr-root") ?? document.body);
+  }, []);
   const panelRef = React.useRef<HTMLDivElement>(null);
   const triggerRef = React.useRef<HTMLButtonElement>(null);
   const pathname = usePathname();
@@ -102,64 +124,77 @@ export function MobileNav({
         <span className="cr-visually-hidden">Open {label}</span>
       </button>
 
-      {open ? (
-        <div
-          className="cr-overlay cr-overlay--nav"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setOpen(false);
-          }}
-        >
-          <div
-            ref={panelRef}
-            className="cr-navdrawer"
-            role="dialog"
-            aria-modal="true"
-            aria-label={label}
-            tabIndex={-1}
-          >
-            <div className="cr-cluster cr-cluster--between">
-              <div>
-                <Wordmark href={homeHref} tone="dark" />
-                {roleLabel ? <div className="cr-sidebar__role">{roleLabel}</div> : null}
-              </div>
-              <button
-                type="button"
-                className="cr-icon-button"
-                onClick={() => setOpen(false)}
+      {open && portalTarget
+        ? createPortal(
+            <div
+              className="cr-overlay cr-overlay--nav"
+              onMouseDown={(e) => {
+                if (e.target === e.currentTarget) setOpen(false);
+              }}
+            >
+              <div
+                ref={panelRef}
+                className="cr-navdrawer"
+                role="dialog"
+                aria-modal="true"
+                aria-label={label}
+                tabIndex={-1}
               >
-                <span aria-hidden="true">×</span>
-                <span className="cr-visually-hidden">Close {label}</span>
-              </button>
-            </div>
+                <div className="cr-cluster cr-cluster--between">
+                  <div>
+                    <Wordmark href={homeHref} tone="dark" />
+                    {roleLabel ? (
+                      <div className="cr-sidebar__role">{roleLabel}</div>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    className="cr-icon-button"
+                    onClick={() => setOpen(false)}
+                  >
+                    <span aria-hidden="true">×</span>
+                    <span className="cr-visually-hidden">Close {label}</span>
+                  </button>
+                </div>
 
-            <nav aria-label={label}>
-              <div className="cr-sidebar__nav">
-                {items.map((item) => {
-                  const active = isActiveRoute(pathname, item);
-                  return (
-                    <Link
-                      key={item.screenId}
-                      href={item.href}
-                      className="cr-sidebar__link"
-                      aria-current={active ? "page" : undefined}
-                    >
-                      {item.label}
-                    </Link>
-                  );
-                })}
+                <nav aria-label={label}>
+                  <div className="cr-sidebar__nav">
+                    {items.map((item) => {
+                      const active = isActiveRoute(pathname, item);
+                      return (
+                        <Link
+                          key={item.screenId}
+                          href={item.href}
+                          className="cr-sidebar__link"
+                          aria-current={active ? "page" : undefined}
+                        >
+                          {item.label}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                </nav>
+
+                {footer ? (
+                  <div className="cr-sidebar__footer">{footer}</div>
+                ) : null}
               </div>
-            </nav>
-
-            {footer ? <div className="cr-sidebar__footer">{footer}</div> : null}
-          </div>
-        </div>
-      ) : null}
+            </div>,
+            portalTarget,
+          )
+        : null}
     </>
   );
 }
 
 /** Desktop sidebar navigation list. Client-side for active-route derivation. */
-export function SidebarNav({ items, label }: { items: NavItem[]; label: string }) {
+export function SidebarNav({
+  items,
+  label,
+}: {
+  items: NavItem[];
+  label: string;
+}) {
   const pathname = usePathname();
   return (
     <nav aria-label={label}>
@@ -183,7 +218,13 @@ export function SidebarNav({ items, label }: { items: NavItem[]; label: string }
 }
 
 /** Public top-bar links. */
-export function TopbarNav({ items, label }: { items: NavItem[]; label: string }) {
+export function TopbarNav({
+  items,
+  label,
+}: {
+  items: NavItem[];
+  label: string;
+}) {
   const pathname = usePathname();
   return (
     <nav aria-label={label} className="cr-topbar__links">

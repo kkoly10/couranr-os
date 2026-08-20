@@ -1,0 +1,506 @@
+{
+  "generated_by": "scripts/captureEvidence.mjs",
+  "phase": "after",
+  "port": 3111,
+  "url": "http://127.0.0.1:3111/",
+  "widths": {
+    "360": {
+      "hero headline": {
+        "selector": "h1.cr-type-hero, #hero-h",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "48px",
+        "fontWeight": "700",
+        "lineHeight": "46.08px",
+        "letterSpacing": "-1.92px",
+        "color": "rgb(255, 255, 255)"
+      },
+      "hero supporting copy": {
+        "selector": ".cr-hero__sub",
+        "fontFamily": "Inter Variable",
+        "fontSize": "18px",
+        "fontWeight": "400",
+        "lineHeight": "27px",
+        "letterSpacing": "normal",
+        "color": "rgba(255, 255, 255, 0.87)"
+      },
+      "editorial statement": {
+        "selector": ".cr-mkt-editorial--hero .cr-type-statement, .cr-type-statement",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "40px",
+        "fontWeight": "675",
+        "lineHeight": "39.6px",
+        "letterSpacing": "-1.4px",
+        "color": "rgb(13, 21, 37)"
+      },
+      "marketing section heading": {
+        "selector": ".cr-type-marketing-section",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "32px",
+        "fontWeight": "650",
+        "lineHeight": "32.96px",
+        "letterSpacing": "-0.8px",
+        "color": "rgb(13, 21, 37)"
+      },
+      "card section heading": {
+        "selector": ".cr-mkt-card__h2",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "23px",
+        "fontWeight": "600",
+        "lineHeight": "25.76px",
+        "letterSpacing": "-0.345px",
+        "color": "rgb(13, 21, 37)"
+      },
+      "card title": {
+        "selector": ".cr-type-card-title",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "18px",
+        "fontWeight": "600",
+        "lineHeight": "21.6px",
+        "letterSpacing": "-0.18px",
+        "color": "rgb(13, 21, 37)"
+      },
+      "lead paragraph": {
+        "selector": ".cr-type-lead",
+        "fontFamily": "Inter Variable",
+        "fontSize": "18px",
+        "fontWeight": "400",
+        "lineHeight": "27px",
+        "letterSpacing": "normal",
+        "color": "rgba(255, 255, 255, 0.87)"
+      },
+      "metric": {
+        "selector": ".cr-type-metric",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "32px",
+        "fontWeight": "650",
+        "lineHeight": "32px",
+        "letterSpacing": "normal",
+        "color": "rgb(13, 21, 37)"
+      },
+      "small label": {
+        "selector": ".cr-type-label",
+        "fontFamily": "Inter Variable",
+        "fontSize": "13px",
+        "fontWeight": "600",
+        "lineHeight": "16.25px",
+        "letterSpacing": "normal",
+        "color": "rgb(101, 111, 132)"
+      }
+    },
+    "390": {
+      "hero headline": {
+        "selector": "h1.cr-type-hero, #hero-h",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "48px",
+        "fontWeight": "700",
+        "lineHeight": "46.08px",
+        "letterSpacing": "-1.92px",
+        "color": "rgb(255, 255, 255)"
+      },
+      "hero supporting copy": {
+        "selector": ".cr-hero__sub",
+        "fontFamily": "Inter Variable",
+        "fontSize": "18px",
+        "fontWeight": "400",
+        "lineHeight": "27px",
+        "letterSpacing": "normal",
+        "color": "rgba(255, 255, 255, 0.87)"
+      },
+      "editorial statement": {
+        "selector": ".cr-mkt-editorial--hero .cr-type-statement, .cr-type-statement",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "40px",
+        "fontWeight": "675",
+        "lineHeight": "39.6px",
+        "letterSpacing": "-1.4px",
+        "color": "rgb(13, 21, 37)"
+      },
+      "marketing section heading": {
+        "selector": ".cr-type-marketing-section",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "32px",
+        "fontWeight": "650",
+        "lineHeight": "32.96px",
+        "letterSpacing": "-0.8px",
+        "color": "rgb(13, 21, 37)"
+      },
+      "card section heading": {
+        "selector": ".cr-mkt-card__h2",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "23px",
+        "fontWeight": "600",
+        "lineHeight": "25.76px",
+        "letterSpacing": "-0.345px",
+        "color": "rgb(13, 21, 37)"
+      },
+      "card title": {
+        "selector": ".cr-type-card-title",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "18px",
+        "fontWeight": "600",
+        "lineHeight": "21.6px",
+        "letterSpacing": "-0.18px",
+        "color": "rgb(13, 21, 37)"
+      },
+      "lead paragraph": {
+        "selector": ".cr-type-lead",
+        "fontFamily": "Inter Variable",
+        "fontSize": "18px",
+        "fontWeight": "400",
+        "lineHeight": "27px",
+        "letterSpacing": "normal",
+        "color": "rgba(255, 255, 255, 0.87)"
+      },
+      "metric": {
+        "selector": ".cr-type-metric",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "32px",
+        "fontWeight": "650",
+        "lineHeight": "32px",
+        "letterSpacing": "normal",
+        "color": "rgb(13, 21, 37)"
+      },
+      "small label": {
+        "selector": ".cr-type-label",
+        "fontFamily": "Inter Variable",
+        "fontSize": "13px",
+        "fontWeight": "600",
+        "lineHeight": "16.25px",
+        "letterSpacing": "normal",
+        "color": "rgb(101, 111, 132)"
+      }
+    },
+    "768": {
+      "hero headline": {
+        "selector": "h1.cr-type-hero, #hero-h",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "53.76px",
+        "fontWeight": "700",
+        "lineHeight": "51.6096px",
+        "letterSpacing": "-2.1504px",
+        "color": "rgb(255, 255, 255)"
+      },
+      "hero supporting copy": {
+        "selector": ".cr-hero__sub",
+        "fontFamily": "Inter Variable",
+        "fontSize": "18px",
+        "fontWeight": "400",
+        "lineHeight": "27px",
+        "letterSpacing": "normal",
+        "color": "rgba(255, 255, 255, 0.87)"
+      },
+      "editorial statement": {
+        "selector": ".cr-mkt-editorial--hero .cr-type-statement, .cr-type-statement",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "40px",
+        "fontWeight": "675",
+        "lineHeight": "39.6px",
+        "letterSpacing": "-1.4px",
+        "color": "rgb(13, 21, 37)"
+      },
+      "marketing section heading": {
+        "selector": ".cr-type-marketing-section",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "32px",
+        "fontWeight": "650",
+        "lineHeight": "32.96px",
+        "letterSpacing": "-0.8px",
+        "color": "rgb(13, 21, 37)"
+      },
+      "card section heading": {
+        "selector": ".cr-mkt-card__h2",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "23px",
+        "fontWeight": "600",
+        "lineHeight": "25.76px",
+        "letterSpacing": "-0.345px",
+        "color": "rgb(13, 21, 37)"
+      },
+      "card title": {
+        "selector": ".cr-type-card-title",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "18px",
+        "fontWeight": "600",
+        "lineHeight": "21.6px",
+        "letterSpacing": "-0.18px",
+        "color": "rgb(13, 21, 37)"
+      },
+      "lead paragraph": {
+        "selector": ".cr-type-lead",
+        "fontFamily": "Inter Variable",
+        "fontSize": "18px",
+        "fontWeight": "400",
+        "lineHeight": "27px",
+        "letterSpacing": "normal",
+        "color": "rgba(255, 255, 255, 0.87)"
+      },
+      "metric": {
+        "selector": ".cr-type-metric",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "32px",
+        "fontWeight": "650",
+        "lineHeight": "32px",
+        "letterSpacing": "normal",
+        "color": "rgb(13, 21, 37)"
+      },
+      "small label": {
+        "selector": ".cr-type-label",
+        "fontFamily": "Inter Variable",
+        "fontSize": "13px",
+        "fontWeight": "600",
+        "lineHeight": "16.25px",
+        "letterSpacing": "normal",
+        "color": "rgb(101, 111, 132)"
+      }
+    },
+    "1024": {
+      "hero headline": {
+        "selector": "h1.cr-type-hero, #hero-h",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "71.68px",
+        "fontWeight": "700",
+        "lineHeight": "68.8128px",
+        "letterSpacing": "-2.8672px",
+        "color": "rgb(255, 255, 255)"
+      },
+      "hero supporting copy": {
+        "selector": ".cr-hero__sub",
+        "fontFamily": "Inter Variable",
+        "fontSize": "20.48px",
+        "fontWeight": "400",
+        "lineHeight": "30.72px",
+        "letterSpacing": "normal",
+        "color": "rgba(255, 255, 255, 0.87)"
+      },
+      "editorial statement": {
+        "selector": ".cr-mkt-editorial--hero .cr-type-statement, .cr-type-statement",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "51.2px",
+        "fontWeight": "675",
+        "lineHeight": "50.688px",
+        "letterSpacing": "-1.792px",
+        "color": "rgb(13, 21, 37)"
+      },
+      "marketing section heading": {
+        "selector": ".cr-type-marketing-section",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "40.96px",
+        "fontWeight": "650",
+        "lineHeight": "42.1888px",
+        "letterSpacing": "-1.024px",
+        "color": "rgb(13, 21, 37)"
+      },
+      "card section heading": {
+        "selector": ".cr-mkt-card__h2",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "23px",
+        "fontWeight": "600",
+        "lineHeight": "25.76px",
+        "letterSpacing": "-0.345px",
+        "color": "rgb(13, 21, 37)"
+      },
+      "card title": {
+        "selector": ".cr-type-card-title",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "18px",
+        "fontWeight": "600",
+        "lineHeight": "21.6px",
+        "letterSpacing": "-0.18px",
+        "color": "rgb(13, 21, 37)"
+      },
+      "lead paragraph": {
+        "selector": ".cr-type-lead",
+        "fontFamily": "Inter Variable",
+        "fontSize": "20.48px",
+        "fontWeight": "400",
+        "lineHeight": "30.72px",
+        "letterSpacing": "normal",
+        "color": "rgba(255, 255, 255, 0.87)"
+      },
+      "metric": {
+        "selector": ".cr-type-metric",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "32px",
+        "fontWeight": "650",
+        "lineHeight": "32px",
+        "letterSpacing": "normal",
+        "color": "rgb(13, 21, 37)"
+      },
+      "small label": {
+        "selector": ".cr-type-label",
+        "fontFamily": "Inter Variable",
+        "fontSize": "13px",
+        "fontWeight": "600",
+        "lineHeight": "16.25px",
+        "letterSpacing": "normal",
+        "color": "rgb(101, 111, 132)"
+      }
+    },
+    "1280": {
+      "hero headline": {
+        "selector": "h1.cr-type-hero, #hero-h",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "89.6px",
+        "fontWeight": "700",
+        "lineHeight": "86.016px",
+        "letterSpacing": "-3.584px",
+        "color": "rgb(255, 255, 255)"
+      },
+      "hero supporting copy": {
+        "selector": ".cr-hero__sub",
+        "fontFamily": "Inter Variable",
+        "fontSize": "22px",
+        "fontWeight": "400",
+        "lineHeight": "33px",
+        "letterSpacing": "normal",
+        "color": "rgba(255, 255, 255, 0.87)"
+      },
+      "editorial statement": {
+        "selector": ".cr-mkt-editorial--hero .cr-type-statement, .cr-type-statement",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "64px",
+        "fontWeight": "675",
+        "lineHeight": "63.36px",
+        "letterSpacing": "-2.24px",
+        "color": "rgb(13, 21, 37)"
+      },
+      "marketing section heading": {
+        "selector": ".cr-type-marketing-section",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "51.2px",
+        "fontWeight": "650",
+        "lineHeight": "52.736px",
+        "letterSpacing": "-1.28px",
+        "color": "rgb(13, 21, 37)"
+      },
+      "card section heading": {
+        "selector": ".cr-mkt-card__h2",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "25.6px",
+        "fontWeight": "600",
+        "lineHeight": "28.672px",
+        "letterSpacing": "-0.384px",
+        "color": "rgb(13, 21, 37)"
+      },
+      "card title": {
+        "selector": ".cr-type-card-title",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "18px",
+        "fontWeight": "600",
+        "lineHeight": "21.6px",
+        "letterSpacing": "-0.18px",
+        "color": "rgb(13, 21, 37)"
+      },
+      "lead paragraph": {
+        "selector": ".cr-type-lead",
+        "fontFamily": "Inter Variable",
+        "fontSize": "22px",
+        "fontWeight": "400",
+        "lineHeight": "33px",
+        "letterSpacing": "normal",
+        "color": "rgba(255, 255, 255, 0.87)"
+      },
+      "metric": {
+        "selector": ".cr-type-metric",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "38.4px",
+        "fontWeight": "650",
+        "lineHeight": "38.4px",
+        "letterSpacing": "normal",
+        "color": "rgb(13, 21, 37)"
+      },
+      "small label": {
+        "selector": ".cr-type-label",
+        "fontFamily": "Inter Variable",
+        "fontSize": "13px",
+        "fontWeight": "600",
+        "lineHeight": "16.25px",
+        "letterSpacing": "normal",
+        "color": "rgb(101, 111, 132)"
+      }
+    },
+    "1440": {
+      "hero headline": {
+        "selector": "h1.cr-type-hero, #hero-h",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "96px",
+        "fontWeight": "700",
+        "lineHeight": "92.16px",
+        "letterSpacing": "-3.84px",
+        "color": "rgb(255, 255, 255)"
+      },
+      "hero supporting copy": {
+        "selector": ".cr-hero__sub",
+        "fontFamily": "Inter Variable",
+        "fontSize": "22px",
+        "fontWeight": "400",
+        "lineHeight": "33px",
+        "letterSpacing": "normal",
+        "color": "rgba(255, 255, 255, 0.87)"
+      },
+      "editorial statement": {
+        "selector": ".cr-mkt-editorial--hero .cr-type-statement, .cr-type-statement",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "72px",
+        "fontWeight": "675",
+        "lineHeight": "71.28px",
+        "letterSpacing": "-2.52px",
+        "color": "rgb(13, 21, 37)"
+      },
+      "marketing section heading": {
+        "selector": ".cr-type-marketing-section",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "52px",
+        "fontWeight": "650",
+        "lineHeight": "53.56px",
+        "letterSpacing": "-1.3px",
+        "color": "rgb(13, 21, 37)"
+      },
+      "card section heading": {
+        "selector": ".cr-mkt-card__h2",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "28px",
+        "fontWeight": "600",
+        "lineHeight": "31.36px",
+        "letterSpacing": "-0.42px",
+        "color": "rgb(13, 21, 37)"
+      },
+      "card title": {
+        "selector": ".cr-type-card-title",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "18px",
+        "fontWeight": "600",
+        "lineHeight": "21.6px",
+        "letterSpacing": "-0.18px",
+        "color": "rgb(13, 21, 37)"
+      },
+      "lead paragraph": {
+        "selector": ".cr-type-lead",
+        "fontFamily": "Inter Variable",
+        "fontSize": "22px",
+        "fontWeight": "400",
+        "lineHeight": "33px",
+        "letterSpacing": "normal",
+        "color": "rgba(255, 255, 255, 0.87)"
+      },
+      "metric": {
+        "selector": ".cr-type-metric",
+        "fontFamily": "Martian Grotesk Variable",
+        "fontSize": "43.2px",
+        "fontWeight": "650",
+        "lineHeight": "43.2px",
+        "letterSpacing": "normal",
+        "color": "rgb(13, 21, 37)"
+      },
+      "small label": {
+        "selector": ".cr-type-label",
+        "fontFamily": "Inter Variable",
+        "fontSize": "13px",
+        "fontWeight": "600",
+        "lineHeight": "16.25px",
+        "letterSpacing": "normal",
+        "color": "rgb(101, 111, 132)"
+      }
+    }
+  }
+}

@@ -36,11 +36,15 @@ import {
   JWT_SECRET,
   ANON_JWT,
 } from "./gateway.mjs";
+import { postgrestTarget } from "../../scripts/provisionPostgrest.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const PGRST_BIN =
-  process.env.COURANR_POSTGREST ||
-  "/tmp/claude-0/-home-user-couranr-os/3ba65fdb-c110-5366-92d6-85568b408343/scratchpad/prst/postgrest";
+// Resolved by scripts/provisionPostgrest.mjs, never a session scratchpad.
+// The previous default was a path inside ONE container's ephemeral
+// scratchpad, so this harness aborted on every other machine — after
+// applying 50 migrations, which made a missing dependency look like a
+// database failure. `npm run provision:postgrest` puts it on PATH.
+const PGRST_BIN = postgrestTarget();
 
 const PASSWORD = "disposable-correct-horse-1";
 const EMAIL = "e2e-auth-owner@couranr.invalid";

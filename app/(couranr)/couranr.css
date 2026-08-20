@@ -17,6 +17,64 @@
    (.card, .page, .container), so there is no selector collision either.
    ===================================================================== */
 
+/* =====================================================================
+   Fonts — VIS-001, visual system §9–§10
+
+   Self-hosted, not CDN-linked. §10 requires the governed families to actually
+   render: "A CSS stack that silently falls through to system-ui is a failure."
+   A third-party stylesheet is one outage or one Content-Security-Policy change
+   away from exactly that, so the three files ship in public/fonts/ with their
+   OFL notices beside them.
+
+   All three are SIL OFL-1.1 — Martian Grotesk and Martian Mono from Evil
+   Martians, Inter from Rasmus Andersson — free for commercial and web use,
+   variable cuts included. Redistribution in this repository is what the
+   licence is for; the notices are in public/fonts/*-OFL.txt.
+
+   The weight and width RANGES below are what expose the variable axes to the
+   browser. Without them a `font-stretch: 112.5%` in a type role is inert, and
+   §10.2 exists because writing that declaration and assuming it worked is the
+   predictable mistake. Measured from the actual files with fontTools:
+
+     Martian Grotesk VF   wght 100–1000   wdth 75–200   (default 400 / 100)
+     Inter                wght 100–900                  (default 400)
+     Martian Mono         wght 100–800    wdth 75–112.5 (default 400 / 112.5)
+
+   Martian Mono is subset to the 106 characters §9.3 lets it render — ids,
+   timestamps, code-like values — which takes it from 144KB to 25KB. The other
+   two carry their full charsets because marketing and product copy are not a
+   closed character set.
+   ===================================================================== */
+
+@font-face {
+  font-family: "Martian Grotesk Variable";
+  src: url("/fonts/MartianGrotesk-Variable.woff2") format("woff2");
+  font-weight: 100 1000;
+  font-stretch: 75% 200%;
+  font-style: normal;
+  /* `swap`, not `optional`: §1.6 makes system fallback a failure, so the font
+     must be used even when it arrives late. The layout preloads it to keep the
+     swap off the critical path. */
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Inter Variable";
+  src: url("/fonts/Inter-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "Martian Mono";
+  src: url("/fonts/MartianMono-Variable.woff2") format("woff2");
+  font-weight: 100 800;
+  font-stretch: 75% 112.5%;
+  font-style: normal;
+  font-display: swap;
+}
+
 .cr-root {
   /* ---- Brand ---------------------------------------------------- */
   --couranr-navy: #0d1525;
@@ -50,11 +108,25 @@
   --couranr-focus-ring: 0 0 0 2px var(--couranr-surface),
     0 0 0 4px var(--couranr-route-blue);
 
-  /* ---- Typography (§2: Geist Sans or Inter, sentence case) ------- */
-  --couranr-font-sans: "Geist Sans", "Inter", ui-sans-serif, system-ui,
+  /* ---- Typography — VIS-001, visual system §9.0 ------------------
+     Martian Grotesk is the voice, Inter the workhorse, Martian Mono only for
+     operational identifiers. UI_SCREEN_REGISTRY.md §2 was amended in the same
+     commit as the VIS-001 decision, so no authority still says "Geist Sans or
+     Inter". */
+  --couranr-font-display: "Martian Grotesk Variable", "Martian Grotesk",
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+  --couranr-font-body: "Inter Variable", "Inter", ui-sans-serif, system-ui,
     -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --couranr-font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo,
-    Consolas, monospace;
+  /* RECONCILED, not duplicated. This name already existed with a different
+     value; §9.0 names two active definitions disagreeing as the failure mode,
+     so the old declaration is replaced here rather than shadowed elsewhere. */
+  --couranr-font-mono: "Martian Mono", ui-monospace, SFMono-Regular, "SF Mono",
+    Menlo, Consolas, monospace;
+  /* Backward-compatible alias. `--couranr-font-sans` has consumers throughout
+     the canonical tree, including `.cr-root`'s own `font-family` below; they
+     keep resolving, now to the body family, until each is migrated. */
+  --couranr-font-sans: var(--couranr-font-body);
 
   --couranr-text-xs: 0.75rem;    /* 12 */
   --couranr-text-sm: 0.875rem;   /* 14 */
@@ -63,6 +135,32 @@
   --couranr-text-xl: 1.375rem;   /* 22 */
   --couranr-text-2xl: 1.75rem;   /* 28 */
   --couranr-text-3xl: 2.25rem;   /* 36 */
+
+  /* ---- v2.2 type scale (§11.1) -----------------------------------
+     Added alongside the --couranr-text-* steps rather than replacing them:
+     §31 step 4 says preserve old tokens while consumers still use them, and
+     --couranr-text-* has consumers across every surface. The intended
+     hierarchy is 96 → 72 → 52 → 38 → 28 → 20/18 → 16 → 14/13, against the
+     previous flat ceiling where 36px was the top of everything. */
+  --couranr-type-hero-min: 3rem;               /* 48 */
+  --couranr-type-hero-max: 6rem;               /* 96 */
+  --couranr-type-statement-min: 2.5rem;        /* 40 */
+  --couranr-type-statement-max: 4.5rem;        /* 72 */
+  --couranr-type-marketing-section-min: 2rem;  /* 32 */
+  --couranr-type-marketing-section-max: 3.25rem; /* 52 */
+  --couranr-type-page-title-min: 1.875rem;     /* 30 */
+  --couranr-type-page-title-max: 2.375rem;     /* 38 */
+  --couranr-type-section-min: 1.4375rem;       /* 23 */
+  --couranr-type-section-max: 1.75rem;         /* 28 */
+  --couranr-type-card-title: 1.125rem;         /* 18 */
+  --couranr-type-card-title-lg: 1.25rem;       /* 20 */
+  --couranr-type-lead-min: 1.125rem;           /* 18 */
+  --couranr-type-lead-max: 1.375rem;           /* 22 */
+  --couranr-type-body: 1rem;                   /* 16 */
+  --couranr-type-small: 0.875rem;              /* 14 */
+  --couranr-type-label: 0.8125rem;             /* 13 */
+  --couranr-type-metric-min: 2rem;             /* 32 */
+  --couranr-type-metric-max: 3rem;             /* 48 */
 
   --couranr-leading-tight: 1.25;
   --couranr-leading-normal: 1.55;
@@ -208,6 +306,155 @@
 .cr-heading--3 { font-size: var(--couranr-text-xl); }
 .cr-heading--4 { font-size: var(--couranr-text-lg); }
 
+/* ── v2.2 typography roles (§12) ───────────────────────────────────────────
+   Additive. `.cr-heading--*` still exists and still works; these are the roles
+   §13 assigns per surface, and PUB-001 is the first consumer. Martian carries
+   display and significant headings, Inter everything else.
+
+   `font-stretch` here is load-bearing, not decoration: it drives the wdth axis
+   declared in the @font-face block above. §32.2 requires a browser test that a
+   width-varied specimen measurably differs from a default-width one, because a
+   font-stretch that silently does nothing looks identical to one that works. */
+
+.cr-type-hero {
+  font-family: var(--couranr-font-display);
+  font-size: clamp(var(--couranr-type-hero-min), 7vw, var(--couranr-type-hero-max));
+  font-weight: 700;
+  font-stretch: 112.5%;
+  line-height: 0.96;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+}
+
+.cr-type-statement {
+  font-family: var(--couranr-font-display);
+  font-size: clamp(var(--couranr-type-statement-min), 5vw, var(--couranr-type-statement-max));
+  font-weight: 675;
+  font-stretch: 106%;
+  line-height: 0.99;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+
+.cr-type-marketing-section {
+  font-family: var(--couranr-font-display);
+  font-size: clamp(
+    var(--couranr-type-marketing-section-min), 4vw,
+    var(--couranr-type-marketing-section-max)
+  );
+  font-weight: 650;
+  line-height: 1.03;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+
+/*
+ * §13's per-surface typography budgets, bound at the SHELL rather than screen
+ * by screen. `data-couranr-surface` is declared once per shell in shells.tsx,
+ * so all 55 product screens inherit the governed roles without 55 edits — and
+ * §29's "a golden screen constrains family grammar" is enforced by the grammar
+ * itself rather than by everyone remembering.
+ *
+ * The selectors are ADDED to the role rules rather than duplicated as new ones:
+ * one declaration block, several selectors, no second copy of a value to drift.
+ *
+ * §13 differs per family and the split below is exactly its list, which is why
+ * this is four rules and not one blanket `.cr-heading--1 { Martian }`:
+ *   Merchant     — page title, section title, entity title
+ *   Operations   — page title and selected real counters ONLY. Inter for
+ *                  queues, filters, tables, actions, audit data. §6.3 warns
+ *                  against display type inside dense operational surfaces.
+ *   Driver       — page/state title
+ *   Customer     — important state/title only
+ */
+.cr-type-page-title,
+[data-couranr-surface="merchant"] .cr-page-header .cr-heading--1,
+[data-couranr-surface="operations"] .cr-page-header .cr-heading--1,
+[data-couranr-surface="driver"] .cr-page-header .cr-heading--1,
+[data-couranr-surface="customer"] .cr-page-header .cr-heading--1 {
+  font-family: var(--couranr-font-display);
+  font-size: clamp(var(--couranr-type-page-title-min), 3vw, var(--couranr-type-page-title-max));
+  font-weight: 650;
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+}
+
+/* Merchant only. §13 gives Operations page titles and counters and nothing
+   else, and §6.2's own warning — "avoid marketing-size display type inside
+   dense workflow screens" — is why this stops at level 2. */
+.cr-type-section-title,
+[data-couranr-surface="merchant"] .cr-heading--2 {
+  font-family: var(--couranr-font-display);
+  font-size: clamp(var(--couranr-type-section-min), 2vw, var(--couranr-type-section-max));
+  font-weight: 600;
+  line-height: 1.12;
+  letter-spacing: -0.015em;
+}
+
+/* §6.2: "Martian for page/section/entity headings". Level 3 is the entity
+   title in this tree — a card's subject, a delivery, a customer. */
+.cr-type-card-title,
+[data-couranr-surface="merchant"] .cr-heading--3 {
+  font-family: var(--couranr-font-display);
+  font-size: var(--couranr-type-card-title);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+.cr-type-card-title--lg { font-size: var(--couranr-type-card-title-lg); }
+
+.cr-type-lead {
+  font-family: var(--couranr-font-body);
+  font-size: clamp(var(--couranr-type-lead-min), 2vw, var(--couranr-type-lead-max));
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.cr-type-body {
+  font-family: var(--couranr-font-body);
+  font-size: var(--couranr-type-body);
+  font-weight: 400;
+  line-height: 1.55;
+}
+
+/* §12.9: sentence case by default — no automatic text-transform. */
+.cr-type-label {
+  font-family: var(--couranr-font-body);
+  font-size: var(--couranr-type-label);
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+/* §12.10 / §24: real data only. No fabricated marketing metrics. */
+.cr-type-metric {
+  font-family: var(--couranr-font-display);
+  font-size: clamp(var(--couranr-type-metric-min), 3vw, var(--couranr-type-metric-max));
+  font-weight: 650;
+  font-stretch: 87.5%;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* §9.3: operational identifiers only — ids, code-like values, some timestamps.
+   Narrowed off the 112.5% default because §6.3's Command Center wants density
+   and the wdth axis reaches 75%. */
+/* §9: Martian Mono "only where monospace improves scanning" — operational
+   identifiers. `.cr-text--numeric` is how this tree already marks them, and it
+   was setting tabular figures in the BODY face, so the tokens were declared and
+   then not used by the thing they were for. Product surfaces only: a price on a
+   marketing page is editorial, not an identifier. */
+.cr-type-identifier,
+[data-couranr-surface="merchant"] .cr-text--numeric,
+[data-couranr-surface="operations"] .cr-text--numeric,
+[data-couranr-surface="driver"] .cr-text--numeric,
+[data-couranr-surface="customer"] .cr-text--numeric {
+  font-family: var(--couranr-font-mono);
+  font-stretch: 87.5%;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+}
+
 .cr-text { margin: 0; }
 .cr-text--sm   { font-size: var(--couranr-text-sm); }
 .cr-text--xs   { font-size: var(--couranr-text-xs); }
@@ -309,9 +556,9 @@
    ===================================================================== */
 
 .cr-button {
-  --cr-btn-bg: var(--couranr-navy);
-  --cr-btn-fg: var(--couranr-text-inverse);
-  --cr-btn-border: transparent;
+  --couranr-btn-bg: var(--couranr-navy);
+  --couranr-btn-fg: var(--couranr-text-inverse);
+  --couranr-btn-border: transparent;
 
   display: inline-flex;
   align-items: center;
@@ -320,10 +567,10 @@
   min-height: var(--couranr-control-height);
   min-width: var(--couranr-touch-min);
   padding: 0 var(--couranr-space-5);
-  border: 1px solid var(--cr-btn-border);
+  border: 1px solid var(--couranr-btn-border);
   border-radius: var(--couranr-radius-md);
-  background: var(--cr-btn-bg);
-  color: var(--cr-btn-fg);
+  background: var(--couranr-btn-bg);
+  color: var(--couranr-btn-fg);
   font-family: inherit;
   font-size: var(--couranr-text-base);
   font-weight: var(--couranr-weight-medium);
@@ -344,27 +591,27 @@
 }
 
 .cr-button--primary {
-  --cr-btn-bg: var(--couranr-gold);
-  --cr-btn-fg: var(--couranr-navy);
+  --couranr-btn-bg: var(--couranr-gold);
+  --couranr-btn-fg: var(--couranr-navy);
 }
 .cr-button--secondary {
-  --cr-btn-bg: var(--couranr-surface);
-  --cr-btn-fg: var(--couranr-text);
-  --cr-btn-border: var(--couranr-border-strong);
+  --couranr-btn-bg: var(--couranr-surface);
+  --couranr-btn-fg: var(--couranr-text);
+  --couranr-btn-border: var(--couranr-border-strong);
 }
 .cr-button--ghost {
-  --cr-btn-bg: transparent;
-  --cr-btn-fg: var(--couranr-text);
-  --cr-btn-border: transparent;
+  --couranr-btn-bg: transparent;
+  --couranr-btn-fg: var(--couranr-text);
+  --couranr-btn-border: transparent;
 }
 .cr-button--destructive {
-  --cr-btn-bg: var(--couranr-danger);
-  --cr-btn-fg: var(--couranr-text-inverse);
+  --couranr-btn-bg: var(--couranr-danger);
+  --couranr-btn-fg: var(--couranr-text-inverse);
 }
 .cr-button--link {
-  --cr-btn-bg: transparent;
-  --cr-btn-fg: var(--couranr-route-blue);
-  --cr-btn-border: transparent;
+  --couranr-btn-bg: transparent;
+  --couranr-btn-fg: var(--couranr-route-blue);
+  --couranr-btn-border: transparent;
   min-height: auto;
   padding: 0;
   text-decoration: underline;
@@ -761,14 +1008,6 @@
 
 .cr-mkt { display: flex; flex-direction: column; gap: var(--couranr-space-8); }
 
-.cr-mkt-notice {
-  background: var(--couranr-surface-sunken);
-  border: 1px solid var(--couranr-border);
-  border-radius: var(--couranr-radius, 12px);
-  padding: var(--couranr-space-3) var(--couranr-space-4);
-  text-align: center;
-}
-
 /* ── PUB-001 hero — built from the approved mock ───────────────────────────
    docs/couranr-mvp/MOCK_TO_SCREEN_MAP.md maps PUB-001 to
    0E4F029F-22C3…png (desktop) and 22D9363D-248B…png (mobile): a full-bleed
@@ -785,6 +1024,16 @@
    That clip lives on `.cr-shell__main` in shell.css, which is also where the
    pre-existing sticky-chrome bug got fixed — see the comment there. Nothing
    about the hero needs a rule here beyond the escape itself. */
+
+/* The shell gives its content a vertical pad (`.cr-shell__content`,
+   space-6 / space-8), which left a 24–32px cream seam between the header and
+   the photograph. Both artboards butt the hero straight against the header, so
+   the first child of the marketing page cancels that pad. Scoped to
+   `:first-child` so a hero anywhere else keeps its rhythm. */
+.cr-mkt > .cr-hero:first-child { margin-top: calc(-1 * var(--couranr-space-6)); }
+@media (min-width: 1024px) {
+  .cr-mkt > .cr-hero:first-child { margin-top: calc(-1 * var(--couranr-space-8)); }
+}
 
 .cr-hero {
   position: relative;
@@ -837,33 +1086,33 @@
   padding-inline: var(--couranr-space-4);
 }
 
-.cr-hero__eyebrow {
-  display: inline-block;
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
-  font-size: 0.72rem;
-  font-weight: var(--couranr-weight-semibold);
-  color: var(--couranr-text-inverse);
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: var(--couranr-radius-pill);
-  padding: 5px 13px;
-  margin: 0 0 var(--couranr-space-5);
-}
+/* NO HERO EYEBROW. `.cr-hero__label` (and `.cr-hero__eyebrow` before it) is
+   deleted, not left unused — an unused class is one import away from returning,
+   which is exactly how the shared marketing eyebrow spread to four screens that
+   had no mock. Owner instruction: no eyebrows anywhere, including the one the
+   PUB-001 artboard shows. Amendment §6 bans the substitutes too — pill, chip,
+   tiny uppercase label, badge, decorative rule — and
+   tests/couranr-visual-tokens.test.ts asserts their absence on all five public
+   screens. */
 
+/* Layout and colour only. The TYPE belongs to `.cr-type-hero` (§12.1), which
+   the element also carries.
+
+   These two rules previously both set `font-size`, and because both are
+   single-class selectors the later one in the file wins — which was this one.
+   Driving the page caught it: the mobile hero measured 33.6px (this rule's
+   2.1rem floor) where §12.1 and §21's mobile band both call for 48px. A role
+   class that a layout class silently overrides is a role class that does
+   nothing, so the layout rule no longer expresses type at all. */
 .cr-hero__h1 {
-  font-size: clamp(2.1rem, 5.2vw, 3.5rem);
-  line-height: 1.06;
-  font-weight: var(--couranr-weight-bold);
-  letter-spacing: -0.02em;
   margin: 0 0 var(--couranr-space-4);
   max-width: 17ch;
   color: var(--couranr-text-inverse);
 }
 .cr-hero__h1-accent { color: var(--couranr-gold); }
 
+/* Same split: `.cr-type-lead` (§12.7) owns the size, this owns the rest. */
 .cr-hero__sub {
-  font-size: 1.05rem;
-  line-height: var(--couranr-leading-normal);
   color: rgba(255, 255, 255, 0.87);
   max-width: 40ch;
   margin: 0 0 var(--couranr-space-6);
@@ -933,18 +1182,12 @@
 }
 
 .cr-mkt-hero { text-align: center; padding-block: var(--couranr-space-8) var(--couranr-space-6); }
-.cr-mkt-eyebrow {
-  display: inline-block;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--couranr-route-blue);
-  border: 1px solid var(--couranr-border);
-  border-radius: 999px;
-  padding: 4px 12px;
-  margin-bottom: var(--couranr-space-4);
-}
+/* `.cr-mkt-eyebrow` is RETIRED — fidelity amendment §6. It was a shared public
+   marketing eyebrow on five pages, generalised from one contextual label the
+   PUB-001 artboard shows in its hero. Four of those five screens have no
+   canonical mock at all, so the pattern was inherited from nothing. The rule is
+   deleted rather than left unused: an unused class is one import away from
+   coming back, and tests/couranr-visual-tokens.test.ts now fails if it does. */
 .cr-mkt-h1 {
   font-size: clamp(2rem, 5vw, 3.25rem);
   line-height: 1.1;
@@ -962,6 +1205,18 @@
 .cr-mkt-cta-row { display: flex; gap: var(--couranr-space-3); justify-content: center; flex-wrap: wrap; }
 
 .cr-mkt-section { display: flex; flex-direction: column; gap: var(--couranr-space-4); }
+
+/* Drift ledger: the artboard centres the heading and subcopy of
+   `order-channels`, `payer-choice`, `categories` and `delivery-options`. A
+   modifier rather than a base change — `.cr-mkt-section` is also the left-
+   aligned shape used by the four family pages, which step 9 propagates to. */
+.cr-mkt-section--centred { align-items: center; text-align: center; }
+.cr-mkt-section--centred > h2,
+.cr-mkt-section--centred > p { max-width: 62ch; }
+/* The children that are layouts, not copy, must still fill the section. */
+.cr-mkt-section--centred > ul,
+.cr-mkt-section--centred > ol,
+.cr-mkt-section--centred > div { align-self: stretch; text-align: left; }
 
 .cr-mkt-chips { display: flex; flex-wrap: wrap; gap: var(--couranr-space-2); list-style: none; padding: 0; margin: 0; }
 .cr-mkt-chip {
@@ -1060,7 +1315,24 @@
 
 /* ── payer cards ─────────────────────────────────────────────────────────── */
 
-.cr-mkt-payers { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: var(--couranr-space-3); }
+/* Amendment §5.4: these are mock-supported objects and the recovery target is
+   fidelity of tint, border, radius, icon geometry and title/body hierarchy.
+   There was no base `.cr-mkt-payer` rule at all — the modifiers set a
+   `border-color` with no border-width and no padding, so both cards painted
+   their tint edge to edge with the text touching it. */
+.cr-mkt-payers { display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: var(--couranr-space-4); }
+.cr-mkt-payer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--couranr-space-3);
+  padding: var(--couranr-space-5);
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-md);
+  background: var(--couranr-surface);
+  text-align: left;
+}
+.cr-mkt-payer h3 { margin: 0; }
+.cr-mkt-payer p  { margin: 0; }
 .cr-mkt-payer--merchant { border-color: var(--couranr-gold); background: #fdf8ec; }
 .cr-mkt-payer--customer { border-color: var(--couranr-route-blue); background: #eef3fd; }
 .cr-mkt-payer__head { display: flex; align-items: center; gap: var(--couranr-space-3); }
@@ -1127,6 +1399,9 @@
 .cr-askc { position: fixed; right: 16px; bottom: 16px; z-index: 40; display: flex; flex-direction: column; align-items: flex-end; gap: var(--couranr-space-2); }
 .cr-askc__panel { width: min(20rem, calc(100vw - 32px)); }
 .cr-askc__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--couranr-space-2);
   border: none;
   border-radius: 999px;
   background: var(--couranr-navy);
@@ -1138,7 +1413,36 @@
   box-shadow: 0 4px 14px rgba(13, 21, 37, 0.28);
   min-height: 44px;
 }
+.cr-askc__icon { display: flex; line-height: 0; }
+.cr-askc__icon svg { width: 18px; height: 18px; }
 .cr-askc__pill:hover { background: #1a2740; }
+
+/* Below 768px the launcher is a circular icon button, not a labelled pill.
+   A fixed 145px pill at 390px lands on the hero's primary CTA and covers the
+   end of its label — an occlusion a static artboard cannot show. The label
+   stays as the accessible name via `.cr-visually-hidden`, so the button is
+   still "Ask Couranr" to a screen reader, and 48px clears §23.6's 44px floor.
+   The panel it opens is unchanged. */
+@media (max-width: 767px) {
+  .cr-askc__pill {
+    width: 48px;
+    height: 48px;
+    padding: 0;
+    justify-content: center;
+  }
+  .cr-askc__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+  .cr-askc__icon svg { width: 22px; height: 22px; }
+}
 
 /* Pricing page (PUB-008) */
 .cr-mkt-price-hero { font-size: clamp(2.5rem, 6vw, 3.5rem); font-weight: 700; color: var(--couranr-navy); line-height: 1; }
@@ -1156,3 +1460,1246 @@
 .cr-visually-hidden-h { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 .cr-mkt-flow { margin: 0; padding-left: 1.25rem; display: flex; flex-direction: column; gap: 10px; font-size: 0.95rem; }
+
+/* ═════════════════════════════════════════════════════════════════════════
+   PUB-001 v2.2 compositions — §19's vocabulary, §27.0's per-section mapping
+
+   Six new compositions, one per §19 type the page uses beyond the hero. The
+   point of a small closed vocabulary is that repetition becomes visible, so
+   these are deliberately distinct from each other in silhouette, alignment and
+   content width — §19's hard rules forbid centring every section and using one
+   content width throughout.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/* ── §19.1 editorial statement — oversized type, generous space, no cards ── */
+
+.cr-mkt-editorial {
+  padding-block: var(--couranr-space-8);
+  max-width: 24ch;
+}
+/* h1 AND h2. The family heroes render an h1 here and only h2 was covered, so
+   the headline fell back to the UA default margin — measured at 48.24px,
+   which is 0.67em of a very large font rather than anything designed. It
+   read as a void above the headline and nothing below it. */
+.cr-mkt-editorial h1,
+.cr-mkt-editorial h2 { margin: 0 0 var(--couranr-space-5); color: var(--couranr-text); }
+.cr-mkt-editorial__body {
+  margin: 0;
+  color: var(--couranr-text-muted);
+  max-width: 54ch;
+}
+
+/* ── §19.2 image narrative — visual 40–65%, copy the rest, asymmetric ────── */
+
+.cr-mkt-narrative {
+  display: grid;
+  gap: var(--couranr-space-8);
+  align-items: center;
+}
+.cr-mkt-narrative__copy h2 { margin: 0 0 var(--couranr-space-4); color: var(--couranr-text); }
+.cr-mkt-narrative__copy p  { margin: 0; color: var(--couranr-text-muted); }
+.cr-mkt-narrative__visual { min-width: 0; }
+
+@media (min-width: 900px) {
+  /* 45/55 — deliberately not 50/50, per §19.3's "not automatically 50/50". */
+  .cr-mkt-narrative { grid-template-columns: 45fr 55fr; }
+  /* Reversing the second narrative stops two image narratives on one page from
+     reading as the same section twice. */
+  .cr-mkt-narrative--reverse .cr-mkt-narrative__copy   { order: 2; }
+  .cr-mkt-narrative--reverse .cr-mkt-narrative__visual { order: 1; }
+}
+
+.cr-mkt-map {
+  display: block;
+  width: 100%;
+  max-width: 340px;
+  height: auto;
+  margin-inline: auto;
+}
+
+/* The pending-photography slot. Visibly unfinished on purpose — a placeholder
+   that looks designed is a placeholder that ships. */
+.cr-mkt-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--couranr-space-2);
+  min-height: 18rem;
+  padding: var(--couranr-space-6);
+  text-align: center;
+  border: 2px dashed var(--couranr-border-strong);
+  border-radius: var(--couranr-radius-lg);
+  background: var(--couranr-surface-sunken);
+  color: var(--couranr-text-muted);
+}
+.cr-mkt-slot__label { font-weight: var(--couranr-weight-semibold); font-size: var(--couranr-text-sm); }
+.cr-mkt-slot__note  { font-size: var(--couranr-text-xs); }
+
+/* ── §19.3 split story — asymmetric, and NOT a three-card benefits grid ──── */
+
+.cr-mkt-split { display: grid; gap: var(--couranr-space-6); }
+.cr-mkt-split__lead h2 { margin: 0 0 var(--couranr-space-3); color: var(--couranr-text); }
+.cr-mkt-split__lead p  { margin: 0; }
+
+@media (min-width: 900px) {
+  .cr-mkt-split { grid-template-columns: 38fr 62fr; gap: var(--couranr-space-10); align-items: start; }
+}
+
+.cr-mkt-outcomes { list-style: none; margin: 0; padding: 0; }
+.cr-mkt-outcomes__item {
+  padding-block: var(--couranr-space-4);
+  border-top: 1px solid var(--couranr-border);
+  font-size: 1.0625rem;
+  line-height: var(--couranr-leading-normal);
+  color: var(--couranr-text);
+}
+.cr-mkt-outcomes__item:last-child { border-bottom: 1px solid var(--couranr-border); }
+
+/* ── §19.4 workflow rail — the steps are CONNECTED, not four tiles ───────── */
+
+.cr-mkt-rail { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+
+.cr-mkt-rail__step {
+  position: relative;
+  display: grid;
+  grid-template-columns: 44px 1fr;
+  gap: var(--couranr-space-4);
+  padding-block: var(--couranr-space-5);
+}
+/* The rail itself: a line running THROUGH the markers, which is what makes the
+   progression spatial rather than four cards in a row. */
+.cr-mkt-rail__step::before {
+  content: "";
+  position: absolute;
+  left: 21px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--couranr-border);
+}
+.cr-mkt-rail__step:first-child::before { top: 50%; }
+.cr-mkt-rail__step:last-child::before  { bottom: 50%; }
+
+.cr-mkt-rail__marker {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  align-self: start;
+  border-radius: var(--couranr-radius-pill);
+  background: var(--couranr-navy);
+  color: var(--couranr-text-inverse);
+  font-family: var(--couranr-font-display);
+  font-weight: 650;
+  font-size: 1.0625rem;
+  font-variant-numeric: tabular-nums;
+}
+.cr-mkt-rail__content h3 { margin: 0 0 var(--couranr-space-2); color: var(--couranr-text); }
+
+@media (min-width: 1024px) {
+  /* Horizontal rail on desktop: the connector becomes the line between markers,
+     so the sequence still reads as one flow rather than four columns. */
+  .cr-mkt-rail { grid-template-columns: repeat(4, 1fr); gap: var(--couranr-space-5); }
+  .cr-mkt-rail__step { grid-template-columns: 1fr; padding-block: 0; }
+  .cr-mkt-rail__step::before,
+  /* The vertical layout trims the rail at both ends with `top: 50%` and
+     `bottom: 50%`. Those must be RESET here, not just overridden for the
+     general case — leaving them in place put step 1's connector at half the
+     step's height, which drew a line straight through the word "Request".
+     Caught by looking at the rendered page, not by reading the rule. */
+  .cr-mkt-rail__step:first-child::before,
+  .cr-mkt-rail__step:last-child::before {
+    left: 44px;
+    right: calc(var(--couranr-space-5) * -1);
+    top: 21px;
+    bottom: auto;
+    width: auto;
+    height: 2px;
+  }
+  /* Nothing follows the last marker, so it has no connector to draw. */
+  .cr-mkt-rail__step:last-child::before { display: none; }
+  .cr-mkt-rail__content { margin-top: var(--couranr-space-4); }
+}
+
+/* ── §19.5 product proof — real states, readable, no fabricated numbers ──── */
+
+/* Drift ledger `product-proof` (RESTYLE): "Reconcile the timeline to the
+   artboard's horizontal five-stage geometry." The artboard runs the stages
+   LEFT TO RIGHT under one heading, with the artifact tiles beside them, so the
+   copy sits above the panel rather than in a column next to it — six states
+   need the full width to read horizontally. Below 900px the timeline returns to
+   the vertical stack, which is the only shape six states fit in on a phone. */
+.cr-mkt-proof { display: grid; gap: var(--couranr-space-6); }
+.cr-mkt-proof__copy h2 { margin: 0 0 var(--couranr-space-4); color: var(--couranr-text); }
+.cr-mkt-proof__copy p  { margin: 0; max-width: 78ch; }
+
+.cr-mkt-proof__panel {
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-lg);
+  background: var(--couranr-surface);
+  box-shadow: var(--couranr-shadow-md);
+  overflow: hidden;
+}
+.cr-mkt-proof__panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--couranr-space-3);
+  padding: var(--couranr-space-4) var(--couranr-space-5);
+  border-bottom: 1px solid var(--couranr-border);
+  background: var(--couranr-surface-sunken);
+  color: var(--couranr-text-muted);
+}
+
+.cr-mkt-proof__timeline { list-style: none; margin: 0; padding: var(--couranr-space-5); display: grid; gap: 0; }
+
+.cr-mkt-proof__event {
+  position: relative;
+  display: grid;
+  grid-template-columns: 24px 1fr;
+  gap: var(--couranr-space-3);
+  padding-block: var(--couranr-space-3);
+  align-items: baseline;
+}
+.cr-mkt-proof__event::before {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--couranr-border);
+}
+.cr-mkt-proof__event:first-child::before { top: 50%; }
+.cr-mkt-proof__event:last-child::before  { bottom: 50%; }
+
+
+/* Shape AND fill differ between done and pending, so the state never rests on
+   colour alone (§23.5). */
+.cr-mkt-proof__dot {
+  position: relative;
+  z-index: 1;
+  width: 12px;
+  height: 12px;
+  border-radius: var(--couranr-radius-pill);
+  border: 2px solid var(--couranr-border-strong);
+  background: var(--couranr-surface);
+  justify-self: center;
+  align-self: center;
+}
+.cr-mkt-proof__event--done .cr-mkt-proof__dot {
+  border-color: var(--couranr-success);
+  background: var(--couranr-success);
+  border-radius: 3px;
+}
+.cr-mkt-proof__state {
+  grid-column: 2;
+  font-weight: var(--couranr-weight-semibold);
+  font-size: var(--couranr-text-sm);
+  color: var(--couranr-text);
+}
+.cr-mkt-proof__note {
+  grid-column: 2;
+  font-size: var(--couranr-text-xs);
+  color: var(--couranr-text-muted);
+}
+.cr-mkt-proof__event:not(.cr-mkt-proof__event--done) .cr-mkt-proof__state {
+  color: var(--couranr-text-muted);
+}
+
+@media (min-width: 900px) {
+  .cr-mkt-proof__timeline {
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    gap: var(--couranr-space-2);
+  }
+  .cr-mkt-proof__event {
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+    grid-template-rows: 24px auto auto;
+    justify-items: center;
+    text-align: center;
+    padding-block: 0;
+    gap: var(--couranr-space-2);
+  }
+  /* The connector becomes the rule BETWEEN two markers rather than the rule
+     below one, so it is drawn from each event's centre to the next event's
+     centre and the last event draws none. */
+  .cr-mkt-proof__event::before {
+    left: 50%;
+    /* Centre to centre: half this cell, the column gap, half the next. `-50%`
+       alone stops one gap short and reads as a broken rule. */
+    right: calc(-50% - var(--couranr-space-2));
+    top: 11px;
+    bottom: auto;
+    width: auto;
+    height: 2px;
+  }
+  /* `:first-child::before { top: 50% }` and `:last-child::before
+     { bottom: 50% }` are the vertical rules and out-specify the block above,
+     so both are reset here rather than left to cascade. */
+  .cr-mkt-proof__event:first-child::before { top: 11px; }
+  .cr-mkt-proof__event:last-child::before { display: none; bottom: auto; }
+  .cr-mkt-proof__state,
+  .cr-mkt-proof__note { grid-column: 1; }
+  .cr-mkt-proof__note { text-wrap: balance; }
+}
+
+/* ── §19.6 full-bleed interruption — navy, high contrast, rhythm reset ───── */
+
+.cr-mkt-band {
+  margin-inline: calc(50% - 50vw);
+  width: 100vw;
+  max-width: 100vw;
+  padding-block: var(--couranr-space-12);
+  background: var(--couranr-navy);
+  color: var(--couranr-text-inverse);
+}
+.cr-mkt-band__inner {
+  width: 100%;
+  max-width: var(--couranr-container-max);
+  margin-inline: auto;
+  padding-inline: var(--couranr-space-4);
+  display: grid;
+  gap: var(--couranr-space-8);
+  align-items: center;
+}
+.cr-mkt-band__h2 { margin: 0 0 var(--couranr-space-4); color: var(--couranr-text-inverse); }
+.cr-mkt-band__body { margin: 0 0 var(--couranr-space-3); color: rgba(255,255,255,0.86); max-width: 52ch; line-height: var(--couranr-leading-normal); }
+.cr-mkt-band__note { margin: 0; color: rgba(255,255,255,0.7); font-size: var(--couranr-text-sm); }
+.cr-mkt-band__note a,
+.cr-mkt-band__body a { color: var(--couranr-gold); }
+
+.cr-mkt-band__figure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--couranr-space-2);
+  padding: var(--couranr-space-6);
+  border: 1px solid rgba(255,255,255,0.22);
+  border-radius: var(--couranr-radius-lg);
+  text-align: center;
+}
+.cr-mkt-band__label { font-size: var(--couranr-text-sm); color: rgba(255,255,255,0.7); }
+.cr-mkt-band__price { color: var(--couranr-gold); }
+
+@media (min-width: 900px) {
+  .cr-mkt-band__inner { grid-template-columns: 60fr 40fr; padding-inline: var(--couranr-space-8); }
+}
+
+/* ── §19.7 structured information block — FAQ as a ruled list, not cards ─── */
+
+/* The row treatment lives with the other drift-ledger corrections at the foot
+   of this file; `.cr-mkt-faq` is now a plain wrapper around <details> rows and
+   the <dl> rules that used to be here have no element left to match. */
+.cr-mkt-faq { margin: 0; padding: 0; }
+
+/* ── the channel strip: one system, not seven identical cards ────────────── */
+
+.cr-mkt-channelstrip {
+  list-style: none;
+  margin: 0;
+  padding: var(--couranr-space-2);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--couranr-space-2);
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-lg);
+  background: var(--couranr-surface);
+}
+.cr-mkt-channelstrip__item {
+  display: flex;
+  align-items: center;
+  gap: var(--couranr-space-2);
+  padding: var(--couranr-space-3) var(--couranr-space-4);
+  border-radius: var(--couranr-radius-sm);
+  background: var(--couranr-surface-sunken);
+  font-size: var(--couranr-text-sm);
+  font-weight: var(--couranr-weight-medium);
+  color: var(--couranr-text);
+  flex: 1 1 auto;
+}
+.cr-mkt-channelstrip__icon { color: var(--couranr-route-blue); line-height: 0; flex: none; }
+/* The label carried no rule at all; the item's own font settings were doing the
+   work and the span was decoration. It owns its own wrapping now, which is what
+   a label class is for. */
+.cr-mkt-channelstrip__label { text-wrap: balance; }
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Gate C fixes — found by running §26's accessibility gate, not by reading
+
+   1. MUTED TEXT ON TINTED SURFACES FAILS AA — repo-wide, not just here.
+
+      --couranr-text-muted (#667085) is a locked brand primitive (§7: "These
+      existing values remain unchanged"), and on white it is fine at 4.97:1.
+      On the tinted surfaces it is 4.46:1 (sunken) and 4.47:1 (info) — under
+      the 4.5:1 floor §23.2 sets. axe flagged four nodes; the cause is the
+      token pair, so every future component on a tint would inherit it.
+
+      The brand value is NOT changed. §8.1 allows a supporting neutral that is
+      "justified by an actual component, contrast-tested, and classified as
+      semantic/supporting". --couranr-text-muted-tint is one step darker along
+      the same hue and saturation (h 220.6°, s 0.132), computed rather than
+      eyeballed, and clears 4.5:1 on all five surfaces:
+
+        #656f84   5.05 white · 4.52 sunken · 4.54 info · 4.76 gold · 4.74 canvas
+
+      Tinted containers shadow --couranr-text-muted locally, so everything
+      inside inherits the safe value without any per-element discipline.
+
+   2. A LINK DISTINGUISHED ONLY BY COLOUR on the navy band — 1.09:1 against
+      the surrounding text, which is a WCAG AA failure and the same principle
+      as §23.5's "status never communicated by color alone".
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.cr-root { --couranr-text-muted-tint: #656f84; }
+
+.cr-mkt-slot,
+.cr-mkt-payer,
+.cr-mkt-proof__panel-head,
+.cr-mkt-channelstrip__item {
+  --couranr-text-muted: var(--couranr-text-muted-tint);
+}
+
+/* `.cr-table thead th` paints --couranr-text-muted on --couranr-surface-sunken,
+   which is the same 4.45:1 pair as above and fails for exactly the same reason.
+   It was invisible until PUB-008's mileage tiers became a real table: axe found
+   it on `th:nth-child(1)` and `th:nth-child(2)` the first time the gate ran
+   over /pricing. This is the token pair, not the page, so it is fixed at the
+   component — every table in the canonical tree inherits the safe value. */
+.cr-table thead th {
+  --couranr-text-muted: var(--couranr-text-muted-tint);
+  color: var(--couranr-text-muted-tint);
+}
+
+/* Links inside a text block need a non-colour cue. The navy band's links are
+   gold on navy — high contrast against the BACKGROUND, but nearly identical in
+   luminance to the muted body text they sit inside, which is the comparison
+   WCAG actually makes. */
+.cr-mkt-band__note a,
+.cr-mkt-band__body a {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Drift ledger `public-header` (RESTYLE): below the drawer breakpoint the
+   artboard's bar carries a wordmark and a hamburger and nothing else. Both auth
+   actions hide here and are rendered at full size in the drawer footer, which
+   also retires the 400px special case that used to drop only "Sign in" — the
+   crowded three-control 360px bar is what produced its 7px overflow.
+   See the comment at the call site in shells.tsx. */
+@media (max-width: 899px) {
+  .cr-topbar__auth { display: none; }
+}
+
+/* Gate A / D-2 — proof artifacts. The artboard shows these beside the timeline:
+   the timeline says a delivery moved, the artifacts say what was recorded. */
+.cr-mkt-proof__artifacts {
+  list-style: none;
+  margin: 0;
+  padding: var(--couranr-space-5);
+  padding-top: 0;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--couranr-space-3);
+  border-top: 1px solid var(--couranr-border);
+  margin-top: var(--couranr-space-2);
+  padding-top: var(--couranr-space-5);
+  --couranr-text-muted: var(--couranr-text-muted-tint);
+}
+
+/* Four across at the width the artboard shows them at, beside the timeline
+   rather than stacked two-by-two under it. */
+@media (min-width: 900px) {
+  .cr-mkt-proof__artifacts { grid-template-columns: repeat(4, 1fr); }
+}
+.cr-mkt-proof__artifact {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--couranr-space-3);
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-md);
+  background: var(--couranr-surface-sunken);
+}
+.cr-mkt-proof__artifact-label {
+  font-size: var(--couranr-text-sm);
+  font-weight: var(--couranr-weight-semibold);
+  color: var(--couranr-text);
+}
+.cr-mkt-proof__artifact-detail {
+  font-size: var(--couranr-text-xs);
+  color: var(--couranr-text-muted);
+}
+/* Visibly unfinished, like the section-3 slot — a placeholder that looks
+   designed is a placeholder that ships. */
+.cr-mkt-proof__artifact-slot {
+  margin-top: var(--couranr-space-2);
+  padding: var(--couranr-space-3);
+  border: 1px dashed var(--couranr-border-strong);
+  border-radius: var(--couranr-radius-sm);
+  text-align: center;
+  font-size: var(--couranr-text-xs);
+  color: var(--couranr-text-muted);
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   MKT-003 — `delivery-options`, rebuilt against the artboard.
+
+   This was a §19.3 split story for one stated reason: the artboard stacks a
+   card row (categories) directly on top of another card row (options), and
+   §19's adjacent-duplicate rule forbade it. The fidelity amendment demotes that
+   rule to a diagnostic (§3.1) and names this exact change as one to revert
+   (§5.7), so the four-across bordered card row is back — icon chip left of a
+   title, body beneath, short descriptor tag under the body, heading centred
+   above, overnight footnote centred below.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+.cr-mkt-options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--couranr-space-4);
+  grid-template-columns: 1fr;
+}
+@media (min-width: 640px) { .cr-mkt-options { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1024px) { .cr-mkt-options { grid-template-columns: repeat(4, 1fr); } }
+
+.cr-mkt-option {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  gap: var(--couranr-space-3);
+  align-items: start;
+  padding: var(--couranr-space-5);
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-md);
+  background: var(--couranr-surface);
+}
+
+.cr-mkt-option__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--couranr-radius-md);
+  background: var(--couranr-surface-sunken);
+  color: var(--couranr-route-blue);
+  line-height: 0;
+  flex: none;
+}
+.cr-mkt-option__body { display: flex; flex-direction: column; gap: var(--couranr-space-2); }
+.cr-mkt-option__body h3 { margin: 0; color: var(--couranr-text); }
+.cr-mkt-option__body p  { margin: 0; }
+
+/* The artboard's short descriptor under each option. Muted and small: it is a
+   label for the option, not a claim about it. */
+.cr-mkt-option__tag {
+  margin-top: var(--couranr-space-1);
+  font-size: var(--couranr-text-xs);
+  font-weight: var(--couranr-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--couranr-text-muted);
+}
+
+/* The overnight qualifier. Set apart from the card row because OVN-001 makes it
+   conditional — request-only, when Couranr confirms availability — and a
+   conditional read as body copy reads as an offer. */
+.cr-mkt-options__note {
+  margin: var(--couranr-space-2) 0 0;
+  padding: var(--couranr-space-3) var(--couranr-space-4);
+  border: 1px solid var(--couranr-border);
+  border-left: 3px solid var(--couranr-gold);
+  border-radius: 0 var(--couranr-radius-sm) var(--couranr-radius-sm) 0;
+  background: var(--couranr-surface-sunken);
+  font-size: var(--couranr-text-sm);
+  line-height: var(--couranr-leading-normal);
+  color: var(--couranr-text-muted);
+  --couranr-text-muted: var(--couranr-text-muted-tint);
+  text-align: left;
+}
+
+/* Gate A / D-1 — the eleven governed categories, section 8.
+
+   A wrapped chip set, not an eleven-cell card grid: the claim is breadth, and
+   eleven equal-weight cards make each category look like a product tier. This
+   is the ONE grid-dominant section the page is allowed. */
+.cr-mkt-categories {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--couranr-space-3);
+  grid-template-columns: 1fr;
+}
+.cr-mkt-categories__item {
+  padding: var(--couranr-space-4);
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-md);
+  background: var(--couranr-surface);
+  font-size: var(--couranr-text-sm);
+  font-weight: var(--couranr-weight-medium);
+  line-height: var(--couranr-leading-normal);
+  color: var(--couranr-text);
+}
+/* The general fallback is marked as a first-class choice, not the leftover at
+   the end of the list — registry.ts calls it "a real category rather than a
+   blank" and the copy beside the grid says the same thing. */
+.cr-mkt-categories__item--general {
+  border-color: var(--couranr-gold);
+  background: var(--couranr-surface-sunken);
+}
+
+@media (min-width: 640px) { .cr-mkt-categories { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 900px) { .cr-mkt-categories { grid-template-columns: repeat(3, 1fr); } }
+
+/* Gate A / D-3 — the coverage assurances beside the corridor map. */
+.cr-mkt-assurances {
+  list-style: none;
+  margin: var(--couranr-space-5) 0 var(--couranr-space-5);
+  padding: 0;
+  display: grid;
+  gap: var(--couranr-space-3);
+}
+.cr-mkt-assurances li {
+  position: relative;
+  padding-left: var(--couranr-space-6);
+  font-size: var(--couranr-text-sm);
+  line-height: var(--couranr-leading-normal);
+  color: var(--couranr-text);
+}
+/* A drawn tick rather than a ✓ character: the character inherits the body font
+   and renders at a different weight in each fallback. Decorative — the list
+   semantics carry the meaning. */
+.cr-mkt-assurances li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.45em;
+  width: 12px;
+  height: 7px;
+  border-left: 2px solid var(--couranr-route-blue);
+  border-bottom: 2px solid var(--couranr-route-blue);
+  transform: rotate(-45deg);
+}
+
+/* Inline links in marketing prose.
+ *
+ * Found by auditing computed styles on the built page, not by reading: of the
+ * four non-button links on PUB-001, three resolved to the colour of the text
+ * around them with no underline — `rgb(13,21,37)` in the service-area notice
+ * and `rgb(102,112,133)` in sections 8 and 11. A `<Text muted>` wrapper sets
+ * `color` on the paragraph and the anchor inherits it, so the only thing
+ * marking those as links was the "→" glyph in their label.
+ *
+ * That is the same defect the navy band's links already carry a fix for a few
+ * rules above, and the same principle as §23.5's "status never communicated by
+ * color alone" — read in the harder direction, since here there was no colour
+ * difference to rely on either.
+ *
+ * §18 says "Links: Route Blue where appropriate", and Route Blue clears 4.5:1
+ * on all three light surfaces — 5.17 white, 4.85 canvas, 4.63 sunken — so it
+ * is used together with an underline rather than instead of one.
+ *
+ * The navy band is deliberately excluded: its links are Gold on Navy and
+ * already underlined, and Route Blue on Navy would fail.
+ */
+.cr-mkt a:not([class]) {
+  color: var(--couranr-route-blue);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.cr-mkt .cr-mkt-band__note a,
+.cr-mkt .cr-mkt-band__body a { color: var(--couranr-gold); }
+
+/* ═════════════════════════════════════════════════════════════════════════
+   V3 — the rest of the public marketing family (PUB-008/009/010/011).
+
+   §27.1 gives each page its own composition table and its own budgets. The
+   devices below are the ones those tables call for and PUB-001 did not need.
+   Everything else is reused: .cr-mkt-editorial, .cr-mkt-band, .cr-mkt-split,
+   .cr-mkt-narrative, .cr-mkt-rail, .cr-mkt-proof, .cr-mkt-closing.
+
+   The through-line is the ruled schedule replacing the bordered card. All four
+   pages were built out of Card grids — five card surfaces on /pricing alone —
+   and §19.7 permits panels only "where the content is genuinely discrete". A
+   charge and its amount are one row of a schedule, not a product tier.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/* ── the ruled schedule: a definition list that reads as one document ────── */
+
+.cr-mkt-schedule { margin: 0; padding: 0; }
+
+.cr-mkt-schedule__row {
+  display: grid;
+  gap: var(--couranr-space-1) var(--couranr-space-6);
+  grid-template-columns: 1fr;
+  padding-block: var(--couranr-space-4);
+  border-top: 1px solid var(--couranr-border);
+}
+.cr-mkt-schedule__row:last-child { border-bottom: 1px solid var(--couranr-border); }
+
+.cr-mkt-schedule__row dt {
+  margin: 0;
+  font-size: var(--couranr-text-base);
+  font-weight: var(--couranr-weight-semibold);
+  color: var(--couranr-text);
+}
+.cr-mkt-schedule__row dd {
+  margin: 0;
+  font-size: var(--couranr-text-sm);
+  line-height: var(--couranr-leading-normal);
+  color: var(--couranr-text-muted);
+}
+
+@media (min-width: 640px) {
+  /* Term left, value right — the shape a charge schedule wants. */
+  .cr-mkt-schedule__row { grid-template-columns: minmax(12rem, 2fr) 3fr; align-items: baseline; }
+  /* …except where the value is a sentence rather than an amount, which reads
+     better stacked under its own term than squeezed into a second column. */
+  .cr-mkt-schedule__row--stacked { grid-template-columns: 1fr; }
+}
+
+/* A charge that belongs WITH its term rather than in the value column: the
+   service-level ladder, where the amount is part of the name. */
+.cr-mkt-schedule__charge {
+  margin-left: var(--couranr-space-3);
+  font-family: var(--couranr-font-mono);
+  font-size: var(--couranr-text-sm);
+  font-weight: var(--couranr-weight-medium);
+  color: var(--couranr-route-blue);
+}
+
+.cr-mkt-schedule__group + .cr-mkt-schedule__group { margin-top: var(--couranr-space-6); }
+.cr-mkt-schedule__group h3 { margin: 0 0 var(--couranr-space-2); color: var(--couranr-text); }
+
+/* ── the disclosure (PUB-008's required "expanded pricing details") ─────── */
+
+.cr-mkt-disclosure { margin-top: var(--couranr-space-6); }
+.cr-mkt-disclosure__body {
+  margin-top: var(--couranr-space-5);
+  padding: var(--couranr-space-6);
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-lg);
+  background: var(--couranr-surface-sunken);
+  --couranr-text-muted: var(--couranr-text-muted-tint);
+}
+/* `hidden` is a presentation hint, and `display: grid` below would override it
+   if it were not restated. The panel stays in the DOM so the trigger's
+   aria-controls always resolves. */
+.cr-mkt-disclosure__body[hidden] { display: none; }
+
+/* ── an editorial statement that is a full-width notice, not a 24ch column ── */
+
+.cr-mkt-editorial--wide { max-width: 62ch; }
+
+/* ── PUB-010's named markets ────────────────────────────────────────────── */
+
+.cr-mkt-markets {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--couranr-space-4);
+  grid-template-columns: 1fr;
+}
+.cr-mkt-market {
+  display: flex;
+  flex-direction: column;
+  gap: var(--couranr-space-1);
+  padding: var(--couranr-space-5);
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-lg);
+  background: var(--couranr-surface);
+}
+.cr-mkt-market__label {
+  font-size: var(--couranr-text-xs);
+  font-weight: var(--couranr-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--couranr-route-blue);
+}
+.cr-mkt-market__name { color: var(--couranr-text); }
+.cr-mkt-market__note {
+  font-size: var(--couranr-text-sm);
+  line-height: var(--couranr-leading-normal);
+  color: var(--couranr-text-muted);
+}
+
+@media (min-width: 640px) { .cr-mkt-markets { grid-template-columns: repeat(2, 1fr); } }
+@media (min-width: 1024px) { .cr-mkt-markets { grid-template-columns: repeat(4, 1fr); } }
+
+/* The corridor is the subject on PUB-010, not a supporting visual as on
+   PUB-001, so it is allowed to be much larger there. */
+.cr-mkt-map--large { max-width: 460px; }
+
+/* ── PUB-011's payer sequences, inside the split story ──────────────────── */
+
+.cr-mkt-payer__steps {
+  margin: 0;
+  padding-left: var(--couranr-space-5);
+  display: grid;
+  gap: var(--couranr-space-3);
+  font-size: var(--couranr-text-sm);
+  line-height: var(--couranr-leading-normal);
+  color: var(--couranr-text-muted);
+}
+
+/* ── PUB-011's proof requirements, inside the product-proof panel ───────── */
+
+.cr-mkt-proof__group {
+  padding: var(--couranr-space-5);
+  border-top: 1px solid var(--couranr-border);
+}
+.cr-mkt-proof__group h3 { margin: 0 0 var(--couranr-space-3); color: var(--couranr-text); }
+
+.cr-mkt-proof__requires {
+  list-style: none;
+  margin: 0 0 var(--couranr-space-2);
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--couranr-space-2);
+}
+.cr-mkt-proof__requires li {
+  padding: var(--couranr-space-2) var(--couranr-space-3);
+  border-radius: var(--couranr-radius-sm);
+  background: var(--couranr-surface-sunken);
+  font-size: var(--couranr-text-xs);
+  font-weight: var(--couranr-weight-medium);
+  color: var(--couranr-text);
+}
+
+/* ── a navy band that stacks copy above content instead of beside a figure ─ */
+
+.cr-mkt-band__inner--stacked { display: block; }
+.cr-mkt-band__inner--stacked .cr-mkt-band__copy { max-width: 62ch; }
+
+/* The channel strip on navy: same device, inverted surface. Contrast is
+   carried by the light tile, so the label keeps the ordinary text colour. */
+.cr-mkt-channelstrip--inverse {
+  margin-top: var(--couranr-space-6);
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* ── V3 corrections found by looking at the rendered pages ──────────────── */
+
+/*
+ * 1. An editorial statement used as a PAGE HERO.
+ *
+ * `.cr-mkt-editorial` clamps the whole section to 24ch, which is what makes
+ * PUB-001 section 2 a dramatic four-line statement. Reused as a page hero it
+ * clamped the eyebrow (wrapping "SIMPLE PER-DELIVERY PRICING" mid-phrase), the
+ * lead paragraph and the CTA row into the same 24ch column — and PUB-011's
+ * headline ran to EIGHT lines. Measured at 1440px, not guessed.
+ *
+ * The statement keeps a narrow measure because that is the effect; everything
+ * around it gets its own.
+ */
+.cr-mkt-editorial--hero { max-width: none; }
+.cr-mkt-editorial--hero > h1,
+.cr-mkt-editorial--hero > h2 { max-width: 18ch; }
+.cr-mkt-editorial--hero .cr-mkt-editorial__body { max-width: 54ch; }
+/* The CTA row had NO top margin and sat flush against the last line of the
+   lead paragraph — measured gap: 0px. Gate B never saw it because nothing
+   overflowed and axe never saw it because contrast was fine; it took looking
+   at the rendered hero. */
+.cr-mkt-editorial--hero .cr-mkt-cta-row {
+  justify-content: flex-start;
+  margin-top: var(--couranr-space-6);
+}
+
+/*
+ * 2. A workflow rail longer than four steps.
+ *
+ * The desktop rail is `repeat(4, 1fr)`, so PUB-011's six CAP-001 steps wrapped
+ * to 4 + 2 with the connector spanning only the first row — a sequence that
+ * visibly broke in half, which is the opposite of §19.4's "progression is
+ * spatially obvious".
+ *
+ * A long sequence stays VERTICAL at every width rather than being squeezed into
+ * six columns. §19.4 asks for connected steps and an obvious progression; it
+ * does not ask for a horizontal one, and six 200px columns would have made the
+ * step bodies unreadable to satisfy a layout nobody required.
+ */
+.cr-mkt-rail--long { grid-template-columns: 1fr !important; gap: 0 !important; }
+.cr-mkt-rail--long .cr-mkt-rail__step {
+  grid-template-columns: 44px 1fr;
+  padding-block: var(--couranr-space-5);
+}
+.cr-mkt-rail--long .cr-mkt-rail__step::before,
+.cr-mkt-rail--long .cr-mkt-rail__step:first-child::before,
+.cr-mkt-rail--long .cr-mkt-rail__step:last-child::before {
+  display: block;
+  left: 21px;
+  right: auto;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  height: auto;
+}
+.cr-mkt-rail--long .cr-mkt-rail__step:first-child::before { top: 50%; }
+.cr-mkt-rail--long .cr-mkt-rail__step:last-child::before { bottom: 50%; }
+.cr-mkt-rail--long .cr-mkt-rail__content { margin-top: 0; max-width: 68ch; }
+
+/* ═════════════════════════════════════════════════════════════════════════
+   Drift-ledger corrections — PUB-001, from the artboard pixels.
+
+   Every rule below cites the ledger row it closes. The ledger is
+   docs/couranr-mvp/ui-reference/PUB_001_VISUAL_DRIFT_LEDGER.csv and it is the
+   authority for these, not §19's budgets — fidelity amendment §1.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/* ── row `top-notice` (REBUILD) ─────────────────────────────────────────────
+   Was a bordered rounded box inside the page content, below the header. Both
+   artboards show a full-bleed bar ABOVE the header. The desktop bar is cream
+   with a Route Blue link; the mobile bar is NAVY with white text — that is not
+   a mistake in the mock, both artboards agree, so both are reproduced. */
+.cr-topnotice {
+  background: var(--couranr-canvas);
+  border-bottom: 1px solid var(--couranr-border);
+}
+.cr-topnotice__inner {
+  display: flex;
+  align-items: center;
+  gap: var(--couranr-space-2);
+  margin: 0 auto;
+  padding: var(--couranr-space-3) var(--couranr-space-4);
+  max-width: var(--couranr-container-max);
+  font-size: var(--couranr-text-sm);
+  color: var(--couranr-text);
+}
+.cr-topnotice__icon { display: flex; flex: none; line-height: 0; }
+.cr-topnotice__icon svg { width: 16px; height: 16px; }
+.cr-topnotice__text { min-width: 0; }
+/* Right-aligned, as the artboard has it, and pushed by the text rather than
+   floated so it never collides on a narrow bar. */
+.cr-topnotice__link {
+  margin-left: auto;
+  flex: none;
+  color: var(--couranr-route-blue);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  white-space: nowrap;
+}
+
+@media (max-width: 767px) {
+  .cr-topnotice { background: var(--couranr-navy); border-bottom-color: transparent; }
+  .cr-topnotice__inner { color: var(--couranr-text-inverse); }
+  /* The mobile artboard shows the sentence only — no link on the bar, because
+     there is no room for it beside the text at 390px. */
+  .cr-topnotice__link { display: none; }
+}
+
+/* ── row `hero-small-label` ─────────────────────────────────────────────────
+   Geometry is mock-supported and unchanged. The mobile artboard renders the
+   pill in GOLD rather than white, so that treatment is reproduced.
+
+   The TEXT deliberately does NOT follow the artboard, and this is an authority
+   decision rather than a preference: the artboard's pill reads DELIVERY MADE
+   SIMPLE, and BRAND_GUIDE.md line 10 says "Do not use the tagline inside small
+   headers" while VIS-001 says "Use the canonical supplied lockup; do not
+   recreate with typed text." A typed tagline inside a small header breaks both.
+   MKT-002's consumer descriptor stays. */
+
+.cr-hero__cta-arrow { display: none; }
+
+/* ── row `hero-trust` ───────────────────────────────────────────────────────
+   The circles are MOCK-SUPPORTED on desktop (amendment §5.5 says so outright,
+   and the earlier recovery document was wrong to list them as invented). The
+   MOBILE artboard draws the same three glyphs in GOLD with no ring around
+   them, so that is what mobile gets. Colour is not carrying the meaning —
+   each item states its claim in words beside the glyph. */
+@media (max-width: 767px) {
+  .cr-hero__trust-icon {
+    color: var(--couranr-gold);
+    border-color: transparent;
+    width: auto;
+    height: auto;
+  }
+}
+
+/* ── row `hero-headline` ────────────────────────────────────────────────────
+   Both artboards are canonical and they differ on purpose: the desktop accent
+   clause is WHITE, the mobile accent clause is GOLD. Art direction, the same
+   as the hero's two photographic crops — not a conflict to pick a winner from. */
+.cr-hero__h1-accent { color: var(--couranr-text-inverse); }
+@media (max-width: 767px) {
+  .cr-hero__h1-accent { color: var(--couranr-gold); }
+}
+
+/* ── row `hero-cta` (REBUILD) ───────────────────────────────────────────────
+   The mobile artboard stacks the two hero buttons FULL WIDTH, and pins a
+   primary action to the bottom of the viewport. The implementation had neither. */
+@media (max-width: 767px) {
+  .cr-hero__cta { flex-direction: column; align-items: stretch; }
+  .cr-hero__cta > .cr-button { width: 100%; }
+  .cr-hero__cta-arrow { display: inline; margin-left: var(--couranr-space-3); }
+}
+
+/* The sticky bottom CTA the mobile artboard shows, and the Ask Couranr
+   launcher, in ONE bar.
+
+   They were separate fixed elements and both are bottom-anchored, so at 390px
+   the launcher sat on top of the hero's full-width primary CTA and covered the
+   end of its label. A static artboard cannot show an occlusion, which is why
+   this is a correction the pixels did not ask for. One bar means mobile has
+   exactly one bottom-anchored object and nothing floats over the page.
+
+   Desktop never renders the bar — the hero's own buttons are always reachable
+   there — and `.cr-askc` keeps the bottom-right position the artboard gives it. */
+.cr-mobilebar__cta { display: none; }
+
+@media (max-width: 767px) {
+  .cr-mobilebar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    /* Below --couranr-z-drawer (40) on purpose: an open mobile menu must cover
+       this, not sit under it. */
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    gap: var(--couranr-space-3);
+    padding: var(--couranr-space-3) var(--couranr-space-4)
+             calc(var(--couranr-space-3) + env(safe-area-inset-bottom, 0px));
+    background: var(--couranr-surface);
+    border-top: 1px solid var(--couranr-border);
+  }
+  .cr-mobilebar__cta { display: inline-flex; flex: 1 1 auto; }
+  /* The launcher stops being a floating object and becomes a control in the
+     bar. Its panel is ABSOLUTE against the launcher rather than fixed at a
+     typed offset from the viewport: the bar's height is 73px plus whatever the
+     safe-area inset is, so any literal here would be a guess that drifts the
+     moment the bar's padding changes. */
+  .cr-askc { position: relative; flex: none; }
+  .cr-askc__panel {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + var(--couranr-space-3));
+  }
+}
+
+/* The bar is fixed over the bottom of the VIEWPORT, so what it covers is the
+   end of the DOCUMENT — which is the footer, not the main element. This was
+   `.cr-shell--public .cr-shell__main { padding-bottom: 88px }`, and that was
+   wrong twice over, both measured rather than reasoned:
+     1. `main` and `footer` are siblings, so padding on main only inserted 88px
+        between the page content and the footer and left the footer's last link
+        under the bar (`lastFooterLinkCoveredByBar: true` at 390px);
+     2. it was scoped to the public SHELL, so /pricing, /sign-in, /estimate and
+        the rest carried 88px of dead space above their footers with no bar to
+        fill it — the bar is rendered by PUB-001 alone.
+   `:has()` is Baseline Widely available (December 2023), so the scoping is the
+   selector rather than a class the page has to remember to set. */
+@media (max-width: 767px) {
+  .cr-shell--public:has(.cr-mobilebar) .cr-footer {
+    padding-bottom: calc(var(--couranr-space-10) + 88px);
+  }
+}
+
+/* ═════════════════════════════════════════════════════════════════════════
+   PUB-001 drift-ledger corrections — paired cards, FAQ disclosure, split
+   closing band.
+
+   COURANR_VISUAL_FIDELITY_AMENDMENT.md §1: written authority controls copy and
+   behaviour, the canonical mock controls screen composition and geometry, and
+   v2.2 governs only where the mock is silent. Everything in this block is the
+   second of those — the artboard's geometry, reproduced.
+   ═════════════════════════════════════════════════════════════════════════ */
+
+/* Two sections side by side in one row. A wrapper rather than a merged
+   section, because §27.0's `data-couranr-section` ids are a normative list and
+   merging would delete one of them from the DOM to achieve a layout. */
+.cr-mkt-pair {
+  display: grid;
+  gap: var(--couranr-space-6);
+  grid-template-columns: 1fr;
+  align-items: stretch;
+}
+@media (min-width: 1024px) { .cr-mkt-pair { grid-template-columns: 1fr 1fr; } }
+
+/* The artboard's light bordered card. Deliberately NOT the `Card` primitive:
+   these are page sections, and a card primitive inside a <section> would put a
+   landmark inside a decoration. */
+.cr-mkt-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--couranr-space-4);
+  padding: var(--couranr-space-6);
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-lg);
+  background: var(--couranr-surface);
+}
+/* §12.5's scale, not §12.3's. `.cr-type-marketing-section` clamps to 32–52px,
+   which is a full-width section heading; inside a half-width card it rendered a
+   three-line 54px headline where the artboard shows a single ~24px line. §12.5
+   is a SCALE role — its surface binding adds the merchant `h2` to it, it does
+   not reserve the class for that surface. */
+.cr-mkt-card__h2 { margin: 0; color: var(--couranr-text); text-align: center; }
+/* The artboard centres three of the four card headings and sets "Ask Couranr"
+   left, above its own left-aligned copy. */
+.cr-mkt-card__h2--start { text-align: left; }
+.cr-mkt-card__note {
+  margin: 0;
+  font-size: var(--couranr-text-sm);
+  line-height: var(--couranr-leading-normal);
+  color: var(--couranr-text-muted);
+}
+/* The card's foot. `margin-top:auto` is what keeps the two cards' CTAs level
+   when their bodies differ in height. */
+.cr-mkt-card__cta { margin-top: auto; justify-content: center; text-align: center; }
+
+/* ── pricing card ───────────────────────────────────────────────────────── */
+
+.cr-mkt-pricecard {
+  display: grid;
+  gap: var(--couranr-space-4);
+  grid-template-columns: 1fr;
+  align-items: start;
+}
+@media (min-width: 480px) { .cr-mkt-pricecard { grid-template-columns: minmax(9rem, 34fr) 66fr; } }
+
+/* The price sits in its own bordered inset in the artboard, not loose on the
+   card. */
+.cr-mkt-pricecard__figure {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--couranr-space-1);
+  padding: var(--couranr-space-5) var(--couranr-space-4);
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-md);
+  background: var(--couranr-surface);
+  text-align: center;
+}
+.cr-mkt-pricecard__label {
+  font-size: var(--couranr-text-sm);
+  font-weight: var(--couranr-weight-semibold);
+  color: var(--couranr-text-muted);
+}
+.cr-mkt-pricecard__price { color: var(--couranr-navy); }
+
+/* ── coverage card ──────────────────────────────────────────────────────── */
+
+.cr-mkt-coverage {
+  display: grid;
+  gap: var(--couranr-space-4);
+  grid-template-columns: 1fr;
+  align-items: center;
+}
+@media (min-width: 480px) { .cr-mkt-coverage { grid-template-columns: 44fr 56fr; } }
+.cr-mkt-coverage__visual {
+  padding: var(--couranr-space-3);
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-md);
+  background: var(--couranr-surface-sunken);
+}
+
+/* ── FAQ disclosure ─────────────────────────────────────────────────────── */
+
+/* Native <details>. The artboard's rows are COLLAPSED with a chevron; using the
+   platform's own disclosure means the affordance is keyboard operable and
+   announced without a client component or a line of JavaScript. */
+.cr-mkt-faq__item { border-top: 1px solid var(--couranr-border); }
+.cr-mkt-faq__item:last-child { border-bottom: 1px solid var(--couranr-border); }
+
+.cr-mkt-faq__q {
+  display: flex;
+  align-items: center;
+  gap: var(--couranr-space-3);
+  padding-block: var(--couranr-space-4);
+  /* §23.6's 44px target, met by the row itself rather than by an icon. */
+  min-height: var(--couranr-touch-min);
+  margin: 0;
+  color: var(--couranr-text);
+  cursor: pointer;
+  list-style: none;
+}
+/* Safari renders a disclosure triangle through a pseudo-element the standard
+   `list-style: none` does not reach. */
+.cr-mkt-faq__q::-webkit-details-marker { display: none; }
+.cr-mkt-faq__q::after {
+  content: "";
+  margin-left: auto;
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid var(--couranr-text-muted);
+  border-bottom: 2px solid var(--couranr-text-muted);
+  transform: rotate(45deg) translate(-2px, -2px);
+  transition: transform 160ms ease;
+}
+.cr-mkt-faq__item[open] > .cr-mkt-faq__q::after {
+  transform: rotate(225deg) translate(-2px, -2px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .cr-mkt-faq__q::after { transition: none; }
+}
+.cr-mkt-faq__q:focus-visible {
+  outline: none;
+  box-shadow: var(--couranr-focus-ring);
+  border-radius: var(--couranr-radius-sm);
+}
+.cr-mkt-faq__a { padding-bottom: var(--couranr-space-4); }
+.cr-mkt-faq__a p { margin: 0; max-width: 68ch; }
+
+/* ── Ask Couranr card ───────────────────────────────────────────────────── */
+
+/* The artboard's prompt chips. Every one is real navigation to a route that
+   exists — AIS-001 does not settle that Couranr can answer a typed question,
+   so nothing here accepts one. */
+.cr-mkt-asklinks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--couranr-space-2);
+}
+.cr-mkt-asklink {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--couranr-touch-min);
+  padding: 0 var(--couranr-space-4);
+  border: 1px solid var(--couranr-border-strong);
+  border-radius: 999px;
+  background: var(--couranr-surface);
+  font-size: var(--couranr-text-sm);
+  font-weight: var(--couranr-weight-medium);
+  color: var(--couranr-route-blue);
+  text-decoration: none;
+}
+.cr-mkt-asklink:hover { background: var(--couranr-surface-sunken); text-decoration: underline; }
+.cr-mkt-asklink:focus-visible {
+  outline: none;
+  box-shadow: var(--couranr-focus-ring);
+}
+
+/* ── closing band, split ────────────────────────────────────────────────── */
+
+/* The artboard sets the closing copy LEFT with the two buttons to its RIGHT on
+   the same row. A PUB-001 modifier: the four family pages keep the centred
+   treatment until amendment §11 step 9 propagates this one. */
+@media (min-width: 900px) {
+  .cr-mkt-closing--split {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--couranr-space-8);
+    text-align: left;
+    padding-inline: var(--couranr-space-8);
+  }
+  /* Without `min-width: 0` a long unbroken word in the headline sets the flex
+     item's minimum and pushes the button column off the band. */
+  .cr-mkt-closing--split .cr-mkt-closing__copy { min-width: 0; }
+  .cr-mkt-closing--split .cr-mkt-h2-inverse { margin: 0; max-width: 22ch; }
+  .cr-mkt-closing--split .cr-mkt-cta-row { flex: none; }
+}

@@ -19,8 +19,12 @@
     "check:routes": "node scripts/checkRoutes.mjs",
     "check:legacy-imports": "node scripts/checkLegacyImports.mjs",
     "check:mocks": "node scripts/checkMockMap.mjs",
+    "check:visual-system": "node scripts/checkVisualSystem.mjs",
+    "check:visual-registry": "node scripts/visualAuthorityRegistry.mjs",
+    "check:drift-ledger": "node scripts/checkDriftLedger.mjs",
     "check:migrations": "vitest run tests/couranr-migrations.test.ts && node scripts/checkMigrationsDestructive.mjs",
     "check:gates:controls": "node scripts/positiveControls.mjs",
+    "provision:postgrest": "node scripts/provisionPostgrest.mjs",
     "test:deploy-safety": "node e2e/disposable/deploymentSafety.mjs",
     "test:cus-fragments": "node e2e/disposable/customerHelpFragments.mjs",
     "test:messaging": "node e2e/disposable/authenticatedMessaging.mjs",
@@ -30,7 +34,10 @@
     "test:release": "node e2e/disposable/releaseAuthorization.mjs",
     "test:release:route": "node e2e/disposable/releaseRoute.mjs",
     "test:idempotency": "node e2e/disposable/idempotencySubstrate.mjs",
-    "test:shell-chrome": "node e2e/shellChrome.mjs"
+    "test:shell-chrome": "node e2e/shellChrome.mjs",
+    "test:fonts": "node e2e/fonts.mjs",
+    "test:pub001": "node e2e/pub001Gates.mjs",
+    "test:pub-family": "node e2e/publicFamilyGates.mjs"
   },
   "dependencies": {
     "@stripe/react-stripe-js": "3.1.1",

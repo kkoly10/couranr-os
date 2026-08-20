@@ -3,9 +3,12 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   BASE_PRICE_CENTS,
+  CANCELLATION_CENTS,
   INCLUDED_LOADED_MILES,
   MARKETED_MARKETS,
   MILE_TIERS,
+  RETURN_MINIMUM_CENTS,
+  RETURN_PERCENT_OF_ORIGINAL,
   ROUTE_SAVER_FROM_CENTS_PER_STOP,
   SERVICE_LEVEL_CENTS,
   WEIGHT_BANDS,
@@ -165,6 +168,24 @@ describe("governed.ts agrees with the root decision registry", () => {
   });
   it("MKT-001 markets, in registry order", () => {
     expect([...MARKETED_MARKETS]).toEqual(byId.get("MKT-001").marketed_markets);
+  });
+  it("CAN-001 cancellation charges by stage", () => {
+    const can = byId.get("CAN-001");
+    expect(CANCELLATION_CENTS.beforeAuthorization).toBe(can.before_authorization.charge_cents);
+    expect(CANCELLATION_CENTS.afterAuthorizationBeforeConfirmation).toBe(
+      can.after_authorization_before_confirmation.charge_cents
+    );
+    expect(CANCELLATION_CENTS.couranrCannotConfirm).toBe(can.couranr_cannot_confirm.charge_cents);
+    expect(CANCELLATION_CENTS.afterConfirmationBeforeArrival).toBe(
+      can.after_confirmation_before_arrival.charge_cents
+    );
+    expect(CANCELLATION_CENTS.afterArrivalUnavailable).toBe(
+      can.after_arrival_package_or_merchant_unavailable.charge_cents
+    );
+  });
+  it("REF-001 return charge and floor", () => {
+    expect(RETURN_PERCENT_OF_ORIGINAL).toBe(byId.get("REF-001").return_charge_percent_of_original);
+    expect(RETURN_MINIMUM_CENTS).toBe(byId.get("REF-001").return_minimum_cents);
   });
 });
 

@@ -22,10 +22,12 @@
 - **Couranr Gold:** `#F4B740` — primary action and restrained brand accent.
 - **Route Blue:** `#2563EB` — maps, links, route and informational states.
 - **Canvas:** `#F7F8F5`; **Surface:** `#FFFFFF`; **Border:** `#E3E7ED`; **Muted:** `#667085`; **Success:** `#15803D`.
-- **Typography:** Geist Sans or Inter. Use sentence case, short labels, readable line height, and no generic “seamless/reimagined” startup language.
+- **Typography:** Martian Grotesk Variable is the Couranr display and significant-heading family. Inter Variable is the body/interface family. Martian Mono is restricted to operational identifiers/data where monospace improves scanning. Use sentence case, short labels, readable line height, and no generic “seamless/reimagined” startup language. The canonical logo remains the supplied outlined logo asset and is not recreated from these fonts. Governed by `VIS-001` in the root decision registry; role and budget rules are in `docs/couranr-mvp/brand/COURANR_VISUAL_SYSTEM_V2_2.md` §9–§13.
 - **Cards:** 18–22 px radius, one-pixel neutral border, restrained shadow, 24–32 px padding.
 - **Buttons:** 46–52 px height on desktop, at least 44 px touch target, clear primary/secondary/destructive hierarchy.
 - **No:** giant halos, glassmorphism, emoji feature icons, perspective-distorted UI, fake metrics, unreadable miniature dashboards, or color-only status meaning.
+
+**Visual-system cross-reference.** `docs/couranr-mvp/brand/COURANR_VISUAL_SYSTEM_V2_2.md` controls reusable visual primitives, typography roles, composition grammars, photography, responsive visual behavior and visual QA. Canonical images remain the authority for screen-specific composition, hierarchy, density and responsive intent. Written product authorities continue to control behavior, copy correctness, permissions, pricing, safety and claims. Where that file and this one disagree about a screen's composition, the canonical mock and this registry win; where they disagree about a reusable visual primitive, the visual system wins.
 
 ## 3. Global content and behavior corrections
 

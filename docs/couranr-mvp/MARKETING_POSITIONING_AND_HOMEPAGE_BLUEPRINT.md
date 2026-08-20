@@ -106,6 +106,31 @@ generate customers, leads or product sales.
 Couranr serves independent local businesses whose products or operations do not
 fit restaurant-focused delivery marketplaces.
 
+### Approved differentiation statement
+
+> **"Local delivery, built for more than restaurants."**
+
+Added by `VIS-001` (root decision registry) per
+`docs/couranr-mvp/brand/COURANR_VISUAL_SYSTEM_V2_2.md` §2.3 and §4.5.
+
+This is the **concise commercial statement** — the short line a merchant
+remembers. It does **not** replace the framing above, which remains valid
+positioning context; the visual system's §2.3 says so explicitly.
+
+Usage: it belongs as a major editorial statement where the page explains
+category breadth — PUB-001's `category-breadth` section (§27.0 of the visual
+system). Do not shrink it into an eyebrow or a small label; §14 of the visual
+system prohibits that, and it is the specific failure this line was written to
+avoid.
+
+The three brand lines do different jobs and must not collapse into one:
+
+| Line | Job |
+|---|---|
+| Delivery made simple. | brand memory / logo lockup |
+| Your customers want delivery. Now you can say yes. | the sales promise (hero) |
+| Local delivery, built for more than restaurants. | the differentiation |
+
 ### Boundaries
 
 - Do **not** build the identity around attacking or naming Uber Eats, DoorDash
@@ -117,7 +142,15 @@ fit restaurant-focused delivery marketplaces.
 
 ## 4. Homepage structure (PUB-001)
 
-The homepage is twelve sections, in this order:
+The homepage is twelve sections, in this order.
+
+> **Amended by MKT-003 (2026-08-14).** The owner approved a thirteenth section,
+> `delivery-options` — the canonical artboard's "Delivery options that fit your
+> needs" — inserted between section 8 and section 9. It introduces no new claim:
+> every value it renders is already decided by SUR-001, SUR-002, MIL-002 and
+> OVN-001. The normative section list, with ids and compositions, is §27.0 of
+> `docs/couranr-mvp/brand/COURANR_VISUAL_SYSTEM_V2_2.md`; this table is the
+> pre-amendment content architecture and is kept as written.
 
 | # | Section |
 |---|---|
@@ -281,7 +314,8 @@ This blueprint is the copy and conversion authority for that replacement.
 
 An implementation satisfies this blueprint when:
 
-1. The homepage renders the twelve sections in the order given in §4.
+1. The homepage renders the sections in the order given in §4, plus
+   `delivery-options` in the position MKT-003 assigns it.
 2. The hero uses the approved eyebrow, headline, supporting copy, both CTAs and
    the trust line verbatim.
 3. The closing section uses the approved closing headline verbatim.

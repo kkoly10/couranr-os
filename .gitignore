@@ -40,3 +40,4 @@ tests/scratch/
 # neither next-env.d.ts nor .next present — which is the state CI typechecks in,
 # since `typecheck` runs before `build`.
 next-env.d.ts
+.tooling/

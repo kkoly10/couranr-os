@@ -28,6 +28,9 @@ const GATES = [
   ["check:legacy-imports", ["scripts/checkLegacyImports.mjs", "--positive-control"]],
   ["check:migrations", ["scripts/checkMigrationsDestructive.mjs", "--positive-control"]],
   ["check:mocks", ["scripts/checkMockMap.mjs", "--positive-control"]],
+  ["check:visual-system", ["scripts/checkVisualSystem.mjs", "--positive-control"]],
+  ["check:visual-registry", ["scripts/visualAuthorityRegistry.mjs", "--positive-control"]],
+  ["check:drift-ledger", ["scripts/checkDriftLedger.mjs", "--positive-control"]],
 ];
 
 if (process.argv.includes("--with-db")) {
@@ -39,6 +42,9 @@ if (process.argv.includes("--with-db")) {
 // a dev server on BASE_URL and only boots one when nothing answers.
 if (process.argv.includes("--with-browser")) {
   GATES.push(["test:shell-chrome", ["e2e/shellChrome.mjs", "--positive-control"]]);
+  GATES.push(["test:fonts", ["e2e/fonts.mjs", "--positive-control"]]);
+  GATES.push(["test:pub001", ["e2e/pub001Gates.mjs", "--positive-control"]]);
+  GATES.push(["test:pub-family", ["e2e/publicFamilyGates.mjs", "--positive-control"]]);
 }
 
 let failed = 0;

@@ -477,6 +477,72 @@ Each browser group's two remaining failures are `CLEAN-behaviour` and
 `CLEAN-residue`, the standing non-functional residue condition caused by
 `couranr_merchant_workspaces` having no DELETE grant.
 
+## Visual system v2.2 — program state
+
+Not on `main`. This section describes the branch
+`claude/couranr-visual-system-v2-2`, and it is here so the visual program's
+state is recorded next to the functional one rather than only in the brand
+folder.
+
+**The machine-checked source is
+[`ui-reference/VISUAL_AUTHORITY_REGISTRY.json`](./ui-reference/VISUAL_AUTHORITY_REGISTRY.json),
+regenerated and validated by `npm run check:visual-registry`.** This table is a
+summary of it; the registry wins.
+
+| §34 slice | State |
+|---|---|
+| V0 authority normalization | done — VIS-001 in the root registry, UI registry amended |
+| V1 foundation | done — three fonts self-hosted, deterministic, width axis proven in a browser |
+| V2 PUB-001 proving surface | done — rebuilt, Gates A/B/C pass |
+| V3 remaining public family | done — PUB-008/009/010/011 under §27.1, Gates B/C pass, Gate A n/a (no mocks) |
+| V4–V6 product families | typography and grammar propagated via `data-couranr-surface`; **golden-screen Gate A/B/C not run** |
+| V7 reconciliation | registry complete for 66/66 screens; ledgers updated here; **no aliases removed** |
+
+**66 visual-authority records exist. 5 have a Gate A record.** A record means the
+screen's sources and dimensions are known, not that it was reviewed. The check
+prints the split on every run so `66/66` cannot read as `66 reviewed`.
+
+**The PostgREST blocker is CLOSED.** The disposable harnesses defaulted to a
+binary path inside one container's ephemeral scratchpad, so all fourteen aborted
+on any other machine — after applying 50 migrations, which made a missing
+dependency look like a database failure. `npm run provision:postgrest` pulls the
+official binary from the Docker Hub registry over plain HTTPS (GitHub Releases
+is 403 through the proxy), verifies each layer against the digest the manifest
+names, and installs it on PATH. No Docker daemon required; there isn't one.
+
+A second defect sat behind it: `tsconfig.json` includes `.next/types/**/*.ts`,
+so a build into `.next-disposable` still type-checked stale route types a
+previous `.next` had left behind and never regenerated — TS2307 on files nobody
+edited. Twelve harnesses now clear both directories.
+
+**What that unhid.** `MER-001`'s harness had been asserting copy the
+application deliberately removed: a static *"Live activation is not yet
+available"* banner that `MER-003` replaced with the real activation state, and a
+*"Test workspace"* title that is only the fallback for an unmapped state. Both
+assertions outlived the code by ten migrations and nobody noticed, because
+nobody could run the harness. `D5` now asserts the banner's words against the
+row in the database, the way `D3d` does for counts. **30/30, authenticated and
+unstubbed.**
+
+**Merchant typography is now measured, not inferred** — `T1`–`T3` in that
+harness read the computed font on a real signed-in `/business`: the shell stamps
+`merchant`, the page title computes to Martian Grotesk Variable, body copy to
+Inter. Operations and Driver still have no equivalent authenticated harness, so
+`npm run test:fonts` reports exactly those two as UNVERIFIED and names why.
+
+**Nothing was removed in V7, deliberately.** §34.1's wording is "remove obsolete
+visual aliases only where SAFE", and none currently is: `--couranr-font-sans`
+is the compatibility body alias §9 keeps during migration and has live
+consumers, and `.cr-heading--N` is what the whole product tree still renders.
+Removing either today would be a silent restyle, not a cleanup.
+
+**Still open in the document beyond §34:** photography IMG-01…05 (owner-supplied,
+blocks Gate A deviations D-1 and D-2 on PUB-001), and the optional
+`couranr.tokens.css` extraction, which §34.1 lists as deferrable and which buys
+nothing while every token already lives in one file.
+
+---
+
 ## Could not be verified in this run
 
 - **The authenticated browser runs do not use GoTrue.** GoTrue could not be

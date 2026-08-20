@@ -57,6 +57,29 @@ export const MANUAL_REVIEW_OVER_LB = 200;
 export const ROUTE_SAVER_FROM_CENTS_PER_STOP = 1699;
 export const ROUTE_SAVER_MIN_STOPS = 3;
 
+/**
+ * CAN-001 — cancellation charges by lifecycle stage, integer cents.
+ *
+ * These were typed directly into PUB-008's disclosure component. Money on a
+ * public page belongs here, where `tests/couranr-public-claims.test.ts` checks
+ * it against the registry — a typed-in 800 agrees with CAN-001 only until
+ * CAN-001 changes, and nothing would have failed.
+ */
+export const CANCELLATION_CENTS = {
+  beforeAuthorization: 0,
+  /** Authorization is RELEASED, not captured and refunded. */
+  afterAuthorizationBeforeConfirmation: 0,
+  /** Couranr could not confirm — never charged. */
+  couranrCannotConfirm: 0,
+  afterConfirmationBeforeArrival: 800,
+  /** Failed pickup attempt, plus approved waiting. */
+  afterArrivalUnavailable: 1500,
+} as const;
+
+/** REF-001 — a return after pickup, as a percentage of the original with a floor. */
+export const RETURN_PERCENT_OF_ORIGINAL = 70;
+export const RETURN_MINIMUM_CENTS = 1499;
+
 /** OVN-001 — the overnight window, as copy. */
 export const OVERNIGHT_WINDOW_COPY = "6:00 PM to 6:00 AM";
 

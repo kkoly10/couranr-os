@@ -1,0 +1,47 @@
+{
+  "generated_by": "scripts/captureEvidence.mjs",
+  "phase": "after",
+  "port": 3111,
+  "standard": "WCAG 2.2 AA (axe-core)",
+  "violations": [],
+  "passes": 29,
+  "incomplete": [
+    "color-contrast"
+  ],
+  "h1Count": 1,
+  "headingLevels": [
+    1,
+    2,
+    2,
+    2,
+    2,
+    2,
+    3,
+    3,
+    3,
+    3,
+    2,
+    3,
+    3,
+    2,
+    2,
+    2,
+    3,
+    3,
+    3,
+    3,
+    2,
+    2,
+    2,
+    2,
+    2
+  ],
+  "skippedHeadingLevels": 0,
+  "landmarks": {
+    "main": true,
+    "nav": 4,
+    "footer": true
+  },
+  "skipLink": true,
+  "nativeDisclosures": 3
+}

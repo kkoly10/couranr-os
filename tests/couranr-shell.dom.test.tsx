@@ -192,6 +192,59 @@ describe("mobile navigation drawer", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  /**
+   * WHERE the overlay mounts, which is load-bearing and has already regressed
+   * once in both directions.
+   *
+   * In the markup the drawer sits inside the shell's own bar — `.cr-topbar`
+   * (public) and `.cr-appbar` (the role shells) — and both are
+   * `position: sticky; z-index: 30`, which makes each of them a stacking
+   * context. An `aria-modal` dialog at `z-index: 40` nested inside a 30 is
+   * composited at 30, so every root-level fixed element painted over it: on
+   * PUB-001 at 390px the Ask Couranr launcher covered the drawer and the bottom
+   * CTA bar covered the drawer's own "Sign in" button. A z-index cannot climb
+   * out of an ancestor's stacking context, so the element has to leave it.
+   *
+   * It must leave it to `.cr-root` and NOT to `document.body`: every
+   * `--couranr-*` token is declared on `.cr-root`, and a body portal renders
+   * with no panel background, no text colour and no scrim at all. That was
+   * tried first and photographed.
+   */
+  it("portals the overlay to .cr-root, out of the bar's stacking context", async () => {
+    const user = userEvent.setup();
+    render(
+      <div className="cr-root">
+        <MerchantShell>
+          <p>content</p>
+        </MerchantShell>
+      </div>
+    );
+
+    await user.click(screen.getByRole("button", { name: /open merchant navigation/i }));
+    const overlay = screen.getByRole("dialog", { name: /merchant navigation/i }).parentElement!;
+
+    expect(overlay.className).toContain("cr-overlay--nav");
+    expect(overlay.parentElement?.className).toContain("cr-root");
+    // The trap this exists to escape.
+    expect(overlay.closest(".cr-appbar")).toBeNull();
+    expect(overlay.closest(".cr-topbar")).toBeNull();
+  });
+
+  it("falls back to document.body when there is no .cr-root", async () => {
+    const user = userEvent.setup();
+    // No wrapper: the legacy trees have no `.cr-root`, and a drawer that
+    // renders nowhere is worse than one that renders untokenised.
+    render(
+      <MerchantShell>
+        <p>content</p>
+      </MerchantShell>
+    );
+
+    await user.click(screen.getByRole("button", { name: /open merchant navigation/i }));
+    const overlay = screen.getByRole("dialog", { name: /merchant navigation/i }).parentElement!;
+    expect(overlay.parentElement).toBe(document.body);
+  });
+
   it("moves focus into the drawer on open and restores it to the trigger on close", async () => {
     const user = userEvent.setup();
     render(

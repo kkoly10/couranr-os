@@ -152,3 +152,54 @@ export function IconTruck(p: IconProps) {
     </Svg>
   );
 }
+
+/** The location pin the artboard shows in the top service-area bar. */
+export function IconPin(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11Z" />
+      <circle cx="12" cy="10" r="2.6" />
+    </Svg>
+  );
+}
+
+/* ------------------------------------------------- delivery-options icons */
+
+/**
+ * The artboard's four delivery-option glyphs: a bolt for same-day/priority, a
+ * calendar for scheduled/next-day, the existing truck for bulky and extended
+ * distance, and a multi-stop route for Route Saver.
+ *
+ * Bolt is drawn as a closed path rather than the usual stroked chevron so it
+ * keeps the 1.6px weight of its neighbours at 24px instead of reading heavier
+ * than they do.
+ */
+
+export function IconBolt(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M13.4 2.8 5.2 13.4h5.4l-.6 7.8 8.2-10.6h-5.4Z" />
+    </Svg>
+  );
+}
+
+export function IconCalendar(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <rect x="3.4" y="5.2" width="17.2" height="15.4" rx="2" />
+      <path d="M3.4 10h17.2M8.2 3.4v3.6M15.8 3.4v3.6" />
+      <path d="M8 14.2h3.2" />
+    </Svg>
+  );
+}
+
+export function IconRoute(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <circle cx="6.4" cy="6.4" r="2.4" />
+      <circle cx="17.6" cy="17.6" r="2.4" />
+      <circle cx="17.6" cy="6.8" r="1.1" />
+      <path d="M8.8 6.4h5.4M6.4 8.8v6a2.8 2.8 0 0 0 2.8 2.8h6" />
+    </Svg>
+  );
+}
