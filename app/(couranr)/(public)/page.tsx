@@ -293,11 +293,20 @@ export default function Page() {
         <div className="cr-hero__scrim" aria-hidden="true" />
 
         <div className="cr-hero__body">
-          {/* Mock-supported: the artboard shows this pill in the hero. §14.5's
-              "2-3 eyebrows per page" budget is DELETED by the fidelity
-              amendment — there is no allowance to spend, only a mock to
-              match. */}
-          <p className="cr-hero__label">Local delivery for independent businesses</p>
+          {/* NO EYEBROW. The artboard shows a rounded bordered pill above this
+              headline, and the fidelity amendment §5.1 says the presence of one
+              here is not itself a defect — but it also says the copy question
+              is the owner's and not the agent's. THE OWNER RESOLVED IT:
+              no eyebrow anywhere, including this one, so the pill is gone
+              rather than restyled. Amendment §6 governs what may not replace
+              it: no pill, chip, tiny uppercase label, badge or decorative
+              rule. The hierarchy is the headline and the whitespace above it.
+
+              MKT-002's consumer descriptor ("Local delivery for independent
+              businesses") had no other home on this screen and is therefore no
+              longer rendered anywhere. That is a registry line the owner should
+              amend — the code follows the instruction, and the disagreement is
+              surfaced rather than papered over. */}
           <h1 id="hero-h" className="cr-hero__h1 cr-type-hero">
             Your customers want delivery.{" "}
             <span className="cr-hero__h1-accent">Now you can say yes.</span>

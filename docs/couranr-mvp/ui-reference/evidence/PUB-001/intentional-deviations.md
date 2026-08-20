@@ -16,13 +16,24 @@ justified. `scripts/checkDriftLedger.mjs` fails any ledger row whose
 
 ## Copy the artboard shows that written authority replaces
 
-**1. The hero pill does not read `DELIVERY MADE SIMPLE`.**
-Authority: `BRAND_GUIDE.md:10` — *"Do not use the tagline inside small headers"* —
-and `VIS-001` — *"Use the canonical supplied lockup; do not recreate with typed
-text."* A typed tagline inside a small header breaks both. MKT-002's consumer
-descriptor is used instead. The pill's **geometry** is unchanged and follows the
-mock, including its mobile gold treatment (amendment §5.1 is explicit that the
-pill's presence is not itself a defect).
+**1. There is no hero pill at all — the artboard shows one.**
+Authority: **owner instruction, 2026-08-20 — "I don't want any eyebrows."**
+Amendment §5.1 says the presence of a pill here is not itself a defect *and* that
+the copy question between the artboard's `DELIVERY MADE SIMPLE` and MKT-002's
+descriptor belongs to the owner rather than the agent. The owner settled it by
+removing the pattern rather than choosing between the two strings. The element
+and the `.cr-hero__label` rule are both deleted — an unused class is one import
+away from returning, which is how the shared marketing eyebrow reached four
+screens that had no mock. Amendment §6 bans the substitutes (pill, chip, tiny
+uppercase label, badge, decorative rule) and the test suite asserts their absence
+on all five public screens.
+
+**Consequence to surface, not to paper over:** MKT-002's consumer descriptor
+*"Local delivery for independent businesses"* lived only in that pill and is now
+rendered nowhere. The registry line and the screen disagree until the owner
+amends it. `BRAND_GUIDE.md:10` and `VIS-001` independently forbade the
+artboard's typed tagline in a small header, so that half of the conflict was
+already closed; this removes the other half.
 
 **2. The hero headline words are MKT-002's, not the artboard's.**
 Authority: amendment §1 — written product authority controls copy. Mock:
@@ -128,24 +139,14 @@ object and nothing floats over the page. The label survives as the button's
 accessible name, and 48px clears §23.6's 44px floor. **Desktop is unchanged** and
 still renders the labelled pill bottom-right exactly as the artboard shows it.
 
-**18. The mobile hero pill has a translucent navy ground; the artboard's is a
-bare outline.**
-Authority: §23.2's contrast floor, measured rather than assumed. Over the mobile
-crop, gold on the bare photograph is **1.80:1** against the 4.5:1 floor for
-normal text. White would not have rescued it — over the same pixels white is
-3.30:1 — because the pill sits over a bright part of *that* crop whatever colour
-the text is. With the ground it measures **5.88:1**. The outline, the gold, the
-radius and the position are unchanged, and desktop has no ground because it does
-not need one (17.95:1 on its own crop).
-
-**19. Seven channel tiles, not the artboard's six.**
+**18. Seven channel tiles, not the artboard's six.**
 Authority: `MKT-002 §10.4`, which requires every merchant-controlled channel to be
 named. The artboard splits social into Instagram and Facebook brand marks while
 dropping "point of sale" and "other channels you control". Written authority
 governs the count and the naming; the mock governs the tile geometry, which is
 reproduced.
 
-**20. The notice bar's link is hidden below 768px.**
+**19. The notice bar's link is hidden below 768px.**
 Authority: the mobile artboard itself, which shows the sentence alone. At 390px
 the governed MKT-001 sentence already wraps to three lines; there is no room
 beside it.

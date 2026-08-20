@@ -85,7 +85,6 @@ if (phase === "after") {
   /** §12's type roles, and where each is expected to appear on PUB-001. */
   const TYPE_SAMPLES = [
     ["hero headline", "h1.cr-type-hero, #hero-h"],
-    ["hero small label", ".cr-hero__label"],
     ["hero supporting copy", ".cr-hero__sub"],
     ["editorial statement", ".cr-mkt-editorial--hero .cr-type-statement, .cr-type-statement"],
     ["marketing section heading", ".cr-type-marketing-section"],

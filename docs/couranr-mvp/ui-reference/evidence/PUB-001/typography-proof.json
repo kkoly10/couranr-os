@@ -14,15 +14,6 @@
         "letterSpacing": "-1.92px",
         "color": "rgb(255, 255, 255)"
       },
-      "hero small label": {
-        "selector": ".cr-hero__label",
-        "fontFamily": "Inter Variable",
-        "fontSize": "11.52px",
-        "fontWeight": "600",
-        "lineHeight": "17.856px",
-        "letterSpacing": "1.0368px",
-        "color": "rgb(244, 183, 64)"
-      },
       "hero supporting copy": {
         "selector": ".cr-hero__sub",
         "fontFamily": "Inter Variable",
@@ -106,15 +97,6 @@
         "letterSpacing": "-1.92px",
         "color": "rgb(255, 255, 255)"
       },
-      "hero small label": {
-        "selector": ".cr-hero__label",
-        "fontFamily": "Inter Variable",
-        "fontSize": "11.52px",
-        "fontWeight": "600",
-        "lineHeight": "17.856px",
-        "letterSpacing": "1.0368px",
-        "color": "rgb(244, 183, 64)"
-      },
       "hero supporting copy": {
         "selector": ".cr-hero__sub",
         "fontFamily": "Inter Variable",
@@ -196,15 +178,6 @@
         "fontWeight": "700",
         "lineHeight": "51.6096px",
         "letterSpacing": "-2.1504px",
-        "color": "rgb(255, 255, 255)"
-      },
-      "hero small label": {
-        "selector": ".cr-hero__label",
-        "fontFamily": "Inter Variable",
-        "fontSize": "11.52px",
-        "fontWeight": "600",
-        "lineHeight": "17.856px",
-        "letterSpacing": "1.0368px",
         "color": "rgb(255, 255, 255)"
       },
       "hero supporting copy": {
@@ -290,15 +263,6 @@
         "letterSpacing": "-2.8672px",
         "color": "rgb(255, 255, 255)"
       },
-      "hero small label": {
-        "selector": ".cr-hero__label",
-        "fontFamily": "Inter Variable",
-        "fontSize": "11.52px",
-        "fontWeight": "600",
-        "lineHeight": "17.856px",
-        "letterSpacing": "1.0368px",
-        "color": "rgb(255, 255, 255)"
-      },
       "hero supporting copy": {
         "selector": ".cr-hero__sub",
         "fontFamily": "Inter Variable",
@@ -382,15 +346,6 @@
         "letterSpacing": "-3.584px",
         "color": "rgb(255, 255, 255)"
       },
-      "hero small label": {
-        "selector": ".cr-hero__label",
-        "fontFamily": "Inter Variable",
-        "fontSize": "11.52px",
-        "fontWeight": "600",
-        "lineHeight": "17.856px",
-        "letterSpacing": "1.0368px",
-        "color": "rgb(255, 255, 255)"
-      },
       "hero supporting copy": {
         "selector": ".cr-hero__sub",
         "fontFamily": "Inter Variable",
@@ -472,15 +427,6 @@
         "fontWeight": "700",
         "lineHeight": "92.16px",
         "letterSpacing": "-3.84px",
-        "color": "rgb(255, 255, 255)"
-      },
-      "hero small label": {
-        "selector": ".cr-hero__label",
-        "fontFamily": "Inter Variable",
-        "fontSize": "11.52px",
-        "fontWeight": "600",
-        "lineHeight": "17.856px",
-        "letterSpacing": "1.0368px",
         "color": "rgb(255, 255, 255)"
       },
       "hero supporting copy": {

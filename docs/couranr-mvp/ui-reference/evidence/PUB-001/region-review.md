@@ -52,7 +52,7 @@ deviations; this is what changed and what each claim rests on.
 |---|---|---|
 | `public-header` | Sign in + gold CTA visible in the bar at every width | Below 900px the bar is wordmark + hamburger only; both auth actions render full-size in the drawer footer, as the mobile artboard shows |
 | `top-notice` | bordered rounded box **inside** the page content | full-bleed bar **above** the header; cream desktop, navy below 768px, pin icon, right-aligned link |
-| `hero-small-label` | white pill at all widths | gold border and gold text below 768px, per the mobile artboard |
+| `hero-small-label` | white pill at all widths | **removed entirely, on owner instruction** — see below |
 | `hero-headline` | one accent colour at all widths | white at ≥768px, gold below — both artboards, both reproduced |
 | `hero-cta` | inline buttons, no bottom bar | full-width stacked below 768px, right arrow on the primary, and a fixed bottom bar carrying the primary action beside the Ask Couranr control |
 | `hero-trust` | white outlined circles at all widths | gold glyphs with no ring below 768px |
@@ -100,6 +100,40 @@ because it is a container."*
 See `native-mock-references.md`.
 
 ---
+
+## The owner removed the hero eyebrow
+
+After the correction pass and the self-review, the owner gave a direct
+instruction: *"The eyebrow local delivery needs to be removed. I don't want any
+eyebrows."*
+
+That settles the one question amendment §5.1 explicitly reserved for the owner.
+§5.1 said two things: the presence of a pill in this hero is not itself a defect
+(the artboard shows one), and the copy conflict between the artboard's
+`DELIVERY MADE SIMPLE` and MKT-002's descriptor is not the agent's to resolve.
+The owner resolved it by removing the pattern rather than picking a string.
+
+So the element is gone and `.cr-hero__label` is deleted from the stylesheet with
+it — an unused class is one import away from returning, and that is exactly how
+the shared marketing eyebrow reached four screens with no mock. The substitution
+ban in amendment §6 now covers all five public screens instead of the four the
+eyebrow was first removed from, and the test that asserted "exactly one public
+screen carries a contextual label, and it is PUB-001" asserts the opposite.
+
+Two consequences worth naming rather than burying:
+
+- **MKT-002's consumer descriptor is now rendered nowhere.** *"Local delivery for
+  independent businesses"* lived only in that pill. The registry line and the
+  screen disagree until the owner amends it. The test that guarded against
+  over-applying the eyebrow removal used to assert that string was on the page;
+  it now asserts the headline and supporting copy, which do have a home.
+- **The mobile pill's contrast fix is moot.** It is left in the record below
+  because it is why Gate C now measures both art-directed widths, which is a
+  change worth keeping on its own.
+
+Re-measured after the removal: `@1440` headline 5.29:1, accent 6.35:1, subhead
+16.01:1, trust 11.16:1; `@390` headline 9.66:1, accent 5.01:1 gold, subhead
+5.31:1, trust 8.54:1. axe reports 0 violations at both widths.
 
 ## Three defects the self-review found after the correction pass
 
@@ -202,9 +236,11 @@ axe's `target-size` rule, which passes.
 
 ## Accessibility review — `accessibility-proof.json`
 
-axe-core at `wcag2a, wcag2aa, wcag21a, wcag21aa, wcag22aa`: **0 violations**,
-29 rules passed, 1 incomplete (`color-contrast`, which axe cannot resolve over a
-photograph — Gate C measures that separately from the painted pixels).
+axe-core at `wcag2a, wcag2aa, wcag21a, wcag21aa, wcag22aa`, **at both 1440 and
+390**: 0 violations at each, 29 rules passed, 1 incomplete (`color-contrast`,
+which axe cannot resolve over a photograph — Gate C measures that separately from
+the painted pixels). It used to run at 1440 only, which left every mobile-only
+colour and layout rule unscanned.
 
 One `h1`. No skipped heading levels across 25 headings. `main`, four `nav`
 landmarks and `footer` present. Skip link present and first in the tab order.
@@ -217,11 +253,14 @@ region actually renders**:
 
 | region | @1440 | @390 |
 |---|---|---|
-| headline | 5.56:1 white | 9.47:1 white |
-| headline accent | 6.41:1 white | 5.00:1 **gold** |
-| small label | 17.95:1 white | 5.88:1 **gold on rgba(13,21,37,.82)** |
-| subhead | 15.09:1 white | 5.51:1 white |
-| trust row | 11.41:1 white | 8.56:1 white |
+| headline | 5.29:1 white | 9.66:1 white |
+| headline accent | 6.35:1 white | 5.01:1 **gold** |
+| subhead | 16.01:1 white | 5.31:1 white |
+| trust row | 11.16:1 white | 8.54:1 white |
+
+(The small-label row is gone with the eyebrow. Its last measured values were
+17.95:1 at 1440 and 5.88:1 at 390 — the second only after it was given a ground,
+because gold on the bare mobile crop was 1.80:1.)
 
 Floors: 3:1 for the headline and its accent (large text), 4.5:1 for the rest.
 

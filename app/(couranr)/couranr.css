@@ -1086,30 +1086,14 @@
   padding-inline: var(--couranr-space-4);
 }
 
-/* PUB-001's hero contextual label — the artboard visibly shows a rounded,
-   bordered, uppercase pill above the headline, so this treatment is
-   mock-supported and stays. Renamed from `.cr-hero__eyebrow` because the WORD
-   is what got institutionalised: a "marketing eyebrow" reads as a reusable
-   pattern, and it was reused on four screens with no mock. This is one label on
-   one screen.
-
-   COPY CONFLICT, UNRESOLVED AND NOT MINE TO SETTLE (amendment §5.1): the
-   artboard's pill reads DELIVERY MADE SIMPLE — the approved tagline lockup —
-   while MKT-002 specifies the hero eyebrow copy this renders. Written authority
-   controls copy, so MKT-002's text stays and the geometry follows the mock. The
-   owner resolves which one the hero should carry. */
-.cr-hero__label {
-  display: inline-block;
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
-  font-size: 0.72rem;
-  font-weight: var(--couranr-weight-semibold);
-  color: var(--couranr-text-inverse);
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  border-radius: var(--couranr-radius-pill);
-  padding: 5px 13px;
-  margin: 0 0 var(--couranr-space-5);
-}
+/* NO HERO EYEBROW. `.cr-hero__label` (and `.cr-hero__eyebrow` before it) is
+   deleted, not left unused — an unused class is one import away from returning,
+   which is exactly how the shared marketing eyebrow spread to four screens that
+   had no mock. Owner instruction: no eyebrows anywhere, including the one the
+   PUB-001 artboard shows. Amendment §6 bans the substitutes too — pill, chip,
+   tiny uppercase label, badge, decorative rule — and
+   tests/couranr-visual-tokens.test.ts asserts their absence on all five public
+   screens. */
 
 /* Layout and colour only. The TYPE belongs to `.cr-type-hero` (§12.1), which
    the element also carries.
@@ -2422,20 +2406,6 @@
    headers" while VIS-001 says "Use the canonical supplied lockup; do not
    recreate with typed text." A typed tagline inside a small header breaks both.
    MKT-002's consumer descriptor stays. */
-@media (max-width: 767px) {
-  .cr-hero__label {
-    color: var(--couranr-gold);
-    border-color: var(--couranr-gold);
-    /* The pill needs its own ground here, and this is a measurement rather
-       than a taste: the mobile crop is a different, brighter photograph, and
-       gold over it measured 1.80:1 where §23.2 wants 4.5:1 for normal text.
-       White would not have saved it either — over the same pixels white is
-       3.30:1. The desktop pill sits on a dark part of its own crop and clears
-       17.95:1 with no fill at all, which is why this is scoped to mobile.
-       Re-measured after the change, not assumed. */
-    background: rgba(13, 21, 37, 0.82);
-  }
-}
 
 .cr-hero__cta-arrow { display: none; }
 

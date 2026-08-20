@@ -288,17 +288,22 @@ describe("§32.4 + fidelity amendment §6 — the eyebrow rule", () => {
     expect(offenders, `shared eyebrow reintroduced in: ${offenders.join(", ")}`).toEqual([]);
   });
 
-  it("exactly ONE public screen carries a contextual label, and it is PUB-001", () => {
+  it("NO public screen carries a contextual label", () => {
+    // This asserted the opposite — "exactly one, and it is PUB-001" — because
     // PUB-001's artboard visibly shows a rounded bordered pill above the
-    // headline, so the treatment is mock-supported and stays. Nothing else has
-    // a mock, so nothing else may have one.
+    // headline and amendment §5.1 says its presence is not itself a defect.
+    // §5.1 also says the copy question belongs to the owner, and the owner
+    // resolved it: no eyebrows anywhere, including the one the mock shows. The
+    // class is deleted from the stylesheet as well, because an unused class is
+    // one import away from returning.
     const carrying: string[] = [];
     for (const f of CANON_FILES.filter((f) => /\(public\)[\\/].*page\.tsx$/.test(f))) {
       if (/cr-hero__label/.test(readFileSync(f, "utf8"))) {
         carrying.push(path.relative(ROOT, f));
       }
     }
-    expect(carrying).toEqual(["app/(couranr)/(public)/page.tsx"]);
+    expect(carrying).toEqual([]);
+    expect(LIVE_CSS).not.toContain(".cr-hero__label {");
   });
 
   it("the retired eyebrow was not swapped for another small-label pattern", () => {
@@ -306,10 +311,12 @@ describe("§32.4 + fidelity amendment §6 — the eyebrow rule", () => {
     // uppercase labels, badge components, or decorative rules." Checked as an
     // absence on the four screens the label was removed from, because a
     // like-for-like swap is the obvious way to defeat this rule.
-    const RETIRED = ["businesses", "service-areas", "how-it-works", "pricing"];
+    // All five now, not the four the eyebrow was first removed from: the owner
+    // removed PUB-001's too, so it is subject to the same substitution ban.
+    const RETIRED = ["", "businesses", "service-areas", "how-it-works", "pricing"];
     for (const page of RETIRED) {
       const src = readFileSync(
-        path.join(CANON, `(public)/${page}/page.tsx`),
+        path.join(CANON, `(public)/${page}/page.tsx`.replace("//", "/")),
         "utf8",
       );
       const heroBlock = src.slice(0, src.indexOf("</section>"));
@@ -322,12 +329,17 @@ describe("§32.4 + fidelity amendment §6 — the eyebrow rule", () => {
     }
   });
 
-  it("the governed hero copy is still present", () => {
-    // The ban is on the PATTERN, not the copy. If this goes red the removal
-    // was over-applied. MKT-002's descriptor stays until the owner resolves
-    // the mock-vs-MKT-002 copy conflict recorded in amendment §5.1.
+  it("the governed hero HEADLINE and supporting copy are still present", () => {
+    // The ban is on the PATTERN, and this is the guard against over-applying
+    // it. It used to assert MKT-002's consumer descriptor ("Local delivery for
+    // independent businesses") was on the page — that string lived only in the
+    // eyebrow, so the owner's removal took it with it. The registry line has
+    // no rendered home now and the owner should amend it; what stays asserted
+    // is the copy that has one.
     const home = readFileSync(path.join(CANON, "(public)/page.tsx"), "utf8");
-    expect(home).toContain("Local delivery for independent businesses");
+    expect(home).toContain("Your customers want delivery.");
+    expect(home).toContain("Now you can say yes.");
+    expect(home).toContain("Keep taking orders through your website");
   });
 });
 

@@ -14,7 +14,7 @@
  *   right source at each width.
  *
  * GATE C — accessibility (§23):
- *   axe-core at WCAG 2.2 AA · one h1 and no skipped heading levels ·
+ *   axe-core at WCAG 2.2 AA, at both art-directed widths · one h1 and no skipped heading levels ·
  *   landmarks present · keyboard reaches the primary action and focus is
  *   visible · prefers-reduced-motion honoured · measured contrast on text over
  *   photography, sampled from the PAINTED pixels rather than assumed from the
@@ -146,7 +146,6 @@ async function heroContrast(page) {
   for (const [key, sel] of [
     ["headline", "#hero-h"],
     ["accent", ".cr-hero__h1-accent"],
-    ["label", ".cr-hero__label"],
     ["subhead", ".cr-hero__sub"],
     ["trust", ".cr-hero__trust"],
   ]) {
@@ -378,18 +377,30 @@ async function main() {
     process.exit(1);
   }
 
-  await page.addScriptTag({ content: AXE_SOURCE });
-  const axe = await page.evaluate(async () =>
-    await window.axe.run(document, {
-      runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"] },
-    }),
-  );
-  const violations = axe.violations.map(
-    (v) => `${v.id} (${v.impact}, ${v.nodes.length}×): ${v.help}`,
-  );
-  check(violations.length === 0, `axe-core WCAG 2.2 AA: ${violations.length} violation(s)`);
-  for (const v of violations) console.log(`         ${v}`);
-  console.log(`         (${axe.passes.length} rules passed, ${axe.incomplete.length} need review)`);
+  /* axe at BOTH art-directed widths. It ran at 1440 only, which left every
+     rule that depends on layout or on a mobile-only colour unasserted: below
+     768px the notice bar turns navy, the hero pill and its accent turn gold,
+     the header sheds both auth actions into the drawer, and a fixed bottom bar
+     appears. None of that exists at 1440, so none of it was ever scanned. */
+  for (const width of [1440, 390]) {
+    const apage =
+      width === 1440 ? page : await browser.newPage({ viewport: { width, height: 844 } });
+    if (apage !== page) await apage.goto(`${BASE}/`, { waitUntil: "networkidle" });
+    await apage.evaluate(() => document.fonts.ready);
+    await apage.addScriptTag({ content: AXE_SOURCE });
+    const axe = await apage.evaluate(async () =>
+      await window.axe.run(document, {
+        runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa"] },
+      }),
+    );
+    const violations = axe.violations.map(
+      (v) => `${v.id} (${v.impact}, ${v.nodes.length}×): ${v.help}`,
+    );
+    check(violations.length === 0, `@${width} axe-core WCAG 2.2 AA: ${violations.length} violation(s)`);
+    for (const v of violations) console.log(`         ${v}`);
+    console.log(`         (${axe.passes.length} rules passed, ${axe.incomplete.length} need review)`);
+    if (apage !== page) await apage.close();
+  }
 
   const structure = await page.evaluate(() => {
     const hs = [...document.querySelectorAll("h1,h2,h3,h4,h5,h6")].map((h) => Number(h.tagName[1]));
@@ -449,8 +460,8 @@ async function main() {
     const contrast = await heroContrast(cpage);
     for (const [region, c] of Object.entries(contrast)) {
       if (!c) { check(false, `@${width} hero ${region}: could not sample the painted background`); continue; }
-      // Headline and its accent are large text (3:1 floor). The pill, the
-      // subhead and the trust row are normal text (4.5:1).
+      // The headline and its accent are large text (3:1 floor). The subhead
+      // and the trust row are normal text (4.5:1).
       const floor = region === "headline" || region === "accent" ? 3 : 4.5;
       check(
         c.ratio >= floor,
