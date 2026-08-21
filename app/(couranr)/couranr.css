@@ -142,12 +142,25 @@
      --couranr-text-* has consumers across every surface. The intended
      hierarchy is 96 → 72 → 52 → 38 → 28 → 20/18 → 16 → 14/13, against the
      previous flat ceiling where 36px was the top of everything. */
+  /* DESKTOP MAXIMA REDUCED — the owner rejected the deployed result and these
+     were the cause. The MINIMA are unchanged: mobile floors at 48/40/32 were
+     not what was rejected, and lowering them would have fixed nothing and
+     broken something. Every maximum below is derived, not picked:
+
+     Martian Grotesk's cap/font ratio measured from our own render is 0.802
+     (77px cap at 96px). The canonical desktop artboard's hero cap is 36px, its
+     second clause 30px, its section heading 25px — so within the mock the
+     hierarchy is hero : second clause : section = 1 : 0.83 : 0.69. The deployed
+     page ran 96 : 96 : 52, i.e. 1 : 1.0 : 0.54. Two independent routes to an
+     absolute size — the mock's container proportion, and its longest hero
+     clause occupying ~47% of the viewport rather than our 79% — both landed
+     near 60px at 1440. */
   --couranr-type-hero-min: 3rem;               /* 48 */
-  --couranr-type-hero-max: 6rem;               /* 96 */
+  --couranr-type-hero-max: 3.75rem;            /* 60 — was 96 */
   --couranr-type-statement-min: 2.5rem;        /* 40 */
-  --couranr-type-statement-max: 4.5rem;        /* 72 */
+  --couranr-type-statement-max: 2.75rem;       /* 44 — was 72 */
   --couranr-type-marketing-section-min: 2rem;  /* 32 */
-  --couranr-type-marketing-section-max: 3.25rem; /* 52 */
+  --couranr-type-marketing-section-max: 2.5rem;  /* 40 — was 52 */
   --couranr-type-page-title-min: 1.875rem;     /* 30 */
   --couranr-type-page-title-max: 2.375rem;     /* 38 */
   --couranr-type-section-min: 1.4375rem;       /* 23 */
@@ -155,7 +168,7 @@
   --couranr-type-card-title: 1.125rem;         /* 18 */
   --couranr-type-card-title-lg: 1.25rem;       /* 20 */
   --couranr-type-lead-min: 1.125rem;           /* 18 */
-  --couranr-type-lead-max: 1.375rem;           /* 22 */
+  --couranr-type-lead-max: 1.25rem;             /* 20 — was 22 */
   --couranr-type-body: 1rem;                   /* 16 */
   --couranr-type-small: 0.875rem;              /* 14 */
   --couranr-type-label: 0.8125rem;             /* 13 */
@@ -316,19 +329,33 @@
    width-varied specimen measurably differs from a default-width one, because a
    font-stretch that silently does nothing looks identical to one that works. */
 
+/* `font-stretch: 112.5%` is GONE. Compared side by side at the same size, the
+   extended width is most of what made the headline read as shouting: it widens
+   every glyph, so the line eats measure and the tracking has to fight it back.
+   At normal width the same words hold the same authority in ~11% less space.
+
+   `text-wrap: balance` is gone too, and that is deliberate rather than tidy.
+   The canonical mock breaks this headline at a specific place — clause one over
+   two lines, clause two on its own line, smaller — and `balance` is an
+   algorithm optimising for even ragged edges, not for that. The break is now
+   set by structure (`.cr-hero__h1-lead` / `.cr-hero__h1-accent` are blocks) and
+   the measure by `max-width` in the heading's OWN `ch`. */
 .cr-type-hero {
   font-family: var(--couranr-font-display);
-  font-size: clamp(var(--couranr-type-hero-min), 7vw, var(--couranr-type-hero-max));
+  /* 4.2vw, not 7vw. At 7vw the clamp reached its maximum at a 857px viewport,
+     so 1024, 1280 and 1440 all rendered the SAME 60px while the viewport kept
+     shrinking — the headline took 67% of the frame at 1024 and 87% for the
+     second clause. The measure is in `ch`, so it only holds its proportion if
+     the size tracks the viewport. 60/1440 = 4.17vw. */
+  font-size: clamp(var(--couranr-type-hero-min), 4.2vw, var(--couranr-type-hero-max));
   font-weight: 700;
-  font-stretch: 112.5%;
-  line-height: 0.96;
-  letter-spacing: -0.04em;
-  text-wrap: balance;
+  line-height: 1.02;
+  letter-spacing: -0.025em;
 }
 
 .cr-type-statement {
   font-family: var(--couranr-font-display);
-  font-size: clamp(var(--couranr-type-statement-min), 5vw, var(--couranr-type-statement-max));
+  font-size: clamp(var(--couranr-type-statement-min), 3.1vw, var(--couranr-type-statement-max));
   font-weight: 675;
   font-stretch: 106%;
   line-height: 0.99;
@@ -339,7 +366,7 @@
 .cr-type-marketing-section {
   font-family: var(--couranr-font-display);
   font-size: clamp(
-    var(--couranr-type-marketing-section-min), 4vw,
+    var(--couranr-type-marketing-section-min), 2.8vw,
     var(--couranr-type-marketing-section-max)
   );
   font-weight: 650;
@@ -1105,11 +1132,48 @@
    class that a layout class silently overrides is a role class that does
    nothing, so the layout rule no longer expresses type at all. */
 .cr-hero__h1 {
-  margin: 0 0 var(--couranr-space-4);
-  max-width: 17ch;
+  margin: 0 0 var(--couranr-space-5);
   color: var(--couranr-text-inverse);
 }
-.cr-hero__h1-accent { color: var(--couranr-gold); }
+/* Blocks, so the clause break is structural. See the comment at the call site.
+
+   EACH CLAUSE CARRIES ITS OWN MEASURE, in its own `ch`, because they are not
+   the same size: one cap on the H1 either breaks the lead badly or forces the
+   shorter clause onto two lines. The artboard's longest hero line spans ~47% of
+   its viewport; the deployed page spanned 79% at 1440, 89% at 1280 and 94% at
+   1024, which is what ran the type across the photograph's subject. */
+.cr-hero__h1-lead { display: block; max-width: 15ch; }
+.cr-hero__h1-accent {
+  display: block;
+  /* 0.83 is the artboard's own ratio (cap 30 against cap 36), not a taste
+     value. `em` keeps it tied to the heading at every width. */
+  font-size: 0.83em;
+  /* Restated, not inherited. `letter-spacing: -0.025em` on `.cr-type-hero`
+     computes to an absolute -1.5px against the 60px lead and INHERITS as that
+     px value, so the 49.8px accent was tracking at -0.030em -- 20% tighter than
+     the lead. Measured on the render: the `w y` and `y y` pairs closed to an
+     8px ink gap against 18px elsewhere on the same line, and the clause read
+     "Nowyou can sayyes." Re-declaring the em value makes it resolve against
+     this element's own size. */
+  letter-spacing: -0.025em;
+  /* Martian Grotesk's `w` and `y` carry almost no side bearing, so this clause's
+     `w y` and `y y` joins closed to an 8px ink gap while `u c` and `n s` on the
+     SAME line sat at 18px — measured, not estimated. The clause read "Nowyou can
+     sayyes." Word-spacing is the right instrument because it moves only the
+     space character and leaves the letterform rhythm identical to the lead
+     clause. Rendered at 0, 0.05, 0.08 and 0.12em: 0.05 still closes `y y`, 0.12
+     opens `can say` until the line stops cohering. */
+  word-spacing: 0.08em;
+  max-width: 24ch;
+  /* The artboard separates the clauses visibly rather than running all three
+     lines at one pitch. At 0.12em they still read as one block; 0.22em is where
+     the second clause starts reading as a second thought. */
+  margin-top: 0.22em;
+  /* No `color` here. The art-direction pair further down this file — an
+     unconditional `text-inverse` plus a `gold` override below 768px — has the
+     same specificity and comes later, so a colour declared here could never
+     win at any width. It was dead, and dead declarations read as intent. */
+}
 
 /* Same split: `.cr-type-lead` (§12.7) owns the size, this owns the rest. */
 .cr-hero__sub {
@@ -1134,7 +1198,9 @@
   gap: var(--couranr-space-3);
   font-size: 0.94rem;
   line-height: 1.3;
-  max-width: 17rem;
+  /* 17rem left "No monthly fee during the pilot" with `pilot` alone on line 2.
+     Measured: the line needs ~300px. */
+  max-width: 20rem;
   color: rgba(255, 255, 255, 0.92);
 }
 .cr-hero__trust-icon {
@@ -1178,6 +1244,15 @@
       linear-gradient(90deg, rgba(13, 21, 37, 0.34) 0%, rgba(13, 21, 37, 0) 82%);
   }
   .cr-hero__h1 { max-width: none; }
+  /* `text-wrap: balance` comes BACK here and only here. It was removed from the
+     hero role because the desktop artboard breaks the headline at a specific
+     place and an algorithm optimising for even rag is not that. Below 768px
+     there is no such intent — the mobile artboard just wraps to the column —
+     and without balance the accent left `yes.` alone on its own line. Using it
+     where the design is silent is not the same as relying on it where it is
+     not. */
+  .cr-hero__h1-lead,
+  .cr-hero__h1-accent { max-width: none; text-wrap: balance; }
   .cr-hero__cta .cr-button { width: 100%; }
 }
 
@@ -1211,8 +1286,10 @@
    modifier rather than a base change — `.cr-mkt-section` is also the left-
    aligned shape used by the four family pages, which step 9 propagates to. */
 .cr-mkt-section--centred { align-items: center; text-align: center; }
+/* Same reason as `.cr-mkt-card__h2`: the centred lead under "Keep selling your
+   way" broke to a 78-character first line and a 15-character second one. */
 .cr-mkt-section--centred > h2,
-.cr-mkt-section--centred > p { max-width: 62ch; }
+.cr-mkt-section--centred > p { max-width: 62ch; text-wrap: balance; }
 /* The children that are layouts, not copy, must still fill the section. */
 .cr-mkt-section--centred > ul,
 .cr-mkt-section--centred > ol,
@@ -1476,10 +1553,48 @@
 
 /* ── §19.1 editorial statement — oversized type, generous space, no cards ── */
 
+/* THE `24ch` CLAMP IS GONE FROM THE SECTION. `ch` resolves against the element
+   it is written on, and this is a <section> inheriting the 16px body font — so
+   "24 characters" of a 72px display headline computed as 240px, and PUB-001's
+   statement rendered in a 240px ribbon inside a 1136px column at every desktop
+   width, breaking `Pickup-` from `only` mid-word over five lines with ~900px of
+   dead canvas beside it. The `--hero` variant had already hit this and fixed it
+   by moving the measure onto the heading; the base rule was never revisited.
+
+   The measure now lives on the children, in each child's own `ch`, which is
+   what "24 characters wide" was always supposed to mean. */
 .cr-mkt-editorial {
   padding-block: var(--couranr-space-8);
-  max-width: 24ch;
 }
+/* In the HEADING's own ch — at 44px that is a real statement measure, not a
+   ribbon. `--hero` overrides this to 18ch further down for the family pages. */
+.cr-mkt-editorial > h1,
+.cr-mkt-editorial > h2 { max-width: 16ch; }
+
+/* ── a fifth heading role: the COLUMN heading ────────────────────────────
+   Eight H2s ran at one size down this page, so a section heading read as loud
+   as the statement above it and the page had no hierarchy — which is the
+   "everything shouts" complaint.
+
+   The distinction is not arbitrary, it follows the mock. The artboard's section
+   headings are CENTRED, single-line, introducing a row beneath them
+   (`order-channels`, `categories`, `delivery-options`, `payer-choice`), and
+   those keep the mock-derived size. The headings the artboard does NOT cover
+   sit inside a narrow copy column beside a visual or a list, where the full
+   section size wraps them to three lines and makes them read as statements
+   they are not.
+
+   Scale and measure, not a pill or a rule. */
+.cr-mkt-narrative__copy > h2,
+.cr-mkt-split__lead > h2 {
+  font-size: clamp(1.75rem, 2.4vw, 2.125rem); /* 28 → 34 */
+}
+/* NOT `.cr-mkt-proof__copy > h2`. It was in this list for one render and it was
+   wrong: the proof copy is not a narrow column — it sits full width above its
+   panel — so "Couranr-managed, with proof" is a primary section heading and
+   demoting it to 34px made the page's biggest product composition look like a
+   footnote. Caught by reading the render, not the selector. */
+
 /* h1 AND h2. The family heroes render an h1 here and only h2 was covered, so
    the headline fell back to the UA default margin — measured at 48.24px,
    which is 0.67em of a very large font rather than anything designed. It
@@ -1637,7 +1752,12 @@
    the vertical stack, which is the only shape six states fit in on a phone. */
 .cr-mkt-proof { display: grid; gap: var(--couranr-space-6); }
 .cr-mkt-proof__copy h2 { margin: 0 0 var(--couranr-space-4); color: var(--couranr-text); }
-.cr-mkt-proof__copy p  { margin: 0; max-width: 78ch; }
+/* 62ch, not 78ch. Measured on the live render: `ch` here is 13px (Inter's "0"
+   is 0.65em), so 78ch was 1014px carrying ~80 characters a line — well past the
+   45-75 readable measure. 62ch is 806px and ~64 characters. This is the ONLY
+   rule that sets this measure; an earlier `.cr-mkt-proof__copy p` declaration
+   had identical specificity and lost to this one, so it never applied. */
+.cr-mkt-proof__copy p  { margin: 0; max-width: 62ch; }
 
 .cr-mkt-proof__panel {
   border: 1px solid var(--couranr-border);
@@ -2500,7 +2620,16 @@
    three-line 54px headline where the artboard shows a single ~24px line. §12.5
    is a SCALE role — its surface binding adds the merchant `h2` to it, it does
    not reserve the class for that surface. */
-.cr-mkt-card__h2 { margin: 0; color: var(--couranr-text); text-align: center; }
+/* Balanced because these headings wrap inside a ~506px card: "Pricing you can
+   put on a sticky note" broke after "sticky" and left "note" alone on line
+   two. Balance is already the stylesheet's tool for this (see
+   `.cr-mkt-channel__label`, `.cr-mkt-proof__note`). */
+.cr-mkt-card__h2 {
+  margin: 0;
+  color: var(--couranr-text);
+  text-align: center;
+  text-wrap: balance;
+}
 /* The artboard centres three of the four card headings and sets "Ask Couranr"
    left, above its own left-aligned copy. */
 .cr-mkt-card__h2--start { text-align: left; }

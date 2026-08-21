@@ -307,8 +307,18 @@ export default function Page() {
               longer rendered anywhere. That is a registry line the owner should
               amend — the code follows the instruction, and the disagreement is
               surfaced rather than papered over. */}
+          {/* TWO EXPLICIT BLOCKS, one H1. The canonical desktop artboard breaks
+              this headline at a specific place — clause one over two lines,
+              clause two on its own line at 0.83x — and the deployed page gave
+              both clauses one size and differentiated them by colour alone.
+              Measured off the artboard: cap heights 36px and 30px.
+
+              Spans rather than `text-wrap: balance` + a `ch` guess, because the
+              break is a design decision and should not be re-derived by a
+              wrapping algorithm at every width. The WORDS are MKT-002's and are
+              untouched; the accessible name is unchanged. */}
           <h1 id="hero-h" className="cr-hero__h1 cr-type-hero">
-            Your customers want delivery.{" "}
+            <span className="cr-hero__h1-lead">Your customers want delivery.</span>{" "}
             <span className="cr-hero__h1-accent">Now you can say yes.</span>
           </h1>
           <p className="cr-hero__sub cr-type-lead">
