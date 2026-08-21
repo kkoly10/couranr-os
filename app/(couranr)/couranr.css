@@ -1425,8 +1425,11 @@
    The panel it opens is unchanged. */
 @media (max-width: 767px) {
   .cr-askc__pill {
-    width: 48px;
-    height: 48px;
+    /* 44px, not 48 and not less: §23.6's floor, and Gate B measures this
+       element against it because it is a <button>. Smaller would be a gate
+       failure, not a style choice. */
+    width: 44px;
+    height: 44px;
     padding: 0;
     justify-content: center;
   }
@@ -1441,7 +1444,7 @@
     white-space: nowrap;
     border: 0;
   }
-  .cr-askc__icon svg { width: 22px; height: 22px; }
+  .cr-askc__icon svg { width: 20px; height: 20px; }
 }
 
 /* Pricing page (PUB-008) */
@@ -2442,66 +2445,21 @@
   .cr-hero__cta-arrow { display: inline; margin-left: var(--couranr-space-3); }
 }
 
-/* The sticky bottom CTA the mobile artboard shows, and the Ask Couranr
-   launcher, in ONE bar.
+/* NO STICKY BOTTOM CTA. The mobile artboard pins a primary action to the
+   bottom of the viewport, and `.cr-mobilebar` used to render it with the Ask
+   Couranr launcher beside it. The owner removed it at both widths, so the rule
+   set is deleted rather than left unused — including the footer clearance it
+   needed (`.cr-shell--public:has(.cr-mobilebar) .cr-footer`), which now has
+   nothing to clear.
 
-   They were separate fixed elements and both are bottom-anchored, so at 390px
-   the launcher sat on top of the hero's full-width primary CTA and covered the
-   end of its label. A static artboard cannot show an occlusion, which is why
-   this is a correction the pixels did not ask for. One bar means mobile has
-   exactly one bottom-anchored object and nothing floats over the page.
-
-   Desktop never renders the bar — the hero's own buttons are always reachable
-   there — and `.cr-askc` keeps the bottom-right position the artboard gives it. */
-.cr-mobilebar__cta { display: none; }
-
+   The launcher goes back to floating bottom-right on its own. The collision
+   the bar was built to solve — a 145px labelled pill landing on the hero's
+   full-width primary CTA at 390px — is gone with the label: below 768px the
+   trigger is a circular icon button at §23.6's 44px floor, which is a corner
+   affordance rather than something that covers a control. Not smaller than 44:
+   `.cr-askc__pill` is a <button>, so Gate B measures it against that floor. */
 @media (max-width: 767px) {
-  .cr-mobilebar {
-    position: fixed;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    /* Below --couranr-z-drawer (40) on purpose: an open mobile menu must cover
-       this, not sit under it. */
-    z-index: 30;
-    display: flex;
-    align-items: center;
-    gap: var(--couranr-space-3);
-    padding: var(--couranr-space-3) var(--couranr-space-4)
-             calc(var(--couranr-space-3) + env(safe-area-inset-bottom, 0px));
-    background: var(--couranr-surface);
-    border-top: 1px solid var(--couranr-border);
-  }
-  .cr-mobilebar__cta { display: inline-flex; flex: 1 1 auto; }
-  /* The launcher stops being a floating object and becomes a control in the
-     bar. Its panel is ABSOLUTE against the launcher rather than fixed at a
-     typed offset from the viewport: the bar's height is 73px plus whatever the
-     safe-area inset is, so any literal here would be a guess that drifts the
-     moment the bar's padding changes. */
-  .cr-askc { position: relative; flex: none; }
-  .cr-askc__panel {
-    position: absolute;
-    right: 0;
-    bottom: calc(100% + var(--couranr-space-3));
-  }
-}
-
-/* The bar is fixed over the bottom of the VIEWPORT, so what it covers is the
-   end of the DOCUMENT — which is the footer, not the main element. This was
-   `.cr-shell--public .cr-shell__main { padding-bottom: 88px }`, and that was
-   wrong twice over, both measured rather than reasoned:
-     1. `main` and `footer` are siblings, so padding on main only inserted 88px
-        between the page content and the footer and left the footer's last link
-        under the bar (`lastFooterLinkCoveredByBar: true` at 390px);
-     2. it was scoped to the public SHELL, so /pricing, /sign-in, /estimate and
-        the rest carried 88px of dead space above their footers with no bar to
-        fill it — the bar is rendered by PUB-001 alone.
-   `:has()` is Baseline Widely available (December 2023), so the scoping is the
-   selector rather than a class the page has to remember to set. */
-@media (max-width: 767px) {
-  .cr-shell--public:has(.cr-mobilebar) .cr-footer {
-    padding-bottom: calc(var(--couranr-space-10) + 88px);
-  }
+  .cr-askc { right: 12px; bottom: 12px; }
 }
 
 /* ═════════════════════════════════════════════════════════════════════════

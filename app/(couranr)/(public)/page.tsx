@@ -1025,31 +1025,19 @@ export default function Page() {
         </div>
       </section>
 
-      {/* Drift-ledger row `hero-cta` (REBUILD): the mobile artboard pins a
-          primary action to the bottom of the viewport. Rendered last so it
-          follows the page content in the tab order rather than interrupting it.
+      {/* NO STICKY BOTTOM CTA. The mobile artboard pins a primary action to
+          the bottom of the viewport and this page had one — the owner removed
+          it, at both widths. What is left is the Ask Couranr launcher, back to
+          floating bottom-right on its own.
 
-          THE ASK COURANR LAUNCHER LIVES IN HERE, and that is the fix for a
-          problem the artboard could not show. Both are bottom-anchored and
-          fixed, so on a 390px viewport the floating launcher landed on top of
-          the hero's full-width primary CTA and covered the end of its label.
-          Putting them in one bar means the bar is the only bottom-anchored
-          object on mobile and nothing floats over the page at all: the CTA
-          takes the row, the launcher sits beside it, and the space is already
-          reserved by the main element's bottom padding.
-
-          At desktop widths the bar is not a bar — the CTA hides, the wrapper
-          stops being fixed, and `.cr-askc` keeps its own bottom-right position
-          exactly as the artboard shows it. */}
-      <div className="cr-mobilebar">
-        <Link
-          href="/sign-up"
-          className="cr-button cr-button--primary cr-button--lg cr-mobilebar__cta"
-        >
-          Create your business account
-        </Link>
-        <AskCouranrLauncher />
-      </div>
+          The launcher and the bar were merged into one element earlier for a
+          real reason: both were bottom-anchored and fixed, so at 390px the
+          launcher landed on top of the hero's full-width primary CTA and
+          covered the end of its label. With the bar gone there is nothing to
+          collide with, and the launcher is a 44px corner affordance rather
+          than the 145px labelled pill that caused it. Rendered last so it
+          follows the page content in the tab order. */}
+      <AskCouranrLauncher />
     </div>
   );
 }

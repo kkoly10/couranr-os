@@ -148,7 +148,23 @@ async function chromeHolds(page, selector, extraCss) {
   );
   await page.evaluate(() => window.scrollTo(0, 600));
   await page.waitForTimeout(150);
-  return { present: true, before, after: await top(), room };
+  /* `after === before` was the old assertion, and it was only ever true because
+     every sticky bar here happened to start at viewport top 0. PUB-001's notice
+     bar now sits ABOVE the header, so the topbar starts 47px down and pins at
+     its own `top: 0` — correct behaviour that the equality read as a failure.
+     What sticky actually promises is: pinned at the CSS `top` offset, still on
+     screen. Measured, not assumed. */
+  const pinned = await el.evaluate((e) => {
+    const b = e.getBoundingClientRect();
+    const cs = getComputedStyle(e);
+    return {
+      top: Math.round(b.top),
+      bottom: Math.round(b.bottom),
+      position: cs.position,
+      offset: Math.round(parseFloat(cs.top) || 0),
+    };
+  });
+  return { present: true, before, after: pinned.top, room, pinned };
 }
 
 async function main() {
@@ -164,7 +180,14 @@ async function main() {
     const where = `${selector} on ${route} @${width}px`;
     if (!r.present) check(false, `${where}: not rendered — cannot verify`);
     else if (r.room < 500) check(false, `${where}: page only ${r.room}px scrollable — test is vacuous`);
-    else check(r.after === r.before, `${where}: stays at top ${r.before} after scrolling (was ${r.after})`);
+    else
+      check(
+        ["sticky", "fixed"].includes(r.pinned.position) &&
+          r.pinned.top === r.pinned.offset &&
+          r.pinned.bottom > 0,
+        `${where}: pins at its ${r.pinned.offset}px offset after scrolling ` +
+          `(position ${r.pinned.position}, top ${r.pinned.top}, bottom ${r.pinned.bottom}; started at ${r.before})`,
+      );
     await page.close();
   }
 

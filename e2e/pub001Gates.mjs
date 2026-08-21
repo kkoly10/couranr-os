@@ -174,18 +174,16 @@ async function heroContrast(page) {
       };
     });
   }
-  /* The copy is hidden so the PHOTOGRAPH behind it can be sampled — and the
-     page's fixed chrome is hidden with it. Below 768px `.cr-mobilebar` is
-     pinned to the viewport bottom and an element screenshot of `.cr-hero`
-     includes anything painted over it, so a third of the trust row's box came
-     back as the white bar and the gold CTA: measured 1.00:1 where the photo
-     alone gives 8.58:1. Whether fixed chrome sits over scrolled content is a
-     real question, but it is an OCCLUSION question, not a text-contrast one,
-     and it is answered by the mobile bar carrying both bottom-anchored objects
-     rather than by this gate. */
+  /* The copy is hidden so the PHOTOGRAPH behind it can be sampled — and every
+     fixed element on the page is hidden with it. An element screenshot of
+     `.cr-hero` includes anything painted OVER it, and when a bottom bar was
+     pinned to the viewport a third of the trust row's sample box came back as
+     that bar: measured 1.00:1 where the photograph alone gives 8.58:1. The bar
+     is gone, but `.cr-askc` still floats, and the general rule is the one worth
+     keeping — whether fixed chrome sits over scrolled content is a real
+     question, but it is an OCCLUSION question and not a text-contrast one. */
   await page.addStyleTag({
-    content:
-      ".cr-hero__body,.cr-mobilebar,.cr-askc{visibility:hidden!important}",
+    content: ".cr-hero__body,.cr-askc{visibility:hidden!important}",
   });
   const shot = await page.locator(".cr-hero").screenshot();
   const px = await page.evaluate(

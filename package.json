@@ -11,6 +11,7 @@
     "test": "vitest",
     "test:run": "vitest run",
     "check": "npm run lint && npm run typecheck && npm run test:run && npm run build",
+    "ci:local": "node scripts/ciLocal.mjs",
     "db:disposable": "node e2e/disposable/up.mjs",
     "db:disposable:down": "node e2e/disposable/up.mjs --down",
     "db:reset": "node e2e/disposable/up.mjs --once",

@@ -54,7 +54,7 @@ deviations; this is what changed and what each claim rests on.
 | `top-notice` | bordered rounded box **inside** the page content | full-bleed bar **above** the header; cream desktop, navy below 768px, pin icon, right-aligned link |
 | `hero-small-label` | white pill at all widths | **removed entirely, on owner instruction** — see below |
 | `hero-headline` | one accent colour at all widths | white at ≥768px, gold below — both artboards, both reproduced |
-| `hero-cta` | inline buttons, no bottom bar | full-width stacked below 768px, right arrow on the primary, and a fixed bottom bar carrying the primary action beside the Ask Couranr control |
+| `hero-cta` | inline buttons | full-width stacked below 768px with a right arrow on the primary. A fixed bottom CTA bar was built from the artboard and then **removed on owner instruction**, at both widths |
 | `hero-trust` | white outlined circles at all widths | gold glyphs with no ring below 768px |
 | `hero-photography` | 24–32px cream seam between header and photo | seam closed; the shell's content pad is cancelled for the first-child hero |
 | `order-channels` | ONE flat container holding seven tinted rows | SEVEN discrete bordered tiles, icon above a centred label, heading and subcopy centred |
@@ -67,7 +67,7 @@ deviations; this is what changed and what each claim rests on.
 | `faq` | ruled definition list, every answer expanded | bordered card of collapsed `<details>` rows with chevrons, paired with Ask Couranr |
 | `ask-couranr` | floating pill only | floating pill **and** the artboard's FAQ-adjacent card, with honest content (see the deviations file) |
 | `closing-cta` | centred copy over centred buttons | copy left, buttons right, one row at ≥900px |
-| `ask-couranr` (mobile) | 145px floating pill sitting on the hero's primary CTA | 48px circular chat button inside the bottom bar; nothing floats over the page at 390px |
+| `ask-couranr` (mobile) | 145px floating pill sitting on the hero's primary CTA | 44px circular chat button floating bottom-right — a corner affordance rather than something that covers a control |
 | `footer` | one wrapping row of links | brand column beside three labelled destination columns |
 
 ### One change that reaches beyond PUB-001
@@ -196,7 +196,11 @@ was tried first and photographed; it is why the target is what it is.
 This one is not PUB-001-specific: `MobileNav` is the drawer for all five shells.
 
 **The floating launcher covered the hero's primary CTA at 390px.** See
-deviation 17.
+deviation 18. The first fix merged the launcher and the sticky CTA into one
+bottom bar; when the owner then removed the bar, the collision did not come back
+because the launcher is a 44px circle rather than the 145px labelled pill that
+caused it. Re-measured with the bar gone: no overlap with either hero button at
+390 or 1440.
 
 ## Native-mock review
 

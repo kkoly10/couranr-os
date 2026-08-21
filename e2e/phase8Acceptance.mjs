@@ -493,7 +493,13 @@ export async function main() {
       const page = await browser.newPage();
 
       // NO page.route. Every request goes to the real route and the real database.
-      await page.goto(`${BASE}/help/${tokB}`, { waitUntil: "networkidle" });
+      //
+      // NOT `networkidle`. Next prefetches every `<Link>` in view, so a page
+      // that renders navigation never goes idle — see A12c below, where that
+      // was a hard 30s timeout that aborted the whole matrix. Wait for the
+      // element each assertion is about instead.
+      await page.goto(`${BASE}/help/${tokB}`, { waitUntil: "domcontentloaded" });
+      await page.locator("textarea").first().waitFor({ timeout: 15000 }).catch(() => {});
       const body = await page.innerText("body");
       // Assert the FORM, not the phrase. `/Delivery Help/i` also matches the
       // marketing navigation, so the old condition passed on a page rendering a
@@ -521,7 +527,29 @@ export async function main() {
 
       // A refused link, through the real route, with no stub.
       const p2 = await browser.newPage();
-      await p2.goto(`${BASE}/help/${rawToken()}`, { waitUntil: "networkidle" });
+      /* This navigation used `networkidle` and timed out at 30s EVERY run,
+         which threw out of the try block and failed the matrix as "XX the
+         matrix ran to completion" — 25/26, with A12c and A12d never reached.
+         It was red on `main` and nobody knew, because GitHub Actions has never
+         executed this file.
+
+         The cause is not a hang: the refusal page renders the PUBLIC shell, and
+         Next prefetches each `<Link>` in it, so the network keeps ticking over
+         (38 requests, two per public route). `networkidle` is the wrong wait
+         for any page with navigation on it. */
+      await p2.goto(`${BASE}/help/${rawToken()}`, { waitUntil: "domcontentloaded" });
+      /* WAIT FOR THE REFUSAL, not for a lifecycle event. The route answers 200
+         with a skeleton and the refusal only appears after the client's fetch
+         comes back 404, so `load` — and `domcontentloaded` before it — both
+         return while the page still reads "Loading your delivery help." That
+         made this assertion fail against a page that was about to say exactly
+         what it was asserting. Same lesson as the `LoadingState` trap in
+         CLAUDE.md: wait on content that exists only in the loaded state. */
+      await p2
+        .getByText(/not available/i)
+        .first()
+        .waitFor({ timeout: 20000 })
+        .catch(() => {});
       const refused = await p2.innerText("body");
       check("A12c", "an unissued token is refused by the real route",
         /not available/i.test(refused));

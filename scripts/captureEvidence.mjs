@@ -142,11 +142,6 @@ if (phase === "after") {
       await new Promise((r) => setTimeout(r, 150));
       const bar = document.querySelector(".cr-topbar");
       const barBox = bar.getBoundingClientRect();
-      // The bottom bar is fixed only below 768px; above it the same wrapper is
-      // an ordinary static element whose CTA is hidden and whose only visible
-      // child is the floating Ask Couranr launcher.
-      const bottomBar = document.querySelector(".cr-mobilebar");
-      const barFixed = bottomBar ? getComputedStyle(bottomBar).position === "fixed" : false;
       const askPill = document.querySelector(".cr-askc__pill");
       const askBox = askPill ? askPill.getBoundingClientRect() : null;
       window.scrollTo(0, 0);
@@ -163,7 +158,6 @@ if (phase === "after") {
           (e) => getComputedStyle(e).display !== "none",
         ),
         heroSource: (document.querySelector(".cr-hero__photo")?.currentSrc || "").split("/").pop(),
-        mobileBottomBar: barFixed,
         askCouranrTrigger: askBox
           ? { width: Math.round(askBox.width), height: Math.round(askBox.height) }
           : null,
