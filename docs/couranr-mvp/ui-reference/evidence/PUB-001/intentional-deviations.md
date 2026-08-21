@@ -127,26 +127,31 @@ Making it transparent-then-solid needs a scroll listener or a Chrome-only
 scroll-driven animation; it is not built, and this is the one deviation in this
 file that a future pass could reasonably close.
 
-**17. The mobile Ask Couranr launcher is a circular icon button, and it lives in
-the bottom bar rather than floating.**
-Authority: none in the artboard's favour — this is a functional defect the
-artboard could not depict, which is a different thing from a preference. Both the
-launcher and the sticky CTA are bottom-anchored. Rendered as the artboard draws
-them, a 145px-wide floating pill at 390px lands on the hero's full-width primary
-CTA and covers the end of its label; a static composition cannot show an
-occlusion. The two are now one bar, so mobile has exactly one bottom-anchored
-object and nothing floats over the page. The label survives as the button's
-accessible name, and 48px clears §23.6's 44px floor. **Desktop is unchanged** and
-still renders the labelled pill bottom-right exactly as the artboard shows it.
+**17. There is no sticky bottom CTA bar — both artboards show one.**
+Authority: **owner instruction, 2026-08-20 — remove it on mobile and desktop.**
+It was built, because it is a mock-supported object the implementation was
+missing. It is now deleted, along with the footer clearance it required, rather
+than hidden.
 
-**18. Seven channel tiles, not the artboard's six.**
+**18. The mobile Ask Couranr launcher is a circular icon button, not the
+artboard's labelled pill.**
+Authority: a functional defect the artboard could not depict, which is a
+different thing from a preference. Rendered as drawn, a 145px-wide floating pill
+at 390px lands on the hero's full-width primary CTA and covers the end of its
+label; a static composition cannot show an occlusion. As a 44px circle it is a
+corner affordance instead. The label survives as the button's accessible name,
+and 44px is the floor rather than a choice — `.cr-askc__pill` is a `<button>`,
+so Gate B measures it against §23.6. **Desktop is unchanged** and still renders
+the labelled pill bottom-right exactly as the artboard shows it.
+
+**19. Seven channel tiles, not the artboard's six.**
 Authority: `MKT-002 §10.4`, which requires every merchant-controlled channel to be
 named. The artboard splits social into Instagram and Facebook brand marks while
 dropping "point of sale" and "other channels you control". Written authority
 governs the count and the naming; the mock governs the tile geometry, which is
 reproduced.
 
-**19. The notice bar's link is hidden below 768px.**
+**20. The notice bar's link is hidden below 768px.**
 Authority: the mobile artboard itself, which shows the sentence alone. At 390px
 the governed MKT-001 sentence already wraps to three lines; there is no room
 beside it.

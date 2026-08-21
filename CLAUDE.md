@@ -96,11 +96,12 @@ npm run build        # next build — FAILS without env vars, see below
 npm run lint         # next lint (ESLint 8 + next/core-web-vitals). Next 16 removes `next lint`.
 npm run typecheck    # tsc --noEmit — passes, but tsconfig has "strict": false
 npm run test         # vitest (watch)
-npm run test:run     # vitest run — 51 files, 1629 tests
+npm run test:run     # vitest run — 53 files, 2013 tests
 npm run check        # lint && typecheck && test:run && build
+npm run ci:local     # THE GATE — see "GitHub Actions is NOT the gate" below
 ```
 
-There are **23 scripts**. The platform baseline specifies 32. Of the 13 gate commands the release matrix names, most now EXIST and pass: `check:routes`, `check:rls`, `check:legacy-imports`, `check:migrations`, `check:gates:controls`, `db:reset`, `db:test`, `test:deploy-safety`. Still absent: `test:security` and `test:payments`. Do not invent a script that pretends to pass — a check that cannot fail is worse than no check.
+There are **36 scripts**. The platform baseline specifies 32. Of the 13 gate commands the release matrix names, most now EXIST and pass: `check:routes`, `check:rls`, `check:legacy-imports`, `check:migrations`, `check:gates:controls`, `db:reset`, `db:test`, `test:deploy-safety`. Still absent: `test:security` and `test:payments`. Do not invent a script that pretends to pass — a check that cannot fail is worse than no check.
 
 **`npm run build` succeeds with no `.env.local` present** — verified twice at `401b3ee` in a container that had none, compiling 91 static pages. The old failure (a module-scope Supabase client whose constructor threw `supabaseUrl is required` during page-data collection) is fixed for the build path. `lib/supabaseAdmin.ts` is the lazy pattern to copy. ~61 module-scope `createClient(` call sites still exist across `app/` and `lib/`; they no longer break the build, but they remain the reason a route can hold a client it never re-scopes.
 
@@ -110,7 +111,75 @@ Tests use **Vitest**, not Jest and not `node:test`. Files live in `tests/*.test.
 
 **Runtime versions drift two ways now:** local Node 22, **CI Node 24** (`.github/workflows/ci.yml:35`) which matches the target. The old CI-Node-20 mismatch is fixed. There is still no `.nvmrc`, `.node-version`, `engines`, or `packageManager`, and `package-lock.json` is lockfileVersion 2 against a target of 3 — so a dependency whose engines require ≥24 installs in CI and fails locally.
 
-**CI is a real gate now.** `.github/workflows/ci.yml` triggers on `main`, `codex/**` **and `claude/**`**, and on pull requests into `main`, so work on a `claude/*` branch is validated before it merges rather than after. It runs `npm ci`, not `npm install` — a desynced lockfile fails the build instead of being silently resolved away. Both were true limitations once and are fixed; do not re-assert them. What CI still does **not** cover is the browser suite (`e2e/run.mjs`), which needs Supabase and Stripe credentials it does not have — so a green check means lint, typecheck, unit tests and build, never that a screen works.
+### GitHub Actions is NOT the gate — `npm run ci:local` is
+
+**The account's Actions allowance is exhausted most months.** This is a recurring
+billing condition, not an incident, and it makes GitHub CI unusable as a gate:
+
+- When the allowance is gone, workflow runs **fail for billing reasons that look
+  exactly like code failures** in the checks UI, or they **do not start at all**.
+- A check that never ran and a check that passed look the same at a glance on a
+  PR. Neither says anything about the code.
+- The reset date is not something this repo controls or tracks.
+
+So: **run the whole gate locally, before every push, and report the local run.**
+
+```bash
+npm run ci:local                 # tiers 1–2, ~45s, needs no external process
+npm run ci:local -- --db         # + the disposable-PostgreSQL suites
+npm run ci:local -- --browser    # + the Playwright gates (needs a build first)
+npm run ci:local -- --all        # everything
+npm run ci:local -- --list       # what each tier contains
+```
+
+`scripts/ciLocal.mjs` runs a **superset** of `.github/workflows/ci.yml`. Tier 1
+is that workflow exactly — lockfile, lint, typecheck, unit tests, build. Tiers
+2–4 are work the runner could not do even with budget: the repo's own `check:*`
+gates, the disposable-PostgreSQL suites, and the browser gates, which need
+Supabase and Stripe credentials Actions does not have.
+
+Two things it enforces on itself, both from defects already shipped here:
+
+- **It never silently skips.** Every stage runs or is printed as skipped **with
+  its reason**, and the summary lists the skips above the verdict. A stage that
+  quietly does nothing reads as a pass.
+- **It reads the counts, not just the exit code.** A stale `node_modules` once
+  dropped 84 test files while vitest printed "passed" and exited 0. The test
+  stage parses `Test Files X passed (Y)` and fails unless X = Y.
+
+`ci:local --self-test` proves the runner can go red and is registered in
+`check:gates:controls` with every other gate.
+
+**Prerequisite that does not survive a container reset:** tier 3 spawns
+PostgREST. Without the binary every tier-3 suite dies on an identical unhandled
+`ENOENT` — ten stack traces that look like ten code failures and are one missing
+tool. `npm run provision:postgrest` installs it (pulls the official image layer
+from Docker Hub over plain HTTPS, digest-verified, no daemon). `ci:local`
+detects its absence and reports it as a prerequisite instead of running into it.
+
+**Rules for reading GitHub's checks, when you look at all:**
+
+1. **Never report "CI is green" as evidence that anything works.** Report what
+   `ci:local` ran and what it did not.
+2. **Never read a red GitHub check as a code defect without opening the job
+   log.** Distinguish a billing/quota failure from a real one before acting, and
+   never "fix" code to chase a red check you have not diagnosed.
+3. A merged PR with no checks is normal here. It is not evidence of anything
+   either way.
+
+For the record, because this file has carried the opposite claim: the workflow
+itself is correctly configured — it triggers on `main`, `codex/**` and
+`claude/**` and on PRs into `main`, and it runs `npm ci` rather than
+`npm install`, so a desynced lockfile fails rather than being resolved away.
+Those were real limitations once and are fixed. The problem is not the
+workflow's contents; it is that it cannot be relied on to run.
+
+**What no CI configuration could cover**, and what therefore only ever happens
+locally: the browser gates (`test:pub001`, `test:pub-family`,
+`test:shell-chrome`, `test:fonts`) and the SQL execution suites. This is not
+theoretical — running tiers 3 and 4 locally immediately caught a stale sticky-
+chrome assertion in `e2e/shellChrome.mjs` that had already reached `main`,
+because Actions has never once executed that file.
 
 ## Migrations and the database
 

@@ -406,9 +406,13 @@ describe("MUTATION CONTROLS — these checks can actually reject", () => {
  * family to the pre-v2.2 heading sizes with nothing else going red.
  */
 describe("§13 — surface families and their type budgets", () => {
-  const SHELLS = readFileSync(
-    path.join(ROOT, "components/couranr/shell/shells.tsx"),
-    "utf8",
+  /* `live()`, not the raw source. This file's own convention — "a rule QUOTED
+     in a comment cannot be mistaken for a live declaration" — was not applied
+     here, and the moment a comment in shells.tsx explained why an element
+     carries `data-couranr-surface` the scan counted six surfaces instead of
+     five. The declarations are what is being asserted, not the mentions. */
+  const SHELLS = live(
+    readFileSync(path.join(ROOT, "components/couranr/shell/shells.tsx"), "utf8"),
   );
   const SURFACES = ["public", "merchant", "operations", "driver", "customer"] as const;
 

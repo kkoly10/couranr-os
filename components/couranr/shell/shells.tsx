@@ -39,8 +39,15 @@ export function PublicShell({
 }) {
   const items = navigationFor("public");
 
+  /* No `cr-shell--public` modifier on the root. It existed to hang the sticky
+     bottom bar's page clearance off, and once the owner removed that bar
+     nothing selected it — `tests/couranr-visual-tokens.test.ts` caught it as
+     rendered-but-undefined the moment the rule went.
+     `data-couranr-surface="public"` is on the same element, is the hook §13
+     already binds typography through, and carries the same specificity, so a
+     future public-only rule has one to use. */
   return (
-    <div className="cr-shell cr-shell--public" data-couranr-surface="public">
+    <div className="cr-shell" data-couranr-surface="public">
       <SkipLink />
 
       {notice ? <div className="cr-topnotice">{notice}</div> : null}

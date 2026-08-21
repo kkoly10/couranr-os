@@ -233,6 +233,100 @@ re-litigates it: `VIS-001`'s typography, the self-hosted Martian/Inter/Martian
 Mono implementation, the `--couranr-*` namespace, the locked colours, the
 canonical logo, and the accessibility, responsive and shell work.
 
+### r7 — the desktop type scale was visually rejected and is reduced
+
+The owner reviewed the DEPLOYED result of PR #30 and rejected it. Passing this
+document's numeric typography contract turned out not to be evidence that the
+page looked right, which is the correction this entry records.
+
+What changed, and why each number is derived rather than picked. Martian
+Grotesk's cap/font ratio measured from our own render is **0.802** (77px cap at
+96px), which makes the canonical artboard's cap heights convertible: hero **36**,
+second hero clause **30**, section heading **25**. So the mock's own hierarchy is
+hero : second clause : section = **1 : 0.83 : 0.69**. The deployed page ran
+96 : 96 : 52 — **1 : 1.0 : 0.54**. The second clause had no distinct scale at
+all, and the section headings were proportionally too small against a hero that
+was too large.
+
+| role | was | now | where the number comes from |
+|---|---|---|---|
+| `--couranr-type-hero-max` | 96 | **60** | the mock's longest hero line spans ~47% of its viewport; ours spanned 79% at 1440, 89% at 1280, 94% at 1024 |
+| `--couranr-type-statement-max` | 72 | **44** | no artboard covers `pickup-problem`; reduced until the section stopped reading as a second hero |
+| `--couranr-type-marketing-section-max` | 52 | **40** | 0.69 × the hero, which is the mock's ratio |
+| `--couranr-type-lead-max` | 22 | **20** | the mock's hero support is 0.36 × its headline cap |
+
+The **minima are unchanged** at 48/40/32/18. Mobile was not what was rejected.
+
+Three other changes to §12.1, all measured rather than argued:
+
+- **`font-stretch: 112.5%` is removed.** Compared at the same size, the extended
+  width is most of what made the headline read as shouting — it widens every
+  glyph, so the line eats measure and the tracking fights back. Martian at
+  normal width holds the same authority in ~11% less space. This is the answer
+  to "is the typeface the problem": it is not, its settings were.
+- **`text-wrap: balance` is removed from the hero role** and re-added below
+  768px only. The desktop artboard breaks the headline at a specific place;
+  balance optimises for even rag, which is not that. The break is structural
+  now (`.cr-hero__h1-lead` and `.cr-hero__h1-accent` are blocks with their own
+  `ch` measures). Below 768px the artboard expresses no such intent, so balance
+  is appropriate there.
+- **`line-height` 0.96 → 1.02 and tracking −0.04em → −0.025em.** At 96px the
+  tight values were holding a too-large headline together; at 60px they closed
+  the lines up past legibility.
+
+A **fifth heading role** exists in the implementation and is recorded here so it
+is not mistaken for drift: a COLUMN heading at 28→34px for H2s that sit inside a
+narrow copy column beside a visual or a list (`.cr-mkt-narrative__copy`,
+`.cr-mkt-split__lead`). The artboard's section headings are centred, single-line
+and introduce a row beneath them, and those keep the full section size; the
+headings the artboard does not cover were wrapping to three lines in a narrow
+column and reading as statements they are not.
+
+Four further corrections, each found by reading the RENDER after the scale
+change and none of them visible in the rule that caused them:
+
+- **The accent clause's tracking was inherited as an absolute length.**
+  `letter-spacing: -0.025em` on `.cr-type-hero` computes to `-1.5px` against the
+  60px lead and inherits as that px value, so the 49.8px accent tracked at
+  −0.030em — 20% tighter than the clause above it. Restated in `em` on
+  `.cr-hero__h1-accent` so it resolves against its own size.
+- **`word-spacing: 0.08em` on the accent clause.** Martian Grotesk's `w` and `y`
+  carry almost no side bearing, so "Now you can say yes." closed to an 8px ink
+  gap at the `w y` and `y y` joins against 18px at `u c` and `n s` on the same
+  line, and read as "Nowyou can sayyes." Word-spacing moves only the space
+  character, leaving the letterform rhythm identical to the lead clause.
+  Rendered at 0, 0.05, 0.08 and 0.12em before choosing.
+- **The proof paragraph's measure was 78ch, not the 62ch that was written.** Two
+  `.cr-mkt-proof__copy p` rules with identical specificity; the later one won and
+  the hotfix's rule never applied. 78ch is 1014px and ~80 characters a line. Now
+  one rule at 62ch — 806px, ~64 characters, and the same measure the rest of the
+  file already uses.
+- **A dead `color` declaration removed** from `.cr-hero__h1-accent`. The
+  art-direction pair later in the file (unconditional `text-inverse`, `gold`
+  below 768px) has the same specificity and comes after it, so the base colour
+  could never win at any width.
+
+`text-wrap: balance` is also added to `.cr-mkt-card__h2` and to
+`.cr-mkt-section--centred > p`, where a card heading was orphaning "note" and a
+centred lead was breaking 78 characters against 15.
+
+**The gate gap this exposed is now partly closed.** When r7 was first written no
+test asserted any of these values — the whole scale could have been changed to
+anything without a check going red, which is why the rejected values survived to
+production. `npm run test:pub001` now measures four named elements on the render
+and asserts a generic floor: a heading's measure must be at least eight times its
+own font-size. Both halves have a positive control — replanting the 78ch shadow
+reproduces 1014px and replanting the `ch`-on-the-section bug (`max-width: 24ch`
+back on `.cr-mkt-editorial` instead of 16ch on its headings) reproduces a 160px
+heading at 3.6×, and the gate goes red on both. It deliberately does not police
+page-wide line length; see the open question below.
+
+**An open question this raised and did not settle:** `62ch` is the house measure
+throughout `couranr.css`, but `ch` tracks the font rather than the character
+count, so the same token yields ~64 characters at 20px, 77 at 16px and 87 at
+14px. Whether small copy should carry a tighter `ch` value is a page-wide
+typography decision for the owner, not something to settle inside a hotfix.
+
 ### r6 — §27.0 reconciled against the artboard pixels
 
 r5 changed the precedence; this applies it. The PUB-001 drift ledger
@@ -927,13 +1021,13 @@ The purpose of the scale is **contrast**, not merely larger numbers.
 ```css
 .cr-root {
   --couranr-type-hero-min: 3rem;          /* 48 */
-  --couranr-type-hero-max: 6rem;          /* 96 */
+  --couranr-type-hero-max: 3.75rem;       /* 60 — was 96, see r7 */
 
   --couranr-type-statement-min: 2.5rem;   /* 40 */
-  --couranr-type-statement-max: 4.5rem;   /* 72 */
+  --couranr-type-statement-max: 2.75rem;  /* 44 — was 72, see r7 */
 
   --couranr-type-marketing-section-min: 2rem;     /* 32 */
-  --couranr-type-marketing-section-max: 3.25rem;  /* 52 */
+  --couranr-type-marketing-section-max: 2.5rem;   /* 40 — was 52, see r7 */
 
   --couranr-type-page-title-min: 1.875rem; /* 30 */
   --couranr-type-page-title-max: 2.375rem; /* 38 */
@@ -945,7 +1039,7 @@ The purpose of the scale is **contrast**, not merely larger numbers.
   --couranr-type-card-title-lg: 1.25rem;  /* 20 */
 
   --couranr-type-lead-min: 1.125rem;      /* 18 */
-  --couranr-type-lead-max: 1.375rem;      /* 22 */
+  --couranr-type-lead-max: 1.25rem;       /* 20 — was 22, see r7 */
 
   --couranr-type-body: 1rem;              /* 16 */
   --couranr-type-small: 0.875rem;         /* 14 */
@@ -973,11 +1067,10 @@ not the previous flat pattern where 36px effectively served as the top of the un
 ```css
 .cr-type-hero {
   font-family: var(--couranr-font-display);
-  font-size: clamp(3rem, 7vw, 6rem);
+  font-size: clamp(3rem, 4.2vw, 3.75rem);
   font-weight: 700;
-  font-stretch: 112.5%;
-  line-height: 0.96;
-  letter-spacing: -0.04em;
+    line-height: 1.02;
+  letter-spacing: -0.025em;
   text-wrap: balance;
 }
 ```
@@ -993,7 +1086,7 @@ Budget:
 ```css
 .cr-type-statement {
   font-family: var(--couranr-font-display);
-  font-size: clamp(2.5rem, 5vw, 4.5rem);
+  font-size: clamp(2.5rem, 3.1vw, 2.75rem);
   font-weight: 675;
   font-stretch: 106%;
   line-height: 0.99;
@@ -1010,7 +1103,7 @@ Budget:
 ```css
 .cr-type-marketing-section {
   font-family: var(--couranr-font-display);
-  font-size: clamp(2rem, 4vw, 3.25rem);
+  font-size: clamp(2rem, 2.8vw, 2.5rem);
   font-weight: 650;
   line-height: 1.03;
   letter-spacing: -0.025em;
@@ -1065,7 +1158,7 @@ Use 18px for normal repeated entity/card headings and the 20px prominent variant
 ```css
 .cr-type-lead {
   font-family: var(--couranr-font-body);
-  font-size: clamp(1.125rem, 2vw, 1.375rem);
+  font-size: clamp(1.125rem, 2vw, 1.25rem);
   font-weight: 400;
   line-height: 1.5;
 }

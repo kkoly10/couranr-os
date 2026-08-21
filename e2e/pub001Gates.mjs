@@ -174,18 +174,25 @@ async function heroContrast(page) {
       };
     });
   }
-  /* The copy is hidden so the PHOTOGRAPH behind it can be sampled — and the
-     page's fixed chrome is hidden with it. Below 768px `.cr-mobilebar` is
-     pinned to the viewport bottom and an element screenshot of `.cr-hero`
-     includes anything painted over it, so a third of the trust row's box came
-     back as the white bar and the gold CTA: measured 1.00:1 where the photo
-     alone gives 8.58:1. Whether fixed chrome sits over scrolled content is a
-     real question, but it is an OCCLUSION question, not a text-contrast one,
-     and it is answered by the mobile bar carrying both bottom-anchored objects
-     rather than by this gate. */
+  /* The copy is hidden so the PHOTOGRAPH behind it can be sampled — and every
+     fixed and sticky element on the page is hidden with it. An element
+     screenshot of `.cr-hero` includes anything painted OVER it, and the hero is
+     overlapped at BOTH ends: `.cr-topbar` is `position: sticky` and the hero
+     carries a negative top margin that tucks it under the header, so the top
+     ~52px of the hero screenshot is the WHITE HEADER. At 390px that put 1.4% of
+     the headline's sample box at pure white, which is enough to drag a 99th
+     percentile to 1.0 and report 1.00:1 for text that is actually white on a
+     0.009-luminance photograph. The same thing happened at the other end when a
+     bottom bar was pinned to the viewport.
+
+     Hiding the chrome is not weakening the check: WCAG compares the glyph to
+     what is composited immediately behind it, and the header is not behind the
+     headline — it is in front of a different part of the hero. Whether fixed
+     chrome sits over content is a real question, but an OCCLUSION one, and this
+     gate is not where it is answered. */
   await page.addStyleTag({
     content:
-      ".cr-hero__body,.cr-mobilebar,.cr-askc{visibility:hidden!important}",
+      ".cr-hero__body,.cr-askc,.cr-topbar,.cr-topnotice{visibility:hidden!important}",
   });
   const shot = await page.locator(".cr-hero").screenshot();
   const px = await page.evaluate(
@@ -445,6 +452,88 @@ async function main() {
   const seconds = /ms$/.test(motion) ? parseFloat(motion) / 1000 : parseFloat(motion);
   check(seconds <= 0.001, `reduced motion collapses transitions (${motion} = ${seconds}s)`);
   await page.emulateMedia({ reducedMotion: null });
+
+  /* MEASURE — the typography hotfix's regression check.
+
+     This exists because that hotfix shipped a defect every other gate passed.
+     `.cr-mkt-proof__copy p { max-width: 62ch }` was written, reviewed, built
+     and deployed, and never applied: a later declaration in the same file had
+     identical specificity and set 78ch, so the paragraph rendered ~1014px and
+     ~80 characters a line. Nothing was red. Measuring the element in a browser
+     is what caught it.
+
+     Two assertions, both on the RENDER, never on the rule:
+
+     1. Named elements this hotfix sized must still render at those sizes. A
+        tolerance of 1px absorbs sub-pixel clamp arithmetic and nothing else —
+        a shadowed declaration moves these by hundreds of pixels.
+
+     2. A generic invariant: a heading's measure must be at least eight times
+        its OWN font-size. This is the `ch`-scope failure written as something a
+        browser can check. `max-width: 16ch` on the section rather than on the
+        heading resolved against the section's small body font, so the
+        display-face heading got a 240px column — 3.3x its 72px size — and broke
+        mid-word across five lines. Eight is below every legitimate heading on
+        this page (the narrowest is the card heading at 18x) and far above the
+        defect, so it discriminates without policing composition.
+
+     What this deliberately does NOT do is police the whole page's line length.
+     The homepage's `62ch` house measure yields 77 characters at 16px and 87 at
+     14px, because `ch` tracks the font rather than the character count — a real
+     question, but a page-wide typography policy question for the owner, not
+     something to settle inside a regression check. It is recorded in
+     PUB_001_TYPOGRAPHY_HOTFIX_REVIEW.md instead. */
+  const HOTFIX_MEASURES = [
+    { sel: ".cr-hero__h1-lead", width: 690, font: 60 },
+    { sel: ".cr-hero__h1-accent", width: 888, font: 49.8 },
+    { sel: ".cr-mkt-editorial > h2", width: 544, font: 44 },
+    { sel: ".cr-mkt-proof__copy p", width: 806, font: 20 },
+  ];
+  const measured = await page.evaluate(
+    (specs) =>
+      specs.map((s) => {
+        const el = document.querySelector(s.sel);
+        if (!el) return { ...s, missing: true };
+        const cs = getComputedStyle(el);
+        return {
+          ...s,
+          gotWidth: el.getBoundingClientRect().width,
+          gotFont: parseFloat(cs.fontSize),
+        };
+      }),
+    HOTFIX_MEASURES,
+  );
+  for (const m of measured) {
+    if (m.missing) { check(false, `@1440 measure ${m.sel}: element not rendered`); continue; }
+    check(
+      Math.abs(m.gotWidth - m.width) <= 1 && Math.abs(m.gotFont - m.font) <= 1,
+      `@1440 measure ${m.sel}: ${m.gotWidth.toFixed(1)}px at ${m.gotFont}px ` +
+        `(hotfix set ${m.width}px at ${m.font}px)`,
+    );
+  }
+
+  const squeezed = await page.evaluate(() => {
+    const out = [];
+    for (const el of document.querySelectorAll(
+      ".cr-mkt-section h2, .cr-mkt-editorial h1, .cr-mkt-editorial h2, .cr-mkt-card__h2",
+    )) {
+      const w = el.getBoundingClientRect().width;
+      const f = parseFloat(getComputedStyle(el).fontSize);
+      if (w === 0) continue;
+      out.push({ text: el.textContent.trim().slice(0, 34), ratio: w / f, w: Math.round(w), f });
+    }
+    return out;
+  });
+  check(squeezed.length >= 8, `measure gate found ${squeezed.length} headings to check`);
+  const worst = squeezed.reduce((a, b) => (b.ratio < a.ratio ? b : a), squeezed[0]);
+  for (const h of squeezed) {
+    if (h.ratio >= 8) continue;
+    check(false, `@1440 heading "${h.text}…" has a ${h.w}px measure at ${h.f}px — ${h.ratio.toFixed(1)}x its own size, below the 8x floor`);
+  }
+  check(
+    worst.ratio >= 8,
+    `@1440 narrowest heading measure is "${worst.text}…" at ${worst.ratio.toFixed(1)}x its own font-size (floor 8x)`,
+  );
 
   /* Contrast over the photograph, measured from painted pixels — AT BOTH
      art-directed widths. The hero swaps both its photographic crop and two of
