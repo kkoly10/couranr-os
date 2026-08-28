@@ -1,7 +1,15 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { Badge, Text } from "@/components/couranr/primitives";
-import { IconPerson, IconStore } from "@/components/couranr/marketing/MarketingIcons";
+import {
+  IconBox,
+  IconCalendar,
+  IconChat,
+  IconLock,
+  IconPerson,
+  IconStore,
+  IconTruck,
+} from "@/components/couranr/marketing/MarketingIcons";
 import { SUPPORT_COPY } from "@/lib/couranr/public/governed";
 
 /**
@@ -39,31 +47,37 @@ export const metadata: Metadata = {
 const SEQUENCE = [
   {
     step: "1",
+    Icon: IconBox,
     title: "Quote",
     body: "The delivery is described and priced server-side, in exact cents. The quote is accepted before anything else happens.",
   },
   {
     step: "2",
+    Icon: IconLock,
     title: "Payment authorized",
     body: "A payment method is confirmed and authorized. The money is held, not taken — nothing is captured at this point.",
   },
   {
     step: "3",
+    Icon: IconStore,
     title: "Marked ready",
     body: "You prepare the order and mark it ready. Couranr does not dispatch against an order that is not.",
   },
   {
     step: "4",
+    Icon: IconChat,
     title: "Couranr review",
     body: "Couranr Operations reads the request. This is a person, not a rule engine, and it is why an estimate is never an instant confirmation.",
   },
   {
     step: "5",
+    Icon: IconCalendar,
     title: "Couranr confirmation",
     body: "Couranr confirms the schedule and the vehicle. Only now is payment captured.",
   },
   {
     step: "6",
+    Icon: IconTruck,
     title: "Couranr-managed dispatch",
     body: "The delivery is created and assigned to a Couranr-managed driver. There is no marketplace, no bidding and no self-selection.",
   },
@@ -71,9 +85,9 @@ const SEQUENCE = [
 
 const MERCHANT_PAID = [
   "You create the delivery request in your Couranr workspace.",
-  "Your saved payment method is authorized for the server-computed quote.",
+  "You confirm a payment method and it is authorized for the server-computed quote.",
   "Capture happens after Couranr confirms — you see authorization, confirmation and capture, in that order.",
-  "One clean delivery receipt for your books.",
+  "Authorization, confirmation and capture are three events you can see, in that order.",
 ];
 
 const CUSTOMER_PAID = [
@@ -184,6 +198,12 @@ export default function Page() {
                 {s.step}
               </span>
               <div className="cr-mkt-rail__content">
+                {/* Concept panel F's per-step icon. Same treatment as PUB-001's
+                    four-step rail, because it is the same device — this page
+                    carries CAP-001's order at six steps, the homepage at four. */}
+                <span className="cr-mkt-rail__glyph" aria-hidden="true">
+                  <s.Icon />
+                </span>
                 <h3 className="cr-type-card-title">{s.title}</h3>
                 <Text muted size="sm">
                   {s.body}

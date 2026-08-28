@@ -61,6 +61,31 @@ type Rule = {
 /** The enforceable list, one row per authority claim boundary. */
 const RULES: Rule[] = [
   { name: "brings-you-customers", pattern: /brings? you (new )?customers/i },
+  /**
+   * Two capabilities the PRODUCT records as not existing, which the marketing
+   * page was promising anyway.
+   *
+   * `lib/couranr/billing/records.ts` is the repo's own register of billing
+   * gaps. `saved_payment_method` is kind "unbuilt" — its merchantCopy reads
+   * "Couranr does not store a payment method yet" — and `downloadable_receipt`
+   * is undecided, blocked by TAX-001, with the signed-in billing page telling
+   * the merchant in as many words that it is "not a tax document".
+   *
+   * The homepage said "Use a saved payment method ... and keep a clean receipt
+   * for your books", and /how-it-works said the same two things in different
+   * wording. A merchant read one promise in the marketing and the opposite
+   * inside the product. Nothing failed: neither claim was in this list.
+   */
+  {
+    name: "saved-payment-method",
+    pattern: /saved payment method/i,
+    allow: /does not store a payment method/i,
+  },
+  {
+    name: "receipt-for-your-books",
+    pattern: /for your books|tax document/i,
+    allow: /not a tax document/i,
+  },
   { name: "guarantee-language", pattern: /guarante/i, allow: /never|no guarantee|not a guarantee/i },
   { name: "24-7", pattern: /24\s*\/\s*7|24-7|twenty-four seven/i },
   {
