@@ -19,6 +19,10 @@ import {
   WEIGHT_BANDS,
   dollars,
 } from "@/lib/couranr/public/governed";
+import {
+  AuthorizationCaptureDiagram,
+  LoadedMilesDiagram,
+} from "@/components/couranr/marketing/PricingDiagrams";
 import { PricingDetails } from "./PricingDetails";
 
 /**
@@ -178,6 +182,12 @@ export default function Page() {
           Tiered by distance, not one flat rate — a fourteen-mile run is not priced
           like a ninety-mile one.
         </Text>
+        {/* CONCEPT_USAGE_MATRIX.md panel D, built natively. It sits ABOVE the
+            schedule because the schedule answers "how much" and this answers
+            "from where" — a reader who meets the tiers first has to work out
+            what a loaded mile is from a table. Every figure in it resolves from
+            `governed.ts`; the concept board's own numbers are not used. */}
+        <LoadedMilesDiagram />
         <TableScroll>
           <Table>
             <thead>
@@ -336,25 +346,12 @@ export default function Page() {
             account required for the payment link.
           </Text>
         </div>
-        {/* CAP-001's order, as a ruled sequence rather than prose — the "when"
-            is the part merchants get wrong, and it is the page's promise. */}
-        <ul className="cr-mkt-outcomes">
-          <li className="cr-mkt-outcomes__item">
-            The quote is generated server-side and accepted.
-          </li>
-          <li className="cr-mkt-outcomes__item">
-            Payment is <strong>authorized</strong> — held, not taken.
-          </li>
-          <li className="cr-mkt-outcomes__item">
-            You mark the order ready; Couranr reviews it.
-          </li>
-          <li className="cr-mkt-outcomes__item">
-            Couranr confirms the schedule and vehicle.
-          </li>
-          <li className="cr-mkt-outcomes__item">
-            <strong>Only then</strong> is payment captured and the delivery assigned.
-          </li>
-        </ul>
+        {/* CAP-001's order. This was a ruled list of the same five statements;
+            what it did not say is the part merchants actually get wrong, which
+            is WHEN the money moves. CONCEPT_USAGE_MATRIX.md panel E, built
+            natively: each step now carries its own money state as a word, a
+            shape and only then a tint. The statements are unchanged. */}
+        <AuthorizationCaptureDiagram />
       </section>
 
       {/* ─── 8 ─────────────────────── closing / full-bleed-interruption ─── */}

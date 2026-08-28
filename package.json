@@ -20,6 +20,7 @@
     "check:routes": "node scripts/checkRoutes.mjs",
     "check:legacy-imports": "node scripts/checkLegacyImports.mjs",
     "check:mocks": "node scripts/checkMockMap.mjs",
+    "check:images": "node scripts/buildMarketingImages.mjs --check",
     "check:visual-system": "node scripts/checkVisualSystem.mjs",
     "check:visual-registry": "node scripts/visualAuthorityRegistry.mjs",
     "check:drift-ledger": "node scripts/checkDriftLedger.mjs",
@@ -38,7 +39,8 @@
     "test:shell-chrome": "node e2e/shellChrome.mjs",
     "test:fonts": "node e2e/fonts.mjs",
     "test:pub001": "node e2e/pub001Gates.mjs",
-    "test:pub-family": "node e2e/publicFamilyGates.mjs"
+    "test:pub-family": "node e2e/publicFamilyGates.mjs",
+    "images:build": "node scripts/buildMarketingImages.mjs"
   },
   "dependencies": {
     "@stripe/react-stripe-js": "3.1.1",

@@ -233,6 +233,74 @@ re-litigates it: `VIS-001`'s typography, the self-hosted Martian/Inter/Martian
 Mono implementation, the `--couranr-*` namespace, the locked colours, the
 canonical logo, and the accessibility, responsive and shell work.
 
+### r8 — the accepted photography lands, and `outcomes` becomes image-led
+
+The owner accepted eleven photographs on 2026-08-28. This entry records the one
+change they force on this document, and the three things they deliberately do
+not change.
+
+**§27.0 row 5, `outcomes`, moves `image-led` false → true.** Photography is now
+a meaningful half of that section — a two-frame band spanning both columns of
+the split story — and leaving the DOM flag at `false` would have been a metadata
+claim the page contradicts. The resulting-budgets line moves with it: image-led
+is **4** (sections 1, 3, 5, 12) against a floor of 2.
+
+`tests/couranr-public-composition.test.ts` is the gate that binds them: it parses
+this table and asserts the rendered DOM equals it, row for row.
+`check:visual-system` is NOT — it re-derives the budgets from this document alone
+and would report four image-led sections whether or not the page agreed. Planting
+the disagreement proved it: the test went red, the gate stayed green. Worth
+stating precisely, because "two gates cover this" was the claim before it was
+checked.
+
+**Nothing else in §27.0 moves.** In particular `category-breadth` was already
+`image-led: true`; what changed there is that the claim became true. It had been
+rendering a dashed "Photography pending" placeholder since the original brief
+could not be sourced, and now renders the four accepted frames.
+
+**PUB-009's §27.1 table does not move either, and that was checked rather than
+assumed.** `/businesses` gained a three-frame strip inside `category-system`.
+Measured at 1440 the strip is 216px of a 660px section against a 259px category
+grid — a third of the height, and not the section's device. `grid-dominant`
+stays `true` and `image-led` stays `false` because those still describe the
+section. If the strip ever grows into the subject, the table is what has to
+change.
+
+**PUB-008 gains two diagrams and no sections.** The loaded-miles schematic sits
+inside `mileage` and the authorization-to-capture sequence inside `who-pays`,
+because §27.1's PUB-008 table is a normative list of eight ids in order and the
+composition test asserts the DOM equals it exactly. Both diagrams are DOM, not
+images, and every figure in them resolves from `lib/couranr/public/governed.ts`
+at render time.
+
+Three defects were found by measuring the render rather than reading the rule,
+and are recorded because each is a class this file has been bitten by before:
+
+- **`margin: … var(--couranr-space-7)` silently computed to `0`.** There is no
+  `--couranr-space-7` — the scale runs 0,1,2,3,4,5,6,8,10,12,16. An unresolvable
+  `var()` invalidates the WHOLE declaration at computed-value time, so the two
+  valid values in the shorthand did not survive either. Build, typecheck and
+  2014 tests were green. `tests/couranr-visual-tokens.test.ts` now fails on any
+  `var(--couranr-*)` without a fallback that names an undefined token.
+- **A grid container with a fixed height does not constrain an implicit row.**
+  The outcomes band's row sized to its content, so `height: 100%` on the images
+  resolved against 521px while the container sat at its 331px clamp and the
+  photographs hung out of the box. `grid-template-rows: minmax(0, 1fr)` is the
+  fix, and the photo strip on `/businesses` needed the same.
+- **The homepage workflow rail had its four step titles on three different
+  baselines.** The steps are stretched to a common height by the outer grid, and
+  with two `auto` rows the MARKER row absorbed the slack — 65.7, 44, 54.8 and
+  44px. `grid-template-rows: auto 1fr` pins the slack to the copy. This is the
+  only change made to that rail; the batch's instruction was "refine, do not
+  replace", and `/how-it-works`'s six-step rail was reviewed at 1440 and needed
+  nothing.
+
+**What did not happen, deliberately.** No proof photography, no completed
+delivery, no product screenshot used as evidence, no testimonial, no metric, no
+generated geography. `product-proof` is frozen and keeps its own pending tile.
+Two accepted photographs are recorded as `approved-reserve` with no allowed
+surface, which is a decision rather than an omission.
+
 ### r7 — the desktop type scale was visually rejected and is reduced
 
 The owner reviewed the DEPLOYED result of PR #30 and rejected it. Passing this
@@ -2060,7 +2128,7 @@ auditable.
 | 2 | `pickup-problem` | Pickup-only problem | editorial statement | `editorial-statement` | false | false | false |
 | 3 | `category-breadth` | Delivery beyond restaurants | image narrative | `image-narrative` | true | false | false |
 | 4 | `order-channels` | Existing order channels | channel flow / structured strip | `structured-information-block` | false | false | false |
-| 5 | `outcomes` | Business outcomes | split story *or* editorial/product split | `split-story` | false | false | false |
+| 5 | `outcomes` | Business outcomes | split story *or* editorial/product split | `split-story` | **true** | false | false |
 | 6 | `workflow` | Four-step workflow | connected workflow rail | `workflow-rail` | false | false | false |
 | 7 | `payer-choice` | *(none — drift ledger)* | artboard: "You decide who pays for delivery", two tinted payer cards | `structured-information-block` | false | false | false |
 | 8 | `product-proof` | Managed delivery and proof | product proof + supporting narrative | `product-proof` | false | false | **true** |
@@ -2079,7 +2147,7 @@ Resulting budgets, which are what §32.3 asserts:
   from a hard rule to a **drift diagnostic**. The test reports the count; it no
   longer fails on it. See r6 below.
 - `data-grid-dominant="true"`: **1** — section 9 (§19 cap is 2);
-- `data-image-led="true"`: **3** — sections 1, 3, 12 (§27 floor is 2);
+- `data-image-led="true"`: **4** — sections 1, 3, 5, 12 (§27 floor is 2);
 - `data-product-proof="true"`: **1** — section 8 (§27 floor is 1);
 - `workflow-rail`: exactly **1** — section 6.
 

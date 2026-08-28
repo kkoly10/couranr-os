@@ -18,6 +18,12 @@ import {
   GENERAL_CATEGORY,
   MAX_SECONDARY_CATEGORIES,
 } from "@/lib/couranr/categories/registry";
+import {
+  BUSINESSES_STRIP_PHOTOS,
+  intrinsic,
+  largestSrc,
+  srcSetFor,
+} from "@/lib/couranr/public/marketingPhotos";
 
 /**
  * PUB-009 — supported business categories and merchant-controlled channels.
@@ -133,6 +139,43 @@ export default function Page() {
           All {BUSINESS_CATEGORIES.length}, in full. There is no waiting list and no
           application — these are the choices in the sign-up form.
         </Text>
+        {/*
+          THREE FRAMES, AND DELIBERATELY NOT MORE. The accepted 2026-08-28 set
+          holds eleven photographs and the temptation on a page about business
+          categories is to illustrate all of them; ADVERSARIAL_REVIEW.md records
+          that as the first package's defect. This is one restrained strip —
+          bakery, print shop, stationery shop — placed between the lead and the
+          eleven-item list so the section is not a wall of text tiles.
+
+          It stays SECONDARY on purpose. The section's primary device is still
+          the category grid, which is why `data-grid-dominant` is still "true"
+          and `data-image-led` is still "false". Those two flags are checked
+          against §27.1's PUB-009 table by `tests/couranr-public-composition.test.ts`,
+          so if this strip ever grows into the section's subject the table has to
+          change with it rather than the claim quietly going stale. Measured at
+          1440: the strip is 216px of a 660px section against a 259px category
+          grid — a third of the height, and not the section's subject.
+
+          These are category illustrations. None of these businesses is a Couranr
+          customer and none of these is a Couranr delivery.
+        */}
+        <ul className="cr-mkt-photostrip" aria-label="Examples of the kinds of local business Couranr delivers for">
+          {BUSINESSES_STRIP_PHOTOS.map((photo) => (
+            <li key={photo.id} className="cr-mkt-photostrip__frame">
+              <img
+                src={largestSrc(photo)}
+                srcSet={srcSetFor(photo, "wide")}
+                sizes="(max-width: 767px) 100vw, 32vw"
+                width={intrinsic(photo).width}
+                height={intrinsic(photo).height}
+                alt={photo.alt}
+                loading="lazy"
+                decoding="async"
+                className="cr-mkt-photostrip__img"
+              />
+            </li>
+          ))}
+        </ul>
         <ul className="cr-mkt-categories" aria-label="Supported business categories">
           {BUSINESS_CATEGORIES.map((c) => (
             <li

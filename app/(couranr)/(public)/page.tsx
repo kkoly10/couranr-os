@@ -47,6 +47,14 @@ import {
   VEHICLE_CLASSES,
   VEHICLE_CLASS_LABELS,
 } from "@/lib/couranr/dispatch/states";
+import {
+  CATEGORY_BREADTH_PHOTOS,
+  OUTCOME_PRIMARY_PHOTO,
+  OUTCOME_SUPPORTING_PHOTO,
+  intrinsic,
+  largestSrc,
+  srcSetFor,
+} from "@/lib/couranr/public/marketingPhotos";
 
 /**
  * PUB-001 — the Couranr marketing homepage.
@@ -398,30 +406,65 @@ export default function Page() {
           </p>
         </div>
         {/*
-          IMAGE SLOT — awaiting IMG-01…04 from
-          docs/couranr-mvp/brand/PUB-001_PHOTOGRAPHY_BRIEF.md.
+          The four owner-accepted frames that closed this slot on 2026-08-28.
+          They ARE the 40–65% photographic half §19.2 describes; the placeholder
+          they replace had been here since the original brief could not be
+          sourced.
 
-          Rendered as a labelled placeholder rather than hidden, because a hidden
-          slot is one nobody remembers. §21.1 required inventorying before
-          sourcing: the repository owns exactly two photographs, both the same
-          florist-and-driver scene, and both are already spent on the hero.
-          Unsplash proved unreachable from this environment and the reachable CC0
-          pool returned frames banned by name in §21.5.
+          FOUR FRAMES, NOT FOUR CARDS. No border, no background, no padding, no
+          per-frame caption — the anti-pattern IMPLEMENTATION_SPEC.md §3 names is
+          "every photo inside the same card". The frames are staggered rather
+          than set in a flat 2x2 so the block reads as one composition.
 
-          The page still meets §27's floor of two image-led sections, because
-          section 10 carries a real corridor map. When the four frames land this
-          becomes the 40–65% photographic half §19.2 describes.
+          ART DIRECTION, NOT A RESIZE. Below 560px a shrunk desktop mosaic puts
+          each frame at roughly 175px, where a subject two thirds of the way into
+          a 3:2 frame stops being readable. The `<source media>` swaps to a 1:1
+          crop about the same focal point, which holds the subject's apparent
+          size in a narrower box. Same reason the hero carries a portrait source.
+
+          The alt text describes the photograph and claims nothing: none of these
+          people is a Couranr customer and none of these is a Couranr delivery.
         */}
-        <div
-          className="cr-mkt-narrative__visual cr-mkt-slot"
-          role="img"
-          aria-label="Photography for this section has not been produced yet."
-        >
-          <span className="cr-mkt-slot__label">Photography pending</span>
-          <span className="cr-mkt-slot__note">
-            IMG-01 … IMG-04 · PUB-001_PHOTOGRAPHY_BRIEF.md
-          </span>
-        </div>
+        <ul className="cr-mkt-narrative__visual cr-mkt-photoset" aria-label="Local businesses Couranr delivers for">
+          {CATEGORY_BREADTH_PHOTOS.map((photo) => {
+            const box = intrinsic(photo);
+            const squareBox = intrinsic(photo, "square");
+            return (
+              <li key={photo.id} className="cr-mkt-photoset__frame">
+                <picture>
+                  {/*
+                    `width`/`height` ON THE SOURCE, not only on the `img`. The
+                    img's attributes describe the WIDE fallback, so below 560px
+                    the browser reserved a 3:2 box and then reflowed it to the
+                    1:1 the square source actually is — measured at 390: each
+                    frame jumped 115px to 173px, 232px of layout shift across
+                    the four. `<source>` takes its own dimensions for exactly
+                    this case.
+                  */}
+                  <source
+                    media="(max-width: 560px)"
+                    type="image/webp"
+                    srcSet={srcSetFor(photo, "square")}
+                    sizes="(max-width: 560px) 45vw, 300px"
+                    width={squareBox.width}
+                    height={squareBox.height}
+                  />
+                  <img
+                    src={largestSrc(photo)}
+                    srcSet={srcSetFor(photo, "wide")}
+                    sizes="(max-width: 899px) 45vw, 300px"
+                    width={box.width}
+                    height={box.height}
+                    alt={photo.alt}
+                    loading="lazy"
+                    decoding="async"
+                    className="cr-mkt-photoset__img"
+                  />
+                </picture>
+              </li>
+            );
+          })}
+        </ul>
       </section>
 
       {/* ─── 4 ───────────────── order-channels / structured-information-block ─── */}
@@ -489,10 +532,19 @@ export default function Page() {
         aria-labelledby="s5-h"
         data-couranr-section="outcomes"
         data-composition="split-story"
-        data-image-led="false"
+        data-image-led="true"
         data-grid-dominant="false"
         data-product-proof="false"
       >
+        {/* `data-image-led` is "true" as of the 2026-08-28 owner decision, and
+            §27.0 row 5 was changed in the same commit. The flag is not
+            decoration: `tests/couranr-public-composition.test.ts` parses §27.0's
+            table and asserts this attribute equals its row, so the two cannot
+            disagree without a red test. `check:visual-system` does NOT do that —
+            it re-derives the budgets from the SPEC alone and would report four
+            image-led sections whether or not the page agreed. Checked by
+            planting the disagreement: the test failed, the gate passed. No
+            artboard covers this region, so the owner decision governs it. */}
         <div className="cr-mkt-split__lead">
           <Heading level={2} id="s5-h" className="cr-type-marketing-section">
             What delivery adds to your business
@@ -510,6 +562,48 @@ export default function Page() {
             </li>
           ))}
         </ul>
+        {/*
+          THE PHOTOGRAPHIC HALF, as a band across both columns rather than a
+          frame inside one of them. That is not a styling preference — it was
+          measured. With the supporting frame under the lead copy and the primary
+          above the list, the lead column rendered 444px against the body's 891px
+          at 1440: a 447px void down the left of the section, which is worse than
+          the void this photography was meant to fill.
+
+          A common height with `object-fit: cover` is what lets a 4:3 primary and
+          a 3:2 support sit on one baseline at different widths. Each is cropped
+          about its own focal point, so the cover crop lands on the subject
+          rather than wherever the centre happens to be.
+
+          WHAT THESE PICTURES CLAIM: nothing. They show what local delivery is
+          worth to the person receiving it. Neither is a Couranr customer, neither
+          is a Couranr delivery, and the alt text describes only the frame —
+          OWNER_VISUAL_DECISION_2026-08-28.md's evidence boundary.
+        */}
+        <div className="cr-mkt-splitband">
+          <img
+            src={largestSrc(OUTCOME_PRIMARY_PHOTO)}
+            srcSet={srcSetFor(OUTCOME_PRIMARY_PHOTO, "wide")}
+            sizes="(max-width: 899px) 100vw, 62vw"
+            width={intrinsic(OUTCOME_PRIMARY_PHOTO).width}
+            height={intrinsic(OUTCOME_PRIMARY_PHOTO).height}
+            alt={OUTCOME_PRIMARY_PHOTO.alt}
+            loading="lazy"
+            decoding="async"
+            className="cr-mkt-splitband__img cr-mkt-splitband__img--primary"
+          />
+          <img
+            src={largestSrc(OUTCOME_SUPPORTING_PHOTO)}
+            srcSet={srcSetFor(OUTCOME_SUPPORTING_PHOTO, "wide")}
+            sizes="(max-width: 899px) 100vw, 38vw"
+            width={intrinsic(OUTCOME_SUPPORTING_PHOTO).width}
+            height={intrinsic(OUTCOME_SUPPORTING_PHOTO).height}
+            alt={OUTCOME_SUPPORTING_PHOTO.alt}
+            loading="lazy"
+            decoding="async"
+            className="cr-mkt-splitband__img cr-mkt-splitband__img--support"
+          />
+        </div>
       </section>
 
       {/* ─── 6 ─────────────────────────────────── workflow / workflow-rail ─── */}

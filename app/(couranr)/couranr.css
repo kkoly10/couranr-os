@@ -1635,24 +1635,94 @@
   margin-inline: auto;
 }
 
-/* The pending-photography slot. Visibly unfinished on purpose — a placeholder
-   that looks designed is a placeholder that ships. */
-.cr-mkt-slot {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--couranr-space-2);
-  min-height: 18rem;
-  padding: var(--couranr-space-6);
-  text-align: center;
-  border: 2px dashed var(--couranr-border-strong);
-  border-radius: var(--couranr-radius-lg);
-  background: var(--couranr-surface-sunken);
-  color: var(--couranr-text-muted);
+/* `.cr-mkt-slot` was the dashed "Photography pending" placeholder. Its only
+   user was PUB-001 `category-breadth`, which the 2026-08-28 accepted set
+   closed, so the rules are gone rather than left to read as a live device.
+   `product-proof` keeps its own separate pending tile
+   (`.cr-mkt-proof__artifact-slot`); that region is frozen for this batch. */
+
+/* ── the accepted 2026-08-28 category-breadth mosaic ─────────────────────── */
+
+/* FOUR FRAMES, NOT FOUR CARDS. No border, no background, no padding and no
+   shadow: IMPLEMENTATION_SPEC.md §3 bans "every photo inside the same card",
+   and a repeated wrapper is exactly what turns four photographs into a feature
+   grid. What holds them together is the grid and the shared radius. */
+.cr-mkt-photoset {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--couranr-space-3);
 }
-.cr-mkt-slot__label { font-weight: var(--couranr-weight-semibold); font-size: var(--couranr-text-sm); }
-.cr-mkt-slot__note  { font-size: var(--couranr-text-xs); }
+.cr-mkt-photoset__frame { min-width: 0; }
+.cr-mkt-photoset__img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--couranr-radius-md);
+  /* The four sources are different rooms in different light — that diversity is
+     the owner's decision and the point of the section. A common radius and a
+     common grid are what make them one series now that a common grade no longer
+     does. */
+}
+
+@media (min-width: 900px) {
+  /* The stagger. A flat 2x2 of equal frames reads as a grid of tiles; dropping
+     the second column half a frame turns the same four photographs into one
+     composition, which is what `image-narrative` asks for. The offset is paid
+     back at the bottom so the block still ends level with the copy column. */
+  .cr-mkt-photoset { gap: var(--couranr-space-4); }
+  .cr-mkt-photoset__frame:nth-child(2),
+  .cr-mkt-photoset__frame:nth-child(4) { transform: translateY(var(--couranr-space-6)); }
+  .cr-mkt-photoset { margin-bottom: var(--couranr-space-6); }
+}
+
+/* ── PUB-009's restrained three-frame strip ──────────────────────────────── */
+
+/* Deliberately SECONDARY. This sits inside `category-system`, whose primary
+   device is the eleven-item category grid, so the strip is one band of fixed
+   height rather than a second gallery — IMPLEMENTATION_SCOPE_MATRIX.md's
+   instruction for this page is "restrained, non-dominant". A fixed height is
+   what keeps it that way as the viewport grows: three 3:2 frames left to size
+   themselves would be 213px at 768 and 570px at 1600. */
+.cr-mkt-photostrip {
+  list-style: none;
+  /* `--couranr-space-8`, not a `-7`: the scale is 0,1,2,3,4,5,6,8,10,12,16 and
+     there is no 7. The first draft of this rule wrote one, which made the whole
+     shorthand invalid at computed-value time and silently computed the margin
+     to 0 — the strip sat 16px from the category grid and nothing failed. */
+  margin: var(--couranr-space-6) 0 var(--couranr-space-8);
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--couranr-space-3);
+}
+.cr-mkt-photostrip__frame { min-width: 0; }
+.cr-mkt-photostrip__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--couranr-radius-md);
+}
+
+@media (max-width: 767px) {
+  /* One column, and each frame keeps its own shape — three side-by-side frames
+     at 390 would be 111px wide, which is a contact sheet, not a photograph. */
+  .cr-mkt-photostrip__img { height: auto; aspect-ratio: 3 / 2; }
+}
+
+@media (min-width: 768px) {
+  .cr-mkt-photostrip {
+    grid-template-columns: repeat(3, 1fr);
+    /* Same reason as the outcomes band: an implicit `auto` row sizes to its
+       content, so `height: 100%` on the image resolves against the content
+       height and the fixed height on the container does nothing. */
+    grid-template-rows: minmax(0, 1fr);
+    height: clamp(10rem, 15vw, 14rem);
+  }
+}
 
 /* ── §19.3 split story — asymmetric, and NOT a three-card benefits grid ──── */
 
@@ -1664,6 +1734,72 @@
   .cr-mkt-split { grid-template-columns: 38fr 62fr; gap: var(--couranr-space-10); align-items: start; }
 }
 
+/* Photography inside a split story. `outcomes` became image-led on 2026-08-28;
+   this band is what makes it so. Scoped to its own class rather than to
+   `.cr-mkt-split`, because `/pricing` and `/businesses` use the same
+   composition with no photograph in it.
+
+   The band spans BOTH columns. Putting the two frames inside the columns was
+   tried first and measured: 444px of lead against 891px of body at 1440, a
+   447px void down the left. A band has no column to be shorter than.
+
+   One height, two widths. `object-fit: cover` against a shared height is what
+   lets a 4:3 primary and a 3:2 support sit on one baseline; `object-position`
+   carries each asset's own focal point so the crop lands on the subject. */
+.cr-mkt-splitband {
+  display: grid;
+  gap: var(--couranr-space-3);
+  margin-top: var(--couranr-space-6);
+}
+.cr-mkt-splitband__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  object-fit: cover;
+  border-radius: var(--couranr-radius-md);
+}
+.cr-mkt-splitband__img--primary { object-position: 57% 46%; }
+/* Y is 28%, not the 50% the asset's focal point implies. Above 900px the
+   support's box is TALLER than 3:2, so `cover` crops its sides and Y does
+   nothing. Below 900px the box is a letterbox and Y is the only thing deciding
+   what survives — at 50% the crop took the top of the subject's head off at both
+   390 and 768. Seen in the render; the focal point alone would not have caught
+   it, because a focal point describes the subject and not the window. */
+.cr-mkt-splitband__img--support { object-position: 60% 28%; }
+
+@media (max-width: 899px) {
+  /* Stacked. Each frame keeps its own shape rather than a shared height — there
+     is no baseline to share in a single column. The support is the wider
+     letterbox so that two stacked photographs do not add up to a page of
+     photography: at 768 a pair of 3:2 frames measured 938px of image in one
+     section. */
+  .cr-mkt-splitband__img { height: auto; }
+  .cr-mkt-splitband__img--primary { aspect-ratio: 3 / 2; }
+  /* 16:9, not 2:1. 2:1 discards a quarter of the frame's height and left no
+     room above the subject; 16:9 discards 16% and costs 22px of page. */
+  .cr-mkt-splitband__img--support { aspect-ratio: 16 / 9; }
+}
+
+@media (min-width: 900px) {
+  .cr-mkt-splitband {
+    grid-column: 1 / -1;
+    grid-template-columns: 62fr 38fr;
+    /* `minmax(0, 1fr)`, not the implicit `auto`. An implicit row sizes to its
+       CONTENT, so the row grew to the 4:3 primary's natural 521px while the
+       container stayed at its 331px clamp and the images hung 190px out of the
+       box — `height: 100%` was resolving against the row, and the row was the
+       thing that needed constraining. Measured, not read. */
+    grid-template-rows: minmax(0, 1fr);
+    gap: var(--couranr-space-4);
+    /* Not a fixed pixel height: the band has to hold its proportion of the
+       section from 900 to 1440 and beyond, and a fixed height turns into a
+       letterbox at the top of that range. */
+    height: clamp(15rem, 23vw, 22rem);
+    margin-top: var(--couranr-space-8);
+  }
+}
+
 .cr-mkt-outcomes { list-style: none; margin: 0; padding: 0; }
 .cr-mkt-outcomes__item {
   padding-block: var(--couranr-space-4);
@@ -1673,6 +1809,255 @@
   color: var(--couranr-text);
 }
 .cr-mkt-outcomes__item:last-child { border-bottom: 1px solid var(--couranr-border); }
+
+/* ── PUB-008's two native explanatory diagrams ───────────────────────────── */
+
+/* WITHOUT COLOUR, FIRST. Both diagrams below encode every state three ways: a
+   word, a shape, and only then a tint. Rendered in grayscale they still read —
+   IMPLEMENTATION_SPEC.md §12 requires it and §7.2 names authorized-vs-captured
+   as the case that must not be colour alone. Nothing here uses hue to carry a
+   fact that is not also written down. */
+
+/* ── the loaded-miles schematic (panel D) ─────────────────────────────────── */
+
+.cr-mkt-miles { margin: 0; }
+.cr-mkt-miles__track {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0;
+}
+
+/* Vertical below 760px. A horizontal five-part track at 390 gives each leg
+   about 70px, which is where explanatory labels turn into two-character
+   stumps — IMPLEMENTATION_SPEC.md §12: "no tiny diagram labels caused by
+   scaling a desktop diagram down". Vertical is not a shrunk horizontal, it is
+   the other layout. */
+.cr-mkt-miles__node,
+.cr-mkt-miles__leg {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  column-gap: var(--couranr-space-4);
+  align-items: start;
+}
+.cr-mkt-miles__node { padding-block: var(--couranr-space-2); }
+.cr-mkt-miles__leg { padding-block: var(--couranr-space-4); }
+
+.cr-mkt-miles__glyph {
+  grid-row: span 2;
+  /* Above the track, and opaque, so the rule can run UNDER it. That is how the
+     line reads as continuous through the markers rather than as three separate
+     dashes with gaps at every node — the same masking `.cr-mkt-rail__marker`
+     uses. */
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--couranr-radius-pill);
+  background: var(--couranr-navy);
+  color: var(--couranr-text-inverse);
+}
+.cr-mkt-miles__glyph svg { width: 16px; height: 16px; }
+/* The midpoint is a smaller hollow marker: it is a threshold on the line, not
+   a place you go. */
+.cr-mkt-miles__glyph--tick {
+  width: 14px;
+  height: 14px;
+  margin-inline: 7px;
+  background: var(--couranr-surface);
+  border: 2px solid var(--couranr-navy);
+}
+
+.cr-mkt-miles__node-label {
+  font-family: var(--couranr-font-display);
+  font-weight: var(--couranr-weight-semibold);
+  color: var(--couranr-text);
+}
+.cr-mkt-miles__node-note,
+.cr-mkt-miles__leg-note {
+  font-size: var(--couranr-text-sm);
+  color: var(--couranr-text-muted);
+}
+.cr-mkt-miles__leg-title {
+  font-weight: var(--couranr-weight-semibold);
+  color: var(--couranr-text);
+}
+
+/* THE TRACK ITSELF, as a rule in the glyph column. Solid for the included leg,
+   dashed for the tiered leg — that is the shape half of the without-colour
+   rule, and it is the same distinction the concept board drew in green and
+   amber. */
+/* The rule overruns its leg at both ends and is masked by the neighbouring
+   glyphs. Without the overrun it stopped at the leg's own box, which left a
+   visible break between every marker and the line it is supposed to sit on —
+   the node box is taller than its 28px glyph, so "top: 0" is not the glyph's
+   edge. Seen in the render at 390. */
+.cr-mkt-miles__leg-rule {
+  position: absolute;
+  left: 13px;
+  top: -2.5rem;
+  bottom: -2.5rem;
+  width: 2px;
+}
+.cr-mkt-miles__leg--included .cr-mkt-miles__leg-rule {
+  background: var(--couranr-navy);
+}
+.cr-mkt-miles__leg--tiered .cr-mkt-miles__leg-rule {
+  /* A dashed rule drawn with a repeating gradient rather than a dashed border,
+     because a 2px dashed border renders as a dotted smear at this width. */
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--couranr-navy) 0 6px,
+    transparent 6px 12px
+  );
+}
+.cr-mkt-miles__leg-title,
+.cr-mkt-miles__leg-note { grid-column: 2; }
+
+.cr-mkt-miles__caption {
+  margin-top: var(--couranr-space-5);
+  padding-top: var(--couranr-space-4);
+  border-top: 1px solid var(--couranr-border);
+  font-size: var(--couranr-text-sm);
+  color: var(--couranr-text-muted);
+  max-width: 68ch;
+}
+.cr-mkt-miles__caption strong { color: var(--couranr-text); }
+
+@media (min-width: 900px) {
+  /* Horizontal, and 900 rather than 760: the legs carry whole sentences, and
+     below 900 the container leaves them about 136px each, which is where the
+     tiered leg's sentence breaks into five ragged lines. The vertical layout is
+     better at that width than a cramped horizontal one. */
+  .cr-mkt-miles__track {
+    /* FIXED node columns, not `auto`. The track has to reach the CENTRE of each
+       marker, and a negative inset can only do that if it knows how far the
+       centre is — with `auto` columns the node was as wide as its longest label
+       and the rule stopped 50px short of the marker at 1440. Fixed columns make
+       the offset below exactly half a column plus the gap. */
+    grid-template-columns: 8rem 1fr 8rem 1fr 8rem;
+    align-items: start;
+    column-gap: var(--couranr-space-3);
+  }
+  .cr-mkt-miles__node,
+  .cr-mkt-miles__leg {
+    grid-template-columns: 1fr;
+    row-gap: var(--couranr-space-1);
+    padding-block: 0;
+  }
+  /* Centred under the marker, because the marker is now the column's centre. */
+  .cr-mkt-miles__node { justify-items: center; text-align: center; }
+  .cr-mkt-miles__glyph { grid-row: auto; margin-bottom: var(--couranr-space-2); }
+  .cr-mkt-miles__glyph--tick { margin-inline: 0; margin-top: 7px; margin-bottom: calc(var(--couranr-space-2) + 7px); }
+  .cr-mkt-miles__leg-title,
+  .cr-mkt-miles__leg-note { grid-column: auto; }
+  .cr-mkt-miles__leg { padding-top: 34px; }
+  .cr-mkt-miles__leg-rule {
+    /* Half a node column (4rem) plus the column gap: the rule ends exactly under
+       each marker's centre, and the marker's own background masks it there. */
+    left: calc(-4rem - var(--couranr-space-3));
+    right: calc(-4rem - var(--couranr-space-3));
+    top: 13px;
+    bottom: auto;
+    width: auto;
+    height: 2px;
+  }
+  .cr-mkt-miles__leg--tiered .cr-mkt-miles__leg-rule {
+    background: repeating-linear-gradient(
+      to right,
+      var(--couranr-navy) 0 6px,
+      transparent 6px 12px
+    );
+  }
+}
+
+/* ── authorization to capture (panel E) ───────────────────────────────────── */
+
+.cr-mkt-paystates { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.cr-mkt-paystates__step {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  column-gap: var(--couranr-space-4);
+  row-gap: var(--couranr-space-3);
+  padding-block: var(--couranr-space-4);
+  border-top: 1px solid var(--couranr-border);
+}
+.cr-mkt-paystates__step:last-child { border-bottom: 1px solid var(--couranr-border); }
+.cr-mkt-paystates__index {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--couranr-radius-pill);
+  background: var(--couranr-surface-sunken);
+  border: 1px solid var(--couranr-border-strong);
+  color: var(--couranr-text-muted);
+  font-family: var(--couranr-font-display);
+  font-size: var(--couranr-text-sm);
+  font-variant-numeric: tabular-nums;
+}
+.cr-mkt-paystates__copy { min-width: 0; }
+.cr-mkt-paystates__title {
+  margin: 0 0 var(--couranr-space-1);
+  font-family: var(--couranr-font-display);
+  font-size: 1.0625rem;
+  font-weight: var(--couranr-weight-semibold);
+  color: var(--couranr-text);
+}
+.cr-mkt-paystates__body {
+  margin: 0;
+  font-size: var(--couranr-text-sm);
+  color: var(--couranr-text-muted);
+  max-width: 58ch;
+}
+
+/* The state chip. Its BORDER and its GLYPH carry the distinction; the tint is
+   the third signal and is never the only one. */
+.cr-mkt-paystates__state {
+  grid-column: 2;
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--couranr-space-2);
+  padding: var(--couranr-space-1) var(--couranr-space-3);
+  border-radius: var(--couranr-radius-pill);
+  border: 1px solid var(--couranr-border-strong);
+  background: var(--couranr-surface-sunken);
+  font-size: var(--couranr-text-sm);
+  font-weight: var(--couranr-weight-medium);
+  color: var(--couranr-text);
+  white-space: nowrap;
+}
+.cr-mkt-paystates__state-glyph { display: grid; place-items: center; }
+.cr-mkt-paystates__state-glyph svg { width: 15px; height: 15px; }
+.cr-mkt-paystates__state--none .cr-mkt-paystates__state-glyph { display: none; }
+/* The two tints already in the file: `#fdf8ec` is what `.cr-mkt-payer--merchant`
+   paints on gold, and `--couranr-success-surface` is the token the badge and
+   alert families already use. No new colour is introduced by this diagram, and
+   neither tint carries a fact the word and the glyph do not already carry. */
+.cr-mkt-paystates__state--held {
+  border-color: var(--couranr-gold);
+  background: #fdf8ec;
+}
+.cr-mkt-paystates__state--captured {
+  border-color: var(--couranr-success);
+  background: var(--couranr-success-surface);
+}
+
+@media (min-width: 760px) {
+  /* The state moves to its own column so the five states line up and can be
+     compared down the page — which is the whole point of the diagram. */
+  .cr-mkt-paystates__step {
+    grid-template-columns: 28px 1fr auto;
+    align-items: center;
+    column-gap: var(--couranr-space-5);
+  }
+  .cr-mkt-paystates__state { grid-column: 3; justify-self: end; }
+}
 
 /* ── §19.4 workflow rail — the steps are CONNECTED, not four tiles ───────── */
 
@@ -1721,7 +2106,18 @@
   /* Horizontal rail on desktop: the connector becomes the line between markers,
      so the sequence still reads as one flow rather than four columns. */
   .cr-mkt-rail { grid-template-columns: repeat(4, 1fr); gap: var(--couranr-space-5); }
-  .cr-mkt-rail__step { grid-template-columns: 1fr; padding-block: 0; }
+  .cr-mkt-rail__step {
+    grid-template-columns: 1fr;
+    /* `auto 1fr`, not the implicit `auto auto`. The steps are stretched to a
+       common height by the outer grid, and with two `auto` rows the MARKER row
+       absorbed the slack — by a different amount in each step, because each
+       step's copy is a different length. Measured at 1440: marker rows of
+       65.7, 44, 54.8 and 44px, which put the four step titles on three
+       different baselines. Pinning the slack to the copy row is what makes the
+       rail read as one row of steps. */
+    grid-template-rows: auto 1fr;
+    padding-block: 0;
+  }
   .cr-mkt-rail__step::before,
   /* The vertical layout trims the rail at both ends with `top: 50%` and
      `bottom: 50%`. Those must be RESET here, not just overridden for the
@@ -1979,7 +2375,6 @@
 
 .cr-root { --couranr-text-muted-tint: #656f84; }
 
-.cr-mkt-slot,
 .cr-mkt-payer,
 .cr-mkt-proof__panel-head,
 .cr-mkt-channelstrip__item {

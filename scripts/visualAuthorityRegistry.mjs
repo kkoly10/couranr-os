@@ -333,14 +333,212 @@ function build() {
         preferred_aspect: "3:4",
         status: "approved",
       },
+      /* ── the owner-accepted 2026-08-28 marketing set ──────────────────────
+         Eleven frames, transcribed from the handoff package's
+         ASSET_PROVENANCE.json. They are recorded HERE, in the generator, and
+         not in the JSON it writes: REPO_AUTHORITY_AMENDMENTS.md §4 says not to
+         hand-edit generated output, and `validate()` below checks that every
+         `local_path` and `derived_from` exists on disk, so a row for a file
+         that was never installed fails the gate.
+
+         `local_path` is the WIDEST derivative each asset actually serves;
+         `derived_from` is the unmodified accepted source. Two carry
+         `allowed_surfaces: []` and `status: "approved-reserve"` — they are
+         accepted and deliberately unused by the website batch, which is a
+         decision worth recording rather than an omission worth discovering. */
+      {
+        "asset_id": "couranr-mkt-2026-08-florist",
+        "local_path": "public/images/marketing/2026-08/w/mkt-2026-08-florist-wide-800.webp",
+        "derived_from": "public/images/marketing/2026-08/01-florist.png",
+        "source": "generated-openai-chatgpt-2026-08",
+        "source_reference": "Generated with OpenAI image generation in ChatGPT; owner-accepted on 2026-08-28",
+        "license_record": "Generated asset; no third-party stock source or external stock license. Preserve generation provenance and follow applicable OpenAI terms.",
+        "subject": "Florist selecting stems in a bright independent flower shop",
+        "alt": "Florist selecting stems from a wall of flowers in a local shop.",
+        "allowed_surfaces": [
+          "PUB-001"
+        ],
+        "desktop_focal_point": "31% 40%",
+        "mobile_focal_point": "31% 40%",
+        "focal_point_note":
+          "The handoff record gives 31% 46%. The crop uses y=40%: at 46% the 3:2 window cut the florist's raised hand. See scripts/buildMarketingImages.mjs.",
+        "preferred_aspect": "3:2",
+        "status": "approved"
+      },
+      {
+        "asset_id": "couranr-mkt-2026-08-bakery",
+        "local_path": "public/images/marketing/2026-08/w/mkt-2026-08-bakery-wide-800.webp",
+        "derived_from": "public/images/marketing/2026-08/02-bakery.png",
+        "source": "generated-openai-chatgpt-2026-08",
+        "source_reference": "Generated with OpenAI image generation in ChatGPT; owner-accepted on 2026-08-28",
+        "license_record": "Generated asset; no third-party stock source or external stock license. Preserve generation provenance and follow applicable OpenAI terms.",
+        "subject": "Baker pulling fresh loaves from a commercial oven",
+        "alt": "Baker removing fresh bread from an oven in a neighborhood bakery.",
+        "allowed_surfaces": [
+          "PUB-009"
+        ],
+        "desktop_focal_point": "53% 46%",
+        "mobile_focal_point": "53% 46%",
+        "preferred_aspect": "3:2",
+        "status": "approved"
+      },
+      {
+        "asset_id": "couranr-mkt-2026-08-boutique",
+        "local_path": "public/images/marketing/2026-08/w/mkt-2026-08-boutique-wide-800.webp",
+        "derived_from": "public/images/marketing/2026-08/03-boutique.png",
+        "source": "generated-openai-chatgpt-2026-08",
+        "source_reference": "Generated with OpenAI image generation in ChatGPT; owner-accepted on 2026-08-28",
+        "license_record": "Generated asset; no third-party stock source or external stock license. Preserve generation provenance and follow applicable OpenAI terms.",
+        "subject": "Older boutique owner helping a customer compare clothing",
+        "alt": "Boutique owner helping a customer compare clothing in a local shop.",
+        "allowed_surfaces": [
+          "PUB-001"
+        ],
+        "desktop_focal_point": "69% 47%",
+        "mobile_focal_point": "69% 47%",
+        "preferred_aspect": "3:2",
+        "status": "approved"
+      },
+      {
+        "asset_id": "couranr-mkt-2026-08-hardware",
+        "local_path": "public/images/marketing/2026-08/w/mkt-2026-08-hardware-wide-800.webp",
+        "derived_from": "public/images/marketing/2026-08/04-hardware.png",
+        "source": "generated-openai-chatgpt-2026-08",
+        "source_reference": "Generated with OpenAI image generation in ChatGPT; owner-accepted on 2026-08-28",
+        "license_record": "Generated asset; no third-party stock source or external stock license. Preserve generation provenance and follow applicable OpenAI terms.",
+        "subject": "Hardware-store worker retrieving stock from a high shelf",
+        "alt": "Worker reaching for merchandise on a high shelf in a neighborhood hardware store.",
+        "allowed_surfaces": [
+          "PUB-001"
+        ],
+        "desktop_focal_point": "56% 42%",
+        "mobile_focal_point": "56% 42%",
+        "preferred_aspect": "3:2",
+        "status": "approved"
+      },
+      {
+        "asset_id": "couranr-mkt-2026-08-print-sign",
+        "local_path": "public/images/marketing/2026-08/w/mkt-2026-08-print-sign-wide-800.webp",
+        "derived_from": "public/images/marketing/2026-08/05-print-sign.png",
+        "source": "generated-openai-chatgpt-2026-08",
+        "source_reference": "Generated with OpenAI image generation in ChatGPT; owner-accepted on 2026-08-28",
+        "license_record": "Generated asset; no third-party stock source or external stock license. Preserve generation provenance and follow applicable OpenAI terms.",
+        "subject": "Print-shop worker inspecting a large-format print",
+        "alt": "Print-shop worker inspecting a large-format print coming off a printer.",
+        "allowed_surfaces": [
+          "PUB-009"
+        ],
+        "desktop_focal_point": "60% 48%",
+        "mobile_focal_point": "60% 48%",
+        "preferred_aspect": "3:2",
+        "status": "approved"
+      },
+      {
+        "asset_id": "couranr-mkt-2026-08-specialty-retail",
+        "local_path": "public/images/marketing/2026-08/06-specialty-retail.png",
+        "derived_from": "public/images/marketing/2026-08/06-specialty-retail.png",
+        "source": "generated-openai-chatgpt-2026-08",
+        "source_reference": "Generated with OpenAI image generation in ChatGPT; owner-accepted on 2026-08-28",
+        "license_record": "Generated asset; no third-party stock source or external stock license. Preserve generation provenance and follow applicable OpenAI terms.",
+        "subject": "Home-goods shop worker arranging ceramics on a display wall",
+        "alt": "Shop worker arranging ceramics on shelves in a local home-goods store.",
+        "allowed_surfaces": [],
+        "desktop_focal_point": "79% 45%",
+        "mobile_focal_point": "79% 45%",
+        "preferred_aspect": "3:2",
+        "status": "approved-reserve"
+      },
+      {
+        "asset_id": "couranr-mkt-2026-08-dry-cleaning",
+        "local_path": "public/images/marketing/2026-08/w/mkt-2026-08-dry-cleaning-wide-800.webp",
+        "derived_from": "public/images/marketing/2026-08/07-dry-cleaning.png",
+        "source": "generated-openai-chatgpt-2026-08",
+        "source_reference": "Generated with OpenAI image generation in ChatGPT; owner-accepted on 2026-08-28",
+        "license_record": "Generated asset; no third-party stock source or external stock license. Preserve generation provenance and follow applicable OpenAI terms.",
+        "subject": "Dry-cleaning worker tagging finished garments",
+        "alt": "Dry-cleaning worker tagging finished garments beside a rack of clothing.",
+        "allowed_surfaces": [
+          "PUB-001"
+        ],
+        "desktop_focal_point": "49% 44%",
+        "mobile_focal_point": "49% 44%",
+        "preferred_aspect": "3:2",
+        "status": "approved"
+      },
+      {
+        "asset_id": "couranr-mkt-2026-08-gift-stationery",
+        "local_path": "public/images/marketing/2026-08/w/mkt-2026-08-gift-stationery-wide-800.webp",
+        "derived_from": "public/images/marketing/2026-08/08-gift-stationery.png",
+        "source": "generated-openai-chatgpt-2026-08",
+        "source_reference": "Generated with OpenAI image generation in ChatGPT; owner-accepted on 2026-08-28",
+        "license_record": "Generated asset; no third-party stock source or external stock license. Preserve generation provenance and follow applicable OpenAI terms.",
+        "subject": "Stationery-shop worker helping an older customer choose an item",
+        "alt": "Stationery-shop worker helping an older customer choose an item.",
+        "allowed_surfaces": [
+          "PUB-009"
+        ],
+        "desktop_focal_point": "63% 45%",
+        "mobile_focal_point": "63% 45%",
+        "preferred_aspect": "3:2",
+        "status": "approved"
+      },
+      {
+        "asset_id": "couranr-mkt-2026-08-benefit-older-customer",
+        "local_path": "public/images/marketing/2026-08/w/mkt-2026-08-older-customer-wide-880.webp",
+        "derived_from": "public/images/marketing/2026-08/09-older-customer-home-goods.png",
+        "source": "generated-openai-chatgpt-2026-08",
+        "source_reference": "Generated with OpenAI image generation in ChatGPT; owner-accepted on 2026-08-28",
+        "license_record": "Generated asset; no third-party stock source or external stock license. Preserve generation provenance and follow applicable OpenAI terms.",
+        "subject": "Older customer at home arranging a locally purchased home-goods item",
+        "alt": "Older customer arranging a newly purchased vase at home.",
+        "allowed_surfaces": [
+          "PUB-001"
+        ],
+        "desktop_focal_point": "60% 50%",
+        "mobile_focal_point": "60% 28%",
+        "focal_point_note":
+          "Desktop is the handoff's 60% 50%. Below 900px the frame is a 16:9 letterbox and cover crops vertically; at 50% it took the top of the subject's head off, so the render uses 28%. A focal point describes the subject, not the window.",
+        "preferred_aspect": "3:2",
+        "status": "approved"
+      },
+      {
+        "asset_id": "couranr-mkt-2026-08-benefit-busy-parent",
+        "local_path": "public/images/marketing/2026-08/w/mkt-2026-08-busy-parent-wide-1440.webp",
+        "derived_from": "public/images/marketing/2026-08/10-busy-parent-home.png",
+        "source": "generated-openai-chatgpt-2026-08",
+        "source_reference": "Generated with OpenAI image generation in ChatGPT; owner-accepted on 2026-08-28",
+        "license_record": "Generated asset; no third-party stock source or external stock license. Preserve generation provenance and follow applicable OpenAI terms.",
+        "subject": "Busy parent at home with children and a local bakery purchase",
+        "alt": "Busy parent at home with children and a bakery purchase on the kitchen island.",
+        "allowed_surfaces": [
+          "PUB-001"
+        ],
+        "desktop_focal_point": "57% 46%",
+        "mobile_focal_point": "57% 46%",
+        "preferred_aspect": "4:3",
+        "status": "approved"
+      },
+      {
+        "asset_id": "couranr-mkt-2026-08-benefit-office",
+        "local_path": "public/images/marketing/2026-08/11-office-local-supplies.png",
+        "derived_from": "public/images/marketing/2026-08/11-office-local-supplies.png",
+        "source": "generated-openai-chatgpt-2026-08",
+        "source_reference": "Generated with OpenAI image generation in ChatGPT; owner-accepted on 2026-08-28",
+        "license_record": "Generated asset; no third-party stock source or external stock license. Preserve generation provenance and follow applicable OpenAI terms.",
+        "subject": "Professional at work unpacking locally sourced creative materials",
+        "alt": "Professional at work reviewing newly received creative materials and supplies.",
+        "allowed_surfaces": [],
+        "desktop_focal_point": "49% 43%",
+        "mobile_focal_point": "49% 43%",
+        "preferred_aspect": "4:3",
+        "status": "approved-reserve"
+      },
     ],
     pending_photography: [
-      {
-        slot: "PUB-001 section 3 (category-breadth)",
-        assets: ["IMG-01", "IMG-02", "IMG-03", "IMG-04"],
-        brief: "docs/couranr-mvp/brand/PUB-001_PHOTOGRAPHY_BRIEF.md",
-        blocks: "Gate A deviation D-1",
-      },
+      /* PUB-001 section 3 (category-breadth) is NO LONGER PENDING. The owner
+         accepted four frames on 2026-08-28 and they are installed; the entry
+         that used to sit here would now be a false claim that the page still
+         shows a placeholder. */
       {
         slot: "PUB-001 section 7 (product-proof), delivery-photo artifact",
         assets: ["IMG-05 or a product proof frame"],

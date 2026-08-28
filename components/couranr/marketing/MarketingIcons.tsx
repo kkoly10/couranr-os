@@ -203,3 +203,28 @@ export function IconRoute(p: IconProps) {
     </Svg>
   );
 }
+
+/**
+ * Authorization state. Drawn as a CLOSED PADLOCK because the money is held —
+ * `/pricing`'s authorization-to-capture guide must distinguish "held" from
+ * "charged" without relying on colour (§23.5, and IMPLEMENTATION_SPEC.md §7.2
+ * names the requirement directly). Shape carries the distinction; the state's
+ * word carries it again in text.
+ */
+export function IconLock(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <rect x="4.5" y="10.5" width="15" height="9.5" rx="2" />
+      <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
+    </Svg>
+  );
+}
+
+/** The counterpart: capture has happened. An OPEN tick, not a filled circle. */
+export function IconCheck(p: IconProps) {
+  return (
+    <Svg {...p}>
+      <path d="M4.5 12.5 9.5 17.5 19.5 6.5" />
+    </Svg>
+  );
+}
