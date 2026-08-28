@@ -428,14 +428,26 @@ export default function Page() {
         <ul className="cr-mkt-narrative__visual cr-mkt-photoset" aria-label="Local businesses Couranr delivers for">
           {CATEGORY_BREADTH_PHOTOS.map((photo) => {
             const box = intrinsic(photo);
+            const squareBox = intrinsic(photo, "square");
             return (
               <li key={photo.id} className="cr-mkt-photoset__frame">
                 <picture>
+                  {/*
+                    `width`/`height` ON THE SOURCE, not only on the `img`. The
+                    img's attributes describe the WIDE fallback, so below 560px
+                    the browser reserved a 3:2 box and then reflowed it to the
+                    1:1 the square source actually is — measured at 390: each
+                    frame jumped 115px to 173px, 232px of layout shift across
+                    the four. `<source>` takes its own dimensions for exactly
+                    this case.
+                  */}
                   <source
                     media="(max-width: 560px)"
                     type="image/webp"
                     srcSet={srcSetFor(photo, "square")}
                     sizes="(max-width: 560px) 45vw, 300px"
+                    width={squareBox.width}
+                    height={squareBox.height}
                   />
                   <img
                     src={largestSrc(photo)}

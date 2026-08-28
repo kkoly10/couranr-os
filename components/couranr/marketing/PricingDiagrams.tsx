@@ -1,4 +1,3 @@
-import * as React from "react";
 import {
   BASE_PRICE_CENTS,
   INCLUDED_LOADED_MILES,
