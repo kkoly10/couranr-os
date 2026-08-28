@@ -98,6 +98,7 @@ const STAGES = [
   { tier: 2, name: "check:routes", run: ["npm", ["run", "check:routes"]], why: "no ungated canonical API route" },
   { tier: 2, name: "check:legacy-imports", run: ["npm", ["run", "check:legacy-imports"]], why: "canonical code imports no legacy module" },
   { tier: 2, name: "check:mocks", run: ["npm", ["run", "check:mocks"]], why: "every root PNG accounted for" },
+  { tier: 2, name: "check:images", run: ["npm", ["run", "check:images"]], why: "every marketing derivative is current with its accepted source" },
   { tier: 2, name: "check:migrations", run: ["npm", ["run", "check:migrations"]], why: "no destructive migration" },
   { tier: 2, name: "check:visual-system", run: ["npm", ["run", "check:visual-system"]], why: "§27.0/§27.1 re-derived from the spec" },
   { tier: 2, name: "check:visual-registry", run: ["npm", ["run", "check:visual-registry"]], why: "66/66 screens, dimensions match their files" },

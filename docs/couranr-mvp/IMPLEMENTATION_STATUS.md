@@ -70,6 +70,37 @@ with live state in [`AUTONOMOUS_RUN_STATE.json`](./AUTONOMOUS_RUN_STATE.json).
 Every number below was counted at that SHA by a command whose output was read.
 None is quoted from an earlier report, a commit message or a plan.
 
+## Visual content — the 2026-08-28 accepted photography batch
+
+Recorded here because it changes what the public pages RENDER and nothing about
+what Couranr can DO. No ledger row moves: this is visual content, not a work
+item, and treating it as evidence of operational maturity is exactly the mistake
+`OWNER_VISUAL_DECISION_2026-08-28.md` was written to prevent.
+
+**Landed.** Eleven owner-accepted photographs installed at
+`public/images/marketing/2026-08/`, with responsive WebP derivatives built by
+`scripts/buildMarketingImages.mjs` and registered through
+`scripts/visualAuthorityRegistry.mjs`. Six render on PUB-001 — four closing the
+`category-breadth` placeholder, two making `outcomes` image-led — and three on
+PUB-009 as one restrained strip. Two are recorded `approved-reserve` and
+deliberately render nowhere. PUB-008 gained two native explanatory diagrams
+(loaded miles; authorization → confirmation → capture), both bound to
+`lib/couranr/public/governed.ts` at render time.
+
+**Still deferred, and none of it moved:**
+
+- real delivery evidence — none exists that the owner has approved;
+- proof-of-delivery photography — the `product-proof` region is frozen and keeps
+  its own pending tile;
+- product screenshots used as evidence;
+- testimonials, customer logos, delivery counts and performance metrics;
+- `/estimate`, which remains a `ScreenPlaceholder`. This batch deliberately did
+  not decorate it.
+
+**Not claimed.** No photograph asserts that its subject is a Couranr customer or
+that its parcel is a Couranr delivery. `tests/couranr-marketing-photos.test.ts`
+asserts that boundary against every alt string rather than trusting it.
+
 ## Authority sources
 
 1. `02_DECISION_REGISTRY.json` (repo root) — 43 decision records

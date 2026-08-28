@@ -636,3 +636,48 @@ describe("no border-color that nothing gives a border to", () => {
     expect(problems).toEqual([]);
   });
 });
+
+/**
+ * Every `--couranr-*` a stylesheet READS must be one a stylesheet DEFINES.
+ *
+ * This exists because of a defect that shipped past a green build, a green
+ * typecheck and 2014 green tests: `margin: var(--couranr-space-6) 0
+ * var(--couranr-space-7)`. There is no `--couranr-space-7` — the scale runs
+ * 0,1,2,3,4,5,6,8,10,12,16 and skips seven. An unresolvable `var()` makes the
+ * WHOLE declaration invalid at computed-value time, so the shorthand did not
+ * fall back to the two values that were valid; the margin computed to 0 and a
+ * photo strip sat 16px from the grid below it. Nothing anywhere went red.
+ *
+ * A reference WITH a fallback — `var(--couranr-radius, 12px)` — is legal and is
+ * not flagged: the fallback is what makes it resolvable, and two of those
+ * predate this test.
+ */
+describe("§12 custom properties resolve", () => {
+  const sheets = ["app/(couranr)/couranr.css", "app/(couranr)/shell.css"]
+    .map((f) => ({ f, text: readFileSync(path.join(ROOT, f), "utf8") }))
+    .filter((s) => s.text.length > 0);
+
+  const defined = new Set<string>();
+  for (const { text } of sheets) {
+    for (const m of text.matchAll(/(--couranr-[a-z0-9-]+)\s*:/g)) defined.add(m[1]);
+  }
+
+  it("finds the token layer", () => {
+    expect(defined.size).toBeGreaterThan(50);
+    expect(defined).toContain("--couranr-space-6");
+    // The gap that caused this test. If a `-7` is ever added, this line is the
+    // one to delete — deliberately, not by accident.
+    expect(defined).not.toContain("--couranr-space-7");
+  });
+
+  it("no var() without a fallback names an undefined token", () => {
+    const missing: string[] = [];
+    for (const { f, text } of sheets) {
+      for (const m of text.matchAll(/var\(\s*(--couranr-[a-z0-9-]+)\s*([,)])/g)) {
+        if (m[2] === ",") continue; // has a fallback, so it resolves
+        if (!defined.has(m[1])) missing.push(`${f}: var(${m[1]}) is never defined`);
+      }
+    }
+    expect([...new Set(missing)]).toEqual([]);
+  });
+});

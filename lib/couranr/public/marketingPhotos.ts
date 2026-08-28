@@ -1,0 +1,156 @@
+/**
+ * The owner-accepted 2026-08-28 marketing photography, as render-time data.
+ *
+ * ONE MODULE, TWO PAGES. PUB-001 and PUB-009 both render frames from this set.
+ * Alt text in particular must not be retyped per page: it is the accessible
+ * description of a specific photograph, it was written once in the owner's
+ * handoff record (`ASSET_PROVENANCE.json`), and a second copy is a second
+ * chance to drift from it.
+ *
+ * WHAT THE ALT TEXT MAY AND MAY NOT SAY. Every one of these describes what the
+ * photograph shows and nothing else. None of them says or implies that the
+ * person is a Couranr customer, that the parcel is a Couranr delivery, or that
+ * the scene happened. OWNER_VISUAL_DECISION_2026-08-28.md's evidence boundary
+ * is explicit: Couranr has no owner-approved delivery evidence yet, so these
+ * are category and benefit illustrations. `tests/couranr-marketing-photos.test.ts`
+ * asserts the boundary rather than trusting it.
+ *
+ * PROVENANCE. Generated with OpenAI image generation in ChatGPT and accepted by
+ * the owner on 2026-08-28. Sources live at `public/images/marketing/2026-08/`
+ * unmodified; every path below is a derivative built by
+ * `scripts/buildMarketingImages.mjs`, which owns the crop windows and the focal
+ * points. Registration is in `scripts/visualAuthorityRegistry.mjs`.
+ */
+
+export const MARKETING_PHOTO_DIR = "/images/marketing/2026-08/w";
+
+export type MarketingPhoto = {
+  /** Matches the `asset_id` the visual-authority registry records. */
+  id: string;
+  /** File stem shared by every derivative of this asset. */
+  slug: string;
+  alt: string;
+  /** Intrinsic aspect of the `wide` derivative, as [w, h] for the `<img>`. */
+  wide: { widths: number[]; ratio: [number, number] };
+  /** Present only where a narrow viewport needs a different crop, not a resize. */
+  square?: { widths: number[] };
+};
+
+function src(slug: string, shape: string, width: number): string {
+  return `${MARKETING_PHOTO_DIR}/mkt-2026-08-${slug}-${shape}-${width}.webp`;
+}
+
+/** `srcSet` for one shape of one asset, widest last. */
+export function srcSetFor(photo: MarketingPhoto, shape: "wide" | "square"): string {
+  const widths = shape === "wide" ? photo.wide.widths : (photo.square?.widths ?? []);
+  return widths.map((w) => `${src(photo.slug, shape, w)} ${w}w`).join(", ");
+}
+
+/** The largest derivative, which is what a `src` fallback should point at. */
+export function largestSrc(photo: MarketingPhoto, shape: "wide" | "square" = "wide"): string {
+  const widths = shape === "wide" ? photo.wide.widths : (photo.square?.widths ?? []);
+  return src(photo.slug, shape, widths[widths.length - 1]);
+}
+
+/** Rendered `width`/`height` for a shape, so the box is reserved before load. */
+export function intrinsic(photo: MarketingPhoto, shape: "wide" | "square" = "wide") {
+  const widths = shape === "wide" ? photo.wide.widths : (photo.square?.widths ?? []);
+  const w = widths[widths.length - 1];
+  if (shape === "square") return { width: w, height: w };
+  const [rw, rh] = photo.wide.ratio;
+  return { width: w, height: Math.round((w * rh) / rw) };
+}
+
+/**
+ * PUB-001 `category-breadth` — exactly four, locked by
+ * IMPLEMENTATION_SCOPE_MATRIX.md. The point of the section is BREADTH, so the
+ * four are deliberately different trades, different people, different rooms and
+ * different camera positions. That diversity supersedes the original brief's
+ * same-light/same-distance requirement; see the 2026-08-28 amendment at the top
+ * of `docs/couranr-mvp/brand/PUB-001_PHOTOGRAPHY_BRIEF.md`.
+ */
+export const CATEGORY_BREADTH_PHOTOS: MarketingPhoto[] = [
+  {
+    id: "couranr-mkt-2026-08-florist",
+    slug: "florist",
+    alt: "Florist selecting stems from a wall of flowers in a local shop.",
+    wide: { widths: [400, 800], ratio: [3, 2] },
+    square: { widths: [200, 400] },
+  },
+  {
+    id: "couranr-mkt-2026-08-boutique",
+    slug: "boutique",
+    alt: "Boutique owner helping a customer compare clothing in a local shop.",
+    wide: { widths: [400, 800], ratio: [3, 2] },
+    square: { widths: [200, 400] },
+  },
+  {
+    id: "couranr-mkt-2026-08-hardware",
+    slug: "hardware",
+    alt: "Worker reaching for merchandise on a high shelf in a neighborhood hardware store.",
+    wide: { widths: [400, 800], ratio: [3, 2] },
+    square: { widths: [200, 400] },
+  },
+  {
+    id: "couranr-mkt-2026-08-dry-cleaning",
+    slug: "dry-cleaning",
+    alt: "Dry-cleaning worker tagging finished garments beside a rack of clothing.",
+    wide: { widths: [400, 800], ratio: [3, 2] },
+    square: { widths: [200, 400] },
+  },
+];
+
+/**
+ * PUB-001 `outcomes` — exactly two. The busy parent is the primary and the
+ * older customer the support, which is the owner's ordering and not a layout
+ * convenience. The third accepted benefit frame (office / local supplies) is a
+ * reserve and is deliberately NOT on the homepage.
+ */
+export const OUTCOME_PRIMARY_PHOTO: MarketingPhoto = {
+  id: "couranr-mkt-2026-08-benefit-busy-parent",
+  slug: "busy-parent",
+  alt: "Busy parent at home with children and a bakery purchase on the kitchen island.",
+  wide: { widths: [480, 960, 1440], ratio: [4, 3] },
+};
+
+export const OUTCOME_SUPPORTING_PHOTO: MarketingPhoto = {
+  id: "couranr-mkt-2026-08-benefit-older-customer",
+  slug: "older-customer",
+  alt: "Older customer arranging a newly purchased vase at home.",
+  wide: { widths: [320, 640, 880], ratio: [3, 2] },
+};
+
+/**
+ * PUB-009 `/businesses` — exactly three, as one restrained strip. Specialty
+ * retail is an accepted reserve and is not here.
+ */
+export const BUSINESSES_STRIP_PHOTOS: MarketingPhoto[] = [
+  {
+    id: "couranr-mkt-2026-08-bakery",
+    slug: "bakery",
+    alt: "Baker removing fresh bread from an oven in a neighborhood bakery.",
+    wide: { widths: [400, 800], ratio: [3, 2] },
+  },
+  {
+    id: "couranr-mkt-2026-08-print-sign",
+    slug: "print-sign",
+    alt: "Print-shop worker inspecting a large-format print coming off a printer.",
+    wide: { widths: [400, 800], ratio: [3, 2] },
+  },
+  {
+    id: "couranr-mkt-2026-08-gift-stationery",
+    slug: "gift-stationery",
+    alt: "Stationery-shop worker helping an older customer choose an item.",
+    wide: { widths: [400, 800], ratio: [3, 2] },
+  },
+];
+
+/**
+ * Accepted, and deliberately unused by the website batch. Recorded here so the
+ * next person reads "reserve" rather than "forgotten" — and so a test can hold
+ * the homepage to six photographs rather than however many exist.
+ */
+export const RESERVE_PHOTO_IDS = [
+  "couranr-mkt-2026-08-specialty-retail",
+  "couranr-mkt-2026-08-benefit-office",
+] as const;

@@ -5,7 +5,94 @@ has to satisfy. Written against `COURANR_VISUAL_SYSTEM_V2_2.md` §21 (photograph
 system), §27.0 (the twelve governed sections) and §24.6 (mobile is
 art-directed).
 
+---
+
+## OWNER AMENDMENT — 2026-08-28
+
+**Status: the photography this brief asked for has been produced, reviewed and
+accepted, and the owner changed one of its rules in the process.** Everything
+below this section is preserved as written. Where the two disagree, this
+amendment wins; the paragraphs it supersedes are marked in place.
+
+### What the owner rejected
+
+The requirement that the four `category-breadth` frames read as one tightly
+matched series — **same light, same grade, same distance from the subject**.
+Applied, it produced repeated people, repeated poses and repeated rooms, and the
+sameness worked directly against the thing the section exists to say: that
+Couranr serves many different kinds of local business. A series that looks like
+one shop photographed four times is not an argument for breadth.
+
+### What replaces it
+
+The accepted set deliberately varies **people, ages, racial and ethnic
+appearance, trade, room, action, camera position and visual rhythm.** That
+variation is the point and is not drift.
+
+The set still has to read as one brand, but through **restraint, naturalistic
+light, real working environments, the absence of unrelated branding, and a
+common production treatment after cropping** — not through cloned composition.
+
+### What is unchanged
+
+Every other rule in "Rules that apply to every image" still stands: no Couranr
+branding, no fabricated evidence, no generated geography, nobody presenting to
+camera, no delivery-app clichés, and no unrelated trademarks.
+
+One deviation is recorded rather than hidden. The original rule reads *"No text
+anywhere in the frame."* Three accepted frames contain incidental environmental
+text — a bakery's handwritten wall board, printed card fronts on a stationery
+shelf, product packaging on hardware shelving. None of it is legible at any
+width the site serves, none of it is signage or a third-party mark, and the
+owner accepted the frames with it present. **The surviving rule is: no LEGIBLE
+text, no signage, and no identifiable third-party trademark.** Incidental,
+illegible texture in a real working room is not a defect.
+
+### The accepted set, and where each frame is used
+
+Sources are at `public/images/marketing/2026-08/`, unmodified. Derivatives are
+built by `scripts/buildMarketingImages.mjs`, which owns the crop windows and
+focal points. Registration is in `scripts/visualAuthorityRegistry.mjs`.
+
+**PUB-001 `category-breadth` — exactly four:**
+`01-florist.png`, `03-boutique.png`, `04-hardware.png`, `07-dry-cleaning.png`.
+
+**PUB-001 `outcomes` — exactly two:** `10-busy-parent-home.png` as the primary
+and `09-older-customer-home-goods.png` as the support. This made `outcomes`
+image-led; §27.0 row 5 and the DOM flag were changed together.
+
+**PUB-009 `/businesses` — exactly three, as one restrained strip:**
+`02-bakery.png`, `05-print-sign.png`, `08-gift-stationery.png`.
+
+**Accepted reserves, deliberately unused on the website:**
+`06-specialty-retail.png` and `11-office-local-supplies.png`. They are for
+collateral, social and a future owner-approved rotation. Their absence from the
+site is a decision, not an oversight — putting all eleven on the homepage is the
+defect `ADVERSARIAL_REVIEW.md` records as the first package's worst.
+
+### What is still NOT approved
+
+Couranr has no owner-approved real delivery evidence. So there is still no
+proof-of-delivery photograph, no completed-delivery record, no tracking
+artefact, no product screenshot used as evidence, no testimonial, no customer
+logo and no operational metric. The `product-proof` region is frozen and keeps
+its own pending tile.
+
+### What these photographs claim
+
+Nothing. They are category and benefit illustrations. No person in them is a
+Couranr customer and no parcel in them is a Couranr delivery, and every alt
+string in `lib/couranr/public/marketingPhotos.ts` describes only what is in the
+frame.
+
+---
+
 ## Why this brief exists
+
+> **SUPERSEDED 2026-08-28 (the first paragraph only).** The repository no longer
+> owns two photographs. It owns thirteen: the two hero frames and the eleven
+> accepted on 2026-08-28. The paragraph is kept because it is the reason the
+> brief was written.
 
 The repository owns exactly two photographs. Both are the same scene — a
 florist handing a Couranr-branded parcel to a Couranr driver — and both are
@@ -67,6 +154,12 @@ The point of the section is **breadth** — that Couranr carries what restaurant
 marketplaces do not. One photograph cannot show breadth, so this is a set of
 four, and they must read as one series: same light, same grade, same distance
 from the subject.
+
+> **SUPERSEDED 2026-08-28.** "Same light, same grade, same distance" is exactly
+> what the owner rejected — it produced a stock-photo sameness that argued
+> against breadth. See the owner amendment at the top of this file. The set of
+> four and the `image-narrative` composition are unchanged; the matching
+> requirement is not.
 
 Ask for **landscape 3:2** (1792×1024 is the practical size; I crop to 3:2 and
 art-direct the mobile crops myself).
