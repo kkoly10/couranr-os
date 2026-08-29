@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   BUSINESSES_STRIP_PHOTOS,
   CATEGORY_BREADTH_PHOTOS,
+  CONFIRMATION_PHOTO,
   OUTCOME_PRIMARY_PHOTO,
   OUTCOME_SUPPORTING_PHOTO,
   RESERVE_PHOTO_IDS,
@@ -35,8 +36,12 @@ const REGISTRY = JSON.parse(
   readFileSync(path.join(ROOT, "docs/couranr-mvp/ui-reference/VISUAL_AUTHORITY_REGISTRY.json"), "utf8"),
 ) as { photography: Array<Record<string, unknown>> };
 
-const HOMEPAGE = [...CATEGORY_BREADTH_PHOTOS, OUTCOME_PRIMARY_PHOTO, OUTCOME_SUPPORTING_PHOTO];
-const ALL = [...HOMEPAGE, ...BUSINESSES_STRIP_PHOTOS];
+const HOMEPAGE = [
+  ...CATEGORY_BREADTH_PHOTOS,
+  OUTCOME_PRIMARY_PHOTO,
+  OUTCOME_SUPPORTING_PHOTO,
+];
+const ALL = [...HOMEPAGE, ...BUSINESSES_STRIP_PHOTOS, CONFIRMATION_PHOTO];
 
 const accepted = new Map(
   REGISTRY.photography
@@ -45,8 +50,11 @@ const accepted = new Map(
 );
 
 describe("the 2026-08-28 marketing photography", () => {
-  it("registers all eleven accepted assets, used and reserve", () => {
-    expect(accepted.size).toBe(11);
+  it("registers every accepted asset, used and reserve", () => {
+    // 11 accepted 2026-08-28, plus 4 accepted 2026-08-29. The number moves only
+    // when the owner accepts more; it is asserted so a silently-added asset
+    // fails rather than appearing.
+    expect(accepted.size).toBe(15);
     for (const id of RESERVE_PHOTO_IDS) {
       const rec = accepted.get(id);
       expect(rec, `${id} is not in the registry`).toBeDefined();
@@ -63,14 +71,20 @@ describe("the 2026-08-28 marketing photography", () => {
    * homepage" as the rejected package's first and worst defect, so the homepage
    * total is a decision with a number, and a number can be asserted.
    */
-  it("uses exactly the locked counts — 4 + 2 on the homepage, 3 on /businesses", () => {
+  it("uses exactly the locked counts — 4 + 2 on the homepage, 3 on /businesses, 1 on /how-it-works", () => {
     expect(CATEGORY_BREADTH_PHOTOS).toHaveLength(4);
+    // 4 category-breadth + 2 outcomes. An order-channels inset was added on
+    // 2026-08-29 and REMOVED the same day on owner instruction — the
+    // photograph made the section look awkward — so the homepage total is
+    // back to the locked six.
     expect(HOMEPAGE).toHaveLength(6);
     expect(BUSINESSES_STRIP_PHOTOS).toHaveLength(3);
-    expect(new Set(ALL.map((p) => p.id)).size).toBe(9);
+    expect(CONFIRMATION_PHOTO).toBeDefined();
+    expect(ALL).toHaveLength(10);
+    expect(new Set(ALL.map((p) => p.id)).size).toBe(10);
   });
 
-  it("keeps the two reserves off the site", () => {
+  it("keeps the reserves off the site", () => {
     for (const id of RESERVE_PHOTO_IDS) {
       expect(ALL.map((p) => p.id), `${id} is a reserve and must not be rendered`).not.toContain(id);
     }
@@ -78,7 +92,11 @@ describe("the 2026-08-28 marketing photography", () => {
 
   it("renders each asset only on the surface the registry allows", () => {
     const surfaceOf = (p: MarketingPhoto) =>
-      BUSINESSES_STRIP_PHOTOS.includes(p) ? "PUB-009" : "PUB-001";
+      BUSINESSES_STRIP_PHOTOS.includes(p)
+        ? "PUB-009"
+        : p === CONFIRMATION_PHOTO
+          ? "PUB-011"
+          : "PUB-001";
     for (const p of ALL) {
       const rec = accepted.get(p.id);
       expect(rec, `${p.id} is rendered but not registered`).toBeDefined();

@@ -101,9 +101,70 @@ deliberately render nowhere. PUB-008 gained two native explanatory diagrams
 that its parcel is a Couranr delivery. `tests/couranr-marketing-photos.test.ts`
 asserts that boundary against every alt string rather than trusting it.
 
+### The 2026-08-29 follow-on — four more accepted, two placed
+
+Same rule: no ledger row moves. Four further photographs were accepted and the
+public surface was searched for slots the specification actually allows, rather
+than for places an image would look good.
+
+**Placed.** One 16:9 frame became PUB-011's `confirmation` band, full-bleed
+behind the copy. §27.1's PUB-011 row 4 moved `image-led` false → true in the same
+commit as the DOM attribute. That is the only new photograph on the public
+surface.
+
+**Placed and withdrawn.** A 4:3 frame went into PUB-001's `order-channels` as an
+inset beside the order-flow strip, survived two rounds of geometric correction
+and every gate, and was removed the same day on owner instruction — the picture
+made the section look awkward. The section is back to tiles, convergence and the
+flow strip. No measurement would have surfaced that; it is recorded because it is
+the clearest case yet that green gates are not the same as a good page.
+
+`confirmation` was CHOSEN, not uniquely permitted, and the first draft of this
+entry got that wrong. §19.6 `full-bleed-interruption` reads "navy and/or approved
+photography", and enumerating §27.0/§27.1 against §25 gives eight such sections
+on the public family, seven of them on `derived` screens. Only PUB-001's
+`closing` is artboard-governed. So the specification closes exactly one slot and
+leaves seven open; this is an editorial choice among the seven.
+
+**Refused.** The photography brief's `closing`-band ask, because that is the one
+slot an artboard governs and the fidelity amendment gives the mock precedence on
+composition. The brief is superseded in place there.
+
+**Held.** Two frames are `approved-reserve` with `allowed_surfaces: []` — the
+same scenes as the two already bound into `outcomes`.
+
+**Three defects shipped in this work and were caught before merge, by measuring
+rather than reading.** All three were in claims that had passed a careful read.
+
+- The band's scrim was a horizontal gradient written for a desktop copy well.
+  Below 900px the copy ran into its light tail: measured per text element, the
+  worst was **3.19:1** at 390 against §23.2's 4.5:1 floor, with three elements
+  failing at 360 and two at 320 and 390. **axe does not miss this — it reports a
+  PASS at 18.24:1**, scoring the copy against the section's declared navy and
+  ignoring the photograph entirely, identically before and after the fix.
+- The `order-channels` inset was capped only above 900px and ran full-bleed
+  below, reaching 58.3% of the section's area at 899px — so the
+  "deliberately small" justification for `image-led: false` was measured at one
+  width and asserted at all of them.
+- Placing that inset beside the order-flow strip at 900px wrapped the strip's
+  three steps to two lines from 900px to ~1150px, breaking a KEEP region whose
+  mock records "one row at every width the artboards cover".
+
+Both inset defects were fixed and then made moot by the withdrawal; they are kept
+in the ledger because the first is a pattern (a responsive cap written inside a
+`min-width` query is unbounded in the direction nobody looked).
+
+`e2e/publicFamilyGates.mjs` now discovers photographic sections at each of
+§24.1's six widths and measures them; `e2e/pub001Gates.mjs` asserts the hero is
+still the only one on PUB-001, at both art-directed widths, with a positive
+control that plants a second. Four defects in that new gate code were themselves
+found by review and are recorded in the source. A separate gap was tripped in the
+same pass: `check:visual-registry` validated the checked-in JSON without
+comparing it to what its own generator produces, and now diffs the two.
+
 ## Authority sources
 
-1. `02_DECISION_REGISTRY.json` (repo root) — 43 decision records
+1. `02_DECISION_REGISTRY.json` (repo root) — 45 decision records
 2. `Couranr_Claude_Code_Master_Package.md` (repo root)
 3. `UI_SCREEN_REGISTRY.md` (repo root) — 66 canonical MVP screens
 4. `couranr_claude_code_package/08_WORK_BREAKDOWN.csv` — 42 work items

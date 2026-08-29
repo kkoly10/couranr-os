@@ -11,6 +11,12 @@ import {
   IconTruck,
 } from "@/components/couranr/marketing/MarketingIcons";
 import { SUPPORT_COPY } from "@/lib/couranr/public/governed";
+import {
+  CONFIRMATION_PHOTO,
+  intrinsic,
+  largestSrc,
+  srcSetFor,
+} from "@/lib/couranr/public/marketingPhotos";
 
 /**
  * PUB-011 — how Couranr works: request, payer, Couranr confirmation, pickup,
@@ -266,14 +272,59 @@ export default function Page() {
 
       {/* ─── 4 ───────────────── confirmation / full-bleed-interruption ─── */}
       <section
-        className="cr-mkt-band"
+        className="cr-mkt-band cr-mkt-band--photo"
         aria-labelledby="w4-h"
         data-couranr-section="confirmation"
         data-composition="full-bleed-interruption"
-        data-image-led="false"
+        data-image-led="true"
         data-grid-dominant="false"
         data-product-proof="false"
       >
+        {/*
+          THE ONE NEW PHOTOGRAPHIC SLOT the 2026-08-29 review found, and the
+          reasoning is worth keeping because the obvious answer was wrong.
+
+          §19.6 full-bleed-interruption reads "Navy AND/OR APPROVED PHOTOGRAPHY"
+          — a photograph in a navy band is this composition's own vocabulary. And
+          PUB-011 is recorded `visual_authority: "derived"` in the visual
+          registry: no separate approved artboard governs it. That combination
+          exists nowhere else on the public site.
+
+          It is NOT the homepage's closing band, which the photography brief also
+          asks for. That artboard was opened and read at the pixel level: flat
+          navy, headline, two buttons, no image. The brief predates the artboard
+          reconciliation and the fidelity amendment gives the mock precedence on
+          composition, so a photograph there would reopen a mock-approved region.
+
+          `data-image-led` moves false -> true here and §27.1's PUB-011 row moves
+          with it in this commit; the composition test asserts equality.
+
+          The frame claims nothing: a person setting down a bag and a plant at
+          her own door. Not a Couranr delivery, not a Couranr customer.
+        */}
+        {/*
+          `sizes="100vw"` describes the ELEMENT's layout width, which is exactly
+          100vw. Below about 592px the band is taller than the frame's 16:9, so
+          `cover` scales by height and PAINTS more width than that — 776px at
+          390, 879px at 320. Checked rather than assumed: at 320/390/768 the
+          browser already selects the 900w candidate, which covers the painted
+          width at all three. A larger declared size would only over-fetch a
+          frame that sits behind a 0.80–0.86 scrim on a phone.
+        */}
+        <img
+          src={largestSrc(CONFIRMATION_PHOTO)}
+          srcSet={srcSetFor(CONFIRMATION_PHOTO, "wide")}
+          sizes="100vw"
+          width={intrinsic(CONFIRMATION_PHOTO).width}
+          height={intrinsic(CONFIRMATION_PHOTO).height}
+          alt={CONFIRMATION_PHOTO.alt}
+          loading="lazy"
+          decoding="async"
+          className="cr-mkt-band__photo"
+        />
+        {/* Carries the text contrast, so it is presentational, not content —
+            same split the PUB-001 hero uses. */}
+        <div className="cr-mkt-band__scrim" aria-hidden="true" />
         <div className="cr-mkt-band__inner cr-mkt-band__inner--stacked">
           <div className="cr-mkt-band__copy">
             <h2 id="w4-h" className="cr-mkt-band__h2 cr-type-marketing-section">

@@ -114,6 +114,16 @@ const ASSETS = [
     derivatives: [{ shape: "wide", aspect: 3 / 2, widths: [400, 800] }],
   },
   {
+    /* PUB-011 `confirmation`. Native 16:9 already, and the only frame in the set
+       that is — so this is a resize, not a crop. The empty left half is the
+       copy well the band's text sits in, which is why the focal point is right
+       of centre: the subject must survive when the copy overlays the left. */
+    slug: "customer-at-home",
+    src: "12-customer-at-home-wide.png",
+    focal: { x: 0.66, y: 0.5 },
+    derivatives: [{ shape: "wide", aspect: 16 / 9, widths: [900, 1400, 1900] }],
+  },
+  {
     slug: "gift-stationery",
     src: "08-gift-stationery.png",
     focal: { x: 0.63, y: 0.45 },

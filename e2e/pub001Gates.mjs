@@ -239,6 +239,66 @@ async function heroContrast(page) {
   return result;
 }
 
+/**
+ * The sections on this page that paint TEXT OVER A PHOTOGRAPH. Same structural
+ * test e2e/publicFamilyGates.mjs uses, and deliberately duplicated rather than
+ * shared — these two harnesses are independent processes, and a refactor of one
+ * must not silently change the other's verdict.
+ *
+ * `heroContrast` below samples exactly one region by name, so a SECOND
+ * photographic band on PUB-001 would be measured by nothing. That is the shape
+ * of the defect the family harness was extended to catch on PUB-011: white copy
+ * at 3.19:1 that axe scores as a PASS at 18.24:1 and no gate reads. If the assertion that
+ * uses this fails, the fix is to port that harness's `photoTextContrast` over,
+ * not to widen the expected list.
+ */
+async function photographicSections(page) {
+  return page.evaluate(() =>
+    [...document.querySelectorAll("[data-couranr-section]")]
+      .filter((sec) => {
+        const r = sec.getBoundingClientRect();
+        if (r.width < 1 || r.height < 1) return false;
+        /* A CSS `background-image: url(...)` that covers the section is the same
+           arrangement by another mechanism, and the first version of this
+           predicate missed it entirely while its comment claimed to state its own
+           limit. Gradients are background-images too, so this looks for a url()
+           specifically — otherwise every scrim and tinted panel in the tree would
+           register as a photograph. */
+        const painted = [sec, ...sec.querySelectorAll("*")].some((el) => {
+          const cs = getComputedStyle(el);
+          if (!/url\(/.test(cs.backgroundImage)) return false;
+          const er = el.getBoundingClientRect();
+          return er.width >= r.width - 2 && er.height >= r.height - 2;
+        });
+        if (painted) return true;
+        return [...sec.querySelectorAll("img")].some((img) => {
+          const ir = img.getBoundingClientRect();
+          if (ir.width < r.width - 2 || ir.height < r.height - 2) return false;
+          /* THE LAYER THAT PUSHES THE IMAGE BEHIND THE COPY IS OFTEN NOT THE
+             <img>: this page's own hero carries `position: absolute; z-index:
+             -2` on its <picture> wrapper and leaves the <img> static inside it.
+             Reading the <img> alone reported the hero as not photographic. */
+          let outOfFlow = false;
+          let z = null;
+          for (let el = img; el && el !== sec; el = el.parentElement) {
+            const cs = getComputedStyle(el);
+            if (cs.position === "absolute" || cs.position === "fixed") outOfFlow = true;
+            /* The MOST NEGATIVE explicit z-index on the climb, not the first one
+               found. A wrapper with `z-index: 0` between the image and the
+               section would otherwise mask a `z-index: -2` on the image itself
+               and report the section as not photographic. */
+            if (cs.zIndex !== "auto") {
+              const v = Number(cs.zIndex);
+              if (Number.isFinite(v) && (z === null || v < z)) z = v;
+            }
+          }
+          return outOfFlow && z !== null && z < 0;
+        });
+      })
+      .map((sec) => sec.getAttribute("data-couranr-section")),
+  );
+}
+
 async function main() {
   await startServer();
   const browser = await chromium.launch();
@@ -351,7 +411,10 @@ async function main() {
   await page.evaluate(() => document.fonts.ready);
 
   if (CONTROL) {
-    console.log("\npositive control — injecting a second h1 and a low-contrast paragraph");
+    console.log(
+      "\npositive control — injecting a second h1, a low-contrast paragraph, and a " +
+        "second photographic section",
+    );
     await page.evaluate(() => {
       const h = document.createElement("h1");
       h.textContent = "Planted duplicate heading";
@@ -361,25 +424,54 @@ async function main() {
       p.style.cssText = "color:#f2f2f2;background:#ffffff;font-size:14px";
       document.querySelector(".cr-mkt").prepend(p);
     });
+    /* A second photographic band, in the arrangement the predicate looks for:
+       a covering image, out of flow, behind the section's own content. The
+       "hero is the only one" assertion must notice — a guard that cannot fail
+       is not a guard, and this one shipped without a control the first time. */
+    await page.evaluate(() => {
+      const sec = document.querySelector('[data-couranr-section="pickup-problem"]');
+      sec.style.position = "relative";
+      sec.style.isolation = "isolate";
+      const img = document.createElement("img");
+      img.src = "/images/pub-001-hero-wide-1024.webp";
+      img.alt = "";
+      img.style.cssText =
+        "position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-2";
+      sec.prepend(img);
+    });
+    await page.waitForFunction(
+      () => {
+        const i = document.querySelector('[data-couranr-section="pickup-problem"] img');
+        return !!i && i.complete && i.naturalWidth > 0;
+      },
+      { timeout: 15_000 },
+    );
     await page.addScriptTag({ content: AXE_SOURCE });
     const r = await page.evaluate(async () =>
       await window.axe.run(document, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa", "wcag22aa"] } }),
     );
     const ids = r.violations.map((v) => v.id);
     const h1s = await page.evaluate(() => document.querySelectorAll("h1").length);
+    // Read the planted section BEFORE the browser goes away — this is a live
+    // page query, not a value already collected.
+    const plantedPhotographic = await photographicSections(page);
     await browser.close();
     stopServer();
+    const caughtSecondPhoto =
+      plantedPhotographic.length === 2 && plantedPhotographic.includes("pickup-problem");
     const caughtContrast = ids.includes("color-contrast");
     const caughtH1 = h1s > 1;
-    if (caughtContrast && caughtH1) {
+    if (caughtContrast && caughtH1 && caughtSecondPhoto) {
       console.log(
-        `test:pub001 positive control ok — axe flagged ${ids.join(", ")} and the page now has ${h1s} h1s, ` +
-          `so Gate C can go red`,
+        `test:pub001 positive control ok — axe flagged ${ids.join(", ")}, the page now has ${h1s} h1s, ` +
+          `and the planted second photographic section was detected ` +
+          `(${plantedPhotographic.join(", ")}), so Gate C can go red`,
       );
       process.exit(0);
     }
     console.error(
-      `positive control FAILED — contrast caught: ${caughtContrast}, duplicate h1 caught: ${caughtH1}`,
+      `positive control FAILED — contrast caught: ${caughtContrast}, duplicate h1 caught: ${caughtH1}, ` +
+        `second photographic section caught: ${caughtSecondPhoto} (${plantedPhotographic.join(", ") || "none"})`,
     );
     process.exit(1);
   }
@@ -546,6 +638,20 @@ async function main() {
     if (cpage !== page) await cpage.goto(`${BASE}/`, { waitUntil: "networkidle" });
     await cpage.reload({ waitUntil: "networkidle" });
     await cpage.evaluate(() => document.fonts.ready);
+
+    /* Checked at BOTH art-directed widths, because this is the one page whose
+       imagery changes with the viewport — the hero swaps source files at 640px,
+       and a band that is photographic only on mobile would be invisible to a
+       1440-only assertion. It runs before `heroContrast`, which injects a
+       stylesheet and reloads. */
+    const photographic = await photographicSections(cpage);
+    const expected = CONTROL ? ["hero", "pickup-problem"] : ["hero"];
+    check(
+      JSON.stringify(photographic) === JSON.stringify(expected),
+      `@${width} the hero is the only section painting text over photography, so ` +
+        `heroContrast covers all of it (found: ${photographic.join(", ") || "none"})`,
+    );
+
     const contrast = await heroContrast(cpage);
     for (const [region, c] of Object.entries(contrast)) {
       if (!c) { check(false, `@${width} hero ${region}: could not sample the painted background`); continue; }

@@ -146,11 +146,47 @@ export const BUSINESSES_STRIP_PHOTOS: MarketingPhoto[] = [
 ];
 
 /**
+ * PUB-011 `confirmation` — the one full-bleed band on the public site whose §19
+ * grammar names photography ("Navy and/or approved photography", §19.6) AND
+ * whose page carries no governing artboard: the visual registry records PUB-011
+ * as `visual_authority: "derived"`. That combination is why this is the only
+ * new photographic slot the 2026-08-29 review found.
+ *
+ * It is NOT the homepage's closing band, which the brief also asks for. The
+ * canonical PUB-001 artboard was opened and read at the pixel level and shows
+ * flat navy there — the brief predates that reconciliation, and the fidelity
+ * amendment gives the mock precedence on composition.
+ */
+export const CONFIRMATION_PHOTO: MarketingPhoto = {
+  id: "couranr-mkt-2026-08-customer-at-home",
+  slug: "customer-at-home",
+  alt: "A person setting a shopping bag and a potted plant on a table just inside her front door.",
+  wide: { widths: [900, 1400, 1900], ratio: [16, 9] },
+};
+
+
+/**
  * Accepted, and deliberately unused by the website batch. Recorded here so the
  * next person reads "reserve" rather than "forgotten" — and so a test can hold
- * the homepage to six photographs rather than however many exist.
+ * the homepage to a fixed count rather than however many assets exist. The
+ * figure is asserted in tests/couranr-marketing-photos.test.ts rather than
+ * repeated here, because a number written in two places is a number that goes
+ * stale in one.
  */
 export const RESERVE_PHOTO_IDS = [
+  /* Accepted 2026-08-29, briefly placed as an inset beside the order-flow strip
+     in `order-channels`, then REMOVED on owner instruction 2026-08-29: the
+     photograph made the section look awkward. The section is back to tiles,
+     convergence and the flow strip, which is what the artboard shows. */
+  "couranr-mkt-2026-08-merchant-phone-order",
   "couranr-mkt-2026-08-specialty-retail",
   "couranr-mkt-2026-08-benefit-office",
+  /* Accepted 2026-08-29 and held back deliberately: both are the same SCENE as
+     a frame already bound into `outcomes` — a parent and child at a kitchen
+     island, and an older customer with a newly bought vase at home. `outcomes`
+     is locked to exactly two photographs by the owner's decision, so these are
+     not an addition, and as a swap they would be a sideways move. Cropping
+     changes the framing, not the meaning. */
+  "couranr-mkt-2026-08-parent-child-kitchen",
+  "couranr-mkt-2026-08-older-customer-vase",
 ] as const;

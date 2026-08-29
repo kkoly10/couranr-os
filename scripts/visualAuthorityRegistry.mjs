@@ -533,6 +533,80 @@ function build() {
         "preferred_aspect": "4:3",
         "status": "approved-reserve"
       },
+      /* ── accepted 2026-08-29 ─────────────────────────────────────────────
+         Four more frames. TWO are placed and two are held back, and the split
+         is the finding rather than an accident: P2 and P3 are the same SCENES
+         as the two already bound into PUB-001 `outcomes`, which the owner's
+         decision locks to exactly two photographs. Cropping changes framing,
+         not meaning, so they are reserves. */
+      {
+        asset_id: "couranr-mkt-2026-08-customer-at-home",
+        local_path: "public/images/marketing/2026-08/w/mkt-2026-08-customer-at-home-wide-1900.webp",
+        derived_from: "public/images/marketing/2026-08/12-customer-at-home-wide.png",
+        source: "generated-openai-chatgpt-2026-08",
+        source_reference: "Generated with OpenAI image generation in ChatGPT; owner-accepted on 2026-08-29",
+        license_record: "Generated asset; no third-party stock source or external stock license.",
+        subject: "A person setting a shopping bag and a potted plant on a table just inside her front door",
+        alt: "A person setting a shopping bag and a potted plant on a table just inside her front door.",
+        allowed_surfaces: ["PUB-011"],
+        desktop_focal_point: "66% 34%",
+        mobile_focal_point: null,
+        preferred_aspect: "16:9",
+        focal_point_note:
+          "The only native 16:9 frame in the set, and the reason it can hold a full-bleed band. Right of centre because the empty left half is the copy well the band's inverse text sits over. HIGH because the band is a 4.13:1 slot showing 43% of the frame's height at 1440, and a centred window opened below the subject's hairline. ONE focal point at every width: `cover` makes the Y component inert only while the band is narrower than 16:9, which measures as below about 592px, so a separate mobile value would describe nothing. Null rather than a second figure, because a focal point no rule reads is a claim, not a record.",
+        status: "approved",
+      },
+      {
+        asset_id: "couranr-mkt-2026-08-merchant-phone-order",
+        local_path: "public/images/marketing/2026-08/15-merchant-phone-order.png",
+        derived_from: "public/images/marketing/2026-08/15-merchant-phone-order.png",
+        source: "generated-openai-chatgpt-2026-08",
+        source_reference: "Generated with OpenAI image generation in ChatGPT; owner-accepted on 2026-08-29",
+        license_record: "Generated asset; no third-party stock source or external stock license.",
+        subject: "A shop owner writing an order in a ledger while taking a call at her counter",
+        alt: "A shop owner writing an order in a ledger while taking a call at her counter.",
+        allowed_surfaces: [],
+        desktop_focal_point: null,
+        mobile_focal_point: null,
+        preferred_aspect: "4:3",
+        focal_point_note:
+          "RESERVE. The brief's IMG-06, briefly placed as a 300x132 inset beside PUB-001's order-flow strip and REMOVED the same day on owner instruction 2026-08-29 — the photograph made the section look awkward. `order-channels` is back to tiles, convergence and the flow strip, which is what the artboard shows. No focal point is recorded because nothing crops it.",
+        status: "approved-reserve",
+      },
+      {
+        asset_id: "couranr-mkt-2026-08-older-customer-vase",
+        local_path: "public/images/marketing/2026-08/13-older-customer-vase.png",
+        derived_from: "public/images/marketing/2026-08/13-older-customer-vase.png",
+        source: "generated-openai-chatgpt-2026-08",
+        source_reference: "Generated with OpenAI image generation in ChatGPT; owner-accepted on 2026-08-29",
+        license_record: "Generated asset; no third-party stock source or external stock license.",
+        subject: "An older customer placing a newly bought ceramic vase on a console at home",
+        alt: "An older customer placing a newly bought ceramic vase on a console at home.",
+        allowed_surfaces: [],
+        desktop_focal_point: "55% 48%",
+        mobile_focal_point: "55% 48%",
+        preferred_aspect: "3:2",
+        focal_point_note:
+          "RESERVE. Same scene as couranr-mkt-2026-08-benefit-older-customer, which is already bound into PUB-001 outcomes; that band is locked to exactly two photographs.",
+        status: "approved-reserve",
+      },
+      {
+        asset_id: "couranr-mkt-2026-08-parent-child-kitchen",
+        local_path: "public/images/marketing/2026-08/14-parent-child-kitchen.png",
+        derived_from: "public/images/marketing/2026-08/14-parent-child-kitchen.png",
+        source: "generated-openai-chatgpt-2026-08",
+        source_reference: "Generated with OpenAI image generation in ChatGPT; owner-accepted on 2026-08-29",
+        license_record: "Generated asset; no third-party stock source or external stock license.",
+        subject: "A parent writing at a kitchen island beside a child drawing, with a bakery box on the counter",
+        alt: "A parent writing at a kitchen island beside a child drawing, with a bakery box on the counter.",
+        allowed_surfaces: [],
+        desktop_focal_point: "50% 46%",
+        mobile_focal_point: "50% 46%",
+        preferred_aspect: "3:2",
+        focal_point_note:
+          "RESERVE. Same scene as couranr-mkt-2026-08-benefit-busy-parent, already bound into PUB-001 outcomes.",
+        status: "approved-reserve",
+      },
     ],
     pending_photography: [
       /* PUB-001 section 3 (category-breadth) is NO LONGER PENDING. The owner
@@ -682,6 +756,49 @@ if (!existsSync(join(repo, OUT))) {
 }
 const reg = JSON.parse(readFileSync(join(repo, OUT), "utf8"));
 
+/**
+ * THE CHECKED-IN JSON MUST BE WHAT THIS FILE WOULD GENERATE TODAY.
+ *
+ * Without this, the check reads the JSON off disk and validates THAT — so
+ * editing the generator and forgetting `-- --write` leaves a stale file and a
+ * green gate. That is not hypothetical: it happened on the commit that added
+ * this check. A photograph's `desktop_focal_point` was changed here from
+ * `66% 50%` to `66% 34%` to stop a band cropping the subject's head, the
+ * committed JSON still said `66% 50%`, and `check:visual-registry` reported
+ * "ok — every dimension matches its file".
+ *
+ * It is the same failure the §27.0 region list already carries a comment about,
+ * one level up: there the derivation was fake, here the derivation was real and
+ * simply not re-run. Both end with a file that claims to be generated and is
+ * not.
+ */
+function generatorDrift(onDisk) {
+  /* build() reads the mock map, §27's tables and every image on disk. If any of
+     those is missing or malformed it THROWS, and an uncaught throw here would
+     replace validate()'s specific, actionable message with a stack trace — a
+     drift check that makes every other failure harder to read is a net loss.
+     So a build failure is reported as a finding and the run continues into
+     validate(). */
+  let fresh;
+  try {
+    fresh = JSON.stringify(build(), null, 2) + "\n";
+  } catch (e) {
+    return [
+      `the registry generator could not run, so ${OUT} could not be checked for drift — ${e.message}`,
+    ];
+  }
+  const stored = JSON.stringify(onDisk, null, 2) + "\n";
+  if (fresh === stored) return [];
+  const a = fresh.split("\n");
+  const b = stored.split("\n");
+  const at = a.findIndex((l, i) => l !== b[i]);
+  return [
+    `${OUT} is not what this generator produces — first difference at line ${at + 1}: ` +
+      `generated ${JSON.stringify((a[at] || "").trim())}, on disk ${JSON.stringify((b[at] || "").trim())}. ` +
+      "Run `npm run check:visual-registry -- --write`.",
+  ];
+}
+
 if (process.argv.includes("--positive-control")) {
   // Two plants, because this file now derives two kinds of fact from outside
   // itself and both have already been wrong once in this repository.
@@ -696,11 +813,17 @@ if (process.argv.includes("--positive-control")) {
       plant: (r) => { r.screens[0].composition_regions = r.screens[0].composition_regions.slice(0, -1); },
       expect: "composition_regions disagree with §27.0",
     },
+    {
+      what: "a stored file that is not what the generator produces",
+      plant: (r) => { r.photography[0].desktop_focal_point = "1% 1%"; },
+      expect: "is not what this generator produces",
+      via: generatorDrift,
+    },
   ];
   for (const c of controls) {
     const broken = JSON.parse(JSON.stringify(reg));
     c.plant(broken);
-    const fail = validate(broken);
+    const fail = (c.via || validate)(broken);
     const hit = fail.find((f) => f.includes(c.expect));
     if (!hit) {
       console.error(`positive control FAILED — ${c.what} was not detected`);
@@ -712,7 +835,7 @@ if (process.argv.includes("--positive-control")) {
   process.exit(0);
 }
 
-const fail = validate(reg);
+const fail = [...generatorDrift(reg), ...validate(reg)];
 if (fail.length) {
   console.error(`check-visual-registry: ${fail.length} problem(s)\n`);
   for (const f of fail) console.error(`  - ${f}`);

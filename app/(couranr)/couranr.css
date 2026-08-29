@@ -2564,6 +2564,82 @@
   background: var(--couranr-navy);
   color: var(--couranr-text-inverse);
 }
+/* A photographic full-bleed band. §19.6's own grammar is "Navy AND/OR approved
+   photography", so this is the composition's vocabulary rather than a
+   deviation — but the navy stays underneath, because the copy is inverse and a
+   photograph alone cannot be relied on for contrast. */
+.cr-mkt-band--photo { position: relative; isolation: isolate; }
+.cr-mkt-band__photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  /* Right of centre: the frame's left half is the calm wall the copy sits over,
+     and biasing right keeps the subject out from under the headline as the band
+     narrows. HIGH, because the band is a 4.13:1 slot cut from a 16:9 frame and
+     shows only 43% of its height at 1440 — centred, that window opened below
+     the subject's hairline and the band shipped a headless figure. 34% keeps
+     the whole head and still holds the bag and the plant she is setting down,
+     which are the only reason the frame says anything.
+
+     WHERE THE Y COMPONENT IS INERT is a question about the BAND'S ASPECT, not
+     about a viewport breakpoint, and the first version of this comment got that
+     wrong — it claimed no effect below 900px. `cover` scales by whichever axis
+     binds: the Y component does nothing only while the band is NARROWER than
+     the frame's own 16:9, because then the height binds and the crop is
+     entirely horizontal. Measured, the band crosses 1.778 at about 592px — so Y
+     is inert at 320/390/480/560 and live at 592 and above, 768 and 899
+     included. The 34% is checked at every one of those. */
+  object-position: 66% 34%;
+  z-index: -2;
+}
+/* Heavier than the hero's scrim, deliberately. The hero's text sits over a
+   photograph with a dark quarter; this frame is bright end to end, so the band
+   would lose its inverse copy without a strong wash. */
+.cr-mkt-band__scrim {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(
+    90deg,
+    rgba(13, 21, 37, 0.95) 0%,
+    rgba(13, 21, 37, 0.88) 52%,
+    rgba(13, 21, 37, 0.52) 100%
+  );
+}
+/* THE HORIZONTAL SCRIM IS A DESKTOP ASSUMPTION, and it fails when the
+   assumption stops holding. `.cr-mkt-band__inner--stacked` caps the copy at
+   62ch, so at 1440 the copy's right edge sits at 53.6% of the band — 52.6% to
+   the text ink. That is PAST the 0.88 stop, not inside it; an earlier version
+   of this comment said 45%, having used the padding as the left offset instead
+   of the centred container's edge. What actually keeps the desktop band
+   comfortable is that the photograph is dark where the copy ends, not that the
+   copy stops before the ramp. Below 900px the copy spans the FULL width and
+   runs straight into the 0.52 tail.
+   Measured per text element, the worst was 3.19:1 at 390px against §23.2's
+   4.5:1 floor, with three elements failing at 360 and two at 320 and 390 —
+   the photograph has a blown highlight under the copy's right end at those
+   crops. axe does not merely miss this: `color-contrast` returns zero
+   violations, zero incomplete, and a PASS at 18.24:1, scoring the copy against
+   the section's declared `background-color` and ignoring the photograph, with
+   the identical result before and after this fix. Gate C also ran at 1440
+   only, where the same band measures 8.11:1.
+
+   900px is the band's own layout threshold — `.cr-mkt-band__inner` declares a
+   `@media (min-width: 900px)` a few rules below this one — so it is reused
+   rather than a new value fitted to the six widths that were sampled. The angle follows `.cr-hero__scrim`'s mobile
+   treatment, which made the same swap for the same reason. */
+@media (max-width: 899px) {
+  .cr-mkt-band--photo .cr-mkt-band__scrim {
+    background: linear-gradient(
+      184deg,
+      rgba(13, 21, 37, 0.86) 0%,
+      rgba(13, 21, 37, 0.8) 100%
+    );
+  }
+}
+
 .cr-mkt-band__inner {
   width: 100%;
   max-width: var(--couranr-container-max);

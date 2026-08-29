@@ -97,7 +97,7 @@ driver surface rather than of the conversation substrate.
 
 In rank order. Every one of these outranks this file.
 
-1. `02_DECISION_REGISTRY.json` — 43 decision records. Rank-1 for pricing, hours,
+1. `02_DECISION_REGISTRY.json` — 45 decision records. Rank-1 for pricing, hours,
    payer behaviour, states, terminology, launch gates.
 2. `Couranr_Claude_Code_Master_Package.md` — inlines the master implementation
    spec, cutover matrix, phased plan, AI/communication spec and release matrix.

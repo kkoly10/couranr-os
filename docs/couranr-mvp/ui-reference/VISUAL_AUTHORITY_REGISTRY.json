@@ -1707,6 +1707,72 @@
       "mobile_focal_point": "49% 43%",
       "preferred_aspect": "4:3",
       "status": "approved-reserve"
+    },
+    {
+      "asset_id": "couranr-mkt-2026-08-customer-at-home",
+      "local_path": "public/images/marketing/2026-08/w/mkt-2026-08-customer-at-home-wide-1900.webp",
+      "derived_from": "public/images/marketing/2026-08/12-customer-at-home-wide.png",
+      "source": "generated-openai-chatgpt-2026-08",
+      "source_reference": "Generated with OpenAI image generation in ChatGPT; owner-accepted on 2026-08-29",
+      "license_record": "Generated asset; no third-party stock source or external stock license.",
+      "subject": "A person setting a shopping bag and a potted plant on a table just inside her front door",
+      "alt": "A person setting a shopping bag and a potted plant on a table just inside her front door.",
+      "allowed_surfaces": [
+        "PUB-011"
+      ],
+      "desktop_focal_point": "66% 34%",
+      "mobile_focal_point": null,
+      "preferred_aspect": "16:9",
+      "focal_point_note": "The only native 16:9 frame in the set, and the reason it can hold a full-bleed band. Right of centre because the empty left half is the copy well the band's inverse text sits over. HIGH because the band is a 4.13:1 slot showing 43% of the frame's height at 1440, and a centred window opened below the subject's hairline. ONE focal point at every width: `cover` makes the Y component inert only while the band is narrower than 16:9, which measures as below about 592px, so a separate mobile value would describe nothing. Null rather than a second figure, because a focal point no rule reads is a claim, not a record.",
+      "status": "approved"
+    },
+    {
+      "asset_id": "couranr-mkt-2026-08-merchant-phone-order",
+      "local_path": "public/images/marketing/2026-08/15-merchant-phone-order.png",
+      "derived_from": "public/images/marketing/2026-08/15-merchant-phone-order.png",
+      "source": "generated-openai-chatgpt-2026-08",
+      "source_reference": "Generated with OpenAI image generation in ChatGPT; owner-accepted on 2026-08-29",
+      "license_record": "Generated asset; no third-party stock source or external stock license.",
+      "subject": "A shop owner writing an order in a ledger while taking a call at her counter",
+      "alt": "A shop owner writing an order in a ledger while taking a call at her counter.",
+      "allowed_surfaces": [],
+      "desktop_focal_point": null,
+      "mobile_focal_point": null,
+      "preferred_aspect": "4:3",
+      "focal_point_note": "RESERVE. The brief's IMG-06, briefly placed as a 300x132 inset beside PUB-001's order-flow strip and REMOVED the same day on owner instruction 2026-08-29 — the photograph made the section look awkward. `order-channels` is back to tiles, convergence and the flow strip, which is what the artboard shows. No focal point is recorded because nothing crops it.",
+      "status": "approved-reserve"
+    },
+    {
+      "asset_id": "couranr-mkt-2026-08-older-customer-vase",
+      "local_path": "public/images/marketing/2026-08/13-older-customer-vase.png",
+      "derived_from": "public/images/marketing/2026-08/13-older-customer-vase.png",
+      "source": "generated-openai-chatgpt-2026-08",
+      "source_reference": "Generated with OpenAI image generation in ChatGPT; owner-accepted on 2026-08-29",
+      "license_record": "Generated asset; no third-party stock source or external stock license.",
+      "subject": "An older customer placing a newly bought ceramic vase on a console at home",
+      "alt": "An older customer placing a newly bought ceramic vase on a console at home.",
+      "allowed_surfaces": [],
+      "desktop_focal_point": "55% 48%",
+      "mobile_focal_point": "55% 48%",
+      "preferred_aspect": "3:2",
+      "focal_point_note": "RESERVE. Same scene as couranr-mkt-2026-08-benefit-older-customer, which is already bound into PUB-001 outcomes; that band is locked to exactly two photographs.",
+      "status": "approved-reserve"
+    },
+    {
+      "asset_id": "couranr-mkt-2026-08-parent-child-kitchen",
+      "local_path": "public/images/marketing/2026-08/14-parent-child-kitchen.png",
+      "derived_from": "public/images/marketing/2026-08/14-parent-child-kitchen.png",
+      "source": "generated-openai-chatgpt-2026-08",
+      "source_reference": "Generated with OpenAI image generation in ChatGPT; owner-accepted on 2026-08-29",
+      "license_record": "Generated asset; no third-party stock source or external stock license.",
+      "subject": "A parent writing at a kitchen island beside a child drawing, with a bakery box on the counter",
+      "alt": "A parent writing at a kitchen island beside a child drawing, with a bakery box on the counter.",
+      "allowed_surfaces": [],
+      "desktop_focal_point": "50% 46%",
+      "mobile_focal_point": "50% 46%",
+      "preferred_aspect": "3:2",
+      "focal_point_note": "RESERVE. Same scene as couranr-mkt-2026-08-benefit-busy-parent, already bound into PUB-001 outcomes.",
+      "status": "approved-reserve"
     }
   ],
   "pending_photography": [
