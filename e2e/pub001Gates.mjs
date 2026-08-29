@@ -379,11 +379,13 @@ async function main() {
     await page.evaluate(() => window.scrollTo(0, 2000));
     await page.waitForTimeout(150);
     /* This asserted `after === before`, which was only ever true because the
-     * topbar happened to start at viewport top 0. The drift ledger moved the
-     * notice bar ABOVE the header, so the topbar now starts 47px down and
-     * pins at 0 — correct sticky behaviour that the old equality read as a
-     * failure. What sticky actually promises is: pinned at the CSS `top`
-     * offset, still on screen, on a page that really scrolled. */
+     * topbar happened to start at viewport top 0. A notice bar above the header
+     * once made it start 47px down and pin at 0 — correct sticky behaviour that
+     * the old equality read as a failure. The owner removed that bar on
+     * 2026-08-29 and the topbar starts at 0 again, so the equality would pass
+     * today; the generic form is kept because it is the one that states what
+     * sticky actually promises: pinned at the CSS `top` offset, still on
+     * screen, on a page that really scrolled. */
     const stick = await page.locator(".cr-topbar").evaluate((e) => {
       const b = e.getBoundingClientRect();
       const cs = getComputedStyle(e);
@@ -478,9 +480,11 @@ async function main() {
 
   /* axe at BOTH art-directed widths. It ran at 1440 only, which left every
      rule that depends on layout or on a mobile-only colour unasserted: below
-     768px the notice bar turns navy, the hero pill and its accent turn gold,
-     the header sheds both auth actions into the drawer, and a fixed bottom bar
-     appears. None of that exists at 1440, so none of it was ever scanned. */
+     768px the hero accent turns gold and the header sheds both auth actions
+     into the drawer. None of that exists at 1440, so none of it was ever
+     scanned. (This list used to name a navy notice bar and a fixed bottom
+     bar; the owner removed the bottom bar on 2026-08-20 and the notice bar on
+     2026-08-29, and neither is what the check is for.) */
   for (const width of [1440, 390]) {
     const apage =
       width === 1440 ? page : await browser.newPage({ viewport: { width, height: 844 } });

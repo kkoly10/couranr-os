@@ -192,6 +192,38 @@ describe("the screen ledger covers all 66 canonical screens", () => {
     expect(Object.keys(screens[0])).toEqual(SCREEN_HEADER);
   });
 
+  it("every row has the header's field count", () => {
+    /*
+     * `parseCsv` builds an OBJECT per row from the header, so a row with extra
+     * fields silently drops them and the header check above still passes. That
+     * is not hypothetical: a state description was edited into PUB-001's row
+     * with an unquoted comma, the row split into 14 fields against a 13-column
+     * header, and every column after the split shifted by one. It was caught —
+     * but only INDIRECTLY, by the sha column no longer holding a sha, which is
+     * a consequence rather than the defect. This asserts the defect.
+     *
+     * The sibling PUB_001_VISUAL_DRIFT_LEDGER.csv had two rows shredded the same
+     * way, and its checker had the same blind spot.
+     */
+    const raw = read(SCREEN_LEDGER);
+    const rows = raw.split("\n").filter((l) => l.trim().length);
+    const counts: string[] = [];
+    for (const [i, row] of rows.entries()) {
+      let fields = 1;
+      let quoted = false;
+      for (let c = 0; c < row.length; c++) {
+        if (row[c] === '"') quoted = !quoted;
+        else if (row[c] === "," && !quoted) fields++;
+      }
+      if (fields !== SCREEN_HEADER.length) {
+        counts.push(
+          `line ${i + 1} ("${row.slice(0, 24)}…") has ${fields} fields, not ${SCREEN_HEADER.length}`,
+        );
+      }
+    }
+    expect(counts, `a cell containing a comma must be quoted:\n${counts.join("\n")}`).toEqual([]);
+  });
+
   it("contains every canonical screen exactly once, and invents none", () => {
     const seen = screens.map((r) => r.screen_id);
     const missing = canonical.filter((id) => !seen.includes(id));

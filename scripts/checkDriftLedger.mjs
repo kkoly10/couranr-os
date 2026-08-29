@@ -92,6 +92,24 @@ function scan(text, doc, { promote = false } = {}) {
     fail.push(`columns disagree with the amendment — ledger [${header.join(", ")}], §4 [${columns.join(", ")}]`);
   }
 
+  /* EVERY DATA ROW MUST HAVE THE HEADER'S FIELD COUNT, and this check did not
+     exist — which is how TWO rows shipped shredded while this script printed
+     "ok". Prose written into an UNQUOTED cell splits on its own commas: the
+     `top-notice` row became 17 fields and `order-channels` 19, against an
+     11-column header. Nothing noticed, because the only structural check
+     compared the HEADER to the amendment, and `Object.fromEntries(header.map(
+     (h, i) => [h, r[i]]))` below reads every column by INDEX — so `evidence`
+     and `notes` were silently read out of the middle of a sentence, and the
+     rules that do run were validating the wrong strings. */
+  for (const [n, r] of rows.slice(1).entries()) {
+    if (r.length !== header.length) {
+      fail.push(
+        `row ${n + 2} ("${r[0]}") has ${r.length} fields, not ${header.length} — ` +
+          `a cell containing a comma must be quoted, or its prose splits into columns`,
+      );
+    }
+  }
+
   const data = rows.slice(1).map((r) => Object.fromEntries(header.map((h, i) => [h, r[i] ?? ""])));
   const got = data.map((r) => r.region);
   if (JSON.stringify(got) !== JSON.stringify(regions)) {
@@ -151,6 +169,17 @@ if (process.argv.includes("--positive-control")) {
       "a REBUILD against a region with no artboard",
       (t) => t.replace(/^(pickup-problem,)([\s\S]*?),KEEP,/m, "$1$2,REBUILD,"),
       "names no canonical reference",
+    ],
+    [
+      // Unquote a cell that contains commas, which is how two rows actually
+      // shipped shredded — the defect this control exists for.
+      "a row whose unquoted prose splits into extra columns",
+      (t) =>
+        t.replace(
+          /^(footer,[^\n]*)$/m,
+          (line) => line.replace(/"([^"]*,[^"]*)"$/, "$1"),
+        ),
+      "fields, not",
     ],
   ];
   let bad = 0;

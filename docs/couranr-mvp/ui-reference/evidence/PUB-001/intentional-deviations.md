@@ -107,8 +107,9 @@ Authorities: the artboard's "Company" column (About, Careers, Press, Privacy
 Policy) has **no routes** — a dead link is worse than a short footer. The "Now
 serving" column is market copy, and `components/couranr/shell/shells.tsx` states
 that no shell renders market, pricing, hours or payer copy; `MKT-001` owns the
-markets and `SVC-002` is unresolved. PUB-001 renders the market sentence in the
-notice slot above the header instead, where the *caller* supplies it.
+markets and `SVC-002` is unresolved. PUB-001 renders the market sentence in its
+own `service-areas` card instead. (It used to render it in a notice slot above
+the header; the owner removed that bar on 2026-08-29 — see deviation 20.)
 
 **14. No social icons and no copyright line in the footer.**
 Authority: absence. No Couranr social account exists, and the legal entity name in
@@ -151,10 +152,29 @@ dropping "point of sale" and "other channels you control". Written authority
 governs the count and the naming; the mock governs the tile geometry, which is
 reproduced.
 
-**20. The notice bar's link is hidden below 768px.**
-Authority: the mobile artboard itself, which shows the sentence alone. At 390px
-the governed MKT-001 sentence already wraps to three lines; there is no room
-beside it.
+**20. The notice bar is not built at all.**
+Authority: owner instruction, 2026-08-29 — "remove the eyebrow at the top of the
+homepage on mobile and desktop". Both artboards show a full-bleed service-area
+bar above the header and it was built to match them, cream on desktop and navy
+below 768px. Amendment 1 gives the mock precedence on **geometry**, not on
+whether an element exists; the same reading settled deviation 1 (the hero pill)
+on 2026-08-20. The bar lived in the `(public)` route-group layout, so it is gone
+from every route in that group, not only PUB-001.
+
+*Superseded:* this entry previously read "the notice bar's link is hidden below
+768px", justified by the mobile artboard showing the sentence alone. That
+deviation no longer exists because the bar does not.
+
+**CONSEQUENCE TO SURFACE.** `UI_SCREEN_REGISTRY.md:151` lists *"service-area
+notice"* among PUB-001's required states, and
+`docs/couranr-mvp/SCREEN_IMPLEMENTATION_LEDGER.csv` records that state as
+present. It now has no implementation, so the registry and the screen disagree
+until the owner amends the registry line. This is the same open disagreement
+deviation 1 left behind for `MKT-002`'s consumer descriptor. The MKT-001
+*sentence* is NOT orphaned — the homepage's `service-areas` card and PUB-010
+both render it verbatim — but the registry names the **notice**, not the
+sentence, and that distinction is why the first draft of this removal wrongly
+recorded "no consequence to surface".
 
 ## Implementation notes that are not deviations
 
