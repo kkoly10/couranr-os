@@ -1768,29 +1768,6 @@
   .cr-mkt-payerfork__split--up::before { top: auto; bottom: calc(-1 * var(--couranr-space-4)); }
 }
 
-/* IMG-06's inset, beside the order-flow strip. Small on purpose: §27.0 row 4
-   declares this section `image-led="false"` and the composition test asserts
-   equality, so the photograph has to stay a supporting frame rather than the
-   section's subject. 300px against a ~800px strip is comfortably that. */
-.cr-mkt-channels-flow { display: grid; gap: var(--couranr-space-4); align-items: center; }
-.cr-mkt-channels-flow__photo {
-  display: block;
-  width: 100%;
-  height: auto;
-  border-radius: var(--couranr-radius-md);
-}
-@media (min-width: 900px) {
-  /* The strip keeps the width it needs to stay one line of three steps; the
-     inset takes a fixed 300px rather than a fraction, so it cannot grow into
-     the section's subject as the viewport does. */
-  .cr-mkt-channels-flow { grid-template-columns: 300px 1fr; gap: var(--couranr-space-5); }
-  /* Capped, because the natural 4:3 inset is 225px against a 66px strip and the
-     row then reads as a photograph with a caption rather than a strip with a
-     supporting frame. Cover-cropped high so the shopkeeper's head survives the
-     trim — measured, not assumed. */
-  .cr-mkt-channels-flow__photo { height: 132px; object-fit: cover; object-position: 62% 38%; }
-}
-
 /* ── concept panel A: the channels converge ──────────────────────────────── */
 
 /* Seven channels gather into one Couranr-managed delivery. The section already
@@ -2604,9 +2581,16 @@
      shows only 43% of its height at 1440 — centred, that window opened below
      the subject's hairline and the band shipped a headless figure. 34% keeps
      the whole head and still holds the bag and the plant she is setting down,
-     which are the only reason the frame says anything. Vertical position has no
-     effect below 900px: there the band is taller than wide, the scaled image
-     height already equals the slot, and the crop is entirely horizontal. */
+     which are the only reason the frame says anything.
+
+     WHERE THE Y COMPONENT IS INERT is a question about the BAND'S ASPECT, not
+     about a viewport breakpoint, and the first version of this comment got that
+     wrong — it claimed no effect below 900px. `cover` scales by whichever axis
+     binds: the Y component does nothing only while the band is NARROWER than
+     the frame's own 16:9, because then the height binds and the crop is
+     entirely horizontal. Measured, the band crosses 1.778 at about 592px — so Y
+     is inert at 320/390/480/560 and live at 592 and above, 768 and 899
+     included. The 34% is checked at every one of those. */
   object-position: 66% 34%;
   z-index: -2;
 }
@@ -2626,14 +2610,21 @@
 }
 /* THE HORIZONTAL SCRIM IS A DESKTOP ASSUMPTION, and it fails when the
    assumption stops holding. `.cr-mkt-band__inner--stacked` caps the copy at
-   62ch, so at 1440 the copy's right edge sits at 45% of the band — inside the
-   0.88 stop — and the light tail is photograph nobody reads over. Below 900px
-   the copy spans the FULL width and runs straight into the 0.52 tail.
-   Measured: white copy over this frame at 390px was 4.08:1 against §23.2's
-   4.5:1 floor, because the photograph has a blown highlight (~240,240,237)
-   under the copy's right end at that crop. axe cannot see this — it reports
-   text over a background image as `incomplete`, not as a violation — and
-   Gate C ran at 1440 only, where the same band measures 14.9:1.
+   62ch, so at 1440 the copy's right edge sits at 53.6% of the band — 52.6% to
+   the text ink. That is PAST the 0.88 stop, not inside it; an earlier version
+   of this comment said 45%, having used the padding as the left offset instead
+   of the centred container's edge. What actually keeps the desktop band
+   comfortable is that the photograph is dark where the copy ends, not that the
+   copy stops before the ramp. Below 900px the copy spans the FULL width and
+   runs straight into the 0.52 tail.
+   Measured per text element, the worst was 3.19:1 at 390px against §23.2's
+   4.5:1 floor, with three elements failing at 360 and two at 320 and 390 —
+   the photograph has a blown highlight under the copy's right end at those
+   crops. axe does not merely miss this: `color-contrast` returns zero
+   violations, zero incomplete, and a PASS at 18.24:1, scoring the copy against
+   the section's declared `background-color` and ignoring the photograph, with
+   the identical result before and after this fix. Gate C also ran at 1440
+   only, where the same band measures 8.11:1.
 
    900px is the band's own layout threshold — `.cr-mkt-band__inner` declares a
    `@media (min-width: 900px)` a few rules below this one — so it is reused

@@ -164,34 +164,21 @@ export const CONFIRMATION_PHOTO: MarketingPhoto = {
   wide: { widths: [900, 1400, 1900], ratio: [16, 9] },
 };
 
-/**
- * PUB-001 `order-channels`, as a small inset — the brief's IMG-06, which names
- * this exact section: "if the strip needs an anchoring visual, this is the
- * frame."
- *
- * SMALL ON PURPOSE. §27.0 row 4 declares this section `image-led="false"` and
- * the composition test asserts equality, not a floor, so a dominant photograph
- * here would force the table row. Kept as an inset beside the flow strip, the
- * flag stays honest. If it ever grows into the section's subject, row 4 and the
- * DOM must move in the same commit.
- *
- * What it adds that no other frame does: every other photograph in the set
- * shows a shop serving someone IN PERSON. This is the only one showing an order
- * arriving through a channel — which is the section's entire claim.
- */
-export const CHANNELS_INSET_PHOTO: MarketingPhoto = {
-  id: "couranr-mkt-2026-08-merchant-phone-order",
-  slug: "merchant-phone-order",
-  alt: "A shop owner writing an order in a ledger while taking a call at her counter.",
-  wide: { widths: [360, 720], ratio: [4, 3] },
-};
 
 /**
  * Accepted, and deliberately unused by the website batch. Recorded here so the
  * next person reads "reserve" rather than "forgotten" — and so a test can hold
- * the homepage to six photographs rather than however many exist.
+ * the homepage to a fixed count rather than however many assets exist. The
+ * figure is asserted in tests/couranr-marketing-photos.test.ts rather than
+ * repeated here, because a number written in two places is a number that goes
+ * stale in one.
  */
 export const RESERVE_PHOTO_IDS = [
+  /* Accepted 2026-08-29, briefly placed as an inset beside the order-flow strip
+     in `order-channels`, then REMOVED on owner instruction 2026-08-29: the
+     photograph made the section look awkward. The section is back to tiles,
+     convergence and the flow strip, which is what the artboard shows. */
+  "couranr-mkt-2026-08-merchant-phone-order",
   "couranr-mkt-2026-08-specialty-retail",
   "couranr-mkt-2026-08-benefit-office",
   /* Accepted 2026-08-29 and held back deliberately: both are the same SCENE as

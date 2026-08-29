@@ -30,10 +30,13 @@
  *   It used to read "none of these four renders text over photography, so the
  *   measurement PUB-001 needs has nothing to measure" — true when it was
  *   written, false the moment PUB-011's `confirmation` band took a photograph.
- *   White copy over that frame measured 4.08:1 at 390px against §23.2's 4.5:1
- *   floor and no gate saw it: axe reports text over a background image as
- *   `incomplete` rather than a violation, and Gate C ran at 1440 only, where
- *   the same band measures 14.9:1. So the harness no longer carries a claim
+ *   Copy over that frame measured 3.19:1 at 390px against §23.2's 4.5:1 floor
+ *   and no gate saw it. axe does not report it as `incomplete` either — run
+ *   against this band, `color-contrast` returns zero violations, zero
+ *   incomplete and a PASS at 18.24:1, scoring the copy against the section's
+ *   declared `background-color` and ignoring the photograph entirely, with the
+ *   identical result before and after the fix. Gate C also ran at 1440 only,
+ *   where the same band measures 8.11:1. So the harness no longer carries a claim
  *   about which pages have photography — it DISCOVERS them, at each of §24.1's
  *   six widths, and measures whatever it finds. A page that adds a photographic
  *   band tomorrow is covered without anyone remembering to amend this comment.
@@ -107,20 +110,36 @@ const ratio = (a, b) => (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05);
  * not another: `<picture>` art direction and a `display: none` at a breakpoint
  * both change the answer.
  *
- * KNOWN LIMIT, stated rather than left to be discovered: a section that puts
- * its photograph behind the copy by DOM order and a positioned foreground,
- * with no negative z-index anywhere, is not detected. Both bands in the tree
- * use the negative-z-index arrangement, and widening the predicate to "any
- * covering image" would sweep in the ordinary side-by-side frames on
- * `category-breadth` and `outcomes`, where the text is beside the picture and
- * axe already reads the contrast correctly. If a third arrangement appears,
- * this is the function to extend — not the caller.
+ * KNOWN LIMIT, and the first version of this comment UNDERSTATED it, which is
+ * worse than not having written one: it named a single missed arrangement
+ * while the predicate also missed `background-image: url(...)` entirely and
+ * could be masked by an intermediate `z-index: 0`. Both are handled above now.
+ * What remains genuinely undetected is a photograph placed behind the copy by
+ * DOM order and a positioned foreground, with no negative z-index anywhere in
+ * the chain. Widening further — to "any covering image" — would sweep in the
+ * ordinary side-by-side frames on `category-breadth` and `outcomes`, where the
+ * text is beside the picture and axe reads the contrast correctly on its own.
+ * If a fourth arrangement appears, this is the function to extend, not the
+ * caller.
  */
 const findPhotographicSections = () =>
   [...document.querySelectorAll("[data-couranr-section]")]
     .filter((sec) => {
       const r = sec.getBoundingClientRect();
       if (r.width < 1 || r.height < 1) return false;
+      /* A CSS `background-image: url(...)` that covers the section is the same
+         arrangement by another mechanism, and the first version of this
+         predicate missed it entirely while its comment claimed to state its own
+         limit. Gradients are background-images too, so this looks for a url()
+         specifically — otherwise every scrim and tinted panel in the tree would
+         register as a photograph. */
+      const painted = [sec, ...sec.querySelectorAll("*")].some((el) => {
+        const cs = getComputedStyle(el);
+        if (!/url\(/.test(cs.backgroundImage)) return false;
+        const er = el.getBoundingClientRect();
+        return er.width >= r.width - 2 && er.height >= r.height - 2;
+      });
+      if (painted) return true;
       return [...sec.querySelectorAll("img")].some((img) => {
         const ir = img.getBoundingClientRect();
         if (ir.width < r.width - 2 || ir.height < r.height - 2) return false;
@@ -136,7 +155,14 @@ const findPhotographicSections = () =>
         for (let el = img; el && el !== sec; el = el.parentElement) {
           const cs = getComputedStyle(el);
           if (cs.position === "absolute" || cs.position === "fixed") outOfFlow = true;
-          if (z === null && cs.zIndex !== "auto") z = Number(cs.zIndex);
+          /* The MOST NEGATIVE explicit z-index on the climb, not the first one
+             found. A wrapper with `z-index: 0` between the image and the
+             section would otherwise mask a `z-index: -2` on the image itself
+             and report the section as not photographic. */
+          if (cs.zIndex !== "auto") {
+            const v = Number(cs.zIndex);
+            if (Number.isFinite(v) && (z === null || v < z)) z = v;
+          }
         }
         return outOfFlow && z !== null && z < 0;
       });
@@ -181,7 +207,6 @@ async function photoTextContrast(tab, sectionId) {
       const r = el.getBoundingClientRect();
       if (r.width < 4 || r.height < 4) continue;
       const c = nums(cs.color);
-      const bg = nums(cs.backgroundColor);
       const size = parseFloat(cs.fontSize);
       const weight = Number(cs.fontWeight) || 400;
       const key = `${el.tagName.toLowerCase()}.${(el.className || "").toString().split(/\s+/)[0] || "-"}#${n}`;
@@ -195,12 +220,6 @@ async function photoTextContrast(tab, sectionId) {
           h: Math.round(r.height),
         },
         color: [c[0], c[1], c[2], c.length > 3 ? c[3] : 1],
-        /* An element with its own translucent fill is not read against the
-           photograph directly — WCAG compares the glyph to what is composited
-           immediately behind it. The fill is composited here rather than
-           sampled, because the sampling pass hides the text and takes the
-           fill with it. */
-        fill: bg.length >= 3 ? [bg[0], bg[1], bg[2], bg.length > 3 ? bg[3] : 1] : [0, 0, 0, 0],
         floor: size >= 24 || (size >= 18.66 && weight >= 700) ? 3 : 4.5,
         text: (el.textContent || "").trim().slice(0, 44),
       });
@@ -210,21 +229,37 @@ async function photoTextContrast(tab, sectionId) {
 
   if (!probes.length) return [];
 
-  /* The text goes; so does the sticky chrome, which an element screenshot
-     would otherwise composite into the top of the sample. Same reasoning as
-     pub001Gates: the header is not BEHIND this text, it is in front of a
-     different part of the page, and whether fixed chrome occludes content is a
-     separate question this gate does not answer. */
+  /* THE GLYPHS ARE MADE TRANSPARENT, NOT HIDDEN, and that is a correctness fix
+     rather than a stylistic one. `visibility: hidden` takes the element's own
+     BACKGROUND with it, so anything painted behind the glyphs by the text
+     element itself — or by a text-bearing ancestor, which gets hidden too —
+     vanished from the sample. The first version compensated by compositing
+     each probe's own `backgroundColor` back in, which covered the element but
+     not its ancestors: this band's link sits inside the note paragraph, and had
+     that paragraph carried a translucent fill, the link would have been measured
+     against a ground that is never painted. Transparent text leaves every
+     background exactly as the browser painted it, so nothing needs compositing
+     back and there is no ancestor case to miss.
+
+     `text-decoration-color` and `-webkit-text-fill-color` go with it, or the
+     link's underline stays in the sample as a stripe of its own colour.
+
+     The sticky chrome IS hidden outright: an element screenshot composites
+     anything painted over the section, and the header is not BEHIND this text —
+     it is in front of a different part of the page. Whether fixed chrome
+     occludes content is a real question, but an occlusion one, and not this
+     gate's. */
   await tab.addStyleTag({
     content:
-      "[data-crphototext]{visibility:hidden!important}.cr-topbar,.cr-topnotice,.cr-askc{visibility:hidden!important}",
+      "[data-crphototext]{color:transparent!important;text-decoration-color:transparent!important;-webkit-text-fill-color:transparent!important}" +
+      ".cr-topbar,.cr-topnotice,.cr-askc{visibility:hidden!important}",
   });
   const shot = await tab
     .locator(`[data-couranr-section="${sectionId}"]`)
     .screenshot();
 
   const sampled = await tab.evaluate(
-    async ({ b64, probes }) => {
+    async ({ b64, probes, sectionId }) => {
       const img = new Image();
       img.src = "data:image/png;base64," + b64;
       await img.decode();
@@ -233,14 +268,25 @@ async function photoTextContrast(tab, sectionId) {
       c.height = img.height;
       const ctx = c.getContext("2d");
       ctx.drawImage(img, 0, 0);
+      /* Probe rects are CSS pixels; the screenshot is device pixels. They are
+         equal only while deviceScaleFactor is 1, which is what this harness
+         happens to use — so the scale is DERIVED from the image the browser
+         actually returned rather than assumed. A retina context would otherwise
+         sample the top-left quarter of every box and call it the whole. */
+      const secW = document
+        .querySelector(`[data-couranr-section="${sectionId}"]`)
+        .getBoundingClientRect().width;
+      const k = secW > 0 ? img.width / secW : 1;
       return probes.map((p) => {
-        const w = Math.min(p.rect.w, img.width - p.rect.x);
-        const h = Math.min(p.rect.h, img.height - p.rect.y);
+        const x = Math.round(p.rect.x * k);
+        const y = Math.round(p.rect.y * k);
+        const w = Math.min(Math.round(p.rect.w * k), img.width - x);
+        const h = Math.min(Math.round(p.rect.h * k), img.height - y);
         if (w <= 0 || h <= 0) return null;
-        return Array.from(ctx.getImageData(p.rect.x, p.rect.y, w, h).data);
+        return Array.from(ctx.getImageData(x, y, w, h).data);
       });
     },
-    { b64: shot.toString("base64"), probes },
+    { b64: shot.toString("base64"), probes, sectionId },
   );
 
   const results = [];
@@ -250,38 +296,44 @@ async function photoTextContrast(tab, sectionId) {
       results.push({ ...p, ratio: null });
       return;
     }
-    const [fr, fg, fb, fa] = p.fill;
-    /* Every sampled pixel, with the element's own fill already composited over
-       it, sorted by luminance. The 1st and 99th percentiles are taken as
-       PIXELS rather than as luminances, because the glyph's alpha has to be
-       composited over the ground's channels to get the colour actually
-       painted. */
-    const px = [];
-    for (let j = 0; j < data.length; j += 4) {
-      px.push([
-        fa * fr + (1 - fa) * data[j],
-        fa * fg + (1 - fa) * data[j + 1],
-        fa * fb + (1 - fa) * data[j + 2],
-      ]);
-    }
-    px.sort((a, b) => lum(...a) - lum(...b));
     const [cr, cg, cb, ca] = p.color;
-    const against = (ground) =>
-      ratio(
-        lum(
-          ca * cr + (1 - ca) * ground[0],
-          ca * cg + (1 - ca) * ground[1],
-          ca * cb + (1 - ca) * ground[2],
+    /* THE RATIO IS COMPUTED PER PIXEL AND THE PERCENTILE IS TAKEN OVER RATIOS,
+       not over luminances. The first version sampled the 1st and 99th
+       luminance percentiles and took the worse of those two ratios, on the
+       reasoning that light text is worst over the brightest ground and dark
+       text over the darkest. That is only true when the glyph's luminance sits
+       OUTSIDE the ground's range. Contrast against a fixed glyph is not
+       monotonic in the ground: it bottoms out where the ground's luminance
+       approaches the glyph's. Mid-tone text over a frame that runs dark to
+       light has its worst pixels in the INTERIOR of the distribution, and both
+       extremes report comfortably passing ratios.
+
+       It does not change any verdict on the band shipping today — its copy is
+       white on a dark ground, so the brightest pixel really is the worst — but
+       this function discovers sections rather than being pointed at them, and
+       the next one it finds need not be white on navy.
+
+       The 1st percentile of the ratios keeps the original robustness property:
+       a lone stray pixel still cannot decide the verdict. */
+    const ratios = [];
+    for (let j = 0; j < data.length; j += 4) {
+      // The ground is the pixel as the browser painted it, backgrounds and all
+      // — the glyphs were made transparent rather than hidden, so nothing has
+      // to be composited back in. The glyph's own alpha still does.
+      const ground = [data[j], data[j + 1], data[j + 2]];
+      ratios.push(
+        ratio(
+          lum(
+            ca * cr + (1 - ca) * ground[0],
+            ca * cg + (1 - ca) * ground[1],
+            ca * cb + (1 - ca) * ground[2],
+          ),
+          lum(...ground),
         ),
-        lum(...ground),
       );
-    /* Both extremes, worse of the two: correct for dark text on a bright frame
-       as well as light text on a dark one, and no single stray pixel decides
-       the verdict in either direction. */
-    const worst = Math.min(
-      against(px[Math.floor(px.length * 0.01)]),
-      against(px[Math.floor(px.length * 0.99)]),
-    );
+    }
+    ratios.sort((a, b) => a - b);
+    const worst = ratios[Math.floor(ratios.length * 0.01)];
     results.push({ ...p, ratio: worst });
   });
   return results;
@@ -412,8 +464,8 @@ async function main() {
       /* ── §23.2 contrast over photography ────────────────────────────────
          A Gate C check running inside Gate B's loop, deliberately. The floor
          is §23.2's and the finding is an accessibility one, but the DEFECT IS
-         WIDTH-DEPENDENT — this band passed at 14.9:1 at 1440 and failed at
-         4.08:1 at 390, because the scrim was a horizontal gradient written for
+         WIDTH-DEPENDENT — this band passed at 8.11:1 at 1440 and failed at
+         3.19:1 at 390, because the scrim was a horizontal gradient written for
          a copy well that only sits in the band's left half while the band is
          wide. Gate C runs at 1440. Re-opening six more tabs to keep the
          labels tidy would cost six page loads to learn nothing, so the

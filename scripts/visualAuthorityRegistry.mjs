@@ -550,28 +550,28 @@ function build() {
         alt: "A person setting a shopping bag and a potted plant on a table just inside her front door.",
         allowed_surfaces: ["PUB-011"],
         desktop_focal_point: "66% 34%",
-        mobile_focal_point: "66% 50%",
+        mobile_focal_point: null,
         preferred_aspect: "16:9",
         focal_point_note:
-          "The only native 16:9 frame in the set, and the reason it can hold a full-bleed band. Right of centre because the empty left half is the copy well the band's inverse text sits over. HIGH on desktop because the band is a 4.13:1 slot showing 43% of the frame's height at 1440, and a centred window opened below the subject's hairline. Mobile keeps 50% because the band is taller than wide there and the vertical component has no effect.",
+          "The only native 16:9 frame in the set, and the reason it can hold a full-bleed band. Right of centre because the empty left half is the copy well the band's inverse text sits over. HIGH because the band is a 4.13:1 slot showing 43% of the frame's height at 1440, and a centred window opened below the subject's hairline. ONE focal point at every width: `cover` makes the Y component inert only while the band is narrower than 16:9, which measures as below about 592px, so a separate mobile value would describe nothing. Null rather than a second figure, because a focal point no rule reads is a claim, not a record.",
         status: "approved",
       },
       {
         asset_id: "couranr-mkt-2026-08-merchant-phone-order",
-        local_path: "public/images/marketing/2026-08/w/mkt-2026-08-merchant-phone-order-wide-720.webp",
+        local_path: "public/images/marketing/2026-08/15-merchant-phone-order.png",
         derived_from: "public/images/marketing/2026-08/15-merchant-phone-order.png",
         source: "generated-openai-chatgpt-2026-08",
         source_reference: "Generated with OpenAI image generation in ChatGPT; owner-accepted on 2026-08-29",
         license_record: "Generated asset; no third-party stock source or external stock license.",
         subject: "A shop owner writing an order in a ledger while taking a call at her counter",
         alt: "A shop owner writing an order in a ledger while taking a call at her counter.",
-        allowed_surfaces: ["PUB-001"],
-        desktop_focal_point: "62% 38%",
-        mobile_focal_point: "none — uncropped",
+        allowed_surfaces: [],
+        desktop_focal_point: null,
+        mobile_focal_point: null,
         preferred_aspect: "4:3",
         focal_point_note:
-          "The brief's IMG-06. Desktop crops harder and higher than the asset's own focal point because the inset is capped at 132px to stay a supporting frame beside the order-flow strip. Below 900px it renders full width at its natural 4:3 with no object-fit, so nothing is cropped and a mobile focal point would be a figure no rule reads.",
-        status: "approved",
+          "RESERVE. The brief's IMG-06, briefly placed as a 300x132 inset beside PUB-001's order-flow strip and REMOVED the same day on owner instruction 2026-08-29 — the photograph made the section look awkward. `order-channels` is back to tiles, convergence and the flow strip, which is what the artboard shows. No focal point is recorded because nothing crops it.",
+        status: "approved-reserve",
       },
       {
         asset_id: "couranr-mkt-2026-08-older-customer-vase",
@@ -773,7 +773,20 @@ const reg = JSON.parse(readFileSync(join(repo, OUT), "utf8"));
  * not.
  */
 function generatorDrift(onDisk) {
-  const fresh = JSON.stringify(build(), null, 2) + "\n";
+  /* build() reads the mock map, §27's tables and every image on disk. If any of
+     those is missing or malformed it THROWS, and an uncaught throw here would
+     replace validate()'s specific, actionable message with a stack trace — a
+     drift check that makes every other failure harder to read is a net loss.
+     So a build failure is reported as a finding and the run continues into
+     validate(). */
+  let fresh;
+  try {
+    fresh = JSON.stringify(build(), null, 2) + "\n";
+  } catch (e) {
+    return [
+      `the registry generator could not run, so ${OUT} could not be checked for drift — ${e.message}`,
+    ];
+  }
   const stored = JSON.stringify(onDisk, null, 2) + "\n";
   if (fresh === stored) return [];
   const a = fresh.split("\n");

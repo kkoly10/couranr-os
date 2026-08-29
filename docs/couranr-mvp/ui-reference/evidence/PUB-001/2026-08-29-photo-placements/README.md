@@ -1,9 +1,15 @@
 # 2026-08-29 photo placements — rendered evidence
 
 The owner accepted four more photographs and asked where else the public
-surface could carry an image. Two were placed, two were registered as reserves.
-Each capture below backs a specific claim; a screenshot with no assertion behind
-it is decoration.
+surface could carry an image. **One was placed and kept, one was placed and
+withdrawn the same day, and two are reserves.** Each capture below backs a
+specific claim; a screenshot with no assertion behind it is decoration.
+
+> **The `order-channels` inset is NOT on the site.** It was built, reviewed,
+> corrected twice and passed every gate; the owner then looked at it and said the
+> picture made the section look awkward, and it came out. The captures of it are
+> kept as the record of an attempt, clearly marked. `order-channels` renders
+> tiles, convergence and the flow strip — no photograph.
 
 This folder sits under `evidence/PUB-001/` and holds a PUB-011 capture, which
 follows the convention `2026-08-visual-batch/` already set — that folder carries
@@ -13,61 +19,99 @@ folder its name suggests.
 
 | File | What it shows | What it backs |
 |---|---|---|
-| `home-order-channels-1440.png` | The seven tiles, the convergence resolving on the app mark, and the order-flow strip with a 300×132 inset beside it | The inset is a SUPPORTING frame: 300px of a 1136px content row, 132px against a 580px section. §27.0 row 4 declares `data-image-led="false"` and the composition test asserts that as equality, so the flag stays literally true |
-| `home-order-channels-390.png` | The same stacked — tiles, then the frame full width, then the strip | The convergence is correctly absent below 1088px, where the tiles wrap. The frame is full width here because at 358px an inset is not a composition, it is a thumbnail |
-| `how-it-works-confirmation-1440.png` | PUB-011's `confirmation` band with the photograph full-bleed behind the copy | §19.6 `full-bleed-interruption` reads "Navy **and/or approved photography**", and PUB-011 is `visual_authority: "derived"` — no artboard governs it. `data-image-led` moved false → true and §27.1 row 4 moved in the same commit |
+| `home-order-channels-1440-RESTORED.png` | **WHAT IS ON THE SITE.** The section after the withdrawal: seven tiles, the convergence resolving on the app mark, the flow strip full width, no photograph | `order-channels` carries no image. `data-image-led="false"` in §27.0 row 4 is true by construction again rather than by a measured cap |
+| `home-order-channels-1440.png` | **WITHDRAWN TREATMENT.** The section with the corrected 300×132 inset beside the strip | The record of what was withdrawn, at the width where it was always correct |
+| `home-order-channels-900.png` | **WITHDRAWN TREATMENT** at 900: inset above the strip, strip on ONE line | The two geometric corrections at the width that exposed them — the first version put the inset beside the strip here and wrapped its three steps to two lines |
+| `home-order-channels-390.png` | **WITHDRAWN TREATMENT** at 390, inset still 300×132 | The unconditional cap. The first version ran the frame full-bleed below 900px, reaching 58.3% of the section's area at 899px |
+| `how-it-works-confirmation-1440.png` | PUB-011's `confirmation` band with the photograph full-bleed behind the copy | §19.6 `full-bleed-interruption` reads "Navy **and/or approved photography**". `data-image-led` moved false → true and §27.1 row 4 moved in the same commit |
 | `how-it-works-confirmation-390.png` | The same band at 390, copy over a visibly present frame | The narrow-width scrim replacement works: the photograph is still readable as an image rather than erased to flat navy |
-| `how-it-works-confirmation-390-BEFORE-scrim-fix.png` | **The defect.** The same band with the desktop horizontal gradient put back | White copy running onto the bright window and plant at the frame's right. Measured 4.08:1 against §23.2's 4.5:1 floor. Reproduced by re-injecting the one superseded declaration over the shipped build, not by reverting the file |
+| `how-it-works-confirmation-390-BEFORE-scrim-fix.png` | **The defect.** The same band with the desktop horizontal gradient put back | White copy running onto the bright window and plant at the frame's right. Reproduced by re-injecting the one superseded declaration over the shipped build, not by reverting the file |
 
-## The defect this pass found, and the gate that now catches it
+## The contrast defect
 
-`.cr-mkt-band__scrim` was a 90deg gradient, `0.95 → 0.88 → 0.52`. That is a
-desktop assumption: `.cr-mkt-band__inner--stacked` caps the copy at 62ch, so at
-1440 the copy's right edge sits at 45% of the band, well inside the 0.88 stop.
-Below 900px the copy spans the full width and runs into the 0.52 tail, straight
-over a blown highlight in the frame (~240,240,237).
+`.cr-mkt-band__scrim` was a 90deg gradient, `0.95 → 0.88 → 0.52`. The copy well
+is capped at 62ch, so at 1440 its right edge sits at 53.6% of the band (52.6% to
+the text ink) — past the 0.88 stop, not inside it. What keeps the desktop band
+comfortable is that the photograph is dark where the copy ends, not that the copy
+stops before the ramp. Below 900px the copy spans the full width and runs into
+the 0.52 tail.
 
-Measured with the copy hidden and the painted pixels sampled, as §23.2 requires.
-Both columns are the SAME probe run against the same build twice — the heading's
-white against the single LIGHTEST pixel anywhere under the copy block, which is
-the strictest reading available and the one that found the defect:
+Measured per text element, with the glyphs made transparent and the painted
+pixels sampled — the same probe both times, the "before" column produced by
+re-injecting the old declaration over the shipped build:
 
-| Width | Before | After |
-|---|---|---|
-| 1440 | 14.90:1 | 14.90:1 |
-| 1280 | 14.90:1 | 14.90:1 |
-| 1024 | 11.81:1 | 11.81:1 |
-| 768 | 6.27:1 | 10.61:1 |
-| 390 | **4.08:1** | 10.09:1 |
-| 320 | 4.75:1 | 10.69:1 |
+| Width | Before (worst element) | After | Elements failing before |
+|---|---|---|---|
+| 1440 | 8.11:1 | 8.11:1 | — |
+| 1280 | 8.11:1 | 8.11:1 | — |
+| 1024 | 7.88:1 | 7.88:1 | — |
+| 768 | 5.82:1 | 7.14:1 | — |
+| 390 | **3.19:1** | 6.22:1 | 2 |
+| 360 | **3.63:1** | 6.44:1 | 3 |
+| 320 | **3.52:1** | 6.44:1 | 2 |
 
-The shipped gate is stricter in one way and looser in another, so its numbers
-differ and are reported separately rather than mixed into the table above. It
-measures each text element on its own — including the `0.7`-alpha note and the
-gold link, which the block-level probe never isolated — but takes the 99th
-luminance percentile rather than the single brightest pixel, so no lone
-sub-pixel decides a verdict. Its worst reading across all four elements and all
-six widths is **6.22:1** (the gold link at 390) against a 4.5:1 floor.
+Against §23.2's 4.5:1 floor (3:1 for the heading).
 
-No gate saw it, for two compounding reasons. axe-core reports text over a
-background image as `incomplete`, not as a violation. And `e2e/publicFamilyGates`
-carried a comment saying "none of these four renders text over photography, so
-the measurement PUB-001 needs has nothing to measure" — true when written, false
-the moment this band took a photograph.
+## axe does not miss this — it certifies it
 
-That harness now DISCOVERS photographic sections at each of §24.1's six widths
-rather than carrying a claim about which pages have them, and measures every
-text element in one against its own painted ground, compositing the glyph's own
-alpha (this band's body is `rgba(255,255,255,0.86)`, its note `0.7`) and deriving
-the 3:1 / 4.5:1 floor from computed font metrics. `e2e/pub001Gates` gained the
-matching guard: it asserts the hero is the ONLY photographic section on PUB-001,
-so a second one cannot appear unmeasured.
+Run `color-contrast` against this band and axe returns **zero violations, zero
+incomplete, and a PASS at 18.24:1**, computed against the section's declared
+`background-color: #0d1525`. It returns the identical result with the broken
+gradient and with the fixed one. A rule that scores inverse copy against a colour
+the photograph covers does not merely fail to notice the defect; it asserts the
+opposite.
 
-Both are proven able to fail. `test:pub-family --positive-control` removes the
-scrim under the band and requires the headline to be reported failing; it drops
-to 1.84:1 and is caught.
+That is why the gate had to sample painted pixels, and why
+`e2e/publicFamilyGates.mjs` no longer carries a claim about which pages have
+photography. It discovers them at each of §24.1's six widths and measures every
+text element against its own painted ground, compositing each glyph's own alpha
+(this band's body is `rgba(255,255,255,0.86)`, its note `0.7`) and deriving the
+3:1 / 4.5:1 floor from computed font metrics.
 
-## A second gate gap, found by tripping it
+## Four defects in the gate itself, found by reviewing it after writing it
+
+Recorded because a measurement harness that is wrong is worse than none.
+
+1. It took the worse of the ratios at the two **luminance** extremes. Contrast
+   against a fixed glyph is not monotonic in the ground — it bottoms out where
+   the ground approaches the glyph's own luminance — so mid-tone text over a
+   mixed frame has its worst pixels in the interior and both extremes report a
+   pass. It takes the 1st percentile of the per-pixel **ratios** now.
+2. It hid text with `visibility: hidden`, which takes the element's background
+   with it. It compensated by compositing each probe's own `background-color`
+   back in, which cannot recover a text-bearing **ancestor's** fill — and this
+   band's link sits inside its note paragraph. The glyphs are made transparent
+   instead, so every background stays exactly as the browser painted it.
+3. It mapped CSS-pixel rects onto a device-pixel screenshot, correct only at
+   `deviceScaleFactor: 1`. The scale is derived from the returned image now.
+4. Its stated "known limit" was narrower than its real one: it missed
+   `background-image: url(...)` entirely and could be masked by an intermediate
+   `z-index: 0` between the image and the section.
+
+A fifth was caught by the guard rather than by reading: the predicate tested the
+`<img>` for positioning, but PUB-001's hero carries `position: absolute;
+z-index: -2` on its `<picture>` wrapper, so the hero reported as **not
+photographic**. A discovery-based gate that discovers nothing is worse than the
+hardcoded comment it replaced.
+
+## Two defects in the inset
+
+1. The cap lived inside `@media (min-width: 900px)` and the frame ran
+   `width: 100%; height: auto` below it. Measured across twelve widths it was
+   6.0% of the section's area at 1440 and **58.3% at 899px** — so
+   "deliberately non-dominant", the whole justification for leaving §27.0 row 4
+   at `image-led: false`, was true at the one width it was checked at and false
+   across a 340px band. The cap is unconditional now: one 300×132 box at every
+   width, 5.3%–13.4% of the section's area.
+2. Placing it beside the order-flow strip at `min-width: 900px` left the strip
+   512px of an 836px row, and its three steps **wrapped to two lines from 900px
+   to about 1150px**. `order-flow` is a KEEP row whose `mock_treatment` reads
+   "One row at every width the artboards cover" — a frame with no artboard broke
+   a region that has one. The breakpoint is 1200px now; measured against a
+   simulated pre-diff layout at twelve widths, the strip's height matches its
+   pre-diff height at every one.
+
+## A gate gap, tripped rather than reasoned about
 
 `check:visual-registry` read the checked-in JSON and validated THAT, never
 comparing it with what its own generator produces. Changing a focal point in

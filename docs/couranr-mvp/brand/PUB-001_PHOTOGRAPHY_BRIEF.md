@@ -211,8 +211,9 @@ art-direct the mobile crops myself).
 > `COURANR_VISUAL_FIDELITY_AMENDMENT.md` gives the canonical mock precedence on
 > composition and geometry, and this brief predates that reconciliation. The
 > governing artboard (`5780C3C2-8EFC-4BDC-87AA-85CE667921D8.png`) was opened and
-> read at the pixel level rather than remembered: flat navy, headline, two
-> buttons, no image. Putting a photograph here reopens a mock-approved region.
+> read at the pixel level rather than remembered: flat navy, headline, a
+> supporting line, two buttons, no image. Putting a photograph here reopens a
+> mock-approved region.
 >
 > The slot could not carry one anyway. Content covers 94.4% of the band's width,
 > so the tapered scrim this section asks for has nowhere to be light; and a 16:9
@@ -220,11 +221,14 @@ art-direct the mobile crops myself).
 > composition, it is a texture. Both figures were measured, and by two
 > independent passes.
 >
-> The one open photographic `full-bleed-interruption` on the public surface is
-> PUB-011's `confirmation`, which has no governing artboard at all
-> (`visual_authority: "derived"`) and therefore nothing for the amendment to
-> defer to. IMG-05's frame was placed there instead. See
-> COURANR_VISUAL_SYSTEM_V2_2.md r10.
+> This section is in fact the ONLY public `full-bleed-interruption` the amendment
+> closes. Enumerating §27.0/§27.1 against §25 gives eight of them on the public
+> family and seven are on `derived` screens with no artboard to defer to — so the
+> specification leaves seven open and shuts this one. IMG-05's frame went to
+> PUB-011's `confirmation`, chosen among the seven on the editorial grounds that
+> it is the beat where a delivery arriving at someone's home is the section's
+> literal subject. See COURANR_VISUAL_SYSTEM_V2_2.md r10, which records this as a
+> correction to its own first draft.
 >
 > The paragraphs below are kept because they are the reason the 16:9 frame was
 > commissioned, and the frame is in use.

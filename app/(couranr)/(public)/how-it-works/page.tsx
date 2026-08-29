@@ -302,6 +302,15 @@ export default function Page() {
           The frame claims nothing: a person setting down a bag and a plant at
           her own door. Not a Couranr delivery, not a Couranr customer.
         */}
+        {/*
+          `sizes="100vw"` describes the ELEMENT's layout width, which is exactly
+          100vw. Below about 592px the band is taller than the frame's 16:9, so
+          `cover` scales by height and PAINTS more width than that — 776px at
+          390, 879px at 320. Checked rather than assumed: at 320/390/768 the
+          browser already selects the 900w candidate, which covers the painted
+          width at all three. A larger declared size would only over-fetch a
+          frame that sits behind a 0.80–0.86 scrim on a phone.
+        */}
         <img
           src={largestSrc(CONFIRMATION_PHOTO)}
           srcSet={srcSetFor(CONFIRMATION_PHOTO, "wide")}

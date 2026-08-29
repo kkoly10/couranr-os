@@ -108,31 +108,59 @@ public surface was searched for slots the specification actually allows, rather
 than for places an image would look good.
 
 **Placed.** One 16:9 frame became PUB-011's `confirmation` band, full-bleed
-behind the copy — the ONE open photographic slot on the public site, because
-§19.6 `full-bleed-interruption` reads "navy and/or approved photography" and
-PUB-011 is the only screen carrying that composition with no governing artboard
-(`visual_authority: "derived"`). §27.1's PUB-011 row 4 moved `image-led` false →
-true in the same commit as the DOM attribute. One 4:3 frame became a capped
-300×132 inset beside PUB-001's order-flow strip, deliberately small so §27.0 row
-4's `image-led: false` stays literally true.
+behind the copy. §27.1's PUB-011 row 4 moved `image-led` false → true in the same
+commit as the DOM attribute. That is the only new photograph on the public
+surface.
 
-**Refused.** The photography brief's `closing`-band ask. The governing artboard
-is flat navy and the fidelity amendment gives the mock precedence on composition,
-so the brief is superseded in place there.
+**Placed and withdrawn.** A 4:3 frame went into PUB-001's `order-channels` as an
+inset beside the order-flow strip, survived two rounds of geometric correction
+and every gate, and was removed the same day on owner instruction — the picture
+made the section look awkward. The section is back to tiles, convergence and the
+flow strip. No measurement would have surfaced that; it is recorded because it is
+the clearest case yet that green gates are not the same as a good page.
+
+`confirmation` was CHOSEN, not uniquely permitted, and the first draft of this
+entry got that wrong. §19.6 `full-bleed-interruption` reads "navy and/or approved
+photography", and enumerating §27.0/§27.1 against §25 gives eight such sections
+on the public family, seven of them on `derived` screens. Only PUB-001's
+`closing` is artboard-governed. So the specification closes exactly one slot and
+leaves seven open; this is an editorial choice among the seven.
+
+**Refused.** The photography brief's `closing`-band ask, because that is the one
+slot an artboard governs and the fidelity amendment gives the mock precedence on
+composition. The brief is superseded in place there.
 
 **Held.** Two frames are `approved-reserve` with `allowed_surfaces: []` — the
 same scenes as the two already bound into `outcomes`.
 
-**One accessibility defect shipped and was caught before merge, by measuring.**
-The band's scrim was a horizontal gradient written for a desktop copy well; below
-900px the copy ran into its light tail and white text measured 4.08:1 against
-§23.2's 4.5:1 floor, while the same band measured 14.9:1 at 1440. axe reports
-text over a background image as `incomplete`, not as a violation, so no gate saw
-it. `e2e/publicFamilyGates.mjs` now discovers photographic sections at each of
+**Three defects shipped in this work and were caught before merge, by measuring
+rather than reading.** All three were in claims that had passed a careful read.
+
+- The band's scrim was a horizontal gradient written for a desktop copy well.
+  Below 900px the copy ran into its light tail: measured per text element, the
+  worst was **3.19:1** at 390 against §23.2's 4.5:1 floor, with three elements
+  failing at 360 and two at 320 and 390. **axe does not miss this — it reports a
+  PASS at 18.24:1**, scoring the copy against the section's declared navy and
+  ignoring the photograph entirely, identically before and after the fix.
+- The `order-channels` inset was capped only above 900px and ran full-bleed
+  below, reaching 58.3% of the section's area at 899px — so the
+  "deliberately small" justification for `image-led: false` was measured at one
+  width and asserted at all of them.
+- Placing that inset beside the order-flow strip at 900px wrapped the strip's
+  three steps to two lines from 900px to ~1150px, breaking a KEEP region whose
+  mock records "one row at every width the artboards cover".
+
+Both inset defects were fixed and then made moot by the withdrawal; they are kept
+in the ledger because the first is a pattern (a responsive cap written inside a
+`min-width` query is unbounded in the direction nobody looked).
+
+`e2e/publicFamilyGates.mjs` now discovers photographic sections at each of
 §24.1's six widths and measures them; `e2e/pub001Gates.mjs` asserts the hero is
-still the only one on PUB-001. A second gap was tripped in the same pass:
-`check:visual-registry` validated the checked-in JSON without comparing it to
-what its own generator produces, and now diffs the two.
+still the only one on PUB-001, at both art-directed widths, with a positive
+control that plants a second. Four defects in that new gate code were themselves
+found by review and are recorded in the source. A separate gap was tripped in the
+same pass: `check:visual-registry` validated the checked-in JSON without
+comparing it to what its own generator produces, and now diffs the two.
 
 ## Authority sources
 

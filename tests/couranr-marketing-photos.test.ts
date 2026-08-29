@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 import {
   BUSINESSES_STRIP_PHOTOS,
   CATEGORY_BREADTH_PHOTOS,
-  CHANNELS_INSET_PHOTO,
   CONFIRMATION_PHOTO,
   OUTCOME_PRIMARY_PHOTO,
   OUTCOME_SUPPORTING_PHOTO,
@@ -41,7 +40,6 @@ const HOMEPAGE = [
   ...CATEGORY_BREADTH_PHOTOS,
   OUTCOME_PRIMARY_PHOTO,
   OUTCOME_SUPPORTING_PHOTO,
-  CHANNELS_INSET_PHOTO,
 ];
 const ALL = [...HOMEPAGE, ...BUSINESSES_STRIP_PHOTOS, CONFIRMATION_PHOTO];
 
@@ -73,17 +71,20 @@ describe("the 2026-08-28 marketing photography", () => {
    * homepage" as the rejected package's first and worst defect, so the homepage
    * total is a decision with a number, and a number can be asserted.
    */
-  it("uses exactly the locked counts — 4 + 2 + 1 on the homepage, 3 on /businesses, 1 on /how-it-works", () => {
+  it("uses exactly the locked counts — 4 + 2 on the homepage, 3 on /businesses, 1 on /how-it-works", () => {
     expect(CATEGORY_BREADTH_PHOTOS).toHaveLength(4);
-    // 4 category-breadth + 2 outcomes + 1 order-channels inset.
-    expect(HOMEPAGE).toHaveLength(7);
+    // 4 category-breadth + 2 outcomes. An order-channels inset was added on
+    // 2026-08-29 and REMOVED the same day on owner instruction — the
+    // photograph made the section look awkward — so the homepage total is
+    // back to the locked six.
+    expect(HOMEPAGE).toHaveLength(6);
     expect(BUSINESSES_STRIP_PHOTOS).toHaveLength(3);
     expect(CONFIRMATION_PHOTO).toBeDefined();
-    expect(ALL).toHaveLength(11);
-    expect(new Set(ALL.map((p) => p.id)).size).toBe(11);
+    expect(ALL).toHaveLength(10);
+    expect(new Set(ALL.map((p) => p.id)).size).toBe(10);
   });
 
-  it("keeps the two reserves off the site", () => {
+  it("keeps the reserves off the site", () => {
     for (const id of RESERVE_PHOTO_IDS) {
       expect(ALL.map((p) => p.id), `${id} is a reserve and must not be rendered`).not.toContain(id);
     }

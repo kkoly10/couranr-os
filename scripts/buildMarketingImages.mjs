@@ -124,15 +124,6 @@ const ASSETS = [
     derivatives: [{ shape: "wide", aspect: 16 / 9, widths: [900, 1400, 1900] }],
   },
   {
-    /* PUB-001 `order-channels`, as a small inset. Cropped 4:3 and biased right,
-       because the source's empty left third is dead weight at inset size — the
-       whole point of the frame is the shopkeeper on the phone. */
-    slug: "merchant-phone-order",
-    src: "15-merchant-phone-order.png",
-    focal: { x: 0.64, y: 0.46 },
-    derivatives: [{ shape: "wide", aspect: 4 / 3, widths: [360, 720] }],
-  },
-  {
     slug: "gift-stationery",
     src: "08-gift-stationery.png",
     focal: { x: 0.63, y: 0.45 },

@@ -233,13 +233,24 @@ re-litigates it: `VIS-001`'s typography, the self-hosted Martian/Inter/Martian
 Mono implementation, the `--couranr-*` namespace, the locked colours, the
 canonical logo, and the accessibility, responsive and shell work.
 
-### r10 — one more photographic slot, found by asking where the spec allows one
+### r10 — a photograph in `confirmation`, one refused, one placed and withdrawn
 
 The owner accepted four more photographs on 2026-08-29 and asked where else the
-public surface could carry an image. TWO WERE PLACED AND TWO WERE HELD, and the
-split is the entry rather than the placements: an accepted asset is not a reason
-to find it a home, and this file has already recorded one shared eyebrow reaching
-four screens because a component existed.
+public surface could carry an image. **ONE was placed and kept, one was placed
+and withdrawn the same day, and two are reserves.** This entry was rewritten
+twice: once after an adversarial review falsified four of its own claims, and
+again after the owner looked at the result and rejected a placement no
+measurement would have caught.
+
+**The withdrawal is the most useful thing in this entry.** A frame went into
+PUB-001 `order-channels` as an inset beside the order-flow strip. Review found
+two geometric defects in it and both were fixed; every gate went green; the
+numbers all held. The owner then looked at the section and said the picture made
+it look awkward, and it came out. Measurement can establish that a frame is
+small enough not to flip `image-led`, that it does not break a mock-supported
+row, and that nothing upscales. It cannot establish that a section wants a
+photograph. `order-channels` is back to the tiles, the convergence and the flow
+strip, and IMG-06 is `approved-reserve` with `allowed_surfaces: []`.
 
 **§27.1 PUB-011 row 4 moves `image-led` false → true.** That is the only cell
 change, and it moves in the same commit as the DOM attribute because
@@ -248,79 +259,128 @@ also the only gate that does: `check:visual-system` re-derives the budgets from
 this document alone and stays green while the page and the table disagree —
 verified in r8 by planting the disagreement, and unchanged here.
 
-**Why `confirmation` and nowhere else.** Two facts have to hold at once and they
-hold in exactly one place. §19.6 `full-bleed-interruption` reads "Navy **and/or
-approved photography**", so a photograph in a navy band is that composition's
-own declared vocabulary rather than an addition to it. And PUB-011 is
-`visual_authority: "derived"` in §25's registry — `MOCK_TO_SCREEN_MAP.md` maps no
-canonical source to it, so the fidelity amendment's "the mock outranks this
-document" clause has no mock to defer to. Every other `full-bleed-interruption`
-on the public surface is on a screen an artboard governs.
+**CORRECTION 1 — `confirmation` is not the only slot the spec leaves open, and
+the first draft said it was.** The argument ran: §19.6 `full-bleed-interruption`
+reads "Navy **and/or approved photography**", PUB-011 is `visual_authority:
+"derived"`, therefore this is the one open photographic slot on the public site.
+The second premise does not narrow anything. Enumerating §27.0/§27.1 against §25
+gives EIGHT `full-bleed-interruption` sections on the public family, and seven of
+them are on `derived` screens — PUB-008 `base-price` and `closing`, PUB-009
+`channels` and `closing`, PUB-010 `closing`, PUB-011 `confirmation` and
+`closing`. Exactly ONE is artboard-governed: PUB-001's `closing`.
 
-**The homepage `closing` band was REFUSED, and the photography brief asks for it
-there.** The brief is written authority and it lost on this point, because the
-amendment gives the canonical mock precedence on composition and geometry, and
-the artboard was opened and read at the pixel level rather than remembered: flat
-navy, headline, two buttons, no image. A photograph there reopens a mock-approved
-region on the strength of a document that predates the reconciliation. Two
-independent measurements agreed the slot could not carry one anyway — content
-covers 94.4% of the band's width, so a tapered scrim has nowhere to be light, and
-a 16:9 frame in the rendered 5.87:1 slot shows 30.3% of its height.
+So the true statement is the refusal, not the placement. PUB-001 `closing` is the
+only public `full-bleed-interruption` the fidelity amendment CLOSES, because it
+is the only one with a mock to defer to. The other seven are equally open, and
+`confirmation` was CHOSEN among them — on the editorial grounds that it is the
+beat where a delivery arriving at someone's home is the section's literal
+subject. That is a judgement, and it is recorded as one.
 
-**The `order-channels` inset is deliberately non-dominant, and that is a
-judgement the gates cannot make.** §27.0 row 4 declares the section
-`data-image-led="false"`. The composition test asserts that as equality — but
-against the DOM attribute, not against the picture, so it would pass at any image
-size. The frame is capped at 300×132 beside the order-flow strip: 300px of a
-1136px content row, 132px of a 580px section, which keeps `false` literally true.
-If it is ever grown into the section's subject, row 4 and the attribute must move
-together. r9 refused the concept board's "Your Business" PHOTO node in this same
-section for flipping that flag; this is the same rule read the other way, and it
-is recorded so the two do not look inconsistent.
+**The homepage `closing` band was refused.** The photography brief asks for a
+photograph there and is superseded in place. The artboard was opened and read at
+the pixel level: flat navy, headline, a supporting line, two buttons, no image.
+(The first draft omitted the supporting line; this file's own `closing-cta`
+ledger row records it, quoting the copy.) Two measurements agreed the slot could
+not carry one anyway — content covers 94.4% of the band's width, and a 16:9 frame
+in the rendered 5.87:1 slot shows 30.3% of its height.
+
+**CORRECTION 2, now moot but kept — the `order-channels` inset was capped only
+on desktop.** §27.0 row 4 declares the section `data-image-led="false"`; the
+composition test asserts that as equality, but against the DOM attribute, so it
+would pass at any image size. Keeping the flag honest was a geometric obligation
+no gate could discharge. The first implementation put the cap inside
+`@media (min-width: 900px)` and let the frame run `width: 100%; height: auto`
+below it. Measured across twelve widths, that frame was 6.0% of the section's
+area at 1440 and **58.3% at 899px** — 52.0% at 768, 50.7% at 700, 38.9% at 560.
+"Deliberately non-dominant" was true at the one width it was checked at and false
+across a 340px band of the range. It is kept because the pattern will recur: a
+responsive cap written inside a `min-width` query is unbounded in the direction
+nobody looked.
+
+**CORRECTION 3, also moot and also kept — the two-column layout broke a
+mock-supported region.** Placing the inset beside the order-flow strip at
+`min-width: 900px` left the strip 512px of an 836px row, and its three steps
+**wrapped to two lines from 900px to about 1150px**. `order-flow` is a KEEP row
+in the drift ledger whose `mock_treatment` reads "One row at every width the
+artboards cover" — so a frame with no artboard broke the geometry of a region
+that has one. Both defects were fixed before the owner withdrew the placement
+entirely; the section carries no photograph now and neither rule survives.
+
+**CORRECTION 4 — "the vertical component is inert below 900px" was false.**
+`cover` scales by whichever axis binds, so `object-position`'s Y does nothing
+only while the band is NARROWER than the frame's own 16:9. The band crosses 1.778
+at about **592px**, not 900 — so Y is live at 592, 768 and 899, all of which the
+claim excluded. `object-position: 66% 34%` applies at every width and is checked
+at every width; the registry's second, mobile-only focal point described nothing
+and is now null.
+
+**The §23.2 defect, and an axe finding that is worse than the first draft said.**
+The band's scrim was a 90deg gradient, `0.95 → 0.88 → 0.52`. The copy well is
+capped at 62ch, and the first draft reasoned that at 1440 its right edge sits at
+45% of the band, "well inside the 0.88 stop". Measured, it is **53.6%** (52.6% to
+the text ink) — the copy crosses the 52% stop even at 1440. The arithmetic had
+used the padding as the left offset instead of the centred container's edge. The
+conclusion survives for the wrong reason: what saves the desktop band is that the
+photograph is dark where the copy ends, not that the copy stops before the ramp.
+
+Below 900px the copy spans the full width and runs into the 0.52 tail. Measured
+per text element, with the glyphs made transparent and the painted pixels
+sampled:
+
+| Width | Before (worst element) | After |
+|---|---|---|
+| 1440 | 8.11:1 | 8.11:1 |
+| 1280 | 8.11:1 | 8.11:1 |
+| 1024 | 7.88:1 | 7.88:1 |
+| 768 | 5.82:1 | 7.14:1 |
+| 390 | **3.19:1** | 6.22:1 |
+| 360 | **3.63:1** | 6.44:1 |
+| 320 | **3.52:1** | 6.44:1 |
+
+Three elements failed at 360, two at 390 and 320, against §23.2's 4.5:1 floor.
+The first draft reported a single 4.08:1 figure from a cruder block-level probe
+that measured only the heading's colour; the real worst case was 3.19:1.
+
+**axe does not merely miss this — it reports a false pass.** The first draft said
+axe reports text over a background image as `incomplete`. Run against this band,
+`color-contrast` returns **zero violations, zero incomplete, and a PASS at
+18.24:1**, computed against the section's declared `background-color: #0d1525`.
+It returns the identical result before and after the fix. A rule that scores
+inverse copy against a colour the photograph covers is not silent about the
+defect; it actively certifies it.
+
+**What the harnesses do now.** `e2e/publicFamilyGates.mjs` no longer carries a
+claim about which pages have photography — it DISCOVERS them at each of §24.1's
+six widths and measures every text element against its own painted ground. Four
+defects were found in that code by review after it was written, and each is
+recorded in the source: it took the worse of the ratios at the two LUMINANCE
+extremes, which is only the worst case when the glyph's luminance falls outside
+the ground's range (mid-tone text over a mixed frame has its worst pixels in the
+interior) — it takes the 1st percentile of the per-pixel RATIOS now; it hid text
+with `visibility: hidden`, which took each element's background with it and could
+not recover a text-bearing ancestor's fill at all — the glyphs are made
+transparent instead, so every background stays exactly as painted; it mapped CSS
+pixels onto a device-pixel screenshot, correct only at deviceScaleFactor 1 — the
+scale is derived from the returned image now; and its stated "known limit" was
+narrower than its real one, missing `background-image: url(...)` entirely and
+maskable by an intermediate `z-index: 0`.
+
+`e2e/pub001Gates.mjs` asserts the hero is the only photographic section there, at
+BOTH art-directed widths, and that assertion now has a positive control that
+plants a second photographic band. Its predicate had the same bug the family one
+did: it read the `<img>` for positioning while PUB-001's hero carries it on the
+`<picture>` wrapper, so the hero reported as not photographic. A discovery gate
+that discovers nothing is worse than the hardcoded comment it replaced.
+
+`check:visual-registry` gained a generator-drift check after the same review
+tripped it: it validated the checked-in JSON without comparing it to what its own
+generator produces, so a focal-point edit without `-- --write` left the file
+stale while the gate printed "every dimension matches its file".
 
 **Two frames were registered `approved-reserve` with `allowed_surfaces: []`.**
 They are the same SCENES as the two already bound into PUB-001 `outcomes`, which
 the owner's decision locks to exactly two photographs. Cropping changes framing,
 not meaning.
-
-**A §23.2 defect, and the gate that could not have caught it.** The band's scrim
-was a 90deg gradient, `0.95 → 0.88 → 0.52`. `.cr-mkt-band__inner--stacked` caps
-the copy at 62ch, so at 1440 its right edge sits at 45% of the band, inside the
-0.88 stop; below 900px the copy spans the full width and runs into the 0.52 tail
-over a blown highlight in the frame. White copy measured **4.08:1 at 390px**
-against §23.2's 4.5:1 floor and **14.9:1 at 1440**. Nothing saw it: axe-core
-reports text over a background image as `incomplete` rather than as a violation,
-and Gate C ran at 1440 only.
-
-Worse than the defect, `e2e/publicFamilyGates.mjs` carried a comment saying "none
-of these four renders text over photography, so the measurement PUB-001 needs has
-nothing to measure" — true when written, false the moment this band took a
-photograph, and load-bearing for the decision not to measure. The harness no
-longer holds a claim about which pages have photography: it DISCOVERS them at
-each of §24.1's six widths and measures what it finds, compositing each glyph's
-own alpha over its own painted ground and deriving the 3:1/4.5:1 floor from
-computed font metrics. `e2e/pub001Gates.mjs` gained the matching guard — the hero
-is asserted to be the only photographic section on PUB-001, so a second cannot
-appear unmeasured. Both are proven able to fail.
-
-**The predicate was wrong on its first run, and the guard is the only reason
-that is known.** It tested the `<img>` for `position: absolute` and a negative
-`z-index`. PUB-001's hero carries both on its `<picture>` wrapper and leaves the
-`<img>` static at 100%/100%, so the detector reported the hero as not
-photographic — a discovery-based gate that discovers nothing is worse than the
-hardcoded comment it replaced. It climbs to the section now.
-
-**A third gap, tripped rather than reasoned about.** `check:visual-registry` read
-the checked-in JSON and validated THAT, never comparing it against what its own
-generator produces. Editing a focal point in `scripts/visualAuthorityRegistry.mjs`
-without `-- --write` left the file stale and the gate printing "every dimension
-matches its file". It diffs the two now and names the first differing line.
-
-**One crop correction, measured.** The band is a 4.13:1 slot cut from the set's
-only native 16:9 frame and shows 43% of its height at 1440; centred, that window
-opened below the subject's hairline. `object-position` is `66% 34%` on desktop
-and unchanged at `50%` below 900px, where the band is taller than wide and the
-vertical component has no effect at all.
 
 ### r9 — the concept board's remaining panels are adopted, natively
 

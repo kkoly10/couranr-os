@@ -51,7 +51,6 @@ import {
 } from "@/lib/couranr/dispatch/states";
 import {
   CATEGORY_BREADTH_PHOTOS,
-  CHANNELS_INSET_PHOTO,
   OUTCOME_PRIMARY_PHOTO,
   OUTCOME_SUPPORTING_PHOTO,
   intrinsic,
@@ -573,44 +572,16 @@ export default function Page() {
             classify 'bordered strip' as bad merely because it is a container."
             The label wraps to two lines there, so it is not centred with the
             icon; the icon sits to its left. */}
-        {/*
-          IMG-06, the brief's own frame for this section: "if the strip needs an
-          anchoring visual, this is the frame." It sits beside the flow strip
-          rather than under the heading because it IS the strip's first step —
-          an order arriving at a counter by phone.
-
-          What it adds that nothing else in the set does: every other frame shows
-          a shop serving someone in person. This is the only one showing an order
-          arriving through a channel, which is the section's whole claim.
-
-          DELIBERATELY SMALL. §27.0 row 4 declares this section
-          `data-image-led="false"` and the composition test asserts equality, not
-          a floor. As an inset the flag stays honest; if this ever grows into the
-          section's subject, row 4 and the DOM must move in the same commit.
-        */}
-        <div className="cr-mkt-channels-flow">
-          <img
-            src={largestSrc(CHANNELS_INSET_PHOTO)}
-            srcSet={srcSetFor(CHANNELS_INSET_PHOTO, "wide")}
-            sizes="(max-width: 899px) 100vw, 300px"
-            width={intrinsic(CHANNELS_INSET_PHOTO).width}
-            height={intrinsic(CHANNELS_INSET_PHOTO).height}
-            alt={CHANNELS_INSET_PHOTO.alt}
-            loading="lazy"
-            decoding="async"
-            className="cr-mkt-channels-flow__photo"
-          />
-          <ol className="cr-mkt-flow-strip" aria-label="How an order flows">
-            {FLOW.map(({ label, Icon }) => (
-              <li key={label} className="cr-mkt-flow-strip__step">
-                <span className="cr-mkt-flow-strip__icon">
-                  <Icon />
-                </span>
-                {label}
-              </li>
-            ))}
-          </ol>
-        </div>
+        <ol className="cr-mkt-flow-strip" aria-label="How an order flows">
+          {FLOW.map(({ label, Icon }) => (
+            <li key={label} className="cr-mkt-flow-strip__step">
+              <span className="cr-mkt-flow-strip__icon">
+                <Icon />
+              </span>
+              {label}
+            </li>
+          ))}
+        </ol>
       </section>
 
       {/* ─── 5 ──────────────────────────────────── outcomes / split-story ─── */}
