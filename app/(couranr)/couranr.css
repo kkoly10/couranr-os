@@ -1678,6 +1678,270 @@
   .cr-mkt-photoset { margin-bottom: var(--couranr-space-6); }
 }
 
+/* ── concept panel C: one request, two payers, one delivery ──────────────── */
+
+/* Built AROUND the two mock-supported payer cards, never replacing them. The
+   stem sits above them and the merge below, so `.cr-mkt-payers` keeps the
+   geometry the fidelity amendment recovered from the artboard. */
+.cr-mkt-payerfork {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--couranr-space-3);
+  color: var(--couranr-border-strong);
+}
+.cr-mkt-payerfork__stem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--couranr-space-2);
+  text-align: center;
+  max-width: 34rem;
+}
+.cr-mkt-payerfork__glyph {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--couranr-radius-pill);
+  background: var(--couranr-surface-sunken);
+  border: 1px solid var(--couranr-border-strong);
+  color: var(--couranr-text);
+}
+.cr-mkt-payerfork__glyph svg { width: 20px; height: 20px; }
+/* NO ring, NO chip. The app mark's squircle is its own container. */
+.cr-mkt-payerfork__mark { display: block; }
+.cr-mkt-payerfork__title {
+  font-family: var(--couranr-font-display);
+  font-weight: var(--couranr-weight-semibold);
+  font-size: 1.0625rem;
+  color: var(--couranr-text);
+}
+.cr-mkt-payerfork__note {
+  font-size: var(--couranr-text-sm);
+  color: var(--couranr-text-muted);
+  text-wrap: balance;
+}
+
+/* The split. Below 768px the two cards stack, so a Y that forks left and right
+   would point at nothing — it becomes a plain vertical rule, which is what a
+   single-column sequence actually is. */
+.cr-mkt-payerfork__split {
+  width: 2px;
+  height: var(--couranr-space-6);
+  background: var(--couranr-border-strong);
+}
+
+@media (min-width: 768px) {
+  /* The Y: a stem down the centre, then two arms out to the two card centres.
+     Drawn with borders on a box rather than an SVG because it is two straight
+     lines and a corner radius — an SVG here would need the card track measured
+     in JS to place its endpoints. */
+  .cr-mkt-payerfork__split {
+    width: 50%;
+    height: var(--couranr-space-6);
+    background: none;
+    border-left: 2px solid var(--couranr-border-strong);
+    border-right: 2px solid var(--couranr-border-strong);
+    border-top: 2px solid var(--couranr-border-strong);
+    border-radius: var(--couranr-radius-md) var(--couranr-radius-md) 0 0;
+    position: relative;
+  }
+  /* The short drop from the stem into the top of the Y. */
+  .cr-mkt-payerfork__split::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: calc(-1 * var(--couranr-space-4));
+    width: 2px;
+    height: var(--couranr-space-4);
+    margin-left: -1px;
+    background: var(--couranr-border-strong);
+  }
+  /* The merge is the same Y inverted: arms rise from the two cards into one stem. */
+  .cr-mkt-payerfork__split--up {
+    border-top: none;
+    border-bottom: 2px solid var(--couranr-border-strong);
+    border-radius: 0 0 var(--couranr-radius-md) var(--couranr-radius-md);
+  }
+  .cr-mkt-payerfork__split--up::before { top: auto; bottom: calc(-1 * var(--couranr-space-4)); }
+}
+
+/* ── concept panel A: the channels converge ──────────────────────────────── */
+
+/* Seven channels gather into one Couranr-managed delivery. The section already
+   made that claim in prose; this draws it.
+
+   DRAWN ON THE TILES' OWN GRID, not over it. The first attempt was an SVG whose
+   viewBox origins were placed by hand; with `preserveAspectRatio: none` those
+   map onto a GAPLESS track, so the six 12px gaps threw every outer origin up to
+   4.7px off its tile — three stroke widths, measured in Chromium. Sharing the
+   grid means each drop is at its tile's centre because it is IN that tile's
+   column, at any width, with no arithmetic to get wrong. */
+.cr-mkt-converge {
+  align-self: stretch;
+  display: none;
+  grid-template-columns: repeat(7, 1fr);
+  grid-template-rows: var(--couranr-space-5) 2px var(--couranr-space-5) auto;
+  column-gap: var(--couranr-space-3);
+  justify-items: center;
+}
+.cr-mkt-converge__drop {
+  grid-row: 1;
+  width: 2px;
+  height: 100%;
+  background: var(--couranr-navy);
+}
+/* Inset by exactly half a tile so the bar ends UNDER the outer drops rather
+   than overhanging them. Half a tile is (container - 6 gaps) / 14, and `100%`
+   in a margin resolves against the container — so this is exact, not tuned. */
+.cr-mkt-converge__bar {
+  grid-row: 2;
+  grid-column: 1 / -1;
+  justify-self: stretch;
+  height: 2px;
+  margin-inline: calc((100% - 6 * var(--couranr-space-3)) / 14);
+  background: var(--couranr-navy);
+}
+.cr-mkt-converge__stem {
+  grid-row: 3;
+  grid-column: 1 / -1;
+  width: 2px;
+  height: 100%;
+  background: var(--couranr-navy);
+}
+/* NAVY, not `--couranr-border-strong`. MEASURED: #cbd2dc on the #f7f8f5 canvas
+   is 1.43:1 against §23.2's 3:1 floor for a boundary that carries meaning, and
+   this one carries the whole claim. Navy is 17.11:1. */
+
+/* NO RING, NO BACKING CIRCLE, NO CHIP around the mark. BRAND_GUIDE.md:57 —
+   "Do not place the logo inside a pill or badge" — and the app mark's navy
+   squircle is already its own container. A second one is the prohibition. */
+.cr-mkt-converge__node {
+  grid-row: 4;
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--couranr-space-2);
+  padding-top: var(--couranr-space-4);
+  text-align: center;
+  max-width: 30rem;
+}
+.cr-mkt-converge__mark { display: block; }
+.cr-mkt-converge__title {
+  font-family: var(--couranr-font-display);
+  font-weight: var(--couranr-weight-semibold);
+  font-size: 1.0625rem;
+  color: var(--couranr-text);
+}
+.cr-mkt-converge__note {
+  font-size: var(--couranr-text-sm);
+  color: var(--couranr-text-muted);
+  text-wrap: balance;
+}
+
+@media (min-width: 1088px) {
+  /* 1088, NOT 900. `.cr-mkt-channels` is repeat(auto-fit, minmax(8.5rem, 1fr))
+     with a 12px gap, so seven tiles need 7x136 + 6x12 = 1024px of container —
+     a 1088px viewport. At the governed 1024 width auto-fit yields SIX columns
+     and the tiles wrap to two rows, where seven drops would point at nothing.
+     The first version of this rule said 900 and carried a comment asserting one
+     row; driving Chromium at 900 and 1024 showed two. */
+  .cr-mkt-converge { display: grid; }
+}
+
+/* ── concept panel C: one request, two payers, one delivery ──────────────── */
+
+/* Built AROUND the two mock-supported payer cards, never replacing them. The
+   stem sits above them and the merge below, so `.cr-mkt-payers` keeps the
+   geometry the fidelity amendment recovered from the artboard. */
+.cr-mkt-payerfork {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--couranr-space-3);
+  color: var(--couranr-border-strong);
+}
+.cr-mkt-payerfork__stem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--couranr-space-2);
+  text-align: center;
+  max-width: 34rem;
+}
+.cr-mkt-payerfork__glyph {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: var(--couranr-radius-pill);
+  background: var(--couranr-surface-sunken);
+  border: 1px solid var(--couranr-border-strong);
+  color: var(--couranr-text);
+}
+.cr-mkt-payerfork__glyph svg { width: 20px; height: 20px; }
+/* NO ring, NO chip. The app mark's squircle is its own container. */
+.cr-mkt-payerfork__mark { display: block; }
+.cr-mkt-payerfork__title {
+  font-family: var(--couranr-font-display);
+  font-weight: var(--couranr-weight-semibold);
+  font-size: 1.0625rem;
+  color: var(--couranr-text);
+}
+.cr-mkt-payerfork__note {
+  font-size: var(--couranr-text-sm);
+  color: var(--couranr-text-muted);
+  text-wrap: balance;
+}
+
+/* The split. Below 768px the two cards stack, so a Y that forks left and right
+   would point at nothing — it becomes a plain vertical rule, which is what a
+   single-column sequence actually is. */
+.cr-mkt-payerfork__split {
+  width: 2px;
+  height: var(--couranr-space-6);
+  background: var(--couranr-border-strong);
+}
+
+@media (min-width: 768px) {
+  /* The Y: a stem down the centre, then two arms out to the two card centres.
+     Drawn with borders on a box rather than an SVG because it is two straight
+     lines and a corner radius — an SVG here would need the card track measured
+     in JS to place its endpoints. */
+  .cr-mkt-payerfork__split {
+    width: 50%;
+    height: var(--couranr-space-6);
+    background: none;
+    border-left: 2px solid var(--couranr-border-strong);
+    border-right: 2px solid var(--couranr-border-strong);
+    border-top: 2px solid var(--couranr-border-strong);
+    border-radius: var(--couranr-radius-md) var(--couranr-radius-md) 0 0;
+    position: relative;
+  }
+  /* The short drop from the stem into the top of the Y. */
+  .cr-mkt-payerfork__split::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: calc(-1 * var(--couranr-space-4));
+    width: 2px;
+    height: var(--couranr-space-4);
+    margin-left: -1px;
+    background: var(--couranr-border-strong);
+  }
+  /* The merge is the same Y inverted: arms rise from the two cards into one stem. */
+  .cr-mkt-payerfork__split--up {
+    border-top: none;
+    border-bottom: 2px solid var(--couranr-border-strong);
+    border-radius: 0 0 var(--couranr-radius-md) var(--couranr-radius-md);
+  }
+  .cr-mkt-payerfork__split--up::before { top: auto; bottom: calc(-1 * var(--couranr-space-4)); }
+}
+
 /* ── PUB-009's restrained three-frame strip ──────────────────────────────── */
 
 /* Deliberately SECONDARY. This sits inside `category-system`, whose primary
@@ -2079,7 +2343,18 @@
   top: 0;
   bottom: 0;
   width: 2px;
-  background: var(--couranr-border);
+  /* `--couranr-text-muted`, not `--couranr-border`. MEASURED: #e3e7ed on the
+     #f7f8f5 canvas is 1.16:1, and this rule draws the line that IS the
+     "connected" in §19.4's "connected workflow rail" — a graphic that carries
+     meaning, so WCAG's 3:1 non-text floor applies and 1.16 is not close.
+     `--couranr-border-strong` was checked too and is 1.43:1, also failing.
+     #667085 is 4.67:1.
+
+     This rule is SHARED with PUB-011's `.cr-mkt-rail--long`, so the fix lands
+     on /how-it-works in the same change. That is intended — the same invisible
+     connector was on both pages — and it means publicFamilyGates must be re-run,
+     not only pub001Gates. */
+  background: var(--couranr-text-muted);
 }
 .cr-mkt-rail__step:first-child::before { top: 50%; }
 .cr-mkt-rail__step:last-child::before  { bottom: 50%; }
@@ -2101,6 +2376,18 @@
   font-variant-numeric: tabular-nums;
 }
 .cr-mkt-rail__content h3 { margin: 0 0 var(--couranr-space-2); color: var(--couranr-text); }
+
+/* The board's per-step icon, as a mnemonic ABOVE the title rather than inside
+   the marker. Inside would mean choosing between the number and the glyph, and
+   the number is what makes the sequence readable — §19.4 wants the progression
+   spatially obvious, and "step 3 of 6" is the thing a reader is actually
+   tracking. The glyph is decorative: every step's meaning is in its heading. */
+.cr-mkt-rail__glyph {
+  display: block;
+  color: var(--couranr-route-blue);
+  margin-bottom: var(--couranr-space-2);
+}
+.cr-mkt-rail__glyph svg { width: 20px; height: 20px; }
 
 @media (min-width: 1024px) {
   /* Horizontal rail on desktop: the connector becomes the line between markers,

@@ -233,6 +233,68 @@ re-litigates it: `VIS-001`'s typography, the self-hosted Martian/Inter/Martian
 Mono implementation, the `--couranr-*` namespace, the locked colours, the
 canonical logo, and the accessibility, responsive and shell work.
 
+### r9 — the concept board's remaining panels are adopted, natively
+
+The owner asked on 2026-08-28 for the four concept-board panels that the visual
+package had marked reference-only, "with the real logo, and replace whatever
+doesn't go along with the website." That reverses the package's own scope matrix
+for panels A, B, C and F, and it is recorded here because a scope reversal by the
+owner is a decision, not drift.
+
+**No §27.0 or §27.1 cell changes, and that is a finding rather than a
+convenience.** Every panel is built INSIDE its existing section, because the
+composition contract asserts equality: `data-composition` on
+`order-channels` and `payer-choice` stays `structured-information-block`,
+`workflow` stays `workflow-rail`, and §27.0's `workflow-rail: exactly 1` holds.
+Promoting any of them to a diagram composition would have required a new §19
+vocabulary entry, and `scripts/compositionContract.mjs` derives that vocabulary
+from §19's headings — so a new one silently widens the grammar for PUB-008/009/
+010/011 too. The diagrams are drawn with connectors and nodes inside sections
+whose declared device is unchanged.
+
+**What the board could not have, and why.**
+
+- **Its Couranr mark is prohibited four ways.** BRAND_GUIDE.md retires
+  pin-style marks (:11), bans a map-pin/C symbol (:53), bans placing the logo in
+  a pill or badge (:57), and bans logo versions lifted from mockup images (:58).
+  The node is the approved app mark instead, whose navy squircle is the
+  artwork's own first path rather than a chip added around a logo — so it is
+  never given a ring here, which would re-create :57. `CouranrLogo` gains an
+  `app-icon` variant, clamped to the guide's 24px floor.
+- **Panel A's "Your Business" photo node was refused.** A photograph in
+  `order-channels` flips `data-image-led`, which §27.0 row 4 declares false.
+- **Panel B's four tinted panels were refused.** §19.4 names "four detached
+  identical cards" as the anti-pattern the rail exists to avoid. The board's
+  information design — numbers, per-step glyphs, a connected line — landed; its
+  card grid did not.
+
+**Three defects found by measuring, all in the first implementation of panel A,
+none visible to any gate.** Recorded because each is a class this file has been
+bitten by before. The convergence was gated at 900px under a comment asserting
+the seven tiles sit in one row; driving Chromium at 900 and 1024 showed two rows,
+and the true single-row threshold is 1088. Its connector origins were placed in a
+1000-unit SVG viewBox stretched with `preserveAspectRatio: none`, which maps them
+onto a GAPLESS track — the six 12px gaps threw every outer origin up to 4.7px off
+its tile, the same defect `.cr-mkt-miles__track` already records. And its
+connector used `--couranr-border-strong`, measured at 1.43:1 on the canvas
+against §23.2's 3:1 floor. The connector is now drawn on the tiles' own grid, so
+the origin error is 0px by construction at every width, and it is navy at 17.11:1.
+
+**A separate defect the same pass found, and the most serious.** The homepage
+told merchants to "use a saved payment method" and "keep a clean receipt for your
+books", and `/how-it-works` said both again in different words.
+`lib/couranr/billing/records.ts` records `saved_payment_method` as kind
+`"unbuilt"` — "Couranr does not store a payment method yet" — and
+`downloadable_receipt` as undecided under TAX-001, with the signed-in billing
+page telling the merchant it is "not a tax document". The marketing promised the
+two things the product says it does not do. Both pages are corrected and
+`tests/couranr-public-claims.test.ts` gained two rules so neither can return.
+
+**A contrast defect on a shared rule.** `.cr-mkt-rail__step::before` — the line
+that IS the "connected" in §19.4's connected rail — was `--couranr-border`,
+1.16:1 on the canvas. It is now `--couranr-text-muted`, 4.67:1. The rule is
+shared, so PUB-011's six-step rail is fixed by the same change.
+
 ### r8 — the accepted photography lands, and `outcomes` becomes image-led
 
 The owner accepted eleven photographs on 2026-08-28. This entry records the one

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Metadata } from "next";
 import { Badge, Heading, Text } from "@/components/couranr/primitives";
+import { CouranrLogo } from "@/components/brand/CouranrLogo";
 import { AskCouranrLauncher } from "@/components/couranr/marketing/AskCouranr";
 import { ServiceCorridorMap } from "@/components/couranr/marketing/ServiceCorridorMap";
 import {
@@ -9,6 +10,7 @@ import {
   IconCalendar,
   IconChat,
   IconGlobe,
+  IconLock,
   IconNoFee,
   IconPerson,
   IconPhone,
@@ -133,21 +135,25 @@ const OUTCOMES = [
 const WORKFLOW = [
   {
     step: "1",
+    Icon: IconBox,
     title: "Request",
     body: "You (or your customer, from a link you share) describe the delivery. Couranr prices it deterministically, server-side.",
   },
   {
     step: "2",
+    Icon: IconLock,
     title: "Payment authorized",
     body: "Your business pays, or your customer pays through a secure payment link — no customer account required. Authorization first; nothing is captured yet.",
   },
   {
     step: "3",
+    Icon: IconCalendar,
     title: "Couranr confirmation",
     body: "Couranr reviews the request, confirms schedule and vehicle, and only then captures payment. An estimate is never an instant confirmation.",
   },
   {
     step: "4",
+    Icon: IconTruck,
     title: "Couranr-managed dispatch",
     body: "Couranr assigns the driver, manages the route, and gives you and your customer live tracking with pickup and delivery proof.",
   },
@@ -468,7 +474,10 @@ export default function Page() {
       </section>
 
       {/* ─── 4 ───────────────── order-channels / structured-information-block ─── */}
-      {/* Drift ledger `order-channels` (REBUILD). The artboard shows SIX
+      {/* Drift ledger `order-channels` (KEEP — it was REBUILD when this
+          comment was written and the ledger has classified it KEEP since the
+          correction pass; nothing compares the two, which is how it drifted).
+          The artboard shows SIX
           discrete bordered tiles, icon above a centred label, separated by
           gaps, with the section heading and subcopy centred above them — not
           one enclosing container. The flat `.cr-mkt-channelstrip` this replaces
@@ -508,6 +517,55 @@ export default function Page() {
             </li>
           ))}
         </ul>
+        {/*
+          THE CONVERGENCE — concept panel A, built natively at the owner's
+          2026-08-28 request. Seven channels gather into one Couranr-managed
+          delivery, which is the claim the section already makes in prose; this
+          draws it.
+
+          THE COURANR NODE IS THE APPROVED APP MARK, and that is the whole
+          design problem in one line. BRAND_GUIDE.md bans a map-pin/C symbol
+          (:53) — which is exactly what the concept board drew — and bans
+          placing the logo inside a pill or badge (:57), which rules out
+          dropping the wordmark into a circular node to match a flow diagram's
+          other markers. The app mark is the one approved asset whose navy
+          squircle is its OWN artwork rather than a chip added around a logo.
+          It is never given a ring or a backing circle here, for the same rule.
+
+          NO "YOUR BUSINESS" PHOTO NODE, though the board has one. A photograph
+          in this section flips `data-image-led` to true, which §27.0 row 4
+          declares false, and the composition test asserts equality — so it
+          would also force the table and collide with the adjacent image
+          narrative under the adjacency diagnostic. The merchant is named in
+          words instead.
+
+          The yoke is `aria-hidden`: it is a drawn restatement of the list above
+          it, and a screen reader that has just read seven channels does not
+          need seven repeated path descriptions. The node's own text is real
+          content and is read.
+        */}
+        <div className="cr-mkt-converge">
+          {/* Seven drops, one per tile, on the SAME seven-column grid the tiles
+              use — so each starts at its own tile's centre by construction. An
+              SVG was tried first and was wrong: a 1000-unit viewBox stretched
+              with preserveAspectRatio="none" maps the origins onto a GAPLESS
+              track, and the six 12px gaps put every outer curve up to 4.7px off
+              its tile — about three stroke widths. Measured in Chromium, not
+              reasoned. It is the same defect `.cr-mkt-miles__track` records. */}
+          {[0, 1, 2, 3, 4, 5, 6].map((i) => (
+            <span key={i} className="cr-mkt-converge__drop" aria-hidden="true" />
+          ))}
+          <span className="cr-mkt-converge__bar" aria-hidden="true" />
+          <span className="cr-mkt-converge__stem" aria-hidden="true" />
+          <div className="cr-mkt-converge__node">
+            <CouranrLogo variant="app-icon" width={48} className="cr-mkt-converge__mark" />
+            <span className="cr-mkt-converge__title">Couranr-managed delivery</span>
+            <span className="cr-mkt-converge__note">
+              You keep the sale and the customer relationship.
+            </span>
+          </div>
+        </div>
+
         {/* Ledger `order-flow`: one tinted rounded container holding three
             icon-and-label groups with arrow glyphs between them. Confirmed
             against the artboard pixels and KEPT — amendment §5.3: "Do not
@@ -629,6 +687,13 @@ export default function Page() {
                 {w.step}
               </span>
               <div className="cr-mkt-rail__content">
+                {/* Concept panel B's per-step icon, above the title rather than
+                    inside the marker — the marker's NUMBER is what makes the
+                    sequence readable, and the glyph is a mnemonic, not the
+                    meaning. Decorative: the heading beside it says the step. */}
+                <span className="cr-mkt-rail__glyph" aria-hidden="true">
+                  <w.Icon />
+                </span>
                 <h3 className="cr-type-card-title">{w.title}</h3>
                 <Text muted size="sm">
                   {w.body}
@@ -669,6 +734,34 @@ export default function Page() {
         <Heading level={2} id="s7-h" className="cr-type-marketing-section">
           You decide who pays for delivery, per delivery.
         </Heading>
+        {/*
+          THE FORK — concept panel C, built natively at the owner's 2026-08-28
+          request. One request, two payers, one delivery.
+
+          THE TWO CARDS ARE NOT REPLACED. The fidelity amendment §5.4 recovered
+          their tint, border, radius, icon geometry and title/body hierarchy
+          from the artboard, and the drift ledger marks `payer-choice` against
+          real mock pixels. So the board's device is built AROUND them: a stem
+          above, two arms, a merge below. Replacing mock-supported geometry with
+          concept art is the one thing the whole batch was told not to do.
+
+          The stem and merge nodes are real text, not decoration — they carry
+          PAY-001 (either party may pay, chosen per delivery, no account
+          required) and CAP-001 (the same managed delivery follows either way).
+          Only the connector rules are aria-hidden.
+        */}
+        <div className="cr-mkt-payerfork">
+          <div className="cr-mkt-payerfork__stem">
+            <span className="cr-mkt-payerfork__glyph" aria-hidden="true">
+              <IconBox />
+            </span>
+            <span className="cr-mkt-payerfork__title">One delivery request</span>
+            <span className="cr-mkt-payerfork__note">
+              The payer is chosen on the request, per delivery — not fixed to your account.
+            </span>
+          </div>
+          <span className="cr-mkt-payerfork__split" aria-hidden="true" />
+        </div>
         <div className="cr-mkt-payers">
           <div className="cr-mkt-payer cr-mkt-payer--merchant">
             <span className="cr-mkt-payer__head">
@@ -677,9 +770,17 @@ export default function Page() {
               </span>
               <h3 className="cr-type-card-title">Your business pays</h3>
             </span>
+            {/* NOT "use a saved payment method", and NOT "a clean receipt for
+                your books". Both were false. `lib/couranr/billing/records.ts`
+                records `saved_payment_method` as kind "unbuilt" — "Couranr does
+                not store a payment method yet" — and `downloadable_receipt` as
+                undecided, blocked by TAX-001, whose own billing page tells the
+                merchant "this page is a record of what Couranr charged, not a
+                tax document". The marketing page was promising the two things
+                the product explicitly says it does not do. */}
             <Text muted size="sm">
-              Use a saved payment method, see the delivery quote before you approve,
-              and keep a clean receipt for your books.
+              You confirm payment on each delivery, see the quote before you approve
+              it, and the charge is authorized before anything is taken.
             </Text>
           </div>
           <div className="cr-mkt-payer cr-mkt-payer--customer">
@@ -693,6 +794,20 @@ export default function Page() {
               Send a secure payment link. No Couranr account required — you see the
               authorization status either way.
             </Text>
+          </div>
+        </div>
+        <div className="cr-mkt-payerfork">
+          <span className="cr-mkt-payerfork__split cr-mkt-payerfork__split--up" aria-hidden="true" />
+          <div className="cr-mkt-payerfork__stem">
+            {/* The app mark, with no ring and no backing circle — BRAND_GUIDE.md:57.
+                The label is two words on purpose: tests/brand-logo.test.ts flags a
+                JSX text node that is exactly the wordmark, so a node labelled
+                "Couranr" alone would fail the suite AND read as a typed logo. */}
+            <CouranrLogo variant="app-icon" width={40} className="cr-mkt-payerfork__mark" />
+            <span className="cr-mkt-payerfork__title">The same Couranr-managed delivery</span>
+            <span className="cr-mkt-payerfork__note">
+              Whoever pays, Couranr reviews, confirms and manages pickup through drop-off.
+            </span>
           </div>
         </div>
       </section>
