@@ -192,7 +192,7 @@ async function heroContrast(page) {
      gate is not where it is answered. */
   await page.addStyleTag({
     content:
-      ".cr-hero__body,.cr-askc,.cr-topbar,.cr-topnotice{visibility:hidden!important}",
+      ".cr-hero__body,.cr-askc,.cr-topbar{visibility:hidden!important}",
   });
   const shot = await page.locator(".cr-hero").screenshot();
   const px = await page.evaluate(

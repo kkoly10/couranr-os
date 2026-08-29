@@ -252,7 +252,7 @@ async function photoTextContrast(tab, sectionId) {
   await tab.addStyleTag({
     content:
       "[data-crphototext]{color:transparent!important;text-decoration-color:transparent!important;-webkit-text-fill-color:transparent!important}" +
-      ".cr-topbar,.cr-topnotice,.cr-askc{visibility:hidden!important}",
+      ".cr-topbar,.cr-askc{visibility:hidden!important}",
   });
   const shot = await tab
     .locator(`[data-couranr-section="${sectionId}"]`)

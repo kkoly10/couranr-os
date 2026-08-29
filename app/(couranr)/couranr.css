@@ -3236,47 +3236,6 @@
    authority for these, not §19's budgets — fidelity amendment §1.
    ═════════════════════════════════════════════════════════════════════════ */
 
-/* ── row `top-notice` (REBUILD) ─────────────────────────────────────────────
-   Was a bordered rounded box inside the page content, below the header. Both
-   artboards show a full-bleed bar ABOVE the header. The desktop bar is cream
-   with a Route Blue link; the mobile bar is NAVY with white text — that is not
-   a mistake in the mock, both artboards agree, so both are reproduced. */
-.cr-topnotice {
-  background: var(--couranr-canvas);
-  border-bottom: 1px solid var(--couranr-border);
-}
-.cr-topnotice__inner {
-  display: flex;
-  align-items: center;
-  gap: var(--couranr-space-2);
-  margin: 0 auto;
-  padding: var(--couranr-space-3) var(--couranr-space-4);
-  max-width: var(--couranr-container-max);
-  font-size: var(--couranr-text-sm);
-  color: var(--couranr-text);
-}
-.cr-topnotice__icon { display: flex; flex: none; line-height: 0; }
-.cr-topnotice__icon svg { width: 16px; height: 16px; }
-.cr-topnotice__text { min-width: 0; }
-/* Right-aligned, as the artboard has it, and pushed by the text rather than
-   floated so it never collides on a narrow bar. */
-.cr-topnotice__link {
-  margin-left: auto;
-  flex: none;
-  color: var(--couranr-route-blue);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  white-space: nowrap;
-}
-
-@media (max-width: 767px) {
-  .cr-topnotice { background: var(--couranr-navy); border-bottom-color: transparent; }
-  .cr-topnotice__inner { color: var(--couranr-text-inverse); }
-  /* The mobile artboard shows the sentence only — no link on the bar, because
-     there is no room for it beside the text at 390px. */
-  .cr-topnotice__link { display: none; }
-}
-
 /* ── row `hero-small-label` ─────────────────────────────────────────────────
    Geometry is mock-supported and unchanged. The mobile artboard renders the
    pill in GOLD rather than white, so that treatment is reproduced.

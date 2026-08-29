@@ -1,14 +1,16 @@
 import * as React from "react";
 import { PublicShell } from "@/components/couranr/shell/shells";
-import { PublicNotice } from "@/components/couranr/marketing/PublicNotice";
 
 export default function PublicGroupLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  // The service-area bar is site chrome above the header in both PUB-001
-  // artboards, so it belongs to the group rather than to one page. The shell
-  // gives it geometry; this passes the governed copy.
-  return <PublicShell notice={<PublicNotice />}>{children}</PublicShell>;
+  // NO SERVICE-AREA BAR. Both PUB-001 artboards show a full-bleed notice above
+  // the header and this layout filled it with MKT-001's markets sentence. The
+  // owner removed it on 2026-08-29 at both widths and on all five public pages,
+  // so the mock is deliberately not followed here — see the `top-notice` row in
+  // PUB_001_VISUAL_DRIFT_LEDGER.csv. The sentence itself is NOT orphaned: the
+  // homepage renders it in its service-areas card and PUB-010 renders it twice.
+  return <PublicShell>{children}</PublicShell>;
 }

@@ -233,6 +233,50 @@ re-litigates it: `VIS-001`'s typography, the self-hosted Martian/Inter/Martian
 Mono implementation, the `--couranr-*` namespace, the locked colours, the
 canonical logo, and the accessibility, responsive and shell work.
 
+### r11 — the service-area notice bar is removed, and its slot with it
+
+The owner removed the full-bleed bar above the public header on 2026-08-29, at
+both widths. It lived in the public route-group layout, so it came off all five
+public pages rather than the homepage alone — confirmed with the owner before
+touching it, because a shared chrome element removed "from the homepage" would
+have left the header inconsistent across the family.
+
+**Both artboards show the bar, and it is deliberately not built.** The fidelity
+amendment gives the canonical mock precedence on GEOMETRY; it does not make the
+mock the authority on whether an element EXISTS. That distinction is not invented
+here — it settled `hero-small-label` on 2026-08-20, when the owner removed the
+artboards' eyebrow pill on the same reasoning. Written owner instruction wins on
+presence; the mock wins on how a thing that exists is drawn.
+
+**No consequence to surface, and that was checked rather than assumed.** The
+`hero-small-label` removal DID orphan MKT-002's consumer descriptor, and the
+ledger still carries that as an open disagreement between a registry line and the
+screen. This removal does not, because MKT-001's markets sentence has two other
+homes that predate the bar: the homepage's own service-areas card
+(`page.tsx:1113`) and PUB-010, which renders it as the page description and in
+the body. Verified in the browser at both widths, not by grep — the verbatim
+sentence is still in `document.body.innerText` on `/` and `/service-areas`.
+
+**The SLOT is deleted, not left empty.** `PublicShell` no longer accepts a
+`notice` prop, `PublicNotice.tsx` is gone, and the `.cr-topnotice` rules are
+removed. An unused slot is one caller away from returning, and this file already
+records what that costs: the shared marketing eyebrow reached four screens with
+no mock because the class outlived its element, which is why `.cr-hero__label`
+was deleted rather than merely unused. `shells.tsx`'s rule — no shell renders
+market, pricing, hours or payer copy — is unchanged and still worth stating; the
+shell simply has nothing above the header to render it into now.
+
+**One gate comment went stale and was corrected rather than reverted.**
+`e2e/shellChrome.mjs` measures sticky chrome as "pinned at the CSS `top` offset,
+still on screen". That generic form replaced an older `after === before`
+equality precisely BECAUSE the notice bar made the public topbar start 47px down.
+The bar is gone and the topbar starts at 0 again, so the equality would pass
+today — but the generic assertion is the one that states what sticky actually
+promises, so it stays and the comment now says why.
+
+No §27.0 or §27.1 cell changes: the notice carries no `data-couranr-section` and
+was never in the composition tables, the same way `navigation` is not.
+
 ### r10 — a photograph in `confirmation`, one refused, one placed and withdrawn
 
 The owner accepted four more photographs on 2026-08-29 and asked where else the
