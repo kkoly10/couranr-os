@@ -206,6 +206,29 @@ art-direct the mobile crops myself).
 
 ## Optional but wanted — Section 12, `closing`
 
+> **SUPERSEDED 2026-08-29 — this ask is REFUSED, and the refusal is the
+> interesting part.** This brief is written authority and it loses here, because
+> `COURANR_VISUAL_FIDELITY_AMENDMENT.md` gives the canonical mock precedence on
+> composition and geometry, and this brief predates that reconciliation. The
+> governing artboard (`5780C3C2-8EFC-4BDC-87AA-85CE667921D8.png`) was opened and
+> read at the pixel level rather than remembered: flat navy, headline, two
+> buttons, no image. Putting a photograph here reopens a mock-approved region.
+>
+> The slot could not carry one anyway. Content covers 94.4% of the band's width,
+> so the tapered scrim this section asks for has nowhere to be light; and a 16:9
+> frame in the rendered 5.87:1 slot shows 30.3% of its height, which is not a
+> composition, it is a texture. Both figures were measured, and by two
+> independent passes.
+>
+> The one open photographic `full-bleed-interruption` on the public surface is
+> PUB-011's `confirmation`, which has no governing artboard at all
+> (`visual_authority: "derived"`) and therefore nothing for the amendment to
+> defer to. IMG-05's frame was placed there instead. See
+> COURANR_VISUAL_SYSTEM_V2_2.md r10.
+>
+> The paragraphs below are kept because they are the reason the 16:9 frame was
+> commissioned, and the frame is in use.
+
 Composition is `full-bleed-interruption` (§19.6): navy and/or approved
 photography, edge to edge, with the approved closing headline over it. Today it
 is flat navy. A photograph here is the difference between a closing band and a

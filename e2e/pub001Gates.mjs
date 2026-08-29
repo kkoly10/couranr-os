@@ -540,6 +540,44 @@ async function main() {
      its text colours below 768px, so a single desktop measurement leaves the
      gold accent and the gold pill, which exist only on mobile, unmeasured over
      the crop they actually appear on. */
+  /* THE HERO IS THE ONLY PLACE ON THIS PAGE THAT PAINTS TEXT OVER A
+     PHOTOGRAPH, and this asserts it rather than assuming it. `heroContrast`
+     samples exactly one region by name; a second photographic band added to
+     PUB-001 would be measured by nothing, which is the shape of the defect
+     e2e/publicFamilyGates.mjs was extended to catch on PUB-011 — white copy at
+     4.08:1 that axe reports as `incomplete` and no gate reads. If this fails,
+     the fix is to port that harness's `findPhotographicSections` /
+     `photoTextContrast` pair over, not to widen the expected list. */
+  const photographic = await page.evaluate(() =>
+    [...document.querySelectorAll("[data-couranr-section]")]
+      .filter((sec) => {
+        const r = sec.getBoundingClientRect();
+        if (r.width < 1 || r.height < 1) return false;
+        return [...sec.querySelectorAll("img")].some((img) => {
+          const ir = img.getBoundingClientRect();
+          if (ir.width < r.width - 2 || ir.height < r.height - 2) return false;
+          /* THE LAYER THAT PUSHES THE IMAGE BEHIND THE COPY IS OFTEN NOT THE
+             <img>: this page's own hero carries `position: absolute; z-index:
+             -2` on its <picture> wrapper and leaves the <img> static inside it.
+             Reading the <img> alone reported the hero as not photographic. */
+          let outOfFlow = false;
+          let z = null;
+          for (let el = img; el && el !== sec; el = el.parentElement) {
+            const cs = getComputedStyle(el);
+            if (cs.position === "absolute" || cs.position === "fixed") outOfFlow = true;
+            if (z === null && cs.zIndex !== "auto") z = Number(cs.zIndex);
+          }
+          return outOfFlow && z !== null && z < 0;
+        });
+      })
+      .map((sec) => sec.getAttribute("data-couranr-section")),
+  );
+  check(
+    photographic.length === 1 && photographic[0] === "hero",
+    `only the hero paints text over photography, so heroContrast covers all of it ` +
+      `(found: ${photographic.join(", ") || "none"})`,
+  );
+
   for (const width of [1440, 390]) {
     const cpage =
       width === 1440 ? page : await browser.newPage({ viewport: { width, height: 844 } });

@@ -233,6 +233,95 @@ re-litigates it: `VIS-001`'s typography, the self-hosted Martian/Inter/Martian
 Mono implementation, the `--couranr-*` namespace, the locked colours, the
 canonical logo, and the accessibility, responsive and shell work.
 
+### r10 — one more photographic slot, found by asking where the spec allows one
+
+The owner accepted four more photographs on 2026-08-29 and asked where else the
+public surface could carry an image. TWO WERE PLACED AND TWO WERE HELD, and the
+split is the entry rather than the placements: an accepted asset is not a reason
+to find it a home, and this file has already recorded one shared eyebrow reaching
+four screens because a component existed.
+
+**§27.1 PUB-011 row 4 moves `image-led` false → true.** That is the only cell
+change, and it moves in the same commit as the DOM attribute because
+`tests/couranr-public-composition.test.ts` compares the two as equality. It is
+also the only gate that does: `check:visual-system` re-derives the budgets from
+this document alone and stays green while the page and the table disagree —
+verified in r8 by planting the disagreement, and unchanged here.
+
+**Why `confirmation` and nowhere else.** Two facts have to hold at once and they
+hold in exactly one place. §19.6 `full-bleed-interruption` reads "Navy **and/or
+approved photography**", so a photograph in a navy band is that composition's
+own declared vocabulary rather than an addition to it. And PUB-011 is
+`visual_authority: "derived"` in §25's registry — `MOCK_TO_SCREEN_MAP.md` maps no
+canonical source to it, so the fidelity amendment's "the mock outranks this
+document" clause has no mock to defer to. Every other `full-bleed-interruption`
+on the public surface is on a screen an artboard governs.
+
+**The homepage `closing` band was REFUSED, and the photography brief asks for it
+there.** The brief is written authority and it lost on this point, because the
+amendment gives the canonical mock precedence on composition and geometry, and
+the artboard was opened and read at the pixel level rather than remembered: flat
+navy, headline, two buttons, no image. A photograph there reopens a mock-approved
+region on the strength of a document that predates the reconciliation. Two
+independent measurements agreed the slot could not carry one anyway — content
+covers 94.4% of the band's width, so a tapered scrim has nowhere to be light, and
+a 16:9 frame in the rendered 5.87:1 slot shows 30.3% of its height.
+
+**The `order-channels` inset is deliberately non-dominant, and that is a
+judgement the gates cannot make.** §27.0 row 4 declares the section
+`data-image-led="false"`. The composition test asserts that as equality — but
+against the DOM attribute, not against the picture, so it would pass at any image
+size. The frame is capped at 300×132 beside the order-flow strip: 300px of a
+1136px content row, 132px of a 580px section, which keeps `false` literally true.
+If it is ever grown into the section's subject, row 4 and the attribute must move
+together. r9 refused the concept board's "Your Business" PHOTO node in this same
+section for flipping that flag; this is the same rule read the other way, and it
+is recorded so the two do not look inconsistent.
+
+**Two frames were registered `approved-reserve` with `allowed_surfaces: []`.**
+They are the same SCENES as the two already bound into PUB-001 `outcomes`, which
+the owner's decision locks to exactly two photographs. Cropping changes framing,
+not meaning.
+
+**A §23.2 defect, and the gate that could not have caught it.** The band's scrim
+was a 90deg gradient, `0.95 → 0.88 → 0.52`. `.cr-mkt-band__inner--stacked` caps
+the copy at 62ch, so at 1440 its right edge sits at 45% of the band, inside the
+0.88 stop; below 900px the copy spans the full width and runs into the 0.52 tail
+over a blown highlight in the frame. White copy measured **4.08:1 at 390px**
+against §23.2's 4.5:1 floor and **14.9:1 at 1440**. Nothing saw it: axe-core
+reports text over a background image as `incomplete` rather than as a violation,
+and Gate C ran at 1440 only.
+
+Worse than the defect, `e2e/publicFamilyGates.mjs` carried a comment saying "none
+of these four renders text over photography, so the measurement PUB-001 needs has
+nothing to measure" — true when written, false the moment this band took a
+photograph, and load-bearing for the decision not to measure. The harness no
+longer holds a claim about which pages have photography: it DISCOVERS them at
+each of §24.1's six widths and measures what it finds, compositing each glyph's
+own alpha over its own painted ground and deriving the 3:1/4.5:1 floor from
+computed font metrics. `e2e/pub001Gates.mjs` gained the matching guard — the hero
+is asserted to be the only photographic section on PUB-001, so a second cannot
+appear unmeasured. Both are proven able to fail.
+
+**The predicate was wrong on its first run, and the guard is the only reason
+that is known.** It tested the `<img>` for `position: absolute` and a negative
+`z-index`. PUB-001's hero carries both on its `<picture>` wrapper and leaves the
+`<img>` static at 100%/100%, so the detector reported the hero as not
+photographic — a discovery-based gate that discovers nothing is worse than the
+hardcoded comment it replaced. It climbs to the section now.
+
+**A third gap, tripped rather than reasoned about.** `check:visual-registry` read
+the checked-in JSON and validated THAT, never comparing it against what its own
+generator produces. Editing a focal point in `scripts/visualAuthorityRegistry.mjs`
+without `-- --write` left the file stale and the gate printing "every dimension
+matches its file". It diffs the two now and names the first differing line.
+
+**One crop correction, measured.** The band is a 4.13:1 slot cut from the set's
+only native 16:9 frame and shows 43% of its height at 1440; centred, that window
+opened below the subject's hairline. `object-position` is `66% 34%` on desktop
+and unchanged at `50%` below 900px, where the band is taller than wide and the
+vertical component has no effect at all.
+
 ### r9 — the concept board's remaining panels are adopted, natively
 
 The owner asked on 2026-08-28 for the four concept-board panels that the visual
@@ -2530,7 +2619,7 @@ anti-pattern §19.4 names by name.
 | 1 | `works-hero` | intent — no instant-confirmation promise | oversized statement | `editorial-statement` | false | false | false |
 | 2 | `sequence` | intent — CAP-001's nine ordered steps | one connected rail | `workflow-rail` | false | false | false |
 | 3 | `payers` | Merchant-paid and customer-paid examples | asymmetric split, both sequences | `split-story` | false | false | false |
-| 4 | `confirmation` | intent — capture only after Couranr confirmation | navy band | `full-bleed-interruption` | false | false | false |
+| 4 | `confirmation` | intent — capture only after Couranr confirmation | navy band | `full-bleed-interruption` | **true** | false | false |
 | 5 | `proof` | intent — PRF-001 pickup and the three drop-off methods | product composition | `product-proof` | false | false | **true** |
 | 6 | `support` | intent — TRM-001's one approved support sentence | ruled utility block | `structured-information-block` | false | false | false |
 | 7 | `closing` | conversion | navy brand moment | `full-bleed-interruption` | false | false | false |

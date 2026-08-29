@@ -146,6 +146,47 @@ export const BUSINESSES_STRIP_PHOTOS: MarketingPhoto[] = [
 ];
 
 /**
+ * PUB-011 `confirmation` — the one full-bleed band on the public site whose §19
+ * grammar names photography ("Navy and/or approved photography", §19.6) AND
+ * whose page carries no governing artboard: the visual registry records PUB-011
+ * as `visual_authority: "derived"`. That combination is why this is the only
+ * new photographic slot the 2026-08-29 review found.
+ *
+ * It is NOT the homepage's closing band, which the brief also asks for. The
+ * canonical PUB-001 artboard was opened and read at the pixel level and shows
+ * flat navy there — the brief predates that reconciliation, and the fidelity
+ * amendment gives the mock precedence on composition.
+ */
+export const CONFIRMATION_PHOTO: MarketingPhoto = {
+  id: "couranr-mkt-2026-08-customer-at-home",
+  slug: "customer-at-home",
+  alt: "A person setting a shopping bag and a potted plant on a table just inside her front door.",
+  wide: { widths: [900, 1400, 1900], ratio: [16, 9] },
+};
+
+/**
+ * PUB-001 `order-channels`, as a small inset — the brief's IMG-06, which names
+ * this exact section: "if the strip needs an anchoring visual, this is the
+ * frame."
+ *
+ * SMALL ON PURPOSE. §27.0 row 4 declares this section `image-led="false"` and
+ * the composition test asserts equality, not a floor, so a dominant photograph
+ * here would force the table row. Kept as an inset beside the flow strip, the
+ * flag stays honest. If it ever grows into the section's subject, row 4 and the
+ * DOM must move in the same commit.
+ *
+ * What it adds that no other frame does: every other photograph in the set
+ * shows a shop serving someone IN PERSON. This is the only one showing an order
+ * arriving through a channel — which is the section's entire claim.
+ */
+export const CHANNELS_INSET_PHOTO: MarketingPhoto = {
+  id: "couranr-mkt-2026-08-merchant-phone-order",
+  slug: "merchant-phone-order",
+  alt: "A shop owner writing an order in a ledger while taking a call at her counter.",
+  wide: { widths: [360, 720], ratio: [4, 3] },
+};
+
+/**
  * Accepted, and deliberately unused by the website batch. Recorded here so the
  * next person reads "reserve" rather than "forgotten" — and so a test can hold
  * the homepage to six photographs rather than however many exist.
@@ -153,4 +194,12 @@ export const BUSINESSES_STRIP_PHOTOS: MarketingPhoto[] = [
 export const RESERVE_PHOTO_IDS = [
   "couranr-mkt-2026-08-specialty-retail",
   "couranr-mkt-2026-08-benefit-office",
+  /* Accepted 2026-08-29 and held back deliberately: both are the same SCENE as
+     a frame already bound into `outcomes` — a parent and child at a kitchen
+     island, and an older customer with a newly bought vase at home. `outcomes`
+     is locked to exactly two photographs by the owner's decision, so these are
+     not an addition, and as a swap they would be a sideways move. Cropping
+     changes the framing, not the meaning. */
+  "couranr-mkt-2026-08-parent-child-kitchen",
+  "couranr-mkt-2026-08-older-customer-vase",
 ] as const;
