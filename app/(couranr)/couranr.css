@@ -3565,8 +3565,23 @@
   gap: var(--couranr-space-8);
 }
 
-.cr-master-hero__lead {
-  max-width: 34ch;
+/* ASYMMETRIC, per the contract — and the first version was not. It capped the
+   lead at 34ch, which at 1440 wrapped the headline into three short lines and
+   left roughly two thirds of the row empty beside it. A void is not asymmetry.
+   The headline and its support sit side by side on a 3:2 split now, so the lead
+   fills the row above the doors and the composition reads as one hero. */
+.cr-master-hero__lead { max-width: 62ch; }
+
+@media (min-width: 900px) {
+  .cr-master-hero__lead {
+    display: grid;
+    grid-template-columns: 3fr 2fr;
+    gap: var(--couranr-space-10);
+    align-items: end;
+    max-width: none;
+  }
+  .cr-master-hero__lead > h1 { margin: 0; }
+  .cr-master-hero__lead > p { margin: 0; max-width: 38ch; }
 }
 
 .cr-master-hero__lead > h1 {
@@ -3661,6 +3676,17 @@
 /* master-network: typography-led by contract. A description list, not cards —
    the two audiences are terms and their definitions, which is what a <dl> is
    for and what keeps this section out of the grid-dominant budget. */
+/* `.cr-mkt-editorial > h2` caps at 16ch, which is right for a two- or
+   three-word statement and wrong for this one — it broke "One local delivery
+   network. Two ways to use it." after "Two". Scoped widening, not a base
+   change: the 16ch measure is what makes the other editorial statements read
+   as statements. */
+.cr-mkt-editorial[data-couranr-section="master-network"] > h2 { max-width: 24ch; }
+
+/* The service-area section is left-aligned prose, so its actions belong under
+   the text rather than centred in a row that is mostly empty beside it. */
+.cr-mkt-section[data-couranr-section="master-service-area"] .cr-mkt-cta-row { justify-content: flex-start; }
+
 .cr-master-network {
   display: grid;
   gap: var(--couranr-space-6);
@@ -3786,15 +3812,12 @@
   color: var(--couranr-text);
 }
 
-.cr-sd-breadth__item + .cr-sd-breadth__item::before {
-  content: "";
-  display: inline-block;
-  width: 1px;
-  height: 0.9em;
-  margin-right: var(--couranr-space-4);
-  vertical-align: -0.05em;
-  background: var(--couranr-border);
-}
+/* NO separator glyph between items. A `::before` rule on every item but the
+   first puts a divider at the START of a wrapped line — visible at 1440, where
+   "Personal items" wraps and led with a stray rule. CSS cannot see a line
+   break, so the divider is dropped and the rhythm comes from the gap instead.
+   The contract calls for editorial text, and a wider gap is what that is. */
+.cr-sd-breadth { gap: var(--couranr-space-3) var(--couranr-space-6); }
 
 /* A connected sequence, which is what makes it a rail rather than five boxes:
    the connector is a continuous line the numbers sit on. */
