@@ -40,7 +40,9 @@
     "test:fonts": "node e2e/fonts.mjs",
     "test:pub001": "node e2e/pub001Gates.mjs",
     "test:pub-family": "node e2e/publicFamilyGates.mjs",
-    "images:build": "node scripts/buildMarketingImages.mjs"
+    "images:build": "node scripts/buildMarketingImages.mjs",
+    "governance:generate": "node scripts/governance/generate.mjs",
+    "check:governance": "node scripts/governance/check.mjs"
   },
   "dependencies": {
     "@stripe/react-stripe-js": "3.1.1",

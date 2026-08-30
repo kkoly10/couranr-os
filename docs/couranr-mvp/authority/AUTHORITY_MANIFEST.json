@@ -1,0 +1,86 @@
+{
+  "$note": [
+    "The only file allowed to declare Couranr's active authority domains and their",
+    "precedence. It owns WHERE truth lives; it never repeats the product facts",
+    "themselves. Adding a value here that also exists in a domain source is the",
+    "failure this manifest exists to prevent.",
+    "",
+    "Enforced by `npm run check:governance`: every path named here must exist, no",
+    "domain may declare two writable sources, and every generated output must",
+    "match what its generator produces from its declared authority."
+  ],
+  "version": 1,
+  "classes": {
+    "AUTHORITY": "Writable source for exactly one declared domain.",
+    "GENERATED": "Never edited directly; a generator plus a parity check prove it matches its authority.",
+    "EVIDENCE": "Records what was measured or reviewed at a named SHA. Never overrides authority.",
+    "HISTORICAL": "Preserved provenance or a superseded plan. Never overrides authority or current state."
+  },
+  "domains": [
+    {
+      "domain": "product-decisions",
+      "authority": "02_DECISION_REGISTRY.json",
+      "owns": [
+        "locked values",
+        "owner decisions and statuses",
+        "supersession and amendment relationships"
+      ],
+      "generated": []
+    },
+    {
+      "domain": "screens-routes",
+      "authority": "ui_screen_registry.json",
+      "owns": [
+        "screen ids",
+        "surface",
+        "route lists",
+        "tier",
+        "phase",
+        "viewport",
+        "purpose",
+        "states",
+        "constraints"
+      ],
+      "excludes": [
+        "implementation status — lives in the ledgers",
+        "visual-source status — lives in the visual authority domain"
+      ],
+      "generated": [
+        "UI_SCREEN_REGISTRY.md",
+        "ui_screen_registry.csv"
+      ]
+    },
+    {
+      "domain": "work-implementation-state",
+      "authority": "docs/couranr-mvp/IMPLEMENTATION_LEDGER.csv",
+      "owns": ["one row per authoritative work item"],
+      "generated": []
+    },
+    {
+      "domain": "screen-implementation-state",
+      "authority": "docs/couranr-mvp/SCREEN_IMPLEMENTATION_LEDGER.csv",
+      "owns": ["one row per canonical screen"],
+      "generated": []
+    },
+    {
+      "domain": "platform-baseline",
+      "authority": "docs/couranr-mvp/platform-baseline-v1.1",
+      "owns": ["platform, dependency, migration-order and rollback baseline"],
+      "generated": []
+    }
+  ],
+  "pending_domains": [
+    {
+      "domain": "product-doctrine",
+      "planned_authority": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "status": "not yet extracted",
+      "note": "Until this exists, Couranr_Claude_Code_Master_Package.md remains the live behavioural doctrine and is NOT yet reclassifiable as HISTORICAL."
+    },
+    {
+      "domain": "visual-authority",
+      "planned_authority": "docs/couranr-mvp/ui-reference/VISUAL_REGISTRY.json",
+      "status": "not yet built",
+      "note": "Until this exists, MOCK_TO_SCREEN_MAP.md remains the writable root-PNG census and VISUAL_AUTHORITY_REGISTRY.json remains generated from it. PUB-004 therefore stays visual_authority=derived with the nested PNG held as provenance in CANONICAL_SCREEN_SOURCE_MAP.tsv — the transitional truth the work order mandates."
+    }
+  ]
+}

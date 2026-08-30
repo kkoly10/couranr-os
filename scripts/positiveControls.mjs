@@ -31,6 +31,7 @@ const GATES = [
   ["check:visual-system", ["scripts/checkVisualSystem.mjs", "--positive-control"]],
   ["check:visual-registry", ["scripts/visualAuthorityRegistry.mjs", "--positive-control"]],
   ["check:drift-ledger", ["scripts/checkDriftLedger.mjs", "--positive-control"]],
+  ["check:governance", ["scripts/governance/check.mjs", "--positive-control"]],
   // The local CI runner is itself a gate — it is the gate now, since GitHub
   // Actions is not dependable on this account — so it proves it can go red too.
   ["ci:local", ["scripts/ciLocal.mjs", "--self-test"]],

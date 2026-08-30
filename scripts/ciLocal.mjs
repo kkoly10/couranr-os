@@ -103,6 +103,7 @@ const STAGES = [
   { tier: 2, name: "check:visual-system", run: ["npm", ["run", "check:visual-system"]], why: "§27.0/§27.1 re-derived from the spec" },
   { tier: 2, name: "check:visual-registry", run: ["npm", ["run", "check:visual-registry"]], why: "66/66 screens, dimensions match their files" },
   { tier: 2, name: "check:drift-ledger", run: ["npm", ["run", "check:drift-ledger"]], why: "the PUB-001 region ledger is well-formed" },
+  { tier: 2, name: "check:governance", run: ["npm", ["run", "check:governance"]], why: "one writable source per authority domain, and every generated mirror matches it" },
   {
     tier: 2,
     name: "check:gates:controls",
