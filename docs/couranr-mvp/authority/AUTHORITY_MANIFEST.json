@@ -47,8 +47,12 @@
       ],
       "generated": [
         "UI_SCREEN_REGISTRY.md",
-        "ui_screen_registry.csv"
-      ]
+        "ui_screen_registry.csv",
+        "lib/couranr/screens.ts"
+      ],
+      "generated_notes": {
+        "lib/couranr/screens.ts": "Projection of TWO domains: topology from this authority, and the `status` field verbatim from the screen-implementation-state ledger. It is generated rather than read at runtime because Next bundles it. `implemented` is derived from `status`; it used to be a hand-kept boolean that disagreed with the ledger on 15 of 66 screens."
+      }
     },
     {
       "domain": "visual-authority",

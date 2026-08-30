@@ -14,12 +14,13 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT, screenSource, SCREEN_OUTPUTS } from "./screenRegistry.mjs";
+import { SCREENS_MODULE_OUTPUT } from "./screensModule.mjs";
 
 const src = screenSource();
 const written = [];
 const unchanged = [];
 
-for (const o of SCREEN_OUTPUTS) {
+for (const o of [...SCREEN_OUTPUTS, SCREENS_MODULE_OUTPUT]) {
   const path = join(ROOT, o.path);
   const generated = o.render(src);
   const before = existsSync(path) ? readFileSync(path, "utf8") : null;

@@ -23,6 +23,7 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT, screenSource, SCREEN_OUTPUTS, SCREEN_SOURCE } from "./screenRegistry.mjs";
+import { SCREENS_MODULE_OUTPUT } from "./screensModule.mjs";
 import { visualDocDrift } from "./visualRegistry.mjs";
 
 const MANIFEST = "docs/couranr-mvp/authority/AUTHORITY_MANIFEST.json";
@@ -31,7 +32,7 @@ const CONTROL = process.argv.includes("--positive-control");
 /** Every generated family: which authority produces it, and how. */
 function outputs() {
   const src = screenSource();
-  return SCREEN_OUTPUTS.map((o) => ({
+  return [...SCREEN_OUTPUTS, SCREENS_MODULE_OUTPUT].map((o) => ({
     ...o,
     authority: SCREEN_SOURCE,
     source: src,
@@ -273,6 +274,51 @@ function checkNoCircularPrecedence(fail, m, inject) {
   }
 }
 
+/**
+ * CLS-001's screen classification counts must reconcile to the screen registry.
+ *
+ * §5 of the work order names this specifically: the counts must reconcile
+ * mechanically "rather than a literal in a test". They were a literal in three
+ * places — `CLS-001.value`, `tests/couranr-screens.test.ts` and
+ * `scripts/checkMockMap.mjs` — and Phase D moves all of them at once.
+ *
+ * The registry stays the writable owner of the DECISION; this only proves the
+ * decision and the screen list describe the same product.
+ */
+function checkClassificationCounts(fail, src, inject) {
+  const registryPath = join(ROOT, "02_DECISION_REGISTRY.json");
+  if (!existsSync(registryPath)) return;
+  let reg = JSON.parse(readFileSync(registryPath, "utf8"));
+  if (inject) reg = inject(reg);
+  const cls = (reg.decisions ?? []).find((r) => r.id === "CLS-001");
+  if (!cls) {
+    fail.push("02_DECISION_REGISTRY.json has no CLS-001 record to reconcile screen counts against");
+    return;
+  }
+  const screens = src.screens;
+  const measured = {
+    canonical_screens: screens.length,
+    core: screens.filter((s) => s.tier === "Core").length,
+    mvp_complete: screens.filter((s) => s.tier === "MVP-complete").length,
+  };
+  for (const [k, v] of Object.entries(measured)) {
+    if (cls.value[k] !== v) {
+      fail.push(
+        `CLS-001.value.${k} is ${cls.value[k]} but ${SCREEN_SOURCE} has ${v} — ` +
+          `the decision and the screen list disagree; change both in one commit`,
+      );
+    }
+  }
+  const ids = screens.filter((s) => s.tier === "MVP-complete").map((s) => s.id).sort();
+  const declared = [...(cls.value.mvp_complete_ids ?? [])].sort();
+  if (JSON.stringify(ids) !== JSON.stringify(declared)) {
+    fail.push(
+      `CLS-001.value.mvp_complete_ids is [${declared.join(", ")}] but ${SCREEN_SOURCE} ` +
+        `marks [${ids.join(", ")}] MVP-complete`,
+    );
+  }
+}
+
 /** Source -> generated parity. */
 function checkParity(fail, mutate) {
   for (const o of outputs()) {
@@ -396,6 +442,21 @@ if (CONTROL) {
     }
   }
   {
+    const detected = [];
+    checkClassificationCounts(detected, screenSource(), (reg) => ({
+      ...reg,
+      decisions: reg.decisions.map((r) =>
+        r.id === "CLS-001" ? { ...r, value: { ...r.value, core: r.value.core + 1 } } : r,
+      ),
+    }));
+    if (!detected.length) {
+      console.error("positive control FAILED — a CLS-001 core count that disagrees with the screen registry was not detected");
+      bad++;
+    } else {
+      console.log(`check:governance positive control ok — a drifted CLS-001 count was rejected: "${detected[0].slice(0, 110)}"`);
+    }
+  }
+  {
     const before = readFileSync(join(ROOT, "CLAUDE.md"), "utf8");
     const detected = [];
     checkAgentGuidance(detected, before + "\n\nThere are 4321 tests across 99 files now.\n");
@@ -435,6 +496,7 @@ checkParity(fail);
 checkGeneratedMarkers(fail, manifest);
 checkNonAuthority(fail, manifest);
 checkNoCircularPrecedence(fail, manifest);
+checkClassificationCounts(fail, screenSource());
 checkAgentGuidance(fail, readFileSync(join(ROOT, "CLAUDE.md"), "utf8"));
 /* The composition contract is structured data now; §27's prose tables are the
    human view of it and must still agree. */

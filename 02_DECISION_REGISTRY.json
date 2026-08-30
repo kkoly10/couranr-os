@@ -670,8 +670,8 @@
         ]
       },
       "status": "decided",
-      "authority_file": "UI_SCREEN_REGISTRY.md",
-      "authority_section": "§3 Global content and behavior corrections",
+      "authority_file": "ui_screen_registry.json",
+      "authority_section": "§3 Global content and behavior corrections (section numbers are the rendered view's; UI_SCREEN_REGISTRY.md is generated from this source)",
       "affected_routes": [
         "/pricing",
         "/help/[token]"
@@ -1034,8 +1034,8 @@
         "wordmark": "lowercase couranr"
       },
       "status": "decided",
-      "authority_file": "UI_SCREEN_REGISTRY.md",
-      "authority_section": "§2 MVP visual system; §3 Global content and behavior corrections",
+      "authority_file": "ui_screen_registry.json",
+      "authority_section": "§2 MVP visual system; §3 Global content and behavior corrections (section numbers are the rendered view's; UI_SCREEN_REGISTRY.md is generated from this source)",
       "affected_routes": [
         "/",
         "/pricing",
@@ -2039,8 +2039,8 @@
         "no_post_mvp_screen_in_navigation": true
       },
       "status": "decided",
-      "authority_file": "UI_SCREEN_REGISTRY.md",
-      "authority_section": "§4 Route and screen registry; §9 Deferred and noncanonical visual inventory; §10 UI completion definition",
+      "authority_file": "ui_screen_registry.json",
+      "authority_section": "§4 Route and screen registry; §9 Deferred and noncanonical visual inventory; §10 UI completion definition (section numbers are the rendered view's; UI_SCREEN_REGISTRY.md is generated from this source)",
       "affected_routes": [],
       "affected_screen_ids": [
         "OPS-014",
@@ -2291,8 +2291,8 @@
         "still_canonical_mvp": true
       },
       "status": "intentionally_deferred",
-      "authority_file": "UI_SCREEN_REGISTRY.md",
-      "authority_section": "§8 Implementation order",
+      "authority_file": "ui_screen_registry.json",
+      "authority_section": "§8 Implementation order (section numbers are the rendered view's; UI_SCREEN_REGISTRY.md is generated from this source)",
       "affected_routes": [
         "/operations/ghost",
         "/operations/incidents"
