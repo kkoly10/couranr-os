@@ -2639,10 +2639,10 @@ top-level marketing sections where the v2.2 composition grammar governs them.
 Their counts are page-specific; do not blindly copy PUB-001's numeric budgets
 unless this document explicitly applies them."*
 
-That left the hole §27.0 exists to close, four more times — a mandatory metadata
+That left the hole §27.0 exists to close, six more times — a mandatory metadata
 contract with no normative list to check against, plus per-page budgets called
 "page-specific" without saying what they are. An implementer would invent both
-and then assert against what they invented. **These four tables are that list,
+and then assert against what they invented. **These six tables are that list,
 and each page's `**Budgets:**` line is those counts, written to be parsed rather
 than read.**
 
@@ -2655,7 +2655,7 @@ than read.**
 | `PUB-012` | `/` | `app/(couranr)/(public)/(master-public)/page.tsx` |
 | `PUB-013` | `/sameday` | `app/(couranr)/(public)/(consumer-public)/sameday/page.tsx` |
 
-Three rules govern all four, and they are the reason the budgets differ:
+Three rules govern all six, and they are the reason the budgets differ:
 
 1. **§19's adjacency rule and its cap of two grid-dominant sections are
    universal.** They are properties of the grammar, not of a page. A page may
@@ -2676,7 +2676,7 @@ tile grid.** A `<table>` of pricing tiers is utility content under §19.7, not a
 card grid, and is recorded `false` — otherwise every data table on a pricing
 page would burn the page's entire §19 budget.
 
-Gate A cannot run on these four. `UI_SCREEN_REGISTRY.md` records each of them as
+Gate A cannot run on these six. `UI_SCREEN_REGISTRY.md` records each of them as
 *"Derived from PUB-001 design system; no separate approved mock"*, and §26's
 Gate A is a comparison against a canonical mock. §29 step 5 asks each sibling to
 be compared with its own mock "not merely with the golden screen" — where no
@@ -2763,6 +2763,51 @@ anti-pattern §19.4 names by name.
 | 6 | `support` | intent — TRM-001's one approved support sentence | ruled utility block | `structured-information-block` | false | false | false |
 | 7 | `closing` | conversion | navy brand moment | `full-bleed-interruption` | false | false | false |
 
+### PUB-012 — Couranr master homepage
+
+**Budgets:** grid-dominant <= 0 · image-led >= 1 · product-proof >= 0 · workflow-rail == 0
+
+Required states from `ui_screen_registry.json`: Default; mobile navigation. The
+page exists to route a visitor to one of MKT-004's two entry paths, so it is the
+shortest contract in the family — **exactly three governed regions**, and a
+fourth marketing section is a defect in this table rather than a styling choice.
+
+`grid-dominant <= 0` is the whole point. The obvious way to build a
+two-audience homepage is a card grid of features, and §28 bans exactly that
+template-filling. The two audience doors are one editorial hero composition, not
+two tiles.
+
+| # | `data-couranr-section` | required state / intent | device | `data-composition` (§19) | image-led | grid-dominant | product-proof |
+|---|---|---|---|---|---|---|---|
+| 1 | `master-hero` | Default — the brand line plus two photographic audience doors | asymmetric photo-led hero, consumer door first on mobile | `split-story` | true | false | false |
+| 2 | `master-network` | Default — one network, two ways to use it | typography-led statement, no icons or cards | `editorial-statement` | false | false | false |
+| 3 | `master-service-area` | Default — consumer-neutral coverage reassurance | governed market names, no radius/ZIP/polygon | `structured-information-block` | false | false | false |
+
+### PUB-013 — Couranr Same Day
+
+**Budgets:** grid-dominant <= 0 · image-led >= 3 · product-proof >= 1 · workflow-rail == 1
+
+Required states from `ui_screen_registry.json`: Default; mobile navigation. This
+is the consumer entry path, and its floors are the inverse of PUB-008's: three
+image-led sections and one product proof are REQUIRED, because a page asking a
+person to hand over something they own has to show the handover rather than
+describe it. The three approved consumer photographs carry those three floors.
+
+`grid-dominant <= 0` again, and for the same reason: the breadth of trips is an
+editorial list, not a card cemetery.
+
+| # | `data-couranr-section` | required state / intent | device | `data-composition` (§19) | image-led | grid-dominant | product-proof |
+|---|---|---|---|---|---|---|---|
+| 1 | `sameday-hero` | Default — both intents visible before the image on mobile | ~45/55 interaction-and-photography split | `split-story` | true | false | false |
+| 2 | `already-bought` | Default — the collect-for-me case | editorial photograph with lead copy | `image-narrative` | true | false | false |
+| 3 | `send-what-you-have` | Default — the send case, orientation reversed from §2 | mirrored editorial split | `split-story` | true | false | false |
+| 4 | `consumer-breadth` | Default — the trips, as text | editorial list, no bordered cards | `editorial-statement` | false | false | false |
+| 5 | `consumer-workflow` | Default — five steps to a request | connected sequence rail | `workflow-rail` | false | false | false |
+| 6 | `consumer-price` | Default — price is shown before requesting | statement, no sample amount while the backend is unwired | `structured-information-block` | false | false | false |
+| 7 | `consumer-availability` | Default — the address and availability story | asymmetric lead + state narrative | `split-story` | false | false | false |
+| 8 | `consumer-tracking` | Default — what happens after pickup | three-stage product story, no live data | `product-proof` | false | false | true |
+| 9 | `consumer-closing` | Default — the two intents, once more | navy interruption | `full-bleed-interruption` | false | false | false |
+
 ---
 
 # 28. Anti-template rules
@@ -2828,50 +2873,6 @@ A golden screen constrains family grammar. It does not override a sibling's mock
 
 # 30. Implementation architecture
 
-### PUB-012 — Couranr master homepage
-
-**Budgets:** grid-dominant <= 0 · image-led >= 1 · product-proof >= 0 · workflow-rail == 0
-
-Required states from `ui_screen_registry.json`: Default; mobile navigation. The
-page exists to route a visitor to one of MKT-004's two entry paths, so it is the
-shortest contract in the family — **exactly three governed regions**, and a
-fourth marketing section is a defect in this table rather than a styling choice.
-
-`grid-dominant <= 0` is the whole point. The obvious way to build a
-two-audience homepage is a card grid of features, and §28 bans exactly that
-template-filling. The two audience doors are one editorial hero composition, not
-two tiles.
-
-| # | `data-couranr-section` | required state / intent | device | `data-composition` (§19) | image-led | grid-dominant | product-proof |
-|---|---|---|---|---|---|---|---|
-| 1 | `master-hero` | Default — the brand line plus two photographic audience doors | asymmetric photo-led hero, consumer door first on mobile | `split-story` | true | false | false |
-| 2 | `master-network` | Default — one network, two ways to use it | typography-led statement, no icons or cards | `editorial-statement` | false | false | false |
-| 3 | `master-service-area` | Default — consumer-neutral coverage reassurance | governed market names, no radius/ZIP/polygon | `structured-information-block` | false | false | false |
-
-### PUB-013 — Couranr Same Day
-
-**Budgets:** grid-dominant <= 0 · image-led >= 3 · product-proof >= 1 · workflow-rail == 1
-
-Required states from `ui_screen_registry.json`: Default; mobile navigation. This
-is the consumer entry path, and its floors are the inverse of PUB-008's: three
-image-led sections and one product proof are REQUIRED, because a page asking a
-person to hand over something they own has to show the handover rather than
-describe it. The three approved consumer photographs carry those three floors.
-
-`grid-dominant <= 0` again, and for the same reason: the breadth of trips is an
-editorial list, not a card cemetery.
-
-| # | `data-couranr-section` | required state / intent | device | `data-composition` (§19) | image-led | grid-dominant | product-proof |
-|---|---|---|---|---|---|---|---|
-| 1 | `sameday-hero` | Default — both intents visible before the image on mobile | ~45/55 interaction-and-photography split | `split-story` | true | false | false |
-| 2 | `already-bought` | Default — the collect-for-me case | editorial photograph with lead copy | `image-narrative` | true | false | false |
-| 3 | `send-what-you-have` | Default — the send case, orientation reversed from §2 | mirrored editorial split | `split-story` | true | false | false |
-| 4 | `consumer-breadth` | Default — the trips, as text | editorial list, no bordered cards | `editorial-statement` | false | false | false |
-| 5 | `consumer-workflow` | Default — five steps to a request | connected sequence rail | `workflow-rail` | false | false | false |
-| 6 | `consumer-price` | Default — price is shown before requesting | statement, no sample amount while the backend is unwired | `structured-information-block` | false | false | false |
-| 7 | `consumer-availability` | Default — the address and availability story | asymmetric lead + state narrative | `split-story` | false | false | false |
-| 8 | `consumer-tracking` | Default — what happens after pickup | three-stage product story, no live data | `product-proof` | false | false | true |
-| 9 | `consumer-closing` | Default — the two intents, once more | navy interruption | `full-bleed-interruption` | false | false | false |
 
 ## 30.1 Keep the current foundation
 
