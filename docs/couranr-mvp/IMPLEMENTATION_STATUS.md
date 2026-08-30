@@ -37,15 +37,15 @@ proves every generated view matches its source.
 | `complete_pending_external` | 2 |
 | `complete_unverified` | 1 |
 
-## Screens — 66 rows against 66 canonical screens
+## Screens — 68 rows against 68 canonical screens
 
 | Status | Count |
 |---|---|
 | `functional_verified` | 30 |
 | `placeholder_only` | 18 |
 | `partial` | 9 |
+| `missing` | 6 |
 | `functional_unverified` | 5 |
-| `missing` | 4 |
 
 Still rendering `ScreenPlaceholder` (18): `DRV-009` · `DRV-010` · `OPS-001` · `OPS-006` · `OPS-009` · `OPS-010` · `OPS-011` · `OPS-012` · `OPS-013` · `OPS-014` · `OPS-015` · `OPS-016` · `OPS-017` · `OPS-018` · `OPS-019` · `OPS-020` · `OPS-021` · `PUB-004`.
 
@@ -61,8 +61,8 @@ Still rendering `ScreenPlaceholder` (18): `DRV-009` · `DRV-010` · `OPS-001` ·
 | …legacy | 71 |
 | Forward migrations | 50 |
 | Paired rollbacks | 50 |
-| Canonical screens | 66 |
-| …Core | 62 |
+| Canonical screens | 68 |
+| …Core | 64 |
 | …MVP-complete | 4 |
 
 ## Open work items
@@ -105,6 +105,7 @@ each is in the ledger row itself — `test_evidence`, `browser_verified` and
 | SHA | covers | rows |
 |---|---|---|
 | `08f59f8d0cc062c36252a7295f86513618187965` | 1 screen | MER-004 |
+| `124ccff67f5400bfc9ca8de60e4bbd9d5b3a9da7` | 2 screens | PUB-012, PUB-013 |
 | `1b3a1c90c88a554f1ac1ff1e6a6d06a97d602150` | 3 screens | CUS-006, CUS-008, PUB-006 |
 | `32893e21401a6f056821c4caaa7858460c7356b8` | 1 screen | MER-001 |
 | `401b3eea5cd96bb09d224f3b113ba6091bba807d` | 32 work items, 40 screens | P0-001, P0-002, P1-001, P1-002, P1-003, P1-004, P2-002, P3-001, P3-002, P4-001, P4-002, P5-001, P5-002, P6-001, P6-003, P6-004, P7-001, P7-002, P7-003, P7-004, P7-005, P8-003, P9-001, P9-002, P9-003, P9-004, P10-001, P10-002, P11-001, P12-001, P12-002, P10-007, CUS-002, CUS-004, CUS-005, CUS-007, DRV-001, DRV-002, DRV-003, DRV-004, DRV-005, DRV-006, DRV-007, DRV-009, DRV-010, MER-002, MER-005, MER-006, MER-007, OPS-001, OPS-002, OPS-003, OPS-004, OPS-006, OPS-008, OPS-009, OPS-010, OPS-011, OPS-012, OPS-013, OPS-014, OPS-015, OPS-016, OPS-017, OPS-018, OPS-019, OPS-020, OPS-021, PUB-002, PUB-003, PUB-004, PUB-005 |

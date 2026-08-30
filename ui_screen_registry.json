@@ -33,15 +33,15 @@
       "surface": "Public",
       "name": "Marketing homepage",
       "routes": [
-        "/"
+        "/business"
       ],
-      "route_label": "/",
+      "route_label": "/business",
       "tier": "Core",
       "phase": "10",
       "viewport": "Responsive",
       "canonical_path": "canonical-mvp-images/public/PUB-001_marketing-homepage.png",
       "image": "couranr_local_delivery_service_landing_page.png",
-      "purpose": "Explain Couranr to local merchants and drive business-account creation or delivery estimation.",
+      "purpose": "Explain Couranr for Business to local merchants and drive business-account creation or delivery estimation.",
       "actions": "Create business account; estimate delivery; open Ask Couranr; navigate to pricing, businesses, service areas, and how it works.",
       "states": "Default; mobile navigation; assistant closed/open.",
       "source": "Spec §§2–4, 16; copy and conversion authority docs/couranr-mvp/MARKETING_POSITIONING_AND_HOMEPAGE_BLUEPRINT.md (MKT-002)",
@@ -52,6 +52,12 @@
           "authority": "owner instruction",
           "change": "Removed \"service-area notice\" from the required states.",
           "reason": "The owner removed the full-bleed service-area notice bar from the (public) route group on 2026-08-29, at both widths. This registry still required the state, so the registry and the screen disagreed — recorded as an OPEN disagreement in SCREEN_IMPLEMENTATION_LEDGER.csv, docs/couranr-mvp/ui-reference/PUB_001_VISUAL_DRIFT_LEDGER.csv and COURANR_VISUAL_SYSTEM_V2_2.md r11. Amending the authority closes it at the source rather than leaving three documents to describe a conflict. MKT-001's markets SENTENCE is unaffected and still reaches the public surface verbatim: app/(couranr)/(public)/page.tsx renders MARKETS_PUBLIC_COPY in the service-areas card and PUB-010 renders it twice."
+        },
+        {
+          "date": "2026-08-30",
+          "authority": "LEG-004 (root decision registry)",
+          "change": "Canonical route moved from `/` to `/business`.",
+          "reason": "MKT-004 expands Couranr into one master brand with two entry paths, so `/` belongs to the new master homepage PUB-012 and PUB-001 becomes the Couranr for Business surface. MKT-002 remains authoritative for this screen and every merchant-positioning claim on it; only the route and the brand scope around it changed."
         }
       ]
     },
@@ -98,10 +104,11 @@
       "surface": "Public",
       "name": "Delivery estimate and hosted request",
       "routes": [
+        "/send",
         "/estimate",
         "/request/[merchantSlug]"
       ],
-      "route_label": "/estimate and /request/[merchantSlug]",
+      "route_label": "/send, /estimate and /request/[merchantSlug]",
       "tier": "Core",
       "phase": "5–6",
       "viewport": "Mobile-first responsive",
@@ -111,7 +118,15 @@
       "actions": "Enter order reference, destination, recipient, package, timing, payer preference; submit to merchant validation when merchant-hosted.",
       "states": "Draft; address validation; merchant confirmation pending; quote unavailable; review required; submitted.",
       "source": "Spec §§6–7, 16",
-      "constraints": "The merchant must validate customer-initiated merchandise details before payment. Do not include product checkout or merchandise payment."
+      "constraints": "The merchant must validate customer-initiated merchandise details before payment. Do not include product checkout or merchandise payment.",
+      "amendments": [
+        {
+          "date": "2026-08-30",
+          "authority": "LEG-004 (root decision registry)",
+          "change": "Route family gains `/send` as the preferred direct-consumer entry; `/estimate` is retained as a compatibility route.",
+          "reason": "PUB-004 stays ONE canonical screen family with route/mode variants rather than gaining a new screen id, because the estimate, the consumer send flow and the merchant-hosted request are the same capability entered three ways."
+        }
+      ]
     },
     {
       "id": "PUB-005",
@@ -247,13 +262,51 @@
       "constraints": "No instant-confirmation promise. Capture occurs after Couranr confirmation."
     },
     {
+      "id": "PUB-012",
+      "surface": "Public",
+      "name": "Couranr master homepage",
+      "routes": [
+        "/"
+      ],
+      "route_label": "/",
+      "tier": "Core",
+      "phase": "10",
+      "viewport": "Responsive",
+      "canonical_path": "Derived from the PUB-001 public family design system; no separate approved mock.",
+      "image": null,
+      "purpose": "Present the one Couranr master brand and route a visitor to the entry path that fits them — Couranr Same Day for a person sending or collecting something, Couranr for Business for a local business adding delivery.",
+      "actions": "Enter Couranr Same Day; enter Couranr for Business; sign in to a business account.",
+      "states": "Default; mobile navigation.",
+      "source": "MKT-004 and LEG-004 in the root decision registry; PRODUCT_SPEC.md §3 markets and operating model",
+      "constraints": "Exactly three governed content regions — master-hero, master-network, master-service-area — plus global public chrome. No FAQ, feature grid, testimonial, product catalog or extra product tiles. No fake metrics, guarantees, phone support, subscriptions, or Maryland launch marketing. This page carries no merchant-positioning claim; MKT-002 governs those and they live on PUB-001."
+    },
+    {
+      "id": "PUB-013",
+      "surface": "Public",
+      "name": "Couranr Same Day",
+      "routes": [
+        "/sameday"
+      ],
+      "route_label": "/sameday",
+      "tier": "Core",
+      "phase": "10",
+      "viewport": "Mobile-first responsive",
+      "canonical_path": "Derived from the PUB-001 public family design system; no separate approved mock.",
+      "image": null,
+      "purpose": "Explain direct-consumer local delivery — send something the person already has, or collect something they have already bought, ordered or arranged — and start a delivery.",
+      "actions": "Start a delivery; track a delivery; enter Couranr for Business.",
+      "states": "Default; mobile navigation.",
+      "source": "MKT-004 and LEG-004 in the root decision registry; PRODUCT_SPEC.md §3 markets and operating model",
+      "constraints": "Couranr Same Day is NOT a marketplace, a restaurant marketplace, a product catalog, a grocery storefront or a general task marketplace: for collection the merchandise or service is already purchased or arranged elsewhere. No generic consumer sign-in; a business login link may appear only if clearly labelled Business. No fake metrics, testimonials or product screenshots."
+    },
+    {
       "id": "MER-001",
       "surface": "Merchant",
       "name": "Merchant dashboard",
       "routes": [
-        "/business"
+        "/app/business"
       ],
-      "route_label": "/business",
+      "route_label": "/app/business",
       "tier": "Core",
       "phase": "4–10",
       "viewport": "Desktop-first responsive",
@@ -270,9 +323,9 @@
       "surface": "Merchant",
       "name": "Merchant onboarding",
       "routes": [
-        "/business/onboarding"
+        "/app/business/onboarding"
       ],
-      "route_label": "/business/onboarding",
+      "route_label": "/app/business/onboarding",
       "tier": "Core",
       "phase": "4",
       "viewport": "Desktop-first responsive",
@@ -289,9 +342,9 @@
       "surface": "Merchant",
       "name": "Live activation checklist",
       "routes": [
-        "/business/onboarding?step=activation"
+        "/app/business/onboarding?step=activation"
       ],
-      "route_label": "/business/onboarding?step=activation",
+      "route_label": "/app/business/onboarding?step=activation",
       "tier": "Core",
       "phase": "4",
       "viewport": "Desktop-first responsive",
@@ -308,9 +361,9 @@
       "surface": "Merchant",
       "name": "Deliveries list",
       "routes": [
-        "/business/deliveries"
+        "/app/business/deliveries"
       ],
-      "route_label": "/business/deliveries",
+      "route_label": "/app/business/deliveries",
       "tier": "Core",
       "phase": "5–8",
       "viewport": "Desktop-first responsive",
@@ -327,9 +380,9 @@
       "surface": "Merchant",
       "name": "Create delivery with Smart Intake",
       "routes": [
-        "/business/deliveries/new"
+        "/app/business/deliveries/new"
       ],
-      "route_label": "/business/deliveries/new",
+      "route_label": "/app/business/deliveries/new",
       "tier": "Core",
       "phase": "5",
       "viewport": "Desktop-first responsive",
@@ -346,9 +399,9 @@
       "surface": "Merchant",
       "name": "Delivery review and quote",
       "routes": [
-        "/business/deliveries/new?step=review"
+        "/app/business/deliveries/new?step=review"
       ],
-      "route_label": "/business/deliveries/new?step=review",
+      "route_label": "/app/business/deliveries/new?step=review",
       "tier": "Core",
       "phase": "6",
       "viewport": "Desktop-first responsive",
@@ -365,9 +418,9 @@
       "surface": "Merchant",
       "name": "Delivery detail",
       "routes": [
-        "/business/deliveries/[id]"
+        "/app/business/deliveries/[id]"
       ],
-      "route_label": "/business/deliveries/[id]",
+      "route_label": "/app/business/deliveries/[id]",
       "tier": "Core",
       "phase": "5–8",
       "viewport": "Desktop-first responsive",
@@ -384,9 +437,9 @@
       "surface": "Merchant",
       "name": "Customers list",
       "routes": [
-        "/business/customers"
+        "/app/business/customers"
       ],
-      "route_label": "/business/customers",
+      "route_label": "/app/business/customers",
       "tier": "Core",
       "phase": "4",
       "viewport": "Desktop-first responsive",
@@ -403,9 +456,9 @@
       "surface": "Merchant",
       "name": "Customer detail",
       "routes": [
-        "/business/customers?customer=[id]"
+        "/app/business/customers?customer=[id]"
       ],
-      "route_label": "/business/customers?customer=[id]",
+      "route_label": "/app/business/customers?customer=[id]",
       "tier": "Core",
       "phase": "4",
       "viewport": "Desktop-first responsive",
@@ -422,9 +475,9 @@
       "surface": "Merchant",
       "name": "Presets list",
       "routes": [
-        "/business/presets"
+        "/app/business/presets"
       ],
-      "route_label": "/business/presets",
+      "route_label": "/app/business/presets",
       "tier": "Core",
       "phase": "4",
       "viewport": "Desktop-first responsive",
@@ -441,9 +494,9 @@
       "surface": "Merchant",
       "name": "Preset builder",
       "routes": [
-        "/business/presets?edit=[id]"
+        "/app/business/presets?edit=[id]"
       ],
-      "route_label": "/business/presets?edit=[id]",
+      "route_label": "/app/business/presets?edit=[id]",
       "tier": "Core",
       "phase": "4",
       "viewport": "Desktop-first responsive",
@@ -460,9 +513,9 @@
       "surface": "Merchant",
       "name": "Merchant messages and support",
       "routes": [
-        "/business/messages"
+        "/app/business/messages"
       ],
-      "route_label": "/business/messages",
+      "route_label": "/app/business/messages",
       "tier": "Core",
       "phase": "8–9",
       "viewport": "Desktop-first responsive",
@@ -479,9 +532,9 @@
       "surface": "Merchant",
       "name": "Website tools",
       "routes": [
-        "/business/website-tools"
+        "/app/business/website-tools"
       ],
-      "route_label": "/business/website-tools",
+      "route_label": "/app/business/website-tools",
       "tier": "Core",
       "phase": "10",
       "viewport": "Desktop-first responsive",
@@ -498,9 +551,9 @@
       "surface": "Merchant",
       "name": "Merchant settings",
       "routes": [
-        "/business/settings"
+        "/app/business/settings"
       ],
-      "route_label": "/business/settings",
+      "route_label": "/app/business/settings",
       "tier": "Core",
       "phase": "4–8",
       "viewport": "Desktop-first responsive",
@@ -517,9 +570,9 @@
       "surface": "Merchant",
       "name": "Team and permissions",
       "routes": [
-        "/business/settings/team"
+        "/app/business/settings/team"
       ],
-      "route_label": "/business/settings/team",
+      "route_label": "/app/business/settings/team",
       "tier": "Core",
       "phase": "4",
       "viewport": "Desktop-first responsive",
@@ -536,9 +589,9 @@
       "surface": "Merchant",
       "name": "Billing settings",
       "routes": [
-        "/business/settings/billing"
+        "/app/business/settings/billing"
       ],
-      "route_label": "/business/settings/billing",
+      "route_label": "/app/business/settings/billing",
       "tier": "Core",
       "phase": "6",
       "viewport": "Desktop-first responsive",

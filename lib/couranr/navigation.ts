@@ -90,13 +90,57 @@ const NAV_LABELS: Record<string, string> = {
  */
 export const ROUTE_COLLISIONS: { route: string; legacyFile: string; screenId: string }[] =
   [
-    { route: "/", legacyFile: "app/page.tsx", screenId: "PUB-001" },
+    { route: "/", legacyFile: "app/page.tsx", screenId: "PUB-012" },
     // DRV-001 resolved: /driver is now owned by app/(couranr)/driver/, which
     // composes DriverShell + SurfaceGuard like every other canonical route.
     // The legacy app/driver/layout.tsx (getSession + redirect to /login) is gone.
   ];
 
 const COLLIDING = new Set(ROUTE_COLLISIONS.map((c) => c.route));
+
+/**
+ * Canonical routes the repository does not serve YET, and where each one is
+ * actually reachable today.
+ *
+ * `LEG-004` moved the merchant application under `/app/business` and moved
+ * PUB-001 to `/business`. That is a decision about the TARGET topology; the
+ * pages have not moved, and moving them is a frontend slice. Deriving hrefs
+ * straight from the screen registry in the meantime would point the merchant
+ * shell at eleven routes that 404 — a governance change breaking the running
+ * app, which is never an acceptable trade.
+ *
+ * So navigation renders the SERVED route and this table records the gap in one
+ * place, with the decision that created it. Each entry is temporary by
+ * construction: `tests/couranr-navigation.test.ts` requires the served path to
+ * exist on disk AND the canonical path NOT to, so the day the frontend slice
+ * creates `app/(couranr)/app/business/page.tsx` this entry must be deleted or
+ * the suite goes red. A shim that cannot outlive its migration.
+ */
+export const ROUTES_NOT_YET_MATERIALIZED: {
+  canonicalPrefix: string;
+  servedPrefix: string;
+  decision: string;
+  servedPage: string;
+  canonicalPage: string;
+}[] = [
+  {
+    canonicalPrefix: "/app/business",
+    servedPrefix: "/business",
+    decision: "LEG-004",
+    servedPage: "app/(couranr)/business/page.tsx",
+    canonicalPage: "app/(couranr)/app/business/page.tsx",
+  },
+];
+
+/** The path a canonical route is reachable at today. */
+export function servedRoute(canonical: string): string {
+  for (const m of ROUTES_NOT_YET_MATERIALIZED) {
+    if (canonical === m.canonicalPrefix || canonical.startsWith(`${m.canonicalPrefix}/`)) {
+      return m.servedPrefix + canonical.slice(m.canonicalPrefix.length);
+    }
+  }
+  return canonical;
+}
 
 function firstCleanRoute(screen: CanonicalScreen): string | null {
   // A screen may list several routes; navigation uses the first plain path.
@@ -123,8 +167,9 @@ export function navigationFor(role: ShellRole): NavItem[] {
     .map((s): NavItem | null => {
       const label = NAV_LABELS[s.id];
       if (!label) return null;
-      const href = firstCleanRoute(s);
-      if (!href || COLLIDING.has(href)) return null;
+      const canonical = firstCleanRoute(s);
+      if (!canonical || COLLIDING.has(canonical)) return null;
+      const href = servedRoute(canonical);
       return {
         screenId: s.id,
         label,
@@ -138,10 +183,18 @@ export function navigationFor(role: ShellRole): NavItem[] {
 
 /** Sub-navigation for merchant settings (MER-014 / MER-015 / MER-016). */
 export function merchantSettingsNav(): NavItem[] {
+  /* Derived, so the LEG-004 route move reaches this sub-navigation through the
+     same shim as everything else rather than needing a second edit. */
+  const of = (id: string) => {
+    const s = CANONICAL_SCREENS.find((x) => x.id === id);
+    const canonical = s && firstCleanRoute(s);
+    if (!canonical) throw new Error(`${id} has no plain route in the screen registry`);
+    return servedRoute(canonical);
+  };
   return [
-    { screenId: "MER-014", label: "General", href: "/business/settings", exact: true },
-    { screenId: "MER-015", label: "Team and permissions", href: "/business/settings/team" },
-    { screenId: "MER-016", label: "Billing", href: "/business/settings/billing" },
+    { screenId: "MER-014", label: "General", href: of("MER-014"), exact: true },
+    { screenId: "MER-015", label: "Team and permissions", href: of("MER-015") },
+    { screenId: "MER-016", label: "Billing", href: of("MER-016") },
   ];
 }
 

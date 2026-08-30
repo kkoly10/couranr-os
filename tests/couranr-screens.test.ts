@@ -15,9 +15,22 @@ const ROOT = path.join(__dirname, "..");
 const read = (p: string) => readFileSync(path.join(ROOT, p), "utf8");
 const SOURCE = JSON.parse(read("ui_screen_registry.json"));
 const LEDGER = read("docs/couranr-mvp/SCREEN_IMPLEMENTATION_LEDGER.csv");
-const CLS = JSON.parse(read("02_DECISION_REGISTRY.json")).decisions.find(
-  (r: { id: string }) => r.id === "CLS-001",
+/* The EFFECTIVE classification decision, not CLS-001 by name: CLS-002 amends its
+   counts to 68/64/4 and CLS-001 is preserved as the historical sixty-six-screen
+   record. Naming the id here would either pin the old counts or force the
+   amendment to overwrite the history it exists to keep. */
+const DECISIONS = JSON.parse(read("02_DECISION_REGISTRY.json")).decisions;
+const CLASSIFICATION = DECISIONS.filter(
+  (r: { category: string; status: string }) =>
+    r.category === "canonical/deferred/archive classification" && r.status === "decided",
 );
+const AMENDED = new Set(
+  CLASSIFICATION.flatMap((r: { amends?: string | string[] }) =>
+    Array.isArray(r.amends) ? r.amends : r.amends ? [r.amends] : [],
+  ),
+);
+const EFFECTIVE = CLASSIFICATION.filter((r: { id: string }) => !AMENDED.has(r.id));
+const CLS = EFFECTIVE[0];
 
 type SourceScreen = { id: string; surface: string; tier: string; routes: string[] };
 const sourceScreens: SourceScreen[] = SOURCE.screens;
@@ -56,7 +69,12 @@ describe("canonical screen registry", () => {
     ).toBe(sourceScreens.length);
   });
 
-  it("reconciles the tier split to CLS-001, the governing decision", () => {
+  it("has exactly one un-amended classification decision to reconcile against", () => {
+    expect(EFFECTIVE.map((r: { id: string }) => r.id)).toHaveLength(1);
+    expect(AMENDED.size).toBeGreaterThan(0);
+  });
+
+  it("reconciles the tier split to the governing classification decision", () => {
     const core = sourceScreens.filter((s) => s.tier === "Core").length;
     const complete = sourceScreens.filter((s) => s.tier === "MVP-complete").length;
     expect(coreScreens()).toHaveLength(core);
@@ -90,16 +108,17 @@ describe("canonical screen registry", () => {
   });
 
   it("keeps the registry's multi-route screens intact", () => {
-    // PUB-004 is listed as "/estimate and /request/[merchantSlug]".
-    expect(getScreen("PUB-004")?.routes).toEqual([
-      "/estimate",
-      "/request/[merchantSlug]",
-    ]);
-    // OPS-002 is "/operations/queue and /operations/deliveries".
-    expect(getScreen("OPS-002")?.routes).toEqual([
-      "/operations/queue",
-      "/operations/deliveries",
-    ]);
+    /* Derived from the source rather than typed, because LEG-004 added `/send`
+       to PUB-004's family and a literal here would have had to be found. The
+       assertion that matters is that a multi-route screen keeps ALL its routes
+       in the source's order — a projection that took only the first would still
+       satisfy every count in this file. */
+    const multi = sourceScreens.filter((s) => s.routes.length > 1);
+    expect(multi.length).toBeGreaterThan(1);
+    for (const s of multi) {
+      expect(getScreen(s.id)?.routes, `${s.id} routes`).toEqual(s.routes);
+    }
+    expect(getScreen("PUB-004")?.routes[0]).toBe("/send");
   });
 
   it("records the MVP-complete screens CLS-001 names, by id", () => {

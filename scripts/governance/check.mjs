@@ -293,11 +293,28 @@ function checkClassificationCounts(fail, src, inject) {
   if (!existsSync(registryPath)) return;
   let reg = JSON.parse(readFileSync(registryPath, "utf8"));
   if (inject) reg = inject(reg);
-  const cls = (reg.decisions ?? []).find((r) => r.id === "CLS-001");
-  if (!cls) {
-    fail.push("02_DECISION_REGISTRY.json has no CLS-001 record to reconcile screen counts against");
+  /* The EFFECTIVE classification record, not CLS-001 by name.
+     CLS-002 amends CLS-001's counts to 68/64/4 and CLS-001 is preserved as the
+     historical sixty-six-screen classification — so reconciling against a
+     hardcoded id would either fail forever or, worse, force the amendment to be
+     written into the old record and destroy the history the amendment exists to
+     keep. The effective record is the classification decision nothing amends. */
+  const classification = (reg.decisions ?? []).filter(
+    (r) => r.category === "canonical/deferred/archive classification" && r.status === "decided",
+  );
+  const amended = new Set(
+    classification.flatMap((r) => (Array.isArray(r.amends) ? r.amends : r.amends ? [r.amends] : [])),
+  );
+  const effective = classification.filter((r) => !amended.has(r.id));
+  if (effective.length !== 1) {
+    fail.push(
+      `expected exactly one un-amended classification decision, found ` +
+        `${effective.length} [${effective.map((r) => r.id).join(", ")}] — an amendment chain ` +
+        `with two heads has no single answer for the canonical count`,
+    );
     return;
   }
+  const cls = effective[0];
   const screens = src.screens;
   const measured = {
     canonical_screens: screens.length,
@@ -307,7 +324,7 @@ function checkClassificationCounts(fail, src, inject) {
   for (const [k, v] of Object.entries(measured)) {
     if (cls.value[k] !== v) {
       fail.push(
-        `CLS-001.value.${k} is ${cls.value[k]} but ${SCREEN_SOURCE} has ${v} — ` +
+        `${cls.id}.value.${k} is ${cls.value[k]} but ${SCREEN_SOURCE} has ${v} — ` +
           `the decision and the screen list disagree; change both in one commit`,
       );
     }
@@ -316,7 +333,7 @@ function checkClassificationCounts(fail, src, inject) {
   const declared = [...(cls.value.mvp_complete_ids ?? [])].sort();
   if (JSON.stringify(ids) !== JSON.stringify(declared)) {
     fail.push(
-      `CLS-001.value.mvp_complete_ids is [${declared.join(", ")}] but ${SCREEN_SOURCE} ` +
+      `${cls.id}.value.mvp_complete_ids is [${declared.join(", ")}] but ${SCREEN_SOURCE} ` +
         `marks [${ids.join(", ")}] MVP-complete`,
     );
   }
@@ -454,17 +471,27 @@ if (CONTROL) {
   }
   {
     const detected = [];
+    const reg0 = JSON.parse(readFileSync(join(ROOT, "02_DECISION_REGISTRY.json"), "utf8"));
+    const amendedIds = new Set(
+      reg0.decisions
+        .filter((r) => r.category === "canonical/deferred/archive classification")
+        .flatMap((r) => (Array.isArray(r.amends) ? r.amends : r.amends ? [r.amends] : [])),
+    );
+    const head = reg0.decisions.find(
+      (r) => r.category === "canonical/deferred/archive classification" &&
+        r.status === "decided" && !amendedIds.has(r.id),
+    );
     checkClassificationCounts(detected, screenSource(), (reg) => ({
       ...reg,
       decisions: reg.decisions.map((r) =>
-        r.id === "CLS-001" ? { ...r, value: { ...r.value, core: r.value.core + 1 } } : r,
+        r.id === head.id ? { ...r, value: { ...r.value, core: r.value.core + 1 } } : r,
       ),
     }));
     if (!detected.length) {
-      console.error("positive control FAILED — a CLS-001 core count that disagrees with the screen registry was not detected");
+      console.error("positive control FAILED — a classification core count that disagrees with the screen registry was not detected");
       bad++;
     } else {
-      console.log(`check:governance positive control ok — a drifted CLS-001 count was rejected: "${detected[0].slice(0, 110)}"`);
+      console.log(`check:governance positive control ok — a drifted classification count was rejected: "${detected[0].slice(0, 110)}"`);
     }
   }
   {

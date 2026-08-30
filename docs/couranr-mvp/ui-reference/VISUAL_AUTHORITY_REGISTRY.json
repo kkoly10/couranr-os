@@ -6,7 +6,7 @@
     {
       "screen_id": "PUB-001",
       "surface_family": "public_marketing",
-      "route": "/",
+      "route": "/business",
       "canonical_sources": [
         {
           "path": "0E4F029F-22C3-4497-A00F-E355DCB3164D.png",
@@ -99,7 +99,7 @@
     {
       "screen_id": "PUB-004",
       "surface_family": "public_marketing",
-      "route": "/estimate and /request/[merchantSlug]",
+      "route": "/send, /estimate and /request/[merchantSlug]",
       "canonical_sources": [],
       "reference_sources": [
         {
@@ -345,9 +345,43 @@
       ]
     },
     {
+      "screen_id": "PUB-012",
+      "surface_family": "public_marketing",
+      "route": "/",
+      "canonical_sources": [],
+      "registry_declared_viewport_intent": "responsive",
+      "visual_authority": "derived",
+      "derived_from": {
+        "screen_id": "PUB-001",
+        "family": "public_marketing"
+      },
+      "derivation_basis": "VISUAL_REGISTRY.json maps no ROOT design export to this screen, so §26's Gate A has nothing to compare against. It inherits its family grammar from the golden screen named above (§29).",
+      "mobile_reference": null,
+      "notes": [
+        "No Gate A review has been performed for this screen."
+      ]
+    },
+    {
+      "screen_id": "PUB-013",
+      "surface_family": "public_marketing",
+      "route": "/sameday",
+      "canonical_sources": [],
+      "registry_declared_viewport_intent": "mobile-first responsive",
+      "visual_authority": "derived",
+      "derived_from": {
+        "screen_id": "PUB-001",
+        "family": "public_marketing"
+      },
+      "derivation_basis": "VISUAL_REGISTRY.json maps no ROOT design export to this screen, so §26's Gate A has nothing to compare against. It inherits its family grammar from the golden screen named above (§29).",
+      "mobile_reference": null,
+      "notes": [
+        "No Gate A review has been performed for this screen."
+      ]
+    },
+    {
       "screen_id": "MER-001",
       "surface_family": "merchant",
-      "route": "/business",
+      "route": "/app/business",
       "canonical_sources": [
         {
           "path": "E7CE45F8-2C85-4256-93AC-48BCC7F95FD4.png",
@@ -375,7 +409,7 @@
     {
       "screen_id": "MER-002",
       "surface_family": "merchant",
-      "route": "/business/onboarding",
+      "route": "/app/business/onboarding",
       "canonical_sources": [
         {
           "path": "E12C72B2-9DB9-427D-B47A-3021EBA56E85.png",
@@ -395,7 +429,7 @@
     {
       "screen_id": "MER-003",
       "surface_family": "merchant",
-      "route": "/business/onboarding?step=activation",
+      "route": "/app/business/onboarding?step=activation",
       "canonical_sources": [
         {
           "path": "F6BD39AA-E03A-4B31-9A7C-2DB765889B42.png",
@@ -415,7 +449,7 @@
     {
       "screen_id": "MER-004",
       "surface_family": "merchant",
-      "route": "/business/deliveries",
+      "route": "/app/business/deliveries",
       "canonical_sources": [
         {
           "path": "1691E20B-A9D7-45E8-AA68-D180D99D6FBC.png",
@@ -435,7 +469,7 @@
     {
       "screen_id": "MER-005",
       "surface_family": "merchant",
-      "route": "/business/deliveries/new",
+      "route": "/app/business/deliveries/new",
       "canonical_sources": [
         {
           "path": "69961CD8-3B66-4544-8053-8EAE1AD3BEE5.png",
@@ -463,7 +497,7 @@
     {
       "screen_id": "MER-006",
       "surface_family": "merchant",
-      "route": "/business/deliveries/new?step=review",
+      "route": "/app/business/deliveries/new?step=review",
       "canonical_sources": [
         {
           "path": "04DF2721-97D2-472C-A3F1-CB6047E5298B.png",
@@ -483,7 +517,7 @@
     {
       "screen_id": "MER-007",
       "surface_family": "merchant",
-      "route": "/business/deliveries/[id]",
+      "route": "/app/business/deliveries/[id]",
       "canonical_sources": [
         {
           "path": "05C42ED1-7AD9-4A55-88CB-7784FD8F52E5.png",
@@ -511,7 +545,7 @@
     {
       "screen_id": "MER-008",
       "surface_family": "merchant",
-      "route": "/business/customers",
+      "route": "/app/business/customers",
       "canonical_sources": [],
       "reference_sources": [
         {
@@ -538,7 +572,7 @@
     {
       "screen_id": "MER-009",
       "surface_family": "merchant",
-      "route": "/business/customers?customer=[id]",
+      "route": "/app/business/customers?customer=[id]",
       "canonical_sources": [
         {
           "path": "0392E7FD-E057-4C5D-9886-94D09DEB2CC8.png",
@@ -558,7 +592,7 @@
     {
       "screen_id": "MER-010",
       "surface_family": "merchant",
-      "route": "/business/presets",
+      "route": "/app/business/presets",
       "canonical_sources": [],
       "reference_sources": [
         {
@@ -585,7 +619,7 @@
     {
       "screen_id": "MER-011",
       "surface_family": "merchant",
-      "route": "/business/presets?edit=[id]",
+      "route": "/app/business/presets?edit=[id]",
       "canonical_sources": [
         {
           "path": "DCFBA4C8-D2C7-4E7F-99D6-91B824D7EB89.png",
@@ -613,7 +647,7 @@
     {
       "screen_id": "MER-012",
       "surface_family": "merchant",
-      "route": "/business/messages",
+      "route": "/app/business/messages",
       "canonical_sources": [
         {
           "path": "76A4F41E-4C1E-4A75-8860-AB0A0AEFDD86.png",
@@ -633,7 +667,7 @@
     {
       "screen_id": "MER-013",
       "surface_family": "merchant",
-      "route": "/business/website-tools",
+      "route": "/app/business/website-tools",
       "canonical_sources": [
         {
           "path": "05AC4274-C24F-4D52-8E6A-76C9573E0429.png",
@@ -675,7 +709,7 @@
     {
       "screen_id": "MER-014",
       "surface_family": "merchant",
-      "route": "/business/settings",
+      "route": "/app/business/settings",
       "canonical_sources": [
         {
           "path": "031480FD-EE0D-4371-9A71-DACFD0DF926F.png",
@@ -703,7 +737,7 @@
     {
       "screen_id": "MER-015",
       "surface_family": "merchant",
-      "route": "/business/settings/team",
+      "route": "/app/business/settings/team",
       "canonical_sources": [
         {
           "path": "CFC37EF0-ECF0-41FE-A7B4-BA35FC9DFC89.png",
@@ -731,7 +765,7 @@
     {
       "screen_id": "MER-016",
       "surface_family": "merchant",
-      "route": "/business/settings/billing",
+      "route": "/app/business/settings/billing",
       "canonical_sources": [
         {
           "path": "2EF4F6B4-803D-487A-846B-178DAEEE1957.png",

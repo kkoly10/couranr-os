@@ -23,12 +23,12 @@ renamed, or deleted, and none will be.
 | | count |
 |---|---|
 | PNGs at repo root | 91 |
-| …that map to one of the 66 registry screens | 69 |
+| …that map to one of the 68 registry screens | 69 |
 | …that depict a screen **not** in the registry, or are photography | 22 |
 | …unaccounted for | **0** |
-| Registry screens with at least one mock | 50 of 66 |
-| Registry screens with **no** mock | 16 |
-| …of which "no mock" is correct by design | 4 (PUB-008…011) |
+| Registry screens with at least one mock | 50 of 68 |
+| Registry screens with **no** mock | 18 |
+| …of which "no mock" is correct by design | 6 (PUB-008…013) |
 | …leaving real design gaps | **12** |
 
 Those counts are produced, not asserted: `npm run check:mocks`
@@ -95,6 +95,8 @@ the same screen.
   "PUB-009": [],
   "PUB-010": [],
   "PUB-011": [],
+  "PUB-012": [],
+  "PUB-013": [],
   "MER-001": [
     "E7CE45F8-2C85-4256-93AC-48BCC7F95FD4.png",
     "D20A6432-D9BF-42C3-B65B-06954D771E37.png"

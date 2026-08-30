@@ -592,6 +592,14 @@
           }
         ]
       },
+      "PUB-012": {
+        "visual_authority": "derived",
+        "root_sources": []
+      },
+      "PUB-013": {
+        "visual_authority": "derived",
+        "root_sources": []
+      },
       "MER-001": {
         "visual_authority": "canonical",
         "root_sources": [
