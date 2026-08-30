@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import {
   CANONICAL_SCREENS,
   SCREEN_COUNT,
@@ -9,27 +11,77 @@ import {
   screensByGroup,
 } from "@/lib/couranr/screens";
 
+const ROOT = path.join(__dirname, "..");
+const read = (p: string) => readFileSync(path.join(ROOT, p), "utf8");
+const SOURCE = JSON.parse(read("ui_screen_registry.json"));
+const LEDGER = read("docs/couranr-mvp/SCREEN_IMPLEMENTATION_LEDGER.csv");
+/* The EFFECTIVE classification decision, not CLS-001 by name: CLS-002 amends its
+   counts to 68/64/4 and CLS-001 is preserved as the historical sixty-six-screen
+   record. Naming the id here would either pin the old counts or force the
+   amendment to overwrite the history it exists to keep. */
+const DECISIONS = JSON.parse(read("02_DECISION_REGISTRY.json")).decisions;
+const CLASSIFICATION = DECISIONS.filter(
+  (r: { category: string; status: string }) =>
+    r.category === "canonical/deferred/archive classification" && r.status === "decided",
+);
+const AMENDED = new Set(
+  CLASSIFICATION.flatMap((r: { amends?: string | string[] }) =>
+    Array.isArray(r.amends) ? r.amends : r.amends ? [r.amends] : [],
+  ),
+);
+const EFFECTIVE = CLASSIFICATION.filter((r: { id: string }) => !AMENDED.has(r.id));
+const CLS = EFFECTIVE[0];
+
+type SourceScreen = { id: string; surface: string; tier: string; routes: string[] };
+const sourceScreens: SourceScreen[] = SOURCE.screens;
+
 /**
- * These assert the screen map against UI_SCREEN_REGISTRY.md §4. If someone
- * regenerates or hand-edits the map and drops a screen, this fails.
+ * `lib/couranr/screens.ts` is GENERATED from `ui_screen_registry.json` plus the
+ * screen ledger. These assert the projection, not a remembered snapshot of it.
+ *
+ * Every count here used to be a literal — 66, 11/16/10/21/8, 62/4, and a
+ * 26-entry list of implemented ids. Phase D moves all of them at once, and a
+ * literal in a test is one more place that has to be found. §5 of the authority
+ * consolidation work order names this specifically.
  */
 describe("canonical screen registry", () => {
-  it("registers all 66 canonical MVP screens", () => {
-    expect(SCREEN_COUNT).toBe(66);
-    expect(CANONICAL_SCREENS).toHaveLength(66);
+  it("registers exactly the screens the source declares", () => {
+    expect(SCREEN_COUNT).toBe(sourceScreens.length);
+    expect(CANONICAL_SCREENS.map((s) => s.id)).toEqual(sourceScreens.map((s) => s.id));
   });
 
-  it("matches the per-group counts in the registry", () => {
-    expect(screensByGroup("public")).toHaveLength(11);
-    expect(screensByGroup("merchant")).toHaveLength(16);
-    expect(screensByGroup("driver")).toHaveLength(10);
-    expect(screensByGroup("operations")).toHaveLength(21);
-    expect(screensByGroup("customer")).toHaveLength(8);
+  it("matches the per-surface counts in the source", () => {
+    const bySurface = (surface: string) =>
+      sourceScreens.filter((s) => s.surface === surface).length;
+    expect(screensByGroup("public")).toHaveLength(bySurface("Public"));
+    expect(screensByGroup("merchant")).toHaveLength(bySurface("Merchant"));
+    expect(screensByGroup("driver")).toHaveLength(bySurface("Driver"));
+    expect(screensByGroup("operations")).toHaveLength(bySurface("Operations"));
+    expect(screensByGroup("customer")).toHaveLength(bySurface("Customer"));
+    /* A mapping that dropped a surface would leave every bucket at 0 and pass
+       the five assertions above without noticing. */
+    expect(
+      screensByGroup("public").length +
+        screensByGroup("merchant").length +
+        screensByGroup("driver").length +
+        screensByGroup("operations").length +
+        screensByGroup("customer").length,
+    ).toBe(sourceScreens.length);
   });
 
-  it("has 62 Core screens and 4 MVP-complete", () => {
-    expect(coreScreens()).toHaveLength(62);
-    expect(CANONICAL_SCREENS.filter((s) => s.tier === "mvp-complete")).toHaveLength(4);
+  it("has exactly one un-amended classification decision to reconcile against", () => {
+    expect(EFFECTIVE.map((r: { id: string }) => r.id)).toHaveLength(1);
+    expect(AMENDED.size).toBeGreaterThan(0);
+  });
+
+  it("reconciles the tier split to the governing classification decision", () => {
+    const core = sourceScreens.filter((s) => s.tier === "Core").length;
+    const complete = sourceScreens.filter((s) => s.tier === "MVP-complete").length;
+    expect(coreScreens()).toHaveLength(core);
+    expect(CANONICAL_SCREENS.filter((s) => s.tier === "mvp-complete")).toHaveLength(complete);
+    expect(CLS.value.canonical_screens).toBe(sourceScreens.length);
+    expect(CLS.value.core).toBe(core);
+    expect(CLS.value.mvp_complete).toBe(complete);
   });
 
   it("uses unique screen ids", () => {
@@ -56,86 +108,100 @@ describe("canonical screen registry", () => {
   });
 
   it("keeps the registry's multi-route screens intact", () => {
-    // PUB-004 is listed as "/estimate and /request/[merchantSlug]".
-    expect(getScreen("PUB-004")?.routes).toEqual([
-      "/estimate",
-      "/request/[merchantSlug]",
-    ]);
-    // OPS-002 is "/operations/queue and /operations/deliveries".
-    expect(getScreen("OPS-002")?.routes).toEqual([
-      "/operations/queue",
-      "/operations/deliveries",
-    ]);
+    /* Derived from the source rather than typed, because LEG-004 added `/send`
+       to PUB-004's family and a literal here would have had to be found. The
+       assertion that matters is that a multi-route screen keeps ALL its routes
+       in the source's order — a projection that took only the first would still
+       satisfy every count in this file. */
+    const multi = sourceScreens.filter((s) => s.routes.length > 1);
+    expect(multi.length).toBeGreaterThan(1);
+    for (const s of multi) {
+      expect(getScreen(s.id)?.routes, `${s.id} routes`).toEqual(s.routes);
+    }
+    expect(getScreen("PUB-004")?.routes[0]).toBe("/send");
   });
 
-  it("records the four MVP-complete screens by id", () => {
+  it("records the MVP-complete screens CLS-001 names, by id", () => {
     const ids = CANONICAL_SCREENS.filter((s) => s.tier === "mvp-complete")
       .map((s) => s.id)
       .sort();
-    expect(ids).toEqual(["OPS-014", "OPS-017", "OPS-018", "OPS-021"]);
+    expect(ids).toEqual([...CLS.value.mvp_complete_ids].sort());
+    expect(ids.length).toBeGreaterThan(0);
   });
 
   /**
-   * `implemented` means the screen is BUILT, not that a placeholder exists for
-   * it. The count is asserted against the explicit id list so a placeholder
-   * cannot be marked implemented without this failing.
+   * `implemented` is DERIVED from the screen ledger now — true for
+   * `functional_verified` and `functional_unverified`, false for `partial`,
+   * `placeholder_only` and `missing`.
+   *
+   * It used to be a hand-kept boolean, and this test used to pin the resulting
+   * 26 ids as a literal list. The boolean disagreed with the ledger on 15 of 66
+   * screens — eight of them `functional_verified` and flagged false — and the
+   * comment above the list said as much ("the flags had lagged the screen
+   * ledger") while the list kept the lag pinned.
    */
-  it("reports honest progress — only the built screens are marked implemented", () => {
-    const built = CANONICAL_SCREENS.filter((s) => s.implemented)
-      .map((s) => s.id)
-      .sort();
-    expect(built).toEqual([
-      // PUB-005 and CUS-005 are the same route; CUS-005 is it at
-      // ?mode=requote. Both ship with the payment authorization slice.
-      "CUS-005",
-      // MER-001 and MER-004 are the B03 dashboard and deliveries list —
-      // compositions of existing endpoints.
-      "MER-001",
-      "MER-002",
-      // MER-003 is the B03 live activation checklist — the first state in the
-      // system that distinguishes a test workspace from a live one, and the
-      // reason MER-001's activation banner stopped being a static sentence.
-      "MER-003",
-      "MER-004",
-      "MER-005",
-      "MER-006",
-      "MER-007",
-      // MER-014 and MER-015 are the B03 settings and team screens; MER-015
-      // brings the team-management capability that did not previously exist.
-      "MER-008",
-      "MER-009",
-      // MER-010 and MER-011 are the B04 presets list and builder, both
-      // browser-verified 30/30 — including the promise the whole slice turns
-      // on: a Couranr update never rewrites a merchant's customization.
-      "MER-010",
-      "MER-011",
-      "MER-013",
-      "MER-014",
-      "MER-015",
-      "OPS-002",
-      // OPS-003's review workspace ships with Commit O. Managed dispatch —
-      // vehicle, driver and schedule selection — is still absent, so the flag
-      // covers the review outcomes only.
-      "OPS-003",
-      // PUB-001 and PUB-008..011 are the B02 public launch surface; PUB-007 is
-      // the Phase 8 Delivery Help page. All six were browser-verified before
-      // these flags caught up — the flags had lagged the screen ledger.
-      "PUB-001",
-      "PUB-002",
-      "PUB-003",
-      "PUB-005",
-      "PUB-007",
-      "PUB-008",
-      "PUB-009",
-      "PUB-010",
-      "PUB-011",
-    ]);
+  it("derives `implemented` from the ledger, row by row", () => {
+    const status = new Map<string, string>();
+    {
+      /* A real RFC4180 read. A naive split on "," picks up a page path out of a
+         quoted prose cell — which is exactly what the first draft of this test
+         did, and it reported "app/(couranr)/operations/settings/page.tsx" as a
+         status. */
+      const rows: string[][] = [];
+      let row: string[] = [], field = "", quoted = false;
+      for (let i = 0; i < LEDGER.length; i++) {
+        const c = LEDGER[i];
+        if (quoted) {
+          if (c === '"') {
+            if (LEDGER[i + 1] === '"') { field += '"'; i++; } else quoted = false;
+          } else field += c;
+          continue;
+        }
+        if (c === '"') quoted = true;
+        else if (c === ",") { row.push(field); field = ""; }
+        else if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
+        else if (c !== "\r") field += c;
+      }
+      if (field.length || row.length) { row.push(field); rows.push(row); }
+      const data = rows.filter((r) => r.length > 1 || r[0] !== "");
+      const header = data[0];
+      const idCol = header.indexOf("screen_id");
+      const statusCol = header.indexOf("implementation_status");
+      expect(idCol).toBeGreaterThanOrEqual(0);
+      expect(statusCol).toBeGreaterThanOrEqual(0);
+      for (const r of data.slice(1)) status.set(r[idCol], r[statusCol]);
+    }
+    expect(status.size).toBe(SCREEN_COUNT);
+    for (const s of CANONICAL_SCREENS) {
+      expect(s.status, `${s.id} status`).toBe(status.get(s.id));
+      expect(s.implemented, `${s.id} implemented`).toBe(
+        s.status === "functional_verified" || s.status === "functional_unverified",
+      );
+    }
+  });
 
+  /* The invariant that matters and cannot be restated as a count: a screen the
+     ledger calls a placeholder is never reported as implemented. This is the
+     assertion the old literal list existed to protect. */
+  it("never reports a placeholder, partial or missing screen as implemented", () => {
+    const wrong = CANONICAL_SCREENS.filter(
+      (s) => s.implemented && ["placeholder_only", "partial", "missing", "static_only"].includes(s.status),
+    );
+    expect(wrong.map((s) => `${s.id}:${s.status}`)).toEqual([]);
+  });
+
+  it("reports progress consistent with the ledger's own totals", () => {
     const p = implementationProgress();
-    expect(p.total).toBe(66);
-    expect(p.implemented).toBe(26);
-    expect(p.remaining).toBe(40);
-    expect(p.coreTotal).toBe(62);
+    expect(p.total).toBe(SCREEN_COUNT);
+    expect(p.implemented + p.remaining).toBe(p.total);
+    expect(p.implemented).toBe(CANONICAL_SCREENS.filter((s) => s.implemented).length);
+    expect(p.coreTotal).toBe(coreScreens().length);
+    expect(p.coreImplemented).toBe(coreScreens().filter((s) => s.implemented).length);
+    expect(Object.values(p.byStatus).reduce((a, b) => a + b, 0)).toBe(p.total);
+    /* A projection that marked everything implemented would satisfy the
+       arithmetic above. The ledger says some screens are placeholders. */
+    expect(p.implemented).toBeLessThan(p.total);
+    expect(p.implemented).toBeGreaterThan(0);
   });
 
   /**

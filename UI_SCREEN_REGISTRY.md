@@ -1,15 +1,22 @@
 # Couranr Canonical MVP UI Definition
 
 **Version:** 1.0  
-**Status:** Approved implementation source of truth  
+**Status:** GENERATED FILE — DO NOT EDIT  
 **Product:** Couranr — local delivery infrastructure for local businesses
+
+> Rendered from `ui_screen_registry.json` by `npm run governance:generate`. That
+> file is the single writable source for screen topology; this document is its
+> human view. `npm run check:governance` regenerates it in memory and fails if a
+> byte differs, so a hand-edit here is reverted rather than adopted. Screen
+> implementation status lives in the two ledgers, and visual-source status lives
+> in `VISUAL_REGISTRY.json` — neither is writable here.
 
 ## 1. Authority and conflict rules
 
 1. `02_DECISION_REGISTRY.json` controls locked product decisions, pricing, operating hours, payer behavior, states, terminology, and launch gates.
 2. `01_MASTER_IMPLEMENTATION_SPEC.md` controls workflows, permissions, data, payments, proof, exceptions, routes, and release scope.
 3. `05_AI_COMMUNICATION_SPEC.md` controls messaging, Assistant, Ghost Operations, Ask Couranr, confidence, verifier, privacy, and kill switches.
-4. This file controls which screens are MVP, their routes/states, and which image is the canonical visual reference.
+4. `ui_screen_registry.json` controls which screens are MVP, their routes/states, and which image is the canonical visual reference. This document is generated from it.
 5. Canonical images control layout, hierarchy, visual language, and responsive intent only. They never override written pricing, policy, permissions, state transitions, security, claims, or copy.
 6. Legacy repository behavior and noncanonical mocks have no authority.
 
@@ -51,10 +58,10 @@
 
 | ID | Screen | Route / state | Tier | Phase | Viewport | Canonical image |
 |---|---|---|---|---|---|---|
-| PUB-001 | Marketing homepage | `/` | Core | 10 | Responsive | `canonical-mvp-images/public/PUB-001_marketing-homepage.png` |
+| PUB-001 | Marketing homepage | `/business` | Core | 10 | Responsive | `canonical-mvp-images/public/PUB-001_marketing-homepage.png` |
 | PUB-002 | Sign in | `/sign-in` | Core | 10 | Responsive | `canonical-mvp-images/public/PUB-002_sign-in.png` |
 | PUB-003 | Business sign up | `/sign-up` | Core | 4 | Responsive | `canonical-mvp-images/public/PUB-003_business-sign-up.png` |
-| PUB-004 | Delivery estimate and hosted request | `/estimate and /request/[merchantSlug]` | Core | 5–6 | Mobile-first responsive | `canonical-mvp-images/public/PUB-004_delivery-estimate-and-hosted-request.png` |
+| PUB-004 | Delivery estimate and hosted request | `/send, /estimate and /request/[merchantSlug]` | Core | 5–6 | Mobile-first responsive | `canonical-mvp-images/public/PUB-004_delivery-estimate-and-hosted-request.png` |
 | PUB-005 | Secure delivery payment | `/pay/[token]` | Core | 6 | Mobile-first responsive | `canonical-mvp-images/public/PUB-005_secure-delivery-payment.png` |
 | PUB-006 | Secure live tracking | `/track/[token]` | Core | 7–8 | Mobile-first responsive | `canonical-mvp-images/public/PUB-006_secure-live-tracking.png` |
 | PUB-007 | Delivery Help | `/help/[token]` | Core | 8 | Mobile-first responsive | `canonical-mvp-images/public/PUB-007_delivery-help.png` |
@@ -62,27 +69,29 @@
 | PUB-009 | Businesses page | `/businesses` | Core | 10 | Responsive | `Derived from PUB-001 design system; no separate approved mock.` |
 | PUB-010 | Service areas page | `/service-areas` | Core | 10 | Responsive | `Derived from PUB-001 design system; no separate approved mock.` |
 | PUB-011 | How Couranr works | `/how-it-works` | Core | 10 | Responsive | `Derived from PUB-001 design system; no separate approved mock.` |
+| PUB-012 | Couranr master homepage | `/` | Core | 10 | Responsive | `Derived from the PUB-001 public family design system; no separate approved mock.` |
+| PUB-013 | Couranr Same Day | `/sameday` | Core | 10 | Mobile-first responsive | `Derived from the PUB-001 public family design system; no separate approved mock.` |
 
 ### Merchant
 
 | ID | Screen | Route / state | Tier | Phase | Viewport | Canonical image |
 |---|---|---|---|---|---|---|
-| MER-001 | Merchant dashboard | `/business` | Core | 4–10 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-001_merchant-dashboard.png` |
-| MER-002 | Merchant onboarding | `/business/onboarding` | Core | 4 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-002_merchant-onboarding.png` |
-| MER-003 | Live activation checklist | `/business/onboarding?step=activation` | Core | 4 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-003_live-activation-checklist.png` |
-| MER-004 | Deliveries list | `/business/deliveries` | Core | 5–8 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-004_deliveries-list.png` |
-| MER-005 | Create delivery with Smart Intake | `/business/deliveries/new` | Core | 5 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-005_create-delivery-with-smart-intake.png` |
-| MER-006 | Delivery review and quote | `/business/deliveries/new?step=review` | Core | 6 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-006_delivery-review-and-quote.png` |
-| MER-007 | Delivery detail | `/business/deliveries/[id]` | Core | 5–8 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-007_delivery-detail.png` |
-| MER-008 | Customers list | `/business/customers` | Core | 4 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-008_customers-list.png` |
-| MER-009 | Customer detail | `/business/customers?customer=[id]` | Core | 4 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-009_customer-detail.png` |
-| MER-010 | Presets list | `/business/presets` | Core | 4 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-010_presets-list.png` |
-| MER-011 | Preset builder | `/business/presets?edit=[id]` | Core | 4 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-011_preset-builder.png` |
-| MER-012 | Merchant messages and support | `/business/messages` | Core | 8–9 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-012_merchant-messages-and-support.png` |
-| MER-013 | Website tools | `/business/website-tools` | Core | 10 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-013_website-tools.png` |
-| MER-014 | Merchant settings | `/business/settings` | Core | 4–8 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-014_merchant-settings.png` |
-| MER-015 | Team and permissions | `/business/settings/team` | Core | 4 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-015_team-and-permissions.png` |
-| MER-016 | Billing settings | `/business/settings/billing` | Core | 6 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-016_billing-settings.png` |
+| MER-001 | Merchant dashboard | `/app/business` | Core | 4–10 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-001_merchant-dashboard.png` |
+| MER-002 | Merchant onboarding | `/app/business/onboarding` | Core | 4 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-002_merchant-onboarding.png` |
+| MER-003 | Live activation checklist | `/app/business/onboarding?step=activation` | Core | 4 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-003_live-activation-checklist.png` |
+| MER-004 | Deliveries list | `/app/business/deliveries` | Core | 5–8 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-004_deliveries-list.png` |
+| MER-005 | Create delivery with Smart Intake | `/app/business/deliveries/new` | Core | 5 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-005_create-delivery-with-smart-intake.png` |
+| MER-006 | Delivery review and quote | `/app/business/deliveries/new?step=review` | Core | 6 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-006_delivery-review-and-quote.png` |
+| MER-007 | Delivery detail | `/app/business/deliveries/[id]` | Core | 5–8 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-007_delivery-detail.png` |
+| MER-008 | Customers list | `/app/business/customers` | Core | 4 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-008_customers-list.png` |
+| MER-009 | Customer detail | `/app/business/customers?customer=[id]` | Core | 4 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-009_customer-detail.png` |
+| MER-010 | Presets list | `/app/business/presets` | Core | 4 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-010_presets-list.png` |
+| MER-011 | Preset builder | `/app/business/presets?edit=[id]` | Core | 4 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-011_preset-builder.png` |
+| MER-012 | Merchant messages and support | `/app/business/messages` | Core | 8–9 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-012_merchant-messages-and-support.png` |
+| MER-013 | Website tools | `/app/business/website-tools` | Core | 10 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-013_website-tools.png` |
+| MER-014 | Merchant settings | `/app/business/settings` | Core | 4–8 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-014_merchant-settings.png` |
+| MER-015 | Team and permissions | `/app/business/settings/team` | Core | 4 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-015_team-and-permissions.png` |
+| MER-016 | Billing settings | `/app/business/settings/billing` | Core | 6 | Desktop-first responsive | `canonical-mvp-images/merchant/MER-016_billing-settings.png` |
 
 ### Driver
 
@@ -144,11 +153,11 @@
 
 #### PUB-001 — Marketing homepage
 
-- **Route/state:** `/`
+- **Route/state:** `/business`
 - **Tier / phase:** Core / Phase 10
-- **Purpose:** Explain Couranr to local merchants and drive business-account creation or delivery estimation.
+- **Purpose:** Explain Couranr for Business to local merchants and drive business-account creation or delivery estimation.
 - **Allowed actions:** Create business account; estimate delivery; open Ask Couranr; navigate to pricing, businesses, service areas, and how it works.
-- **Required states:** Default; mobile navigation; assistant closed/open; service-area notice.
+- **Required states:** Default; mobile navigation; assistant closed/open.
 - **Authoritative source:** Spec §§2–4, 16; copy and conversion authority docs/couranr-mvp/MARKETING_POSITIONING_AND_HOMEPAGE_BLUEPRINT.md (MKT-002)
 - **Mandatory correction/constraint:** Use the locked merchant-delivery positioning. No auto rental/docs, fake metrics, guarantees, phone support, subscriptions, or Maryland launch marketing.
 - **Canonical visual:** `canonical-mvp-images/public/PUB-001_marketing-homepage.png`
@@ -177,7 +186,7 @@
 
 #### PUB-004 — Delivery estimate and hosted request
 
-- **Route/state:** `/estimate and /request/[merchantSlug]`
+- **Route/state:** `/send, /estimate and /request/[merchantSlug]`
 - **Tier / phase:** Core / Phase 5–6
 - **Purpose:** Capture a delivery estimate or a merchant-branded customer request without requiring an account.
 - **Allowed actions:** Enter order reference, destination, recipient, package, timing, payer preference; submit to merchant validation when merchant-hosted.
@@ -263,11 +272,33 @@
 - **Mandatory correction/constraint:** No instant-confirmation promise. Capture occurs after Couranr confirmation.
 - **Canonical visual:** `Derived from PUB-001 design system; no separate approved mock.`
 
+#### PUB-012 — Couranr master homepage
+
+- **Route/state:** `/`
+- **Tier / phase:** Core / Phase 10
+- **Purpose:** Present the one Couranr master brand and route a visitor to the entry path that fits them — Couranr Same Day for a person sending or collecting something, Couranr for Business for a local business adding delivery.
+- **Allowed actions:** Enter Couranr Same Day; enter Couranr for Business; sign in to a business account.
+- **Required states:** Default; mobile navigation.
+- **Authoritative source:** MKT-004 and LEG-004 in the root decision registry; PRODUCT_SPEC.md §3 markets and operating model
+- **Mandatory correction/constraint:** Exactly three governed content regions — master-hero, master-network, master-service-area — plus global public chrome. No FAQ, feature grid, testimonial, product catalog or extra product tiles. No fake metrics, guarantees, phone support, subscriptions, or Maryland launch marketing. This page carries no merchant-positioning claim; MKT-002 governs those and they live on PUB-001.
+- **Canonical visual:** `Derived from the PUB-001 public family design system; no separate approved mock.`
+
+#### PUB-013 — Couranr Same Day
+
+- **Route/state:** `/sameday`
+- **Tier / phase:** Core / Phase 10
+- **Purpose:** Explain direct-consumer local delivery — send something the person already has, or collect something they have already bought, ordered or arranged — and start a delivery.
+- **Allowed actions:** Start a delivery; track a delivery; enter Couranr for Business.
+- **Required states:** Default; mobile navigation.
+- **Authoritative source:** MKT-004 and LEG-004 in the root decision registry; PRODUCT_SPEC.md §3 markets and operating model
+- **Mandatory correction/constraint:** Couranr Same Day is NOT a marketplace, a restaurant marketplace, a product catalog, a grocery storefront or a general task marketplace: for collection the merchandise or service is already purchased or arranged elsewhere. No generic consumer sign-in; a business login link may appear only if clearly labelled Business. No fake metrics, testimonials or product screenshots.
+- **Canonical visual:** `Derived from the PUB-001 public family design system; no separate approved mock.`
+
 ### Merchant contracts
 
 #### MER-001 — Merchant dashboard
 
-- **Route/state:** `/business`
+- **Route/state:** `/app/business`
 - **Tier / phase:** Core / Phase 4–10
 - **Purpose:** Show today’s deliveries, readiness, attention items, payment states, messages, and quick actions.
 - **Allowed actions:** Create delivery; mark ready; open delivery; view messages; resolve attention items.
@@ -278,7 +309,7 @@
 
 #### MER-002 — Merchant onboarding
 
-- **Route/state:** `/business/onboarding`
+- **Route/state:** `/app/business/onboarding`
 - **Tier / phase:** Core / Phase 4
 - **Purpose:** Create the test workspace, choose category, set pickup location and payer default, and accept basic policies.
 - **Allowed actions:** Verify contact; add business; choose 1 primary + up to 3 secondary categories; set payer default; continue to workspace.
@@ -289,7 +320,7 @@
 
 #### MER-003 — Live activation checklist
 
-- **Route/state:** `/business/onboarding?step=activation`
+- **Route/state:** `/app/business/onboarding?step=activation`
 - **Tier / phase:** Core / Phase 4
 - **Purpose:** Guide the merchant from test workspace to live delivery eligibility.
 - **Allowed actions:** Accept delivery terms; prohibited-item policy; responsibility and return acknowledgement; verify operations contact; run test delivery; request activation.
@@ -300,7 +331,7 @@
 
 #### MER-004 — Deliveries list
 
-- **Route/state:** `/business/deliveries`
+- **Route/state:** `/app/business/deliveries`
 - **Tier / phase:** Core / Phase 5–8
 - **Purpose:** Find and manage merchant delivery requests across request, payment, readiness, review, and fulfillment states.
 - **Allowed actions:** Filter; search; create; open; duplicate; cancel when allowed; mark ready.
@@ -311,7 +342,7 @@
 
 #### MER-005 — Create delivery with Smart Intake
 
-- **Route/state:** `/business/deliveries/new`
+- **Route/state:** `/app/business/deliveries/new`
 - **Tier / phase:** Core / Phase 5
 - **Purpose:** Turn merchant text, pasted orders, presets, or manual entry into an editable structured delivery draft.
 - **Allowed actions:** Describe/paste; apply preset; confirm extracted fields; answer one clarification; choose payer and timing; continue to review.
@@ -322,7 +353,7 @@
 
 #### MER-006 — Delivery review and quote
 
-- **Route/state:** `/business/deliveries/new?step=review`
+- **Route/state:** `/app/business/deliveries/new?step=review`
 - **Tier / phase:** Core / Phase 6
 - **Purpose:** Review normalized delivery details, deterministic quote, payer, policy flags, and customer-payment link before submission.
 - **Allowed actions:** Edit details; accept quote; choose merchant/customer payer; authorize or send payment link; submit for Couranr review.
@@ -333,7 +364,7 @@
 
 #### MER-007 — Delivery detail
 
-- **Route/state:** `/business/deliveries/[id]`
+- **Route/state:** `/app/business/deliveries/[id]`
 - **Tier / phase:** Core / Phase 5–8
 - **Purpose:** Provide the merchant’s complete delivery timeline, payer/readiness states, map, proof, conversation, and permitted actions.
 - **Allowed actions:** Mark ready; message driver/support; request change; approve merchant-paid requote; cancel when allowed; view proof/receipt.
@@ -344,7 +375,7 @@
 
 #### MER-008 — Customers list
 
-- **Route/state:** `/business/customers`
+- **Route/state:** `/app/business/customers`
 - **Tier / phase:** Core / Phase 4
 - **Purpose:** Manage recipient records, saved destinations, delivery history, payer preference, and repeat delivery.
 - **Allowed actions:** Search; filter; create; open; repeat delivery; edit contact/address.
@@ -355,7 +386,7 @@
 
 #### MER-009 — Customer detail
 
-- **Route/state:** `/business/customers?customer=[id]`
+- **Route/state:** `/app/business/customers?customer=[id]`
 - **Tier / phase:** Core / Phase 4
 - **Purpose:** Show one customer’s addresses, instructions, history, payer preference, and repeat-delivery action.
 - **Allowed actions:** Create repeat delivery; edit address/instructions; message through delivery context.
@@ -366,7 +397,7 @@
 
 #### MER-010 — Presets list
 
-- **Route/state:** `/business/presets`
+- **Route/state:** `/app/business/presets`
 - **Tier / phase:** Core / Phase 4
 - **Purpose:** Manage Couranr-recommended, merchant-customized, and merchant-created delivery presets.
 - **Allowed actions:** Create; edit; duplicate; archive; review recommendation; view usage.
@@ -377,7 +408,7 @@
 
 #### MER-011 — Preset builder
 
-- **Route/state:** `/business/presets?edit=[id]`
+- **Route/state:** `/app/business/presets?edit=[id]`
 - **Tier / phase:** Core / Phase 4
 - **Purpose:** Define item assumptions, required questions, handling, proof, vehicle capabilities, and payer default.
 - **Allowed actions:** Edit; version; add required question; save; duplicate.
@@ -388,7 +419,7 @@
 
 #### MER-012 — Merchant messages and support
 
-- **Route/state:** `/business/messages`
+- **Route/state:** `/app/business/messages`
 - **Tier / phase:** Core / Phase 8–9
 - **Purpose:** Centralize merchant–driver delivery chat and merchant–Couranr Support conversations.
 - **Allowed actions:** Open thread; send message/attachment; choose issue category; view 15-minute target; accept verified assistant reply.
@@ -399,7 +430,7 @@
 
 #### MER-013 — Website tools
 
-- **Route/state:** `/business/website-tools`
+- **Route/state:** `/app/business/website-tools`
 - **Tier / phase:** Core / Phase 10
 - **Purpose:** Create merchant delivery link, QR code, embed/button tools, branding, and customer request defaults.
 - **Allowed actions:** Copy link; download QR; configure form/button; preview; publish.
@@ -410,7 +441,7 @@
 
 #### MER-014 — Merchant settings
 
-- **Route/state:** `/business/settings`
+- **Route/state:** `/app/business/settings`
 - **Tier / phase:** Core / Phase 4–8
 - **Purpose:** Manage business profile, pickup defaults, categories, payer defaults, notifications, security, and delivery policies.
 - **Allowed actions:** Edit business; update defaults; manage policies; configure operational notifications.
@@ -421,7 +452,7 @@
 
 #### MER-015 — Team and permissions
 
-- **Route/state:** `/business/settings/team`
+- **Route/state:** `/app/business/settings/team`
 - **Tier / phase:** Core / Phase 4
 - **Purpose:** Invite staff and manage owner, manager/dispatcher, billing, counter-staff, and view-only access.
 - **Allowed actions:** Invite; resend; change role; disable/remove; review activity.
@@ -432,7 +463,7 @@
 
 #### MER-016 — Billing settings
 
-- **Route/state:** `/business/settings/billing`
+- **Route/state:** `/app/business/settings/billing`
 - **Tier / phase:** Core / Phase 6
 - **Purpose:** Manage merchant payment methods, delivery receipts, charges, credits, refunds, and invoices/records.
 - **Allowed actions:** Add/update payment method; view delivery charge; download receipt; open support case.

@@ -1,3 +1,4 @@
+# GENERATED FILE — DO NOT EDIT. Source: docs/couranr-mvp/ui-reference/VISUAL_REGISTRY.json. Regenerate with `npm run governance:generate`.
 screen_id	source_png	title	note
 PUB-006	0013FABA-3A96-48F9-B71C-B4BB0F08E8B4.png	Track your delivery	desktop
 DRV-009	0097C629-46A9-4341-9C6E-F66DDA9F3929.png	Availability	mobile

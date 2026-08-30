@@ -233,6 +233,83 @@ re-litigates it: `VIS-001`'s typography, the self-hosted Martian/Inter/Martian
 Mono implementation, the `--couranr-*` namespace, the locked colours, the
 canonical logo, and the accessibility, responsive and shell work.
 
+### r11 — the service-area notice bar is removed, and its slot with it
+
+The owner removed the full-bleed bar above the public header on 2026-08-29, at
+both widths. It lived in the `(public)` route-group layout, so it came off
+**every route in that group — eleven, not the five marketing pages** the first
+draft of this entry claimed. Confirmed with the owner before touching it,
+because a shared chrome element removed "from the homepage" would have left the
+header inconsistent across the family.
+
+**Both artboards show the bar, and it is deliberately not built.** The fidelity
+amendment gives the canonical mock precedence on GEOMETRY; it does not make the
+mock the authority on whether an element EXISTS. That distinction is not
+invented here — it settled `hero-small-label` on 2026-08-20, when the owner
+removed the artboards' eyebrow pill on the same reasoning. Written owner
+instruction wins on presence; the mock wins on how a thing that exists is drawn.
+
+**CORRECTION — there IS a consequence to surface, and the first draft said
+there was none.** That draft checked one thing and generalised from it. MKT-001's
+markets SENTENCE is indeed safe: the homepage's own `service-areas` card and
+PUB-010 both render it verbatim, verified in the browser at every width. But
+`UI_SCREEN_REGISTRY.md` listed **"service-area notice"** among PUB-001's
+REQUIRED STATES, and `SCREEN_IMPLEMENTATION_LEDGER.csv` recorded that state as
+present. The registry names the NOTICE, not the sentence. That state had no
+implementation, so the registry and the screen disagreed — precisely the open
+disagreement `hero-small-label` left behind for MKT-002's consumer descriptor,
+which the first draft claimed this differed from.
+
+**RESOLVED 2026-08-30, at the authority.** The owner directed the amendment, so
+`ui_screen_registry.json` — now the writable source for screen topology — no
+longer lists the notice among PUB-001's required states, and the Markdown and CSV
+were regenerated from it by `npm run governance:generate`. The screen record
+carries an `amendments` entry naming the date, the authority and the reason, so
+the change is provenance in the source rather than a note in a document about
+the source. Both ledgers record agreement now, not a conflict.
+
+**The SLOT is deleted, not left empty.** `PublicShell` no longer accepts a
+`notice` prop, `PublicNotice.tsx` is gone, and the `.cr-topnotice` rules are
+removed. An unused slot is one caller away from returning, and this file already
+records what that costs: the shared marketing eyebrow reached four screens with
+no mock because the class outlived its element. `tests/couranr-visual-tokens.test.ts`
+now asserts all four halves of the removal — no `.cr-topnotice`, no
+`PublicNotice` identifier, no `notice=` on `PublicShell`, and no
+`PublicNotice.tsx` on disk — because removing an element without a guard is how
+the eyebrow came back. Proven able to fail by planting a `notice=` prop.
+
+**THREE gate comments went stale, not one.** The first draft corrected
+`e2e/shellChrome.mjs` and said that was the only one. `e2e/pub001Gates.mjs`
+carried two more — a sticky-chrome comment with the same 47px reasoning, and an
+axe-width comment listing "the notice bar turns navy" among the mobile-only
+treatments it exists to scan. Both corrected. The generic sticky assertion is
+KEPT rather than reverted to `after === before`: the bar is why that equality was
+wrong, but the generic form is the one that states what sticky promises.
+
+**A malformed ledger row, and the gate that let two of them through.** The
+`top-notice` row this entry describes shipped as **17 fields against an
+11-column header**, because its prose was written into unquoted cells and split
+on its own commas — `evidence` and `notes` were read out of the middle of a
+sentence. `npm run check:drift-ledger` reported "ok", because its only structural
+check compared the HEADER to the amendment and never counted a data row's fields.
+Counting them found a second, already merged: `order-channels` at 19 fields, from
+r10's own note. Both rebuilt with a CSV writer; the checker counts fields now,
+with a positive control that unquotes a comma-bearing cell.
+
+**And then the same defect was committed a third time, minutes later, into the
+adjacent file.** Recording the state change in
+`SCREEN_IMPLEMENTATION_LEDGER.csv` put an unquoted comma into PUB-001's row: 14
+fields against a 13-column header, every column after the split shifted by one.
+`tests/couranr-implementation-ledger.test.ts` caught it — but INDIRECTLY, because
+the sha column no longer held a sha. Its header check builds an object per row
+from the header, so extra fields are dropped and the check still passes. That
+test now asserts the field count directly, with its own positive control. Three
+occurrences of one defect class in two files says the failure mode is writing
+prose into CSV, not carelessness on any single row.
+
+No §27.0 or §27.1 cell changes: the notice carried no `data-couranr-section` and
+was never in the composition tables, the same way `navigation` is not.
+
 ### r10 — a photograph in `confirmation`, one refused, one placed and withdrawn
 
 The owner accepted four more photographs on 2026-08-29 and asked where else the

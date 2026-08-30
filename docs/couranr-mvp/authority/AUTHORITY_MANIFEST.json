@@ -1,0 +1,252 @@
+{
+  "$note": [
+    "The only file allowed to declare Couranr's active authority domains and their",
+    "precedence. It owns WHERE truth lives; it never repeats the product facts",
+    "themselves. Adding a value here that also exists in a domain source is the",
+    "failure this manifest exists to prevent.",
+    "",
+    "Enforced by `npm run check:governance`: every path named here must exist, no",
+    "domain may declare two writable sources, and every generated output must",
+    "match what its generator produces from its declared authority."
+  ],
+  "version": 1,
+  "classes": {
+    "AUTHORITY": "Writable source for exactly one declared domain.",
+    "GENERATED": "Never edited directly; a generator plus a parity check prove it matches its authority.",
+    "EVIDENCE": "Records what was measured or reviewed at a named SHA. Never overrides authority.",
+    "HISTORICAL": "Preserved provenance or a superseded plan. Never overrides authority or current state."
+  },
+  "domains": [
+    {
+      "domain": "product-decisions",
+      "authority": "02_DECISION_REGISTRY.json",
+      "owns": [
+        "locked values",
+        "owner decisions and statuses",
+        "supersession and amendment relationships"
+      ],
+      "generated": []
+    },
+    {
+      "domain": "product-doctrine",
+      "authority": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "owns": [
+        "narrative workflows and actor responsibilities",
+        "permissions and lifecycle doctrine",
+        "behavioural boundaries not expressible as an atomic decision record",
+        "the AI and communication specification",
+        "the release acceptance matrix"
+      ],
+      "excludes": [
+        "atomic locked values — 02_DECISION_REGISTRY.json overrides this document wherever a later explicit decision amends it",
+        "execution history: the cutover matrix, the phased plan and the start prompt stay in the HISTORICAL Master Package"
+      ],
+      "generated": [],
+      "provenance": "Extracted verbatim from Couranr_Claude_Code_Master_Package.md. tests/couranr-product-spec.test.ts asserts byte-identity in both directions on every run, so the extraction cannot drift from the doctrine it was cut from."
+    },
+    {
+      "domain": "screens-routes",
+      "authority": "ui_screen_registry.json",
+      "owns": [
+        "screen ids",
+        "surface",
+        "route lists",
+        "tier",
+        "phase",
+        "viewport",
+        "purpose",
+        "states",
+        "constraints"
+      ],
+      "excludes": [
+        "implementation status — lives in the ledgers",
+        "visual-source status — lives in the visual authority domain"
+      ],
+      "generated": [
+        "UI_SCREEN_REGISTRY.md",
+        "ui_screen_registry.csv",
+        "lib/couranr/screens.ts"
+      ],
+      "generated_notes": {
+        "lib/couranr/screens.ts": "Projection of TWO domains: topology from this authority, and the `status` field verbatim from the screen-implementation-state ledger. It is generated rather than read at runtime because Next bundles it. `implemented` is derived from `status`; it used to be a hand-kept boolean that disagreed with the ledger on 15 of 66 screens."
+      }
+    },
+    {
+      "domain": "visual-authority",
+      "authority": "docs/couranr-mvp/ui-reference/VISUAL_REGISTRY.json",
+      "owns": [
+        "the public composition contract: governed pages, their section rows and their budgets",
+        "the §19 composition vocabulary",
+        "screen visual-SOURCE status: canonical vs derived, root design exports, nested reference and provenance assets",
+        "the repo-root PNG census: one accounted-for entry per root asset, screen mock or not",
+        "recorded disputes where the census claim and the provenance claim disagree"
+      ],
+      "excludes": [
+        "screen topology — lives in the screens-routes domain"
+      ],
+      "generated": [
+        "docs/couranr-mvp/MOCK_TO_SCREEN_MAP.md",
+        "docs/couranr-mvp/ui-reference/CANONICAL_SCREEN_SOURCE_MAP.tsv",
+        "docs/couranr-mvp/ui-reference/VISUAL_AUTHORITY_REGISTRY.json"
+      ],
+      "verified_views": [
+        "docs/couranr-mvp/brand/COURANR_VISUAL_SYSTEM_V2_2.md §19 and §27 — hand-written human handbook, checked against this source for drift rather than generated from it"
+      ],
+      "generated_notes": {
+        "docs/couranr-mvp/MOCK_TO_SCREEN_MAP.md": "Root-PNG census REPORT. Every count in its table is derived at render time; it used to assert them in prose.",
+        "docs/couranr-mvp/ui-reference/CANONICAL_SCREEN_SOURCE_MAP.tsv": "Provenance REPORT, one row per asset. It and the census map were hand-maintained independently and disagreed about three root PNGs; both claims are preserved in the source and named in `sources.disputes`.",
+        "docs/couranr-mvp/ui-reference/VISUAL_AUTHORITY_REGISTRY.json": "Measured visual-authority view, written by `npm run check:visual-registry -- --write`. Its dimensions are read from each PNG's IHDR and never copied, so it is regenerated by that command rather than by governance:generate."
+      }
+    },
+    {
+      "domain": "work-implementation-state",
+      "authority": "docs/couranr-mvp/IMPLEMENTATION_LEDGER.csv",
+      "owns": [
+        "one row per authoritative work item"
+      ],
+      "generated": [
+        "docs/couranr-mvp/IMPLEMENTATION_STATUS.md"
+      ],
+      "generated_notes": {
+        "docs/couranr-mvp/IMPLEMENTATION_STATUS.md": "Concise current-state summary derived from BOTH ledgers plus a scan of app/ and supabase/. It replaced a 721-line hand-written narrative that restated per-row evidence the ledgers already owned; that document is preserved whole under autonomous-evidence/status-archive/."
+      }
+    },
+    {
+      "domain": "screen-implementation-state",
+      "authority": "docs/couranr-mvp/SCREEN_IMPLEMENTATION_LEDGER.csv",
+      "owns": [
+        "one row per canonical screen"
+      ],
+      "generated": []
+    },
+    {
+      "domain": "platform-baseline",
+      "authority": "docs/couranr-mvp/platform-baseline-v1.1",
+      "owns": [
+        "platform, dependency, migration-order and rollback baseline"
+      ],
+      "generated": []
+    }
+  ],
+  "pending_domains": [],
+  "generated_marker": {
+    "$rule": [
+      "Every path listed under any domain's `generated` array must contain the marker",
+      "string below in its own bytes. A generated file that does not say so is a file",
+      "somebody will hand-edit, and the parity check only tells them afterwards.",
+      "Enforced by `npm run check:governance`, with a positive control."
+    ],
+    "marker": "GENERATED FILE — DO NOT EDIT",
+    "window_bytes": 2000
+  },
+  "non_authority": {
+    "$rule": [
+      "HISTORICAL and EVIDENCE files. They record what was planned or what was measured",
+      "at a named SHA. Neither states current truth and neither outranks a domain",
+      "authority above.",
+      "",
+      "`check:governance` enforces: every path exists; no path here is also a domain",
+      "authority or a generated output; and every HISTORICAL file carries one of the",
+      "accepted de-authorization markers near its top, or declares why it cannot.",
+      "",
+      "EVIDENCE is declared by DIRECTORY, not by file. Enumerating evidence files would",
+      "make the manifest a second index that goes stale the moment a run writes a new",
+      "artifact — and an evidence directory is the one place where new files appearing",
+      "without a manifest edit is correct behaviour.",
+      "",
+      "AUTHORITY_MANIFEST.json itself is neither. It is the authority TOPOLOGY — it says where truth lives and holds no product value of its own, which is why nothing in it may repeat a fact a domain source owns."
+    ],
+    "accepted_markers": [
+      "Historical baseline — not current status.",
+      "This is not a product authority.",
+      "Historical provenance — not current status.",
+      "NOT AUTHORITY"
+    ],
+    "marker_window_bytes": 1500,
+    "historical": [
+      {
+        "path": "Couranr_Claude_Code_Master_Package.md",
+        "marker_exempt": "couranr_claude_code_package/00_PROVENANCE.md records that this file is BYTE-IDENTICAL to the delivered v1.0 package copy. A banner added here would break the identity that makes the unpacked package inspectable rather than merely present. Its doctrine is live at docs/couranr-mvp/PRODUCT_SPEC.md, verified byte-for-byte by tests/couranr-product-spec.test.ts."
+      },
+      {
+        "path": "couranr_claude_code_package/00_PROVENANCE.md",
+        "marker_exempt": "unpacked v1.0 package original; preserved byte-for-byte as provenance. Editing it to label it would destroy the thing it is kept for."
+      },
+      {
+        "path": "couranr_claude_code_package/00_README.md",
+        "marker_exempt": "unpacked v1.0 package original; see 00_PROVENANCE.md"
+      },
+      {
+        "path": "couranr_claude_code_package/01_MASTER_IMPLEMENTATION_SPEC.md",
+        "marker_exempt": "unpacked v1.0 package original; see 00_PROVENANCE.md"
+      },
+      {
+        "path": "couranr_claude_code_package/02_DECISION_REGISTRY.json",
+        "marker_exempt": "unpacked v1.0 package original, and the subject of tests/decision-registry-provenance.test.ts which proves the ROOT registry is a superset of it. A marker key added here would change the file that proof is measured against."
+      },
+      {
+        "path": "couranr_claude_code_package/04_PHASED_EXECUTION_PLAN.md",
+        "marker_exempt": "unpacked v1.0 package original; see 00_PROVENANCE.md"
+      },
+      {
+        "path": "couranr_claude_code_package/08_WORK_BREAKDOWN.csv",
+        "marker_exempt": "unpacked v1.0 package original and the ONLY package file with unique content — §4 of the work order names it for preservation. It is a CSV consumed as data; a marker row would corrupt it."
+      },
+      {
+        "path": "docs/couranr-mvp/00-current-state-inventory.md"
+      },
+      {
+        "path": "docs/couranr-mvp/00-env-inventory.md"
+      },
+      {
+        "path": "docs/couranr-mvp/00-gap-report.md"
+      },
+      {
+        "path": "docs/couranr-mvp/00-schema-inventory.md"
+      },
+      {
+        "path": "docs/couranr-mvp/00-storage-inventory.md"
+      },
+      {
+        "path": "docs/couranr-mvp/00-stripe-inventory.md"
+      },
+      {
+        "path": "docs/couranr-mvp/ACTIVE_EXECUTION_SLICE.md"
+      },
+      {
+        "path": "docs/couranr-mvp/AUTONOMOUS_RUN_STATE.json",
+        "marker_exempt": "machine run-state JSON read by the autonomous runner; a prose banner is not expressible and a new key would change what the runner reads."
+      },
+      {
+        "path": "docs/couranr-mvp/COURANR_MVP_EXECUTION_CONTROL_RECONCILIATION.md"
+      },
+      {
+        "path": "docs/couranr-mvp/PHASE8_RECONCILIATION.md"
+      },
+      {
+        "path": "couranr_claude_code_package/03_REPO_CUTOVER_MATRIX.md",
+        "marker_exempt": "unpacked v1.0 package original; see 00_PROVENANCE.md"
+      },
+      {
+        "path": "couranr_claude_code_package/05_AI_COMMUNICATION_SPEC.md",
+        "marker_exempt": "unpacked v1.0 package original; see 00_PROVENANCE.md"
+      },
+      {
+        "path": "couranr_claude_code_package/06_RELEASE_ACCEPTANCE_MATRIX.md",
+        "marker_exempt": "unpacked v1.0 package original; see 00_PROVENANCE.md"
+      },
+      {
+        "path": "couranr_claude_code_package/07_CLAUDE_CODE_START_PROMPT.md",
+        "marker_exempt": "unpacked v1.0 package original; see 00_PROVENANCE.md"
+      }
+    ],
+    "evidence_directories": [
+      "docs/couranr-mvp/autonomous-evidence",
+      "docs/couranr-mvp/ui-reference/evidence"
+    ],
+    "evidence_files": [
+      "docs/couranr-mvp/authority/AUTHORITY_CLASSIFICATION.md",
+      "docs/couranr-mvp/authority/CONSOLIDATION_REPORT.md"
+    ]
+  }
+}

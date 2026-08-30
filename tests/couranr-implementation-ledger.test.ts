@@ -179,17 +179,72 @@ describe("the implementation ledger covers the authoritative work breakdown", ()
 
 /* ---------------------------------------------------- screen ledger ---- */
 
-describe("the screen ledger covers all 66 canonical screens", () => {
+describe("the screen ledger covers every canonical screen", () => {
+  /* Parsed from the GENERATED Markdown, then cross-checked against the JSON
+     authority it is generated from. The count used to be pinned at 66 here and
+     in three other places; CLS-002 moved it to 68 and a literal would have made
+     that a four-file edit with no signal if one was missed. */
   const canonical = Array.from(
     read(SCREEN_REGISTRY).matchAll(/^\|\s*((?:PUB|MER|OPS|DRV|CUS)-\d{3})\s*\|/gm)
   ).map((m) => m[1]);
+  const source: { id: string; route_label: string }[] =
+    JSON.parse(read("ui_screen_registry.json")).screens;
 
-  it("the registry really declares 66 screens", () => {
-    expect(canonical.length).toBe(66);
+  it("the generated registry declares exactly the screens its source does", () => {
+    expect(canonical).toEqual(source.map((s) => s.id));
+    expect(canonical.length).toBeGreaterThan(0);
+  });
+
+  it("matches the count the governing classification decision fixes", () => {
+    const decisions = JSON.parse(read("02_DECISION_REGISTRY.json")).decisions;
+    const cls = decisions.filter(
+      (r: { category: string; status: string }) =>
+        r.category === "canonical/deferred/archive classification" && r.status === "decided",
+    );
+    const amended = new Set(
+      cls.flatMap((r: { amends?: string | string[] }) =>
+        Array.isArray(r.amends) ? r.amends : r.amends ? [r.amends] : [],
+      ),
+    );
+    const effective = cls.filter((r: { id: string }) => !amended.has(r.id));
+    expect(effective).toHaveLength(1);
+    expect(canonical.length).toBe(effective[0].value.canonical_screens);
   });
 
   it("carries the stable header", () => {
     expect(Object.keys(screens[0])).toEqual(SCREEN_HEADER);
+  });
+
+  it("every row has the header's field count", () => {
+    /*
+     * `parseCsv` builds an OBJECT per row from the header, so a row with extra
+     * fields silently drops them and the header check above still passes. That
+     * is not hypothetical: a state description was edited into PUB-001's row
+     * with an unquoted comma, the row split into 14 fields against a 13-column
+     * header, and every column after the split shifted by one. It was caught —
+     * but only INDIRECTLY, by the sha column no longer holding a sha, which is
+     * a consequence rather than the defect. This asserts the defect.
+     *
+     * The sibling PUB_001_VISUAL_DRIFT_LEDGER.csv had two rows shredded the same
+     * way, and its checker had the same blind spot.
+     */
+    const raw = read(SCREEN_LEDGER);
+    const rows = raw.split("\n").filter((l) => l.trim().length);
+    const counts: string[] = [];
+    for (const [i, row] of rows.entries()) {
+      let fields = 1;
+      let quoted = false;
+      for (let c = 0; c < row.length; c++) {
+        if (row[c] === '"') quoted = !quoted;
+        else if (row[c] === "," && !quoted) fields++;
+      }
+      if (fields !== SCREEN_HEADER.length) {
+        counts.push(
+          `line ${i + 1} ("${row.slice(0, 24)}…") has ${fields} fields, not ${SCREEN_HEADER.length}`,
+        );
+      }
+    }
+    expect(counts, `a cell containing a comma must be quoted:\n${counts.join("\n")}`).toEqual([]);
   });
 
   it("contains every canonical screen exactly once, and invents none", () => {
@@ -200,7 +255,39 @@ describe("the screen ledger covers all 66 canonical screens", () => {
     expect(missing, `screens absent: ${missing.join(", ")}`).toEqual([]);
     expect(extra, `invented screens: ${extra.join(", ")}`).toEqual([]);
     expect(dupes, `duplicated screens: ${dupes.join(", ")}`).toEqual([]);
-    expect(seen.length).toBe(66);
+    expect(seen.length).toBe(canonical.length);
+  });
+
+  /* The ledger's `canonical_route` and the screen source's route are the same
+     fact written in two files, and nothing compared them until LEG-004 moved
+     eighteen of them at once. A move applied to one file and not the other is
+     exactly the drift this consolidation exists to remove. */
+  it("agrees with the screen source about every canonical route", () => {
+    const byId = new Map(
+      source.map((s: { id: string; route_label: string }) => [s.id, s.route_label]),
+    );
+    const disagreements = screens
+      .map((r) => ({ id: r.screen_id, ledger: r.canonical_route, registry: byId.get(r.screen_id) }))
+      .filter((x) => x.ledger !== x.registry)
+      .map((x) => `${x.id}: ledger "${x.ledger}" vs registry "${x.registry}"`);
+    expect(disagreements).toEqual([]);
+  });
+
+  it("POSITIVE CONTROL: a ledger route that disagrees with the source is rejected", () => {
+    const byId = new Map(
+      source.map((s: { id: string; route_label: string }) => [s.id, s.route_label]),
+    );
+    /* Measured against the CLEAN baseline, not against zero: a control that
+       assumes the tree is already in agreement reports a pre-existing
+       disagreement as its own success. This one found two real ones on its
+       first run — OPS-002 and OPS-005 recorded only the first of their two
+       routes — so the baseline is subtracted rather than assumed. */
+    const before = screens.filter((r) => r.canonical_route !== byId.get(r.screen_id)).length;
+    const tampered = screens.map((r, i) =>
+      i === 0 ? { ...r, canonical_route: `${r.canonical_route}-moved` } : r,
+    );
+    const after = tampered.filter((r) => r.canonical_route !== byId.get(r.screen_id)).length;
+    expect(after - before).toBe(1);
   });
 
   it("uses only the closed screen status vocabulary", () => {

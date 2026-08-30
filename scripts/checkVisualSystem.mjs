@@ -37,6 +37,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import {
+  withPlantedContract,
   approvedCompositions,
   budgetHolds,
   budgets,
@@ -307,27 +308,47 @@ if (process.argv.includes("--positive-control")) {
     }
   };
 
+  /* THESE PLANTS MOVED FROM THE MARKDOWN INTO THE CONTRACT, and the move is the
+     point. They used to rewrite a §27 table string; once the composition
+     contract became structured data, that mutated a document this gate no
+     longer reads, so the controls passed while testing nothing. `check:gates:
+     controls` caught it the first time the migration ran — which is what a
+     control registry is for. */
+  const rowsOf = (reg, screen) =>
+    reg.composition.pages.find((p) => p.screen === screen).rows;
+  const contractControl = (what, patch, expect, where = "fail") => {
+    const result = withPlantedContract(patch, () => scan(doc));
+    const hit = result[where].find((f) => f.includes(expect));
+    if (!hit) {
+      console.error(`positive control FAILED — ${what} was not detected`);
+      console.error(result[where].length ? result[where].join("\n") : "  (nothing reported at all)");
+      bad++;
+    } else {
+      console.log(`check:visual-system positive control ok — ${what}: "${hit.slice(0, 110)}"`);
+    }
+  };
+
   // A planted adjacency on a FAMILY page, which has no canonical mock, must
   // still be fatal — that is where §19's grammar still governs.
-  control(
+  contractControl(
     "an adjacent duplicate on a page with no canonical mock",
     // PUB-011 row 2 (`sequence`, a `workflow-rail`) copied onto row 1's
     // `editorial-statement`, so rows 1 and 2 collide.
-    (d) => d.replace(/(\| 2 \| `sequence` \|[^|]*\|[^|]*\| )`workflow-rail`/, "$1`editorial-statement`"),
+    (reg) => { rowsOf(reg, "PUB-011")[1].composition = "editorial-statement"; },
     "no canonical mock",
   );
   // On PUB-001 the same shape must be REPORTED and must not be fatal — a gate
   // that fails here is the gate that forced `pricing` to navy.
-  control(
+  contractControl(
     "an adjacent duplicate on PUB-001 is reported as a diagnostic",
-    (d) => d.replace(/(\| 8 \| `product-proof` \|[^|]*\|[^|]*\| )`product-proof`/, "$1`structured-information-block`"),
+    (reg) => { rowsOf(reg, "PUB-001")[7].composition = "structured-information-block"; },
     "adjacent duplicate composition",
     "diagnostics",
   );
   // And a row that silently disappears is still caught by the row count.
-  control(
+  contractControl(
     "a dropped §27.0 row",
-    (d) => d.replace(/\n\| 7 \| `payer-choice` \|[^\n]*/, ""),
+    (reg) => { rowsOf(reg, "PUB-001").splice(6, 1); },
     "expected 14",
   );
   process.exit(bad ? 1 : 0);

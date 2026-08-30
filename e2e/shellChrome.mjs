@@ -149,11 +149,13 @@ async function chromeHolds(page, selector, extraCss) {
   await page.evaluate(() => window.scrollTo(0, 600));
   await page.waitForTimeout(150);
   /* `after === before` was the old assertion, and it was only ever true because
-     every sticky bar here happened to start at viewport top 0. PUB-001's notice
-     bar now sits ABOVE the header, so the topbar starts 47px down and pins at
-     its own `top: 0` — correct behaviour that the equality read as a failure.
-     What sticky actually promises is: pinned at the CSS `top` offset, still on
-     screen. Measured, not assumed. */
+     every sticky bar here happened to start at viewport top 0. A notice bar
+     above the public header once made the topbar start 47px down and pin at its
+     own `top: 0` — correct behaviour that the equality read as a failure. The
+     owner removed that bar on 2026-08-29, so the public topbar starts at 0
+     again; the generic assertion is kept rather than reverted, because it is
+     the one that states what sticky actually promises: pinned at the CSS `top`
+     offset, still on screen. Measured, not assumed. */
   const pinned = await el.evaluate((e) => {
     const b = e.getBoundingClientRect();
     const cs = getComputedStyle(e);

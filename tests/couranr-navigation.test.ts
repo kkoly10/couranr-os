@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import {
   ROUTE_COLLISIONS,
+  ROUTES_NOT_YET_MATERIALIZED,
+  servedRoute,
   activeNavItem,
   isActiveRoute,
   merchantSettingsNav,
@@ -9,6 +13,8 @@ import {
   type ShellRole,
 } from "@/lib/couranr/navigation";
 import { CANONICAL_SCREENS, getScreen } from "@/lib/couranr/screens";
+
+const ROOT = path.join(__dirname, "..");
 
 /**
  * Segment-aware prefix test. A raw `startsWith` is wrong here: "/businesses"
@@ -139,6 +145,48 @@ describe("navigation omits routes a legacy page already occupies", () => {
   it("still references the screens those routes belong to", () => {
     for (const c of ROUTE_COLLISIONS) {
       expect(getScreen(c.screenId)).toBeDefined();
+    }
+  });
+});
+
+describe("the LEG-004 route shim retires itself", () => {
+  /* ROUTES_NOT_YET_MATERIALIZED exists so a decision about the TARGET topology
+     does not point the running merchant shell at eleven 404s. It is meant to be
+     temporary, and "temporary" in a repository means "there is a check that
+     goes red when it stops being true" — otherwise it is permanent and nobody
+     notices for a year. */
+  it("maps only routes the repository does not serve yet", () => {
+    for (const m of ROUTES_NOT_YET_MATERIALIZED) {
+      expect(
+        existsSync(path.join(ROOT, m.servedPage)),
+        `${m.decision}: ${m.servedPrefix} is the served prefix but ${m.servedPage} does not exist`,
+      ).toBe(true);
+      expect(
+        existsSync(path.join(ROOT, m.canonicalPage)),
+        `${m.decision}: ${m.canonicalPage} EXISTS — the move has happened, so delete this shim entry ` +
+          `and let navigation use the canonical route`,
+      ).toBe(false);
+    }
+  });
+
+  it("rewrites a canonical prefix and leaves everything else alone", () => {
+    expect(servedRoute("/app/business")).toBe("/business");
+    expect(servedRoute("/app/business/settings/team")).toBe("/business/settings/team");
+    expect(servedRoute("/operations/queue")).toBe("/operations/queue");
+    // A prefix must match on a segment boundary, not a substring.
+    expect(servedRoute("/app/businesses")).toBe("/app/businesses");
+  });
+
+  it("leaves no navigation href pointing at a route the app does not serve", () => {
+    for (const role of ROLES) {
+      for (const item of navigationFor(role)) {
+        for (const m of ROUTES_NOT_YET_MATERIALIZED) {
+          expect(
+            item.href.startsWith(m.canonicalPrefix),
+            `${role}/${item.screenId} links to the not-yet-materialized ${item.href}`,
+          ).toBe(false);
+        }
+      }
     }
   });
 });

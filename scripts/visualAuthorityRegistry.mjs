@@ -32,8 +32,8 @@ import { governedPages, specRows } from "./compositionContract.mjs";
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = "docs/couranr-mvp/ui-reference/VISUAL_AUTHORITY_REGISTRY.json";
-const MAP = "docs/couranr-mvp/MOCK_TO_SCREEN_MAP.md";
-const SCREENS = "UI_SCREEN_REGISTRY.md";
+const VISUAL_SOURCE_REGISTRY = "docs/couranr-mvp/ui-reference/VISUAL_REGISTRY.json";
+const SCREENS = "ui_screen_registry.json";
 
 /** Which family a screen id belongs to, and that family's golden screen (§29). */
 const FAMILY = {
@@ -52,17 +52,17 @@ const FAMILY = {
  * registry is what decides which screens exist.
  */
 function registeredScreens() {
-  const doc = readFileSync(join(repo, SCREENS), "utf8");
-  const rows = doc
-    .split("\n")
-    .filter((l) => /^\|\s*(PUB|MER|DRV|OPS|CUS)-\d+\s*\|/.test(l))
-    .map((l) => l.replace(/^\||\|$/g, "").split("|").map((c) => c.trim()));
-  if (!rows.length) throw new Error(`${SCREENS}: no screen rows parsed`);
-  return rows.map((c) => ({
-    screen_id: c[0],
-    name: c[1],
-    route: c[2].replace(/`/g, ""),
-    viewport_intent: (c[5] || "responsive").toLowerCase(),
+  /* Read the screen-topology AUTHORITY, not the Markdown generated from it.
+     This used to split UI_SCREEN_REGISTRY.md's §4 table on pipes and strip
+     backticks — a parse that depends on a document's punctuation surviving
+     every future edit, for facts that are fields in a JSON file. */
+  const src = JSON.parse(readFileSync(join(repo, SCREENS), "utf8"));
+  if (!src.screens?.length) throw new Error(`${SCREENS}: no screens`);
+  return src.screens.map((s) => ({
+    screen_id: s.id,
+    name: s.name,
+    route: s.route_label,
+    viewport_intent: (s.viewport || "responsive").toLowerCase(),
   }));
 }
 const SPEC = "docs/couranr-mvp/brand/COURANR_VISUAL_SYSTEM_V2_2.md";
@@ -97,11 +97,33 @@ function compositionRegions(screen) {
   return ["navigation", ...specRows(doc, page).map((r) => r.id)];
 }
 
+/**
+ * Root-PNG sources per screen, from the visual AUTHORITY.
+ *
+ * This used to parse a ```json fence out of the generated census document, and
+ * that indirection is what made PUB-004 unresolvable: the census is ROOT-ONLY
+ * by design, so a screen whose delivered asset is nested could never be
+ * anything but `derived` with an empty source list, no matter what the
+ * provenance map recorded. Reading the structured source lets `derived` and
+ * "carries a nested reference" be two facts instead of one contradiction.
+ */
 function mockMap() {
-  const doc = readFileSync(join(repo, MAP), "utf8");
-  const fence = doc.match(/```json\n([\s\S]*?)\n```/);
-  if (!fence) throw new Error(`${MAP}: no json block`);
-  return JSON.parse(fence[1]);
+  const out = {};
+  for (const [id, rec] of Object.entries(visualSources().screens)) out[id] = rec.root_sources;
+  return out;
+}
+
+/** Nested (non-root) assets per screen: canonical-image deliveries, photography. */
+function nestedSources(screenId) {
+  return visualSources().screens[screenId]?.nested_sources ?? [];
+}
+
+let _visualSources = null;
+function visualSources() {
+  if (!_visualSources) {
+    _visualSources = JSON.parse(readFileSync(join(repo, VISUAL_SOURCE_REGISTRY), "utf8")).sources;
+  }
+  return _visualSources;
 }
 
 /**
@@ -195,18 +217,44 @@ function buildScreens(pub001Measured, pub001Mobile) {
     const governed = GOVERNED_PAGES.has(screen.screen_id);
 
     if (sources.length === 0) {
+      const nested = nestedSources(screen.screen_id);
       out.push({
         screen_id: screen.screen_id,
         surface_family: fam.family,
         route: screen.route,
         canonical_sources: [],
+        /* A derived screen may still carry delivered assets. Recording them
+           HERE, in their own field, is what ended PUB-004's contradiction: the
+           nested mockup was real and recorded in the provenance map, but the
+           only field available said `canonical_sources`, which a derived screen
+           may not have. So the asset had to be either invisible or a false
+           canonical claim. It is neither now. */
+        ...(nested.length
+          ? {
+              reference_sources: nested.map((n) => ({
+                path: n.path,
+                role: n.role,
+                ...(() => {
+                  const { width, height } = pngSize(n.path);
+                  return { width_px: width, height_px: height };
+                })(),
+                source_kind: "nested_canonical_image",
+                note: n.note,
+              })),
+            }
+          : {}),
         registry_declared_viewport_intent: screen.viewport_intent,
         visual_authority: "derived",
         derived_from: { screen_id: fam.golden, family: fam.family },
         derivation_basis:
-          "MOCK_TO_SCREEN_MAP.md maps no canonical source to this screen, so " +
+          "VISUAL_REGISTRY.json maps no ROOT design export to this screen, so " +
           "§26's Gate A has nothing to compare against. It inherits its family " +
-          "grammar from the golden screen named above (§29).",
+          "grammar from the golden screen named above (§29)." +
+          (nested.length
+            ? " It does carry " + nested.length + " nested reference asset(s), " +
+              "listed under reference_sources — a reference is evidence, not a " +
+              "Gate A canonical source, and promoting one is an owner decision."
+            : ""),
         ...(governed ? { composition_regions: compositionRegions(screen.screen_id) } : {}),
         mobile_reference: null,
         ...(governed
@@ -292,13 +340,14 @@ function build() {
 
   return {
     $comment:
+      "GENERATED FILE — DO NOT EDIT. " +
       "Generated by scripts/visualAuthorityRegistry.mjs. Every width_px and " +
       "height_px is read from the file's PNG header — §25 forbids copying a " +
       "dimension from any specification. Run `npm run check:visual-registry` " +
       "to re-verify, `-- --write` to regenerate.",
     generator: "scripts/visualAuthorityRegistry.mjs",
     scope:
-      "Every registered screen in UI_SCREEN_REGISTRY.md, plus the photography " +
+      "Every registered screen in ui_screen_registry.json, plus the photography " +
       "PUB-001 renders. Screens with no mapped canonical source are recorded as " +
       "derived from their family's golden screen (§29). A record's presence " +
       "means its sources and dimensions are known — NOT that Gate A has been " +
@@ -676,7 +725,7 @@ function validate(reg) {
         continue;
       }
       if (!mapped.has(src.path)) {
-        fail.push(`${s.screen_id}: "${src.path}" is not what MOCK_TO_SCREEN_MAP.md maps to this screen`);
+        fail.push(`${s.screen_id}: "${src.path}" is not a root source VISUAL_REGISTRY.json maps to this screen`);
       }
       if (!(src.width_px > 0) || !(src.height_px > 0)) {
         fail.push(`${s.screen_id}: "${src.path}" has a placeholder dimension (${src.width_px}×${src.height_px})`);
@@ -693,6 +742,30 @@ function validate(reg) {
     for (const m of mapped) {
       if (!s.canonical_sources.some((x) => x.path === m)) {
         fail.push(`${s.screen_id}: mapped source "${m}" is missing from the registry`);
+      }
+    }
+    /* Reference sources are evidence, not Gate A authority. They must be real,
+       must be measured like everything else in this registry (§25 forbids a
+       copied dimension), and must NOT live at the repo root — a root PNG is a
+       census asset and belongs in root_sources, which is the distinction that
+       kept PUB-004 stuck. */
+    for (const ref of s.reference_sources ?? []) {
+      if (!existsSync(join(repo, ref.path))) {
+        fail.push(`${s.screen_id}: reference source "${ref.path}" does not exist`);
+        continue;
+      }
+      if (!ref.path.includes("/")) {
+        fail.push(`${s.screen_id}: reference source "${ref.path}" is a root PNG — root assets belong in the census`);
+      }
+      const real = pngSize(ref.path);
+      if (real.width !== ref.width_px || real.height !== ref.height_px) {
+        fail.push(
+          `${s.screen_id}: reference "${ref.path}" records ${ref.width_px}×${ref.height_px} ` +
+            `but the file measures ${real.width}×${real.height}`,
+        );
+      }
+      if (s.visual_authority === "canonical") {
+        fail.push(`${s.screen_id}: a canonical screen should carry its sources as canonical_sources, not reference_sources`);
       }
     }
     if (s.mobile_reference && !existsSync(join(repo, s.mobile_reference))) {

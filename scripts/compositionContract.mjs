@@ -19,16 +19,63 @@
  * document says, and the disagreement would look like a passing gate.
  *
  * Both sides are still read from source. Nothing here retypes an expected value.
+ *
+ * THE CONTRACT NOW LIVES IN STRUCTURED DATA, NOT IN MARKDOWN PUNCTUATION.
+ *
+ * It used to be parsed out of `COURANR_VISUAL_SYSTEM_V2_2.md` by matching exact
+ * tokens: backticked screen ids in the §27.1 index, a `### PUB-0xx —` heading
+ * with an em dash, a literal `**Budgets:**` label, and a section title that
+ * enumerated its own members. Every one of those was an undocumented
+ * configuration language, and each produced a real defect across package
+ * revisions v4-v7 — a screen-prefixed budget label that parsed to nothing, an
+ * unbackticked index row that would have been SILENTLY skipped, a heading
+ * prefix that throws, a title that went stale as soon as a page was added.
+ *
+ * `VISUAL_REGISTRY.json` is the writable source now. The Markdown remains the
+ * human design handbook and its §27 tables are rendered from that source, so
+ * the document stays readable without being a machine API. The exported
+ * signatures still accept the spec text for call compatibility; it is no longer
+ * read for the contract.
  */
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 
 export const SPEC = "docs/couranr-mvp/brand/COURANR_VISUAL_SYSTEM_V2_2.md";
+export const VISUAL_REGISTRY = "docs/couranr-mvp/ui-reference/VISUAL_REGISTRY.json";
+
+const REPO = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+let cached = null;
+let override = null;
+function registry() {
+  if (override) return override;
+  if (!cached) cached = JSON.parse(readFileSync(join(REPO, VISUAL_REGISTRY), "utf8"));
+  return cached;
+}
+
+/**
+ * Run `fn` against a MUTATED copy of the contract. Positive controls need this:
+ * they used to plant a violation by rewriting the Markdown, and once the
+ * contract moved into structured data those plants changed a document nothing
+ * reads — the controls kept "passing" while testing nothing, which is the exact
+ * failure mode a positive control exists to prevent. Now they mutate the thing
+ * that actually governs.
+ */
+export function withPlantedContract(patch, fn) {
+  const base = JSON.parse(JSON.stringify(registry()));
+  patch(base);
+  override = base;
+  try {
+    return fn();
+  } finally {
+    override = null;
+  }
+}
 
 /** §19's closed vocabulary, from its own subsection headings. */
-export function approvedCompositions(doc) {
-  return new Set(
-    [...doc.matchAll(/^## 19\.\d+ (.+)$/gm)].map((m) => m[1].toLowerCase().replace(/ /g, "-")),
-  );
+export function approvedCompositions(_doc) {
+  return new Set(registry().composition.vocabulary);
 }
 
 const cells = (row) => row.replace(/^\||\|$/g, "").split("|").map((x) => x.trim());
@@ -68,53 +115,26 @@ function parseTable(block) {
  * other four come from the document so a page cannot be added to the spec and
  * silently skipped by the gate.
  */
-export function governedPages(doc) {
-  const out = [
-    {
-      screen: "PUB-001",
-      route: "/",
-      file: "app/(couranr)/(public)/page.tsx",
-      heading: "## 27.0 Governed section identifiers",
-    },
-  ];
-
-  const index = doc.match(
-    /## 27\.1 Public family composition contracts[\s\S]*?\n\n(\| screen [\s\S]*?)\n\n/,
-  );
-  if (!index) return out;
-
-  for (const row of index[1].trim().split("\n")) {
-    if (!/^\|\s*`PUB-\d+`/.test(row)) continue;
-    const c = cells(row);
-    out.push({
-      screen: plain(c[0]),
-      route: plain(c[1]),
-      file: plain(c[2]),
-      heading: `### ${plain(c[0])} —`,
-    });
-  }
-  return out;
+export function governedPages(_doc) {
+  /* No hardcoded PUB-001 entry and no backticked-index parsing. Both were
+     load-bearing tokens: the hardcode bound PUB-001 to `/` and one file path in
+     TypeScript, and an index row that lost its backticks was skipped in
+     silence, which would have dropped a whole page from the governed set while
+     every gate stayed green. */
+  return registry().composition.pages.map((p) => ({
+    screen: p.screen,
+    route: p.route,
+    file: p.file,
+    heading: p.doc_heading,
+  }));
 }
 
 /** A page's normative table, from the document. */
-export function specRows(doc, page) {
-  const start = doc.indexOf(page.heading);
-  if (start < 0) throw new Error(`${page.screen}: normative heading "${page.heading}" not found`);
-  // Stop at the next heading of the same or higher level so one page's table
-  // can never be read as another's.
-  const rest = doc.slice(start + page.heading.length);
-  const end = rest.search(/\n#{1,3} /);
-  const region = end < 0 ? rest : rest.slice(0, end);
-  // From the header row to the end of the region, NOT to the next blank line:
-  // a table that is the last thing before the next heading has no trailing
-  // blank line inside its own region, and matching on one silently found no
-  // table for three of the four family pages while reporting the fourth fine.
-  // parseTable keeps only `| <digit> |` rows, so trailing prose is ignored.
-  const table = region.match(/\n(\| # [\s\S]*)/);
-  if (!table) throw new Error(`${page.screen}: no governed section table under "${page.heading}"`);
-  const rows = parseTable(table[1]);
-  if (!rows.length) throw new Error(`${page.screen}: governed section table parsed to zero rows`);
-  return rows;
+export function specRows(_doc, page) {
+  const p = registry().composition.pages.find((x) => x.screen === page.screen);
+  if (!p) throw new Error(`${page.screen}: no composition contract in ${VISUAL_REGISTRY}`);
+  if (!p.rows.length) throw new Error(`${page.screen}: composition contract has zero rows`);
+  return p.rows;
 }
 
 /**
@@ -136,24 +156,9 @@ const BUDGET_KEYS = {
   "workflow-rail": "workflowRail",
 };
 
-export function budgets(doc, page) {
-  const start = doc.indexOf(page.heading);
-  if (start < 0) return null;
-  const rest = doc.slice(start + page.heading.length);
-  const end = rest.search(/\n#{1,3} /);
-  const region = end < 0 ? rest : rest.slice(0, end);
-  const line = region.match(/\*\*Budgets:\*\*(.+)/);
-  if (!line) return null;
-
-  const out = {};
-  for (const part of line[1].split("·")) {
-    const m = part.trim().match(/^([a-z-]+)\s*(<=|>=|==)\s*(\d+)$/);
-    if (!m) throw new Error(`${page.screen}: unparseable budget clause "${part.trim()}"`);
-    const key = BUDGET_KEYS[m[1]];
-    if (!key) throw new Error(`${page.screen}: unknown budget "${m[1]}"`);
-    out[key] = { op: m[2], n: Number(m[3]) };
-  }
-  return out;
+export function budgets(_doc, page) {
+  const p = registry().composition.pages.find((x) => x.screen === page.screen);
+  return p ? p.budgets : null;
 }
 
 export function budgetHolds({ op, n }, actual) {

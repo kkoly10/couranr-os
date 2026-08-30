@@ -136,13 +136,51 @@ describe("authority", () => {
     }
   });
 
-  it("lists the authority order and names files that exist", () => {
-    const order: string[] = REGISTRY.generated_from.authority_order;
-    expect(order[0]).toBe("Couranr_Claude_Code_Master_Package.md");
-    expect(order[1]).toBe("UI_SCREEN_REGISTRY.md");
-    expect(order[2]).toBe("ui_screen_registry.json");
-    for (const f of order.slice(0, 3)) {
-      expect(existsSync(path.join(ROOT, f))).toBe(true);
+  /* This used to assert `generated_from.authority_order` began with the Master
+     Package and UI_SCREEN_REGISTRY.md — which pinned a CYCLE into a test. The
+     rank-1 product authority was declaring two of its own downstream documents
+     as ranking above it, and the test made that arrangement load-bearing.
+     `generated_from` is now historical provenance and says so; precedence lives
+     in the authority manifest, in one place. */
+  it("records derivation provenance, not a precedence list", () => {
+    const gf = REGISTRY.generated_from;
+    expect(gf.authority_order, "authority_order re-declares a precedence cycle").toBeUndefined();
+    expect(Array.isArray(gf.derived_from)).toBe(true);
+    expect(gf.derived_from.length).toBeGreaterThan(0);
+    expect(String(gf.$class)).toMatch(/HISTORICAL PROVENANCE/);
+    expect(JSON.stringify(gf.$note)).toContain("AUTHORITY_MANIFEST.json");
+  });
+
+  it("names derivation sources that exist, where they are repository paths", () => {
+    const derived: string[] = REGISTRY.generated_from.derived_from;
+    /* The tail entries are prose ("existing approved implementation packages"),
+       not paths. Only check the ones that look like files. */
+    const paths = derived.filter((f) => /\.(md|json|csv)$/.test(f));
+    expect(paths.length).toBeGreaterThan(0);
+    for (const f of paths) {
+      expect(existsSync(path.join(ROOT, f)), `derived_from "${f}" not found`).toBe(true);
+    }
+  });
+
+  it("is declared the writable authority for product decisions by the manifest", () => {
+    const manifest = JSON.parse(
+      readFileSync(path.join(ROOT, "docs/couranr-mvp/authority/AUTHORITY_MANIFEST.json"), "utf8"),
+    );
+    const domain = manifest.domains.find(
+      (d: { authority: string }) => d.authority === "02_DECISION_REGISTRY.json",
+    );
+    expect(domain?.domain).toBe("product-decisions");
+    /* And nothing this registry names as a derivation source may be declared a
+       higher authority anywhere — that is the cycle, restated as a check. */
+    const generated = new Set(
+      manifest.domains.flatMap((d: { generated?: string[] }) => d.generated ?? []),
+    );
+    for (const f of REGISTRY.generated_from.derived_from as string[]) {
+      if (generated.has(f)) continue; // a generated mirror: correct, and not authority
+      expect(
+        manifest.domains.some((d: { authority: string }) => d.authority === f),
+        `${f} is named as a derivation source AND a domain authority`,
+      ).toBe(f === "ui_screen_registry.json" ? true : false);
     }
   });
 });

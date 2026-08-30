@@ -1,4 +1,4 @@
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -286,6 +286,34 @@ describe("§32.4 + fidelity amendment §6 — the eyebrow rule", () => {
       if (/cr-mkt-eyebrow/.test(src)) offenders.push(path.relative(ROOT, f));
     }
     expect(offenders, `shared eyebrow reintroduced in: ${offenders.join(", ")}`).toEqual([]);
+  });
+
+  it("the service-area notice bar stays removed, element AND slot", () => {
+    /*
+     * Owner instruction, 2026-08-29: remove the bar above the public header, on
+     * mobile and desktop. It lived in the `(public)` route-group layout, so it
+     * came off every route in that group.
+     *
+     * THIS ASSERTS THE SLOT, NOT JUST THE ELEMENT, and that is the point. The
+     * hero eyebrow above is the precedent: the element was removed once, the
+     * class survived, and it came back on four more screens with no mock. So
+     * `PublicShell` must not reacquire a `notice` prop, no caller may pass one,
+     * the `.cr-topnotice*` rules must not return, and `PublicNotice` must not
+     * exist. Any ONE of those coming back is how the bar comes back.
+     */
+    const offenders: string[] = [];
+    for (const f of CANON_FILES) {
+      const rel = path.relative(ROOT, f);
+      const src = live(readFileSync(f, "utf8"));
+      if (/cr-topnotice/.test(src)) offenders.push(`${rel}: .cr-topnotice`);
+      if (/\bPublicNotice\b/.test(src)) offenders.push(`${rel}: PublicNotice`);
+      if (/<PublicShell[^>]*\bnotice\s*=/.test(src)) offenders.push(`${rel}: notice= on PublicShell`);
+    }
+    expect(
+      existsSync(path.join(ROOT, "components/couranr/marketing/PublicNotice.tsx")),
+      "PublicNotice.tsx is back",
+    ).toBe(false);
+    expect(offenders, `notice bar reintroduced in:\n${offenders.join("\n")}`).toEqual([]);
   });
 
   it("NO public screen carries a contextual label", () => {

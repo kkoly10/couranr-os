@@ -1,1062 +1,1350 @@
 {
+  "$authority": {
+    "domain": "screens/routes",
+    "role": "AUTHORITY",
+    "declared_by": "docs/couranr-mvp/authority/AUTHORITY_MANIFEST.json",
+    "note": "The only writable source for screen topology. UI_SCREEN_REGISTRY.md, ui_screen_registry.csv and the runtime screen list are GENERATED from this file by `npm run governance:generate`. Implementation status lives in the ledgers, not here. Visual-source status lives in VISUAL_REGISTRY.json, not here."
+  },
   "version": "1.0",
   "product": "Couranr Merchant Delivery MVP",
+  "document": {
+    "preamble": "# Couranr Canonical MVP UI Definition\n\n**Version:** 1.0  \n**Status:** GENERATED FILE — DO NOT EDIT  \n**Product:** Couranr — local delivery infrastructure for local businesses\n\n> Rendered from `ui_screen_registry.json` by `npm run governance:generate`. That\n> file is the single writable source for screen topology; this document is its\n> human view. `npm run check:governance` regenerates it in memory and fails if a\n> byte differs, so a hand-edit here is reverted rather than adopted. Screen\n> implementation status lives in the two ledgers, and visual-source status lives\n> in `VISUAL_REGISTRY.json` — neither is writable here.\n\n## 1. Authority and conflict rules\n\n1. `02_DECISION_REGISTRY.json` controls locked product decisions, pricing, operating hours, payer behavior, states, terminology, and launch gates.\n2. `01_MASTER_IMPLEMENTATION_SPEC.md` controls workflows, permissions, data, payments, proof, exceptions, routes, and release scope.\n3. `05_AI_COMMUNICATION_SPEC.md` controls messaging, Assistant, Ghost Operations, Ask Couranr, confidence, verifier, privacy, and kill switches.\n4. `ui_screen_registry.json` controls which screens are MVP, their routes/states, and which image is the canonical visual reference. This document is generated from it.\n5. Canonical images control layout, hierarchy, visual language, and responsive intent only. They never override written pricing, policy, permissions, state transitions, security, claims, or copy.\n6. Legacy repository behavior and noncanonical mocks have no authority.\n\n> **Required implementation rule:** Written specifications control behavior. Canonical mocks control appearance. When they conflict, the written specification wins and the mock must be corrected during implementation.\n\n## 2. MVP visual system\n\n- **Canonical logo:** lowercase Couranr wordmark from the canonical logo package. Do not redraw or substitute the old pin, `C.`, or AI variants.\n- **Navy:** `#0D1525` — sidebar, high-emphasis text, dark surfaces.\n- **Couranr Gold:** `#F4B740` — primary action and restrained brand accent.\n- **Route Blue:** `#2563EB` — maps, links, route and informational states.\n- **Canvas:** `#F7F8F5`; **Surface:** `#FFFFFF`; **Border:** `#E3E7ED`; **Muted:** `#667085`; **Success:** `#15803D`.\n- **Typography:** Martian Grotesk Variable is the Couranr display and significant-heading family. Inter Variable is the body/interface family. Martian Mono is restricted to operational identifiers/data where monospace improves scanning. Use sentence case, short labels, readable line height, and no generic “seamless/reimagined” startup language. The canonical logo remains the supplied outlined logo asset and is not recreated from these fonts. Governed by `VIS-001` in the root decision registry; role and budget rules are in `docs/couranr-mvp/brand/COURANR_VISUAL_SYSTEM_V2_2.md` §9–§13.\n- **Cards:** 18–22 px radius, one-pixel neutral border, restrained shadow, 24–32 px padding.\n- **Buttons:** 46–52 px height on desktop, at least 44 px touch target, clear primary/secondary/destructive hierarchy.\n- **No:** giant halos, glassmorphism, emoji feature icons, perspective-distorted UI, fake metrics, unreadable miniature dashboards, or color-only status meaning.\n\n**Visual-system cross-reference.** `docs/couranr-mvp/brand/COURANR_VISUAL_SYSTEM_V2_2.md` controls reusable visual primitives, typography roles, composition grammars, photography, responsive visual behavior and visual QA. Canonical images remain the authority for screen-specific composition, hierarchy, density and responsive intent. Written product authorities continue to control behavior, copy correctness, permissions, pricing, safety and claims. Where that file and this one disagree about a screen's composition, the canonical mock and this registry win; where they disagree about a reusable visual primitive, the visual system wins.\n\n## 3. Global content and behavior corrections\n\n- Couranr charges only for delivery and approved operating charges. Product price and product refund remain the merchant’s responsibility.\n- Pilot has no monthly fee, signup fee, product-sales commission, subscription tier, or mandatory plan purchase.\n- MVP has no public support phone. Primary support is in-app; the normal Couranr response target is 15 minutes during operating hours.\n- Do not claim 24/7 support, on-time guarantee, buyer protection, trusted-by-thousands, delivery volume, customer count, ratings, or other unverified proof.\n- Operating hours are Monday–Friday, 6:00 AM–6:00 PM, with a 4:00 PM same-day cutoff. Overnight is request-only when enabled; Rush and Overnight do not stack.\n- Initial marketed areas are Washington, DC; Stafford; Woodbridge; Fredericksburg; and surrounding areas. Maryland is not initially marketed.\n- All time windows and ETAs are estimates. Couranr confirms availability, schedule, and vehicle before capture.\n- Initial dispatch is Couranr-managed. No public driver marketplace, self-selection, bidding, or automatic assignment without authorized Operations command.\n- Customer accounts are optional. There is no unrestricted customer–driver chat.\n- AI cannot execute price, payment, address, delivery state, cancellation, refund, return, incident, claim, vehicle, or safety decisions.\n- Never expose founder/personal-operator language. Use Couranr review, Couranr confirmation, Couranr Operations Queue, Couranr-managed dispatch, and Couranr Support.",
+    "registry_note": "**Tier meanings:** `Core` is required before the production canary. `MVP-complete` may follow the core vertical slice but is required before broad pilot scaling. No screen marked post-MVP belongs in the first implementation branch.",
+    "contracts_note": "",
+    "surface_order": [
+      "Public",
+      "Merchant",
+      "Driver",
+      "Operations",
+      "Customer"
+    ],
+    "contract_group_order": [
+      "Public contracts",
+      "Merchant contracts",
+      "Driver contracts",
+      "Operations contracts",
+      "Customer contracts"
+    ],
+    "tail": "\n## 6. Required UI states for every applicable screen\n\n- Loading skeleton that preserves page structure and does not flash unauthorized data.\n- Empty state with one clear next action and no fake sample metrics.\n- Inline validation with field-level recovery; never rely only on toast notifications.\n- Permission denied and tenant mismatch states that reveal no existence or private details.\n- Network failure and retry; driver proof workflows also require offline-safe queued state.\n- Concurrent-update/version-conflict state for requests, quotes, presets, policies, and settings.\n- Action pending, success, reversible confirmation, and destructive confirmation with consequence text.\n- Payment states: requires action, authorized, capture pending, captured, failed, cancelled, partially refunded, refunded.\n- Proof states: pending capture, pending sync, verified, failed, unavailable to viewer.\n- AI states: analyzing, verified answer, draft only, human required, missing/conflicting evidence, provider paused, global kill switch.\n- After-hours support state and urgent safety escalation without exposing a personal number.\n\n## 7. Responsive and accessibility requirements\n\n- Marketing and customer-token flows are mobile-first. Driver surfaces are mobile primary. Merchant and Operations are desktop primary but must remain usable on tablet.\n- Merchant mobile launch requirement: dashboard, create delivery, review, delivery detail, messages, readiness, and payer link controls.\n- Operations mobile is not a full dashboard requirement for launch; it needs safe read-only alerts and emergency pause only if implemented.\n- Use WCAG 2.2 AA contrast, visible focus, keyboard navigation, semantic landmarks, accessible names, reduced-motion support, and non-color status cues.\n- Maps must have list/text alternatives. Charts must have accessible summaries and tables.\n- Never place sensitive access instructions, full phone numbers, payment details, or proof URLs in lock-screen notification copy.\n\n## 8. Implementation order\n\n1. Phase 0 repository inventory and preservation checkpoint. No UI rewrite before this report.\n2. Global shell, canonical logo, design tokens, role-aware navigation, auth, and route containment.\n3. Merchant onboarding, activation, customers, presets, and test workspace.\n4. Smart Intake, request draft, review, deterministic quote, and both payer flows.\n5. Operations review/dispatch, vehicle selection, assignment, payment capture, and ledger reconciliation.\n6. Driver execution, pickup proof, delivery proof, offline sync, tracking, and receipts.\n7. Exceptions: waiting, merchant not ready, recipient unavailable, address change, cancellation, return, damage, and weather.\n8. In-app messages, Delivery Help, response timers, notification templates, and privacy boundaries.\n9. Couranr Assistant, Ghost drafts, verifier, audit, kill switches; auto-replies may remain disabled.\n10. Marketing routes, Ask Couranr, attribution, analytics, observability, backups, acceptance matrix, and controlled production canary.\n\n## 9. Deferred and noncanonical visual inventory\n\n| Source image | Concept | Disposition |\n|---|---|---|\n| `bulk_deliveries_dashboard.png` | Bulk delivery upload/batch management | Post-MVP; Route Saver covers launch multi-stop need. |\n| `couranr_api_integrations_dashboard.png` | Public API/integrations console | Post-MVP; no target MVP route. |\n| `reports_export_dashboard.png` | Merchant report builder | Post-MVP; MVP analytics can be Operations-first. |\n| `sla_coverage_dashboard.png` | Merchant SLA coverage dashboard | Post-MVP; no SLA guarantees at launch. |\n| `availability_schedule_dashboard.png` | Advanced merchant capacity/surge schedule | Post-MVP; use locked Operations availability controls. |\n| `branded_tracking_page_dashboard.png` | Advanced branded tracking customizer | Post-MVP; basic branding may live inside Website Tools. |\n| `automations_dashboard_overview.png` | Merchant automation builder | Post-MVP; operational notifications are system-defined at MVP. |\n| `subscription_plan_dashboard_ui.png` | Subscription plan management | Rejected for pilot; no monthly fee. |\n| `driver_incentives_dashboard_ui.png` | Driver incentives/rewards | Post-MVP. |\n| `earnings_and_payouts_dashboard.png` | Driver payout dashboard | Post-MVP while Couranr directly operates pilot deliveries. |\n| `driver_performance_dashboard.png` | Driver leaderboard/coaching | Post-MVP; avoid premature gamification. |\n| `driver_availability_shift_planner.png` | Advanced shift calendar | Post-MVP; use DRV-009 simple availability. |\n| `address_book_locations_dashboard.png` | Standalone merchant address book | Post-MVP as separate route; basic addresses remain in Customers/Settings. |\n| `notifications_center_dashboard.png` | Customer account notification center | Post-MVP; customer account not required. |\n| `notification_center_dashboard.png` | Merchant notification center duplicate | Reference only; messages/dashboard cover launch. |\n| `company_settings_dashboard.png` | Duplicate merchant settings exploration | Reference only; MER-014 is canonical. |\n| `billing_and_invoice_dashboard.png` | Duplicate billing exploration | Reference only; MER-016 is canonical. |\n| `website_tools_dashboard_ui.png` | Duplicate Website Tools exploration | Reference only; MER-013 is canonical. |\n| `team_management_dashboard_for_petal_stem.png` | Duplicate team management exploration | Reference only; MER-015 is canonical. |\n\nAll collage/contact-sheet files, generic `imagegen.png` files, oddly titled duplicates, and prior visual explorations are noncanonical unless explicitly mapped in the registry above.\n\n## 10. UI completion definition\n\n- Every Core route/state above exists and is role/tenant protected.\n- Every action calls a named server command; no browser sends arbitrary target status or writes privileged tables directly.\n- Every screen implements its required loading, empty, error, offline, conflict, and permission states.\n- All canonical copy conflicts are corrected to the Decision Registry and Master Specification.\n- Both payer flows, proof, return, address change, messaging, and Ghost isolation pass the acceptance matrix.\n- No noncanonical/post-MVP screen is exposed in navigation or active runtime.\n- The controlled production canary passes with Stripe, ledger, proof, analytics, support, and Ghost evidence."
+  },
   "screens": [
     {
       "id": "PUB-001",
       "surface": "Public",
       "name": "Marketing homepage",
-      "route": "/",
+      "routes": [
+        "/business"
+      ],
+      "route_label": "/business",
       "tier": "Core",
       "phase": "10",
       "viewport": "Responsive",
+      "canonical_path": "canonical-mvp-images/public/PUB-001_marketing-homepage.png",
       "image": "couranr_local_delivery_service_landing_page.png",
-      "purpose": "Explain Couranr to local merchants and drive business-account creation or delivery estimation.",
+      "purpose": "Explain Couranr for Business to local merchants and drive business-account creation or delivery estimation.",
       "actions": "Create business account; estimate delivery; open Ask Couranr; navigate to pricing, businesses, service areas, and how it works.",
-      "states": "Default; mobile navigation; assistant closed/open; service-area notice.",
-      "source": "Spec \u00a7\u00a72\u20134, 16; copy and conversion authority docs/couranr-mvp/MARKETING_POSITIONING_AND_HOMEPAGE_BLUEPRINT.md (MKT-002)",
+      "states": "Default; mobile navigation; assistant closed/open.",
+      "source": "Spec §§2–4, 16; copy and conversion authority docs/couranr-mvp/MARKETING_POSITIONING_AND_HOMEPAGE_BLUEPRINT.md (MKT-002)",
       "constraints": "Use the locked merchant-delivery positioning. No auto rental/docs, fake metrics, guarantees, phone support, subscriptions, or Maryland launch marketing.",
-      "canonical_path": "canonical-mvp-images/public/PUB-001_marketing-homepage.png"
+      "amendments": [
+        {
+          "date": "2026-08-30",
+          "authority": "owner instruction",
+          "change": "Removed \"service-area notice\" from the required states.",
+          "reason": "The owner removed the full-bleed service-area notice bar from the (public) route group on 2026-08-29, at both widths. This registry still required the state, so the registry and the screen disagreed — recorded as an OPEN disagreement in SCREEN_IMPLEMENTATION_LEDGER.csv, docs/couranr-mvp/ui-reference/PUB_001_VISUAL_DRIFT_LEDGER.csv and COURANR_VISUAL_SYSTEM_V2_2.md r11. Amending the authority closes it at the source rather than leaving three documents to describe a conflict. MKT-001's markets SENTENCE is unaffected and still reaches the public surface verbatim: app/(couranr)/(public)/page.tsx renders MARKETS_PUBLIC_COPY in the service-areas card and PUB-010 renders it twice."
+        },
+        {
+          "date": "2026-08-30",
+          "authority": "LEG-004 (root decision registry)",
+          "change": "Canonical route moved from `/` to `/business`.",
+          "reason": "MKT-004 expands Couranr into one master brand with two entry paths, so `/` belongs to the new master homepage PUB-012 and PUB-001 becomes the Couranr for Business surface. MKT-002 remains authoritative for this screen and every merchant-positioning claim on it; only the route and the brand scope around it changed."
+        }
+      ]
     },
     {
       "id": "PUB-002",
       "surface": "Public",
       "name": "Sign in",
-      "route": "/sign-in",
+      "routes": [
+        "/sign-in"
+      ],
+      "route_label": "/sign-in",
       "tier": "Core",
       "phase": "10",
       "viewport": "Responsive",
+      "canonical_path": "canonical-mvp-images/public/PUB-002_sign-in.png",
       "image": "modern_corporate_web_app_login_design.png",
       "purpose": "Authenticate merchants, drivers, and Operations users through one branded entry point.",
       "actions": "Password sign-in; Google sign-in when enabled; magic link; password recovery.",
       "states": "Idle; validation error; invalid credentials; rate limited; magic-link sent; loading.",
-      "source": "Spec \u00a7\u00a714, 16",
-      "constraints": "Use canonical Couranr logo. Remove fabricated performance statistics and phone-support claims.",
-      "canonical_path": "canonical-mvp-images/public/PUB-002_sign-in.png"
+      "source": "Spec §§14, 16",
+      "constraints": "Use canonical Couranr logo. Remove fabricated performance statistics and phone-support claims."
     },
     {
       "id": "PUB-003",
       "surface": "Public",
       "name": "Business sign up",
-      "route": "/sign-up",
+      "routes": [
+        "/sign-up"
+      ],
+      "route_label": "/sign-up",
       "tier": "Core",
       "phase": "4",
       "viewport": "Responsive",
+      "canonical_path": "canonical-mvp-images/public/PUB-003_business-sign-up.png",
       "image": "modern_sign_up_page_for_businesses.png",
       "purpose": "Create a test workspace without forcing heavy live-activation requirements.",
       "actions": "Create account; OAuth when enabled; accept account terms.",
       "states": "Idle; field errors; existing account; verification sent; loading.",
-      "source": "Spec \u00a75, \u00a716",
-      "constraints": "Do not require website, EIN, registration upload, Stripe, or full activation during sign-up.",
-      "canonical_path": "canonical-mvp-images/public/PUB-003_business-sign-up.png"
+      "source": "Spec §5, §16",
+      "constraints": "Do not require website, EIN, registration upload, Stripe, or full activation during sign-up."
     },
     {
       "id": "PUB-004",
       "surface": "Public",
       "name": "Delivery estimate and hosted request",
-      "route": "/estimate and /request/[merchantSlug]",
+      "routes": [
+        "/send",
+        "/estimate",
+        "/request/[merchantSlug]"
+      ],
+      "route_label": "/send, /estimate and /request/[merchantSlug]",
       "tier": "Core",
-      "phase": "5\u20136",
+      "phase": "5–6",
       "viewport": "Mobile-first responsive",
+      "canonical_path": "canonical-mvp-images/public/PUB-004_delivery-estimate-and-hosted-request.png",
       "image": "a_modern_delivery_checkout_interface.png",
       "purpose": "Capture a delivery estimate or a merchant-branded customer request without requiring an account.",
       "actions": "Enter order reference, destination, recipient, package, timing, payer preference; submit to merchant validation when merchant-hosted.",
       "states": "Draft; address validation; merchant confirmation pending; quote unavailable; review required; submitted.",
-      "source": "Spec \u00a7\u00a76\u20137, 16",
+      "source": "Spec §§6–7, 16",
       "constraints": "The merchant must validate customer-initiated merchandise details before payment. Do not include product checkout or merchandise payment.",
-      "canonical_path": "canonical-mvp-images/public/PUB-004_delivery-estimate-and-hosted-request.png"
+      "amendments": [
+        {
+          "date": "2026-08-30",
+          "authority": "LEG-004 (root decision registry)",
+          "change": "Route family gains `/send` as the preferred direct-consumer entry; `/estimate` is retained as a compatibility route.",
+          "reason": "PUB-004 stays ONE canonical screen family with route/mode variants rather than gaining a new screen id, because the estimate, the consumer send flow and the merchant-hosted request are the same capability entered three ways."
+        }
+      ]
     },
     {
       "id": "PUB-005",
       "surface": "Public",
       "name": "Secure delivery payment",
-      "route": "/pay/[token]",
+      "routes": [
+        "/pay/[token]"
+      ],
+      "route_label": "/pay/[token]",
       "tier": "Core",
       "phase": "6",
       "viewport": "Mobile-first responsive",
+      "canonical_path": "canonical-mvp-images/public/PUB-005_secure-delivery-payment.png",
       "image": "secure_floral_delivery_checkout.png",
       "purpose": "Allow the selected payer to authorize the delivery charge against an immutable quote.",
       "actions": "Review delivery-only quote; select payment method; authorize; handle additional authentication.",
       "states": "Quote valid; expiring; requires action; authorized; failed; cancelled; replaced by requote.",
-      "source": "Spec \u00a7\u00a77, 10, 16",
-      "constraints": "Charge delivery and approved operating fees only. Remove merchandise subtotal, on-time guarantee, buyer-protection, 24/7 phone, and \u201ctrusted by thousands\u201d claims.",
-      "canonical_path": "canonical-mvp-images/public/PUB-005_secure-delivery-payment.png"
+      "source": "Spec §§7, 10, 16",
+      "constraints": "Charge delivery and approved operating fees only. Remove merchandise subtotal, on-time guarantee, buyer-protection, 24/7 phone, and “trusted by thousands” claims."
     },
     {
       "id": "PUB-006",
       "surface": "Public",
       "name": "Secure live tracking",
-      "route": "/track/[token]",
+      "routes": [
+        "/track/[token]"
+      ],
+      "route_label": "/track/[token]",
       "tier": "Core",
-      "phase": "7\u20138",
+      "phase": "7–8",
       "viewport": "Mobile-first responsive",
+      "canonical_path": "canonical-mvp-images/public/PUB-006_secure-live-tracking.png",
       "image": "live_delivery_tracking_dashboard.png",
       "purpose": "Show safe, token-scoped delivery progress, estimated timing, proof availability, and help.",
       "actions": "View status; update allowed access instructions; open Delivery Help; view proof when complete.",
       "states": "Preparing; confirmed; assigned; picked up; in transit; at drop-off; delivered; return; proof processing.",
-      "source": "Spec \u00a7\u00a711\u201312, 16",
-      "constraints": "Times are estimates. Do not show unrestricted call or customer\u2013driver chat. Use secure delivery-specific messaging/help.",
-      "canonical_path": "canonical-mvp-images/public/PUB-006_secure-live-tracking.png"
+      "source": "Spec §§11–12, 16",
+      "constraints": "Times are estimates. Do not show unrestricted call or customer–driver chat. Use secure delivery-specific messaging/help."
     },
     {
       "id": "PUB-007",
       "surface": "Public",
       "name": "Delivery Help",
-      "route": "/help/[token]",
+      "routes": [
+        "/help/[token]"
+      ],
+      "route_label": "/help/[token]",
       "tier": "Core",
       "phase": "8",
       "viewport": "Mobile-first responsive",
+      "canonical_path": "canonical-mvp-images/public/PUB-007_delivery-help.png",
       "image": "delivery_help_dashboard_with_tracking_and_support.png",
       "purpose": "Provide delivery-aware support with secure in-app messaging and guided issue categories.",
       "actions": "Choose help topic; message Couranr Support; attach evidence; see response target and case status.",
       "states": "Open; waiting on customer; waiting on Couranr; resolved; after-hours; urgent safety escalation.",
-      "source": "Spec \u00a712, AI spec \u00a7Communication model",
-      "constraints": "No public support phone at MVP. State the normal 15-minute response target during operating hours, not a guarantee.",
-      "canonical_path": "canonical-mvp-images/public/PUB-007_delivery-help.png"
+      "source": "Spec §12, AI spec §Communication model",
+      "constraints": "No public support phone at MVP. State the normal 15-minute response target during operating hours, not a guarantee."
     },
     {
       "id": "PUB-008",
       "surface": "Public",
       "name": "Pricing page",
-      "route": "/pricing",
+      "routes": [
+        "/pricing"
+      ],
+      "route_label": "/pricing",
       "tier": "Core",
       "phase": "10",
       "viewport": "Responsive",
+      "canonical_path": "Derived from PUB-001 design system; no separate approved mock.",
       "image": null,
       "purpose": "Explain deterministic delivery pricing and approved surcharges.",
       "actions": "Estimate a delivery; create business account.",
       "states": "Standard; expanded pricing details; manual-quote notice.",
-      "source": "Spec \u00a74, \u00a716; copy and conversion authority docs/couranr-mvp/MARKETING_POSITIONING_AND_HOMEPAGE_BLUEPRINT.md (MKT-002)",
-      "constraints": "Derive visually from PUB-001. First 3 miles $22.99; no monthly fee during pilot; all estimates subject to Couranr confirmation.",
-      "canonical_path": "Derived from PUB-001 design system; no separate approved mock."
+      "source": "Spec §4, §16; copy and conversion authority docs/couranr-mvp/MARKETING_POSITIONING_AND_HOMEPAGE_BLUEPRINT.md (MKT-002)",
+      "constraints": "Derive visually from PUB-001. First 3 miles $22.99; no monthly fee during pilot; all estimates subject to Couranr confirmation."
     },
     {
       "id": "PUB-009",
       "surface": "Public",
       "name": "Businesses page",
-      "route": "/businesses",
+      "routes": [
+        "/businesses"
+      ],
+      "route_label": "/businesses",
       "tier": "Core",
       "phase": "10",
       "viewport": "Responsive",
+      "canonical_path": "Derived from PUB-001 design system; no separate approved mock.",
       "image": null,
       "purpose": "Show supported business categories and merchant-controlled ordering channels.",
       "actions": "Select category; create business account; estimate delivery.",
       "states": "Category tabs; general-business fallback.",
-      "source": "Spec \u00a7\u00a72, 5, 16; copy and conversion authority docs/couranr-mvp/MARKETING_POSITIONING_AND_HOMEPAGE_BLUEPRINT.md (MKT-002)",
-      "constraints": "Category changes recommendations, not eligibility. Do not advertise medical or prohibited categories.",
-      "canonical_path": "Derived from PUB-001 design system; no separate approved mock."
+      "source": "Spec §§2, 5, 16; copy and conversion authority docs/couranr-mvp/MARKETING_POSITIONING_AND_HOMEPAGE_BLUEPRINT.md (MKT-002)",
+      "constraints": "Category changes recommendations, not eligibility. Do not advertise medical or prohibited categories."
     },
     {
       "id": "PUB-010",
       "surface": "Public",
       "name": "Service areas page",
-      "route": "/service-areas",
+      "routes": [
+        "/service-areas"
+      ],
+      "route_label": "/service-areas",
       "tier": "Core",
       "phase": "10",
       "viewport": "Responsive",
+      "canonical_path": "Derived from PUB-001 design system; no separate approved mock.",
       "image": null,
       "purpose": "Explain DC, Stafford, Woodbridge, Fredericksburg, surrounding areas, and review-based extended distance.",
       "actions": "Check route; estimate delivery.",
       "states": "Primary market; surrounding area; extended-distance review.",
-      "source": "Spec \u00a73, \u00a716; copy and conversion authority docs/couranr-mvp/MARKETING_POSITIONING_AND_HOMEPAGE_BLUEPRINT.md (MKT-002)",
-      "constraints": "Maryland is not initially marketed. Do not use rigid ZIP rejection.",
-      "canonical_path": "Derived from PUB-001 design system; no separate approved mock."
+      "source": "Spec §3, §16; copy and conversion authority docs/couranr-mvp/MARKETING_POSITIONING_AND_HOMEPAGE_BLUEPRINT.md (MKT-002)",
+      "constraints": "Maryland is not initially marketed. Do not use rigid ZIP rejection."
     },
     {
       "id": "PUB-011",
       "surface": "Public",
       "name": "How Couranr works",
-      "route": "/how-it-works",
+      "routes": [
+        "/how-it-works"
+      ],
+      "route_label": "/how-it-works",
       "tier": "Core",
       "phase": "10",
       "viewport": "Responsive",
+      "canonical_path": "Derived from PUB-001 design system; no separate approved mock.",
       "image": null,
       "purpose": "Explain request, payer, Couranr confirmation, pickup, tracking, proof, and support.",
       "actions": "Create account; estimate delivery.",
       "states": "Merchant-paid and customer-paid examples.",
-      "source": "Spec \u00a7\u00a77, 11\u201312, 16; copy and conversion authority docs/couranr-mvp/MARKETING_POSITIONING_AND_HOMEPAGE_BLUEPRINT.md (MKT-002)",
-      "constraints": "No instant-confirmation promise. Capture occurs after Couranr confirmation.",
-      "canonical_path": "Derived from PUB-001 design system; no separate approved mock."
+      "source": "Spec §§7, 11–12, 16; copy and conversion authority docs/couranr-mvp/MARKETING_POSITIONING_AND_HOMEPAGE_BLUEPRINT.md (MKT-002)",
+      "constraints": "No instant-confirmation promise. Capture occurs after Couranr confirmation."
+    },
+    {
+      "id": "PUB-012",
+      "surface": "Public",
+      "name": "Couranr master homepage",
+      "routes": [
+        "/"
+      ],
+      "route_label": "/",
+      "tier": "Core",
+      "phase": "10",
+      "viewport": "Responsive",
+      "canonical_path": "Derived from the PUB-001 public family design system; no separate approved mock.",
+      "image": null,
+      "purpose": "Present the one Couranr master brand and route a visitor to the entry path that fits them — Couranr Same Day for a person sending or collecting something, Couranr for Business for a local business adding delivery.",
+      "actions": "Enter Couranr Same Day; enter Couranr for Business; sign in to a business account.",
+      "states": "Default; mobile navigation.",
+      "source": "MKT-004 and LEG-004 in the root decision registry; PRODUCT_SPEC.md §3 markets and operating model",
+      "constraints": "Exactly three governed content regions — master-hero, master-network, master-service-area — plus global public chrome. No FAQ, feature grid, testimonial, product catalog or extra product tiles. No fake metrics, guarantees, phone support, subscriptions, or Maryland launch marketing. This page carries no merchant-positioning claim; MKT-002 governs those and they live on PUB-001."
+    },
+    {
+      "id": "PUB-013",
+      "surface": "Public",
+      "name": "Couranr Same Day",
+      "routes": [
+        "/sameday"
+      ],
+      "route_label": "/sameday",
+      "tier": "Core",
+      "phase": "10",
+      "viewport": "Mobile-first responsive",
+      "canonical_path": "Derived from the PUB-001 public family design system; no separate approved mock.",
+      "image": null,
+      "purpose": "Explain direct-consumer local delivery — send something the person already has, or collect something they have already bought, ordered or arranged — and start a delivery.",
+      "actions": "Start a delivery; track a delivery; enter Couranr for Business.",
+      "states": "Default; mobile navigation.",
+      "source": "MKT-004 and LEG-004 in the root decision registry; PRODUCT_SPEC.md §3 markets and operating model",
+      "constraints": "Couranr Same Day is NOT a marketplace, a restaurant marketplace, a product catalog, a grocery storefront or a general task marketplace: for collection the merchandise or service is already purchased or arranged elsewhere. No generic consumer sign-in; a business login link may appear only if clearly labelled Business. No fake metrics, testimonials or product screenshots."
     },
     {
       "id": "MER-001",
       "surface": "Merchant",
       "name": "Merchant dashboard",
-      "route": "/business",
+      "routes": [
+        "/app/business"
+      ],
+      "route_label": "/app/business",
       "tier": "Core",
-      "phase": "4\u201310",
+      "phase": "4–10",
       "viewport": "Desktop-first responsive",
+      "canonical_path": "canonical-mvp-images/merchant/MER-001_merchant-dashboard.png",
       "image": "merchant_delivery_dashboard_overview.png",
-      "purpose": "Show today\u2019s deliveries, readiness, attention items, payment states, messages, and quick actions.",
+      "purpose": "Show today’s deliveries, readiness, attention items, payment states, messages, and quick actions.",
       "actions": "Create delivery; mark ready; open delivery; view messages; resolve attention items.",
       "states": "New workspace; empty; active day; degraded payments; activation incomplete.",
-      "source": "Spec \u00a7\u00a75, 7\u20138, 12, 16\u201317",
-      "constraints": "No fabricated revenue, customer, or on-time metrics. Use real posted data only.",
-      "canonical_path": "canonical-mvp-images/merchant/MER-001_merchant-dashboard.png"
+      "source": "Spec §§5, 7–8, 12, 16–17",
+      "constraints": "No fabricated revenue, customer, or on-time metrics. Use real posted data only."
     },
     {
       "id": "MER-002",
       "surface": "Merchant",
       "name": "Merchant onboarding",
-      "route": "/business/onboarding",
+      "routes": [
+        "/app/business/onboarding"
+      ],
+      "route_label": "/app/business/onboarding",
       "tier": "Core",
       "phase": "4",
       "viewport": "Desktop-first responsive",
+      "canonical_path": "canonical-mvp-images/merchant/MER-002_merchant-onboarding.png",
       "image": "onboarding_dashboard_for_petal_stem.png",
       "purpose": "Create the test workspace, choose category, set pickup location and payer default, and accept basic policies.",
       "actions": "Verify contact; add business; choose 1 primary + up to 3 secondary categories; set payer default; continue to workspace.",
       "states": "Test workspace; verification pending; suspicious-business review; saved draft.",
-      "source": "Spec \u00a75",
-      "constraints": "Keep onboarding light. Logo, Stripe, advanced website tools, and live activation belong after dashboard entry.",
-      "canonical_path": "canonical-mvp-images/merchant/MER-002_merchant-onboarding.png"
+      "source": "Spec §5",
+      "constraints": "Keep onboarding light. Logo, Stripe, advanced website tools, and live activation belong after dashboard entry."
     },
     {
       "id": "MER-003",
       "surface": "Merchant",
       "name": "Live activation checklist",
-      "route": "/business/onboarding?step=activation",
+      "routes": [
+        "/app/business/onboarding?step=activation"
+      ],
+      "route_label": "/app/business/onboarding?step=activation",
       "tier": "Core",
       "phase": "4",
       "viewport": "Desktop-first responsive",
+      "canonical_path": "canonical-mvp-images/merchant/MER-003_live-activation-checklist.png",
       "image": "activation_checklist_dashboard.png",
       "purpose": "Guide the merchant from test workspace to live delivery eligibility.",
       "actions": "Accept delivery terms; prohibited-item policy; responsibility and return acknowledgement; verify operations contact; run test delivery; request activation.",
       "states": "Not started; in progress; pending Couranr review; live; blocked with reason.",
-      "source": "Spec \u00a75",
-      "constraints": "Do not require website tools or subscription purchase to activate. Use only true live-activation requirements.",
-      "canonical_path": "canonical-mvp-images/merchant/MER-003_live-activation-checklist.png"
+      "source": "Spec §5",
+      "constraints": "Do not require website tools or subscription purchase to activate. Use only true live-activation requirements."
     },
     {
       "id": "MER-004",
       "surface": "Merchant",
       "name": "Deliveries list",
-      "route": "/business/deliveries",
+      "routes": [
+        "/app/business/deliveries"
+      ],
+      "route_label": "/app/business/deliveries",
       "tier": "Core",
-      "phase": "5\u20138",
+      "phase": "5–8",
       "viewport": "Desktop-first responsive",
+      "canonical_path": "canonical-mvp-images/merchant/MER-004_deliveries-list.png",
       "image": "petal_stem_delivery_dashboard.png",
       "purpose": "Find and manage merchant delivery requests across request, payment, readiness, review, and fulfillment states.",
       "actions": "Filter; search; create; open; duplicate; cancel when allowed; mark ready.",
       "states": "All canonical request/payment/readiness/fulfillment combinations; empty; error.",
-      "source": "Spec \u00a7\u00a77\u20138, 16",
-      "constraints": "Never collapse independent state groups into one misleading status.",
-      "canonical_path": "canonical-mvp-images/merchant/MER-004_deliveries-list.png"
+      "source": "Spec §§7–8, 16",
+      "constraints": "Never collapse independent state groups into one misleading status."
     },
     {
       "id": "MER-005",
       "surface": "Merchant",
       "name": "Create delivery with Smart Intake",
-      "route": "/business/deliveries/new",
+      "routes": [
+        "/app/business/deliveries/new"
+      ],
+      "route_label": "/app/business/deliveries/new",
       "tier": "Core",
       "phase": "5",
       "viewport": "Desktop-first responsive",
+      "canonical_path": "canonical-mvp-images/merchant/MER-005_create-delivery-with-smart-intake.png",
       "image": "create_delivery_dashboard.png",
       "purpose": "Turn merchant text, pasted orders, presets, or manual entry into an editable structured delivery draft.",
       "actions": "Describe/paste; apply preset; confirm extracted fields; answer one clarification; choose payer and timing; continue to review.",
       "states": "Blank; parsing; high/medium/low confidence; clarification; review trigger; AI unavailable/manual fallback.",
-      "source": "Spec \u00a76, AI spec \u00a7Smart Intake",
-      "constraints": "AI never prices, confirms, selects final vehicle, or invents critical fields.",
-      "canonical_path": "canonical-mvp-images/merchant/MER-005_create-delivery-with-smart-intake.png"
+      "source": "Spec §6, AI spec §Smart Intake",
+      "constraints": "AI never prices, confirms, selects final vehicle, or invents critical fields."
     },
     {
       "id": "MER-006",
       "surface": "Merchant",
       "name": "Delivery review and quote",
-      "route": "/business/deliveries/new?step=review",
+      "routes": [
+        "/app/business/deliveries/new?step=review"
+      ],
+      "route_label": "/app/business/deliveries/new?step=review",
       "tier": "Core",
       "phase": "6",
       "viewport": "Desktop-first responsive",
+      "canonical_path": "canonical-mvp-images/merchant/MER-006_delivery-review-and-quote.png",
       "image": "review_delivery_and_quote_dashboard.png",
       "purpose": "Review normalized delivery details, deterministic quote, payer, policy flags, and customer-payment link before submission.",
       "actions": "Edit details; accept quote; choose merchant/customer payer; authorize or send payment link; submit for Couranr review.",
       "states": "Quote valid; review required; payment pending; authorized; requote required; validation error.",
-      "source": "Spec \u00a7\u00a74, 7, 10",
-      "constraints": "Use locked pricing. No product sale amount. No silent price change.",
-      "canonical_path": "canonical-mvp-images/merchant/MER-006_delivery-review-and-quote.png"
+      "source": "Spec §§4, 7, 10",
+      "constraints": "Use locked pricing. No product sale amount. No silent price change."
     },
     {
       "id": "MER-007",
       "surface": "Merchant",
       "name": "Delivery detail",
-      "route": "/business/deliveries/[id]",
+      "routes": [
+        "/app/business/deliveries/[id]"
+      ],
+      "route_label": "/app/business/deliveries/[id]",
       "tier": "Core",
-      "phase": "5\u20138",
+      "phase": "5–8",
       "viewport": "Desktop-first responsive",
+      "canonical_path": "canonical-mvp-images/merchant/MER-007_delivery-detail.png",
       "image": "delivery_management_system_dashboard_interface.png",
-      "purpose": "Provide the merchant\u2019s complete delivery timeline, payer/readiness states, map, proof, conversation, and permitted actions.",
+      "purpose": "Provide the merchant’s complete delivery timeline, payer/readiness states, map, proof, conversation, and permitted actions.",
       "actions": "Mark ready; message driver/support; request change; approve merchant-paid requote; cancel when allowed; view proof/receipt.",
       "states": "All lifecycle states; proof processing; return; incident; payment failure.",
-      "source": "Spec \u00a7\u00a78, 11\u201312, 16",
-      "constraints": "Merchant cannot assign, mark picked up/delivered, issue delivery refunds, or mutate arbitrary state.",
-      "canonical_path": "canonical-mvp-images/merchant/MER-007_delivery-detail.png"
+      "source": "Spec §§8, 11–12, 16",
+      "constraints": "Merchant cannot assign, mark picked up/delivered, issue delivery refunds, or mutate arbitrary state."
     },
     {
       "id": "MER-008",
       "surface": "Merchant",
       "name": "Customers list",
-      "route": "/business/customers",
+      "routes": [
+        "/app/business/customers"
+      ],
+      "route_label": "/app/business/customers",
       "tier": "Core",
       "phase": "4",
       "viewport": "Desktop-first responsive",
+      "canonical_path": "canonical-mvp-images/merchant/MER-008_customers-list.png",
       "image": "saas_customer_management_dashboard_screenshot.png",
       "purpose": "Manage recipient records, saved destinations, delivery history, payer preference, and repeat delivery.",
       "actions": "Search; filter; create; open; repeat delivery; edit contact/address.",
       "states": "Empty; active; archived; duplicate warning.",
-      "source": "Spec \u00a7\u00a74\u20135, 16",
-      "constraints": "Do not expose payment credentials or unnecessary PII in list view.",
-      "canonical_path": "canonical-mvp-images/merchant/MER-008_customers-list.png"
+      "source": "Spec §§4–5, 16",
+      "constraints": "Do not expose payment credentials or unnecessary PII in list view."
     },
     {
       "id": "MER-009",
       "surface": "Merchant",
       "name": "Customer detail",
-      "route": "/business/customers?customer=[id]",
+      "routes": [
+        "/app/business/customers?customer=[id]"
+      ],
+      "route_label": "/app/business/customers?customer=[id]",
       "tier": "Core",
       "phase": "4",
       "viewport": "Desktop-first responsive",
+      "canonical_path": "canonical-mvp-images/merchant/MER-009_customer-detail.png",
       "image": "customer_profile_delivery_dashboard.png",
-      "purpose": "Show one customer\u2019s addresses, instructions, history, payer preference, and repeat-delivery action.",
+      "purpose": "Show one customer’s addresses, instructions, history, payer preference, and repeat-delivery action.",
       "actions": "Create repeat delivery; edit address/instructions; message through delivery context.",
       "states": "No deliveries; active delivery; conflicting address; archived.",
-      "source": "Spec \u00a7\u00a75, 7, 12",
-      "constraints": "Customer notes are merchant-scoped. Do not imply Couranr owns the customer relationship.",
-      "canonical_path": "canonical-mvp-images/merchant/MER-009_customer-detail.png"
+      "source": "Spec §§5, 7, 12",
+      "constraints": "Customer notes are merchant-scoped. Do not imply Couranr owns the customer relationship."
     },
     {
       "id": "MER-010",
       "surface": "Merchant",
       "name": "Presets list",
-      "route": "/business/presets",
+      "routes": [
+        "/app/business/presets"
+      ],
+      "route_label": "/app/business/presets",
       "tier": "Core",
       "phase": "4",
       "viewport": "Desktop-first responsive",
+      "canonical_path": "canonical-mvp-images/merchant/MER-010_presets-list.png",
       "image": "web_app_interface_with_preset_management.png",
       "purpose": "Manage Couranr-recommended, merchant-customized, and merchant-created delivery presets.",
       "actions": "Create; edit; duplicate; archive; review recommendation; view usage.",
       "states": "Global recommendation; customized; merchant-created; update suggested; archived.",
-      "source": "Spec \u00a75",
-      "constraints": "Global updates never overwrite merchant customization. Every delivery stores immutable preset snapshot.",
-      "canonical_path": "canonical-mvp-images/merchant/MER-010_presets-list.png"
+      "source": "Spec §5",
+      "constraints": "Global updates never overwrite merchant customization. Every delivery stores immutable preset snapshot."
     },
     {
       "id": "MER-011",
       "surface": "Merchant",
       "name": "Preset builder",
-      "route": "/business/presets?edit=[id]",
+      "routes": [
+        "/app/business/presets?edit=[id]"
+      ],
+      "route_label": "/app/business/presets?edit=[id]",
       "tier": "Core",
       "phase": "4",
       "viewport": "Desktop-first responsive",
+      "canonical_path": "canonical-mvp-images/merchant/MER-011_preset-builder.png",
       "image": "preset_builder_dashboard_interface.png",
       "purpose": "Define item assumptions, required questions, handling, proof, vehicle capabilities, and payer default.",
       "actions": "Edit; version; add required question; save; duplicate.",
       "states": "New; edited; version conflict; recommendation available.",
-      "source": "Spec \u00a75",
-      "constraints": "Never silently assert exact weight, dimensions, value, final vehicle, price, loading, or safety.",
-      "canonical_path": "canonical-mvp-images/merchant/MER-011_preset-builder.png"
+      "source": "Spec §5",
+      "constraints": "Never silently assert exact weight, dimensions, value, final vehicle, price, loading, or safety."
     },
     {
       "id": "MER-012",
       "surface": "Merchant",
       "name": "Merchant messages and support",
-      "route": "/business/messages",
+      "routes": [
+        "/app/business/messages"
+      ],
+      "route_label": "/app/business/messages",
       "tier": "Core",
-      "phase": "8\u20139",
+      "phase": "8–9",
       "viewport": "Desktop-first responsive",
+      "canonical_path": "canonical-mvp-images/merchant/MER-012_merchant-messages-and-support.png",
       "image": "merchant_support_dashboard_overview.png",
-      "purpose": "Centralize merchant\u2013driver delivery chat and merchant\u2013Couranr Support conversations.",
+      "purpose": "Centralize merchant–driver delivery chat and merchant–Couranr Support conversations.",
       "actions": "Open thread; send message/attachment; choose issue category; view 15-minute target; accept verified assistant reply.",
       "states": "Unread; response pending; AI answered; human review; after-hours; closed.",
-      "source": "Spec \u00a712, AI spec \u00a7\u00a7Communication, Assistant",
-      "constraints": "No public phone. Messages never directly mutate address, price, cancellation, refund, return, proof, or state.",
-      "canonical_path": "canonical-mvp-images/merchant/MER-012_merchant-messages-and-support.png"
+      "source": "Spec §12, AI spec §§Communication, Assistant",
+      "constraints": "No public phone. Messages never directly mutate address, price, cancellation, refund, return, proof, or state."
     },
     {
       "id": "MER-013",
       "surface": "Merchant",
       "name": "Website tools",
-      "route": "/business/website-tools",
+      "routes": [
+        "/app/business/website-tools"
+      ],
+      "route_label": "/app/business/website-tools",
       "tier": "Core",
       "phase": "10",
       "viewport": "Desktop-first responsive",
+      "canonical_path": "canonical-mvp-images/merchant/MER-013_website-tools.png",
       "image": "website_tools_dashboard_overview.png",
       "purpose": "Create merchant delivery link, QR code, embed/button tools, branding, and customer request defaults.",
       "actions": "Copy link; download QR; configure form/button; preview; publish.",
       "states": "Draft; published; invalid embed settings; disabled.",
-      "source": "Spec \u00a7\u00a77, 16",
-      "constraints": "Do not turn Couranr into the merchant\u2019s product checkout. Customer request still requires merchant validation.",
-      "canonical_path": "canonical-mvp-images/merchant/MER-013_website-tools.png"
+      "source": "Spec §§7, 16",
+      "constraints": "Do not turn Couranr into the merchant’s product checkout. Customer request still requires merchant validation."
     },
     {
       "id": "MER-014",
       "surface": "Merchant",
       "name": "Merchant settings",
-      "route": "/business/settings",
+      "routes": [
+        "/app/business/settings"
+      ],
+      "route_label": "/app/business/settings",
       "tier": "Core",
-      "phase": "4\u20138",
+      "phase": "4–8",
       "viewport": "Desktop-first responsive",
+      "canonical_path": "canonical-mvp-images/merchant/MER-014_merchant-settings.png",
       "image": "saas_dashboard_settings_overview.png",
       "purpose": "Manage business profile, pickup defaults, categories, payer defaults, notifications, security, and delivery policies.",
       "actions": "Edit business; update defaults; manage policies; configure operational notifications.",
       "states": "Saved; unsaved; verification required; permission denied.",
-      "source": "Spec \u00a7\u00a73, 5, 12, 16",
-      "constraints": "Locked policy registry wins over any mock values. No subscription controls in pilot.",
-      "canonical_path": "canonical-mvp-images/merchant/MER-014_merchant-settings.png"
+      "source": "Spec §§3, 5, 12, 16",
+      "constraints": "Locked policy registry wins over any mock values. No subscription controls in pilot."
     },
     {
       "id": "MER-015",
       "surface": "Merchant",
       "name": "Team and permissions",
-      "route": "/business/settings/team",
+      "routes": [
+        "/app/business/settings/team"
+      ],
+      "route_label": "/app/business/settings/team",
       "tier": "Core",
       "phase": "4",
       "viewport": "Desktop-first responsive",
+      "canonical_path": "canonical-mvp-images/merchant/MER-015_team-and-permissions.png",
       "image": "team_permissions_dashboard_ui.png",
       "purpose": "Invite staff and manage owner, manager/dispatcher, billing, counter-staff, and view-only access.",
       "actions": "Invite; resend; change role; disable/remove; review activity.",
       "states": "Pending invitation; active; disabled; last-owner protection.",
-      "source": "Spec \u00a7\u00a78, 14, 16",
-      "constraints": "Use least privilege and tenant isolation. Driver access is assignment-scoped.",
-      "canonical_path": "canonical-mvp-images/merchant/MER-015_team-and-permissions.png"
+      "source": "Spec §§8, 14, 16",
+      "constraints": "Use least privilege and tenant isolation. Driver access is assignment-scoped."
     },
     {
       "id": "MER-016",
       "surface": "Merchant",
       "name": "Billing settings",
-      "route": "/business/settings/billing",
+      "routes": [
+        "/app/business/settings/billing"
+      ],
+      "route_label": "/app/business/settings/billing",
       "tier": "Core",
       "phase": "6",
       "viewport": "Desktop-first responsive",
+      "canonical_path": "canonical-mvp-images/merchant/MER-016_billing-settings.png",
       "image": "billing_page_dashboard_ui_mockup.png",
       "purpose": "Manage merchant payment methods, delivery receipts, charges, credits, refunds, and invoices/records.",
       "actions": "Add/update payment method; view delivery charge; download receipt; open support case.",
       "states": "No method; default method; payment failed; refund pending/complete.",
-      "source": "Spec \u00a7\u00a77, 10, 16",
-      "constraints": "No monthly subscription invoice during pilot. Separate delivery charge from product sale.",
-      "canonical_path": "canonical-mvp-images/merchant/MER-016_billing-settings.png"
+      "source": "Spec §§7, 10, 16",
+      "constraints": "No monthly subscription invoice during pilot. Separate delivery charge from product sale."
     },
     {
       "id": "DRV-001",
       "surface": "Driver",
       "name": "Driver dashboard",
-      "route": "/driver",
+      "routes": [
+        "/driver"
+      ],
+      "route_label": "/driver",
       "tier": "Core",
       "phase": "7",
       "viewport": "Mobile primary",
+      "canonical_path": "canonical-mvp-images/driver/DRV-001_driver-dashboard.png",
       "image": "driver_dashboard_ui_mockup.png",
       "purpose": "Show assigned/current delivery, upcoming work, availability, messages, and safe quick actions.",
       "actions": "Open assigned delivery; go online/offline; open messages; view vehicle.",
       "states": "Online; offline; current delivery; no assignment; blocking compliance issue.",
-      "source": "Spec \u00a7\u00a78\u20139, 11, 16",
-      "constraints": "No public driver marketplace or self-selected offers in MVP. Couranr assigns work.",
-      "canonical_path": "canonical-mvp-images/driver/DRV-001_driver-dashboard.png"
+      "source": "Spec §§8–9, 11, 16",
+      "constraints": "No public driver marketplace or self-selected offers in MVP. Couranr assigns work."
     },
     {
       "id": "DRV-002",
       "surface": "Driver",
       "name": "Assigned delivery detail",
-      "route": "/driver/deliveries/[id]",
+      "routes": [
+        "/driver/deliveries/[id]"
+      ],
+      "route_label": "/driver/deliveries/[id]",
       "tier": "Core",
-      "phase": "7\u20138",
+      "phase": "7–8",
       "viewport": "Mobile primary",
+      "canonical_path": "canonical-mvp-images/driver/DRV-002_assigned-delivery-detail.png",
       "image": "active_delivery_app_mockup.png",
       "purpose": "Present sanitized assigned-delivery data and valid next commands.",
       "actions": "Start route; arrive; open merchant chat; report issue; capture proof.",
       "states": "Assigned; en route; at pickup; picked up; in transit; at drop-off; return.",
-      "source": "Spec \u00a7\u00a78, 11\u201312, 16",
-      "constraints": "Only assigned driver can access. Show minimum necessary recipient and merchant data.",
-      "canonical_path": "canonical-mvp-images/driver/DRV-002_assigned-delivery-detail.png"
+      "source": "Spec §§8, 11–12, 16",
+      "constraints": "Only assigned driver can access. Show minimum necessary recipient and merchant data."
     },
     {
       "id": "DRV-003",
       "surface": "Driver",
       "name": "Pickup PIN and proof",
-      "route": "/driver/deliveries/[id]?step=pickup-proof",
+      "routes": [
+        "/driver/deliveries/[id]?step=pickup-proof"
+      ],
+      "route_label": "/driver/deliveries/[id]?step=pickup-proof",
       "tier": "Core",
       "phase": "7",
       "viewport": "Mobile primary",
+      "canonical_path": "canonical-mvp-images/driver/DRV-003_pickup-pin-and-proof.png",
       "image": "pickup_proof_app_screen_mockup.png",
       "purpose": "Verify merchant handoff, package count, condition, and actual vehicle before custody.",
       "actions": "Enter pickup PIN; capture shipment/condition photos; confirm count; record staff identity.",
       "states": "Pending; invalid PIN; discrepancy; offline saved; verified.",
-      "source": "Spec \u00a711",
-      "constraints": "Large/unusual shipment asks dimensions, securement, loading participants/equipment, and existing damage.",
-      "canonical_path": "canonical-mvp-images/driver/DRV-003_pickup-pin-and-proof.png"
+      "source": "Spec §11",
+      "constraints": "Large/unusual shipment asks dimensions, securement, loading participants/equipment, and existing damage."
     },
     {
       "id": "DRV-004",
       "surface": "Driver",
       "name": "Package discrepancy",
-      "route": "/driver/deliveries/[id]?step=discrepancy",
+      "routes": [
+        "/driver/deliveries/[id]?step=discrepancy"
+      ],
+      "route_label": "/driver/deliveries/[id]?step=discrepancy",
       "tier": "Core",
       "phase": "7",
       "viewport": "Mobile primary",
+      "canonical_path": "canonical-mvp-images/driver/DRV-004_package-discrepancy.png",
       "image": "package_discrepancy_report_ui.png",
       "purpose": "Pause pickup and collect evidence when the package differs materially from the request.",
       "actions": "Choose reason; capture photos; add notes; submit to Operations; message support.",
       "states": "Draft; awaiting Couranr review; requote; safe to continue; cancelled.",
-      "source": "Spec \u00a7\u00a76, 11",
-      "constraints": "Driver cannot approve price, vehicle change, or unsafe continuation.",
-      "canonical_path": "canonical-mvp-images/driver/DRV-004_package-discrepancy.png"
+      "source": "Spec §§6, 11",
+      "constraints": "Driver cannot approve price, vehicle change, or unsafe continuation."
     },
     {
       "id": "DRV-005",
       "surface": "Driver",
       "name": "Driving Mode",
-      "route": "/driver/deliveries/[id]?mode=driving",
+      "routes": [
+        "/driver/deliveries/[id]?mode=driving"
+      ],
+      "route_label": "/driver/deliveries/[id]?mode=driving",
       "tier": "Core",
-      "phase": "7\u20139",
+      "phase": "7–9",
       "viewport": "Mobile primary",
+      "canonical_path": "canonical-mvp-images/driver/DRV-005_driving-mode.png",
       "image": "route_driving_app_mockup.png",
       "purpose": "Provide safe navigation and minimal delivery controls while suppressing routine distractions.",
       "actions": "Navigate; mark arrived; report blocking issue; safe-stop support summary.",
       "states": "Driving; rerouting; offline; safety alert; arrived.",
-      "source": "AI spec \u00a7Driving Mode",
-      "constraints": "No routine alert sounds, repeated vibration, or typing prompts while moving.",
-      "canonical_path": "canonical-mvp-images/driver/DRV-005_driving-mode.png"
+      "source": "AI spec §Driving Mode",
+      "constraints": "No routine alert sounds, repeated vibration, or typing prompts while moving."
     },
     {
       "id": "DRV-006",
       "surface": "Driver",
       "name": "Drop-off proof",
-      "route": "/driver/deliveries/[id]?step=delivery-proof",
+      "routes": [
+        "/driver/deliveries/[id]?step=delivery-proof"
+      ],
+      "route_label": "/driver/deliveries/[id]?step=delivery-proof",
       "tier": "Core",
       "phase": "7",
       "viewport": "Mobile primary",
+      "canonical_path": "canonical-mvp-images/driver/DRV-006_drop-off-proof.png",
       "image": "delivery_proof_app_screen.png",
       "purpose": "Capture recipient PIN/signature or authorized leave-at-door evidence.",
       "actions": "Choose allowed handoff; enter PIN/signature; photo; complete delivery.",
       "states": "Direct handoff; signature; leave at door; failed attempt; return required; offline pending sync.",
-      "source": "Spec \u00a711",
-      "constraints": "No face or ID-document photo. Leave at door requires prior authorization and safe conditions.",
-      "canonical_path": "canonical-mvp-images/driver/DRV-006_drop-off-proof.png"
+      "source": "Spec §11",
+      "constraints": "No face or ID-document photo. Leave at door requires prior authorization and safe conditions."
     },
     {
       "id": "DRV-007",
       "surface": "Driver",
       "name": "Offline proof sync",
-      "route": "/driver/deliveries/[id]?panel=offline-sync",
+      "routes": [
+        "/driver/deliveries/[id]?panel=offline-sync"
+      ],
+      "route_label": "/driver/deliveries/[id]?panel=offline-sync",
       "tier": "Core",
       "phase": "7",
       "viewport": "Mobile primary",
+      "canonical_path": "canonical-mvp-images/driver/DRV-007_offline-proof-sync.png",
       "image": "offline_proof_sync_dashboard.png",
       "purpose": "Safely queue encrypted proof when connectivity fails and reconcile it later.",
       "actions": "View pending proof; retry; sync; inspect error.",
       "states": "Offline; pending sync; retrying; verified; permanently failed/Operations alert.",
-      "source": "Spec \u00a711, acceptance \u00a7Operations/driver/proof",
-      "constraints": "Do not finalize settlement until required proof is uploaded and verified.",
-      "canonical_path": "canonical-mvp-images/driver/DRV-007_offline-proof-sync.png"
+      "source": "Spec §11, acceptance §Operations/driver/proof",
+      "constraints": "Do not finalize settlement until required proof is uploaded and verified."
     },
     {
       "id": "DRV-008",
       "surface": "Driver",
       "name": "Driver messages",
-      "route": "/driver/messages",
+      "routes": [
+        "/driver/messages"
+      ],
+      "route_label": "/driver/messages",
       "tier": "Core",
-      "phase": "8\u20139",
+      "phase": "8–9",
       "viewport": "Mobile primary",
+      "canonical_path": "canonical-mvp-images/driver/DRV-008_driver-messages.png",
       "image": "messages_in_a_delivery_app.png",
       "purpose": "Show delivery-specific merchant messages and Couranr Support conversations.",
       "actions": "Reply; attach allowed evidence; open delivery context; safe-stop summary.",
       "states": "Unread; driving suppressed; AI draft; human support; closed.",
-      "source": "Spec \u00a712, AI spec \u00a7\u00a7Communication, Driving Mode",
-      "constraints": "No unrestricted customer chat and no personal phone exposure.",
-      "canonical_path": "canonical-mvp-images/driver/DRV-008_driver-messages.png"
+      "source": "Spec §12, AI spec §§Communication, Driving Mode",
+      "constraints": "No unrestricted customer chat and no personal phone exposure."
     },
     {
       "id": "DRV-009",
       "surface": "Driver",
       "name": "Driver availability",
-      "route": "/driver/availability",
+      "routes": [
+        "/driver/availability"
+      ],
+      "route_label": "/driver/availability",
       "tier": "Core",
       "phase": "7",
       "viewport": "Mobile primary",
+      "canonical_path": "canonical-mvp-images/driver/DRV-009_driver-availability.png",
       "image": "availability_settings_dashboard.png",
       "purpose": "Manage active status and operating availability for Couranr-managed assignments.",
       "actions": "Go online/offline; set hours; select active vehicle; update availability.",
       "states": "Online; busy; offline; unavailable due to compliance.",
-      "source": "Spec \u00a7\u00a73, 9, 16",
-      "constraints": "Availability does not create a public offer marketplace or guarantee assignments.",
-      "canonical_path": "canonical-mvp-images/driver/DRV-009_driver-availability.png"
+      "source": "Spec §§3, 9, 16",
+      "constraints": "Availability does not create a public offer marketplace or guarantee assignments."
     },
     {
       "id": "DRV-010",
       "surface": "Driver",
       "name": "Vehicle profile",
-      "route": "/driver/vehicle",
+      "routes": [
+        "/driver/vehicle"
+      ],
+      "route_label": "/driver/vehicle",
       "tier": "Core",
       "phase": "7",
       "viewport": "Mobile primary",
+      "canonical_path": "canonical-mvp-images/driver/DRV-010_vehicle-profile.png",
       "image": "vehicle_profile_mobile_app_ui.png",
       "purpose": "Maintain cargo dimensions, payload, enclosed/open status, equipment, weather protection, and availability.",
       "actions": "Edit vehicle; upload evidence; activate/deactivate; update inspection/insurance.",
       "states": "Active; unavailable; maintenance; verification pending; expired compliance.",
-      "source": "Spec \u00a79, \u00a714",
-      "constraints": "Capability data, not rigid labels, controls matching. Operations chooses final vehicle.",
-      "canonical_path": "canonical-mvp-images/driver/DRV-010_vehicle-profile.png"
+      "source": "Spec §9, §14",
+      "constraints": "Capability data, not rigid labels, controls matching. Operations chooses final vehicle."
     },
     {
       "id": "OPS-001",
       "surface": "Operations",
       "name": "Operations dashboard",
-      "route": "/operations",
+      "routes": [
+        "/operations"
+      ],
+      "route_label": "/operations",
       "tier": "Core",
-      "phase": "7\u201310",
+      "phase": "7–10",
       "viewport": "Desktop primary",
+      "canonical_path": "canonical-mvp-images/operations/OPS-001_operations-dashboard.png",
       "image": "operations_dashboard_overview.png",
       "purpose": "Show live delivery health, pending reviews, support SLA, payment risk, Ghost flags, and quick actions.",
       "actions": "Open queue; review high-priority item; message parties; pause requests/AI.",
       "states": "Normal; high load; payment incident; proof incident; AI paused.",
-      "source": "Spec \u00a7\u00a79, 12\u201313, 16\u201318",
-      "constraints": "Use verified live metrics only. No fake revenue or SLA statistics.",
-      "canonical_path": "canonical-mvp-images/operations/OPS-001_operations-dashboard.png"
+      "source": "Spec §§9, 12–13, 16–18",
+      "constraints": "Use verified live metrics only. No fake revenue or SLA statistics."
     },
     {
       "id": "OPS-002",
       "surface": "Operations",
       "name": "Queue and managed dispatch",
-      "route": "/operations/queue and /operations/deliveries",
+      "routes": [
+        "/operations/queue",
+        "/operations/deliveries"
+      ],
+      "route_label": "/operations/queue and /operations/deliveries",
       "tier": "Core",
       "phase": "7",
       "viewport": "Desktop primary",
+      "canonical_path": "canonical-mvp-images/operations/OPS-002_queue-and-managed-dispatch.png",
       "image": "operations_dispatch_dashboard.png",
       "purpose": "Review requests and select compatible vehicle, driver, schedule, and action.",
       "actions": "Confirm as quoted; select vehicle; assign driver; change schedule; request info; requote; cannot confirm.",
       "states": "Pending review; missing info; authorized; requote; assigned; declined.",
-      "source": "Spec \u00a7\u00a78\u201310, 16",
-      "constraints": "Assignment method is couranr_managed. Store recommendation, selected vehicle, and override reason.",
-      "canonical_path": "canonical-mvp-images/operations/OPS-002_queue-and-managed-dispatch.png"
+      "source": "Spec §§8–10, 16",
+      "constraints": "Assignment method is couranr_managed. Store recommendation, selected vehicle, and override reason."
     },
     {
       "id": "OPS-003",
       "surface": "Operations",
       "name": "Delivery review workspace",
-      "route": "/operations/deliveries/[id]",
+      "routes": [
+        "/operations/deliveries/[id]"
+      ],
+      "route_label": "/operations/deliveries/[id]",
       "tier": "Core",
       "phase": "7",
       "viewport": "Desktop primary",
+      "canonical_path": "canonical-mvp-images/operations/OPS-003_delivery-review-workspace.png",
       "image": "couranr_delivery_review_dashboard.png",
       "purpose": "Inspect request, quote, payer, readiness, vehicle fit, risk, proof, conversation, and economics.",
       "actions": "Confirm; request info; schedule; select vehicle; assign; requote; apply credit; decline.",
       "states": "Review pending; accepted; requoted; declined; active delivery; exception.",
-      "source": "Spec \u00a7\u00a78\u201311, 16",
-      "constraints": "No client-authoritative state mutation. All actions are named server commands with audit.",
-      "canonical_path": "canonical-mvp-images/operations/OPS-003_delivery-review-workspace.png"
+      "source": "Spec §§8–11, 16",
+      "constraints": "No client-authoritative state mutation. All actions are named server commands with audit."
     },
     {
       "id": "OPS-004",
       "surface": "Operations",
       "name": "Requote and promotional credit",
-      "route": "/operations/deliveries/[id]?panel=requote",
+      "routes": [
+        "/operations/deliveries/[id]?panel=requote"
+      ],
+      "route_label": "/operations/deliveries/[id]?panel=requote",
       "tier": "Core",
-      "phase": "6\u20137",
+      "phase": "6–7",
       "viewport": "Desktop primary",
+      "canonical_path": "canonical-mvp-images/operations/OPS-004_requote-and-promotional-credit.png",
       "image": "requote_promotional_credit_dashboard.png",
       "purpose": "Create an immutable replacement quote with reason and optional Couranr promotional credit.",
       "actions": "Edit allowed line items; choose reason; apply credit; preview; send for payer approval.",
       "states": "Draft; approval pending; accepted; expired; declined; replaced authorization.",
-      "source": "Spec \u00a7\u00a74, 7, 10",
-      "constraints": "Never overwrite original quote. Credit is separate expense and requires reason, campaign, market, category, approver.",
-      "canonical_path": "canonical-mvp-images/operations/OPS-004_requote-and-promotional-credit.png"
+      "source": "Spec §§4, 7, 10",
+      "constraints": "Never overwrite original quote. Credit is separate expense and requires reason, campaign, market, category, approver."
     },
     {
       "id": "OPS-005",
       "surface": "Operations",
       "name": "Operations messages and support inbox",
-      "route": "/operations/messages and /operations/support",
+      "routes": [
+        "/operations/messages",
+        "/operations/support"
+      ],
+      "route_label": "/operations/messages and /operations/support",
       "tier": "Core",
-      "phase": "8\u20139",
+      "phase": "8–9",
       "viewport": "Desktop primary",
+      "canonical_path": "canonical-mvp-images/operations/OPS-005_operations-messages-and-support-inbox.png",
       "image": "support_inbox_and_ai_operations_dashboard.png",
       "purpose": "Unify merchant, driver, and customer-help conversations with delivery context and priority.",
       "actions": "Reply; assign; request evidence; open delivery; use/edit AI draft; resolve.",
       "states": "Unread; urgent; active delivery; waiting on party; AI draft; escalated; closed.",
-      "source": "Spec \u00a712, AI spec \u00a7\u00a7Communication, Assistant",
-      "constraints": "Internal notes and AI drafts must be excluded from participant queries, exports, realtime, and notifications.",
-      "canonical_path": "canonical-mvp-images/operations/OPS-005_operations-messages-and-support-inbox.png"
+      "source": "Spec §12, AI spec §§Communication, Assistant",
+      "constraints": "Internal notes and AI drafts must be excluded from participant queries, exports, realtime, and notifications."
     },
     {
       "id": "OPS-006",
       "surface": "Operations",
       "name": "Couranr Ghost Operations",
-      "route": "/operations/ghost",
+      "routes": [
+        "/operations/ghost"
+      ],
+      "route_label": "/operations/ghost",
       "tier": "Core",
       "phase": "9",
       "viewport": "Desktop primary",
+      "canonical_path": "canonical-mvp-images/operations/OPS-006_couranr-ghost-operations.png",
       "image": "ghost_operations_dashboard.png",
       "purpose": "Summarize operations, verify facts, draft replies/actions, and surface risk while Couranr is on delivery.",
       "actions": "Ask global/case question; view evidence; use/edit reply; prepare requote/refund/schedule/return recommendation.",
       "states": "Verified recommendation; missing evidence; conflict; human required; AI/provider paused.",
-      "source": "Spec \u00a713, AI spec \u00a7Ghost Operations",
-      "constraints": "Ghost has read and preparation tools only\u2014no direct execution, SQL, financial, address, state, refund, return, or safety mutation.",
-      "canonical_path": "canonical-mvp-images/operations/OPS-006_couranr-ghost-operations.png"
+      "source": "Spec §13, AI spec §Ghost Operations",
+      "constraints": "Ghost has read and preparation tools only—no direct execution, SQL, financial, address, state, refund, return, or safety mutation."
     },
     {
       "id": "OPS-007",
       "surface": "Operations",
       "name": "Merchant management",
-      "route": "/operations/merchants",
+      "routes": [
+        "/operations/merchants"
+      ],
+      "route_label": "/operations/merchants",
       "tier": "Core",
-      "phase": "4\u20139",
+      "phase": "4–9",
       "viewport": "Desktop primary",
+      "canonical_path": "canonical-mvp-images/operations/OPS-007_merchant-management.png",
       "image": "merchant_management_dashboard.png",
       "purpose": "Review merchant activation, contact, categories, presets, support, performance, and risk.",
       "actions": "Open account; message; review activation; pause account with reason; inspect audit.",
       "states": "Test workspace; active; needs review; paused; incomplete.",
-      "source": "Spec \u00a7\u00a75, 12\u201314, 16",
-      "constraints": "No fabricated merchant performance. Account pause must be reasoned and audited.",
-      "canonical_path": "canonical-mvp-images/operations/OPS-007_merchant-management.png"
+      "source": "Spec §§5, 12–14, 16",
+      "constraints": "No fabricated merchant performance. Account pause must be reasoned and audited."
     },
     {
       "id": "OPS-008",
       "surface": "Operations",
       "name": "Vehicle management",
-      "route": "/operations/vehicles",
+      "routes": [
+        "/operations/vehicles"
+      ],
+      "route_label": "/operations/vehicles",
       "tier": "Core",
       "phase": "7",
       "viewport": "Desktop primary",
+      "canonical_path": "canonical-mvp-images/operations/OPS-008_vehicle-management.png",
       "image": "vehicle_management_dashboard.png",
       "purpose": "Maintain all Couranr-operated and future driver vehicles, capabilities, compliance, and active assignments.",
       "actions": "Add/edit; assign driver; mark maintenance/unavailable; inspect capability.",
       "states": "Available; assigned; maintenance; compliance warning; out of service.",
-      "source": "Spec \u00a79, \u00a716",
-      "constraints": "Do not imply current fleet size or external drivers unless real.",
-      "canonical_path": "canonical-mvp-images/operations/OPS-008_vehicle-management.png"
+      "source": "Spec §9, §16",
+      "constraints": "Do not imply current fleet size or external drivers unless real."
     },
     {
       "id": "OPS-009",
       "surface": "Operations",
       "name": "Payments and reconciliation",
-      "route": "/operations/payments",
+      "routes": [
+        "/operations/payments"
+      ],
+      "route_label": "/operations/payments",
       "tier": "Core",
       "phase": "6",
       "viewport": "Desktop primary",
+      "canonical_path": "canonical-mvp-images/operations/OPS-009_payments-and-reconciliation.png",
       "image": "payments_and_reconciliation_dashboard.png",
       "purpose": "Monitor authorizations, captures, refunds, Stripe reconciliation, settlements, ledger balance, and alerts.",
       "actions": "Open payment; reconcile; replay safe event; export; open Stripe.",
       "states": "Balanced; unreconciled; webhook delayed; capture pending; refund pending; failed.",
-      "source": "Spec \u00a710, acceptance \u00a7Payments/ledger",
-      "constraints": "Authorization is not revenue. Every captured/refund transaction must balance and reconcile.",
-      "canonical_path": "canonical-mvp-images/operations/OPS-009_payments-and-reconciliation.png"
+      "source": "Spec §10, acceptance §Payments/ledger",
+      "constraints": "Authorization is not revenue. Every captured/refund transaction must balance and reconcile."
     },
     {
       "id": "OPS-010",
       "surface": "Operations",
       "name": "Payment authorization review",
-      "route": "/operations/payments?tab=authorizations",
+      "routes": [
+        "/operations/payments?tab=authorizations"
+      ],
+      "route_label": "/operations/payments?tab=authorizations",
       "tier": "Core",
       "phase": "6",
       "viewport": "Desktop primary",
+      "canonical_path": "canonical-mvp-images/operations/OPS-010_payment-authorization-review.png",
       "image": "payment_authorization_review_dashboard.png",
       "purpose": "Review capturable funds, quote linkage, payer, expiry, risk, and capture/release actions.",
       "actions": "Capture after confirmation; release; request new method; open support case.",
       "states": "Authorized; capture pending; captured; expired; failed; requires action.",
-      "source": "Spec \u00a7\u00a77, 10",
-      "constraints": "Capture only after Couranr confirms. Commands must be idempotent.",
-      "canonical_path": "canonical-mvp-images/operations/OPS-010_payment-authorization-review.png"
+      "source": "Spec §§7, 10",
+      "constraints": "Capture only after Couranr confirms. Commands must be idempotent."
     },
     {
       "id": "OPS-011",
       "surface": "Operations",
       "name": "Refund management",
-      "route": "/operations/refunds",
+      "routes": [
+        "/operations/refunds"
+      ],
+      "route_label": "/operations/refunds",
       "tier": "Core",
-      "phase": "6\u20137",
+      "phase": "6–7",
       "viewport": "Desktop primary",
+      "canonical_path": "canonical-mvp-images/operations/OPS-011_refund-management.png",
       "image": "refund_management_dashboard.png",
       "purpose": "Review delivery-charge refund requests with evidence, policy, Stripe, and ledger effects.",
       "actions": "Approve full/partial; deny; message merchant/customer; view incident.",
       "states": "Pending; approved; processing; partially refunded; refunded; denied; failed.",
-      "source": "Spec \u00a7\u00a710\u201311",
-      "constraints": "Merchant controls product refund; Couranr controls delivery-service refund. No on-time guarantee policy.",
-      "canonical_path": "canonical-mvp-images/operations/OPS-011_refund-management.png"
+      "source": "Spec §§10–11",
+      "constraints": "Merchant controls product refund; Couranr controls delivery-service refund. No on-time guarantee policy."
     },
     {
       "id": "OPS-012",
       "surface": "Operations",
       "name": "Incidents and claims",
-      "route": "/operations/incidents",
+      "routes": [
+        "/operations/incidents"
+      ],
+      "route_label": "/operations/incidents",
       "tier": "Core",
       "phase": "7",
       "viewport": "Desktop primary",
+      "canonical_path": "canonical-mvp-images/operations/OPS-012_incidents-and-claims.png",
       "image": "incident_claims_dashboard_ui.png",
       "purpose": "Investigate damage, missing, wrong item, unsafe handling, delivery failure, and evidence.",
       "actions": "Start review; request evidence; add internal note; escalate; resolve.",
       "states": "Reported; under review; awaiting evidence; resolved; closed.",
-      "source": "Spec \u00a7\u00a78, 11",
-      "constraints": "Do not promise automatic product-value compensation. Separate merchandise responsibility from delivery incident.",
-      "canonical_path": "canonical-mvp-images/operations/OPS-012_incidents-and-claims.png"
+      "source": "Spec §§8, 11",
+      "constraints": "Do not promise automatic product-value compensation. Separate merchandise responsibility from delivery incident."
     },
     {
       "id": "OPS-013",
       "surface": "Operations",
       "name": "Operations analytics",
-      "route": "/operations/analytics",
+      "routes": [
+        "/operations/analytics"
+      ],
+      "route_label": "/operations/analytics",
       "tier": "Core",
       "phase": "10",
       "viewport": "Desktop primary",
+      "canonical_path": "canonical-mvp-images/operations/OPS-013_operations-analytics.png",
       "image": "operations_analytics_dashboard.png",
       "purpose": "Measure paid deliveries, markets, categories, payer mix, economics, support, proof, and driver utilization.",
       "actions": "Filter; drill down; export privacy-safe aggregates.",
       "states": "Loading; partial data; empty; live.",
-      "source": "Spec \u00a717, acceptance \u00a7Analytics/observability",
-      "constraints": "No message bodies, full addresses, gate codes, phone numbers, proof URLs, or card data in analytics.",
-      "canonical_path": "canonical-mvp-images/operations/OPS-013_operations-analytics.png"
+      "source": "Spec §17, acceptance §Analytics/observability",
+      "constraints": "No message bodies, full addresses, gate codes, phone numbers, proof URLs, or card data in analytics."
     },
     {
       "id": "OPS-014",
       "surface": "Operations",
       "name": "Unmet demand analytics",
-      "route": "/operations/analytics?tab=unmet-demand",
+      "routes": [
+        "/operations/analytics?tab=unmet-demand"
+      ],
+      "route_label": "/operations/analytics?tab=unmet-demand",
       "tier": "MVP-complete",
       "phase": "10",
       "viewport": "Desktop primary",
+      "canonical_path": "canonical-mvp-images/operations/OPS-014_unmet-demand-analytics.png",
       "image": "unmet_demand_analytics_dashboard.png",
       "purpose": "Analyze requests Couranr could not confirm by market, reason, category, time, distance, and vehicle need.",
       "actions": "Filter; review opportunity; open underlying requests.",
       "states": "No data; increasing demand; partial attribution.",
-      "source": "Spec \u00a717",
-      "constraints": "Use actual could-not-confirm reasons; do not treat all unfulfilled requests as lost customers.",
-      "canonical_path": "canonical-mvp-images/operations/OPS-014_unmet-demand-analytics.png"
+      "source": "Spec §17",
+      "constraints": "Use actual could-not-confirm reasons; do not treat all unfulfilled requests as lost customers."
     },
     {
       "id": "OPS-015",
       "surface": "Operations",
       "name": "Operations settings",
-      "route": "/operations/settings",
+      "routes": [
+        "/operations/settings"
+      ],
+      "route_label": "/operations/settings",
       "tier": "Core",
-      "phase": "3, 8\u20139",
+      "phase": "3, 8–9",
       "viewport": "Desktop primary",
+      "canonical_path": "canonical-mvp-images/operations/OPS-015_operations-settings.png",
       "image": "operations_settings_dashboard.png",
       "purpose": "Configure roles, proof, notifications, pricing governance, AI controls, integrations, security, and retention.",
       "actions": "Edit approved settings; save; inspect permission/audit.",
       "states": "Saved; unsaved; permission denied; policy version conflict.",
-      "source": "Spec \u00a7\u00a74, 12\u201314, 16",
-      "constraints": "No mock value overrides the Decision Registry. Sensitive changes require high privilege and audit.",
-      "canonical_path": "canonical-mvp-images/operations/OPS-015_operations-settings.png"
+      "source": "Spec §§4, 12–14, 16",
+      "constraints": "No mock value overrides the Decision Registry. Sensitive changes require high privilege and audit."
     },
     {
       "id": "OPS-016",
       "surface": "Operations",
       "name": "Availability controls",
-      "route": "/operations/settings?tab=availability",
+      "routes": [
+        "/operations/settings?tab=availability"
+      ],
+      "route_label": "/operations/settings?tab=availability",
       "tier": "Core",
       "phase": "3, 7",
       "viewport": "Desktop primary",
+      "canonical_path": "canonical-mvp-images/operations/OPS-016_availability-controls.png",
       "image": "availability_controls_dashboard.png",
       "purpose": "Control service levels, hours, cutoff, overnight, weather-limited mode, market availability, and closures.",
       "actions": "Enable/disable modes; change closures; publish availability.",
       "states": "Standard; scheduled only; temporarily closed; weather limited; overnight enabled.",
-      "source": "Spec \u00a73",
-      "constraints": "MVP hours are Mon\u2013Fri 6 AM\u20136 PM, same-day cutoff 4 PM. Do not use weekend/mock hours.",
-      "canonical_path": "canonical-mvp-images/operations/OPS-016_availability-controls.png"
+      "source": "Spec §3",
+      "constraints": "MVP hours are Mon–Fri 6 AM–6 PM, same-day cutoff 4 PM. Do not use weekend/mock hours."
     },
     {
       "id": "OPS-017",
       "surface": "Operations",
       "name": "Policy and pricing registry",
-      "route": "/operations/settings?tab=policies",
+      "routes": [
+        "/operations/settings?tab=policies"
+      ],
+      "route_label": "/operations/settings?tab=policies",
       "tier": "MVP-complete",
       "phase": "3",
       "viewport": "Desktop primary",
+      "canonical_path": "canonical-mvp-images/operations/OPS-017_policy-and-pricing-registry.png",
       "image": "policy_pricing_registry_dashboard.png",
       "purpose": "View versioned deterministic pricing and policy rules with effective dates and audit.",
       "actions": "Draft version; validate; publish with approval; view history.",
       "states": "Draft; scheduled; active; superseded; validation failed.",
-      "source": "Spec \u00a7\u00a73\u20134, decision registry",
-      "constraints": "UI edits must produce versioned server-side policy data; no second pricing engine.",
-      "canonical_path": "canonical-mvp-images/operations/OPS-017_policy-and-pricing-registry.png"
+      "source": "Spec §§3–4, decision registry",
+      "constraints": "UI edits must produce versioned server-side policy data; no second pricing engine."
     },
     {
       "id": "OPS-018",
       "surface": "Operations",
       "name": "Notification template manager",
-      "route": "/operations/settings?tab=notifications",
+      "routes": [
+        "/operations/settings?tab=notifications"
+      ],
+      "route_label": "/operations/settings?tab=notifications",
       "tier": "MVP-complete",
       "phase": "8",
       "viewport": "Desktop primary",
+      "canonical_path": "canonical-mvp-images/operations/OPS-018_notification-template-manager.png",
       "image": "notification_template_manager_dashboard.png",
       "purpose": "Manage approved, versioned operational templates by audience, channel, language, and event.",
       "actions": "Preview; edit; validate variables; activate version; test send.",
       "states": "Draft; active; deprecated; invalid variables; suppressed.",
-      "source": "Spec \u00a712",
-      "constraints": "AI cannot change price, time promise, refund, fee, payment, safety, legal, or state language.",
-      "canonical_path": "canonical-mvp-images/operations/OPS-018_notification-template-manager.png"
+      "source": "Spec §12",
+      "constraints": "AI cannot change price, time promise, refund, fee, payment, safety, legal, or state language."
     },
     {
       "id": "OPS-019",
       "surface": "Operations",
       "name": "Ghost auto-reply controls and kill switches",
-      "route": "/operations/settings?tab=ai",
+      "routes": [
+        "/operations/settings?tab=ai"
+      ],
+      "route_label": "/operations/settings?tab=ai",
       "tier": "Core",
       "phase": "9",
       "viewport": "Desktop primary",
+      "canonical_path": "canonical-mvp-images/operations/OPS-019_ghost-auto-reply-controls-and-kill-switches.png",
       "image": "auto_reply_control_center_dashboard.png",
       "purpose": "Control safe auto-replies by category, merchant, conversation, provider, and global state.",
       "actions": "Pause/resume; set deterministic gates; inspect correction rate; open decision audit.",
       "states": "Active; draft-only; globally paused; category paused; provider degraded; automatic safety pause.",
-      "source": "AI spec \u00a7\u00a7Assistant, Kill switches",
-      "constraints": "Auto-send requires at least 95% final confidence, exact verified facts, policy, verifier, tenant scope, and allowed category.",
-      "canonical_path": "canonical-mvp-images/operations/OPS-019_ghost-auto-reply-controls-and-kill-switches.png"
+      "source": "AI spec §§Assistant, Kill switches",
+      "constraints": "Auto-send requires at least 95% final confidence, exact verified facts, policy, verifier, tenant scope, and allowed category."
     },
     {
       "id": "OPS-020",
       "surface": "Operations",
       "name": "Activity and audit log",
-      "route": "/operations/settings?tab=audit",
+      "routes": [
+        "/operations/settings?tab=audit"
+      ],
+      "route_label": "/operations/settings?tab=audit",
       "tier": "Core",
-      "phase": "2\u20139",
+      "phase": "2–9",
       "viewport": "Desktop primary",
+      "canonical_path": "canonical-mvp-images/operations/OPS-020_activity-and-audit-log.png",
       "image": "audit_log_dashboard_with_event_details.png",
       "purpose": "Inspect state commands, policy versions, AI decisions, data access, payment events, and overrides.",
       "actions": "Filter; inspect event; export permitted audit; link to entity.",
       "states": "Normal; security alert; missing evidence; immutable record.",
-      "source": "Spec \u00a7\u00a78, 13\u201314",
-      "constraints": "Append-only; no edit/delete. Redact secrets and unnecessary PII.",
-      "canonical_path": "canonical-mvp-images/operations/OPS-020_activity-and-audit-log.png"
+      "source": "Spec §§8, 13–14",
+      "constraints": "Append-only; no edit/delete. Redact secrets and unnecessary PII."
     },
     {
       "id": "OPS-021",
       "surface": "Operations",
       "name": "Ask Couranr lead inbox",
-      "route": "/operations/ghost?tab=leads",
+      "routes": [
+        "/operations/ghost?tab=leads"
+      ],
+      "route_label": "/operations/ghost?tab=leads",
       "tier": "MVP-complete",
-      "phase": "9\u201310",
+      "phase": "9–10",
       "viewport": "Desktop primary",
+      "canonical_path": "canonical-mvp-images/operations/OPS-021_ask-couranr-lead-inbox.png",
       "image": "lead_inbox_dashboard_overview.png",
       "purpose": "Review consented public-assistant leads, market/category fit, questions, and attribution.",
       "actions": "Open summary; respond in app/email when consented; create merchant signup follow-up; mark outcome.",
       "states": "New; qualified; contacted; converted; closed; no consent.",
-      "source": "AI spec \u00a7Ask Couranr, Spec \u00a717",
-      "constraints": "No private customer/delivery lookup. Track consent and UTM/source. No phone-first support flow.",
-      "canonical_path": "canonical-mvp-images/operations/OPS-021_ask-couranr-lead-inbox.png"
+      "source": "AI spec §Ask Couranr, Spec §17",
+      "constraints": "No private customer/delivery lookup. Track consent and UTM/source. No phone-first support flow."
     },
     {
       "id": "CUS-001",
       "surface": "Customer",
       "name": "Address-change request",
-      "route": "/help/[token]#address-change",
+      "routes": [
+        "/help/[token]#address-change"
+      ],
+      "route_label": "/help/[token]#address-change",
       "tier": "Core",
-      "phase": "7\u20138",
+      "phase": "7–8",
       "viewport": "Mobile-first responsive",
+      "canonical_path": "canonical-mvp-images/customer/CUS-001_address-change-request.png",
       "image": "address_change_request_dashboard.png",
       "purpose": "Collect a proposed address change without directly mutating the active delivery.",
       "actions": "Submit corrected address; explain reason; approve resulting revised quote when required.",
       "states": "Before authorization; after authorization; after confirmation; after pickup; approved; denied.",
-      "source": "Spec \u00a7\u00a78, 11\u201312",
-      "constraints": "Request creates Operations review. After pickup, driver stops safely and Operations decides reprice/return.",
-      "canonical_path": "canonical-mvp-images/customer/CUS-001_address-change-request.png"
+      "source": "Spec §§8, 11–12",
+      "constraints": "Request creates Operations review. After pickup, driver stops safely and Operations decides reprice/return."
     },
     {
       "id": "CUS-002",
       "surface": "Customer",
       "name": "Cancellation and return request",
-      "route": "/help/[token]#cancellation-return",
+      "routes": [
+        "/help/[token]#cancellation-return"
+      ],
+      "route_label": "/help/[token]#cancellation-return",
       "tier": "Core",
-      "phase": "7\u20138",
+      "phase": "7–8",
       "viewport": "Mobile-first responsive",
+      "canonical_path": "canonical-mvp-images/customer/CUS-002_cancellation-and-return-request.png",
       "image": "cancellation_and_return_support_dashboard.png",
       "purpose": "Explain applicable stage-based cancellation or return and submit a reviewed request.",
       "actions": "Choose reason; review fee estimate; submit; message support.",
       "states": "Pre-authorization; pre-confirmation; confirmed; arrived; after pickup; return in progress.",
-      "source": "Spec \u00a711",
-      "constraints": "No unlimited free redelivery. Fees follow locked stage rules and are not decided by chat.",
-      "canonical_path": "canonical-mvp-images/customer/CUS-002_cancellation-and-return-request.png"
+      "source": "Spec §11",
+      "constraints": "No unlimited free redelivery. Fees follow locked stage rules and are not decided by chat."
     },
     {
       "id": "CUS-003",
       "surface": "Customer",
       "name": "Recipient unavailable resolution",
-      "route": "/help/[token]#recipient-unavailable",
+      "routes": [
+        "/help/[token]#recipient-unavailable"
+      ],
+      "route_label": "/help/[token]#recipient-unavailable",
       "tier": "Core",
-      "phase": "7\u20138",
+      "phase": "7–8",
       "viewport": "Mobile-first responsive",
+      "canonical_path": "canonical-mvp-images/customer/CUS-003_recipient-unavailable-resolution.png",
       "image": "recipient_unavailable_dashboard.png",
       "purpose": "Offer allowed handoff or return choices when recipient contact fails.",
       "actions": "Confirm safe leave-at-door if already permitted; provide access detail; request return/reschedule.",
       "states": "Driver arrived; contact attempts; waiting; leave at door allowed; return required.",
-      "source": "Spec \u00a711",
-      "constraints": "Leave at door only with prior authorization and safe/weather-suitable location.",
-      "canonical_path": "canonical-mvp-images/customer/CUS-003_recipient-unavailable-resolution.png"
+      "source": "Spec §11",
+      "constraints": "Leave at door only with prior authorization and safe/weather-suitable location."
     },
     {
       "id": "CUS-004",
       "surface": "Customer",
       "name": "Delivery problem report",
-      "route": "/help/[token]#delivery-problem",
+      "routes": [
+        "/help/[token]#delivery-problem"
+      ],
+      "route_label": "/help/[token]#delivery-problem",
       "tier": "Core",
-      "phase": "7\u20138",
+      "phase": "7–8",
       "viewport": "Mobile-first responsive",
+      "canonical_path": "canonical-mvp-images/customer/CUS-004_delivery-problem-report.png",
       "image": "delivery_problem_report_dashboard.png",
       "purpose": "Report damaged, missing, wrong, or undelivered items with structured evidence.",
       "actions": "Choose problem; attach photos; add details; submit; view case status.",
       "states": "Draft; reported; awaiting evidence; under review; resolved.",
-      "source": "Spec \u00a711",
-      "constraints": "Do not promise automatic product refund or compensation. Merchant remains responsible for merchandise.",
-      "canonical_path": "canonical-mvp-images/customer/CUS-004_delivery-problem-report.png"
+      "source": "Spec §11",
+      "constraints": "Do not promise automatic product refund or compensation. Merchant remains responsible for merchandise."
     },
     {
       "id": "CUS-005",
       "surface": "Customer",
       "name": "Revised quote approval",
-      "route": "/pay/[token]?mode=requote",
+      "routes": [
+        "/pay/[token]?mode=requote"
+      ],
+      "route_label": "/pay/[token]?mode=requote",
       "tier": "Core",
-      "phase": "6\u20137",
+      "phase": "6–7",
       "viewport": "Mobile-first responsive",
+      "canonical_path": "canonical-mvp-images/customer/CUS-005_revised-quote-approval.png",
       "image": "model_set_context_nothing_yet.png",
       "purpose": "Compare original and revised delivery-only quote and obtain payer approval before replacing authorization.",
       "actions": "Approve; decline; view reason; contact support.",
       "states": "Pending; accepted; declined; expired; payment action required.",
-      "source": "Spec \u00a7\u00a77, 10",
-      "constraints": "Remove 24/7 support, on-time guarantee, and any product-total content. Show exact reason and immutable versions.",
-      "canonical_path": "canonical-mvp-images/customer/CUS-005_revised-quote-approval.png"
+      "source": "Spec §§7, 10",
+      "constraints": "Remove 24/7 support, on-time guarantee, and any product-total content. Show exact reason and immutable versions."
     },
     {
       "id": "CUS-006",
       "surface": "Customer",
       "name": "Proof-of-delivery viewer",
-      "route": "/track/[token]#proof",
+      "routes": [
+        "/track/[token]#proof"
+      ],
+      "route_label": "/track/[token]#proof",
       "tier": "Core",
       "phase": "7",
       "viewport": "Mobile-first responsive",
+      "canonical_path": "canonical-mvp-images/customer/CUS-006_proof-of-delivery-viewer.png",
       "image": "proof_of_delivery_dashboard.png",
       "purpose": "Show authorized delivery proof, timestamps, handoff method, and timeline.",
       "actions": "View full image; download/share when policy permits; open help.",
       "states": "Proof processing; verified; unavailable; revoked token.",
-      "source": "Spec \u00a711",
-      "constraints": "Private storage and purpose-scoped token. No face/ID document requirement and no driver phone call button.",
-      "canonical_path": "canonical-mvp-images/customer/CUS-006_proof-of-delivery-viewer.png"
+      "source": "Spec §11",
+      "constraints": "Private storage and purpose-scoped token. No face/ID document requirement and no driver phone call button."
     },
     {
       "id": "CUS-007",
       "surface": "Customer",
       "name": "Return and refund status",
-      "route": "/help/[token]#return-status",
+      "routes": [
+        "/help/[token]#return-status"
+      ],
+      "route_label": "/help/[token]#return-status",
       "tier": "Core",
-      "phase": "6\u20138",
+      "phase": "6–8",
       "viewport": "Mobile-first responsive",
+      "canonical_path": "canonical-mvp-images/customer/CUS-007_return-and-refund-status.png",
       "image": "return_refund_status_dashboard.png",
       "purpose": "Explain return custody, inspection/status, delivery-charge refund status, and expected payment processing.",
       "actions": "View timeline; message support; view receipt.",
       "states": "Return required; returning; returned; refund pending; refunded; denied.",
-      "source": "Spec \u00a7\u00a710\u201311",
-      "constraints": "No buyer-protection or product-refund promise. Show only Couranr delivery-service financial status.",
-      "canonical_path": "canonical-mvp-images/customer/CUS-007_return-and-refund-status.png"
+      "source": "Spec §§10–11",
+      "constraints": "No buyer-protection or product-refund promise. Show only Couranr delivery-service financial status."
     },
     {
       "id": "CUS-008",
       "surface": "Customer",
       "name": "Delivery preferences and access instructions",
-      "route": "/track/[token]#access",
+      "routes": [
+        "/track/[token]#access"
+      ],
+      "route_label": "/track/[token]#access",
       "tier": "Core",
-      "phase": "7\u20138",
+      "phase": "7–8",
       "viewport": "Mobile-first responsive",
+      "canonical_path": "canonical-mvp-images/customer/CUS-008_delivery-preferences-and-access-instructions.png",
       "image": "submit_a_title_for_this_image.png",
       "purpose": "Confirm address, access, allowed handoff, leave-at-door authorization, and delivery window.",
       "actions": "Edit allowed instructions; choose handoff; save.",
       "states": "Editable before lock; locked after pickup; unsafe option disabled; saved.",
-      "source": "Spec \u00a7\u00a78, 11\u201312",
-      "constraints": "No 24/7 support claim. Gate codes and sensitive instructions must be protected and shown only to assigned driver/Couranr.",
-      "canonical_path": "canonical-mvp-images/customer/CUS-008_delivery-preferences-and-access-instructions.png"
+      "source": "Spec §§8, 11–12",
+      "constraints": "No 24/7 support claim. Gate codes and sensitive instructions must be protected and shown only to assigned driver/Couranr."
     }
   ]
 }

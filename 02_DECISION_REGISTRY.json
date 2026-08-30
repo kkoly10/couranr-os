@@ -1,8 +1,21 @@
 {
   "$schema_version": "1.0",
-  "product": "Couranr — local delivery infrastructure for local businesses",
+  "product": "Couranr — one local delivery brand with two entry paths: Couranr Same Day for people, Couranr for Business for local businesses",
   "generated_from": {
-    "authority_order": [
+    "$class": "HISTORICAL PROVENANCE — not a precedence list.",
+    "$note": [
+      "This block records which documents this registry was DERIVED FROM when it was",
+      "first generated. It used to be called `authority_order`, and that name made the",
+      "rank-1 product authority declare two of its own mirrors as ranking above it —",
+      "a cycle, since UI_SCREEN_REGISTRY.md is generated from ui_screen_registry.json",
+      "and the Master Package is being reduced to historical doctrine.",
+      "",
+      "Current precedence is declared in exactly one place:",
+      "docs/couranr-mvp/authority/AUTHORITY_MANIFEST.json. This file is the writable",
+      "authority for the product-decisions domain, and nothing listed below outranks",
+      "it. Where a derivation source and a decision here disagree, the decision wins."
+    ],
+    "derived_from": [
       "Couranr_Claude_Code_Master_Package.md",
       "UI_SCREEN_REGISTRY.md",
       "ui_screen_registry.json",
@@ -29,7 +42,7 @@
         "stored_as": "integer cents"
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§4 Pricing registry — Standard delivery",
       "affected_routes": [
         "/estimate",
@@ -77,7 +90,7 @@
         "validation": "server-side distance validation required"
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§4 Pricing registry — Standard delivery",
       "affected_routes": [
         "/estimate",
@@ -146,7 +159,7 @@
         }
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§4 Pricing registry — Standard delivery",
       "affected_routes": [
         "/estimate",
@@ -237,7 +250,7 @@
         }
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§4 Pricing registry — Service-level charges; Additional charges",
       "affected_routes": [
         "/estimate",
@@ -292,7 +305,7 @@
         "pilot_payer": "merchant normally pays"
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§4 Pricing registry — Route Saver",
       "affected_routes": [
         "/pricing",
@@ -342,7 +355,7 @@
         "tips_driver_share_percent": 100
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§4 Pricing registry — Internal economics",
       "affected_routes": [
         "/operations/analytics",
@@ -384,7 +397,7 @@
         ]
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§4 Pricing registry — Promotional credit",
       "affected_routes": [
         "/operations/deliveries/[id]"
@@ -421,7 +434,7 @@
         "split_payments_in_mvp": false
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§7 Merchant-paid and customer-paid workflows",
       "affected_routes": [
         "/business/onboarding",
@@ -463,7 +476,7 @@
         "after_pickup": "normally not allowed"
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§7 — Payer changes",
       "affected_routes": [
         "/operations/deliveries/[id]"
@@ -505,7 +518,7 @@
         "customer_payment_before_merchant_validation": false
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§7 Merchant-paid; Customer-paid merchant link; Customer-initiated hosted request",
       "affected_routes": [
         "/pay/[token]",
@@ -569,7 +582,7 @@
         }
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§11 Delivery lifecycle — Cancellation",
       "affected_routes": [
         "/help/[token]",
@@ -615,7 +628,7 @@
         "delivery_refund_authority": "Couranr Operations"
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§11 Delivery lifecycle — Return; §8 authority",
       "affected_routes": [
         "/operations/refunds",
@@ -657,8 +670,8 @@
         ]
       },
       "status": "decided",
-      "authority_file": "UI_SCREEN_REGISTRY.md",
-      "authority_section": "§3 Global content and behavior corrections",
+      "authority_file": "ui_screen_registry.json",
+      "authority_section": "§3 Global content and behavior corrections (section numbers are the rendered view's; UI_SCREEN_REGISTRY.md is generated from this source)",
       "affected_routes": [
         "/pricing",
         "/help/[token]"
@@ -717,7 +730,7 @@
         ]
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§3 Markets and operating model — Hours",
       "affected_routes": [
         "/estimate",
@@ -830,7 +843,7 @@
         "no_overnight_fee_when": "delay is solely caused by Couranr"
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§3 Hours; §4 Service-level charges; §11 Weather",
       "affected_routes": [
         "/estimate",
@@ -875,7 +888,7 @@
         "public_copy": "Local business delivery across DC, Stafford, Woodbridge, Fredericksburg, and surrounding areas."
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§3 Markets and operating model — Initial marketed markets",
       "affected_routes": [
         "/service-areas",
@@ -916,7 +929,7 @@
         "extended_distance": "available subject to review"
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§3 Markets and operating model",
       "affected_routes": [
         "/estimate",
@@ -951,7 +964,7 @@
       "decision": "The precise geographic boundary of each named market, and of 'surrounding areas', is not defined by any authority.",
       "value": null,
       "status": "unresolved",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§3 — names markets but supplies no boundary definition",
       "affected_routes": [
         "/estimate",
@@ -1021,8 +1034,8 @@
         "wordmark": "lowercase couranr"
       },
       "status": "decided",
-      "authority_file": "UI_SCREEN_REGISTRY.md",
-      "authority_section": "§2 MVP visual system; §3 Global content and behavior corrections",
+      "authority_file": "ui_screen_registry.json",
+      "authority_section": "§2 MVP visual system; §3 Global content and behavior corrections (section numbers are the rendered view's; UI_SCREEN_REGISTRY.md is generated from this source)",
       "affected_routes": [
         "/",
         "/pricing",
@@ -1105,7 +1118,7 @@
         ]
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§8 Canonical states and authority",
       "affected_routes": [
         "/business/deliveries/[id]",
@@ -1162,7 +1175,7 @@
         ]
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§8 Canonical states — Fulfillment",
       "affected_routes": [
         "/driver/deliveries/[id]",
@@ -1245,7 +1258,7 @@
         }
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§8 Canonical states and authority; UI_SCREEN_REGISTRY.md §10",
       "affected_routes": [
         "/driver/deliveries/[id]",
@@ -1554,7 +1567,7 @@
         "material_discrepancy": "pauses pickup and may require requote"
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§11 Delivery lifecycle, proof, exceptions, and returns",
       "affected_routes": [
         "/driver/deliveries/[id]",
@@ -1612,7 +1625,7 @@
         "notification_copy_may_contain_proof_urls": false
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§15 Legacy quarantine (replace public proof storage); §17 Analytics (no proof URLs); UI_SCREEN_REGISTRY.md §7",
       "affected_routes": [
         "/track/[token]",
@@ -1666,7 +1679,7 @@
         ]
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§9 Vehicle and dispatch model; UI_SCREEN_REGISTRY.md §3",
       "affected_routes": [
         "/operations/queue",
@@ -1719,7 +1732,7 @@
         "ghost_drafts_may_launch_with_auto_replies_disabled": true
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§18 Release authority",
       "affected_routes": [],
       "affected_screen_ids": [
@@ -1772,7 +1785,7 @@
         "availability_states_are_operational_not_flags": true
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§3 Hours; §13 AI systems; §18 Release authority",
       "affected_routes": [
         "/operations/settings"
@@ -1804,7 +1817,7 @@
       "decision": "The storage mechanism, scope and audit model for feature flags is not specified.",
       "value": null,
       "status": "unresolved",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§18 names the capabilities but not their implementation",
       "affected_routes": [
         "/operations/settings"
@@ -1848,7 +1861,7 @@
         "replacement_mode": "structural replacement, not copy edit — the legacy page markets three legacy product lines to consumers, so no subset of it survives a copy rewrite"
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§15 Legacy quarantine — Replace; §16 Target routes",
       "affected_routes": [
         "/"
@@ -1873,7 +1886,11 @@
       "acceptance_criteria": [
         "Exactly one page resolves '/' and it is the canonical PUB-001.",
         "The replacement is built from MKT-002's approved structure and copy, not by editing app/page.tsx in place."
-      ]
+      ],
+      "amended_by": [
+        "LEG-004"
+      ],
+      "note": "Amended by LEG-004: PUB-001's canonical route moved from / to /business when MKT-004 expanded Couranr into one master brand with two entry paths, and / became PUB-012. Preserved as the record of the original collision at /, which is what the legacy app/page.tsx occupied."
     },
     {
       "id": "LEG-002",
@@ -1890,7 +1907,7 @@
         "collision_status": "resolved"
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§15 Legacy quarantine — Replace; §16 Target routes",
       "affected_routes": [
         "/driver"
@@ -1954,7 +1971,7 @@
         ]
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§15 Legacy quarantine — Disable; Redirect",
       "affected_routes": [
         "/courier/quote",
@@ -2026,8 +2043,8 @@
         "no_post_mvp_screen_in_navigation": true
       },
       "status": "decided",
-      "authority_file": "UI_SCREEN_REGISTRY.md",
-      "authority_section": "§4 Route and screen registry; §9 Deferred and noncanonical visual inventory; §10 UI completion definition",
+      "authority_file": "ui_screen_registry.json",
+      "authority_section": "§4 Route and screen registry; §9 Deferred and noncanonical visual inventory; §10 UI completion definition (section numbers are the rendered view's; UI_SCREEN_REGISTRY.md is generated from this source)",
       "affected_routes": [],
       "affected_screen_ids": [
         "OPS-014",
@@ -2055,7 +2072,11 @@
       "acceptance_criteria": [
         "No auto or docs route is reachable from canonical navigation.",
         "All 66 canonical screens exist before the canary."
-      ]
+      ],
+      "amended_by": [
+        "CLS-002"
+      ],
+      "note": "Superseded on its CLASSIFICATION COUNTS ONLY by CLS-002 (68/64/4). Everything else in this record — archived domains, post-MVP and rejected inventories, the MVP-complete id set, and the no-post-MVP-in-navigation rule — remains in force. Preserved as the historical record of the sixty-six-screen classification."
     },
     {
       "id": "PRC-004",
@@ -2067,7 +2088,7 @@
         "known": "Final total is rounded to the nearest $0.25 'when the accepted pricing policy requires it'."
       },
       "status": "unresolved",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§4 Pricing registry — Additional charges (final paragraph)",
       "affected_routes": [
         "/estimate",
@@ -2109,7 +2130,7 @@
       "decision": "Tax treatment of the delivery charge is not addressed by any authority.",
       "value": null,
       "status": "unresolved",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§4 Pricing registry — no tax line exists",
       "affected_routes": [
         "/pay/[token]",
@@ -2231,7 +2252,7 @@
       "decision": "The request-and-enable mechanism for overnight is not specified.",
       "value": null,
       "status": "unresolved",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§3 Hours — 'when Couranr enables and confirms it'",
       "affected_routes": [
         "/estimate",
@@ -2278,8 +2299,8 @@
         "still_canonical_mvp": true
       },
       "status": "intentionally_deferred",
-      "authority_file": "UI_SCREEN_REGISTRY.md",
-      "authority_section": "§8 Implementation order",
+      "authority_file": "ui_screen_registry.json",
+      "authority_section": "§8 Implementation order (section numbers are the rendered view's; UI_SCREEN_REGISTRY.md is generated from this source)",
       "affected_routes": [
         "/operations/ghost",
         "/operations/incidents"
@@ -2326,7 +2347,7 @@
         "auto_reply_requires_verifier_pass": true
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§13 AI systems; UI_SCREEN_REGISTRY.md §3",
       "affected_routes": [
         "/operations/ghost",
@@ -2425,7 +2446,8 @@
       "category": "merchant positioning and marketing claims",
       "decision": "Couranr is positioned to independent local businesses as delivery infrastructure that lets them say yes to delivery without a marketplace, a fleet, or losing the customer relationship. Couranr enables merchants to serve more demand and must never claim to generate customers, leads or product sales.",
       "amended_by": [
-        "MKT-003"
+        "MKT-003",
+        "MKT-004"
       ],
       "value": {
         "internal_category": "local delivery infrastructure for independent local businesses",
@@ -2852,6 +2874,234 @@
         "No visual-completion claim is made for any screen without native-mock region review, runtime responsive QA at real browser widths, and an accessibility pass.",
         "Propagation to another surface family does not begin until PUB-001 has passed all three gates."
       ]
+    },
+    {
+      "id": "MKT-004",
+      "category": "merchant positioning and marketing claims",
+      "decision": "Couranr is one master public brand with two delivery entry paths: Couranr Same Day, direct-consumer local delivery for something the person already has or has already bought, ordered or arranged; and Couranr for Business, delivery infrastructure where the merchant keeps the customer, order and merchandise relationship. This EXPANDS the Couranr public brand; it does not repeal MKT-002, which remains authoritative for PUB-001, /business and every merchant-positioning claim.",
+      "amends": "MKT-002",
+      "value": {
+        "entry_paths": [
+          {
+            "name": "Couranr Same Day",
+            "audience": "direct consumer",
+            "scope": "send something the person already has; collect something already bought, ordered or arranged",
+            "screen_ids": [
+              "PUB-013",
+              "PUB-004"
+            ]
+          },
+          {
+            "name": "Couranr for Business",
+            "audience": "independent local businesses",
+            "scope": "delivery infrastructure; the merchant keeps the customer, order and merchandise relationship",
+            "screen_ids": [
+              "PUB-001"
+            ]
+          }
+        ],
+        "master_surface": "PUB-012 at / routes a visitor to one of the two paths and carries no merchant-positioning claim of its own",
+        "mkt_002_scope_after_this": "PUB-001, Couranr for Business, /business, all merchant-positioning claims, and the prohibition on claiming Couranr generates merchant customers, leads or product sales",
+        "consumer_guardrail": {
+          "is_not": [
+            "a marketplace",
+            "a restaurant marketplace",
+            "a product catalog",
+            "a grocery storefront",
+            "a general task marketplace"
+          ],
+          "collection_rule": "For collect-for-me, the underlying merchandise or service is already purchased or arranged elsewhere. Couranr moves it; Couranr does not sell it."
+        },
+        "product_description_before": "Couranr — local delivery infrastructure for local businesses",
+        "product_description_after": "Couranr — one local delivery brand with two entry paths: Couranr Same Day for people, Couranr for Business for local businesses"
+      },
+      "status": "decided",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§2 Product promise and boundaries; §3 Markets and operating model",
+      "affected_routes": [
+        "/",
+        "/business",
+        "/sameday",
+        "/send"
+      ],
+      "affected_screen_ids": [
+        "PUB-001",
+        "PUB-004",
+        "PUB-012",
+        "PUB-013"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [
+        "app/(couranr)/(public)",
+        "lib/couranr/public/governed.ts"
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "public_brand": "merchant-only",
+          "consumer_entry_path": "none"
+        },
+        "code_location": "app/(couranr)/(public)/page.tsx",
+        "resolution": "Written authority wins. The canonical sources describe the two-path brand as of this record; the pages are a later frontend slice and are NOT rendered by this change.",
+        "remediation_commit": "master and Same Day frontend slice"
+      },
+      "implementation_phase": "10",
+      "acceptance_criteria": [
+        "No public surface describes Couranr as serving businesses only.",
+        "No Same Day surface offers a catalog, a menu, a storefront or a general task.",
+        "Every merchant-positioning claim stays on PUB-001 and stays governed by MKT-002."
+      ],
+      "decided_by": "owner",
+      "decided_at_utc": "2026-08-29T00:00:00Z"
+    },
+    {
+      "id": "LEG-004",
+      "category": "legacy-route treatment",
+      "decision": "Canonical public route ownership is: / to PUB-012, /business to PUB-001, /businesses to PUB-009, /sameday to PUB-013, /send to PUB-004 as the preferred consumer entry, /estimate to PUB-004 as a compatibility route, /request/[merchantSlug] to PUB-004 merchant-hosted, and /app/business plus /app/business/* to the authenticated merchant application MER-001 through MER-016. This amends LEG-001's statement that / is PUB-001's canonical route.",
+      "amends": "LEG-001",
+      "value": {
+        "route_owners": {
+          "/": "PUB-012",
+          "/business": "PUB-001",
+          "/businesses": "PUB-009",
+          "/sameday": "PUB-013",
+          "/send": "PUB-004",
+          "/estimate": "PUB-004",
+          "/request/[merchantSlug]": "PUB-004",
+          "/app/business": "MER-001",
+          "/app/business/*": "MER-002 through MER-016"
+        },
+        "pub_004_treatment": "One canonical screen family with route and mode variants. No new screen id for /send.",
+        "preferred_consumer_entry": "/send",
+        "leg_001_before": "canonical_route / for PUB-001, occupied by the legacy app/page.tsx",
+        "leg_001_after": "PUB-001's visual and content authority moves with it to /business; LEG-001 is preserved as the historical record of the collision at /",
+        "materialized_in": [
+          "ui_screen_registry.json",
+          "docs/couranr-mvp/SCREEN_IMPLEMENTATION_LEDGER.csv",
+          "docs/couranr-mvp/ui-reference/VISUAL_REGISTRY.json"
+        ]
+      },
+      "status": "decided",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§16 Target routes; §15 Legacy quarantine",
+      "affected_routes": [
+        "/",
+        "/business",
+        "/businesses",
+        "/sameday",
+        "/send",
+        "/estimate",
+        "/request/[merchantSlug]",
+        "/app/business"
+      ],
+      "affected_screen_ids": [
+        "PUB-001",
+        "PUB-004",
+        "PUB-009",
+        "PUB-012",
+        "PUB-013",
+        "MER-001",
+        "MER-002",
+        "MER-003",
+        "MER-004",
+        "MER-005",
+        "MER-006",
+        "MER-007",
+        "MER-008",
+        "MER-009",
+        "MER-010",
+        "MER-011",
+        "MER-012",
+        "MER-013",
+        "MER-014",
+        "MER-015",
+        "MER-016"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [
+        "app/(couranr)/(public)",
+        "app/(couranr)/business",
+        "lib/couranr/navigation.ts"
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "pub_001_route": "/",
+          "merchant_root": "/business",
+          "sameday": "none",
+          "send": "none"
+        },
+        "code_location": "app/(couranr)/(public)/page.tsx, app/(couranr)/business/**",
+        "resolution": "Written authority wins. The canonical sources carry the target topology as of this record; the routes themselves are NOT moved by this change, and every affected screen's ledger row records the move as remaining work.",
+        "remediation_commit": "master and Same Day frontend slice"
+      },
+      "implementation_phase": "10",
+      "acceptance_criteria": [
+        "Exactly one page resolves each canonical route above.",
+        "The merchant application is reachable only under /app/business.",
+        "/estimate keeps working after /send ships."
+      ],
+      "decided_by": "owner",
+      "decided_at_utc": "2026-08-29T00:00:00Z"
+    },
+    {
+      "id": "CLS-002",
+      "category": "canonical/deferred/archive classification",
+      "decision": "The canonical MVP is sixty-eight screens: sixty-four Core and four MVP-complete. PUB-012 (Couranr master homepage) and PUB-013 (Couranr Same Day) are added as Core. This amends ONLY CLS-001's classification counts; every other part of CLS-001 — the archived domains, the post-MVP and rejected inventories, the mvp_complete set, and the rule that no post-MVP screen appears in navigation — is unchanged and remains in force.",
+      "amends": "CLS-001",
+      "value": {
+        "canonical_screens": 68,
+        "core": 64,
+        "mvp_complete": 4,
+        "mvp_complete_ids": [
+          "OPS-014",
+          "OPS-017",
+          "OPS-018",
+          "OPS-021"
+        ],
+        "added_screen_ids": [
+          "PUB-012",
+          "PUB-013"
+        ],
+        "amended_scope": "CLS-001.value.canonical_screens, .core and .mvp_complete only",
+        "unchanged_from_cls_001": [
+          "archived_domains",
+          "post_mvp_examples",
+          "rejected_for_pilot",
+          "mvp_complete_ids",
+          "no_post_mvp_screen_in_navigation"
+        ]
+      },
+      "status": "decided",
+      "authority_file": "ui_screen_registry.json",
+      "authority_section": "the screens array (section numbers are the rendered view's; UI_SCREEN_REGISTRY.md is generated from this source)",
+      "affected_routes": [
+        "/",
+        "/sameday"
+      ],
+      "affected_screen_ids": [
+        "PUB-012",
+        "PUB-013"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [
+        "lib/couranr/screens.ts",
+        "scripts/governance/check.mjs"
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "canonical_screens": 66,
+          "core": 62
+        },
+        "code_location": "ui_screen_registry.json before this amendment",
+        "resolution": "The screen source and this record are reconciled mechanically by `npm run check:governance`, which fails if they disagree — so the count cannot be changed in one place only.",
+        "remediation_commit": "authority consolidation Phase D"
+      },
+      "implementation_phase": "10",
+      "acceptance_criteria": [
+        "Every registry, ledger, current-state summary, gate and test derives the canonical count from this record and the screen source, not from a literal.",
+        "CLS-001 remains readable as the historical record of the sixty-six-screen classification."
+      ],
+      "decided_by": "owner",
+      "decided_at_utc": "2026-08-29T00:00:00Z"
     }
   ]
 }

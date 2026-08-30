@@ -24,19 +24,18 @@ import { SignOutButton } from "@/components/couranr/auth/SignOutButton";
 
 /* ------------------------------------------------------------ 1. Public */
 
-export function PublicShell({
-  children,
-  notice,
-}: {
-  children: React.ReactNode;
-  /**
-   * Full-bleed bar rendered ABOVE the header — the placement both PUB-001
-   * artboards show. A SLOT, deliberately: this shell renders no market,
-   * pricing, hours or payer copy of its own (see the file header), so the
-   * caller supplies the content and the shell supplies only the geometry.
-   */
-  notice?: React.ReactNode;
-}) {
+/* NO NOTICE SLOT. This shell carried a `notice` prop — a full-bleed bar above
+   the header, the placement both PUB-001 artboards show — which the public
+   layout filled with MKT-001's markets sentence. The owner removed the bar on
+   2026-08-29, at both widths and on all five public pages.
+
+   The SLOT goes with it rather than being left empty. An unused slot is one
+   caller away from returning, and this file has the precedent written into it
+   already: the shared marketing eyebrow reached four screens with no mock
+   because the class survived its element. The shell's own rule is unchanged and
+   still worth stating — no shell renders market, pricing, hours or payer copy —
+   it simply has nothing above the header to render it into now. */
+export function PublicShell({ children }: { children: React.ReactNode }) {
   const items = navigationFor("public");
 
   /* No `cr-shell--public` modifier on the root. It existed to hang the sticky
@@ -49,8 +48,6 @@ export function PublicShell({
   return (
     <div className="cr-shell" data-couranr-surface="public">
       <SkipLink />
-
-      {notice ? <div className="cr-topnotice">{notice}</div> : null}
 
       <header className="cr-topbar">
         <Container>
@@ -105,8 +102,9 @@ export function PublicShell({
           routes, and a dead link is worse than a short footer. Its "Now
           serving" column lists the markets — MKT-001 owns those and SVC-002
           (the boundary) is unresolved, and this file's header rule is that no
-          shell renders market copy; PUB-001 renders it in the notice slot
-          above, where the caller supplies it. The three social accounts and the
+          shell renders market copy. PUB-001 renders that sentence in its own
+          service-areas card, which is where it lives now that the notice bar
+          above the header is gone. The three social accounts and the
           copyright line are likewise omitted: no account exists, and the legal
           entity name is not a settled fact.
 
