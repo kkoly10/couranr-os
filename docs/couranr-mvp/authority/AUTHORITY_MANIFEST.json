@@ -28,6 +28,23 @@
       "generated": []
     },
     {
+      "domain": "product-doctrine",
+      "authority": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "owns": [
+        "narrative workflows and actor responsibilities",
+        "permissions and lifecycle doctrine",
+        "behavioural boundaries not expressible as an atomic decision record",
+        "the AI and communication specification",
+        "the release acceptance matrix"
+      ],
+      "excludes": [
+        "atomic locked values — 02_DECISION_REGISTRY.json overrides this document wherever a later explicit decision amends it",
+        "execution history: the cutover matrix, the phased plan and the start prompt stay in the HISTORICAL Master Package"
+      ],
+      "generated": [],
+      "provenance": "Extracted verbatim from Couranr_Claude_Code_Master_Package.md. tests/couranr-product-spec.test.ts asserts byte-identity in both directions on every run, so the extraction cannot drift from the doctrine it was cut from."
+    },
+    {
       "domain": "screens-routes",
       "authority": "ui_screen_registry.json",
       "owns": [
@@ -111,14 +128,7 @@
       "generated": []
     }
   ],
-  "pending_domains": [
-    {
-      "domain": "product-doctrine",
-      "planned_authority": "docs/couranr-mvp/PRODUCT_SPEC.md",
-      "status": "not yet extracted",
-      "note": "Until this exists, Couranr_Claude_Code_Master_Package.md remains the live behavioural doctrine and is NOT yet reclassifiable as HISTORICAL."
-    }
-  ],
+  "pending_domains": [],
   "generated_marker": {
     "$rule": [
       "Every path listed under any domain's `generated` array must contain the marker",
@@ -154,6 +164,10 @@
     ],
     "marker_window_bytes": 1500,
     "historical": [
+      {
+        "path": "Couranr_Claude_Code_Master_Package.md",
+        "marker_exempt": "couranr_claude_code_package/00_PROVENANCE.md records that this file is BYTE-IDENTICAL to the delivered v1.0 package copy. A banner added here would break the identity that makes the unpacked package inspectable rather than merely present. Its doctrine is live at docs/couranr-mvp/PRODUCT_SPEC.md, verified byte-for-byte by tests/couranr-product-spec.test.ts."
+      },
       {
         "path": "couranr_claude_code_package/00_PROVENANCE.md",
         "marker_exempt": "unpacked v1.0 package original; preserved byte-for-byte as provenance. Editing it to label it would destroy the thing it is kept for."
@@ -208,6 +222,22 @@
       },
       {
         "path": "docs/couranr-mvp/PHASE8_RECONCILIATION.md"
+      },
+      {
+        "path": "couranr_claude_code_package/03_REPO_CUTOVER_MATRIX.md",
+        "marker_exempt": "unpacked v1.0 package original; see 00_PROVENANCE.md"
+      },
+      {
+        "path": "couranr_claude_code_package/05_AI_COMMUNICATION_SPEC.md",
+        "marker_exempt": "unpacked v1.0 package original; see 00_PROVENANCE.md"
+      },
+      {
+        "path": "couranr_claude_code_package/06_RELEASE_ACCEPTANCE_MATRIX.md",
+        "marker_exempt": "unpacked v1.0 package original; see 00_PROVENANCE.md"
+      },
+      {
+        "path": "couranr_claude_code_package/07_CLAUDE_CODE_START_PROMPT.md",
+        "marker_exempt": "unpacked v1.0 package original; see 00_PROVENANCE.md"
       }
     ],
     "evidence_directories": [

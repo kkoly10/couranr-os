@@ -42,7 +42,7 @@
         "stored_as": "integer cents"
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§4 Pricing registry — Standard delivery",
       "affected_routes": [
         "/estimate",
@@ -90,7 +90,7 @@
         "validation": "server-side distance validation required"
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§4 Pricing registry — Standard delivery",
       "affected_routes": [
         "/estimate",
@@ -159,7 +159,7 @@
         }
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§4 Pricing registry — Standard delivery",
       "affected_routes": [
         "/estimate",
@@ -250,7 +250,7 @@
         }
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§4 Pricing registry — Service-level charges; Additional charges",
       "affected_routes": [
         "/estimate",
@@ -305,7 +305,7 @@
         "pilot_payer": "merchant normally pays"
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§4 Pricing registry — Route Saver",
       "affected_routes": [
         "/pricing",
@@ -355,7 +355,7 @@
         "tips_driver_share_percent": 100
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§4 Pricing registry — Internal economics",
       "affected_routes": [
         "/operations/analytics",
@@ -397,7 +397,7 @@
         ]
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§4 Pricing registry — Promotional credit",
       "affected_routes": [
         "/operations/deliveries/[id]"
@@ -434,7 +434,7 @@
         "split_payments_in_mvp": false
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§7 Merchant-paid and customer-paid workflows",
       "affected_routes": [
         "/business/onboarding",
@@ -476,7 +476,7 @@
         "after_pickup": "normally not allowed"
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§7 — Payer changes",
       "affected_routes": [
         "/operations/deliveries/[id]"
@@ -518,7 +518,7 @@
         "customer_payment_before_merchant_validation": false
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§7 Merchant-paid; Customer-paid merchant link; Customer-initiated hosted request",
       "affected_routes": [
         "/pay/[token]",
@@ -582,7 +582,7 @@
         }
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§11 Delivery lifecycle — Cancellation",
       "affected_routes": [
         "/help/[token]",
@@ -628,7 +628,7 @@
         "delivery_refund_authority": "Couranr Operations"
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§11 Delivery lifecycle — Return; §8 authority",
       "affected_routes": [
         "/operations/refunds",
@@ -730,7 +730,7 @@
         ]
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§3 Markets and operating model — Hours",
       "affected_routes": [
         "/estimate",
@@ -843,7 +843,7 @@
         "no_overnight_fee_when": "delay is solely caused by Couranr"
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§3 Hours; §4 Service-level charges; §11 Weather",
       "affected_routes": [
         "/estimate",
@@ -888,7 +888,7 @@
         "public_copy": "Local business delivery across DC, Stafford, Woodbridge, Fredericksburg, and surrounding areas."
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§3 Markets and operating model — Initial marketed markets",
       "affected_routes": [
         "/service-areas",
@@ -929,7 +929,7 @@
         "extended_distance": "available subject to review"
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§3 Markets and operating model",
       "affected_routes": [
         "/estimate",
@@ -964,7 +964,7 @@
       "decision": "The precise geographic boundary of each named market, and of 'surrounding areas', is not defined by any authority.",
       "value": null,
       "status": "unresolved",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§3 — names markets but supplies no boundary definition",
       "affected_routes": [
         "/estimate",
@@ -1118,7 +1118,7 @@
         ]
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§8 Canonical states and authority",
       "affected_routes": [
         "/business/deliveries/[id]",
@@ -1175,7 +1175,7 @@
         ]
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§8 Canonical states — Fulfillment",
       "affected_routes": [
         "/driver/deliveries/[id]",
@@ -1258,7 +1258,7 @@
         }
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§8 Canonical states and authority; UI_SCREEN_REGISTRY.md §10",
       "affected_routes": [
         "/driver/deliveries/[id]",
@@ -1567,7 +1567,7 @@
         "material_discrepancy": "pauses pickup and may require requote"
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§11 Delivery lifecycle, proof, exceptions, and returns",
       "affected_routes": [
         "/driver/deliveries/[id]",
@@ -1625,7 +1625,7 @@
         "notification_copy_may_contain_proof_urls": false
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§15 Legacy quarantine (replace public proof storage); §17 Analytics (no proof URLs); UI_SCREEN_REGISTRY.md §7",
       "affected_routes": [
         "/track/[token]",
@@ -1679,7 +1679,7 @@
         ]
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§9 Vehicle and dispatch model; UI_SCREEN_REGISTRY.md §3",
       "affected_routes": [
         "/operations/queue",
@@ -1732,7 +1732,7 @@
         "ghost_drafts_may_launch_with_auto_replies_disabled": true
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§18 Release authority",
       "affected_routes": [],
       "affected_screen_ids": [
@@ -1785,7 +1785,7 @@
         "availability_states_are_operational_not_flags": true
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§3 Hours; §13 AI systems; §18 Release authority",
       "affected_routes": [
         "/operations/settings"
@@ -1817,7 +1817,7 @@
       "decision": "The storage mechanism, scope and audit model for feature flags is not specified.",
       "value": null,
       "status": "unresolved",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§18 names the capabilities but not their implementation",
       "affected_routes": [
         "/operations/settings"
@@ -1861,7 +1861,7 @@
         "replacement_mode": "structural replacement, not copy edit — the legacy page markets three legacy product lines to consumers, so no subset of it survives a copy rewrite"
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§15 Legacy quarantine — Replace; §16 Target routes",
       "affected_routes": [
         "/"
@@ -1903,7 +1903,7 @@
         "collision_status": "resolved"
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§15 Legacy quarantine — Replace; §16 Target routes",
       "affected_routes": [
         "/driver"
@@ -1967,7 +1967,7 @@
         ]
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§15 Legacy quarantine — Disable; Redirect",
       "affected_routes": [
         "/courier/quote",
@@ -2080,7 +2080,7 @@
         "known": "Final total is rounded to the nearest $0.25 'when the accepted pricing policy requires it'."
       },
       "status": "unresolved",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§4 Pricing registry — Additional charges (final paragraph)",
       "affected_routes": [
         "/estimate",
@@ -2122,7 +2122,7 @@
       "decision": "Tax treatment of the delivery charge is not addressed by any authority.",
       "value": null,
       "status": "unresolved",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§4 Pricing registry — no tax line exists",
       "affected_routes": [
         "/pay/[token]",
@@ -2244,7 +2244,7 @@
       "decision": "The request-and-enable mechanism for overnight is not specified.",
       "value": null,
       "status": "unresolved",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§3 Hours — 'when Couranr enables and confirms it'",
       "affected_routes": [
         "/estimate",
@@ -2339,7 +2339,7 @@
         "auto_reply_requires_verifier_pass": true
       },
       "status": "decided",
-      "authority_file": "Couranr_Claude_Code_Master_Package.md",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
       "authority_section": "§13 AI systems; UI_SCREEN_REGISTRY.md §3",
       "affected_routes": [
         "/operations/ghost",
