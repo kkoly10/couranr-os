@@ -13,7 +13,7 @@
  *   - a filename in the map does not exist at the repo root
  *   - a root PNG is claimed by no screen and is not on the unmapped list
  *   - a file is claimed twice (by two screens, or by a screen and the list)
- *   - a screen ID in the map is not one of the 66 in UI_SCREEN_REGISTRY.md
+ *   - a screen ID in the map is not one of the canonical screens
  *   - the census table's numbers disagree with what was just counted
  *
  * `--positive-control` proves the gate can go red: it runs the same scan
@@ -87,7 +87,19 @@ function scan(doc) {
     fail.push(`${unaccounted.length} root PNG(s) claimed by nothing: ${unaccounted.join(", ")}`);
   }
 
-  /* 4. screen IDs are the registry's */
+  /* 4. screen IDs are the registry's.
+
+     DERIVED, NOT PINNED. This gate hardcoded the literal 66 in five places —
+     a count comparison, two report strings, a subtraction, and a regex that
+     parsed "of 66" back out of the document it validates. Every one of them
+     would have had to be found and edited by hand for the canonical set to
+     change size, and a gate that must be edited to stay true is a gate that
+     goes stale silently. The count comes from the screen-topology authority
+     now; the Markdown is a generated view of that source. */
+  const canonical = JSON.parse(
+    readFileSync(join(repo, "ui_screen_registry.json"), "utf8"),
+  ).screens.map((x) => x.id);
+  const CANONICAL_COUNT = canonical.length;
   const registry = readFileSync(join(repo, "UI_SCREEN_REGISTRY.md"), "utf8");
   const known = new Set(
     [...registry.matchAll(/\b((?:PUB|MER|DRV|OPS|CUS)-\d{3})\b/g)].map((m) => m[1]),
@@ -95,18 +107,18 @@ function scan(doc) {
   for (const id of Object.keys(screens)) {
     if (!known.has(id)) fail.push(`"${id}" is not a screen ID in UI_SCREEN_REGISTRY.md`);
   }
-  if (Object.keys(screens).length !== 66) {
-    fail.push(`map covers ${Object.keys(screens).length} screens, registry has 66`);
+  if (Object.keys(screens).length !== CANONICAL_COUNT) {
+    fail.push(`map covers ${Object.keys(screens).length} screens, registry has ${CANONICAL_COUNT}`);
   }
 
   /* 5. the census table matches what was just counted */
   const withMockCount = Object.values(screens).filter((v) => v.length).length;
   const rows = {
     "PNGs at repo root": onDisk.length,
-    "…that map to one of the 66 registry screens": claimedBy.size,
+    [`…that map to one of the ${CANONICAL_COUNT} registry screens`]: claimedBy.size,
     "…that depict a screen **not** in the registry, or are photography": unmapped.size,
     "…unaccounted for": unaccounted.length,
-    "Registry screens with **no** mock": 66 - withMockCount,
+    "Registry screens with **no** mock": CANONICAL_COUNT - withMockCount,
   };
   for (const [label, want] of Object.entries(rows)) {
     const esc = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -116,7 +128,9 @@ function scan(doc) {
       fail.push(`census "${label}": table says ${row[1]}, disk says ${want}`);
     }
   }
-  const withMockRow = doc.match(/^\| Registry screens with at least one mock \| (\d+) of 66 \|$/m);
+  const withMockRow = doc.match(
+    new RegExp(`^\\| Registry screens with at least one mock \\| (\\d+) of ${CANONICAL_COUNT} \\|$`, "m"),
+  );
   if (!withMockRow) fail.push(`census table has no "at least one mock" row`);
   else if (Number(withMockRow[1]) !== withMockCount) {
     fail.push(`census "at least one mock": table says ${withMockRow[1]}, disk says ${withMockCount}`);
@@ -125,7 +139,7 @@ function scan(doc) {
   return {
     fail,
     summary:
-      `${onDisk.length} root PNGs, ${claimedBy.size} mapped to ${withMockCount}/66 screens, ` +
+      `${onDisk.length} root PNGs, ${claimedBy.size} mapped to ${withMockCount}/${CANONICAL_COUNT} screens, ` +
       `${unmapped.size} unmapped, ${unaccounted.length} unaccounted`,
   };
 }
