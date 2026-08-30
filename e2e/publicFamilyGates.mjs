@@ -69,7 +69,12 @@ const { chromium } = require(
 const AXE_SOURCE = readFileSync(require.resolve("axe-core/axe.min.js"), "utf8");
 
 /** §24.1 — the widths public marketing must be verified at. */
-const WIDTHS = [360, 390, 768, 1024, 1280, 1440];
+/* 320 is the narrowest width the V10 acceptance names for PUB-012 and PUB-013,
+   and it was missing: the list started at 360, so the gate reported six clean
+   widths while the narrowest one the work order asks about was never rendered.
+   Applied to every governed page, not just the two — an overflow at 320 is a
+   defect on /pricing too. */
+const WIDTHS = [320, 360, 390, 768, 1024, 1280, 1440];
 
 /** The four family pages and their expected sections, straight from §27.1. */
 const SPEC = readFileSync(

@@ -67,7 +67,23 @@ export function resolveAdapterMode(env: AdapterEnv = readAdapterEnv()): AdapterM
   const node = String(env.nodeEnv ?? "").toLowerCase();
   const vercel = String(env.vercelEnv ?? "").toLowerCase();
 
-  const isProduction = node === "production" || vercel === "production";
+  /* `VERCEL_ENV` WINS WHEN PRESENT, and getting this backwards made the preview
+     branch below unreachable.
+     Vercel's docs describe VERCEL_ENV as "the environment the app is running
+     on, such as production, preview, or development" — and Next sets
+     NODE_ENV=production for EVERY production build, previews included. So a
+     preview deployment is `NODE_ENV=production, VERCEL_ENV=preview`. Treating
+     NODE_ENV alone as authoritative classified every preview as production:
+     fixtures could never be enabled there, and a correctly configured preview
+     was reported as `production_override_refused` — a real misconfiguration
+     warning for a configuration that was right.
+     Found by trying to drive the fixture flow in a browser. The unit test
+     missed it because it asserted the no-flag preview case, where `disabled`
+     is correct either way.
+     Safety is unchanged in both directions: a real Vercel production
+     deployment sets VERCEL_ENV=production, and a non-Vercel production build
+     has no VERCEL_ENV and falls back to NODE_ENV. */
+  const isProduction = vercel ? vercel === "production" : node === "production";
   if (isProduction) {
     /* Asking for fixtures in production is a CONFIGURATION ERROR, surfaced as
        one. It still resolves disabled — the refusal is the behaviour, the flag

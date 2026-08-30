@@ -188,6 +188,21 @@ describe("normalizeNext refuses every external destination", () => {
 /* -------------------------------------------- cross-role next refusals */
 
 describe("resolveLanding honours next only within the caller's own surface", () => {
+  /* LEG-004 made `/business` PUB-001, a PUBLIC marketing page. A merchant
+     asking to land there is asking for a surface they do not own as a
+     merchant, so it must be refused the same way `/operations` is — and the
+     refusal is the redirect to where they DO belong, not a 403 they cannot
+     act on. This case did not exist before the move, because `/business` WAS
+     the merchant surface. */
+  it("refuses a merchant asking to land on /business, which is public now", () => {
+    for (const next of ["/business", "/business/deliveries", "/businesses"]) {
+      const d = resolveLanding(MERCHANT, next);
+      expect(d.usedNext, next).toBe(false);
+      expect(d.rejectedNextReason, next).toBe("wrong_surface");
+      expect(d.destination, next).toBe("/app/business");
+    }
+  });
+
   it("lets a merchant deep-link inside /app/business", () => {
     const d = resolveLanding(MERCHANT, "/app/business/deliveries/new");
     expect(d.destination).toBe("/app/business/deliveries/new");

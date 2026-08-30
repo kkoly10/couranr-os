@@ -44,14 +44,50 @@ describe("3. test and preview can select fixtures explicitly", () => {
     expect(resolveAdapterMode({ nodeEnv: "test" }).mode).toBe("fixture");
   });
 
-  it("enables preview fixtures ONLY with the server-side opt-in", () => {
-    expect(resolveAdapterMode({ nodeEnv: "production", vercelEnv: "preview" }).mode).toBe("disabled");
-    const off = resolveAdapterMode({ vercelEnv: "preview" });
-    expect(off.mode).toBe("disabled");
-    expect(off.reason).toBe("preview_not_enabled");
-    const on = resolveAdapterMode({ vercelEnv: "preview", fixtureFlag: "1" });
+  /* THE REALISTIC VERCEL SHAPE, which is what the first version of this test
+     missed. Next sets NODE_ENV=production for every production build, so a
+     preview deployment is `NODE_ENV=production, VERCEL_ENV=preview` — and the
+     resolver classified that as production, making this whole branch dead code
+     and reporting a correct preview config as a refused production override.
+     The old test asserted only the NO-FLAG preview case, where `disabled` is
+     right either way, so it passed over the bug. Both halves are asserted now. */
+  it("enables preview fixtures with the opt-in, on a REAL preview deployment", () => {
+    const on = resolveAdapterMode({
+      nodeEnv: "production",
+      vercelEnv: "preview",
+      fixtureFlag: "1",
+    });
     expect(on.mode).toBe("fixture");
     expect(on.reason).toBe("preview_enabled");
+    expect(on.misconfigured).toBe(false);
+  });
+
+  it("leaves a preview deployment disabled without the opt-in", () => {
+    for (const env of [
+      { nodeEnv: "production", vercelEnv: "preview" },
+      { vercelEnv: "preview" },
+    ]) {
+      const off = resolveAdapterMode(env);
+      expect(off.mode, JSON.stringify(env)).toBe("disabled");
+      expect(off.reason).toBe("preview_not_enabled");
+      expect(off.misconfigured).toBe(false);
+    }
+  });
+
+  /* VERCEL_ENV is authoritative when present, so a production deployment is
+     production no matter what NODE_ENV says — and a preview is not production
+     no matter what NODE_ENV says. Both directions, because getting either
+     wrong is a live defect. */
+  it("lets VERCEL_ENV decide, in both directions", () => {
+    expect(
+      resolveAdapterMode({ nodeEnv: "development", vercelEnv: "production", fixtureFlag: "1" }).mode,
+    ).toBe("disabled");
+    expect(
+      resolveAdapterMode({ nodeEnv: "production", vercelEnv: "development" }).mode,
+    ).toBe("disabled");
+    expect(
+      resolveAdapterMode({ nodeEnv: "production", vercelEnv: "preview", fixtureFlag: "1" }).mode,
+    ).toBe("fixture");
   });
 
   it("falls closed on an environment it does not recognise", () => {
