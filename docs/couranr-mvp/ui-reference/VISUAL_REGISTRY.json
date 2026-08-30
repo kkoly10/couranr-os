@@ -470,5 +470,1127 @@
         }
       }
     ]
+  },
+  "sources": {
+    "$note": [
+      "AUTHORITY for screen visual-source status: which design export backs which",
+      "canonical screen, whether that screen's visual authority is canonical or",
+      "derived, and what nested or provenance-only assets it additionally carries.",
+      "",
+      "This is the representation the PUB-004 contradiction was waiting for. Before",
+      "it existed, a screen's visual status was DERIVED FROM a root-PNG census map,",
+      "so a screen whose only delivered asset was nested could never be anything but",
+      "`derived` with an empty source list — while a second document recorded the",
+      "nested file as its canonical mockup. Two documents, two answers, no way to",
+      "state both. A screen can now be `derived` AND carry a nested reference,",
+      "because those are different fields.",
+      "",
+      "`root_sources` is the ROOT-PNG census: repo-root design exports only, which is",
+      "what `check:mocks` validates residency for. `nested_sources` is everything",
+      "else — a delivered canonical-mvp-images path, an approved photograph — with an",
+      "explicit `role`. A nested asset never enters the root census and never has to",
+      "masquerade as a root PNG to be recorded.",
+      "",
+      "`assets` carries one entry per repo-root PNG, all 91, including the ones no",
+      "canonical screen claims. `owner` is the provenance claim: a screen id, or a",
+      "`BRAND:`/`EXTRA:` tag for the brand sheet, the photography and the 19 mocks",
+      "that depict screens outside the registry. Where a root PNG's census screen and",
+      "its provenance owner DISAGREE, both are preserved and `disputed` names the",
+      "conflict — see `disputes` below. Resolving one is an owner decision, not a",
+      "cleanup."
+    ],
+    "screens": {
+      "PUB-001": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "0E4F029F-22C3-4497-A00F-E355DCB3164D.png",
+          "5780C3C2-8EFC-4BDC-87AA-85CE667921D8.png",
+          "22D9363D-248B-41C0-8C4F-2D38CB3BF3D3.png"
+        ]
+      },
+      "PUB-002": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "E3473C54-A4FF-41AD-BFF8-191C4F0F28AF.png"
+        ]
+      },
+      "PUB-003": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "77CC8223-1475-4C8E-A51B-E189F88AA261.png"
+        ]
+      },
+      "PUB-004": {
+        "visual_authority": "derived",
+        "root_sources": [],
+        "nested_sources": [
+          {
+            "path": "canonical-mvp-images/public/PUB-004_delivery-estimate-and-hosted-request.png",
+            "role": "reference",
+            "title": "delivery estimate and hosted request",
+            "note": "delivered 2026-07-31 as a named canonical mockup (not a root PNG)"
+          }
+        ]
+      },
+      "PUB-005": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "04089370-CE60-45CA-9C07-00F2D06966EF.png",
+          "719032FB-C2D3-42C8-A460-537DDA7733EE.png"
+        ]
+      },
+      "PUB-006": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "5D1A5F04-7525-43E6-9586-BA9187C1E171.png",
+          "0013FABA-3A96-48F9-B71C-B4BB0F08E8B4.png"
+        ]
+      },
+      "PUB-007": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "7079F03E-DEEE-449B-881F-8ED05FEE524A.png"
+        ]
+      },
+      "PUB-008": {
+        "visual_authority": "derived",
+        "root_sources": [],
+        "nested_sources": [
+          {
+            "path": "canonical-mvp-images/public/PUB-008_pricing-page.png",
+            "role": "reference",
+            "title": "pricing page",
+            "note": "delivered 2026-07-31 as a named canonical mockup (not a root PNG)"
+          }
+        ]
+      },
+      "PUB-009": {
+        "visual_authority": "derived",
+        "root_sources": []
+      },
+      "PUB-010": {
+        "visual_authority": "derived",
+        "root_sources": [],
+        "nested_sources": [
+          {
+            "path": "canonical-mvp-images/public/PUB-010_service-areas-page.png",
+            "role": "reference",
+            "title": "service areas page",
+            "note": "delivered 2026-07-31 as a named canonical mockup (not a root PNG)"
+          }
+        ]
+      },
+      "PUB-011": {
+        "visual_authority": "derived",
+        "root_sources": [],
+        "nested_sources": [
+          {
+            "path": "canonical-mvp-images/public/PUB-011_how-couranr-works.png",
+            "role": "reference",
+            "title": "how couranr works",
+            "note": "delivered 2026-07-31 as a named canonical mockup (not a root PNG)"
+          }
+        ]
+      },
+      "MER-001": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "E7CE45F8-2C85-4256-93AC-48BCC7F95FD4.png",
+          "D20A6432-D9BF-42C3-B65B-06954D771E37.png"
+        ]
+      },
+      "MER-002": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "E12C72B2-9DB9-427D-B47A-3021EBA56E85.png"
+        ]
+      },
+      "MER-003": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "F6BD39AA-E03A-4B31-9A7C-2DB765889B42.png"
+        ]
+      },
+      "MER-004": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "1691E20B-A9D7-45E8-AA68-D180D99D6FBC.png"
+        ]
+      },
+      "MER-005": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "69961CD8-3B66-4544-8053-8EAE1AD3BEE5.png",
+          "B40D5F72-9A62-4737-B85D-9601DF0E7D2B.png"
+        ]
+      },
+      "MER-006": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "04DF2721-97D2-472C-A3F1-CB6047E5298B.png"
+        ]
+      },
+      "MER-007": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "05C42ED1-7AD9-4A55-88CB-7784FD8F52E5.png",
+          "63B3950D-FC9E-4BB0-A896-F65EF4B03393.png"
+        ]
+      },
+      "MER-008": {
+        "visual_authority": "derived",
+        "root_sources": [],
+        "nested_sources": [
+          {
+            "path": "canonical-mvp-images/merchant/MER-008_customers-list.png",
+            "role": "reference",
+            "title": "customers list",
+            "note": "delivered 2026-07-31 as a named canonical mockup (not a root PNG)"
+          }
+        ]
+      },
+      "MER-009": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "0392E7FD-E057-4C5D-9886-94D09DEB2CC8.png"
+        ]
+      },
+      "MER-010": {
+        "visual_authority": "derived",
+        "root_sources": [],
+        "nested_sources": [
+          {
+            "path": "canonical-mvp-images/merchant/MER-010_presets-list.png",
+            "role": "reference",
+            "title": "presets list",
+            "note": "delivered 2026-07-31 as a named canonical mockup (not a root PNG)"
+          }
+        ]
+      },
+      "MER-011": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "DCFBA4C8-D2C7-4E7F-99D6-91B824D7EB89.png",
+          "935A5590-C4F0-410C-860C-1498AB9062AA.png"
+        ]
+      },
+      "MER-012": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "76A4F41E-4C1E-4A75-8860-AB0A0AEFDD86.png"
+        ]
+      },
+      "MER-013": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "05AC4274-C24F-4D52-8E6A-76C9573E0429.png",
+          "288BA2E3-B6CF-40DC-8442-9CD55BD87BF5.png",
+          "4E254F81-3608-48FD-A6F1-2E529A2D42EA.png",
+          "A2961811-7DB6-441A-A63D-FBCFA5603312.png"
+        ]
+      },
+      "MER-014": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "031480FD-EE0D-4371-9A71-DACFD0DF926F.png",
+          "6C50B445-2B6B-4544-B84A-74E722F2B51C.png"
+        ]
+      },
+      "MER-015": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "CFC37EF0-ECF0-41FE-A7B4-BA35FC9DFC89.png",
+          "838119C6-6DE5-4381-A4FC-A3AFE9839164.png"
+        ]
+      },
+      "MER-016": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "2EF4F6B4-803D-487A-846B-178DAEEE1957.png",
+          "88802AA2-1520-405B-906C-0BDC02B64B5E.png"
+        ]
+      },
+      "DRV-001": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "3C8B6C70-5641-4041-97DC-FAF90344A1CC.png"
+        ]
+      },
+      "DRV-002": {
+        "visual_authority": "derived",
+        "root_sources": [],
+        "nested_sources": [
+          {
+            "path": "canonical-mvp-images/driver/DRV-002_assigned-delivery-detail.png",
+            "role": "reference",
+            "title": "assigned delivery detail",
+            "note": "delivered 2026-07-31 as a named canonical mockup (not a root PNG)"
+          }
+        ]
+      },
+      "DRV-003": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "253D4868-0724-4A5D-ADBC-583E80DFDA37.png"
+        ]
+      },
+      "DRV-004": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "7C2BDE48-4216-43BA-8F10-10D8609855BF.png"
+        ]
+      },
+      "DRV-005": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "B2866999-DA54-447B-A056-B3B0D89AEFCE.png"
+        ]
+      },
+      "DRV-006": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "62765A9A-D258-43EB-8B59-144E493F7854.png"
+        ]
+      },
+      "DRV-007": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "E1C020D4-EDA9-476A-A83B-542FB054F902.png"
+        ]
+      },
+      "DRV-008": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "15101AAC-958E-4712-9FA6-5DDB8E6422A4.png"
+        ]
+      },
+      "DRV-009": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "0097C629-46A9-4341-9C6E-F66DDA9F3929.png",
+          "B1037D75-E40A-4DF1-896F-68E9426AB6AE.png"
+        ]
+      },
+      "DRV-010": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "84D76CDC-2678-4033-AB16-315923E38126.png"
+        ]
+      },
+      "OPS-001": {
+        "visual_authority": "derived",
+        "root_sources": [],
+        "nested_sources": [
+          {
+            "path": "canonical-mvp-images/operations/OPS-001_operations-dashboard.png",
+            "role": "reference",
+            "title": "operations dashboard",
+            "note": "delivered 2026-07-31 as a named canonical mockup (not a root PNG)"
+          }
+        ]
+      },
+      "OPS-002": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "71149E76-4674-441D-A490-D868FC2E0724.png",
+          "5CF6F81A-C1E3-4F69-B04E-C89552AE336B.png"
+        ]
+      },
+      "OPS-003": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "FE8171A0-DCFC-4C17-8FDD-8BE16A0AB4BC.png"
+        ]
+      },
+      "OPS-004": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "14B61228-795E-4BE9-9E23-F45DB9BB7A73.png"
+        ]
+      },
+      "OPS-005": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "892BDA6D-1BD9-4EDA-AD2B-8E9BDD07B5F3.png"
+        ],
+        "nested_sources": [
+          {
+            "path": "canonical-mvp-images/operations/OPS-005_operations-messages-and-support-inbox.png",
+            "role": "reference",
+            "title": "operations messages and support inbox",
+            "note": "delivered 2026-07-31 as a named canonical mockup (not a root PNG)"
+          }
+        ]
+      },
+      "OPS-006": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "B3F68382-797C-4AFB-B539-5A65C26F8853.png"
+        ]
+      },
+      "OPS-007": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "6A18B250-C883-41B6-8281-A426BE1CD45C.png"
+        ]
+      },
+      "OPS-008": {
+        "visual_authority": "derived",
+        "root_sources": [],
+        "nested_sources": [
+          {
+            "path": "canonical-mvp-images/operations/OPS-008_vehicle-management.png",
+            "role": "reference",
+            "title": "vehicle management",
+            "note": "delivered 2026-07-31 as a named canonical mockup (not a root PNG)"
+          }
+        ]
+      },
+      "OPS-009": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "D0713863-D737-426F-AC13-EDB791475D2D.png"
+        ]
+      },
+      "OPS-010": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "8E9685FE-86A0-426A-B613-EF0510DEFA44.png"
+        ]
+      },
+      "OPS-011": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "09A95BF3-BDCB-4942-B03C-85E586CC5236.png"
+        ]
+      },
+      "OPS-012": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "FBE79206-956C-436E-B4C7-3B15BCB664F2.png",
+          "6519CBA3-8AAA-45AB-941B-01B842703529.png"
+        ]
+      },
+      "OPS-013": {
+        "visual_authority": "derived",
+        "root_sources": [],
+        "nested_sources": [
+          {
+            "path": "canonical-mvp-images/operations/OPS-013_operations-analytics.png",
+            "role": "reference",
+            "title": "operations analytics",
+            "note": "delivered 2026-07-31 as a named canonical mockup (not a root PNG)"
+          }
+        ]
+      },
+      "OPS-014": {
+        "visual_authority": "derived",
+        "root_sources": [],
+        "nested_sources": [
+          {
+            "path": "canonical-mvp-images/operations/OPS-014_unmet-demand-analytics.png",
+            "role": "reference",
+            "title": "unmet demand analytics",
+            "note": "delivered 2026-07-31 as a named canonical mockup (not a root PNG)"
+          }
+        ]
+      },
+      "OPS-015": {
+        "visual_authority": "derived",
+        "root_sources": [],
+        "nested_sources": [
+          {
+            "path": "canonical-mvp-images/operations/OPS-015_operations-settings.png",
+            "role": "reference",
+            "title": "operations settings",
+            "note": "delivered 2026-07-31 as a named canonical mockup (not a root PNG)"
+          }
+        ]
+      },
+      "OPS-016": {
+        "visual_authority": "derived",
+        "root_sources": [],
+        "nested_sources": [
+          {
+            "path": "canonical-mvp-images/operations/OPS-016_availability-controls.png",
+            "role": "reference",
+            "title": "availability controls",
+            "note": "delivered 2026-07-31 as a named canonical mockup (not a root PNG)"
+          }
+        ]
+      },
+      "OPS-017": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "35621D0A-5CD3-468F-8532-9C32C5F3CBCF.png"
+        ]
+      },
+      "OPS-018": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "B1C34AC0-0B14-4A55-AE2D-0F3233EC6D71.png"
+        ]
+      },
+      "OPS-019": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "1E706B14-7209-47E6-A7E7-6C70F1958AAC.png"
+        ]
+      },
+      "OPS-020": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "E2947AC0-485C-4C1D-ADDB-F18B8148DBA0.png"
+        ]
+      },
+      "OPS-021": {
+        "visual_authority": "derived",
+        "root_sources": [],
+        "nested_sources": [
+          {
+            "path": "canonical-mvp-images/operations/OPS-021_ask-couranr-lead-inbox.png",
+            "role": "reference",
+            "title": "ask couranr lead inbox",
+            "note": "delivered 2026-07-31 as a named canonical mockup (not a root PNG)"
+          }
+        ]
+      },
+      "CUS-001": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "6C497840-4A07-46CC-B5F3-49D8E32885BF.png",
+          "EB2D3712-19D9-4611-A801-575DCA894C0F.png"
+        ]
+      },
+      "CUS-002": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "B9EA1FCA-CEF2-4577-900F-EB6315DA5018.png"
+        ]
+      },
+      "CUS-003": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "7945BB0F-4051-4FB3-A900-DCF95F1BD7BE.png"
+        ]
+      },
+      "CUS-004": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "2905409D-3BD4-47CA-AE53-093BB3B3E21D.png"
+        ]
+      },
+      "CUS-005": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "74EAB167-FDAE-477C-896A-A64B59BC8A1C.png"
+        ]
+      },
+      "CUS-006": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "95A1E901-A1E9-4513-94EA-1E1DA97192E4.png",
+          "BFAD28C4-1596-43D8-A9DD-233A6254127D.png"
+        ]
+      },
+      "CUS-007": {
+        "visual_authority": "canonical",
+        "root_sources": [
+          "7E90D5F2-A71E-479A-A33F-D4E8D7F8801B.png"
+        ]
+      },
+      "CUS-008": {
+        "visual_authority": "derived",
+        "root_sources": [],
+        "nested_sources": [
+          {
+            "path": "canonical-mvp-images/customer/CUS-008_delivery-preferences-and-access-instructions.png",
+            "role": "reference",
+            "title": "delivery preferences and access instructions",
+            "note": "delivered 2026-07-31 as a named canonical mockup (not a root PNG)"
+          }
+        ]
+      }
+    },
+    "assets": {
+      "0013FABA-3A96-48F9-B71C-B4BB0F08E8B4.png": {
+        "class": "screen-mock",
+        "owner": "PUB-006",
+        "title": "Track your delivery",
+        "note": "desktop"
+      },
+      "0097C629-46A9-4341-9C6E-F66DDA9F3929.png": {
+        "class": "screen-mock",
+        "owner": "DRV-009",
+        "title": "Availability",
+        "note": "mobile"
+      },
+      "031480FD-EE0D-4371-9A71-DACFD0DF926F.png": {
+        "class": "screen-mock",
+        "owner": "MER-014",
+        "title": "Company Settings",
+        "note": "desktop"
+      },
+      "0392E7FD-E057-4C5D-9886-94D09DEB2CC8.png": {
+        "class": "screen-mock",
+        "owner": "MER-009",
+        "title": "Customer detail",
+        "note": "desktop"
+      },
+      "04089370-CE60-45CA-9C07-00F2D06966EF.png": {
+        "class": "screen-mock",
+        "owner": "PUB-005",
+        "title": "Secure Delivery Payment",
+        "note": "desktop"
+      },
+      "04DF2721-97D2-472C-A3F1-CB6047E5298B.png": {
+        "class": "screen-mock",
+        "owner": "MER-006",
+        "title": "Review delivery & quote",
+        "note": "desktop"
+      },
+      "05AC4274-C24F-4D52-8E6A-76C9573E0429.png": {
+        "class": "screen-mock",
+        "owner": "MER-013",
+        "title": "Website Tools",
+        "note": "desktop"
+      },
+      "05C42ED1-7AD9-4A55-88CB-7784FD8F52E5.png": {
+        "class": "screen-mock",
+        "owner": "MER-007",
+        "title": "Delivery detail (Couranr review)",
+        "note": "desktop"
+      },
+      "092B02CA-A2C2-43EA-8F9E-768667DEA6CE.png": {
+        "class": "out-of-scope",
+        "owner": "EXTRA:merchant-analytics",
+        "title": "Merchant Analytics",
+        "note": "no MER analytics screen in registry"
+      },
+      "09A95BF3-BDCB-4942-B03C-85E586CC5236.png": {
+        "class": "screen-mock",
+        "owner": "OPS-011",
+        "title": "Refund Management",
+        "note": "desktop"
+      },
+      "0C5CBF3B-0280-4DBB-AAB2-ECDD0020A927.png": {
+        "class": "brand",
+        "owner": "BRAND:photo-storefront-handoff",
+        "title": "Brand photography",
+        "note": "not a screen"
+      },
+      "0E4F029F-22C3-4497-A00F-E355DCB3164D.png": {
+        "class": "screen-mock",
+        "owner": "PUB-001",
+        "title": "Marketing homepage",
+        "note": "desktop"
+      },
+      "14B61228-795E-4BE9-9E23-F45DB9BB7A73.png": {
+        "class": "screen-mock",
+        "owner": "OPS-004",
+        "title": "Requote & Promotional Credit",
+        "note": "desktop"
+      },
+      "15101AAC-958E-4712-9FA6-5DDB8E6422A4.png": {
+        "class": "screen-mock",
+        "owner": "DRV-008",
+        "title": "Driver messages",
+        "note": "mobile"
+      },
+      "1691E20B-A9D7-45E8-AA68-D180D99D6FBC.png": {
+        "class": "screen-mock",
+        "owner": "MER-004",
+        "title": "Deliveries list",
+        "note": "desktop"
+      },
+      "16F8151E-A68F-4C44-AFEB-DF0EC0A6DF0B.png": {
+        "class": "out-of-scope",
+        "owner": "EXTRA:notifications-center",
+        "title": "Notifications Center",
+        "note": "customer-facing; not in registry"
+      },
+      "1E706B14-7209-47E6-A7E7-6C70F1958AAC.png": {
+        "class": "screen-mock",
+        "owner": "OPS-019",
+        "title": "Ghost Auto-Reply Controls",
+        "note": "desktop"
+      },
+      "22880AE9-E81D-427E-B4F4-7F11D36193CA.png": {
+        "class": "out-of-scope",
+        "owner": "EXTRA:merchant-automations",
+        "title": "Automations",
+        "note": "not in registry"
+      },
+      "22D9363D-248B-41C0-8C4F-2D38CB3BF3D3.png": {
+        "class": "screen-mock",
+        "owner": "PUB-001",
+        "title": "Marketing homepage",
+        "note": "mobile"
+      },
+      "247F06F8-6510-4951-931A-B889ECD64D17.png": {
+        "class": "out-of-scope",
+        "owner": "EXTRA:address-book",
+        "title": "Address Book & Locations",
+        "note": "not in registry"
+      },
+      "253D4868-0724-4A5D-ADBC-583E80DFDA37.png": {
+        "class": "screen-mock",
+        "owner": "DRV-003",
+        "title": "Pickup PIN and proof",
+        "note": "mobile"
+      },
+      "258F4C57-12C2-493B-AC91-5DA3C6BA4F66.png": {
+        "class": "brand",
+        "owner": "BRAND:logo-and-palette",
+        "title": "Logo, palette and typography sheet",
+        "note": "DESIGN AUTHORITY - not a screen"
+      },
+      "288BA2E3-B6CF-40DC-8442-9CD55BD87BF5.png": {
+        "class": "screen-mock",
+        "owner": "MER-013",
+        "title": "Website tools",
+        "note": "variant B"
+      },
+      "2905409D-3BD4-47CA-AE53-093BB3B3E21D.png": {
+        "class": "screen-mock",
+        "owner": "CUS-004",
+        "title": "Delivery Problem Report",
+        "note": "desktop"
+      },
+      "2EF4F6B4-803D-487A-846B-178DAEEE1957.png": {
+        "class": "screen-mock",
+        "owner": "MER-016",
+        "title": "Billing & Invoices",
+        "note": "desktop"
+      },
+      "35621D0A-5CD3-468F-8532-9C32C5F3CBCF.png": {
+        "class": "screen-mock",
+        "owner": "OPS-017",
+        "title": "Policy & Pricing Registry",
+        "note": "desktop"
+      },
+      "3C8B6C70-5641-4041-97DC-FAF90344A1CC.png": {
+        "class": "screen-mock",
+        "owner": "DRV-001",
+        "title": "Driver dashboard",
+        "note": "mobile"
+      },
+      "44B6E1FB-2987-4067-896A-28A7D33C5518.png": {
+        "class": "brand",
+        "owner": "BRAND:photo-storefront-handoff-2",
+        "title": "Brand photography",
+        "note": "not a screen"
+      },
+      "4E254F81-3608-48FD-A6F1-2E529A2D42EA.png": {
+        "class": "screen-mock",
+        "owner": "MER-013",
+        "title": "Delivery Link & QR Builder",
+        "note": "variant C"
+      },
+      "52425ED7-2599-4A3F-B19F-0C4C6422F755.png": {
+        "class": "out-of-scope",
+        "owner": "EXTRA:route-saver-builder",
+        "title": "Route Saver Builder",
+        "note": "Route Saver named in spec S9; no screen id"
+      },
+      "5780C3C2-8EFC-4BDC-87AA-85CE667921D8.png": {
+        "class": "screen-mock",
+        "owner": "PUB-009",
+        "title": "Businesses page",
+        "note": "desktop, long-form"
+      },
+      "5BCD7347-3BE8-4225-AA36-25BEE9F7F35C.png": {
+        "class": "out-of-scope",
+        "owner": "EXTRA:bulk-deliveries",
+        "title": "Bulk Deliveries",
+        "note": "not in registry"
+      },
+      "5CF6F81A-C1E3-4F69-B04E-C89552AE336B.png": {
+        "class": "screen-mock",
+        "owner": "OPS-002",
+        "title": "Operations Assign & Dispatch",
+        "note": "desktop"
+      },
+      "5D1A5F04-7525-43E6-9586-BA9187C1E171.png": {
+        "class": "screen-mock",
+        "owner": "PUB-006",
+        "title": "Live Delivery Tracking",
+        "note": "variant B"
+      },
+      "6151A578-6D49-4834-A311-27FD56B94BF8.png": {
+        "class": "out-of-scope",
+        "owner": "EXTRA:customer-account-settings",
+        "title": "Account Settings",
+        "note": "customer account; CUS screens are token-scoped"
+      },
+      "62765A9A-D258-43EB-8B59-144E493F7854.png": {
+        "class": "screen-mock",
+        "owner": "DRV-006",
+        "title": "Drop-off proof",
+        "note": "mobile"
+      },
+      "63B3950D-FC9E-4BB0-A896-F65EF4B03393.png": {
+        "class": "screen-mock",
+        "owner": "MER-007",
+        "title": "Delivery detail (Delivered)",
+        "note": "variant B"
+      },
+      "6519CBA3-8AAA-45AB-941B-01B842703529.png": {
+        "class": "screen-mock",
+        "owner": "OPS-012",
+        "title": "Incident Case",
+        "note": "desktop"
+      },
+      "69961CD8-3B66-4544-8053-8EAE1AD3BEE5.png": {
+        "class": "screen-mock",
+        "owner": "MER-005",
+        "title": "Create Delivery / Smart Intake",
+        "note": "desktop"
+      },
+      "6A18B250-C883-41B6-8281-A426BE1CD45C.png": {
+        "class": "screen-mock",
+        "owner": "OPS-007",
+        "title": "Merchant Management",
+        "note": "desktop"
+      },
+      "6C497840-4A07-46CC-B5F3-49D8E32885BF.png": {
+        "class": "screen-mock",
+        "owner": "CUS-001",
+        "title": "Address Change Request",
+        "note": "desktop"
+      },
+      "6C50B445-2B6B-4544-B84A-74E722F2B51C.png": {
+        "class": "screen-mock",
+        "owner": "MER-014",
+        "title": "Settings",
+        "note": "variant B"
+      },
+      "6E0604B6-2035-41AA-BFCA-C9ED4F710CF7.png": {
+        "class": "out-of-scope",
+        "owner": "EXTRA:reports-export",
+        "title": "Reports & Export",
+        "note": "not in registry"
+      },
+      "7079F03E-DEEE-449B-881F-8ED05FEE524A.png": {
+        "class": "screen-mock",
+        "owner": "PUB-007",
+        "title": "Delivery Help",
+        "note": "desktop"
+      },
+      "71149E76-4674-441D-A490-D868FC2E0724.png": {
+        "class": "screen-mock",
+        "owner": "OPS-002",
+        "title": "Operations queue",
+        "note": "variant B - shows Confirm as quoted / Request info / Requote / Decline"
+      },
+      "719032FB-C2D3-42C8-A460-537DDA7733EE.png": {
+        "class": "screen-mock",
+        "owner": "PUB-005",
+        "title": "Complete your payment",
+        "note": "variant B"
+      },
+      "74EAB167-FDAE-477C-896A-A64B59BC8A1C.png": {
+        "class": "screen-mock",
+        "owner": "CUS-005",
+        "title": "Revised Quote Approval",
+        "note": "desktop"
+      },
+      "76A4F41E-4C1E-4A75-8860-AB0A0AEFDD86.png": {
+        "class": "screen-mock",
+        "owner": "MER-012",
+        "title": "Merchant messages and support",
+        "note": "desktop"
+      },
+      "77CC8223-1475-4C8E-A51B-E189F88AA261.png": {
+        "class": "screen-mock",
+        "owner": "PUB-003",
+        "title": "Create your business account",
+        "note": "desktop"
+      },
+      "7945BB0F-4051-4FB3-A900-DCF95F1BD7BE.png": {
+        "class": "screen-mock",
+        "owner": "CUS-003",
+        "title": "Recipient Unavailable Resolution",
+        "note": "desktop"
+      },
+      "7C2BDE48-4216-43BA-8F10-10D8609855BF.png": {
+        "class": "screen-mock",
+        "owner": "DRV-004",
+        "title": "Package Discrepancy",
+        "note": "mobile"
+      },
+      "7E90D5F2-A71E-479A-A33F-D4E8D7F8801B.png": {
+        "class": "screen-mock",
+        "owner": "CUS-007",
+        "title": "Return & Refund Status",
+        "note": "desktop"
+      },
+      "838119C6-6DE5-4381-A4FC-A3AFE9839164.png": {
+        "class": "screen-mock",
+        "owner": "MER-015",
+        "title": "Team management",
+        "note": "desktop"
+      },
+      "84D76CDC-2678-4033-AB16-315923E38126.png": {
+        "class": "screen-mock",
+        "owner": "DRV-010",
+        "title": "Vehicle Profile",
+        "note": "mobile"
+      },
+      "88802AA2-1520-405B-906C-0BDC02B64B5E.png": {
+        "class": "screen-mock",
+        "owner": "MER-016",
+        "title": "Billing",
+        "note": "variant B"
+      },
+      "892BDA6D-1BD9-4EDA-AD2B-8E9BDD07B5F3.png": {
+        "class": "screen-mock",
+        "owner": "OPS-006",
+        "title": "Support & Ghost Operations",
+        "note": "AMBIGUOUS - rendered in a merchant shell"
+      },
+      "893ADB20-A68F-41B3-8CA7-996F3FEF0C6D.png": {
+        "class": "out-of-scope",
+        "owner": "EXTRA:merchant-availability-schedule",
+        "title": "Availability Schedule",
+        "note": "merchant-scoped; OPS-016 is the operations one"
+      },
+      "8E9685FE-86A0-426A-B613-EF0510DEFA44.png": {
+        "class": "screen-mock",
+        "owner": "OPS-010",
+        "title": "Payment Authorization Review",
+        "note": "desktop"
+      },
+      "8F373006-B293-4911-B419-CDED195F7AC9.png": {
+        "class": "out-of-scope",
+        "owner": "EXTRA:driver-performance",
+        "title": "Driver Performance",
+        "note": "not in registry"
+      },
+      "928D4C69-7E43-4B5F-80BA-30570AF5B717.png": {
+        "class": "out-of-scope",
+        "owner": "EXTRA:driver-incentives",
+        "title": "Driver Incentives & Rewards",
+        "note": "not in registry"
+      },
+      "935A5590-C4F0-410C-860C-1498AB9062AA.png": {
+        "class": "screen-mock",
+        "owner": "MER-011",
+        "title": "Create item preset",
+        "note": "desktop"
+      },
+      "9462C97D-6075-4340-B985-695974E40C5A.png": {
+        "class": "out-of-scope",
+        "owner": "EXTRA:subscription-plan",
+        "title": "Subscription & Plan",
+        "note": "EXCLUDED - spec: no subscription controls in pilot"
+      },
+      "95A1E901-A1E9-4513-94EA-1E1DA97192E4.png": {
+        "class": "screen-mock",
+        "owner": "CUS-006",
+        "title": "Proof-of-delivery viewer",
+        "note": "desktop"
+      },
+      "A2961811-7DB6-441A-A63D-FBCFA5603312.png": {
+        "class": "screen-mock",
+        "owner": "MER-013",
+        "title": "Branded Tracking Page",
+        "note": "variant D"
+      },
+      "AC913246-AF03-4814-8E49-697C24A78049.png": {
+        "class": "out-of-scope",
+        "owner": "EXTRA:merchant-notifications",
+        "title": "Notifications",
+        "note": "not in registry"
+      },
+      "ACAACA6C-E833-4736-B5B4-4FEC0F55110F.png": {
+        "class": "out-of-scope",
+        "owner": "EXTRA:driver-earnings",
+        "title": "Earnings & Payouts",
+        "note": "not in registry"
+      },
+      "B1037D75-E40A-4DF1-896F-68E9426AB6AE.png": {
+        "class": "screen-mock",
+        "owner": "DRV-009",
+        "title": "Driver Availability & Shift Planner",
+        "note": "desktop variant"
+      },
+      "B1C34AC0-0B14-4A55-AE2D-0F3233EC6D71.png": {
+        "class": "screen-mock",
+        "owner": "OPS-018",
+        "title": "Notification Template Manager",
+        "note": "desktop"
+      },
+      "B2866999-DA54-447B-A056-B3B0D89AEFCE.png": {
+        "class": "screen-mock",
+        "owner": "DRV-005",
+        "title": "Driving Mode",
+        "note": "mobile"
+      },
+      "B3F68382-797C-4AFB-B539-5A65C26F8853.png": {
+        "class": "screen-mock",
+        "owner": "OPS-006",
+        "title": "Ghost Operations Workspace",
+        "note": "desktop"
+      },
+      "B40D5F72-9A62-4737-B85D-9601DF0E7D2B.png": {
+        "class": "screen-mock",
+        "owner": "MER-005",
+        "title": "Smart Intake",
+        "note": "variant B"
+      },
+      "B9EA1FCA-CEF2-4577-900F-EB6315DA5018.png": {
+        "class": "screen-mock",
+        "owner": "CUS-002",
+        "title": "Cancellation & Return Request",
+        "note": "desktop"
+      },
+      "BFAD28C4-1596-43D8-A9DD-233A6254127D.png": {
+        "class": "screen-mock",
+        "owner": "MER-007",
+        "title": "Proof of delivery",
+        "note": "variant C - merchant proof viewer"
+      },
+      "CFC37EF0-ECF0-41FE-A7B4-BA35FC9DFC89.png": {
+        "class": "screen-mock",
+        "owner": "MER-015",
+        "title": "Team & Permissions",
+        "note": "variant B"
+      },
+      "D0713863-D737-426F-AC13-EDB791475D2D.png": {
+        "class": "screen-mock",
+        "owner": "OPS-009",
+        "title": "Payments & Reconciliation",
+        "note": "desktop"
+      },
+      "D20A6432-D9BF-42C3-B65B-06954D771E37.png": {
+        "class": "screen-mock",
+        "owner": "MER-001",
+        "title": "Merchant dashboard",
+        "note": "mobile"
+      },
+      "DCFBA4C8-D2C7-4E7F-99D6-91B824D7EB89.png": {
+        "class": "screen-mock",
+        "owner": "MER-011",
+        "title": "Preset Builder",
+        "note": "variant B"
+      },
+      "DD95F198-DB2D-4DF2-8CD1-FC1771863D23.png": {
+        "class": "out-of-scope",
+        "owner": "EXTRA:api-integrations",
+        "title": "API & Integrations",
+        "note": "not in registry"
+      },
+      "E12C72B2-9DB9-427D-B47A-3021EBA56E85.png": {
+        "class": "screen-mock",
+        "owner": "MER-002",
+        "title": "Merchant onboarding & activation",
+        "note": "desktop"
+      },
+      "E1C020D4-EDA9-476A-A83B-542FB054F902.png": {
+        "class": "screen-mock",
+        "owner": "DRV-007",
+        "title": "Offline Proof Sync",
+        "note": "mobile"
+      },
+      "E2947AC0-485C-4C1D-ADDB-F18B8148DBA0.png": {
+        "class": "screen-mock",
+        "owner": "OPS-020",
+        "title": "Activity & Audit Log",
+        "note": "desktop"
+      },
+      "E3473C54-A4FF-41AD-BFF8-191C4F0F28AF.png": {
+        "class": "screen-mock",
+        "owner": "PUB-002",
+        "title": "Sign in",
+        "note": "desktop"
+      },
+      "E7CE45F8-2C85-4256-93AC-48BCC7F95FD4.png": {
+        "class": "screen-mock",
+        "owner": "MER-001",
+        "title": "Merchant dashboard",
+        "note": "desktop"
+      },
+      "E7FD20C6-1022-4A1F-AFC7-EB858114C710.png": {
+        "class": "out-of-scope",
+        "owner": "EXTRA:exceptions-resolutions",
+        "title": "Exceptions & resolutions",
+        "note": "not in registry"
+      },
+      "EB2D3712-19D9-4611-A801-575DCA894C0F.png": {
+        "class": "screen-mock",
+        "owner": "CUS-001",
+        "title": "Address Change Request",
+        "note": "duplicate of 41"
+      },
+      "F29A17AA-702A-431E-8725-1AE75A248B03.png": {
+        "class": "out-of-scope",
+        "owner": "EXTRA:sla-coverage-map",
+        "title": "SLA & Coverage Map",
+        "note": "not in registry"
+      },
+      "F2C4E383-F047-4C5F-89A3-3C0E1C76F53F.png": {
+        "class": "out-of-scope",
+        "owner": "EXTRA:customer-deliveries-home",
+        "title": "Customer deliveries home",
+        "note": "not in registry"
+      },
+      "F6BD39AA-E03A-4B31-9A7C-2DB765889B42.png": {
+        "class": "screen-mock",
+        "owner": "MER-003",
+        "title": "Activation Checklist",
+        "note": "desktop"
+      },
+      "FBE79206-956C-436E-B4C7-3B15BCB664F2.png": {
+        "class": "screen-mock",
+        "owner": "OPS-012",
+        "title": "Incidents & Claims",
+        "note": "variant B"
+      },
+      "FE00B26E-7137-49B3-8708-629160FCC3C3.png": {
+        "class": "out-of-scope",
+        "owner": "EXTRA:driver-documents",
+        "title": "Driver Documents & Compliance",
+        "note": "not in registry"
+      },
+      "FE8171A0-DCFC-4C17-8FDD-8BE16A0AB4BC.png": {
+        "class": "screen-mock",
+        "owner": "OPS-003",
+        "title": "Delivery review workspace",
+        "note": "desktop - Approve quote / Send revised quote / Assign vehicle"
+      }
+    },
+    "disputes": [
+      {
+        "file": "5780C3C2-8EFC-4BDC-87AA-85CE667921D8.png",
+        "census_screen": "PUB-001",
+        "provenance_owner": "PUB-009",
+        "note": "desktop, long-form"
+      },
+      {
+        "file": "892BDA6D-1BD9-4EDA-AD2B-8E9BDD07B5F3.png",
+        "census_screen": "OPS-005",
+        "provenance_owner": "OPS-006",
+        "note": "AMBIGUOUS - rendered in a merchant shell"
+      },
+      {
+        "file": "BFAD28C4-1596-43D8-A9DD-233A6254127D.png",
+        "census_screen": "CUS-006",
+        "provenance_owner": "MER-007",
+        "note": "variant C - merchant proof viewer"
+      }
+    ],
+    "document": {
+      "preamble": "# Mock → screen map\n\n**GENERATED FILE — DO NOT EDIT.** Rendered from the `sources` section of\n`docs/couranr-mvp/ui-reference/VISUAL_REGISTRY.json` by\n`npm run governance:generate`. Every count in the census table below is\nderived at render time; `npm run check:governance` regenerates this document\nin memory and fails on a byte of difference.\n\nThe 91 PNGs at the repo root are the approved design mocks. Nothing in the\ncodebase referenced them, and none of the 62 `canonical-mvp-images/**` paths the\nscreen registry cites exist on disk — so every canonical screen built so far was\nbuilt from the registry's *prose* (route, purpose, states) rather than from its\n*design*. This file closes that gap: it is the missing filename↔screen index.\n\n**Built by looking.** Every root PNG was opened and identified visually; the\n`image` field in `ui_screen_registry.json` (the descriptive slug, e.g.\n`couranr_local_delivery_service_landing_page.png`) was matched to the UUID\nfilename on disk by matching what the mock depicts. No root PNG was moved,\nrenamed, or deleted, and none will be.",
+      "census_heading": "## What the census found",
+      "census_after": "Those counts are produced, not asserted: `npm run check:mocks`\nre-derives them from disk and fails if any filename in this document does not\nexist, if any root PNG is unclaimed, or if a file is claimed twice.\n\n`PUB-008` `/pricing`, `PUB-009` `/businesses`, `PUB-010` `/service-areas` and\n`PUB-011` `/how-it-works` carry `\"image\": null` and the registry note *\"Derived\nfrom PUB-001 design system; no separate approved mock.\"* Those four are not\ngaps.",
+      "authority": "## Authority — what a mock does and does not decide\n\nThe mock is authority for **visual design**: layout, photography, colour, type\nscale, spacing, component shape, and which affordances appear on the screen.\n\nThe mock is **not** authority for **copy, numbers, claims or states**. Those\ncome from the authority chain, and where the two disagree the chain wins:\n\n- PUB-001's mock headline reads *\"Your customers order from you. Couranr handles\n  delivery.\"* The shipped headline is *\"Your customers want delivery. Now you can\n  say yes.\"* — `02_DECISION_REGISTRY.json:2477` (`headline`), restated in\n  `docs/couranr-mvp/MARKETING_POSITIONING_AND_HOMEPAGE_BLUEPRINT.md:145`. **Rank-1\n  registry copy wins; the mock's visual design is adopted.**\n- `9462C97D-6075` \"Subscription & Plan\" contradicts the PUB-001 constraint *\"no\n  … subscriptions\"*. **Do not build it.**\n- Mocks show illustrative metrics (`98.2% on-time`, `4.8 rating`). Nothing\n  measures those and TRM-001/MKT-002 prohibit publishing them. Reproduce the\n  *card shape*, never the *number*.\n- Mocks are dated 2025 and show San Francisco / Austin addresses. Neither is a\n  service area. Fixture text only.",
+      "fence_intro": "## Registry screens → mock files\n\nPrimary mock first; later entries are approved variants or alternate states of\nthe same screen.",
+      "fence_after": "> The filenames above are the on-disk UUIDs. Resolve any of them with\n> `ls <first-13-chars>*` — the leading 13 characters are unique across all 91\n> files. A round-trip check is in `scripts/checkMockMap.mjs`.",
+      "photography": "## Photography assets (not screens)\n\nTwo root PNGs are photographs, not UI. Both depict the same brand scene — a\nmerchant handing a Couranr-branded parcel to a Couranr driver — and both are\nPUB-001 hero candidates.\n\n| File | Size | Use |\n|---|---|---|\n| `0C5CBF3B-0280-4DBB-AAB2-ECDD0020A927.png` | 1672×941 | PUB-001 desktop hero (florist, matches the landing mock) |\n| `44B6E1FB-2987-4067-896A-28A7D33C5518.png` | 1122×1402 | PUB-001 portrait / mobile hero crop |",
+      "brand": "## Brand sheet\n\n`258F4C57-12C2-493B-AC91-5DA3C6BA4F66.png` is the brand sheet, and it is the\nsource of the design tokens already in `app/(couranr)/couranr.css`. Verified\nidentical, token by token:\n\n| Brand sheet | Token | Value |\n|---|---|---|\n| navy | `--couranr-navy` | `#0D1525` |\n| gold | `--couranr-gold` | `#F4B740` |\n| route blue | `--couranr-route-blue` | `#2563EB` |\n| success green | `--couranr-success` | `#15803D` |\n| muted text | `--couranr-text-muted` | `#667085` |\n| border | `--couranr-border` | `#E3E7ED` |\n| Inter / Geist Sans | `--couranr-font-sans` | `\"Geist Sans\", \"Inter\", …` |\n\nThe logo variations (primary, reverse, monochrome) and the app mark already ship\nas SVG in `public/brand/`.",
+      "out_of_scope": "## Screens the mocks show that the registry does not list\n\nTwenty mocks depict screens outside the 66. They are **not** scope — the\nregistry is authority for what MVP contains — but they are evidence of intended\ndirection, and several are obvious post-MVP candidates.\n\n`092B02CA-A2C2` merchant analytics · `16F8151E-A68F` customer notifications\ncentre · `22880AE9-E81D` merchant automations · `247F06F8-6510` merchant address\nbook · `52425ED7-2599` route-saver builder · `5BCD7347-3BE8` bulk deliveries ·\n`6151A578-6D49` customer account settings · `6E0604B6-2035` merchant reports &\nexport · `893ADB20-A68F` merchant availability schedule · `8F373006-B293` driver\nperformance · `928D4C69-7E43` driver incentives · `9462C97D-6075` subscription &\nplan **(excluded — contradicts PUB-001 constraints)** · `AC913246-AF03` merchant\nnotifications · `ACAACA6C-E833` driver earnings & payouts · `DD95F198-DB2D` API &\nintegrations · `E7FD20C6-1022` merchant exceptions & resolutions ·\n`F29A17AA-702A` SLA & coverage map · `F2C4E383-F047` customer dashboard ·\n`FE00B26E-7137` driver documents & compliance · plus the two hero photographs.",
+      "no_mock": "## Registry screens with no mock\n\nTwelve, excluding the four that are `image: null` by design:\n\n`PUB-004` estimate / request · `MER-008` customers list · `MER-010` presets list\n· `DRV-002` active delivery · `OPS-001` operations dashboard · `OPS-008` vehicle\nmanagement · `OPS-013` operations analytics · `OPS-014` unmet demand ·\n`OPS-015` operations settings · `OPS-016` availability controls · `OPS-021` lead\ninbox · `CUS-008` track access.\n\nEach of these has a close visual relative among the mocks (the merchant\ncustomers list is `MER-009`'s parent view; `OPS-013` can follow the merchant\nanalytics mock's layout; `OPS-016` can follow the merchant availability mock).\nBuild them from the nearest same-surface mock plus the registry's declared\nstates — and say which mock was used."
+    }
   }
 }

@@ -1,5 +1,11 @@
 # Mock → screen map
 
+**GENERATED FILE — DO NOT EDIT.** Rendered from the `sources` section of
+`docs/couranr-mvp/ui-reference/VISUAL_REGISTRY.json` by
+`npm run governance:generate`. Every count in the census table below is
+derived at render time; `npm run check:governance` regenerates this document
+in memory and fails on a byte of difference.
+
 The 91 PNGs at the repo root are the approved design mocks. Nothing in the
 codebase referenced them, and none of the 62 `canonical-mvp-images/**` paths the
 screen registry cites exist on disk — so every canonical screen built so far was

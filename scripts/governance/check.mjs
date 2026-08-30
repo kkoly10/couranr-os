@@ -24,6 +24,7 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT, screenSource, SCREEN_OUTPUTS, SCREEN_SOURCE } from "./screenRegistry.mjs";
 import { SCREENS_MODULE_OUTPUT } from "./screensModule.mjs";
+import { VISUAL_SOURCE_OUTPUTS, VISUAL_REGISTRY as VISUAL_SOURCE } from "./visualSources.mjs";
 import { visualDocDrift } from "./visualRegistry.mjs";
 
 const MANIFEST = "docs/couranr-mvp/authority/AUTHORITY_MANIFEST.json";
@@ -32,11 +33,11 @@ const CONTROL = process.argv.includes("--positive-control");
 /** Every generated family: which authority produces it, and how. */
 function outputs() {
   const src = screenSource();
-  return [...SCREEN_OUTPUTS, SCREENS_MODULE_OUTPUT].map((o) => ({
-    ...o,
-    authority: SCREEN_SOURCE,
-    source: src,
-  }));
+  return [
+    ...SCREEN_OUTPUTS.map((o) => ({ ...o, authority: SCREEN_SOURCE })),
+    { ...SCREENS_MODULE_OUTPUT, authority: SCREEN_SOURCE },
+    ...VISUAL_SOURCE_OUTPUTS.map((o) => ({ ...o, authority: VISUAL_SOURCE })),
+  ].map((o) => ({ ...o, source: src }));
 }
 
 function firstDiff(want, got) {
@@ -352,6 +353,12 @@ if (CONTROL) {
       (t) => t.replace("| `/pricing` |", "| `/prices` |")],
     ["a rewritten screen id in the generated CSV", "ui_screen_registry.csv",
       (t) => t.replace("PUB-008,", "PUB-808,")],
+    ["a rewritten status in the generated runtime screen list", "lib/couranr/screens.ts",
+      (t) => t.replace('status: "placeholder_only"', 'status: "functional_verified"')],
+    ["a rewritten census count in the generated mock map", "docs/couranr-mvp/MOCK_TO_SCREEN_MAP.md",
+      (t) => t.replace("| PNGs at repo root | 91 |", "| PNGs at repo root | 90 |")],
+    ["a re-owned asset in the generated provenance map", "docs/couranr-mvp/ui-reference/CANONICAL_SCREEN_SOURCE_MAP.tsv",
+      (t) => t.replace("PUB-006\t0013FABA", "PUB-007\t0013FABA")],
   ];
   /* The composition contract is a SOURCE, not a generated mirror, so its
      control is the other direction: prove the handbook cannot drift away from
