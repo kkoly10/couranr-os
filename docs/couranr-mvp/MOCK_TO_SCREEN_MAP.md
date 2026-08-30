@@ -7,10 +7,11 @@ derived at render time; `npm run check:governance` regenerates this document
 in memory and fails on a byte of difference.
 
 The 91 PNGs at the repo root are the approved design mocks. Nothing in the
-codebase referenced them, and none of the 62 `canonical-mvp-images/**` paths the
-screen registry cites exist on disk — so every canonical screen built so far was
-built from the registry's *prose* (route, purpose, states) rather than from its
-*design*. This file closes that gap: it is the missing filename↔screen index.
+codebase referenced them, and thirteen of the 62 `canonical-mvp-images/**` paths
+the screen registry cites exist on disk — so most canonical screens built so far
+were built from the registry's *prose* (route, purpose, states) rather than from
+its *design*. This file closes that gap: it is the missing filename↔screen
+index.
 
 **Built by looking.** Every root PNG was opened and identified visually; the
 `image` field in `ui_screen_registry.json` (the descriptive slug, e.g.
@@ -35,10 +36,10 @@ Those counts are produced, not asserted: `npm run check:mocks`
 re-derives them from disk and fails if any filename in this document does not
 exist, if any root PNG is unclaimed, or if a file is claimed twice.
 
-`PUB-008` `/pricing`, `PUB-009` `/businesses`, `PUB-010` `/service-areas` and
-`PUB-011` `/how-it-works` carry `"image": null` and the registry note *"Derived
-from PUB-001 design system; no separate approved mock."* Those four are not
-gaps.
+`PUB-008` /pricing · `PUB-009` /businesses · `PUB-010` /service-areas ·
+`PUB-011` /how-it-works · `PUB-012` / · `PUB-013` /sameday carry `"image": null`
+and derive their design from the PUB-001 public family rather than from a
+separate approved mock. Those six are not gaps.
 
 ## Authority — what a mock does and does not decide
 
@@ -312,13 +313,15 @@ integrations · `E7FD20C6-1022` merchant exceptions & resolutions ·
 
 ## Registry screens with no mock
 
-Twelve, excluding the four that are `image: null` by design:
+Twelve, excluding the six that are `image: null` by design:
 
-`PUB-004` estimate / request · `MER-008` customers list · `MER-010` presets list
-· `DRV-002` active delivery · `OPS-001` operations dashboard · `OPS-008` vehicle
-management · `OPS-013` operations analytics · `OPS-014` unmet demand ·
-`OPS-015` operations settings · `OPS-016` availability controls · `OPS-021` lead
-inbox · `CUS-008` track access.
+`PUB-004` /send, /estimate and /request/[merchantSlug] · `MER-008`
+/app/business/customers · `MER-010` /app/business/presets · `DRV-002`
+/driver/deliveries/[id] · `OPS-001` /operations · `OPS-008` /operations/vehicles
+· `OPS-013` /operations/analytics · `OPS-014`
+/operations/analytics?tab=unmet-demand · `OPS-015` /operations/settings ·
+`OPS-016` /operations/settings?tab=availability · `OPS-021`
+/operations/ghost?tab=leads · `CUS-008` /track/[token]#access.
 
 Each of these has a close visual relative among the mocks (the merchant
 customers list is `MER-009`'s parent view; `OPS-013` can follow the merchant

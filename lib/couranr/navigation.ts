@@ -115,6 +115,12 @@ const COLLIDING = new Set(ROUTE_COLLISIONS.map((c) => c.route));
  * exist on disk AND the canonical path NOT to, so the day the frontend slice
  * creates `app/(couranr)/app/business/page.tsx` this entry must be deleted or
  * the suite goes red. A shim that cannot outlive its migration.
+ *
+ * ONE THING THE SHIM DOES NOT COVER, and the frontend slice must: `shellForPath`
+ * below maps `/business` to the MERCHANT shell. That is right today, because the
+ * merchant application is what answers there. Under LEG-004 `/business` becomes
+ * PUB-001, a public marketing page — so moving the pages without moving that
+ * prefix would wrap the public page in the merchant shell. Move them together.
  */
 export const ROUTES_NOT_YET_MATERIALIZED: {
   canonicalPrefix: string;

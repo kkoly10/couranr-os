@@ -18,7 +18,7 @@
  * them in prose, which is how "none of the 62 canonical-mvp-images/** paths
  * exist on disk" stayed in the preamble after thirteen of them landed.
  */
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT, screenSource } from "./screenRegistry.mjs";
 
@@ -39,6 +39,29 @@ export function rootPngs() {
  * Every number the census table prints, measured rather than remembered.
  * Exported so `check:mocks` scores the same arithmetic the document renders.
  */
+const WORDS = ["zero","one","two","three","four","five","six","seven","eight","nine","ten",
+  "eleven","twelve","thirteen","fourteen","fifteen","sixteen","seventeen","eighteen","nineteen","twenty"];
+const word = (n) => WORDS[n] ?? String(n);
+const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** Word-wrap to the repository's ~80-column prose width, paragraph by paragraph. */
+function wrap(text, width = 80) {
+  return text
+    .split("\n\n")
+    .map((para) => {
+      const out = [];
+      let line = "";
+      for (const w of para.split(/\s+/).filter(Boolean)) {
+        if (!line) line = w;
+        else if (line.length + 1 + w.length <= width) line += ` ${w}`;
+        else { out.push(line); line = w; }
+      }
+      if (line) out.push(line);
+      return out.join("\n");
+    })
+    .join("\n\n");
+}
+
 export function census(reg = visualRegistry(), src = screenSource()) {
   const s = reg.sources;
   const ids = src.screens.map((x) => x.id);
@@ -47,7 +70,15 @@ export function census(reg = visualRegistry(), src = screenSource()) {
   const withMock = ids.filter((id) => s.screens[id].root_sources.length > 0);
   const byDesign = src.screens.filter((x) => !x.image).map((x) => x.id);
   const onDisk = rootPngs();
+  /* The preamble used to assert "none of the 62 canonical-mvp-images/** paths
+     exist on disk". Thirteen of them do. Derived here so the sentence cannot
+     outlive the delivery again. */
+  const nestedCited = src.screens
+    .map((x) => x.canonical_path)
+    .filter((x) => typeof x === "string" && x.startsWith("canonical-mvp-images/"));
   return {
+    nestedCited: nestedCited.length,
+    nestedExist: nestedCited.filter((x) => existsSync(join(ROOT, x))).length,
     onDisk: onDisk.length,
     screens: ids.length,
     mapped: claimed.size,
@@ -82,20 +113,44 @@ export const TSV_MARKER =
   "# GENERATED FILE — DO NOT EDIT. Source: docs/couranr-mvp/ui-reference/VISUAL_REGISTRY.json. " +
   "Regenerate with `npm run governance:generate`.";
 
+/** `PUB-008` `/pricing` · … — the ids the census names, with their routes. */
+function idList(src, ids) {
+  const by = new Map(src.screens.map((s) => [s.id, s]));
+  return ids.map((id) => `\`${id}\` ${by.get(id)?.route_label ?? ""}`.trim()).join(" · ");
+}
+
 export function renderMockMap(reg = visualRegistry(), src = screenSource()) {
   const d = reg.sources.document;
   const c = census(reg, src);
+  const withMock = new Set(
+    src.screens.filter((s) => reg.sources.screens[s.id].root_sources.length).map((s) => s.id),
+  );
+  const gapIds = src.screens
+    .filter((s) => !withMock.has(s.id) && !c.byDesign.includes(s.id))
+    .map((s) => s.id);
+
+  const opening = wrap(d.opening_template
+    .replaceAll("{{ROOT_PNGS}}", String(c.onDisk))
+    .replaceAll("{{NESTED_EXIST}}", word(c.nestedExist))
+    .replaceAll("{{NESTED_CITED}}", String(c.nestedCited)));
+  const byDesign = wrap(d.by_design_template
+    .replaceAll("{{LIST}}", idList(src, c.byDesign))
+    .replaceAll("{{COUNT}}", word(c.byDesign.length)));
+  const gaps = wrap(d.gaps_template
+    .replaceAll("{{COUNT}}", cap(word(gapIds.length)))
+    .replaceAll("{{BY_DESIGN_COUNT}}", word(c.byDesign.length))
+    .replaceAll("{{LIST}}", idList(src, gapIds)));
   const fence = {};
   for (const s of src.screens) fence[s.id] = reg.sources.screens[s.id].root_sources;
 
   return [
-    d.preamble,
+    d.preamble.replaceAll("{{OPENING}}", opening),
     "",
     d.census_heading,
     "",
     censusTable(c),
     "",
-    d.census_after,
+    d.census_after.replaceAll("{{BY_DESIGN}}", byDesign),
     "",
     d.authority,
     "",
@@ -113,7 +168,7 @@ export function renderMockMap(reg = visualRegistry(), src = screenSource()) {
     "",
     d.out_of_scope,
     "",
-    d.no_mock,
+    d.no_mock.replaceAll("{{GAPS}}", gaps),
     "",
   ].join("\n");
 }
