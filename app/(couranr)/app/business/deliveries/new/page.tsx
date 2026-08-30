@@ -18,7 +18,7 @@ export default function Page() {
         title="Create a delivery"
         description="Enter the shipment details and Couranr calculates the estimate."
         breadcrumbs={[
-          { label: "Deliveries", href: "/business/deliveries" },
+          { label: "Deliveries", href: "/app/business/deliveries" },
           { label: "New delivery" },
         ]}
       />

@@ -313,7 +313,7 @@ export function ActivationChecklist({
                 >
                   Confirm contact
                 </Button>
-                <Link href="/business/settings" className={buttonClassName({ size: "sm" })}>
+                <Link href="/app/business/settings" className={buttonClassName({ size: "sm" })}>
                   Change it in settings
                 </Link>
               </Cluster>
@@ -368,7 +368,7 @@ export function ActivationChecklist({
                       Use this delivery
                     </Button>
                     <Link
-                      href="/business/deliveries/new"
+                      href="/app/business/deliveries/new"
                       className={buttonClassName({ size: "sm" })}
                     >
                       Create another
@@ -378,7 +378,7 @@ export function ActivationChecklist({
               ) : (
                 <div>
                   <Link
-                    href="/business/deliveries/new"
+                    href="/app/business/deliveries/new"
                     className={buttonClassName({ size: "sm", variant: "primary" })}
                   >
                     Create a test delivery
@@ -498,7 +498,7 @@ export function ActivationScreen() {
       <EmptyState
         title="Set up your business first"
         body="Activation is the step after your workspace exists."
-        action={{ label: "Set up your workspace", href: "/business/onboarding" }}
+        action={{ label: "Set up your workspace", href: "/app/business/onboarding" }}
       />
     );
   }

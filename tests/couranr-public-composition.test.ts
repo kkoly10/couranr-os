@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
@@ -48,14 +48,28 @@ function rowsFor(file: string): Row[] {
 }
 
 describe("the governed public pages are declared at all", () => {
-  it("PUB-001 plus the four family pages are governed", () => {
+  /* PUB-012 and PUB-013 joined when MKT-004 split the public brand. The list
+     is still asserted explicitly rather than derived from the registry it
+     validates — a governed page silently disappearing is exactly what this
+     catches, and deriving it from the same file would make it vacuous. */
+  it("governs PUB-001, the business family, and the two MKT-004 surfaces", () => {
     expect(PAGES.map((p) => p.screen)).toEqual([
       "PUB-001",
       "PUB-008",
       "PUB-009",
       "PUB-010",
       "PUB-011",
+      "PUB-012",
+      "PUB-013",
     ]);
+  });
+
+  /* Each governed page's declared file must exist and must carry the section
+     ids the contract names, in order. The contract having a page the repo does
+     not is how a gate ends up asserting against nothing. */
+  it("every governed page's declared file exists", () => {
+    const missing = PAGES.filter((p) => !existsSync(path.join(ROOT, p.file))).map((p) => `${p.screen} -> ${p.file}`);
+    expect(missing).toEqual([]);
   });
 
   it("finds §19's vocabulary in the spec", () => {

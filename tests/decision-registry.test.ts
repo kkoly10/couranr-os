@@ -458,7 +458,7 @@ describe("no unresolved value appears in canonical placeholder content", () => {
     // market names. The page is BUILT now: the four MKT-001 markets render —
     // but exclusively via MARKETED_MARKETS, so the source still contains no
     // literal market name for a copy edit to de-sync from the registry.
-    const p = path.join(CANON_DIR, "(public)", "service-areas", "page.tsx");
+    const p = path.join(CANON_DIR, "(public)", "(business-public)", "service-areas", "page.tsx");
     const src = readFileSync(p, "utf8");
     const text = visibleText(src);
 

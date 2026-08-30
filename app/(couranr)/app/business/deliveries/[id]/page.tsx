@@ -11,7 +11,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
       <PageHeader
         title="Delivery"
         breadcrumbs={[
-          { label: "Deliveries", href: "/business/deliveries" },
+          { label: "Deliveries", href: "/app/business/deliveries" },
           { label: "Delivery detail" },
         ]}
       />

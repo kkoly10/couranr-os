@@ -74,7 +74,7 @@ const PGRST_BIN = postgrestTarget();
 const PORT = 3317;
 const BASE = `http://127.0.0.1:${PORT}`;
 const PASSWORD = "disposable-activation-1";
-const ACTIVATION_PATH = "/business/onboarding?step=activation";
+const ACTIVATION_PATH = "/app/business/onboarding?step=activation";
 
 let passed = 0;
 let failed = 0;
@@ -727,7 +727,7 @@ async function main() {
         (r) => r.url().includes("/api/couranr/me/activation") && r.status() === 200,
         { timeout: 45_000 }
       );
-      await dash.goto(`${BASE}/business`, { waitUntil: "domcontentloaded" });
+      await dash.goto(`${BASE}/app/business`, { waitUntil: "domcontentloaded" });
       await activationAnswered;
       await dash.getByRole("link", { name: /View deliveries/ }).first()
         .waitFor({ state: "visible", timeout: 45_000 });
@@ -740,7 +740,7 @@ async function main() {
       await dash.screenshot({ path: path.join(SHOTS, "MER-001-live-no-banner.png"), fullPage: true });
 
       // And the not-live case, on the second business, which never activated.
-      const otherDash = await open(otherOwner.email, "/business");
+      const otherDash = await open(otherOwner.email, "/app/business");
       await otherDash.getByRole("link", { name: /View deliveries/ }).first()
         .waitFor({ state: "visible", timeout: 45_000 });
       await otherDash.getByText("Not started").first().waitFor({ state: "visible", timeout: 30_000 });
@@ -963,7 +963,7 @@ async function main() {
       await dash.route("**/api/couranr/me/activation?*", (route) =>
         route.fulfill({ status: 500, contentType: "application/json", body: "{}" })
       );
-      await dash.goto(`${BASE}/business`, { waitUntil: "domcontentloaded" });
+      await dash.goto(`${BASE}/app/business`, { waitUntil: "domcontentloaded" });
       await dash.getByText("Activation status unavailable").first()
         .waitFor({ state: "visible", timeout: 30_000 });
       const dashBody = await dash.innerText("body");

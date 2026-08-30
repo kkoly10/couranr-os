@@ -201,7 +201,7 @@ export function DeliveriesList() {
       <EmptyState
         title="No business account yet"
         body="Set up your business workspace to start creating deliveries."
-        action={{ label: "Set up your workspace", href: "/business/onboarding" }}
+        action={{ label: "Set up your workspace", href: "/app/business/onboarding" }}
       />
     );
   }
@@ -270,7 +270,7 @@ export function DeliveriesList() {
     } catch {
       /* storage unavailable: the create page simply opens blank */
     }
-    router.push("/business/deliveries/new?duplicate=1");
+    router.push("/app/business/deliveries/new?duplicate=1");
   }
 
   return (
@@ -278,7 +278,7 @@ export function DeliveriesList() {
       <Cluster gap={3}>
         {mayWrite ? (
           <Link
-            href="/business/deliveries/new"
+            href="/app/business/deliveries/new"
             className={buttonClassName({ variant: "primary" })}
           >
             Create delivery
@@ -413,7 +413,7 @@ export function DeliveriesList() {
           }
           action={
             mayWrite
-              ? { label: "Create delivery", href: "/business/deliveries/new" }
+              ? { label: "Create delivery", href: "/app/business/deliveries/new" }
               : undefined
           }
         />
@@ -491,7 +491,7 @@ export function DeliveriesList() {
                       <td>
                         <Cluster gap={2}>
                           <Link
-                            href={`/business/deliveries/${row.id}`}
+                            href={`/app/business/deliveries/${row.id}`}
                             className={buttonClassName({ size: "sm" })}
                           >
                             Open

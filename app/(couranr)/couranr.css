@@ -3507,3 +3507,584 @@
   .cr-mkt-closing--split .cr-mkt-h2-inverse { margin: 0; max-width: 22ch; }
   .cr-mkt-closing--split .cr-mkt-cta-row { flex: none; }
 }
+
+/* ── consumer chrome: the tracking-link launcher ────────────────────────── */
+
+/* PUB-006 is `/track/[token]` and there is no generic `/track`, so the consumer
+   header cannot link to tracking — it opens a small panel that parses a link
+   the visitor already holds. Positioned relative to its trigger so the panel
+   sits under it without a portal or a layout shift in the topbar. */
+.cr-track-launcher {
+  position: relative;
+  display: inline-flex;
+}
+
+.cr-track-launcher__panel {
+  position: absolute;
+  top: calc(100% + var(--couranr-space-2));
+  right: 0;
+  z-index: 30;
+  width: min(22rem, calc(100vw - var(--couranr-space-6)));
+  padding: var(--couranr-space-4);
+  background: var(--couranr-surface);
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-lg);
+  box-shadow: var(--couranr-shadow-lg);
+  display: grid;
+  gap: var(--couranr-space-3);
+}
+
+.cr-track-launcher__panel form {
+  display: grid;
+  gap: var(--couranr-space-2);
+}
+
+.cr-track-launcher__label {
+  font-size: var(--couranr-text-xs);
+  font-weight: 600;
+  color: var(--couranr-text-muted);
+}
+
+/* Inside the mobile drawer the trigger is a full-width button and the panel
+   flows beneath it rather than floating over navy chrome. */
+.cr-drawer-auth .cr-track-launcher { display: block; }
+.cr-drawer-auth .cr-track-launcher__panel {
+  position: static;
+  width: 100%;
+  margin-top: var(--couranr-space-2);
+}
+
+/* ── PUB-012, the master homepage ───────────────────────────────────────── */
+
+/* Two audience doors inside ONE hero composition. The contract caps
+   grid-dominant at 0, so this is deliberately not a card grid: the doors are
+   full-bleed photographs with their copy laid over the frame, sized as halves
+   of an editorial split rather than as tiles in a row. */
+.cr-master-hero {
+  display: grid;
+  gap: var(--couranr-space-8);
+}
+
+/* ASYMMETRIC, per the contract — and the first version was not. It capped the
+   lead at 34ch, which at 1440 wrapped the headline into three short lines and
+   left roughly two thirds of the row empty beside it. A void is not asymmetry.
+   The headline and its support sit side by side on a 3:2 split now, so the lead
+   fills the row above the doors and the composition reads as one hero. */
+.cr-master-hero__lead { max-width: 62ch; }
+
+@media (min-width: 900px) {
+  .cr-master-hero__lead {
+    display: grid;
+    grid-template-columns: 3fr 2fr;
+    gap: var(--couranr-space-10);
+    align-items: end;
+    max-width: none;
+  }
+  .cr-master-hero__lead > h1 { margin: 0; }
+  .cr-master-hero__lead > p { margin: 0; max-width: 38ch; }
+}
+
+.cr-master-hero__lead > h1 {
+  margin: 0 0 var(--couranr-space-5);
+  color: var(--couranr-text);
+}
+
+.cr-master-doors {
+  display: grid;
+  gap: var(--couranr-space-5);
+}
+
+/* Consumer door first on mobile — it is first in source order, so nothing
+   reorders it. The business door follows. */
+@media (min-width: 900px) {
+  .cr-master-doors {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--couranr-space-6);
+  }
+}
+
+.cr-master-door {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: var(--couranr-radius-lg);
+  border: 1px solid var(--couranr-border);
+  background: var(--couranr-navy);
+  text-decoration: none;
+  isolation: isolate;
+}
+
+.cr-master-door__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  aspect-ratio: 3 / 2;
+}
+
+@media (max-width: 640px) {
+  .cr-master-door__img { aspect-ratio: 4 / 5; }
+}
+
+/* A scrim, not a tint: the copy sits on photography and WCAG 2.2 AA contrast
+   has to hold over WHATEVER is under it — which is the part a gradient tuned by
+   eye gets wrong. The first version faded 0.92 -> 0.78 -> 0 and measured
+   2.84:1 at 360px, where the 4:5 crop puts a bright doorway behind the copy.
+   §23.2 exists for exactly that: "do not assume a Navy scrim automatically
+   passes."
+   The band under the copy is effectively opaque now and only the top edge
+   feathers, so the ratio no longer depends on which part of which crop lands
+   there. Measured over both photographs at all six governed widths. */
+.cr-master-door__copy {
+  position: absolute;
+  inset: auto 0 0 0;
+  display: grid;
+  gap: var(--couranr-space-1);
+  padding: var(--couranr-space-6);
+  background: linear-gradient(
+    to top,
+    rgb(13 21 37 / 0.97) 0%,
+    rgb(13 21 37 / 0.95) 70%,
+    rgb(13 21 37 / 0.72) 90%,
+    rgb(13 21 37 / 0) 100%
+  );
+}
+
+.cr-master-door__title {
+  font-family: var(--couranr-font-display);
+  font-size: var(--couranr-text-xl);
+  font-weight: 600;
+  line-height: 1.2;
+  color: var(--couranr-surface);
+}
+
+.cr-master-door__support {
+  font-size: var(--couranr-text-sm);
+  line-height: 1.5;
+  /* Full white. At 0.86 over the scrim this is small text against a 4.5 floor
+     with no margin; the alpha bought nothing but risk. */
+  color: var(--couranr-surface);
+}
+
+.cr-master-door:hover .cr-master-door__title { text-decoration: underline; }
+
+.cr-master-door:focus-visible {
+  outline: 3px solid var(--couranr-gold);
+  outline-offset: 3px;
+}
+
+/* master-network: typography-led by contract. A description list, not cards —
+   the two audiences are terms and their definitions, which is what a <dl> is
+   for and what keeps this section out of the grid-dominant budget. */
+/* `.cr-mkt-editorial > h2` caps at 16ch, which is right for a two- or
+   three-word statement and wrong for this one — it broke "One local delivery
+   network. Two ways to use it." after "Two". Scoped widening, not a base
+   change: the 16ch measure is what makes the other editorial statements read
+   as statements. */
+.cr-mkt-editorial[data-couranr-section="master-network"] > h2 { max-width: 24ch; }
+
+/* The service-area section is left-aligned prose, so its actions belong under
+   the text rather than centred in a row that is mostly empty beside it. */
+.cr-mkt-section[data-couranr-section="master-service-area"] .cr-mkt-cta-row { justify-content: flex-start; }
+
+.cr-master-network {
+  display: grid;
+  gap: var(--couranr-space-6);
+  margin: 0;
+}
+
+@media (min-width: 900px) {
+  .cr-master-network { grid-template-columns: 1fr 1fr; gap: var(--couranr-space-8); }
+}
+
+.cr-master-network__item { display: grid; gap: var(--couranr-space-2); }
+
+.cr-master-network__term {
+  font-family: var(--couranr-font-display);
+  font-size: var(--couranr-text-sm);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--couranr-text-muted);
+}
+
+.cr-master-network__desc { margin: 0; color: var(--couranr-text); }
+
+/* ── PUB-013, Couranr Same Day ──────────────────────────────────────────── */
+
+/* The hero's mobile requirement is a CONTRACT term, not a preference: the
+   headline and BOTH intent actions appear before the image takes the next
+   scroll region. The image is last in source order and only moves beside the
+   copy at the desktop breakpoint, so no reordering is needed to satisfy it. */
+.cr-sd-hero { display: grid; gap: var(--couranr-space-6); }
+
+@media (min-width: 900px) {
+  .cr-sd-hero {
+    grid-template-columns: 45fr 55fr;
+    gap: var(--couranr-space-10);
+    align-items: center;
+  }
+}
+
+.cr-sd-hero__lead > h1 { margin: 0 0 var(--couranr-space-4); color: var(--couranr-text); }
+
+.cr-sd-hero__question {
+  margin: var(--couranr-space-6) 0 var(--couranr-space-3);
+  font-family: var(--couranr-font-display);
+  font-size: var(--couranr-text-lg);
+  font-weight: 600;
+  color: var(--couranr-text);
+}
+
+/* Two intents, stacked. Not a card grid — the contract caps grid-dominant at
+   zero — but each needs a large touch target, so they are wide rows with a
+   single-pixel border rather than tiles in a mosaic. */
+.cr-sd-intents { display: grid; gap: var(--couranr-space-3); }
+
+.cr-sd-intent {
+  display: grid;
+  gap: var(--couranr-space-1);
+  padding: var(--couranr-space-5);
+  min-height: 44px;
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-lg);
+  background: var(--couranr-surface);
+  text-decoration: none;
+  color: inherit;
+}
+
+.cr-sd-intent:hover { border-color: var(--couranr-navy); }
+.cr-sd-intent:focus-visible { outline: 3px solid var(--couranr-gold); outline-offset: 2px; }
+
+.cr-sd-intent__title {
+  font-family: var(--couranr-font-display);
+  font-size: var(--couranr-text-base);
+  font-weight: 600;
+  color: var(--couranr-text);
+}
+
+.cr-sd-intent__support { font-size: var(--couranr-text-sm); color: var(--couranr-text-muted); }
+
+.cr-sd-photo {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: var(--couranr-radius-lg);
+  object-fit: cover;
+}
+
+@media (max-width: 640px) {
+  .cr-sd-photo { aspect-ratio: 4 / 5; }
+}
+
+/* The two editorial sections alternate on desktop. `--reverse` swaps the
+   column order rather than the source order, so the reading sequence in the
+   DOM stays image-then-copy for both and a screen reader hears them the same
+   way. */
+.cr-sd-editorial { display: grid; gap: var(--couranr-space-6); }
+
+@media (min-width: 900px) {
+  .cr-sd-editorial {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--couranr-space-10);
+    align-items: center;
+  }
+  .cr-sd-editorial--reverse .cr-sd-editorial__media { order: 2; }
+}
+
+.cr-sd-editorial__copy { display: grid; gap: var(--couranr-space-4); justify-items: start; }
+.cr-sd-editorial__copy > h2 { margin: 0; color: var(--couranr-text); }
+.cr-sd-editorial__copy > p { margin: 0; }
+
+/* Breadth as TEXT. An inline run separated by rules, not eight bordered cards —
+   §19's card-cemetery ban is the reason this is a list with dividers. */
+.cr-sd-breadth {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--couranr-space-2) var(--couranr-space-4);
+  margin: var(--couranr-space-5) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cr-sd-breadth__item {
+  font-family: var(--couranr-font-display);
+  font-size: var(--couranr-text-lg);
+  color: var(--couranr-text);
+}
+
+/* NO separator glyph between items. A `::before` rule on every item but the
+   first puts a divider at the START of a wrapped line — visible at 1440, where
+   "Personal items" wraps and led with a stray rule. CSS cannot see a line
+   break, so the divider is dropped and the rhythm comes from the gap instead.
+   The contract calls for editorial text, and a wider gap is what that is. */
+.cr-sd-breadth { gap: var(--couranr-space-3) var(--couranr-space-6); }
+
+/* A connected sequence, which is what makes it a rail rather than five boxes:
+   the connector is a continuous line the numbers sit on. */
+.cr-sd-rail {
+  display: grid;
+  gap: var(--couranr-space-5);
+  margin: var(--couranr-space-6) 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: cr-sd-step;
+}
+
+@media (min-width: 900px) {
+  .cr-sd-rail {
+    grid-template-columns: repeat(5, 1fr);
+    gap: var(--couranr-space-4);
+  }
+}
+
+.cr-sd-rail__step { position: relative; display: grid; gap: var(--couranr-space-2); }
+
+.cr-sd-rail__n {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 999px;
+  background: var(--couranr-navy);
+  color: var(--couranr-surface);
+  font-size: var(--couranr-text-sm);
+  font-weight: 600;
+}
+
+/* The connector. The work order calls this a "connected sequence" and the
+   composition contract calls it a workflow-rail, so the connection is the
+   point — but it was declared only inside `@media (min-width: 900px)`, which
+   left three of the five widths gate G names (768, 390, 320) rendering five
+   disconnected rows. Below 900px the rail is a COLUMN, so the connector is
+   vertical there and horizontal above; both stop before the last step rather
+   than trailing off the grid. */
+.cr-sd-rail__step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 1rem;
+  top: 2.5rem;
+  bottom: calc(var(--couranr-space-5) * -1);
+  width: 1px;
+  background: var(--couranr-border);
+}
+
+@media (min-width: 900px) {
+  .cr-sd-rail__step:not(:last-child)::after {
+    top: 1rem;
+    bottom: auto;
+    left: 2.5rem;
+    right: calc(var(--couranr-space-4) * -1);
+    width: auto;
+    height: 1px;
+  }
+}
+
+.cr-sd-rail__label { font-size: var(--couranr-text-sm); color: var(--couranr-text); }
+
+/* The tracking story. Three stage labels, connected the same way — a product
+   NARRATIVE with no delivery behind it, so nothing here renders a time, a
+   driver or a token. */
+.cr-sd-track {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--couranr-space-3);
+  margin: var(--couranr-space-5) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cr-sd-track__stage {
+  padding: var(--couranr-space-2) var(--couranr-space-4);
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-pill);
+  font-size: var(--couranr-text-sm);
+  font-weight: 600;
+  color: var(--couranr-text);
+  background: var(--couranr-surface);
+}
+
+.cr-sd-track__stage + .cr-sd-track__stage::before {
+  content: "→";
+  margin-right: var(--couranr-space-3);
+  color: var(--couranr-text-muted);
+  font-weight: 400;
+}
+
+/* consumer-availability: the nine address/availability states as a ruled
+   sequence. A LIST, not a card grid — the composition contract caps
+   grid-dominant at zero for every PUB-013 region and §19 calls the alternative
+   a card cemetery, so the states are separated by rules and whitespace and
+   carry no panel, border box or background of their own.
+
+   `.cr-sd-availability` gives the split a wider right column than the shared
+   38/62: nine captions in a 62% column at 1440 wrap to two lines each and the
+   lead sits alone above a lot of nothing. */
+.cr-sd-states {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: cr-sd-state;
+}
+
+.cr-sd-state {
+  display: grid;
+  gap: var(--couranr-space-1);
+  padding: var(--couranr-space-3) 0;
+  border-top: 1px solid var(--couranr-border);
+}
+
+.cr-sd-state:first-child { border-top: 0; padding-top: 0; }
+.cr-sd-state:last-child { padding-bottom: 0; }
+
+.cr-sd-state__label {
+  font-size: var(--couranr-text-sm);
+  font-weight: 600;
+  color: var(--couranr-text);
+}
+
+.cr-sd-state__caption {
+  font-size: var(--couranr-text-sm);
+  color: var(--couranr-text-muted);
+}
+
+/* Two columns for the label and its caption once there is room for them, so
+   the nine states read as a schedule rather than eighteen stacked lines. */
+@media (min-width: 640px) {
+  .cr-sd-state {
+    grid-template-columns: 9rem 1fr;
+    gap: var(--couranr-space-4);
+    align-items: baseline;
+  }
+}
+
+@media (min-width: 900px) {
+  .cr-sd-availability { grid-template-columns: 32fr 68fr; }
+}
+
+/* The hero's media column. Declared even though it only carries the picture:
+   the token test requires every rendered class to have a rule, and an
+   undeclared wrapper is how a layout ends up depending on a browser default. */
+.cr-sd-hero__media { min-width: 0; }
+
+/* The closing band's supporting line, on navy. `.cr-mkt-closing__copy` sets the
+   column; this sets the type on it. */
+.cr-mkt-closing__body {
+  margin: var(--couranr-space-3) 0 0;
+  color: rgb(255 255 255 / 0.86);
+}
+
+/* ── PUB-004 /send, the direct-consumer flow ────────────────────────────── */
+
+.cr-send { display: grid; gap: var(--couranr-space-6); max-width: 46rem; }
+
+/* The phase rail. Visible at every step, because a flow that hides how far it
+   goes is a flow people abandon. `aria-current="step"` carries the position to
+   assistive technology; the bar is the visual half of the same fact. */
+.cr-send-rail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--couranr-space-2) var(--couranr-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cr-send-rail__step {
+  font-size: var(--couranr-text-sm);
+  color: var(--couranr-text-muted);
+  padding-bottom: var(--couranr-space-2);
+  border-bottom: 2px solid var(--couranr-border);
+  flex: 1 1 5rem;
+}
+
+.cr-send-rail__step[data-current="true"] {
+  color: var(--couranr-text);
+  font-weight: 600;
+  border-bottom-color: var(--couranr-navy);
+}
+
+.cr-send-panel { display: grid; gap: var(--couranr-space-5); }
+
+.cr-send-field { display: grid; gap: var(--couranr-space-2); border: 0; padding: 0; margin: 0; }
+.cr-send-field__label { font-size: var(--couranr-text-sm); font-weight: 600; color: var(--couranr-text); }
+.cr-send-field__hint { margin: 0; font-size: var(--couranr-text-sm); color: var(--couranr-text-muted); }
+.cr-send-field__note { margin: 0; font-size: var(--couranr-text-sm); color: var(--couranr-text-muted); }
+.cr-send-field__inline { display: grid; gap: var(--couranr-space-1); font-size: var(--couranr-text-sm); }
+
+.cr-send-textarea { min-height: 6rem; resize: vertical; }
+
+.cr-send-suggestions {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-md);
+  overflow: hidden;
+}
+
+.cr-send-suggestion {
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  padding: var(--couranr-space-3) var(--couranr-space-4);
+  text-align: left;
+  background: var(--couranr-surface);
+  border: 0;
+  border-bottom: 1px solid var(--couranr-border);
+  cursor: pointer;
+}
+
+.cr-send-suggestions li:last-child .cr-send-suggestion { border-bottom: 0; }
+.cr-send-suggestion:hover { background: var(--couranr-canvas); }
+.cr-send-suggestion__label { font-weight: 600; color: var(--couranr-text); }
+.cr-send-suggestion__detail { font-size: var(--couranr-text-sm); color: var(--couranr-text-muted); }
+
+.cr-send-choice {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--couranr-space-3);
+  padding: var(--couranr-space-2) 0;
+  font-size: var(--couranr-text-sm);
+  min-height: 44px;
+}
+
+.cr-send-actions { display: flex; flex-wrap: wrap; gap: var(--couranr-space-3); }
+
+.cr-send-summary { display: grid; gap: var(--couranr-space-3); margin: 0; }
+
+.cr-send-summary__row {
+  display: grid;
+  grid-template-columns: 8rem 1fr auto;
+  gap: var(--couranr-space-3);
+  align-items: baseline;
+  padding-bottom: var(--couranr-space-3);
+  border-bottom: 1px solid var(--couranr-border);
+}
+
+.cr-send-summary__row dt { font-size: var(--couranr-text-sm); color: var(--couranr-text-muted); }
+.cr-send-summary__row dd { margin: 0; color: var(--couranr-text); }
+
+.cr-send-edit {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: var(--couranr-text-sm);
+  color: var(--couranr-route-blue);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.cr-send-note { margin: 0; font-size: var(--couranr-text-sm); color: var(--couranr-text-muted); }
+
+/* The production stop. Deliberately a plain statement rather than an error:
+   nothing failed, the capability is not open yet. */
+.cr-send-stop {
+  margin: 0;
+  padding: var(--couranr-space-4) var(--couranr-space-5);
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-md);
+  background: var(--couranr-canvas);
+  font-weight: 600;
+  color: var(--couranr-text);
+}

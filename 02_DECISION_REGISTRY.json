@@ -874,6 +874,9 @@
       "id": "MKT-001",
       "category": "launch markets",
       "decision": "Four named initial markets plus surrounding areas; Maryland is excluded from initial marketing.",
+      "amended_by": [
+        "MKT-006"
+      ],
       "value": {
         "marketed_markets": [
           "Washington, DC",
@@ -3102,6 +3105,239 @@
       ],
       "decided_by": "owner",
       "decided_at_utc": "2026-08-29T00:00:00Z"
+    },
+    {
+      "id": "MKT-005",
+      "category": "public copy authority",
+      "decision": "The fixed editorial copy, intent labels and non-transactional consumer reassurance for PUB-012, PUB-013 and PUB-004's direct-consumer mode are locked public copy. They implement MKT-004's two-path brand. Decision-dependent values — markets, prices, mileage, operating hours, cutoffs, payer rules and availability — remain governed by their existing records and must never be retyped into these surfaces.",
+      "value": {
+        "master": {
+          "hero_headline": "Local delivery, built around you.",
+          "hero_support": "Whether you’re sending something across town or adding delivery to your business, Couranr handles the trip.",
+          "consumer_door_title": "Send something",
+          "consumer_door_support": "For individuals who need something delivered locally.",
+          "business_door_title": "Add delivery to my business",
+          "business_door_support": "Your customers order from you. Couranr handles delivery.",
+          "network_heading": "One local delivery network. Two ways to use it.",
+          "network_individuals": "You already own it, bought it, or need it picked up. Couranr moves it.",
+          "network_businesses": "Your customers order from you. Couranr handles delivery."
+        },
+        "same_day": {
+          "hero_headline": "Need it across town today?",
+          "hero_support": "Send something you have, or have Couranr pick something up for you.",
+          "hero_question": "What do you need?",
+          "intent_send_title": "Send something I have",
+          "intent_send_support": "From me, my home, work, a friend or family member.",
+          "intent_pickup_title": "Pick something up for me",
+          "intent_pickup_support": "Something you’ve already bought, ordered or arranged.",
+          "already_bought_headline": "Already bought it? We’ll go get it.",
+          "already_bought_body": "Your dry cleaning is ready. The cake is finished. Your print order is waiting. You bought something from a local shop.",
+          "already_bought_close": "Couranr can pick it up and bring it to you.",
+          "already_bought_cta": "Pick something up",
+          "send_what_you_have_headline": "Sometimes the thing is already with you.",
+          "send_what_you_have_body": "Keys left at home. Documents someone needs. A gift for a friend. Something your family forgot.",
+          "send_what_you_have_close": "You don’t have to make the trip yourself.",
+          "send_what_you_have_cta": "Send something",
+          "breadth_headline": "The local trips that steal your time.",
+          "breadth_labels": [
+            "Keys",
+            "Documents",
+            "Gifts",
+            "Finished orders",
+            "Store purchases",
+            "Dry cleaning",
+            "Bakery orders",
+            "Personal items"
+          ],
+          "workflow_headline": "A few details. Then Couranr handles the trip.",
+          "workflow_labels": [
+            "Tell us where",
+            "Tell us what",
+            "Choose when",
+            "Review your quote",
+            "Couranr confirms"
+          ],
+          "price_headline": "See the price before you request.",
+          "tracking_headline": "Know what’s happening after pickup.",
+          "tracking_labels": [
+            "Confirmed",
+            "Picked up",
+            "Delivered"
+          ],
+          "closing_headline": "One less trip to make.",
+          "closing_support": "Send something you have or let Couranr go pick it up.",
+          "price_body": "You review the delivery and its price before anything is requested. Couranr confirms availability, schedule and vehicle before any payment is captured.",
+          "tracking_body": "Couranr sends the recipient a private tracking link when the delivery is confirmed. It is the only way the delivery can be opened.",
+          "availability_headline": "Tell Couranr where, and it checks.",
+          "availability_state_order": [
+            "idle",
+            "focused",
+            "typing",
+            "suggestions",
+            "selected",
+            "checking",
+            "eligible",
+            "review-needed",
+            "error"
+          ],
+          "availability_state_labels": [
+            "Idle",
+            "Focused",
+            "Typing",
+            "Suggestions",
+            "Selected",
+            "Checking",
+            "Eligible",
+            "Review needed",
+            "Error"
+          ],
+          "availability_state_captions": [
+            "The pickup and destination fields, waiting for you.",
+            "You tap one. Couranr is ready for the address.",
+            "You start typing. Nothing is submitted yet.",
+            "Matching addresses appear as you type.",
+            "You choose the one you meant, and it fills in.",
+            "Couranr checks the trip against the area it operates in.",
+            "Couranr can run this trip. You carry on to the next step.",
+            "Couranr captures the address for review. Nothing is turned away at the door.",
+            "Something did not load. You can try again without losing what you entered."
+          ]
+        },
+        "send": {
+          "trip_send_origin": "Where is the item now?",
+          "trip_pickup_origin": "Where should we pick it up?",
+          "trip_pickup_hint": "Search for the business or enter its address.",
+          "trip_destination": "Where is it going?",
+          "item_question": "What are we delivering?",
+          "item_example": "A birthday cake I already paid for at Main Street Bakery.",
+          "readiness_question": "Is it ready for pickup?",
+          "readiness_yes": "Yes, the business says it’s ready",
+          "readiness_no": "Not yet / I’m not sure",
+          "timing_question": "When do you need it?",
+          "timing_asap": "As soon as possible",
+          "timing_today": "Today",
+          "timing_schedule": "Schedule it",
+          "review_heading": "Here’s your delivery",
+          "contact_heading": "Where should we send updates?",
+          "acknowledgement": "I confirm this item is eligible for delivery and I have authority to send or collect it.",
+          "production_stop": "Same Day ordering isn’t live yet.",
+          "received_heading": "We have your request.",
+          "received_support": "Couranr is confirming your delivery."
+        },
+        "chrome": {
+          "same_day": "Same Day",
+          "for_business": "For Business",
+          "business_sign_in": "Business sign in",
+          "track_a_delivery": "Track a delivery",
+          "start_a_delivery": "Start a delivery"
+        },
+        "apostrophe_normalization": {
+          "rule": "Every apostrophe in this payload is U+2019 RIGHT SINGLE QUOTATION MARK.",
+          "why": "The owner-approved brief spelled two strings with an ASCII apostrophe in its locked-copy list while spelling the SAME two strings with U+2019 in its own body spec: \"Whether you’re sending something across town…\" and \"Something you’ve already bought, ordered or arranged.\" Seven of the nine apostrophes in that list, and nine of nine in the body, are U+2019. A render-time module must match this record byte for byte, so the two styles cannot both be right; the majority and typographically correct form wins. Flagged rather than silently chosen — if the owner wants ASCII apostrophes, this record is the one place to change.",
+          "normalized_strings": [
+            "Whether you’re sending something across town or adding delivery to your business, Couranr handles the trip.",
+            "Something you’ve already bought, ordered or arranged."
+          ]
+        },
+        "excluded_from_lock": "The tracking-link launcher's prompt, submit label and validation error are implementation microcopy, not locked copy. Only the header label \"Track a delivery\" is locked here. That microcopy stays literal and non-promotional and makes no tracking claim.",
+        "routes_excluded": "No route or URL is stored in this record. Copy owns words; ui_screen_registry.json owns where destinations live."
+      },
+      "status": "decided",
+      "authority_file": "02_DECISION_REGISTRY.json",
+      "authority_section": "MKT-005.value — this record IS the authority for these strings. They are stored here rather than referenced, so no second copy-authority document exists.",
+      "affected_routes": [
+        "/",
+        "/sameday",
+        "/send"
+      ],
+      "affected_screen_ids": [
+        "PUB-012",
+        "PUB-013",
+        "PUB-004"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [
+        "lib/couranr/public/masterSameDayCopy.ts",
+        "app/(couranr)/(public)/(master-public)",
+        "app/(couranr)/(public)/(consumer-public)"
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "master_copy": "none",
+          "same_day_copy": "none",
+          "send_copy": "none"
+        },
+        "code_location": "no PUB-012, PUB-013 or /send surface existed before this record",
+        "resolution": "No conflict: this record precedes the implementation. lib/couranr/public/masterSameDayCopy.ts is the render-time module and tests/couranr-master-sameday-copy.test.ts asserts it matches this record exactly.",
+        "remediation_commit": "V10 master and Same Day frontend slice"
+      },
+      "implementation_phase": "10",
+      "acceptance_criteria": [
+        "Every locked string rendered by PUB-012, PUB-013 or /send comes from the typed copy module, and the module matches this record byte for byte.",
+        "No market name, price, mileage, operating hour, cutoff or service-level amount is typed into those surfaces; each is imported from the governed public module.",
+        "No route or URL is read from the copy module."
+      ],
+      "decided_by": "owner",
+      "decided_at_utc": "2026-08-30T00:00:00Z"
+    },
+    {
+      "id": "MKT-006",
+      "category": "launch markets",
+      "decision": "MKT-001 carries ONE public market sentence and it is business-framed: \"Local business delivery across DC, Stafford, Woodbridge, Fredericksburg, and surrounding areas.\" MKT-004 expanded the brand beyond merchants, so that sentence is no longer correct on the master or consumer surfaces. This record adds a consumer-neutral sentence over the SAME four markets, for PUB-012 and PUB-013 only. MKT-001 stays authoritative for the business surfaces and its sentence is unchanged. No market is restated: both sentences name the same MKT-001 list.",
+      "amends": "MKT-001",
+      "value": {
+        "public_copy_neutral": "Couranr delivers across DC, Stafford, Woodbridge, Fredericksburg, and surrounding areas.",
+        "applies_to_screen_ids": [
+          "PUB-012",
+          "PUB-013"
+        ],
+        "business_copy_unchanged_for_screen_ids": [
+          "PUB-001",
+          "PUB-010"
+        ],
+        "markets_source": "MKT-001.value.marketed_markets — unchanged. This record adds framing, not markets.",
+        "still_prohibited": [
+          "a delivery radius",
+          "ZIP eligibility",
+          "a polygon",
+          "instant eligibility",
+          "Maryland launch coverage"
+        ],
+        "why": "MKT-004.value.product_description_after retired the businesses-only descriptor at the master level. The V10 frontend work order restates it for master-service-area as \"consumer-neutral reassurance, not the old business-only service-area copy\", and PUB-013 is a consumer surface where a business-delivery description is simply wrong about what the visitor is being offered."
+      },
+      "status": "decided",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§3 Markets and operating model — Initial marketed markets",
+      "affected_routes": [
+        "/",
+        "/sameday"
+      ],
+      "affected_screen_ids": [
+        "PUB-012",
+        "PUB-013"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [
+        "lib/couranr/public/governed.ts",
+        "app/(couranr)/(public)/(master-public)",
+        "app/(couranr)/(public)/(consumer-public)"
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "master_and_consumer_market_sentence": "Local business delivery across DC, Stafford, Woodbridge, Fredericksburg, and surrounding areas."
+        },
+        "code_location": "app/(couranr)/(public)/(master-public)/page.tsx, app/(couranr)/(public)/(consumer-public)/sameday/page.tsx",
+        "resolution": "Written authority wins. Both surfaces render the neutral sentence; the business surfaces keep MKT-001's.",
+        "remediation_commit": "V10 completeness pass"
+      },
+      "implementation_phase": "3",
+      "acceptance_criteria": [
+        "PUB-012 and PUB-013 render the neutral sentence and never the business-framed one.",
+        "The business public surfaces still render MKT-001's sentence.",
+        "Both sentences name the same four MKT-001 markets, and neither is typed into a page."
+      ],
+      "decided_by": "owner",
+      "decided_at_utc": "2026-08-30T00:00:00Z"
     }
   ]
 }

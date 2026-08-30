@@ -341,12 +341,18 @@ describe("§32.4 + fidelity amendment §6 — the eyebrow rule", () => {
     // like-for-like swap is the obvious way to defeat this rule.
     // All five now, not the four the eyebrow was first removed from: the owner
     // removed PUB-001's too, so it is subject to the same substitution ban.
-    const RETIRED = ["", "businesses", "service-areas", "how-it-works", "pricing"];
+    /* Paths, not segments: LEG-004 moved PUB-001 to /business and V10 put the
+       business family under its own server route group, so the old
+       `(public)/<segment>/page.tsx` join no longer resolves any of them. */
+    const RETIRED = [
+      "(public)/(business-public)/business/page.tsx",
+      "(public)/(business-public)/businesses/page.tsx",
+      "(public)/(business-public)/service-areas/page.tsx",
+      "(public)/(business-public)/how-it-works/page.tsx",
+      "(public)/(business-public)/pricing/page.tsx",
+    ];
     for (const page of RETIRED) {
-      const src = readFileSync(
-        path.join(CANON, `(public)/${page}/page.tsx`.replace("//", "/")),
-        "utf8",
-      );
+      const src = readFileSync(path.join(CANON, page), "utf8");
       const heroBlock = src.slice(0, src.indexOf("</section>"));
       for (const banned of ["cr-mkt-chip", "cr-badge", "cr-mkt-eyebrow", "cr-hero__label"]) {
         expect(
@@ -364,7 +370,7 @@ describe("§32.4 + fidelity amendment §6 — the eyebrow rule", () => {
     // eyebrow, so the owner's removal took it with it. The registry line has
     // no rendered home now and the owner should amend it; what stays asserted
     // is the copy that has one.
-    const home = readFileSync(path.join(CANON, "(public)/page.tsx"), "utf8");
+    const home = readFileSync(path.join(CANON, "(public)/(business-public)/business/page.tsx"), "utf8");
     expect(home).toContain("Your customers want delivery.");
     expect(home).toContain("Now you can say yes.");
     expect(home).toContain("Keep taking orders through your website");
@@ -444,9 +450,37 @@ describe("§13 — surface families and their type budgets", () => {
   );
   const SURFACES = ["public", "merchant", "operations", "driver", "customer"] as const;
 
-  it("all five shells declare their surface family", () => {
+  /* Every shell declares a family, and every family has a shell.
+     Asserted as SETS, not as a sorted list of occurrences. MKT-004 split the
+     public shell into three brand variants — business, master and consumer —
+     which all declare `public`, so counting occurrences now fails for a
+     correct tree. What must hold is coverage in both directions. */
+  it("every shell declares a surface family, and every family has a shell", () => {
     const declared = [...SHELLS.matchAll(/data-couranr-surface="([a-z]+)"/g)].map((m) => m[1]);
-    expect(declared.sort()).toEqual([...SURFACES].sort());
+    expect([...new Set(declared)].sort()).toEqual([...SURFACES].sort());
+    /* Every declaration sits on a shell ROOT, not on an inner div. Merchant and
+       Operations both nest a plain `cr-shell` beside their sidebar, so counting
+       that class is not a proxy for "number of shells" — the family must be on
+       the element that opens the shell. */
+    const onRoot = [...SHELLS.matchAll(/className="(cr-shell[^"]*)"([^>]*)/g)]
+      .filter(([, , rest]) => rest.includes("data-couranr-surface"));
+    expect(onRoot.length).toBe(declared.length);
+
+    /* Only `public` may be declared more than once, and only because MKT-004
+       gave it three brand variants. A second `merchant` shell would be a bug. */
+    const counts = declared.reduce((acc, s) => ({ ...acc, [s]: (acc[s] ?? 0) + 1 }), {});
+    for (const [family, n] of Object.entries(counts)) {
+      expect(n, `${family} is declared ${n} times`).toBe(family === "public" ? 3 : 1);
+    }
+  });
+
+  /* The public brand variants are a closed set, and each one is distinguishable
+     in the DOM. Without `data-couranr-chrome` the three public shells would be
+     indistinguishable to a browser gate that needs to know which chrome it is
+     looking at. */
+  it("labels each public brand variant distinctly", () => {
+    const chrome = [...SHELLS.matchAll(/data-couranr-chrome="([a-z]+)"/g)].map((m) => m[1]);
+    expect(chrome.sort()).toEqual(["business", "consumer", "master"]);
   });
 
   it("the surface names match §6's five families", () => {

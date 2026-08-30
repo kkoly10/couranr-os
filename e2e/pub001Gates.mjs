@@ -41,6 +41,13 @@ import { createRequire } from "node:module";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PORT = Number(process.env.PUB001_PORT || 3100);
 const BASE = `http://127.0.0.1:${PORT}`;
+
+/* PUB-001 moved from `/` to `/business` with LEG-004, and `/` is PUB-012 now.
+   Read from the screen source rather than typed, so this gate follows the next
+   move instead of silently driving whatever page happens to answer `/`. */
+const PUB_001_ROUTE = JSON.parse(
+  readFileSync(path.join(ROOT, "ui_screen_registry.json"), "utf8"),
+).screens.find((s) => s.id === "PUB-001").routes[0];
 const ART = path.join(ROOT, "e2e/artifacts/pub001");
 const CONTROL = process.argv.includes("--positive-control");
 
@@ -310,7 +317,7 @@ async function main() {
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
     page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
-    const res = await page.goto(`${BASE}/`, { waitUntil: "networkidle" });
+    const res = await page.goto(`${BASE}${PUB_001_ROUTE}`, { waitUntil: "networkidle" });
     await page.evaluate(() => document.fonts.ready);
 
     const m = await page.evaluate(() => {
@@ -374,7 +381,7 @@ async function main() {
   /* Sticky chrome, on a page long enough for it to matter. */
   {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-    await page.goto(`${BASE}/`, { waitUntil: "networkidle" });
+    await page.goto(`${BASE}${PUB_001_ROUTE}`, { waitUntil: "networkidle" });
     const before = await page.locator(".cr-topbar").evaluate((e) => Math.round(e.getBoundingClientRect().top));
     await page.evaluate(() => window.scrollTo(0, 2000));
     await page.waitForTimeout(150);
@@ -409,7 +416,7 @@ async function main() {
   /* ══ GATE C ══════════════════════════════════════════ accessibility ══ */
   console.log("\nGATE C — accessibility (§23)");
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-  await page.goto(`${BASE}/`, { waitUntil: "networkidle" });
+  await page.goto(`${BASE}${PUB_001_ROUTE}`, { waitUntil: "networkidle" });
   await page.evaluate(() => document.fonts.ready);
 
   if (CONTROL) {
@@ -488,7 +495,7 @@ async function main() {
   for (const width of [1440, 390]) {
     const apage =
       width === 1440 ? page : await browser.newPage({ viewport: { width, height: 844 } });
-    if (apage !== page) await apage.goto(`${BASE}/`, { waitUntil: "networkidle" });
+    if (apage !== page) await apage.goto(`${BASE}${PUB_001_ROUTE}`, { waitUntil: "networkidle" });
     await apage.evaluate(() => document.fonts.ready);
     await apage.addScriptTag({ content: AXE_SOURCE });
     const axe = await apage.evaluate(async () =>
@@ -639,7 +646,7 @@ async function main() {
   for (const width of [1440, 390]) {
     const cpage =
       width === 1440 ? page : await browser.newPage({ viewport: { width, height: 844 } });
-    if (cpage !== page) await cpage.goto(`${BASE}/`, { waitUntil: "networkidle" });
+    if (cpage !== page) await cpage.goto(`${BASE}${PUB_001_ROUTE}`, { waitUntil: "networkidle" });
     await cpage.reload({ waitUntil: "networkidle" });
     await cpage.evaluate(() => document.fonts.ready);
 

@@ -67,12 +67,12 @@ describe("landing resolution", () => {
     expect(defaultDestination(DRIVER)).toBe("/driver");
   });
 
-  it("sends a merchant with an active membership to /business", () => {
-    expect(defaultDestination(MERCHANT)).toBe("/business");
+  it("sends a merchant with an active membership to /app/business", () => {
+    expect(defaultDestination(MERCHANT)).toBe("/app/business");
   });
 
   it("sends an authenticated caller with no membership to onboarding", () => {
-    expect(defaultDestination(NEW_MERCHANT)).toBe("/business/onboarding");
+    expect(defaultDestination(NEW_MERCHANT)).toBe("/app/business/onboarding");
   });
 
   /** The higher-privilege surface wins, so an operator never acts as a merchant by accident. */
@@ -93,13 +93,23 @@ describe("surfaceOf", () => {
   it("maps the three authenticated roots", () => {
     expect(surfaceOf("/operations")).toBe("operations");
     expect(surfaceOf("/driver/availability")).toBe("driver");
-    expect(surfaceOf("/business/deliveries/new")).toBe("business");
+    expect(surfaceOf("/app/business/deliveries/new")).toBe("business");
   });
 
   /** `/businesses` is the PUBLIC marketing page. A startsWith check would claim it. */
   it("is segment-aware, not prefix-based", () => {
     expect(surfaceOf("/businesses")).toBe(null);
     expect(surfaceOf("/business-tools")).toBe(null);
+    /* LEG-004 moved the merchant surface to `/app/business`, so two NEW
+       near-misses matter and neither may be classified merchant:
+       `/business` is PUB-001 (public marketing) and `/app/not-business`
+       merely shares the first segment. */
+    expect(surfaceOf("/business")).toBe(null);
+    expect(surfaceOf("/business/deliveries")).toBe(null);
+    expect(surfaceOf("/businesses")).toBe(null);
+    expect(surfaceOf("/app")).toBe(null);
+    expect(surfaceOf("/app/not-business")).toBe(null);
+    expect(surfaceOf("/app/businesses")).toBe(null);
     expect(surfaceOf("/driverless")).toBe(null);
   });
 
@@ -110,7 +120,7 @@ describe("surfaceOf", () => {
   });
 
   it("ignores query and hash", () => {
-    expect(surfaceOf("/business/deliveries/new?step=review")).toBe("business");
+    expect(surfaceOf("/app/business/deliveries/new?step=review")).toBe("business");
     expect(surfaceOf("/operations#top")).toBe("operations");
   });
 });
@@ -162,13 +172,13 @@ describe("normalizeNext refuses every external destination", () => {
    */
   it("accepts ordinary internal paths, including hyphenated ones", () => {
     for (const p of [
-      "/business",
+      "/app/business",
       "/sign-in",
-      "/business/deliveries/new",
-      "/business/deliveries/new?step=review",
+      "/app/business/deliveries/new",
+      "/app/business/deliveries/new?step=review",
       "/operations/queue",
       "/driver/availability",
-      "/business/settings/team",
+      "/app/business/settings/team",
     ]) {
       expect(normalizeNext(p).path, p).toBe(p);
     }
@@ -178,27 +188,42 @@ describe("normalizeNext refuses every external destination", () => {
 /* -------------------------------------------- cross-role next refusals */
 
 describe("resolveLanding honours next only within the caller's own surface", () => {
-  it("lets a merchant deep-link inside /business", () => {
-    const d = resolveLanding(MERCHANT, "/business/deliveries/new");
-    expect(d.destination).toBe("/business/deliveries/new");
+  /* LEG-004 made `/business` PUB-001, a PUBLIC marketing page. A merchant
+     asking to land there is asking for a surface they do not own as a
+     merchant, so it must be refused the same way `/operations` is — and the
+     refusal is the redirect to where they DO belong, not a 403 they cannot
+     act on. This case did not exist before the move, because `/business` WAS
+     the merchant surface. */
+  it("refuses a merchant asking to land on /business, which is public now", () => {
+    for (const next of ["/business", "/business/deliveries", "/businesses"]) {
+      const d = resolveLanding(MERCHANT, next);
+      expect(d.usedNext, next).toBe(false);
+      expect(d.rejectedNextReason, next).toBe("wrong_surface");
+      expect(d.destination, next).toBe("/app/business");
+    }
+  });
+
+  it("lets a merchant deep-link inside /app/business", () => {
+    const d = resolveLanding(MERCHANT, "/app/business/deliveries/new");
+    expect(d.destination).toBe("/app/business/deliveries/new");
     expect(d.usedNext).toBe(true);
   });
 
   it("does NOT let a merchant next into /operations", () => {
     const d = resolveLanding(MERCHANT, "/operations/queue");
-    expect(d.destination).toBe("/business");
+    expect(d.destination).toBe("/app/business");
     expect(d.usedNext).toBe(false);
     expect(d.rejectedNextReason).toBe("wrong_surface");
   });
 
-  it("does NOT let a driver next into /business", () => {
-    const d = resolveLanding(DRIVER, "/business/deliveries/new");
+  it("does NOT let a driver next into /app/business", () => {
+    const d = resolveLanding(DRIVER, "/app/business/deliveries/new");
     expect(d.destination).toBe("/driver");
     expect(d.rejectedNextReason).toBe("wrong_surface");
   });
 
   it("does NOT let a merchant next into /driver", () => {
-    expect(resolveLanding(MERCHANT, "/driver").destination).toBe("/business");
+    expect(resolveLanding(MERCHANT, "/driver").destination).toBe("/app/business");
   });
 
   it("lets an admin deep-link inside /operations", () => {
@@ -209,7 +234,7 @@ describe("resolveLanding honours next only within the caller's own surface", () 
 
   it("falls back for an external next rather than honouring it", () => {
     const d = resolveLanding(MERCHANT, "https://evil.test/business");
-    expect(d.destination).toBe("/business");
+    expect(d.destination).toBe("/app/business");
     expect(d.rejectedNextReason).toBe("absolute_url");
   });
 
@@ -231,8 +256,8 @@ describe("resolveLanding honours next only within the caller's own surface", () 
 
   /** A deep merchant link is useless before onboarding: the page has nothing to show. */
   it("sends a membership-less merchant to onboarding even with a valid next", () => {
-    const d = resolveLanding(NEW_MERCHANT, "/business/deliveries/new");
-    expect(d.destination).toBe("/business/onboarding");
+    const d = resolveLanding(NEW_MERCHANT, "/app/business/deliveries/new");
+    expect(d.destination).toBe("/app/business/onboarding");
     expect(d.usedNext).toBe(false);
   });
 });
@@ -274,7 +299,7 @@ describe("auth error copy", () => {
 /* ------------------------------------------------------ wiring assertions */
 
 describe("sign-in screen", () => {
-  const page = read("app/(couranr)/(public)/sign-in/page.tsx");
+  const page = read("app/(couranr)/(public)/(business-public)/sign-in/page.tsx");
   const form = read("components/couranr/auth/SignInForm.tsx");
 
   it("is no longer a placeholder", () => {
@@ -291,7 +316,7 @@ describe("sign-in screen", () => {
     // No hard-coded post-login destination in the form.
     expect(form).not.toMatch(/push\("\/operations/);
     expect(form).not.toMatch(/push\("\/driver/);
-    expect(form).not.toMatch(/replace\("\/business/);
+    expect(form).not.toMatch(/replace\("\/app\/business/);
   });
 
   it("covers the required states", () => {
@@ -396,7 +421,7 @@ describe("surface guards", () => {
   const guard = read("components/couranr/auth/SurfaceGuard.tsx");
 
   for (const [file, surface] of [
-    ["app/(couranr)/business/layout.tsx", "business"],
+    ["app/(couranr)/app/business/layout.tsx", "business"],
     ["app/(couranr)/operations/layout.tsx", "operations"],
     ["app/(couranr)/driver/layout.tsx", "driver"],
   ] as const) {
@@ -567,9 +592,9 @@ describe("signup confirmation handling", () => {
 describe("the canonical auth loop has no placeholders", () => {
   it("neither sign-in nor sign-up is a ScreenPlaceholder", () => {
     for (const f of [
-      "app/(couranr)/(public)/sign-in/page.tsx",
-      "app/(couranr)/(public)/sign-up/page.tsx",
-      "app/(couranr)/business/onboarding/page.tsx",
+      "app/(couranr)/(public)/(business-public)/sign-in/page.tsx",
+      "app/(couranr)/(public)/(business-public)/sign-up/page.tsx",
+      "app/(couranr)/app/business/onboarding/page.tsx",
     ]) {
       expect(read(f), f).not.toMatch(/ScreenPlaceholder/);
     }
@@ -596,7 +621,7 @@ describe("the canonical auth loop has no placeholders", () => {
       }
     })(appDir);
 
-    for (const dest of ["/sign-in", "/sign-up", "/business", "/business/onboarding", "/operations", "/driver"]) {
+    for (const dest of ["/sign-in", "/sign-up", "/app/business", "/app/business/onboarding", "/operations", "/driver"]) {
       expect(pages.has(dest), `${dest} has no page`).toBe(true);
     }
   });

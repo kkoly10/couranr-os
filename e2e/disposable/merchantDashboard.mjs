@@ -3,7 +3,7 @@
  *
  * Chromium signs in through the real `/sign-in` form against the disposable
  * stack (real Next server, real PostgREST, real PostgreSQL carrying every
- * forward migration) and drives `/business` through all five registry-required
+ * forward migration) and drives `/app/business` through all five registry-required
  * states (`UI_SCREEN_REGISTRY.md:272`):
  *
  *   D1  New workspace        a user with zero memberships
@@ -355,7 +355,7 @@ async function main() {
 
     async function openDashboard(email) {
       const page = await signIn(email);
-      await page.goto(`${BASE}/business`, { waitUntil: "domcontentloaded" });
+      await page.goto(`${BASE}/app/business`, { waitUntil: "domcontentloaded" });
       return page;
     }
 
@@ -482,7 +482,7 @@ async function main() {
     check("D4c", "requires_action surfaces under 'Awaiting payment authorization'",
       bodyText.includes("Awaiting payment authorization"));
     check("D4d", "each attention item links to the real delivery detail",
-      await ownerPage.locator(`a[href="/business/deliveries/${rFailed}"]`).count() > 0);
+      await ownerPage.locator(`a[href="/app/business/deliveries/${rFailed}"]`).count() > 0);
     {
       const db = sql(
         `select payment_state from public.couranr_payment_obligations
@@ -497,7 +497,7 @@ async function main() {
     check("D3f", "messages tile renders the unread BOOLEAN as a badge, with the kind label",
       bodyText.includes("Unread") && bodyText.includes("Couranr Support"));
     check("D3g", "quick actions render for a write role",
-      await ownerPage.locator('a[href="/business/deliveries/new"]', { hasText: "Create delivery" }).count() > 0);
+      await ownerPage.locator('a[href="/app/business/deliveries/new"]', { hasText: "Create delivery" }).count() > 0);
 
     await ownerPage.screenshot({ path: path.join(SHOTS, "MER-001-active-day.png"), fullPage: true });
 
@@ -517,7 +517,7 @@ async function main() {
     const viewerText = (await viewerPage.innerText("body")).replace(/\s+/g, " ");
 
     check("R1", "viewer sees NO Create-delivery action",
-      (await viewerPage.locator('a[href="/business/deliveries/new"]').count()) === 0);
+      (await viewerPage.locator('a[href="/app/business/deliveries/new"]').count()) === 0);
     check("R2", "viewer sees the preparation item read-only, not the readiness writer",
       viewerText.includes("A teammate with a dispatcher, manager, or owner role can mark this ready") &&
       !(await viewerPage.getByRole("button", { name: "Ready for Couranr" }).isVisible().catch(() => false)));
@@ -592,7 +592,7 @@ async function main() {
     const emptyText = (await emptyPage.innerText("body")).replace(/\s+/g, " ");
     check("D2a", "the empty state renders with a real next action",
       emptyText.includes("No deliveries yet") &&
-      (await emptyPage.locator('a[href="/business/deliveries/new"]').count()) > 0);
+      (await emptyPage.locator('a[href="/app/business/deliveries/new"]').count()) > 0);
     check("D2b", "the empty state is true: this business has zero request rows",
       sql(`select count(*) from public.couranr_delivery_requests where business_account_id='${bizB}'`) === "0");
     await emptyPage.screenshot({ path: path.join(SHOTS, "MER-001-empty.png"), fullPage: true });
@@ -603,7 +603,7 @@ async function main() {
     const newPage = await openDashboard(nobody.email);
     await newPage.getByText("Welcome to Couranr").waitFor({ state: "visible", timeout: 30_000 });
     check("D1a", "zero memberships lands on the onboarding call to action",
-      (await newPage.locator('a[href="/business/onboarding"]').count()) > 0);
+      (await newPage.locator('a[href="/app/business/onboarding"]').count()) > 0);
     check("D1b", "the state is true: this user has zero membership rows",
       sql(`select count(*) from public.business_members where user_id='${nobody.id}'`) === "0");
     await newPage.screenshot({ path: path.join(SHOTS, "MER-001-new-workspace.png"), fullPage: true });

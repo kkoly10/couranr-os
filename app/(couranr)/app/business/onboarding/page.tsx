@@ -26,7 +26,7 @@ export default async function Page(props: {
           description="What Couranr needs before your deliveries are dispatched for real. No website, business registration or subscription is required."
           breadcrumbs={[
             { label: "Couranr" },
-            { label: "Set up your business", href: "/business/onboarding" },
+            { label: "Set up your business", href: "/app/business/onboarding" },
             { label: "Go live" },
           ]}
         />

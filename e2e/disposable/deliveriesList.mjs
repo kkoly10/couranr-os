@@ -319,7 +319,7 @@ async function main() {
 
     async function openList(email) {
       const page = await signIn(email);
-      await page.goto(`${BASE}/business/deliveries`, { waitUntil: "domcontentloaded" });
+      await page.goto(`${BASE}/app/business/deliveries`, { waitUntil: "domcontentloaded" });
       return page;
     }
 
@@ -440,7 +440,7 @@ async function main() {
     console.log("Duplicate — prefills the create flow, which re-prices server-side");
     {
       await rowFor(ownerPage, "LIST-mixed").getByRole("button", { name: "Duplicate" }).click();
-      await ownerPage.waitForURL(/\/business\/deliveries\/new/, { timeout: 20_000 });
+      await ownerPage.waitForURL(/\/app\/business\/deliveries\/new/, { timeout: 20_000 });
       const name = fieldLabel(ownerPage, "Name").first();
       await name.waitFor({ state: "visible", timeout: 20_000 });
       const until = Date.now() + 10_000;
@@ -464,7 +464,7 @@ async function main() {
     check("V1", "viewer reads the list (all five roles may read)",
       (await viewerPage.locator("tbody tr").count()) === 5);
     check("V2", "viewer sees no Create, no Ready, no Duplicate",
-      (await viewerPage.locator('a[href="/business/deliveries/new"]').count()) === 0 &&
+      (await viewerPage.locator('a[href="/app/business/deliveries/new"]').count()) === 0 &&
       (await viewerPage.getByRole("button", { name: "Ready for Couranr" }).count()) === 0 &&
       (await viewerPage.getByRole("button", { name: "Duplicate" }).count()) === 0);
     {
@@ -492,7 +492,7 @@ async function main() {
     const emptyPage = await openList(emptyOwner.email);
     await emptyPage.getByText("No deliveries yet").waitFor({ state: "visible", timeout: 30_000 });
     check("E1", "empty state with a real create action, no invented numbers",
-      (await emptyPage.locator('a[href="/business/deliveries/new"]').count()) > 0 &&
+      (await emptyPage.locator('a[href="/app/business/deliveries/new"]').count()) > 0 &&
       !/Showing \d+/.test(await emptyPage.innerText("body")));
     await emptyPage.screenshot({ path: path.join(SHOTS, "MER-004-empty.png"), fullPage: true });
 
@@ -508,7 +508,7 @@ async function main() {
           body: JSON.stringify({ error: "Injected for the error-state check.", correlationId: "e2e-err-1" }),
         })
       );
-      await page.goto(`${BASE}/business/deliveries`, { waitUntil: "domcontentloaded" });
+      await page.goto(`${BASE}/app/business/deliveries`, { waitUntil: "domcontentloaded" });
       await page.getByText("Your deliveries did not load").waitFor({ state: "visible", timeout: 30_000 });
       check("ERR1", "the error state renders with the support reference",
         (await page.innerText("body")).includes("e2e-err-1"));

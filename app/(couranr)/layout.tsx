@@ -6,7 +6,7 @@ import "./shell.css";
  * Canonical Couranr route group.
  *
  * A route group `(couranr)` does not appear in the URL, so canonical routes
- * live at their registry paths (`/business`, `/operations`, `/track/[token]`)
+ * live at their registry paths (`/app/business`, `/operations`, `/track/[token]`)
  * while sharing this layout.
  *
  * ADDITIVE: this layout adds a `.cr-root` wrapper and imports the canonical

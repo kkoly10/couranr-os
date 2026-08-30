@@ -39,7 +39,7 @@ import { DUPLICATE_STORAGE_KEY } from "@/lib/couranr/requests/listFilters";
 /**
  * MER-005 (Create delivery with Smart Intake) and MER-006 (Delivery review and
  * quote) — the same flow in two steps, matching the registry routes
- * `/business/deliveries/new` and `/business/deliveries/new?step=review`.
+ * `/app/business/deliveries/new` and `/app/business/deliveries/new?step=review`.
  *
  * The form collects the SHIPMENT. It has no price field and posts none: the
  * server prices the draft and the review step displays what came back. A
@@ -267,7 +267,7 @@ export function NewDeliveryFlow() {
       setFailure(result);
       return;
     }
-    router.push(`/business/deliveries/${result.value.request.id}`);
+    router.push(`/app/business/deliveries/${result.value.request.id}`);
   }
 
   if (accounts === null && accountsError) {
@@ -303,7 +303,7 @@ export function NewDeliveryFlow() {
       <EmptyState
         title="No business account yet"
         body="Finish setting up your business account before creating a delivery."
-        action={{ label: "Go to onboarding", href: "/business/onboarding" }}
+        action={{ label: "Go to onboarding", href: "/app/business/onboarding" }}
       />
     );
   }
@@ -569,7 +569,7 @@ export function NewDeliveryFlow() {
           >
             Calculate estimate
           </Button>
-          <Link className="cr-button cr-button--ghost" href="/business/deliveries">
+          <Link className="cr-button cr-button--ghost" href="/app/business/deliveries">
             Cancel
           </Link>
         </Cluster>

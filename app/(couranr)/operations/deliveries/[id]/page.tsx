@@ -12,7 +12,7 @@ export const metadata = { title: "Delivery review workspace — Couranr" };
  * request without a business scope, which only Couranr Operations can do.
  *
  * This route exists because OPS-002 previously linked Operations at
- * `/business/deliveries/[id]` — a merchant surface an operations user is
+ * `/app/business/deliveries/[id]` — a merchant surface an operations user is
  * redirected away from, so the review workspace was unreachable.
  *
  * Managed dispatch — vehicle, driver and schedule selection — is the rest of

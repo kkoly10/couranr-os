@@ -26,7 +26,7 @@ vi.mock("@/components/couranr/onboarding/client", () => ({
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push, refresh, replace: vi.fn() }),
-  usePathname: () => "/business/onboarding",
+  usePathname: () => "/app/business/onboarding",
 }));
 
 const { OnboardingForm } = await import("@/components/couranr/onboarding/OnboardingForm");

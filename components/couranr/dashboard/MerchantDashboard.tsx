@@ -283,7 +283,7 @@ export function MerchantDashboard() {
       <EmptyState
         title="Welcome to Couranr"
         body="Set up your business workspace to start creating deliveries."
-        action={{ label: "Set up your workspace", href: "/business/onboarding" }}
+        action={{ label: "Set up your workspace", href: "/app/business/onboarding" }}
       />
     );
   }
@@ -328,7 +328,7 @@ export function MerchantDashboard() {
       {activationUnknown ? (
         <Alert tone="info" title="Activation status unavailable">
           Couranr could not check whether this workspace is live right now.{" "}
-          <Link href="/business/onboarding?step=activation">Open activation</Link>.
+          <Link href="/app/business/onboarding?step=activation">Open activation</Link>.
         </Alert>
       ) : null}
       {activation && activation.state !== "live" ? (
@@ -346,7 +346,7 @@ export function MerchantDashboard() {
             checklist that sentence was written for.
           */}
           {activation.blockedReason ? ` ${activation.blockedReason}` : ""}{" "}
-          <Link href="/business/onboarding?step=activation">
+          <Link href="/app/business/onboarding?step=activation">
             {activation.canRequest ? "Ask Couranr to activate" : "Go live"}
           </Link>
           .
@@ -377,16 +377,16 @@ export function MerchantDashboard() {
       <Cluster gap={3}>
         {mayWrite ? (
           <Link
-            href="/business/deliveries/new"
+            href="/app/business/deliveries/new"
             className={buttonClassName({ variant: "primary" })}
           >
             Create delivery
           </Link>
         ) : null}
-        <Link href="/business/deliveries" className={buttonClassName({})}>
+        <Link href="/app/business/deliveries" className={buttonClassName({})}>
           View deliveries
         </Link>
-        <Link href="/business/messages" className={buttonClassName({})}>
+        <Link href="/app/business/messages" className={buttonClassName({})}>
           View messages
         </Link>
       </Cluster>
@@ -422,7 +422,7 @@ export function MerchantDashboard() {
                   </Text>
                   <div>
                     <Link
-                      href={`/business/deliveries/${e.request.id}`}
+                      href={`/app/business/deliveries/${e.request.id}`}
                       className={buttonClassName({ size: "sm" })}
                     >
                       Open delivery
@@ -494,7 +494,7 @@ export function MerchantDashboard() {
               }
               action={
                 mayWrite
-                  ? { label: "Create delivery", href: "/business/deliveries/new" }
+                  ? { label: "Create delivery", href: "/app/business/deliveries/new" }
                   : undefined
               }
             />
@@ -533,7 +533,7 @@ export function MerchantDashboard() {
           <CardHeader
             title="Messages"
             actions={
-              <Link href="/business/messages" className={buttonClassName({ size: "sm" })}>
+              <Link href="/app/business/messages" className={buttonClassName({ size: "sm" })}>
                 Open messages
               </Link>
             }

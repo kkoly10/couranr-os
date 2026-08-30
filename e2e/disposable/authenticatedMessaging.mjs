@@ -563,11 +563,11 @@ async function main() {
       check(
         `M-${role}-1`,
         `${role} lands on the merchant surface`,
-        new URL(page.url()).pathname.startsWith("/business"),
+        new URL(page.url()).pathname.startsWith("/app/business"),
         page.url().replace(BASE, "")
       );
 
-      await page.goto(`${BASE}/business/messages`, { waitUntil: "domcontentloaded" });
+      await page.goto(`${BASE}/app/business/messages`, { waitUntil: "domcontentloaded" });
       // Wait on content that exists only in the LOADED state. "Messages and
       // support" is the page header and renders during the skeleton too.
       await page.getByRole("button", { name: /^Open$/ }).first()
@@ -628,7 +628,7 @@ async function main() {
 
     for (const role of ["viewer", "billing"]) {
       const page = await signIn(merchant[role].email);
-      await page.goto(`${BASE}/business/messages`, { waitUntil: "domcontentloaded" });
+      await page.goto(`${BASE}/app/business/messages`, { waitUntil: "domcontentloaded" });
       // Wait for the list to RESOLVE — either outcome — rather than for the
       // empty state specifically. A hard wait on "No messages yet" aborts the
       // whole run when the rule regresses, instead of reporting the failure it
@@ -983,7 +983,7 @@ async function main() {
 
     // The merchant in the SAME thread must not see it.
     const ownerPage = await signIn(merchant.owner.email);
-    await ownerPage.goto(`${BASE}/business/messages`, { waitUntil: "domcontentloaded" });
+    await ownerPage.goto(`${BASE}/app/business/messages`, { waitUntil: "domcontentloaded" });
     // "Overdue" identifies the support thread uniquely among the owner's three:
     // the second support thread is due_soon and the delivery chat has no
     // deadline. The kind label alone matches two cards.

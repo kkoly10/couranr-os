@@ -37,7 +37,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { openSync } from "node:fs";
+import { openSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
@@ -69,10 +69,15 @@ const PUBLIC_ROUTES = [
 /** Every shell, the chrome it is supposed to keep pinned, and a viewport that
     renders that chrome (the sidebar collapses to `.cr-appbar` below 1024px). */
 const SHELLS = [
+  /* `/` is PUB-012 under the MASTER public chrome now. The business public
+     chrome is a different variant on a different route, so both are driven —
+     one entry here would have left two of the three public shells unmeasured. */
   { route: "/", selector: ".cr-topbar", width: 1440 },
-  { route: "/business", selector: ".cr-sidebar", width: 1440 },
+  { route: "/business", selector: ".cr-topbar", width: 1440 },
+  { route: "/sameday", selector: ".cr-topbar", width: 1440 },
+  { route: "/app/business", selector: ".cr-sidebar", width: 1440 },
   { route: "/operations", selector: ".cr-sidebar", width: 1440 },
-  { route: "/business", selector: ".cr-appbar", width: 900 },
+  { route: "/app/business", selector: ".cr-appbar", width: 900 },
   { route: "/driver", selector: ".cr-driverbar", width: 390 },
 ];
 
@@ -197,7 +202,7 @@ async function main() {
   if (CONTROL) {
     console.log("\npositive control — restoring `overflow-x: hidden` on .cr-shell");
     const page = await browser.newPage({ viewport: { width: 1440, height: 800 } });
-    await page.goto(`${BASE}/business`, { waitUntil: "networkidle" });
+    await page.goto(`${BASE}/app/business`, { waitUntil: "networkidle" });
     const r = await chromeHolds(page, ".cr-sidebar", ".cr-shell { overflow-x: hidden !important; }");
     await page.close();
     await browser.close();
@@ -214,13 +219,20 @@ async function main() {
   }
 
   /* ---- 2. hero art direction ------------------------------------------ */
+  /* PUB-001 moved to `/business` with LEG-004 and `/` is PUB-012 now. Read from
+     the screen source rather than typed, so this follows the next move instead
+     of quietly measuring whatever page answers `/` — which after V10 is a
+     different screen with a different hero. */
+  const PUB_001 = JSON.parse(
+    readFileSync(path.join(ROOT, "ui_screen_registry.json"), "utf8"),
+  ).screens.find((s) => s.id === "PUB-001").routes[0];
   console.log("\nPUB-001 hero art direction");
   for (const [label, width, want] of [
     ["desktop", 1440, "hero-wide"],
     ["mobile", 390, "hero-portrait"],
   ]) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
-    await page.goto(`${BASE}/`, { waitUntil: "networkidle" });
+    await page.goto(`${BASE}${PUB_001}`, { waitUntil: "networkidle" });
     const src = await page.locator(".cr-hero__photo").evaluate((img) => ({
       current: img.currentSrc,
       loaded: img.complete && img.naturalWidth > 0,

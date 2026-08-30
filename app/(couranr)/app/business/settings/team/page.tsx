@@ -17,7 +17,7 @@ export default function Page() {
       <PageHeader
         title="Team and permissions"
         description="Who can sign in to this business, and what each role may do."
-        breadcrumbs={[{ label: "Settings", href: "/business/settings" }, { label: "Team" }]}
+        breadcrumbs={[{ label: "Settings", href: "/app/business/settings" }, { label: "Team" }]}
       />
       <TeamMembers />
     </>

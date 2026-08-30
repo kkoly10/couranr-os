@@ -51,10 +51,34 @@ const accepted = new Map(
 
 describe("the 2026-08-28 marketing photography", () => {
   it("registers every accepted asset, used and reserve", () => {
-    // 11 accepted 2026-08-28, plus 4 accepted 2026-08-29. The number moves only
-    // when the owner accepts more; it is asserted so a silently-added asset
-    // fails rather than appearing.
-    expect(accepted.size).toBe(15);
+    // 11 accepted 2026-08-28, plus 4 accepted 2026-08-29, plus the 3 consumer
+    // photographs the owner delivered with the V10 work order on 2026-08-30.
+    // The number moves only when the owner accepts more; it is asserted so a
+    // silently-added asset fails rather than appearing.
+    expect(accepted.size).toBe(18);
+
+    /* The three V10 consumer photographs, named so the count above cannot be
+       satisfied by three DIFFERENT assets. Each carries its locked alt text and
+       claims only the surfaces MKT-004 gave it. */
+    const CONSUMER = {
+      "couranr-mkt-2026-08-consumer-doorstep-handoff": ["PUB-012", "PUB-013"],
+      "couranr-mkt-2026-08-consumer-dry-cleaning-pickup": ["PUB-013"],
+      "couranr-mkt-2026-08-consumer-send-from-office": ["PUB-013"],
+    };
+    for (const [id, surfaces] of Object.entries(CONSUMER)) {
+      const rec = accepted.get(id);
+      expect(rec, `${id} is not in the registry`).toBeDefined();
+      expect(rec!.status, `${id}`).toBe("approved");
+      expect(rec!.allowed_surfaces, `${id} surfaces`).toEqual(surfaces);
+      expect(String(rec!.alt).length, `${id} has no alt text`).toBeGreaterThan(20);
+    }
+
+    /* PUB-012's business door reuses an ALREADY approved Business photograph
+       rather than generating a new one — the work order's instruction, and the
+       reason its allowed surfaces had to widen rather than a duplicate asset
+       being registered. */
+    const gift = accepted.get("couranr-mkt-2026-08-gift-stationery");
+    expect(gift!.allowed_surfaces).toEqual(["PUB-009", "PUB-012"]);
     for (const id of RESERVE_PHOTO_IDS) {
       const rec = accepted.get(id);
       expect(rec, `${id} is not in the registry`).toBeDefined();

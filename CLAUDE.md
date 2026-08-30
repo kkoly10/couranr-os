@@ -238,7 +238,9 @@ Seven buckets. **`vehicle-images` is the only public one now** — `delivery-pho
 
 ### Routes
 
-**99 page routes and 141 API routes.** 44 pages are canonical under `app/(couranr)` — but **12 of those 44 still render `ScreenPlaceholder`**, so a canonical route existing proves nothing about the capability behind it. **56 pages are legacy** and still live, along with 26 legacy `auto`/`docs` API routes. Auto and docs are **legacy — quarantine targets, not extension points**.
+Route counts move with every slice, so they are GENERATED: `docs/couranr-mvp/IMPLEMENTATION_STATUS.md` carries page and API routes split canonical/legacy, counted at render time. A canonical route existing still proves nothing about the capability behind it — some canonical pages render `ScreenPlaceholder`, and the screen ledger is what says which. Auto and docs are **legacy — quarantine targets, not extension points**.
+
+Since LEG-004 the public route ownership is `/` PUB-012, `/business` PUB-001, `/businesses` PUB-009, `/sameday` PUB-013, `/send` and `/estimate` PUB-004, and the merchant application lives under `/app/business/*`. Public chrome is chosen by SERVER route-group layouts — `(master-public)`, `(business-public)`, `(consumer-public)`, `(token-public)` — never by `usePathname()`.
 
 Of the 43 canonical target routes in the Master Package, **2 exist** (`/`, `/driver`) and 41 do not. Target names differ from actual: `/sign-in` and `/sign-up` vs. the existing `/login` and `/signup`.
 

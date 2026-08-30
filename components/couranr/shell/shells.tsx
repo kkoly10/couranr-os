@@ -1,6 +1,14 @@
 import * as React from "react";
 import Link from "next/link";
-import { navigationFor } from "@/lib/couranr/navigation";
+import { navigationFor, routeForScreen } from "@/lib/couranr/navigation";
+/**
+ * MKT-005 locks five public chrome labels and `PUBLIC_CHROME_COPY` mirrors
+ * them — but nothing imported it, so the parity test was guarding a constant no
+ * rendered surface read while these same five strings sat in this file as
+ * literals. A label edited in one place and not the other would have shipped
+ * green. Every master and consumer chrome label is read from here now.
+ */
+import { PUBLIC_CHROME_COPY as CHROME } from "@/lib/couranr/public/masterSameDayCopy";
 import { Container, Text } from "@/components/couranr/primitives";
 import {
   DriverTabBar,
@@ -9,6 +17,7 @@ import {
   TopbarNav,
 } from "./MobileNav";
 import { AccountBlock, ShellMain, SkipLink, Wordmark } from "./parts";
+import { TrackDeliveryLauncher } from "./TrackDeliveryLauncher";
 import { SignOutButton } from "@/components/couranr/auth/SignOutButton";
 
 /**
@@ -27,7 +36,7 @@ import { SignOutButton } from "@/components/couranr/auth/SignOutButton";
 /* NO NOTICE SLOT. This shell carried a `notice` prop — a full-bleed bar above
    the header, the placement both PUB-001 artboards show — which the public
    layout filled with MKT-001's markets sentence. The owner removed the bar on
-   2026-08-29, at both widths and on all five public pages.
+   2026-08-29, at both widths and on every route in the group.
 
    The SLOT goes with it rather than being left empty. An unused slot is one
    caller away from returning, and this file has the precedent written into it
@@ -35,7 +44,52 @@ import { SignOutButton } from "@/components/couranr/auth/SignOutButton";
    because the class survived its element. The shell's own rule is unchanged and
    still worth stating — no shell renders market, pricing, hours or payer copy —
    it simply has nothing above the header to render it into now. */
-export function PublicShell({ children }: { children: React.ReactNode }) {
+
+/**
+ * Which public brand a route belongs to.
+ *
+ * MKT-004 made Couranr one master brand with two entry paths, so "the public
+ * shell" stopped being one thing. The variant is chosen by a SERVER layout per
+ * route group — never by `usePathname()` in a client boundary, which would pull
+ * the whole public header and footer into the client bundle to answer a
+ * question the filesystem already answers at build time.
+ */
+export type PublicVariant = "master" | "business" | "consumer" | "token";
+
+/** Destinations, resolved from the screen source rather than typed here. */
+const PUBLIC_DESTINATIONS = {
+  /* The wordmark is NOT listed here. `Wordmark` already defaults its href to
+     "/", which PUB-012 owns since LEG-004 — passing it explicitly tripped the
+     brand guard, whose rule is that a propless `<Wordmark />` is the light
+     public topbar and anything else must be the navy reverse mark. */
+  sameday: () => routeForScreen("PUB-013"),
+  business: () => routeForScreen("PUB-001"),
+  send: () => routeForScreen("PUB-004"),
+  signIn: () => routeForScreen("PUB-002"),
+  signUp: () => routeForScreen("PUB-003"),
+};
+
+export function PublicShell({
+  variant = "business",
+  children,
+}: {
+  variant?: PublicVariant;
+  children: React.ReactNode;
+}) {
+  /* `token` deliberately renders the pre-V10 business presentation. The token
+     pages were not redesigned in this slice, and giving them a new chrome would
+     be an unrelated regression risk on three live customer surfaces. */
+  const brand = variant === "token" ? "business" : variant;
+
+  if (brand === "business") return <BusinessPublicShell>{children}</BusinessPublicShell>;
+  if (brand === "master") return <MasterPublicShell>{children}</MasterPublicShell>;
+  return <ConsumerPublicShell>{children}</ConsumerPublicShell>;
+}
+
+/* ---------------------------------------------------------- 1a. Business */
+
+/** The approved Couranr for Business public chrome. PUB-001 and its family. */
+function BusinessPublicShell({ children }: { children: React.ReactNode }) {
   const items = navigationFor("public");
 
   /* No `cr-shell--public` modifier on the root. It existed to hang the sticky
@@ -46,7 +100,7 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
      already binds typography through, and carries the same specificity, so a
      future public-only rule has one to use. */
   return (
-    <div className="cr-shell" data-couranr-surface="public">
+    <div className="cr-shell" data-couranr-surface="public" data-couranr-chrome="business">
       <SkipLink />
 
       <header className="cr-topbar">
@@ -63,10 +117,16 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
                   move into the drawer, whose footer carries them at full size.
                   Nothing is lost and the 360px bar stops being the crowded
                   three-control row that produced its earlier 7px overflow. */}
-              <Link href="/sign-in" className="cr-button cr-button--ghost cr-button--sm cr-topbar__auth">
+              <Link
+                href={PUBLIC_DESTINATIONS.signIn()}
+                className="cr-button cr-button--ghost cr-button--sm cr-topbar__auth"
+              >
                 Sign in
               </Link>
-              <Link href="/sign-up" className="cr-button cr-button--primary cr-button--sm cr-topbar__auth">
+              <Link
+                href={PUBLIC_DESTINATIONS.signUp()}
+                className="cr-button cr-button--primary cr-button--sm cr-topbar__auth"
+              >
                 Create business account
               </Link>
               <span className="cr-topbar__toggle">
@@ -76,10 +136,16 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
                   triggerClassName="cr-icon-button cr-icon-button--on-surface"
                   footer={
                     <div className="cr-drawer-auth">
-                      <Link href="/sign-up" className="cr-button cr-button--primary cr-button--lg">
+                      <Link
+                        href={PUBLIC_DESTINATIONS.signUp()}
+                        className="cr-button cr-button--primary cr-button--lg"
+                      >
                         Create business account
                       </Link>
-                      <Link href="/sign-in" className="cr-button cr-button--inverse cr-button--lg">
+                      <Link
+                        href={PUBLIC_DESTINATIONS.signIn()}
+                        className="cr-button cr-button--inverse cr-button--lg"
+                      >
                         Sign in
                       </Link>
                     </div>
@@ -115,8 +181,10 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
         <div className="cr-container cr-footer__inner">
           <div className="cr-footer__brand">
             <Wordmark tone="dark" width={124} />
+            {/* MKT-004: this descriptor is the BUSINESS path's, not the master
+                brand's, and it stays on the business chrome only. */}
             <Text size="xs">
-              Couranr — local delivery infrastructure for local businesses.
+              Couranr for Business — local delivery infrastructure for local businesses.
             </Text>
           </div>
 
@@ -138,29 +206,118 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
               <p className="cr-footer__coltitle">Get started</p>
               <ul className="cr-footer__links">
                 <li>
-                  <Link href="/estimate" className="cr-footer__link">
+                  <Link href={PUBLIC_DESTINATIONS.send()} className="cr-footer__link">
                     Estimate a delivery
                   </Link>
                 </li>
                 <li>
-                  <Link href="/sign-up" className="cr-footer__link">
+                  <Link href={PUBLIC_DESTINATIONS.signUp()} className="cr-footer__link">
                     Create business account
                   </Link>
                 </li>
                 <li>
-                  <Link href="/sign-in" className="cr-footer__link">
+                  <Link href={PUBLIC_DESTINATIONS.signIn()} className="cr-footer__link">
                     Sign in
                   </Link>
                 </li>
               </ul>
             </nav>
 
-            <nav className="cr-footer__col" aria-label="Support">
-              <p className="cr-footer__coltitle">Support</p>
+            {/* The "Support" column is GONE, and its removal is the point.
+                It carried one link to `/help`, and no such route exists: the
+                canonical help screen is PUB-007 at `/help/[token]`, reachable
+                only with a delivery's access token. The link 404'd for its
+                whole life. V10's recon named it, and the fix is to drop the
+                item rather than invent a generic help screen to justify it. */}
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------ 1b. Master */
+
+/**
+ * PUB-012's chrome. Deliberately the smallest of the three.
+ *
+ * The master homepage exists to route a visitor to one of the two entry paths,
+ * so its header carries exactly those two plus the business sign-in, and its
+ * footer says nothing that would make the master brand sound businesses-only.
+ * MKT-004 expanded the brand; the descriptor that describes only half of it
+ * lives on the business chrome.
+ */
+function MasterPublicShell({ children }: { children: React.ReactNode }) {
+  const items = [
+    { screenId: "PUB-013", label: CHROME.same_day, href: PUBLIC_DESTINATIONS.sameday() },
+    { screenId: "PUB-001", label: CHROME.for_business, href: PUBLIC_DESTINATIONS.business() },
+  ];
+
+  return (
+    <div className="cr-shell" data-couranr-surface="public" data-couranr-chrome="master">
+      <SkipLink />
+
+      <header className="cr-topbar">
+        <Container>
+          <div className="cr-topbar__inner">
+            <Wordmark />
+
+            <TopbarNav items={items} label="Main navigation" />
+
+            <div className="cr-topbar__actions">
+              <Link
+                href={PUBLIC_DESTINATIONS.signIn()}
+                className="cr-button cr-button--ghost cr-button--sm cr-topbar__auth"
+              >
+                {CHROME.business_sign_in}
+              </Link>
+              <span className="cr-topbar__toggle">
+                <MobileNav
+                  items={items}
+                  label="Main navigation"
+                  triggerClassName="cr-icon-button cr-icon-button--on-surface"
+                  footer={
+                    <div className="cr-drawer-auth">
+                      <Link
+                        href={PUBLIC_DESTINATIONS.signIn()}
+                        className="cr-button cr-button--inverse cr-button--lg"
+                      >
+                        {CHROME.business_sign_in}
+                      </Link>
+                    </div>
+                  }
+                />
+              </span>
+            </div>
+          </div>
+        </Container>
+      </header>
+
+      <ShellMain>{children}</ShellMain>
+
+      <footer className="cr-footer">
+        <div className="cr-container cr-footer__inner">
+          <div className="cr-footer__brand">
+            <Wordmark tone="dark" width={124} />
+          </div>
+
+          <div className="cr-footer__cols">
+            <nav className="cr-footer__col" aria-label="Explore">
+              <p className="cr-footer__coltitle">Explore</p>
               <ul className="cr-footer__links">
                 <li>
-                  <Link href="/help" className="cr-footer__link">
-                    Couranr Support
+                  <Link href={PUBLIC_DESTINATIONS.sameday()} className="cr-footer__link">
+                    {CHROME.same_day}
+                  </Link>
+                </li>
+                <li>
+                  <Link href={PUBLIC_DESTINATIONS.business()} className="cr-footer__link">
+                    {CHROME.for_business}
+                  </Link>
+                </li>
+                <li>
+                  <Link href={PUBLIC_DESTINATIONS.signIn()} className="cr-footer__link">
+                    {CHROME.business_sign_in}
                   </Link>
                 </li>
               </ul>
@@ -172,18 +329,102 @@ export function PublicShell({ children }: { children: React.ReactNode }) {
   );
 }
 
-/* -------------------------------------------------- 2. Customer (token) */
+/* ---------------------------------------------------------- 1c. Consumer */
 
 /**
- * Token-scoped customer shell.
+ * PUB-013's and PUB-004's chrome.
  *
- * All eight CUS screens are fragments of /pay/[token], /track/[token] and
- * /help/[token], and §3 states customer accounts are optional — so this shell
- * has NO global navigation, NO account menu and NO sign-out. `navigationFor`
- * returns an empty list for this role by design.
- *
- * The token is never rendered into navigation, a heading or a link label.
+ * No generic consumer "Sign in": customer accounts are optional at MVP and
+ * there is no consumer account to sign into. "Track a delivery" is not a link,
+ * because there is no canonical generic `/track` route — only PUB-006 at
+ * `/track/[token]`, which needs a token nobody has in the header. It is a small
+ * client launcher that parses a Couranr tracking link the visitor already holds
+ * and navigates locally. A link would have been a 404 with a friendly label.
  */
+function ConsumerPublicShell({ children }: { children: React.ReactNode }) {
+  const items = [
+    { screenId: "PUB-013", label: CHROME.same_day, href: PUBLIC_DESTINATIONS.sameday() },
+    { screenId: "PUB-001", label: CHROME.for_business, href: PUBLIC_DESTINATIONS.business() },
+  ];
+  const sendHref = PUBLIC_DESTINATIONS.send();
+
+  return (
+    <div className="cr-shell" data-couranr-surface="public" data-couranr-chrome="consumer">
+      <SkipLink />
+
+      <header className="cr-topbar">
+        <Container>
+          <div className="cr-topbar__inner">
+            <Wordmark />
+
+            <TopbarNav items={items} label="Main navigation" />
+
+            <div className="cr-topbar__actions">
+              <span className="cr-topbar__auth">
+                <TrackDeliveryLauncher />
+              </span>
+              <Link
+                href={sendHref}
+                className="cr-button cr-button--primary cr-button--sm cr-topbar__auth"
+              >
+                {CHROME.start_a_delivery}
+              </Link>
+              <span className="cr-topbar__toggle">
+                <MobileNav
+                  items={items}
+                  label="Main navigation"
+                  triggerClassName="cr-icon-button cr-icon-button--on-surface"
+                  footer={
+                    <div className="cr-drawer-auth">
+                      <Link href={sendHref} className="cr-button cr-button--primary cr-button--lg">
+                        {CHROME.start_a_delivery}
+                      </Link>
+                      <TrackDeliveryLauncher variant="drawer" />
+                    </div>
+                  }
+                />
+              </span>
+            </div>
+          </div>
+        </Container>
+      </header>
+
+      <ShellMain>{children}</ShellMain>
+
+      <footer className="cr-footer">
+        <div className="cr-container cr-footer__inner">
+          <div className="cr-footer__brand">
+            <Wordmark tone="dark" width={124} />
+          </div>
+
+          <div className="cr-footer__cols">
+            <nav className="cr-footer__col" aria-label="Explore">
+              <p className="cr-footer__coltitle">Explore</p>
+              <ul className="cr-footer__links">
+                <li>
+                  <Link href={PUBLIC_DESTINATIONS.sameday()} className="cr-footer__link">
+                    {CHROME.same_day}
+                  </Link>
+                </li>
+                <li>
+                  <Link href={sendHref} className="cr-footer__link">
+                    {CHROME.start_a_delivery}
+                  </Link>
+                </li>
+                <li>
+                  <Link href={PUBLIC_DESTINATIONS.business()} className="cr-footer__link">
+                    {CHROME.for_business}
+                  </Link>
+                </li>
+              </ul>
+            </nav>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
 export function CustomerTokenShell({
   children,
   reference,
@@ -246,7 +487,7 @@ export function MerchantShell({
       <aside className="cr-sidebar">
         <div className="cr-sidebar__brand">
           <div>
-            <Wordmark href="/business" tone="dark" />
+            <Wordmark href="/app/business" tone="dark" />
             <div className="cr-sidebar__role">Merchant</div>
           </div>
         </div>
@@ -266,7 +507,7 @@ export function MerchantShell({
               items={items}
               label="Merchant navigation"
               roleLabel="Merchant"
-              homeHref="/business"
+              homeHref="/app/business"
               footer={
                 <>
                   <AccountBlock name={accountName} meta={accountMeta} onNavy />
@@ -274,7 +515,7 @@ export function MerchantShell({
                 </>
               }
             />
-            <Wordmark href="/business" tone="dark" />
+            <Wordmark href="/app/business" tone="dark" />
             <span style={{ width: 44 }} aria-hidden="true" />
           </div>
         </header>

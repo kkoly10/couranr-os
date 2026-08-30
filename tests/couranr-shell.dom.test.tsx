@@ -12,7 +12,7 @@ import userEvent from "@testing-library/user-event";
  * assertions, and next/link is reduced to an anchor.
  */
 
-let mockPathname = "/business";
+let mockPathname = "/app/business";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => mockPathname,
@@ -39,7 +39,7 @@ const { MerchantShell, OperationsShell, DriverShell, PublicShell, CustomerTokenS
 const { MAIN_CONTENT_ID } = await import("@/components/couranr/shell/parts");
 
 beforeEach(() => {
-  mockPathname = "/business";
+  mockPathname = "/app/business";
 });
 
 describe("landmarks, skip link and accessible names", () => {
@@ -122,7 +122,7 @@ describe("landmarks, skip link and accessible names", () => {
 
 describe("active-route indication comes from the current route", () => {
   it("marks the matching merchant destination aria-current=page", () => {
-    mockPathname = "/business/deliveries";
+    mockPathname = "/app/business/deliveries";
     render(
       <MerchantShell>
         <p>content</p>
@@ -135,12 +135,12 @@ describe("active-route indication comes from the current route", () => {
 
     expect(current.length).toBeGreaterThan(0);
     for (const el of current) {
-      expect(el.getAttribute("href")).toBe("/business/deliveries");
+      expect(el.getAttribute("href")).toBe("/app/business/deliveries");
     }
   });
 
   it("does not mark the section root active on a child route", () => {
-    mockPathname = "/business/deliveries";
+    mockPathname = "/app/business/deliveries";
     render(
       <MerchantShell>
         <p>content</p>
@@ -149,7 +149,7 @@ describe("active-route indication comes from the current route", () => {
 
     const dashboard = screen
       .getAllByRole("link")
-      .filter((l) => l.getAttribute("href") === "/business");
+      .filter((l) => l.getAttribute("href") === "/app/business");
 
     for (const el of dashboard) {
       expect(el.getAttribute("aria-current")).toBeNull();
@@ -157,7 +157,7 @@ describe("active-route indication comes from the current route", () => {
   });
 
   it("marks nothing active on an unrelated route", () => {
-    mockPathname = "/business/unknown-area";
+    mockPathname = "/app/business/unknown-area";
     render(
       <MerchantShell>
         <p>content</p>
@@ -333,9 +333,9 @@ describe("mobile navigation drawer", () => {
 
     expect(hrefs.length).toBeGreaterThan(0);
     for (const h of hrefs) {
-      // Sign out is the one deliberate exception; everything else is /business.
+      // Sign out is the one deliberate exception; everything else is /app/business.
       if (h === "/login") continue;
-      expect(h.startsWith("/business")).toBe(true);
+      expect(h.startsWith("/app/business")).toBe(true);
       expect(h.startsWith("/operations")).toBe(false);
     }
   });
