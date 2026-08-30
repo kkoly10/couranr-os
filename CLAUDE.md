@@ -10,7 +10,7 @@ A deliverable is **not done** until it has been verified against its requirement
 2. **Enumerate ALL enforcement points when you change a default, a gate, a grant, or any shared behavior.** Grep for every call site and reader of the thing you changed and confirm they ALL agree. In this codebase the sibling you forget is usually: the browser Supabase client vs. the service-role client, the policy vs. the table `GRANT`, the direct role grant vs. the `PUBLIC` grant it inherits through, `doc_requests` vs. the `docs_requests` view, or one of the 18 module-scope client constructions. List the sites you checked.
 3. **Verify BOTH sides of every dual path.** Two clients, two schemas, two admin predicates, two upload routes that build different URL shapes — never assume the second mirrors the first.
 4. **Prove claims; don't assert them.** Every factual statement about the codebase or the database must be backed by a command you ran (`grep`, a catalog query, a test) whose output you saw. If you didn't check it, say "unverified." For database claims prefer `has_table_privilege` / `has_function_privilege` over reading `information_schema` grantee rows — grantee rows miss privileges inherited through `PUBLIC`.
-5. **Green tests are necessary, not sufficient.** There are **1629 tests across 51 files** now, and they still stay green through almost any defect that lives outside their reach: proof upload was dead for its entire life behind a green typecheck and a green suite, because the only assertions about it were that a mocked function had NOT been called. Reason explicitly about the invariant your change must preserve and add a test that would have caught the specific bug.
+5. **Green tests are necessary, not sufficient.** The suite is large — run `npm run test:run` for the current count — and it still stays green through almost any defect that lives outside their reach: proof upload was dead for its entire life behind a green typecheck and a green suite, because the only assertions about it were that a mocked function had NOT been called. Reason explicitly about the invariant your change must preserve and add a test that would have caught the specific bug.
 6. **Do a dedicated adversarial review pass scoped to the ACTUAL diff of THIS deliverable.** Ask "what did I change, and what class of bug could this exact change introduce?" and go looking for it.
 7. **Report what you verified and how** — the commands and their results — not "all good." State any part you could NOT verify and why.
 
@@ -66,16 +66,17 @@ page may be classified functional.**
 counts in `IMPLEMENTATION_STATUS.md` in the SAME commit.** The test enforces the
 shape; it cannot enforce that you remembered.
 
-As of `401b3ee`: 9 of 42 work items `complete_verified` (21.4%), and 10 of 66
-screens `functional_verified`. 12 of the 44 canonical pages are placeholders.
+Run `npm run governance:facts` for the current work-item and screen counts. Do
+not quote a number from this file: every count it used to pin had gone stale by
+the time someone read it.
 
 ### Authority chain — the specification wins over the code, always
 
-1. `02_DECISION_REGISTRY.json` **at the repo root** — rank-1 authority for pricing, hours, payer behavior, states, terminology, launch gates. **45 decision records** (112,554 bytes, sha256 `436d9b47138cbe2dd4dcdd460f18c9aaf8651b33581d8d53160e7e9af22d0597`, re-measured 2026-08-28 by counting `decisions[]`; the 96,889/`855469d9` fingerprint this line used to carry no longer matches the file, and the 92,872/`b4b158a0` before that did not either); an earlier note here said 40, and before that said the file did not exist at all. Count it, do not quote this number back.
+1. `02_DECISION_REGISTRY.json` **at the repo root** — rank-1 authority for pricing, hours, payer behavior, states, terminology, launch gates. Run `npm run governance:facts` for its record count, byte count and sha256. This line used to pin all three and was corrected twice — the 96,889/`855469d9` fingerprint and the 92,872/`b4b158a0` before it both stopped matching the file, and an earlier note said 40 records, and before that said the file did not exist. Measure it; never quote a fingerprint from prose.
 
    **There is a second file with the same name.** `couranr_claude_code_package/02_DECISION_REGISTRY.json` is the original v1.0 topic-keyed source (9 KB, no `decisions[]`), unpacked for provenance only. The root file (72 KB) is the expanded generation derived from it and is a verified superset — every pricing value and every state vocabulary in the package copy is present at root, enforced by `tests/decision-registry-provenance.test.ts`. **Cite the root file.** A grep that lands on the package copy will find fewer decisions and no transition rules.
 2. `Couranr_Claude_Code_Master_Package.md` (repo root) — inlines the master implementation spec, cutover matrix, phased plan, AI/communication spec, and release matrix. Verified: it contains the full text of `00_README`, `01_MASTER_IMPLEMENTATION_SPEC`, `03_REPO_CUTOVER_MATRIX`, `04_PHASED_EXECUTION_PLAN`, `05_AI_COMMUNICATION_SPEC`, `06_RELEASE_ACCEPTANCE_MATRIX` and `07_CLAUDE_CODE_START_PROMPT` from the package. `08_WORK_BREAKDOWN.csv` is NOT inlined and exists only in `couranr_claude_code_package/`.
-3. `UI_SCREEN_REGISTRY.md` (repo root) — 66 canonical MVP screens, their routes, tiers, phases, and required states.
+3. `ui_screen_registry.json` (repo root) — **the writable authority** for canonical MVP screens, their routes, tiers, phases and required states. `UI_SCREEN_REGISTRY.md` and `ui_screen_registry.csv` are GENERATED from it by `npm run governance:generate`; do not edit them. `npm run governance:facts` reports the count.
 4. `docs/couranr-mvp/platform-baseline-v1.1/` — platform, dependency, migration-order and rollback authority.
 
 **How to use the chain, before writing governed behavior:**
@@ -96,7 +97,7 @@ npm run build        # next build — FAILS without env vars, see below
 npm run lint         # next lint (ESLint 8 + next/core-web-vitals). Next 16 removes `next lint`.
 npm run typecheck    # tsc --noEmit — passes, but tsconfig has "strict": false
 npm run test         # vitest (watch)
-npm run test:run     # vitest run — 53 files, 2013 tests
+npm run test:run     # vitest run
 npm run check        # lint && typecheck && test:run && build
 npm run ci:local     # THE GATE — see "GitHub Actions is NOT the gate" below
 ```
@@ -241,7 +242,7 @@ One stylesheet: `app/globals.css`, 818 lines of plain CSS with 7 custom properti
 
 When the canonical design system arrives it must be **additive** — new route group, namespaced `--couranr-*` tokens (the existing `:root` already defines `--border`, `--muted`, `--card`, `--shadow` with different values, so unprefixed tokens would silently restyle every legacy page). Do not bulk-restyle legacy auto/docs pages.
 
-The 66 canonical screens reference `canonical-mvp-images/**` paths; **13 of the 62 referenced files exist on disk** (an earlier note here said 0, which stopped being true once the delivered mockups landed). The 91 UUID-named PNGs at the repo root are the raw source set, and **`docs/couranr-mvp/ui-reference/CANONICAL_SCREEN_SOURCE_MAP.tsv` is the map to use** — 107 rows, every source present, all 66 screen IDs, with alternates recorded and non-MVP assets classified `BRAND:`/`EXTRA:`.
+The canonical screens reference `canonical-mvp-images/**` paths; **13 of the 62 referenced files exist on disk** (an earlier note here said 0, which stopped being true once the delivered mockups landed). The 91 UUID-named PNGs at the repo root are the raw source set, and **`docs/couranr-mvp/ui-reference/CANONICAL_SCREEN_SOURCE_MAP.tsv` is the map to use** — 107 rows, every source present, every canonical screen ID, with alternates recorded and non-MVP assets classified `BRAND:`/`EXTRA:`.
 
 `docs/platform-dependency-baseline-v1-1` carries a rival `canonical-source-map.tsv`. **Do not merge it** (PR #16, closed 2026-08-01) — not because it is dangerous to `main`, but because it is strictly worse and it re-arms a workflow:
 

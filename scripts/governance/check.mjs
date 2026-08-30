@@ -52,6 +52,42 @@ function firstDiff(want, got) {
   return `identical by line but ${want.length} vs ${got.length} bytes (line endings or trailing newline)`;
 }
 
+/**
+ * `CLAUDE.md` must not pin a value that can be measured.
+ *
+ * Every pattern below was live in that file at the consolidation baseline and
+ * at least three were already WRONG: it claimed 1629 tests across 51 files in
+ * one place and 2013 across 53 in another while the suite ran 2073 across 54,
+ * and it claimed 9 of 42 work items verified while the ledger said 17. The file
+ * every agent reads first was the least accurate current-state document in the
+ * repository, because a hand-pinned number goes stale between the commit that
+ * changes it and the commit that remembers it.
+ *
+ * Prose ABOUT a retired fingerprint is allowed and deliberately so — the file
+ * keeps its record of which fingerprints stopped matching — so these patterns
+ * match the act of pinning a CURRENT value, not the act of describing an old one.
+ */
+const MUTABLE_IN_CLAUDE_MD = [
+  [/\*\*\d+ decision records\*\*/, "a pinned decision-record count"],
+  [/\d+ canonical MVP screens/, "a pinned canonical-screen count"],
+  [/\d+ of \d+ work items `complete_verified`/, "a pinned work-item completion count"],
+  [/\d+ of \d+\s*\n?screens `functional_verified`/, "a pinned screen completion count"],
+  [/\d+ tests across \d+ files/, "a pinned test count"],
+  [/vitest run — \d+ files, \d+ tests/, "a pinned test count"],
+];
+
+function checkAgentGuidance(fail, text) {
+  for (const [rx, what] of MUTABLE_IN_CLAUDE_MD) {
+    const m = text.match(rx);
+    if (m) {
+      fail.push(
+        `CLAUDE.md pins ${what} (${JSON.stringify(m[0])}) — point at ` +
+          `\`npm run governance:facts\` instead; a hand-pinned count goes stale`,
+      );
+    }
+  }
+}
+
 /** Manifest coherence. */
 function checkManifest(fail) {
   if (!existsSync(join(ROOT, MANIFEST))) {
@@ -154,6 +190,17 @@ if (CONTROL) {
       }
     }
   }
+  {
+    const before = readFileSync(join(ROOT, "CLAUDE.md"), "utf8");
+    const detected = [];
+    checkAgentGuidance(detected, before + "\n\nThere are 4321 tests across 99 files now.\n");
+    if (!detected.length) {
+      console.error("positive control FAILED — a re-pinned test count in CLAUDE.md was not detected");
+      bad++;
+    } else {
+      console.log(`check:governance positive control ok — a re-pinned mutable count was rejected: "${detected[0].slice(0, 110)}"`);
+    }
+  }
   for (const [what, target, plant] of plants) {
     const detected = [];
     checkParity(detected, (p, text) => (p === target ? plant(text) : text));
@@ -180,6 +227,7 @@ if (CONTROL) {
 }
 
 checkParity(fail);
+checkAgentGuidance(fail, readFileSync(join(ROOT, "CLAUDE.md"), "utf8"));
 /* The composition contract is structured data now; §27's prose tables are the
    human view of it and must still agree. */
 fail.push(...visualDocDrift(ROOT));
