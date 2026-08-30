@@ -20,9 +20,10 @@
  *
  * Read-only.
  */
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { ROOT, screenSource, SCREEN_OUTPUTS, SCREEN_SOURCE } from "./screenRegistry.mjs";
+import { visualDocDrift } from "./visualRegistry.mjs";
 
 const MANIFEST = "docs/couranr-mvp/authority/AUTHORITY_MANIFEST.json";
 const CONTROL = process.argv.includes("--positive-control");
@@ -117,13 +118,42 @@ if (CONTROL) {
   /* One plant per generated family. Each must be DETECTED; a plant that changes
      nothing is itself reported, because a control that cannot alter its input
      is a control that tested nothing. */
+  let bad = 0;
   const plants = [
     ["a rewritten screen route in the generated Markdown", "UI_SCREEN_REGISTRY.md",
       (t) => t.replace("| `/pricing` |", "| `/prices` |")],
     ["a rewritten screen id in the generated CSV", "ui_screen_registry.csv",
       (t) => t.replace("PUB-008,", "PUB-808,")],
   ];
-  let bad = 0;
+  /* The composition contract is a SOURCE, not a generated mirror, so its
+     control is the other direction: prove the handbook cannot drift away from
+     it unnoticed. */
+  {
+    const spec = join(ROOT, "docs/couranr-mvp/brand/COURANR_VISUAL_SYSTEM_V2_2.md");
+    const before = readFileSync(spec, "utf8");
+    const planted = before.replace(
+      "| 2 | `pickup-problem` |",
+      "| 2 | `pickup-problems` |",
+    );
+    if (planted === before) {
+      console.error("positive control FAILED — could not plant a §27 table drift; the control tested nothing");
+      bad++;
+    } else {
+      writeFileSync(spec, planted);
+      let caught;
+      try {
+        caught = visualDocDrift(ROOT).find((f) => f.startsWith("PUB-001"));
+      } finally {
+        writeFileSync(spec, before);
+      }
+      if (!caught) {
+        console.error("positive control FAILED — a §27 table that disagrees with VISUAL_REGISTRY.json was not detected");
+        bad++;
+      } else {
+        console.log(`check:governance positive control ok — a drifted §27 table was rejected: "${caught.slice(0, 110)}"`);
+      }
+    }
+  }
   for (const [what, target, plant] of plants) {
     const detected = [];
     checkParity(detected, (p, text) => (p === target ? plant(text) : text));
@@ -150,6 +180,9 @@ if (CONTROL) {
 }
 
 checkParity(fail);
+/* The composition contract is structured data now; §27's prose tables are the
+   human view of it and must still agree. */
+fail.push(...visualDocDrift(ROOT));
 
 if (fail.length) {
   console.error(`check:governance: ${fail.length} problem(s)\n`);

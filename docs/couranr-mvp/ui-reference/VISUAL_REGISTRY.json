@@ -1,0 +1,474 @@
+{
+  "$authority": {
+    "domain": "visual-authority",
+    "role": "AUTHORITY",
+    "declared_by": "docs/couranr-mvp/authority/AUTHORITY_MANIFEST.json",
+    "note": [
+      "The only writable source for the public composition contract.",
+      "COURANR_VISUAL_SYSTEM_V2_2.md remains the human design handbook; its §27 tables",
+      "are rendered FROM this file. Markdown backticks, `### PUB-0xx —` heading",
+      "punctuation and the literal `**Budgets:**` token are no longer a machine API.",
+      "That coupling caused four separate defects across package revisions v4-v7:",
+      "a screen-prefixed budget label that parsed to nothing, an unbackticked index",
+      "row that would have been silently skipped, a heading prefix that throws, and a",
+      "section title that went stale the moment a page was added."
+    ]
+  },
+  "version": 1,
+  "composition": {
+    "vocabulary": [
+      "editorial-statement",
+      "full-bleed-interruption",
+      "image-integrated-hero",
+      "image-narrative",
+      "product-proof",
+      "split-story",
+      "structured-information-block",
+      "workflow-rail"
+    ],
+    "vocabulary_source": "COURANR_VISUAL_SYSTEM_V2_2.md §19 headings, captured at consolidation",
+    "pages": [
+      {
+        "screen": "PUB-001",
+        "route": "/",
+        "file": "app/(couranr)/(public)/page.tsx",
+        "doc_heading": "## 27.0 Governed section identifiers",
+        "rows": [
+          {
+            "n": 1,
+            "id": "hero",
+            "composition": "image-integrated-hero",
+            "imageLed": "true",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 2,
+            "id": "pickup-problem",
+            "composition": "editorial-statement",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 3,
+            "id": "category-breadth",
+            "composition": "image-narrative",
+            "imageLed": "true",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 4,
+            "id": "order-channels",
+            "composition": "structured-information-block",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 5,
+            "id": "outcomes",
+            "composition": "split-story",
+            "imageLed": "true",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 6,
+            "id": "workflow",
+            "composition": "workflow-rail",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 7,
+            "id": "payer-choice",
+            "composition": "structured-information-block",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 8,
+            "id": "product-proof",
+            "composition": "product-proof",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "true"
+          },
+          {
+            "n": 9,
+            "id": "categories",
+            "composition": "structured-information-block",
+            "imageLed": "false",
+            "gridDominant": "true",
+            "productProof": "false"
+          },
+          {
+            "n": 10,
+            "id": "delivery-options",
+            "composition": "structured-information-block",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 11,
+            "id": "pricing",
+            "composition": "structured-information-block",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 12,
+            "id": "service-area",
+            "composition": "image-narrative",
+            "imageLed": "true",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 13,
+            "id": "faq",
+            "composition": "structured-information-block",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 14,
+            "id": "closing",
+            "composition": "full-bleed-interruption",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          }
+        ],
+        "budgets": null
+      },
+      {
+        "screen": "PUB-008",
+        "route": "/pricing",
+        "file": "app/(couranr)/(public)/pricing/page.tsx",
+        "doc_heading": "### PUB-008 —",
+        "rows": [
+          {
+            "n": 1,
+            "id": "pricing-hero",
+            "composition": "editorial-statement",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 2,
+            "id": "base-price",
+            "composition": "full-bleed-interruption",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 3,
+            "id": "mileage",
+            "composition": "structured-information-block",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 4,
+            "id": "service-levels",
+            "composition": "split-story",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 5,
+            "id": "operating-charges",
+            "composition": "structured-information-block",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 6,
+            "id": "manual-quote",
+            "composition": "editorial-statement",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 7,
+            "id": "who-pays",
+            "composition": "split-story",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 8,
+            "id": "closing",
+            "composition": "full-bleed-interruption",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          }
+        ],
+        "budgets": {
+          "gridDominant": {
+            "op": "<=",
+            "n": 2
+          },
+          "imageLed": {
+            "op": ">=",
+            "n": 0
+          },
+          "productProof": {
+            "op": ">=",
+            "n": 0
+          },
+          "workflowRail": {
+            "op": "==",
+            "n": 0
+          }
+        }
+      },
+      {
+        "screen": "PUB-009",
+        "route": "/businesses",
+        "file": "app/(couranr)/(public)/businesses/page.tsx",
+        "doc_heading": "### PUB-009 —",
+        "rows": [
+          {
+            "n": 1,
+            "id": "businesses-hero",
+            "composition": "editorial-statement",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 2,
+            "id": "category-system",
+            "composition": "structured-information-block",
+            "imageLed": "false",
+            "gridDominant": "true",
+            "productProof": "false"
+          },
+          {
+            "n": 3,
+            "id": "category-rule",
+            "composition": "split-story",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 4,
+            "id": "channels",
+            "composition": "full-bleed-interruption",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 5,
+            "id": "fallback",
+            "composition": "editorial-statement",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 6,
+            "id": "closing",
+            "composition": "full-bleed-interruption",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          }
+        ],
+        "budgets": {
+          "gridDominant": {
+            "op": "<=",
+            "n": 1
+          },
+          "imageLed": {
+            "op": ">=",
+            "n": 0
+          },
+          "productProof": {
+            "op": ">=",
+            "n": 0
+          },
+          "workflowRail": {
+            "op": "==",
+            "n": 0
+          }
+        }
+      },
+      {
+        "screen": "PUB-010",
+        "route": "/service-areas",
+        "file": "app/(couranr)/(public)/service-areas/page.tsx",
+        "doc_heading": "### PUB-010 —",
+        "rows": [
+          {
+            "n": 1,
+            "id": "areas-hero",
+            "composition": "editorial-statement",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 2,
+            "id": "corridor",
+            "composition": "image-narrative",
+            "imageLed": "true",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 3,
+            "id": "markets",
+            "composition": "structured-information-block",
+            "imageLed": "false",
+            "gridDominant": "true",
+            "productProof": "false"
+          },
+          {
+            "n": 4,
+            "id": "surrounding",
+            "composition": "split-story",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 5,
+            "id": "extended-review",
+            "composition": "structured-information-block",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 6,
+            "id": "closing",
+            "composition": "full-bleed-interruption",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          }
+        ],
+        "budgets": {
+          "gridDominant": {
+            "op": "<=",
+            "n": 1
+          },
+          "imageLed": {
+            "op": ">=",
+            "n": 1
+          },
+          "productProof": {
+            "op": ">=",
+            "n": 0
+          },
+          "workflowRail": {
+            "op": "==",
+            "n": 0
+          }
+        }
+      },
+      {
+        "screen": "PUB-011",
+        "route": "/how-it-works",
+        "file": "app/(couranr)/(public)/how-it-works/page.tsx",
+        "doc_heading": "### PUB-011 —",
+        "rows": [
+          {
+            "n": 1,
+            "id": "works-hero",
+            "composition": "editorial-statement",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 2,
+            "id": "sequence",
+            "composition": "workflow-rail",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 3,
+            "id": "payers",
+            "composition": "split-story",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 4,
+            "id": "confirmation",
+            "composition": "full-bleed-interruption",
+            "imageLed": "true",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 5,
+            "id": "proof",
+            "composition": "product-proof",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "true"
+          },
+          {
+            "n": 6,
+            "id": "support",
+            "composition": "structured-information-block",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 7,
+            "id": "closing",
+            "composition": "full-bleed-interruption",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          }
+        ],
+        "budgets": {
+          "gridDominant": {
+            "op": "<=",
+            "n": 0
+          },
+          "imageLed": {
+            "op": ">=",
+            "n": 0
+          },
+          "productProof": {
+            "op": ">=",
+            "n": 1
+          },
+          "workflowRail": {
+            "op": "==",
+            "n": 1
+          }
+        }
+      }
+    ]
+  }
+}
