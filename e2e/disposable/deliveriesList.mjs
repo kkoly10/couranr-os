@@ -440,7 +440,7 @@ async function main() {
     console.log("Duplicate — prefills the create flow, which re-prices server-side");
     {
       await rowFor(ownerPage, "LIST-mixed").getByRole("button", { name: "Duplicate" }).click();
-      await ownerPage.waitForURL(/\/app/business\/deliveries\/new/, { timeout: 20_000 });
+      await ownerPage.waitForURL(/\/app\/business\/deliveries\/new/, { timeout: 20_000 });
       const name = fieldLabel(ownerPage, "Name").first();
       await name.waitFor({ state: "visible", timeout: 20_000 });
       const until = Date.now() + 10_000;

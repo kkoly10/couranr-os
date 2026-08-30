@@ -1286,7 +1286,7 @@ async function createRequestThroughUi(page, accountId, { acknowledge }) {
   if (acknowledge && ackVisible) await ack.check();
 
   await page.getByRole("button", { name: /submit for couranr review/i }).click();
-  await page.waitForURL((u) => /\/app/business\/deliveries\/[0-9a-f-]{36}$/.test(u.pathname), {
+  await page.waitForURL((u) => /\/app\/business\/deliveries\/[0-9a-f-]{36}$/.test(u.pathname), {
     timeout: 25000,
   }).catch(() => {});
 
