@@ -46,8 +46,21 @@ const CSV_COLUMNS = [
   "canonical_path", "image", "purpose", "actions", "states", "source", "constraints",
 ];
 
+/**
+ * A leading `#` comment line carries the do-not-edit marker.
+ *
+ * It costs strict RFC4180 conformance, so it is only defensible because NOTHING
+ * reads this file as data — the JSON is the machine input and the CSV is a
+ * spreadsheet-openable export. `tests/couranr-governance.test.ts` asserts that
+ * stays true; if a consumer ever appears, the marker has to move rather than the
+ * consumer having to strip it.
+ */
+export const CSV_MARKER =
+  "# GENERATED FILE — DO NOT EDIT. Source: ui_screen_registry.json. " +
+  "Regenerate with `npm run governance:generate`.";
+
 export function renderScreenCsv(src) {
-  const lines = [CSV_COLUMNS.join(",")];
+  const lines = [CSV_MARKER, CSV_COLUMNS.join(",")];
   for (const s of src.screens) {
     lines.push(
       CSV_COLUMNS.map((c) => csvField(c === "route" ? s.route_label : s[c])).join(","),

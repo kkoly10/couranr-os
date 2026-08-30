@@ -1,5 +1,12 @@
 # Phase 8 reconciliation
 
+> **Historical provenance — not current status.**
+> Written against the branch HEAD named below and preserved as the record of
+> that reconciliation. It is HISTORICAL in
+> `docs/couranr-mvp/authority/AUTHORITY_MANIFEST.json` and outranks nothing.
+> Current authority is the manifest's declared domains; current state is the
+> two ledgers plus `npm run governance:facts`.
+
 **Produced at branch HEAD `40129ee06d96bfdcd85bb653397d2553a1fa5b98`**, branch
 `claude/couranr-phase-8-conversations`, against `origin/main`
 `c929cc3a8e630bd11ac0a98ff3800a16ee77c140`.

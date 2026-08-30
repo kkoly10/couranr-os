@@ -104,5 +104,105 @@
       "status": "not yet migrated",
       "note": "canonical/derived/reference/provenance-only status and asset residency are still derived from MOCK_TO_SCREEN_MAP.md by scripts/visualAuthorityRegistry.mjs. Until that moves, PUB-004 stays visual_authority=derived with its nested PNG held as provenance in CANONICAL_SCREEN_SOURCE_MAP.tsv — the transitional truth §2 of the work order mandates. Do NOT relax checkMockMap's root-residency rule to force it."
     }
-  ]
+  ],
+  "generated_marker": {
+    "$rule": [
+      "Every path listed under any domain's `generated` array must contain the marker",
+      "string below in its own bytes. A generated file that does not say so is a file",
+      "somebody will hand-edit, and the parity check only tells them afterwards.",
+      "Enforced by `npm run check:governance`, with a positive control."
+    ],
+    "marker": "GENERATED FILE — DO NOT EDIT",
+    "window_bytes": 2000
+  },
+  "non_authority": {
+    "$rule": [
+      "HISTORICAL and EVIDENCE files. They record what was planned or what was measured",
+      "at a named SHA. Neither states current truth and neither outranks a domain",
+      "authority above.",
+      "",
+      "`check:governance` enforces: every path exists; no path here is also a domain",
+      "authority or a generated output; and every HISTORICAL file carries one of the",
+      "accepted de-authorization markers near its top, or declares why it cannot.",
+      "",
+      "EVIDENCE is declared by DIRECTORY, not by file. Enumerating evidence files would",
+      "make the manifest a second index that goes stale the moment a run writes a new",
+      "artifact — and an evidence directory is the one place where new files appearing",
+      "without a manifest edit is correct behaviour.",
+      "",
+      "AUTHORITY_MANIFEST.json itself is neither. It is the authority TOPOLOGY — it says where truth lives and holds no product value of its own, which is why nothing in it may repeat a fact a domain source owns."
+    ],
+    "accepted_markers": [
+      "Historical baseline — not current status.",
+      "This is not a product authority.",
+      "Historical provenance — not current status.",
+      "NOT AUTHORITY"
+    ],
+    "marker_window_bytes": 1500,
+    "historical": [
+      {
+        "path": "couranr_claude_code_package/00_PROVENANCE.md",
+        "marker_exempt": "unpacked v1.0 package original; preserved byte-for-byte as provenance. Editing it to label it would destroy the thing it is kept for."
+      },
+      {
+        "path": "couranr_claude_code_package/00_README.md",
+        "marker_exempt": "unpacked v1.0 package original; see 00_PROVENANCE.md"
+      },
+      {
+        "path": "couranr_claude_code_package/01_MASTER_IMPLEMENTATION_SPEC.md",
+        "marker_exempt": "unpacked v1.0 package original; see 00_PROVENANCE.md"
+      },
+      {
+        "path": "couranr_claude_code_package/02_DECISION_REGISTRY.json",
+        "marker_exempt": "unpacked v1.0 package original, and the subject of tests/decision-registry-provenance.test.ts which proves the ROOT registry is a superset of it. A marker key added here would change the file that proof is measured against."
+      },
+      {
+        "path": "couranr_claude_code_package/04_PHASED_EXECUTION_PLAN.md",
+        "marker_exempt": "unpacked v1.0 package original; see 00_PROVENANCE.md"
+      },
+      {
+        "path": "couranr_claude_code_package/08_WORK_BREAKDOWN.csv",
+        "marker_exempt": "unpacked v1.0 package original and the ONLY package file with unique content — §4 of the work order names it for preservation. It is a CSV consumed as data; a marker row would corrupt it."
+      },
+      {
+        "path": "docs/couranr-mvp/00-current-state-inventory.md"
+      },
+      {
+        "path": "docs/couranr-mvp/00-env-inventory.md"
+      },
+      {
+        "path": "docs/couranr-mvp/00-gap-report.md"
+      },
+      {
+        "path": "docs/couranr-mvp/00-schema-inventory.md"
+      },
+      {
+        "path": "docs/couranr-mvp/00-storage-inventory.md"
+      },
+      {
+        "path": "docs/couranr-mvp/00-stripe-inventory.md"
+      },
+      {
+        "path": "docs/couranr-mvp/ACTIVE_EXECUTION_SLICE.md"
+      },
+      {
+        "path": "docs/couranr-mvp/AUTONOMOUS_RUN_STATE.json",
+        "marker_exempt": "machine run-state JSON read by the autonomous runner; a prose banner is not expressible and a new key would change what the runner reads."
+      },
+      {
+        "path": "docs/couranr-mvp/COURANR_MVP_EXECUTION_CONTROL_RECONCILIATION.md"
+      },
+      {
+        "path": "docs/couranr-mvp/PHASE8_RECONCILIATION.md"
+      }
+    ],
+    "evidence_directories": [
+      "docs/couranr-mvp/autonomous-evidence",
+      "docs/couranr-mvp/ui-reference/evidence"
+    ],
+    "evidence_files": [
+      "docs/couranr-mvp/authority/AUTHORITY_CLASSIFICATION.md",
+      "docs/couranr-mvp/authority/CONSOLIDATION_REPORT.md"
+    ]
+  }
 }

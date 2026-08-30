@@ -1,5 +1,12 @@
 # Couranr MVP — Execution Control Reconciliation
 
+> **Historical provenance — not current status.**
+> A 2026-era operational amendment to the autonomous completion program,
+> preserved as the record of how execution control was organised then. It is
+> HISTORICAL in `docs/couranr-mvp/authority/AUTHORITY_MANIFEST.json` and
+> outranks nothing. Current authority is the manifest's declared domains;
+> current state is the two ledgers plus `npm run governance:facts`.
+
 **Status:** Operational amendment to the existing autonomous completion program  
 **Repository:** `kkoly10/couranr-os`  
 **Existing master plan:** `docs/couranr-mvp/AUTONOMOUS_COMPLETION_EXECUTION_SPEC.md`  

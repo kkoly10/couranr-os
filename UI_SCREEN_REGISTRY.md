@@ -1,15 +1,22 @@
 # Couranr Canonical MVP UI Definition
 
 **Version:** 1.0  
-**Status:** Approved implementation source of truth  
+**Status:** GENERATED FILE — DO NOT EDIT  
 **Product:** Couranr — local delivery infrastructure for local businesses
+
+> Rendered from `ui_screen_registry.json` by `npm run governance:generate`. That
+> file is the single writable source for screen topology; this document is its
+> human view. `npm run check:governance` regenerates it in memory and fails if a
+> byte differs, so a hand-edit here is reverted rather than adopted. Screen
+> implementation status lives in the two ledgers, and visual-source status lives
+> in `VISUAL_REGISTRY.json` — neither is writable here.
 
 ## 1. Authority and conflict rules
 
 1. `02_DECISION_REGISTRY.json` controls locked product decisions, pricing, operating hours, payer behavior, states, terminology, and launch gates.
 2. `01_MASTER_IMPLEMENTATION_SPEC.md` controls workflows, permissions, data, payments, proof, exceptions, routes, and release scope.
 3. `05_AI_COMMUNICATION_SPEC.md` controls messaging, Assistant, Ghost Operations, Ask Couranr, confidence, verifier, privacy, and kill switches.
-4. This file controls which screens are MVP, their routes/states, and which image is the canonical visual reference.
+4. `ui_screen_registry.json` controls which screens are MVP, their routes/states, and which image is the canonical visual reference. This document is generated from it.
 5. Canonical images control layout, hierarchy, visual language, and responsive intent only. They never override written pricing, policy, permissions, state transitions, security, claims, or copy.
 6. Legacy repository behavior and noncanonical mocks have no authority.
 
