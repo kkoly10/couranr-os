@@ -168,6 +168,10 @@ const STAGES = [
   ...[
     ["test:pub001", "PUB-001 Gate B (six widths) and Gate C (axe, contrast)"],
     ["test:pub-family", "the same for PUB-008/009/010/011"],
+    [
+      "test:master-sameday",
+      "V10 gates F, G and H — PUB-012 and PUB-013 structure and CONTENT at the five named widths, and the tracking launcher driven",
+    ],
     ["test:shell-chrome", "shell chrome across surfaces"],
     ["test:fonts", "the governed fonts actually render"],
   ].map(([script, why]) => ({
