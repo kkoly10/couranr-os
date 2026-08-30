@@ -90,7 +90,11 @@ const NAV_LABELS: Record<string, string> = {
  */
 export const ROUTE_COLLISIONS: { route: string; legacyFile: string; screenId: string }[] =
   [
-    { route: "/", legacyFile: "app/page.tsx", screenId: "PUB-012" },
+    // PUB-012 resolved: `/` is owned by
+    // app/(couranr)/(public)/(master-public)/page.tsx under the master chrome.
+    // The legacy app/page.tsx this entry described had already been deleted;
+    // the descriptor outlived the file and is retired with the collision.
+    //
     // DRV-001 resolved: /driver is now owned by app/(couranr)/driver/, which
     // composes DriverShell + SurfaceGuard like every other canonical route.
     // The legacy app/driver/layout.tsx (getSession + redirect to /login) is gone.

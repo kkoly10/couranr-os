@@ -123,12 +123,22 @@ describe("role isolation", () => {
 });
 
 describe("navigation omits routes a legacy page already occupies", () => {
-  it("records both known collisions", () => {
-    const routes = ROUTE_COLLISIONS.map((c) => c.route).sort();
-    // /driver was here until DRV-001 was resolved: app/(couranr)/driver/ now
-    // owns every /driver route under DriverShell + SurfaceGuard, so it is no
-    // longer a collision and IS reachable from driver navigation.
-    expect(routes).toEqual(["/"]);
+  /* EMPTY, and that is the correct end state. `/driver` left when DRV-001's
+     canonical page landed; `/` left when PUB-012's did. A collision entry is a
+     record that a canonical screen has nowhere to live, so the list emptying is
+     the migration finishing — not a check going soft. What replaces it is the
+     assertion below: every collision listed must be a REAL one, so an entry
+     cannot outlive the file it describes the way `/`'s did. */
+  it("records no collision that is already resolved", () => {
+    const stale = ROUTE_COLLISIONS.filter((c) => !existsSync(path.join(ROOT, c.legacyFile)));
+    expect(
+      stale.map((c) => `${c.route} names ${c.legacyFile}, which does not exist`),
+    ).toEqual([]);
+  });
+
+  it("POSITIVE CONTROL: a collision naming a deleted file is detected", () => {
+    const invented = { route: "/x", legacyFile: "app/page.tsx", screenId: "PUB-012" };
+    expect(existsSync(path.join(ROOT, invented.legacyFile))).toBe(false);
   });
 
   it("does not link to a colliding route from any shell", () => {

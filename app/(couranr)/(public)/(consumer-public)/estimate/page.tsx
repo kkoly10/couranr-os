@@ -1,17 +1,17 @@
-import { ScreenPlaceholder } from "@/components/couranr/shell/parts";
-import { PageHeader } from "@/components/couranr/shell/parts";
+import { redirect } from "next/navigation";
+import { routeForScreen } from "@/lib/couranr/navigation";
 
-export const metadata = { title: "Delivery estimate and hosted request — Couranr" };
-
+/**
+ * PUB-004's COMPATIBILITY route.
+ *
+ * LEG-004 made `/send` the preferred direct-consumer entry and kept `/estimate`
+ * in PUB-004's canonical route family. It is deliberately still a real page
+ * rather than a deleted route: the screen source lists it, and a link printed
+ * or shared before the rename has to keep resolving.
+ *
+ * A SERVER redirect, so the hop costs no client JavaScript and no flash of a
+ * page that is about to leave. `redirect()` throws, so nothing renders here.
+ */
 export default function Page() {
-  return (
-    <>
-      <PageHeader title="Delivery estimate and hosted request" />
-      <ScreenPlaceholder
-        screenId="PUB-004"
-        name="Delivery estimate and hosted request"
-        purpose="Capture a delivery estimate or a merchant-branded customer request without requiring an account."
-      />
-    </>
-  );
+  redirect(routeForScreen("PUB-004"));
 }
