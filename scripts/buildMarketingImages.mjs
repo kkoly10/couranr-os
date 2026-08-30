@@ -127,7 +127,55 @@ const ASSETS = [
     slug: "gift-stationery",
     src: "08-gift-stationery.png",
     focal: { x: 0.63, y: 0.45 },
-    derivatives: [{ shape: "wide", aspect: 3 / 2, widths: [400, 800] }],
+    /* PUB-012's business door needs a bigger frame than PUB-009's 800px card:
+       the master hero is a half-width editorial panel at 1440. Same source,
+       same focal point, one wider derivative. */
+    derivatives: [{ shape: "wide", aspect: 3 / 2, widths: [400, 800, 1200] }],
+  },
+
+  /* ── MKT-004 consumer photography ───────────────────────────────────────
+     Three approved photographs for PUB-012's consumer door and PUB-013's
+     editorial sections. They are PHOTOGRAPHY, not UI artboards: neither screen
+     becomes `visual_authority: canonical` because of them.
+
+     All three are natively 1672x941 (~16:9), wider than the 4:3 sources above,
+     so a 3:2 crop trims width rather than height and keeps the full subject
+     band. Each focal point below was set by generating the derivative and
+     LOOKING at it — the doorstep and office crops were both re-cut after the
+     first pass, and the deviation is recorded with the asset. */
+  {
+    slug: "consumer-doorstep-handoff",
+    src: "16-consumer-doorstep-handoff.png",
+    /* The handover — a box and a paper bag passing between two people — sits
+       right of centre. A centred 3:2 crop cut the recipient out of frame. */
+    focal: { x: 0.72, y: 0.52 },
+    derivatives: [
+      { shape: "wide", aspect: 3 / 2, widths: [800, 1200] },
+      /* Mobile art direction, not a resize: at 390 a shrunk 3:2 puts both
+         faces under 40px. A 4:5 window about the same point keeps them
+         legible, which is the §5.3 rule the mosaic crops already follow. */
+      { shape: "portrait", aspect: 4 / 5, widths: [390, 780] },
+    ],
+  },
+  {
+    slug: "consumer-dry-cleaning-pickup",
+    src: "17-consumer-dry-cleaning-pickup.png",
+    focal: { x: 0.55, y: 0.5 },
+    derivatives: [
+      { shape: "wide", aspect: 3 / 2, widths: [640, 1280] },
+      { shape: "portrait", aspect: 4 / 5, widths: [390, 780] },
+    ],
+  },
+  {
+    slug: "consumer-send-from-office",
+    src: "18-consumer-send-from-office.png",
+    /* The subject and the envelope are right of centre; the left third is
+       window and desk. Pulled right so the crop is not half empty desk. */
+    focal: { x: 0.66, y: 0.52 },
+    derivatives: [
+      { shape: "wide", aspect: 3 / 2, widths: [640, 1280] },
+      { shape: "portrait", aspect: 4 / 5, widths: [390, 780] },
+    ],
   },
 ];
 

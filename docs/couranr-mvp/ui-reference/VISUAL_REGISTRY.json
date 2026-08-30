@@ -468,6 +468,154 @@
             "n": 1
           }
         }
+      },
+      {
+        "screen": "PUB-012",
+        "route": "/",
+        "file": "app/(couranr)/(public)/(master-public)/page.tsx",
+        "doc_heading": "### PUB-012 —",
+        "rows": [
+          {
+            "n": 1,
+            "id": "master-hero",
+            "composition": "split-story",
+            "imageLed": "true",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 2,
+            "id": "master-network",
+            "composition": "editorial-statement",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 3,
+            "id": "master-service-area",
+            "composition": "structured-information-block",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          }
+        ],
+        "budgets": {
+          "gridDominant": {
+            "op": "<=",
+            "n": 0
+          },
+          "imageLed": {
+            "op": ">=",
+            "n": 1
+          },
+          "productProof": {
+            "op": ">=",
+            "n": 0
+          },
+          "workflowRail": {
+            "op": "==",
+            "n": 0
+          }
+        }
+      },
+      {
+        "screen": "PUB-013",
+        "route": "/sameday",
+        "file": "app/(couranr)/(public)/(consumer-public)/sameday/page.tsx",
+        "doc_heading": "### PUB-013 —",
+        "rows": [
+          {
+            "n": 1,
+            "id": "sameday-hero",
+            "composition": "split-story",
+            "imageLed": "true",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 2,
+            "id": "already-bought",
+            "composition": "image-narrative",
+            "imageLed": "true",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 3,
+            "id": "send-what-you-have",
+            "composition": "split-story",
+            "imageLed": "true",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 4,
+            "id": "consumer-breadth",
+            "composition": "editorial-statement",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 5,
+            "id": "consumer-workflow",
+            "composition": "workflow-rail",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 6,
+            "id": "consumer-price",
+            "composition": "structured-information-block",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 7,
+            "id": "consumer-availability",
+            "composition": "split-story",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 8,
+            "id": "consumer-tracking",
+            "composition": "product-proof",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "true"
+          },
+          {
+            "n": 9,
+            "id": "consumer-closing",
+            "composition": "full-bleed-interruption",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          }
+        ],
+        "budgets": {
+          "gridDominant": {
+            "op": "<=",
+            "n": 0
+          },
+          "imageLed": {
+            "op": ">=",
+            "n": 3
+          },
+          "productProof": {
+            "op": ">=",
+            "n": 1
+          },
+          "workflowRail": {
+            "op": "==",
+            "n": 1
+          }
+        }
       }
     ]
   },

@@ -515,6 +515,62 @@ function build() {
         "status": "approved"
       },
       {
+        "asset_id": "couranr-mkt-2026-08-consumer-doorstep-handoff",
+        "local_path": "public/images/marketing/2026-08/w/mkt-2026-08-consumer-doorstep-handoff-wide-1200.webp",
+        "derived_from": "public/images/marketing/2026-08/16-consumer-doorstep-handoff.png",
+        "source": "owner-supplied-2026-08-30",
+        "source_reference": "Delivered in the Couranr Frontend V10 owner work order as approved consumer photography; extracted from that package at full source resolution.",
+        "license_record": "Owner-supplied. No third-party stock source or external stock licence recorded.",
+        "subject": "A person receives a small parcel and shopping bag at the front door of a home",
+        "alt": "A person receives a small parcel and shopping bag at the front door of a home.",
+        "allowed_surfaces": [
+          "PUB-012",
+          "PUB-013"
+        ],
+        "desktop_focal_point": "72% 52%",
+        "mobile_focal_point": "72% 52%",
+        "focal_point_note":
+          "The handover sits right of centre; a centred 3:2 crop put the recipient on the frame edge. Inspected at 1200 wide and 390 portrait after generation. The 4:5 mobile derivative is art direction, not a resize — at 390 a shrunk 3:2 puts both faces under 40px.",
+        "preferred_aspect": "3:2",
+        "status": "approved"
+      },
+      {
+        "asset_id": "couranr-mkt-2026-08-consumer-dry-cleaning-pickup",
+        "local_path": "public/images/marketing/2026-08/w/mkt-2026-08-consumer-dry-cleaning-pickup-wide-1280.webp",
+        "derived_from": "public/images/marketing/2026-08/17-consumer-dry-cleaning-pickup.png",
+        "source": "owner-supplied-2026-08-30",
+        "source_reference": "Delivered in the Couranr Frontend V10 owner work order as approved consumer photography; extracted from that package at full source resolution.",
+        "license_record": "Owner-supplied. No third-party stock source or external stock licence recorded.",
+        "subject": "A dry-cleaning worker hands finished garments in protective bags to a customer at the counter",
+        "alt": "A dry-cleaning worker hands finished garments in protective bags to a customer at the counter.",
+        "allowed_surfaces": [
+          "PUB-013"
+        ],
+        "desktop_focal_point": "55% 50%",
+        "mobile_focal_point": "55% 50%",
+        "preferred_aspect": "3:2",
+        "status": "approved"
+      },
+      {
+        "asset_id": "couranr-mkt-2026-08-consumer-send-from-office",
+        "local_path": "public/images/marketing/2026-08/w/mkt-2026-08-consumer-send-from-office-wide-1280.webp",
+        "derived_from": "public/images/marketing/2026-08/18-consumer-send-from-office.png",
+        "source": "owner-supplied-2026-08-30",
+        "source_reference": "Delivered in the Couranr Frontend V10 owner work order as approved consumer photography; extracted from that package at full source resolution.",
+        "license_record": "Owner-supplied. No third-party stock source or external stock licence recorded.",
+        "subject": "A person at a home-office desk uses a phone beside a sealed padded envelope",
+        "alt": "A person at a home-office desk uses a phone beside a sealed document envelope.",
+        "allowed_surfaces": [
+          "PUB-013"
+        ],
+        "desktop_focal_point": "66% 52%",
+        "mobile_focal_point": "66% 52%",
+        "focal_point_note":
+          "The subject and the envelope are right of centre and the left third is window and desk; pulled right so the crop is not half empty desk. The work order's locked alt text says \"document envelope\"; the object is a padded mailer. The alt is kept verbatim as owner-approved copy and the difference is recorded here rather than silently corrected.",
+        "preferred_aspect": "3:2",
+        "status": "approved"
+      },
+      {
         "asset_id": "couranr-mkt-2026-08-gift-stationery",
         "local_path": "public/images/marketing/2026-08/w/mkt-2026-08-gift-stationery-wide-800.webp",
         "derived_from": "public/images/marketing/2026-08/08-gift-stationery.png",
@@ -524,7 +580,8 @@ function build() {
         "subject": "Stationery-shop worker helping an older customer choose an item",
         "alt": "Stationery-shop worker helping an older customer choose an item.",
         "allowed_surfaces": [
-          "PUB-009"
+          "PUB-009",
+          "PUB-012"
         ],
         "desktop_focal_point": "63% 45%",
         "mobile_focal_point": "63% 45%",
