@@ -222,6 +222,57 @@ function checkNonAuthority(fail, m, mutate) {
   }
 }
 
+/**
+ * No authority may point upward at something downstream of it.
+ *
+ * The concrete case: `02_DECISION_REGISTRY.json` carried
+ * `generated_from.authority_order` naming `UI_SCREEN_REGISTRY.md` — a file
+ * GENERATED from `ui_screen_registry.json` — as ranking above the rank-1
+ * product authority. A test asserted that order, so the cycle was pinned, not
+ * merely present.
+ *
+ * The rule is general: in any JSON domain authority, a key whose name implies
+ * PRECEDENCE may not name a path the manifest declares generated. Provenance
+ * keys are fine; the registry still records what it was derived from.
+ */
+const PRECEDENCE_KEY = /authority_order|precedence|source_of_truth|ranks?_above/i;
+
+function checkNoCircularPrecedence(fail, m, inject) {
+  const generated = new Set(m.domains.flatMap((d) => d.generated ?? []));
+  for (const d of m.domains) {
+    if (!d.authority.endsWith(".json")) continue;
+    const p = join(ROOT, d.authority);
+    if (!existsSync(p)) continue;
+    let doc;
+    try {
+      doc = JSON.parse(readFileSync(p, "utf8"));
+    } catch {
+      fail.push(`${d.authority} is not parseable JSON`);
+      continue;
+    }
+    if (inject) doc = inject(d.authority, doc);
+    const walk = (node, trail) => {
+      if (node == null) return;
+      if (Array.isArray(node)) return node.forEach((v) => walk(v, trail));
+      if (typeof node === "object") {
+        for (const [k, v] of Object.entries(node)) walk(v, [...trail, k]);
+        return;
+      }
+      if (typeof node !== "string") return;
+      const key = trail[trail.length - 1] ?? "";
+      const parent = trail[trail.length - 2] ?? "";
+      if (!PRECEDENCE_KEY.test(key) && !PRECEDENCE_KEY.test(parent)) return;
+      if (generated.has(node)) {
+        fail.push(
+          `${d.authority} names generated artifact "${node}" under precedence key ` +
+            `"${trail.join(".")}" — a domain authority cannot rank a file below it above itself`,
+        );
+      }
+    };
+    walk(doc, []);
+  }
+}
+
 /** Source -> generated parity. */
 function checkParity(fail, mutate) {
   for (const o of outputs()) {
@@ -329,6 +380,22 @@ if (CONTROL) {
     }
   }
   {
+    /* Re-introduce the cycle in memory: the product registry naming a generated
+       mirror as ranking above it. */
+    const detected = [];
+    checkNoCircularPrecedence(detected, manifest, (path, doc) =>
+      path === "02_DECISION_REGISTRY.json"
+        ? { ...doc, generated_from: { ...doc.generated_from, authority_order: ["UI_SCREEN_REGISTRY.md"] } }
+        : doc,
+    );
+    if (!detected.length) {
+      console.error("positive control FAILED — a restored authority_order cycle was not detected");
+      bad++;
+    } else {
+      console.log(`check:governance positive control ok — a precedence cycle was rejected: "${detected[0].slice(0, 110)}"`);
+    }
+  }
+  {
     const before = readFileSync(join(ROOT, "CLAUDE.md"), "utf8");
     const detected = [];
     checkAgentGuidance(detected, before + "\n\nThere are 4321 tests across 99 files now.\n");
@@ -367,6 +434,7 @@ if (CONTROL) {
 checkParity(fail);
 checkGeneratedMarkers(fail, manifest);
 checkNonAuthority(fail, manifest);
+checkNoCircularPrecedence(fail, manifest);
 checkAgentGuidance(fail, readFileSync(join(ROOT, "CLAUDE.md"), "utf8"));
 /* The composition contract is structured data now; §27's prose tables are the
    human view of it and must still agree. */

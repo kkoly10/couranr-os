@@ -2,7 +2,20 @@
   "$schema_version": "1.0",
   "product": "Couranr — local delivery infrastructure for local businesses",
   "generated_from": {
-    "authority_order": [
+    "$class": "HISTORICAL PROVENANCE — not a precedence list.",
+    "$note": [
+      "This block records which documents this registry was DERIVED FROM when it was",
+      "first generated. It used to be called `authority_order`, and that name made the",
+      "rank-1 product authority declare two of its own mirrors as ranking above it —",
+      "a cycle, since UI_SCREEN_REGISTRY.md is generated from ui_screen_registry.json",
+      "and the Master Package is being reduced to historical doctrine.",
+      "",
+      "Current precedence is declared in exactly one place:",
+      "docs/couranr-mvp/authority/AUTHORITY_MANIFEST.json. This file is the writable",
+      "authority for the product-decisions domain, and nothing listed below outranks",
+      "it. Where a derivation source and a decision here disagree, the decision wins."
+    ],
+    "derived_from": [
       "Couranr_Claude_Code_Master_Package.md",
       "UI_SCREEN_REGISTRY.md",
       "ui_screen_registry.json",
