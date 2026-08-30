@@ -103,6 +103,22 @@ export const MARKETED_MARKETS = [
 export const MARKETS_PUBLIC_COPY =
   "Local business delivery across DC, Stafford, Woodbridge, Fredericksburg, and surrounding areas.";
 
+/**
+ * MKT-006 — the same four markets, framed for a person rather than a merchant.
+ *
+ * MKT-001's sentence says "Local BUSINESS delivery across …". That was correct
+ * while Couranr was a merchant-only brand; MKT-004 expanded it, and the
+ * sentence then described the wrong product on the two surfaces MKT-004
+ * created. It shipped on both `/` and `/sameday` — a consumer reading the Same
+ * Day page was told Couranr delivers for businesses.
+ *
+ * PUB-012 and PUB-013 read this one. Every business surface still reads
+ * `MARKETS_PUBLIC_COPY`, which is unchanged. Both name the same MKT-001
+ * markets, and neither is typed into a page.
+ */
+export const MARKETS_PUBLIC_COPY_NEUTRAL =
+  "Couranr delivers across DC, Stafford, Woodbridge, Fredericksburg, and surrounding areas.";
+
 /** TRM-001 — the support sentence always carries its qualifier. */
 export const SUPPORT_COPY =
   "In-app support with a 15-minute response target during operating hours.";

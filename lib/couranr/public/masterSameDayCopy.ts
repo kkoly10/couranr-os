@@ -75,6 +75,59 @@ export const SAME_DAY_COPY = {
   ],
   closing_headline: "One less trip to make.",
   closing_support: "Send something you have or let Couranr go pick it up.",
+  price_body:
+    "You review the delivery and its price before anything is requested. Couranr confirms availability, schedule and vehicle before any payment is captured.",
+  tracking_body:
+    "Couranr sends the recipient a private tracking link when the delivery is confirmed. It is the only way the delivery can be opened.",
+  /**
+   * consumer-availability. The work order asks PUB-013 to "present the full
+   * address/availability interaction story" and NAMES its nine states. The
+   * section shipped as two prose paragraphs that described checking without
+   * depicting any of them, so the requirement was not met.
+   *
+   * Three parallel arrays rather than an array of objects, because the MKT-005
+   * parity test walks strings and arrays of strings — a nested object per state
+   * would flatten into keys the registry and the module would have to agree on
+   * one by one. A test asserts all three are the same length.
+   *
+   * No address is invented and no boundary is drawn: SVC-002 is UNRESOLVED, so
+   * "eligible" says Couranr can run the trip and "review-needed" says the
+   * address is captured, never that it is out of area.
+   */
+  availability_headline: "Tell Couranr where, and it checks.",
+  availability_state_order: [
+    "idle",
+    "focused",
+    "typing",
+    "suggestions",
+    "selected",
+    "checking",
+    "eligible",
+    "review-needed",
+    "error",
+  ],
+  availability_state_labels: [
+    "Idle",
+    "Focused",
+    "Typing",
+    "Suggestions",
+    "Selected",
+    "Checking",
+    "Eligible",
+    "Review needed",
+    "Error",
+  ],
+  availability_state_captions: [
+    "The pickup and destination fields, waiting for you.",
+    "You tap one. Couranr is ready for the address.",
+    "You start typing. Nothing is submitted yet.",
+    "Matching addresses appear as you type.",
+    "You choose the one you meant, and it fills in.",
+    "Couranr checks the trip against the area it operates in.",
+    "Couranr can run this trip. You carry on to the next step.",
+    "Couranr captures the address for review. Nothing is turned away at the door.",
+    "Something did not load. You can try again without losing what you entered.",
+  ],
 } as const;
 
 /** PUB-004's direct-consumer mode at /send. */

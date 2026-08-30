@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { SAME_DAY_COPY } from "@/lib/couranr/public/masterSameDayCopy";
-import { MARKETS_PUBLIC_COPY } from "@/lib/couranr/public/governed";
+import { MARKETS_PUBLIC_COPY_NEUTRAL } from "@/lib/couranr/public/governed";
 import { routeForScreen } from "@/lib/couranr/navigation";
 
 /**
@@ -24,7 +24,9 @@ import { routeForScreen } from "@/lib/couranr/navigation";
  *   - no radius, ZIP eligibility or polygon: SVC-002 is UNRESOLVED.
  *
  * Every string comes from `SAME_DAY_COPY` (MKT-005); every destination from the
- * screen source. The market sentence is MKT-001's, imported not typed.
+ * screen source. The market sentence is MKT-006's consumer-neutral one,
+ * imported not typed — MKT-001's begins "Local BUSINESS delivery across …",
+ * which is the wrong product to describe to a person on this page.
  */
 
 export const metadata: Metadata = {
@@ -251,18 +253,31 @@ export default function Page() {
         <h2 id="s6-h" className="cr-type-marketing-section">
           {SAME_DAY_COPY.price_headline}
         </h2>
-        <p className="cr-mkt-editorial__body cr-type-lead">
-          You review the delivery and its price before anything is requested. Couranr
-          confirms availability, schedule and vehicle before any payment is captured.
-        </p>
+        <p className="cr-mkt-editorial__body cr-type-lead">{SAME_DAY_COPY.price_body}</p>
       </section>
 
       {/* ─── 7 ─────────────────── consumer-availability / split-story ─── */}
-      {/* Front-end state story only: no service-area lookup runs here and no
-          eligibility is claimed. SVC-002 (the boundary) is UNRESOLVED, so an
-          in-area / out-of-area verdict on a marketing page would invent one. */}
+      {/* THE NINE STATES ARE THE SECTION. The work order asks this region to
+          "present the full address/availability interaction story" and names
+          every state: idle / focused / typing / suggestions / selected /
+          checking / eligible / review-needed / error. This shipped as two prose
+          paragraphs that DESCRIBED checking and depicted none of them — zero of
+          the nine appeared in the rendered HTML. Prose about an interaction is
+          not the interaction story.
+
+          Rendered as a static ordered sequence, in the same ruled language as
+          the workflow rail above and the tracking stages below, because that is
+          what the rest of the page already uses to tell a sequence. No mock
+          address field and no sample suggestion list: an invented address is
+          fabricated product data, which this page bans elsewhere and would be
+          banning here for the same reason.
+
+          No service-area lookup runs and no boundary is drawn. SVC-002 is
+          UNRESOLVED, so "eligible" says Couranr can run the trip and
+          "review-needed" says the address is captured — never that it is out of
+          area, which is a verdict nothing here is entitled to reach. */}
       <section
-        className="cr-mkt-split"
+        className="cr-mkt-split cr-sd-availability"
         aria-labelledby="s7-h"
         data-couranr-section="consumer-availability"
         data-composition="split-story"
@@ -272,17 +287,22 @@ export default function Page() {
       >
         <div className="cr-mkt-split__lead">
           <h2 id="s7-h" className="cr-type-marketing-section">
-            Tell Couranr where, and it checks
+            {SAME_DAY_COPY.availability_headline}
           </h2>
-          <p>{MARKETS_PUBLIC_COPY}</p>
+          <p>{MARKETS_PUBLIC_COPY_NEUTRAL}</p>
         </div>
-        <div className="cr-sd-states">
-          <p className="cr-mkt-editorial__body">
-            You enter a pickup and a destination. Couranr checks the trip against its
-            operating area and confirms before anything is scheduled — an address that
-            needs a closer look is captured for review, never rejected at the door.
-          </p>
-        </div>
+        <ol className="cr-sd-states">
+          {SAME_DAY_COPY.availability_state_order.map((state, i) => (
+            <li key={state} className="cr-sd-state" data-couranr-address-state={state}>
+              <span className="cr-sd-state__label">
+                {SAME_DAY_COPY.availability_state_labels[i]}
+              </span>
+              <span className="cr-sd-state__caption">
+                {SAME_DAY_COPY.availability_state_captions[i]}
+              </span>
+            </li>
+          ))}
+        </ol>
       </section>
 
       {/* ─── 8 ───────────────────────── consumer-tracking / product-proof ─── */}
@@ -308,10 +328,7 @@ export default function Page() {
             </li>
           ))}
         </ol>
-        <p className="cr-mkt-editorial__body">
-          Couranr sends the recipient a private tracking link when the delivery is
-          confirmed. It is the only way the delivery can be opened.
-        </p>
+        <p className="cr-mkt-editorial__body">{SAME_DAY_COPY.tracking_body}</p>
       </section>
 
       {/* ─── 9 ────────────── consumer-closing / full-bleed-interruption ─── */}

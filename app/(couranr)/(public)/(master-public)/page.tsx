@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { MASTER_COPY } from "@/lib/couranr/public/masterSameDayCopy";
-import { MARKETS_PUBLIC_COPY } from "@/lib/couranr/public/governed";
+import { MARKETS_PUBLIC_COPY_NEUTRAL } from "@/lib/couranr/public/governed";
 import { routeForScreen } from "@/lib/couranr/navigation";
 
 /**
@@ -19,7 +19,7 @@ import { routeForScreen } from "@/lib/couranr/navigation";
  * Every string here comes from `MASTER_COPY` (MKT-005) and every destination
  * from `routeForScreen` (the screen source). Nothing on this page types a
  * route, a price, a mileage, an operating hour or a market name — the market
- * sentence is `MARKETS_PUBLIC_COPY`, which MKT-001 owns.
+ * sentence is `MARKETS_PUBLIC_COPY_NEUTRAL`, which MKT-006 owns.
  */
 
 export const metadata: Metadata = {
@@ -141,8 +141,11 @@ export default function Page() {
 
       {/* ─── 3 ─────────── master-service-area / structured-information-block ─── */}
       {/* Consumer-NEUTRAL coverage, not the business-only service-area copy.
-          The market names come from MARKETS_PUBLIC_COPY (MKT-001) and are not
-          typed here. No radius, no ZIP eligibility, no polygon, no instant
+          This shipped reading MARKETS_PUBLIC_COPY, which is MKT-001's sentence
+          and literally begins "Local BUSINESS delivery across …" — the exact
+          copy the work order names as the thing this region must not be. The
+          market names still come from the governed module (MKT-006 now) and are
+          not typed here. No radius, no ZIP eligibility, no polygon, no instant
           eligibility and no Maryland coverage: SVC-002 (the boundary) is
           UNRESOLVED, so any of those would be an invented product claim. */}
       <section
@@ -157,7 +160,7 @@ export default function Page() {
         <h2 id="m3-h" className="cr-type-marketing-section">
           Where Couranr delivers
         </h2>
-        <p className="cr-mkt-editorial__body cr-type-lead">{MARKETS_PUBLIC_COPY}</p>
+        <p className="cr-mkt-editorial__body cr-type-lead">{MARKETS_PUBLIC_COPY_NEUTRAL}</p>
         <div className="cr-mkt-cta-row">
           <Link href={sameDayHref} className="cr-button cr-button--primary cr-button--lg">
             {MASTER_COPY.consumer_door_title}

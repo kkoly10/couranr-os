@@ -3851,17 +3851,31 @@
   font-weight: 600;
 }
 
+/* The connector. The work order calls this a "connected sequence" and the
+   composition contract calls it a workflow-rail, so the connection is the
+   point — but it was declared only inside `@media (min-width: 900px)`, which
+   left three of the five widths gate G names (768, 390, 320) rendering five
+   disconnected rows. Below 900px the rail is a COLUMN, so the connector is
+   vertical there and horizontal above; both stop before the last step rather
+   than trailing off the grid. */
+.cr-sd-rail__step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 1rem;
+  top: 2.5rem;
+  bottom: calc(var(--couranr-space-5) * -1);
+  width: 1px;
+  background: var(--couranr-border);
+}
+
 @media (min-width: 900px) {
-  /* The connector, drawn between numbers rather than under the whole row so it
-     stops at the last step instead of trailing off the grid. */
   .cr-sd-rail__step:not(:last-child)::after {
-    content: "";
-    position: absolute;
     top: 1rem;
+    bottom: auto;
     left: 2.5rem;
     right: calc(var(--couranr-space-4) * -1);
+    width: auto;
     height: 1px;
-    background: var(--couranr-border);
   }
 }
 
@@ -3897,7 +3911,56 @@
   font-weight: 400;
 }
 
-.cr-sd-states > p { margin: 0; }
+/* consumer-availability: the nine address/availability states as a ruled
+   sequence. A LIST, not a card grid — the composition contract caps
+   grid-dominant at zero for every PUB-013 region and §19 calls the alternative
+   a card cemetery, so the states are separated by rules and whitespace and
+   carry no panel, border box or background of their own.
+
+   `.cr-sd-availability` gives the split a wider right column than the shared
+   38/62: nine captions in a 62% column at 1440 wrap to two lines each and the
+   lead sits alone above a lot of nothing. */
+.cr-sd-states {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: cr-sd-state;
+}
+
+.cr-sd-state {
+  display: grid;
+  gap: var(--couranr-space-1);
+  padding: var(--couranr-space-3) 0;
+  border-top: 1px solid var(--couranr-border);
+}
+
+.cr-sd-state:first-child { border-top: 0; padding-top: 0; }
+.cr-sd-state:last-child { padding-bottom: 0; }
+
+.cr-sd-state__label {
+  font-size: var(--couranr-text-sm);
+  font-weight: 600;
+  color: var(--couranr-text);
+}
+
+.cr-sd-state__caption {
+  font-size: var(--couranr-text-sm);
+  color: var(--couranr-text-muted);
+}
+
+/* Two columns for the label and its caption once there is room for them, so
+   the nine states read as a schedule rather than eighteen stacked lines. */
+@media (min-width: 640px) {
+  .cr-sd-state {
+    grid-template-columns: 9rem 1fr;
+    gap: var(--couranr-space-4);
+    align-items: baseline;
+  }
+}
+
+@media (min-width: 900px) {
+  .cr-sd-availability { grid-template-columns: 32fr 68fr; }
+}
 
 /* The hero's media column. Declared even though it only carries the picture:
    the token test requires every rendered class to have a rule, and an

@@ -874,6 +874,9 @@
       "id": "MKT-001",
       "category": "launch markets",
       "decision": "Four named initial markets plus surrounding areas; Maryland is excluded from initial marketing.",
+      "amended_by": [
+        "MKT-006"
+      ],
       "value": {
         "marketed_markets": [
           "Washington, DC",
@@ -3162,7 +3165,43 @@
             "Delivered"
           ],
           "closing_headline": "One less trip to make.",
-          "closing_support": "Send something you have or let Couranr go pick it up."
+          "closing_support": "Send something you have or let Couranr go pick it up.",
+          "price_body": "You review the delivery and its price before anything is requested. Couranr confirms availability, schedule and vehicle before any payment is captured.",
+          "tracking_body": "Couranr sends the recipient a private tracking link when the delivery is confirmed. It is the only way the delivery can be opened.",
+          "availability_headline": "Tell Couranr where, and it checks.",
+          "availability_state_order": [
+            "idle",
+            "focused",
+            "typing",
+            "suggestions",
+            "selected",
+            "checking",
+            "eligible",
+            "review-needed",
+            "error"
+          ],
+          "availability_state_labels": [
+            "Idle",
+            "Focused",
+            "Typing",
+            "Suggestions",
+            "Selected",
+            "Checking",
+            "Eligible",
+            "Review needed",
+            "Error"
+          ],
+          "availability_state_captions": [
+            "The pickup and destination fields, waiting for you.",
+            "You tap one. Couranr is ready for the address.",
+            "You start typing. Nothing is submitted yet.",
+            "Matching addresses appear as you type.",
+            "You choose the one you meant, and it fills in.",
+            "Couranr checks the trip against the area it operates in.",
+            "Couranr can run this trip. You carry on to the next step.",
+            "Couranr captures the address for review. Nothing is turned away at the door.",
+            "Something did not load. You can try again without losing what you entered."
+          ]
         },
         "send": {
           "trip_send_origin": "Where is the item now?",
@@ -3237,6 +3276,65 @@
         "Every locked string rendered by PUB-012, PUB-013 or /send comes from the typed copy module, and the module matches this record byte for byte.",
         "No market name, price, mileage, operating hour, cutoff or service-level amount is typed into those surfaces; each is imported from the governed public module.",
         "No route or URL is read from the copy module."
+      ],
+      "decided_by": "owner",
+      "decided_at_utc": "2026-08-30T00:00:00Z"
+    },
+    {
+      "id": "MKT-006",
+      "category": "launch markets",
+      "decision": "MKT-001 carries ONE public market sentence and it is business-framed: \"Local business delivery across DC, Stafford, Woodbridge, Fredericksburg, and surrounding areas.\" MKT-004 expanded the brand beyond merchants, so that sentence is no longer correct on the master or consumer surfaces. This record adds a consumer-neutral sentence over the SAME four markets, for PUB-012 and PUB-013 only. MKT-001 stays authoritative for the business surfaces and its sentence is unchanged. No market is restated: both sentences name the same MKT-001 list.",
+      "amends": "MKT-001",
+      "value": {
+        "public_copy_neutral": "Couranr delivers across DC, Stafford, Woodbridge, Fredericksburg, and surrounding areas.",
+        "applies_to_screen_ids": [
+          "PUB-012",
+          "PUB-013"
+        ],
+        "business_copy_unchanged_for_screen_ids": [
+          "PUB-001",
+          "PUB-010"
+        ],
+        "markets_source": "MKT-001.value.marketed_markets — unchanged. This record adds framing, not markets.",
+        "still_prohibited": [
+          "a delivery radius",
+          "ZIP eligibility",
+          "a polygon",
+          "instant eligibility",
+          "Maryland launch coverage"
+        ],
+        "why": "MKT-004.value.product_description_after retired the businesses-only descriptor at the master level. The V10 frontend work order restates it for master-service-area as \"consumer-neutral reassurance, not the old business-only service-area copy\", and PUB-013 is a consumer surface where a business-delivery description is simply wrong about what the visitor is being offered."
+      },
+      "status": "decided",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§3 Markets and operating model — Initial marketed markets",
+      "affected_routes": [
+        "/",
+        "/sameday"
+      ],
+      "affected_screen_ids": [
+        "PUB-012",
+        "PUB-013"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [
+        "lib/couranr/public/governed.ts",
+        "app/(couranr)/(public)/(master-public)",
+        "app/(couranr)/(public)/(consumer-public)"
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "master_and_consumer_market_sentence": "Local business delivery across DC, Stafford, Woodbridge, Fredericksburg, and surrounding areas."
+        },
+        "code_location": "app/(couranr)/(public)/(master-public)/page.tsx, app/(couranr)/(public)/(consumer-public)/sameday/page.tsx",
+        "resolution": "Written authority wins. Both surfaces render the neutral sentence; the business surfaces keep MKT-001's.",
+        "remediation_commit": "V10 completeness pass"
+      },
+      "implementation_phase": "3",
+      "acceptance_criteria": [
+        "PUB-012 and PUB-013 render the neutral sentence and never the business-framed one.",
+        "The business public surfaces still render MKT-001's sentence.",
+        "Both sentences name the same four MKT-001 markets, and neither is typed into a page."
       ],
       "decided_by": "owner",
       "decided_at_utc": "2026-08-30T00:00:00Z"

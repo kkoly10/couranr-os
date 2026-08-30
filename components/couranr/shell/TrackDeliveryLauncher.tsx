@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { useRouter } from "next/navigation";
+import { PUBLIC_CHROME_COPY as CHROME } from "@/lib/couranr/public/masterSameDayCopy";
 
 /**
  * "Track a delivery" in the consumer header.
@@ -24,18 +25,50 @@ import { useRouter } from "next/navigation";
  * non-promotional — it makes no claim about what tracking will show.
  */
 
-/** `/track/<token>` extracted from whatever the visitor pasted, or null. */
-export function parseTrackingPath(raw: string): string | null {
+/** The page's own host, or null when there is no document (SSR, node tests). */
+function currentHost(): string | null {
+  return typeof window === "undefined" ? null : window.location.host;
+}
+
+/**
+ * `/track/<token>` extracted from whatever the visitor pasted, or null.
+ *
+ * `selfHost` is the host an absolute URL must match. It defaults to the page's
+ * own host and is a parameter only so a test can supply one — without it the
+ * same-origin rule is unprovable outside a browser, which is how the previous
+ * version's defect survived: a passing test asserted the host was DISCARDED
+ * and called that "deliberate and safe".
+ */
+export function parseTrackingPath(
+  raw: string,
+  selfHost: string | null = currentHost(),
+): string | null {
   const value = (raw ?? "").trim();
   if (!value) return null;
 
   let pathname: string;
   if (/^https?:\/\//i.test(value)) {
+    let url: URL;
     try {
-      pathname = new URL(value).pathname;
+      url = new URL(value);
     } catch {
       return null;
     }
+    /* THE HOST HAS TO MATCH. This read `new URL(value).pathname` and threw the
+       origin away, so `https://anywhere.example.com/track/TOKEN` was accepted
+       and the visitor was silently navigated to Couranr's own `/track/TOKEN`.
+       Gate H requires a non-Couranr URL to be REFUSED — and a link that quietly
+       becomes a different link is the wrong answer even when the destination is
+       our own.
+
+       Compared against the page's own host rather than a hardcoded domain,
+       because the launcher runs on preview deployments and on localhost as well
+       as in production and a literal would refuse the real link everywhere but
+       one. When there is no host to compare against — SSR, or a caller that
+       passes null — the absolute form is refused rather than waved through:
+       fail closed, since a relative `/track/…` path still works. */
+    if (!selfHost || url.host !== selfHost) return null;
+    pathname = url.pathname;
   } else if (/^[a-z][a-z0-9+.-]*:/i.test(value)) {
     /* Any other scheme — javascript:, data:, mailto: — is refused outright
        rather than coerced into a path. */
@@ -103,11 +136,16 @@ export function TrackDeliveryLauncher({
           setError(null);
         }}
       >
-        Track a delivery
+        {CHROME.track_a_delivery}
       </button>
 
       {open ? (
-        <div className="cr-track-launcher__panel" id={panelId} role="group" aria-label="Track a delivery">
+        <div
+          className="cr-track-launcher__panel"
+          id={panelId}
+          role="group"
+          aria-label={CHROME.track_a_delivery}
+        >
           <form onSubmit={submit}>
             <label className="cr-track-launcher__label" htmlFor={`${panelId}-input`}>
               Paste your Couranr tracking link

@@ -1,6 +1,14 @@
 import * as React from "react";
 import Link from "next/link";
 import { navigationFor, routeForScreen } from "@/lib/couranr/navigation";
+/**
+ * MKT-005 locks five public chrome labels and `PUBLIC_CHROME_COPY` mirrors
+ * them — but nothing imported it, so the parity test was guarding a constant no
+ * rendered surface read while these same five strings sat in this file as
+ * literals. A label edited in one place and not the other would have shipped
+ * green. Every master and consumer chrome label is read from here now.
+ */
+import { PUBLIC_CHROME_COPY as CHROME } from "@/lib/couranr/public/masterSameDayCopy";
 import { Container, Text } from "@/components/couranr/primitives";
 import {
   DriverTabBar,
@@ -241,8 +249,8 @@ function BusinessPublicShell({ children }: { children: React.ReactNode }) {
  */
 function MasterPublicShell({ children }: { children: React.ReactNode }) {
   const items = [
-    { screenId: "PUB-013", label: "Same Day", href: PUBLIC_DESTINATIONS.sameday() },
-    { screenId: "PUB-001", label: "For Business", href: PUBLIC_DESTINATIONS.business() },
+    { screenId: "PUB-013", label: CHROME.same_day, href: PUBLIC_DESTINATIONS.sameday() },
+    { screenId: "PUB-001", label: CHROME.for_business, href: PUBLIC_DESTINATIONS.business() },
   ];
 
   return (
@@ -261,7 +269,7 @@ function MasterPublicShell({ children }: { children: React.ReactNode }) {
                 href={PUBLIC_DESTINATIONS.signIn()}
                 className="cr-button cr-button--ghost cr-button--sm cr-topbar__auth"
               >
-                Business sign in
+                {CHROME.business_sign_in}
               </Link>
               <span className="cr-topbar__toggle">
                 <MobileNav
@@ -274,7 +282,7 @@ function MasterPublicShell({ children }: { children: React.ReactNode }) {
                         href={PUBLIC_DESTINATIONS.signIn()}
                         className="cr-button cr-button--inverse cr-button--lg"
                       >
-                        Business sign in
+                        {CHROME.business_sign_in}
                       </Link>
                     </div>
                   }
@@ -299,17 +307,17 @@ function MasterPublicShell({ children }: { children: React.ReactNode }) {
               <ul className="cr-footer__links">
                 <li>
                   <Link href={PUBLIC_DESTINATIONS.sameday()} className="cr-footer__link">
-                    Same Day
+                    {CHROME.same_day}
                   </Link>
                 </li>
                 <li>
                   <Link href={PUBLIC_DESTINATIONS.business()} className="cr-footer__link">
-                    For Business
+                    {CHROME.for_business}
                   </Link>
                 </li>
                 <li>
                   <Link href={PUBLIC_DESTINATIONS.signIn()} className="cr-footer__link">
-                    Business sign in
+                    {CHROME.business_sign_in}
                   </Link>
                 </li>
               </ul>
@@ -335,8 +343,8 @@ function MasterPublicShell({ children }: { children: React.ReactNode }) {
  */
 function ConsumerPublicShell({ children }: { children: React.ReactNode }) {
   const items = [
-    { screenId: "PUB-013", label: "Same Day", href: PUBLIC_DESTINATIONS.sameday() },
-    { screenId: "PUB-001", label: "For Business", href: PUBLIC_DESTINATIONS.business() },
+    { screenId: "PUB-013", label: CHROME.same_day, href: PUBLIC_DESTINATIONS.sameday() },
+    { screenId: "PUB-001", label: CHROME.for_business, href: PUBLIC_DESTINATIONS.business() },
   ];
   const sendHref = PUBLIC_DESTINATIONS.send();
 
@@ -359,7 +367,7 @@ function ConsumerPublicShell({ children }: { children: React.ReactNode }) {
                 href={sendHref}
                 className="cr-button cr-button--primary cr-button--sm cr-topbar__auth"
               >
-                Start a delivery
+                {CHROME.start_a_delivery}
               </Link>
               <span className="cr-topbar__toggle">
                 <MobileNav
@@ -369,7 +377,7 @@ function ConsumerPublicShell({ children }: { children: React.ReactNode }) {
                   footer={
                     <div className="cr-drawer-auth">
                       <Link href={sendHref} className="cr-button cr-button--primary cr-button--lg">
-                        Start a delivery
+                        {CHROME.start_a_delivery}
                       </Link>
                       <TrackDeliveryLauncher variant="drawer" />
                     </div>
@@ -395,17 +403,17 @@ function ConsumerPublicShell({ children }: { children: React.ReactNode }) {
               <ul className="cr-footer__links">
                 <li>
                   <Link href={PUBLIC_DESTINATIONS.sameday()} className="cr-footer__link">
-                    Same Day
+                    {CHROME.same_day}
                   </Link>
                 </li>
                 <li>
                   <Link href={sendHref} className="cr-footer__link">
-                    Start a delivery
+                    {CHROME.start_a_delivery}
                   </Link>
                 </li>
                 <li>
                   <Link href={PUBLIC_DESTINATIONS.business()} className="cr-footer__link">
-                    For Business
+                    {CHROME.for_business}
                   </Link>
                 </li>
               </ul>
