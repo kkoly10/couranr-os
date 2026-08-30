@@ -32,7 +32,7 @@ export type Surface = "operations" | "driver" | "business";
 export const SURFACE_ROOT: Record<Surface, string> = {
   operations: "/operations",
   driver: "/driver",
-  business: "/business",
+  business: "/app/business",
 };
 
 /** Everything the SERVER established about the caller. No client input. */
@@ -81,21 +81,33 @@ export function resolveSurface(facts: LandingFacts): Surface {
 export function defaultDestination(facts: LandingFacts): string {
   const surface = resolveSurface(facts);
   if (surface !== "business") return SURFACE_ROOT[surface];
-  return facts.activeMembershipCount > 0 ? "/business" : "/business/onboarding";
+  return facts.activeMembershipCount > 0
+    ? SURFACE_ROOT.business
+    : `${SURFACE_ROOT.business}/onboarding`;
 }
 
 /**
  * Which surface a path belongs to, or null if it is not an authenticated
  * surface path at all.
  *
- * Segment-aware: `/businesses` is a PUBLIC marketing route and must not be
- * mistaken for the merchant surface by a `startsWith` check.
+ * SEGMENT-AWARE, and that is the whole point. Two near-misses live next to the
+ * merchant surface and neither may be mistaken for it:
+ *
+ *   - `/businesses` is PUB-009, a public marketing route. A `startsWith`
+ *     check would claim it.
+ *   - `/business` is PUB-001 since LEG-004 — public marketing, not the
+ *     merchant application. The merchant surface moved to `/app/business`,
+ *     so matching on the first segment alone would now claim the wrong page.
+ *
+ * The merchant surface is therefore matched on TWO segments, compared exactly,
+ * so `/app/not-business` and `/app/businesses` are both correctly null.
  */
 export function surfaceOf(pathname: string): Surface | null {
-  const first = pathname.split("?")[0].split("#")[0].split("/").filter(Boolean)[0];
+  const segments = pathname.split("?")[0].split("#")[0].split("/").filter(Boolean);
+  const [first, second] = segments;
   if (first === "operations") return "operations";
   if (first === "driver") return "driver";
-  if (first === "business") return "business";
+  if (first === "app" && second === "business") return "business";
   return null;
 }
 
@@ -158,7 +170,7 @@ export function normalizeNext(raw: unknown): NormalizedNext {
  * surface the SERVER decided they own.
  *
  * The browser may ask; it may not choose. A merchant asking for `/operations`
- * gets `/business`, not a 403 page they cannot act on — the redirect is the
+ * gets `/app/business`, not a 403 page they cannot act on — the redirect is the
  * refusal.
  */
 export function resolveLanding(facts: LandingFacts, rawNext?: unknown): LandingDecision {

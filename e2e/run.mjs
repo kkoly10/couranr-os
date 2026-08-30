@@ -533,7 +533,7 @@ async function groupA() {
 
 async function groupB() {
   console.log("\n\x1b[1mB — authenticated surfaces reject a signed-out visitor\x1b[0m");
-  for (const surface of ["/business", "/operations", "/driver", "/driver/deliveries"]) {
+  for (const surface of ["/app/business", "/operations", "/driver", "/driver/deliveries"]) {
     const { ctx, page } = await freshContext();
     await page.goto(`${BASE_URL}${surface}`, { waitUntil: "domcontentloaded" });
     let landed = "";
@@ -561,10 +561,10 @@ async function groupB() {
 async function groupC() {
   console.log("\n\x1b[1mC — landing resolution is decided server-side by role and membership\x1b[0m");
   const cases = [
-    [USERS.merchant, "/business", "merchant with an active owner membership"],
+    [USERS.merchant, "/app/business", "merchant with an active owner membership"],
     [USERS.ops, "/operations", "profiles.role = admin"],
     [USERS.driver, "/driver", "profiles.role = driver"],
-    [USERS.newMerchant, "/business/onboarding", "no membership yet"],
+    [USERS.newMerchant, "/app/business/onboarding", "no membership yet"],
   ];
   for (const [user, expected, why] of cases) {
     const { ctx, page } = await freshContext();
@@ -587,7 +587,7 @@ async function groupC() {
 async function groupD() {
   console.log("\n\x1b[1mD — sign-out terminates the session, not just the navigation\x1b[0m");
   const { ctx, page } = await freshContext();
-  await signIn(page, USERS.merchant, { expectLanding: "/business" });
+  await signIn(page, USERS.merchant, { expectLanding: "/app/business" });
 
   const before = await hasSession(ctx);
   check("D0", "signing in establishes a Supabase session", before, `hasSession=${before}`);
@@ -612,9 +612,9 @@ async function groupD() {
   await shot(page, "D2-after-signout");
 
   // D3 — THE regression test. Navigation-only sign-out passed D1 and D2's
-  // redirect but failed here: the session was still live, so /business let you
+  // redirect but failed here: the session was still live, so /app/business let you
   // straight back in.
-  await page.goto(`${BASE_URL}/business`, { waitUntil: "domcontentloaded" });
+  await page.goto(`${BASE_URL}/app/business`, { waitUntil: "domcontentloaded" });
   let landed = "";
   try {
     await page.waitForURL((u) => u.pathname === "/sign-in", { timeout: 20000 });
@@ -622,7 +622,7 @@ async function groupD() {
   } catch {
     landed = new URL(page.url()).pathname;
   }
-  check("D3", "returning to /business after sign-out does NOT re-enter the workspace",
+  check("D3", "returning to /app/business after sign-out does NOT re-enter the workspace",
     landed === "/sign-in", `landed=${landed}`);
   await shot(page, "D3-no-reentry");
 
@@ -638,10 +638,10 @@ async function groupE() {
   {
     const { ctx, page } = await freshContext();
     try {
-      await signIn(page, USERS.newMerchant, { expectLanding: "/business/onboarding" });
+      await signIn(page, USERS.newMerchant, { expectLanding: "/app/business/onboarding" });
     } catch {
       inconclusive("E1", "fail-closed onboarding lookup",
-        `newMerchant did not land on /business/onboarding (landed=${new URL(page.url()).pathname}); re-seed to reset`);
+        `newMerchant did not land on /app/business/onboarding (landed=${new URL(page.url()).pathname}); re-seed to reset`);
       await ctx.close();
       return;
     }
@@ -691,7 +691,7 @@ async function groupE() {
   // E3 — a broken landing lookup must not grant a surface.
   {
     const { ctx, page } = await freshContext();
-    await signIn(page, USERS.merchant, { expectLanding: "/business" });
+    await signIn(page, USERS.merchant, { expectLanding: "/app/business" });
 
     await page.route("**/api/couranr/me/landing**", async (route) => {
       await route.fulfill({
@@ -700,7 +700,7 @@ async function groupE() {
         body: JSON.stringify({ error: "Something went wrong.", code: "internal", correlationId: "cr_e2e_fault" }),
       });
     });
-    await page.goto(`${BASE_URL}/business`, { waitUntil: "domcontentloaded" });
+    await page.goto(`${BASE_URL}/app/business`, { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(3000);
     const p = new URL(page.url()).pathname;
     // Either it bounced to sign-in, or it is still checking — what it must NOT
@@ -733,10 +733,10 @@ async function groupF() {
 
   const { ctx, page } = await freshContext();
   try {
-    await signIn(page, USERS.newMerchant, { expectLanding: "/business/onboarding" });
+    await signIn(page, USERS.newMerchant, { expectLanding: "/app/business/onboarding" });
   } catch {
     inconclusive("F", "MER-002 onboarding",
-      `sign-in did not land on /business/onboarding (landed=${new URL(page.url()).pathname})`);
+      `sign-in did not land on /app/business/onboarding (landed=${new URL(page.url()).pathname})`);
     await shot(page, "F-precondition-failed");
     await ctx.close();
     return;
@@ -808,7 +808,7 @@ async function groupF() {
     `workspaces=${ws.length} payer=${ws[0]?.payer_default} phone=${ws[0]?.contact_phone}`);
 
   // F4 — the UI must now report "exists" rather than offering the form again.
-  await page.goto(`${BASE_URL}/business/onboarding`, { waitUntil: "domcontentloaded" });
+  await page.goto(`${BASE_URL}/app/business/onboarding`, { waitUntil: "domcontentloaded" });
   await page.waitForTimeout(3500);
   const existsCopy = await page.getByText(/workspace is ready/i).count();
   const formAgain = await page.getByLabel("Business name").count();
@@ -829,9 +829,9 @@ async function groupF() {
 async function groupG() {
   console.log("\n\x1b[1mG — a signed-in user cannot sit on someone else's surface\x1b[0m");
   const cases = [
-    [USERS.merchant, "/business", "/operations", "/business"],
-    [USERS.driver, "/driver", "/business", "/driver"],
-    [USERS.ops, "/operations", "/business", "/operations"],
+    [USERS.merchant, "/app/business", "/operations", "/app/business"],
+    [USERS.driver, "/driver", "/app/business", "/driver"],
+    [USERS.ops, "/operations", "/app/business", "/operations"],
   ];
   for (const [user, home, intrude, expected] of cases) {
     const { ctx, page } = await freshContext();
@@ -852,8 +852,8 @@ async function groupH() {
   console.log("\n\x1b[1mH — MER-005 create-delivery and OPS-002 queue render for the right roles\x1b[0m");
   {
     const { ctx, page } = await freshContext();
-    await signIn(page, USERS.merchant, { expectLanding: "/business" });
-    await page.goto(`${BASE_URL}/business/deliveries/new`, { waitUntil: "domcontentloaded" });
+    await signIn(page, USERS.merchant, { expectLanding: "/app/business" });
+    await page.goto(`${BASE_URL}/app/business/deliveries/new`, { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(3500);
     const miles = await page.getByLabel("Loaded miles").count();
     const weight = await page.getByLabel("Weight (lb)").count();
@@ -905,7 +905,7 @@ async function groupI() {
   }
 
   // Authenticated canonical shells.
-  for (const [key, landing] of [["merchant", "/business"], ["ops", "/operations"], ["driver", "/driver"]]) {
+  for (const [key, landing] of [["merchant", "/app/business"], ["ops", "/operations"], ["driver", "/driver"]]) {
     const { ctx, page } = await freshContext();
     try {
       await signIn(page, USERS[key], { expectLanding: landing });
@@ -1079,7 +1079,7 @@ async function groupJ() {
   for (const route of ["/driver", "/driver/deliveries"]) {
     const { ctx, page } = await freshContext();
     try {
-      await signIn(page, USERS.merchant, { expectLanding: "/business" });
+      await signIn(page, USERS.merchant, { expectLanding: "/app/business" });
       await page.goto(`${BASE_URL}${route}`, { waitUntil: "domcontentloaded" });
       await page.waitForTimeout(3500);
       const p = new URL(page.url()).pathname;
@@ -1121,7 +1121,7 @@ async function groupK() {
   console.log("\n\x1b[1mK — every surface uses the approved logo, none uses a retired mark\x1b[0m");
 
   const LIGHT = ["/sign-in", "/sign-up", "/", "/login"];
-  const DARK = [["merchant", "/business"], ["ops", "/operations"], ["driver", "/driver"]];
+  const DARK = [["merchant", "/app/business"], ["ops", "/operations"], ["driver", "/driver"]];
 
   // K1 — light surfaces carry the PRIMARY wordmark, signed out.
   {
@@ -1248,7 +1248,7 @@ async function createRequestThroughUi(page, accountId, { acknowledge }) {
   const before = await requestsFor(accountId);
   const beforeIds = new Set(before.map((r) => r.id));
 
-  await page.goto(`${BASE_URL}/business/deliveries/new`, { waitUntil: "domcontentloaded" });
+  await page.goto(`${BASE_URL}/app/business/deliveries/new`, { waitUntil: "domcontentloaded" });
   await page.getByLabel("Loaded miles").waitFor({ state: "visible", timeout: 25000 });
 
   /**
@@ -1286,7 +1286,7 @@ async function createRequestThroughUi(page, accountId, { acknowledge }) {
   if (acknowledge && ackVisible) await ack.check();
 
   await page.getByRole("button", { name: /submit for couranr review/i }).click();
-  await page.waitForURL((u) => /\/business\/deliveries\/[0-9a-f-]{36}$/.test(u.pathname), {
+  await page.waitForURL((u) => /\/app/business\/deliveries\/[0-9a-f-]{36}$/.test(u.pathname), {
     timeout: 25000,
   }).catch(() => {});
 
@@ -1362,7 +1362,7 @@ async function groupL() {
   let acceptId = null;
   {
     const { ctx, page } = await freshContext();
-    await signIn(page, USERS.merchant, { expectLanding: "/business" });
+    await signIn(page, USERS.merchant, { expectLanding: "/app/business" });
     const made = await createRequestThroughUi(page, accountId, { acknowledge: true });
     acceptId = made.id;
     check("L1", "MER-006 offers the quote acknowledgment for a merchant-paid priced quote",
@@ -1419,8 +1419,8 @@ async function groupL() {
   /* --- L7  the merchant sees what confirmed MEANS ------------------------ */
   if (acceptId) {
     const { ctx, page } = await freshContext();
-    await signIn(page, USERS.merchant, { expectLanding: "/business" });
-    await page.goto(`${BASE_URL}/business/deliveries/${acceptId}`, { waitUntil: "domcontentloaded" });
+    await signIn(page, USERS.merchant, { expectLanding: "/app/business" });
+    await page.goto(`${BASE_URL}/app/business/deliveries/${acceptId}`, { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(3000);
     const said = await page.getByText(/Nothing has been charged yet/i).count();
     const badge = await page.getByText("Confirmed", { exact: true }).count();
@@ -1440,7 +1440,7 @@ async function groupL() {
   let noAckId = null;
   {
     const { ctx, page } = await freshContext();
-    await signIn(page, USERS.merchant, { expectLanding: "/business" });
+    await signIn(page, USERS.merchant, { expectLanding: "/app/business" });
     const made = await createRequestThroughUi(page, accountId, { acknowledge: false });
     noAckId = made.id;
     await ctx.close();
@@ -1503,7 +1503,7 @@ async function groupL() {
   let declineId = null;
   {
     const { ctx, page } = await freshContext();
-    await signIn(page, USERS.merchant, { expectLanding: "/business" });
+    await signIn(page, USERS.merchant, { expectLanding: "/app/business" });
     const made = await createRequestThroughUi(page, accountId, { acknowledge: true });
     declineId = made.id;
     await ctx.close();
@@ -1572,8 +1572,8 @@ async function groupL() {
       }
     });
 
-    await signIn(page, USERS.merchant, { expectLanding: "/business" });
-    await page.goto(`${BASE_URL}/business/deliveries/${declineId}`, { waitUntil: "domcontentloaded" });
+    await signIn(page, USERS.merchant, { expectLanding: "/app/business" });
+    await page.goto(`${BASE_URL}/app/business/deliveries/${declineId}`, { waitUntil: "domcontentloaded" });
     await page.getByText(/Couranr could not confirm this delivery/i).waitFor({
       state: "visible",
       timeout: 25000,
@@ -1624,7 +1624,7 @@ async function groupL() {
    */
   if (declineId) {
     const { ctx, page } = await freshContext();
-    await signIn(page, USERS.merchant, { expectLanding: "/business" });
+    await signIn(page, USERS.merchant, { expectLanding: "/app/business" });
 
     let rewrote = 0;
     await page.route(`**/api/couranr/delivery-requests/${declineId}*`, async (route) => {
@@ -1647,7 +1647,7 @@ async function groupL() {
       await route.fulfill({ response: res, body: JSON.stringify(body) });
     });
 
-    await page.goto(`${BASE_URL}/business/deliveries/${declineId}`, { waitUntil: "domcontentloaded" });
+    await page.goto(`${BASE_URL}/app/business/deliveries/${declineId}`, { waitUntil: "domcontentloaded" });
     await page.getByText(/Couranr could not confirm this delivery/i).waitFor({
       state: "visible",
       timeout: 25000,
@@ -1758,7 +1758,7 @@ async function groupM() {
     // Reach `confirmed` the way a merchant really does: submit with the
     // acknowledgment, then Operations confirms as quoted.
     const { ctx, page } = await freshContext();
-    await signIn(page, USERS.merchant, { expectLanding: "/business" });
+    await signIn(page, USERS.merchant, { expectLanding: "/app/business" });
     const made = await createRequestThroughUi(page, accountId, { acknowledge: true });
     merchantRequestId = made.id;
     await ctx.close();
@@ -1780,8 +1780,8 @@ async function groupM() {
 
     const { ctx, page } = await freshContext();
     await mockStripeJs(page);
-    await signIn(page, USERS.merchant, { expectLanding: "/business" });
-    await page.goto(`${BASE_URL}/business/deliveries/${merchantRequestId}`, {
+    await signIn(page, USERS.merchant, { expectLanding: "/app/business" });
+    await page.goto(`${BASE_URL}/app/business/deliveries/${merchantRequestId}`, {
       waitUntil: "domcontentloaded",
     });
 
@@ -1833,7 +1833,7 @@ async function groupM() {
   let payToken = null;
   {
     const { ctx, page } = await freshContext();
-    await signIn(page, USERS.merchant, { expectLanding: "/business" });
+    await signIn(page, USERS.merchant, { expectLanding: "/app/business" });
     const made = await createRequestThroughUi(page, accountId, { acknowledge: false });
     customerRequestId = made.id;
     await ctx.close();
@@ -1968,7 +1968,7 @@ async function queueStageFor(page, requestId) {
 /** Drives one request from submitted to confirmed, the way the product does. */
 async function confirmedRequestFor(accountId) {
   const { ctx, page } = await freshContext();
-  await signIn(page, USERS.merchant, { expectLanding: "/business" });
+  await signIn(page, USERS.merchant, { expectLanding: "/app/business" });
   const made = await createRequestThroughUi(page, accountId, { acknowledge: true });
   await ctx.close();
   if (!made.id) return null;
@@ -2012,8 +2012,8 @@ async function groupN() {
 
   {
     const { ctx, page } = await freshContext();
-    await signIn(page, USERS.merchant, { expectLanding: "/business" });
-    await page.goto(`${BASE_URL}/business/deliveries/${requestId}`, {
+    await signIn(page, USERS.merchant, { expectLanding: "/app/business" });
+    await page.goto(`${BASE_URL}/app/business/deliveries/${requestId}`, {
       waitUntil: "domcontentloaded",
     });
     await page.getByText("Preparation").first().waitFor({ state: "visible", timeout: 25000 });
@@ -2059,8 +2059,8 @@ async function groupN() {
   {
     const { ctx, page } = await freshContext();
     await mockStripeJs(page);
-    await signIn(page, USERS.merchant, { expectLanding: "/business" });
-    await page.goto(`${BASE_URL}/business/deliveries/${requestId}`, {
+    await signIn(page, USERS.merchant, { expectLanding: "/app/business" });
+    await page.goto(`${BASE_URL}/app/business/deliveries/${requestId}`, {
       waitUntil: "domcontentloaded",
     });
     const authorize = page.getByRole("button", { name: /^Authorize \$/ });
@@ -2123,8 +2123,8 @@ async function groupN() {
 
   {
     const { ctx, page } = await freshContext();
-    await signIn(page, USERS.merchant, { expectLanding: "/business" });
-    await page.goto(`${BASE_URL}/business/deliveries/${requestId}`, {
+    await signIn(page, USERS.merchant, { expectLanding: "/app/business" });
+    await page.goto(`${BASE_URL}/app/business/deliveries/${requestId}`, {
       waitUntil: "domcontentloaded",
     });
     const readyBtn = page.getByRole("button", { name: /^Ready for Couranr$/ });
@@ -2316,8 +2316,8 @@ async function groupN() {
      * flight is simply false.
      */
     const { ctx, page } = await freshContext();
-    await signIn(page, USERS.merchant, { expectLanding: "/business" });
-    await page.goto(`${BASE_URL}/business/deliveries/${requestId}`, {
+    await signIn(page, USERS.merchant, { expectLanding: "/app/business" });
+    await page.goto(`${BASE_URL}/app/business/deliveries/${requestId}`, {
       waitUntil: "domcontentloaded",
     });
     await page
@@ -2497,8 +2497,8 @@ async function groupN() {
 
   {
     const { ctx, page } = await freshContext();
-    await signIn(page, USERS.merchant, { expectLanding: "/business" });
-    await page.goto(`${BASE_URL}/business/deliveries/${requestId}`, {
+    await signIn(page, USERS.merchant, { expectLanding: "/app/business" });
+    await page.goto(`${BASE_URL}/app/business/deliveries/${requestId}`, {
       waitUntil: "domcontentloaded",
     });
     await page.getByText(/Couranr has scheduled this delivery/i).waitFor({
@@ -2590,8 +2590,8 @@ async function setIntentStatus(intentId, status) {
 async function markReadyAsMerchant(requestId) {
   const { ctx, page } = await freshContext();
   traceApi(page, "O/merchant-ready");
-  await signIn(page, USERS.merchant, { expectLanding: "/business" });
-  await page.goto(`${BASE_URL}/business/deliveries/${requestId}`, { waitUntil: "domcontentloaded" });
+  await signIn(page, USERS.merchant, { expectLanding: "/app/business" });
+  await page.goto(`${BASE_URL}/app/business/deliveries/${requestId}`, { waitUntil: "domcontentloaded" });
   const ready = page.getByRole("button", { name: /^Ready for Couranr$/ });
   await ready.waitFor({ state: "visible", timeout: 25000 });
   await ready.click();
@@ -2617,8 +2617,8 @@ async function toCapturePending(accountId) {
     const { ctx, page } = await freshContext();
     traceApi(page, "O/merchant-pay");
     await mockStripeJs(page);
-    await signIn(page, USERS.merchant, { expectLanding: "/business" });
-    await page.goto(`${BASE_URL}/business/deliveries/${requestId}`, { waitUntil: "domcontentloaded" });
+    await signIn(page, USERS.merchant, { expectLanding: "/app/business" });
+    await page.goto(`${BASE_URL}/app/business/deliveries/${requestId}`, { waitUntil: "domcontentloaded" });
     const a = page.getByRole("button", { name: /^Authorize \$/ });
     await a.waitFor({ state: "visible", timeout: 25000 });
     await a.click();
@@ -2755,8 +2755,8 @@ async function groupO() {
     // MER-007 tells the merchant, and never claims money moved.
     {
       const { ctx: mctx, page: mp } = await freshContext();
-      await signIn(mp, USERS.merchant, { expectLanding: "/business" });
-      await mp.goto(`${BASE_URL}/business/deliveries/${failId}`, { waitUntil: "domcontentloaded" });
+      await signIn(mp, USERS.merchant, { expectLanding: "/app/business" });
+      await mp.goto(`${BASE_URL}/app/business/deliveries/${failId}`, { waitUntil: "domcontentloaded" });
       await mp.getByText(/authorization needs attention/i)
         .waitFor({ state: "visible", timeout: 25000 }).catch(() => {});
       const attention = await mp.getByText(/authorization needs attention/i).count();
@@ -2786,8 +2786,8 @@ async function groupO() {
       // which is what Stripe documents for requires_payment_method.
       const { ctx: mctx, page: mp } = await freshContext();
       await mockStripeJs(mp);
-      await signIn(mp, USERS.merchant, { expectLanding: "/business" });
-      await mp.goto(`${BASE_URL}/business/deliveries/${failId}`, { waitUntil: "domcontentloaded" });
+      await signIn(mp, USERS.merchant, { expectLanding: "/app/business" });
+      await mp.goto(`${BASE_URL}/app/business/deliveries/${failId}`, { waitUntil: "domcontentloaded" });
       const a = mp.getByRole("button", { name: /^Authorize \$/ });
       await a.waitFor({ state: "visible", timeout: 25000 }).catch(() => {});
       if (await a.count()) {
@@ -2873,8 +2873,8 @@ async function groupO() {
     {
       const { ctx: mctx, page: mp } = await freshContext();
       await mockStripeJs(mp);
-      await signIn(mp, USERS.merchant, { expectLanding: "/business" });
-      await mp.goto(`${BASE_URL}/business/deliveries/${cancelId}`, { waitUntil: "domcontentloaded" });
+      await signIn(mp, USERS.merchant, { expectLanding: "/app/business" });
+      await mp.goto(`${BASE_URL}/app/business/deliveries/${cancelId}`, { waitUntil: "domcontentloaded" });
       const a = mp.getByRole("button", { name: /^Authorize \$/ });
       await a.waitFor({ state: "visible", timeout: 25000 }).catch(() => {});
       if (await a.count()) await a.click();
@@ -3014,8 +3014,8 @@ async function scheduledDeliveryFor(accountId) {
   {
     const { ctx, page } = await freshContext();
     await mockStripeJs(page);
-    await signIn(page, USERS.merchant, { expectLanding: "/business" });
-    await page.goto(`${BASE_URL}/business/deliveries/${requestId}`, { waitUntil: "domcontentloaded" });
+    await signIn(page, USERS.merchant, { expectLanding: "/app/business" });
+    await page.goto(`${BASE_URL}/app/business/deliveries/${requestId}`, { waitUntil: "domcontentloaded" });
     const a = page.getByRole("button", { name: /^Authorize \$/ });
     await a.waitFor({ state: "visible", timeout: 25000 });
     await a.click();

@@ -245,7 +245,7 @@ async function main() {
 
     async function open(email) {
       const page = await signIn(email);
-      await page.goto(`${BASE}/business/website-tools`, { waitUntil: "domcontentloaded" });
+      await page.goto(`${BASE}/app/business/website-tools`, { waitUntil: "domcontentloaded" });
       return page;
     }
 

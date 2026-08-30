@@ -347,7 +347,7 @@ async function main() {
     /* ══════════════════ MER-014 — saved / unsaved ══════════════════════ */
 
     console.log("MER-014 — owner edits settings");
-    const ownerSettings = await open(owner.email, "/business/settings");
+    const ownerSettings = await open(owner.email, "/app/business/settings");
     const nameField = fieldLabel(ownerSettings, "Business name");
     await nameField.waitFor({ state: "visible", timeout: 30_000 });
 
@@ -382,7 +382,7 @@ async function main() {
     /* ══════════════ MER-014 — verification required ════════════════════ */
 
     console.log("MER-014 — the unverified-workspace state");
-    const unverified = await open(unverifiedOwner.email, "/business/settings");
+    const unverified = await open(unverifiedOwner.email, "/app/business/settings");
     await unverified
       .getByText("This business needs Couranr verification").first()
       .waitFor({ state: "visible", timeout: 30_000 });
@@ -395,7 +395,7 @@ async function main() {
     /* ══════════════ MER-014 — permission denied / read-only ════════════ */
 
     console.log("MER-014 — viewer is read-only, outsider is refused");
-    const viewerSettings = await open(viewer.email, "/business/settings");
+    const viewerSettings = await open(viewer.email, "/app/business/settings");
     await viewerSettings.getByText("You have read-only access").waitFor({ state: "visible", timeout: 30_000 });
     check("S9", "viewer sees the read-only banner and no Save control",
       (await viewerSettings.getByRole("button", { name: "Save changes" }).count()) === 0);
@@ -420,7 +420,7 @@ async function main() {
     /* ══════════════════ MER-015 — invite and accept ════════════════════ */
 
     console.log("MER-015 — invite, pending invitation, accept");
-    const ownerTeam = await open(owner.email, "/business/settings/team");
+    const ownerTeam = await open(owner.email, "/app/business/settings/team");
     await fieldLabel(ownerTeam, "Email address").waitFor({ state: "visible", timeout: 30_000 });
 
     await fieldLabel(ownerTeam, "Email address").fill(invitee.email);
@@ -457,7 +457,7 @@ async function main() {
     await ownerTeam.screenshot({ path: path.join(SHOTS, "MER-015-pending-invitation.png"), fullPage: true });
 
     // The invitee's own side: they see and accept it.
-    const inviteePage = await open(invitee.email, "/business/settings/team");
+    const inviteePage = await open(invitee.email, "/app/business/settings/team");
     await inviteePage
       .getByText("You have been invited to [TEAM] disposable business").first()
       .waitFor({ state: "visible", timeout: 30_000 });
@@ -548,7 +548,7 @@ async function main() {
 
     // The UI renders the refusal, not a silent no-op.
     {
-      const page = await open(owner.email, "/business/settings/team");
+      const page = await open(owner.email, "/app/business/settings/team");
       await page.getByText("Last owner protection").first().waitFor({ state: "visible", timeout: 30_000 });
       check("L5", "the UI explains last-owner protection BEFORE it is hit", true);
       await page.screenshot({ path: path.join(SHOTS, "MER-015-last-owner.png"), fullPage: true });
@@ -608,7 +608,7 @@ async function main() {
           body: JSON.stringify({ error: "Injected.", correlationId: "e2e-team-err" }),
         })
       );
-      await page.goto(`${BASE}/business/settings/team`, { waitUntil: "domcontentloaded" });
+      await page.goto(`${BASE}/app/business/settings/team`, { waitUntil: "domcontentloaded" });
       await page.getByText("Your team did not load").first().waitFor({ state: "visible", timeout: 30_000 });
       const body = await page.innerText("body");
       check("F1", "the error state renders with its reference", body.includes("e2e-team-err"));

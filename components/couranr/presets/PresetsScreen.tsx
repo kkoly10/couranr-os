@@ -249,7 +249,7 @@ export function PresetsScreen() {
       <EmptyState
         title="No business account yet"
         body="Set up your business workspace first."
-        action={{ label: "Set up your workspace", href: "/business/onboarding" }}
+        action={{ label: "Set up your workspace", href: "/app/business/onboarding" }}
       />
     );
   }
@@ -290,7 +290,7 @@ export function PresetsScreen() {
     return (
       <Stack gap={6}>
         <Cluster gap={3}>
-          <Link href="/business/presets" className={buttonClassName({ size: "sm" })}>
+          <Link href="/app/business/presets" className={buttonClassName({ size: "sm" })}>
             Back to presets
           </Link>
           {!isNew && editing ? (
@@ -438,7 +438,7 @@ export function PresetsScreen() {
                           body: form.body,
                           expectedVersion: loadedVersion,
                         });
-                    if (r) router.push("/business/presets");
+                    if (r) router.push("/app/business/presets");
                   }}
                 >
                   Save preset
@@ -508,7 +508,7 @@ export function PresetsScreen() {
       <Cluster gap={3}>
         {mayWrite ? (
           <Link
-            href="/business/presets?edit=new"
+            href="/app/business/presets?edit=new"
             className={buttonClassName({ variant: "primary" })}
           >
             New preset
@@ -561,7 +561,7 @@ export function PresetsScreen() {
                     </Text>
                     <Cluster gap={2}>
                       <Link
-                        href={`/business/presets?edit=${encodeURIComponent(p.id)}`}
+                        href={`/app/business/presets?edit=${encodeURIComponent(p.id)}`}
                         className={buttonClassName({ size: "sm" })}
                       >
                         {mayWrite ? "Edit" : "Open"}

@@ -184,7 +184,7 @@ export function MerchantSettings() {
       <EmptyState
         title="No business account yet"
         body="Set up your business workspace first."
-        action={{ label: "Set up your workspace", href: "/business/onboarding" }}
+        action={{ label: "Set up your workspace", href: "/app/business/onboarding" }}
       />
     );
   }
@@ -571,7 +571,7 @@ export function MerchantSettings() {
               Couranr Support configures them for your business.
             </Text>
             <div>
-              <Link href="/business/messages" className={buttonClassName({ size: "sm" })}>
+              <Link href="/app/business/messages" className={buttonClassName({ size: "sm" })}>
                 Message Couranr Support
               </Link>
             </div>
@@ -585,7 +585,7 @@ export function MerchantSettings() {
               Who can sign in to this business, and what each role may do.
             </Text>
             <div>
-              <Link href="/business/settings/team" className={buttonClassName({ size: "sm" })}>
+              <Link href="/app/business/settings/team" className={buttonClassName({ size: "sm" })}>
                 Manage team
               </Link>
             </div>

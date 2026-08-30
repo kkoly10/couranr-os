@@ -70,9 +70,9 @@ const PUBLIC_ROUTES = [
     renders that chrome (the sidebar collapses to `.cr-appbar` below 1024px). */
 const SHELLS = [
   { route: "/", selector: ".cr-topbar", width: 1440 },
-  { route: "/business", selector: ".cr-sidebar", width: 1440 },
+  { route: "/app/business", selector: ".cr-sidebar", width: 1440 },
   { route: "/operations", selector: ".cr-sidebar", width: 1440 },
-  { route: "/business", selector: ".cr-appbar", width: 900 },
+  { route: "/app/business", selector: ".cr-appbar", width: 900 },
   { route: "/driver", selector: ".cr-driverbar", width: 390 },
 ];
 
@@ -197,7 +197,7 @@ async function main() {
   if (CONTROL) {
     console.log("\npositive control — restoring `overflow-x: hidden` on .cr-shell");
     const page = await browser.newPage({ viewport: { width: 1440, height: 800 } });
-    await page.goto(`${BASE}/business`, { waitUntil: "networkidle" });
+    await page.goto(`${BASE}/app/business`, { waitUntil: "networkidle" });
     const r = await chromeHolds(page, ".cr-sidebar", ".cr-shell { overflow-x: hidden !important; }");
     await page.close();
     await browser.close();

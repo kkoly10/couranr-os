@@ -152,7 +152,7 @@ export function OnboardingForm() {
 
     // The workspace exists and the caller is its active owner. Everything the
     // merchant flow needs is now in place.
-    router.push("/business");
+    router.push("/app/business");
     router.refresh();
   }
 
@@ -194,7 +194,7 @@ export function OnboardingForm() {
       <EmptyState
         title="Your workspace is ready"
         body={`You already have access to ${lookup.names.join(", ")}.`}
-        action={{ label: "Go to your dashboard", href: "/business" }}
+        action={{ label: "Go to your dashboard", href: "/app/business" }}
       />
     );
   }

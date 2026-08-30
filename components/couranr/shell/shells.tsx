@@ -246,7 +246,7 @@ export function MerchantShell({
       <aside className="cr-sidebar">
         <div className="cr-sidebar__brand">
           <div>
-            <Wordmark href="/business" tone="dark" />
+            <Wordmark href="/app/business" tone="dark" />
             <div className="cr-sidebar__role">Merchant</div>
           </div>
         </div>
@@ -266,7 +266,7 @@ export function MerchantShell({
               items={items}
               label="Merchant navigation"
               roleLabel="Merchant"
-              homeHref="/business"
+              homeHref="/app/business"
               footer={
                 <>
                   <AccountBlock name={accountName} meta={accountMeta} onNavy />
@@ -274,7 +274,7 @@ export function MerchantShell({
                 </>
               }
             />
-            <Wordmark href="/business" tone="dark" />
+            <Wordmark href="/app/business" tone="dark" />
             <span style={{ width: 44 }} aria-hidden="true" />
           </div>
         </header>

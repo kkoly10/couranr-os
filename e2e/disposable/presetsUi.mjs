@@ -239,7 +239,7 @@ async function main() {
           timeout: 45_000,
         })
         .catch(() => null);
-      await page.goto(`${BASE}/business/presets${suffix}`, { waitUntil: "domcontentloaded" });
+      await page.goto(`${BASE}/app/business/presets${suffix}`, { waitUntil: "domcontentloaded" });
       await answered;
       await page.waitForTimeout(500);
       return page;
@@ -442,7 +442,7 @@ async function main() {
           body: JSON.stringify({ error: "Injected.", correlationId: "e2e-pre-err" }),
         })
       );
-      await p2.goto(`${BASE}/business/presets`, { waitUntil: "domcontentloaded" });
+      await p2.goto(`${BASE}/app/business/presets`, { waitUntil: "domcontentloaded" });
       await p2.getByText("Your presets did not load").first().waitFor({ state: "visible", timeout: 30_000 });
       const body = await mainText(p2);
       check("G1", "the error state renders with its reference", body.includes("e2e-pre-err"));

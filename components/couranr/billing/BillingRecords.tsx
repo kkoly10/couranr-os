@@ -139,7 +139,7 @@ export function BillingRecords() {
       <EmptyState
         title="No business account yet"
         body="Set up your business workspace first."
-        action={{ label: "Set up your workspace", href: "/business/onboarding" }}
+        action={{ label: "Set up your workspace", href: "/app/business/onboarding" }}
       />
     );
   }
@@ -243,7 +243,7 @@ export function BillingRecords() {
               <EmptyState
                 title="Nothing has been charged yet"
                 body="Delivery charges appear here once you authorize a delivery."
-                action={{ label: "Create a delivery", href: "/business/deliveries/new" }}
+                action={{ label: "Create a delivery", href: "/app/business/deliveries/new" }}
               />
             ) : (
               <Stack gap={4}>
@@ -276,7 +276,7 @@ export function BillingRecords() {
                           {r.payerType === "customer" ? "Customer paid" : "You paid"}
                         </Text>
                         <Link
-                          href={`/business/deliveries/${encodeURIComponent(r.requestId)}`}
+                          href={`/app/business/deliveries/${encodeURIComponent(r.requestId)}`}
                           className={buttonClassName({ size: "sm" })}
                         >
                           Open delivery
@@ -333,7 +333,7 @@ export function BillingRecords() {
                 </Stack>
               ))}
               <div>
-                <Link href="/business/messages" className={buttonClassName({ size: "sm" })}>
+                <Link href="/app/business/messages" className={buttonClassName({ size: "sm" })}>
                   Message Couranr Support
                 </Link>
               </div>

@@ -261,7 +261,7 @@ async function main() {
     /* ══════════════════ MER-002 — onboarding ═══════════════════════════ */
 
     console.log("MER-002 — choosing categories on a workspace that does not exist yet");
-    const onboarding = await open(newcomer.email, "/business/onboarding");
+    const onboarding = await open(newcomer.email, "/app/business/onboarding");
     {
       const categorySelect = fieldLabel(onboarding, "Category");
       await categorySelect.waitFor({ state: "visible", timeout: 45_000 });
@@ -339,7 +339,7 @@ async function main() {
 
     console.log("\nMER-014 — loading, editing and re-reading what is stored");
     {
-      const settings = await open(owner.email, "/business/settings");
+      const settings = await open(owner.email, "/app/business/settings");
       await settings.getByText("Business category").first().waitFor({ state: "visible", timeout: 45_000 });
       await settings.waitForTimeout(800);
 
@@ -368,7 +368,7 @@ async function main() {
         categoriesOf(bizId));
 
       // And re-read from the SERVER, not from what the browser hoped it sent.
-      const reread = await open(owner.email, "/business/settings");
+      const reread = await open(owner.email, "/app/business/settings");
       await reread.getByText("Business category").first().waitFor({ state: "visible", timeout: 45_000 });
       await reread.waitForTimeout(800);
       check("B5", "reloading shows what was STORED",
@@ -381,7 +381,7 @@ async function main() {
 
     console.log("\nPermissions — a viewer reads the categories and cannot change them");
     {
-      const page = await open(viewer.email, "/business/settings");
+      const page = await open(viewer.email, "/app/business/settings");
       await page.getByText("Business category").first().waitFor({ state: "visible", timeout: 45_000 });
       await page.waitForTimeout(800);
 

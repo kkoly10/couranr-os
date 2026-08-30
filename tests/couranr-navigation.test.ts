@@ -3,8 +3,6 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import {
   ROUTE_COLLISIONS,
-  ROUTES_NOT_YET_MATERIALIZED,
-  servedRoute,
   activeNavItem,
   isActiveRoute,
   merchantSettingsNav,
@@ -59,7 +57,7 @@ describe("role isolation", () => {
 
   it("never lets one role's navigation reach another role's route prefix", () => {
     const prefixes: Record<string, string> = {
-      merchant: "/business",
+      merchant: "/app/business",
       driver: "/driver",
       operations: "/operations",
     };
@@ -81,7 +79,7 @@ describe("role isolation", () => {
 
   it("keeps public navigation out of every authenticated area", () => {
     for (const item of navigationFor("public")) {
-      expect(inArea(item.href, "/business")).toBe(false);
+      expect(inArea(item.href, "/app/business")).toBe(false);
       expect(inArea(item.href, "/driver")).toBe(false);
       expect(inArea(item.href, "/operations")).toBe(false);
     }
@@ -149,84 +147,120 @@ describe("navigation omits routes a legacy page already occupies", () => {
   });
 });
 
-describe("the LEG-004 route shim retires itself", () => {
-  /* ROUTES_NOT_YET_MATERIALIZED exists so a decision about the TARGET topology
-     does not point the running merchant shell at eleven 404s. It is meant to be
-     temporary, and "temporary" in a repository means "there is a check that
-     goes red when it stops being true" — otherwise it is permanent and nobody
-     notices for a year. */
-  it("maps only routes the repository does not serve yet", () => {
-    for (const m of ROUTES_NOT_YET_MATERIALIZED) {
-      expect(
-        existsSync(path.join(ROOT, m.servedPage)),
-        `${m.decision}: ${m.servedPrefix} is the served prefix but ${m.servedPage} does not exist`,
-      ).toBe(true);
-      expect(
-        existsSync(path.join(ROOT, m.canonicalPage)),
-        `${m.decision}: ${m.canonicalPage} EXISTS — the move has happened, so delete this shim entry ` +
-          `and let navigation use the canonical route`,
-      ).toBe(false);
+/* The LEG-004 route shim is GONE. It existed only while the canonical merchant
+   routes had no pages; V10 moved the tree to app/(couranr)/app/business/** and
+   navigation reads the canonical route directly again. What replaces the shim's
+   self-retiring guard is the assertion below: every navigation href must resolve
+   to a page that actually exists on disk. That is the property the shim was
+   protecting, stated directly instead of through an indirection. */
+describe("every navigation destination is a real page", () => {
+  /** app/(couranr)/app/business/settings/team -> that route's page file. */
+  function pageFileFor(href) {
+    const clean = href.split("?")[0].split("#")[0];
+    const segments = clean.split("/").filter(Boolean);
+    for (const group of ["app/(couranr)", "app/(couranr)/(public)"]) {
+      const candidate = path.join(ROOT, group, ...segments, "page.tsx");
+      if (existsSync(candidate)) return candidate;
     }
-  });
+    return null;
+  }
 
-  it("rewrites a canonical prefix and leaves everything else alone", () => {
-    expect(servedRoute("/app/business")).toBe("/business");
-    expect(servedRoute("/app/business/settings/team")).toBe("/business/settings/team");
-    expect(servedRoute("/operations/queue")).toBe("/operations/queue");
-    // A prefix must match on a segment boundary, not a substring.
-    expect(servedRoute("/app/businesses")).toBe("/app/businesses");
-  });
-
-  it("leaves no navigation href pointing at a route the app does not serve", () => {
+  it("resolves every role's navigation hrefs to page files that exist", () => {
+    const dead = [];
     for (const role of ROLES) {
       for (const item of navigationFor(role)) {
-        for (const m of ROUTES_NOT_YET_MATERIALIZED) {
-          expect(
-            item.href.startsWith(m.canonicalPrefix),
-            `${role}/${item.screenId} links to the not-yet-materialized ${item.href}`,
-          ).toBe(false);
-        }
+        if (!pageFileFor(item.href)) dead.push(`${role}/${item.screenId} -> ${item.href}`);
       }
     }
+    expect(dead).toEqual([]);
+  });
+
+  it("resolves merchant settings sub-navigation to page files that exist", () => {
+    const dead = merchantSettingsNav()
+      .filter((i) => !pageFileFor(i.href))
+      .map((i) => `${i.screenId} -> ${i.href}`);
+    expect(dead).toEqual([]);
+  });
+
+  /* A resolver that finds nothing would make both assertions vacuously true. */
+  it("POSITIVE CONTROL: the page resolver rejects a route with no file", () => {
+    expect(pageFileFor("/app/business")).toBeTruthy();
+    expect(pageFileFor("/app/business/does-not-exist")).toBeNull();
+  });
+});
+
+describe("section roots are derived, not counted", () => {
+  /* The old rule was `segments <= 1`, which encoded the accident that every
+     section root was one segment deep. The LEG-004 move to `/app/business`
+     broke it silently: the dashboard stopped being exact and lit up on every
+     merchant page. These assert the PROPERTY instead of the old arithmetic. */
+  it("marks an item exact exactly when another item nests under it", () => {
+    for (const role of ROLES) {
+      const items = navigationFor(role);
+      const hrefs = items.map((i) => i.href);
+      for (const item of items) {
+        const hasChild = hrefs.some((h) => h !== item.href && h.startsWith(`${item.href}/`));
+        expect(Boolean(item.exact), `${role}/${item.screenId} (${item.href})`).toBe(hasChild);
+      }
+    }
+  });
+
+  /* Not every surface puts its root in the nav — DRV-001 is reached by the
+     wordmark, not a nav item — so this asserts the roots that ARE nav
+     destinations, and asserts that at least one exists so it cannot pass by
+     finding none. */
+  it("keeps the section roots that ARE nav destinations exact, whatever their depth", () => {
+    const roots = { merchant: "/app/business", operations: "/operations" };
+    for (const [role, root] of Object.entries(roots)) {
+      const item = navigationFor(role as ShellRole).find((i) => i.href === root);
+      expect(item, `${role} has no nav item for its root ${root}`).toBeTruthy();
+      expect(item!.exact, `${root} must be exact or it lights up for every child`).toBe(true);
+    }
+  });
+
+  it("does not light a section root on one of its children", () => {
+    const items = navigationFor("merchant");
+    expect(activeNavItem("/app/business/deliveries", items)?.href).toBe("/app/business/deliveries");
+    expect(activeNavItem("/app/business", items)?.href).toBe("/app/business");
   });
 });
 
 describe("active route derivation", () => {
   it("matches a section root only exactly", () => {
-    const root = { href: "/business", exact: true };
-    expect(isActiveRoute("/business", root)).toBe(true);
-    expect(isActiveRoute("/business/deliveries", root)).toBe(false);
+    const root = { href: "/app/business", exact: true };
+    expect(isActiveRoute("/app/business", root)).toBe(true);
+    expect(isActiveRoute("/app/business/deliveries", root)).toBe(false);
   });
 
   it("matches a non-root item on itself and its descendants", () => {
-    const item = { href: "/business/deliveries" };
-    expect(isActiveRoute("/business/deliveries", item)).toBe(true);
-    expect(isActiveRoute("/business/deliveries/new", item)).toBe(true);
-    expect(isActiveRoute("/business/deliveries/abc-123", item)).toBe(true);
-    expect(isActiveRoute("/business/customers", item)).toBe(false);
+    const item = { href: "/app/business/deliveries" };
+    expect(isActiveRoute("/app/business/deliveries", item)).toBe(true);
+    expect(isActiveRoute("/app/business/deliveries/new", item)).toBe(true);
+    expect(isActiveRoute("/app/business/deliveries/abc-123", item)).toBe(true);
+    expect(isActiveRoute("/app/business/customers", item)).toBe(false);
   });
 
   it("does not treat a shared prefix as a match", () => {
-    // /business/deliveries must not light up for /business/deliveries-archive
-    expect(isActiveRoute("/business/deliveries-archive", { href: "/business/deliveries" })).toBe(
+    // /app/business/deliveries must not light up for /app/business/deliveries-archive
+    expect(isActiveRoute("/app/business/deliveries-archive", { href: "/app/business/deliveries" })).toBe(
       false
     );
   });
 
   it("tolerates trailing slashes and empty pathnames", () => {
-    expect(isActiveRoute("/business/", { href: "/business", exact: true })).toBe(true);
-    expect(isActiveRoute(null, { href: "/business", exact: true })).toBe(false);
-    expect(isActiveRoute(undefined, { href: "/business", exact: true })).toBe(false);
+    expect(isActiveRoute("/app/business/", { href: "/app/business", exact: true })).toBe(true);
+    expect(isActiveRoute(null, { href: "/app/business", exact: true })).toBe(false);
+    expect(isActiveRoute(undefined, { href: "/app/business", exact: true })).toBe(false);
     expect(isActiveRoute("", { href: "/", exact: true })).toBe(true);
   });
 
   it("selects exactly one active item, longest match winning", () => {
     const items = navigationFor("merchant");
-    const active = activeNavItem("/business/deliveries/new", items);
-    expect(active?.href).toBe("/business/deliveries");
+    const active = activeNavItem("/app/business/deliveries/new", items);
+    expect(active?.href).toBe("/app/business/deliveries");
 
-    const dashboard = activeNavItem("/business", items);
-    expect(dashboard?.href).toBe("/business");
+    const dashboard = activeNavItem("/app/business", items);
+    expect(dashboard?.href).toBe("/app/business");
   });
 
   it("returns undefined when nothing matches", () => {
@@ -235,9 +269,9 @@ describe("active route derivation", () => {
 
   it("keeps merchant settings sub-navigation distinct", () => {
     const sub = merchantSettingsNav();
-    expect(activeNavItem("/business/settings", sub)?.screenId).toBe("MER-014");
-    expect(activeNavItem("/business/settings/team", sub)?.screenId).toBe("MER-015");
-    expect(activeNavItem("/business/settings/billing", sub)?.screenId).toBe("MER-016");
+    expect(activeNavItem("/app/business/settings", sub)?.screenId).toBe("MER-014");
+    expect(activeNavItem("/app/business/settings/team", sub)?.screenId).toBe("MER-015");
+    expect(activeNavItem("/app/business/settings/billing", sub)?.screenId).toBe("MER-016");
   });
 });
 
@@ -245,8 +279,8 @@ describe("shell ownership of a path", () => {
   it("routes each prefix to its own shell", () => {
     expect(shellForPath("/")).toBe("public");
     expect(shellForPath("/pricing")).toBe("public");
-    expect(shellForPath("/business")).toBe("merchant");
-    expect(shellForPath("/business/deliveries/new")).toBe("merchant");
+    expect(shellForPath("/app/business")).toBe("merchant");
+    expect(shellForPath("/app/business/deliveries/new")).toBe("merchant");
     expect(shellForPath("/driver")).toBe("driver");
     expect(shellForPath("/driver/messages")).toBe("driver");
     expect(shellForPath("/operations/queue")).toBe("operations");

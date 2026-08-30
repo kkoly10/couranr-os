@@ -274,7 +274,7 @@ async function main() {
 
     async function open(email, suffix = "") {
       const page = await signIn(email);
-      await page.goto(`${BASE}/business/customers${suffix}`, { waitUntil: "domcontentloaded" });
+      await page.goto(`${BASE}/app/business/customers${suffix}`, { waitUntil: "domcontentloaded" });
       return page;
     }
 
@@ -340,7 +340,7 @@ async function main() {
       check("D3", "both addresses are listed",
         body.includes("12 First Ave") && body.includes("88 Second St"));
       check("D4", "delivery history links to the real requests",
-        (await page.locator('a[href^="/business/deliveries/"]').count()) >= 2);
+        (await page.locator('a[href^="/app/business/deliveries/"]').count()) >= 2);
       await page.screenshot({ path: path.join(SHOTS, "MER-009-conflicting-address.png"), fullPage: true });
     }
 
@@ -458,7 +458,7 @@ async function main() {
       const p4 = await open(emptyOwner.email);
       await p4.getByText("No customers yet").waitFor({ state: "visible", timeout: 30_000 });
       check("E1", "the empty state renders with a real next action",
-        (await p4.locator('a[href="/business/deliveries/new"]').count()) > 0);
+        (await p4.locator('a[href="/app/business/deliveries/new"]').count()) > 0);
       check("E2", "the state is TRUE: business B has no requests and no records",
         sql(`select count(*) from public.couranr_delivery_requests where business_account_id='${bizB}'`) === "0");
       await p4.screenshot({ path: path.join(SHOTS, "MER-008-empty.png"), fullPage: true });
@@ -472,7 +472,7 @@ async function main() {
           body: JSON.stringify({ error: "Injected.", correlationId: "e2e-cust-err" }),
         })
       );
-      await p5.goto(`${BASE}/business/customers`, { waitUntil: "domcontentloaded" });
+      await p5.goto(`${BASE}/app/business/customers`, { waitUntil: "domcontentloaded" });
       await p5.getByText("Your customers did not load").waitFor({ state: "visible", timeout: 30_000 });
       const body = await p5.innerText("body");
       check("F1", "the error state renders with its reference", body.includes("e2e-cust-err"));

@@ -19,7 +19,7 @@ export default function Page() {
         description="What Couranr charged you for delivery. Couranr never handles the price of what you sold."
         breadcrumbs={[
           { label: "Couranr" },
-          { label: "Settings", href: "/business/settings" },
+          { label: "Settings", href: "/app/business/settings" },
           { label: "Billing records" },
         ]}
       />

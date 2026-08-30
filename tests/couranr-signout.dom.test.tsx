@@ -23,7 +23,7 @@ vi.mock("@/lib/supabaseClient", () => ({
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace, refresh, push: vi.fn() }),
-  usePathname: () => "/business",
+  usePathname: () => "/app/business",
 }));
 
 const { SignOutButton } = await import("@/components/couranr/auth/SignOutButton");

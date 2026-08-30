@@ -250,7 +250,7 @@ function QueueRow({
       <td>{r.submittedAt ? new Date(r.submittedAt).toLocaleString() : "—"}</td>
       <td>
         {/*
-          OPS-003, not the merchant surface. Linking Operations at /business/…
+          OPS-003, not the merchant surface. Linking Operations at /app/business/…
           sent them to a route the surface guard redirects them off, which made
           the review workspace unreachable from the queue.
         */}

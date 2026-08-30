@@ -306,7 +306,7 @@ async function main() {
   // The computed FONT on a product page title cannot be measured in this
   // container, and the reason is recorded rather than worked around. Every
   // product route is behind an access gate; with no session the shells render
-  // chrome only — measured, not assumed: the DOM at /business, /operations and
+  // chrome only — measured, not assumed: the DOM at /app/business, /operations and
   // /driver contains `.cr-sidebar*` classes and no `.cr-heading` or `.cr-text`
   // node at all. The authenticated harness that would reach one exists
   // (e2e/disposable/merchantDashboard.mjs signs in for real) and aborts here
@@ -321,7 +321,7 @@ async function main() {
   const unverified = [];
 
   for (const [route, surface] of [
-    ["/business", "merchant"],
+    ["/app/business", "merchant"],
     ["/operations", "operations"],
     ["/driver", "driver"],
   ]) {

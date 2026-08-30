@@ -75,7 +75,7 @@ const PGRST_BIN = postgrestTarget();
 const PORT = 3318;
 const BASE = `http://127.0.0.1:${PORT}`;
 const PASSWORD = "disposable-billing-1";
-const BILLING_PATH = "/business/settings/billing";
+const BILLING_PATH = "/app/business/settings/billing";
 
 let passed = 0;
 let failed = 0;

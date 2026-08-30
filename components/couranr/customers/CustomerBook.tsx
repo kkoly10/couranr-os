@@ -177,7 +177,7 @@ export function CustomerBook() {
       <EmptyState
         title="No business account yet"
         body="Set up your business workspace first."
-        action={{ label: "Set up your workspace", href: "/business/onboarding" }}
+        action={{ label: "Set up your workspace", href: "/app/business/onboarding" }}
       />
     );
   }
@@ -203,7 +203,7 @@ export function CustomerBook() {
     } catch {
       /* storage unavailable: the create page opens blank */
     }
-    router.push("/business/deliveries/new?duplicate=1");
+    router.push("/app/business/deliveries/new?duplicate=1");
   }
 
   async function run(key: string, fn: () => Promise<any>) {
@@ -226,7 +226,7 @@ export function CustomerBook() {
       return (
         <Stack gap={4}>
           <div>
-            <Link href="/business/customers" className={buttonClassName({ size: "sm" })}>
+            <Link href="/app/business/customers" className={buttonClassName({ size: "sm" })}>
               Back to customers
             </Link>
           </div>
@@ -252,7 +252,7 @@ export function CustomerBook() {
     return (
       <Stack gap={6}>
         <Cluster gap={3}>
-          <Link href="/business/customers" className={buttonClassName({ size: "sm" })}>
+          <Link href="/app/business/customers" className={buttonClassName({ size: "sm" })}>
             Back to customers
           </Link>
           {mayWrite ? (
@@ -396,7 +396,7 @@ export function CustomerBook() {
                       <td>{d.payerType === "customer" ? "Your customer" : "Your business"}</td>
                       <td>
                         <Link
-                          href={`/business/deliveries/${d.id}`}
+                          href={`/app/business/deliveries/${d.id}`}
                           className={buttonClassName({ size: "sm" })}
                         >
                           Open
@@ -586,7 +586,7 @@ export function CustomerBook() {
               action={
                 showArchived || !mayWrite
                   ? undefined
-                  : { label: "Create a delivery", href: "/business/deliveries/new" }
+                  : { label: "Create a delivery", href: "/app/business/deliveries/new" }
               }
             />
           ) : (
@@ -630,7 +630,7 @@ export function CustomerBook() {
                       </td>
                       <td>
                         <Link
-                          href={`/business/customers?customer=${encodeURIComponent(c.key)}`}
+                          href={`/app/business/customers?customer=${encodeURIComponent(c.key)}`}
                           className={buttonClassName({ size: "sm" })}
                         >
                           Open

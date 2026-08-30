@@ -66,7 +66,7 @@ export function SignUpForm() {
     if (data.session) {
       // Confirmation is off, or this address was already confirmed: Supabase
       // returned a live session, so go straight on.
-      router.push("/business/onboarding");
+      router.push("/app/business/onboarding");
       router.refresh();
       return;
     }

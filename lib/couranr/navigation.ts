@@ -98,56 +98,6 @@ export const ROUTE_COLLISIONS: { route: string; legacyFile: string; screenId: st
 
 const COLLIDING = new Set(ROUTE_COLLISIONS.map((c) => c.route));
 
-/**
- * Canonical routes the repository does not serve YET, and where each one is
- * actually reachable today.
- *
- * `LEG-004` moved the merchant application under `/app/business` and moved
- * PUB-001 to `/business`. That is a decision about the TARGET topology; the
- * pages have not moved, and moving them is a frontend slice. Deriving hrefs
- * straight from the screen registry in the meantime would point the merchant
- * shell at eleven routes that 404 — a governance change breaking the running
- * app, which is never an acceptable trade.
- *
- * So navigation renders the SERVED route and this table records the gap in one
- * place, with the decision that created it. Each entry is temporary by
- * construction: `tests/couranr-navigation.test.ts` requires the served path to
- * exist on disk AND the canonical path NOT to, so the day the frontend slice
- * creates `app/(couranr)/app/business/page.tsx` this entry must be deleted or
- * the suite goes red. A shim that cannot outlive its migration.
- *
- * ONE THING THE SHIM DOES NOT COVER, and the frontend slice must: `shellForPath`
- * below maps `/business` to the MERCHANT shell. That is right today, because the
- * merchant application is what answers there. Under LEG-004 `/business` becomes
- * PUB-001, a public marketing page — so moving the pages without moving that
- * prefix would wrap the public page in the merchant shell. Move them together.
- */
-export const ROUTES_NOT_YET_MATERIALIZED: {
-  canonicalPrefix: string;
-  servedPrefix: string;
-  decision: string;
-  servedPage: string;
-  canonicalPage: string;
-}[] = [
-  {
-    canonicalPrefix: "/app/business",
-    servedPrefix: "/business",
-    decision: "LEG-004",
-    servedPage: "app/(couranr)/business/page.tsx",
-    canonicalPage: "app/(couranr)/app/business/page.tsx",
-  },
-];
-
-/** The path a canonical route is reachable at today. */
-export function servedRoute(canonical: string): string {
-  for (const m of ROUTES_NOT_YET_MATERIALIZED) {
-    if (canonical === m.canonicalPrefix || canonical.startsWith(`${m.canonicalPrefix}/`)) {
-      return m.servedPrefix + canonical.slice(m.canonicalPrefix.length);
-    }
-  }
-  return canonical;
-}
-
 function firstCleanRoute(screen: CanonicalScreen): string | null {
   // A screen may list several routes; navigation uses the first plain path.
   const clean = screen.routes.find(
@@ -169,33 +119,39 @@ export function navigationFor(role: ShellRole): NavItem[] {
 
   const group = ROLE_GROUP[role];
 
-  return CANONICAL_SCREENS.filter((s) => s.group === group)
-    .map((s): NavItem | null => {
-      const label = NAV_LABELS[s.id];
-      if (!label) return null;
-      const canonical = firstCleanRoute(s);
-      if (!canonical || COLLIDING.has(canonical)) return null;
-      const href = servedRoute(canonical);
-      return {
-        screenId: s.id,
-        label,
-        href,
-        // Section roots must match exactly or they stay active for every child.
-        exact: href.split("/").filter(Boolean).length <= 1,
-      };
-    })
-    .filter((x): x is NavItem => x !== null);
+  const candidates = CANONICAL_SCREENS.filter((s) => s.group === group)
+    .map((s) => ({ screen: s, label: NAV_LABELS[s.id], href: firstCleanRoute(s) }))
+    .filter((c) => c.label && c.href && !COLLIDING.has(c.href));
+
+  const hrefs = candidates.map((c) => c.href);
+
+  return candidates.map((c) => ({
+    screenId: c.screen.id,
+    label: c.label,
+    href: c.href,
+    /* A section ROOT must match exactly, or it stays lit for every child page
+       beneath it. What makes an item a root is that another item in the SAME
+       navigation nests under it — so that is what this asks.
+
+       It used to count segments (`length <= 1`), which encoded the accident
+       that every section root happened to be one segment deep. LEG-004 moved
+       the merchant surface to `/app/business` and the dashboard silently
+       stopped being exact: it lit up on `/app/business/deliveries` and on every
+       other merchant page. Derived from the sibling set, the rule survives the
+       next move too. */
+    exact: hrefs.some((other) => other !== c.href && other.startsWith(`${c.href}/`)),
+  }));
 }
 
 /** Sub-navigation for merchant settings (MER-014 / MER-015 / MER-016). */
 export function merchantSettingsNav(): NavItem[] {
-  /* Derived, so the LEG-004 route move reaches this sub-navigation through the
-     same shim as everything else rather than needing a second edit. */
+  /* Derived from the screen registry, so a route change reaches this
+     sub-navigation without a second edit. */
   const of = (id: string) => {
     const s = CANONICAL_SCREENS.find((x) => x.id === id);
-    const canonical = s && firstCleanRoute(s);
-    if (!canonical) throw new Error(`${id} has no plain route in the screen registry`);
-    return servedRoute(canonical);
+    const href = s && firstCleanRoute(s);
+    if (!href) throw new Error(`${id} has no plain route in the screen registry`);
+    return href;
   };
   return [
     { screenId: "MER-014", label: "General", href: of("MER-014"), exact: true },
@@ -235,7 +191,11 @@ export function activeNavItem(
 /** Which shell owns a pathname. Used for route containment checks. */
 export function shellForPath(pathname: string): ShellRole {
   const p = pathname.replace(/\/+$/, "") || "/";
-  if (p === "/business" || p.startsWith("/business/")) return "merchant";
+  /* `/app/business`, NOT `/business`. LEG-004 gave `/business` to PUB-001, a
+     public marketing page — classifying it merchant would wrap public marketing
+     in MerchantShell. The prefix is matched on a segment boundary so
+     `/app/businesses` and `/app/not-business` stay unclassified. */
+  if (p === "/app/business" || p.startsWith("/app/business/")) return "merchant";
   if (p === "/driver" || p.startsWith("/driver/")) return "driver";
   if (p === "/operations" || p.startsWith("/operations/")) return "operations";
   if (

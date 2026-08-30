@@ -242,7 +242,7 @@ export function TeamMembers() {
         <EmptyState
           title="No business account yet"
           body="Set up your business workspace before inviting a team."
-          action={{ label: "Set up your workspace", href: "/business/onboarding" }}
+          action={{ label: "Set up your workspace", href: "/app/business/onboarding" }}
         />
       ) : null}
 
