@@ -165,6 +165,39 @@ const findPhotographicSections = () =>
           }
         }
         return outOfFlow && z !== null && z < 0;
+      }) ||
+      /* THE FOURTH ARRANGEMENT, which this function's own comment predicted and
+         PUB-012 then built: the photograph is IN FLOW and the copy is laid over
+         it by a positioned foreground, with no negative z-index anywhere. Both
+         of PUB-012's audience doors are exactly that — an <img> in normal flow
+         with an absolutely positioned copy block and a gradient scrim on top.
+
+         The first three branches all missed it and the gate printed "no
+         photographic section" for the page whose white-on-photograph copy is
+         its single biggest contrast risk. axe does not close that gap: it
+         cannot resolve a computed contrast ratio against an image and reports
+         nothing rather than a violation.
+
+         Deliberately NARROW so the ordinary side-by-side frames on
+         `category-breadth` and `outcomes` stay out: the foreground must be out
+         of flow, must carry visible text of its own, and must sit over at least
+         half of an image in the same section. Text beside a picture satisfies
+         none of those. */
+      [...sec.querySelectorAll("img")].some((img) => {
+        const ir = img.getBoundingClientRect();
+        if (ir.width < 40 || ir.height < 40) return false;
+        return [...sec.querySelectorAll("*")].some((el) => {
+          if (el === img || el.contains(img) || img.contains(el)) return false;
+          const cs = getComputedStyle(el);
+          if (cs.position !== "absolute" && cs.position !== "fixed") return false;
+          if (!(el.textContent || "").trim()) return false;
+          const er = el.getBoundingClientRect();
+          const overlapW = Math.min(er.right, ir.right) - Math.max(er.left, ir.left);
+          const overlapH = Math.min(er.bottom, ir.bottom) - Math.max(er.top, ir.top);
+          if (overlapW <= 0 || overlapH <= 0) return false;
+          const area = er.width * er.height;
+          return area > 0 && (overlapW * overlapH) / area >= 0.5;
+        });
       });
     })
     .map((sec) => sec.getAttribute("data-couranr-section"));

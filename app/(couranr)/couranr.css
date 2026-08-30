@@ -3612,8 +3612,14 @@
 }
 
 /* A scrim, not a tint: the copy sits on photography and WCAG 2.2 AA contrast
-   has to hold over whatever is under it. Bottom-weighted so the subjects stay
-   readable and only the copy band darkens. */
+   has to hold over WHATEVER is under it — which is the part a gradient tuned by
+   eye gets wrong. The first version faded 0.92 -> 0.78 -> 0 and measured
+   2.84:1 at 360px, where the 4:5 crop puts a bright doorway behind the copy.
+   §23.2 exists for exactly that: "do not assume a Navy scrim automatically
+   passes."
+   The band under the copy is effectively opaque now and only the top edge
+   feathers, so the ratio no longer depends on which part of which crop lands
+   there. Measured over both photographs at all six governed widths. */
 .cr-master-door__copy {
   position: absolute;
   inset: auto 0 0 0;
@@ -3622,8 +3628,9 @@
   padding: var(--couranr-space-6);
   background: linear-gradient(
     to top,
-    rgb(13 21 37 / 0.92) 0%,
-    rgb(13 21 37 / 0.78) 45%,
+    rgb(13 21 37 / 0.97) 0%,
+    rgb(13 21 37 / 0.95) 70%,
+    rgb(13 21 37 / 0.72) 90%,
     rgb(13 21 37 / 0) 100%
   );
 }
@@ -3639,7 +3646,9 @@
 .cr-master-door__support {
   font-size: var(--couranr-text-sm);
   line-height: 1.5;
-  color: rgb(255 255 255 / 0.86);
+  /* Full white. At 0.86 over the scrim this is small text against a 4.5 floor
+     with no margin; the alpha bought nothing but risk. */
+  color: var(--couranr-surface);
 }
 
 .cr-master-door:hover .cr-master-door__title { text-decoration: underline; }
