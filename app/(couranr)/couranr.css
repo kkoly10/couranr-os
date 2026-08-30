@@ -3507,3 +3507,49 @@
   .cr-mkt-closing--split .cr-mkt-h2-inverse { margin: 0; max-width: 22ch; }
   .cr-mkt-closing--split .cr-mkt-cta-row { flex: none; }
 }
+
+/* ── consumer chrome: the tracking-link launcher ────────────────────────── */
+
+/* PUB-006 is `/track/[token]` and there is no generic `/track`, so the consumer
+   header cannot link to tracking — it opens a small panel that parses a link
+   the visitor already holds. Positioned relative to its trigger so the panel
+   sits under it without a portal or a layout shift in the topbar. */
+.cr-track-launcher {
+  position: relative;
+  display: inline-flex;
+}
+
+.cr-track-launcher__panel {
+  position: absolute;
+  top: calc(100% + var(--couranr-space-2));
+  right: 0;
+  z-index: 30;
+  width: min(22rem, calc(100vw - var(--couranr-space-6)));
+  padding: var(--couranr-space-4);
+  background: var(--couranr-surface);
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-lg);
+  box-shadow: var(--couranr-shadow-lg);
+  display: grid;
+  gap: var(--couranr-space-3);
+}
+
+.cr-track-launcher__panel form {
+  display: grid;
+  gap: var(--couranr-space-2);
+}
+
+.cr-track-launcher__label {
+  font-size: var(--couranr-text-xs);
+  font-weight: 600;
+  color: var(--couranr-text-muted);
+}
+
+/* Inside the mobile drawer the trigger is a full-width button and the panel
+   flows beneath it rather than floating over navy chrome. */
+.cr-drawer-auth .cr-track-launcher { display: block; }
+.cr-drawer-auth .cr-track-launcher__panel {
+  position: static;
+  width: 100%;
+  margin-top: var(--couranr-space-2);
+}

@@ -30,8 +30,8 @@
     "pages": [
       {
         "screen": "PUB-001",
-        "route": "/",
-        "file": "app/(couranr)/(public)/page.tsx",
+        "route": "/business",
+        "file": "app/(couranr)/(public)/(business-public)/business/page.tsx",
         "doc_heading": "## 27.0 Governed section identifiers",
         "rows": [
           {
@@ -152,7 +152,7 @@
       {
         "screen": "PUB-008",
         "route": "/pricing",
-        "file": "app/(couranr)/(public)/pricing/page.tsx",
+        "file": "app/(couranr)/(public)/(business-public)/pricing/page.tsx",
         "doc_heading": "### PUB-008 —",
         "rows": [
           {
@@ -242,7 +242,7 @@
       {
         "screen": "PUB-009",
         "route": "/businesses",
-        "file": "app/(couranr)/(public)/businesses/page.tsx",
+        "file": "app/(couranr)/(public)/(business-public)/businesses/page.tsx",
         "doc_heading": "### PUB-009 —",
         "rows": [
           {
@@ -316,7 +316,7 @@
       {
         "screen": "PUB-010",
         "route": "/service-areas",
-        "file": "app/(couranr)/(public)/service-areas/page.tsx",
+        "file": "app/(couranr)/(public)/(business-public)/service-areas/page.tsx",
         "doc_heading": "### PUB-010 —",
         "rows": [
           {
@@ -390,7 +390,7 @@
       {
         "screen": "PUB-011",
         "route": "/how-it-works",
-        "file": "app/(couranr)/(public)/how-it-works/page.tsx",
+        "file": "app/(couranr)/(public)/(business-public)/how-it-works/page.tsx",
         "doc_heading": "### PUB-011 —",
         "rows": [
           {

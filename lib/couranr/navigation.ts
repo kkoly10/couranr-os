@@ -114,6 +114,27 @@ function firstCleanRoute(screen: CanonicalScreen): string | null {
  * §3 states customer accounts are optional. The registry defines no
  * authenticated-customer navigation, so none is invented here.
  */
+/**
+ * The canonical route a screen owns, for chrome that must link to a SCREEN
+ * rather than to a path.
+ *
+ * Chrome copy names destinations ("Same Day", "For Business"); the screen
+ * source owns where those destinations live. Typing the path into a header
+ * would make the shell a second route authority — exactly what LEG-004 just
+ * finished consolidating away, and exactly how a header survives a route move
+ * while silently pointing at a 404.
+ *
+ * Throws rather than falling back. A chrome link with no destination is a
+ * defect to surface, not to paper over at render time.
+ */
+export function routeForScreen(id: string): string {
+  const screen = CANONICAL_SCREENS.find((s) => s.id === id);
+  if (!screen) throw new Error(`routeForScreen: ${id} is not a canonical screen`);
+  const href = firstCleanRoute(screen);
+  if (!href) throw new Error(`routeForScreen: ${id} has no plain route`);
+  return href;
+}
+
 export function navigationFor(role: ShellRole): NavItem[] {
   if (role === "customer") return [];
 
@@ -121,7 +142,11 @@ export function navigationFor(role: ShellRole): NavItem[] {
 
   const candidates = CANONICAL_SCREENS.filter((s) => s.group === group)
     .map((s) => ({ screen: s, label: NAV_LABELS[s.id], href: firstCleanRoute(s) }))
-    .filter((c) => c.label && c.href && !COLLIDING.has(c.href));
+    .flatMap((c) =>
+      c.label && c.href && !COLLIDING.has(c.href)
+        ? [{ screen: c.screen, label: c.label, href: c.href }]
+        : [],
+    );
 
   const hrefs = candidates.map((c) => c.href);
 

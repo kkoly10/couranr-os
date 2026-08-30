@@ -2648,10 +2648,10 @@ than read.**
 
 | screen | route | implementation |
 |---|---|---|
-| `PUB-008` | `/pricing` | `app/(couranr)/(public)/pricing/page.tsx` |
-| `PUB-009` | `/businesses` | `app/(couranr)/(public)/businesses/page.tsx` |
-| `PUB-010` | `/service-areas` | `app/(couranr)/(public)/service-areas/page.tsx` |
-| `PUB-011` | `/how-it-works` | `app/(couranr)/(public)/how-it-works/page.tsx` |
+| `PUB-008` | `/pricing` | `app/(couranr)/(public)/(business-public)/pricing/page.tsx` |
+| `PUB-009` | `/businesses` | `app/(couranr)/(public)/(business-public)/businesses/page.tsx` |
+| `PUB-010` | `/service-areas` | `app/(couranr)/(public)/(business-public)/service-areas/page.tsx` |
+| `PUB-011` | `/how-it-works` | `app/(couranr)/(public)/(business-public)/how-it-works/page.tsx` |
 
 Three rules govern all four, and they are the reason the budgets differ:
 

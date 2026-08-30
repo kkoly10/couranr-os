@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import path from "node:path";
 import {
   ROUTE_COLLISIONS,
@@ -154,15 +154,38 @@ describe("navigation omits routes a legacy page already occupies", () => {
    to a page that actually exists on disk. That is the property the shim was
    protecting, stated directly instead of through an indirection. */
 describe("every navigation destination is a real page", () => {
-  /** app/(couranr)/app/business/settings/team -> that route's page file. */
+  /**
+   * Every page.tsx under app/, keyed by the URL it actually serves.
+   *
+   * Route GROUPS — the `(name)` segments — are organizational and do not appear
+   * in the URL, so they are stripped. Resolving by joining a fixed prefix would
+   * miss `app/(couranr)/(public)/(business-public)/business/page.tsx` entirely,
+   * which is the shape V10's chrome architecture introduces.
+   */
+  function routeIndex() {
+    const index = new Map();
+    const walk = (dir) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (entry.name === "page.tsx") {
+          const segments = path
+            .relative(path.join(ROOT, "app"), path.dirname(full))
+            .split(path.sep)
+            .filter((s) => s && !(s.startsWith("(") && s.endsWith(")")));
+          index.set(`/${segments.join("/")}`.replace(/\/$/, "") || "/", full);
+        }
+      }
+    };
+    walk(path.join(ROOT, "app"));
+    return index;
+  }
+  const ROUTES = routeIndex();
+
+  /** /app/business/settings/team -> that route's page file, or null. */
   function pageFileFor(href) {
-    const clean = href.split("?")[0].split("#")[0];
-    const segments = clean.split("/").filter(Boolean);
-    for (const group of ["app/(couranr)", "app/(couranr)/(public)"]) {
-      const candidate = path.join(ROOT, group, ...segments, "page.tsx");
-      if (existsSync(candidate)) return candidate;
-    }
-    return null;
+    const clean = href.split("?")[0].split("#")[0].replace(/\/+$/, "") || "/";
+    return ROUTES.get(clean) ?? null;
   }
 
   it("resolves every role's navigation hrefs to page files that exist", () => {

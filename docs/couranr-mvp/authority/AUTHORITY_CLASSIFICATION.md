@@ -109,12 +109,12 @@ contract · **s4** counts/fingerprints · **s5** implementation state.
 | MIRROR -> GENERATED | `docs/couranr-mvp/ui-reference/CANONICAL_SCREEN_SOURCE_MAP.md` | 3 | s2,s4 |
 | MIRROR -> GENERATED | `docs/couranr-mvp/ui-reference/VISUAL_AUTHORITY_REGISTRY.json` | 22 | s2,s4 |
 | MIRROR -> GENERATED | `ui_screen_registry.csv` | 1 | s1 |
-| RUNTIME CONSUMER | `app/(couranr)/(public)/businesses/page.tsx` | 6 | s3 |
-| RUNTIME CONSUMER | `app/(couranr)/(public)/help/[token]/page.tsx` | 1 | s2 |
-| RUNTIME CONSUMER | `app/(couranr)/(public)/how-it-works/page.tsx` | 7 | s3 |
-| RUNTIME CONSUMER | `app/(couranr)/(public)/page.tsx` | 16 | s2,s3 |
-| RUNTIME CONSUMER | `app/(couranr)/(public)/pricing/page.tsx` | 9 | s2,s3 |
-| RUNTIME CONSUMER | `app/(couranr)/(public)/service-areas/page.tsx` | 6 | s3 |
+| RUNTIME CONSUMER | `app/(couranr)/(public)/(business-public)/businesses/page.tsx` | 6 | s3 |
+| RUNTIME CONSUMER | `app/(couranr)/(public)/(token-public)/help/[token]/page.tsx` | 1 | s2 |
+| RUNTIME CONSUMER | `app/(couranr)/(public)/(business-public)/how-it-works/page.tsx` | 7 | s3 |
+| RUNTIME CONSUMER | `app/(couranr)/(public)/(business-public)/business/page.tsx` | 16 | s2,s3 |
+| RUNTIME CONSUMER | `app/(couranr)/(public)/(business-public)/pricing/page.tsx` | 9 | s2,s3 |
+| RUNTIME CONSUMER | `app/(couranr)/(public)/(business-public)/service-areas/page.tsx` | 6 | s3 |
 | RUNTIME CONSUMER | `app/(couranr)/business/page.tsx` | 1 | s2 |
 | RUNTIME CONSUMER | `app/(couranr)/couranr.css` | 5 | s2,s3,s4 |
 | RUNTIME CONSUMER | `app/(couranr)/driver/deliveries/[id]/page.tsx` | 1 | s2 |

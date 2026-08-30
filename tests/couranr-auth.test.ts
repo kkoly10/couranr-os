@@ -284,7 +284,7 @@ describe("auth error copy", () => {
 /* ------------------------------------------------------ wiring assertions */
 
 describe("sign-in screen", () => {
-  const page = read("app/(couranr)/(public)/sign-in/page.tsx");
+  const page = read("app/(couranr)/(public)/(business-public)/sign-in/page.tsx");
   const form = read("components/couranr/auth/SignInForm.tsx");
 
   it("is no longer a placeholder", () => {
@@ -577,8 +577,8 @@ describe("signup confirmation handling", () => {
 describe("the canonical auth loop has no placeholders", () => {
   it("neither sign-in nor sign-up is a ScreenPlaceholder", () => {
     for (const f of [
-      "app/(couranr)/(public)/sign-in/page.tsx",
-      "app/(couranr)/(public)/sign-up/page.tsx",
+      "app/(couranr)/(public)/(business-public)/sign-in/page.tsx",
+      "app/(couranr)/(public)/(business-public)/sign-up/page.tsx",
       "app/(couranr)/app/business/onboarding/page.tsx",
     ]) {
       expect(read(f), f).not.toMatch(/ScreenPlaceholder/);
