@@ -53,18 +53,20 @@ exist**. So does `/api/delivery/assign-driver` and `/api/test-email`.
 **Do not infer current state from this file, a commit message, or the existence
 of a route.** Three files carry it, regenerated against a named SHA:
 
-- [`docs/couranr-mvp/IMPLEMENTATION_STATUS.md`](docs/couranr-mvp/IMPLEMENTATION_STATUS.md) — human-readable current state
-- [`docs/couranr-mvp/IMPLEMENTATION_LEDGER.csv`](docs/couranr-mvp/IMPLEMENTATION_LEDGER.csv) — one row per authoritative work item (42)
-- [`docs/couranr-mvp/SCREEN_IMPLEMENTATION_LEDGER.csv`](docs/couranr-mvp/SCREEN_IMPLEMENTATION_LEDGER.csv) — one row per canonical screen (66)
+- [`docs/couranr-mvp/IMPLEMENTATION_LEDGER.csv`](docs/couranr-mvp/IMPLEMENTATION_LEDGER.csv) — AUTHORITY, one row per authoritative work item
+- [`docs/couranr-mvp/SCREEN_IMPLEMENTATION_LEDGER.csv`](docs/couranr-mvp/SCREEN_IMPLEMENTATION_LEDGER.csv) — AUTHORITY, one row per canonical screen
+- [`docs/couranr-mvp/IMPLEMENTATION_STATUS.md`](docs/couranr-mvp/IMPLEMENTATION_STATUS.md) — GENERATED from those two plus a repository scan. Do not edit it; `npm run governance:generate` rewrites it and `check:governance` fails on a byte of difference
 
 `tests/couranr-implementation-ledger.test.ts` enforces their structure: closed
 status vocabularies, every work item and screen exactly once, evidence required
 for every `complete_verified` row, and **no screen backed by a `ScreenPlaceholder`
 page may be classified functional.**
 
-**Whenever a work item materially changes status, update its ledger row and the
-counts in `IMPLEMENTATION_STATUS.md` in the SAME commit.** The test enforces the
-shape; it cannot enforce that you remembered.
+**Whenever a work item materially changes status, update its ledger row and run
+`npm run governance:generate` in the SAME commit.** The counts in
+`IMPLEMENTATION_STATUS.md` are derived, so the second half is mechanical now —
+but the ledger row is still yours to write, and the test enforces the shape, not
+that you remembered.
 
 Run `npm run governance:facts` for the current work-item and screen counts. Do
 not quote a number from this file: every count it used to pin had gone stale by

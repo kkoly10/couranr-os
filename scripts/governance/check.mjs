@@ -25,6 +25,7 @@ import { join } from "node:path";
 import { ROOT, screenSource, SCREEN_OUTPUTS, SCREEN_SOURCE } from "./screenRegistry.mjs";
 import { SCREENS_MODULE_OUTPUT } from "./screensModule.mjs";
 import { VISUAL_SOURCE_OUTPUTS, VISUAL_REGISTRY as VISUAL_SOURCE } from "./visualSources.mjs";
+import { STATUS_OUTPUT } from "./statusReport.mjs";
 import { visualDocDrift } from "./visualRegistry.mjs";
 
 const MANIFEST = "docs/couranr-mvp/authority/AUTHORITY_MANIFEST.json";
@@ -37,6 +38,7 @@ function outputs() {
     ...SCREEN_OUTPUTS.map((o) => ({ ...o, authority: SCREEN_SOURCE })),
     { ...SCREENS_MODULE_OUTPUT, authority: SCREEN_SOURCE },
     ...VISUAL_SOURCE_OUTPUTS.map((o) => ({ ...o, authority: VISUAL_SOURCE })),
+    { ...STATUS_OUTPUT, authority: "the two implementation ledgers" },
   ].map((o) => ({ ...o, source: src }));
 }
 
@@ -359,6 +361,8 @@ if (CONTROL) {
       (t) => t.replace("| PNGs at repo root | 91 |", "| PNGs at repo root | 90 |")],
     ["a re-owned asset in the generated provenance map", "docs/couranr-mvp/ui-reference/CANONICAL_SCREEN_SOURCE_MAP.tsv",
       (t) => t.replace("PUB-006\t0013FABA", "PUB-007\t0013FABA")],
+    ["a hand-edited count in the generated status summary", "docs/couranr-mvp/IMPLEMENTATION_STATUS.md",
+      (t) => t.replace("| Forward migrations | ", "| Forward migrations | 9")],
   ];
   /* The composition contract is a SOURCE, not a generated mirror, so its
      control is the other direction: prove the handbook cannot drift away from

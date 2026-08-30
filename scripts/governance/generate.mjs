@@ -16,12 +16,13 @@ import { join } from "node:path";
 import { ROOT, screenSource, SCREEN_OUTPUTS } from "./screenRegistry.mjs";
 import { SCREENS_MODULE_OUTPUT } from "./screensModule.mjs";
 import { VISUAL_SOURCE_OUTPUTS } from "./visualSources.mjs";
+import { STATUS_OUTPUT } from "./statusReport.mjs";
 
 const src = screenSource();
 const written = [];
 const unchanged = [];
 
-for (const o of [...SCREEN_OUTPUTS, SCREENS_MODULE_OUTPUT, ...VISUAL_SOURCE_OUTPUTS]) {
+for (const o of [...SCREEN_OUTPUTS, SCREENS_MODULE_OUTPUT, ...VISUAL_SOURCE_OUTPUTS, STATUS_OUTPUT]) {
   const path = join(ROOT, o.path);
   const generated = o.render(src);
   const before = existsSync(path) ? readFileSync(path, "utf8") : null;

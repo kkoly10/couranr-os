@@ -87,7 +87,12 @@
       "owns": [
         "one row per authoritative work item"
       ],
-      "generated": []
+      "generated": [
+        "docs/couranr-mvp/IMPLEMENTATION_STATUS.md"
+      ],
+      "generated_notes": {
+        "docs/couranr-mvp/IMPLEMENTATION_STATUS.md": "Concise current-state summary derived from BOTH ledgers plus a scan of app/ and supabase/. It replaced a 721-line hand-written narrative that restated per-row evidence the ledgers already owned; that document is preserved whole under autonomous-evidence/status-archive/."
+      }
     },
     {
       "domain": "screen-implementation-state",
