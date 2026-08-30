@@ -274,6 +274,19 @@ function checkNoCircularPrecedence(fail, m, inject) {
       }
     };
     walk(doc, []);
+
+    /* A decision record citing a GENERATED file as its authority_file is the
+       same cycle in a smaller shape: the record's authority would be a mirror
+       of something else, so amending the record would mean editing a file the
+       generator rewrites. Four records cited UI_SCREEN_REGISTRY.md this way. */
+    for (const r of doc.decisions ?? []) {
+      if (generated.has(r.authority_file)) {
+        fail.push(
+          `${d.authority}: ${r.id} cites generated artifact "${r.authority_file}" as its ` +
+            `authority_file — cite the source it is generated from`,
+        );
+      }
+    }
   }
 }
 
@@ -462,6 +475,19 @@ if (CONTROL) {
         ? { ...doc, generated_from: { ...doc.generated_from, authority_order: ["UI_SCREEN_REGISTRY.md"] } }
         : doc,
     );
+    const detected2 = [];
+    checkNoCircularPrecedence(detected2, manifest, (path, doc) =>
+      path === "02_DECISION_REGISTRY.json"
+        ? { ...doc, decisions: doc.decisions.map((r, i) =>
+            i === 0 ? { ...r, authority_file: "UI_SCREEN_REGISTRY.md" } : r) }
+        : doc,
+    );
+    if (!detected2.some((f) => f.includes("authority_file"))) {
+      console.error("positive control FAILED — a decision citing a generated artifact as authority_file was not detected");
+      bad++;
+    } else {
+      console.log(`check:governance positive control ok — a decision citing a generated authority was rejected: "${detected2.find((f) => f.includes("authority_file")).slice(0, 110)}"`);
+    }
     if (!detected.length) {
       console.error("positive control FAILED — a restored authority_order cycle was not detected");
       bad++;

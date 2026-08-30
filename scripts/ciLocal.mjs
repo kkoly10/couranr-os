@@ -101,7 +101,7 @@ const STAGES = [
   { tier: 2, name: "check:images", run: ["npm", ["run", "check:images"]], why: "every marketing derivative is current with its accepted source" },
   { tier: 2, name: "check:migrations", run: ["npm", ["run", "check:migrations"]], why: "no destructive migration" },
   { tier: 2, name: "check:visual-system", run: ["npm", ["run", "check:visual-system"]], why: "§27.0/§27.1 re-derived from the spec" },
-  { tier: 2, name: "check:visual-registry", run: ["npm", ["run", "check:visual-registry"]], why: "66/66 screens, dimensions match their files" },
+  { tier: 2, name: "check:visual-registry", run: ["npm", ["run", "check:visual-registry"]], why: "one record per canonical screen, every dimension read from its file" },
   { tier: 2, name: "check:drift-ledger", run: ["npm", ["run", "check:drift-ledger"]], why: "the PUB-001 region ledger is well-formed" },
   { tier: 2, name: "check:governance", run: ["npm", ["run", "check:governance"]], why: "one writable source per authority domain, and every generated mirror matches it" },
   {
