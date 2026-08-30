@@ -43,9 +43,17 @@
       "image": "couranr_local_delivery_service_landing_page.png",
       "purpose": "Explain Couranr to local merchants and drive business-account creation or delivery estimation.",
       "actions": "Create business account; estimate delivery; open Ask Couranr; navigate to pricing, businesses, service areas, and how it works.",
-      "states": "Default; mobile navigation; assistant closed/open; service-area notice.",
+      "states": "Default; mobile navigation; assistant closed/open.",
       "source": "Spec §§2–4, 16; copy and conversion authority docs/couranr-mvp/MARKETING_POSITIONING_AND_HOMEPAGE_BLUEPRINT.md (MKT-002)",
-      "constraints": "Use the locked merchant-delivery positioning. No auto rental/docs, fake metrics, guarantees, phone support, subscriptions, or Maryland launch marketing."
+      "constraints": "Use the locked merchant-delivery positioning. No auto rental/docs, fake metrics, guarantees, phone support, subscriptions, or Maryland launch marketing.",
+      "amendments": [
+        {
+          "date": "2026-08-30",
+          "authority": "owner instruction",
+          "change": "Removed \"service-area notice\" from the required states.",
+          "reason": "The owner removed the full-bleed service-area notice bar from the (public) route group on 2026-08-29, at both widths. This registry still required the state, so the registry and the screen disagreed — recorded as an OPEN disagreement in SCREEN_IMPLEMENTATION_LEDGER.csv, docs/couranr-mvp/ui-reference/PUB_001_VISUAL_DRIFT_LEDGER.csv and COURANR_VISUAL_SYSTEM_V2_2.md r11. Amending the authority closes it at the source rather than leaving three documents to describe a conflict. MKT-001's markets SENTENCE is unaffected and still reaches the public surface verbatim: app/(couranr)/(public)/page.tsx renders MARKETS_PUBLIC_COPY in the service-areas card and PUB-010 renders it twice."
+        }
+      ]
     },
     {
       "id": "PUB-002",

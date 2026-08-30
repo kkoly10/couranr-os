@@ -103,3 +103,23 @@ sticky behaviour, overflow and response status are all correct, and this diff
 touches no Supabase code. The three token-gated routes (`help/[token]`,
 `pay/[token]`, `track/[token]`) are not driven: they need a live token, and they
 share the same layout that no longer passes a notice.
+
+---
+
+## 2026-08-30 — the open disagreement above is CLOSED
+
+Appended, not rewritten: this file is EVIDENCE, and what it recorded was true at
+the SHA it was written against. The record stands; the outcome is added.
+
+The owner directed the amendment. `ui_screen_registry.json` — promoted to the
+writable authority for screen topology by the authority consolidation — no longer
+lists "service-area notice" among PUB-001's required states, and its screen record
+carries an `amendments` entry naming the date, the authority and the reason.
+`UI_SCREEN_REGISTRY.md` and `ui_screen_registry.csv` were regenerated from it by
+`npm run governance:generate`, so the line this document cites no longer exists.
+`SCREEN_IMPLEMENTATION_LEDGER.csv` and `PUB_001_VISUAL_DRIFT_LEDGER.csv` now record
+agreement rather than a conflict.
+
+Nothing about the RENDERED screen changed on 2026-08-30 — the bar was already gone
+and stays gone, guarded by all four halves of the removal test. What changed is
+that the authority stopped requiring a state nobody intended to build.

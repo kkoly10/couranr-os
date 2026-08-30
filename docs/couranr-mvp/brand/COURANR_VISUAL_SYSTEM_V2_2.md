@@ -253,13 +253,20 @@ instruction wins on presence; the mock wins on how a thing that exists is drawn.
 there was none.** That draft checked one thing and generalised from it. MKT-001's
 markets SENTENCE is indeed safe: the homepage's own `service-areas` card and
 PUB-010 both render it verbatim, verified in the browser at every width. But
-`UI_SCREEN_REGISTRY.md:151` lists **"service-area notice"** among PUB-001's
+`UI_SCREEN_REGISTRY.md` listed **"service-area notice"** among PUB-001's
 REQUIRED STATES, and `SCREEN_IMPLEMENTATION_LEDGER.csv` recorded that state as
-present. The registry names the NOTICE, not the sentence. That state now has no
-implementation, so the registry and the screen disagree until the owner amends
-the line — precisely the open disagreement `hero-small-label` left behind for
-MKT-002's consumer descriptor, which the first draft claimed this differed from.
-Both ledgers now record it.
+present. The registry names the NOTICE, not the sentence. That state had no
+implementation, so the registry and the screen disagreed — precisely the open
+disagreement `hero-small-label` left behind for MKT-002's consumer descriptor,
+which the first draft claimed this differed from.
+
+**RESOLVED 2026-08-30, at the authority.** The owner directed the amendment, so
+`ui_screen_registry.json` — now the writable source for screen topology — no
+longer lists the notice among PUB-001's required states, and the Markdown and CSV
+were regenerated from it by `npm run governance:generate`. The screen record
+carries an `amendments` entry naming the date, the authority and the reason, so
+the change is provenance in the source rather than a note in a document about
+the source. Both ledgers record agreement now, not a conflict.
 
 **The SLOT is deleted, not left empty.** `PublicShell` no longer accepts a
 `notice` prop, `PublicNotice.tsx` is gone, and the `.cr-topnotice` rules are

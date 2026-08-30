@@ -148,7 +148,7 @@
 - **Tier / phase:** Core / Phase 10
 - **Purpose:** Explain Couranr to local merchants and drive business-account creation or delivery estimation.
 - **Allowed actions:** Create business account; estimate delivery; open Ask Couranr; navigate to pricing, businesses, service areas, and how it works.
-- **Required states:** Default; mobile navigation; assistant closed/open; service-area notice.
+- **Required states:** Default; mobile navigation; assistant closed/open.
 - **Authoritative source:** Spec §§2–4, 16; copy and conversion authority docs/couranr-mvp/MARKETING_POSITIONING_AND_HOMEPAGE_BLUEPRINT.md (MKT-002)
 - **Mandatory correction/constraint:** Use the locked merchant-delivery positioning. No auto rental/docs, fake metrics, guarantees, phone support, subscriptions, or Maryland launch marketing.
 - **Canonical visual:** `canonical-mvp-images/public/PUB-001_marketing-homepage.png`
