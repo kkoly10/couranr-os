@@ -42,8 +42,8 @@
  *   couranr_submit_delivery_request_v2         -> pending_couranr_review
  *   couranr_accept_delivery_request_as_quoted  -> confirmed
  *   couranr_create_payment_obligation          obligation on the current quote
- *   [patch payment_state]                      -> authorized / capture_pending
- *   couranr_apply_readiness                    -> ready
+ *   [patch payment_state]                      -> authorized
+ *   couranr_mark_delivery_ready                -> readiness ready
  *   couranr_confirm_service_plan               plan on the same quote
  *   couranr_begin_payment_capture              -> capture_pending
  *   [patch payment_state]                      -> captured
@@ -127,9 +127,9 @@ export const COMMAND_SIGNATURES = {
   couranr_create_payment_obligation: {
     p_request_id: "uuid", p_business_account_id: "uuid", p_idempotency_key: "text",
   },
-  couranr_apply_readiness: {
+  couranr_mark_delivery_ready: {
     p_request_id: "uuid", p_business_account_id: "uuid", p_expected_version: "integer",
-    p_actor_user_id: "uuid", p_command: "text", p_to: "text", p_from: "text[]",
+    p_actor_user_id: "uuid",
   },
   couranr_confirm_service_plan: {
     p_request_id: "uuid", p_expected_version: "integer", p_actor_user_id: "uuid",
@@ -337,20 +337,6 @@ export async function seedCanonicalQuotedRequest(t, opts) {
     p_review_reasons: [],
   });
 
-  if (o.stopAfter === "draft") {
-    return {
-      requestId: draft.id,
-      quoteVersionId: draft.current_quote_version_id,
-      version: draft.version,
-      businessId: o.businessId,
-      actorUserId: o.actorUserId,
-      subtotalCents: o.subtotalCents,
-      pricingPolicyVersion: o.pricingPolicyVersion,
-      requestState: draft.request_state,
-      marker,
-    };
-  }
-
   const submitted = await t.rpc("couranr_submit_delivery_request_v2", {
     p_request_id: draft.id,
     p_business_account_id: o.businessId,
@@ -361,20 +347,6 @@ export async function seedCanonicalQuotedRequest(t, opts) {
     // quote id that still matches.
     p_acknowledged: true,
   });
-
-  if (o.stopAfter === "submitted") {
-    return {
-      requestId: submitted.id,
-      quoteVersionId: submitted.current_quote_version_id,
-      version: submitted.version,
-      businessId: o.businessId,
-      actorUserId: o.actorUserId,
-      subtotalCents: o.subtotalCents,
-      pricingPolicyVersion: o.pricingPolicyVersion,
-      requestState: submitted.request_state,
-      marker,
-    };
-  }
 
   const accepted = await t.rpc("couranr_accept_delivery_request_as_quoted", {
     p_request_id: submitted.id,
@@ -413,9 +385,14 @@ export async function seedCanonicalPaymentObligation(t, request, opts = {}) {
   });
 
   const NEEDS_AUTHORIZATION = ["authorized", "capture_pending", "captured", "refunded"];
+  // `withIntent: false` is authoritative, and is checked BEFORE an explicit
+  // intentId. The other order reads the same and is a trap: a caller asking for
+  // "no intent" while a chain forwarded an id would silently get one, and the
+  // fixture would prove the opposite of what it was asked for.
   const intentId =
-    opts.intentId ||
-    (opts.withIntent === false ? null : NEEDS_AUTHORIZATION.includes(state) ? syntheticIntentId() : null);
+    opts.withIntent === false
+      ? null
+      : opts.intentId || (NEEDS_AUTHORIZATION.includes(state) ? syntheticIntentId() : null);
 
   if (state !== "not_started") {
     const patch = { payment_state: state };
@@ -435,16 +412,22 @@ export async function seedCanonicalPaymentObligation(t, request, opts = {}) {
   return { obligationId: obligation.id, intentId, paymentState: state, amountCents: obligation.amount_cents };
 }
 
-/** Readiness `ready`, which the capture path requires. Bumps request.version. */
+/**
+ * Readiness `ready`, which the capture path requires. Bumps request.version.
+ *
+ * Through `couranr_mark_delivery_ready`, the NAMED command, not through the
+ * `couranr_apply_readiness` implementation it wraps. 20260801090000 says in as
+ * many words that p_to and p_from are supplied by the wrappers and never by a
+ * caller — the wrappers are what carry the grant and what fix the allowed
+ * source states. A fixture choosing its own transition would be exercising a
+ * transition the product cannot make.
+ */
 export async function markCanonicalRequestReady(t, request) {
-  const row = await t.rpc("couranr_apply_readiness", {
+  const row = await t.rpc("couranr_mark_delivery_ready", {
     p_request_id: request.requestId,
     p_business_account_id: request.businessId,
     p_expected_version: request.version,
     p_actor_user_id: request.actorUserId,
-    p_command: "mark_delivery_ready",
-    p_to: "ready",
-    p_from: ["not_confirmed", "preparing", "not_ready", "ready"],
   });
   request.version = row.version;
   return request;
@@ -524,6 +507,7 @@ export async function seedCanonicalDeliveryChain(t, opts = {}) {
   const obligation = await seedCanonicalPaymentObligation(t, request, {
     paymentState: "authorized",
     intentId: opts.intentId,
+    withIntent: opts.withIntent,
   });
   const out = {
     businessId: request.businessId,

@@ -144,6 +144,7 @@ async function seedObligation(businessId, creatorId, state, { withIntent = true 
     recipientName: "Release Fixture",
     stopAfter,
     intentId: intent,
+    withIntent,
   });
   return { requestId: chain.requestId, obligationId: chain.obligationId, intent, quoteVersionId: chain.quoteVersionId };
 }

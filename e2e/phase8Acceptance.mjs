@@ -236,11 +236,14 @@ export async function main() {
     "couranr_payment_obligations",
     "couranr_delivery_requests",
     // Added with the Gate A fixture cutover. The canonical chain now also
-    // writes a couranr_quote_versions row, and couranr_qv_append_only_trg
-    // raises on any DELETE — so a request can no longer be removed at all
-    // while its quote exists. Probing it here makes the refusal name the real
-    // reason instead of the run dying later in cleanup.
+    // writes a couranr_quote_versions row — and couranr_qv_append_only_trg
+    // raises on any DELETE, so a request can no longer be removed at all while
+    // its quote exists — and couranr_begin_payment_capture appends a
+    // couranr_payment_events row whose FK blocks removing the obligation.
+    // Probing both here makes the refusal name the real reason instead of the
+    // run dying later in cleanup.
     "couranr_quote_versions",
+    "couranr_payment_events",
   ];
   const undeletable = [];
   // Skipped in disposable mode, and skipped for a stated reason rather than
