@@ -1,0 +1,99 @@
+PRODUCTION RLS AND POLICIES on couranr_* tables (read-only)
+relrowsecurity = RLS enabled; relforcerowsecurity = RLS forced (applies to the table owner too).
+A table with RLS enabled and ZERO policies denies all access to every non-BYPASSRLS role.
+================================================================================================
+TABLE public.couranr_activation_acknowledgements   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_activation_events   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_assignment_events   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_category_presets   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_conversation_events   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_conversation_messages   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_conversation_participants   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_conversations   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_deliveries   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_delivery_access_tokens   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_delivery_assignments   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_delivery_events   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_delivery_proofs   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_delivery_request_events   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_delivery_requests   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_dispatch_vehicles   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_drivers   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_handoff_codes   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_handoff_records   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_help_access_tokens   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_merchant_preset_versions   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_merchant_presets   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_merchant_workspaces   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_payment_access_tokens   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_payment_events   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_payment_obligations   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_pickup_discrepancies   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_proof_uploads   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_service_plans   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_team_events   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_website_tool_configs   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)
+------------------------------------------------------------------------------------------------
+TABLE public.couranr_workspace_activations   rls_enabled=YES   rls_forced=NO   policies=0
+    (no policies)

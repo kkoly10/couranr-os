@@ -1,0 +1,65 @@
+REPOSITORY MIGRATIONS
+repository: kkoly10/couranr-os
+source: supabase/migrations/*.sql
+ordering: ascending by version
+total_files: 56
+NOTE: `name` is the filename stem after the version prefix, as it appears on disk.
+==============================================================================================================
+version         | name                                             | git path
+--------------------------------------------------------------------------------------------------------------
+20260731045417  | couranr_delivery_requests                        | supabase/migrations/20260731045417_couranr_delivery_requests.sql
+20260731055802  | couranr_request_commands                         | supabase/migrations/20260731055802_couranr_request_commands.sql
+20260731061356  | couranr_merchant_workspace                       | supabase/migrations/20260731061356_couranr_merchant_workspace.sql
+20260731180000  | couranr_review_outcomes                          | supabase/migrations/20260731180000_couranr_review_outcomes.sql
+20260731193000  | couranr_ack_conflict_code                        | supabase/migrations/20260731193000_couranr_ack_conflict_code.sql
+20260731210000  | couranr_decline_reasons_v1                       | supabase/migrations/20260731210000_couranr_decline_reasons_v1.sql
+20260731230000  | couranr_payment_authorization                    | supabase/migrations/20260731230000_couranr_payment_authorization.sql
+20260731233000  | couranr_payment_commands                         | supabase/migrations/20260731233000_couranr_payment_commands.sql
+20260731234500  | couranr_fix_redeem_ambiguity                     | supabase/migrations/20260731234500_couranr_fix_redeem_ambiguity.sql
+20260801083000  | couranr_service_plan_and_deliveries              | supabase/migrations/20260801083000_couranr_service_plan_and_deliveries.sql
+20260801090000  | couranr_merchant_readiness                       | supabase/migrations/20260801090000_couranr_merchant_readiness.sql
+20260801093000  | couranr_capture_and_conversion                   | supabase/migrations/20260801093000_couranr_capture_and_conversion.sql
+20260801100000  | couranr_readiness_quote_check_fix                | supabase/migrations/20260801100000_couranr_readiness_quote_check_fix.sql
+20260801103000  | couranr_payment_stamp_checks_fix                 | supabase/migrations/20260801103000_couranr_payment_stamp_checks_fix.sql
+20260801110000  | couranr_payment_vocabulary                       | supabase/migrations/20260801110000_couranr_payment_vocabulary.sql
+20260801120000  | couranr_terminal_capture_resolution              | supabase/migrations/20260801120000_couranr_terminal_capture_resolution.sql
+20260801121000  | couranr_capture_pending_webhook_guard            | supabase/migrations/20260801121000_couranr_capture_pending_webhook_guard.sql
+20260801122000  | couranr_obligation_generation_key                | supabase/migrations/20260801122000_couranr_obligation_generation_key.sql
+20260801130000  | couranr_obligation_supersede_guard               | supabase/migrations/20260801130000_couranr_obligation_supersede_guard.sql
+20260801190000  | couranr_managed_dispatch                         | supabase/migrations/20260801190000_couranr_managed_dispatch.sql
+20260801193000  | couranr_dispatch_commands                        | supabase/migrations/20260801193000_couranr_dispatch_commands.sql
+20260801200000  | couranr_dispatch_named_transitions               | supabase/migrations/20260801200000_couranr_dispatch_named_transitions.sql
+20260801210000  | couranr_dispatch_event_commands                  | supabase/migrations/20260801210000_couranr_dispatch_event_commands.sql
+20260802020000  | couranr_dispatch_driver_execution_vocabulary     | supabase/migrations/20260802020000_couranr_dispatch_driver_execution_vocabulary.sql
+20260802030000  | couranr_dispatch_driver_execution_tables         | supabase/migrations/20260802030000_couranr_dispatch_driver_execution_tables.sql
+20260802040000  | couranr_dispatch_proof_authorization_corrections | supabase/migrations/20260802040000_couranr_dispatch_proof_authorization_corrections.sql
+20260802050000  | couranr_dispatch_driver_execution_commands       | supabase/migrations/20260802050000_couranr_dispatch_driver_execution_commands.sql
+20260802060000  | couranr_dispatch_driver_completion_commands      | supabase/migrations/20260802060000_couranr_dispatch_driver_completion_commands.sql
+20260802070000  | couranr_dispatch_verify_handoff_code_actor_scope | supabase/migrations/20260802070000_couranr_dispatch_verify_handoff_code_actor_scope.sql
+20260804090000  | couranr_delivery_access_tokens                   | supabase/migrations/20260804090000_couranr_delivery_access_tokens.sql
+20260804120000  | sec001_profiles_role_privilege                   | supabase/migrations/20260804120000_sec001_profiles_role_privilege.sql
+20260804150000  | couranr_conversations                            | supabase/migrations/20260804150000_couranr_conversations.sql
+20260804160000  | couranr_delivery_help                            | supabase/migrations/20260804160000_couranr_delivery_help.sql
+20260804170000  | couranr_conversation_kind_and_tenure             | supabase/migrations/20260804170000_couranr_conversation_kind_and_tenure.sql
+20260804180000  | couranr_conversation_hardening                   | supabase/migrations/20260804180000_couranr_conversation_hardening.sql
+20260804190000  | couranr_conversation_awaiting_reply              | supabase/migrations/20260804190000_couranr_conversation_awaiting_reply.sql
+20260804200000  | couranr_help_hardening                           | supabase/migrations/20260804200000_couranr_help_hardening.sql
+20260804210000  | couranr_participant_help_token_fk                | supabase/migrations/20260804210000_couranr_participant_help_token_fk.sql
+20260806010000  | couranr_operating_hours                          | supabase/migrations/20260806010000_couranr_operating_hours.sql
+20260806100000  | couranr_private_and_analytics_schemas            | supabase/migrations/20260806100000_couranr_private_and_analytics_schemas.sql
+20260806120000  | couranr_team_management                          | supabase/migrations/20260806120000_couranr_team_management.sql
+20260806130000  | couranr_business_members_rls_hardening           | supabase/migrations/20260806130000_couranr_business_members_rls_hardening.sql
+20260806150000  | couranr_website_tool_configs                     | supabase/migrations/20260806150000_couranr_website_tool_configs.sql
+20260806160000  | couranr_merchant_customers                       | supabase/migrations/20260806160000_couranr_merchant_customers.sql
+20260806170000  | couranr_workspace_activation                     | supabase/migrations/20260806170000_couranr_workspace_activation.sql
+20260806180000  | couranr_business_categories                      | supabase/migrations/20260806180000_couranr_business_categories.sql
+20260806190000  | couranr_delivery_presets                         | supabase/migrations/20260806190000_couranr_delivery_presets.sql
+20260806200000  | couranr_preset_commands                          | supabase/migrations/20260806200000_couranr_preset_commands.sql
+20260806210000  | couranr_release_authorization                    | supabase/migrations/20260806210000_couranr_release_authorization.sql
+20260806220000  | couranr_idempotency_records                      | supabase/migrations/20260806220000_couranr_idempotency_records.sql
+20260831035450  | fnd_a_m1_universal_requester                     | supabase/migrations/20260831035450_fnd_a_m1_universal_requester.sql
+20260831035452  | fnd_a_m2_immutable_quote_schema                  | supabase/migrations/20260831035452_fnd_a_m2_immutable_quote_schema.sql
+20260831035454  | fnd_a_m3_deterministic_quote_backfill            | supabase/migrations/20260831035454_fnd_a_m3_deterministic_quote_backfill.sql
+20260831035456  | fnd_a_m4_command_cutover                         | supabase/migrations/20260831035456_fnd_a_m4_command_cutover.sql
+20260831035458  | fnd_a_m5_invariant_cutover                       | supabase/migrations/20260831035458_fnd_a_m5_invariant_cutover.sql
+20260831035500  | fnd_a_m6_single_destination                      | supabase/migrations/20260831035500_fnd_a_m6_single_destination.sql

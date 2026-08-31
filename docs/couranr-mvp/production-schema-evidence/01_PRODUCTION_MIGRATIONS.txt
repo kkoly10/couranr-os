@@ -1,0 +1,61 @@
+PRODUCTION MIGRATION HISTORY
+project_ref: zrdxlrlqxdslqpnoqmus  (Couranr -OS)
+source: supabase_migrations.schema_migrations
+captured: 2026-08-31, read-only
+columns available: version, statements, name, created_by, idempotency_key, rollback
+NOTE: this table exposes NO applied_at/created_at column, so no application timestamp is recorded.
+NOTE: `name` is reproduced verbatim where present; filenames are NOT inferred.
+total_applied: 50
+==============================================================================
+version        | name
+------------------------------------------------------------------------------
+20260731045417 | couranr_delivery_requests
+20260731055802 | couranr_request_commands
+20260731061356 | couranr_merchant_workspace
+20260731180000 | couranr_review_outcomes
+20260731193000 | couranr_ack_conflict_code
+20260731210000 | couranr_decline_reasons_v1
+20260731230000 | couranr_payment_authorization
+20260731233000 | couranr_payment_commands
+20260731234500 | couranr_fix_redeem_ambiguity
+20260801083000 | couranr_service_plan_and_deliveries
+20260801090000 | couranr_merchant_readiness
+20260801093000 | couranr_capture_and_conversion
+20260801100000 | couranr_readiness_quote_check_fix
+20260801103000 | couranr_payment_stamp_checks_fix
+20260801110000 | couranr_payment_vocabulary
+20260801120000 | couranr_terminal_capture_resolution
+20260801121000 | couranr_capture_pending_webhook_guard
+20260801122000 | couranr_obligation_generation_key
+20260801130000 | couranr_obligation_supersede_guard
+20260801190000 | couranr_managed_dispatch
+20260801193000 | couranr_dispatch_commands
+20260801200000 | couranr_dispatch_named_transitions
+20260801210000 | couranr_dispatch_event_commands
+20260802020000 | couranr_dispatch_driver_execution_vocabulary
+20260802030000 | couranr_dispatch_driver_execution_tables
+20260802040000 | couranr_dispatch_proof_authorization_corrections
+20260802050000 | couranr_dispatch_driver_execution_commands
+20260802060000 | couranr_dispatch_driver_completion_commands
+20260802070000 | couranr_dispatch_verify_handoff_code_actor_scope
+20260804090000 | couranr_delivery_access_tokens
+20260804120000 | sec001_profiles_role_privilege
+20260804150000 | couranr_conversations
+20260804160000 | couranr_delivery_help
+20260804170000 | couranr_conversation_kind_and_tenure
+20260804180000 | couranr_conversation_hardening
+20260804190000 | couranr_conversation_awaiting_reply
+20260804200000 | couranr_help_hardening
+20260804210000 | couranr_participant_help_token_fk
+20260806010000 | couranr_operating_hours
+20260806120353 | couranr_private_and_analytics_schemas
+20260806120616 | couranr_team_management
+20260806120629 | couranr_business_members_rls_hardening
+20260806120648 | couranr_website_tool_configs
+20260806160353 | couranr_merchant_customers
+20260806160443 | couranr_business_categories
+20260806160522 | couranr_delivery_presets
+20260806160757 | couranr_workspace_activation
+20260806160839 | couranr_preset_commands
+20260806195405 | couranr_release_authorization
+20260806195438 | couranr_idempotency_records

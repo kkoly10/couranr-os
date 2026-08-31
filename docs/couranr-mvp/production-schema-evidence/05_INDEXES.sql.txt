@@ -1,0 +1,288 @@
+PRODUCTION INDEXES on couranr_* tables (project zrdxlrlqxdslqpnoqmus, read-only)
+Uniqueness and partial predicates appear inside each pg_get_indexdef output.
+indexes: 95
+================================================================================================
+couranr_aa_once_key on public.couranr_activation_acknowledgements  unique=YES primary=no partial=no
+  CREATE UNIQUE INDEX couranr_aa_once_key ON public.couranr_activation_acknowledgements USING btree (business_account_id, ack_kind, ack_version)
+------------------------------------------------------------------------------------------------
+couranr_activation_acknowledgements_pkey on public.couranr_activation_acknowledgements  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_activation_acknowledgements_pkey ON public.couranr_activation_acknowledgements USING btree (id)
+------------------------------------------------------------------------------------------------
+couranr_actev_business_idx on public.couranr_activation_events  unique=no primary=no partial=no
+  CREATE INDEX couranr_actev_business_idx ON public.couranr_activation_events USING btree (business_account_id, created_at DESC)
+------------------------------------------------------------------------------------------------
+couranr_activation_events_pkey on public.couranr_activation_events  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_activation_events_pkey ON public.couranr_activation_events USING btree (id)
+------------------------------------------------------------------------------------------------
+couranr_ae_delivery_idx on public.couranr_assignment_events  unique=no primary=no partial=no
+  CREATE INDEX couranr_ae_delivery_idx ON public.couranr_assignment_events USING btree (delivery_id, created_at)
+------------------------------------------------------------------------------------------------
+couranr_assignment_events_pkey on public.couranr_assignment_events  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_assignment_events_pkey ON public.couranr_assignment_events USING btree (id)
+------------------------------------------------------------------------------------------------
+couranr_category_presets_pkey on public.couranr_category_presets  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_category_presets_pkey ON public.couranr_category_presets USING btree (id)
+------------------------------------------------------------------------------------------------
+couranr_cp_category_idx on public.couranr_category_presets  unique=no primary=no partial=YES
+  CREATE INDEX couranr_cp_category_idx ON public.couranr_category_presets USING btree (business_category) WHERE (archived_at IS NULL)
+------------------------------------------------------------------------------------------------
+couranr_conversation_events_pkey on public.couranr_conversation_events  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_conversation_events_pkey ON public.couranr_conversation_events USING btree (id)
+------------------------------------------------------------------------------------------------
+couranr_cve_thread_idx on public.couranr_conversation_events  unique=no primary=no partial=no
+  CREATE INDEX couranr_cve_thread_idx ON public.couranr_conversation_events USING btree (conversation_id, created_at DESC)
+------------------------------------------------------------------------------------------------
+couranr_conversation_messages_pkey on public.couranr_conversation_messages  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_conversation_messages_pkey ON public.couranr_conversation_messages USING btree (id)
+------------------------------------------------------------------------------------------------
+couranr_cvm_idempotency_uniq on public.couranr_conversation_messages  unique=YES primary=no partial=no
+  CREATE UNIQUE INDEX couranr_cvm_idempotency_uniq ON public.couranr_conversation_messages USING btree (conversation_id, author_participant_id, idempotency_key)
+------------------------------------------------------------------------------------------------
+couranr_cvm_thread_idx on public.couranr_conversation_messages  unique=no primary=no partial=no
+  CREATE INDEX couranr_cvm_thread_idx ON public.couranr_conversation_messages USING btree (conversation_id, created_at DESC)
+------------------------------------------------------------------------------------------------
+couranr_conversation_participants_pkey on public.couranr_conversation_participants  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_conversation_participants_pkey ON public.couranr_conversation_participants USING btree (id)
+------------------------------------------------------------------------------------------------
+couranr_cvp_id_conv_uniq on public.couranr_conversation_participants  unique=YES primary=no partial=no
+  CREATE UNIQUE INDEX couranr_cvp_id_conv_uniq ON public.couranr_conversation_participants USING btree (id, conversation_id)
+------------------------------------------------------------------------------------------------
+couranr_cvp_live_token_uniq on public.couranr_conversation_participants  unique=YES primary=no partial=YES
+  CREATE UNIQUE INDEX couranr_cvp_live_token_uniq ON public.couranr_conversation_participants USING btree (conversation_id, access_token_id) WHERE ((left_at IS NULL) AND (access_token_id IS NOT NULL))
+------------------------------------------------------------------------------------------------
+couranr_cvp_live_user_uniq on public.couranr_conversation_participants  unique=YES primary=no partial=YES
+  CREATE UNIQUE INDEX couranr_cvp_live_user_uniq ON public.couranr_conversation_participants USING btree (conversation_id, user_id) WHERE ((left_at IS NULL) AND (user_id IS NOT NULL))
+------------------------------------------------------------------------------------------------
+couranr_cvp_lookup_idx on public.couranr_conversation_participants  unique=no primary=no partial=YES
+  CREATE INDEX couranr_cvp_lookup_idx ON public.couranr_conversation_participants USING btree (user_id, conversation_id) WHERE (left_at IS NULL)
+------------------------------------------------------------------------------------------------
+couranr_conversations_pkey on public.couranr_conversations  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_conversations_pkey ON public.couranr_conversations USING btree (id)
+------------------------------------------------------------------------------------------------
+couranr_cv_business_idx on public.couranr_conversations  unique=no primary=no partial=no
+  CREATE INDEX couranr_cv_business_idx ON public.couranr_conversations USING btree (business_account_id, status)
+------------------------------------------------------------------------------------------------
+couranr_cv_due_idx on public.couranr_conversations  unique=no primary=no partial=YES
+  CREATE INDEX couranr_cv_due_idx ON public.couranr_conversations USING btree (due_state, response_due_at) WHERE (due_state <> 'on_time'::text)
+------------------------------------------------------------------------------------------------
+couranr_cv_one_thread_per_delivery_kind on public.couranr_conversations  unique=YES primary=no partial=YES
+  CREATE UNIQUE INDEX couranr_cv_one_thread_per_delivery_kind ON public.couranr_conversations USING btree (delivery_id, kind) WHERE (delivery_id IS NOT NULL)
+------------------------------------------------------------------------------------------------
+couranr_deliveries_pkey on public.couranr_deliveries  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_deliveries_pkey ON public.couranr_deliveries USING btree (id)
+------------------------------------------------------------------------------------------------
+couranr_dlv_business_idx on public.couranr_deliveries  unique=no primary=no partial=no
+  CREATE INDEX couranr_dlv_business_idx ON public.couranr_deliveries USING btree (business_account_id, created_at DESC)
+------------------------------------------------------------------------------------------------
+couranr_dlv_request_uniq on public.couranr_deliveries  unique=YES primary=no partial=no
+  CREATE UNIQUE INDEX couranr_dlv_request_uniq ON public.couranr_deliveries USING btree (request_id)
+------------------------------------------------------------------------------------------------
+couranr_dlv_state_idx on public.couranr_deliveries  unique=no primary=no partial=no
+  CREATE INDEX couranr_dlv_state_idx ON public.couranr_deliveries USING btree (fulfillment_state, scheduled_pickup_start)
+------------------------------------------------------------------------------------------------
+couranr_dat_hash_uniq on public.couranr_delivery_access_tokens  unique=YES primary=no partial=no
+  CREATE UNIQUE INDEX couranr_dat_hash_uniq ON public.couranr_delivery_access_tokens USING btree (token_hash)
+------------------------------------------------------------------------------------------------
+couranr_dat_request_idx on public.couranr_delivery_access_tokens  unique=no primary=no partial=no
+  CREATE INDEX couranr_dat_request_idx ON public.couranr_delivery_access_tokens USING btree (request_id, created_at DESC)
+------------------------------------------------------------------------------------------------
+couranr_delivery_access_tokens_pkey on public.couranr_delivery_access_tokens  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_delivery_access_tokens_pkey ON public.couranr_delivery_access_tokens USING btree (id)
+------------------------------------------------------------------------------------------------
+couranr_asg_delivery_idx on public.couranr_delivery_assignments  unique=no primary=no partial=no
+  CREATE INDEX couranr_asg_delivery_idx ON public.couranr_delivery_assignments USING btree (delivery_id)
+------------------------------------------------------------------------------------------------
+couranr_asg_idempotency_uniq on public.couranr_delivery_assignments  unique=YES primary=no partial=YES
+  CREATE UNIQUE INDEX couranr_asg_idempotency_uniq ON public.couranr_delivery_assignments USING btree (idempotency_key) WHERE (idempotency_key IS NOT NULL)
+------------------------------------------------------------------------------------------------
+couranr_asg_one_active_per_delivery on public.couranr_delivery_assignments  unique=YES primary=no partial=YES
+  CREATE UNIQUE INDEX couranr_asg_one_active_per_delivery ON public.couranr_delivery_assignments USING btree (delivery_id) WHERE (assignment_state = 'active'::text)
+------------------------------------------------------------------------------------------------
+couranr_asg_one_active_per_driver on public.couranr_delivery_assignments  unique=YES primary=no partial=YES
+  CREATE UNIQUE INDEX couranr_asg_one_active_per_driver ON public.couranr_delivery_assignments USING btree (driver_id) WHERE (assignment_state = 'active'::text)
+------------------------------------------------------------------------------------------------
+couranr_delivery_assignments_pkey on public.couranr_delivery_assignments  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_delivery_assignments_pkey ON public.couranr_delivery_assignments USING btree (id)
+------------------------------------------------------------------------------------------------
+couranr_delivery_events_pkey on public.couranr_delivery_events  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_delivery_events_pkey ON public.couranr_delivery_events USING btree (id)
+------------------------------------------------------------------------------------------------
+couranr_dlve_delivery_idx on public.couranr_delivery_events  unique=no primary=no partial=no
+  CREATE INDEX couranr_dlve_delivery_idx ON public.couranr_delivery_events USING btree (delivery_id, created_at DESC)
+------------------------------------------------------------------------------------------------
+couranr_delivery_proofs_pkey on public.couranr_delivery_proofs  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_delivery_proofs_pkey ON public.couranr_delivery_proofs USING btree (id)
+------------------------------------------------------------------------------------------------
+couranr_dp_assignment_idx on public.couranr_delivery_proofs  unique=no primary=no partial=no
+  CREATE INDEX couranr_dp_assignment_idx ON public.couranr_delivery_proofs USING btree (assignment_id)
+------------------------------------------------------------------------------------------------
+couranr_dp_delivery_idx on public.couranr_delivery_proofs  unique=no primary=no partial=no
+  CREATE INDEX couranr_dp_delivery_idx ON public.couranr_delivery_proofs USING btree (delivery_id, proof_stage)
+------------------------------------------------------------------------------------------------
+couranr_delivery_request_events_pkey on public.couranr_delivery_request_events  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_delivery_request_events_pkey ON public.couranr_delivery_request_events USING btree (id)
+------------------------------------------------------------------------------------------------
+couranr_dre_request_created_idx on public.couranr_delivery_request_events  unique=no primary=no partial=no
+  CREATE INDEX couranr_dre_request_created_idx ON public.couranr_delivery_request_events USING btree (request_id, created_at DESC)
+------------------------------------------------------------------------------------------------
+couranr_delivery_requests_idempotency_uniq on public.couranr_delivery_requests  unique=YES primary=no partial=no
+  CREATE UNIQUE INDEX couranr_delivery_requests_idempotency_uniq ON public.couranr_delivery_requests USING btree (business_account_id, idempotency_key)
+------------------------------------------------------------------------------------------------
+couranr_delivery_requests_pkey on public.couranr_delivery_requests  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_delivery_requests_pkey ON public.couranr_delivery_requests USING btree (id)
+------------------------------------------------------------------------------------------------
+couranr_dr_business_created_idx on public.couranr_delivery_requests  unique=no primary=no partial=no
+  CREATE INDEX couranr_dr_business_created_idx ON public.couranr_delivery_requests USING btree (business_account_id, created_at DESC)
+------------------------------------------------------------------------------------------------
+couranr_dr_created_by_idx on public.couranr_delivery_requests  unique=no primary=no partial=no
+  CREATE INDEX couranr_dr_created_by_idx ON public.couranr_delivery_requests USING btree (created_by)
+------------------------------------------------------------------------------------------------
+couranr_dr_request_updated_idx on public.couranr_delivery_requests  unique=no primary=no partial=no
+  CREATE INDEX couranr_dr_request_updated_idx ON public.couranr_delivery_requests USING btree (request_state, updated_at DESC)
+------------------------------------------------------------------------------------------------
+couranr_dr_review_submitted_idx on public.couranr_delivery_requests  unique=no primary=no partial=no
+  CREATE INDEX couranr_dr_review_submitted_idx ON public.couranr_delivery_requests USING btree (review_state, submitted_at DESC)
+------------------------------------------------------------------------------------------------
+couranr_dispatch_vehicles_pkey on public.couranr_dispatch_vehicles  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_dispatch_vehicles_pkey ON public.couranr_dispatch_vehicles USING btree (id)
+------------------------------------------------------------------------------------------------
+couranr_drivers_pkey on public.couranr_drivers  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_drivers_pkey ON public.couranr_drivers USING btree (id)
+------------------------------------------------------------------------------------------------
+couranr_drv_user_uniq on public.couranr_drivers  unique=YES primary=no partial=no
+  CREATE UNIQUE INDEX couranr_drv_user_uniq ON public.couranr_drivers USING btree (user_id)
+------------------------------------------------------------------------------------------------
+couranr_handoff_codes_pkey on public.couranr_handoff_codes  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_handoff_codes_pkey ON public.couranr_handoff_codes USING btree (id)
+------------------------------------------------------------------------------------------------
+couranr_hc_delivery_idx on public.couranr_handoff_codes  unique=no primary=no partial=no
+  CREATE INDEX couranr_hc_delivery_idx ON public.couranr_handoff_codes USING btree (delivery_id)
+------------------------------------------------------------------------------------------------
+couranr_hc_generation_uniq on public.couranr_handoff_codes  unique=YES primary=no partial=no
+  CREATE UNIQUE INDEX couranr_hc_generation_uniq ON public.couranr_handoff_codes USING btree (delivery_id, code_kind, generation)
+------------------------------------------------------------------------------------------------
+couranr_hc_one_active_per_kind on public.couranr_handoff_codes  unique=YES primary=no partial=YES
+  CREATE UNIQUE INDEX couranr_hc_one_active_per_kind ON public.couranr_handoff_codes USING btree (delivery_id, code_kind) WHERE (code_state = 'active'::text)
+------------------------------------------------------------------------------------------------
+couranr_handoff_records_pkey on public.couranr_handoff_records  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_handoff_records_pkey ON public.couranr_handoff_records USING btree (id)
+------------------------------------------------------------------------------------------------
+couranr_hr_one_per_stage on public.couranr_handoff_records  unique=YES primary=no partial=no
+  CREATE UNIQUE INDEX couranr_hr_one_per_stage ON public.couranr_handoff_records USING btree (delivery_id, handoff_stage)
+------------------------------------------------------------------------------------------------
+couranr_hat_delivery_idx on public.couranr_help_access_tokens  unique=no primary=no partial=YES
+  CREATE INDEX couranr_hat_delivery_idx ON public.couranr_help_access_tokens USING btree (delivery_id) WHERE (revoked_at IS NULL)
+------------------------------------------------------------------------------------------------
+couranr_hat_hash_uniq on public.couranr_help_access_tokens  unique=YES primary=no partial=no
+  CREATE UNIQUE INDEX couranr_hat_hash_uniq ON public.couranr_help_access_tokens USING btree (token_hash)
+------------------------------------------------------------------------------------------------
+couranr_help_access_tokens_pkey on public.couranr_help_access_tokens  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_help_access_tokens_pkey ON public.couranr_help_access_tokens USING btree (id)
+------------------------------------------------------------------------------------------------
+couranr_merchant_preset_versions_pkey on public.couranr_merchant_preset_versions  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_merchant_preset_versions_pkey ON public.couranr_merchant_preset_versions USING btree (id)
+------------------------------------------------------------------------------------------------
+couranr_mpv_preset_idx on public.couranr_merchant_preset_versions  unique=no primary=no partial=no
+  CREATE INDEX couranr_mpv_preset_idx ON public.couranr_merchant_preset_versions USING btree (merchant_preset_id, version DESC)
+------------------------------------------------------------------------------------------------
+couranr_mpv_uniq on public.couranr_merchant_preset_versions  unique=YES primary=no partial=no
+  CREATE UNIQUE INDEX couranr_mpv_uniq ON public.couranr_merchant_preset_versions USING btree (merchant_preset_id, version)
+------------------------------------------------------------------------------------------------
+couranr_merchant_presets_pkey on public.couranr_merchant_presets  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_merchant_presets_pkey ON public.couranr_merchant_presets USING btree (id)
+------------------------------------------------------------------------------------------------
+couranr_mp_business_idx on public.couranr_merchant_presets  unique=no primary=no partial=no
+  CREATE INDEX couranr_mp_business_idx ON public.couranr_merchant_presets USING btree (business_account_id, updated_at DESC)
+------------------------------------------------------------------------------------------------
+couranr_mp_name_uniq on public.couranr_merchant_presets  unique=YES primary=no partial=YES
+  CREATE UNIQUE INDEX couranr_mp_name_uniq ON public.couranr_merchant_presets USING btree (business_account_id, lower(btrim(name))) WHERE (archived_at IS NULL)
+------------------------------------------------------------------------------------------------
+couranr_merchant_workspaces_pkey on public.couranr_merchant_workspaces  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_merchant_workspaces_pkey ON public.couranr_merchant_workspaces USING btree (id)
+------------------------------------------------------------------------------------------------
+couranr_mw_account_uniq on public.couranr_merchant_workspaces  unique=YES primary=no partial=no
+  CREATE UNIQUE INDEX couranr_mw_account_uniq ON public.couranr_merchant_workspaces USING btree (business_account_id)
+------------------------------------------------------------------------------------------------
+couranr_mw_created_by_idx on public.couranr_merchant_workspaces  unique=no primary=no partial=no
+  CREATE INDEX couranr_mw_created_by_idx ON public.couranr_merchant_workspaces USING btree (created_by)
+------------------------------------------------------------------------------------------------
+couranr_mw_idempotency_uniq on public.couranr_merchant_workspaces  unique=YES primary=no partial=no
+  CREATE UNIQUE INDEX couranr_mw_idempotency_uniq ON public.couranr_merchant_workspaces USING btree (created_by, idempotency_key)
+------------------------------------------------------------------------------------------------
+couranr_pat_hash_uniq on public.couranr_payment_access_tokens  unique=YES primary=no partial=no
+  CREATE UNIQUE INDEX couranr_pat_hash_uniq ON public.couranr_payment_access_tokens USING btree (token_hash)
+------------------------------------------------------------------------------------------------
+couranr_pat_request_idx on public.couranr_payment_access_tokens  unique=no primary=no partial=no
+  CREATE INDEX couranr_pat_request_idx ON public.couranr_payment_access_tokens USING btree (request_id, created_at DESC)
+------------------------------------------------------------------------------------------------
+couranr_payment_access_tokens_pkey on public.couranr_payment_access_tokens  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_payment_access_tokens_pkey ON public.couranr_payment_access_tokens USING btree (id)
+------------------------------------------------------------------------------------------------
+couranr_payment_events_pkey on public.couranr_payment_events  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_payment_events_pkey ON public.couranr_payment_events USING btree (id)
+------------------------------------------------------------------------------------------------
+couranr_pe_obligation_created_idx on public.couranr_payment_events  unique=no primary=no partial=no
+  CREATE INDEX couranr_pe_obligation_created_idx ON public.couranr_payment_events USING btree (obligation_id, created_at DESC)
+------------------------------------------------------------------------------------------------
+couranr_pe_provider_event_uniq on public.couranr_payment_events  unique=YES primary=no partial=no
+  CREATE UNIQUE INDEX couranr_pe_provider_event_uniq ON public.couranr_payment_events USING btree (provider, provider_event_id)
+------------------------------------------------------------------------------------------------
+couranr_payment_obligations_pkey on public.couranr_payment_obligations  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_payment_obligations_pkey ON public.couranr_payment_obligations USING btree (id)
+------------------------------------------------------------------------------------------------
+couranr_po_business_created_idx on public.couranr_payment_obligations  unique=no primary=no partial=no
+  CREATE INDEX couranr_po_business_created_idx ON public.couranr_payment_obligations USING btree (business_account_id, created_at DESC)
+------------------------------------------------------------------------------------------------
+couranr_po_idempotency_uniq on public.couranr_payment_obligations  unique=YES primary=no partial=no
+  CREATE UNIQUE INDEX couranr_po_idempotency_uniq ON public.couranr_payment_obligations USING btree (request_id, idempotency_key)
+------------------------------------------------------------------------------------------------
+couranr_po_intent_uniq on public.couranr_payment_obligations  unique=YES primary=no partial=no
+  CREATE UNIQUE INDEX couranr_po_intent_uniq ON public.couranr_payment_obligations USING btree (provider_payment_intent_id)
+------------------------------------------------------------------------------------------------
+couranr_po_one_live_per_request on public.couranr_payment_obligations  unique=YES primary=no partial=YES
+  CREATE UNIQUE INDEX couranr_po_one_live_per_request ON public.couranr_payment_obligations USING btree (request_id) WHERE (payment_state <> 'cancelled'::text)
+------------------------------------------------------------------------------------------------
+couranr_po_state_idx on public.couranr_payment_obligations  unique=no primary=no partial=no
+  CREATE INDEX couranr_po_state_idx ON public.couranr_payment_obligations USING btree (payment_state, updated_at DESC)
+------------------------------------------------------------------------------------------------
+couranr_pd_delivery_idx on public.couranr_pickup_discrepancies  unique=no primary=no partial=no
+  CREATE INDEX couranr_pd_delivery_idx ON public.couranr_pickup_discrepancies USING btree (delivery_id)
+------------------------------------------------------------------------------------------------
+couranr_pd_one_open_per_delivery on public.couranr_pickup_discrepancies  unique=YES primary=no partial=YES
+  CREATE UNIQUE INDEX couranr_pd_one_open_per_delivery ON public.couranr_pickup_discrepancies USING btree (delivery_id) WHERE (discrepancy_state = 'open'::text)
+------------------------------------------------------------------------------------------------
+couranr_pickup_discrepancies_pkey on public.couranr_pickup_discrepancies  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_pickup_discrepancies_pkey ON public.couranr_pickup_discrepancies USING btree (id)
+------------------------------------------------------------------------------------------------
+couranr_proof_uploads_pkey on public.couranr_proof_uploads  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_proof_uploads_pkey ON public.couranr_proof_uploads USING btree (id)
+------------------------------------------------------------------------------------------------
+couranr_pu_delivery_idx on public.couranr_proof_uploads  unique=no primary=no partial=no
+  CREATE INDEX couranr_pu_delivery_idx ON public.couranr_proof_uploads USING btree (delivery_id)
+------------------------------------------------------------------------------------------------
+couranr_pu_nonce_uniq on public.couranr_proof_uploads  unique=YES primary=no partial=no
+  CREATE UNIQUE INDEX couranr_pu_nonce_uniq ON public.couranr_proof_uploads USING btree (upload_nonce)
+------------------------------------------------------------------------------------------------
+couranr_pu_object_path_uniq on public.couranr_proof_uploads  unique=YES primary=no partial=no
+  CREATE UNIQUE INDEX couranr_pu_object_path_uniq ON public.couranr_proof_uploads USING btree (storage_bucket, object_path)
+------------------------------------------------------------------------------------------------
+couranr_service_plans_pkey on public.couranr_service_plans  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_service_plans_pkey ON public.couranr_service_plans USING btree (id)
+------------------------------------------------------------------------------------------------
+couranr_sp_business_idx on public.couranr_service_plans  unique=no primary=no partial=no
+  CREATE INDEX couranr_sp_business_idx ON public.couranr_service_plans USING btree (business_account_id, created_at DESC)
+------------------------------------------------------------------------------------------------
+couranr_sp_one_live_per_request on public.couranr_service_plans  unique=YES primary=no partial=YES
+  CREATE UNIQUE INDEX couranr_sp_one_live_per_request ON public.couranr_service_plans USING btree (request_id) WHERE (plan_state <> 'cancelled'::text)
+------------------------------------------------------------------------------------------------
+couranr_te_business_idx on public.couranr_team_events  unique=no primary=no partial=no
+  CREATE INDEX couranr_te_business_idx ON public.couranr_team_events USING btree (business_account_id, created_at DESC)
+------------------------------------------------------------------------------------------------
+couranr_team_events_pkey on public.couranr_team_events  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_team_events_pkey ON public.couranr_team_events USING btree (id)
+------------------------------------------------------------------------------------------------
+couranr_website_tool_configs_pkey on public.couranr_website_tool_configs  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_website_tool_configs_pkey ON public.couranr_website_tool_configs USING btree (business_account_id)
+------------------------------------------------------------------------------------------------
+couranr_workspace_activations_pkey on public.couranr_workspace_activations  unique=YES primary=YES partial=no
+  CREATE UNIQUE INDEX couranr_workspace_activations_pkey ON public.couranr_workspace_activations USING btree (business_account_id)

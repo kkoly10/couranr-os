@@ -1,0 +1,48 @@
+SCHEMA-ONLY DUMP UNAVAILABLE
+
+No true `pg_dump --schema-only` was produced, and nothing in this pack is
+presented as one.
+
+WHY IT COULD NOT BE PRODUCED
+----------------------------
+`pg_dump` needs a direct PostgreSQL connection. The only access this capture
+session had to project zrdxlrlqxdslqpnoqmus was the Supabase MCP `execute_sql`
+tool, which runs individual read-only statements and returns result rows. It
+provides no connection string, no database password, and no server-side dump
+facility. The session had no `.env` file, no NEXT_PUBLIC_SUPABASE_URL and no
+service-role key, so no direct libpq connection could be opened either.
+
+WHAT WAS NOT DONE
+-----------------
+A catalog-derived reconstruction was NOT written to a file named as if it were
+a dump. Files 04-12 are exports of specific catalog views, and each says so in
+its own header. Concatenating them would produce something that LOOKS like a
+dump while differing from one in ordering, dependency resolution, ownership,
+ACL statements, comments, sequence ownership and extension handling. Presenting
+that as `pg_dump` output would misrepresent how it was obtained.
+
+WHAT THIS PACK PROVIDES INSTEAD
+-------------------------------
+  04_PUBLIC_TABLES.sql.txt   columns, types, nullability, defaults, identity,
+                             and every constraint via pg_get_constraintdef
+                             (PK, UNIQUE, CHECK, FK with ON UPDATE/ON DELETE)
+  05_INDEXES.sql.txt         pg_get_indexdef for all 95 indexes
+  06_FUNCTIONS.sql.txt       pg_get_functiondef for all 116 functions, complete
+  07_TRIGGERS.sql.txt        pg_get_triggerdef for all 4 triggers
+  08_RLS_POLICIES.sql.txt    relrowsecurity, relforcerowsecurity, policy count
+  09_GRANTS.sql.txt          effective privileges + raw ACLs + default ACLs
+  10_VIEWS.sql.txt           pg_get_viewdef (none found)
+  11_TYPES.sql.txt           enums/domains/ranges (none found)
+  12_EXTENSIONS.txt          installed extensions and versions
+
+TO PRODUCE A REAL DUMP
+----------------------
+Someone with the database connection string can run, from a trusted machine:
+
+  pg_dump --schema-only --no-owner --no-privileges \
+          --schema=public --schema=private \
+          "$COURANR_PRODUCTION_DATABASE_URL" > 16_PRODUCTION_SCHEMA_DUMP.sql
+
+`--schema-only` guarantees no table data. Drop `--no-privileges` if the grant
+statements are wanted in the dump as well; this pack already captures them
+separately in 09_GRANTS.sql.txt.

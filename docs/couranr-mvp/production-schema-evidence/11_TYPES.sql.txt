@@ -1,0 +1,5 @@
+PRODUCTION CUSTOM TYPES (enum/domain/range) in public/private (read-only)
+Couranr tables are observed to model closed vocabularies as text columns with CHECK
+constraints rather than enum types; those CHECK definitions are in 04_PUBLIC_TABLES.sql.txt.
+================================================================================================
+(none found)

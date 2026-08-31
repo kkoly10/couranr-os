@@ -1,0 +1,22 @@
+PRODUCTION TRIGGERS on couranr_* tables (read-only)
+triggers: 4
+================================================================================================
+couranr_cvm_enforce_visibility_trg on public.couranr_conversation_messages
+  timing/events: BEFORE INSERT OR UPDATE FOR EACH ROW
+  function: public.couranr_cvm_enforce_visibility
+  CREATE TRIGGER couranr_cvm_enforce_visibility_trg BEFORE INSERT OR UPDATE OF visibility, conversation_id ON public.couranr_conversation_messages FOR EACH ROW EXECUTE FUNCTION couranr_cvm_enforce_visibility()
+------------------------------------------------------------------------------------------------
+couranr_cvp_enforce_kind_trg on public.couranr_conversation_participants
+  timing/events: BEFORE INSERT OR UPDATE FOR EACH ROW
+  function: public.couranr_cvp_enforce_kind
+  CREATE TRIGGER couranr_cvp_enforce_kind_trg BEFORE INSERT OR UPDATE OF participant_kind, conversation_id ON public.couranr_conversation_participants FOR EACH ROW EXECUTE FUNCTION couranr_cvp_enforce_kind()
+------------------------------------------------------------------------------------------------
+couranr_cvp_tenure_monotone_trg on public.couranr_conversation_participants
+  timing/events: BEFORE UPDATE FOR EACH ROW
+  function: public.couranr_cvp_tenure_monotone
+  CREATE TRIGGER couranr_cvp_tenure_monotone_trg BEFORE UPDATE OF left_at, joined_at ON public.couranr_conversation_participants FOR EACH ROW EXECUTE FUNCTION couranr_cvp_tenure_monotone()
+------------------------------------------------------------------------------------------------
+couranr_cv_kind_immutable_trg on public.couranr_conversations
+  timing/events: BEFORE UPDATE FOR EACH ROW
+  function: public.couranr_cv_kind_immutable
+  CREATE TRIGGER couranr_cv_kind_immutable_trg BEFORE UPDATE OF kind ON public.couranr_conversations FOR EACH ROW EXECUTE FUNCTION couranr_cv_kind_immutable()

@@ -1,0 +1,898 @@
+PRODUCTION TABLE STRUCTURE (couranr_* plus tables referenced by couranr_ foreign keys)
+project_ref: zrdxlrlqxdslqpnoqmus   captured read-only   NO ROW DATA
+Foreign-key ON UPDATE / ON DELETE actions appear inside pg_get_constraintdef output.
+tables: 34
+====================================================================================================
+TABLE auth.users   [referenced by a couranr_ foreign key]
+  instance_id                            uuid                             NULL    
+  id                                     uuid                             NOT NULL
+  aud                                    character varying(255)           NULL    
+  role                                   character varying(255)           NULL    
+  email                                  character varying(255)           NULL    
+  encrypted_password                     character varying(255)           NULL    
+  email_confirmed_at                     timestamp with time zone         NULL    
+  invited_at                             timestamp with time zone         NULL    
+  confirmation_token                     character varying(255)           NULL    
+  confirmation_sent_at                   timestamp with time zone         NULL    
+  recovery_token                         character varying(255)           NULL    
+  recovery_sent_at                       timestamp with time zone         NULL    
+  email_change_token_new                 character varying(255)           NULL    
+  email_change                           character varying(255)           NULL    
+  email_change_sent_at                   timestamp with time zone         NULL    
+  last_sign_in_at                        timestamp with time zone         NULL    
+  raw_app_meta_data                      jsonb                            NULL    
+  raw_user_meta_data                     jsonb                            NULL    
+  is_super_admin                         boolean                          NULL    
+  created_at                             timestamp with time zone         NULL    
+  updated_at                             timestamp with time zone         NULL    
+  phone                                  text                             NULL      DEFAULT NULL::character varying
+  phone_confirmed_at                     timestamp with time zone         NULL    
+  phone_change                           text                             NULL      DEFAULT ''::character varying
+  phone_change_token                     character varying(255)           NULL      DEFAULT ''::character varying
+  phone_change_sent_at                   timestamp with time zone         NULL    
+  confirmed_at                           timestamp with time zone         NULL      DEFAULT LEAST(email_confirmed_at, phone_confirmed_at)  GENERATED(s)
+  email_change_token_current             character varying(255)           NULL      DEFAULT ''::character varying
+  email_change_confirm_status            smallint                         NULL      DEFAULT 0
+  banned_until                           timestamp with time zone         NULL    
+  reauthentication_token                 character varying(255)           NULL      DEFAULT ''::character varying
+  reauthentication_sent_at               timestamp with time zone         NULL    
+  is_sso_user                            boolean                          NOT NULL  DEFAULT false
+  deleted_at                             timestamp with time zone         NULL    
+  is_anonymous                           boolean                          NOT NULL  DEFAULT false
+  -- constraints --
+  CHECK        users_email_change_confirm_status_check        CHECK (((email_change_confirm_status >= 0) AND (email_change_confirm_status <= 2)))
+  PRIMARY KEY  users_pkey                                     PRIMARY KEY (id)
+  UNIQUE       users_phone_key                                UNIQUE (phone)
+----------------------------------------------------------------------------------------------------
+TABLE public.business_accounts   [referenced by a couranr_ foreign key]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  name                                   text                             NOT NULL
+  slug                                   text                             NULL    
+  legal_name                             text                             NULL    
+  billing_email                          text                             NULL    
+  phone                                  text                             NULL    
+  website                                text                             NULL    
+  status                                 text                             NOT NULL  DEFAULT 'active'::text
+  timezone                               text                             NOT NULL  DEFAULT 'America/New_York'::text
+  notes                                  text                             NULL    
+  created_by                             uuid                             NULL    
+  created_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  updated_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  -- constraints --
+  CHECK        business_accounts_status_check                 CHECK ((status = ANY (ARRAY['active'::text, 'paused'::text, 'cancelled'::text, 'trial'::text])))
+  FOREIGN KEY  business_accounts_created_by_fkey              FOREIGN KEY (created_by) REFERENCES auth.users(id) ON DELETE SET NULL
+  PRIMARY KEY  business_accounts_pkey                         PRIMARY KEY (id)
+  UNIQUE       business_accounts_slug_key                     UNIQUE (slug)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_activation_acknowledgements   [couranr]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  business_account_id                    uuid                             NOT NULL
+  ack_kind                               text                             NOT NULL
+  ack_version                            text                             NOT NULL
+  accepted_by                            uuid                             NULL    
+  accepted_at                            timestamp with time zone         NOT NULL  DEFAULT now()
+  -- constraints --
+  CHECK        couranr_aa_kind_chk                            CHECK ((ack_kind = ANY (ARRAY['delivery_terms'::text, 'prohibited_items'::text, 'merchant_responsibility'::text, 'return_acceptance'::text])))
+  FOREIGN KEY  couranr_activation_acknowledgements_business_account_id_fkey FOREIGN KEY (business_account_id) REFERENCES business_accounts(id) ON DELETE CASCADE
+  PRIMARY KEY  couranr_activation_acknowledgements_pkey       PRIMARY KEY (id)
+  UNIQUE       couranr_aa_once_key                            UNIQUE (business_account_id, ack_kind, ack_version)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_activation_events   [couranr]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  business_account_id                    uuid                             NOT NULL
+  actor_user_id                          uuid                             NULL    
+  actor_type                             text                             NOT NULL
+  command                                text                             NOT NULL
+  from_state                             text                             NULL    
+  to_state                               text                             NULL    
+  metadata                               jsonb                            NOT NULL  DEFAULT '{}'::jsonb
+  created_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  -- constraints --
+  CHECK        couranr_actev_actor_chk                        CHECK ((actor_type = ANY (ARRAY['merchant'::text, 'operations'::text])))
+  CHECK        couranr_actev_command_chk                      CHECK ((command = ANY (ARRAY['accept_acknowledgement'::text, 'verify_contact'::text, 'record_test_delivery'::text, 'request_activation'::text, 'grant_activation'::text, 'block_activation'::text])))
+  FOREIGN KEY  couranr_activation_events_business_account_id_fkey FOREIGN KEY (business_account_id) REFERENCES business_accounts(id) ON DELETE CASCADE
+  PRIMARY KEY  couranr_activation_events_pkey                 PRIMARY KEY (id)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_assignment_events   [couranr]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  assignment_id                          uuid                             NOT NULL
+  delivery_id                            uuid                             NOT NULL
+  actor_user_id                          uuid                             NULL    
+  actor_type                             text                             NOT NULL
+  command                                text                             NOT NULL
+  from_state                             text                             NULL    
+  to_state                               text                             NULL    
+  metadata                               jsonb                            NOT NULL  DEFAULT '{}'::jsonb
+  created_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  -- constraints --
+  CHECK        couranr_ae_actor_type_chk                      CHECK ((actor_type = ANY (ARRAY['operations'::text, 'driver'::text, 'merchant'::text, 'system'::text])))
+  CHECK        couranr_ae_command_chk                         CHECK ((command = ANY (ARRAY['assign_delivery'::text, 'replace_delivery_assignment'::text, 'unassign_delivery_before_pickup'::text, 'complete_assignment'::text])))
+  CHECK        couranr_ae_metadata_is_object_chk              CHECK ((jsonb_typeof(metadata) = 'object'::text))
+  FOREIGN KEY  couranr_ae_assignment_fk                       FOREIGN KEY (assignment_id) REFERENCES couranr_delivery_assignments(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_ae_delivery_fk                         FOREIGN KEY (delivery_id) REFERENCES couranr_deliveries(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  PRIMARY KEY  couranr_assignment_events_pkey                 PRIMARY KEY (id)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_category_presets   [couranr]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  business_category                      text                             NOT NULL
+  name                                   text                             NOT NULL
+  body                                   jsonb                            NOT NULL  DEFAULT '{}'::jsonb
+  version                                integer                          NOT NULL  DEFAULT 1
+  archived_at                            timestamp with time zone         NULL    
+  created_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  updated_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  -- constraints --
+  CHECK        couranr_cp_body_chk                            CHECK (couranr_preset_body_is_clean(body))
+  CHECK        couranr_cp_category_chk                        CHECK ((business_category = ANY (ARRAY['dry_cleaning_laundry_tailoring'::text, 'printing_signage_promotional'::text, 'boutique_clothing_shoes_accessories'::text, 'florists_gifts_specialty_retail'::text, 'repair_and_electronics'::text, 'auto_parts_and_accessories'::text, 'furniture_and_home_goods'::text, 'event_rentals_and_supplies'::text, 'bakeries_prepared_food_catering'::text, 'books_cards_collectibles_hobby'::text, 'general_local_business'::text])))
+  CHECK        couranr_cp_name_chk                            CHECK ((btrim(name) <> ''::text))
+  CHECK        couranr_cp_version_chk                         CHECK ((version >= 1))
+  PRIMARY KEY  couranr_category_presets_pkey                  PRIMARY KEY (id)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_conversation_events   [couranr]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  conversation_id                        uuid                             NOT NULL
+  message_id                             uuid                             NULL    
+  event_type                             text                             NOT NULL
+  actor_kind                             text                             NOT NULL
+  actor_user_id                          uuid                             NULL    
+  metadata                               jsonb                            NOT NULL  DEFAULT '{}'::jsonb
+  created_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  -- constraints --
+  CHECK        couranr_cve_actor_kind_chk                     CHECK ((actor_kind = ANY (ARRAY['merchant'::text, 'driver'::text, 'operations'::text, 'customer'::text, 'system'::text])))
+  CHECK        couranr_cve_audit_shape_chk                    CHECK (couranr_jsonb_audit_shape_ok(metadata, ARRAY['topic'::text, 'visibility'::text, 'authorship'::text, 'via'::text, 'queued'::text, 'reason'::text, 'message_id'::text, 'participant_id'::text, 'delivery_id'::text, 'request_id'::text, 'from'::text, 'to'::text, 'previous_state'::text, 'next_state'::text, 'due_state'::text], 200))
+  CHECK        couranr_cve_no_body_chk                        CHECK (couranr_jsonb_has_no_key(metadata, ARRAY['body'::text, 'message'::text, 'text'::text, 'content'::text, 'note'::text]))
+  FOREIGN KEY  couranr_conversation_events_actor_user_id_fkey FOREIGN KEY (actor_user_id) REFERENCES auth.users(id)
+  FOREIGN KEY  couranr_conversation_events_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES couranr_conversations(id) ON DELETE CASCADE
+  FOREIGN KEY  couranr_conversation_events_message_id_fkey    FOREIGN KEY (message_id) REFERENCES couranr_conversation_messages(id) ON DELETE CASCADE
+  PRIMARY KEY  couranr_conversation_events_pkey               PRIMARY KEY (id)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_conversation_messages   [couranr]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  conversation_id                        uuid                             NOT NULL
+  author_participant_id                  uuid                             NULL    
+  visibility                             text                             NOT NULL  DEFAULT 'participants'::text
+  authorship                             text                             NOT NULL  DEFAULT 'human'::text
+  topic                                  text                             NULL    
+  body                                   text                             NOT NULL
+  idempotency_key                        text                             NOT NULL
+  created_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  -- constraints --
+  CHECK        couranr_cvm_authorship_chk                     CHECK ((authorship = ANY (ARRAY['human'::text, 'automated'::text, 'ai_draft'::text])))
+  CHECK        couranr_cvm_body_chk                           CHECK (((length(body) >= 1) AND (length(body) <= 4000)))
+  CHECK        couranr_cvm_topic_chk                          CHECK (((topic IS NULL) OR (topic = ANY (ARRAY['availability'::text, 'access'::text, 'address_concern'::text, 'handoff_concern'::text, 'unrecognized_delivery'::text, 'delivery_problem'::text, 'other'::text]))))
+  CHECK        couranr_cvm_visibility_chk                     CHECK ((visibility = ANY (ARRAY['participants'::text, 'couranr_internal'::text, 'driver_and_couranr'::text, 'merchant_and_couranr'::text])))
+  FOREIGN KEY  couranr_conversation_messages_author_participant_id_fkey FOREIGN KEY (author_participant_id) REFERENCES couranr_conversation_participants(id)
+  FOREIGN KEY  couranr_conversation_messages_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES couranr_conversations(id) ON DELETE CASCADE
+  FOREIGN KEY  couranr_cvm_author_in_conversation_fkey        FOREIGN KEY (author_participant_id, conversation_id) REFERENCES couranr_conversation_participants(id, conversation_id)
+  PRIMARY KEY  couranr_conversation_messages_pkey             PRIMARY KEY (id)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_conversation_participants   [couranr]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  conversation_id                        uuid                             NOT NULL
+  participant_kind                       text                             NOT NULL
+  user_id                                uuid                             NULL    
+  member_role                            text                             NULL    
+  access_token_id                        uuid                             NULL    
+  joined_at                              timestamp with time zone         NOT NULL  DEFAULT now()
+  left_at                                timestamp with time zone         NULL    
+  last_read_at                           timestamp with time zone         NULL    
+  -- constraints --
+  CHECK        couranr_cvp_identity_chk                       CHECK ((((participant_kind = ANY (ARRAY['merchant'::text, 'driver'::text, 'operations'::text])) AND (user_id IS NOT NULL) AND (access_token_id IS NULL)) OR ((participant_kind = 'customer'::text) AND (user_id IS NULL))))
+  CHECK        couranr_cvp_kind_chk                           CHECK ((participant_kind = ANY (ARRAY['merchant'::text, 'driver'::text, 'operations'::text, 'customer'::text])))
+  CHECK        couranr_cvp_role_chk                           CHECK (((member_role IS NULL) OR (member_role = ANY (ARRAY['owner'::text, 'manager'::text, 'dispatcher'::text, 'viewer'::text, 'billing'::text]))))
+  CHECK        couranr_cvp_tenure_chk                         CHECK (((left_at IS NULL) OR (left_at >= joined_at)))
+  FOREIGN KEY  couranr_conversation_participants_conversation_id_fkey FOREIGN KEY (conversation_id) REFERENCES couranr_conversations(id) ON DELETE CASCADE
+  FOREIGN KEY  couranr_conversation_participants_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
+  FOREIGN KEY  couranr_cvp_help_token_fkey                    FOREIGN KEY (access_token_id) REFERENCES couranr_help_access_tokens(id)
+  PRIMARY KEY  couranr_conversation_participants_pkey         PRIMARY KEY (id)
+  UNIQUE       couranr_cvp_id_conv_uniq                       UNIQUE (id, conversation_id)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_conversations   [couranr]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  kind                                   text                             NOT NULL
+  business_account_id                    uuid                             NOT NULL
+  request_id                             uuid                             NULL    
+  delivery_id                            uuid                             NULL    
+  status                                 text                             NOT NULL  DEFAULT 'open'::text
+  waiting_on                             text                             NULL    
+  urgency                                text                             NOT NULL  DEFAULT 'routine'::text
+  received_at                            timestamp with time zone         NULL    
+  response_due_at                        timestamp with time zone         NULL    
+  first_couranr_response_at              timestamp with time zone         NULL    
+  next_operating_period_at               timestamp with time zone         NULL    
+  due_state                              text                             NOT NULL  DEFAULT 'on_time'::text
+  created_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  updated_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  version                                integer                          NOT NULL  DEFAULT 1
+  awaiting_reply_kind                    text                             NULL    
+  -- constraints --
+  CHECK        couranr_cv_awaiting_reply_kind_chk             CHECK (((awaiting_reply_kind IS NULL) OR (awaiting_reply_kind = ANY (ARRAY['merchant'::text, 'driver'::text, 'customer'::text]))))
+  CHECK        couranr_cv_due_state_chk                       CHECK ((due_state = ANY (ARRAY['on_time'::text, 'due_soon'::text, 'overdue'::text])))
+  CHECK        couranr_cv_kind_chk                            CHECK ((kind = ANY (ARRAY['merchant_support'::text, 'delivery_chat'::text, 'delivery_help'::text])))
+  CHECK        couranr_cv_scope_chk                           CHECK (((kind = 'merchant_support'::text) OR ((kind = ANY (ARRAY['delivery_chat'::text, 'delivery_help'::text])) AND (delivery_id IS NOT NULL))))
+  CHECK        couranr_cv_status_chk                          CHECK ((status = ANY (ARRAY['open'::text, 'waiting'::text, 'resolved'::text, 'closed'::text, 'escalated'::text])))
+  CHECK        couranr_cv_urgency_chk                         CHECK ((urgency = ANY (ARRAY['routine'::text, 'urgent'::text, 'safety'::text])))
+  CHECK        couranr_cv_version_chk                         CHECK ((version >= 1))
+  CHECK        couranr_cv_waiting_on_chk                      CHECK (((waiting_on IS NULL) OR (waiting_on = ANY (ARRAY['couranr'::text, 'merchant'::text, 'driver'::text, 'customer'::text]))))
+  FOREIGN KEY  couranr_conversations_business_account_id_fkey FOREIGN KEY (business_account_id) REFERENCES business_accounts(id)
+  FOREIGN KEY  couranr_conversations_delivery_id_fkey         FOREIGN KEY (delivery_id) REFERENCES couranr_deliveries(id)
+  FOREIGN KEY  couranr_conversations_request_id_fkey          FOREIGN KEY (request_id) REFERENCES couranr_delivery_requests(id)
+  PRIMARY KEY  couranr_conversations_pkey                     PRIMARY KEY (id)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_deliveries   [couranr]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  request_id                             uuid                             NOT NULL
+  business_account_id                    uuid                             NOT NULL
+  payment_obligation_id                  uuid                             NOT NULL
+  service_plan_id                        uuid                             NOT NULL
+  request_version                        integer                          NOT NULL
+  pricing_policy_version                 text                             NOT NULL
+  captured_amount_cents                  integer                          NOT NULL
+  currency                               text                             NOT NULL
+  pickup_address                         jsonb                            NOT NULL
+  dropoff_address                        jsonb                            NOT NULL
+  recipient                              jsonb                            NOT NULL
+  shipment                               jsonb                            NOT NULL
+  service_level                          text                             NOT NULL
+  signature_required                     boolean                          NOT NULL
+  proof_method                           text                             NOT NULL
+  scheduled_pickup_start                 timestamp with time zone         NOT NULL
+  scheduled_pickup_end                   timestamp with time zone         NOT NULL
+  timezone                               text                             NOT NULL
+  vehicle_id                             uuid                             NULL    
+  vehicle_requirement                    jsonb                            NOT NULL
+  fulfillment_state                      text                             NOT NULL  DEFAULT 'scheduled'::text
+  version                                integer                          NOT NULL  DEFAULT 1
+  created_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  updated_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  -- constraints --
+  CHECK        couranr_dlv_amount_chk                         CHECK ((captured_amount_cents > 0))
+  CHECK        couranr_dlv_currency_chk                       CHECK ((currency = 'usd'::text))
+  CHECK        couranr_dlv_dropoff_obj_chk                    CHECK ((jsonb_typeof(dropoff_address) = 'object'::text))
+  CHECK        couranr_dlv_fulfillment_chk                    CHECK ((fulfillment_state = ANY (ARRAY['scheduled'::text, 'assigned'::text, 'en_route_to_pickup'::text, 'at_pickup'::text, 'picked_up'::text, 'in_transit'::text, 'at_dropoff'::text, 'delivered'::text, 'could_not_deliver'::text, 'cancelled'::text])))
+  CHECK        couranr_dlv_pickup_obj_chk                     CHECK ((jsonb_typeof(pickup_address) = 'object'::text))
+  CHECK        couranr_dlv_proof_chk                          CHECK ((proof_method = ANY (ARRAY['photo_or_pin'::text, 'signature'::text, 'leave_at_door'::text])))
+  CHECK        couranr_dlv_recipient_obj_chk                  CHECK ((jsonb_typeof(recipient) = 'object'::text))
+  CHECK        couranr_dlv_requirement_obj_chk                CHECK ((jsonb_typeof(vehicle_requirement) = 'object'::text))
+  CHECK        couranr_dlv_service_level_chk                  CHECK ((service_level = ANY (ARRAY['standard'::text, 'priority'::text, 'rush'::text])))
+  CHECK        couranr_dlv_shipment_obj_chk                   CHECK ((jsonb_typeof(shipment) = 'object'::text))
+  CHECK        couranr_dlv_version_chk                        CHECK ((version >= 1))
+  CHECK        couranr_dlv_window_chk                         CHECK ((scheduled_pickup_end > scheduled_pickup_start))
+  FOREIGN KEY  couranr_dlv_business_fk                        FOREIGN KEY (business_account_id) REFERENCES business_accounts(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_dlv_dispatch_vehicle_fk                FOREIGN KEY (vehicle_id) REFERENCES couranr_dispatch_vehicles(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_dlv_obligation_fk                      FOREIGN KEY (payment_obligation_id) REFERENCES couranr_payment_obligations(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_dlv_plan_fk                            FOREIGN KEY (service_plan_id) REFERENCES couranr_service_plans(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_dlv_request_fk                         FOREIGN KEY (request_id) REFERENCES couranr_delivery_requests(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  PRIMARY KEY  couranr_deliveries_pkey                        PRIMARY KEY (id)
+  UNIQUE       couranr_dlv_request_uniq                       UNIQUE (request_id)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_delivery_access_tokens   [couranr]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  request_id                             uuid                             NOT NULL
+  business_account_id                    uuid                             NOT NULL
+  token_hash                             text                             NOT NULL
+  audience                               text                             NOT NULL  DEFAULT 'recipient'::text
+  created_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  expires_at                             timestamp with time zone         NOT NULL
+  revoked_at                             timestamp with time zone         NULL    
+  revoked_reason                         text                             NULL    
+  last_used_at                           timestamp with time zone         NULL    
+  -- constraints --
+  CHECK        couranr_dat_audience_chk                       CHECK ((audience = 'recipient'::text))
+  CHECK        couranr_dat_expiry_chk                         CHECK ((expires_at > created_at))
+  CHECK        couranr_dat_hash_shape_chk                     CHECK ((token_hash ~ '^[0-9a-f]{64}$'::text))
+  CHECK        couranr_dat_revoked_reason_chk                 CHECK (((revoked_at IS NULL) = (revoked_reason IS NULL)))
+  FOREIGN KEY  couranr_dat_business_fk                        FOREIGN KEY (business_account_id) REFERENCES business_accounts(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_dat_request_fk                         FOREIGN KEY (request_id) REFERENCES couranr_delivery_requests(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  PRIMARY KEY  couranr_delivery_access_tokens_pkey            PRIMARY KEY (id)
+  UNIQUE       couranr_dat_hash_uniq                          UNIQUE (token_hash)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_delivery_assignments   [couranr]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  delivery_id                            uuid                             NOT NULL
+  driver_id                              uuid                             NOT NULL
+  vehicle_id                             uuid                             NOT NULL
+  assignment_state                       text                             NOT NULL  DEFAULT 'active'::text
+  assigned_by                            uuid                             NOT NULL
+  assigned_at                            timestamp with time zone         NOT NULL  DEFAULT now()
+  ended_at                               timestamp with time zone         NULL    
+  end_reason                             text                             NULL    
+  idempotency_key                        text                             NULL    
+  created_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  updated_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  version                                integer                          NOT NULL  DEFAULT 1
+  -- constraints --
+  CHECK        couranr_asg_ended_stamp_chk                    CHECK (((assignment_state = 'active'::text) OR (ended_at IS NOT NULL)))
+  CHECK        couranr_asg_state_chk                          CHECK ((assignment_state = ANY (ARRAY['active'::text, 'completed'::text, 'replaced'::text, 'cancelled'::text])))
+  CHECK        couranr_asg_version_chk                        CHECK ((version >= 1))
+  FOREIGN KEY  couranr_asg_assigned_by_fk                     FOREIGN KEY (assigned_by) REFERENCES auth.users(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_asg_delivery_fk                        FOREIGN KEY (delivery_id) REFERENCES couranr_deliveries(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_asg_driver_fk                          FOREIGN KEY (driver_id) REFERENCES couranr_drivers(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_asg_vehicle_fk                         FOREIGN KEY (vehicle_id) REFERENCES couranr_dispatch_vehicles(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  PRIMARY KEY  couranr_delivery_assignments_pkey              PRIMARY KEY (id)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_delivery_events   [couranr]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  delivery_id                            uuid                             NOT NULL
+  actor_user_id                          uuid                             NULL    
+  actor_type                             text                             NOT NULL
+  command                                text                             NOT NULL
+  from_state                             text                             NULL    
+  to_state                               text                             NULL    
+  metadata                               jsonb                            NOT NULL  DEFAULT '{}'::jsonb
+  created_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  -- constraints --
+  CHECK        couranr_dlve_actor_present_chk                 CHECK ((((actor_type = 'system'::text) AND (actor_user_id IS NULL)) OR ((actor_type <> 'system'::text) AND (actor_user_id IS NOT NULL))))
+  CHECK        couranr_dlve_actor_type_chk                    CHECK ((actor_type = ANY (ARRAY['merchant'::text, 'customer'::text, 'driver'::text, 'operations'::text, 'system'::text])))
+  CHECK        couranr_dlve_command_chk                       CHECK ((command = ANY (ARRAY['create_delivery_from_capture'::text, 'assign_delivery'::text, 'unassign_delivery_before_pickup'::text, 'start_route_to_pickup'::text, 'arrive_at_pickup'::text, 'report_pickup_discrepancy'::text, 'resolve_pickup_discrepancy_safe_to_continue'::text, 'complete_pickup'::text, 'start_route_to_dropoff'::text, 'arrive_at_dropoff'::text, 'complete_direct_handoff_delivery'::text, 'complete_signature_delivery'::text, 'complete_leave_at_door_delivery'::text])))
+  CHECK        couranr_dlve_metadata_obj_chk                  CHECK ((jsonb_typeof(metadata) = 'object'::text))
+  FOREIGN KEY  couranr_dlve_delivery_fk                       FOREIGN KEY (delivery_id) REFERENCES couranr_deliveries(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  PRIMARY KEY  couranr_delivery_events_pkey                   PRIMARY KEY (id)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_delivery_proofs   [couranr]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  delivery_id                            uuid                             NOT NULL
+  assignment_id                          uuid                             NOT NULL
+  discrepancy_id                         uuid                             NULL    
+  proof_stage                            text                             NOT NULL
+  proof_type                             text                             NOT NULL
+  storage_bucket                         text                             NULL    
+  storage_object_path                    text                             NULL    
+  byte_size                              integer                          NULL    
+  mime_type                              text                             NULL    
+  captured_latitude                      numeric(9,6)                     NULL    
+  captured_longitude                     numeric(9,6)                     NULL    
+  captured_accuracy_m                    numeric(8,2)                     NULL    
+  actor_driver_id                        uuid                             NOT NULL
+  metadata                               jsonb                            NOT NULL  DEFAULT '{}'::jsonb
+  finalized_at                           timestamp with time zone         NOT NULL  DEFAULT now()
+  created_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  -- constraints --
+  CHECK        couranr_dp_accuracy_chk                        CHECK (((captured_accuracy_m IS NULL) OR (captured_accuracy_m >= (0)::numeric)))
+  CHECK        couranr_dp_latitude_chk                        CHECK (((captured_latitude IS NULL) OR ((captured_latitude >= ('-90'::integer)::numeric) AND (captured_latitude <= (90)::numeric))))
+  CHECK        couranr_dp_location_pair_chk                   CHECK (((captured_latitude IS NULL) = (captured_longitude IS NULL)))
+  CHECK        couranr_dp_longitude_chk                       CHECK (((captured_longitude IS NULL) OR ((captured_longitude >= ('-180'::integer)::numeric) AND (captured_longitude <= (180)::numeric))))
+  CHECK        couranr_dp_metadata_obj_chk                    CHECK ((jsonb_typeof(metadata) = 'object'::text))
+  CHECK        couranr_dp_object_complete_chk                 CHECK ((((storage_object_path IS NULL) AND (storage_bucket IS NULL) AND (byte_size IS NULL) AND (mime_type IS NULL)) OR ((storage_object_path IS NOT NULL) AND (storage_bucket IS NOT NULL) AND (byte_size IS NOT NULL) AND (byte_size > 0) AND (mime_type IS NOT NULL))))
+  CHECK        couranr_dp_stage_chk                           CHECK ((proof_stage = ANY (ARRAY['pickup'::text, 'dropoff'::text, 'pickup_discrepancy'::text])))
+  CHECK        couranr_dp_type_chk                            CHECK ((proof_type = ANY (ARRAY['shipment_photo'::text, 'condition_photo'::text, 'securement_photo'::text, 'discrepancy_evidence'::text, 'delivery_photo'::text, 'signature'::text, 'recipient_pin'::text])))
+  FOREIGN KEY  couranr_delivery_proofs_actor_driver_id_fkey   FOREIGN KEY (actor_driver_id) REFERENCES couranr_drivers(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_delivery_proofs_assignment_id_fkey     FOREIGN KEY (assignment_id) REFERENCES couranr_delivery_assignments(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_delivery_proofs_delivery_id_fkey       FOREIGN KEY (delivery_id) REFERENCES couranr_deliveries(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_dp_discrepancy_fk                      FOREIGN KEY (discrepancy_id) REFERENCES couranr_pickup_discrepancies(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  PRIMARY KEY  couranr_delivery_proofs_pkey                   PRIMARY KEY (id)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_delivery_request_events   [couranr]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  request_id                             uuid                             NOT NULL
+  actor_user_id                          uuid                             NULL    
+  actor_type                             text                             NOT NULL
+  command                                text                             NOT NULL
+  from_state                             text                             NULL    
+  to_state                               text                             NULL    
+  metadata                               jsonb                            NOT NULL  DEFAULT '{}'::jsonb
+  created_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  -- constraints --
+  CHECK        couranr_dre_actor_present_chk                  CHECK ((((actor_type = 'system'::text) AND (actor_user_id IS NULL)) OR ((actor_type <> 'system'::text) AND (actor_user_id IS NOT NULL))))
+  CHECK        couranr_dre_actor_type_chk                     CHECK ((actor_type = ANY (ARRAY['merchant'::text, 'customer'::text, 'driver'::text, 'operations'::text, 'system'::text])))
+  CHECK        couranr_dre_command_chk                        CHECK ((command = ANY (ARRAY['create_delivery_request_draft'::text, 'calculate_delivery_request_estimate'::text, 'submit_delivery_request'::text, 'begin_delivery_request_review'::text, 'accept_delivery_request_as_quoted'::text, 'requote_delivery_request'::text, 'decline_delivery_request'::text, 'record_payer_quote_approval'::text, 'begin_delivery_preparation'::text, 'mark_delivery_ready'::text, 'mark_delivery_not_ready'::text, 'mark_delivery_unavailable'::text])))
+  CHECK        couranr_dre_metadata_is_object_chk             CHECK ((jsonb_typeof(metadata) = 'object'::text))
+  FOREIGN KEY  couranr_dre_request_fk                         FOREIGN KEY (request_id) REFERENCES couranr_delivery_requests(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  PRIMARY KEY  couranr_delivery_request_events_pkey           PRIMARY KEY (id)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_delivery_requests   [couranr]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  business_account_id                    uuid                             NOT NULL
+  created_by                             uuid                             NOT NULL
+  idempotency_key                        text                             NOT NULL
+  source                                 text                             NOT NULL  DEFAULT 'merchant_portal'::text
+  created_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  updated_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  submitted_at                           timestamp with time zone         NULL    
+  version                                integer                          NOT NULL  DEFAULT 1
+  request_state                          text                             NOT NULL  DEFAULT 'draft'::text
+  readiness_state                        text                             NOT NULL  DEFAULT 'not_confirmed'::text
+  review_state                           text                             NOT NULL  DEFAULT 'not_required'::text
+  service_area_review_state              text                             NOT NULL  DEFAULT 'pending'::text
+  payer_type                             text                             NOT NULL  DEFAULT 'merchant'::text
+  quote_status                           text                             NOT NULL  DEFAULT 'not_quoted'::text
+  recipient_name                         text                             NULL    
+  recipient_phone                        text                             NULL    
+  recipient_email                        text                             NULL    
+  loaded_miles                           numeric(8,3)                     NULL    
+  weight_lb                              numeric(8,2)                     NULL    
+  additional_stops                       integer                          NOT NULL  DEFAULT 0
+  service_level                          text                             NOT NULL  DEFAULT 'standard'::text
+  signature_required                     boolean                          NOT NULL  DEFAULT false
+  proof_method                           text                             NOT NULL  DEFAULT 'photo_or_pin'::text
+  pricing_policy_version                 text                             NULL    
+  delivery_subtotal_cents                integer                          NULL    
+  included_loaded_miles                  integer                          NULL    
+  billable_loaded_miles                  numeric(8,3)                     NULL    
+  rounding_applied                       boolean                          NOT NULL  DEFAULT false
+  tax_included                           boolean                          NOT NULL  DEFAULT false
+  payment_due_cents                      integer                          NULL    
+  quote_line_items                       jsonb                            NOT NULL  DEFAULT '[]'::jsonb
+  review_reasons                         jsonb                            NOT NULL  DEFAULT '[]'::jsonb
+  pickup_address                         jsonb                            NULL    
+  dropoff_address                        jsonb                            NULL    
+  normalized_request_payload             jsonb                            NOT NULL  DEFAULT '{}'::jsonb
+  preset_id                              uuid                             NULL    
+  preset_version                         integer                          NULL    
+  preset_snapshot                        jsonb                            NULL    
+  preset_source                          text                             NULL    
+  -- constraints --
+  CHECK        couranr_dr_billable_miles_nonneg_chk           CHECK (((billable_loaded_miles IS NULL) OR (billable_loaded_miles >= (0)::numeric)))
+  CHECK        couranr_dr_dropoff_is_object_chk               CHECK (((dropoff_address IS NULL) OR (jsonb_typeof(dropoff_address) = 'object'::text)))
+  CHECK        couranr_dr_estimate_completeness_chk           CHECK ((((quote_status = 'estimated'::text) AND (delivery_subtotal_cents IS NOT NULL) AND (pricing_policy_version IS NOT NULL)) OR (quote_status <> 'estimated'::text)))
+  CHECK        couranr_dr_included_miles_nonneg_chk           CHECK (((included_loaded_miles IS NULL) OR (included_loaded_miles >= 0)))
+  CHECK        couranr_dr_line_items_is_array_chk             CHECK ((jsonb_typeof(quote_line_items) = 'array'::text))
+  CHECK        couranr_dr_manual_review_chk                   CHECK (((quote_status <> 'manual_review_required'::text) OR (delivery_subtotal_cents IS NULL)))
+  CHECK        couranr_dr_miles_nonneg_chk                    CHECK (((loaded_miles IS NULL) OR (loaded_miles >= (0)::numeric)))
+  CHECK        couranr_dr_no_payment_due_chk                  CHECK ((payment_due_cents IS NULL))
+  CHECK        couranr_dr_no_rounding_chk                     CHECK ((rounding_applied = false))
+  CHECK        couranr_dr_no_tax_chk                          CHECK ((tax_included = false))
+  CHECK        couranr_dr_normalized_is_object_chk            CHECK ((jsonb_typeof(normalized_request_payload) = 'object'::text))
+  CHECK        couranr_dr_payer_type_chk                      CHECK ((payer_type = ANY (ARRAY['merchant'::text, 'customer'::text])))
+  CHECK        couranr_dr_payment_due_nonneg_chk              CHECK (((payment_due_cents IS NULL) OR (payment_due_cents >= 0)))
+  CHECK        couranr_dr_pickup_is_object_chk                CHECK (((pickup_address IS NULL) OR (jsonb_typeof(pickup_address) = 'object'::text)))
+  CHECK        couranr_dr_preset_body_chk                     CHECK (couranr_preset_body_is_clean(preset_snapshot))
+  CHECK        couranr_dr_preset_pair_chk                     CHECK ((((preset_id IS NULL) AND (preset_version IS NULL) AND (preset_snapshot IS NULL) AND (preset_source IS NULL)) OR ((preset_id IS NOT NULL) AND (preset_version >= 1) AND (preset_snapshot IS NOT NULL) AND (preset_source IS NOT NULL))))
+  CHECK        couranr_dr_preset_source_chk                   CHECK (((preset_source IS NULL) OR (preset_source = ANY (ARRAY['couranr_global'::text, 'merchant'::text]))))
+  CHECK        couranr_dr_proof_method_chk                    CHECK ((proof_method = ANY (ARRAY['photo_or_pin'::text, 'signature'::text, 'leave_at_door'::text])))
+  CHECK        couranr_dr_quote_status_chk                    CHECK ((quote_status = ANY (ARRAY['not_quoted'::text, 'estimated'::text, 'manual_review_required'::text, 'invalid'::text])))
+  CHECK        couranr_dr_readiness_state_chk                 CHECK ((readiness_state = ANY (ARRAY['not_confirmed'::text, 'preparing'::text, 'ready'::text, 'not_ready'::text, 'unavailable'::text])))
+  CHECK        couranr_dr_request_state_chk                   CHECK ((request_state = ANY (ARRAY['draft'::text, 'awaiting_merchant_confirmation'::text, 'awaiting_quote_acceptance'::text, 'pending_couranr_review'::text, 'quote_revision_required'::text, 'confirmed'::text, 'declined'::text, 'cancelled'::text, 'closed'::text])))
+  CHECK        couranr_dr_review_reasons_is_array_chk         CHECK ((jsonb_typeof(review_reasons) = 'array'::text))
+  CHECK        couranr_dr_review_state_chk                    CHECK ((review_state = ANY (ARRAY['not_required'::text, 'pending'::text, 'accepted_as_quoted'::text, 'requoted'::text, 'declined'::text])))
+  CHECK        couranr_dr_service_area_state_chk              CHECK ((service_area_review_state = ANY (ARRAY['pending'::text, 'in_area'::text, 'out_of_area_review'::text, 'declined'::text])))
+  CHECK        couranr_dr_service_level_chk                   CHECK ((service_level = ANY (ARRAY['standard'::text, 'priority'::text, 'rush'::text])))
+  CHECK        couranr_dr_source_chk                          CHECK ((source = ANY (ARRAY['merchant_portal'::text, 'smart_intake'::text, 'hosted_request'::text, 'operations'::text])))
+  CHECK        couranr_dr_stops_nonneg_chk                    CHECK ((additional_stops >= 0))
+  CHECK        couranr_dr_submitted_at_chk                    CHECK ((((request_state = ANY (ARRAY['draft'::text, 'awaiting_merchant_confirmation'::text])) AND (submitted_at IS NULL)) OR ((request_state <> ALL (ARRAY['draft'::text, 'awaiting_merchant_confirmation'::text])) AND (submitted_at IS NOT NULL))))
+  CHECK        couranr_dr_subtotal_nonneg_chk                 CHECK (((delivery_subtotal_cents IS NULL) OR (delivery_subtotal_cents >= 0)))
+  CHECK        couranr_dr_version_positive_chk                CHECK ((version >= 1))
+  CHECK        couranr_dr_weight_nonneg_chk                   CHECK (((weight_lb IS NULL) OR (weight_lb >= (0)::numeric)))
+  FOREIGN KEY  couranr_delivery_requests_business_fk          FOREIGN KEY (business_account_id) REFERENCES business_accounts(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_delivery_requests_created_by_fk        FOREIGN KEY (created_by) REFERENCES auth.users(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  PRIMARY KEY  couranr_delivery_requests_pkey                 PRIMARY KEY (id)
+  UNIQUE       couranr_delivery_requests_idempotency_uniq     UNIQUE (business_account_id, idempotency_key)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_dispatch_vehicles   [couranr]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  assigned_driver_id                     uuid                             NULL    
+  name                                   text                             NOT NULL
+  vehicle_class                          text                             NOT NULL
+  payload_capacity_lb                    integer                          NOT NULL
+  cargo_length_in                        integer                          NULL    
+  cargo_width_in                         integer                          NULL    
+  cargo_height_in                        integer                          NULL    
+  enclosed                               boolean                          NOT NULL  DEFAULT false
+  has_ramp                               boolean                          NOT NULL  DEFAULT false
+  has_dolly                              boolean                          NOT NULL  DEFAULT false
+  has_tie_downs                          boolean                          NOT NULL  DEFAULT false
+  weather_protection                     boolean                          NOT NULL  DEFAULT false
+  active                                 boolean                          NOT NULL  DEFAULT true
+  availability_state                     text                             NOT NULL  DEFAULT 'available'::text
+  created_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  updated_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  version                                integer                          NOT NULL  DEFAULT 1
+  -- constraints --
+  CHECK        couranr_dv_availability_chk                    CHECK ((availability_state = ANY (ARRAY['available'::text, 'unavailable'::text, 'on_delivery'::text])))
+  CHECK        couranr_dv_class_chk                           CHECK ((vehicle_class = ANY (ARRAY['car'::text, 'van'::text, 'box_truck'::text, 'cargo_bike'::text])))
+  CHECK        couranr_dv_dims_chk                            CHECK ((((cargo_length_in IS NULL) OR (cargo_length_in > 0)) AND ((cargo_width_in IS NULL) OR (cargo_width_in > 0)) AND ((cargo_height_in IS NULL) OR (cargo_height_in > 0))))
+  CHECK        couranr_dv_name_chk                            CHECK ((length(btrim(name)) > 0))
+  CHECK        couranr_dv_payload_chk                         CHECK ((payload_capacity_lb > 0))
+  CHECK        couranr_dv_version_chk                         CHECK ((version >= 1))
+  FOREIGN KEY  couranr_dv_driver_fk                           FOREIGN KEY (assigned_driver_id) REFERENCES couranr_drivers(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  PRIMARY KEY  couranr_dispatch_vehicles_pkey                 PRIMARY KEY (id)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_drivers   [couranr]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  user_id                                uuid                             NOT NULL
+  display_name                           text                             NOT NULL
+  contact_phone                          text                             NULL    
+  driver_state                           text                             NOT NULL  DEFAULT 'pending'::text
+  availability_state                     text                             NOT NULL  DEFAULT 'unavailable'::text
+  active                                 boolean                          NOT NULL  DEFAULT true
+  market                                 text                             NULL    
+  created_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  updated_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  version                                integer                          NOT NULL  DEFAULT 1
+  -- constraints --
+  CHECK        couranr_drv_availability_chk                   CHECK ((availability_state = ANY (ARRAY['available'::text, 'unavailable'::text, 'on_delivery'::text])))
+  CHECK        couranr_drv_name_chk                           CHECK ((length(btrim(display_name)) > 0))
+  CHECK        couranr_drv_state_chk                          CHECK ((driver_state = ANY (ARRAY['pending'::text, 'active'::text, 'suspended'::text, 'inactive'::text])))
+  CHECK        couranr_drv_version_chk                        CHECK ((version >= 1))
+  FOREIGN KEY  couranr_drv_user_fk                            FOREIGN KEY (user_id) REFERENCES auth.users(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  PRIMARY KEY  couranr_drivers_pkey                           PRIMARY KEY (id)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_handoff_codes   [couranr]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  delivery_id                            uuid                             NOT NULL
+  code_kind                              text                             NOT NULL
+  generation                             integer                          NOT NULL
+  code_digest                            text                             NOT NULL
+  code_state                             text                             NOT NULL  DEFAULT 'active'::text
+  issued_by                              uuid                             NOT NULL
+  issued_at                              timestamp with time zone         NOT NULL  DEFAULT now()
+  expires_at                             timestamp with time zone         NOT NULL
+  failed_attempts                        integer                          NOT NULL  DEFAULT 0
+  last_attempt_at                        timestamp with time zone         NULL    
+  consumed_at                            timestamp with time zone         NULL    
+  locked_at                              timestamp with time zone         NULL    
+  superseded_at                          timestamp with time zone         NULL    
+  version                                integer                          NOT NULL  DEFAULT 1
+  created_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  updated_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  -- constraints --
+  CHECK        couranr_hc_attempts_chk                        CHECK (((failed_attempts >= 0) AND (failed_attempts <= 5)))
+  CHECK        couranr_hc_consumed_stamp_chk                  CHECK (((code_state <> 'consumed'::text) OR (consumed_at IS NOT NULL)))
+  CHECK        couranr_hc_digest_shape_chk                    CHECK ((code_digest ~ '^[0-9a-f]{64}$'::text))
+  CHECK        couranr_hc_generation_chk                      CHECK ((generation >= 1))
+  CHECK        couranr_hc_kind_chk                            CHECK ((code_kind = ANY (ARRAY['merchant_pickup'::text, 'recipient_dropoff'::text])))
+  CHECK        couranr_hc_locked_stamp_chk                    CHECK (((code_state <> 'locked'::text) OR (locked_at IS NOT NULL)))
+  CHECK        couranr_hc_state_chk                           CHECK ((code_state = ANY (ARRAY['active'::text, 'consumed'::text, 'superseded'::text, 'locked'::text, 'expired'::text])))
+  CHECK        couranr_hc_superseded_stamp_chk                CHECK (((code_state <> 'superseded'::text) OR (superseded_at IS NOT NULL)))
+  CHECK        couranr_hc_version_chk                         CHECK ((version >= 1))
+  CHECK        couranr_hc_window_chk                          CHECK ((expires_at > issued_at))
+  FOREIGN KEY  couranr_handoff_codes_delivery_id_fkey         FOREIGN KEY (delivery_id) REFERENCES couranr_deliveries(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_handoff_codes_issued_by_fkey           FOREIGN KEY (issued_by) REFERENCES auth.users(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  PRIMARY KEY  couranr_handoff_codes_pkey                     PRIMARY KEY (id)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_handoff_records   [couranr]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  delivery_id                            uuid                             NOT NULL
+  assignment_id                          uuid                             NOT NULL
+  handoff_stage                          text                             NOT NULL
+  observed_package_count                 integer                          NULL    
+  counterparty_first_name                text                             NULL    
+  confirmed_vehicle_id                   uuid                             NULL    
+  latitude                               numeric(9,6)                     NULL    
+  longitude                              numeric(9,6)                     NULL    
+  accuracy_m                             numeric(8,2)                     NULL    
+  large_or_unusual                       boolean                          NOT NULL  DEFAULT false
+  dimensions                             jsonb                            NULL    
+  loading_participants                   text                             NULL    
+  loading_equipment                      text                             NULL    
+  existing_damage_statement              text                             NULL    
+  driver_acknowledged                    boolean                          NULL    
+  proof_method_used                      text                             NULL    
+  safe_location_confirmed                boolean                          NULL    
+  weather_suitable_confirmed             boolean                          NULL    
+  actor_driver_id                        uuid                             NOT NULL
+  recorded_at                            timestamp with time zone         NOT NULL  DEFAULT now()
+  created_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  -- constraints --
+  CHECK        couranr_hr_accuracy_chk                        CHECK (((accuracy_m IS NULL) OR (accuracy_m >= (0)::numeric)))
+  CHECK        couranr_hr_count_chk                           CHECK (((observed_package_count IS NULL) OR (observed_package_count >= 0)))
+  CHECK        couranr_hr_dimensions_obj_chk                  CHECK (((dimensions IS NULL) OR (jsonb_typeof(dimensions) = 'object'::text)))
+  CHECK        couranr_hr_latitude_chk                        CHECK (((latitude >= ('-90'::integer)::numeric) AND (latitude <= (90)::numeric)))
+  CHECK        couranr_hr_location_present_chk                CHECK (((latitude IS NOT NULL) AND (longitude IS NOT NULL)))
+  CHECK        couranr_hr_longitude_chk                       CHECK (((longitude >= ('-180'::integer)::numeric) AND (longitude <= (180)::numeric)))
+  CHECK        couranr_hr_proof_method_chk                    CHECK (((proof_method_used IS NULL) OR (proof_method_used = ANY (ARRAY['photo_or_pin'::text, 'signature'::text, 'leave_at_door'::text]))))
+  CHECK        couranr_hr_stage_chk                           CHECK ((handoff_stage = ANY (ARRAY['pickup'::text, 'dropoff'::text])))
+  FOREIGN KEY  couranr_handoff_records_actor_driver_id_fkey   FOREIGN KEY (actor_driver_id) REFERENCES couranr_drivers(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_handoff_records_assignment_id_fkey     FOREIGN KEY (assignment_id) REFERENCES couranr_delivery_assignments(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_handoff_records_confirmed_vehicle_id_fkey FOREIGN KEY (confirmed_vehicle_id) REFERENCES couranr_dispatch_vehicles(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_handoff_records_delivery_id_fkey       FOREIGN KEY (delivery_id) REFERENCES couranr_deliveries(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  PRIMARY KEY  couranr_handoff_records_pkey                   PRIMARY KEY (id)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_help_access_tokens   [couranr]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  delivery_id                            uuid                             NOT NULL
+  business_account_id                    uuid                             NOT NULL
+  token_hash                             text                             NOT NULL
+  issued_at                              timestamp with time zone         NOT NULL  DEFAULT now()
+  expires_at                             timestamp with time zone         NOT NULL
+  last_used_at                           timestamp with time zone         NULL    
+  revoked_at                             timestamp with time zone         NULL    
+  -- constraints --
+  CHECK        couranr_hat_expiry_chk                         CHECK ((expires_at > issued_at))
+  CHECK        couranr_hat_hash_shape_chk                     CHECK ((token_hash ~ '^[0-9a-f]{64}$'::text))
+  FOREIGN KEY  couranr_help_access_tokens_business_account_id_fkey FOREIGN KEY (business_account_id) REFERENCES business_accounts(id)
+  FOREIGN KEY  couranr_help_access_tokens_delivery_id_fkey    FOREIGN KEY (delivery_id) REFERENCES couranr_deliveries(id)
+  PRIMARY KEY  couranr_help_access_tokens_pkey                PRIMARY KEY (id)
+  UNIQUE       couranr_hat_hash_uniq                          UNIQUE (token_hash)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_merchant_preset_versions   [couranr]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  merchant_preset_id                     uuid                             NOT NULL
+  version                                integer                          NOT NULL
+  name                                   text                             NOT NULL
+  body                                   jsonb                            NOT NULL
+  changed_by                             uuid                             NOT NULL
+  created_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  -- constraints --
+  CHECK        couranr_mpv_body_chk                           CHECK (couranr_preset_body_is_clean(body))
+  CHECK        couranr_mpv_version_chk                        CHECK ((version >= 1))
+  FOREIGN KEY  couranr_mpv_preset_fk                          FOREIGN KEY (merchant_preset_id) REFERENCES couranr_merchant_presets(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  PRIMARY KEY  couranr_merchant_preset_versions_pkey          PRIMARY KEY (id)
+  UNIQUE       couranr_mpv_uniq                               UNIQUE (merchant_preset_id, version)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_merchant_presets   [couranr]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  business_account_id                    uuid                             NOT NULL
+  name                                   text                             NOT NULL
+  body                                   jsonb                            NOT NULL  DEFAULT '{}'::jsonb
+  source_category_preset_id              uuid                             NULL    
+  source_version                         integer                          NULL    
+  version                                integer                          NOT NULL  DEFAULT 1
+  archived_at                            timestamp with time zone         NULL    
+  created_by                             uuid                             NOT NULL
+  created_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  updated_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  -- constraints --
+  CHECK        couranr_mp_body_chk                            CHECK (couranr_preset_body_is_clean(body))
+  CHECK        couranr_mp_name_chk                            CHECK ((btrim(name) <> ''::text))
+  CHECK        couranr_mp_source_pair_chk                     CHECK ((((source_category_preset_id IS NULL) AND (source_version IS NULL)) OR ((source_category_preset_id IS NOT NULL) AND (source_version IS NOT NULL) AND (source_version >= 1))))
+  CHECK        couranr_mp_version_chk                         CHECK ((version >= 1))
+  FOREIGN KEY  couranr_mp_business_fk                         FOREIGN KEY (business_account_id) REFERENCES business_accounts(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_mp_source_fk                           FOREIGN KEY (source_category_preset_id) REFERENCES couranr_category_presets(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  PRIMARY KEY  couranr_merchant_presets_pkey                  PRIMARY KEY (id)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_merchant_workspaces   [couranr]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  business_account_id                    uuid                             NOT NULL
+  created_by                             uuid                             NOT NULL
+  idempotency_key                        text                             NOT NULL
+  business_category                      text                             NOT NULL
+  pickup_address                         jsonb                            NOT NULL
+  contact_phone                          text                             NOT NULL
+  payer_default                          text                             NOT NULL
+  policies_accepted_at                   timestamp with time zone         NOT NULL
+  policies_version                       text                             NOT NULL
+  created_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  updated_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  secondary_categories                   text[]                           NOT NULL  DEFAULT '{}'::text[]
+  category_registry_version              text                             NULL    
+  -- constraints --
+  CHECK        couranr_mw_category_chk                        CHECK ((business_category = ANY (ARRAY['dry_cleaning_laundry_tailoring'::text, 'printing_signage_promotional'::text, 'boutique_clothing_shoes_accessories'::text, 'florists_gifts_specialty_retail'::text, 'repair_and_electronics'::text, 'auto_parts_and_accessories'::text, 'furniture_and_home_goods'::text, 'event_rentals_and_supplies'::text, 'bakeries_prepared_food_catering'::text, 'books_cards_collectibles_hobby'::text, 'general_local_business'::text])))
+  CHECK        couranr_mw_payer_default_chk                   CHECK ((payer_default = ANY (ARRAY['merchant'::text, 'customer'::text])))
+  CHECK        couranr_mw_phone_present_chk                   CHECK ((length(btrim(contact_phone)) > 0))
+  CHECK        couranr_mw_pickup_is_object_chk                CHECK ((jsonb_typeof(pickup_address) = 'object'::text))
+  CHECK        couranr_mw_policies_version_chk                CHECK ((length(btrim(policies_version)) > 0))
+  CHECK        couranr_mw_secondary_count_chk                 CHECK ((cardinality(secondary_categories) <= 3))
+  CHECK        couranr_mw_secondary_distinct_chk              CHECK (couranr_text_array_is_distinct(secondary_categories))
+  CHECK        couranr_mw_secondary_not_primary_chk           CHECK ((NOT (business_category = ANY (secondary_categories))))
+  CHECK        couranr_mw_secondary_values_chk                CHECK ((secondary_categories <@ ARRAY['dry_cleaning_laundry_tailoring'::text, 'printing_signage_promotional'::text, 'boutique_clothing_shoes_accessories'::text, 'florists_gifts_specialty_retail'::text, 'repair_and_electronics'::text, 'auto_parts_and_accessories'::text, 'furniture_and_home_goods'::text, 'event_rentals_and_supplies'::text, 'bakeries_prepared_food_catering'::text, 'books_cards_collectibles_hobby'::text, 'general_local_business'::text]))
+  FOREIGN KEY  couranr_mw_account_fk                          FOREIGN KEY (business_account_id) REFERENCES business_accounts(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_mw_created_by_fk                       FOREIGN KEY (created_by) REFERENCES auth.users(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  PRIMARY KEY  couranr_merchant_workspaces_pkey               PRIMARY KEY (id)
+  UNIQUE       couranr_mw_account_uniq                        UNIQUE (business_account_id)
+  UNIQUE       couranr_mw_idempotency_uniq                    UNIQUE (created_by, idempotency_key)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_payment_access_tokens   [couranr]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  request_id                             uuid                             NOT NULL
+  business_account_id                    uuid                             NOT NULL
+  obligation_id                          uuid                             NULL    
+  token_hash                             text                             NOT NULL
+  action                                 text                             NOT NULL  DEFAULT 'authorize_payment'::text
+  created_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  expires_at                             timestamp with time zone         NOT NULL
+  revoked_at                             timestamp with time zone         NULL    
+  revoked_reason                         text                             NULL    
+  last_used_at                           timestamp with time zone         NULL    
+  -- constraints --
+  CHECK        couranr_pat_action_chk                         CHECK ((action = 'authorize_payment'::text))
+  CHECK        couranr_pat_expiry_chk                         CHECK ((expires_at > created_at))
+  CHECK        couranr_pat_hash_shape_chk                     CHECK ((token_hash ~ '^[0-9a-f]{64}$'::text))
+  CHECK        couranr_pat_revoked_reason_chk                 CHECK (((revoked_at IS NULL) = (revoked_reason IS NULL)))
+  FOREIGN KEY  couranr_pat_business_fk                        FOREIGN KEY (business_account_id) REFERENCES business_accounts(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_pat_obligation_fk                      FOREIGN KEY (obligation_id) REFERENCES couranr_payment_obligations(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_pat_request_fk                         FOREIGN KEY (request_id) REFERENCES couranr_delivery_requests(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  PRIMARY KEY  couranr_payment_access_tokens_pkey             PRIMARY KEY (id)
+  UNIQUE       couranr_pat_hash_uniq                          UNIQUE (token_hash)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_payment_events   [couranr]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  obligation_id                          uuid                             NULL    
+  request_id                             uuid                             NULL    
+  provider                               text                             NOT NULL  DEFAULT 'stripe'::text
+  provider_event_id                      text                             NOT NULL
+  event_type                             text                             NOT NULL
+  payment_state_before                   text                             NULL    
+  payment_state_after                    text                             NULL    
+  outcome                                text                             NOT NULL
+  detail                                 jsonb                            NOT NULL  DEFAULT '{}'::jsonb
+  created_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  -- constraints --
+  CHECK        couranr_pe_detail_is_object_chk                CHECK ((jsonb_typeof(detail) = 'object'::text))
+  CHECK        couranr_pe_outcome_chk                         CHECK ((outcome = ANY (ARRAY['applied'::text, 'ignored'::text, 'rejected'::text])))
+  CHECK        couranr_pe_provider_chk                        CHECK ((provider = 'stripe'::text))
+  FOREIGN KEY  couranr_pe_obligation_fk                       FOREIGN KEY (obligation_id) REFERENCES couranr_payment_obligations(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_pe_request_fk                          FOREIGN KEY (request_id) REFERENCES couranr_delivery_requests(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  PRIMARY KEY  couranr_payment_events_pkey                    PRIMARY KEY (id)
+  UNIQUE       couranr_pe_provider_event_uniq                 UNIQUE (provider, provider_event_id)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_payment_obligations   [couranr]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  request_id                             uuid                             NOT NULL
+  business_account_id                    uuid                             NOT NULL
+  payer_type                             text                             NOT NULL
+  request_version                        integer                          NOT NULL
+  pricing_policy_version                 text                             NOT NULL
+  amount_cents                           integer                          NOT NULL
+  currency                               text                             NOT NULL  DEFAULT 'usd'::text
+  payment_state                          text                             NOT NULL  DEFAULT 'not_started'::text
+  provider                               text                             NOT NULL  DEFAULT 'stripe'::text
+  provider_payment_intent_id             text                             NULL    
+  idempotency_key                        text                             NOT NULL
+  version                                integer                          NOT NULL  DEFAULT 1
+  created_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  updated_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  authorized_at                          timestamp with time zone         NULL    
+  failed_at                              timestamp with time zone         NULL    
+  cancelled_at                           timestamp with time zone         NULL    
+  captured_at                            timestamp with time zone         NULL    
+  captured_amount_cents                  integer                          NULL    
+  capture_requested_at                   timestamp with time zone         NULL    
+  -- constraints --
+  CHECK        couranr_po_amount_positive_chk                 CHECK ((amount_cents > 0))
+  CHECK        couranr_po_authorized_needs_intent_chk         CHECK (((payment_state <> 'authorized'::text) OR (provider_payment_intent_id IS NOT NULL)))
+  CHECK        couranr_po_authorized_stamp_chk                CHECK (((payment_state <> ALL (ARRAY['authorized'::text, 'capture_pending'::text, 'captured'::text, 'refunded'::text])) OR (authorized_at IS NOT NULL)))
+  CHECK        couranr_po_cancelled_stamp_chk                 CHECK (((payment_state = 'cancelled'::text) = (cancelled_at IS NOT NULL)))
+  CHECK        couranr_po_captured_amount_chk                 CHECK (((captured_amount_cents IS NULL) OR (captured_amount_cents = amount_cents)))
+  CHECK        couranr_po_captured_stamp_chk                  CHECK (((payment_state <> ALL (ARRAY['captured'::text, 'refunded'::text])) OR ((captured_at IS NOT NULL) AND (captured_amount_cents IS NOT NULL))))
+  CHECK        couranr_po_currency_chk                        CHECK ((currency = 'usd'::text))
+  CHECK        couranr_po_failed_stamp_chk                    CHECK (((payment_state <> 'failed'::text) OR (failed_at IS NOT NULL)))
+  CHECK        couranr_po_payer_type_chk                      CHECK ((payer_type = ANY (ARRAY['merchant'::text, 'customer'::text])))
+  CHECK        couranr_po_payment_state_chk                   CHECK ((payment_state = ANY (ARRAY['not_started'::text, 'requires_action'::text, 'authorized'::text, 'capture_pending'::text, 'captured'::text, 'failed'::text, 'cancelled'::text, 'refunded'::text, 'partially_refunded'::text, 'payment_method_saved'::text])))
+  CHECK        couranr_po_provider_chk                        CHECK ((provider = 'stripe'::text))
+  CHECK        couranr_po_request_version_chk                 CHECK ((request_version >= 1))
+  CHECK        couranr_po_version_chk                         CHECK ((version >= 1))
+  FOREIGN KEY  couranr_po_business_fk                         FOREIGN KEY (business_account_id) REFERENCES business_accounts(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_po_request_fk                          FOREIGN KEY (request_id) REFERENCES couranr_delivery_requests(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  PRIMARY KEY  couranr_payment_obligations_pkey               PRIMARY KEY (id)
+  UNIQUE       couranr_po_idempotency_uniq                    UNIQUE (request_id, idempotency_key)
+  UNIQUE       couranr_po_intent_uniq                         UNIQUE (provider_payment_intent_id)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_pickup_discrepancies   [couranr]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  delivery_id                            uuid                             NOT NULL
+  assignment_id                          uuid                             NOT NULL
+  reason                                 text                             NOT NULL
+  notes                                  text                             NULL    
+  discrepancy_state                      text                             NOT NULL  DEFAULT 'open'::text
+  reported_by_driver_id                  uuid                             NOT NULL
+  reported_at                            timestamp with time zone         NOT NULL  DEFAULT now()
+  resolved_at                            timestamp with time zone         NULL    
+  resolved_by                            uuid                             NULL    
+  resolution_note                        text                             NULL    
+  version                                integer                          NOT NULL  DEFAULT 1
+  created_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  updated_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  -- constraints --
+  CHECK        couranr_pd_reason_chk                          CHECK ((reason = ANY (ARRAY['package_count_mismatch'::text, 'weight_or_size_mismatch'::text, 'visible_damage'::text, 'unsafe_packaging'::text, 'wrong_item'::text, 'vehicle_mismatch'::text, 'prohibited_item_concern'::text, 'loading_not_available'::text, 'other'::text])))
+  CHECK        couranr_pd_resolved_stamp_chk                  CHECK (((discrepancy_state = 'open'::text) OR ((resolved_at IS NOT NULL) AND (resolved_by IS NOT NULL))))
+  CHECK        couranr_pd_state_chk                           CHECK ((discrepancy_state = ANY (ARRAY['open'::text, 'safe_to_continue'::text])))
+  CHECK        couranr_pd_version_chk                         CHECK ((version >= 1))
+  FOREIGN KEY  couranr_pickup_discrepancies_assignment_id_fkey FOREIGN KEY (assignment_id) REFERENCES couranr_delivery_assignments(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_pickup_discrepancies_delivery_id_fkey  FOREIGN KEY (delivery_id) REFERENCES couranr_deliveries(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_pickup_discrepancies_reported_by_driver_id_fkey FOREIGN KEY (reported_by_driver_id) REFERENCES couranr_drivers(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_pickup_discrepancies_resolved_by_fkey  FOREIGN KEY (resolved_by) REFERENCES auth.users(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  PRIMARY KEY  couranr_pickup_discrepancies_pkey              PRIMARY KEY (id)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_proof_uploads   [couranr]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  delivery_id                            uuid                             NOT NULL
+  assignment_id                          uuid                             NOT NULL
+  proof_stage                            text                             NOT NULL
+  proof_type                             text                             NOT NULL
+  storage_bucket                         text                             NOT NULL
+  object_path                            text                             NOT NULL
+  expected_mime                          text                             NOT NULL
+  expected_bytes                         integer                          NOT NULL
+  upload_state                           text                             NOT NULL  DEFAULT 'issued'::text
+  issued_to_driver                       uuid                             NOT NULL
+  issued_at                              timestamp with time zone         NOT NULL  DEFAULT now()
+  expires_at                             timestamp with time zone         NOT NULL
+  consumed_at                            timestamp with time zone         NULL    
+  version                                integer                          NOT NULL  DEFAULT 1
+  created_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  updated_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  upload_nonce                           text                             NOT NULL
+  finalized_at                           timestamp with time zone         NULL    
+  assignment_version                     integer                          NOT NULL
+  -- constraints --
+  CHECK        couranr_pu_assignment_version_chk              CHECK ((assignment_version >= 1))
+  CHECK        couranr_pu_bytes_chk                           CHECK (((expected_bytes > 0) AND (expected_bytes <= 10485760)))
+  CHECK        couranr_pu_consumed_stamp_chk                  CHECK (((upload_state <> 'consumed'::text) OR (consumed_at IS NOT NULL)))
+  CHECK        couranr_pu_finalized_stamp_chk                 CHECK (((finalized_at IS NULL) OR (consumed_at IS NOT NULL)))
+  CHECK        couranr_pu_mime_chk                            CHECK ((expected_mime = ANY (ARRAY['image/jpeg'::text, 'image/png'::text, 'image/webp'::text, 'image/heic'::text])))
+  CHECK        couranr_pu_nonce_shape_chk                     CHECK ((upload_nonce ~ '^[0-9a-f]{32}$'::text))
+  CHECK        couranr_pu_path_shape_chk                      CHECK ((object_path ~ '^canonical-proof/v1/[0-9a-f-]{36}/[0-9a-f-]{36}/[0-9a-f]{32}\.[a-z]{3,4}$'::text))
+  CHECK        couranr_pu_state_chk                           CHECK ((upload_state = ANY (ARRAY['issued'::text, 'consumed'::text, 'expired'::text])))
+  CHECK        couranr_pu_version_chk                         CHECK ((version >= 1))
+  CHECK        couranr_pu_window_chk                          CHECK ((expires_at > issued_at))
+  FOREIGN KEY  couranr_proof_uploads_assignment_id_fkey       FOREIGN KEY (assignment_id) REFERENCES couranr_delivery_assignments(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_proof_uploads_delivery_id_fkey         FOREIGN KEY (delivery_id) REFERENCES couranr_deliveries(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_proof_uploads_issued_to_driver_fkey    FOREIGN KEY (issued_to_driver) REFERENCES couranr_drivers(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  PRIMARY KEY  couranr_proof_uploads_pkey                     PRIMARY KEY (id)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_service_plans   [couranr]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  request_id                             uuid                             NOT NULL
+  business_account_id                    uuid                             NOT NULL
+  payment_obligation_id                  uuid                             NOT NULL
+  request_version                        integer                          NOT NULL
+  scheduled_pickup_start                 timestamp with time zone         NOT NULL
+  scheduled_pickup_end                   timestamp with time zone         NOT NULL
+  timezone                               text                             NOT NULL
+  vehicle_id                             uuid                             NULL    
+  vehicle_requirement                    jsonb                            NOT NULL
+  plan_state                             text                             NOT NULL  DEFAULT 'draft'::text
+  confirmed_by                           uuid                             NULL    
+  confirmed_at                           timestamp with time zone         NULL    
+  version                                integer                          NOT NULL  DEFAULT 1
+  created_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  updated_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  -- constraints --
+  CHECK        couranr_sp_confirmed_stamp_chk                 CHECK (((plan_state <> 'confirmed'::text) OR ((confirmed_at IS NOT NULL) AND (confirmed_by IS NOT NULL))))
+  CHECK        couranr_sp_plan_state_chk                      CHECK ((plan_state = ANY (ARRAY['draft'::text, 'confirmed'::text, 'cancelled'::text])))
+  CHECK        couranr_sp_requirement_is_object_chk           CHECK ((jsonb_typeof(vehicle_requirement) = 'object'::text))
+  CHECK        couranr_sp_timezone_chk                        CHECK ((length(btrim(timezone)) > 0))
+  CHECK        couranr_sp_version_chk                         CHECK ((version >= 1))
+  CHECK        couranr_sp_window_chk                          CHECK ((scheduled_pickup_end > scheduled_pickup_start))
+  FOREIGN KEY  couranr_sp_business_fk                         FOREIGN KEY (business_account_id) REFERENCES business_accounts(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_sp_dispatch_vehicle_fk                 FOREIGN KEY (vehicle_id) REFERENCES couranr_dispatch_vehicles(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_sp_obligation_fk                       FOREIGN KEY (payment_obligation_id) REFERENCES couranr_payment_obligations(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  FOREIGN KEY  couranr_sp_request_fk                          FOREIGN KEY (request_id) REFERENCES couranr_delivery_requests(id) ON UPDATE CASCADE ON DELETE RESTRICT
+  PRIMARY KEY  couranr_service_plans_pkey                     PRIMARY KEY (id)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_team_events   [couranr]
+  id                                     uuid                             NOT NULL  DEFAULT gen_random_uuid()
+  business_account_id                    uuid                             NOT NULL
+  member_id                              uuid                             NOT NULL
+  actor_user_id                          uuid                             NULL    
+  command                                text                             NOT NULL
+  from_role                              text                             NULL    
+  to_role                                text                             NULL    
+  from_status                            text                             NULL    
+  to_status                              text                             NULL    
+  metadata                               jsonb                            NOT NULL  DEFAULT '{}'::jsonb
+  created_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  -- constraints --
+  CHECK        couranr_te_command_chk                         CHECK ((command = ANY (ARRAY['invite_member'::text, 'accept_member_invite'::text, 'change_member_role'::text, 'disable_member'::text, 'reactivate_member'::text])))
+  FOREIGN KEY  couranr_team_events_business_account_id_fkey   FOREIGN KEY (business_account_id) REFERENCES business_accounts(id) ON DELETE CASCADE
+  PRIMARY KEY  couranr_team_events_pkey                       PRIMARY KEY (id)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_website_tool_configs   [couranr]
+  business_account_id                    uuid                             NOT NULL
+  status                                 text                             NOT NULL  DEFAULT 'draft'::text
+  embed_label                            text                             NOT NULL  DEFAULT 'Request a delivery'::text
+  embed_color                            text                             NOT NULL  DEFAULT '#1f6feb'::text
+  embed_width                            integer                          NOT NULL  DEFAULT 240
+  embed_variant                          text                             NOT NULL  DEFAULT 'button'::text
+  updated_by                             uuid                             NULL    
+  created_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  updated_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  -- constraints --
+  CHECK        couranr_wtc_color_chk                          CHECK ((embed_color ~* '^#([0-9a-f]{3}|[0-9a-f]{6})$'::text))
+  CHECK        couranr_wtc_label_chk                          CHECK (((length(btrim(embed_label)) >= 1) AND (length(btrim(embed_label)) <= 40)))
+  CHECK        couranr_wtc_status_chk                         CHECK ((status = ANY (ARRAY['draft'::text, 'published'::text, 'disabled'::text])))
+  CHECK        couranr_wtc_variant_chk                        CHECK ((embed_variant = ANY (ARRAY['button'::text, 'link'::text])))
+  CHECK        couranr_wtc_width_chk                          CHECK (((embed_width >= 120) AND (embed_width <= 640)))
+  FOREIGN KEY  couranr_website_tool_configs_business_account_id_fkey FOREIGN KEY (business_account_id) REFERENCES business_accounts(id) ON DELETE CASCADE
+  PRIMARY KEY  couranr_website_tool_configs_pkey              PRIMARY KEY (business_account_id)
+----------------------------------------------------------------------------------------------------
+TABLE public.couranr_workspace_activations   [couranr]
+  business_account_id                    uuid                             NOT NULL
+  activation_state                       text                             NOT NULL  DEFAULT 'not_started'::text
+  blocked_reason_code                    text                             NULL    
+  contact_verified_at                    timestamp with time zone         NULL    
+  test_delivery_request_id               uuid                             NULL    
+  requested_at                           timestamp with time zone         NULL    
+  reviewed_at                            timestamp with time zone         NULL    
+  reviewed_by                            uuid                             NULL    
+  version                                integer                          NOT NULL  DEFAULT 1
+  created_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  updated_at                             timestamp with time zone         NOT NULL  DEFAULT now()
+  -- constraints --
+  CHECK        couranr_wa_blocked_has_reason_chk              CHECK (((activation_state <> 'blocked'::text) OR (blocked_reason_code IS NOT NULL)))
+  CHECK        couranr_wa_state_chk                           CHECK ((activation_state = ANY (ARRAY['not_started'::text, 'in_progress'::text, 'pending_couranr_review'::text, 'live'::text, 'blocked'::text])))
+  CHECK        couranr_wa_version_chk                         CHECK ((version >= 1))
+  FOREIGN KEY  couranr_workspace_activations_business_account_id_fkey FOREIGN KEY (business_account_id) REFERENCES business_accounts(id) ON DELETE CASCADE
+  FOREIGN KEY  couranr_workspace_activations_test_delivery_request_id_fkey FOREIGN KEY (test_delivery_request_id) REFERENCES couranr_delivery_requests(id)
+  PRIMARY KEY  couranr_workspace_activations_pkey             PRIMARY KEY (business_account_id)
