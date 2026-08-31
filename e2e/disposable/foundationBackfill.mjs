@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { up, down, psql } from "./up.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const M3 = "20260831035454_fnd_a_m3_deterministic_quote_backfill.sql";
+const M1 = "20260831035450_fnd_a_m1_universal_requester.sql";
 const dockerContainer = process.env.COURANR_FOUNDATION_DOCKER_CONTAINER || "";
 const dockerDb = "couranr_foundation_backfill";
 let ownsBareDatabase = false;
@@ -47,23 +47,23 @@ const seedSql = `
 
   insert into public.couranr_delivery_requests(
     id,business_account_id,created_by,idempotency_key,source,created_at,updated_at,
-    requester_kind,idempotency_scope,quote_status,pricing_policy_version,
+    quote_status,pricing_policy_version,
     delivery_subtotal_cents,included_loaded_miles,billable_loaded_miles,quote_line_items,
     pickup_address,dropoff_address,loaded_miles,weight_lb,payer_type)
   values
     ('${NORMAL}','${BUSINESS}','${USER}','legacy-normal','merchant_portal',
-      '2026-01-01Z','2026-01-01Z','business','ignored','estimated','legacy-v1',1000,3,2,
+      '2026-01-01Z','2026-01-01Z','estimated','legacy-v1',1000,3,2,
       '[{"code":"base","amountCents":1000}]',
       '{"line1":"Normal pickup"}','{"line1":"Normal dropoff"}',5,10,'merchant'),
     ('${PARTIAL}','${BUSINESS}','${USER}','legacy-partial','merchant_portal',
-      '2026-01-02Z','2026-01-02Z','business','ignored','estimated','legacy-v1',1200,3,2,
+      '2026-01-02Z','2026-01-02Z','estimated','legacy-v1',1200,3,2,
       '[]','{"line1":"Partial pickup"}','{"line1":"Partial dropoff"}',5,10,'merchant'),
     ('${MISMATCH}','${BUSINESS}','${USER}','legacy-mismatch','merchant_portal',
-      '2026-01-03Z','2026-01-03Z','business','ignored','estimated','legacy-v1',1300,3,2,
+      '2026-01-03Z','2026-01-03Z','estimated','legacy-v1',1300,3,2,
       '[{"code":"base","amountCents":1200}]',
       '{"line1":"Mismatch pickup"}','{"line1":"Mismatch dropoff"}',5,10,'merchant'),
     ('${HISTORICAL}','${BUSINESS}','${USER}','legacy-payment','merchant_portal',
-      '2026-01-04Z','2026-01-06Z','business','ignored','estimated','current-v2',1500,3,2,
+      '2026-01-04Z','2026-01-06Z','estimated','current-v2',1500,3,2,
       '[{"code":"base","amountCents":1500}]',
       '{"line1":"Current pickup"}','{"line1":"Current dropoff"}',5,10,'merchant');
 
@@ -111,7 +111,7 @@ function prepareDocker() {
   const migrations = readdirSync(path.join(ROOT, "supabase/migrations"))
     .filter((file) => /^\d{14}_.+\.sql$/.test(file)).sort();
   for (const filename of migrations) {
-    if (filename === M3) dockerSql(seedSql);
+    if (filename === M1) dockerSql(seedSql);
     dockerSql(readFileSync(path.join(ROOT, "supabase/migrations", filename), "utf8"));
   }
 }
@@ -121,7 +121,7 @@ function main() {
     prepareDocker();
   } else {
     up({ quiet: true, beforeMigration: ({ filename, psql: run }) => {
-      if (filename === M3) run(seedSql);
+      if (filename === M1) run(seedSql);
     }});
     ownsBareDatabase = true;
   }
