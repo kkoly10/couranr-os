@@ -19,6 +19,7 @@
     "check:rls": "node e2e/disposable/dbTest.mjs --rls-only",
     "check:routes": "node scripts/checkRoutes.mjs",
     "check:legacy-imports": "node scripts/checkLegacyImports.mjs",
+    "check:canonical-dml": "node scripts/checkCanonicalDmlBoundary.mjs",
     "check:mocks": "node scripts/checkMockMap.mjs",
     "check:images": "node scripts/buildMarketingImages.mjs --check",
     "check:visual-system": "node scripts/checkVisualSystem.mjs",
@@ -32,7 +33,11 @@
     "test:messaging": "node e2e/disposable/authenticatedMessaging.mjs",
     "test:auth-gateway": "node e2e/disposable/authGateway.mjs",
     "test:acceptance": "node e2e/disposable/acceptanceMatrix.mjs",
+    "test:foundation-gate-a": "node e2e/disposable/foundationGateA.mjs",
+    "test:foundation-backfill": "node e2e/disposable/foundationBackfill.mjs",
+    "test:foundation-rollbacks": "node e2e/disposable/foundationRollbacks.mjs",
     "typecheck:canonical": "tsc --noEmit -p tsconfig.canonical.json",
+    "typecheck:couranr-foundation": "tsc -p tsconfig.couranr-foundation.json",
     "test:release": "node e2e/disposable/releaseAuthorization.mjs",
     "test:release:route": "node e2e/disposable/releaseRoute.mjs",
     "test:idempotency": "node e2e/disposable/idempotencySubstrate.mjs",
@@ -44,7 +49,8 @@
     "images:build": "node scripts/buildMarketingImages.mjs",
     "governance:generate": "node scripts/governance/generate.mjs",
     "check:governance": "node scripts/governance/check.mjs",
-    "governance:facts": "node scripts/governance/facts.mjs"
+    "governance:facts": "node scripts/governance/facts.mjs",
+    "couranr:integrity": "node scripts/couranrIntegrity.mjs"
   },
   "dependencies": {
     "@stripe/react-stripe-js": "3.1.1",

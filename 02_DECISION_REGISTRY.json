@@ -3338,6 +3338,342 @@
       ],
       "decided_by": "owner",
       "decided_at_utc": "2026-08-30T00:00:00Z"
+    },
+    {
+      "id": "FND-001",
+      "category": "foundation requester identity",
+      "decision": "One canonical delivery-request model serves both Couranr for Business and Couranr Same Day: requester_kind is business or consumer; a consumer never receives a fake business account and a guest consumer does not require an authenticated creator.",
+      "value": {
+        "requester_kinds": [
+          "business",
+          "consumer"
+        ],
+        "business_requires_business_account": true,
+        "consumer_requires_null_business_account": true,
+        "created_by_meaning": "authenticated user that created this request, when one exists",
+        "consumer_contact_snapshot": [
+          "name",
+          "phone",
+          "email"
+        ],
+        "submitted_consumer_requires_phone_or_email": true,
+        "fake_consumer_business_account": false
+      },
+      "status": "decided",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§8 Foundation lifecycle and commercial identity",
+      "affected_routes": [
+        "/business/deliveries/new",
+        "/send"
+      ],
+      "affected_screen_ids": [
+        "MER-005",
+        "PUB-004"
+      ],
+      "affected_database_objects": [
+        "public.couranr_delivery_requests"
+      ],
+      "affected_code_paths": [
+        "lib/couranr/foundation/requester.ts",
+        "lib/couranr/requests"
+      ],
+      "conflict_with_current_code": {
+        "code_value": "business_account_id and created_by were both NOT NULL",
+        "code_location": "public.couranr_delivery_requests before Foundation Gate A",
+        "resolution": "The additive requester-kind constraints preserve business tenancy while admitting consumer guest rows without invented accounts.",
+        "remediation_commit": "Foundation Gate A"
+      },
+      "implementation_phase": "Foundation Gate A",
+      "acceptance_criteria": [
+        "A business requester always carries business_account_id.",
+        "A consumer requester always has business_account_id NULL.",
+        "A submitted consumer request has a usable phone or email snapshot."
+      ],
+      "decided_by": "owner",
+      "decided_at_utc": "2026-08-31T00:00:00Z"
+    },
+    {
+      "id": "FND-002",
+      "category": "foundation concurrency",
+      "decision": "couranr_delivery_requests.version is optimistic concurrency generation only and is never commercial identity.",
+      "value": {
+        "meaning": "compare-and-set generation of the mutable request row",
+        "commercial_identity": false,
+        "may_advance_without_requote": true,
+        "historical_request_version_allowed": true
+      },
+      "status": "decided",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§8 Foundation lifecycle and commercial identity",
+      "affected_routes": [
+        "/business/deliveries/[id]",
+        "/operations/deliveries/[id]"
+      ],
+      "affected_screen_ids": [
+        "MER-007",
+        "OPS-003"
+      ],
+      "affected_database_objects": [
+        "public.couranr_delivery_requests",
+        "public.couranr_payment_obligations",
+        "public.couranr_service_plans",
+        "public.couranr_deliveries"
+      ],
+      "affected_code_paths": [
+        "lib/couranr/requests",
+        "lib/couranr/payments",
+        "lib/couranr/fulfillment"
+      ],
+      "conflict_with_current_code": {
+        "code_value": "request_version freshness comparisons also acted as quote identity",
+        "code_location": "capture, service-plan and conversion commands before Foundation Gate A",
+        "resolution": "CAS comparisons remain on the mutable request; exact quote UUID equality now gates payment, plan and delivery commercial freshness.",
+        "remediation_commit": "Foundation Gate A"
+      },
+      "implementation_phase": "Foundation Gate A",
+      "acceptance_criteria": [
+        "A readiness-only transition advances request.version without changing current_quote_version_id.",
+        "No payment, plan or delivery treats request_version as its commercial agreement."
+      ],
+      "decided_by": "owner",
+      "decided_at_utc": "2026-08-31T00:00:00Z"
+    },
+    {
+      "id": "FND-003",
+      "category": "foundation quote identity",
+      "decision": "An append-only couranr_quote_versions UUID is the exact commercial identity approved at submission, authorized by a payer, committed in a service plan, and performed by a delivery.",
+      "amends": "REV-001",
+      "value": {
+        "authority_table": "public.couranr_quote_versions",
+        "append_only": true,
+        "requote": "insert Quote N+1 superseding Quote N",
+        "request_quote_columns": "compatibility projection only",
+        "submission_defines_quote": false,
+        "payment_amount_source": "quote version",
+        "required_identity_chain": "request current quote = payment quote = service-plan quote = delivery quote"
+      },
+      "status": "decided",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§8 Foundation lifecycle and commercial identity; §10 Payment and ledger architecture",
+      "affected_routes": [
+        "/business/deliveries/[id]",
+        "/operations/deliveries/[id]",
+        "/pay/[token]"
+      ],
+      "affected_screen_ids": [
+        "MER-007",
+        "OPS-003",
+        "PUB-005"
+      ],
+      "affected_database_objects": [
+        "public.couranr_quote_versions",
+        "public.couranr_delivery_requests",
+        "public.couranr_payment_obligations",
+        "public.couranr_service_plans",
+        "public.couranr_deliveries"
+      ],
+      "affected_code_paths": [
+        "lib/couranr/requests/commands.ts",
+        "lib/couranr/payments",
+        "lib/couranr/fulfillment"
+      ],
+      "conflict_with_current_code": {
+        "code_value": "the mutable request quote projection and request.version jointly stood in for quote identity",
+        "code_location": "canonical request/payment/fulfillment commands before Foundation Gate A",
+        "resolution": "Named commands append immutable quote rows and carry their UUID through obligation, plan and delivery. REV-001 transitions remain; its evidence identity is superseded by exact quoteVersionId.",
+        "remediation_commit": "Foundation Gate A"
+      },
+      "implementation_phase": "Foundation Gate A",
+      "acceptance_criteria": [
+        "Submission and merchant acknowledgment record an exact quote UUID.",
+        "Quote N remains commercially unchanged after Quote N+1 exists.",
+        "A Quote N authorization cannot authorize Quote N+1.",
+        "Delivery snapshots commercial facts from its immutable quote."
+      ],
+      "decided_by": "owner",
+      "decided_at_utc": "2026-08-31T00:00:00Z"
+    },
+    {
+      "id": "FND-004",
+      "category": "foundation delivery cardinality",
+      "decision": "One canonical Delivery represents exactly one customer/destination fulfillment; additional_stops is historical compatibility and is zero for every new canonical request.",
+      "amends": "SUR-001",
+      "value": {
+        "destinations_per_delivery": 1,
+        "new_additional_stops": 0,
+        "historical_values_preserved": true,
+        "additional_stop_price_status": "future route-product pricing authority, not permission to add destinations to one Delivery"
+      },
+      "status": "decided",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§4 Additional charges; §8 Foundation lifecycle and commercial identity",
+      "affected_routes": [
+        "/business/deliveries/new"
+      ],
+      "affected_screen_ids": [
+        "MER-005",
+        "MER-006"
+      ],
+      "affected_database_objects": [
+        "public.couranr_delivery_requests",
+        "public.couranr_deliveries"
+      ],
+      "affected_code_paths": [
+        "lib/couranr/pricing",
+        "lib/couranr/requests/input.ts"
+      ],
+      "conflict_with_current_code": {
+        "code_value": "additional_stops was accepted and priced on one request/delivery",
+        "code_location": "canonical request input, pricing and shipment snapshots before Foundation Gate A",
+        "resolution": "New paths reject positive counts and the database preserves but cannot extend historical values.",
+        "remediation_commit": "Foundation Gate A"
+      },
+      "implementation_phase": "Foundation Gate A",
+      "acceptance_criteria": [
+        "A new canonical request cannot represent an arbitrary extra destination.",
+        "Historical additional_stops values are not deleted or rewritten."
+      ],
+      "decided_by": "owner",
+      "decided_at_utc": "2026-08-31T00:00:00Z"
+    },
+    {
+      "id": "FND-005",
+      "category": "foundation route aggregation",
+      "decision": "Future Route Saver and multi-stop behavior belong to a Route Run aggregate that groups multiple one-destination Delivery records; no route-run schema is part of Foundation Gate A.",
+      "amends": "SUR-002",
+      "value": {
+        "future_aggregate": "Route Run",
+        "member_type": "Delivery",
+        "delivery_destination_cardinality": 1,
+        "foundation_gate_a_creates_route_tables": false,
+        "route_saver_status": "deferred future product capability"
+      },
+      "status": "decided",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§4 Route Saver; §8 Foundation lifecycle and commercial identity",
+      "affected_routes": [
+        "/operations/deliveries/[id]"
+      ],
+      "affected_screen_ids": [
+        "OPS-003"
+      ],
+      "affected_database_objects": [],
+      "affected_code_paths": [],
+      "conflict_with_current_code": {
+        "code_value": "an integer additional_stops field could be mistaken for Route Saver architecture",
+        "code_location": "public.couranr_delivery_requests.additional_stops",
+        "resolution": "The field is fenced as historical compatibility; future Route Saver must introduce the separately reviewed aggregate.",
+        "remediation_commit": "Foundation Gate A doctrine; future implementation deferred"
+      },
+      "implementation_phase": "post-Foundation Gate A",
+      "acceptance_criteria": [
+        "No Gate A migration creates a route-run table.",
+        "Future route work groups Delivery identities rather than storing a stop count on one Delivery."
+      ],
+      "decided_by": "owner",
+      "decided_at_utc": "2026-08-31T00:00:00Z"
+    },
+    {
+      "id": "FND-006",
+      "category": "foundation readiness meaning",
+      "decision": "The existing readiness_state vocabulary means pickup readiness for both business and consumer requests; no second consumer readiness state machine is created.",
+      "amends": "STA-001",
+      "value": {
+        "vocabulary_unchanged": [
+          "not_confirmed",
+          "preparing",
+          "ready",
+          "not_ready",
+          "unavailable"
+        ],
+        "meaning": "pickup readiness",
+        "shared_by_requester_kinds": [
+          "business",
+          "consumer"
+        ],
+        "merchant_not_ready_term": "pickup_not_ready"
+      },
+      "status": "decided",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§8 Canonical states and authority",
+      "affected_routes": [
+        "/business/deliveries/[id]",
+        "/operations/deliveries/[id]"
+      ],
+      "affected_screen_ids": [
+        "MER-007",
+        "OPS-003"
+      ],
+      "affected_database_objects": [
+        "public.couranr_delivery_requests"
+      ],
+      "affected_code_paths": [
+        "lib/couranr/requests/states.ts",
+        "lib/couranr/fulfillment/commands.ts"
+      ],
+      "conflict_with_current_code": {
+        "code_value": "merchant readiness and merchant_not_ready wording",
+        "code_location": "canonical fulfillment/readiness runtime copy before Foundation Gate A",
+        "resolution": "The existing column and states remain; safe runtime names and messages now describe pickup readiness.",
+        "remediation_commit": "Foundation Gate A"
+      },
+      "implementation_phase": "Foundation Gate A",
+      "acceptance_criteria": [
+        "Readiness-only CAS changes do not invalidate a quote.",
+        "Business and consumer requests share the same readiness vocabulary."
+      ],
+      "decided_by": "owner",
+      "decided_at_utc": "2026-08-31T00:00:00Z"
+    },
+    {
+      "id": "FND-007",
+      "category": "foundation request source",
+      "decision": "Request source records where a request originated; Smart Intake is enrichment/input provenance and is not a new request-source identity.",
+      "value": {
+        "new_sources": [
+          "merchant_portal",
+          "consumer_send",
+          "hosted_request",
+          "operations",
+          "api",
+          "import"
+        ],
+        "historical_source_preserved": "smart_intake",
+        "smart_intake_layer": "future Intake enrichment",
+        "smart_intake_commercial_write_authority": false
+      },
+      "status": "decided",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§6 Couranr Smart Intake; §8 Foundation lifecycle and commercial identity",
+      "affected_routes": [
+        "/business/deliveries/new",
+        "/send"
+      ],
+      "affected_screen_ids": [
+        "MER-005",
+        "PUB-004"
+      ],
+      "affected_database_objects": [
+        "public.couranr_delivery_requests"
+      ],
+      "affected_code_paths": [
+        "lib/couranr/requests/input.ts",
+        "lib/couranr/requests/commands.ts"
+      ],
+      "conflict_with_current_code": {
+        "code_value": "smart_intake was accepted as a canonical new-request source",
+        "code_location": "request input vocabulary and request source constraint before Foundation Gate A",
+        "resolution": "Historical rows remain valid, but new runtime input no longer offers smart_intake and Smart Intake remains outside the commercial DML boundary.",
+        "remediation_commit": "Foundation Gate A"
+      },
+      "implementation_phase": "Foundation Gate A",
+      "acceptance_criteria": [
+        "New request source names answer where the request originated.",
+        "Historical smart_intake rows remain readable.",
+        "Smart Intake cannot directly mutate the commercial spine."
+      ],
+      "decided_by": "owner",
+      "decided_at_utc": "2026-08-31T00:00:00Z"
     }
   ]
 }

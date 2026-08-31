@@ -100,7 +100,8 @@ async function callRpc<T = any>(
 /* ------------------------------------------------------- readiness ----- */
 
 /**
- * Change merchant readiness.
+ * Change pickup readiness. Business merchants are the current actor, while a
+ * future consumer server capability will reuse the same state machine.
  *
  * `to` selects the COMMAND, it is not passed to one — every SQL function
  * hard-codes its own destination, so there is no path by which a caller could
@@ -109,7 +110,7 @@ async function callRpc<T = any>(
 export async function setReadiness(params: {
   actor: RequestActor;
   requestId: string;
-  businessAccountId: string;
+  businessAccountId: string | null;
   expectedVersion: number;
   to: ReadinessState;
 }): Promise<FulfillmentResult<{ request: Record<string, any> }>> {
@@ -163,7 +164,7 @@ export type VehicleRequirement = { vehicleClass: string; maxPayloadLb: number; n
 export async function confirmServicePlan(params: {
   actor: RequestActor;
   requestId: string;
-  businessAccountId: string;
+  businessAccountId: string | null;
   expectedVersion: number;
   pickupStart: string;
   pickupEnd: string;
@@ -230,7 +231,7 @@ export type CaptureOutcome = {
 export async function capturePayment(params: {
   actor: RequestActor;
   requestId: string;
-  businessAccountId: string;
+  businessAccountId: string | null;
 }): Promise<FulfillmentResult<CaptureOutcome>> {
   const op = "capturePayment";
 
@@ -466,7 +467,7 @@ async function convertAfterCapture(
 export async function reconcileCapture(params: {
   actor?: RequestActor;
   requestId: string;
-  businessAccountId?: string;
+  businessAccountId?: string | null;
   obligationId: string;
   /** The obligation's version, i.e. WHICH capture cycle is being settled. */
   obligationVersion: number;
@@ -664,13 +665,13 @@ export async function applyVerifiedCaptureOutcome(params: {
 /* ----------------------------------------------------------- reads ----- */
 
 const PLAN_COLUMNS =
-  "id,request_id,business_account_id,payment_obligation_id,request_version," +
+  "id,request_id,business_account_id,payment_obligation_id,request_version,quote_version_id," +
   "scheduled_pickup_start,scheduled_pickup_end,timezone,vehicle_id,vehicle_requirement," +
   "plan_state,confirmed_by,confirmed_at,version";
 
 const DELIVERY_COLUMNS =
   "id,request_id,business_account_id,payment_obligation_id,service_plan_id," +
-  "request_version,pricing_policy_version,captured_amount_cents,currency," +
+  "request_version,quote_version_id,pricing_policy_version,captured_amount_cents,currency," +
   "pickup_address,dropoff_address,recipient,shipment,service_level," +
   "signature_required,proof_method,scheduled_pickup_start,scheduled_pickup_end," +
   "timezone,vehicle_id,vehicle_requirement,fulfillment_state,version,created_at";
@@ -999,7 +1000,7 @@ export async function getCanonicalDelivery(params: {
 export async function releaseAuthorization(params: {
   actor: RequestActor;
   requestId: string;
-  businessAccountId: string;
+  businessAccountId: string | null;
   reason: string;
 }): Promise<FulfillmentResult<{ obligationId: string; paymentState: string }>> {
   const op = "releaseAuthorization";
@@ -1032,15 +1033,21 @@ export async function releaseAuthorization(params: {
    * The whole point of the replay path is that a retrying operator is told what
    * happened.
    *
-   * Scoped to business_account_id as well as request_id, so a request id from
-   * one tenant cannot reach another tenant's obligation.
+   * Scoped to the request's nullable tenancy identity as well as request_id,
+   * so a business request cannot reach another tenant's obligation and a
+   * consumer request is matched with SQL NULL semantics rather than `"null"`.
    */
-  const { data: ob, error: obError } = (await supabaseAdmin
+  let obligationQuery = supabaseAdmin
     .from("couranr_payment_obligations")
     .select("id,request_id,business_account_id,payment_state,provider_payment_intent_id,version")
-    .eq("request_id", params.requestId)
-    .eq("business_account_id", params.businessAccountId)
-    .maybeSingle()) as { data: any; error: any };
+    .eq("request_id", params.requestId);
+  obligationQuery = params.businessAccountId === null
+    ? obligationQuery.is("business_account_id", null)
+    : obligationQuery.eq("business_account_id", params.businessAccountId);
+  const { data: ob, error: obError } = (await obligationQuery.maybeSingle()) as {
+    data: any;
+    error: any;
+  };
 
   if (obError) {
     return fail({ operation: op, code: "internal", detail: { reason: "obligation_read", message: obError.message } });

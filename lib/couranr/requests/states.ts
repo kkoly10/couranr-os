@@ -64,6 +64,7 @@ export type PayerType = (typeof PAYER_TYPES)[number];
 export const REQUEST_COMMANDS = [
   "create_delivery_request_draft",
   "calculate_delivery_request_estimate",
+  "create_quote_version",
   "submit_delivery_request",
   "begin_delivery_request_review",
   "accept_delivery_request_as_quoted",
@@ -102,7 +103,7 @@ type CommandRule = {
   capability: "create" | "submit" | "read" | "review" | "system";
   /** The review_state this command sets, when it decides a review outcome. */
   reviewState?: ReviewState;
-  /** The readiness_state this command sets, for the merchant readiness commands. */
+  /** The pickup readiness_state this command sets. */
   readinessState?: ReadinessState;
 };
 
@@ -138,6 +139,20 @@ export const COMMAND_RULES: Readonly<Record<RequestCommand, CommandRule>> = {
     from: ["draft"],
     to: "unchanged",
     capability: "create",
+  },
+  create_quote_version: {
+    // Draft quote creation is recorded as calculate_delivery_request_estimate.
+    // Once submitted or accepted, appending a commercial successor requires
+    // fresh payer approval.
+    from: [
+      "pending_couranr_review",
+      "confirmed",
+      "awaiting_quote_acceptance",
+      "quote_revision_required",
+    ],
+    to: "quote_revision_required",
+    capability: "review",
+    reviewState: "requoted",
   },
   submit_delivery_request: {
     from: ["draft"],
@@ -204,7 +219,7 @@ export const COMMAND_RULES: Readonly<Record<RequestCommand, CommandRule>> = {
     capability: "system",
   },
 
-  /* --- merchant readiness (owner-approved 2026-08-01) ------------------- */
+  /* --- pickup readiness (owner-approved business flow 2026-08-01) ------- */
 
   /**
    * Readiness is an INDEPENDENT state group (STA-001). These four commands

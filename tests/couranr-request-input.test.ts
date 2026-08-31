@@ -140,6 +140,11 @@ describe("delivery-request input normalization", () => {
         "additional_stops_invalid"
       );
     });
+    it("rejects a positive whole stop count because one delivery has one destination", () => {
+      expect(codes({ ...VALID, additionalStops: 1 })).toContain(
+        "additional_stops_unsupported"
+      );
+    });
     it("rejects a non-object payload", () => {
       expect(codes("nope")).toEqual(["not_an_object"]);
       expect(codes([VALID])).toEqual(["not_an_object"]);

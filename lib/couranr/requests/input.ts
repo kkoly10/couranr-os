@@ -24,9 +24,11 @@ export type PayerType = (typeof PAYER_TYPES)[number];
 
 export const REQUEST_SOURCES = [
   "merchant_portal",
-  "smart_intake",
+  "consumer_send",
   "hosted_request",
   "operations",
+  "api",
+  "import",
 ] as const;
 export type RequestSource = (typeof REQUEST_SOURCES)[number];
 
@@ -74,6 +76,7 @@ export type InputErrorCode =
   | "weight_required"
   | "weight_invalid"
   | "additional_stops_invalid"
+  | "additional_stops_unsupported"
   | "unknown_service_level"
   | "unknown_proof_method"
   | "unknown_payer_type"
@@ -233,6 +236,8 @@ export function normalizeDeliveryRequestInput(raw: unknown): NormalizeResult {
     const n = num(rawStops);
     if (n === null || n < 0 || !Number.isInteger(n)) {
       errors.push({ code: "additional_stops_invalid", field: "additionalStops" });
+    } else if (n > 0) {
+      errors.push({ code: "additional_stops_unsupported", field: "additionalStops" });
     } else {
       additionalStops = n;
     }

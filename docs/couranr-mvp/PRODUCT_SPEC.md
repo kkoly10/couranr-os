@@ -10,6 +10,49 @@ decision amends it. `ui_screen_registry.json` owns screens and routes;
 implementation state. See
 [`authority/AUTHORITY_MANIFEST.json`](./authority/AUTHORITY_MANIFEST.json).
 
+## Foundation Gate A amendments — 2026-08-31
+
+These decisions amend the preserved historical doctrine below. Their atomic
+forms are FND-001 through FND-007 in `02_DECISION_REGISTRY.json`.
+
+The canonical foundation lifecycle is:
+
+Future Intake → Request → immutable Quote Version → Payment Obligation and
+Service Plan → Delivery → future Route aggregation.
+
+- A requester is `business` or `consumer`. Business requests retain business
+  tenancy and membership authorization. A consumer request has no fake business
+  account, may have no authenticated creator, and stores an immutable request-
+  time name/phone/email contact snapshot. Submission requires a usable phone or
+  email.
+- `request.version` is only optimistic compare-and-set generation for the
+  mutable request row. It is not quote, payment, service-plan, or delivery
+  commercial identity. Readiness-only changes may advance it without changing
+  the accepted quote.
+- `couranr_quote_versions.id` is immutable commercial identity. Submission,
+  payer approval, payment obligation, confirmed service plan, and delivery all
+  identify the exact quote UUID. Repricing inserts Quote N+1 and never edits
+  Quote N. Request quote columns are a compatibility projection only.
+- A payment obligation derives amount, pricing-policy version, payer type and
+  currency from its immutable quote. Delivery commercial snapshots come from
+  that quote, captured money from the obligation, and schedule/vehicle
+  commitments from the service plan.
+- One Delivery is one customer/destination fulfillment. New canonical requests
+  have zero `additional_stops`; historical values are preserved. Future Route
+  Saver uses a Route Run aggregate that groups multiple Delivery records. Gate A
+  does not create that aggregate.
+- The existing readiness vocabulary means pickup readiness for both requester
+  kinds. There is no second consumer readiness machine.
+- Request `source` says where the request originated, such as merchant portal,
+  consumer send, hosted request, operations, API, or import. Smart Intake is a
+  future enrichment/input capability; historical `smart_intake` source values
+  remain readable, but it is not new source authority or commercial DML
+  authority.
+
+The historical additional-stop and Route Saver prices below remain future
+product/pricing authority; they do not permit extra destinations on one
+canonical Delivery in Gate A.
+
 ## Provenance — this is an EXTRACTION, not a rewrite
 
 Every line below is lifted verbatim from `Couranr_Claude_Code_Master_Package.md`

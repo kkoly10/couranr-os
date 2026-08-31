@@ -32,6 +32,13 @@ const BANNED = [
   "@/app/api/docs",
 ];
 
+const BANNED_RESOLVED = [
+  "lib/delivery/policy",
+  "lib/delivery/pricing",
+  "lib/delivery/createDeliveryOrderFlow",
+  "lib/serviceArea",
+];
+
 function walk(dir) {
   const out = [];
   for (const entry of readdirSync(dir)) {
@@ -47,9 +54,23 @@ function scan() {
   for (const tree of CANONICAL_TREES) {
     for (const file of walk(path.join(ROOT, tree))) {
       const src = readFileSync(file, "utf8");
-      for (const banned of BANNED) {
-        if (src.includes(`from "${banned.replace(/"$/, "")}"`) || src.includes(`from "${banned}`)) {
-          offenders.push(`${path.relative(ROOT, file)} -> ${banned}`);
+      const specifiers = Array.from(src.matchAll(
+        /(?:\bfrom\s*|\bimport\s*\(|\brequire\s*\()\s*["']([^"']+)["']/g
+      ), (match) => match[1]);
+      for (const specifier of specifiers) {
+        const aliasMatch = BANNED.some((banned) =>
+          specifier === banned.replace(/"$/, "") || specifier.startsWith(banned)
+        );
+        const resolved = specifier.startsWith("@/")
+          ? specifier.slice(2)
+          : specifier.startsWith(".")
+            ? path.relative(ROOT, path.resolve(path.dirname(file), specifier))
+            : specifier;
+        const resolvedMatch = BANNED_RESOLVED.some((banned) =>
+          resolved === banned || resolved === `${banned}.ts` || resolved.startsWith(`${banned}/`)
+        );
+        if (aliasMatch || resolvedMatch) {
+          offenders.push(`${path.relative(ROOT, file)} -> ${specifier}`);
         }
       }
     }
@@ -60,7 +81,7 @@ function scan() {
 function main() {
   if (process.argv.includes("--positive-control")) {
     const planted = path.join(ROOT, "lib/couranr/__legacy_control__.ts");
-    writeFileSync(planted, 'import { DELIVERY_POLICY } from "@/lib/delivery/policy";\nexport const x = DELIVERY_POLICY;\n');
+    writeFileSync(planted, 'import { DELIVERY_POLICY } from "../delivery/policy";\nexport const x = DELIVERY_POLICY;\n');
     try {
       const offenders = scan();
       const caught = offenders.some((o) => o.includes("__legacy_control__"));

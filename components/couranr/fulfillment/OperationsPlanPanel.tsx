@@ -153,7 +153,7 @@ export function OperationsPlanPanel({
         {error ? <ErrorState title="That could not be completed" body={error} /> : null}
 
         <Grid columns={3}>
-          <Detail label="Merchant readiness" value={readiness.replace(/_/g, " ")} />
+          <Detail label="Pickup readiness" value={readiness.replace(/_/g, " ")} />
           <Detail
             label="Payment"
             value={payment ? payment.paymentState.replace(/_/g, " ") : "none"}

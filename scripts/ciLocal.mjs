@@ -95,8 +95,10 @@ const STAGES = [
 
   /* ── TIER 2 — gates CI does not run at all ───────────────────────────── */
   { tier: 2, name: "typecheck:canonical", run: ["npm", ["run", "typecheck:canonical"]], why: "strict mode for the canonical trees" },
+  { tier: 2, name: "typecheck:couranr-foundation", run: ["npm", ["run", "typecheck:couranr-foundation"]], why: "strict-null boundary for nullable requester and commercial spine code" },
   { tier: 2, name: "check:routes", run: ["npm", ["run", "check:routes"]], why: "no ungated canonical API route" },
   { tier: 2, name: "check:legacy-imports", run: ["npm", ["run", "check:legacy-imports"]], why: "canonical code imports no legacy module" },
+  { tier: 2, name: "check:canonical-dml", run: ["npm", ["run", "check:canonical-dml"]], why: "commercial spine writes stay behind named commands" },
   { tier: 2, name: "check:mocks", run: ["npm", ["run", "check:mocks"]], why: "every root PNG accounted for" },
   { tier: 2, name: "check:images", run: ["npm", ["run", "check:images"]], why: "every marketing derivative is current with its accepted source" },
   { tier: 2, name: "check:migrations", run: ["npm", ["run", "check:migrations"]], why: "no destructive migration" },
@@ -120,6 +122,9 @@ const STAGES = [
     ["test:release:route", "release route"],
     ["test:idempotency", "idempotency substrate"],
     ["test:acceptance", "acceptance matrix"],
+    ["test:foundation-gate-a", "Foundation Gate A requester/quote/payment/plan/delivery adversarial matrix"],
+    ["test:foundation-backfill", "Foundation Gate A deterministic historical backfill matrix"],
+    ["test:foundation-rollbacks", "Foundation Gate A reversible-additive and hard-refusal rollback matrix"],
     ["test:messaging", "authenticated messaging"],
     ["test:auth-gateway", "auth gateway"],
     ["test:cus-fragments", "customer help fragments"],
@@ -134,7 +139,12 @@ const STAGES = [
       // on an identical unhandled ENOENT — five stack traces that look like
       // five code failures and are one missing prerequisite. This container is
       // recycled without warning and the binary does not survive it.
-      if (!postgrestPresent()) {
+      const postgresOnly = new Set([
+        "test:foundation-gate-a",
+        "test:foundation-backfill",
+        "test:foundation-rollbacks",
+      ]);
+      if (!postgresOnly.has(script) && !postgrestPresent()) {
         return "postgrest binary is missing — run `npm run provision:postgrest` first";
       }
       return null;

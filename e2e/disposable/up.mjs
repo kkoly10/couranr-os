@@ -137,7 +137,7 @@ export function down({ quiet = false } = {}) {
   if (!quiet) console.log("  disposable database destroyed");
 }
 
-export function up({ quiet = false } = {}) {
+export function up({ quiet = false, beforeMigration = null } = {}) {
   const log = (m) => !quiet && console.log(m);
 
   down({ quiet: true });
@@ -168,6 +168,7 @@ export function up({ quiet = false } = {}) {
     .sort();
   log(`  applying ${migrations.length} forward migrations in filename order...`);
   for (const f of migrations) {
+    beforeMigration?.({ filename: f, psql });
     sh(path.join(PGBIN, "psql"), [
       "-h", "127.0.0.1", "-p", String(PORT), "-U", "postgres", "-d", DB,
       "-q", "-v", "ON_ERROR_STOP=1", "-f", path.join(ROOT, "supabase/migrations", f),
@@ -206,9 +207,9 @@ export function verifyFidelity() {
      * no `couranr_` prefix. They are asserted by name below instead, so this
      * probe cannot silently stop covering them.
      */
-    ["29 couranr_ tables",
+    ["33 couranr_ tables (including immutable quote versions)",
       () => one(`select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace
-                 where n.nspname='public' and c.relkind='r' and c.relname like 'couranr%'`) === "29"],
+                 where n.nspname='public' and c.relkind='r' and c.relname like 'couranr%'`) === "33"],
     ["the merchant-customer tables exist and are service_role-only",
       () =>
         one(`select has_table_privilege('service_role','public.merchant_customers','INSERT')

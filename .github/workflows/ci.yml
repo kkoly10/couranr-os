@@ -55,6 +55,15 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Typecheck Couranr foundation strict nulls
+        run: npm run typecheck:couranr-foundation
+
+      - name: Enforce Couranr commercial DML boundary
+        run: npm run check:canonical-dml
+
+      - name: Enforce canonical legacy authority fence
+        run: npm run check:legacy-imports
+
       - name: Test
         run: npm run test:run
 

@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "strictNullChecks": true,
+    "noEmit": true
+  },
+  "include": [
+    "lib/couranr/foundation/**/*.ts",
+    "lib/couranr/requests/**/*.ts",
+    "lib/couranr/pricing/**/*.ts",
+    "lib/couranr/payments/**/*.ts",
+    "lib/couranr/fulfillment/**/*.ts",
+    "lib/couranr/dispatch/**/*.ts",
+    "app/api/couranr/delivery-requests/**/*.ts",
+    "app/api/couranr/operations/delivery-requests/**/*.ts",
+    "app/api/couranr/stripe/**/*.ts"
+  ]
+}

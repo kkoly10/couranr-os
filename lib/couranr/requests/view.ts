@@ -5,6 +5,7 @@ import type {
   ReviewState,
   ServiceAreaReviewState,
 } from "./states";
+import { requesterIdentityFromRow } from "@/lib/couranr/foundation/requester";
 
 /**
  * Database row → client view model.
@@ -19,7 +20,10 @@ import type {
 
 export type DeliveryRequestView = {
   id: string;
-  businessAccountId: string;
+  requesterKind: "business" | "consumer";
+  businessAccountId: string | null;
+  currentQuoteVersionId: string | null;
+  singleDestinationContract: boolean;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -68,10 +72,18 @@ function numOrNull(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+function stringOrNull(v: unknown): string | null {
+  return typeof v === "string" && v.trim() !== "" ? v : null;
+}
+
 export function toDeliveryRequestView(row: Record<string, any>): DeliveryRequestView {
+  const requester = requesterIdentityFromRow(row);
   return {
     id: String(row.id),
-    businessAccountId: String(row.business_account_id),
+    requesterKind: requester.kind,
+    businessAccountId: requester.businessAccountId,
+    currentQuoteVersionId: stringOrNull(row.current_quote_version_id),
+    singleDestinationContract: row.single_destination_contract === true,
     version: Number(row.version),
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),

@@ -37,8 +37,8 @@ import { formatCents, type DeliveryRequestView } from "@/lib/couranr/requests/vi
 import { DUPLICATE_STORAGE_KEY } from "@/lib/couranr/requests/listFilters";
 
 /**
- * MER-005 (Create delivery with Smart Intake) and MER-006 (Delivery review and
- * quote) — the same flow in two steps, matching the registry routes
+ * MER-005 (Create delivery) and MER-006 (Delivery review and quote) — the same
+ * flow in two steps, matching the registry routes
  * `/app/business/deliveries/new` and `/app/business/deliveries/new?step=review`.
  *
  * The form collects the SHIPMENT. It has no price field and posts none: the
@@ -55,7 +55,8 @@ const ERROR_COPY: Record<string, string> = {
   loaded_miles_invalid: "Distance cannot be negative.",
   weight_required: "Enter the package weight in pounds.",
   weight_invalid: "Weight cannot be negative.",
-  additional_stops_invalid: "Enter a whole number of additional stops.",
+  additional_stops_invalid: "This delivery must have one destination.",
+  additional_stops_unsupported: "Create one delivery per destination.",
   recipient_email_invalid: "Enter a valid email address.",
   unknown_service_level: "Choose a service level.",
   unknown_proof_method: "Choose how delivery is proven.",
@@ -98,7 +99,6 @@ export function NewDeliveryFlow() {
   const [recipientEmail, setRecipientEmail] = React.useState("");
   const [loadedMiles, setLoadedMiles] = React.useState("");
   const [weightLb, setWeightLb] = React.useState("");
-  const [additionalStops, setAdditionalStops] = React.useState("0");
   const [serviceLevel, setServiceLevel] = React.useState("standard");
   const [proofMethod, setProofMethod] = React.useState("photo_or_pin");
   const [readinessState, setReadinessState] = React.useState("not_confirmed");
@@ -165,7 +165,6 @@ export function NewDeliveryFlow() {
     if (typeof seed.recipientEmail === "string") setRecipientEmail(seed.recipientEmail);
     if (Number.isFinite(seed.loadedMiles)) setLoadedMiles(String(seed.loadedMiles));
     if (Number.isFinite(seed.weightLb)) setWeightLb(String(seed.weightLb));
-    if (Number.isFinite(seed.additionalStops)) setAdditionalStops(String(seed.additionalStops));
     if (typeof seed.serviceLevel === "string") setServiceLevel(seed.serviceLevel);
     if (typeof seed.proofMethod === "string") setProofMethod(seed.proofMethod);
     setSignatureRequired(seed.signatureRequired === true);
@@ -213,7 +212,7 @@ export function NewDeliveryFlow() {
       recipientEmail,
       loadedMiles,
       weightLb,
-      additionalStops,
+      additionalStops: 0,
       serviceLevel,
       signatureRequired,
       proofMethod,
@@ -492,15 +491,8 @@ export function NewDeliveryFlow() {
                 />
               )}
             </Field>
-            <Field label="Additional stops" error={fieldErrors.additionalStops}>
-              {(p) => (
-                <Input
-                  {...p}
-                  inputMode="numeric"
-                  value={additionalStops}
-                  onChange={(e) => setAdditionalStops(e.target.value)}
-                />
-              )}
+            <Field label="Destinations" hint="One delivery is created per destination.">
+              {(p) => <Input {...p} value="1" disabled readOnly />}
             </Field>
           </Grid>
 

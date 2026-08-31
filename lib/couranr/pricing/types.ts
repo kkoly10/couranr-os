@@ -10,10 +10,7 @@ export type QuoteInput = {
   loadedMiles: number;
   /** Package weight in pounds. May be fractional. */
   weightLb: number;
-  /**
-   * Stops beyond the included first destination. 0 means a single destination.
-   * Must be a whole number.
-   */
+  /** Compatibility input. Gate A accepts only 0: one quote/delivery has one destination. */
   additionalStops?: number;
   serviceLevel?: ServiceLevel;
   signatureRequired?: boolean;
@@ -65,6 +62,7 @@ export type ValidationErrorCode =
   | "additional_stops_not_finite"
   | "additional_stops_negative"
   | "additional_stops_not_whole"
+  | "additional_stops_unsupported"
   | "unknown_service_level"
   | "rush_and_overnight_conflict";
 

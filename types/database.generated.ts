@@ -914,7 +914,7 @@ export type Database = {
       }
       couranr_deliveries: {
         Row: {
-          business_account_id: string
+          business_account_id: string | null
           captured_amount_cents: number
           created_at: string
           currency: string
@@ -925,6 +925,7 @@ export type Database = {
           pickup_address: Json
           pricing_policy_version: string
           proof_method: string
+          quote_version_id: string
           recipient: Json
           request_id: string
           request_version: number
@@ -941,7 +942,7 @@ export type Database = {
           version: number
         }
         Insert: {
-          business_account_id: string
+          business_account_id?: string | null
           captured_amount_cents: number
           created_at?: string
           currency: string
@@ -952,6 +953,7 @@ export type Database = {
           pickup_address: Json
           pricing_policy_version: string
           proof_method: string
+          quote_version_id: string
           recipient: Json
           request_id: string
           request_version: number
@@ -968,7 +970,7 @@ export type Database = {
           version?: number
         }
         Update: {
-          business_account_id?: string
+          business_account_id?: string | null
           captured_amount_cents?: number
           created_at?: string
           currency?: string
@@ -979,6 +981,7 @@ export type Database = {
           pickup_address?: Json
           pricing_policy_version?: string
           proof_method?: string
+          quote_version_id?: string
           recipient?: Json
           request_id?: string
           request_version?: number
@@ -1029,6 +1032,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "couranr_service_plans"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "couranr_dlv_quote_request_fk"
+            columns: ["quote_version_id", "request_id"]
+            isOneToOne: false
+            referencedRelation: "couranr_quote_versions"
+            referencedColumns: ["id", "request_id"]
           },
           {
             foreignKeyName: "couranr_dlv_request_fk"
@@ -1351,19 +1361,26 @@ export type Database = {
         Row: {
           additional_stops: number
           billable_loaded_miles: number | null
-          business_account_id: string
+          business_account_id: string | null
+          consumer_contact_snapshot: Json
           created_at: string
-          created_by: string
+          created_by: string | null
+          current_quote_version_id: string | null
           delivery_subtotal_cents: number | null
           dropoff_address: Json | null
           id: string
           idempotency_key: string
+          idempotency_scope: string
           included_loaded_miles: number | null
           loaded_miles: number | null
           normalized_request_payload: Json
           payer_type: string
           payment_due_cents: number | null
           pickup_address: Json | null
+          preset_id: string | null
+          preset_snapshot: Json | null
+          preset_source: string | null
+          preset_version: number | null
           pricing_policy_version: string | null
           proof_method: string
           quote_line_items: Json
@@ -1373,12 +1390,14 @@ export type Database = {
           recipient_name: string | null
           recipient_phone: string | null
           request_state: string
+          requester_kind: string
           review_reasons: Json
           review_state: string
           rounding_applied: boolean
           service_area_review_state: string
           service_level: string
           signature_required: boolean
+          single_destination_contract: boolean
           source: string
           submitted_at: string | null
           tax_included: boolean
@@ -1389,19 +1408,26 @@ export type Database = {
         Insert: {
           additional_stops?: number
           billable_loaded_miles?: number | null
-          business_account_id: string
+          business_account_id?: string | null
+          consumer_contact_snapshot?: Json
           created_at?: string
-          created_by: string
+          created_by?: string | null
+          current_quote_version_id?: string | null
           delivery_subtotal_cents?: number | null
           dropoff_address?: Json | null
           id?: string
           idempotency_key: string
+          idempotency_scope: string
           included_loaded_miles?: number | null
           loaded_miles?: number | null
           normalized_request_payload?: Json
           payer_type?: string
           payment_due_cents?: number | null
           pickup_address?: Json | null
+          preset_id?: string | null
+          preset_snapshot?: Json | null
+          preset_source?: string | null
+          preset_version?: number | null
           pricing_policy_version?: string | null
           proof_method?: string
           quote_line_items?: Json
@@ -1411,12 +1437,14 @@ export type Database = {
           recipient_name?: string | null
           recipient_phone?: string | null
           request_state?: string
+          requester_kind?: string
           review_reasons?: Json
           review_state?: string
           rounding_applied?: boolean
           service_area_review_state?: string
           service_level?: string
           signature_required?: boolean
+          single_destination_contract?: boolean
           source?: string
           submitted_at?: string | null
           tax_included?: boolean
@@ -1427,19 +1455,26 @@ export type Database = {
         Update: {
           additional_stops?: number
           billable_loaded_miles?: number | null
-          business_account_id?: string
+          business_account_id?: string | null
+          consumer_contact_snapshot?: Json
           created_at?: string
-          created_by?: string
+          created_by?: string | null
+          current_quote_version_id?: string | null
           delivery_subtotal_cents?: number | null
           dropoff_address?: Json | null
           id?: string
           idempotency_key?: string
+          idempotency_scope?: string
           included_loaded_miles?: number | null
           loaded_miles?: number | null
           normalized_request_payload?: Json
           payer_type?: string
           payment_due_cents?: number | null
           pickup_address?: Json | null
+          preset_id?: string | null
+          preset_snapshot?: Json | null
+          preset_source?: string | null
+          preset_version?: number | null
           pricing_policy_version?: string | null
           proof_method?: string
           quote_line_items?: Json
@@ -1449,12 +1484,14 @@ export type Database = {
           recipient_name?: string | null
           recipient_phone?: string | null
           request_state?: string
+          requester_kind?: string
           review_reasons?: Json
           review_state?: string
           rounding_applied?: boolean
           service_area_review_state?: string
           service_level?: string
           signature_required?: boolean
+          single_destination_contract?: boolean
           source?: string
           submitted_at?: string | null
           tax_included?: boolean
@@ -1463,6 +1500,13 @@ export type Database = {
           weight_lb?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "couranr_dr_current_quote_request_fk"
+            columns: ["current_quote_version_id", "id"]
+            isOneToOne: false
+            referencedRelation: "couranr_quote_versions"
+            referencedColumns: ["id", "request_id"]
+          },
           {
             foreignKeyName: "couranr_delivery_requests_business_fk"
             columns: ["business_account_id"]
@@ -1882,7 +1926,7 @@ export type Database = {
       couranr_payment_access_tokens: {
         Row: {
           action: string
-          business_account_id: string
+          business_account_id: string | null
           created_at: string
           expires_at: string
           id: string
@@ -1895,7 +1939,7 @@ export type Database = {
         }
         Insert: {
           action?: string
-          business_account_id: string
+          business_account_id?: string | null
           created_at?: string
           expires_at: string
           id?: string
@@ -1908,7 +1952,7 @@ export type Database = {
         }
         Update: {
           action?: string
-          business_account_id?: string
+          business_account_id?: string | null
           created_at?: string
           expires_at?: string
           id?: string
@@ -2011,7 +2055,7 @@ export type Database = {
         Row: {
           amount_cents: number
           authorized_at: string | null
-          business_account_id: string
+          business_account_id: string | null
           cancelled_at: string | null
           capture_requested_at: string | null
           captured_amount_cents: number | null
@@ -2026,6 +2070,7 @@ export type Database = {
           pricing_policy_version: string
           provider: string
           provider_payment_intent_id: string | null
+          quote_version_id: string
           request_id: string
           request_version: number
           updated_at: string
@@ -2034,7 +2079,7 @@ export type Database = {
         Insert: {
           amount_cents: number
           authorized_at?: string | null
-          business_account_id: string
+          business_account_id?: string | null
           cancelled_at?: string | null
           capture_requested_at?: string | null
           captured_amount_cents?: number | null
@@ -2049,6 +2094,7 @@ export type Database = {
           pricing_policy_version: string
           provider?: string
           provider_payment_intent_id?: string | null
+          quote_version_id: string
           request_id: string
           request_version: number
           updated_at?: string
@@ -2057,7 +2103,7 @@ export type Database = {
         Update: {
           amount_cents?: number
           authorized_at?: string | null
-          business_account_id?: string
+          business_account_id?: string | null
           cancelled_at?: string | null
           capture_requested_at?: string | null
           captured_amount_cents?: number | null
@@ -2072,6 +2118,7 @@ export type Database = {
           pricing_policy_version?: string
           provider?: string
           provider_payment_intent_id?: string | null
+          quote_version_id?: string
           request_id?: string
           request_version?: number
           updated_at?: string
@@ -2091,6 +2138,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "business_accounts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "couranr_po_quote_request_fk"
+            columns: ["quote_version_id", "request_id"]
+            isOneToOne: false
+            referencedRelation: "couranr_quote_versions"
+            referencedColumns: ["id", "request_id"]
           },
           {
             foreignKeyName: "couranr_po_request_fk"
@@ -2265,15 +2319,121 @@ export type Database = {
           },
         ]
       }
+      couranr_quote_versions: {
+        Row: {
+          billable_loaded_miles: number | null
+          created_at: string
+          created_by_user_id: string | null
+          currency: string
+          distance_source: string | null
+          dropoff_address_snapshot: Json | null
+          id: string
+          included_loaded_miles: number | null
+          legacy_evidence: Json | null
+          loaded_distance_miles: number | null
+          payer_type: string
+          pickup_address_snapshot: Json | null
+          pricing_policy_version: string | null
+          provenance_state: string
+          quote_line_items: Json | null
+          quote_number: number
+          quote_status: string
+          recipient_snapshot: Json | null
+          record_origin: string
+          request_id: string
+          request_version_at_creation: number
+          review_reasons: Json
+          route_duration_seconds: number | null
+          service_configuration_snapshot: Json | null
+          shipment_snapshot: Json | null
+          subtotal_cents: number | null
+          supersedes_quote_version_id: string | null
+        }
+        Insert: {
+          billable_loaded_miles?: number | null
+          created_at?: string
+          created_by_user_id?: string | null
+          currency?: string
+          distance_source?: string | null
+          dropoff_address_snapshot?: Json | null
+          id?: string
+          included_loaded_miles?: number | null
+          legacy_evidence?: Json | null
+          loaded_distance_miles?: number | null
+          payer_type: string
+          pickup_address_snapshot?: Json | null
+          pricing_policy_version?: string | null
+          provenance_state: string
+          quote_line_items?: Json | null
+          quote_number: number
+          quote_status: string
+          recipient_snapshot?: Json | null
+          record_origin: string
+          request_id: string
+          request_version_at_creation: number
+          review_reasons?: Json
+          route_duration_seconds?: number | null
+          service_configuration_snapshot?: Json | null
+          shipment_snapshot?: Json | null
+          subtotal_cents?: number | null
+          supersedes_quote_version_id?: string | null
+        }
+        Update: {
+          billable_loaded_miles?: number | null
+          created_at?: string
+          created_by_user_id?: string | null
+          currency?: string
+          distance_source?: string | null
+          dropoff_address_snapshot?: Json | null
+          id?: string
+          included_loaded_miles?: number | null
+          legacy_evidence?: Json | null
+          loaded_distance_miles?: number | null
+          payer_type?: string
+          pickup_address_snapshot?: Json | null
+          pricing_policy_version?: string | null
+          provenance_state?: string
+          quote_line_items?: Json | null
+          quote_number?: number
+          quote_status?: string
+          recipient_snapshot?: Json | null
+          record_origin?: string
+          request_id?: string
+          request_version_at_creation?: number
+          review_reasons?: Json
+          route_duration_seconds?: number | null
+          service_configuration_snapshot?: Json | null
+          shipment_snapshot?: Json | null
+          subtotal_cents?: number | null
+          supersedes_quote_version_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "couranr_qv_request_fk"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "couranr_delivery_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "couranr_qv_supersedes_fk"
+            columns: ["supersedes_quote_version_id"]
+            isOneToOne: true
+            referencedRelation: "couranr_quote_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       couranr_service_plans: {
         Row: {
-          business_account_id: string
+          business_account_id: string | null
           confirmed_at: string | null
           confirmed_by: string | null
           created_at: string
           id: string
           payment_obligation_id: string
           plan_state: string
+          quote_version_id: string
           request_id: string
           request_version: number
           scheduled_pickup_end: string
@@ -2285,13 +2445,14 @@ export type Database = {
           version: number
         }
         Insert: {
-          business_account_id: string
+          business_account_id?: string | null
           confirmed_at?: string | null
           confirmed_by?: string | null
           created_at?: string
           id?: string
           payment_obligation_id: string
           plan_state?: string
+          quote_version_id: string
           request_id: string
           request_version: number
           scheduled_pickup_end: string
@@ -2303,13 +2464,14 @@ export type Database = {
           version?: number
         }
         Update: {
-          business_account_id?: string
+          business_account_id?: string | null
           confirmed_at?: string | null
           confirmed_by?: string | null
           created_at?: string
           id?: string
           payment_obligation_id?: string
           plan_state?: string
+          quote_version_id?: string
           request_id?: string
           request_version?: number
           scheduled_pickup_end?: string
@@ -2348,6 +2510,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "couranr_payment_obligations"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "couranr_sp_quote_request_fk"
+            columns: ["quote_version_id", "request_id"]
+            isOneToOne: false
+            referencedRelation: "couranr_quote_versions"
+            referencedColumns: ["id", "request_id"]
           },
           {
             foreignKeyName: "couranr_sp_request_fk"
@@ -5439,6 +5608,22 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      couranr_create_quote_version: {
+        Args: {
+          p_actor_user_id: string
+          p_billable_loaded_miles: number
+          p_business_account_id: string
+          p_delivery_subtotal_cents: number
+          p_expected_version: number
+          p_included_loaded_miles: number
+          p_pricing_policy_version: string
+          p_quote_line_items: Json
+          p_quote_status: string
+          p_request_id: string
+          p_review_reasons: Json
+        }
+        Returns: Database["public"]["Tables"]["couranr_delivery_requests"]["Row"]
+      }
       couranr_cv_participant_kind_allowed: {
         Args: { p_conversation_kind: string; p_participant_kind: string }
         Returns: boolean
@@ -5679,6 +5864,14 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      couranr_foundation_integrity: {
+        Args: never
+        Returns: {
+          detail: Json
+          entity_id: string
+          issue_code: string
+        }[]
       }
       couranr_help_post_message: {
         Args: {
@@ -6445,6 +6638,16 @@ export type Database = {
           isOneToOne: true
           isSetofReturn: false
         }
+      }
+      couranr_submit_delivery_request_v2: {
+        Args: {
+          p_acknowledged?: boolean
+          p_actor_user_id: string
+          p_business_account_id: string
+          p_expected_version: number
+          p_request_id: string
+        }
+        Returns: Database["public"]["Tables"]["couranr_delivery_requests"]["Row"]
       }
       couranr_suspend_driver: {
         Args: {

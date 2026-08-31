@@ -42,9 +42,9 @@ assertServerOnly("lib/couranr/requests/commands.ts");
  *      the function re-checks it in the same statement that writes,
  *   4. compare-and-sets `version` inside the function's WHERE clause.
  *
- * No command accepts a target status from a caller, and no command accepts an
- * amount: prices come from `lib/couranr/pricing`, and the SQL functions have no
- * payment-amount parameter at all.
+ * No command accepts a target status from a caller. Quote-creation commands
+ * receive prices only from `lib/couranr/pricing`; submission receives no quote
+ * values and references the existing immutable quote UUID.
  *
  * There is no `resilientUpdateById`-style retry here. If a write fails the
  * caller is told, with a correlation id, and nothing is persisted.
@@ -56,7 +56,7 @@ export const EVENTS_TABLE = "couranr_delivery_request_events";
 export const RPC = {
   create: "couranr_create_delivery_request_draft",
   estimate: "couranr_calculate_delivery_request_estimate",
-  submit: "couranr_submit_delivery_request",
+  submit: "couranr_submit_delivery_request_v2",
   beginReview: "couranr_begin_delivery_request_review",
   accept: "couranr_accept_delivery_request_as_quoted",
   requote: "couranr_requote_delivery_request",
@@ -83,6 +83,7 @@ export type CommandResult<T> = CommandSuccess<T> | CommandFailure;
 /** The columns every read of a request selects. Never `select("*")`. */
 const REQUEST_COLUMN_LIST = [
   "id",
+  "requester_kind",
   "business_account_id",
   "created_by",
   "created_at",
@@ -95,6 +96,7 @@ const REQUEST_COLUMN_LIST = [
   "service_area_review_state",
   "payer_type",
   "quote_status",
+  "current_quote_version_id",
   "source",
   "recipient_name",
   "recipient_phone",
@@ -102,6 +104,7 @@ const REQUEST_COLUMN_LIST = [
   "loaded_miles",
   "weight_lb",
   "additional_stops",
+  "single_destination_contract",
   "service_level",
   "signature_required",
   "proof_method",
@@ -257,7 +260,9 @@ function quoteFromRow(row: DeliveryRequestRow, overnightRequested: boolean): Quo
  */
 export function shipmentArgs(draft: DeliveryRequestDraft) {
   return {
-    p_source: draft.source,
+    // This command is reached only from the canonical Business portal. Source
+    // is server-owned origin identity, not a form-selectable capability name.
+    p_source: "merchant_portal",
     p_readiness_state: draft.readinessState,
     p_payer_type: draft.payerType,
     p_recipient_name: draft.recipientName,
@@ -504,17 +509,14 @@ export async function submitDeliveryRequest(params: {
     });
   }
 
-  // The quote is recomputed at submission, so what Couranr reviews is what the
-  // server computes now — not a stale number a merchant may have been looking
-  // at for an hour.
-  const quote = quoteFromRow(row, row.normalized_request_payload?.overnightRequested === true);
-  if (quote.quoteStatus === "invalid") {
+  // Submission identifies an existing immutable commercial agreement. Any
+  // commercial edit must first create Quote N+1 through a quote command.
+  if (!row.current_quote_version_id || row.quote_status === "invalid") {
     return fail({
       operation: op,
       code: "invalid_input",
-      detail: quote.validationErrors,
-      details: quote.validationErrors.map((code) => ({ code })),
-      message: "These shipment details cannot be priced.",
+      detail: { reason: "current_quote_required" },
+      message: "Create a valid delivery quote before submitting this request.",
     });
   }
 
@@ -523,8 +525,7 @@ export async function submitDeliveryRequest(params: {
     p_business_account_id: params.businessAccountId,
     p_expected_version: params.expectedVersion,
     p_actor_user_id: params.actor.userId,
-    ...quoteArgs(quote),
-    p_merchant_acknowledged: params.merchantAcknowledged === true,
+    p_acknowledged: params.merchantAcknowledged === true,
   });
   if (isCommandFailure(result)) return result;
 
@@ -548,7 +549,7 @@ export async function beginDeliveryRequestReview(params: {
   const permission = canActOnDeliveryRequest(
     params.actor,
     "review",
-    String(row.business_account_id)
+    row.business_account_id ?? null
   );
   if (!permission.allowed) return denied(op, permission.reason);
   if (params.actor.kind === "anonymous") return denied(op, "anonymous");
@@ -565,7 +566,7 @@ export async function beginDeliveryRequestReview(params: {
 
   const result = await callRpc(op, RPC.beginReview, {
     p_request_id: params.requestId,
-    p_business_account_id: String(row.business_account_id),
+    p_business_account_id: row.business_account_id ?? null,
     p_expected_version: params.expectedVersion,
     p_actor_user_id: params.actor.userId,
   });
@@ -608,7 +609,7 @@ async function loadForReview(
   if (isCommandFailure(loaded)) return loaded;
   const row = loaded.value;
 
-  const permission = canActOnDeliveryRequest(actor, "review", String(row.business_account_id));
+  const permission = canActOnDeliveryRequest(actor, "review", row.business_account_id ?? null);
   if (!permission.allowed) return denied(op, permission.reason);
   // Narrowed here so the callers can read `userId` without each repeating the
   // check — and so a future command cannot forget it.
@@ -653,7 +654,7 @@ export async function acceptDeliveryRequestAsQuoted(params: {
 
   const result = await callRpc(op, RPC.accept, {
     p_request_id: params.requestId,
-    p_business_account_id: String(row.business_account_id),
+    p_business_account_id: row.business_account_id ?? null,
     p_expected_version: params.expectedVersion,
     p_actor_user_id: actorUserId,
   });
@@ -728,7 +729,7 @@ export async function requoteDeliveryRequest(params: {
 
   const result = await callRpc(op, RPC.requote, {
     p_request_id: params.requestId,
-    p_business_account_id: String(row.business_account_id),
+    p_business_account_id: row.business_account_id ?? null,
     p_expected_version: params.expectedVersion,
     p_actor_user_id: actorUserId,
     p_pricing_policy_version: quote.policyVersion,
@@ -786,7 +787,7 @@ export async function declineDeliveryRequest(params: {
 
   const result = await callRpc(op, RPC.decline, {
     p_request_id: params.requestId,
-    p_business_account_id: String(row.business_account_id),
+    p_business_account_id: row.business_account_id ?? null,
     p_expected_version: params.expectedVersion,
     p_actor_user_id: actorUserId,
     p_decline_reason: params.reason,
@@ -809,7 +810,7 @@ export async function getDeliveryRequest(params: {
   if (isCommandFailure(loaded)) return loaded;
   const row = loaded.value;
 
-  const permission = canActOnDeliveryRequest(params.actor, "read", String(row.business_account_id));
+  const permission = canActOnDeliveryRequest(params.actor, "read", row.business_account_id ?? null);
   if (!permission.allowed) return denied(op, permission.reason);
 
   /*
@@ -863,7 +864,7 @@ export async function getDeclineInternalNotes(params: {
 
   // `review`, not `read`: every active member of a business may read a
   // request, and none of them may see an internal note.
-  const permission = canActOnDeliveryRequest(params.actor, "review", String(row.business_account_id));
+  const permission = canActOnDeliveryRequest(params.actor, "review", row.business_account_id ?? null);
   if (!permission.allowed) return denied(op, permission.reason);
   if (params.actor.kind !== "operations") return denied(op, "role_may_not_review");
 

@@ -21,7 +21,8 @@ assertServerOnly("lib/couranr/payments/stripe.ts");
 export type ObligationForIntent = {
   id: string;
   request_id: string;
-  business_account_id: string;
+  business_account_id: string | null;
+  quote_version_id: string;
   payer_type: string;
   amount_cents: number;
   currency: string;
@@ -39,14 +40,17 @@ export type ObligationForIntent = {
  * metadata is readable in the dashboard and returned on every event.
  */
 export function intentMetadata(ob: ObligationForIntent): Record<string, string> {
-  return {
+  const metadata: Record<string, string> = {
     couranrRequestId: String(ob.request_id),
-    businessAccountId: String(ob.business_account_id),
     paymentObligationId: String(ob.id),
+    quoteVersionId: String(ob.quote_version_id),
     payerType: String(ob.payer_type),
     pricingPolicyVersion: String(ob.pricing_policy_version),
+    // Historical CAS evidence for support diagnostics; never commercial identity.
     requestVersion: String(ob.request_version),
   };
+  if (ob.business_account_id) metadata.businessAccountId = ob.business_account_id;
+  return metadata;
 }
 
 /**

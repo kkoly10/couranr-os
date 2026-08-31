@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  ADDITIONAL_STOP_CENTS,
   BASE_PRICE_CENTS,
   COURANR_PRICING_POLICY_VERSION,
   INCLUDED_LOADED_MILES,
@@ -40,7 +39,7 @@ describe("result shape", () => {
   });
 
   it("gives every line item a stable code, label, quantity and amounts", () => {
-    const r = q({ loadedMiles: 30, weightLb: 60, additionalStops: 2, serviceLevel: "rush", signatureRequired: true });
+    const r = q({ loadedMiles: 30, weightLb: 60, additionalStops: 0, serviceLevel: "rush", signatureRequired: true });
     expect(r.lineItems.length).toBeGreaterThan(4);
     for (const li of r.lineItems) {
       expect(typeof li.code).toBe("string");
@@ -187,19 +186,18 @@ describe("stops", () => {
     expect(r.deliverySubtotalCents).toBe(BASE_PRICE_CENTS);
   });
 
-  it("charges one additional stop", () => {
+  it("rejects one additional stop because one delivery has one destination", () => {
     const r = q({ additionalStops: 1 });
-    const li = r.lineItems.find((l) => l.code === "additional_stops")!;
-    expect(li.quantity).toBe(1);
-    expect(li.amountCents).toBe(ADDITIONAL_STOP_CENTS);
+    expect(r.quoteStatus).toBe("invalid");
+    expect(r.validationErrors).toContain("additional_stops_unsupported");
+    expect(r.lineItems).toEqual([]);
   });
 
-  it("charges multiple additional stops linearly", () => {
+  it("rejects every positive additional-stop count", () => {
     for (const n of [2, 3, 7]) {
       const r = q({ additionalStops: n });
-      const li = r.lineItems.find((l) => l.code === "additional_stops")!;
-      expect(li.quantity).toBe(n);
-      expect(li.amountCents).toBe(n * ADDITIONAL_STOP_CENTS);
+      expect(r.quoteStatus).toBe("invalid");
+      expect(r.validationErrors).toContain("additional_stops_unsupported");
     }
   });
 });
@@ -238,28 +236,28 @@ describe("combined valid charges", () => {
     const r = q({
       loadedMiles: 12,
       weightLb: 60,
-      additionalStops: 2,
+      additionalStops: 0,
       serviceLevel: "rush",
       signatureRequired: true,
     });
 
     // base 2299
     // miles 4-10: 7 * 225 = 1575 ; miles 11-12: 2 * 300 = 600
-    // rush 1200 ; stops 2 * 800 = 1600 ; signature 300 ; weight 51-75 = 2500
-    const expected = 2299 + 1575 + 600 + 1200 + 1600 + 300 + 2500;
+    // rush 1200 ; signature 300 ; weight 51-75 = 2500
+    const expected = 2299 + 1575 + 600 + 1200 + 300 + 2500;
 
     expect(r.quoteStatus).toBe("estimated");
     expect(r.deliverySubtotalCents).toBe(expected);
-    expect(r.deliverySubtotalCents).toBe(10074);
+    expect(r.deliverySubtotalCents).toBe(8474);
     expect(Number.isInteger(r.deliverySubtotalCents)).toBe(true);
   });
 
   it("keeps every intermediate an integer number of cents", () => {
     const inputs: QuoteInput[] = [
       { loadedMiles: 0, weightLb: 0 },
-      { loadedMiles: 7.25, weightLb: 44.4, additionalStops: 3, serviceLevel: "priority" },
+      { loadedMiles: 7.25, weightLb: 44.4, additionalStops: 0, serviceLevel: "priority" },
       { loadedMiles: 99.999, weightLb: 199.9, signatureRequired: true },
-      { loadedMiles: 55.5, weightLb: 150, serviceLevel: "rush", additionalStops: 1 },
+      { loadedMiles: 55.5, weightLb: 150, serviceLevel: "rush", additionalStops: 0 },
     ];
     for (const input of inputs) {
       const r = quoteDelivery(input);

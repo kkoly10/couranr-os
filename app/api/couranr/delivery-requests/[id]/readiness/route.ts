@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
- * POST — merchant readiness (MER-007).
+ * POST — pickup readiness (currently asserted by the merchant; MER-007).
  *
  * `readiness` names a DESTINATION, and the command layer maps it to one of
  * four named SQL commands, each of which hard-codes its own target. There is

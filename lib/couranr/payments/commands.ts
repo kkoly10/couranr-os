@@ -166,7 +166,7 @@ export async function getObligationForRequest(params: {
     .from(OBLIGATIONS_TABLE)
     .select(
       "id,request_id,business_account_id,payer_type,request_version,pricing_policy_version," +
-        "amount_cents,currency,payment_state,provider,provider_payment_intent_id,version," +
+        "quote_version_id,amount_cents,currency,payment_state,provider,provider_payment_intent_id,version," +
         "created_at,updated_at,authorized_at,failed_at,cancelled_at"
     )
     .eq("request_id", params.requestId)
@@ -195,7 +195,7 @@ export async function getObligationByIntentId(params: {
     .from(OBLIGATIONS_TABLE)
     .select(
       "id,request_id,business_account_id,payer_type,amount_cents,currency," +
-        "payment_state,provider_payment_intent_id,version"
+        "quote_version_id,payment_state,provider_payment_intent_id,version"
     )
     .eq("provider_payment_intent_id", params.intentId)
     .maybeSingle()) as { data: any; error: any };

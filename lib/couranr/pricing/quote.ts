@@ -1,5 +1,4 @@
 import {
-  ADDITIONAL_STOP_CENTS,
   BASE_PRICE_CENTS,
   COURANR_PRICING_POLICY_VERSION,
   INCLUDED_LOADED_MILES,
@@ -70,6 +69,7 @@ function validate(input: QuoteInput): ValidationErrorCode[] {
   if (!isFiniteNumber(stops)) errors.push("additional_stops_not_finite");
   else if (stops < 0) errors.push("additional_stops_negative");
   else if (!Number.isInteger(stops)) errors.push("additional_stops_not_whole");
+  else if (stops > 0) errors.push("additional_stops_unsupported");
 
   const level = input.serviceLevel ?? "standard";
   if (!Object.prototype.hasOwnProperty.call(SERVICE_LEVEL_CENTS, level)) {
@@ -119,7 +119,6 @@ export function quoteDelivery(input: QuoteInput): QuoteResult {
   }
 
   const level: ServiceLevel = input.serviceLevel ?? "standard";
-  const additionalStops = input.additionalStops ?? 0;
 
   /* ---------------------------------------------------- manual review ---- */
 
@@ -192,16 +191,6 @@ export function quoteDelivery(input: QuoteInput): QuoteResult {
       quantity: 1,
       unitAmountCents: SERVICE_LEVEL_CENTS[level],
       amountCents: SERVICE_LEVEL_CENTS[level],
-    });
-  }
-
-  if (additionalStops > 0) {
-    lineItems.push({
-      code: "additional_stops",
-      label: "Additional stops",
-      quantity: additionalStops,
-      unitAmountCents: ADDITIONAL_STOP_CENTS,
-      amountCents: additionalStops * ADDITIONAL_STOP_CENTS,
     });
   }
 

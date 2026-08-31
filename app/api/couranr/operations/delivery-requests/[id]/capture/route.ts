@@ -40,7 +40,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   const result = await capturePayment({
     actor: actor.actor,
     requestId: params.id,
-    businessAccountId: String(loaded.value.request.business_account_id),
+    businessAccountId: loaded.value.request.business_account_id ?? null,
   });
   if (isFulfillmentFailure(result)) return failureResponse(result);
 

@@ -54,7 +54,7 @@ function sameId(a: string | null | undefined, b: string | null | undefined) {
 export function canActOnDeliveryRequest(
   actor: RequestActor,
   capability: RequestCapability,
-  businessAccountId: string
+  businessAccountId: string | null
 ): PermissionDecision {
   if (actor.kind === "anonymous") {
     return { allowed: false, reason: "anonymous" };

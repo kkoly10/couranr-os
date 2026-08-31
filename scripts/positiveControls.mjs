@@ -26,6 +26,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const GATES = [
   ["check:routes", ["scripts/checkRoutes.mjs", "--positive-control"]],
   ["check:legacy-imports", ["scripts/checkLegacyImports.mjs", "--positive-control"]],
+  ["check:canonical-dml", ["scripts/checkCanonicalDmlBoundary.mjs", "--positive-control"]],
   ["check:migrations", ["scripts/checkMigrationsDestructive.mjs", "--positive-control"]],
   ["check:mocks", ["scripts/checkMockMap.mjs", "--positive-control"]],
   ["check:visual-system", ["scripts/checkVisualSystem.mjs", "--positive-control"]],

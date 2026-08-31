@@ -54,7 +54,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   const result = await reconcileCapture({
     actor: actor.actor,
     requestId: params.id,
-    businessAccountId: String(loaded.value.request.business_account_id),
+    businessAccountId: loaded.value.request.business_account_id ?? null,
     obligationId: String(obligation.id),
     // Identifies WHICH capture cycle is being settled, so a second failed
     // cycle records its own release rather than colliding with the first.
