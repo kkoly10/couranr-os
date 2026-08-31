@@ -104,6 +104,7 @@ each is in the ledger row itself — `test_evidence`, `browser_verified` and
 | SHA | covers | rows |
 |---|---|---|
 | `08f59f8d0cc062c36252a7295f86513618187965` | 1 screen | MER-004 |
+| `14fa99fbcf8103d33bb7267a8f4729421bccd400` | 1 work item | P6-001 |
 | `1b3a1c90c88a554f1ac1ff1e6a6d06a97d602150` | 3 screens | CUS-006, CUS-008, PUB-006 |
 | `2848a8f33bde8362bd3c9fcfb9266781fcecb77a` | 2 screens | PUB-012, PUB-013 |
 | `32893e21401a6f056821c4caaa7858460c7356b8` | 1 screen | MER-001 |
@@ -119,4 +120,3 @@ each is in the ledger row itself — `test_evidence`, `browser_verified` and
 | `d2852ec85cab2ef8561dc96f17d66ad475643ce5` | 1 screen | PUB-004 |
 | `ec4a2af8f7c1de0bee4e3c021b50c875acdd6633` | 4 work items, 5 screens | P10-003, P10-004, P10-005, P10-006, PUB-001, PUB-008, PUB-009, PUB-010, PUB-011 |
 | `f4bff8d0d29fa8be2e9ea1a37bcfa5fd1520005c` | 2 screens | MER-010, MER-011 |
-| `fdbb2167d69b934b1d1a43b363d5acac8eb6001d` | 1 work item | P6-001 |
