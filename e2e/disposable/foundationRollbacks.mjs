@@ -151,6 +151,117 @@ function main() {
   refuses("FND-MIG-02", "M4 authority cutover never restores mutable commercial authority",
     () => rollback(M4), "refusing destructive authority rollback");
 
+  /* ─────────────────────────────────────────────────────────────────────
+     M6 REFUSES UNCLASSIFIED HISTORICAL STOPS.
+
+     M6 used to add the column and then set
+     `single_destination_contract = (additional_stops = 0)`, so a historical
+     row with a positive value silently became `false`, satisfied the CHECK,
+     and the migration reported success. Nothing recorded that a human had
+     decided anything about that row — the ambiguity simply became data.
+
+     These three cases are the contract. B is the one that matters: it proves
+     the refusal is total, that the schema does not half-apply, and that the
+     offending rows are left exactly as they were rather than being edited or
+     deleted to get past the guard.
+     ───────────────────────────────────────────────────────────────────── */
+  console.log("\nM6 unclassified historical additional_stops");
+
+  const stopsFixture = (stops, key) => `
+    insert into auth.users(id,email) values
+      ('73000000-0000-4000-8000-000000000001','stops@example.test')
+      on conflict do nothing;
+    insert into public.business_accounts(id,name,slug,created_by) values
+      ('74000000-0000-4000-8000-000000000001','Stops Fixture','stops-fixture',
+       '73000000-0000-4000-8000-000000000001')
+      on conflict do nothing;
+    set role service_role;
+    select id from public.couranr_create_delivery_request_draft(
+      '74000000-0000-4000-8000-000000000001',
+      '73000000-0000-4000-8000-000000000001','${key}','merchant_portal',
+      'not_confirmed','merchant','Recipient','555-0100','recipient@example.test',
+      5,10,${stops},'standard',false,'photo_or_pin',
+      '{"line1":"10 Market St"}'::jsonb,'{"line1":"20 Main St"}'::jsonb,false,
+      'estimated','stops-v1',2500,3,2,
+      '[{"code":"base","amountCents":2500}]'::jsonb,'[]'::jsonb);
+    reset role;
+  `;
+
+  const m6ColumnCount = () =>
+    one("select count(*) from information_schema.columns where table_schema='public'" +
+        " and table_name='couranr_delivery_requests' and column_name='single_destination_contract'");
+
+  // ── A. a historical database whose stops are all zero: M6 applies ──────
+  reset(M6);
+  raw(stopsFixture(0, "stops-zero"));
+  check("M6-A0", "case A fixture is a real zero-stop historical row",
+    one("select count(*) from public.couranr_delivery_requests where additional_stops=0"), "1");
+  apply(MIGRATIONS, M6);
+  check("M6-A1", "A: M6 succeeds against an all-zero history", m6ColumnCount(), "1");
+  check("M6-A2", "A: every historical row satisfies the single-destination contract",
+    one("select count(*) from public.couranr_delivery_requests where single_destination_contract is not true"), "0");
+
+  // ── B. a historical database with a positive stop: M6 HARD REFUSES ─────
+  reset(M6);
+  raw(stopsFixture(2, "stops-positive"));
+  const beforeB = one(
+    "select count(*)||'|'||coalesce(sum(additional_stops),0)||'|'||coalesce(max(updated_at)::text,'-')" +
+    " from public.couranr_delivery_requests");
+  refuses("M6-B1", "B: M6 hard-refuses a history carrying additional_stops > 0",
+    () => apply(MIGRATIONS, M6), "gate_a_m6_refuses_unclassified_additional_stops");
+  check("M6-B2", "B: the schema does not partially apply — no column", m6ColumnCount(), "0");
+  check("M6-B3", "B: the schema does not partially apply — no constraint",
+    one("select count(*) from pg_constraint where conname='couranr_dr_single_destination_chk'"), "0");
+  check("M6-B4", "B: the schema does not partially apply — no trigger",
+    one("select count(*) from pg_trigger where tgname='couranr_dr_single_destination_trg'"), "0");
+  check("M6-B5", "B: not one row is changed, deleted, or grandfathered",
+    one("select count(*)||'|'||coalesce(sum(additional_stops),0)||'|'||coalesce(max(updated_at)::text,'-')" +
+        " from public.couranr_delivery_requests"), beforeB);
+  check("M6-B6", "B: the offending row is still exactly as it was",
+    one("select additional_stops from public.couranr_delivery_requests where idempotency_key='stops-positive'"), "2");
+
+  /* The refusal has to NAME the rows, or an operator cannot act on it — but by
+     safe metadata only. A migration failure is precisely when everyone reads
+     the log, so recipient identity must not be in it. */
+  let m6Detail = "";
+  try {
+    apply(MIGRATIONS, M6);
+  } catch (error) {
+    m6Detail = String(error.stderr || error.message || error);
+  }
+  check("M6-B7", "B: the refusal reports a count and a date range",
+    /1 canonical request\(s\) carry additional_stops > 0/.test(m6Detail) &&
+      /created_at .* \.\. /.test(m6Detail), "true");
+  check("M6-B8", "B: the refusal reports lifecycle state and source",
+    /request_state: \w+/.test(m6Detail) && /source: \w+/.test(m6Detail), "true");
+  check("M6-B9", "B: the refusal leaks no recipient PII",
+    /Recipient|555-0100|recipient@example\.test|Market St|Main St/.test(m6Detail), "false");
+
+  /* The guard must be the reason, not a coincidence. Classify the row the way
+     a reviewed mechanism would — by resolving it to a single destination —
+     and M6 then applies. This is the ONLY thing the test does to that row,
+     and it does it after proving the refusal, never to get past it. */
+  raw("set role service_role;" +
+      " update public.couranr_delivery_requests set additional_stops=0" +
+      " where idempotency_key='stops-positive'; reset role;");
+  apply(MIGRATIONS, M6);
+  check("M6-B10", "B: POSITIVE CONTROL — M6 applies once the row is classified",
+    m6ColumnCount(), "1");
+
+  // ── C. after M6, the contract holds for new rows ───────────────────────
+  refuses("M6-C1", "C: a new request with a positive stop is refused",
+    () => raw(stopsFixture(1, "stops-after-m6")),
+    "new_delivery_request_requires_one_destination");
+  raw(stopsFixture(0, "stops-after-m6-zero"));
+  check("M6-C2", "C: a new zero-stop request succeeds",
+    one("select single_destination_contract from public.couranr_delivery_requests" +
+        " where idempotency_key='stops-after-m6-zero'"), "t");
+  refuses("M6-C3", "C: an existing row cannot be edited back to multi-stop",
+    () => raw("set role service_role;" +
+              " update public.couranr_delivery_requests set additional_stops=3" +
+              " where idempotency_key='stops-after-m6-zero'; reset role;"),
+    "additional_stops_is_historical_only");
+
   console.log("\npost-semantic destructive rollback refusal");
   reset();
   raw(`
