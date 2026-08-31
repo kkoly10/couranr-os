@@ -66,6 +66,11 @@ import {
   ANON_JWT,
 } from "./gateway.mjs";
 import { postgrestTarget } from "../../scripts/provisionPostgrest.mjs";
+import {
+  gateAIntegrityIssues,
+  psqlTransport,
+  seedCanonicalDeliveryChain,
+} from "./gateAFixtures.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const SHOTS = path.join(ROOT, "e2e/screenshots/disposable-msg");
@@ -118,48 +123,25 @@ function makeUser(email, profileRole) {
 }
 
 /**
- * The delivery chain. `couranr_deliveries` has 19 NOT NULL columns with no
- * default, three of them FKs through request -> obligation -> plan; building
- * the chain IS the work, because each NOT NULL is the schema stating what a
- * delivery actually requires.
+ * The delivery chain, built by the CURRENT canonical commands.
+ *
+ * It used to be four hand-written INSERTs, on the reasoning that
+ * `couranr_deliveries` has 19 NOT NULL columns and building the chain IS the
+ * work. That reasoning still holds — it just moved. Gate A made commercial
+ * identity live on an immutable `couranr_quote_versions` row that request,
+ * obligation, plan and delivery must all point at, so the hand-written chain
+ * became unwritable (CR409 payment_obligation_quote_mismatch) and this suite
+ * died in setup. e2e/disposable/gateAFixtures.mjs now builds it once for every
+ * disposable suite, through the commands the product itself runs.
  */
-function makeDelivery(businessId, creatorId, marker) {
-  const requestId = sql(
-    `insert into public.couranr_delivery_requests
-       (business_account_id, created_by, idempotency_key, recipient_name)
-     values ('${businessId}', '${creatorId}', 'msg-${marker}-${Date.now()}', '${marker} recipient')
-     returning id`
-  );
-  const obligationId = sql(
-    `insert into public.couranr_payment_obligations
-       (request_id, business_account_id, payer_type, request_version,
-        pricing_policy_version, amount_cents, idempotency_key)
-     values ('${requestId}', '${businessId}', 'merchant', 1, 'disposable', 1000,
-             'msg-po-${marker}-${Date.now()}')
-     returning id`
-  );
-  const planId = sql(
-    `insert into public.couranr_service_plans
-       (request_id, business_account_id, payment_obligation_id, request_version,
-        scheduled_pickup_start, scheduled_pickup_end, timezone, vehicle_requirement)
-     values ('${requestId}', '${businessId}', '${obligationId}', 1,
-             now(), now() + interval '1 hour', 'America/New_York', '{}'::jsonb)
-     returning id`
-  );
-  return sql(
-    `insert into public.couranr_deliveries
-       (request_id, business_account_id, payment_obligation_id, service_plan_id,
-        request_version, pricing_policy_version, captured_amount_cents, currency,
-        pickup_address, dropoff_address, recipient, shipment,
-        service_level, signature_required, proof_method,
-        scheduled_pickup_start, scheduled_pickup_end, timezone, vehicle_requirement)
-     values ('${requestId}', '${businessId}', '${obligationId}', '${planId}',
-             1, 'disposable', 1000, 'usd',
-             '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb,
-             'standard', false, 'photo_or_pin',
-             now(), now() + interval '1 hour', 'America/New_York', '{}'::jsonb)
-     returning id`
-  );
+async function makeDelivery(businessId, creatorId, marker) {
+  const chain = await seedCanonicalDeliveryChain(psqlTransport(psql), {
+    businessId,
+    actorUserId: creatorId,
+    marker: `msg-${marker}`,
+    recipientName: `${marker} recipient`,
+  });
+  return chain.deliveryId;
 }
 
 function addParticipant(conversationId, kind, userId, memberRole, joinedAt = "now()") {
@@ -302,7 +284,7 @@ async function main() {
     const ops = { id: makeUser("e2e-msg-ops@couranr.invalid", "admin"),
                   email: "e2e-msg-ops@couranr.invalid" };
 
-    const deliveryId = makeDelivery(businessId, merchant.owner.id, "MSG");
+    const deliveryId = await makeDelivery(businessId, merchant.owner.id, "MSG");
 
     // ── S: merchant_support, OVERDUE. 30 days of elapsed time is more than 15
     //    operating minutes no matter what hour this run happens to start at, so
@@ -1077,6 +1059,22 @@ async function main() {
         opsInbox.body?.operatingHoursApplied === true &&
         opsInbox.body?.operatingTimezone === "America/New_York",
       `${opsInbox.status} tz=${opsInbox.body?.operatingTimezone}`
+    );
+
+    /*
+     * The fixture is Gate A LEGAL, not merely accepted.
+     *
+     * Every assertion above would still pass on a chain whose obligation and
+     * plan pointed at different quotes: each write satisfies its own trigger.
+     * couranr_foundation_integrity() is the permanent probe for the graph, so
+     * it is asserted rather than assumed.
+     */
+    const gateAIssues = await gateAIntegrityIssues(psqlTransport(psql));
+    check(
+      "O21",
+      "couranr_foundation_integrity() reports NO issue for the seeded chain",
+      gateAIssues.length === 0,
+      gateAIssues.join(",") || "clean"
     );
   } catch (e) {
     check("XX", "the run completed", false, String(e.stack || e.message || e).slice(0, 400));

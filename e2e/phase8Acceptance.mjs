@@ -54,6 +54,11 @@ import { createClient } from "@supabase/supabase-js";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
+import {
+  gateAIntegrityIssues,
+  seedCanonicalDeliveryChain,
+  supabaseTransport,
+} from "./disposable/gateAFixtures.mjs";
 
 const MARK = "[P8ACC]";
 const SHOTS = path.resolve("e2e/artifacts/phase8-acceptance");
@@ -97,95 +102,45 @@ const rawToken = () => randomBytes(32).toString("base64url");
 /* ───────────────────────────── fixtures ────────────────────────────────── */
 
 /**
- * Builds ONE complete delivery chain. Every NOT NULL and CHECK the schema
- * demands is satisfied here — that is not incidental setup, it is the schema
- * telling us what a delivery actually requires, and getting it wrong is how the
- * FK defect stayed hidden.
+ * Builds ONE complete delivery chain.
+ *
+ * Every NOT NULL and CHECK the schema demands is satisfied — that is not
+ * incidental setup, it is the schema stating what a delivery actually requires,
+ * and getting it wrong is how the help-token FK defect stayed hidden.
+ *
+ * Gate A moved that requirement: commercial identity now lives on an immutable
+ * `couranr_quote_versions` row, and request, obligation, plan and delivery must
+ * all point at the SAME one. Four hand-written inserts can no longer produce a
+ * writable chain — the obligation raises CR409 payment_obligation_quote_mismatch
+ * before it lands — so the chain is built by the shared fixture builder in
+ * e2e/disposable/gateAFixtures.mjs, which drives the current canonical commands.
+ *
+ * That builder is transport-agnostic on purpose: this file must be able to run
+ * against a hosted project, so it reaches the commands through supabase-js and
+ * PostgREST rather than through psql.
  */
 async function makeDelivery(sb, label) {
   const business = randomUUID();
   const ids = { business, request: null, obligation: null, plan: null, delivery: null };
 
-  let r = await sb.from("business_accounts").insert({ id: business, name: `${MARK} ${label}` });
+  const r = await sb.from("business_accounts").insert({ id: business, name: `${MARK} ${label}` });
   if (r.error) throw new Error(`business: ${r.error.message}`);
 
   const owner = (await sb.from("profiles").select("id").limit(1).maybeSingle()).data?.id;
   if (!owner) throw new Error("no profile to own the fixture request");
 
-  const req = await sb
-    .from("couranr_delivery_requests")
-    .insert({
-      business_account_id: business,
-      created_by: owner,
-      idempotency_key: `p8acc-${randomUUID()}`,
-      recipient_name: `${MARK} recipient`,
-    })
-    .select("id")
-    .single();
-  if (req.error) throw new Error(`request: ${req.error.message}`);
-  ids.request = req.data.id;
+  const chain = await seedCanonicalDeliveryChain(supabaseTransport(sb), {
+    businessId: business,
+    actorUserId: owner,
+    marker: `p8acc-${randomUUID().slice(0, 8)}`,
+    recipientName: `${MARK} recipient`,
+    pricingPolicyVersion: "p8acc",
+  });
 
-  const ob = await sb
-    .from("couranr_payment_obligations")
-    .insert({
-      request_id: ids.request,
-      business_account_id: business,
-      payer_type: "merchant",
-      request_version: 1,
-      pricing_policy_version: "p8acc",
-      amount_cents: 1000,
-      idempotency_key: `p8acc-po-${randomUUID()}`,
-    })
-    .select("id")
-    .single();
-  if (ob.error) throw new Error(`obligation: ${ob.error.message}`);
-  ids.obligation = ob.data.id;
-
-  const plan = await sb
-    .from("couranr_service_plans")
-    .insert({
-      request_id: ids.request,
-      business_account_id: business,
-      payment_obligation_id: ids.obligation,
-      request_version: 1,
-      scheduled_pickup_start: new Date().toISOString(),
-      scheduled_pickup_end: new Date(Date.now() + 3600e3).toISOString(),
-      timezone: "America/New_York",
-      vehicle_requirement: {},
-    })
-    .select("id")
-    .single();
-  if (plan.error) throw new Error(`plan: ${plan.error.message}`);
-  ids.plan = plan.data.id;
-
-  const del = await sb
-    .from("couranr_deliveries")
-    .insert({
-      request_id: ids.request,
-      business_account_id: business,
-      payment_obligation_id: ids.obligation,
-      service_plan_id: ids.plan,
-      request_version: 1,
-      pricing_policy_version: "p8acc",
-      captured_amount_cents: 1000,
-      currency: "usd",
-      pickup_address: {},
-      dropoff_address: {},
-      recipient: {},
-      shipment: {},
-      service_level: "standard",
-      signature_required: false,
-      proof_method: "photo_or_pin",
-      scheduled_pickup_start: new Date().toISOString(),
-      scheduled_pickup_end: new Date(Date.now() + 3600e3).toISOString(),
-      timezone: "America/New_York",
-      vehicle_requirement: {},
-    })
-    .select("id")
-    .single();
-  if (del.error) throw new Error(`delivery: ${del.error.message}`);
-  ids.delivery = del.data.id;
-
+  ids.request = chain.requestId;
+  ids.obligation = chain.obligationId;
+  ids.plan = chain.planId;
+  ids.delivery = chain.deliveryId;
   return ids;
 }
 
@@ -280,6 +235,12 @@ export async function main() {
     "couranr_service_plans",
     "couranr_payment_obligations",
     "couranr_delivery_requests",
+    // Added with the Gate A fixture cutover. The canonical chain now also
+    // writes a couranr_quote_versions row, and couranr_qv_append_only_trg
+    // raises on any DELETE — so a request can no longer be removed at all
+    // while its quote exists. Probing it here makes the refusal name the real
+    // reason instead of the run dying later in cleanup.
+    "couranr_quote_versions",
   ];
   const undeletable = [];
   // Skipped in disposable mode, and skipped for a stated reason rather than
@@ -559,6 +520,28 @@ export async function main() {
       await page.close();
     } finally {
       await browser.close();
+    }
+
+    /*
+     * A13 — the FIXTURES are Gate A legal, not merely accepted.
+     *
+     * Every assertion above would still pass on a chain whose obligation and
+     * plan pointed at different immutable quotes: each write satisfies its own
+     * trigger in isolation. couranr_foundation_integrity() is the permanent
+     * probe for the graph as a whole.
+     *
+     * In disposable mode the database contains only what this run seeded, so a
+     * clean probe is a statement about these fixtures. Against a hosted project
+     * it also reads pre-existing rows, which is why it is reported rather than
+     * asserted there.
+     */
+    const gateAIssues = await gateAIntegrityIssues(supabaseTransport(sb));
+    if (disposable) {
+      check("A13", "couranr_foundation_integrity() reports NO issue for the seeded chains",
+        gateAIssues.length === 0, gateAIssues.join(",") || "clean");
+    } else {
+      console.log(`  (not asserted against a hosted project) integrity probe: ` +
+        `${gateAIssues.length ? gateAIssues.join(",") : "clean"}`);
     }
   } catch (e) {
     check("XX", "the matrix ran to completion", false, redact(e.message));
