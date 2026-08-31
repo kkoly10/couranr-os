@@ -102,6 +102,33 @@ function main() {
   check("ROLL-M2", "M2 reapplies after safe reversal",
     one("select to_regclass('public.couranr_quote_versions') is not null"), "t");
 
+  raw(`
+    insert into auth.users(id,email) values
+      ('61000000-0000-4000-8000-000000000001','tenancy-guard@example.test');
+    insert into public.business_accounts(id,name,slug,created_by) values
+      ('62000000-0000-4000-8000-000000000001','Request Tenant','request-tenant',
+       '61000000-0000-4000-8000-000000000001'),
+      ('62000000-0000-4000-8000-000000000002','Wrong Payment Tenant','wrong-payment-tenant',
+       '61000000-0000-4000-8000-000000000001');
+    insert into public.couranr_delivery_requests(
+      id,business_account_id,created_by,idempotency_key,source
+    ) values (
+      '63000000-0000-4000-8000-000000000001',
+      '62000000-0000-4000-8000-000000000001',
+      '61000000-0000-4000-8000-000000000001','tenancy-guard','merchant_portal'
+    );
+    insert into public.couranr_payment_obligations(
+      request_id,business_account_id,payer_type,request_version,
+      pricing_policy_version,amount_cents,idempotency_key
+    ) values (
+      '63000000-0000-4000-8000-000000000001',
+      '62000000-0000-4000-8000-000000000002','merchant',1,
+      'legacy-tenancy-guard',1000,'tenancy-guard'
+    );
+  `);
+  refuses("FND-MIG-01", "M3 hard-refuses an obligation mapped across business tenants",
+    () => apply(MIGRATIONS, M3), "unmappable payment obligation: request missing or tenancy disagrees");
+
   reset(M4);
   rollback(M3);
   check("ROLL-M3", "M3 removes only legacy backfill authority before runtime use",

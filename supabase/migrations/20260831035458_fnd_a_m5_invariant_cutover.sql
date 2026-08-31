@@ -27,7 +27,9 @@ begin
     select 1
       from public.couranr_payment_obligations o
       join public.couranr_quote_versions q on q.id=o.quote_version_id
+      join public.couranr_delivery_requests r on r.id=o.request_id
      where q.request_id is distinct from o.request_id
+        or o.business_account_id is distinct from r.business_account_id
         or q.subtotal_cents is distinct from o.amount_cents
         or q.pricing_policy_version is distinct from o.pricing_policy_version
         or q.payer_type is distinct from o.payer_type
@@ -39,7 +41,10 @@ begin
     select 1
       from public.couranr_service_plans p
       join public.couranr_payment_obligations o on o.id=p.payment_obligation_id
+      join public.couranr_delivery_requests r on r.id=p.request_id
      where p.request_id is distinct from o.request_id
+        or p.business_account_id is distinct from r.business_account_id
+        or p.business_account_id is distinct from o.business_account_id
         or p.quote_version_id is distinct from o.quote_version_id
   ) then
     raise exception 'Gate A M5 plan/obligation quote mismatch';
@@ -49,8 +54,12 @@ begin
       from public.couranr_deliveries d
       join public.couranr_service_plans p on p.id=d.service_plan_id
       join public.couranr_payment_obligations o on o.id=d.payment_obligation_id
+      join public.couranr_delivery_requests r on r.id=d.request_id
      where d.request_id is distinct from p.request_id
         or d.request_id is distinct from o.request_id
+        or d.business_account_id is distinct from r.business_account_id
+        or d.business_account_id is distinct from p.business_account_id
+        or d.business_account_id is distinct from o.business_account_id
         or d.quote_version_id is distinct from p.quote_version_id
         or d.quote_version_id is distinct from o.quote_version_id
   ) then
@@ -324,7 +333,9 @@ as $fn$
          jsonb_build_object('requestId',o.request_id,'quoteVersionId',o.quote_version_id)
     from public.couranr_payment_obligations o
     left join public.couranr_quote_versions q on q.id=o.quote_version_id
+    left join public.couranr_delivery_requests r on r.id=o.request_id
    where q.id is null or q.request_id is distinct from o.request_id
+      or r.id is null or o.business_account_id is distinct from r.business_account_id
       or q.subtotal_cents is distinct from o.amount_cents
       or q.pricing_policy_version is distinct from o.pricing_policy_version
       or q.payer_type is distinct from o.payer_type or q.currency is distinct from o.currency
@@ -333,7 +344,10 @@ as $fn$
          jsonb_build_object('requestId',p.request_id,'quoteVersionId',p.quote_version_id)
     from public.couranr_service_plans p
     left join public.couranr_payment_obligations o on o.id=p.payment_obligation_id
-   where o.id is null or o.request_id is distinct from p.request_id
+    left join public.couranr_delivery_requests r on r.id=p.request_id
+   where o.id is null or r.id is null or o.request_id is distinct from p.request_id
+      or p.business_account_id is distinct from r.business_account_id
+      or p.business_account_id is distinct from o.business_account_id
       or o.quote_version_id is distinct from p.quote_version_id
   union all
   select 'delivery_plan_quote_mismatch',d.id,
@@ -341,8 +355,13 @@ as $fn$
     from public.couranr_deliveries d
     left join public.couranr_service_plans p on p.id=d.service_plan_id
     left join public.couranr_payment_obligations o on o.id=d.payment_obligation_id
-   where p.id is null or o.id is null or p.request_id is distinct from d.request_id
+    left join public.couranr_delivery_requests r on r.id=d.request_id
+   where p.id is null or o.id is null or r.id is null
+      or p.request_id is distinct from d.request_id
       or o.request_id is distinct from d.request_id
+      or d.business_account_id is distinct from r.business_account_id
+      or d.business_account_id is distinct from p.business_account_id
+      or d.business_account_id is distinct from o.business_account_id
       or p.quote_version_id is distinct from d.quote_version_id
       or o.quote_version_id is distinct from d.quote_version_id
   union all

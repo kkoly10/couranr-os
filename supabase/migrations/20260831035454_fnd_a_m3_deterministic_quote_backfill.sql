@@ -27,23 +27,40 @@ begin
   end if;
   if exists (
     select 1
+      from public.couranr_payment_obligations o
+      left join public.couranr_delivery_requests r on r.id = o.request_id
+     where r.id is null
+        or o.business_account_id is distinct from r.business_account_id
+  ) then
+    raise exception 'unmappable payment obligation: request missing or tenancy disagrees';
+  end if;
+  if exists (
+    select 1
       from public.couranr_service_plans p
       left join public.couranr_payment_obligations o on o.id = p.payment_obligation_id
-     where o.id is null or o.request_id is distinct from p.request_id
+      left join public.couranr_delivery_requests r on r.id = p.request_id
+     where o.id is null or r.id is null
+        or o.request_id is distinct from p.request_id
+        or p.business_account_id is distinct from r.business_account_id
+        or p.business_account_id is distinct from o.business_account_id
   ) then
-    raise exception 'unmappable service plan: obligation missing or belongs to another request';
+    raise exception 'unmappable service plan: request/obligation/tenancy disagrees';
   end if;
   if exists (
     select 1
       from public.couranr_deliveries d
       left join public.couranr_service_plans p on p.id = d.service_plan_id
       left join public.couranr_payment_obligations o on o.id = d.payment_obligation_id
-     where p.id is null or o.id is null
+      left join public.couranr_delivery_requests r on r.id = d.request_id
+     where p.id is null or o.id is null or r.id is null
         or p.request_id is distinct from d.request_id
         or o.request_id is distinct from d.request_id
         or p.payment_obligation_id is distinct from d.payment_obligation_id
+        or d.business_account_id is distinct from r.business_account_id
+        or d.business_account_id is distinct from p.business_account_id
+        or d.business_account_id is distinct from o.business_account_id
   ) then
-    raise exception 'unmappable delivery: request/plan/obligation lineage disagrees';
+    raise exception 'unmappable delivery: request/plan/obligation/tenancy disagrees';
   end if;
 end
 $guard$;

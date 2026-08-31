@@ -110,6 +110,8 @@ describe("Foundation Gate A static authority", () => {
     expect(M3).toContain("legacy_partial");
     expect(M3).toContain("legacy_mismatch");
     expect(M3).toContain("unmappable delivery");
+    expect(M3).toContain("unmappable payment obligation: request missing or tenancy disagrees");
+    expect(M3).toContain("p.business_account_id is distinct from o.business_account_id");
     expect(M3).toContain("deterministic obligation quote id collision");
     expect(read("e2e/disposable/foundationBackfill.mjs")).toContain("backfill replay is idempotent byte-for-byte");
   });
