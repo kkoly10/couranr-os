@@ -41,6 +41,11 @@
 
 import crypto from "node:crypto";
 import { up, down, psql } from "./up.mjs";
+import {
+  gateAIntegrityIssues,
+  psqlTransport,
+  seedCanonicalDeliveryChain,
+} from "./gateAFixtures.mjs";
 
 const args = process.argv.slice(2);
 const RLS_ONLY = args.includes("--rls-only");
@@ -197,7 +202,7 @@ function sectionIntegrity() {
 
 /* --------------------------------------------------------------- commands */
 
-function sectionCommands() {
+async function sectionCommands() {
   console.log("\ncommands — a REAL fixture chain through the help-token functions");
   const marker = `dbtest-${crypto.randomUUID().slice(0, 8)}`;
   const sha256 = (s) => crypto.createHash("sha256").update(s).digest("hex");
@@ -205,29 +210,20 @@ function sectionCommands() {
   const businessId = one(
     `insert into public.business_accounts (name, status) values ('[DBTEST] ${marker}', 'active') returning id`);
   const userId = one(`insert into auth.users (email) values ('${marker}@couranr.invalid') returning id`);
-  const requestId = one(
-    `insert into public.couranr_delivery_requests (business_account_id, created_by, idempotency_key, recipient_name)
-     values ('${businessId}', '${userId}', '${marker}', 'dbtest recipient') returning id`);
-  const obligationId = one(
-    `insert into public.couranr_payment_obligations
-       (request_id, business_account_id, payer_type, request_version, pricing_policy_version, amount_cents, idempotency_key)
-     values ('${requestId}', '${businessId}', 'merchant', 1, 'dbtest', 1000, 'po-${marker}') returning id`);
-  const planId = one(
-    `insert into public.couranr_service_plans
-       (request_id, business_account_id, payment_obligation_id, request_version,
-        scheduled_pickup_start, scheduled_pickup_end, timezone, vehicle_requirement)
-     values ('${requestId}', '${businessId}', '${obligationId}', 1, now(), now() + interval '1 hour',
-             'America/New_York', '{}'::jsonb) returning id`);
-  const deliveryId = one(
-    `insert into public.couranr_deliveries
-       (request_id, business_account_id, payment_obligation_id, service_plan_id,
-        request_version, pricing_policy_version, captured_amount_cents, currency,
-        pickup_address, dropoff_address, recipient, shipment, service_level,
-        signature_required, proof_method, scheduled_pickup_start, scheduled_pickup_end,
-        timezone, vehicle_requirement)
-     values ('${requestId}', '${businessId}', '${obligationId}', '${planId}', 1, 'dbtest', 1000, 'usd',
-             '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, 'standard', false, 'photo_or_pin',
-             now(), now() + interval '1 hour', 'America/New_York', '{}'::jsonb) returning id`);
+
+  // The chain is built by the canonical commands rather than by four hand-
+  // written INSERTs. Those INSERTs predate Gate A: they wrote an obligation
+  // carrying an amount and no quote, which the immutable-quote invariant now
+  // refuses outright (CR409 payment_obligation_quote_mismatch). One shared
+  // builder does it for every disposable suite — e2e/disposable/gateAFixtures.mjs.
+  const chain = await seedCanonicalDeliveryChain(psqlTransport(psql), {
+    businessId,
+    actorUserId: userId,
+    marker,
+    recipientName: "dbtest recipient",
+    pricingPolicyVersion: "dbtest",
+  });
+  const { requestId, obligationId, planId, deliveryId } = chain;
 
   const raw = crypto.randomBytes(32).toString("base64url");
   const tokenId = one(
@@ -256,11 +252,35 @@ function sectionCommands() {
   checkRaises("CMD-7", "an unissued token is refused with the one indistinguishable message",
     `select public.couranr_redeem_help_token('${sha256("never-issued-" + marker)}')`,
     "help_link_not_available");
+
+  /*
+   * CMD-8/9 — the fixture is Gate A LEGAL, not merely accepted.
+   *
+   * Passing the triggers proves each row was writable on its own. It does not
+   * prove the commercial graph agrees: a plan can point at one quote while the
+   * obligation points at another and every individual write still succeeds.
+   * couranr_foundation_integrity() is the permanent probe for exactly that, so
+   * the fixture is asserted against it rather than assumed correct because the
+   * seed did not throw.
+   */
+  check("CMD-8", "request, obligation, plan and delivery all carry the SAME quote",
+    one(`select (r.current_quote_version_id = o.quote_version_id
+                 and o.quote_version_id = p.quote_version_id
+                 and p.quote_version_id = d.quote_version_id)
+           from public.couranr_delivery_requests r
+           join public.couranr_payment_obligations o on o.id = '${obligationId}'
+           join public.couranr_service_plans p on p.id = '${planId}'
+           join public.couranr_deliveries d on d.id = '${deliveryId}'
+          where r.id = '${requestId}'`), "t");
+
+  const issues = await gateAIntegrityIssues(psqlTransport(psql));
+  check("CMD-9", "couranr_foundation_integrity() reports NO issue for the seeded graph",
+    issues.join(",") || "(none)", "(none)");
 }
 
 /* ------------------------------------------------------------------- main */
 
-function main() {
+async function main() {
   console.log(`db:test — disposable database gate${RLS_ONLY ? " (rls only)" : ""}\n`);
   console.log("  bringing up the disposable database (empty + all forward migrations)...");
   const info = up({ quiet: true });
@@ -273,7 +293,7 @@ function main() {
       sectionClock();
       sectionRls();
       sectionIntegrity();
-      sectionCommands();
+      await sectionCommands();
     }
 
     if (POSITIVE_CONTROL) {
@@ -312,4 +332,8 @@ for (const sig of ["SIGINT", "SIGTERM"]) {
   });
 }
 
-main();
+main().catch((e) => {
+  console.error(`\n  RUN FAILED: ${(e.stack || e.message || e).toString().slice(0, 800)}`);
+  down({ quiet: true });
+  process.exit(1);
+});
