@@ -36,6 +36,7 @@ import {
   ANON_JWT,
 } from "./gateway.mjs";
 import { postgrestTarget } from "../../scripts/provisionPostgrest.mjs";
+import { psqlTransport, seedCanonicalQuotedRequest } from "./gateAFixtures.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const SHOTS = path.join(ROOT, "e2e/screenshots/customer-book");
@@ -81,24 +82,33 @@ function addMember(businessId, userId, role) {
   );
 }
 
-/** A submitted request with a recipient and a dropoff snapshot. */
-function makeRequest(businessId, creatorId, opts) {
+/**
+ * A submitted request with a recipient and a dropoff snapshot, built by the
+ * canonical commands.
+ *
+ * The raw INSERT it replaces claimed quote_status='estimated' with no
+ * current_quote_version_id — unwritable since Gate A, and where this suite
+ * died. The customer book is derived from recipient_name / recipient_email /
+ * recipient_phone and the dropoff address, so all four are passed explicitly:
+ * the builder's defaults would collapse four distinct people into one and make
+ * the duplicate-detection assertions pass against the wrong fixture.
+ */
+async function makeRequest(businessId, creatorId, opts) {
   const { name, email, phone, line1, state = "confirmed" } = opts;
-  return sql(
-    `insert into public.couranr_delivery_requests
-       (business_account_id, created_by, idempotency_key, recipient_name,
-        recipient_email, recipient_phone, request_state, submitted_at,
-        quote_status, delivery_subtotal_cents, pricing_policy_version,
-        pickup_address, dropoff_address, loaded_miles, weight_lb)
-     values ('${businessId}', '${creatorId}', 'cust-${crypto.randomUUID()}',
-             '${esc(name)}', ${email ? `'${esc(email)}'` : "null"},
-             ${phone ? `'${esc(phone)}'` : "null"}, '${state}', now(),
-             'estimated', 2299, 'disposable',
-             '{"line1":"1 Pickup Way","city":"Stafford","region":"VA","postalCode":"22554"}'::jsonb,
-             '{"line1":"${esc(line1)}","city":"Woodbridge","region":"VA","postalCode":"22191"}'::jsonb,
-             5, 20)
-     returning id`
-  );
+  const request = await seedCanonicalQuotedRequest(psqlTransport(psql), {
+    businessId,
+    actorUserId: creatorId,
+    marker: "cust",
+    recipientName: name,
+    recipientEmail: email,
+    recipientPhone: phone,
+    pickupAddress: { line1: "1 Pickup Way", city: "Stafford", region: "VA", postalCode: "22554" },
+    dropoffAddress: { line1, city: "Woodbridge", region: "VA", postalCode: "22191" },
+    subtotalCents: 2299,
+    pricingPolicyVersion: "disposable",
+    upTo: state === "pending_couranr_review" ? "submitted" : "confirmed",
+  });
+  return request.requestId;
 }
 
 async function main() {
@@ -197,15 +207,15 @@ async function main() {
 
     // Ada: two deliveries to DIFFERENT addresses → conflicting-address state,
     // and one of them non-terminal → active-delivery badge.
-    makeRequest(bizA, owner.id, { name: "Ada Lovelace", email: REAL_EMAIL, phone: REAL_PHONE, line1: "12 First Ave" });
-    makeRequest(bizA, owner.id, {
+    await makeRequest(bizA, owner.id, { name: "Ada Lovelace", email: REAL_EMAIL, phone: REAL_PHONE, line1: "12 First Ave" });
+    await makeRequest(bizA, owner.id, {
       name: "Ada Lovelace", email: REAL_EMAIL, phone: REAL_PHONE,
       line1: "88 Second St", state: "pending_couranr_review",
     });
     // Grace: one delivery, single address.
-    makeRequest(bizA, owner.id, { name: "Grace Hopper", email: "grace@example.com", phone: "540-555-0199", line1: "3 Navy Rd" });
+    await makeRequest(bizA, owner.id, { name: "Grace Hopper", email: "grace@example.com", phone: "540-555-0199", line1: "3 Navy Rd" });
     // A record reachable ONLY by phone that shares Ada's phone → strong duplicate.
-    makeRequest(bizA, owner.id, { name: "A. Lovelace", email: null, phone: REAL_PHONE, line1: "12 First Ave" });
+    await makeRequest(bizA, owner.id, { name: "A. Lovelace", email: null, phone: REAL_PHONE, line1: "12 First Ave" });
 
     // A stored customer with NO deliveries — the MER-009 state a derivation
     // alone can never produce.
