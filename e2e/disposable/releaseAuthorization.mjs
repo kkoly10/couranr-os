@@ -1,5 +1,5 @@
 /**
- * EXECUTION VERIFICATION for 20260806210000_couranr_release_authorization.
+ * EXECUTION VERIFICATION for 20260806195405_couranr_release_authorization.
  *
  * The migration applying cleanly proves it parses. A test that reads its SQL
  * text proves the file says what someone expected. NEITHER proves the command

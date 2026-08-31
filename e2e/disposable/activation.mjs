@@ -36,8 +36,11 @@
  *  1. The `/auth/v1` issuer is `gateway.mjs`'s reimplementation, not GoTrue.
  *     Token SHAPE and the route's use of it are real; GoTrue's own behaviour
  *     is not exercised.
- *  2. Migration 20260806170000 is applied HERE but NOT in production. Every
- *     database assertion below describes the disposable stack.
+ *  2. Every database assertion below describes the DISPOSABLE stack, which is
+ *     rebuilt from the migrations on each run. It is not a measurement of
+ *     production. (Migration 20260806160757 IS applied in production — this
+ *     caveat used to claim it was not, which a catalog-to-catalog comparison
+ *     disproved; production recorded it under that same version.)
  *  3. The acknowledgement TEXTS are labels and descriptions in
  *     `lib/couranr/activation/states.ts`. This run proves the versions are
  *     recorded and re-checked; it does not prove the wording is the legal

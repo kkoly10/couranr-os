@@ -1,5 +1,5 @@
 /**
- * EXECUTION VERIFICATION for 20260806220000_couranr_idempotency_records.
+ * EXECUTION VERIFICATION for 20260806195438_couranr_idempotency_records.
  *
  * Applying proves it parses. Reading proves it says what someone meant. Neither
  * proves it runs — and for a substrate whose entire job is "guarantee one

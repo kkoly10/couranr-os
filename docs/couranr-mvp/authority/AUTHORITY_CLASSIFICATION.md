@@ -60,9 +60,9 @@ contract · **s4** counts/fingerprints · **s5** implementation state.
 | DOC/DATA | `supabase/migrations/20260804160000_couranr_delivery_help.sql` | 2 | s4 |
 | DOC/DATA | `supabase/migrations/20260804170000_couranr_conversation_kind_and_tenure.sql` | 1 | s2 |
 | DOC/DATA | `supabase/migrations/20260804200000_couranr_help_hardening.sql` | 1 | s4 |
-| DOC/DATA | `supabase/migrations/20260806120000_couranr_team_management.sql` | 1 | s2 |
-| DOC/DATA | `supabase/migrations/20260806210000_couranr_release_authorization.sql` | 1 | s2 |
-| DOC/DATA | `supabase/migrations/20260806220000_couranr_idempotency_records.sql` | 1 | s1 |
+| DOC/DATA | `supabase/migrations/20260806120616_couranr_team_management.sql` | 1 | s2 |
+| DOC/DATA | `supabase/migrations/20260806195405_couranr_release_authorization.sql` | 1 | s2 |
+| DOC/DATA | `supabase/migrations/20260806195438_couranr_idempotency_records.sql` | 1 | s1 |
 | DOC/DATA | `supabase/rollbacks/20260804200000_couranr_help_hardening.rollback.sql` | 1 | s4 |
 | DOC/DATA | `supabase/verification/terminal_capture_resolution.sql` | 3 | s1 |
 | EVIDENCE | `docs/couranr-mvp/autonomous-evidence/B00/ACP-001/results.json` | 1 | s4 |

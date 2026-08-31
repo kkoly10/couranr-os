@@ -2,7 +2,7 @@
  "schema_version": "1.0",
  "repository": "kkoly10/couranr-os",
  "authority_sha": "74a7c50",
- "production_migration_head": "20260806220000",
+ "production_migration_head": "20260806195438",
  "active_batch": "B05",
  "active_capability": "B05: ACP-032 release slice and ACP-029 idempotency substrate both built and executed; wiring deferred",
  "open_pr": 29,
@@ -110,66 +110,66 @@
  },
  "applied_to_production": [
   {
-   "file": "20260806100000_couranr_private_and_analytics_schemas.sql",
+   "file": "20260806120353_couranr_private_and_analytics_schemas.sql",
    "production_version": "20260806120353",
    "name": "couranr_private_and_analytics_schemas",
    "verified": "both schemas exist"
   },
   {
-   "file": "20260806120000_couranr_team_management.sql",
+   "file": "20260806120616_couranr_team_management.sql",
    "production_version": "20260806120616",
    "name": "couranr_team_management",
    "verified": "couranr_team_events present; 6 member functions; full-line SQL comments outside function bodies were stripped to fit the apply payload after asserting the 9-function set was identical"
   },
   {
-   "file": "20260806130000_couranr_business_members_rls_hardening.sql",
+   "file": "20260806120629_couranr_business_members_rls_hardening.sql",
    "production_version": "20260806120629",
    "name": "couranr_business_members_rls_hardening",
    "verified": "MEASURED AFTER APPLY: authenticated UPDATE on business_members=false, anon DELETE=false, authenticated UPDATE on business_accounts=false, service_role UPDATE=true, ALL policy is now business_members_manage_admin_only, business_accounts policy correlates to business_accounts.id. FIND-B03-001 and FIND-B03-002 are CLOSED."
   },
   {
-   "file": "20260806150000_couranr_website_tool_configs.sql",
+   "file": "20260806120648_couranr_website_tool_configs.sql",
    "production_version": "20260806120648",
    "name": "couranr_website_tool_configs",
    "verified": "table present"
   },
   {
-   "file": "20260806160000_couranr_merchant_customers.sql",
+   "file": "20260806160353_couranr_merchant_customers.sql",
    "production_version": "20260806160353",
    "name": "couranr_merchant_customers",
    "verified": "MEASURED AFTER APPLY at production project zrdxlrlqxdslqpnoqmus. Privileges checked with has_table_privilege/has_function_privilege, not grantee rows. Tables merchant_customers and customer_addresses exist, relrowsecurity=true, 0 policies. service_role SELECT/INSERT/UPDATE=true, DELETE=false. anon and authenticated hold no SELECT/INSERT/UPDATE/DELETE on either. Functions couranr_create_merchant_customer(uuid,uuid,text,text,text,text,text,text,text), couranr_update_merchant_customer(uuid,uuid,uuid,integer,text,text,text,text,text,text,text), couranr_set_customer_archived(uuid,uuid,uuid,boolean), couranr_add_customer_address(uuid,uuid,uuid,text,jsonb,text) all present, security invoker, search_path='', service_role EXECUTE only. NOTE: these two tables are named WITHOUT the couranr_ prefix, unlike every other table in this slice."
   },
   {
-   "file": "20260806170000_couranr_workspace_activation.sql",
+   "file": "20260806160757_couranr_workspace_activation.sql",
    "production_version": "20260806160757",
    "name": "couranr_workspace_activation",
    "verified": "MEASURED AFTER APPLY at production project zrdxlrlqxdslqpnoqmus. Privileges checked with has_table_privilege/has_function_privilege, not grantee rows. Tables couranr_workspace_activations, couranr_activation_acknowledgements, couranr_activation_events exist, relrowsecurity=true, 0 policies. Append-only enforced by privilege, not comment: acknowledgements and events hold service_role SELECT/INSERT=true but UPDATE=false and DELETE=false; workspace_activations holds UPDATE=true, DELETE=false. anon and authenticated hold nothing on all three. Six functions present (lock_activation, accept_activation_ack, verify_activation_contact, record_test_delivery, request_activation, decide_activation), all security invoker, search_path='', service_role EXECUTE only. Constraints couranr_wa_state_chk (5 states), couranr_wa_blocked_has_reason_chk, couranr_aa_once_key, couranr_actev_actor_chk, couranr_actev_command_chk all match source."
   },
   {
-   "file": "20260806180000_couranr_business_categories.sql",
+   "file": "20260806160443_couranr_business_categories.sql",
    "production_version": "20260806160443",
    "name": "couranr_business_categories",
    "verified": "MEASURED AFTER APPLY at production project zrdxlrlqxdslqpnoqmus. Privileges checked with has_table_privilege/has_function_privilege, not grantee rows. couranr_merchant_workspaces.secondary_categories exists as text[] NOT NULL DEFAULT '{}', category_registry_version exists as text nullable. All four CHECKs present with the intended definitions: couranr_mw_secondary_count_chk (<=3), couranr_mw_secondary_values_chk (11-value allow-list), couranr_mw_secondary_not_primary_chk, couranr_mw_secondary_distinct_chk. couranr_text_array_is_distinct and couranr_set_business_categories present, service_role EXECUTE only. EXECUTED against production with literals (pure functions, no rows touched): is_distinct(['a','a'])=false, (['a','b'])=true, (null)=true."
   },
   {
-   "file": "20260806190000_couranr_delivery_presets.sql",
+   "file": "20260806160522_couranr_delivery_presets.sql",
    "production_version": "20260806160522",
    "name": "couranr_delivery_presets",
    "verified": "MEASURED AFTER APPLY at production project zrdxlrlqxdslqpnoqmus. Privileges checked with has_table_privilege/has_function_privilege, not grantee rows. Tables couranr_category_presets, couranr_merchant_presets, couranr_merchant_preset_versions exist, relrowsecurity=true, 0 policies. The append-only history table is enforced by privilege: couranr_merchant_preset_versions holds service_role SELECT/INSERT=true, UPDATE=false, DELETE=false. The two mutable preset tables hold UPDATE=true, DELETE=false. anon and authenticated hold nothing on all three. Four preset columns added to couranr_delivery_requests. Constraints couranr_mp_source_pair_chk, couranr_dr_preset_pair_chk, couranr_dr_preset_source_chk, and the three body CHECKs all match source. EXECUTED against production with literals: body_is_clean('{}')=true, (null)=true, ({'commonItem':'suit'})=true, ({'weight_lbs':12})=false, ({'itemValue':500})=false, ({'vehicle_id':'x'})=false \u2014 so the concept-not-spelling matcher works on the live database, not only on the disposable one."
   },
   {
-   "file": "20260806200000_couranr_preset_commands.sql",
+   "file": "20260806160839_couranr_preset_commands.sql",
    "production_version": "20260806160839",
    "name": "couranr_preset_commands",
    "verified": "MEASURED AFTER APPLY at production project zrdxlrlqxdslqpnoqmus. Privileges checked with has_table_privilege/has_function_privilege, not grantee rows. Six functions present (require_preset_manager, create_merchant_preset, update_merchant_preset, adopt_preset_recommendation, duplicate_merchant_preset, set_merchant_preset_archived), all security invoker, search_path='', service_role EXECUTE=true and authenticated/anon EXECUTE=false \u2014 the pg_default_acl PUBLIC grant was successfully revoked on each."
   },
   {
-   "file": "20260806210000_couranr_release_authorization.sql",
+   "file": "20260806195405_couranr_release_authorization.sql",
    "name": "couranr_release_authorization",
    "verified": "MEASURED AFTER APPLY. Both functions live, security invoker, search_path=''. THE CRITICAL CHECK: prosrc for couranr_begin_payment_release CONTAINS the version bump, so the FIXED version is what is running - the original would have made a hold permanently un-releasable after one failed Stripe call (23505 on a version-scoped event id that never advanced). anon and authenticated hold no EXECUTE on either. ZERO obligations were altered by the apply (updated_at in the last 5 minutes = 0) and the 37 holding money are untouched: this adds the ABILITY to release, it does not release anything. EXECUTED against production on a refusal path with zero blast radius: a non-admin actor gets CR403 operations_access_required before any row is read or written, and no payment event was created."
   },
   {
-   "file": "20260806220000_couranr_idempotency_records.sql",
+   "file": "20260806195438_couranr_idempotency_records.sql",
    "name": "couranr_idempotency_records",
    "verified": "MEASURED AFTER APPLY. private.idempotency_records exists with 7 CHECK constraints and 3 indexes; both commands live. anon and authenticated hold NOTHING on the table and no EXECUTE on either function. EXECUTED against production on refusal paths with zero blast radius: a null expiry gets CR400 idempotency_expiry_required and a null result gets CR400 idempotency_result_required, both raised before any insert - the table still holds 0 rows. Nothing calls this yet, so applying it changed no behaviour."
   }

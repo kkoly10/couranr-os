@@ -8,9 +8,9 @@ migration counts as applied. Names are carried as a separate observed field.
 
 - production applied: **50**
 - repository files: **56**
-- present in both (by version): **39**
-- production only: **11**
-- repository only: **17**
+- present in both (by version): **50**
+- production only: **0**
+- repository only: **6**
 
 ## A. Present in both
 
@@ -55,6 +55,17 @@ migration counts as applied. Names are carried as a separate observed field.
 | 20260804200000 | couranr_help_hardening | couranr_help_hardening | yes |
 | 20260804210000 | couranr_participant_help_token_fk | couranr_participant_help_token_fk | yes |
 | 20260806010000 | couranr_operating_hours | couranr_operating_hours | yes |
+| 20260806120353 | couranr_private_and_analytics_schemas | couranr_private_and_analytics_schemas | yes |
+| 20260806120616 | couranr_team_management | couranr_team_management | yes |
+| 20260806120629 | couranr_business_members_rls_hardening | couranr_business_members_rls_hardening | yes |
+| 20260806120648 | couranr_website_tool_configs | couranr_website_tool_configs | yes |
+| 20260806160353 | couranr_merchant_customers | couranr_merchant_customers | yes |
+| 20260806160443 | couranr_business_categories | couranr_business_categories | yes |
+| 20260806160522 | couranr_delivery_presets | couranr_delivery_presets | yes |
+| 20260806160757 | couranr_workspace_activation | couranr_workspace_activation | yes |
+| 20260806160839 | couranr_preset_commands | couranr_preset_commands | yes |
+| 20260806195405 | couranr_release_authorization | couranr_release_authorization | yes |
+| 20260806195438 | couranr_idempotency_records | couranr_idempotency_records | yes |
 
 ## B. Production only
 
@@ -62,17 +73,6 @@ Applied in production; no file with this version exists in the repository.
 
 | version | production name |
 |---|---|
-| 20260806120353 | couranr_private_and_analytics_schemas |
-| 20260806120616 | couranr_team_management |
-| 20260806120629 | couranr_business_members_rls_hardening |
-| 20260806120648 | couranr_website_tool_configs |
-| 20260806160353 | couranr_merchant_customers |
-| 20260806160443 | couranr_business_categories |
-| 20260806160522 | couranr_delivery_presets |
-| 20260806160757 | couranr_workspace_activation |
-| 20260806160839 | couranr_preset_commands |
-| 20260806195405 | couranr_release_authorization |
-| 20260806195438 | couranr_idempotency_records |
 
 ## C. Repository only
 
@@ -80,17 +80,6 @@ Present in the repository; this version is not recorded as applied in production
 
 | version | repository name | git path |
 |---|---|---|
-| 20260806100000 | couranr_private_and_analytics_schemas | supabase/migrations/20260806100000_couranr_private_and_analytics_schemas.sql |
-| 20260806120000 | couranr_team_management | supabase/migrations/20260806120000_couranr_team_management.sql |
-| 20260806130000 | couranr_business_members_rls_hardening | supabase/migrations/20260806130000_couranr_business_members_rls_hardening.sql |
-| 20260806150000 | couranr_website_tool_configs | supabase/migrations/20260806150000_couranr_website_tool_configs.sql |
-| 20260806160000 | couranr_merchant_customers | supabase/migrations/20260806160000_couranr_merchant_customers.sql |
-| 20260806170000 | couranr_workspace_activation | supabase/migrations/20260806170000_couranr_workspace_activation.sql |
-| 20260806180000 | couranr_business_categories | supabase/migrations/20260806180000_couranr_business_categories.sql |
-| 20260806190000 | couranr_delivery_presets | supabase/migrations/20260806190000_couranr_delivery_presets.sql |
-| 20260806200000 | couranr_preset_commands | supabase/migrations/20260806200000_couranr_preset_commands.sql |
-| 20260806210000 | couranr_release_authorization | supabase/migrations/20260806210000_couranr_release_authorization.sql |
-| 20260806220000 | couranr_idempotency_records | supabase/migrations/20260806220000_couranr_idempotency_records.sql |
 | 20260831035450 | fnd_a_m1_universal_requester | supabase/migrations/20260831035450_fnd_a_m1_universal_requester.sql |
 | 20260831035452 | fnd_a_m2_immutable_quote_schema | supabase/migrations/20260831035452_fnd_a_m2_immutable_quote_schema.sql |
 | 20260831035454 | fnd_a_m3_deterministic_quote_backfill | supabase/migrations/20260831035454_fnd_a_m3_deterministic_quote_backfill.sql |
@@ -107,17 +96,6 @@ statements is outside the scope of this evidence pack.
 
 | name | production version | repository version |
 |---|---|---|
-| couranr_business_categories | 20260806160443 | 20260806180000 |
-| couranr_business_members_rls_hardening | 20260806120629 | 20260806130000 |
-| couranr_delivery_presets | 20260806160522 | 20260806190000 |
-| couranr_idempotency_records | 20260806195438 | 20260806220000 |
-| couranr_merchant_customers | 20260806160353 | 20260806160000 |
-| couranr_preset_commands | 20260806160839 | 20260806200000 |
-| couranr_private_and_analytics_schemas | 20260806120353 | 20260806100000 |
-| couranr_release_authorization | 20260806195405 | 20260806210000 |
-| couranr_team_management | 20260806120616 | 20260806120000 |
-| couranr_website_tool_configs | 20260806120648 | 20260806150000 |
-| couranr_workspace_activation | 20260806160757 | 20260806170000 |
 
 Names in B with no counterpart in C: (none)
 

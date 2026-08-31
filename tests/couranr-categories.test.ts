@@ -223,7 +223,7 @@ describe("a secondary-only edit is validated without inventing a primary", () =>
     const fn = src.slice(src.indexOf("export function validateSecondarySelection"));
     expect(fn.slice(0, fn.indexOf("\n}"))).not.toMatch(/primary/);
     const sql = readFileSync(
-      path.join(ROOT, "supabase/migrations/20260806180000_couranr_business_categories.sql"),
+      path.join(ROOT, "supabase/migrations/20260806160443_couranr_business_categories.sql"),
       "utf8"
     );
     expect(sql).toMatch(/for update/);
@@ -245,7 +245,7 @@ describe("the migration enforces the same rules the validator does", () => {
    * CHECK after being revoked from PUBLIC.
    */
   const sql = readFileSync(
-    path.join(ROOT, "supabase/migrations/20260806180000_couranr_business_categories.sql"),
+    path.join(ROOT, "supabase/migrations/20260806160443_couranr_business_categories.sql"),
     "utf8"
   );
 
@@ -297,7 +297,7 @@ describe("the migration enforces the same rules the validator does", () => {
 
   it("the rollback warns before destroying a merchant's choices", () => {
     const rb = readFileSync(
-      path.join(ROOT, "supabase/rollbacks/20260806180000_couranr_business_categories.rollback.sql"),
+      path.join(ROOT, "supabase/rollbacks/20260806160443_couranr_business_categories.rollback.sql"),
       "utf8"
     );
     expect(rb).toMatch(/CHOICES A MERCHANT MADE/);

@@ -31,7 +31,9 @@
  * ---------------------------------------------------------------------------
  *
  *  1. The `/auth/v1` issuer is `gateway.mjs`'s reimplementation, not GoTrue.
- *  2. Migration 20260806180000 is applied HERE but NOT in production.
+ *  2. Assertions here describe the DISPOSABLE stack, not production. (Migration
+ *     20260806160443 IS applied in production; this caveat used to say the
+ *     opposite and a catalog comparison disproved it.)
  *  3. The database half — every refusal called directly, and the CHECKs firing
  *     on a direct UPDATE — is `e2e/disposable/businessCategories.mjs`, 19/19.
  *     This run does not repeat it.
