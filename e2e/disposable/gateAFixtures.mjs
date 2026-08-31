@@ -214,6 +214,10 @@ const OBLIGATION_PATCH_SQL = {
   captured_at: () => "now()",
   captured_amount_cents: (v) => `(${Number(v)})::integer`,
   cancelled_at: () => "now()",
+  // couranr_po_failed_stamp_chk (20260801120000) is
+  // `payment_state <> 'failed' or failed_at is not null`, so a failed hold that
+  // does not say when it failed is not writable at all.
+  failed_at: () => "now()",
 };
 
 /**
@@ -233,7 +237,7 @@ export function supabaseTransport(sb) {
     },
     async patchObligation(obligationId, patch) {
       const row = { ...patch, updated_at: new Date().toISOString() };
-      for (const k of ["authorized_at", "captured_at", "cancelled_at"]) {
+      for (const k of ["authorized_at", "captured_at", "cancelled_at", "failed_at"]) {
         if (k in row && row[k] !== null) row[k] = new Date().toISOString();
       }
       unwrap(
@@ -291,20 +295,57 @@ export const FIXTURE_DEFAULTS = {
 };
 
 /**
- * A draft request WITH its first immutable quote, then submitted and accepted
- * so it is `confirmed` and payable.
+ * A request WITH its first immutable quote, carried as far through review as
+ * `upTo` asks.
  *
- * `line items` are built from the subtotal rather than passed alongside it:
+ *   draft       the draft and its quote        request_state draft,
+ *                                              review_state not_required
+ *   submitted   + couranr_submit_delivery_request_v2
+ *                                              pending_couranr_review, pending
+ *   confirmed   + couranr_accept_delivery_request_as_quoted   (default)
+ *                                              confirmed, accepted_as_quoted
+ *
+ * `upTo` is deliberately NOT named `stopAfter`. seedCanonicalDeliveryChain
+ * forwards its whole options object to this function, so one shared key would
+ * mean a chain asked to stop at its `obligation` depth silently stopping at a
+ * draft here — a fixture that looks seeded and is not. Two names, no collision.
+ *
+ * review_state is never chosen by a caller: the commands write it (draft
+ * not_required, submit pending, accept accepted_as_quoted). That is the point —
+ * the four values the list screens facet on are the ones the state machine
+ * actually produces, rather than whatever an INSERT felt like claiming.
+ *
+ * Line items are built from the subtotal rather than passed alongside it:
  * couranr_quote_line_items_total must equal subtotal_cents exactly, and a
  * fixture that lets the two drift raises CR422 quote_subtotal_mismatch — a
  * confusing failure a long way from its cause.
  */
+const REVIEW_DEPTHS = ["draft", "submitted", "confirmed"];
+
 export async function seedCanonicalQuotedRequest(t, opts) {
   const o = { ...FIXTURE_DEFAULTS, ...opts };
   if (!o.businessId || !o.actorUserId) {
     throw new Error("seedCanonicalQuotedRequest: businessId and actorUserId are required");
   }
+  const upTo = o.upTo || "confirmed";
+  if (!REVIEW_DEPTHS.includes(upTo)) {
+    throw new Error(`seedCanonicalQuotedRequest: unknown upTo ${upTo}`);
+  }
   const marker = o.marker || `gafx-${shortId()}`;
+
+  const shape = (row) => ({
+    requestId: row.id,
+    quoteVersionId: row.current_quote_version_id,
+    version: row.version,
+    businessId: o.businessId,
+    actorUserId: o.actorUserId,
+    subtotalCents: o.subtotalCents,
+    pricingPolicyVersion: o.pricingPolicyVersion,
+    requestState: row.request_state,
+    reviewState: row.review_state,
+    readinessState: row.readiness_state,
+    marker,
+  });
 
   const draft = await t.rpc("couranr_create_delivery_request_draft", {
     p_business_account_id: o.businessId,
@@ -337,6 +378,8 @@ export async function seedCanonicalQuotedRequest(t, opts) {
     p_review_reasons: [],
   });
 
+  if (upTo === "draft") return shape(draft);
+
   const submitted = await t.rpc("couranr_submit_delivery_request_v2", {
     p_request_id: draft.id,
     p_business_account_id: o.businessId,
@@ -348,6 +391,8 @@ export async function seedCanonicalQuotedRequest(t, opts) {
     p_acknowledged: true,
   });
 
+  if (upTo === "submitted") return shape(submitted);
+
   const accepted = await t.rpc("couranr_accept_delivery_request_as_quoted", {
     p_request_id: submitted.id,
     p_business_account_id: o.businessId,
@@ -355,17 +400,7 @@ export async function seedCanonicalQuotedRequest(t, opts) {
     p_actor_user_id: o.reviewerUserId || o.actorUserId,
   });
 
-  return {
-    requestId: accepted.id,
-    quoteVersionId: accepted.current_quote_version_id,
-    version: accepted.version,
-    businessId: o.businessId,
-    actorUserId: o.actorUserId,
-    subtotalCents: o.subtotalCents,
-    pricingPolicyVersion: o.pricingPolicyVersion,
-    requestState: accepted.request_state,
-    marker,
-  };
+  return shape(accepted);
 }
 
 /**
@@ -389,10 +424,15 @@ export async function seedCanonicalPaymentObligation(t, request, opts = {}) {
   // intentId. The other order reads the same and is a trap: a caller asking for
   // "no intent" while a chain forwarded an id would silently get one, and the
   // fixture would prove the opposite of what it was asked for.
+  //
+  // Every state past `not_started` carries an intent, not only the authorized
+  // family: a hold that FAILED still had a PaymentIntent, and the fixtures this
+  // replaces all wrote one. `couranr_po_intent_uniq` is satisfied because the
+  // id is uuid-derived.
   const intentId =
     opts.withIntent === false
       ? null
-      : opts.intentId || (NEEDS_AUTHORIZATION.includes(state) ? syntheticIntentId() : null);
+      : opts.intentId || (state === "not_started" ? null : syntheticIntentId());
 
   if (state !== "not_started") {
     const patch = { payment_state: state };
@@ -406,6 +446,7 @@ export async function seedCanonicalPaymentObligation(t, request, opts = {}) {
       patch.captured_amount_cents = await t.obligationAmountCents(obligation.id);
     }
     if (state === "cancelled") patch.cancelled_at = true;
+    if (state === "failed") patch.failed_at = true;
     await t.patchObligation(obligation.id, patch);
   }
 
@@ -503,7 +544,7 @@ export async function seedCanonicalDeliveryChain(t, opts = {}) {
   }
   const depth = CHAIN_STOPS.indexOf(stopAfter);
 
-  const request = await seedCanonicalQuotedRequest(t, opts);
+  const request = await seedCanonicalQuotedRequest(t, { ...opts, upTo: "confirmed" });
   const obligation = await seedCanonicalPaymentObligation(t, request, {
     paymentState: "authorized",
     intentId: opts.intentId,
