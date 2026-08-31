@@ -40,11 +40,13 @@ import { openSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
+import { claimDevDistDir } from "./devDistDir.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const BASE = (process.env.BASE_URL || "http://127.0.0.1:3000").replace(/\/$/, "");
 const PORT = Number(new URL(BASE).port || 3000);
 const APP_LOG = path.join(ROOT, "e2e/artifacts/fonts-app.log");
+const devDist = claimDevDistDir("fonts");
 const CONTROL = process.argv.includes("--positive-control");
 
 const require = createRequire(import.meta.url);
@@ -77,6 +79,9 @@ async function reachable() {
 }
 
 function stopApp() {
+  // Only this process's own server, and therefore only this process's own
+  // generated route types: a run that REUSED a server already answering never
+  // set COURANR_DIST_DIR and has nothing of its own to remove.
   if (!appServer) return;
   try {
     process.kill(-appServer.pid, "SIGTERM");
@@ -84,6 +89,7 @@ function stopApp() {
     /* already gone */
   }
   appServer = undefined;
+  devDist.cleanup();
 }
 
 async function startApp() {
@@ -95,7 +101,14 @@ async function startApp() {
   const log = openSync(APP_LOG, "w");
   appServer = spawn("npx", ["next", "dev", "-p", String(PORT)], {
     cwd: ROOT,
-    env: { ...process.env, PORT: String(PORT), NODE_ENV: "development" },
+    // Isolated distDir: this server's generated route types must not land in
+    // `.next/dev/types`, which tsconfig type-checks. See e2e/devDistDir.mjs.
+    env: {
+      ...process.env,
+      PORT: String(PORT),
+      NODE_ENV: "development",
+      COURANR_DIST_DIR: devDist.rel,
+    },
     stdio: ["ignore", log, log],
     detached: true,
   });

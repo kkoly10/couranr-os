@@ -20,6 +20,7 @@
     "check:routes": "node scripts/checkRoutes.mjs",
     "check:legacy-imports": "node scripts/checkLegacyImports.mjs",
     "check:canonical-dml": "node scripts/checkCanonicalDmlBoundary.mjs",
+    "check:dev-isolation": "node scripts/checkDevServerIsolation.mjs",
     "check:mocks": "node scripts/checkMockMap.mjs",
     "check:images": "node scripts/buildMarketingImages.mjs --check",
     "check:visual-system": "node scripts/checkVisualSystem.mjs",

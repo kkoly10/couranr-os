@@ -47,6 +47,7 @@ import {
   ANON_JWT,
 } from "./gateway.mjs";
 import { startStripeDouble } from "../stripeDouble.mjs";
+import { claimDevDistDir } from "../devDistDir.mjs";
 import {
   gateAIntegrityIssues,
   psqlTransport,
@@ -67,6 +68,7 @@ const STRIPE_PORT = 3320;
 const BASE = `http://127.0.0.1:${PORT}`;
 const PASSWORD = "disposable-release-1";
 const APP_LOG = "/tmp/claude-0/-home-user-couranr-os/3ba65fdb-c110-5366-92d6-85568b408343/scratchpad/relroute-app.log";
+const devDist = claimDevDistDir("release-route");
 
 let passed = 0;
 let failed = 0;
@@ -133,7 +135,12 @@ async function main() {
     const appLog = openSync(APP_LOG, "w");
     appServer = spawn("npx", ["next", "dev", "-p", String(PORT)], {
       cwd: ROOT,
-      env,
+      // COURANR_DIST_DIR keeps `next dev`'s generated route types out of the
+      // developer's `.next`. This server is killed with SIGKILL below, which
+      // lands mid-write on `dev/types/validator.ts`, and tsconfig type-checks
+      // `.next/dev/types` — so without this the next `npm run typecheck` fails
+      // on a truncated file nobody edited. See e2e/devDistDir.mjs.
+      env: { ...env, COURANR_DIST_DIR: devDist.rel },
       stdio: ["ignore", appLog, appLog],
       detached: true,
     });
@@ -345,6 +352,7 @@ async function main() {
     console.log(`\n  ${passed} passed, ${failed} failed\n`);
   } finally {
     try { if (appServer?.pid) process.kill(-appServer.pid, "SIGKILL"); } catch { /* gone */ }
+    devDist.cleanup();
     try { stripe?.server?.close(); } catch { /* gone */ }
     try { gateway?.close?.(); } catch { /* gone */ }
     try { pgrst?.kill?.("SIGKILL"); } catch { /* gone */ }

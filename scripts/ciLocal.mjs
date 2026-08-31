@@ -108,6 +108,12 @@ const STAGES = [
   { tier: 2, name: "check:governance", run: ["npm", ["run", "check:governance"]], why: "one writable source per authority domain, and every generated mirror matches it" },
   {
     tier: 2,
+    name: "check:dev-isolation",
+    run: ["npm", ["run", "check:dev-isolation"]],
+    why: "no harness writes Next's generated types into a type-checked path",
+  },
+  {
+    tier: 2,
     name: "check:gates:controls",
     run: ["npm", ["run", "check:gates:controls"]],
     why: "every gate proves it can go RED — the check on the checks",
