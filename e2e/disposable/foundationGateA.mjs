@@ -253,6 +253,102 @@ function main() {
   check("FND-PAY-02", "Q1 obligation retains its exact original quote", one(`
     select quote_version_id from public.couranr_payment_obligations where id='${oldObligation}'`), oldQuote);
 
+  /* ─────────────────────────────────────────────────────────────────────
+     THE SUBMIT COMPATIBILITY CONTRACT.
+
+     The question is narrow and it is the one that matters for cutover: can
+     the Business UI display Quote A and submit Quote B without anyone
+     noticing? There are exactly two ways that could happen, and each needs
+     its own proof.
+
+       1. THE CLIENT LIES. The legacy submit signature still accepts eleven
+          quote-shaped arguments. If any of them reached the write, a browser
+          could render one price and persist another. The wrapper ignores
+          them and submits `request.current_quote_version_id` — asserted here
+          by passing deliberately hostile values and reading what landed.
+
+       2. THE SERVER MOVES. The UI reviews Quote A, something mints Quote B,
+          and the stale submit lands anyway — recording B under A's review.
+          The protection is the request CAS, not the quote table: creating a
+          quote bumps `version`, so a submit carrying the reviewed version is
+          refused. That is a load-bearing coupling between two commands and
+          it is asserted, not assumed.
+
+     Both are executed through the REAL commands against real rows. A source
+     scan proving the wrapper "ignores" its arguments would pass equally well
+     on a wrapper that forwarded them.
+     ───────────────────────────────────────────────────────────────────── */
+  console.log("\nsubmit compatibility contract");
+
+  const reviewed = createBusinessRequest("submit-contract", 4100);
+  const quoteA = currentQuote(reviewed);
+
+  /* The review UI renders `current_quote_version_id` alongside the request's
+     denormalized subtotal and line items (lib/couranr/requests/view.ts). If
+     those two ever disagreed, the screen would show one quote while the
+     commercial spine held another — so their agreement IS the projection. */
+  check("FND-SUB-01", "the reviewed projection and the immutable quote are one fact", one(`
+    select (r.delivery_subtotal_cents = q.subtotal_cents
+            and r.quote_line_items = q.quote_line_items
+            and r.current_quote_version_id = q.id)::text
+      from public.couranr_delivery_requests r
+      join public.couranr_quote_versions q on q.id = r.current_quote_version_id
+     where r.id='${reviewed}'`), "true");
+
+  /* The client lies. Every quote-shaped argument is wrong on purpose: a
+     different status, a different policy, a 1-cent subtotal and a line item
+     that was never quoted. */
+  const reviewedVersion = requestVersion(reviewed);
+  service(`select id from public.couranr_submit_delivery_request(
+    '${reviewed}','${BUSINESS}',${reviewedVersion},'${USER}',
+    'confirmed','attacker-policy-v9',1,99,99,${items(1)},'["forged"]'::jsonb,true)`);
+  check("FND-SUB-02", "the legacy signature submits the SERVER quote, not the client's", one(`
+    select metadata->>'quoteVersionId' from public.couranr_delivery_request_events
+     where request_id='${reviewed}' and command='submit_delivery_request'`), quoteA);
+  check("FND-SUB-03", "no client quote argument reaches the request row", one(`
+    select (delivery_subtotal_cents=4100 and pricing_policy_version='foundation-test-v1'
+            and current_quote_version_id='${quoteA}'::uuid)::text
+      from public.couranr_delivery_requests where id='${reviewed}'`), "true");
+  check("FND-SUB-04", "no client quote argument mints or mutates a quote version", one(`
+    select count(*)::text from public.couranr_quote_versions where request_id='${reviewed}'`), "1");
+
+  /* The server moves. A fresh request is reviewed at Quote A, then Quote B is
+     minted before the submit lands. */
+  const raced = createBusinessRequest("submit-race", 5200);
+  const racedQuoteA = currentQuote(raced);
+  const staleVersion = requestVersion(raced); // exactly what the review UI holds
+  service(`select id from public.couranr_create_quote_version(
+    '${raced}','${BUSINESS}',${staleVersion},'${USER}','estimated',
+    'foundation-test-v2',5900,3,2,${items(5900)},'[]')`);
+  const racedQuoteB = currentQuote(raced);
+  check("FND-SUB-05", "the race actually created a second, different quote",
+    String(racedQuoteB !== racedQuoteA), "true");
+
+  raises("FND-SUB-06", "a stale submit is refused by the request CAS", `
+    select id from public.couranr_submit_delivery_request_v2(
+      '${raced}','${BUSINESS}',${staleVersion},'${USER}',true)`,
+    "version_or_state_conflict");
+  raises("FND-SUB-07", "the legacy signature propagates the CAS rather than swallowing it", `
+    select id from public.couranr_submit_delivery_request(
+      '${raced}','${BUSINESS}',${staleVersion},'${USER}',
+      'estimated','foundation-test-v1',5200,3,2,${items(5200)},'[]'::jsonb,true)`,
+    "version_or_state_conflict");
+  check("FND-SUB-08", "the refused submit moved nothing", one(`
+    select (request_state='draft' and submitted_at is null
+            and current_quote_version_id='${racedQuoteB}'::uuid)::text
+      from public.couranr_delivery_requests where id='${raced}'`), "true");
+  check("FND-SUB-09", "the refused submit recorded no submit event", one(`
+    select count(*)::text from public.couranr_delivery_request_events
+     where request_id='${raced}' and command='submit_delivery_request'`), "0");
+
+  /* And the converse, so the refusal is not mistaken for "stale quotes get
+     submitted quietly": once the caller re-reads, it submits B — never A. */
+  service(`select id from public.couranr_submit_delivery_request_v2(
+    '${raced}','${BUSINESS}',${requestVersion(raced)},'${USER}',true)`);
+  check("FND-SUB-10", "after re-reading, the submit records the CURRENT quote", one(`
+    select metadata->>'quoteVersionId' from public.couranr_delivery_request_events
+     where request_id='${raced}' and command='submit_delivery_request'`), racedQuoteB);
+
   console.log("\nsecurity and integrity");
   check("FND-SEC-01", "anon/authenticated have no canonical mutation grant", one(`
     select count(*) from (values
