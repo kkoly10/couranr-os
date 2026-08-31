@@ -47,6 +47,11 @@ import {
   ANON_JWT,
 } from "./gateway.mjs";
 import { startStripeDouble } from "../stripeDouble.mjs";
+import {
+  gateAIntegrityIssues,
+  psqlTransport,
+  seedCanonicalDeliveryChain,
+} from "./gateAFixtures.mjs";
 import { postgrestTarget } from "../../scripts/provisionPostgrest.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -172,22 +177,23 @@ async function main() {
        values ('${businessId}', '${merId}', 'owner', 'active', now())`,
     );
 
-    /** Create a request + obligation, and a matching intent AT THE DOUBLE. */
+    /**
+     * Create a request + obligation, and a matching intent AT THE DOUBLE.
+     *
+     * The request and obligation come from the shared Gate A fixture builder
+     * (e2e/disposable/gateAFixtures.mjs) rather than from two hand-written
+     * INSERTs. The hand-written pair predates the immutable-quote cutover: it
+     * wrote quote_status='estimated' with no current_quote_version_id and an
+     * obligation with no quote_version_id, which the current invariants refuse
+     * — so this whole suite died in setup before reaching E1.
+     *
+     * The STRIPE half is unchanged. The double still mints the real intent and
+     * the fixture still binds the obligation to that exact id, because E7/E8
+     * assert on what the double received.
+     */
+    const CHAIN_STOP_FOR_STATE = { authorized: "obligation", capture_pending: "capture_pending", captured: "delivery" };
+
     async function seed(state) {
-      const requestId = one(
-        `insert into public.couranr_delivery_requests
-           (business_account_id, created_by, idempotency_key, recipient_name,
-            request_state, readiness_state, review_state, submitted_at,
-            quote_status, delivery_subtotal_cents, pricing_policy_version,
-            pickup_address, dropoff_address, loaded_miles, weight_lb)
-         values ('${businessId}', '${merId}', 'rel-${crypto.randomUUID()}', 'Route Fixture',
-                 'confirmed', 'ready', 'pending', now(),
-                 'estimated', 2299, 'disposable',
-                 '{"line1":"12 Test St","city":"Stafford","region":"VA","postalCode":"22554"}'::jsonb,
-                 '{"line1":"9 Drop Ct","city":"Woodbridge","region":"VA","postalCode":"22191"}'::jsonb,
-                 5, 20)
-         returning id`,
-      );
       // Make the double hold a real intent, so cancel has something to act on.
       const created = await fetch(`${stripeBase}/v1/payment_intents`, {
         method: "POST",
@@ -202,22 +208,17 @@ async function main() {
       if (state === "captured") {
         await fetch(`${stripeBase}/v1/payment_intents/${intent.id}/capture`, { method: "POST" });
       }
-      const stamped = ["authorized", "capture_pending", "captured"].includes(state);
-      const obligationId = one(
-        `insert into public.couranr_payment_obligations
-           (request_id, business_account_id, payer_type, request_version,
-            pricing_policy_version, amount_cents, currency, payment_state,
-            provider_payment_intent_id, idempotency_key,
-            authorized_at, captured_at, captured_amount_cents)
-         values ('${requestId}', '${businessId}', 'merchant', 1, 'disposable',
-                 2299, 'usd', '${state}', '${intent.id}',
-                 'obl-${crypto.randomUUID()}',
-                 ${stamped ? "now()" : "null"},
-                 ${state === "captured" ? "now()" : "null"},
-                 ${state === "captured" ? 2299 : "null"})
-         returning id`,
-      );
-      return { requestId, obligationId, intentId: intent.id };
+      const stopAfter = CHAIN_STOP_FOR_STATE[state];
+      if (!stopAfter) throw new Error(`seed: unsupported state ${state}`);
+      const chain = await seedCanonicalDeliveryChain(psqlTransport(psql), {
+        businessId,
+        actorUserId: merId,
+        marker: `rel-${crypto.randomUUID().slice(0, 8)}`,
+        recipientName: "Route Fixture",
+        stopAfter,
+        intentId: intent.id,
+      });
+      return { requestId: chain.requestId, obligationId: chain.obligationId, intentId: intent.id };
     }
 
     async function tokenFor(email) {
@@ -334,6 +335,12 @@ async function main() {
     const leaks = bodies.filter((b) => forbidden.some((f) => f.test(b)));
     check("E13", "no database or provider detail leaks into a response", leaks.length === 0,
       leaks[0]?.slice(0, 120) ?? "clean");
+
+    /* ----------------------------------------------- the fixtures are legal */
+
+    const issues = await gateAIntegrityIssues(psqlTransport(psql));
+    check("E14", "couranr_foundation_integrity() reports NO issue for the seeded fixtures",
+      issues.length === 0, issues.join(",") || "clean");
 
     console.log(`\n  ${passed} passed, ${failed} failed\n`);
   } finally {

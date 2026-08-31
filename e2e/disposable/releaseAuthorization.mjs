@@ -34,9 +34,16 @@
  *   R21  begin bumps the version, giving each ATTEMPT an identity
  *   R22  a SECOND begin succeeds — the retry after a failed Stripe call
  *   R23  ... and writes a DISTINCT event rather than colliding (23505)
+ *   R24  the seeded fixtures leave couranr_foundation_integrity() clean
  */
 import crypto from "node:crypto";
 import { up, down, psql } from "./up.mjs";
+import {
+  gateAIntegrityIssues,
+  psqlTransport,
+  seedCanonicalDeliveryChain,
+  syntheticIntentId,
+} from "./gateAFixtures.mjs";
 
 const KEEP = process.argv.includes("--keep");
 let pass = 0;
@@ -102,42 +109,46 @@ function seedActor(email, role) {
   return id;
 }
 
-function seedObligation(businessId, creatorId, state, { withIntent = true } = {}) {
-  const requestId = one(
-    `insert into public.couranr_delivery_requests
-       (business_account_id, created_by, idempotency_key, recipient_name,
-        request_state, readiness_state, review_state, submitted_at,
-        quote_status, delivery_subtotal_cents, pricing_policy_version,
-        pickup_address, dropoff_address, loaded_miles, weight_lb)
-     values ('${businessId}', '${creatorId}', 'rel-${crypto.randomUUID()}', 'Release Fixture',
-             'confirmed', 'not_confirmed', 'pending', now(),
-             'estimated', 2299, 'disposable',
-             '{"line1":"12 Test St","city":"Stafford","region":"VA","postalCode":"22554"}'::jsonb,
-             '{"line1":"9 Drop Ct","city":"Woodbridge","region":"VA","postalCode":"22191"}'::jsonb,
-             5, 20)
-     returning id`,
-  );
-  const intent = `pi_${crypto.randomUUID().replace(/-/g, "").slice(0, 20)}`;
-  const stamped = ["authorized", "capture_pending", "captured"].includes(state);
-  const obligationId = one(
-    `insert into public.couranr_payment_obligations
-       (request_id, business_account_id, payer_type, request_version,
-        pricing_policy_version, amount_cents, currency, payment_state,
-        provider_payment_intent_id, idempotency_key,
-        authorized_at, captured_at, captured_amount_cents)
-     values ('${requestId}', '${businessId}', 'merchant', 1, 'disposable',
-             2299, 'usd', '${state}',
-             ${withIntent ? `'${intent}'` : "null"},
-             'obl-${crypto.randomUUID()}',
-             ${stamped ? "now()" : "null"},
-             ${state === "captured" ? "now()" : "null"},
-             ${state === "captured" ? 2299 : "null"})
-     returning id`,
-  );
-  return { requestId, obligationId, intent };
+/**
+ * A request and an obligation in `state`, with the whole Gate A lineage behind
+ * them.
+ *
+ * The previous version inserted both rows by hand: a request claiming
+ * quote_status='estimated' with no current_quote_version_id, and an obligation
+ * with an amount and no quote_version_id. Gate A made both illegal — the first
+ * violates couranr_dr_quote_identity_completeness_chk, the second raises CR409
+ * payment_obligation_quote_mismatch before the row is even written — so the
+ * suite died in setup with none of its 23 assertions reached.
+ *
+ * The states are produced the way the product produces them, which is also why
+ * they are integrity-clean: `capture_pending` comes from
+ * couranr_begin_payment_capture, and `captured` is followed by the converted
+ * delivery, so couranr_foundation_integrity() has nothing to report. Seeding a
+ * captured obligation with no delivery would leave `captured_without_delivery`
+ * behind — measured, not assumed.
+ */
+const CHAIN_STOP_FOR_STATE = {
+  authorized: "obligation",
+  capture_pending: "capture_pending",
+  captured: "delivery",
+};
+
+async function seedObligation(businessId, creatorId, state, { withIntent = true } = {}) {
+  const stopAfter = CHAIN_STOP_FOR_STATE[state];
+  if (!stopAfter) throw new Error(`seedObligation: unsupported state ${state}`);
+  const intent = withIntent ? syntheticIntentId() : null;
+  const chain = await seedCanonicalDeliveryChain(psqlTransport(psql), {
+    businessId,
+    actorUserId: creatorId,
+    marker: `rel-${crypto.randomUUID().slice(0, 8)}`,
+    recipientName: "Release Fixture",
+    stopAfter,
+    intentId: intent,
+  });
+  return { requestId: chain.requestId, obligationId: chain.obligationId, intent, quoteVersionId: chain.quoteVersionId };
 }
 
-function main() {
+async function main() {
   up();
   try {
     console.log("\n  release-authorization execution verification\n");
@@ -150,7 +161,7 @@ function main() {
     const merchant = seedActor(`mer+${crypto.randomUUID().slice(0, 8)}@e2e.couranr.test`, "merchant");
 
     // ---- gating and guards on begin ------------------------------------
-    const a = seedObligation(businessId, merchant, "authorized");
+    const a = await seedObligation(businessId, merchant, "authorized");
     const beginSql = (actor, ver, reason) =>
       `select (public.couranr_begin_payment_release('${a.obligationId}', '${actor}', ${ver}, '${esc(reason)}')).outcome`;
 
@@ -245,7 +256,7 @@ function main() {
 
     // ---- states that may NOT be released ---------------------------------
     for (const [id, state] of [["R17", "capture_pending"], ["R18", "captured"]]) {
-      const o = seedObligation(businessId, merchant, state);
+      const o = await seedObligation(businessId, merchant, state);
       eq(
         id, `${state} may NOT be released`,
         raises(`select public.couranr_begin_payment_release('${o.obligationId}', '${ops}', 1, 'try')`),
@@ -266,11 +277,17 @@ function main() {
     eq(
       "R19", "the schema forbids an authorized hold with no intent (guard is unreachable)",
       raises(
+        // Gate A note: quote_version_id is supplied and CORRECT here on
+        // purpose. couranr_po_quote_invariant_trg is a BEFORE INSERT trigger,
+        // so an obligation with no quote raises CR409 before any CHECK is
+        // evaluated — which would make this assertion pass for the wrong
+        // reason and stop proving anything about the intent constraint.
         `insert into public.couranr_payment_obligations
            (request_id, business_account_id, payer_type, request_version,
-            pricing_policy_version, amount_cents, currency, payment_state,
-            provider_payment_intent_id, idempotency_key, authorized_at)
-         values ('${a.requestId}', '${businessId}', 'merchant', 1, 'disposable',
+            quote_version_id, pricing_policy_version, amount_cents, currency,
+            payment_state, provider_payment_intent_id, idempotency_key, authorized_at)
+         values ('${a.requestId}', '${businessId}', 'merchant', 1,
+                 '${a.quoteVersionId}', 'disposable',
                  2299, 'usd', 'authorized', null, 'noint-${crypto.randomUUID()}', now())
          returning id`,
       ).split("|")[0],
@@ -288,6 +305,21 @@ function main() {
       "f",
     );
 
+    /*
+     * R24 — the FIXTURES themselves are Gate A legal.
+     *
+     * Every assertion above would still pass on a fixture that satisfied each
+     * trigger in isolation while leaving the commercial graph inconsistent.
+     * couranr_foundation_integrity() is the permanent probe for that, and it is
+     * asserted rather than assumed: seeding a `captured` obligation without its
+     * converted delivery leaves `captured_without_delivery` behind, which is
+     * how the shape of the captured fixture above was chosen.
+     */
+    eq(
+      "R24", "couranr_foundation_integrity() reports NO issue for any seeded fixture",
+      (await gateAIntegrityIssues(psqlTransport(psql))).join(",") || "(none)", "(none)",
+    );
+
     console.log(`\n  ${pass} passed, ${fail} failed\n`);
   } finally {
     if (!KEEP) down();
@@ -295,4 +327,8 @@ function main() {
   process.exit(fail === 0 ? 0 : 1);
 }
 
-main();
+main().catch((e) => {
+  console.error(`\n  RUN FAILED: ${(e.stack || e.message || e).toString().slice(0, 800)}`);
+  down();
+  process.exit(1);
+});

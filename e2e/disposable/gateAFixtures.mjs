@@ -174,7 +174,7 @@ export function psqlTransport(psql) {
         .join(", ");
       one(
         `update public.couranr_payment_obligations
-            set ${sets}, version = version + 1, updated_at = now()
+            set ${sets}, updated_at = now()
           where id = '${esc(obligationId)}'::uuid`,
       );
     },
@@ -199,6 +199,13 @@ export function psqlTransport(psql) {
  * Deliberately a closed list: it is the payment LIFECYCLE, and it contains no
  * commercial-identity column. Adding `quote_version_id` or `amount_cents` here
  * would be exactly the Gate A weakening this file refuses to do.
+ *
+ * `version` is deliberately NOT bumped. It is the obligation's optimistic-
+ * concurrency generation, and a fixture arriving in a state is not a command
+ * having run: releaseAuthorization.mjs asserts that
+ * couranr_begin_payment_release is what moves it 1 -> 2, and a fixture that
+ * quietly consumed generation 1 would make that assertion prove nothing while
+ * still passing.
  */
 const OBLIGATION_PATCH_SQL = {
   payment_state: (v) => `'${esc(v)}'::text`,
@@ -225,11 +232,7 @@ export function supabaseTransport(sb) {
       return unwrap(await sb.rpc(name, args), name);
     },
     async patchObligation(obligationId, patch) {
-      const current = unwrap(
-        await sb.from("couranr_payment_obligations").select("version").eq("id", obligationId).single(),
-        "obligation version",
-      );
-      const row = { ...patch, version: current.version + 1, updated_at: new Date().toISOString() };
+      const row = { ...patch, updated_at: new Date().toISOString() };
       for (const k of ["authorized_at", "captured_at", "cancelled_at"]) {
         if (k in row && row[k] !== null) row[k] = new Date().toISOString();
       }
