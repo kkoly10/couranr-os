@@ -23,10 +23,12 @@
  * ---------------------------------------------------------------------------
  *
  *  1. The `/auth/v1` issuer is `gateway.mjs`'s reimplementation, not GoTrue.
- *  2. The hardening migration 20260806130000 is applied HERE but NOT in
- *     production. The privilege assertions below describe the disposable
- *     stack's post-migration state; production still holds the grants until an
- *     owner approves the apply.
+ *  2. The privilege assertions below describe the DISPOSABLE stack's
+ *     post-migration state, not production. (The hardening migration
+ *     20260806120629 IS applied in production — this caveat used to say it was
+ *     not and that production "still holds the grants"; a catalog-to-catalog
+ *     comparison found production's two policies byte-identical to the ones
+ *     this migration creates.)
  *  3. `bootstrap.sql` reproduces the production policies INCLUDING their
  *     defects, so "the fix changed something" is a real before/after — but the
  *     before state is a reproduction, not production itself.
@@ -177,7 +179,7 @@ async function main() {
 
     /* ─────────────────── the hardening migration, measured ─────────────── */
 
-    console.log("Hardening migration 20260806130000 — measured, not assumed");
+    console.log("Hardening migration 20260806120629 — measured, not assumed");
     {
       /*
        * NOTE ON BOOLEAN TEXT, learned the hard way twice in this repository:

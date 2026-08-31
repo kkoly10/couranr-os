@@ -159,7 +159,7 @@ describe("the route's capability and the SQL's role list are the same gate", () 
    * compared against the matrix.
    */
   const sql = readFileSync(
-    path.join(ROOT, "supabase/migrations/20260806170000_couranr_workspace_activation.sql"),
+    path.join(ROOT, "supabase/migrations/20260806160757_couranr_workspace_activation.sql"),
     "utf8"
   );
 

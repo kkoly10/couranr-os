@@ -279,7 +279,7 @@ alter table public.business_members enable row level security;
 --     to bm.id, a self-comparison that is never true, so the policy silently
 --     reduces to app_is_admin().
 --
--- Migration 20260806130000 fixes both. Reproducing the broken state here is
+-- Migration 20260806120629 fixes both. Reproducing the broken state here is
 -- what lets the disposable stack prove the fix does something: a bootstrap
 -- that started from the fixed state would assert nothing.
 drop policy if exists business_accounts_select on public.business_accounts;

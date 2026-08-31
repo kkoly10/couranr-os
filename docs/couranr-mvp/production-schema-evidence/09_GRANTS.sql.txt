@@ -1,0 +1,272 @@
+PRODUCTION EFFECTIVE GRANTS on couranr_* relations, sequences and functions
+project zrdxlrlqxdslqpnoqmus, read-only.
+
+METHOD: has_table_privilege / has_function_privilege / has_sequence_privilege are used rather
+than information_schema grantee rows, because grantee rows do not show a privilege a role holds
+by inheritance through PUBLIC. The raw relacl is printed alongside so the explicit ACL and the
+effective answer can be compared directly.
+NOTE: service_role has rolbypassrls=true on this project, so for that role the GRANTs, not RLS,
+are the access boundary.
+==============================================================================================================
+RELATIONS   privilege letters: S=SELECT I=INSERT U=UPDATE D=DELETE T=TRUNCATE R=REFERENCES g=TRIGGER
+relation                                       knd public    anon      authent.  service_r postgres 
+--------------------------------------------------------------------------------------------------------------
+public.couranr_activation_acknowledgements     r   (none)    (none)    (none)    SI        SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=ar/postgres}
+public.couranr_activation_events               r   (none)    (none)    (none)    SI        SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=ar/postgres}
+public.couranr_assignment_events               r   (none)    (none)    (none)    SI        SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=ar/postgres}
+public.couranr_category_presets                r   (none)    (none)    (none)    SIU       SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=arw/postgres}
+public.couranr_conversation_events             r   (none)    (none)    (none)    SI        SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=ar/postgres}
+public.couranr_conversation_messages           r   (none)    (none)    (none)    I         SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=a/postgres}
+public.couranr_conversation_participants       r   (none)    (none)    (none)    SIU       SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=arw/postgres}
+public.couranr_conversations                   r   (none)    (none)    (none)    SIU       SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=arw/postgres}
+public.couranr_deliveries                      r   (none)    (none)    (none)    SIU       SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=arw/postgres}
+public.couranr_delivery_access_tokens          r   (none)    (none)    (none)    SIU       SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=arw/postgres}
+public.couranr_delivery_assignments            r   (none)    (none)    (none)    SIU       SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=arw/postgres}
+public.couranr_delivery_events                 r   (none)    (none)    (none)    SI        SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=ar/postgres}
+public.couranr_delivery_proofs                 r   (none)    (none)    (none)    SI        SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=ar/postgres}
+public.couranr_delivery_request_events         r   (none)    (none)    (none)    SI        SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=ar/postgres}
+public.couranr_delivery_requests               r   (none)    (none)    (none)    SIU       SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=arw/postgres}
+public.couranr_dispatch_vehicles               r   (none)    (none)    (none)    SIU       SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=arw/postgres}
+public.couranr_drivers                         r   (none)    (none)    (none)    SIU       SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=arw/postgres}
+public.couranr_handoff_codes                   r   (none)    (none)    (none)    SIU       SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=arw/postgres}
+public.couranr_handoff_records                 r   (none)    (none)    (none)    SI        SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=ar/postgres}
+public.couranr_help_access_tokens              r   (none)    (none)    (none)    SIU       SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=arw/postgres}
+public.couranr_merchant_preset_versions        r   (none)    (none)    (none)    SI        SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=ar/postgres}
+public.couranr_merchant_presets                r   (none)    (none)    (none)    SIU       SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=arw/postgres}
+public.couranr_merchant_workspaces             r   (none)    (none)    (none)    SIU       SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=arw/postgres}
+public.couranr_payment_access_tokens           r   (none)    (none)    (none)    SIU       SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=arw/postgres}
+public.couranr_payment_events                  r   (none)    (none)    (none)    SI        SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=ar/postgres}
+public.couranr_payment_obligations             r   (none)    (none)    (none)    SIU       SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=arw/postgres}
+public.couranr_pickup_discrepancies            r   (none)    (none)    (none)    SIU       SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=arw/postgres}
+public.couranr_proof_uploads                   r   (none)    (none)    (none)    SIU       SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=arw/postgres}
+public.couranr_service_plans                   r   (none)    (none)    (none)    SIU       SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=arw/postgres}
+public.couranr_team_events                     r   (none)    (none)    (none)    SI        SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=ar/postgres}
+public.couranr_website_tool_configs            r   (none)    (none)    (none)    SIU       SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=arw/postgres}
+public.couranr_workspace_activations           r   (none)    (none)    (none)    SIU       SIUDTRg  
+      relacl: {postgres=arwdDxtm/postgres,service_role=arw/postgres}
+==============================================================================================================
+FUNCTIONS — EXECUTE privilege
+function                                                                   public  anon   authent.  service_r  postgres
+--------------------------------------------------------------------------------------------------------------
+private.couranr_begin_idempotent(p_purpose text, p_actor_type text, p_acto -       -      -         YES        YES
+private.couranr_complete_idempotent(p_record_id uuid, p_result_ref jsonb)  -       -      -         YES        YES
+public.couranr_accept_activation_ack(p_business_account_id uuid, p_actor_u -       -      -         YES        YES
+public.couranr_accept_delivery_request_as_quoted(p_request_id uuid, p_busi -       -      -         YES        YES
+public.couranr_accept_member_invite(p_business_account_id uuid, p_actor_us -       -      -         YES        YES
+public.couranr_activate_driver(p_driver_id uuid, p_expected_version intege -       -      -         YES        YES
+public.couranr_add_customer_address(p_business_account_id uuid, p_actor_us -       -      -         YES        YES
+public.couranr_add_operating_minutes(p_from timestamp with time zone, p_mi -       -      -         YES        YES
+public.couranr_adopt_preset_recommendation(p_business_account_id uuid, p_a -       -      -         YES        YES
+public.couranr_apply_payment_intent_state(p_provider_event_id text, p_even -       -      -         YES        YES
+public.couranr_apply_readiness(p_request_id uuid, p_business_account_id uu -       -      -         YES        YES
+public.couranr_arrive_at_dropoff(p_delivery_id uuid, p_expected_version in -       -      -         YES        YES
+public.couranr_arrive_at_pickup(p_delivery_id uuid, p_expected_version int -       -      -         YES        YES
+public.couranr_assert_driver_mutable(p_driver_id uuid)                     -       -      -         YES        YES
+public.couranr_assert_dropoff_ready(p_delivery_id uuid, p_actor_user_id uu -       -      -         YES        YES
+public.couranr_assert_readiness_mutable(p_request_id uuid)                 -       -      -         YES        YES
+public.couranr_assign_delivery(p_delivery_id uuid, p_expected_version inte -       -      -         YES        YES
+public.couranr_attach_payment_intent(p_obligation_id uuid, p_expected_vers -       -      -         YES        YES
+public.couranr_begin_delivery_preparation(p_request_id uuid, p_business_ac -       -      -         YES        YES
+public.couranr_begin_delivery_request_review(p_request_id uuid, p_business -       -      -         YES        YES
+public.couranr_begin_payment_capture(p_request_id uuid, p_actor_user_id uu -       -      -         YES        YES
+public.couranr_begin_payment_release(p_obligation_id uuid, p_actor_user_id -       -      -         YES        YES
+public.couranr_calculate_delivery_request_estimate(p_request_id uuid, p_bu -       -      -         YES        YES
+public.couranr_cancel_service_plan(p_request_id uuid, p_reason text)       -       -      -         YES        YES
+public.couranr_change_member_role(p_business_account_id uuid, p_actor_user -       -      -         YES        YES
+public.couranr_complete_direct_handoff_delivery(p_delivery_id uuid, p_expe -       -      -         YES        YES
+public.couranr_complete_leave_at_door_delivery(p_delivery_id uuid, p_expec -       -      -         YES        YES
+public.couranr_complete_payment_capture(p_obligation_id uuid, p_provider_e -       -      -         YES        YES
+public.couranr_complete_payment_release(p_obligation_id uuid, p_payment_in -       -      -         YES        YES
+public.couranr_complete_pickup(p_delivery_id uuid, p_expected_version inte -       -      -         YES        YES
+public.couranr_complete_signature_delivery(p_delivery_id uuid, p_expected_ -       -      -         YES        YES
+public.couranr_confirm_service_plan(p_request_id uuid, p_expected_version  -       -      -         YES        YES
+public.couranr_conversation_thread(p_conversation_id uuid, p_viewer_user_i -       -      -         YES        YES
+public.couranr_create_delivery_from_capture(p_request_id uuid)             -       -      -         YES        YES
+public.couranr_create_delivery_request_draft(p_business_account_id uuid, p -       -      -         YES        YES
+public.couranr_create_dispatch_vehicle(p_actor_user_id uuid, p_name text,  -       -      -         YES        YES
+public.couranr_create_driver_profile(p_user_id uuid, p_actor_user_id uuid, -       -      -         YES        YES
+public.couranr_create_merchant_customer(p_business_account_id uuid, p_acto -       -      -         YES        YES
+public.couranr_create_merchant_preset(p_business_account_id uuid, p_actor_ -       -      -         YES        YES
+public.couranr_create_merchant_workspace(p_owner_user_id uuid, p_idempoten -       -      -         YES        YES
+public.couranr_create_payment_obligation(p_request_id uuid, p_business_acc -       -      -         YES        YES
+public.couranr_create_proof_upload(p_delivery_id uuid, p_actor_user_id uui -       -      -         YES        YES
+public.couranr_cv_kind_immutable()                                         -       -      -         YES        YES
+public.couranr_cv_participant_kind_allowed(p_conversation_kind text, p_par -       -      -         YES        YES
+public.couranr_cv_visibility_allowed(p_conversation_kind text, p_visibilit -       -      -         YES        YES
+public.couranr_cvm_enforce_visibility()                                    -       -      -         YES        YES
+public.couranr_cvp_enforce_kind()                                          -       -      -         YES        YES
+public.couranr_cvp_tenure_monotone()                                       -       -      -         YES        YES
+public.couranr_deactivate_driver(p_driver_id uuid, p_expected_version inte -       -      -         YES        YES
+public.couranr_decide_activation(p_business_account_id uuid, p_actor_user_ -       -      -         YES        YES
+public.couranr_decline_delivery_request(p_request_id uuid, p_business_acco -       -      -         YES        YES
+public.couranr_disable_member(p_business_account_id uuid, p_actor_user_id  -       -      -         YES        YES
+public.couranr_driver_assignment_for(p_delivery_id uuid, p_actor_user_id u -       -      -         YES        YES
+public.couranr_driver_completion_receipt(p_actor_user_id uuid)             -       -      -         YES        YES
+public.couranr_duplicate_merchant_preset(p_business_account_id uuid, p_act -       -      -         YES        YES
+public.couranr_fail_payment_capture(p_obligation_id uuid, p_provider_event -       -      -         YES        YES
+public.couranr_finalize_proof_upload(p_upload_id uuid, p_actor_user_id uui -       -      -         YES        YES
+public.couranr_find_user_id_by_email(p_email text)                         -       -      -         YES        YES
+public.couranr_finish_delivered(p_delivery_id uuid, p_expected_version int -       -      -         YES        YES
+public.couranr_help_post_message(p_token_id uuid, p_body text, p_topic tex -       -      -         YES        YES
+public.couranr_help_thread(p_token_id uuid)                                -       -      -         YES        YES
+public.couranr_invite_member(p_business_account_id uuid, p_actor_user_id u -       -      -         YES        YES
+public.couranr_is_within_operating_hours(p_at timestamp with time zone)    -       -      -         YES        YES
+public.couranr_issue_delivery_access_token(p_request_id uuid, p_token_hash -       -      -         YES        YES
+public.couranr_issue_handoff_code(p_delivery_id uuid, p_code_kind text, p_ -       -      -         YES        YES
+public.couranr_issue_help_token(p_delivery_id uuid, p_token_hash text, p_t -       -      -         YES        YES
+public.couranr_issue_payment_access_token(p_request_id uuid, p_obligation_ -       -      -         YES        YES
+public.couranr_jsonb_audit_shape_ok(p_doc jsonb, p_keys text[], p_max_len  -       -      -         YES        YES
+public.couranr_jsonb_has_no_key(p_doc jsonb, p_keys text[])                -       -      -         YES        YES
+public.couranr_lock_activation(p_business_account_id uuid)                 -       -      -         YES        YES
+public.couranr_lock_and_count_active_owners(p_business_account_id uuid)    -       -      -         YES        YES
+public.couranr_mark_delivery_not_ready(p_request_id uuid, p_business_accou -       -      -         YES        YES
+public.couranr_mark_delivery_ready(p_request_id uuid, p_business_account_i -       -      -         YES        YES
+public.couranr_mark_delivery_unavailable(p_request_id uuid, p_business_acc -       -      -         YES        YES
+public.couranr_mark_driver_available(p_driver_id uuid, p_expected_version  -       -      -         YES        YES
+public.couranr_mark_driver_unavailable(p_driver_id uuid, p_expected_versio -       -      -         YES        YES
+public.couranr_mark_vehicle_available(p_vehicle_id uuid, p_expected_versio -       -      -         YES        YES
+public.couranr_mark_vehicle_unavailable(p_vehicle_id uuid, p_expected_vers -       -      -         YES        YES
+public.couranr_next_operating_period_start(p_at timestamp with time zone)  -       -      -         YES        YES
+public.couranr_operating_minutes_between(p_start timestamp with time zone, -       -      -         YES        YES
+public.couranr_operating_timezone()                                        -       -      -         YES        YES
+public.couranr_preset_body_is_clean(p_body jsonb)                          -       -      -         YES        YES
+public.couranr_reactivate_member(p_business_account_id uuid, p_actor_user_ -       -      -         YES        YES
+public.couranr_record_test_delivery(p_business_account_id uuid, p_actor_us -       -      -         YES        YES
+public.couranr_redeem_delivery_access_token(p_token_hash text)             -       -      -         YES        YES
+public.couranr_redeem_help_token(p_token_hash text)                        -       -      -         YES        YES
+public.couranr_redeem_payment_access_token(p_token_hash text)              -       -      -         YES        YES
+public.couranr_release_assignment_resources(p_driver_id uuid, p_vehicle_id -       -      -         YES        YES
+public.couranr_replace_delivery_assignment(p_delivery_id uuid, p_expected_ -       -      -         YES        YES
+public.couranr_report_pickup_discrepancy(p_delivery_id uuid, p_actor_user_ -       -      -         YES        YES
+public.couranr_request_activation(p_business_account_id uuid, p_actor_user -       -      -         YES        YES
+public.couranr_require_active_member(p_business_account_id uuid, p_actor_u -       -      -         YES        YES
+public.couranr_require_preset_manager(p_business_account_id uuid, p_actor_ -       -      -         YES        YES
+public.couranr_requote_delivery_request(p_request_id uuid, p_business_acco -       -      -         YES        YES
+public.couranr_resolve_pickup_discrepancy_safe_to_continue(p_discrepancy_i -       -      -         YES        YES
+public.couranr_resolve_terminal_capture_failure(p_obligation_id uuid, p_pr -       -      -         YES        YES
+public.couranr_revoke_delivery_access_tokens(p_request_id uuid, p_reason t -       -      -         YES        YES
+public.couranr_revoke_payment_access_tokens(p_request_id uuid, p_reason te -       -      -         YES        YES
+public.couranr_save_website_tool_config(p_business_account_id uuid, p_acto -       -      -         YES        YES
+public.couranr_set_business_categories(p_business_account_id uuid, p_actor -       -      -         YES        YES
+public.couranr_set_customer_archived(p_business_account_id uuid, p_actor_u -       -      -         YES        YES
+public.couranr_set_merchant_preset_archived(p_business_account_id uuid, p_ -       -      -         YES        YES
+public.couranr_start_route_to_dropoff(p_delivery_id uuid, p_expected_versi -       -      -         YES        YES
+public.couranr_start_route_to_pickup(p_delivery_id uuid, p_expected_versio -       -      -         YES        YES
+public.couranr_submit_delivery_request(p_request_id uuid, p_business_accou -       -      -         YES        YES
+public.couranr_suspend_driver(p_driver_id uuid, p_expected_version integer -       -      -         YES        YES
+public.couranr_text_array_is_distinct(p_values text[])                     -       -      -         YES        YES
+public.couranr_unassign_delivery_before_pickup(p_delivery_id uuid, p_expec -       -      -         YES        YES
+public.couranr_update_dispatch_vehicle(p_vehicle_id uuid, p_expected_versi -       -      -         YES        YES
+public.couranr_update_merchant_customer(p_business_account_id uuid, p_acto -       -      -         YES        YES
+public.couranr_update_merchant_preset(p_business_account_id uuid, p_actor_ -       -      -         YES        YES
+public.couranr_update_workspace_profile(p_business_account_id uuid, p_acto -       -      -         YES        YES
+public.couranr_vehicle_class_rank(p_class text)                            -       -      -         YES        YES
+public.couranr_vehicle_incompatibility(p_vehicle_id uuid, p_driver_id uuid -       -      -         YES        YES
+public.couranr_verify_activation_contact(p_business_account_id uuid, p_act -       -      -         YES        YES
+public.couranr_verify_handoff_code(p_delivery_id uuid, p_code_kind text, p -       -      -         YES        YES
+==============================================================================================================
+DEFAULT ACLs (pg_default_acl)
+These apply to objects created in FUTURE by the named owner role. They are why a newly created
+table can already hold privileges before any GRANT runs, and why a migration creating a table
+must REVOKE explicitly rather than assume a clean slate.
+--------------------------------------------------------------------------------------------------------------
+owner=postgres schema=analytics objtype=SEQUENCE
+  {service_role=rU/postgres}
+owner=postgres schema=analytics objtype=FUNCTION
+  {service_role=X/postgres}
+owner=postgres schema=analytics objtype=TABLE
+  {service_role=arwd/postgres}
+owner=supabase_auth_admin schema=auth objtype=SEQUENCE
+  {postgres=rwU/supabase_auth_admin,dashboard_user=rwU/supabase_auth_admin}
+owner=supabase_auth_admin schema=auth objtype=FUNCTION
+  {postgres=X/supabase_auth_admin,dashboard_user=X/supabase_auth_admin}
+owner=supabase_auth_admin schema=auth objtype=TABLE
+  {postgres=arwdDxtm/supabase_auth_admin,dashboard_user=arwdDxtm/supabase_auth_admin}
+owner=supabase_admin schema=extensions objtype=SEQUENCE
+  {postgres=r*w*U*/supabase_admin}
+owner=supabase_admin schema=extensions objtype=FUNCTION
+  {postgres=X*/supabase_admin}
+owner=supabase_admin schema=extensions objtype=TABLE
+  {postgres=a*r*w*d*D*x*t*m*/supabase_admin}
+owner=supabase_admin schema=graphql objtype=SEQUENCE
+  {postgres=rwU/supabase_admin,anon=rwU/supabase_admin,authenticated=rwU/supabase_admin,service_role=rwU/supabase_admin}
+owner=supabase_admin schema=graphql objtype=FUNCTION
+  {postgres=X/supabase_admin,anon=X/supabase_admin,authenticated=X/supabase_admin,service_role=X/supabase_admin}
+owner=supabase_admin schema=graphql objtype=TABLE
+  {postgres=arwdDxtm/supabase_admin,anon=arwdDxtm/supabase_admin,authenticated=arwdDxtm/supabase_admin,service_role=arwdDxtm/supabase_admin}
+owner=supabase_admin schema=graphql_public objtype=SEQUENCE
+  {postgres=rwU/supabase_admin,anon=rwU/supabase_admin,authenticated=rwU/supabase_admin,service_role=rwU/supabase_admin}
+owner=supabase_admin schema=graphql_public objtype=FUNCTION
+  {postgres=X/supabase_admin,anon=X/supabase_admin,authenticated=X/supabase_admin,service_role=X/supabase_admin}
+owner=supabase_admin schema=graphql_public objtype=TABLE
+  {postgres=arwdDxtm/supabase_admin,anon=arwdDxtm/supabase_admin,authenticated=arwdDxtm/supabase_admin,service_role=arwdDxtm/supabase_admin}
+owner=postgres schema=private objtype=SEQUENCE
+  {service_role=rU/postgres}
+owner=postgres schema=private objtype=FUNCTION
+  {service_role=X/postgres}
+owner=postgres schema=private objtype=TABLE
+  {service_role=arwd/postgres}
+owner=postgres schema=public objtype=SEQUENCE
+  {postgres=rwU/postgres,anon=rwU/postgres,authenticated=rwU/postgres,service_role=rwU/postgres}
+owner=supabase_admin schema=public objtype=SEQUENCE
+  {postgres=rwU/supabase_admin,anon=rwU/supabase_admin,authenticated=rwU/supabase_admin,service_role=rwU/supabase_admin}
+owner=postgres schema=public objtype=FUNCTION
+  {postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+owner=supabase_admin schema=public objtype=FUNCTION
+  {postgres=X/supabase_admin,anon=X/supabase_admin,authenticated=X/supabase_admin,service_role=X/supabase_admin}
+owner=postgres schema=public objtype=TABLE
+  {postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}
+owner=supabase_admin schema=public objtype=TABLE
+  {postgres=arwdDxtm/supabase_admin,anon=arwdDxtm/supabase_admin,authenticated=arwdDxtm/supabase_admin,service_role=arwdDxtm/supabase_admin}
+owner=supabase_admin schema=realtime objtype=SEQUENCE
+  {postgres=rwU/supabase_admin,dashboard_user=rwU/supabase_admin}
+owner=supabase_admin schema=realtime objtype=FUNCTION
+  {postgres=X/supabase_admin,dashboard_user=X/supabase_admin}
+owner=supabase_admin schema=realtime objtype=TABLE
+  {postgres=arwdDxtm/supabase_admin,dashboard_user=arwdDxtm/supabase_admin}
+owner=postgres schema=storage objtype=SEQUENCE
+  {postgres=rwU/postgres,anon=rwU/postgres,authenticated=rwU/postgres,service_role=rwU/postgres}
+owner=postgres schema=storage objtype=FUNCTION
+  {postgres=X/postgres,anon=X/postgres,authenticated=X/postgres,service_role=X/postgres}
+owner=postgres schema=storage objtype=TABLE
+  {postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}
+==============================================================================================================
+SCHEMA-LEVEL privileges
+--------------------------------------------------------------------------------------------------------------
+schema analytics    usage: public=n anon=n authenticated=n service_role=Y postgres=Y
+  nspacl: {postgres=UC/postgres,service_role=U/postgres}
+schema private      usage: public=n anon=n authenticated=n service_role=Y postgres=Y
+  nspacl: {postgres=UC/postgres,service_role=U/postgres}
+schema public       usage: public=Y anon=Y authenticated=Y service_role=Y postgres=Y
+  nspacl: {pg_database_owner=UC/pg_database_owner,=U/pg_database_owner,postgres=U/pg_database_owner,anon=U/pg_database_owner,authenticated=U/pg_database_owner,service_role=U/pg_database_owner}

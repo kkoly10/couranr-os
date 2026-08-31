@@ -41,6 +41,11 @@ import {
   ANON_JWT,
 } from "./gateway.mjs";
 import { postgrestTarget } from "../../scripts/provisionPostgrest.mjs";
+import {
+  psqlTransport,
+  seedCanonicalPaymentObligation,
+  seedCanonicalQuotedRequest,
+} from "./gateAFixtures.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const SHOTS = path.join(ROOT, "e2e/screenshots/merchant-dashboard");
@@ -86,51 +91,68 @@ function makeUser(email, profileRole) {
 }
 
 /**
- * A request seeded to a named point in the state machine. Confirmed rows carry
- * the estimate-completeness pair the CHECK constraints demand (`submitted_at`,
- * subtotal + policy version), because the schema states what "confirmed"
- * requires — seeding IS reading the schema.
+ * A request seeded to a named point in the state machine, built by the CURRENT
+ * canonical commands.
+ *
+ * It used to be one raw INSERT that asserted its own state. Gate A made that
+ * unwritable: a request carrying quote_status='estimated' with no
+ * current_quote_version_id violates couranr_dr_quote_identity_completeness_chk,
+ * which is exactly where this suite died. The named commands are also the only
+ * way to reach these states honestly — review_state is WRITTEN by them
+ * (draft -> not_required, submit -> pending, accept -> accepted_as_quoted),
+ * never chosen, and the three values this file facets on are precisely what the
+ * three depths produce.
+ *
+ * readiness is passed at DRAFT time rather than reached afterwards with
+ * couranr_begin_delivery_preparation: that command would bump the version again
+ * and append a second readiness event, and W2 asserts the newest event for
+ * rPrep is the mark_delivery_ready the dashboard button produced.
  */
-function makeRequest(businessId, creatorId, marker, { state, readiness = "not_confirmed" }) {
-  const submitted = state === "draft" ? "null" : "now()";
-  const quoted =
-    state === "draft"
-      ? { status: "not_quoted", subtotal: "null", policy: "null" }
-      : { status: "estimated", subtotal: "2299", policy: "'disposable'" };
-  return sql(
-    `insert into public.couranr_delivery_requests
-       (business_account_id, created_by, idempotency_key, recipient_name,
-        request_state, readiness_state, submitted_at,
-        quote_status, delivery_subtotal_cents, pricing_policy_version)
-     values ('${businessId}', '${creatorId}', 'dash-${marker}-${crypto.randomUUID()}',
-             '${esc(marker)} recipient', '${state}', '${readiness}', ${submitted},
-             '${quoted.status}', ${quoted.subtotal}, ${quoted.policy})
-     returning id`
-  );
+const REVIEW_DEPTH_FOR_STATE = {
+  draft: "draft",
+  pending_couranr_review: "submitted",
+  confirmed: "confirmed",
+};
+
+/** requestId -> the builder's record, so makeObligation can reach its quote. */
+const seeded = new Map();
+
+async function makeRequest(businessId, creatorId, marker, { state, readiness = "not_confirmed" }) {
+  const upTo = REVIEW_DEPTH_FOR_STATE[state];
+  if (!upTo) throw new Error(`makeRequest: unsupported state ${state}`);
+  const request = await seedCanonicalQuotedRequest(psqlTransport(psql), {
+    businessId,
+    actorUserId: creatorId,
+    marker: `dash-${marker}`,
+    // Load-bearing: the dashboard renders recipient_name, and D3e scans the
+    // rendered body. The builder's default would erase the marker.
+    recipientName: `${marker} recipient`,
+    readinessState: readiness,
+    subtotalCents: 2299,
+    pricingPolicyVersion: "disposable",
+    upTo,
+  });
+  seeded.set(request.requestId, request);
+  return request.requestId;
 }
 
 /**
- * A live (non-cancelled) obligation in a named payment state, carrying what
- * the schema says that state requires: an authorized (or in-flight) hold must
- * name its PaymentIntent and its `authorized_at`
- * (`couranr_po_authorized_needs_intent_chk`, `couranr_po_authorized_stamp_chk`)
- * — seeding IS reading the schema.
+ * A live (non-cancelled) obligation in a named payment state.
+ *
+ * The stamp CHECKs still state what each state requires — an authorized hold
+ * needs its intent and authorized_at, a failed one needs failed_at — but they
+ * are satisfied by the shared builder now rather than by hand. What Gate A
+ * added on top is that amount_cents, pricing_policy_version, payer_type and
+ * currency must all equal the request's CURRENT immutable quote, which is why
+ * the amount is not a parameter here: it is the quote's subtotal, seeded above.
  */
-function makeObligation(requestId, businessId, paymentState) {
-  const intent = `pi_dash_${crypto.randomUUID().replace(/-/g, "")}`;
-  const authorizedAt =
-    paymentState === "authorized" || paymentState === "capture_pending" ? "now()" : "null";
-  const failedAt = paymentState === "failed" ? "now()" : "null";
-  return sql(
-    `insert into public.couranr_payment_obligations
-       (request_id, business_account_id, payer_type, request_version,
-        pricing_policy_version, amount_cents, payment_state, idempotency_key,
-        provider_payment_intent_id, authorized_at, failed_at)
-     values ('${requestId}', '${businessId}', 'merchant', 1,
-             'disposable', 2299, '${paymentState}', 'dash-po-${crypto.randomUUID()}',
-             '${intent}', ${authorizedAt}, ${failedAt})
-     returning id`
-  );
+async function makeObligation(requestId, businessId, paymentState) {
+  const request = seeded.get(requestId);
+  if (!request) throw new Error(`makeObligation: ${requestId} was not seeded here`);
+  const o = await seedCanonicalPaymentObligation(psqlTransport(psql), request, {
+    paymentState,
+  });
+  return o.obligationId;
 }
 
 /* --------------------------------------------------------------- the harness */
@@ -252,19 +274,19 @@ async function main() {
                      email: "e2e-dash-nobody@couranr.invalid" };
 
     // The request set for the active day.
-    const rDraft = makeRequest(bizA, owner.id, "DASH-draft", { state: "draft" });
-    makeRequest(bizA, owner.id, "DASH-review", { state: "pending_couranr_review" });
-    const rPrep = makeRequest(bizA, owner.id, "DASH-prep", {
+    const rDraft = await makeRequest(bizA, owner.id, "DASH-draft", { state: "draft" });
+    await makeRequest(bizA, owner.id, "DASH-review", { state: "pending_couranr_review" });
+    const rPrep = await makeRequest(bizA, owner.id, "DASH-prep", {
       state: "confirmed",
       readiness: "preparing",
     });
-    makeObligation(rPrep, bizA, "authorized");
-    const rFailed = makeRequest(bizA, owner.id, "DASH-failed", { state: "confirmed" });
-    makeObligation(rFailed, bizA, "failed");
-    const rCapture = makeRequest(bizA, owner.id, "DASH-capture", { state: "confirmed" });
-    makeObligation(rCapture, bizA, "capture_pending");
-    const rAction = makeRequest(bizA, owner.id, "DASH-action", { state: "confirmed" });
-    makeObligation(rAction, bizA, "requires_action");
+    await makeObligation(rPrep, bizA, "authorized");
+    const rFailed = await makeRequest(bizA, owner.id, "DASH-failed", { state: "confirmed" });
+    await makeObligation(rFailed, bizA, "failed");
+    const rCapture = await makeRequest(bizA, owner.id, "DASH-capture", { state: "confirmed" });
+    await makeObligation(rCapture, bizA, "capture_pending");
+    const rAction = await makeRequest(bizA, owner.id, "DASH-action", { state: "confirmed" });
+    await makeObligation(rAction, bizA, "requires_action");
 
     // One support thread with an unread Couranr message, so the messages tile
     // has a real boolean to render. Direct seed, same reason as the messaging
@@ -531,9 +553,20 @@ async function main() {
         `status=${r.status} n=${r.body?.conversations?.length}`);
     }
     {
+      // The version is READ rather than written as a literal. A confirmed
+      // request has necessarily been through submit and accept, so version 1 is
+      // no longer reachable — and a stale literal would let this 403 come from
+      // a version conflict instead of from the role gate it is asserting.
+      const prepVersion = sql(
+        `select version from public.couranr_delivery_requests where id='${rPrep}'`
+      );
       const r = await api(viewer.email, `/api/couranr/delivery-requests/${rPrep}/readiness`, {
         method: "POST",
-        body: JSON.stringify({ businessAccountId: bizA, expectedVersion: 1, readiness: "ready" }),
+        body: JSON.stringify({
+          businessAccountId: bizA,
+          expectedVersion: Number(prepVersion),
+          readiness: "ready",
+        }),
       });
       check("R5", "server truth: viewer's mark-ready is REFUSED — the hidden button mirrors a real rule",
         r.status === 403, `status=${r.status} code=${r.body?.code}`);
@@ -555,6 +588,15 @@ async function main() {
     /* ══════════════ the dashboard's one write: mark ready ══════════════ */
 
     console.log("Owner — mark ready from the dashboard, asserted in the database");
+    // Captured BEFORE the click. The old assertion pinned the literal "ready|2",
+    // which only held because the fixture INSERTed a confirmed request at
+    // version 1 — a state the machine cannot actually produce, since reaching
+    // `confirmed` costs a submit and an accept. What the check is really about
+    // is that one dashboard click advances the generation by exactly one, so
+    // that is what it now says.
+    const prepVersionBefore = Number(
+      sql(`select version from public.couranr_delivery_requests where id='${rPrep}'`)
+    );
     await ownerPage.getByRole("button", { name: "Ready for Couranr" }).click();
     // The panel reloads the whole dashboard; the preparation section empties
     // because the request has left merchant_preparing.
@@ -567,7 +609,8 @@ async function main() {
         `select readiness_state || '|' || version
            from public.couranr_delivery_requests where id='${rPrep}'`
       );
-      check("W1", "readiness_state is 'ready' and the version advanced", row === "ready|2", row);
+      check("W1", "readiness_state is 'ready' and the version advanced by exactly one",
+        row === `ready|${prepVersionBefore + 1}`, `${row} (was version ${prepVersionBefore})`);
       const ev = sql(
         `select command || '|' || from_state || '|' || to_state || '|' || actor_type
            from public.couranr_delivery_request_events

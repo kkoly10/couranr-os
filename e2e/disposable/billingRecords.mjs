@@ -61,6 +61,11 @@ import {
   ANON_JWT,
 } from "./gateway.mjs";
 import { postgrestTarget } from "../../scripts/provisionPostgrest.mjs";
+import {
+  psqlTransport,
+  seedCanonicalPaymentObligation,
+  seedCanonicalQuotedRequest,
+} from "./gateAFixtures.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const SHOTS = path.join(ROOT, "e2e/screenshots/billing");
@@ -116,32 +121,24 @@ function addMember(businessId, userId, role, status = "active") {
   );
 }
 
-function makeRequest(businessId, creatorId, recipient) {
-  return sql(
-    `insert into public.couranr_delivery_requests
-       (business_account_id, created_by, idempotency_key, recipient_name,
-        request_state, readiness_state, review_state, submitted_at,
-        quote_status, delivery_subtotal_cents, pricing_policy_version,
-        pickup_address, dropoff_address, loaded_miles, weight_lb)
-     values ('${businessId}', '${creatorId}', 'bill-${crypto.randomUUID()}',
-             '${esc(recipient)}', 'pending_couranr_review', 'not_confirmed', 'pending', now(),
-             'estimated', 2299, 'disposable',
-             '{"line1":"12 Test St","city":"Stafford","region":"VA","postalCode":"22554"}'::jsonb,
-             '{"line1":"9 Drop Ct","city":"Woodbridge","region":"VA","postalCode":"22191"}'::jsonb,
-             5, 20)
-     returning id`
-  );
-}
-
 /**
- * One obligation, in a chosen payment state.
+ * ONE charge: a request, its immutable quote, and its obligation in a chosen
+ * payment state.
  *
- * The stamp CHECKs make this fixture the schema telling us what each state
- * actually requires: `authorized` needs an intent AND `authorized_at`,
- * `captured` needs `captured_at` and `captured_amount_cents`, `cancelled`
- * needs `cancelled_at`, and the partial unique index permits at most one
- * non-cancelled obligation per request — which is why every state below gets
- * its own request rather than sharing one.
+ * These were two functions and Gate A fused them. The amount can no longer be
+ * an independent parameter of the obligation: couranr_create_payment_obligation
+ * copies subtotal_cents, pricing_policy_version, payer_type and currency out of
+ * the request's CURRENT quote, and couranr_po_quote_invariant_trg refuses the
+ * row outright if they disagree. So the amount is the quote's subtotal, chosen
+ * when the request is drafted — which is what the product does too, and is why
+ * the old pair could no longer be written at all.
+ *
+ * The stamp CHECKs still state what each state requires, and are still what
+ * makes this fixture honest: `authorized` needs an intent AND authorized_at,
+ * `captured` needs captured_at AND captured_amount_cents, `failed` needs
+ * failed_at, `cancelled` needs cancelled_at, and the partial unique index
+ * permits at most ONE non-cancelled obligation per request — which is why every
+ * state below still gets its own request rather than sharing one.
  *
  * NO `capturedCents` PARAMETER, and that is a finding rather than a
  * simplification. The first version of this fixture tried to seed a capture
@@ -151,27 +148,29 @@ function makeRequest(businessId, creatorId, recipient) {
  * The preference in `totalChargedCents` is therefore correct-in-advance and
  * currently UNREACHABLE, and the constraint is asserted below so this stays a
  * documented fact rather than a fixture that quietly gave up.
+ *
+ * The request lands at `confirmed` rather than the old `pending_couranr_review`
+ * because couranr_create_payment_obligation refuses anything else. That is
+ * invisible to all 51 assertions here: the read layer selects only
+ * id / recipient_name / business_account_id from the request, and every rendered
+ * value comes from the obligation plus recipient_name.
  */
-function makeObligation(requestId, businessId, state, amountCents) {
-  const intent = `pi_bill_${crypto.randomUUID().replace(/-/g, "")}`;
-  const needsIntent = ["authorized", "capture_pending", "captured", "failed"].includes(state);
-  return sql(
-    `insert into public.couranr_payment_obligations
-       (request_id, business_account_id, payer_type, request_version,
-        pricing_policy_version, amount_cents, currency, payment_state,
-        provider_payment_intent_id, idempotency_key,
-        authorized_at, captured_at, captured_amount_cents, failed_at, cancelled_at)
-     values ('${requestId}', '${businessId}', 'merchant', 1, 'disposable',
-             ${amountCents}, 'usd', '${state}',
-             ${needsIntent ? `'${intent}'` : "null"},
-             'obl-${crypto.randomUUID()}',
-             ${["authorized", "capture_pending", "captured"].includes(state) ? "now()" : "null"},
-             ${state === "captured" ? "now()" : "null"},
-             ${state === "captured" ? amountCents : "null"},
-             ${state === "failed" ? "now()" : "null"},
-             ${state === "cancelled" ? "now()" : "null"})
-     returning id`
-  );
+async function makeCharge(businessId, creatorId, recipient, state, amountCents) {
+  const request = await seedCanonicalQuotedRequest(psqlTransport(psql), {
+    businessId,
+    actorUserId: creatorId,
+    marker: "bill",
+    // A11 asserts one tenant's marker never appears on another's screen, and D4
+    // asserts an amount is absent from the payload. Both go vacuous against the
+    // builder's defaults, so both are passed explicitly.
+    recipientName: recipient,
+    subtotalCents: amountCents,
+    pricingPolicyVersion: "disposable",
+  });
+  const o = await seedCanonicalPaymentObligation(psqlTransport(psql), request, {
+    paymentState: state,
+  });
+  return { requestId: request.requestId, obligationId: o.obligationId };
 }
 
 async function main() {
@@ -315,16 +314,11 @@ async function main() {
      * shaped to catch, and it is why the authorized/failed/cancelled rows
      * carry large distinctive amounts.
      */
-    const rCapA = makeRequest(bizId, owner.id, "[BILL] captured A");
-    makeObligation(rCapA, bizId, "captured", 2299);
-    const rCapB = makeRequest(bizId, owner.id, "[BILL] captured B");
-    makeObligation(rCapB, bizId, "captured", 3000);
-    const rAuth = makeRequest(bizId, owner.id, "[BILL] authorized only");
-    makeObligation(rAuth, bizId, "authorized", 5000);
-    const rFailed = makeRequest(bizId, owner.id, "[BILL] failed payment");
-    makeObligation(rFailed, bizId, "failed", 9900);
-    const rCancelled = makeRequest(bizId, owner.id, "[BILL] cancelled");
-    makeObligation(rCancelled, bizId, "cancelled", 4000);
+    await makeCharge(bizId, owner.id, "[BILL] captured A", "captured", 2299);
+    await makeCharge(bizId, owner.id, "[BILL] captured B", "captured", 3000);
+    await makeCharge(bizId, owner.id, "[BILL] authorized only", "authorized", 5000);
+    await makeCharge(bizId, owner.id, "[BILL] failed payment", "failed", 9900);
+    await makeCharge(bizId, owner.id, "[BILL] cancelled", "cancelled", 4000);
 
     const EXPECTED_TOTAL = "$52.99";
     const WRONG_TOTAL = "$241.99";
@@ -339,8 +333,7 @@ async function main() {
       email: "e2e-bill-other@couranr.invalid",
     };
     addMember(otherBiz, otherOwner.id, "owner");
-    const rOther = makeRequest(otherBiz, otherOwner.id, "[BILL] SOMEONE ELSES CHARGE");
-    makeObligation(rOther, otherBiz, "captured", 77777);
+    await makeCharge(otherBiz, otherOwner.id, "[BILL] SOMEONE ELSES CHARGE", "captured", 77777);
     const OTHER_MARKER = "$777.77";
 
     const seededTotal = sql(
@@ -391,11 +384,12 @@ async function main() {
     addMember(pagedBiz, pagedOwner.id, "owner");
 
     // OLDEST row: a failure that will be pushed off the page.
-    const rOldFail = makeRequest(pagedBiz, pagedOwner.id, "[BILL] OLD FAILURE");
-    makeObligation(rOldFail, pagedBiz, "failed", 8888);
+    // FIRST, so it is strictly the oldest obligation of the 121: every psql
+    // call is its own transaction, so now() advances between rows, and F3/P3/P8
+    // depend on this one falling outside the newest 100.
+    await makeCharge(pagedBiz, pagedOwner.id, "[BILL] OLD FAILURE", "failed", 8888);
     for (let i = 0; i < 120; i++) {
-      const r = makeRequest(pagedBiz, pagedOwner.id, `[BILL] bulk ${i}`);
-      makeObligation(r, pagedBiz, "captured", 100);
+      await makeCharge(pagedBiz, pagedOwner.id, `[BILL] bulk ${i}`, "captured", 100);
     }
 
     const pagedRows = sql(

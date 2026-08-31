@@ -68,6 +68,50 @@ describe("Foundation Gate A static authority", () => {
     expect(read("lib/couranr/pricing/quote.ts")).toContain("additional_stops_unsupported");
   });
 
+  /**
+   * FND-STOP-02 lives HERE, in a vitest file, and that placement is the whole
+   * point of it.
+   *
+   * The M6 preflight guard — the thing standing between a production cutover
+   * and silently grandfathering historical multi-stop rows — is exercised by
+   * `test:foundation-rollbacks`, which is a tier-3 suite. CI runs lint, both
+   * typechecks, check:canonical-dml, check:legacy-imports, test:run and build:
+   * TIER 1 ONLY. So deleting the guard would leave every check GitHub actually
+   * runs green, and the one suite that catches it needs a PostgreSQL the
+   * runner does not have.
+   *
+   * A guard whose only alarm cannot be heard where merges happen is most of
+   * the way to no guard. These assertions are cheap text checks, they run in
+   * `test:run`, and they fail in CI.
+   */
+  it("FND-STOP-02 M6 refuses unclassified historical stops, and does so BEFORE any DDL", () => {
+    /* Comments stripped first, and that is not a formality — it is this
+       assertion's own first finding. M6's header quotes the defective
+       expression verbatim to explain what it used to do, so a check written
+       against the raw file reports the explanation as the bug. A rule about
+       what the migration EXECUTES must read only what it executes.
+       (Safe here because no string literal in M6 contains a `--`.) */
+    const code = M6.replace(/--.*$/gm, "");
+
+    expect(code).toContain("gate_a_m6_refuses_unclassified_additional_stops");
+    expect(code).toContain("where additional_stops > 0");
+
+    /* The exact expression that WAS the silent grandfathering. Asserting its
+       absence is not stylistic: reintroducing it re-creates the defect even
+       with the guard still present above it. */
+    expect(code).not.toMatch(/single_destination_contract\s*=\s*\(\s*additional_stops\s*=\s*0\s*\)/);
+
+    /* ORDER IS THE GUARANTEE. A guard that runs after `add column` would let
+       the schema half-apply before refusing, which is precisely what case B
+       of the rollback matrix exists to disprove. Offsets, because this is the
+       one property a pair of `toContain`s cannot express. */
+    const guard = code.indexOf("gate_a_m6_refuses_unclassified_additional_stops");
+    const firstDdl = code.indexOf("alter table public.couranr_delivery_requests");
+    expect(guard).toBeGreaterThan(-1);
+    expect(firstDdl).toBeGreaterThan(-1);
+    expect(guard, "the M6 guard must precede the first schema change").toBeLessThan(firstDdl);
+  });
+
   it("FND-DML-01 canonical runtime contains no direct protected-table write", () => {
     const output = execFileSync("node", ["scripts/checkCanonicalDmlBoundary.mjs"], {
       cwd: ROOT,

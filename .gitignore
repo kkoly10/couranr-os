@@ -41,3 +41,7 @@ tests/scratch/
 # since `typecheck` runs before `build`.
 next-env.d.ts
 .tooling/
+
+# Isolated Next output for harnesses that start a dev server (e2e/devDistDir.mjs).
+# Deliberately NOT in tsconfig include: a leftover here can never break typecheck.
+.next-devharness/

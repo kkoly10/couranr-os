@@ -193,16 +193,16 @@ export function verifyFidelity() {
     /*
      * 24 at the production head, plus the two `couranr_`-prefixed tables from
      * migrations that are committed but NOT yet applied to production:
-     * `couranr_team_events` (20260806120000, MER-015),
-     * `couranr_website_tool_configs` (20260806150000, MER-013) and the three
-     * MER-003 activation tables (20260806170000). The disposable stack is
+     * `couranr_team_events` (20260806120616, MER-015),
+     * `couranr_website_tool_configs` (20260806120648, MER-013) and the three
+     * MER-003 activation tables (20260806160757). The disposable stack is
      * deliberately ahead of production by exactly those.
      *
-     * NOTE: 20260806120000/130000/150000 and the private/analytics schemas ARE
+     * NOTE: 20260806120616/130000/150000 and the private/analytics schemas ARE
      * applied to production as of 2026-08-06; the counts here track the
      * repository's migration set, which still runs ahead.
      *
-     * `merchant_customers` and `customer_addresses` (20260806160000) are NOT
+     * `merchant_customers` and `customer_addresses` (20260806160353) are NOT
      * counted here: their names come from the canonical data model and carry
      * no `couranr_` prefix. They are asserted by name below instead, so this
      * probe cannot silently stop covering them.

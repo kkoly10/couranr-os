@@ -36,8 +36,11 @@
  *  1. The `/auth/v1` issuer is `gateway.mjs`'s reimplementation, not GoTrue.
  *     Token SHAPE and the route's use of it are real; GoTrue's own behaviour
  *     is not exercised.
- *  2. Migration 20260806170000 is applied HERE but NOT in production. Every
- *     database assertion below describes the disposable stack.
+ *  2. Every database assertion below describes the DISPOSABLE stack, which is
+ *     rebuilt from the migrations on each run. It is not a measurement of
+ *     production. (Migration 20260806160757 IS applied in production — this
+ *     caveat used to claim it was not, which a catalog-to-catalog comparison
+ *     disproved; production recorded it under that same version.)
  *  3. The acknowledgement TEXTS are labels and descriptions in
  *     `lib/couranr/activation/states.ts`. This run proves the versions are
  *     recorded and re-checked; it does not prove the wording is the legal
@@ -60,6 +63,7 @@ import {
   ANON_JWT,
 } from "./gateway.mjs";
 import { postgrestTarget } from "../../scripts/provisionPostgrest.mjs";
+import { psqlTransport, seedCanonicalQuotedRequest } from "./gateAFixtures.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const SHOTS = path.join(ROOT, "e2e/screenshots/activation");
@@ -137,21 +141,28 @@ function addMember(businessId, userId, role, status = "active") {
   );
 }
 
-function makeRequest(businessId, creatorId, marker) {
-  return sql(
-    `insert into public.couranr_delivery_requests
-       (business_account_id, created_by, idempotency_key, recipient_name,
-        request_state, readiness_state, review_state, submitted_at,
-        quote_status, delivery_subtotal_cents, pricing_policy_version,
-        pickup_address, dropoff_address, loaded_miles, weight_lb)
-     values ('${businessId}', '${creatorId}', 'act-${crypto.randomUUID()}',
-             '${esc(marker)}', 'pending_couranr_review', 'not_confirmed', 'pending', now(),
-             'estimated', 2299, 'disposable',
-             '{"line1":"12 Test St","city":"Stafford","region":"VA","postalCode":"22554"}'::jsonb,
-             '{"line1":"9 Drop Ct","city":"Woodbridge","region":"VA","postalCode":"22191"}'::jsonb,
-             5, 20)
-     returning id`
-  );
+/**
+ * A submitted request awaiting Couranr review, built by the canonical commands.
+ *
+ * It used to be a raw INSERT claiming quote_status='estimated' with no
+ * current_quote_version_id, which couranr_dr_quote_identity_completeness_chk
+ * now forbids — this suite died on it in setup. `upTo: "submitted"` reaches the
+ * same state honestly: draft, then couranr_submit_delivery_request_v2, which is
+ * also what sets review_state='pending' rather than the INSERT asserting it.
+ */
+async function makeRequest(businessId, creatorId, marker) {
+  const request = await seedCanonicalQuotedRequest(psqlTransport(psql), {
+    businessId,
+    actorUserId: creatorId,
+    marker: "act",
+    // C3 matches the recorded test delivery by id, but the checklist screen
+    // renders the recipient — the marker has to survive.
+    recipientName: marker,
+    subtotalCents: 2299,
+    pricingPolicyVersion: "disposable",
+    upTo: "submitted",
+  });
+  return request.requestId;
 }
 
 /** The activation row's state, or the literal 'NO ROW' when none exists. */
@@ -319,7 +330,7 @@ async function main() {
     addMember(bizId, viewer.id, "viewer");
 
     // A delivery for the test-delivery step to point at.
-    const requestId = makeRequest(bizId, owner.id, "[ACT] activation test recipient");
+    const requestId = await makeRequest(bizId, owner.id, "[ACT] activation test recipient");
 
     // A SECOND business, so "the request must belong to THIS business" is a
     // real refusal rather than an untested comment in the SQL.
@@ -332,7 +343,7 @@ async function main() {
       email: "e2e-act-other@couranr.invalid",
     };
     addMember(otherBiz, otherOwner.id, "owner");
-    const otherRequestId = makeRequest(otherBiz, otherOwner.id, "[ACT] someone else's delivery");
+    const otherRequestId = await makeRequest(otherBiz, otherOwner.id, "[ACT] someone else's delivery");
 
     /*
      * A viewer on the SECOND business, which never activates.

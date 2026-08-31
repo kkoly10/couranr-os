@@ -37,6 +37,11 @@ import {
   ANON_JWT,
 } from "./gateway.mjs";
 import { postgrestTarget } from "../../scripts/provisionPostgrest.mjs";
+import {
+  psqlTransport,
+  seedCanonicalPaymentObligation,
+  seedCanonicalQuotedRequest,
+} from "./gateAFixtures.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const SHOTS = path.join(ROOT, "e2e/screenshots/deliveries-list");
@@ -86,48 +91,77 @@ function makeUser(email, profileRole) {
   return id;
 }
 
-function makeRequest(businessId, creatorId, marker, opts) {
-  const { state, readiness = "not_confirmed", review = "not_required", addresses = false } = opts;
-  const submitted = state === "draft" ? "null" : "now()";
-  const quoted =
-    state === "draft"
-      ? { status: "'not_quoted'", subtotal: "null", policy: "null" }
-      : { status: "'estimated'", subtotal: "2299", policy: "'disposable'" };
-  const pickup = addresses
-    ? `'{"line1":"12 Duplicate Way","city":"Stafford","region":"VA","postalCode":"22554","instructions":"ring twice"}'::jsonb`
-    : "'{}'::jsonb";
-  const dropoff = addresses
-    ? `'{"line1":"9 Dropoff Ct","city":"Woodbridge","region":"VA","postalCode":"22191"}'::jsonb`
-    : "'{}'::jsonb";
-  return sql(
-    `insert into public.couranr_delivery_requests
-       (business_account_id, created_by, idempotency_key, recipient_name,
-        request_state, readiness_state, review_state, submitted_at,
-        quote_status, delivery_subtotal_cents, pricing_policy_version,
-        pickup_address, dropoff_address, loaded_miles, weight_lb)
-     values ('${businessId}', '${creatorId}', 'list-${marker}-${crypto.randomUUID()}',
-             '${esc(marker)} recipient', '${state}', '${readiness}', '${review}', ${submitted},
-             ${quoted.status}, ${quoted.subtotal}, ${quoted.policy},
-             ${pickup}, ${dropoff}, 5, 20)
-     returning id`
-  );
+/**
+ * A request at a named point in the state machine, built by the CURRENT
+ * canonical commands.
+ *
+ * It used to be one raw INSERT that named its own request_state AND
+ * review_state. Gate A made that unwritable — quote_status='estimated' with no
+ * current_quote_version_id violates couranr_dr_quote_identity_completeness_chk
+ * — and it was also a lie: review_state is WRITTEN by the commands, never
+ * chosen. draft -> not_required, submit -> pending, accept ->
+ * accepted_as_quoted. The four values the review facet isolates on are exactly
+ * what the three depths produce, so `review` is no longer a parameter: it is
+ * derived, and F4 now isolates a state the machine really reaches.
+ *
+ * readiness is passed at DRAFT time rather than reached later with
+ * couranr_begin_delivery_preparation, which would bump the version again and
+ * append a readiness event — W3 asserts there is exactly ONE
+ * mark_delivery_ready event on rPrep.
+ */
+const REVIEW_DEPTH_FOR_STATE = {
+  draft: "draft",
+  pending_couranr_review: "submitted",
+  confirmed: "confirmed",
+};
+
+/** requestId -> the builder's record, so makeObligation can reach its quote. */
+const seeded = new Map();
+
+async function makeRequest(businessId, creatorId, marker, opts) {
+  const { state, readiness = "not_confirmed", addresses = false } = opts;
+  const upTo = REVIEW_DEPTH_FOR_STATE[state];
+  if (!upTo) throw new Error(`makeRequest: unsupported state ${state}`);
+  const request = await seedCanonicalQuotedRequest(psqlTransport(psql), {
+    businessId,
+    actorUserId: creatorId,
+    marker: `list-${marker}`,
+    // Load-bearing three times over: rowFor() finds a row by it, visibleMarkers()
+    // extracts /LIST-[a-z]+/i from it, and DUP1 asserts it is copied into the
+    // duplicate form. The builder's default would erase every one of those.
+    recipientName: `${marker} recipient`,
+    readinessState: readiness,
+    subtotalCents: 2299,
+    pricingPolicyVersion: "disposable",
+    // DUP2 reads this exact street back out of the duplicate form.
+    ...(addresses
+      ? {
+          pickupAddress: {
+            line1: "12 Duplicate Way",
+            city: "Stafford",
+            region: "VA",
+            postalCode: "22554",
+            instructions: "ring twice",
+          },
+          dropoffAddress: {
+            line1: "9 Dropoff Ct",
+            city: "Woodbridge",
+            region: "VA",
+            postalCode: "22191",
+          },
+        }
+      : {}),
+    upTo,
+  });
+  seeded.set(request.requestId, request);
+  return request.requestId;
 }
 
-function makeObligation(requestId, businessId, paymentState) {
-  const intent = `pi_list_${crypto.randomUUID().replace(/-/g, "")}`;
-  const authorizedAt =
-    paymentState === "authorized" || paymentState === "capture_pending" ? "now()" : "null";
-  const failedAt = paymentState === "failed" ? "now()" : "null";
-  return sql(
-    `insert into public.couranr_payment_obligations
-       (request_id, business_account_id, payer_type, request_version,
-        pricing_policy_version, amount_cents, payment_state, idempotency_key,
-        provider_payment_intent_id, authorized_at, failed_at)
-     values ('${requestId}', '${businessId}', 'merchant', 1,
-             'disposable', 2299, '${paymentState}', 'list-po-${crypto.randomUUID()}',
-             '${intent}', ${authorizedAt}, ${failedAt})
-     returning id`
-  );
+async function makeObligation(requestId, businessId, paymentState) {
+  const request = seeded.get(requestId);
+  if (!request) throw new Error(`makeObligation: ${requestId} was not seeded here`);
+  const o = await seedCanonicalPaymentObligation(psqlTransport(psql), request, { paymentState });
+  return o.obligationId;
 }
 
 /* --------------------------------------------------------------- the harness */
@@ -237,30 +271,22 @@ async function main() {
        values ('${bizB}', '${emptyOwner.id}', 'owner', 'active')`
     );
 
-    const rDraft = makeRequest(bizA, owner.id, "LIST-draft", { state: "draft" });
+    const rDraft = await makeRequest(bizA, owner.id, "LIST-draft", { state: "draft" });
     // THE separate-badges control: three groups in three different states.
-    const rMixed = makeRequest(bizA, owner.id, "LIST-mixed", {
+    const rMixed = await makeRequest(bizA, owner.id, "LIST-mixed", {
       state: "confirmed",
       readiness: "not_confirmed",
-      review: "accepted_as_quoted",
       addresses: true,
     });
-    makeObligation(rMixed, bizA, "authorized");
-    const rPrep = makeRequest(bizA, owner.id, "LIST-prep", {
+    await makeObligation(rMixed, bizA, "authorized");
+    const rPrep = await makeRequest(bizA, owner.id, "LIST-prep", {
       state: "confirmed",
       readiness: "preparing",
-      review: "accepted_as_quoted",
     });
-    makeObligation(rPrep, bizA, "authorized");
-    makeRequest(bizA, owner.id, "LIST-review", {
-      state: "pending_couranr_review",
-      review: "pending",
-    });
-    const rFailed = makeRequest(bizA, owner.id, "LIST-failed", {
-      state: "confirmed",
-      review: "accepted_as_quoted",
-    });
-    makeObligation(rFailed, bizA, "failed");
+    await makeObligation(rPrep, bizA, "authorized");
+    await makeRequest(bizA, owner.id, "LIST-review", { state: "pending_couranr_review" });
+    const rFailed = await makeRequest(bizA, owner.id, "LIST-failed", { state: "confirmed" });
+    await makeObligation(rFailed, bizA, "failed");
 
     console.log("  fixtures ready\n");
 
@@ -388,9 +414,21 @@ async function main() {
     {
       // Another session (the API, same owner) marks rPrep ready FIRST, so the
       // open tab's version 1 is stale.
+      // The version is READ, not written as a literal. Reaching `confirmed`
+      // costs a submit and an accept, so a confirmed request at version 1 is a
+      // state the machine cannot produce — and a stale literal here would make
+      // W0 fail as a version conflict, which is the opposite of what it means
+      // to assert ("this one SUCCEEDS, so the tab's copy is what is stale").
+      const prepVersion = Number(
+        sql(`select version from public.couranr_delivery_requests where id='${rPrep}'`)
+      );
       const r = await api(owner.email, `/api/couranr/delivery-requests/${rPrep}/readiness`, {
         method: "POST",
-        body: JSON.stringify({ businessAccountId: bizA, expectedVersion: 1, readiness: "ready" }),
+        body: JSON.stringify({
+          businessAccountId: bizA,
+          expectedVersion: prepVersion,
+          readiness: "ready",
+        }),
       });
       check("W0", "the fresh mark-ready succeeded elsewhere", r.status === 200, `status=${r.status}`);
 
@@ -404,7 +442,8 @@ async function main() {
       const row = sql(
         `select readiness_state || '|' || version from public.couranr_delivery_requests where id='${rPrep}'`
       );
-      check("W2", "the stale attempt changed nothing: still ready at version 2", row === "ready|2", row);
+      check("W2", "the stale attempt changed nothing: still ready, one generation on",
+        row === `ready|${prepVersion + 1}`, `${row} (was version ${prepVersion})`);
       const events = sql(
         `select count(*) from public.couranr_delivery_request_events
           where request_id='${rPrep}' and command='mark_delivery_ready'`
@@ -413,6 +452,10 @@ async function main() {
     }
     {
       // The clean path on the OTHER authorized row, from the refreshed list.
+      const mixedVersion = Number(
+        sql(`select version from public.couranr_delivery_requests where id='${rMixed}'`)
+      );
+      const expected = `ready|${mixedVersion + 1}`;
       const btn = rowFor(ownerPage, "LIST-mixed").getByRole("button", { name: "Ready for Couranr" });
       await btn.waitFor({ state: "visible", timeout: 30_000 });
       await btn.click();
@@ -422,10 +465,11 @@ async function main() {
         row = sql(
           `select readiness_state || '|' || version from public.couranr_delivery_requests where id='${rMixed}'`
         );
-        if (row === "ready|2") break;
+        if (row === expected) break;
         await new Promise((r) => setTimeout(r, 500));
       }
-      check("W4", "inline mark-ready flipped the row: ready, version 2", row === "ready|2", row);
+      check("W4", "inline mark-ready flipped the row: ready, one generation on",
+        row === expected, `${row} (was version ${mixedVersion})`);
       const ev = sql(
         `select command || '|' || from_state || '|' || to_state || '|' || (actor_user_id = '${owner.id}')::text
            from public.couranr_delivery_request_events

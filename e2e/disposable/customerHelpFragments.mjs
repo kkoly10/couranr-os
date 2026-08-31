@@ -84,6 +84,11 @@ import {
   ANON_JWT,
 } from "./gateway.mjs";
 import { postgrestTarget } from "../../scripts/provisionPostgrest.mjs";
+import {
+  gateAIntegrityIssues,
+  psqlTransport,
+  seedCanonicalDeliveryChain,
+} from "./gateAFixtures.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const SHOTS = path.join(ROOT, "e2e/screenshots/disposable-cus");
@@ -110,18 +115,23 @@ const sql = (q) => psql(q).trim();
 const sha256 = (s) => crypto.createHash("sha256").update(s).digest("hex");
 
 /**
- * Seeds one delivery and one help token, entirely through the real command
- * functions where they exist. The token is minted by `couranr_issue_help_token`
- * — the same function the Operations route calls — so the fixture exercises
- * issuance rather than faking a row.
+ * Seeds one delivery and one help token.
+ *
+ * The delivery chain comes from the shared Gate A fixture builder
+ * (e2e/disposable/gateAFixtures.mjs), which drives the CURRENT canonical
+ * commands. It used to be four hand-written INSERTs; Gate A moved commercial
+ * identity onto an immutable quote that request, obligation, plan and delivery
+ * must all reference, so those INSERTs stopped being writable and this suite
+ * died in setup.
+ *
+ * The token row is still inserted directly rather than minted by
+ * couranr_issue_help_token. That is deliberate and was already true: the raw
+ * token and its hash are produced by the SAME algorithm as
+ * lib/couranr/conversations/help.ts — randomBytes(32).toString("base64url")
+ * and sha256 hex — verified by reading that file, so the fixture can hand the
+ * browser a raw token it knows.
  */
-function seed(marker) {
-  // couranr_deliveries has 19 NOT NULL columns with no default, three of them
-  // FKs into request -> obligation -> plan. Building the chain IS the work:
-  // each NOT NULL is the schema stating what a delivery actually requires, and
-  // the first version of this function skipped them and failed on the insert.
-  // The column set mirrors e2e/phase8Acceptance.mjs, which built the same chain
-  // against the project.
+async function seed(marker) {
   const businessId = sql(
     `insert into public.business_accounts (name, status)
      values ('${marker} business', 'active') returning id`
@@ -130,47 +140,14 @@ function seed(marker) {
     `insert into auth.users (email) values ('${marker.toLowerCase().replace(/[^a-z0-9]/g, "")}@example.test')
      returning id`
   );
-  const requestId = sql(
-    `insert into public.couranr_delivery_requests
-       (business_account_id, created_by, idempotency_key, recipient_name)
-     values ('${businessId}', '${userId}', 'disp-${marker}-${Date.now()}', '${marker} recipient')
-     returning id`
-  );
-  const obligationId = sql(
-    `insert into public.couranr_payment_obligations
-       (request_id, business_account_id, payer_type, request_version,
-        pricing_policy_version, amount_cents, idempotency_key)
-     values ('${requestId}', '${businessId}', 'merchant', 1, 'disposable', 1000,
-             'disp-po-${marker}-${Date.now()}')
-     returning id`
-  );
-  const planId = sql(
-    `insert into public.couranr_service_plans
-       (request_id, business_account_id, payment_obligation_id, request_version,
-        scheduled_pickup_start, scheduled_pickup_end, timezone, vehicle_requirement)
-     values ('${requestId}', '${businessId}', '${obligationId}', 1,
-             now(), now() + interval '1 hour', 'America/New_York', '{}'::jsonb)
-     returning id`
-  );
-  const deliveryId = sql(
-    `insert into public.couranr_deliveries
-       (request_id, business_account_id, payment_obligation_id, service_plan_id,
-        request_version, pricing_policy_version, captured_amount_cents, currency,
-        pickup_address, dropoff_address, recipient, shipment,
-        service_level, signature_required, proof_method,
-        scheduled_pickup_start, scheduled_pickup_end, timezone, vehicle_requirement)
-     values ('${requestId}', '${businessId}', '${obligationId}', '${planId}',
-             1, 'disposable', 1000, 'usd',
-             '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, '{}'::jsonb,
-             'standard', false, 'photo_or_pin',
-             now(), now() + interval '1 hour', 'America/New_York', '{}'::jsonb)
-     returning id`
-  );
-  // The raw token and its hash are produced by the SAME algorithm as
-  // lib/couranr/conversations/help.ts — randomBytes(32).toString("base64url")
-  // and sha256 hex — verified by reading that file, not assumed. The row is
-  // inserted directly rather than through couranr_issue_help_token; an earlier
-  // comment here claimed otherwise and was wrong.
+  const chain = await seedCanonicalDeliveryChain(psqlTransport(psql), {
+    businessId,
+    actorUserId: userId,
+    marker: `disp-${marker.toLowerCase().replace(/[^a-z0-9]/g, "")}`,
+    recipientName: `${marker} recipient`,
+  });
+  const deliveryId = chain.deliveryId;
+
   const raw = crypto.randomBytes(32).toString("base64url");
   sql(
     `insert into public.couranr_help_access_tokens
@@ -275,7 +252,7 @@ async function main() {
 
     /* ─────────────────────────── CUS-001 ─────────────────────────── */
 
-    const a = seed("[CUS001]");
+    const a = await seed("[CUS001]");
     const pageA = await browser.newPage();
     await pageA.goto(`${BASE}/help/${a.raw}#address-change`, { waitUntil: "networkidle" });
 
@@ -328,7 +305,7 @@ async function main() {
 
     /* ─────────────────────────── CUS-003 ─────────────────────────── */
 
-    const b = seed("[CUS003]");
+    const b = await seed("[CUS003]");
     const pageB = await browser.newPage();
     await pageB.goto(`${BASE}/help/${b.raw}#recipient-unavailable`, { waitUntil: "networkidle" });
 
@@ -354,7 +331,7 @@ async function main() {
 
     // Without this, C2/C4 could both pass on a page that ignored the fragment
     // and happened to default to the asserted value.
-    const c = seed("[CUSBARE]");
+    const c = await seed("[CUSBARE]");
     const pageC = await browser.newPage();
     await pageC.goto(`${BASE}/help/${c.raw}`, { waitUntil: "networkidle" });
     const selectedC = await pageC.locator("select").inputValue();
@@ -399,6 +376,16 @@ async function main() {
     await pageA.close();
     await pageB.close();
     await pageC.close();
+
+    /*
+     * The fixtures are Gate A LEGAL, not merely accepted. Each write satisfying
+     * its own trigger does not prove the commercial graph agrees;
+     * couranr_foundation_integrity() is the permanent probe that does.
+     */
+    const gateAIssues = await gateAIntegrityIssues(psqlTransport(psql));
+    check("C11", "couranr_foundation_integrity() reports NO issue for the seeded chains",
+      gateAIssues.length === 0, gateAIssues.join(",") || "clean");
+
   } catch (e) {
     check("XX", "the run completed", false, String(e.message || e).slice(0, 200));
   } finally {

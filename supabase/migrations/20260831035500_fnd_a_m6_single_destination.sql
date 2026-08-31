@@ -2,11 +2,30 @@
 -- FOUNDATION GATE A / M6
 -- One canonical delivery request = one destination.
 --
--- Historical additional_stops values are preserved. Rows that already carry
--- a positive value are explicitly grandfathered; every newly inserted row is
--- subject to the single-destination contract and must be zero. Future
+-- Historical additional_stops values are preserved. Every newly inserted row
+-- is subject to the single-destination contract and must be zero. Future
 -- multi-stop routing belongs to a route aggregate grouping multiple delivery
 -- records, not this integer. No route-run table is created here.
+--
+-- THIS MIGRATION REFUSES TO RUN AGAINST UNCLASSIFIED HISTORICAL STOPS.
+--
+-- It previously grandfathered them: it added the column, then set
+-- `single_destination_contract = (additional_stops = 0)`, so any row with a
+-- positive value silently became `false` and passed the CHECK. That is the
+-- wrong default for a production cutover. A row with additional_stops > 0 is
+-- a request whose commercial and fulfillment meaning under the new one-
+-- destination doctrine is UNKNOWN — it may have been quoted, paid for, or
+-- delivered as a multi-stop trip — and quietly stamping it "not a single
+-- destination contract" records a classification nobody made. The migration
+-- would report success and the ambiguity would survive as data.
+--
+-- The production-cutover doctrine is: UNKNOWN POSITIVE additional_stops ROWS
+-- ARE NEVER SILENTLY GRANDFATHERED. For this Gate A cutover the rule is the
+-- simplest safe one — M6 requires ZERO positive rows. If any exist the
+-- migration raises before touching the schema, names them by safe metadata
+-- only, and changes nothing. Deleting them, editing them, or marking them
+-- grandfathered are all decisions for an explicit reviewed classification
+-- mechanism, not for this file.
 -- =====================================================================
 
 begin;
@@ -14,6 +33,12 @@ set local statement_timeout='120s';
 set local lock_timeout='10s';
 
 do $guard$
+declare
+  v_rows   bigint;
+  v_oldest timestamptz;
+  v_newest timestamptz;
+  v_states text;
+  v_sources text;
 begin
   if to_regclass('public.couranr_delivery_requests') is null then
     raise exception 'Gate A M6 requires canonical requests';
@@ -23,15 +48,44 @@ begin
       and column_name='single_destination_contract') then
     raise exception 'single_destination_contract already exists; refusing a partial application';
   end if;
+
+  /* The preflight. `additional_stops` is `integer not null default 0` with a
+     `>= 0` check (20260731045417), so `> 0` is a TOTAL predicate here — there
+     is no NULL third case to leak past it. That is asserted rather than
+     assumed because the whole guarantee rests on it.
+
+     Reported by safe metadata only: a count, a date range, the lifecycle
+     states and the sources. No recipient name, phone, email or address goes
+     into an exception message — those reach logs, and a migration failure is
+     exactly when everyone reads the logs. */
+  select count(*), min(created_at), max(created_at),
+         coalesce(string_agg(distinct request_state, ','), '(none)'),
+         coalesce(string_agg(distinct source, ','), '(none)')
+    into v_rows, v_oldest, v_newest, v_states, v_sources
+    from public.couranr_delivery_requests
+   where additional_stops > 0;
+
+  if v_rows > 0 then
+    raise exception 'gate_a_m6_refuses_unclassified_additional_stops'
+      using errcode = 'CR409',
+        detail = format(
+          '%s canonical request(s) carry additional_stops > 0. created_at %s .. %s; request_state: %s; source: %s.',
+          v_rows, v_oldest, v_newest, v_states, v_sources),
+        hint = 'M6 will not silently grandfather these rows. Classify them through an explicit, reviewed historical-classification mechanism first. Do not delete or edit them to get past this guard.';
+  end if;
 end
 $guard$;
 
 alter table public.couranr_delivery_requests
   add column single_destination_contract boolean;
 
--- Preserve historical positive values without blessing them as future design.
+/* `true`, not `(additional_stops = 0)`.
+   The guard above has already proven every row is zero, so the two are
+   equivalent TODAY — but the expression form is the silent-grandfather bug
+   itself, and leaving it in place means deleting the guard quietly restores
+   the old behaviour instead of failing loudly. A literal cannot do that. */
 update public.couranr_delivery_requests
-   set single_destination_contract = (additional_stops = 0)
+   set single_destination_contract = true
  where single_destination_contract is null;
 
 alter table public.couranr_delivery_requests
