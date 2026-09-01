@@ -75,6 +75,24 @@ function draft(overrides: Record<string, unknown> = {}) {
   return r.value;
 }
 
+function canonicalAddresses() {
+  return {
+    pickupAddress: {
+      googlePlaceId: "ChIJ-pickup", formattedAddress: "10 Market St, Stafford, VA 22554, USA",
+      line1: "10 Market St", line2: null, city: "Stafford", region: "VA",
+      postalCode: "22554", countryCode: "US", latitude: 38.422, longitude: -77.408,
+      addressSource: "google_places_new" as const, instructions: null,
+    },
+    dropoffAddress: {
+      googlePlaceId: "ChIJ-dropoff",
+      formattedAddress: "9 Elm Ave, Fredericksburg, VA 22401, USA",
+      line1: "9 Elm Ave", line2: null, city: "Fredericksburg", region: "VA",
+      postalCode: "22401", countryCode: "US", latitude: 38.303, longitude: -77.46,
+      addressSource: "google_places_new" as const, instructions: null,
+    },
+  };
+}
+
 /**
  * The shipment arguments are built once and shared by create and re-estimate.
  *
@@ -102,12 +120,12 @@ describe("shipmentArgs", () => {
   ];
 
   it("covers every merchant-editable field", () => {
-    expect(Object.keys(shipmentArgs(draft())).sort()).toEqual(EXPECTED_KEYS);
+    expect(Object.keys(shipmentArgs(draft(), canonicalAddresses())).sort()).toEqual(EXPECTED_KEYS);
   });
 
   /** Identity and lifecycle are not the merchant's to edit. */
   it("names no identity or lifecycle field", () => {
-    const keys = Object.keys(shipmentArgs(draft()));
+    const keys = Object.keys(shipmentArgs(draft(), canonicalAddresses()));
     for (const forbidden of [
       "p_id",
       "p_business_account_id",
@@ -124,28 +142,33 @@ describe("shipmentArgs", () => {
   });
 
   it("carries no money field at all", () => {
-    for (const k of Object.keys(shipmentArgs(draft()))) {
+    for (const k of Object.keys(shipmentArgs(draft(), canonicalAddresses()))) {
       expect(k).not.toMatch(/cents|amount|price|subtotal|total/i);
     }
   });
 
   it("carries no browser mileage or route evidence", () => {
-    const keys = Object.keys(shipmentArgs(draft()));
+    const keys = Object.keys(shipmentArgs(draft(), canonicalAddresses()));
     expect(keys).not.toContain("p_loaded_miles");
     expect(keys).not.toContain("p_route_distance_meters");
   });
 
   it("carries the overnight request, which has no column of its own", () => {
-    expect(shipmentArgs(draft({ overnightRequested: true })).p_overnight_requested).toBe(true);
-    expect(shipmentArgs(draft()).p_overnight_requested).toBe(false);
+    expect(
+      shipmentArgs(draft({ overnightRequested: true }), canonicalAddresses())
+        .p_overnight_requested
+    ).toBe(true);
+    expect(shipmentArgs(draft(), canonicalAddresses()).p_overnight_requested).toBe(false);
     // Overnight must never be smuggled in as a service level: the database
     // CHECK allows exactly standard, priority and rush.
-    expect(shipmentArgs(draft({ overnightRequested: true })).p_service_level).toBe("standard");
+    expect(
+      shipmentArgs(draft({ overnightRequested: true }), canonicalAddresses()).p_service_level
+    ).toBe("standard");
   });
 
   it("both write paths use it, so they cannot drift", () => {
     // createDeliveryRequestDraft and calculateDeliveryRequestEstimate.
-    expect((COMMANDS.match(/shipmentArgs\(draft\)/g) || []).length).toBe(2);
+    expect((COMMANDS.match(/shipmentArgs\(draft,\s*routed\)/g) || []).length).toBe(2);
   });
 
   it("re-estimate accepts an edited shipment", () => {

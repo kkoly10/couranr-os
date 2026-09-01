@@ -47,7 +47,11 @@ describe("delivery-request input normalization", () => {
     expect(isNormalizeFailure(r)).toBe(false);
     if (isNormalizeFailure(r)) return;
     expect(r.value).not.toHaveProperty("loadedMiles");
-    expect(r.value.pickupAddress.googlePlaceId).toBe("ChIJ-pickup");
+    expect(r.value.pickupAddress).toEqual({
+      googlePlaceId: "ChIJ-pickup",
+      line2: null,
+      instructions: null,
+    });
     expect(r.value.weightLb).toBe(12.5);
     expect(r.value.additionalStops).toBe(0);
     expect(r.value.serviceLevel).toBe("standard");
@@ -136,11 +140,30 @@ describe("delivery-request input normalization", () => {
         expect.arrayContaining(["missing_pickup_address", "missing_dropoff_address"])
       );
     });
-    it("requires a complete address", () => {
-      expect(codes({
+    it("drops browser-supplied address facts before server resolution", () => {
+      const r = normalizeDeliveryRequestInput({
         ...VALID,
-        dropoffAddress: { ...VALID.dropoffAddress, city: "" },
-      })).toContain("invalid_address");
+        dropoffAddress: {
+          ...VALID.dropoffAddress,
+          formattedAddress: "forged",
+          line1: "forged",
+          city: "forged",
+          region: "ZZ",
+          postalCode: "00000",
+          countryCode: "XX",
+          latitude: 0,
+          longitude: 0,
+          line2: " Suite 5 ",
+          instructions: " Side door ",
+        },
+      });
+      expect(isNormalizeFailure(r)).toBe(false);
+      if (isNormalizeFailure(r)) return;
+      expect(r.value.dropoffAddress).toEqual({
+        googlePlaceId: "ChIJ-dropoff",
+        line2: "Suite 5",
+        instructions: "Side door",
+      });
     });
     it("requires weight but never browser mileage", () => {
       expect(codes({ ...VALID, loadedMiles: "", weightLb: "" })).toContain("weight_required");
@@ -150,9 +173,13 @@ describe("delivery-request input normalization", () => {
       expect(isNormalizeFailure(r)).toBe(true);
       expect(codes({ ...VALID, loadedMiles: 9999, weightLb: -2 })).toContain("weight_invalid");
     });
-    it("requires a Google Place identity and source", () => {
+    it("requires a Google Place identity but never trusts a browser source marker", () => {
       const address = { ...VALID.pickupAddress, googlePlaceId: "" };
       expect(codes({ ...VALID, pickupAddress: address })).toContain("google_place_required");
+      expect(codes({
+        ...VALID,
+        pickupAddress: { ...VALID.pickupAddress, addressSource: "forged" },
+      })).toEqual([]);
     });
     it("rejects a fractional stop count", () => {
       expect(codes({ ...VALID, additionalStops: "1.5" })).toContain(

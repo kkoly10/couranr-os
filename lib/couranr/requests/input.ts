@@ -1,5 +1,8 @@
 import { SERVICE_LEVEL_CENTS, type ServiceLevel } from "@/lib/couranr/pricing";
-import type { GoogleAddressSnapshot } from "@/lib/couranr/routing/address";
+import {
+  googlePlaceSelectionFromAddress,
+  type GooglePlaceSelection,
+} from "@/lib/couranr/routing/address";
 import type { ReadinessState } from "./states";
 import { READINESS_STATES } from "./states";
 
@@ -33,12 +36,12 @@ export const REQUEST_SOURCES = [
 ] as const;
 export type RequestSource = (typeof REQUEST_SOURCES)[number];
 
-export type AddressSnapshot = GoogleAddressSnapshot;
+export type AddressSelection = GooglePlaceSelection;
 
 export type DeliveryRequestDraft = {
   source: RequestSource;
-  pickupAddress: AddressSnapshot;
-  dropoffAddress: AddressSnapshot;
+  pickupAddress: AddressSelection;
+  dropoffAddress: AddressSelection;
   recipientName: string | null;
   recipientPhone: string | null;
   recipientEmail: string | null;
@@ -159,56 +162,17 @@ function normalizeAddress(
   raw: unknown,
   errors: InputError[],
   field: string
-): AddressSnapshot | null {
+): AddressSelection | null {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
     errors.push({ code: "invalid_address", field });
     return null;
   }
-  const r = raw as Record<string, unknown>;
-  const line1 = str(r.line1);
-  const googlePlaceId = str(r.googlePlaceId);
-  const formattedAddress = str(r.formattedAddress);
-  const city = str(r.city);
-  const region = str(r.region);
-  const postalCode = str(r.postalCode ?? r.postal_code);
-  const countryCode = str(r.countryCode ?? r.country_code)?.toUpperCase() ?? null;
-  const latitude = num(r.latitude);
-  const longitude = num(r.longitude);
-  if (!googlePlaceId || r.addressSource !== "google_places_new") {
+  const selection = googlePlaceSelectionFromAddress(raw);
+  if (!selection) {
     errors.push({ code: "google_place_required", field });
     return null;
   }
-  if (
-    !formattedAddress ||
-    !line1 ||
-    !city ||
-    !region ||
-    !postalCode ||
-    !countryCode ||
-    latitude === null ||
-    latitude < -90 ||
-    latitude > 90 ||
-    longitude === null ||
-    longitude < -180 ||
-    longitude > 180
-  ) {
-    errors.push({ code: "invalid_address", field });
-    return null;
-  }
-  return {
-    googlePlaceId,
-    formattedAddress,
-    line1,
-    line2: str(r.line2),
-    city,
-    region,
-    postalCode,
-    countryCode,
-    latitude,
-    longitude,
-    addressSource: "google_places_new",
-    instructions: str(r.instructions),
-  };
+  return selection;
 }
 
 // Deliberately permissive: this only rejects text that cannot be an address.

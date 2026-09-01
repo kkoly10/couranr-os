@@ -1,7 +1,8 @@
 /**
- * Google Places (New) address snapshot shared by the browser selector and the
- * canonical server command. The Place ID is routing identity; the remaining
- * fields are the immutable, human-readable snapshot captured at request time.
+ * Google Places (New) address shapes shared by the browser selector and the
+ * canonical server command. A browser selection is only a Place reference plus
+ * user-authored access details. The complete snapshot becomes authority only
+ * after the server resolves that Place ID with Place Details (New).
  */
 export type GoogleAddressSnapshot = {
   googlePlaceId: string;
@@ -18,6 +19,11 @@ export type GoogleAddressSnapshot = {
   /** Free-text access notes. Never a credential or authentication secret. */
   instructions: string | null;
 };
+
+export type GooglePlaceSelection = Pick<
+  GoogleAddressSnapshot,
+  "googlePlaceId" | "line2" | "instructions"
+>;
 
 export type GoogleAddressComponentLike = {
   types?: string[];
@@ -36,7 +42,12 @@ export type GooglePlaceLike = {
   addressComponents?: GoogleAddressComponentLike[] | null;
   address_components?: GoogleAddressComponentLike[] | null;
   location?:
-    | { lat?: number | (() => number); lng?: number | (() => number) }
+    | {
+        lat?: number | (() => number);
+        lng?: number | (() => number);
+        latitude?: number;
+        longitude?: number;
+      }
     | null;
 };
 
@@ -81,8 +92,8 @@ export function normalizeGooglePlaceSelection(
     place.formattedAddress ?? place.formatted_address ?? ""
   ).trim();
   const components = place.addressComponents ?? place.address_components ?? [];
-  const latitude = coordinate(place.location?.lat);
-  const longitude = coordinate(place.location?.lng);
+  const latitude = coordinate(place.location?.lat ?? place.location?.latitude);
+  const longitude = coordinate(place.location?.lng ?? place.location?.longitude);
 
   const streetNumber = text(component(components, "street_number"), true);
   const route = text(component(components, "route"));
@@ -132,9 +143,27 @@ export function normalizeGooglePlaceSelection(
 }
 
 export function googlePlaceIdFromAddress(address: unknown): string | null {
+  return googlePlaceSelectionFromAddress(address)?.googlePlaceId ?? null;
+}
+
+/** Drops every browser-supplied address fact except Place ID and access text. */
+export function googlePlaceSelectionFromAddress(
+  address: unknown
+): GooglePlaceSelection | null {
   if (address === null || typeof address !== "object" || Array.isArray(address)) return null;
-  const value = (address as Record<string, unknown>).googlePlaceId;
+  const raw = address as Record<string, unknown>;
+  const value = raw.googlePlaceId;
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
-  return trimmed === "" ? null : trimmed;
+  if (trimmed === "") return null;
+  const optionalText = (candidate: unknown) => {
+    if (typeof candidate !== "string") return null;
+    const text = candidate.trim();
+    return text === "" ? null : text;
+  };
+  return {
+    googlePlaceId: trimmed,
+    line2: optionalText(raw.line2),
+    instructions: optionalText(raw.instructions),
+  };
 }

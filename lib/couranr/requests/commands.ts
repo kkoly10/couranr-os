@@ -3,8 +3,10 @@ import { assertServerOnly } from "@/lib/couranr/serverOnly";
 import { quoteDelivery, type QuoteResult } from "@/lib/couranr/pricing";
 import {
   deriveCanonicalRouteAndQuote,
+  isCanonicalAddressResolutionError,
   type CanonicalRouteEvidence,
 } from "@/lib/couranr/routing/googleRoutes";
+import type { GoogleAddressSnapshot } from "@/lib/couranr/routing/address";
 import {
   classifyDatabaseError,
   logServerFailure,
@@ -243,7 +245,13 @@ async function loadRequest(
  * client's numbers are irrelevant.
  */
 function quoteFromRow(row: DeliveryRequestRow, overnightRequested: boolean): QuoteResult {
-  if (row.loaded_miles === null || row.loaded_miles === undefined) {
+  if (
+    row.loaded_miles === null ||
+    row.loaded_miles === undefined ||
+    (row.quote_status === "manual_review_required" &&
+      Array.isArray(row.review_reasons) &&
+      row.review_reasons.includes("route_needs_review"))
+  ) {
     const unpriced = quoteDelivery({ loadedMiles: 0, weightLb: 0, additionalStops: 0 });
     return {
       ...unpriced,
@@ -273,7 +281,13 @@ function quoteFromRow(row: DeliveryRequestRow, overnightRequested: boolean): Quo
  * every state and own `business_account_id`, `created_by` and the idempotency
  * key as separate arguments.
  */
-export function shipmentArgs(draft: DeliveryRequestDraft) {
+export function shipmentArgs(
+  draft: DeliveryRequestDraft,
+  canonical: {
+    pickupAddress: GoogleAddressSnapshot;
+    dropoffAddress: GoogleAddressSnapshot;
+  }
+) {
   return {
     // This command is reached only from the canonical Business portal. Source
     // is server-owned origin identity, not a form-selectable capability name.
@@ -288,8 +302,8 @@ export function shipmentArgs(draft: DeliveryRequestDraft) {
     p_service_level: draft.serviceLevel,
     p_signature_required: draft.signatureRequired,
     p_proof_method: draft.proofMethod,
-    p_pickup_address: draft.pickupAddress,
-    p_dropoff_address: draft.dropoffAddress,
+    p_pickup_address: canonical.pickupAddress,
+    p_dropoff_address: canonical.dropoffAddress,
     // Overnight is not a column (the service-level CHECK allows three values).
     // The function stores it in normalized_request_payload so a later re-quote
     // reproduces the manual-review outcome instead of pricing it as standard.
@@ -330,6 +344,26 @@ export function quoteArgs(quote: QuoteResult) {
   };
 }
 
+async function routeAndQuote(
+  operation: string,
+  shipment: Parameters<typeof deriveCanonicalRouteAndQuote>[0]
+): Promise<CommandResult<Awaited<ReturnType<typeof deriveCanonicalRouteAndQuote>>>> {
+  try {
+    return { ok: true, value: await deriveCanonicalRouteAndQuote(shipment) };
+  } catch (error) {
+    if (isCanonicalAddressResolutionError(error)) {
+      return fail({
+        operation,
+        code: "invalid_input",
+        detail: { field: error.field, reason: error.reason },
+        details: [{ code: "google_place_unverified", field: error.field }],
+        message: "Couranr could not verify one of the selected Google addresses.",
+      });
+    }
+    return fail({ operation, code: "internal", detail: error });
+  }
+}
+
 /* ------------------------------------------- create_delivery_request_draft */
 
 export async function createDeliveryRequestDraft(params: {
@@ -360,7 +394,9 @@ export async function createDeliveryRequestDraft(params: {
     return denied(op, "role_may_not_write");
   }
 
-  const routed = await deriveCanonicalRouteAndQuote(draft);
+  const routedResult = await routeAndQuote(op, draft);
+  if (isCommandFailure(routedResult)) return routedResult;
+  const routed = routedResult.value;
   const quote = routed.quote;
 
   if (quote.quoteStatus === "invalid") {
@@ -381,7 +417,7 @@ export async function createDeliveryRequestDraft(params: {
     p_business_account_id: params.businessAccountId,
     p_created_by: params.actor.userId,
     p_idempotency_key: params.idempotencyKey,
-    ...shipmentArgs(draft),
+    ...shipmentArgs(draft, routed),
     ...routeArgs(routed.route),
     ...quoteArgs(quote),
   });
@@ -440,7 +476,7 @@ export async function calculateDeliveryRequestEstimate(params: {
   let routed: Awaited<ReturnType<typeof deriveCanonicalRouteAndQuote>>;
 
   if (params.rawInput === undefined) {
-    routed = await deriveCanonicalRouteAndQuote({
+    const routedResult = await routeAndQuote(op, {
       pickupAddress: row.pickup_address,
       dropoffAddress: row.dropoff_address,
       weightLb: Number(row.weight_lb ?? 0),
@@ -449,6 +485,8 @@ export async function calculateDeliveryRequestEstimate(params: {
       signatureRequired: row.signature_required === true,
       overnightRequested: row.normalized_request_payload?.overnightRequested === true,
     });
+    if (isCommandFailure(routedResult)) return routedResult;
+    routed = routedResult.value;
   } else {
     const normalized = normalizeDeliveryRequestInput(params.rawInput);
     if (isNormalizeFailure(normalized)) {
@@ -461,8 +499,10 @@ export async function calculateDeliveryRequestEstimate(params: {
       });
     }
     const draft = normalized.value;
-    shipment = shipmentArgs(draft);
-    routed = await deriveCanonicalRouteAndQuote(draft);
+    const routedResult = await routeAndQuote(op, draft);
+    if (isCommandFailure(routedResult)) return routedResult;
+    routed = routedResult.value;
+    shipment = shipmentArgs(draft, routed);
   }
 
   const quote = routed.quote;
@@ -486,7 +526,7 @@ export async function calculateDeliveryRequestEstimate(params: {
     p_expected_version: params.expectedVersion,
     p_actor_user_id: params.actor.userId,
     p_update_shipment: shipment !== null,
-    ...(shipment ?? shipmentArgsFromRow(row)),
+    ...(shipment ?? shipmentArgsFromRow(row, routed)),
     ...routeArgs(routed.route),
     ...quoteArgs(quote),
   });
@@ -740,7 +780,7 @@ export async function requoteDeliveryRequest(params: {
   if (isCommandFailure(loaded)) return loaded;
   const { row, actorUserId } = loaded.value;
 
-  const routed = await deriveCanonicalRouteAndQuote({
+  const routedResult = await routeAndQuote(op, {
     pickupAddress: row.pickup_address,
     dropoffAddress: row.dropoff_address,
     weightLb: Number(row.weight_lb ?? 0),
@@ -749,6 +789,8 @@ export async function requoteDeliveryRequest(params: {
     signatureRequired: row.signature_required === true,
     overnightRequested: row.normalized_request_payload?.overnightRequested === true,
   });
+  if (isCommandFailure(routedResult)) return routedResult;
+  const routed = routedResult.value;
   const quote = routed.quote;
   if (quote.quoteStatus !== "estimated") {
     return fail({
@@ -984,7 +1026,13 @@ export async function listDeliveryRequests(params: {
  * default, and passing the stored values keeps the call self-consistent if that
  * branch ever changes.
  */
-function shipmentArgsFromRow(row: DeliveryRequestRow) {
+function shipmentArgsFromRow(
+  row: DeliveryRequestRow,
+  canonical: {
+    pickupAddress: GoogleAddressSnapshot;
+    dropoffAddress: GoogleAddressSnapshot;
+  }
+) {
   return {
     p_source: row.source,
     p_readiness_state: row.readiness_state,
@@ -997,8 +1045,8 @@ function shipmentArgsFromRow(row: DeliveryRequestRow) {
     p_service_level: row.service_level,
     p_signature_required: row.signature_required,
     p_proof_method: row.proof_method,
-    p_pickup_address: row.pickup_address,
-    p_dropoff_address: row.dropoff_address,
+    p_pickup_address: canonical.pickupAddress,
+    p_dropoff_address: canonical.dropoffAddress,
     p_overnight_requested: row.normalized_request_payload?.overnightRequested === true,
   };
 }

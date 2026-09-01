@@ -104,13 +104,25 @@ function main() {
                   (loaded_distance_miles is null)||'|'||(subtotal_cents is null)
              from public.couranr_quote_versions where request_id='${review}'`),
       "needs_review|true|true|true");
-    check("BRA-DB-07", "anon/authenticated cannot execute routed commands",
+
+    const marketReview = one(`select id from public.couranr_create_routed_delivery_request_draft(
+      '${BUSINESS}','${USER}','market-review','merchant_portal','not_confirmed','merchant',
+      'Recipient','555-0100','recipient@example.test',10,0,'standard',false,'photo_or_pin',
+      ${address("place-pickup", "10 Market St")},${address("place-surrounding", "100 King St")},false,
+      8047,600,'google_routes_v2','needs_review','market_needs_review',
+      'manual_review_required',null,null,3,0,'[]'::jsonb,'["route_needs_review"]'::jsonb)`);
+    check("BRA-DB-07", "successful out-of-market route remains needs_review with evidence",
+      one(`select serviceability_outcome||'|'||route_distance_meters||'|'||
+                  loaded_distance_miles||'|'||(subtotal_cents is null)
+             from public.couranr_quote_versions where request_id='${marketReview}'`),
+      "needs_review|8047|5.000|true");
+    check("BRA-DB-08", "anon/authenticated cannot execute routed commands",
       raw(`select has_function_privilege('anon',
           'public.couranr_create_routed_delivery_request_draft(uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb)',
           'EXECUTE')||','||has_function_privilege('authenticated',
           'public.couranr_create_routed_delivery_request_draft(uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb)',
           'EXECUTE')`).trim(), "false,false");
-    check("BRA-DB-08", "Foundation integrity remains clean",
+    check("BRA-DB-09", "Foundation integrity remains clean",
       one("select count(*) from public.couranr_foundation_integrity()"), "0");
 
     console.log(`\n  Business routing authority: ${passed} passed, ${failed} failed\n`);

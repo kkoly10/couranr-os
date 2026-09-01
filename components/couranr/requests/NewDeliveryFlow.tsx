@@ -55,6 +55,7 @@ type FieldErrors = Record<string, string>;
 const ERROR_COPY: Record<string, string> = {
   invalid_address: "Choose a complete street address from Google.",
   google_place_required: "Choose an address from the Google suggestions.",
+  google_place_unverified: "Couranr could not verify this Google address. Choose it again.",
   weight_required: "Enter the package weight in pounds.",
   weight_invalid: "Weight cannot be negative.",
   additional_stops_invalid: "This delivery must have one destination.",

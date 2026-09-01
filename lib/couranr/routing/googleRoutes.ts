@@ -1,7 +1,18 @@
 import { assertServerOnly } from "@/lib/couranr/serverOnly";
 import { quoteDelivery, type QuoteResult } from "@/lib/couranr/pricing";
 import type { ServiceLevel } from "@/lib/couranr/pricing";
-import { googlePlaceIdFromAddress } from "./address";
+import {
+  googlePlaceSelectionFromAddress,
+  type GoogleAddressSnapshot,
+  type GooglePlaceSelection,
+} from "./address";
+import {
+  isGooglePlaceResolutionError,
+  resolveCanonicalGooglePlace,
+  type GooglePlaceResolutionReason,
+  type GoogleProviderFetch,
+} from "./googlePlaces";
+import { isCouranrAutoApprovedRouteMarket } from "./market";
 
 assertServerOnly("lib/couranr/routing/googleRoutes.ts");
 
@@ -14,7 +25,8 @@ export type RouteReviewReason =
   | "google_routes_not_configured"
   | "google_routes_unavailable"
   | "google_routes_no_route"
-  | "google_routes_invalid_response";
+  | "google_routes_invalid_response"
+  | "market_needs_review";
 
 export type CanonicalRouteEvidence = {
   serviceabilityOutcome: RouteServiceabilityOutcome;
@@ -35,10 +47,25 @@ export type RoutableQuoteShipment = {
   overnightRequested: boolean;
 };
 
-type FetchLike = (
-  input: string | URL | Request,
-  init?: RequestInit
-) => Promise<Pick<Response, "ok" | "status" | "json">>;
+type FetchLike = GoogleProviderFetch;
+
+export type CanonicalAddressField = "pickupAddress" | "dropoffAddress";
+
+export class CanonicalAddressResolutionError extends Error {
+  constructor(
+    readonly field: CanonicalAddressField,
+    readonly reason: GooglePlaceResolutionReason
+  ) {
+    super(`${field}:${reason}`);
+    this.name = "CanonicalAddressResolutionError";
+  }
+}
+
+export function isCanonicalAddressResolutionError(
+  error: unknown
+): error is CanonicalAddressResolutionError {
+  return error instanceof CanonicalAddressResolutionError;
+}
 
 function needsReview(reviewReason: RouteReviewReason): CanonicalRouteEvidence {
   return {
@@ -151,17 +178,66 @@ function routeReviewQuote(): QuoteResult {
 export async function deriveCanonicalRouteAndQuote(
   shipment: RoutableQuoteShipment,
   fetchImpl: FetchLike = fetch
-): Promise<{ route: CanonicalRouteEvidence; quote: QuoteResult }> {
-  const pickupPlaceId = googlePlaceIdFromAddress(shipment.pickupAddress);
-  const dropoffPlaceId = googlePlaceIdFromAddress(shipment.dropoffAddress);
-  const route =
-    pickupPlaceId && dropoffPlaceId
-      ? await computeCanonicalGoogleRoute({ pickupPlaceId, dropoffPlaceId }, fetchImpl)
-      : needsReview("google_routes_invalid_response");
+): Promise<{
+  pickupAddress: GoogleAddressSnapshot;
+  dropoffAddress: GoogleAddressSnapshot;
+  route: CanonicalRouteEvidence;
+  quote: QuoteResult;
+}> {
+  const pickupSelection = googlePlaceSelectionFromAddress(shipment.pickupAddress);
+  const dropoffSelection = googlePlaceSelectionFromAddress(shipment.dropoffAddress);
 
-  if (route.loadedMiles === null) return { route, quote: routeReviewQuote() };
+  const resolve = async (
+    field: CanonicalAddressField,
+    selection: GooglePlaceSelection | null
+  ) => {
+    if (!selection) {
+      throw new CanonicalAddressResolutionError(field, "google_places_invalid_response");
+    }
+    try {
+      return await resolveCanonicalGooglePlace(selection, fetchImpl);
+    } catch (error) {
+      if (isGooglePlaceResolutionError(error)) {
+        throw new CanonicalAddressResolutionError(field, error.reason);
+      }
+      throw error;
+    }
+  };
+
+  // The two independent Place Details reads start together. Routes waits for
+  // both because its waypoints must be the exact identities just verified.
+  const [pickupAddress, dropoffAddress] = await Promise.all([
+    resolve("pickupAddress", pickupSelection),
+    resolve("dropoffAddress", dropoffSelection),
+  ]);
+  const route = await computeCanonicalGoogleRoute(
+    {
+      pickupPlaceId: pickupAddress.googlePlaceId,
+      dropoffPlaceId: dropoffAddress.googlePlaceId,
+    },
+    fetchImpl
+  );
+
+  if (route.loadedMiles === null) {
+    return { pickupAddress, dropoffAddress, route, quote: routeReviewQuote() };
+  }
+
+  if (!isCouranrAutoApprovedRouteMarket(pickupAddress, dropoffAddress)) {
+    return {
+      pickupAddress,
+      dropoffAddress,
+      route: {
+        ...route,
+        serviceabilityOutcome: "needs_review",
+        reviewReason: "market_needs_review",
+      },
+      quote: routeReviewQuote(),
+    };
+  }
 
   return {
+    pickupAddress,
+    dropoffAddress,
     route,
     quote: quoteDelivery({
       loadedMiles: route.loadedMiles,

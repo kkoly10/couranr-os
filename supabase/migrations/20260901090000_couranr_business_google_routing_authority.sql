@@ -53,16 +53,22 @@ alter table public.couranr_quote_versions
        and route_duration_seconds is not null)
       or
       (serviceability_outcome='needs_review'
-       and route_distance_meters is null
-       and loaded_distance_miles is null
-       and route_duration_seconds is null)
+       and (
+         (route_distance_meters is null
+          and loaded_distance_miles is null
+          and route_duration_seconds is null)
+         or
+         (route_distance_meters is not null
+          and loaded_distance_miles is not null
+          and route_duration_seconds is not null)
+       ))
     ))
   );
 
 comment on column public.couranr_quote_versions.route_distance_meters is
   'Exact distanceMeters returned by Google Routes v2 before conversion to canonical thousandth-mile precision.';
 comment on column public.couranr_quote_versions.serviceability_outcome is
-  'Non-rejection route outcome: available_for_request when evidence exists, otherwise needs_review.';
+  'Non-rejection market outcome: available_for_request only for exact launch markets with route evidence; every other market/provider outcome needs_review.';
 
 create function private.couranr_append_routed_quote_version(
   p_request_id               uuid,
@@ -150,13 +156,26 @@ begin
       raise exception 'available_route_cannot_need_route_review' using errcode='CR422';
     end if;
   else
-    if p_route_distance_meters is not null or p_route_duration_seconds is not null
-       or v_req.loaded_miles is not null or nullif(p_route_review_reason,'') is null
+    if nullif(p_route_review_reason,'') is null
        or p_quote_status <> 'manual_review_required'
        or not (p_review_reasons ? 'route_needs_review') then
       raise exception 'route_review_evidence_invalid' using errcode='CR422';
     end if;
-    v_loaded_miles := null;
+    if p_route_distance_meters is null then
+      if p_route_duration_seconds is not null or v_req.loaded_miles is not null then
+        raise exception 'route_review_evidence_invalid' using errcode='CR422';
+      end if;
+      v_loaded_miles := null;
+    else
+      if p_route_distance_meters < 0
+         or p_route_duration_seconds is null or p_route_duration_seconds < 0 then
+        raise exception 'route_review_evidence_invalid' using errcode='CR422';
+      end if;
+      v_loaded_miles := round(p_route_distance_meters::numeric / 1609.344, 3);
+      if v_req.loaded_miles is distinct from v_loaded_miles then
+        raise exception 'request_route_distance_mismatch' using errcode='CR422';
+      end if;
+    end if;
   end if;
 
   v_total := public.couranr_quote_line_items_total(p_quote_line_items);
@@ -263,7 +282,7 @@ declare
   v_loaded_miles numeric(10,3);
   v_route_payload jsonb;
 begin
-  if p_serviceability_outcome='available_for_request' and p_route_distance_meters is not null then
+  if p_route_distance_meters is not null then
     v_loaded_miles := round(p_route_distance_meters::numeric / 1609.344,3);
   else
     v_loaded_miles := null;
@@ -429,7 +448,7 @@ declare
   v_quote public.couranr_quote_versions;
   v_loaded_miles numeric(10,3);
 begin
-  if p_serviceability_outcome='available_for_request' and p_route_distance_meters is not null then
+  if p_route_distance_meters is not null then
     v_loaded_miles := round(p_route_distance_meters::numeric / 1609.344,3);
   else
     v_loaded_miles := null;
@@ -517,7 +536,7 @@ declare
   v_loaded_miles numeric(10,3);
   v_payload jsonb;
 begin
-  if p_serviceability_outcome='available_for_request' and p_route_distance_meters is not null then
+  if p_route_distance_meters is not null then
     v_loaded_miles := round(p_route_distance_meters::numeric / 1609.344,3);
   else
     v_loaded_miles := null;
