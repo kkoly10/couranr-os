@@ -159,6 +159,9 @@ describe("server-only modules are unreachable from client code", () => {
       "lib/couranr/presets/commands.ts",
       "lib/couranr/requests/actor.ts",
       "lib/couranr/requests/commands.ts",
+      // Holds the server-only Google key and is the only caller of Routes v2.
+      // Client code receives its result, never the credential or route call.
+      "lib/couranr/routing/googleRoutes.ts",
       // MER-014/MER-015. Holds the service-role client AND the auth admin API
       // — `listUsers` walks every account in the project to resolve an invite
       // email, which is the last thing that may ever reach a browser bundle.

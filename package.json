@@ -37,6 +37,7 @@
     "test:foundation-gate-a": "node e2e/disposable/foundationGateA.mjs",
     "test:foundation-backfill": "node e2e/disposable/foundationBackfill.mjs",
     "test:foundation-rollbacks": "node e2e/disposable/foundationRollbacks.mjs",
+    "test:business-routing": "node e2e/disposable/businessRoutingAuthority.mjs",
     "typecheck:canonical": "tsc --noEmit -p tsconfig.canonical.json",
     "typecheck:couranr-foundation": "tsc -p tsconfig.couranr-foundation.json",
     "test:release": "node e2e/disposable/releaseAuthorization.mjs",

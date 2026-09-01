@@ -271,12 +271,14 @@ function main() {
       ('72000000-0000-4000-8000-000000000001','Rollback Fixture','rollback-fixture',
        '71000000-0000-4000-8000-000000000001');
     set role service_role;
-    select id from public.couranr_create_delivery_request_draft(
+    select id from public.couranr_create_routed_delivery_request_draft(
       '72000000-0000-4000-8000-000000000001',
       '71000000-0000-4000-8000-000000000001','runtime-quote','merchant_portal',
       'not_confirmed','merchant','Recipient','555-0100','recipient@example.test',
-      5,10,0,'standard',false,'photo_or_pin',
-      '{"line1":"10 Market St"}'::jsonb,'{"line1":"20 Main St"}'::jsonb,false,
+      10,0,'standard',false,'photo_or_pin',
+      '{"googlePlaceId":"place-pickup","formattedAddress":"10 Market St, Stafford, VA 22554, USA","line1":"10 Market St","line2":null,"city":"Stafford","region":"VA","postalCode":"22554","countryCode":"US","latitude":38.422,"longitude":-77.408,"addressSource":"google_places_new","instructions":null}'::jsonb,
+      '{"googlePlaceId":"place-dropoff","formattedAddress":"20 Main St, Stafford, VA 22554, USA","line1":"20 Main St","line2":null,"city":"Stafford","region":"VA","postalCode":"22554","countryCode":"US","latitude":38.423,"longitude":-77.409,"addressSource":"google_places_new","instructions":null}'::jsonb,false,
+      8047,600,'google_routes_v2','available_for_request',null,
       'estimated','rollback-v1',2500,3,2,
       '[{"code":"base","amountCents":2500}]'::jsonb,'[]'::jsonb);
     insert into public.couranr_delivery_requests(

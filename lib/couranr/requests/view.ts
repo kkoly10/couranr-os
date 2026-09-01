@@ -151,4 +151,5 @@ export const REVIEW_REASON_LABELS: Record<string, string> = {
   over_max_automatic_miles: "Distance is beyond the automatic estimate range",
   over_max_automatic_weight: "Weight is beyond the automatic estimate range",
   overnight_not_offered_in_this_release: "Overnight is not offered in this release",
+  route_needs_review: "Driving route needs Couranr review",
 };

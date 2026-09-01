@@ -52,7 +52,12 @@ const CUSTOMER_A = "30000000-0000-4000-8000-000000000001";
 const CUSTOMER_B = "30000000-0000-4000-8000-000000000002";
 
 const address = (line1) =>
-  `jsonb_build_object('line1','${line1}','city','Stafford','region','VA','postalCode','22554')`;
+  `jsonb_build_object(
+    'googlePlaceId','place-${line1.replace(/[^a-z0-9]/gi, "-")}',
+    'formattedAddress','${line1}, Stafford, VA 22554, USA',
+    'line1','${line1}','line2',null,'city','Stafford','region','VA',
+    'postalCode','22554','countryCode','US','latitude',38.422,
+    'longitude',-77.408,'addressSource','google_places_new','instructions',null)`;
 const items = (amount) =>
   `jsonb_build_array(jsonb_build_object('code','base','label','Base delivery','quantity',1,'unitAmountCents',${amount},'amountCents',${amount}))`;
 
@@ -66,10 +71,11 @@ function currentQuote(requestId) {
 
 function createBusinessRequest(key, amount = 2500) {
   return one(`
-    select id from public.couranr_create_delivery_request_draft(
+    select id from public.couranr_create_routed_delivery_request_draft(
       '${BUSINESS}','${USER}','${key}','merchant_portal','not_confirmed','merchant',
-      'Recipient','555-0100','recipient@example.test',5,10,0,'standard',false,
+      'Recipient','555-0100','recipient@example.test',10,0,'standard',false,
       'photo_or_pin',${address("10 Market St")},${address("20 Main St")},false,
+      8047,600,'google_routes_v2','available_for_request',null,
       'estimated','foundation-test-v1',${amount},3,2,${items(amount)},'[]'::jsonb
     )
   `);
@@ -169,9 +175,10 @@ function main() {
     delete from public.couranr_quote_versions where id='${q1}'`,
     "permission denied for table couranr_quote_versions");
   raises("FND-Q-03", "named quote command rejects false arithmetic", `
-    select id from public.couranr_create_quote_version(
+    select id from public.couranr_create_routed_quote_version(
       '${request}','${BUSINESS}',${requestVersion(request)},'${USER}','estimated',
-      'foundation-test-v1',2501,3,2,${items(2500)},'[]')`, "quote_subtotal_mismatch");
+      'foundation-test-v1',2501,3,2,${items(2500)},'[]',
+      8047,600,'google_routes_v2','available_for_request',null)`, "quote_subtotal_mismatch");
   submitAndAccept(request);
   check("FND-Q-05", "submission event names the exact quote UUID", one(`
     select metadata->>'quoteVersionId' from public.couranr_delivery_request_events
@@ -228,9 +235,10 @@ function main() {
   const oldObligation = authorize(repriced, "scenario-b-pay", "pi_foundation_b", "evt_foundation_b");
   const oldCommercialHash = one(`select md5(row(q.*)::text) from public.couranr_quote_versions q where id='${oldQuote}'`);
   const staleExpectedVersion = requestVersion(repriced);
-  service(`select id from public.couranr_create_quote_version(
+  service(`select id from public.couranr_create_routed_quote_version(
     '${repriced}','${BUSINESS}',${staleExpectedVersion},'${USER}','estimated',
-    'foundation-test-v2',3200,3,2,${items(3200)},'[]')`);
+    'foundation-test-v2',3200,3,2,${items(3200)},'[]',
+    8047,600,'google_routes_v2','available_for_request',null)`);
   const newQuote = currentQuote(repriced);
   check("FND-Q-04", "requote creates quote N+1 linked to quote N", one(`
     select (quote_number=2 and supersedes_quote_version_id='${oldQuote}'::uuid)::text
@@ -247,9 +255,10 @@ function main() {
       'America/New_York',null,'{"vehicleClass":"car","maxPayloadLb":100}')`,
     "authorization_does_not_match_current_quote");
   raises("FND-Q-04", "concurrent requote loser is refused by request CAS", `
-    select id from public.couranr_create_quote_version(
+    select id from public.couranr_create_routed_quote_version(
       '${repriced}','${BUSINESS}',${staleExpectedVersion},'${USER}','estimated',
-      'foundation-test-v2',3300,3,2,${items(3300)},'[]')`, "version_or_state_conflict");
+      'foundation-test-v2',3300,3,2,${items(3300)},'[]',
+      8047,600,'google_routes_v2','available_for_request',null)`, "version_or_state_conflict");
   check("FND-PAY-02", "Q1 obligation retains its exact original quote", one(`
     select quote_version_id from public.couranr_payment_obligations where id='${oldObligation}'`), oldQuote);
 
@@ -317,9 +326,10 @@ function main() {
   const raced = createBusinessRequest("submit-race", 5200);
   const racedQuoteA = currentQuote(raced);
   const staleVersion = requestVersion(raced); // exactly what the review UI holds
-  service(`select id from public.couranr_create_quote_version(
+  service(`select id from public.couranr_create_routed_quote_version(
     '${raced}','${BUSINESS}',${staleVersion},'${USER}','estimated',
-    'foundation-test-v2',5900,3,2,${items(5900)},'[]')`);
+    'foundation-test-v2',5900,3,2,${items(5900)},'[]',
+    8047,600,'google_routes_v2','available_for_request',null)`);
   const racedQuoteB = currentQuote(raced);
   check("FND-SUB-05", "the race actually created a second, different quote",
     String(racedQuoteB !== racedQuoteA), "true");

@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { RPC, quoteArgs, shipmentArgs } from "@/lib/couranr/requests/commands";
+import { RPC, quoteArgs, routeArgs, shipmentArgs } from "@/lib/couranr/requests/commands";
 import { classifyDatabaseError } from "@/lib/couranr/errors";
 import {
   DECLINE_MERCHANT_MESSAGE,
@@ -56,9 +56,18 @@ const RO_SQL = readFileSync(path.join(MIGRATIONS, RO_MIGRATION_NAME), "utf8").re
 
 function draft(overrides: Record<string, unknown> = {}) {
   const r = normalizeDeliveryRequestInput({
-    pickupAddress: { line1: "10 Market St", city: "Stafford", region: "VA", postalCode: "22554" },
-    dropoffAddress: { line1: "9 Elm Ave", city: "Fredericksburg", region: "VA", postalCode: "22401" },
-    loadedMiles: 4.2,
+    pickupAddress: {
+      googlePlaceId: "ChIJ-pickup", formattedAddress: "10 Market St, Stafford, VA 22554, USA",
+      line1: "10 Market St", line2: null, city: "Stafford", region: "VA",
+      postalCode: "22554", countryCode: "US", latitude: 38.422, longitude: -77.408,
+      addressSource: "google_places_new", instructions: null,
+    },
+    dropoffAddress: {
+      googlePlaceId: "ChIJ-dropoff", formattedAddress: "9 Elm Ave, Fredericksburg, VA 22401, USA",
+      line1: "9 Elm Ave", line2: null, city: "Fredericksburg", region: "VA",
+      postalCode: "22401", countryCode: "US", latitude: 38.303, longitude: -77.46,
+      addressSource: "google_places_new", instructions: null,
+    },
     weightLb: 12.5,
     ...overrides,
   });
@@ -78,7 +87,6 @@ describe("shipmentArgs", () => {
   const EXPECTED_KEYS = [
     "p_additional_stops",
     "p_dropoff_address",
-    "p_loaded_miles",
     "p_overnight_requested",
     "p_payer_type",
     "p_pickup_address",
@@ -121,6 +129,12 @@ describe("shipmentArgs", () => {
     }
   });
 
+  it("carries no browser mileage or route evidence", () => {
+    const keys = Object.keys(shipmentArgs(draft()));
+    expect(keys).not.toContain("p_loaded_miles");
+    expect(keys).not.toContain("p_route_distance_meters");
+  });
+
   it("carries the overnight request, which has no column of its own", () => {
     expect(shipmentArgs(draft({ overnightRequested: true })).p_overnight_requested).toBe(true);
     expect(shipmentArgs(draft()).p_overnight_requested).toBe(false);
@@ -141,6 +155,25 @@ describe("shipmentArgs", () => {
       "utf8"
     );
     expect(route).toMatch(/rawInput: body\?\.request/);
+  });
+});
+
+describe("routeArgs", () => {
+  it("carries exact server route evidence separately from merchant shipment input", () => {
+    expect(routeArgs({
+      serviceabilityOutcome: "available_for_request",
+      distanceSource: "google_routes_v2",
+      distanceMeters: 8047,
+      loadedMiles: 5,
+      durationSeconds: 720,
+      reviewReason: null,
+    })).toEqual({
+      p_route_distance_meters: 8047,
+      p_route_duration_seconds: 720,
+      p_distance_source: "google_routes_v2",
+      p_serviceability_outcome: "available_for_request",
+      p_route_review_reason: null,
+    });
   });
 });
 

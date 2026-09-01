@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import Script from "next/script";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Alert,
@@ -35,6 +36,8 @@ import {
 } from "./client";
 import { formatCents, type DeliveryRequestView } from "@/lib/couranr/requests/view";
 import { DUPLICATE_STORAGE_KEY } from "@/lib/couranr/requests/listFilters";
+import type { GoogleAddressSnapshot } from "@/lib/couranr/routing/address";
+import { GooglePlaceAutocomplete } from "./GooglePlaceAutocomplete";
 
 /**
  * MER-005 (Create delivery) and MER-006 (Delivery review and quote) — the same
@@ -50,9 +53,8 @@ import { DUPLICATE_STORAGE_KEY } from "@/lib/couranr/requests/listFilters";
 type FieldErrors = Record<string, string>;
 
 const ERROR_COPY: Record<string, string> = {
-  invalid_address: "Enter a street address, city, state and ZIP.",
-  loaded_miles_required: "Enter the driving distance in miles.",
-  loaded_miles_invalid: "Distance cannot be negative.",
+  invalid_address: "Choose a complete street address from Google.",
+  google_place_required: "Choose an address from the Google suggestions.",
   weight_required: "Enter the package weight in pounds.",
   weight_invalid: "Weight cannot be negative.",
   additional_stops_invalid: "This delivery must have one destination.",
@@ -74,14 +76,7 @@ function fieldErrorsFrom(details: unknown): FieldErrors {
   return out;
 }
 
-const EMPTY_ADDRESS = {
-  line1: "",
-  line2: "",
-  city: "",
-  region: "",
-  postalCode: "",
-  instructions: "",
-};
+const GOOGLE_MAPS_BROWSER_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
 
 export function NewDeliveryFlow() {
   const router = useRouter();
@@ -92,12 +87,12 @@ export function NewDeliveryFlow() {
   const [accountsError, setAccountsError] = React.useState<ApiFailure | null>(null);
   const [businessAccountId, setBusinessAccountId] = React.useState("");
 
-  const [pickup, setPickup] = React.useState({ ...EMPTY_ADDRESS });
-  const [dropoff, setDropoff] = React.useState({ ...EMPTY_ADDRESS });
+  const [pickup, setPickup] = React.useState<GoogleAddressSnapshot | null>(null);
+  const [dropoff, setDropoff] = React.useState<GoogleAddressSnapshot | null>(null);
+  const [placesReady, setPlacesReady] = React.useState(false);
   const [recipientName, setRecipientName] = React.useState("");
   const [recipientPhone, setRecipientPhone] = React.useState("");
   const [recipientEmail, setRecipientEmail] = React.useState("");
-  const [loadedMiles, setLoadedMiles] = React.useState("");
   const [weightLb, setWeightLb] = React.useState("");
   const [serviceLevel, setServiceLevel] = React.useState("standard");
   const [proofMethod, setProofMethod] = React.useState("photo_or_pin");
@@ -151,19 +146,22 @@ export function NewDeliveryFlow() {
     } catch {
       return;
     }
-    const seededAddress = (v: any) => {
-      const a = { ...EMPTY_ADDRESS };
-      for (const k of Object.keys(a) as (keyof typeof EMPTY_ADDRESS)[]) {
-        if (v && typeof v[k] === "string") a[k] = v[k];
+    const seededAddress = (v: any): GoogleAddressSnapshot | null => {
+      if (
+        !v ||
+        typeof v !== "object" ||
+        typeof v.googlePlaceId !== "string" ||
+        v.addressSource !== "google_places_new"
+      ) {
+        return null;
       }
-      return a;
+      return v as GoogleAddressSnapshot;
     };
     setPickup(seededAddress(seed.pickupAddress));
     setDropoff(seededAddress(seed.dropoffAddress));
     if (typeof seed.recipientName === "string") setRecipientName(seed.recipientName);
     if (typeof seed.recipientPhone === "string") setRecipientPhone(seed.recipientPhone);
     if (typeof seed.recipientEmail === "string") setRecipientEmail(seed.recipientEmail);
-    if (Number.isFinite(seed.loadedMiles)) setLoadedMiles(String(seed.loadedMiles));
     if (Number.isFinite(seed.weightLb)) setWeightLb(String(seed.weightLb));
     if (typeof seed.serviceLevel === "string") setServiceLevel(seed.serviceLevel);
     if (typeof seed.proofMethod === "string") setProofMethod(seed.proofMethod);
@@ -210,7 +208,6 @@ export function NewDeliveryFlow() {
       recipientName,
       recipientPhone,
       recipientEmail,
-      loadedMiles,
       weightLb,
       additionalStops: 0,
       serviceLevel,
@@ -388,6 +385,17 @@ export function NewDeliveryFlow() {
 
   return (
     <form onSubmit={onCalculate} noValidate>
+      {GOOGLE_MAPS_BROWSER_KEY ? (
+        <Script
+          id="couranr-google-maps-places-new"
+          src={`https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
+            GOOGLE_MAPS_BROWSER_KEY
+          )}&v=weekly&loading=async&libraries=places`}
+          strategy="afterInteractive"
+          onLoad={() => setPlacesReady(true)}
+          onReady={() => setPlacesReady(true)}
+        />
+      ) : null}
       <Stack gap={6}>
         {failure && failure.status === 403 ? <PermissionDeniedState /> : null}
         {failure && failure.status !== 403 ? (
@@ -420,14 +428,23 @@ export function NewDeliveryFlow() {
           title="Pickup"
           value={pickup}
           onChange={setPickup}
+          placesReady={placesReady}
           error={fieldErrors.pickupAddress}
         />
         <AddressCard
           title="Dropoff"
           value={dropoff}
           onChange={setDropoff}
+          placesReady={placesReady}
           error={fieldErrors.dropoffAddress}
         />
+
+        {!GOOGLE_MAPS_BROWSER_KEY ? (
+          <Alert tone="warning" title="Address search is unavailable">
+            Couranr needs its browser Google Maps key configured before a delivery can be
+            created.
+          </Alert>
+        ) : null}
 
         <Card>
           <CardHeader title="Recipient" description="Optional. Used for delivery contact only." />
@@ -465,22 +482,7 @@ export function NewDeliveryFlow() {
             title="Shipment"
             description="Couranr calculates the estimate from these details."
           />
-          <Grid columns={3}>
-            <Field
-              label="Loaded miles"
-              required
-              hint="Driving distance from pickup to dropoff."
-              error={fieldErrors.loadedMiles}
-            >
-              {(p) => (
-                <Input
-                  {...p}
-                  inputMode="decimal"
-                  value={loadedMiles}
-                  onChange={(e) => setLoadedMiles(e.target.value)}
-                />
-              )}
-            </Field>
+          <Grid columns={2}>
             <Field label="Weight (lb)" required error={fieldErrors.weightLb}>
               {(p) => (
                 <Input
@@ -557,7 +559,13 @@ export function NewDeliveryFlow() {
             variant="primary"
             type="submit"
             loading={busy}
-            disabled={businessAccountId === ""}
+            disabled={
+              businessAccountId === "" ||
+              !GOOGLE_MAPS_BROWSER_KEY ||
+              !placesReady ||
+              !pickup ||
+              !dropoff
+            }
           >
             Calculate estimate
           </Button>
@@ -570,45 +578,56 @@ export function NewDeliveryFlow() {
   );
 }
 
-type AddressValue = typeof EMPTY_ADDRESS;
-
 function AddressCard({
   title,
   value,
   onChange,
+  placesReady,
   error,
 }: {
   title: string;
-  value: AddressValue;
-  onChange: (v: AddressValue) => void;
+  value: GoogleAddressSnapshot | null;
+  onChange: (v: GoogleAddressSnapshot | null) => void;
+  placesReady: boolean;
   error?: string;
 }) {
-  const set = (k: keyof AddressValue) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-    onChange({ ...value, [k]: e.target.value });
+  const setOptional = (key: "line2" | "instructions") =>
+    (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      if (!value) return;
+      onChange({ ...value, [key]: event.target.value || null });
+    };
 
   return (
     <Card>
       <CardHeader title={title} />
       <Stack gap={3}>
-        <Field label="Street address" required error={error}>
-          {(p) => <Input {...p} value={value.line1} onChange={set("line1")} />}
+        <Field label="Search address" required error={error}>
+          {() => (
+            <GooglePlaceAutocomplete
+              ready={placesReady}
+              value={value}
+              onChange={onChange}
+              onInvalidSelection={() => onChange(null)}
+            />
+          )}
         </Field>
+        {value ? (
+          <Alert tone="info" title="Selected address">
+            {value.formattedAddress}
+          </Alert>
+        ) : null}
         <Field label="Suite, unit or floor">
-          {(p) => <Input {...p} value={value.line2} onChange={set("line2")} />}
+          {(p) => <Input {...p} value={value?.line2 ?? ""} onChange={setOptional("line2")} />}
         </Field>
-        <Grid columns={3}>
-          <Field label="City" required>
-            {(p) => <Input {...p} value={value.city} onChange={set("city")} />}
-          </Field>
-          <Field label="State" required>
-            {(p) => <Input {...p} value={value.region} onChange={set("region")} />}
-          </Field>
-          <Field label="ZIP" required>
-            {(p) => <Input {...p} value={value.postalCode} onChange={set("postalCode")} />}
-          </Field>
-        </Grid>
         <Field label="Access notes" hint="Gate codes and door instructions. Never a password.">
-          {(p) => <Textarea {...p} rows={2} value={value.instructions} onChange={set("instructions")} />}
+          {(p) => (
+            <Textarea
+              {...p}
+              rows={2}
+              value={value?.instructions ?? ""}
+              onChange={setOptional("instructions")}
+            />
+          )}
         </Field>
       </Stack>
     </Card>

@@ -131,6 +131,7 @@ const STAGES = [
     ["test:foundation-gate-a", "Foundation Gate A requester/quote/payment/plan/delivery adversarial matrix"],
     ["test:foundation-backfill", "Foundation Gate A deterministic historical backfill matrix"],
     ["test:foundation-rollbacks", "Foundation Gate A reversible-additive and hard-refusal rollback matrix"],
+    ["test:business-routing", "Business Places/Routes immutable-quote execution matrix"],
     ["test:messaging", "authenticated messaging"],
     ["test:auth-gateway", "auth gateway"],
     ["test:cus-fragments", "customer help fragments"],
@@ -149,6 +150,7 @@ const STAGES = [
         "test:foundation-gate-a",
         "test:foundation-backfill",
         "test:foundation-rollbacks",
+        "test:business-routing",
       ]);
       if (!postgresOnly.has(script) && !postgrestPresent()) {
         return "postgrest binary is missing — run `npm run provision:postgrest` first";

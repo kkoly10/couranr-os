@@ -51,7 +51,9 @@ export type QuoteLineItem = {
 export type ReviewReasonCode =
   | "over_max_automatic_miles"
   | "over_max_automatic_weight"
-  | "overnight_not_offered_in_this_release";
+  | "overnight_not_offered_in_this_release"
+  /** Routing evidence could not be established; no distance or money is invented. */
+  | "route_needs_review";
 
 /** Stable machine codes for a rejected input. */
 export type ValidationErrorCode =
