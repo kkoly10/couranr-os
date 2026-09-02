@@ -3977,17 +3977,194 @@
   color: rgb(255 255 255 / 0.86);
 }
 
+/* ── PUB-002 /sign-in ────────────────────────────────────────────────────── */
+
+.cr-auth-split {
+  display: grid;
+  width: 100%;
+  max-width: 74rem;
+  min-height: 40rem;
+  margin-inline: auto;
+  overflow: hidden;
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-lg);
+  background: var(--couranr-surface);
+  box-shadow: var(--couranr-shadow-md);
+}
+
+.cr-auth-story {
+  position: relative;
+  isolation: isolate;
+  display: none;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--couranr-text-inverse);
+}
+
+.cr-auth-story__image {
+  z-index: -2;
+  object-fit: cover;
+  object-position: 58% center;
+}
+
+.cr-auth-story__scrim {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgb(13 21 37 / 0.28), rgb(13 21 37 / 0.88)),
+    linear-gradient(90deg, rgb(13 21 37 / 0.72), rgb(13 21 37 / 0.16));
+}
+
+.cr-auth-story__content {
+  align-self: end;
+  width: 100%;
+  padding: clamp(var(--couranr-space-8), 5vw, var(--couranr-space-12));
+}
+
+.cr-auth-story__eyebrow,
+.cr-auth-panel__eyebrow {
+  margin: 0 0 var(--couranr-space-3);
+  font-size: var(--couranr-text-xs);
+  font-weight: var(--couranr-weight-semibold);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.cr-auth-story__eyebrow { color: var(--couranr-gold); }
+
+.cr-auth-story__title {
+  max-width: 12ch;
+  margin: 0;
+  font-family: var(--couranr-font-display);
+  font-size: clamp(2.25rem, 4vw, 3.5rem);
+  font-weight: 675;
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+}
+
+.cr-auth-story__body {
+  max-width: 34rem;
+  margin: var(--couranr-space-4) 0 0;
+  color: rgb(255 255 255 / 0.86);
+  font-size: 1.05rem;
+  line-height: 1.55;
+}
+
+.cr-auth-story__list {
+  display: grid;
+  gap: var(--couranr-space-3);
+  margin: var(--couranr-space-6) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--couranr-text-sm);
+}
+
+.cr-auth-story__list li {
+  display: flex;
+  align-items: center;
+  gap: var(--couranr-space-3);
+}
+
+.cr-auth-story__list li::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: var(--couranr-radius-pill);
+  background: var(--couranr-gold);
+  box-shadow: 0 0 0 4px rgb(231 174 43 / 0.18);
+}
+
+.cr-auth-panel {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+  padding: clamp(var(--couranr-space-6), 7vw, var(--couranr-space-12));
+  background: var(--couranr-surface);
+}
+
+.cr-auth-panel__inner {
+  display: grid;
+  gap: var(--couranr-space-8);
+  width: min(100%, 29rem);
+}
+
+.cr-auth-panel__intro { display: grid; gap: var(--couranr-space-2); }
+.cr-auth-panel__eyebrow { color: var(--couranr-text-muted); }
+
+.cr-auth-panel__title {
+  margin: 0;
+  font-family: var(--couranr-font-display);
+  font-size: clamp(2rem, 3.5vw, 2.75rem);
+  font-weight: 650;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+}
+
+.cr-auth-panel__body,
+.cr-auth-panel__loading {
+  margin: 0;
+  color: var(--couranr-text-muted);
+  line-height: 1.55;
+}
+
+.cr-auth-form { width: 100%; }
+.cr-auth-form__support {
+  padding-top: var(--couranr-space-5);
+  border-top: 1px solid var(--couranr-border);
+  text-align: center;
+}
+.cr-auth-form__support a {
+  color: var(--couranr-route-blue);
+  font-weight: var(--couranr-weight-medium);
+  text-underline-offset: 3px;
+}
+
+@media (min-width: 900px) {
+  .cr-auth-split { grid-template-columns: minmax(0, 1.08fr) minmax(25rem, 0.92fr); }
+  .cr-auth-story { display: flex; }
+}
+
+@media (max-width: 639px) {
+  .cr-auth-split {
+    min-height: auto;
+    border-radius: var(--couranr-radius-md);
+    box-shadow: var(--couranr-shadow-sm);
+  }
+  .cr-auth-panel { padding: var(--couranr-space-6) var(--couranr-space-5); }
+  .cr-auth-panel__inner { gap: var(--couranr-space-6); }
+}
+
 /* ── PUB-004 /send, the direct-consumer flow ────────────────────────────── */
 
-.cr-send { display: grid; gap: var(--couranr-space-6); max-width: 46rem; }
+.cr-send-page {
+  display: grid;
+  justify-items: center;
+  width: 100%;
+}
+
+.cr-send {
+  display: grid;
+  gap: var(--couranr-space-6);
+  width: 100%;
+  max-width: 54rem;
+  margin-inline: auto;
+  padding: clamp(var(--couranr-space-5), 4vw, var(--couranr-space-10));
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-lg);
+  background: var(--couranr-surface);
+  box-shadow: var(--couranr-shadow-sm);
+}
 
 /* The phase rail. Visible at every step, because a flow that hides how far it
    goes is a flow people abandon. `aria-current="step"` carries the position to
    assistive technology; the bar is the visual half of the same fact. */
 .cr-send-rail {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--couranr-space-2) var(--couranr-space-3);
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -3996,9 +4173,9 @@
 .cr-send-rail__step {
   font-size: var(--couranr-text-sm);
   color: var(--couranr-text-muted);
-  padding-bottom: var(--couranr-space-2);
+  padding: 0 var(--couranr-space-2) var(--couranr-space-3);
   border-bottom: 2px solid var(--couranr-border);
-  flex: 1 1 5rem;
+  text-align: center;
 }
 
 .cr-send-rail__step[data-current="true"] {
@@ -4090,4 +4267,23 @@
   background: var(--couranr-canvas);
   font-weight: 600;
   color: var(--couranr-text);
+}
+
+@media (max-width: 639px) {
+  .cr-send {
+    gap: var(--couranr-space-5);
+    padding: var(--couranr-space-5);
+    border-radius: var(--couranr-radius-md);
+  }
+
+  .cr-send-rail {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .cr-send-rail__step {
+    padding-inline: var(--couranr-space-1);
+    font-size: var(--couranr-text-xs);
+  }
+  .cr-send-summary__row { grid-template-columns: 1fr auto; }
+  .cr-send-summary__row dt { grid-column: 1 / -1; }
 }

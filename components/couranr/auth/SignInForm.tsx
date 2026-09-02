@@ -7,8 +7,6 @@ import { supabase } from "@/lib/supabaseClient";
 import {
   Alert,
   Button,
-  Card,
-  CardHeader,
   Stack,
   Text,
 } from "@/components/couranr/primitives";
@@ -124,7 +122,7 @@ export function SignInForm() {
   }
 
   return (
-    <form onSubmit={onSubmit} noValidate>
+    <form className="cr-auth-form" onSubmit={onSubmit} noValidate>
       <Stack gap={6}>
         {failure ? <ErrorState title={failure.title} body={failure.body} /> : null}
 
@@ -135,42 +133,38 @@ export function SignInForm() {
           </Alert>
         ) : null}
 
-        <Card>
-          <CardHeader
-            title="Sign in to Couranr"
-            description="Merchants, drivers and Couranr Operations all sign in here."
-          />
-          <Stack gap={3}>
-            <Field label="Email" required error={fieldErrors.email}>
-              {(p) => (
-                <Input
-                  {...p}
-                  type="email"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              )}
-            </Field>
-            <Field label="Password" required error={fieldErrors.password}>
-              {(p) => (
-                <Input
-                  {...p}
-                  type="password"
-                  autoComplete="current-password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              )}
-            </Field>
-          </Stack>
-        </Card>
+        <Stack gap={4}>
+          <Field label="Email" required error={fieldErrors.email}>
+            {(p) => (
+              <Input
+                {...p}
+                type="email"
+                autoComplete="email"
+                placeholder="you@business.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            )}
+          </Field>
+          <Field label="Password" required error={fieldErrors.password}>
+            {(p) => (
+              <Input
+                {...p}
+                type="password"
+                autoComplete="current-password"
+                placeholder="Enter your password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            )}
+          </Field>
+        </Stack>
 
         <Button variant="primary" type="submit" loading={busy} block>
           Sign in
         </Button>
 
-        <Text size="sm" muted>
+        <Text size="sm" muted className="cr-auth-form__support">
           New to Couranr? <Link href="/sign-up">Set up your business</Link>.
         </Text>
       </Stack>

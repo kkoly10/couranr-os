@@ -35,7 +35,7 @@ export default function Page() {
      step rather than a spinner, so the page's shape is stable while the intent
      resolves and nothing shifts under a reader. */
   return (
-    <div className="cr-mkt">
+    <div className="cr-mkt cr-send-page">
       <Suspense fallback={<p className="cr-send-note">Loading your delivery form…</p>}>
         <SendFlow mode={mode} productionStop={SEND_COPY.production_stop} />
       </Suspense>

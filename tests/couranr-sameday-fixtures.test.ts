@@ -207,3 +207,17 @@ describe("8. POSITIVE CONTROL: binding production to fixtures fails the gate", (
     expect(honoured({ vercelEnv: "preview", fixtureFlag: "1" })).toBe(true);
   });
 });
+
+describe("PUB-004 layout", () => {
+  const page = readFileSync(
+    path.join(ROOT, "app/(couranr)/(public)/(consumer-public)/send/page.tsx"),
+    "utf8",
+  );
+  const css = readFileSync(path.join(ROOT, "app/(couranr)/couranr.css"), "utf8");
+
+  it("centres both intent variants in one bounded workflow surface", () => {
+    expect(page).toContain('className="cr-mkt cr-send-page"');
+    expect(css).toMatch(/\.cr-send\s*\{[^}]*max-width:\s*54rem[^}]*margin-inline:\s*auto/s);
+    expect(css).toMatch(/\.cr-send-rail\s*\{[^}]*grid-template-columns:\s*repeat\(5,/s);
+  });
+});
