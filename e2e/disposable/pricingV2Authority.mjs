@@ -429,6 +429,30 @@ function main() {
       one(authorizeEvent(c5.obId, c5.rid, BUSINESS, c5.qId, 799, "e-recon-hook", inWindow, "e-recon")),
       "applied|-|authorized");
 
+    /* PRC-007 is a boundary only if the pinned appender is the ONLY reachable
+       way to mint a quote. private.couranr_append_quote_version is unpinned
+       and still live, so what closes the hole is that all four commands
+       reaching it are executable by nobody: EXECUTE is revoked from anon,
+       authenticated AND service_role, which are the only identities the
+       application has. Asserted with has_function_privilege rather than
+       grantee rows, because a privilege inherited through PUBLIC does not
+       appear as a grantee row. Confirmed the same way against production. */
+    for (const [id, fn] of [
+      ["PV2-62", "couranr_calculate_delivery_request_estimate"],
+      ["PV2-63", "couranr_create_delivery_request_draft"],
+      ["PV2-64", "couranr_create_quote_version"],
+      ["PV2-65", "couranr_requote_delivery_request"],
+    ]) {
+      check(id, `the unpinned pre-routing minting path ${fn} is executable by nobody`,
+        one(`select coalesce(bool_or(
+               has_function_privilege('anon',p.oid,'EXECUTE') or
+               has_function_privilege('authenticated',p.oid,'EXECUTE') or
+               has_function_privilege('service_role',p.oid,'EXECUTE')), false)
+             from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+            where n.nspname='public' and p.proname='${fn}'`),
+        "f");
+    }
+
     /* ---- 7. a real authorization survives the clock ---------------------- */
     age(c2.rid, "45 minutes");
     check("PV2-51", "an obligation authorized in time stays authorized at 45 minutes",
