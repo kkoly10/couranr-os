@@ -307,6 +307,16 @@ describe("sign-in screen", () => {
     expect(page).toMatch(/SignInForm/);
   });
 
+  it("uses the delivery-led split composition instead of a full-width form", () => {
+    expect(page).toContain('className="cr-auth-split"');
+    expect(page).toContain('className="cr-auth-story"');
+    expect(page).toContain('className="cr-auth-panel"');
+    expect(page).toMatch(/from "next\/image"/);
+    expect(page).toContain("/images/marketing/2026-08/16-consumer-doorstep-handoff.png");
+    expect(form).toContain('className="cr-auth-form"');
+    expect(form).not.toMatch(/<Card(?:\s|>)/);
+  });
+
   it("uses the documented Supabase call", () => {
     expect(form).toMatch(/supabase\.auth\.signInWithPassword\(/);
   });
