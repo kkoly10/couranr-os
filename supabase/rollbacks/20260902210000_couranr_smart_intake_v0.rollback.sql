@@ -51,10 +51,10 @@ drop function if exists public.couranr_begin_intake_run(uuid,uuid,integer,text,t
 drop function if exists public.couranr_add_intake_revision(uuid,uuid,uuid,text,integer,text);
 drop function if exists public.couranr_create_intake_session(uuid,uuid,uuid,text,text);
 
-drop table if exists public.couranr_intake_fact_events;
-drop table if exists public.couranr_intake_facts;
-drop table if exists public.couranr_intake_runs;
-drop table if exists public.couranr_intake_description_revisions;
-drop table if exists public.couranr_intake_sessions;
+drop table if exists public.couranr_intake_fact_events restrict;
+drop table if exists public.couranr_intake_facts restrict;
+drop table if exists public.couranr_intake_runs restrict;
+drop table if exists public.couranr_intake_description_revisions restrict;
+drop table if exists public.couranr_intake_sessions restrict;
 
 commit;
