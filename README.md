@@ -1,10 +1,10 @@
 # couranr-os
 
-Operating software for Couranr services, built with Next.js 14.
+Operating software for Couranr services, built with Next.js 16.
 
 ## Requirements
 
-- Node.js 20+
+- Node.js 24+
 - npm
 
 ## Getting started
@@ -26,10 +26,10 @@ Operating software for Couranr services, built with Next.js 14.
 
 ## Scripts
 
-- `npm run dev` – run local development server.
-- `npm run typecheck` – run TypeScript checks.
-- `npm run build` – create production build.
-- `npm run check` – run typecheck and build.
+- `npm run dev` - run local development server.
+- `npm run typecheck` - run TypeScript checks.
+- `npm run build` - create production build.
+- `npm run check` - run lint, typecheck, tests, and the production build.
 
 ## Environment variables
 
