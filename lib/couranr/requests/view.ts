@@ -147,9 +147,26 @@ export const REQUEST_STATE_LABELS: Record<string, string> = {
   closed: "Closed",
 };
 
+/**
+ * Merchant-facing text for every ReviewReasonCode the engine can emit.
+ *
+ * QuoteSummary and OperationsQueue both render `LABELS[code] ?? code`, so a
+ * missing key does not fail loudly - it shows the raw snake_case machine code
+ * to a merchant on the quote screen. `tests/couranr-pricing.test.ts` asserts
+ * this map covers the union exhaustively for exactly that reason.
+ *
+ * The first two V1 codes are retained: a request that went to review under the
+ * old vocabulary still stores them, and dropping the key would turn a historical
+ * row into a raw code.
+ */
 export const REVIEW_REASON_LABELS: Record<string, string> = {
   over_max_automatic_miles: "Distance is beyond the automatic estimate range",
+  large_item_review: "Large Item — Couranr will quote this by hand",
+  overnight_requires_couranr_confirmation: "Overnight needs Couranr confirmation",
+  over_max_automatic_traffic_delay: "Predicted traffic delay is beyond the automatic estimate range",
+  route_needs_review: "Driving route needs Couranr review",
+  traffic_evidence_unavailable: "Traffic conditions could not be confirmed for this route",
+  /* Retired V1 vocabulary, kept so historical requests still read. */
   over_max_automatic_weight: "Weight is beyond the automatic estimate range",
   overnight_not_offered_in_this_release: "Overnight is not offered in this release",
-  route_needs_review: "Driving route needs Couranr review",
 };

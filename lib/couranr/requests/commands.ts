@@ -1,6 +1,10 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { assertServerOnly } from "@/lib/couranr/serverOnly";
-import { quoteDelivery, type QuoteResult } from "@/lib/couranr/pricing";
+import {
+  COURANR_PRICING_POLICY_VERSION,
+  INCLUDED_LOADED_MILES,
+  type QuoteResult,
+} from "@/lib/couranr/pricing";
 import {
   deriveCanonicalRouteAndQuote,
   isCanonicalAddressResolutionError,
@@ -240,36 +244,44 @@ async function loadRequest(
 }
 
 /**
- * Recomputes the quote from PERSISTED shipment fields. Never from a payload.
- * This is the `start-checkout:180-186` pattern: the server recomputes and the
- * client's numbers are irrelevant.
+ * Reads back the quote the DATABASE holds for this request. Never recomputes
+ * it, and never reads a payload.
+ *
+ * This used to re-derive the quote by re-running `quoteDelivery` over the
+ * persisted shipment columns. That was already the weaker choice - a stored
+ * quote is immutable commercial evidence, so reproducing it by recomputation
+ * makes the answer depend on today's engine rather than on what the payer was
+ * actually shown - and Pricing V2 made it outright wrong: traffic evidence
+ * lives on `couranr_quote_versions`, not on the request row, and V2 fails an
+ * automatic quote closed when the delay is absent. A re-derivation therefore
+ * answered `manual_review_required` / 0 cents / no line items for a request the
+ * database had just stored as `estimated`.
+ *
+ * The request row denormalizes every quote field, so reading is both correct
+ * and cheaper. `roundingApplied`, `taxIncluded` and `paymentDueCents` are
+ * engine invariants under every policy version this codebase can mint, which
+ * is why the stored columns are asserted rather than surfaced.
  */
-function quoteFromRow(row: DeliveryRequestRow, overnightRequested: boolean): QuoteResult {
-  if (
-    row.loaded_miles === null ||
-    row.loaded_miles === undefined ||
-    (row.quote_status === "manual_review_required" &&
-      Array.isArray(row.review_reasons) &&
-      row.review_reasons.includes("route_needs_review"))
-  ) {
-    const unpriced = quoteDelivery({ loadedMiles: 0, weightLb: 0, additionalStops: 0 });
-    return {
-      ...unpriced,
-      quoteStatus: "manual_review_required",
-      deliverySubtotalCents: 0,
-      lineItems: [],
-      billableLoadedMiles: 0,
-      reviewReasons: ["route_needs_review"],
-    };
-  }
-  return quoteDelivery({
-    loadedMiles: Number(row.loaded_miles),
-    weightLb: Number(row.weight_lb ?? 0),
-    additionalStops: Number(row.additional_stops ?? 0),
-    serviceLevel: row.service_level,
-    signatureRequired: row.signature_required === true,
-    overnightRequested,
-  });
+function quoteFromRow(row: DeliveryRequestRow): QuoteResult {
+  const num = (v: unknown, fallback: number): number => {
+    if (v === null || v === undefined || v === "") return fallback;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : fallback;
+  };
+  return {
+    policyVersion: row.pricing_policy_version ?? COURANR_PRICING_POLICY_VERSION,
+    quoteStatus: row.quote_status,
+    deliverySubtotalCents: num(row.delivery_subtotal_cents, 0),
+    lineItems: Array.isArray(row.quote_line_items) ? row.quote_line_items : [],
+    includedLoadedMiles: num(row.included_loaded_miles, INCLUDED_LOADED_MILES),
+    billableLoadedMiles: num(row.billable_loaded_miles, 0),
+    trafficDelaySeconds: null,
+    reviewReasons: Array.isArray(row.review_reasons) ? row.review_reasons : [],
+    roundingApplied: false,
+    taxIncluded: false,
+    paymentDueCents: null,
+    validationErrors: [],
+  };
 }
 
 /**
@@ -436,10 +448,7 @@ export async function createDeliveryRequestDraft(params: {
       request: result.value,
       // Report the quote the DATABASE holds. On an idempotent replay the stored
       // request may differ from this attempt's payload, and the stored one wins.
-      quote: quoteFromRow(
-        result.value,
-        result.value.normalized_request_payload?.overnightRequested === true
-      ),
+      quote: quoteFromRow(result.value),
     },
   };
 }

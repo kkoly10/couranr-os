@@ -1,3 +1,4 @@
+import { REVIEW_REASON_LABELS } from "@/lib/couranr/requests/view";
 import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -487,5 +488,95 @@ describe("policy identifiers agree across the TypeScript/SQL boundary", () => {
       COURANR_PRICING_POLICY_VERSION_V1_HISTORICAL
     );
     expect(prc005.amends).toBe("PRC-001");
+  });
+});
+
+/* ------------------------------------------------------------------------ */
+/* Regressions from the twelve-lens adversarial review. Each of these failed  */
+/* against the code as first written.                                        */
+
+describe("a stored line item can explain its own amount", () => {
+  /* traffic_delay carried a SECONDS quantity against a per-MINUTE unit rate,
+     so quantity * unitAmountCents was 60x amountCents. These line items are
+     persisted verbatim into couranr_quote_versions as immutable evidence, so
+     the row's own arithmetic contradicted the amount it charged. */
+  it("every line item satisfies quantity * unitAmountCents === amountCents", () => {
+    const cases = [
+      { loadedMiles: 3, weightLb: 10, trafficDelaySeconds: 600 },
+      { loadedMiles: 17.5, weightLb: 40, trafficDelaySeconds: 361 },
+      { loadedMiles: 25, weightLb: 25, trafficDelaySeconds: 1500 },
+      { loadedMiles: 2, weightLb: 1, trafficDelaySeconds: 0 },
+    ];
+    for (const c of cases) {
+      const r = quoteDelivery({
+        serviceLevel: "standard",
+        signatureRequired: true,
+        overnightRequested: false,
+        ...c,
+      } as any);
+      for (const li of r.lineItems) {
+        expect(
+          Math.round(li.quantity * li.unitAmountCents),
+          `${li.code} at ${c.loadedMiles}mi/${c.trafficDelaySeconds}s: ` +
+            `${li.quantity} x ${li.unitAmountCents} != ${li.amountCents}`
+        ).toBe(li.amountCents);
+      }
+    }
+  });
+
+  it("the traffic quantity is minutes, and is NOT rounded up to a whole minute", () => {
+    // 6m30s of chargeable delay: 90s over the free window.
+    const r = quoteDelivery({
+      loadedMiles: 2, weightLb: 1, serviceLevel: "standard",
+      signatureRequired: false, overnightRequested: false,
+      trafficDelaySeconds: 390,
+    } as any);
+    const traffic = r.lineItems.find((l) => l.code === "traffic_delay")!;
+    expect(traffic.quantity).toBeCloseTo(1.5, 10);
+    expect(traffic.amountCents).toBe(68); // 90s * 45c/60s = 67.5 -> half-up 68
+  });
+});
+
+describe("every review reason the engine can emit is presentable", () => {
+  /* QuoteSummary and OperationsQueue both render `LABELS[code] ?? code`, so a
+     missing key shows a merchant the raw snake_case machine identifier. Four of
+     the six V2 codes had no label. */
+  it("REVIEW_REASON_LABELS covers every ReviewReasonCode with real prose", () => {
+    const EMITTABLE = [
+      "over_max_automatic_miles",
+      "large_item_review",
+      "overnight_requires_couranr_confirmation",
+      "over_max_automatic_traffic_delay",
+      "route_needs_review",
+      "traffic_evidence_unavailable",
+    ];
+    for (const code of EMITTABLE) {
+      const label = REVIEW_REASON_LABELS[code];
+      expect(label, `${code} has no merchant-facing label`).toBeTruthy();
+      expect(label, `${code} renders as its own machine code`).not.toBe(code);
+      expect(label).not.toMatch(/_/);
+    }
+  });
+
+  it("every reason the engine actually produces is in the map", () => {
+    const produced = new Set<string>();
+    const probes = [
+      { loadedMiles: 26, weightLb: 1, trafficDelaySeconds: 0 },
+      { loadedMiles: 2, weightLb: 51, trafficDelaySeconds: 0 },
+      { loadedMiles: 2, weightLb: 1, trafficDelaySeconds: 1501 },
+      { loadedMiles: 2, weightLb: 1, trafficDelaySeconds: null },
+      { loadedMiles: 2, weightLb: 1, trafficDelaySeconds: 0, overnightRequested: true },
+    ];
+    for (const p of probes) {
+      const r = quoteDelivery({
+        serviceLevel: "standard", signatureRequired: false,
+        overnightRequested: false, ...p,
+      } as any);
+      r.reviewReasons.forEach((c) => produced.add(c));
+    }
+    expect(produced.size).toBeGreaterThanOrEqual(5);
+    for (const c of produced) {
+      expect(REVIEW_REASON_LABELS[c], `engine emits ${c}, label map has no key`).toBeTruthy();
+    }
   });
 });

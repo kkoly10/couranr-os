@@ -291,7 +291,14 @@ export function quoteDelivery(input: QuoteInput): QuoteResult {
     lineItems.push({
       code: "traffic_delay",
       label: "Predicted traffic delay",
-      quantity: delaySeconds! - TRAFFIC_DELAY_INCLUDED_SECONDS,
+      // Quantity is in MINUTES because the unit rate is per minute: a stored
+      // line item has to be able to explain its own amount, and a seconds
+      // quantity against a per-minute rate reads as 60x the charge. The
+      // CHARGE is still computed from whole seconds by trafficDelayCents, so
+      // a 6m30s delay costs 90s of traffic and is not rounded up to 2 minutes
+      // - this quantity is the fractional minutes that produced it.
+      quantity:
+        (delaySeconds! - TRAFFIC_DELAY_INCLUDED_SECONDS) / SECONDS_PER_MINUTE,
       unitAmountCents: TRAFFIC_DELAY_CENTS_PER_MINUTE,
       amountCents: trafficCents,
     });
