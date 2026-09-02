@@ -4180,7 +4180,10 @@
         "resolution": "Surcharges cut over to 500/1000 and a single 300-cent weight step through 50 lb.",
         "remediation_commit": "Pricing V2 cutover"
       },
-      "implementation_phase": "Pricing V2 cutover"
+      "implementation_phase": "Pricing V2 cutover",
+      "amended_by": [
+        "SUR-005"
+      ]
     },
     {
       "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
@@ -4243,7 +4246,10 @@
         "remediation_commit": "Pricing V2 cutover"
       },
       "implementation_phase": "Pricing V2 cutover",
-      "note": "SCOPE, stated rather than implied: the Routes request pins routingPreference TRAFFIC_AWARE and sends NO departureTime, so Google prices the traffic conditions for now. That is correct for the only timing the Business create-delivery flow can currently express - it has no canonical requested departure-time input. Future or scheduled departure traffic is therefore NOT implemented and must not be described as complete; it belongs to the next Business timing / Smart Intake batch, which owns the input schema. No scheduling model is invented here."
+      "note": "SCOPE, stated rather than implied: the Routes request pins routingPreference TRAFFIC_AWARE and sends NO departureTime, so Google prices the traffic conditions for now. That is correct for the only timing the Business create-delivery flow can currently express - it has no canonical requested departure-time input. Future or scheduled departure traffic is therefore NOT implemented and must not be described as complete; it belongs to the next Business timing / Smart Intake batch, which owns the input schema. No scheduling model is invented here.",
+      "amended_by": [
+        "TRF-002"
+      ]
     },
     {
       "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
