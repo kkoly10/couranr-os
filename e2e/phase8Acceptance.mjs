@@ -134,7 +134,7 @@ async function makeDelivery(sb, label) {
     actorUserId: owner,
     marker: `p8acc-${randomUUID().slice(0, 8)}`,
     recipientName: `${MARK} recipient`,
-    pricingPolicyVersion: "p8acc",
+    pricingPolicyVersion: "couranr-pricing-v2-2026-09-01",
   });
 
   ids.request = chain.requestId;

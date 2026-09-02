@@ -221,7 +221,7 @@ async function sectionCommands() {
     actorUserId: userId,
     marker,
     recipientName: "dbtest recipient",
-    pricingPolicyVersion: "dbtest",
+    pricingPolicyVersion: "couranr-pricing-v2-2026-09-01",
   });
   const { requestId, obligationId, planId, deliveryId } = chain;
 

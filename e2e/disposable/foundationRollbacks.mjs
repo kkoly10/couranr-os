@@ -279,7 +279,7 @@ function main() {
       '{"googlePlaceId":"place-pickup","formattedAddress":"10 Market St, Stafford, VA 22554, USA","line1":"10 Market St","line2":null,"city":"Stafford","region":"VA","postalCode":"22554","countryCode":"US","latitude":38.422,"longitude":-77.408,"addressSource":"google_places_new","instructions":null}'::jsonb,
       '{"googlePlaceId":"place-dropoff","formattedAddress":"20 Main St, Stafford, VA 22554, USA","line1":"20 Main St","line2":null,"city":"Stafford","region":"VA","postalCode":"22554","countryCode":"US","latitude":38.423,"longitude":-77.409,"addressSource":"google_places_new","instructions":null}'::jsonb,false,
       8047,600,600,0,'google_routes_v2','available_for_request',null,
-      'estimated','rollback-v1',2500,3,2,
+      'estimated','couranr-pricing-v2-2026-09-01',2500,3,2,
       '[{"code":"base","amountCents":2500}]'::jsonb,'[]'::jsonb);
     insert into public.couranr_delivery_requests(
       requester_kind,business_account_id,created_by,consumer_contact_snapshot,
