@@ -15,12 +15,12 @@ const files = readdirSync(MIGRATIONS)
   .filter((file) => /^\d{14}_.+\.sql$/.test(file) && !file.includes(".rollback."))
   .sort();
 
-const M1 = "20260831035450_fnd_a_m1_universal_requester.sql";
-const M2 = "20260831035452_fnd_a_m2_immutable_quote_schema.sql";
-const M3 = "20260831035454_fnd_a_m3_deterministic_quote_backfill.sql";
-const M4 = "20260831035456_fnd_a_m4_command_cutover.sql";
-const M5 = "20260831035458_fnd_a_m5_invariant_cutover.sql";
-const M6 = "20260831035500_fnd_a_m6_single_destination.sql";
+const M1 = "20260901051549_fnd_a_m1_universal_requester.sql";
+const M2 = "20260901051555_fnd_a_m2_immutable_quote_schema.sql";
+const M3 = "20260901051601_fnd_a_m3_deterministic_quote_backfill.sql";
+const M4 = "20260901051609_fnd_a_m4_command_cutover.sql";
+const M5 = "20260901051617_fnd_a_m5_invariant_cutover.sql";
+const M6 = "20260901051627_fnd_a_m6_single_destination.sql";
 
 let ownsBareDatabase = false;
 let passed = 0;

@@ -458,13 +458,13 @@ describe("engine is dependency-free and amount-free", () => {
 describe("policy identifiers agree across the TypeScript/SQL boundary", () => {
   const ROOT = path.resolve(__dirname, "..");
   const migration = readFileSync(
-    path.join(ROOT, "supabase/migrations/20260902090000_couranr_pricing_v2_traffic_authority.sql"),
+    path.join(ROOT, "supabase/migrations/20260902042602_couranr_pricing_v2_traffic_authority.sql"),
     "utf8"
   );
   const rollback = readFileSync(
     path.join(
       ROOT,
-      "supabase/rollbacks/20260902090000_couranr_pricing_v2_traffic_authority.rollback.sql"
+      "supabase/rollbacks/20260902042602_couranr_pricing_v2_traffic_authority.rollback.sql"
     ),
     "utf8"
   );

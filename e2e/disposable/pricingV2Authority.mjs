@@ -258,7 +258,7 @@ function main() {
     /* ------------------------------------------------------- rollback --- */
 
     const rollback = readFileSync(
-      "supabase/rollbacks/20260902090000_couranr_pricing_v2_traffic_authority.rollback.sql", "utf8");
+      "supabase/rollbacks/20260902042602_couranr_pricing_v2_traffic_authority.rollback.sql", "utf8");
     const attempted = raises(rollback.replace(/^\s*begin;\s*$/m, "").replace(/^\s*commit;\s*$/m, ""));
     check("PV2-16", "the rollback HARD-REFUSES once V2 quote evidence exists",
       attempted.split("|")[1], "pricing_v2_rollback_would_destroy_commercial_evidence");
