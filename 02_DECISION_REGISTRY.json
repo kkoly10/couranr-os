@@ -3925,7 +3925,9 @@
           "couranr_apply_payment_intent_state (the authorize branch)"
         ],
         "on_expiry": "refuse with quote_expired — CR410 where the command raises, a governed rejected/quote_expired outcome where it returns one; never silently reprice",
-        "remedy": "a fresh canonical route + traffic calculation, which mints Quote N+1"
+        "remedy": "a fresh canonical route + traffic calculation, which mints Quote N+1",
+        "authorization_moment": "the window is judged AS OF the authorization, not as of processing: the signature-verified webhook supplies event.created, so 3DS, a retry or a delivery backlog never expires an approval obtained in time. A PaymentIntent retrieve carries no authorization timestamp — PaymentIntent.created is when the intent was minted — so the reconcile path supplies none and is judged at server now(), which is conservative and never more permissive than the webhook.",
+        "refused_authorization_consequence": "a refusal at the authorize boundary leaves a real provider hold while the obligation stays requires_action, and OPS-010 cannot release it — couranr_begin_payment_release requires 'authorized'. The ledger converges through the provider's own payment_intent.canceled, which applies from requires_action to cancelled. An Operations-initiated release of an unauthorized hold is NOT decided here."
       },
       "status": "decided",
       "decided_by": "owner",
@@ -3959,14 +3961,17 @@
         "A valid requires_capture event on an expired quote is rejected as quote_expired, leaves the obligation unauthorized, the request at awaiting_quote_acceptance, and records no payer-approval event.",
         "Customer authorization at 14:59 applies; at exactly 15:00 it is refused.",
         "An obligation authorized in time is still authorized at 45 minutes.",
-        "A payment token with days of TTL remaining cannot open an expired quote."
+        "A payment token with days of TTL remaining cannot open an expired quote.",
+        "A late webhook for an approval obtained inside the window still applies; the same webhook for an out-of-window approval is still refused.",
+        "The reconcile path never dates an authorization from PaymentIntent.created.",
+        "The rollback removes both predicates, the reuse helper, and the 9-argument apply, leaving exactly one 8-argument form."
       ],
       "conflict_with_current_code": {
         "code_value": {
           "enforcement": "none — documentation only"
         },
         "code_location": "docs/couranr-mvp/PRODUCT_SPEC.md",
-        "resolution": "Enforced in the database at the three acceptance/authorization commands.",
+        "resolution": "Enforced in the database at all seven acceptance/authorization commands listed in value.enforced_at, plus the application-layer PaymentIntent reuse path, which asks the database rather than computing an age of its own.",
         "remediation_commit": "Pricing V2 closure"
       },
       "implementation_phase": "Pricing V2 closure",

@@ -337,6 +337,34 @@ function main() {
       one(`select valid||'|'||reason from public.couranr_redeem_payment_access_token(repeat('a',64))`),
       "false|quote_expired");
 
+    /* The two enforcement points that were only covered in the ALLOW
+       direction. Seven commands carry the guard; a suite that proves six of
+       them is a suite that has not enumerated them. */
+    const c6 = customerChain("qvl-c-issue");
+    age(c6.rid, "20 minutes");
+    check("PV2-78", "issuing a payment link for a stale unapproved quote is refused",
+      raises(`select public.couranr_issue_payment_access_token('${c6.rid}','${c6.obId}',
+              repeat('b',64), 7)`),
+      "CR410|quote_expired");
+
+    const c7rid = one(draft("qvl-c-ob", { duration: 900, staticDuration: 600, delay: 300 }));
+    raw(`update public.couranr_delivery_requests set payer_type='customer' where id='${c7rid}'`);
+    raw(`set session_replication_role='replica';
+         update public.couranr_quote_versions set payer_type='customer' where request_id='${c7rid}';
+         set session_replication_role='origin';`);
+    raw(`select public.couranr_submit_delivery_request_v2('${c7rid}','${BUSINESS}',${ver(c7rid)},'${USER}',false)`);
+    raw(`select public.couranr_accept_delivery_request_as_quoted('${c7rid}','${BUSINESS}',${ver(c7rid)},'${USER}')`);
+    age(c7rid, "20 minutes");
+    check("PV2-80", "attaching a PaymentIntent to a stale unapproved quote is refused",
+      raises(`select public.couranr_attach_payment_intent('${c6.obId}',
+              (select version from public.couranr_payment_obligations where id='${c6.obId}'),
+              '${custIntent("e-issue")}')`),
+      "CR410|quote_expired");
+
+    check("PV2-79", "creating a payment obligation for a stale unapproved quote is refused",
+      raises(`select public.couranr_create_payment_obligation('${c7rid}','${BUSINESS}','qvl-c-ob-key')`),
+      "CR410|quote_expired");
+
     /* ---- 5. customer authorization at 14:59 succeeds --------------------- */
     const c2 = customerChain("qvl-c-1459");
     raw(`select public.couranr_attach_payment_intent('${c2.obId}',

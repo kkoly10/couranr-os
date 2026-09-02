@@ -45,3 +45,6 @@ next-env.d.ts
 # Isolated Next output for harnesses that start a dev server (e2e/devDistDir.mjs).
 # Deliberately NOT in tsconfig include: a leftover here can never break typecheck.
 .next-devharness/
+
+# Throwaway analysis scripts. Use the session scratchpad; never commit these.
+.review-scratch/
