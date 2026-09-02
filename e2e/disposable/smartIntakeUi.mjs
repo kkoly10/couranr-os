@@ -23,13 +23,14 @@
  * WHAT IT DOES NOT PROVE
  * ---------------------------------------------------------------------------
  *
- *  1. Calculate estimate. Google Places cannot render in this container (no
- *     browser Maps key, no outbound Google) and the routed commands need
- *     server-side Place Details + Routes — so create/estimate with an intake
- *     session, the form→fact sync and the commit wrapper are proved at the
- *     database layer (smartIntake.mjs SI-25..30, SI-41..46) and by unit tests
- *     of the sync plan, NOT driven end to end here. Recorded as inconclusive,
- *     not skipped silently.
+ *  1. Real browser egress to Google. Chromium here cannot reach any external
+ *     host, so the page's Google Maps traffic is relayed by Node
+ *     (e2e/googleMapsRelay.mjs) — the real Maps JS, the real Places widget,
+ *     real predictions and real Place Details, but not the cross-origin path
+ *     a merchant's browser takes, and not the key's referrer restriction.
+ *     The server-side Place Details + Routes v2 calls are real and unrelayed.
+ *     Both Google keys come from .env.local (gitignored); without them the
+ *     calculate section records INCONCLUSIVE rather than failing.
  *  2. The provider is the FAKE. Nothing here says anything about a real model.
  *  3. The `/auth/v1` issuer is gateway.mjs's reimplementation, not GoTrue.
  *
@@ -37,7 +38,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { mkdirSync, openSync } from "node:fs";
+import { existsSync, mkdirSync, openSync, readFileSync } from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -51,6 +52,7 @@ import {
 } from "./gateway.mjs";
 import { postgrestTarget } from "../../scripts/provisionPostgrest.mjs";
 import { claimDevDistDir } from "../devDistDir.mjs";
+import { relayGoogleMaps } from "../googleMapsRelay.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const SHOTS = path.join(ROOT, "e2e/screenshots/smart-intake");
@@ -192,10 +194,24 @@ async function main() {
     const { chromium } = await import("/opt/node22/lib/node_modules/playwright/index.mjs");
     browser = await chromium.launch({ args: ["--no-proxy-server"] });
 
+    const googleCalls = new Map();
+    const pageErrors = [];
     async function signIn(email) {
       const ctx = await browser.newContext();
       contexts.push(ctx);
       const page = await ctx.newPage();
+      page.on("console", (msg) => {
+        if (msg.type() === "error") pageErrors.push(msg.text().slice(0, 300));
+      });
+      page.on("pageerror", (e) => pageErrors.push(`pageerror: ${String(e?.message ?? e).slice(0, 300)}`));
+      // Installed BEFORE the first navigation: the Maps loader is a <script>
+      // in the create-delivery page and every Places RPC follows it.
+      await relayGoogleMaps(page, {
+        onCall: (method, host, pathname, status) => {
+          const k = `${method} ${host}${pathname.replace(/\/[A-Za-z0-9_-]{20,}/g, "/…")} → ${status}`;
+          googleCalls.set(k, (googleCalls.get(k) ?? 0) + 1);
+        },
+      });
       await page.goto(`${BASE}/sign-in`, { waitUntil: "domcontentloaded" });
       const emailField = fieldLabel(page, "Email");
       try {
@@ -299,7 +315,7 @@ async function main() {
     check("U13", "the deterministic policy was recorded on the session after the confirmation",
       afterConfirm[3] !== "-" &&
         sql(`select policy_version from public.couranr_intake_sessions where id='${sessionId}'`) ===
-          "couranr-shipment-policy-v0-2026-09-02",
+          "couranr-shipment-policy-v1-2026-09-03",
       sessionRow());
     await page.waitForTimeout(600);
     check("U14", "a TRUSTED fact reflects into the structured form: exact mode, 20 lb",
@@ -310,6 +326,27 @@ async function main() {
     check("U15", "the panel now says 'You told us' for the weight",
       /You told us:[\s\S]*Weight \(lb\): 20/.test(body2));
     await page.screenshot({ path: path.join(SHOTS, "U-confirmed.png"), fullPage: true });
+
+    /* ═══════════ 2b. the safety declaration is the priority-1 question ═══ */
+
+    console.log("\nSafety — no declaration, no automatic quote; the merchant confirms 'none'");
+    check("U15b", "with no declaration the deterministic policy is needs_review and asks the safety question FIRST",
+      sql(`select policy_disposition||'|'||(current_clarification->>'factKey')||'|'||(current_clarification->>'priority')
+             from public.couranr_intake_sessions where id='${sessionId}'`),
+      "needs_review|restricted_class|1");
+    check("U15c", "the structured Restricted-items control defaults to 'unknown' — nothing is pre-selected on the merchant's behalf",
+      (await fieldLabel(page, "Restricted items").inputValue()) === "unknown");
+    const declared = await intakeRoundTrip(page, () =>
+      page.getByRole("button", { name: /None of these — I confirm/ }).click()
+    );
+    check("U15d", "confirming 'none' is a merchant statement, recorded as such",
+      declared.status() === 200 && fact(sessionId, "restricted_class") === '"none"|confirmed|merchant_statement|-',
+      fact(sessionId, "restricted_class"));
+    check("U15e", "... and ONLY THEN is the policy allowed",
+      sql(`select policy_disposition from public.couranr_intake_sessions where id='${sessionId}'`) === "allowed");
+    await page.waitForTimeout(400);
+    check("U15f", "the trusted declaration reflects into the structured control",
+      (await fieldLabel(page, "Restricted items").inputValue()) === "none");
 
     /* ═══════════ 3. hostile update, and a withdrawn fact ══════════════ */
 
@@ -335,9 +372,13 @@ async function main() {
       sql(`select count(*) from public.couranr_intake_fact_events
             where session_id='${sessionId}' and fact_key='weight_lb_exact'
               and event='ai_disagreement_retained'`) === "1");
+    check("U20b", "the deterministic text scan ran over the hostile words and found no restricted-item signal",
+      sql(`select (restricted_signal_scan->>'material')||'|'||jsonb_array_length(restricted_signal_scan->'signals')
+             from public.couranr_intake_sessions where id='${sessionId}'`) === "false|0",
+      sql(`select restricted_signal_scan::text from public.couranr_intake_sessions where id='${sessionId}'`));
     check("U21", "nothing outside the closed vocabulary became a fact ('allowed', 'charge', 'review')",
       sql(`select count(*) from public.couranr_intake_facts where session_id='${sessionId}'
-            and fact_key not in ('weight_lb_exact','package_count')`) === "0");
+            and fact_key not in ('weight_lb_exact','package_count','restricted_class')`) === "0");
     const body3 = await mainText(page);
     check("U22", "the withdrawn package count is gone from the panel",
       !/Packages: 12/.test(body3) && /Weight \(lb\): 20/.test(body3));
@@ -387,11 +428,131 @@ async function main() {
     const anonRead = await fetch(`${BASE}/api/couranr/intake/${sessionId}?businessAccountId=${bizId}`);
     check("U30", "anonymous cannot read one", anonRead.status === 401, `status=${anonRead.status}`);
 
-    /* ═══════════ 5. what this run cannot reach ════════════════════════ */
+    /* ═══════════ 5. calculate with the intake session — the whole chain ═══ */
 
-    inconclusive("U31", "calculate estimate with the intake session (sync + link + commit)",
-      "Google Places cannot render here and the routed commands need server-side Place Details/Routes; " +
-        "proved at the database layer (SI-25..30, SI-41..46) and by tests/couranr-intake-sync.test.ts");
+    console.log("\nCalculate — Places, Routes, sync, link, commit");
+    const hasKeys = existsSync(path.join(ROOT, ".env.local")) &&
+      /^NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=\S+/m.test(readFileSync(path.join(ROOT, ".env.local"), "utf8")) &&
+      /^GOOGLE_MAPS_SERVER_API_KEY=\S+/m.test(readFileSync(path.join(ROOT, ".env.local"), "utf8"));
+    if (!hasKeys) {
+      inconclusive("U31", "calculate estimate with the intake session (sync + link + commit)",
+        "no NEXT_PUBLIC_GOOGLE_MAPS_API_KEY / GOOGLE_MAPS_SERVER_API_KEY in .env.local — " +
+          "proved at the database layer (SI-25..30, SI-41..46) and by tests/couranr-intake-sync.test.ts");
+    } else {
+      /**
+       * Select a place in the REAL widget. `PlaceAutocompleteElement` keeps its
+       * input behind a closed shadow root, so no locator can reach it: focus
+       * the element itself (it delegates focus), type, take the first
+       * prediction with the keyboard. Measured in a probe: gmp-select fires
+       * ~4 s later with the resolved formatted address.
+       */
+      async function pickPlace(index, text) {
+        const widget = page.locator("gmp-place-autocomplete").nth(index);
+        await widget.waitFor({ state: "attached", timeout: 60_000 });
+        await widget.click();
+        await page.keyboard.type(text);
+        await page.waitForTimeout(2500);
+        await page.keyboard.press("ArrowDown");
+        await page.keyboard.press("Enter");
+        await page.getByText("Selected address").nth(index).waitFor({ state: "visible", timeout: 30_000 });
+      }
+
+      await page.locator("gmp-place-autocomplete").nth(1).waitFor({ state: "attached", timeout: 90_000 }).catch(() => {});
+      const widgetCount = await page.locator("gmp-place-autocomplete").count();
+      const bannerUp = /Address search is unavailable/.test(await mainText(page));
+      check("U31", "the Places widgets render — real Maps JS through the relay, real browser key",
+        widgetCount === 2 && !bannerUp, `widgets=${widgetCount} banner=${bannerUp}`);
+      if (widgetCount !== 2 || bannerUp) {
+        await page.screenshot({ path: path.join(SHOTS, "FAIL-places.png"), fullPage: true }).catch(() => {});
+        console.log(`  page errors: ${JSON.stringify(pageErrors.slice(0, 8))}`);
+        for (const [k, n] of googleCalls) console.log(`    ${k} × ${n}`);
+      }
+
+      await pickPlace(0, "1300 Courthouse Rd, Stafford, VA");
+      await pickPlace(1, "Stafford Regional Airport, Stafford, VA");
+      const selectedText = await mainText(page);
+      const resolvedVa = selectedText.match(/Selected address\s+[^\n]*?, VA \d{5}, USA/g) ?? [];
+      check("U31b", "both selections resolved to formatted Virginia addresses through real Place Details (the airport is postal-addressed Fredericksburg)",
+        resolvedVa.length === 2 && /1300 Courthouse Rd, Stafford, VA 22554/.test(selectedText),
+        JSON.stringify(resolvedVa));
+      await page.screenshot({ path: path.join(SHOTS, "U-places-selected.png"), fullPage: true });
+
+      const created = page.waitForResponse(
+        (r) => r.request().method() === "POST" && /\/api\/couranr\/delivery-requests$/.test(new URL(r.url()).pathname),
+        { timeout: 60_000 }
+      );
+      await page.getByRole("button", { name: /calculate estimate/i }).click();
+      const createRes = await created;
+      check("U32", "calculate creates the draft through the real route (server-side Place Details + Routes v2)",
+        createRes.status() === 201 || createRes.status() === 200, `status=${createRes.status()}`);
+      await page.getByRole("button", { name: /submit for couranr review/i }).waitFor({ state: "visible", timeout: 45_000 });
+      await page.screenshot({ path: path.join(SHOTS, "U-quote.png"), fullPage: true });
+
+      const reqRow = () => sql(`select r.id||'|'||coalesce(r.weight_lb::text,'-')||'|'||coalesce(r.weight_band,'-')
+             ||'|'||coalesce(q.distance_source,'-')||'|'||coalesce((q.route_distance_meters>0)::text,'-')||'|'||r.quote_status||'|'||r.version
+             from public.couranr_delivery_requests r
+             left join lateral (select distance_source, route_distance_meters from public.couranr_quote_versions
+                                 where request_id=r.id order by quote_number desc limit 1) q on true
+             where r.business_account_id='${bizId}' order by r.created_at desc limit 1`);
+      const [reqId, wLb, wBand, src, hasDist, qStatus] = reqRow().split("|");
+      check("U33", "the request carries the EXACT weight the merchant confirmed, from Google routing evidence",
+        wLb === "20.00" && wBand === "-" && src === "google_routes_v2" && hasDist === "true", reqRow());
+      check("U34", "... and it priced as an estimate", qStatus === "estimated", qStatus);
+      check("U35", "the intake session is LINKED to the request it produced",
+        sql(`select (request_id='${reqId}')::text from public.couranr_intake_sessions where id='${sessionId}'`) === "true");
+      check("U36", "the form's service level, timing and safety declaration were synced into the fact record as merchant statements",
+        fact(sessionId, "service_level") === '"standard"|confirmed|merchant_statement|-' &&
+          fact(sessionId, "timing_intent") === '"asap"|confirmed|merchant_statement|-' &&
+          fact(sessionId, "restricted_class") === '"none"|confirmed|merchant_statement|-',
+        `${fact(sessionId, "service_level")} / ${fact(sessionId, "timing_intent")} / ${fact(sessionId, "restricted_class")}`);
+      check("U36b", "the request row carries the declaration, and the create was the ATOMIC create-from-intake command",
+        sql(`select r.restricted_class||'|'||(e.to_value->>'command')
+               from public.couranr_delivery_requests r
+               join public.couranr_intake_fact_events e on e.session_id='${sessionId}' and e.event='committed_to_request'
+              where r.id='${reqId}' order by e.created_at asc limit 1`) === "none|create_request_from_intake");
+      check("U37", "Quote 1's snapshot says the weight was EXACT knowledge",
+        sql(`select quote_number||'|'||(shipment_snapshot->>'weightKnowledge') from public.couranr_quote_versions
+              where request_id='${reqId}' order by quote_number desc limit 1`) === "1|exact");
+
+      /* ---- the merchant changes their mind: exact → band, through the UI ---- */
+      await page.getByRole("button", { name: /back to details/i }).click();
+      await fieldLabel(page, "Weight").waitFor({ state: "visible", timeout: 30_000 });
+      await fieldLabel(page, "Weight").selectOption("over_25_to_50_lb");
+      const estimated = page.waitForResponse(
+        (r) => r.request().method() === "POST" && /\/estimate$/.test(new URL(r.url()).pathname),
+        { timeout: 60_000 }
+      );
+      await page.getByRole("button", { name: /calculate estimate/i }).click();
+      const estRes = await estimated;
+      check("U38", "re-calculating with a band goes through the estimate route", estRes.status() === 200, `status=${estRes.status()}`);
+      await page.getByRole("button", { name: /submit for couranr review/i }).waitFor({ state: "visible", timeout: 45_000 });
+      await page.screenshot({ path: path.join(SHOTS, "U-band-quote.png"), fullPage: true });
+
+      const [, wLb2, wBand2] = reqRow().split("|");
+      check("U39", "the request now carries the BAND with a NULL exact weight",
+        wLb2 === "-" && wBand2 === "over_25_to_50_lb", reqRow());
+      check("U40", "the confirmed exact weight was WITHDRAWN (authority unknown) and the band confirmed — the form is the later statement",
+        fact(sessionId, "weight_lb_exact").startsWith("null|unknown|") &&
+          fact(sessionId, "weight_band") === '"over_25_to_50_lb"|confirmed|merchant_statement|-',
+        `${fact(sessionId, "weight_lb_exact")} / ${fact(sessionId, "weight_band")}`);
+      check("U41", "... and the withdrawal is audited",
+        sql(`select count(*) from public.couranr_intake_fact_events
+              where session_id='${sessionId}' and fact_key='weight_lb_exact' and event='retracted'`) === "1");
+      check("U42", "Quote 2 exists, says BAND knowledge, and carries the +$3.00 band line",
+        sql(`select quote_number||'|'||(shipment_snapshot->>'weightKnowledge')||'|'||
+                    coalesce((select sum((li->>'amountCents')::int) from jsonb_array_elements(quote_line_items) li
+                              where li->>'code'='weight_band'),0)
+               from public.couranr_quote_versions where request_id='${reqId}' order by quote_number desc limit 1`) === "2|band|300");
+      check("U43", "the band estimate was COMMITTED through the intake wrapper (audited binding) — one create, one commit",
+        sql(`select string_agg(to_value->>'command', ',' order by created_at) from public.couranr_intake_fact_events
+              where session_id='${sessionId}' and event='committed_to_request'`) === "create_request_from_intake,commit_intake_to_request");
+      check("U44", "the deterministic policy was re-evaluated after the sync",
+        sql(`select policy_disposition from public.couranr_intake_sessions where id='${sessionId}'`) !== "");
+
+      console.log("\n  Google calls relayed for the page (method host/path → status × count):");
+      for (const [k, n] of googleCalls) console.log(`    ${k} × ${n}`);
+      if (pageErrors.length) console.log(`  page errors: ${JSON.stringify(pageErrors.slice(0, 8))}`);
+    }
 
     console.log(`\n  ${passed} passed, ${failed} failed, ${inconclusiveCount} inconclusive`);
     if (failed > 0) process.exitCode = 1;

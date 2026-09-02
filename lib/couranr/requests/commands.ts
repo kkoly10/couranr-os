@@ -13,6 +13,8 @@ import {
 } from "@/lib/couranr/routing/googleRoutes";
 import type { GoogleAddressSnapshot } from "@/lib/couranr/routing/address";
 import { applyShipmentPolicyToQuote } from "@/lib/couranr/shipment/quoteStatus";
+import { evaluateShipmentPolicy, type PolicyDisposition } from "@/lib/couranr/shipment/policy";
+import { factsFromDraft } from "@/lib/couranr/shipment/draftFacts";
 import {
   evaluateAndRecordIntakePolicy,
   isIntakeFailure,
@@ -78,6 +80,10 @@ export const RPC = {
   // P5-001 §26: the routed estimate, wrapped so the shipment arguments are
   // re-validated against the CURRENT trusted intake facts in one transaction.
   commitIntake: "couranr_commit_intake_to_request",
+  // §3 (correction pass): the routed CREATE, wrapped the same way — one
+  // transaction that locks the session, requires the expected revision and
+  // current policy, re-validates the facts, creates, links and audits.
+  createFromIntake: "couranr_create_request_from_intake",
   submit: "couranr_submit_delivery_request_v2",
   beginReview: "couranr_begin_delivery_request_review",
   accept: "couranr_accept_delivery_request_as_quoted",
@@ -126,6 +132,7 @@ const REQUEST_COLUMN_LIST = [
   "loaded_miles",
   "weight_lb",
   "weight_band",
+  "restricted_class",
   "timing_intent",
   "requested_pickup_local",
   "operating_timezone",
@@ -328,6 +335,9 @@ export function shipmentArgs(
     p_recipient_email: draft.recipientEmail,
     p_weight_lb: draft.weightLb,
     p_weight_band: draft.weightBand,
+    // The merchant's shipment-safety declaration; the database refuses an
+    // estimated quote without a trusted "none".
+    p_restricted_class: draft.restrictedClass,
     p_additional_stops: draft.additionalStops,
     p_service_level: draft.serviceLevel,
     p_signature_required: draft.signatureRequired,
@@ -430,9 +440,31 @@ async function applyIntakePolicy(
   operation: string,
   quote: QuoteResult,
   intakeSessionId: string | null | undefined,
-  businessAccountId: string
-): Promise<CommandResult<{ quote: QuoteResult; intakeRevision: number | null }>> {
-  if (!intakeSessionId) return { ok: true, value: { quote, intakeRevision: null } };
+  businessAccountId: string,
+  /**
+   * The structured statement to evaluate when there is NO intake session —
+   * the manual path. It is a merchant statement, so it is evaluated by the
+   * same deterministic policy as the AI path; without a trusted safety
+   * declaration it lands in review exactly like an intake session would.
+   */
+  manual: Parameters<typeof factsFromDraft>[0] | null
+): Promise<CommandResult<{
+  quote: QuoteResult;
+  intakeRevision: number | null;
+  policyDisposition: PolicyDisposition | null;
+}>> {
+  if (!intakeSessionId) {
+    if (!manual) return { ok: true, value: { quote, intakeRevision: null, policyDisposition: null } };
+    const policy = evaluateShipmentPolicy(factsFromDraft(manual));
+    return {
+      ok: true,
+      value: {
+        quote: applyShipmentPolicyToQuote(quote, policy),
+        intakeRevision: null,
+        policyDisposition: policy.disposition,
+      },
+    };
+  }
   const snapshot = await loadIntakePolicySnapshot({
     sessionId: intakeSessionId,
     businessAccountId,
@@ -446,11 +478,22 @@ async function applyIntakePolicy(
     });
   }
   const { policy, currentRevision } = snapshot.value;
+  if (!policy) {
+    // Every intake path evaluates policy before pricing; a session with no
+    // evaluation is a programming error, not a shipment with no concerns.
+    return fail({
+      operation,
+      code: "conflict",
+      detail: { intakeSessionId, reason: "policy not evaluated" },
+      message: "The shipment could not be evaluated. Try again.",
+    });
+  }
   return {
     ok: true,
     value: {
-      quote: policy ? applyShipmentPolicyToQuote(quote, policy) : quote,
+      quote: applyShipmentPolicyToQuote(quote, policy),
       intakeRevision: currentRevision,
+      policyDisposition: policy.disposition,
     },
   };
 }
@@ -477,6 +520,7 @@ async function syncIntakeWithForm(
     statement: {
       weightLb: draft.weightLb,
       weightBand: draft.weightBand,
+      restrictedClass: draft.restrictedClass,
       serviceLevel: draft.serviceLevel,
       timingIntent: draft.timingIntent,
       requestedPickupLocal: draft.requestedPickupLocal,
@@ -566,9 +610,11 @@ export async function createDeliveryRequestDraft(params: {
     );
     if (isCommandFailure(synced)) return synced;
   }
-  const adjusted = await applyIntakePolicy(op, routed.quote, params.intakeSessionId, params.businessAccountId);
+  const adjusted = await applyIntakePolicy(
+    op, routed.quote, params.intakeSessionId, params.businessAccountId, draft
+  );
   if (isCommandFailure(adjusted)) return adjusted;
-  const quote = adjusted.value.quote;
+  const { quote, intakeRevision, policyDisposition } = adjusted.value;
 
   // Only an INPUT-invalid quote is refused as bad input. A policy-PROHIBITED
   // quote is also `invalid` but with zero validation errors — that one is
@@ -588,7 +634,7 @@ export async function createDeliveryRequestDraft(params: {
   // Idempotency is enforced by the function on (business_account_id,
   // idempotency_key), so a retry returns the original and appends no second
   // creation event.
-  const result = await callRpc(op, RPC.create, {
+  const createArgs = {
     p_business_account_id: params.businessAccountId,
     p_created_by: params.actor.userId,
     p_idempotency_key: params.idempotencyKey,
@@ -596,18 +642,22 @@ export async function createDeliveryRequestDraft(params: {
     ...routeArgs(routed.route),
     ...timingArgs(routed.timing),
     ...quoteArgs(quote),
-  });
+  };
+  // A shipment that came through Smart Intake is created through the atomic
+  // wrapper: the session is locked, the intake revision and the policy it was
+  // priced under must still be current, the facts are re-validated, and the
+  // link and audit land in the SAME transaction as the request and Quote 1.
+  // There is no after-the-fact linkage gap for a stale revision to slip into.
+  const result =
+    params.intakeSessionId && intakeRevision !== null
+      ? await callRpc(op, RPC.createFromIntake, {
+          p_session_id: params.intakeSessionId,
+          p_expected_intake_revision: intakeRevision,
+          p_expected_policy_disposition: policyDisposition,
+          ...createArgs,
+        })
+      : await callRpc(op, RPC.create, createArgs);
   if (isCommandFailure(result)) return result;
-
-  // The session started before the request existed; bind it now so the
-  // evidence Ops reads on this request is the conversation that produced it.
-  // Idempotent on replay (same request), refused for a foreign request.
-  if (params.intakeSessionId) {
-    const bound = await bindIntakeToRequest(
-      op, params.intakeSessionId, params.businessAccountId, result.value.id
-    );
-    if (isCommandFailure(bound)) return bound;
-  }
 
   return {
     ok: true,
@@ -712,9 +762,25 @@ export async function calculateDeliveryRequestEstimate(params: {
     }
   }
 
-  const adjusted = await applyIntakePolicy(op, routed.quote, params.intakeSessionId, params.businessAccountId);
+  const adjusted = await applyIntakePolicy(
+    op,
+    routed.quote,
+    params.intakeSessionId,
+    params.businessAccountId,
+    // Manual path: the edited draft, or the stored shipment's own statement.
+    shipment !== null && params.rawInput !== undefined
+      ? (normalizeDeliveryRequestInput(params.rawInput) as { ok: true; value: DeliveryRequestDraft }).value
+      : {
+          weightLb: row.weight_lb === null || row.weight_lb === undefined ? null : Number(row.weight_lb),
+          weightBand: row.weight_band ?? null,
+          restrictedClass: row.restricted_class ?? "unknown",
+          serviceLevel: row.service_level,
+          timingIntent: row.timing_intent === "scheduled" ? "scheduled" : "asap",
+          requestedPickupLocal: row.requested_pickup_local ?? null,
+        }
+  );
   if (isCommandFailure(adjusted)) return adjusted;
-  const { quote, intakeRevision } = adjusted.value;
+  const { quote, intakeRevision, policyDisposition } = adjusted.value;
 
   // Input-invalid is refused; policy-prohibited `invalid` (zero validation
   // errors) is persisted — see createDeliveryRequestDraft for why.
@@ -751,6 +817,7 @@ export async function calculateDeliveryRequestEstimate(params: {
       ? await callRpc(op, RPC.commitIntake, {
           p_session_id: params.intakeSessionId,
           p_expected_intake_revision: intakeRevision,
+          p_expected_policy_disposition: policyDisposition,
           ...estimateArgs,
         })
       : await callRpc(op, RPC.estimate, estimateArgs);
@@ -1274,6 +1341,7 @@ function shipmentArgsFromRow(
     p_recipient_email: row.recipient_email,
     p_weight_lb: row.weight_lb,
     p_weight_band: row.weight_band ?? null,
+    p_restricted_class: row.restricted_class ?? null,
     p_additional_stops: row.additional_stops,
     p_service_level: row.service_level,
     p_signature_required: row.signature_required,

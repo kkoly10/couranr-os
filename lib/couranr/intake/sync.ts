@@ -18,7 +18,7 @@
  *     revision bump, no audit noise.
  *   - A trusted fact the form contradicts is OVERRIDDEN (the audit trail says
  *     so); a proposal or unknown is CONFIRMED.
- *   - Only the five commercial keys the commit check compares are touched.
+ *   - Only the six commercial/safety keys the commit check compares are touched.
  *     Everything else the conversation produced stands as it is.
  */
 
@@ -29,6 +29,7 @@ import {
   validateFactValue,
   type FactAuthority,
   type FactKey,
+  type RestrictedClassDeclaration,
   type WeightBand,
 } from "@/lib/couranr/shipment/facts";
 
@@ -38,6 +39,8 @@ assertServerOnly("lib/couranr/intake/sync.ts");
 export type IntakeFormStatement = {
   weightLb: number | null;
   weightBand: WeightBand | null;
+  /** The shipment-safety declaration — always stated by the form. */
+  restrictedClass: RestrictedClassDeclaration;
   serviceLevel: string;
   timingIntent: TimingIntent;
   requestedPickupLocal: string | null;
@@ -54,10 +57,11 @@ export type FactSyncStep =
   | { op: "confirm"; factKey: FactKey; value: unknown; authority: "confirmed" | "overridden" }
   | { op: "retract"; factKey: FactKey };
 
-/** The five keys `couranr_commit_intake_to_request` compares. */
+/** The six keys the commit commands compare against the trusted facts. */
 export const SYNCED_FACT_KEYS = [
   "weight_lb_exact",
   "weight_band",
+  "restricted_class",
   "service_level",
   "timing_intent",
   "requested_pickup_local",
@@ -101,6 +105,7 @@ export function planIntakeFactSync(
     withdraw("weight_lb_exact");
   }
 
+  state("restricted_class", statement.restrictedClass);
   state("service_level", statement.serviceLevel);
   state("timing_intent", statement.timingIntent);
   if (statement.timingIntent === "scheduled" && statement.requestedPickupLocal !== null) {

@@ -38,11 +38,49 @@
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  GATEWAY_PORT,
+  POSTGREST_PORT,
+  PORT_SETTLE_MS,
+  waitForPortFree,
+} from "../e2e/disposable/gateway.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const argv = process.argv.slice(2);
+
+/**
+ * Wait for the disposable stack's two fixed ports to be free before a stage
+ * that will bind them starts.
+ *
+ * WHY. One `ci:local --all` run went red on five tier-3 suites — release
+ * route, acceptance, messaging, auth gateway, customer help fragments: every
+ * suite that starts the auth gateway — each within four seconds of starting,
+ * each on "127.0.0.1:55434 is already in use", and each passing when run by
+ * itself afterwards. The holder was not a stage in this chain: `spawnSync`
+ * returns only after the stage's own process has exited, and a closed listen
+ * handle releases its port synchronously (measured at 7 ms). It was a process
+ * OUTSIDE the chain — a suite started by hand or by another session — that
+ * the instant refusal turned into five red stages that read as product
+ * defects. So: before each such stage, wait a bounded time for both ports and
+ * print who is holding them; if they never free, fail the stage on THAT
+ * sentence, with the pid, rather than on the suite's cascade.
+ *
+ * Returns the lines to print (empty when nothing had to wait). Throws with the
+ * holder named when a port stays busy for `PORT_SETTLE_MS`.
+ */
+async function settleDisposablePorts() {
+  const notes = [];
+  for (const [port, label] of [
+    [POSTGREST_PORT, "PostgREST"],
+    [GATEWAY_PORT, "the auth gateway"],
+  ]) {
+    await waitForPortFree(port, label, { log: (m) => notes.push(m) });
+  }
+  return notes;
+}
 
 /** The same resolution order `scripts/provisionPostgrest.mjs` uses. */
 function postgrestPresent() {
@@ -143,6 +181,7 @@ const STAGES = [
     name: script,
     run: ["npm", ["run", script]],
     why,
+    settle: settleDisposablePorts,
     needs: () => {
       if (!want.db) return "tier 3 not requested — pass --db or --all";
       // Every tier-3 suite spawns PostgREST. Without the binary each one dies
@@ -216,6 +255,7 @@ const STAGES = [
     name: "test:smart-intake-ui",
     run: ["npm", ["run", "test:smart-intake-ui"]],
     why: "P5-001 Smart Intake panel driven in a real browser against the disposable stack — describe, suggest-not-prefill, confirm, hostile update, refusals",
+    settle: settleDisposablePorts,
     needs: () => {
       if (!want.browser) return "tier 4 not requested — pass --browser or --all";
       // Runs `next dev` on its own distDir over the disposable database (the
@@ -268,6 +308,35 @@ if (argv.includes("--self-test")) {
   const r = spawnSync("node", ["-e", "process.exit(3)"], { cwd: ROOT, encoding: "utf8" });
   control("a stage that exits non-zero is a failure", r.status === 0 ? null : `exit ${r.status}`, true);
 
+  // And the settle step must refuse a port another process holds, naming the
+  // holder, rather than pass and let the suite discover it four seconds in.
+  // An OS-assigned port, so this never touches 55433/55434 beside a live suite.
+  {
+    const holder = net.createServer();
+    await new Promise((r) => holder.listen(0, "127.0.0.1", r));
+    const port = holder.address().port;
+    let refusal = null;
+    try {
+      await waitForPortFree(port, "settle control", { timeoutMs: 400, log: () => {} });
+    } catch (e) {
+      refusal = e.message;
+    }
+    await new Promise((r) => holder.close(r));
+    control("a port held by another process is refused", refusal, true);
+    control(
+      `the refusal names the holder pid (${process.pid})`,
+      refusal && refusal.includes(`pid ${process.pid}`) ? null : `holder not named in: ${refusal}`,
+      false,
+    );
+    let freed = null;
+    try {
+      await waitForPortFree(port, "settle control", { timeoutMs: 400, log: () => {} });
+    } catch (e) {
+      freed = e.message;
+    }
+    control("the same port is accepted once released", freed, false);
+  }
+
   process.exit(bad ? 1 : 0);
 }
 
@@ -295,6 +364,22 @@ for (const stage of STAGES) {
     continue;
   }
   const [cmd, args] = stage.run;
+  if (stage.settle) {
+    let notes;
+    try {
+      notes = await stage.settle();
+    } catch (e) {
+      const [first, ...rest] = String(e.message || e).split("\n");
+      console.log(`── tier ${stage.tier} · ${stage.name} … FAIL (settle) — ${first}`);
+      console.log(rest.map((l) => `      ${l}`).join("\n"));
+      results.push({ ...stage, ok: false, failure: `settle: ${first}`, secs: (PORT_SETTLE_MS / 1000).toFixed(1) });
+      continue;
+    }
+    if (notes.length) {
+      console.log("   settle · waiting for the disposable ports so the suite does not fail at 4s on an EADDRINUSE that reads as a product defect:");
+      for (const n of notes) console.log(`   settle · ${n}`);
+    }
+  }
   process.stdout.write(`── tier ${stage.tier} · ${stage.name} … `);
   const t0 = Date.now();
   const r = spawnSync(cmd, args, { cwd: ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });

@@ -925,16 +925,22 @@
       ],
       "affected_database_objects": [],
       "affected_code_paths": [
+        "lib/couranr/routing/market.ts",
         "lib/serviceArea.ts:1-4"
       ],
       "conflict_with_current_code": {
         "code_value": {
-          "model": "60-mile radius from Stafford",
-          "named_markets": null
+          "model": "exact launch-market classifier (PR #38): Washington DC, Stafford VA, Woodbridge VA, Fredericksburg VA; both endpoints must be inside an exact auto-approved market, otherwise needs_review",
+          "named_markets": [
+            "Washington, DC",
+            "Stafford, VA",
+            "Woodbridge, VA",
+            "Fredericksburg, VA"
+          ]
         },
-        "code_location": "lib/serviceArea.ts:1-4",
-        "resolution": "Written authority wins. Code implements a single radius with no market concept.",
-        "remediation_commit": "separate reviewable service-area commit"
+        "code_location": "lib/couranr/routing/market.ts",
+        "resolution": "RESOLVED for the canonical Business route authority by PR #38 (lib/couranr/routing/market.ts). The historical 60-mile-radius module lib/serviceArea.ts:1-4 is stale legacy debt reachable only from the legacy site footer and is not authority; corrected 2026-09-03.",
+        "remediation_commit": "PR #38 (canonical market classifier); legacy footer module retirement remains legacy cleanup"
       },
       "implementation_phase": "3",
       "acceptance_criteria": [
@@ -1007,7 +1013,7 @@
           "origin": "Stafford"
         },
         "code_location": "lib/serviceArea.ts:1-4",
-        "resolution": "The code's radius is shipped-state evidence only, not an authority for the boundary.",
+        "resolution": "The code's radius is shipped-state evidence only, not an authority for the boundary. Since PR #38 the canonical Couranr Business route authority is the exact launch-market classifier in lib/couranr/routing/market.ts (Washington DC, Stafford VA, Woodbridge VA, Fredericksburg VA; both endpoints inside an exact market or needs_review). lib/serviceArea.ts is stale legacy debt whose only importer is the legacy site footer; it must not be made authoritative again (corrected 2026-09-03).",
         "remediation_commit": null
       },
       "implementation_phase": "3",

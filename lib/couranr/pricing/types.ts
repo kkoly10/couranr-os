@@ -123,6 +123,11 @@ export type ReviewReasonCode =
   | "timing_needs_review"
   /** Deterministic shipment policy demanded review; see the policy reasons. */
   | "shipment_policy_review"
+  /**
+   * No trusted shipment-safety declaration (restricted_class = none) exists.
+   * Without it there is no automatic `estimated` quote, AI or not.
+   */
+  | "safety_declaration_required"
   /** Confirmed prohibited shipment class — the quote is invalid, never priced. */
   | "shipment_prohibited"
   /**
@@ -138,6 +143,8 @@ export type ValidationErrorCode =
   | "loaded_miles_negative"
   | "weight_not_finite"
   | "weight_negative"
+  /** 0 lb is refused: unknown weight is a band, never a zero. */
+  | "weight_not_positive"
   /** A weightBand value outside the governed vocabulary. */
   | "weight_band_invalid"
   | "additional_stops_not_finite"

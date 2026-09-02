@@ -38,18 +38,25 @@ exception when undefined_table then
 end
 $evidence$;
 
+drop function if exists public.couranr_create_request_from_intake(
+  uuid,integer,text,uuid,uuid,text,text,text,text,text,text,text,
+  numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,
+  integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,
+  text,text,text,timestamptz,jsonb,text
+);
 drop function if exists public.couranr_commit_intake_to_request(
   uuid,integer,uuid,uuid,integer,uuid,boolean,text,text,text,text,text,text,
   numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,
   integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,
-  text,text,text,timestamptz,jsonb
+  text,text,text,timestamptz,jsonb,text,text
 );
 drop function if exists public.couranr_retract_intake_fact(uuid,uuid,uuid,text);
 drop function if exists public.couranr_link_intake_session(uuid,uuid,uuid);
-drop function if exists public.couranr_record_intake_policy(uuid,uuid,text,jsonb,jsonb,jsonb,text,text,jsonb,uuid);
+drop function if exists public.couranr_record_intake_policy(uuid,uuid,text,jsonb,jsonb,jsonb,text,text,jsonb,uuid,jsonb);
+drop function if exists private.couranr_assert_intake_policy_current(public.couranr_intake_sessions,text,text);
 drop function if exists public.couranr_confirm_intake_fact(uuid,uuid,uuid,text,jsonb,text);
-drop function if exists public.couranr_complete_intake_run(uuid,uuid,text,jsonb,text,integer,jsonb);
-drop function if exists public.couranr_begin_intake_run(uuid,uuid,integer,text,text,text,text,jsonb);
+drop function if exists public.couranr_complete_intake_run(uuid,uuid,text,jsonb,text,integer,jsonb,text,integer,integer);
+drop function if exists public.couranr_begin_intake_run(uuid,uuid,integer,text,text,text,text,jsonb,text);
 drop function if exists public.couranr_add_intake_revision(uuid,uuid,uuid,text,integer,text);
 drop function if exists public.couranr_create_intake_session(uuid,uuid,uuid,text,text);
 

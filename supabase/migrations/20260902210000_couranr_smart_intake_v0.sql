@@ -47,7 +47,7 @@ begin
      or to_regclass('public.couranr_quote_versions') is null then
     raise exception 'Smart Intake requires the Foundation request/quote spine';
   end if;
-  if to_regprocedure('public.couranr_calculate_routed_delivery_request_estimate(uuid,uuid,integer,uuid,boolean,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,text,text,text,timestamptz,jsonb)') is null then
+  if to_regprocedure('public.couranr_calculate_routed_delivery_request_estimate(uuid,uuid,integer,uuid,boolean,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,text,text,text,timestamptz,jsonb,text)') is null then
     raise exception 'Smart Intake requires the weight-band/timing arity of the routed estimate';
   end if;
 end
@@ -74,11 +74,18 @@ create table if not exists public.couranr_intake_sessions (
   policy_unresolved     jsonb not null default '[]'::jsonb,
   policy_version        text,
   operational_capability text,
+  /* The revision the stored policy was evaluated against. A commit requires
+     it to equal current_revision: an evaluation of yesterday's words is not
+     authority for today's. */
+  policy_revision       integer,
+  /* The deterministic lexical restricted-item scan of the current words,
+     kept as audit evidence beside the policy (escalation-only input). */
+  restricted_signal_scan jsonb,
   created_at            timestamptz not null default now(),
   updated_at            timestamptz not null default now(),
 
   constraint couranr_is_status_chk check (interpretation_status in
-    ('none','pending','interpreted','manual','provider_unavailable')),
+    ('none','pending','interpreted','manual','provider_unavailable','rate_limited')),
   constraint couranr_is_policy_chk check (policy_disposition is null
     or policy_disposition in ('allowed','needs_review','prohibited')),
   constraint couranr_is_capability_chk check (operational_capability is null
@@ -118,7 +125,12 @@ create table if not exists public.couranr_intake_runs (
   prompt_version      text not null,
   fact_schema_version text not null,
   provider            text not null,
+  /* Audit: the model the application ASKED for, and the model the provider
+     REPORTED serving; token counts as the provider reported them. */
+  requested_model     text,
   provider_model      text,
+  input_tokens        integer,
+  output_tokens       integer,
   idempotency_key     text not null,
   status              text not null default 'pending',
   -- §19 audit: what CLASSES of data went to the provider (never the payload
@@ -133,7 +145,8 @@ create table if not exists public.couranr_intake_runs (
 
   constraint couranr_ir_uniq unique (session_id, idempotency_key),
   constraint couranr_ir_status_chk check (status in
-    ('pending','success','timeout','unavailable','malformed','validation_failed','superseded')),
+    ('pending','success','timeout','unavailable','malformed','validation_failed','superseded',
+     'rate_limited')),
   constraint couranr_ir_revision_chk check (source_revision >= 1)
 );
 
@@ -326,7 +339,8 @@ create or replace function public.couranr_begin_intake_run(
   p_fact_schema_version text,
   p_provider            text,
   p_idempotency_key     text,
-  p_input_data_classes  jsonb
+  p_input_data_classes  jsonb,
+  p_requested_model     text default null
 )
 returns jsonb
 language plpgsql security invoker set search_path=''
@@ -337,6 +351,13 @@ declare
   -- multi-item INTO list, and the run leaves this function as jsonb anyway.
   v_run jsonb;
   v_claimed boolean;
+  v_existing public.couranr_intake_runs;
+  v_session_calls integer;
+  v_business_calls integer;
+  -- Launch limits (correction pass §4): paid provider invocations per rolling
+  -- hour. Persistent and server-authoritative: the audit rows ARE the counter.
+  c_session_budget constant integer := 12;
+  c_business_budget constant integer := 60;
 begin
   select * into v_session from public.couranr_intake_sessions
    where id = p_session_id and business_account_id = p_business_account_id;
@@ -358,14 +379,62 @@ begin
      and is the one that spends provider money; the other returns the
      pending run and waits for it. The `xmax = 0` test is the standard way
      to tell an inserted row from a conflict-updated one in one statement. */
+  /* Idempotent convergence first: a retry of the same logical operation
+     returns the existing run and spends nothing — before any budget is
+     consulted, so retries never eat the allowance. */
+  select * into v_existing from public.couranr_intake_runs
+   where session_id = p_session_id and idempotency_key = p_idempotency_key;
+  if found then
+    return jsonb_build_object('run', to_jsonb(v_existing), 'claimed', false);
+  end if;
+
+  if p_provider <> 'none' then
+    /* §4 paid-provider budget. The per-business advisory lock serializes
+       every "count then insert" for that business inside this transaction,
+       so two simultaneous requests cannot both see 59 and both proceed.
+       Rate-limited rows are audit evidence, not spend: they are excluded
+       from the count and carry a suffixed idempotency key so a later retry
+       (next hour) can claim a real run. */
+    perform pg_advisory_xact_lock(hashtext('couranr_intake_budget:' || p_business_account_id::text));
+    select count(*) into v_session_calls
+      from public.couranr_intake_runs
+     where session_id = p_session_id
+       and provider <> 'none' and status <> 'rate_limited'
+       and started_at > now() - interval '1 hour';
+    select count(*) into v_business_calls
+      from public.couranr_intake_runs r
+      join public.couranr_intake_sessions s on s.id = r.session_id
+     where s.business_account_id = p_business_account_id
+       and r.provider <> 'none' and r.status <> 'rate_limited'
+       and r.started_at > now() - interval '1 hour';
+    if v_session_calls >= c_session_budget or v_business_calls >= c_business_budget then
+      insert into public.couranr_intake_runs (
+        session_id, source_revision, prompt_version, fact_schema_version,
+        provider, requested_model, idempotency_key, input_data_classes, status, completed_at
+      ) values (
+        p_session_id, p_source_revision, p_prompt_version,
+        coalesce(p_fact_schema_version, v_session.fact_schema_version),
+        p_provider, p_requested_model,
+        p_idempotency_key || ':rate_limited:' || to_char(clock_timestamp(),'YYYYMMDDHH24MISSUS'),
+        coalesce(p_input_data_classes,'[]'::jsonb), 'rate_limited', now()
+      ) returning to_jsonb(couranr_intake_runs) into v_run;
+      update public.couranr_intake_sessions
+         set interpretation_status = 'rate_limited', updated_at = now()
+       where id = p_session_id;
+      return jsonb_build_object('run', v_run, 'claimed', false, 'rateLimited', true,
+                                'sessionCallsLastHour', v_session_calls,
+                                'businessCallsLastHour', v_business_calls);
+    end if;
+  end if;
+
   insert into public.couranr_intake_runs as r (
     session_id, source_revision, prompt_version, fact_schema_version,
-    provider, idempotency_key, input_data_classes, status
+    provider, requested_model, idempotency_key, input_data_classes, status
   ) values (
     p_session_id, p_source_revision, p_prompt_version,
     coalesce(p_fact_schema_version, v_session.fact_schema_version),
-    p_provider, p_idempotency_key, coalesce(p_input_data_classes,'[]'::jsonb),
-    'pending'
+    p_provider, p_requested_model, p_idempotency_key,
+    coalesce(p_input_data_classes,'[]'::jsonb), 'pending'
   )
   on conflict (session_id, idempotency_key)
     do update set idempotency_key = excluded.idempotency_key
@@ -388,7 +457,12 @@ create or replace function public.couranr_complete_intake_run(
   p_proposals           jsonb,
   p_output_hash         text,
   p_latency_ms          integer,
-  p_clarification       jsonb
+  p_clarification       jsonb,
+  /* Provider audit (correction pass §1): the model the provider reported and
+     the token counts it supplied, when it supplied them. */
+  p_provider_model      text default null,
+  p_input_tokens        integer default null,
+  p_output_tokens       integer default null
 )
 returns public.couranr_intake_runs
 language plpgsql security invoker set search_path=''
@@ -438,6 +512,9 @@ begin
          proposals = p_proposals,
          output_hash = p_output_hash,
          latency_ms = p_latency_ms,
+         provider_model = coalesce(p_provider_model, provider_model),
+         input_tokens = p_input_tokens,
+         output_tokens = p_output_tokens,
          completed_at = now()
    where id = p_run_id
   returning * into v_run;
@@ -715,7 +792,9 @@ create or replace function public.couranr_record_intake_policy(
      run that has since been superseded must NOT overwrite the current
      clarification/policy — the same §6 stale rule, one layer up. Null means
      a manual-path evaluation with no run. */
-  p_run_id                uuid default null
+  p_run_id                uuid default null,
+  /* The deterministic lexical scan of the current words (audit evidence). */
+  p_restricted_signals    jsonb default null
 )
 returns public.couranr_intake_sessions
 language plpgsql security invoker set search_path=''
@@ -742,6 +821,10 @@ begin
          policy_version = p_policy_version,
          operational_capability = p_operational_capability,
          current_clarification = p_clarification,
+         -- The evaluation is stamped with the revision it read, so a commit
+         -- can refuse a policy computed for words that have since changed.
+         policy_revision = current_revision,
+         restricted_signal_scan = p_restricted_signals,
          updated_at = now()
    where id = p_session_id and business_account_id = p_business_account_id
   returning * into v_session;
@@ -780,7 +863,12 @@ create or replace function public.couranr_commit_intake_to_request(
   p_timing_intent text default null,
   p_requested_pickup_local text default null,
   p_requested_departure_at timestamptz default null,
-  p_timing_review_reasons jsonb default null
+  p_timing_review_reasons jsonb default null,
+  p_restricted_class text default null,
+  /* The disposition the application priced under. Must equal the CURRENT
+     stored policy, which must itself have been evaluated at the current
+     revision — otherwise the quote was computed from obsolete policy. */
+  p_expected_policy_disposition text default null
 )
 returns public.couranr_delivery_requests
 language plpgsql security invoker set search_path=''
@@ -802,6 +890,7 @@ begin
   if v_session.current_revision is distinct from p_expected_intake_revision then
     raise exception 'stale_intake_revision' using errcode='CR409';
   end if;
+  perform private.couranr_assert_intake_policy_current(v_session, p_expected_policy_disposition, p_quote_status);
 
   /* Each TRUSTED commercial fact must match the argument being committed.
      A mismatch means the application read old facts — refuse, never guess. */
@@ -809,12 +898,15 @@ begin
     select * from public.couranr_intake_facts
      where session_id = p_session_id
        and authority in ('confirmed','overridden')
-       and fact_key in ('weight_lb_exact','weight_band','service_level',
+       and fact_key in ('weight_lb_exact','weight_band','restricted_class','service_level',
                         'timing_intent','requested_pickup_local')
   loop
     if v_fact.fact_key = 'weight_lb_exact'
        and p_weight_lb is distinct from (v_fact.value #>> '{}')::numeric then
       raise exception 'intake_fact_mismatch: weight_lb_exact' using errcode='CR409';
+    elsif v_fact.fact_key = 'restricted_class'
+       and p_restricted_class is distinct from (v_fact.value #>> '{}') then
+      raise exception 'intake_fact_mismatch: restricted_class' using errcode='CR409';
     elsif v_fact.fact_key = 'weight_band'
        and p_weight_band is distinct from (v_fact.value #>> '{}') then
       raise exception 'intake_fact_mismatch: weight_band' using errcode='CR409';
@@ -842,7 +934,7 @@ begin
     p_quote_status,p_pricing_policy_version,p_delivery_subtotal_cents,
     p_included_loaded_miles,p_billable_loaded_miles,p_quote_line_items,
     p_review_reasons,p_weight_band,p_timing_intent,p_requested_pickup_local,
-    p_requested_departure_at,p_timing_review_reasons
+    p_requested_departure_at,p_timing_review_reasons,p_restricted_class
   );
 
   insert into public.couranr_intake_fact_events(
@@ -851,10 +943,165 @@ begin
     p_session_id, 'weight_band', 'committed_to_request',
     jsonb_build_object('requestId', p_request_id,
                        'requestVersion', v_req.version,
-                       'intakeRevision', p_expected_intake_revision),
+                       'intakeRevision', p_expected_intake_revision,
+                       'policyDisposition', v_session.policy_disposition,
+                       'command', 'commit_intake_to_request'),
     p_actor_user_id
   );
 
+  return v_req;
+end
+$fn$;
+
+/* Shared by both commit commands: the stored deterministic policy must be
+   CURRENT (evaluated at the current revision), must be what the application
+   priced under, and the quote status must be consistent with it. */
+create or replace function private.couranr_assert_intake_policy_current(
+  p_session public.couranr_intake_sessions,
+  p_expected_policy_disposition text,
+  p_quote_status text
+) returns void language plpgsql security invoker set search_path='' as $fn$
+begin
+  if p_session.policy_disposition is null
+     or p_session.policy_revision is distinct from p_session.current_revision then
+    raise exception 'intake_policy_stale' using errcode='CR409';
+  end if;
+  if p_expected_policy_disposition is not null
+     and p_session.policy_disposition is distinct from p_expected_policy_disposition then
+    raise exception 'intake_policy_mismatch' using errcode='CR409';
+  end if;
+  if p_session.policy_disposition = 'prohibited' and p_quote_status <> 'invalid' then
+    raise exception 'prohibited_requires_invalid_quote' using errcode='CR422';
+  end if;
+  if p_session.policy_disposition = 'needs_review' and p_quote_status = 'estimated' then
+    raise exception 'review_requires_non_estimated_quote' using errcode='CR422';
+  end if;
+end
+$fn$;
+revoke all on function private.couranr_assert_intake_policy_current(public.couranr_intake_sessions,text,text)
+  from public, anon, authenticated;
+
+/* §3 (correction pass) — ATOMIC initial create-from-intake. The same
+   architecture as the estimate wrapper, for the FIRST quote: one
+   transaction that locks the session, requires the expected revision,
+   verifies tenant and linkage, re-validates the shipment arguments against
+   the current trusted facts, verifies the current deterministic policy, runs
+   the canonical routed CREATE (which mints the immutable Quote Version),
+   links the session to the new request and audits the binding. There is no
+   after-the-fact linkage gap and no second request implementation. */
+create or replace function public.couranr_create_request_from_intake(
+  p_session_id uuid,
+  p_expected_intake_revision integer,
+  p_expected_policy_disposition text,
+  -- everything the routed create takes, passed through verbatim:
+  p_business_account_id uuid,p_created_by uuid,p_idempotency_key text,
+  p_source text,p_readiness_state text,p_payer_type text,
+  p_recipient_name text,p_recipient_phone text,p_recipient_email text,
+  p_weight_lb numeric,p_additional_stops integer,
+  p_service_level text,p_signature_required boolean,p_proof_method text,
+  p_pickup_address jsonb,p_dropoff_address jsonb,p_overnight_requested boolean,
+  p_route_distance_meters bigint,p_route_duration_seconds integer,
+  p_route_static_duration_seconds integer,
+  p_route_traffic_delay_seconds integer,
+  p_distance_source text,p_serviceability_outcome text,p_route_review_reason text,
+  p_quote_status text,p_pricing_policy_version text,
+  p_delivery_subtotal_cents integer,p_included_loaded_miles integer,
+  p_billable_loaded_miles numeric,p_quote_line_items jsonb,p_review_reasons jsonb,
+  p_weight_band text default null,
+  p_timing_intent text default null,
+  p_requested_pickup_local text default null,
+  p_requested_departure_at timestamptz default null,
+  p_timing_review_reasons jsonb default null,
+  p_restricted_class text default null
+)
+returns public.couranr_delivery_requests
+language plpgsql security invoker set search_path=''
+as $fn$
+declare
+  v_session public.couranr_intake_sessions;
+  v_fact public.couranr_intake_facts;
+  v_req public.couranr_delivery_requests;
+begin
+  select * into v_session from public.couranr_intake_sessions
+   where id = p_session_id and business_account_id = p_business_account_id
+   for update;
+  if not found then
+    raise exception 'intake_session_not_found' using errcode='CR404';
+  end if;
+  if v_session.current_revision is distinct from p_expected_intake_revision then
+    raise exception 'stale_intake_revision' using errcode='CR409';
+  end if;
+  perform private.couranr_assert_intake_policy_current(v_session, p_expected_policy_disposition, p_quote_status);
+
+  for v_fact in
+    select * from public.couranr_intake_facts
+     where session_id = p_session_id
+       and authority in ('confirmed','overridden')
+       and fact_key in ('weight_lb_exact','weight_band','restricted_class','service_level',
+                        'timing_intent','requested_pickup_local')
+  loop
+    if v_fact.fact_key = 'weight_lb_exact'
+       and p_weight_lb is distinct from (v_fact.value #>> '{}')::numeric then
+      raise exception 'intake_fact_mismatch: weight_lb_exact' using errcode='CR409';
+    elsif v_fact.fact_key = 'weight_band'
+       and p_weight_band is distinct from (v_fact.value #>> '{}') then
+      raise exception 'intake_fact_mismatch: weight_band' using errcode='CR409';
+    elsif v_fact.fact_key = 'restricted_class'
+       and p_restricted_class is distinct from (v_fact.value #>> '{}') then
+      raise exception 'intake_fact_mismatch: restricted_class' using errcode='CR409';
+    elsif v_fact.fact_key = 'service_level'
+       and p_service_level is distinct from (v_fact.value #>> '{}') then
+      raise exception 'intake_fact_mismatch: service_level' using errcode='CR409';
+    elsif v_fact.fact_key = 'timing_intent'
+       and p_timing_intent is distinct from (v_fact.value #>> '{}') then
+      raise exception 'intake_fact_mismatch: timing_intent' using errcode='CR409';
+    elsif v_fact.fact_key = 'requested_pickup_local'
+       and p_requested_pickup_local is distinct from (v_fact.value #>> '{}') then
+      raise exception 'intake_fact_mismatch: requested_pickup_local' using errcode='CR409';
+    end if;
+  end loop;
+
+  v_req := public.couranr_create_routed_delivery_request_draft(
+    p_business_account_id,p_created_by,p_idempotency_key,
+    p_source,p_readiness_state,p_payer_type,
+    p_recipient_name,p_recipient_phone,p_recipient_email,
+    p_weight_lb,p_additional_stops,p_service_level,p_signature_required,
+    p_proof_method,p_pickup_address,p_dropoff_address,p_overnight_requested,
+    p_route_distance_meters,p_route_duration_seconds,
+    p_route_static_duration_seconds,p_route_traffic_delay_seconds,
+    p_distance_source,p_serviceability_outcome,p_route_review_reason,
+    p_quote_status,p_pricing_policy_version,p_delivery_subtotal_cents,
+    p_included_loaded_miles,p_billable_loaded_miles,p_quote_line_items,
+    p_review_reasons,p_weight_band,p_timing_intent,p_requested_pickup_local,
+    p_requested_departure_at,p_timing_review_reasons,p_restricted_class
+  );
+
+  /* A session bound to a DIFFERENT request may never be re-pointed. An
+     idempotent replay (same key → same request) is the one legitimate
+     "already linked" case. Raising here rolls the create back with it. */
+  if v_session.request_id is not null and v_session.request_id <> v_req.id then
+    raise exception 'intake_session_already_linked' using errcode='CR409';
+  end if;
+  if v_session.request_id = v_req.id then
+    -- Idempotent replay: the routed create returned the request this session
+    -- is already bound to. Nothing new happened; no second audit row.
+    return v_req;
+  end if;
+  update public.couranr_intake_sessions
+     set request_id = v_req.id, updated_at = now()
+   where id = p_session_id;
+
+  insert into public.couranr_intake_fact_events(
+    session_id, fact_key, event, to_value, actor_user_id
+  ) values (
+    p_session_id, 'weight_band', 'committed_to_request',
+    jsonb_build_object('requestId', v_req.id,
+                       'requestVersion', v_req.version,
+                       'intakeRevision', p_expected_intake_revision,
+                       'policyDisposition', v_session.policy_disposition,
+                       'command', 'create_request_from_intake'),
+    p_created_by
+  );
   return v_req;
 end
 $fn$;
@@ -873,14 +1120,14 @@ revoke all on function public.couranr_add_intake_revision(uuid,uuid,uuid,text,in
 grant execute on function public.couranr_add_intake_revision(uuid,uuid,uuid,text,integer,text)
   to service_role;
 
-revoke all on function public.couranr_begin_intake_run(uuid,uuid,integer,text,text,text,text,jsonb)
+revoke all on function public.couranr_begin_intake_run(uuid,uuid,integer,text,text,text,text,jsonb,text)
   from public, anon, authenticated, service_role;
-grant execute on function public.couranr_begin_intake_run(uuid,uuid,integer,text,text,text,text,jsonb)
+grant execute on function public.couranr_begin_intake_run(uuid,uuid,integer,text,text,text,text,jsonb,text)
   to service_role;
 
-revoke all on function public.couranr_complete_intake_run(uuid,uuid,text,jsonb,text,integer,jsonb)
+revoke all on function public.couranr_complete_intake_run(uuid,uuid,text,jsonb,text,integer,jsonb,text,integer,integer)
   from public, anon, authenticated, service_role;
-grant execute on function public.couranr_complete_intake_run(uuid,uuid,text,jsonb,text,integer,jsonb)
+grant execute on function public.couranr_complete_intake_run(uuid,uuid,text,jsonb,text,integer,jsonb,text,integer,integer)
   to service_role;
 
 revoke all on function public.couranr_confirm_intake_fact(uuid,uuid,uuid,text,jsonb,text)
@@ -898,22 +1145,31 @@ revoke all on function public.couranr_retract_intake_fact(uuid,uuid,uuid,text)
 grant execute on function public.couranr_retract_intake_fact(uuid,uuid,uuid,text)
   to service_role;
 
-revoke all on function public.couranr_record_intake_policy(uuid,uuid,text,jsonb,jsonb,jsonb,text,text,jsonb,uuid)
+revoke all on function public.couranr_record_intake_policy(uuid,uuid,text,jsonb,jsonb,jsonb,text,text,jsonb,uuid,jsonb)
   from public, anon, authenticated, service_role;
-grant execute on function public.couranr_record_intake_policy(uuid,uuid,text,jsonb,jsonb,jsonb,text,text,jsonb,uuid)
+grant execute on function public.couranr_record_intake_policy(uuid,uuid,text,jsonb,jsonb,jsonb,text,text,jsonb,uuid,jsonb)
   to service_role;
 
-revoke all on function public.couranr_commit_intake_to_request(
-  uuid,integer,uuid,uuid,integer,uuid,boolean,text,text,text,text,text,text,
+revoke all on function public.couranr_commit_intake_to_request(uuid,integer,uuid,uuid,integer,uuid,boolean,text,text,text,text,text,text,
   numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,
   integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,
-  text,text,text,timestamptz,jsonb
-) from public, anon, authenticated, service_role;
-grant execute on function public.couranr_commit_intake_to_request(
-  uuid,integer,uuid,uuid,integer,uuid,boolean,text,text,text,text,text,text,
+  text,text,text,timestamptz,jsonb,text,text) from public, anon, authenticated, service_role;
+grant execute on function public.couranr_commit_intake_to_request(uuid,integer,uuid,uuid,integer,uuid,boolean,text,text,text,text,text,text,
   numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,
   integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,
-  text,text,text,timestamptz,jsonb
-) to service_role;
+  text,text,text,timestamptz,jsonb,text,text) to service_role;
+
+revoke all on function public.couranr_create_request_from_intake(
+  uuid,integer,text,uuid,uuid,text,text,text,text,text,text,text,
+  numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,
+  integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,
+  text,text,text,timestamptz,jsonb,text)
+  from public, anon, authenticated, service_role;
+grant execute on function public.couranr_create_request_from_intake(
+  uuid,integer,text,uuid,uuid,text,text,text,text,text,text,text,
+  numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,
+  integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,
+  text,text,text,timestamptz,jsonb,text)
+  to service_role;
 
 commit;

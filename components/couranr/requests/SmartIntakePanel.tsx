@@ -169,6 +169,7 @@ export function SmartIntakePanel(props: {
   const clarification = session?.current_clarification ?? null;
   const providerDown =
     session?.interpretation_status === "provider_unavailable" ||
+    session?.interpretation_status === "rate_limited" ||
     session?.interpretation_status === "manual";
   const told = facts.filter((f) => isTrusted(f) || f.source === "merchant_statement");
   const suggested = facts.filter((f) => !isTrusted(f) && f.source === "ai_inference");
@@ -260,6 +261,28 @@ export function SmartIntakePanel(props: {
                     {BAND_LABELS[band]}
                   </Button>
                 ))}
+              </Cluster>
+            ) : clarification.factKey === "restricted_class" ? (
+              // The safety declaration is a structured act, never free text:
+              // "none of these" is the only answer that permits an automatic
+              // quote, and it has to be the merchant's own click.
+              <Cluster gap={2}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() => onConfirmFact("restricted_class", "none")}
+                >
+                  None of these — I confirm
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() => onConfirmFact("restricted_class", "unknown")}
+                >
+                  Not sure — Couranr will review
+                </Button>
               </Cluster>
             ) : (
               <Cluster gap={2}>

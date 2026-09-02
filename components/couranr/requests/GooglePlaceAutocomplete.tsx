@@ -49,8 +49,33 @@ export function GooglePlaceAutocomplete({
     let listener: ((event: Event) => void) | null = null;
     let editListener: (() => void) | null = null;
 
-    void window.google?.maps
-      ?.importLibrary?.("places")
+    /*
+     * `ready` says the loader SCRIPT reported loaded; it does not say the
+     * loader has run. Measured in a real browser: this effect fired with
+     * `ready === true` while `google.maps.importLibrary` was still undefined,
+     * the optional chain evaluated to nothing, and the widget never mounted —
+     * a silent empty field. So wait for the loader itself, briefly, and give
+     * up loudly (as an invalid selection) rather than quietly.
+     */
+    const waitForImportLibrary = () =>
+      new Promise<NonNullable<NonNullable<NonNullable<Window["google"]>["maps"]>["importLibrary"]>>(
+        (resolve, reject) => {
+          const startedAt = Date.now();
+          const tick = () => {
+            if (disposed) return reject(new Error("disposed"));
+            const importLibrary = window.google?.maps?.importLibrary;
+            if (importLibrary) return resolve(importLibrary);
+            if (Date.now() - startedAt > 15_000) {
+              return reject(new Error("google maps loader did not initialize"));
+            }
+            window.setTimeout(tick, 100);
+          };
+          tick();
+        }
+      );
+
+    void waitForImportLibrary()
+      .then((importLibrary) => importLibrary("places"))
       .then(({ PlaceAutocompleteElement }) => {
         if (disposed || !hostRef.current || !PlaceAutocompleteElement) return;
         element = new PlaceAutocompleteElement({});
@@ -91,7 +116,9 @@ export function GooglePlaceAutocomplete({
         element.addEventListener("gmp-select", listener);
         hostRef.current.appendChild(element);
       })
-      .catch(callbackRef.current.onInvalidSelection);
+      .catch(() => {
+        if (!disposed) callbackRef.current.onInvalidSelection();
+      });
 
     return () => {
       disposed = true;

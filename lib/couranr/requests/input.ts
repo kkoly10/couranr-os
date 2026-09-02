@@ -1,5 +1,10 @@
 import { SERVICE_LEVEL_CENTS, type ServiceLevel } from "@/lib/couranr/pricing";
-import { isWeightBand, type WeightBand } from "@/lib/couranr/shipment/facts";
+import {
+  isRestrictedClassDeclaration,
+  isWeightBand,
+  type RestrictedClassDeclaration,
+  type WeightBand,
+} from "@/lib/couranr/shipment/facts";
 import {
   TIMING_INTENTS,
   parseOperatingLocal,
@@ -58,6 +63,11 @@ export type DeliveryRequestDraft = {
    */
   weightLb: number | null;
   weightBand: WeightBand | null;
+  /**
+   * The merchant's shipment-safety declaration. Missing means "unknown", and
+   * unknown means Couranr review — never an automatic quote.
+   */
+  restrictedClass: RestrictedClassDeclaration;
   additionalStops: number;
   /** TMZ-001 requested timing. ASAP unless the merchant scheduled a time. */
   timingIntent: TimingIntent;
@@ -89,6 +99,7 @@ export type InputErrorCode =
   | "google_place_required"
   | "weight_required"
   | "weight_invalid"
+  | "restricted_class_invalid"
   | "weight_band_invalid"
   | "timing_intent_invalid"
   | "requested_time_invalid"
@@ -236,7 +247,8 @@ export function normalizeDeliveryRequestInput(raw: unknown): NormalizeResult {
   // "I don't know the exact pounds" is expressed as a band (including
   // `unknown`), never by inventing a number to satisfy this check.
   const weightLb = num(r.weightLb);
-  if (weightLb !== null && weightLb < 0) {
+  if (weightLb !== null && weightLb <= 0) {
+    // 0 lb is refused with negatives: "I don't know" is a band, never a zero.
     errors.push({ code: "weight_invalid", field: "weightLb" });
   }
   let weightBand: WeightBand | null = null;
@@ -246,6 +258,14 @@ export function normalizeDeliveryRequestInput(raw: unknown): NormalizeResult {
   }
   if (weightLb === null && weightBand === null) {
     errors.push({ code: "weight_required", field: "weightLb" });
+  }
+
+  // Shipment-safety declaration. Absent → "unknown" → review; a value outside
+  // the closed vocabulary is an input error, never coerced.
+  let restrictedClass: RestrictedClassDeclaration = "unknown";
+  if (r.restrictedClass !== undefined && r.restrictedClass !== null && r.restrictedClass !== "") {
+    if (isRestrictedClassDeclaration(r.restrictedClass)) restrictedClass = r.restrictedClass;
+    else errors.push({ code: "restricted_class_invalid", field: "restrictedClass" });
   }
 
   // TMZ-001 requested timing. The zone is Couranr's, so only the local
@@ -323,6 +343,7 @@ export function normalizeDeliveryRequestInput(raw: unknown): NormalizeResult {
       recipientEmail,
       weightLb,
       weightBand,
+      restrictedClass,
       additionalStops,
       timingIntent,
       requestedPickupLocal,

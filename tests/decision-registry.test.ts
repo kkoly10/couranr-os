@@ -336,14 +336,26 @@ describe("known code/spec conflicts are explicit", () => {
     expect(r.conflict_with_current_code.code_value.tiers).toBeNull();
   });
 
-  it("records the service-area conflict (named markets vs 60-mile Stafford radius)", () => {
+  it("records the service-area truth: the PR #38 launch-market classifier is authority; the 60-mile module is legacy debt", () => {
     const mkt = byId("MKT-001");
     expect(mkt.value.marketed_markets).toContain("Stafford");
-    expect(mkt.conflict_with_current_code.code_value.model).toContain("60-mile");
-    expect(mkt.affected_code_paths.join(" ")).toContain("lib/serviceArea.ts");
+    expect(mkt.conflict_with_current_code.code_value.model).toContain("launch-market classifier");
+    expect(mkt.conflict_with_current_code.code_location).toBe("lib/couranr/routing/market.ts");
+    expect(mkt.conflict_with_current_code.code_value.named_markets).toEqual([
+      "Washington, DC",
+      "Stafford, VA",
+      "Woodbridge, VA",
+      "Fredericksburg, VA",
+    ]);
+    expect(mkt.affected_code_paths.join(" ")).toContain("lib/couranr/routing/market.ts");
+    expect(mkt.conflict_with_current_code.resolution).toMatch(/legacy/i);
 
+    // The legacy module's own record still describes what that module does —
+    // and says it is not authority.
     const svc = byId("SVC-002");
     expect(svc.conflict_with_current_code.code_value.radius_miles).toBe(60);
+    expect(svc.conflict_with_current_code.resolution).toMatch(/lib\/couranr\/routing\/market\.ts/);
+    expect(svc.conflict_with_current_code.resolution).toMatch(/not be made authoritative/);
   });
 
   it("records both route collisions with their occupying legacy files", () => {

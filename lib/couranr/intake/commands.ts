@@ -26,6 +26,8 @@ import {
 } from "@/lib/couranr/shipment/facts";
 import { evaluateShipmentPolicy } from "@/lib/couranr/shipment/policy";
 import { selectClarification } from "@/lib/couranr/shipment/clarification";
+import { scanRestrictedSignals } from "@/lib/couranr/shipment/restrictedSignals";
+import { isBusinessCategory } from "@/lib/couranr/categories/registry";
 import {
   PROMPT_VERSION,
   PROVIDER_TIMEOUT_MS,
@@ -338,7 +340,13 @@ export async function evaluateAndRecordIntakePolicy(params: {
   const loaded = await loadIntakeSession(params);
   if (isIntakeFailure(loaded)) return loaded;
   const facts = factMapFromRows(loaded.value.facts);
-  const policy = evaluateShipmentPolicy(facts);
+  // The deterministic restricted-item scan of the CURRENT words. Escalation
+  // only: it can add risk signals and force review, never prohibit, and it
+  // runs whether or not any provider ever answered — so "no AI signal" can
+  // never read as "no safety concern".
+  const current = loaded.value.revisions[loaded.value.revisions.length - 1];
+  const textSignals = current ? scanRestrictedSignals(String(current.raw_description ?? "")) : null;
+  const policy = evaluateShipmentPolicy(facts, { textSignals });
   const clarification = selectClarification(facts, policy);
   return callRpc("recordIntakePolicy", RPC.recordPolicy, {
     p_session_id: params.sessionId,
@@ -351,7 +359,27 @@ export async function evaluateAndRecordIntakePolicy(params: {
     p_operational_capability: policy.operationalCapability,
     p_clarification: clarification,
     p_run_id: params.runId ?? null,
+    p_restricted_signals: textSignals,
   });
+}
+
+/**
+ * The business category the provider may see as CONTEXT, resolved
+ * server-side from the authenticated business account's governed workspace
+ * record (P4-002). The browser cannot supply it; a value outside the closed
+ * registry is null. Context only: it changes no policy, price, route or
+ * capability.
+ */
+export async function resolveProviderBusinessCategory(
+  businessAccountId: string
+): Promise<string | null> {
+  const { data, error } = await supabaseAdmin
+    .from("couranr_merchant_workspaces")
+    .select("business_category")
+    .eq("business_account_id", businessAccountId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return isBusinessCategory(data.business_category) ? data.business_category : null;
 }
 
 /* ------------------------------------------------------ interpretation -- */
@@ -374,15 +402,12 @@ export async function runInterpretation(params: {
   sessionId: string;
   businessAccountId: string;
   sourceRevision: number;
-  businessCategory?: string | null;
-  /** Test seam only; production resolution goes through the env allowlist. */
-  providerOverride?: SmartIntakeProvider | null;
 }): Promise<IntakeResult<{ run: IntakeRow; session: IntakeRow | null }>> {
   const op = "runInterpretation";
-  const provider =
-    params.providerOverride !== undefined
-      ? params.providerOverride
-      : resolveSmartIntakeProvider();
+  // Provider resolution has exactly one door (env allowlist, plus the
+  // sanctioned test seam that does not exist in production). There is no
+  // per-call override: application code cannot hand this function a model.
+  const provider: SmartIntakeProvider | null = resolveSmartIntakeProvider();
   const providerName = provider?.name ?? "none";
 
   const begun = await callRpc(op, RPC.beginRun, {
@@ -398,6 +423,7 @@ export async function runInterpretation(params: {
       provider: providerName,
     }),
     p_input_data_classes: PROVIDER_INPUT_DATA_CLASSES,
+    p_requested_model: provider?.requestedModel ?? null,
   });
   if (isIntakeFailure(begun)) return begun;
   // The command answers `{ run, claimed }`: exactly ONE caller per
@@ -410,6 +436,9 @@ export async function runInterpretation(params: {
     return fail({ operation: op, code: "conflict", detail: { reason: "begin returned no run" } });
   }
   if (!claimed || run.status !== "pending") {
+    // Converged on another caller's run, or the server-authoritative budget
+    // said no (status `rate_limited`): either way no provider call is made
+    // here, and the manual structured flow is untouched.
     return { ok: true, value: { run, session: null } };
   }
 
@@ -446,6 +475,8 @@ export async function runInterpretation(params: {
     confirmed[f.fact_key] = { value: f.value, authority: f.authority };
   }
 
+  const businessCategory = await resolveProviderBusinessCategory(params.businessAccountId);
+
   const startedAt = Date.now();
   let outcome;
   try {
@@ -454,7 +485,7 @@ export async function runInterpretation(params: {
         promptVersion: PROMPT_VERSION,
         factSchemaVersion: FACT_SCHEMA_VERSION,
         shipmentDescription: currentRevision.raw_description,
-        businessCategory: params.businessCategory ?? null,
+        businessCategory,
         confirmedFacts: minimizeConfirmedFactsForProvider(confirmed),
       },
       AbortSignal.timeout(PROVIDER_TIMEOUT_MS)
@@ -470,9 +501,17 @@ export async function runInterpretation(params: {
     return { ok: true, value: { run: done.value, session: null } };
   }
 
+  // Provider audit evidence: the model the provider REPORTED serving and the
+  // token counts it supplied, persisted with the run whatever happens next.
+  const audit = {
+    p_provider_model: outcome.model ?? null,
+    p_input_tokens: outcome.usage?.inputTokens ?? null,
+    p_output_tokens: outcome.usage?.outputTokens ?? null,
+  };
+
   const validated = validateProviderOutput(outcome.rawJson);
   if (isValidationFailure(validated)) {
-    const done = await complete(validated.reason, { p_latency_ms: latency });
+    const done = await complete(validated.reason, { p_latency_ms: latency, ...audit });
     if (isIntakeFailure(done)) return done;
     return { ok: true, value: { run: done.value, session: null } };
   }
@@ -491,6 +530,7 @@ export async function runInterpretation(params: {
     })),
     p_output_hash: outputHash,
     p_latency_ms: latency,
+    ...audit,
   });
   if (isIntakeFailure(done)) return done;
 

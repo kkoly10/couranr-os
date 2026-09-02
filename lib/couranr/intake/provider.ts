@@ -2,23 +2,26 @@
  * P5-001 — the Smart Intake provider boundary.
  *
  * ---------------------------------------------------------------------------
- * NO VENDOR IS INVENTED HERE (§18)
+ * ONE APPROVED VENDOR, GOVERNED HERE (§18)
  * ---------------------------------------------------------------------------
  *
- * The repository establishes no approved Couranr AI provider — no AI SDK is a
- * dependency and no deployment convention names one. So this module defines
- * the NEUTRAL seam and exactly two implementations:
+ * The owner selected Anthropic as the Smart Intake provider, with
+ * `claude-sonnet-5` as the production model. This module defines the
+ * NEUTRAL seam and the resolution rule that decides which implementation —
+ * if any — answers a merchant:
  *
- *   - the deterministic FAKE provider, for tests and for the disposable
- *     harness, structurally unreachable in production (see
- *     `resolveSmartIntakeProvider`);
- *   - "no provider", which is a first-class production state: interpretation
- *     reports `unavailable` and the flow degrades to manual structured
- *     intake without blocking anything.
+ *   - the ANTHROPIC adapter (`anthropicProvider.ts`), reachable only through
+ *     `COURANR_SMART_INTAKE_PROVIDER=anthropic` plus a non-empty
+ *     `ANTHROPIC_API_KEY`, and only for a model in `GOVERNED_INTAKE_MODELS`;
+ *   - the deterministic FAKE, which lives in `testSeam.ts` and is
+ *     structurally unreachable in production;
+ *   - "no provider", a first-class production state: interpretation reports
+ *     `unavailable` and the flow degrades to manual structured intake.
  *
- * When an owner approves a real provider, its adapter implements
- * `SmartIntakeProvider` behind `COURANR_SMART_INTAKE_PROVIDER` and nothing
- * above this seam changes.
+ * Neither the browser nor a request body can choose a provider or a model.
+ * Resolution reads the server environment and nothing else, and an env typo
+ * — an unknown provider name, a model outside the governed list — resolves
+ * to NO provider with a one-line configuration warning, never to a guess.
  *
  * ---------------------------------------------------------------------------
  * WHAT A PROVIDER IS ALLOWED TO SEE (§17)
@@ -32,11 +35,29 @@
  */
 
 import { assertServerOnly } from "@/lib/couranr/serverOnly";
+import { createAnthropicSmartIntakeProvider } from "./anthropicProvider";
+import {
+  createFakeSmartIntakeProvider,
+  getRegisteredSmartIntakeTestProvider,
+} from "./testSeam";
 
 assertServerOnly("lib/couranr/intake/provider.ts");
 
 export const PROMPT_VERSION = "couranr-intake-prompt-v0-2026-09-02";
 export const PROVIDER_TIMEOUT_MS = 10_000;
+
+/**
+ * The closed list of models Smart Intake may run on. A model is added here
+ * by a decision, not by an environment variable: `COURANR_SMART_INTAKE_MODEL`
+ * may pick from this list and nothing outside it.
+ */
+export const GOVERNED_INTAKE_MODELS = ["claude-sonnet-5"] as const;
+export type GovernedIntakeModel = (typeof GOVERNED_INTAKE_MODELS)[number];
+export const DEFAULT_INTAKE_MODEL: GovernedIntakeModel = "claude-sonnet-5";
+
+export function isGovernedIntakeModel(v: unknown): v is GovernedIntakeModel {
+  return typeof v === "string" && (GOVERNED_INTAKE_MODELS as readonly string[]).includes(v);
+}
 
 export type IntakeProviderRequest = {
   promptVersion: string;
@@ -52,84 +73,80 @@ export type IntakeProviderRequest = {
   confirmedFacts: Record<string, unknown>;
 };
 
+export type IntakeProviderUsage = {
+  inputTokens: number | null;
+  outputTokens: number | null;
+};
+
 export type IntakeProviderResult =
-  | { outcome: "success"; rawJson: string; model: string | null }
+  | {
+      outcome: "success";
+      rawJson: string;
+      /** The model the RESPONSE names — what actually answered. */
+      model: string | null;
+      usage: IntakeProviderUsage | null;
+    }
   | { outcome: "timeout" }
   | { outcome: "unavailable" }
   | { outcome: "malformed" };
 
 export interface SmartIntakeProvider {
   readonly name: string;
+  /** The model this provider was CONFIGURED to request, for the run audit. */
+  readonly requestedModel: string | null;
   interpret(request: IntakeProviderRequest, signal: AbortSignal): Promise<IntakeProviderResult>;
-}
-
-/* ------------------------------------------------------- fake provider -- */
-
-/**
- * Deterministic fake for tests. Either replays scripted outputs, or derives
- * a small honest proposal set from obvious phrases. It deliberately has no
- * intelligence: its job is to exercise the VALIDATION and PERSISTENCE
- * boundaries, which must hold even against a hostile or broken provider.
- */
-export function createFakeSmartIntakeProvider(
-  scripted?: IntakeProviderResult[]
-): SmartIntakeProvider {
-  const queue = scripted ? [...scripted] : null;
-  return {
-    name: "fake",
-    async interpret(request) {
-      if (queue) {
-        const next = queue.shift();
-        return next ?? { outcome: "unavailable" };
-      }
-      const text = request.shipmentDescription;
-      const facts: Array<Record<string, unknown>> = [];
-      const qty = /(\d{1,4})\s+(?:boxed?|boxes|packages?|pieces?|arrangements?)/i.exec(text);
-      if (qty) {
-        facts.push({
-          key: "package_count",
-          value: Number(qty[1]),
-          confidence: 90,
-          sourceEvidence: qty[0],
-        });
-      }
-      const lb = /about\s+(\d{1,4})\s*lb/i.exec(text);
-      if (lb) {
-        facts.push({
-          key: "weight_lb_exact",
-          value: Number(lb[1]),
-          confidence: 70,
-          sourceEvidence: lb[0],
-        });
-      }
-      return {
-        outcome: "success",
-        model: "fake-deterministic-v0",
-        rawJson: JSON.stringify({ facts, overallConfidence: 80 }),
-      };
-    },
-  };
 }
 
 /* ---------------------------------------------------------- resolution -- */
 
+function configWarning(reason: string): void {
+  // One line, no values: the key must never be printed and a mistyped env
+  // value could be anything, including the key pasted into the wrong slot.
+  console.warn(`[smart-intake] configuration: ${reason}; Smart Intake is unavailable`);
+}
+
 /**
  * The ONLY path to a live provider, and the §29-style positive control lives
- * on it: in a production build the fake is structurally unavailable, so no
- * configuration mistake can put a test double behind real merchants. With no
- * approved real provider configured this returns null and Smart Intake runs
- * in its honest degraded mode.
+ * on it: in a production build the fake and the test seam are structurally
+ * unavailable, so no configuration mistake can put a test double behind
+ * real merchants. With nothing approved configured this returns null and
+ * Smart Intake runs in its honest degraded mode.
  */
 export function resolveSmartIntakeProvider(
   env: NodeJS.ProcessEnv = process.env
 ): SmartIntakeProvider | null {
+  // The test seam is consulted first, and only outside production. The
+  // getter carries its own production fence, so this is two checks, not one.
+  if (env.NODE_ENV !== "production") {
+    const seam = getRegisteredSmartIntakeTestProvider();
+    if (seam) return seam;
+  }
+
   const configured = (env.COURANR_SMART_INTAKE_PROVIDER ?? "").trim();
   if (configured === "") return null;
+
+  if (configured === "anthropic") {
+    const apiKey = (env.ANTHROPIC_API_KEY ?? "").trim();
+    if (apiKey === "") {
+      configWarning("COURANR_SMART_INTAKE_PROVIDER=anthropic but ANTHROPIC_API_KEY is unset");
+      return null;
+    }
+    const requested = (env.COURANR_SMART_INTAKE_MODEL ?? "").trim();
+    const model = requested === "" ? DEFAULT_INTAKE_MODEL : requested;
+    if (!isGovernedIntakeModel(model)) {
+      configWarning("COURANR_SMART_INTAKE_MODEL is not in GOVERNED_INTAKE_MODELS");
+      return null;
+    }
+    return createAnthropicSmartIntakeProvider({ apiKey, model });
+  }
+
   if (configured === "fake") {
     if (env.NODE_ENV === "production") return null;
     return createFakeSmartIntakeProvider();
   }
+
   // An unrecognized provider name is a configuration error, not a reason to
   // guess a vendor. Unavailable — loudly visible in the run audit.
+  configWarning("COURANR_SMART_INTAKE_PROVIDER names no approved provider");
   return null;
 }

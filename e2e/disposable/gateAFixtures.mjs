@@ -420,6 +420,9 @@ export async function seedCanonicalQuotedRequest(t, opts) {
     p_serviceability_outcome: "available_for_request",
     p_route_review_reason: null,
     p_quote_status: "estimated",
+    // Correction pass §2: an estimated quote requires the merchant's trusted
+    // "none" declaration; the fixture states it like a real merchant would.
+    p_restricted_class: "none",
     p_pricing_policy_version: o.pricingPolicyVersion,
     p_delivery_subtotal_cents: o.subtotalCents,
     p_included_loaded_miles: o.includedLoadedMiles,

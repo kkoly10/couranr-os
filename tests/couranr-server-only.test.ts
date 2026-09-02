@@ -147,10 +147,16 @@ describe("server-only modules are unreachable from client code", () => {
       "lib/couranr/driver/proofPaths.ts",
       // Holds the service-role client and the Stripe secret key.
       "lib/couranr/fulfillment/commands.ts",
+      // Holds the Anthropic API key inside the client it constructs, and the
+      // system prompt that governs what a model is told about merchant text.
+      "lib/couranr/intake/anthropicProvider.ts",
       "lib/couranr/intake/commands.ts",
       "lib/couranr/intake/interpret.ts",
       "lib/couranr/intake/provider.ts",
       "lib/couranr/intake/sync.ts",
+      // The ONLY test seam: a process-wide "which provider answers merchants"
+      // slot. A bundle must never carry it.
+      "lib/couranr/intake/testSeam.ts",
       "lib/couranr/onboarding/commands.ts",
       // The payment modules hold the service-role client, the Stripe secret
       // key and the token hashing. None may ever be reachable from a bundle.

@@ -81,6 +81,7 @@ function validate(input: QuoteInput): ValidationErrorCode[] {
   if (input.weightLb !== null && input.weightLb !== undefined) {
     if (!isFiniteNumber(input.weightLb)) errors.push("weight_not_finite");
     else if (input.weightLb < 0) errors.push("weight_negative");
+    else if (input.weightLb === 0) errors.push("weight_not_positive");
   }
   if (
     input.weightBand !== undefined &&

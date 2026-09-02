@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "test": "vitest",
     "test:run": "vitest run",
+    "smoke:smart-intake": "node scripts/smartIntakeSmoke.mjs",
     "check": "npm run lint && npm run typecheck && npm run test:run && npm run build",
     "ci:local": "node scripts/ciLocal.mjs",
     "db:disposable": "node e2e/disposable/up.mjs",
@@ -59,6 +60,7 @@
     "couranr:integrity": "node scripts/couranrIntegrity.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.123.0",
     "@stripe/react-stripe-js": "3.1.1",
     "@stripe/stripe-js": "^4.5.0",
     "@supabase/ssr": "0.12.4",

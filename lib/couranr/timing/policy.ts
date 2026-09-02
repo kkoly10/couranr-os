@@ -51,6 +51,8 @@ export type TimingIntent = (typeof TIMING_INTENTS)[number];
 export type TimingReviewReason =
   | "requested_time_in_past"
   | "requested_time_unparseable"
+  | "requested_time_nonexistent"
+  | "requested_time_ambiguous"
   | "requested_time_on_non_business_day"
   | "overnight_requires_couranr_confirmation"
   | "same_day_after_cutoff";
@@ -105,43 +107,74 @@ export function operatingLocalParts(instant: Date): LocalParts {
   };
 }
 
+/** Minutes the operating zone is AHEAD of UTC at `instant` (negative for the Americas). */
+function zoneOffsetMinutes(instant: Date): number {
+  const shown = operatingLocalParts(instant);
+  const shownAsUtc = Date.UTC(shown.year, shown.month - 1, shown.day, shown.hour, shown.minute);
+  return Math.round((shownAsUtc - instant.getTime()) / 60_000);
+}
+
+export type LocalResolution =
+  | { kind: "unique"; instant: Date }
+  /** Spring-forward gap: no instant ever showed this wall clock. */
+  | { kind: "nonexistent" }
+  /** Fall-back repeat: two instants showed this wall clock, an hour apart. */
+  | { kind: "ambiguous"; earlier: Date; later: Date };
+
 /**
- * The instant a given `America/New_York` wall-clock time names.
+ * Which instant(s), if any, a given `America/New_York` wall-clock time names.
  *
- * The standard two-pass technique: guess the instant as if the wall clock were
- * UTC, measure what wall clock that instant actually shows in the zone, and
- * correct by the difference — twice, because the first correction can cross a
- * DST transition. Behavior at the edges is DEFINED, not accidental:
+ * A merchant's requested time is THEIR words. This function never picks for
+ * them: at a DST edge it reports that the wall clock is nonexistent (the
+ * spring-forward gap, e.g. 02:30 on the second Sunday of March) or ambiguous
+ * (the fall-back repeat, e.g. 01:30 on the first Sunday of November), and the
+ * caller leaves the canonical instant unresolved and asks. An earlier version
+ * silently shifted the gap forward and chose the first occurrence of a repeat;
+ * that invented a departure time nobody entered.
  *
- *   - a nonexistent time (spring-forward gap, e.g. 02:30 on the second Sunday
- *     of March) resolves to the instant after the gap;
- *   - an ambiguous time (fall-back repeat) resolves to the EARLIER offset,
- *     i.e. the first occurrence.
- *
- * Both edges are inside the overnight window, which is request-only anyway,
- * so neither can move money.
+ * Method: the zone offsets in force a day before and a day after the naive
+ * instant bracket any transition on that date. Each offset yields one
+ * candidate instant; a candidate counts only if the zone actually shows the
+ * requested wall clock at it. Zero candidates → nonexistent; one → unique;
+ * two → ambiguous. Every unambiguous time, in either DST regime, resolves the
+ * normal way.
  */
-export function operatingInstantFromLocal(parts: {
+export function resolveOperatingLocal(parts: {
   year: number;
   month: number;
   day: number;
   hour: number;
   minute: number;
-}): Date {
-  const asUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute);
-  let guess = asUtc;
-  for (let i = 0; i < 2; i++) {
-    const shown = operatingLocalParts(new Date(guess));
-    const shownAsUtc = Date.UTC(
-      shown.year,
-      shown.month - 1,
-      shown.day,
-      shown.hour,
-      shown.minute
-    );
-    guess += asUtc - shownAsUtc;
+}): LocalResolution {
+  const naive = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute);
+  const dayMs = 24 * 60 * 60_000;
+  const offsets = new Set([
+    zoneOffsetMinutes(new Date(naive - dayMs)),
+    zoneOffsetMinutes(new Date(naive + dayMs)),
+  ]);
+  const matches: Date[] = [];
+  for (const offset of offsets) {
+    const candidate = new Date(naive - offset * 60_000);
+    const shown = operatingLocalParts(candidate);
+    if (
+      shown.year === parts.year &&
+      shown.month === parts.month &&
+      shown.day === parts.day &&
+      shown.hour === parts.hour &&
+      shown.minute === parts.minute
+    ) {
+      matches.push(candidate);
+    }
   }
-  return new Date(guess);
+  matches.sort((a, b) => a.getTime() - b.getTime());
+  if (matches.length === 0) return { kind: "nonexistent" };
+  if (matches.length === 1) return { kind: "unique", instant: matches[0] };
+  return { kind: "ambiguous", earlier: matches[0], later: matches[1] };
+}
+
+/** ISO weekday (1 = Monday … 7 = Sunday) of a local calendar date. */
+function isoWeekdayOfDate(p: { year: number; month: number; day: number }): number {
+  return ((new Date(Date.UTC(p.year, p.month - 1, p.day)).getUTCDay() + 6) % 7) + 1;
 }
 
 const LOCAL_DATETIME_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
@@ -272,11 +305,25 @@ export function evaluateRequestTiming(
     };
   }
 
-  const instant = operatingInstantFromLocal(parsed);
-  const requestedLocal = operatingLocalParts(instant);
+  const resolution = resolveOperatingLocal(parsed);
   const requestedMinutes = minutesOfDay(parsed);
+  // Doctrine that depends only on the WORDS (date and wall clock) is applied
+  // whether or not the instant resolved, so a DST-edge request is still
+  // evaluated for business day and overnight. Only the instant-dependent
+  // "in the past" check needs a resolved instant.
+  const requestedLocal: LocalParts = {
+    year: parsed.year,
+    month: parsed.month,
+    day: parsed.day,
+    hour: parsed.hour,
+    minute: parsed.minute,
+    isoWeekday: isoWeekdayOfDate(parsed),
+  };
+  const instant = resolution.kind === "unique" ? resolution.instant : null;
 
-  if (instant.getTime() <= now.getTime()) reasons.push("requested_time_in_past");
+  if (resolution.kind === "nonexistent") reasons.push("requested_time_nonexistent");
+  if (resolution.kind === "ambiguous") reasons.push("requested_time_ambiguous");
+  if (instant && instant.getTime() <= now.getTime()) reasons.push("requested_time_in_past");
   if (!isBusinessDay(requestedLocal.isoWeekday)) {
     reasons.push("requested_time_on_non_business_day");
   }

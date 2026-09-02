@@ -4,11 +4,13 @@
  * the §32 adversarial matrix; the durable halves run in
  * e2e/disposable/smartIntake.mjs.
  */
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { resolveSmartIntakeProvider } from "@/lib/couranr/intake/provider";
 import {
   createFakeSmartIntakeProvider,
-  resolveSmartIntakeProvider,
-} from "@/lib/couranr/intake/provider";
+  getRegisteredSmartIntakeTestProvider,
+  registerSmartIntakeTestProvider,
+} from "@/lib/couranr/intake/testSeam";
 import {
   PROVIDER_INPUT_DATA_CLASSES,
   confidenceBand,
@@ -172,6 +174,7 @@ describe("§18/§29 provider resolution", () => {
       NODE_ENV: "test",
     } as unknown as NodeJS.ProcessEnv);
     expect(provider?.name).toBe("fake");
+    expect(provider?.requestedModel).toBe("fake-deterministic-v0");
     const result = await provider!.interpret(
       {
         promptVersion: "p",
@@ -184,6 +187,8 @@ describe("§18/§29 provider resolution", () => {
     );
     expect(result.outcome).toBe("success");
     if (result.outcome !== "success") return;
+    expect(result.model).toBe("fake-deterministic-v0");
+    expect(result.usage).toBeNull();
     const v = validateProviderOutput(result.rawJson);
     expect(isValidationFailure(v)).toBe(false);
     if (isValidationFailure(v)) return;
@@ -205,6 +210,75 @@ describe("§18/§29 provider resolution", () => {
     expect((await provider.interpret(req, AbortSignal.timeout(50))).outcome).toBe("timeout");
     expect((await provider.interpret(req, AbortSignal.timeout(50))).outcome).toBe("malformed");
     expect((await provider.interpret(req, AbortSignal.timeout(50))).outcome).toBe("unavailable");
+  });
+});
+
+/**
+ * The test seam is the ONLY way application code can be handed a double, so
+ * its production fence needs positive controls of its own — a fence that is
+ * never shown to close is decoration.
+ */
+describe("§29 test seam positive controls", () => {
+  const originalNodeEnv = process.env.NODE_ENV;
+  const setNodeEnv = (value: string | undefined) => {
+    // Next's types mark NODE_ENV readonly; this test is the one place that
+    // flips it on purpose.
+    Object.assign(process.env, { NODE_ENV: value });
+  };
+  afterEach(() => {
+    setNodeEnv(originalNodeEnv);
+    registerSmartIntakeTestProvider(null);
+  });
+
+  it("outside production the seam works — otherwise the fences below prove nothing", () => {
+    setNodeEnv("test");
+    const fake = createFakeSmartIntakeProvider();
+    registerSmartIntakeTestProvider(fake);
+    expect(getRegisteredSmartIntakeTestProvider()).toBe(fake);
+    // The seam wins over ANY environment, including an "anthropic" one.
+    expect(
+      resolveSmartIntakeProvider({
+        NODE_ENV: "test",
+        COURANR_SMART_INTAKE_PROVIDER: "anthropic",
+        ANTHROPIC_API_KEY: "sk-ant-not-used",
+      } as unknown as NodeJS.ProcessEnv)
+    ).toBe(fake);
+  });
+
+  it("(a) registering a provider in production THROWS", () => {
+    setNodeEnv("production");
+    expect(() => registerSmartIntakeTestProvider(createFakeSmartIntakeProvider())).toThrow(
+      "smart intake test seam is unavailable in production"
+    );
+    expect(() => registerSmartIntakeTestProvider(null)).toThrow();
+  });
+
+  it("(b) a provider registered BEFORE the env flip is NOT returned by resolution", () => {
+    setNodeEnv("test");
+    registerSmartIntakeTestProvider(createFakeSmartIntakeProvider());
+    setNodeEnv("production");
+    // Fence 1: resolve refuses to consult the seam for a production env.
+    expect(resolveSmartIntakeProvider({ NODE_ENV: "production" } as unknown as NodeJS.ProcessEnv)).toBeNull();
+    expect(
+      resolveSmartIntakeProvider({
+        NODE_ENV: "production",
+        COURANR_SMART_INTAKE_PROVIDER: "fake",
+      } as unknown as NodeJS.ProcessEnv)
+    ).toBeNull();
+    // Fence 2: even an env object with NO NODE_ENV cannot reach it, because
+    // the getter reads process.env itself.
+    expect(getRegisteredSmartIntakeTestProvider()).toBeNull();
+    expect(resolveSmartIntakeProvider({} as NodeJS.ProcessEnv)).toBeNull();
+  });
+
+  it("(c) the fake resolves null in production through process.env as well as through the env argument", () => {
+    setNodeEnv("production");
+    Object.assign(process.env, { COURANR_SMART_INTAKE_PROVIDER: "fake" });
+    try {
+      expect(resolveSmartIntakeProvider()).toBeNull();
+    } finally {
+      delete process.env.COURANR_SMART_INTAKE_PROVIDER;
+    }
   });
 });
 

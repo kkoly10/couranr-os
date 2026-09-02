@@ -15,10 +15,16 @@ import {
   TIMING_POLICY_VERSION,
   evaluateRequestTiming,
   nextBusinessDay,
-  operatingInstantFromLocal,
   operatingLocalParts,
   parseOperatingLocal,
+  resolveOperatingLocal,
 } from "@/lib/couranr/timing/policy";
+
+const unique = (parts: Parameters<typeof resolveOperatingLocal>[0]): Date => {
+  const r = resolveOperatingLocal(parts);
+  if (r.kind !== "unique") throw new Error(`expected a unique instant, got ${r.kind}`);
+  return r.instant;
+};
 
 /** A Wednesday: 2026-09-02 (EDT, UTC-4). */
 const wedAt = (hour: number, minute = 0) =>
@@ -26,29 +32,19 @@ const wedAt = (hour: number, minute = 0) =>
 
 describe("zone conversion is IANA America/New_York, not a fixed offset", () => {
   it("winter noon ET is 17:00 UTC (EST, UTC-5)", () => {
-    const instant = operatingInstantFromLocal({ year: 2026, month: 1, day: 15, hour: 12, minute: 0 });
+    const instant = unique({ year: 2026, month: 1, day: 15, hour: 12, minute: 0 });
     expect(instant.toISOString()).toBe("2026-01-15T17:00:00.000Z");
   });
 
   it("summer noon ET is 16:00 UTC (EDT, UTC-4) — a fixed offset fails one of these", () => {
-    const instant = operatingInstantFromLocal({ year: 2026, month: 7, day: 15, hour: 12, minute: 0 });
+    const instant = unique({ year: 2026, month: 7, day: 15, hour: 12, minute: 0 });
     expect(instant.toISOString()).toBe("2026-07-15T16:00:00.000Z");
   });
 
   it("round-trips an instant through local parts", () => {
     const instant = new Date(Date.UTC(2026, 10, 20, 15, 45));
     const parts = operatingLocalParts(instant);
-    expect(operatingInstantFromLocal(parts).getTime()).toBe(instant.getTime());
-  });
-
-  it("the spring-forward gap resolves to a defined instant, not NaN", () => {
-    // 2026-03-08 02:30 ET does not exist (clocks jump 02:00 -> 03:00).
-    const instant = operatingInstantFromLocal({ year: 2026, month: 3, day: 8, hour: 2, minute: 30 });
-    expect(Number.isFinite(instant.getTime())).toBe(true);
-    const shown = operatingLocalParts(instant);
-    expect(shown.year).toBe(2026);
-    expect(shown.month).toBe(3);
-    expect(shown.day).toBe(8);
+    expect(unique(parts).getTime()).toBe(instant.getTime());
   });
 
   it("refuses impossible and suffixed datetimes", () => {
@@ -56,6 +52,77 @@ describe("zone conversion is IANA America/New_York, not a fixed offset", () => {
     expect(parseOperatingLocal("2026-09-02T10:00:00Z")).toBeNull();
     expect(parseOperatingLocal("2026-09-02 10:00")).toBeNull();
     expect(parseOperatingLocal("2026-09-02T24:00")).toBeNull();
+  });
+});
+
+describe("DST edges are reported, never resolved on the merchant's behalf", () => {
+  // Spring forward: 2026-03-08, clocks jump 02:00 -> 03:00 EDT.
+  it("01:59 before the gap is unique (EST)", () => {
+    expect(unique({ year: 2026, month: 3, day: 8, hour: 1, minute: 59 }).toISOString()).toBe(
+      "2026-03-08T06:59:00.000Z"
+    );
+  });
+  it("02:30 inside the gap is NONEXISTENT — no instant is invented", () => {
+    expect(resolveOperatingLocal({ year: 2026, month: 3, day: 8, hour: 2, minute: 30 })).toEqual({
+      kind: "nonexistent",
+    });
+  });
+  it("03:00 after the gap is unique (EDT)", () => {
+    expect(unique({ year: 2026, month: 3, day: 8, hour: 3, minute: 0 }).toISOString()).toBe(
+      "2026-03-08T07:00:00.000Z"
+    );
+  });
+
+  // Fall back: 2026-11-01, clocks repeat 01:00-01:59 (first EDT, then EST).
+  it("00:59 before the repeat is unique (EDT)", () => {
+    expect(unique({ year: 2026, month: 11, day: 1, hour: 0, minute: 59 }).toISOString()).toBe(
+      "2026-11-01T04:59:00.000Z"
+    );
+  });
+  it("01:30 during the repeat is AMBIGUOUS — both occurrences are reported, neither chosen", () => {
+    const r = resolveOperatingLocal({ year: 2026, month: 11, day: 1, hour: 1, minute: 30 });
+    expect(r.kind).toBe("ambiguous");
+    if (r.kind !== "ambiguous") return;
+    expect(r.earlier.toISOString()).toBe("2026-11-01T05:30:00.000Z"); // 01:30 EDT
+    expect(r.later.toISOString()).toBe("2026-11-01T06:30:00.000Z"); // 01:30 EST
+  });
+  it("02:00 after the repeat is unique (EST)", () => {
+    expect(unique({ year: 2026, month: 11, day: 1, hour: 2, minute: 0 }).toISOString()).toBe(
+      "2026-11-01T07:00:00.000Z"
+    );
+  });
+
+  it("a scheduled request in the gap keeps its words, has NO departure instant, and is a review", () => {
+    const r = evaluateRequestTiming(
+      { intent: "scheduled", requestedPickupLocal: "2026-03-08T02:30" },
+      new Date(Date.UTC(2026, 2, 1, 12))
+    );
+    expect(r.requestedDepartureAt).toBeNull();
+    expect(r.requestedPickupLocal).toBe("2026-03-08T02:30");
+    expect(r.reviewReasons).toContain("requested_time_nonexistent");
+    // 02:30 is also overnight and a Sunday; the words-only doctrine still applies.
+    expect(r.reviewReasons).toContain("overnight_requires_couranr_confirmation");
+    expect(r.reviewReasons).toContain("requested_time_on_non_business_day");
+    expect(r.expectedFulfillmentLocalDate).toBe("2026-03-08");
+  });
+
+  it("a scheduled request in the repeat keeps its words, has NO departure instant, and is a review", () => {
+    const r = evaluateRequestTiming(
+      { intent: "scheduled", requestedPickupLocal: "2026-11-01T01:30" },
+      new Date(Date.UTC(2026, 9, 25, 12))
+    );
+    expect(r.requestedDepartureAt).toBeNull();
+    expect(r.reviewReasons).toContain("requested_time_ambiguous");
+    expect(r.reviewReasons).not.toContain("requested_time_in_past");
+  });
+
+  it("an ordinary scheduled time on the transition day still resolves normally", () => {
+    const r = evaluateRequestTiming(
+      { intent: "scheduled", requestedPickupLocal: "2026-03-09T09:30" }, // Monday after
+      new Date(Date.UTC(2026, 2, 1, 12))
+    );
+    expect(r.requestedDepartureAt?.toISOString()).toBe("2026-03-09T13:30:00.000Z"); // EDT
+    expect(r.reviewReasons).toEqual([]);
   });
 });
 

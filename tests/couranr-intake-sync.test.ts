@@ -12,6 +12,7 @@ import { validateFactValue } from "@/lib/couranr/shipment/facts";
 const asap = {
   weightLb: null,
   weightBand: null,
+  restrictedClass: "none" as const,
   serviceLevel: "standard",
   timingIntent: "asap" as const,
   requestedPickupLocal: null,
@@ -26,6 +27,7 @@ describe("planIntakeFactSync", () => {
     expect(steps).toEqual([
       { op: "confirm", factKey: "weight_lb_exact", value: 12, authority: "confirmed" },
       { op: "retract", factKey: "weight_band" },
+      { op: "confirm", factKey: "restricted_class", value: "none", authority: "confirmed" },
       { op: "confirm", factKey: "service_level", value: "standard", authority: "confirmed" },
       { op: "confirm", factKey: "timing_intent", value: "asap", authority: "confirmed" },
     ]);
@@ -35,6 +37,7 @@ describe("planIntakeFactSync", () => {
     const steps = planIntakeFactSync(
       [
         { fact_key: "weight_lb_exact", value: 12, authority: "confirmed" },
+        { fact_key: "restricted_class", value: "none", authority: "confirmed" },
         { fact_key: "service_level", value: "standard", authority: "confirmed" },
         { fact_key: "timing_intent", value: "asap", authority: "confirmed" },
       ],
@@ -50,6 +53,7 @@ describe("planIntakeFactSync", () => {
     const steps = planIntakeFactSync(
       [
         { fact_key: "weight_band", value: "0_25_lb", authority: "overridden" },
+        { fact_key: "restricted_class", value: "none", authority: "confirmed" },
         { fact_key: "service_level", value: "priority", authority: "confirmed" },
         { fact_key: "timing_intent", value: "asap", authority: "confirmed" },
       ],
@@ -62,6 +66,7 @@ describe("planIntakeFactSync", () => {
     const steps = planIntakeFactSync(
       [
         { fact_key: "weight_band", value: "0_25_lb", authority: "confirmed" },
+        { fact_key: "restricted_class", value: "none", authority: "confirmed" },
         { fact_key: "service_level", value: "priority", authority: "proposed" },
       ],
       { ...asap, weightBand: "over_50_lb", serviceLevel: "priority" }
@@ -78,6 +83,7 @@ describe("planIntakeFactSync", () => {
       [
         { fact_key: "weight_lb_exact", value: null, authority: "unknown" },
         { fact_key: "weight_band", value: "0_25_lb", authority: "confirmed" },
+        { fact_key: "restricted_class", value: "none", authority: "confirmed" },
         { fact_key: "service_level", value: "standard", authority: "confirmed" },
         { fact_key: "timing_intent", value: "asap", authority: "confirmed" },
       ],
@@ -119,6 +125,7 @@ describe("planIntakeFactSync", () => {
     const steps = planIntakeFactSync([], {
       weightLb: 37.5,
       weightBand: null,
+      restrictedClass: "none",
       serviceLevel: "rush",
       timingIntent: "scheduled",
       requestedPickupLocal: "2026-09-04T14:00",
@@ -126,10 +133,15 @@ describe("planIntakeFactSync", () => {
     for (const step of steps) {
       if (step.op === "confirm") expect(validateFactValue(step.factKey, step.value)).toBe(true);
     }
-    expect(steps.filter((s) => s.op === "confirm")).toHaveLength(4);
+    expect(steps.filter((s) => s.op === "confirm")).toHaveLength(5);
   });
 
-  it("touches exactly the five keys the commit command compares, nothing else", () => {
+  it("a merchant who is NOT SURE states 'unknown' — a trusted fact that the policy turns into review", () => {
+    const steps = planIntakeFactSync([], { ...asap, weightBand: "0_25_lb", restrictedClass: "unknown" });
+    expect(steps).toContainEqual({ op: "confirm", factKey: "restricted_class", value: "unknown", authority: "confirmed" });
+  });
+
+  it("touches exactly the six keys the commit commands compare, nothing else", () => {
     const steps = planIntakeFactSync(
       [
         { fact_key: "fragile", value: true, authority: "confirmed" },
@@ -141,6 +153,10 @@ describe("planIntakeFactSync", () => {
       expect((SYNCED_FACT_KEYS as readonly string[]).includes(step.factKey)).toBe(true);
     }
     expect(steps.map((s) => s.factKey)).not.toContain("fragile");
-    expect(steps.map((s) => s.factKey)).not.toContain("restricted_class");
+    // The form's declaration is the merchant's statement; a model's proposed
+    // "firearms" is replaced by it (confirmed, since a proposal is untrusted)
+    // — and the deterministic text scan, not this plan, is what keeps the
+    // contradiction visible to Operations.
+    expect(steps).toContainEqual({ op: "confirm", factKey: "restricted_class", value: "none", authority: "confirmed" });
   });
 });

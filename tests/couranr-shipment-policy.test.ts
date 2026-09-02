@@ -97,12 +97,17 @@ describe("prohibition requires trusted confirmation — signals only escalate", 
     expect(proposalMayReplace(beer)).toBe(false);
   });
 
-  it("a damaged/recalled battery never auto-passes, even as a proposal", () => {
+  it("a damaged/recalled battery never auto-passes, even as a proposal — but a proposal is a RISK SIGNAL, not a deterministic reason", () => {
     const facts = cleanFacts();
     facts.battery_condition = aiProposed("battery_condition", "damaged_defective_recalled");
     const r = evaluateShipmentPolicy(facts);
     expect(r.disposition).toBe("needs_review");
-    expect(r.reasons).toContain("battery_condition_damaged");
+    expect(r.riskSignals).toContain("battery_condition_damaged");
+    expect(r.reasons).not.toContain("battery_condition_damaged");
+
+    const stated = cleanFacts();
+    stated.battery_condition = confirmed("battery_condition", "damaged_defective_recalled");
+    expect(evaluateShipmentPolicy(stated).reasons).toContain("battery_condition_damaged");
   });
 
   it("an ordinary installed battery is NOT a reason — the laptop/drill false positive", () => {
@@ -191,9 +196,11 @@ describe("fact validation is a closed allowlist", () => {
     expect(validateFactValue("restricted_class", "none")).toBe(true);
   });
 
-  it("weights must be finite non-negative numbers; bands must be governed", () => {
+  it("weights must be finite POSITIVE numbers — 0 lb is not an escape hatch; bands must be governed", () => {
     expect(validateFactValue("weight_lb_exact", Number.NaN)).toBe(false);
     expect(validateFactValue("weight_lb_exact", -3)).toBe(false);
+    expect(validateFactValue("weight_lb_exact", 0)).toBe(false);
+    expect(validateFactValue("weight_lb_exact", 0.1)).toBe(true);
     expect(validateFactValue("weight_lb_exact", 22.5)).toBe(true);
     expect(validateFactValue("weight_band", "about_30_lb")).toBe(false);
     expect(validateFactValue("weight_band", "over_25_to_50_lb")).toBe(true);
@@ -231,4 +238,109 @@ describe("one clarification, ranked by material impact", () => {
     const policy = evaluateShipmentPolicy(facts);
     expect(selectClarification(facts, policy)).toBeNull();
   });
+});
+
+describe("the safety declaration — manual fallback is as safe as AI mode", () => {
+  const strongBeer = {
+    signals: [{ prohibitedClass: "alcohol" as const, matchedText: "bottles of beer", strength: "strong" as const }],
+    material: true,
+  };
+  const weakOnly = {
+    signals: [{ prohibitedClass: "alcohol" as const, matchedText: "alcohol", strength: "weak" as const }],
+    material: false,
+  };
+
+  it("NO declaration at all → needs_review with safety_declaration_required and the priority-1 question", () => {
+    const facts = cleanFacts();
+    delete facts.restricted_class;
+    const r = evaluateShipmentPolicy(facts);
+    expect(r.disposition).toBe("needs_review");
+    expect(r.reasons).toContain("safety_declaration_required");
+    expect(r.unresolvedFacts).toContain("restricted_class");
+    const q = selectClarification(facts, r);
+    expect(q?.factKey).toBe("restricted_class");
+    expect(q?.priority).toBe(1);
+  });
+
+  it("a trusted 'unknown' is the same as missing — review, never allowed", () => {
+    const facts = cleanFacts();
+    facts.restricted_class = confirmed("restricted_class", "unknown");
+    const r = evaluateShipmentPolicy(facts);
+    expect(r.disposition).toBe("needs_review");
+    expect(r.reasons).toContain("safety_declaration_required");
+  });
+
+  it("an AI-proposed 'none' is NOT a declaration", () => {
+    const facts = cleanFacts();
+    facts.restricted_class = aiProposed("restricted_class", "none", 99);
+    const r = evaluateShipmentPolicy(facts);
+    expect(r.disposition).toBe("needs_review");
+    expect(r.reasons).toContain("safety_declaration_required");
+  });
+
+  it("provider unavailable (no AI facts) + no declaration cannot be allowed", () => {
+    const facts: FactMap = {
+      weight_band: confirmed("weight_band", "0_25_lb"),
+      timing_intent: confirmed("timing_intent", "asap"),
+    };
+    expect(evaluateShipmentPolicy(facts).disposition).toBe("needs_review");
+  });
+
+  it("a trusted 'none' with no material text signal is allowed", () => {
+    const r = evaluateShipmentPolicy(cleanFacts(), { textSignals: weakOnly });
+    expect(r.disposition).toBe("allowed");
+    expect(r.riskSignals).toEqual([]);
+  });
+
+  it("a trusted 'none' that materially conflicts with the raw text stays in review — as a signal, never a prohibition", () => {
+    const r = evaluateShipmentPolicy(cleanFacts(), { textSignals: strongBeer });
+    expect(r.disposition).toBe("needs_review");
+    expect(r.riskSignals).toContain("restricted_signal_conflicts_declaration");
+    expect(r.reasons).not.toContain("prohibited_class_confirmed");
+    const q = selectClarification(cleanFacts(), r);
+    expect(q?.factKey).toBe("restricted_class");
+    expect(q?.priority).toBe(1);
+    expect(q?.reason).toBe("restricted_signal_conflicts_declaration");
+  });
+
+  it("a text signal with no declaration is recorded as a risk signal on top of the missing declaration", () => {
+    const facts = cleanFacts();
+    delete facts.restricted_class;
+    const r = evaluateShipmentPolicy(facts, { textSignals: strongBeer });
+    expect(r.reasons).toContain("safety_declaration_required");
+    expect(r.riskSignals).toContain("restricted_text_signal");
+    expect(r.disposition).toBe("needs_review");
+  });
+
+  it("a confirmed prohibited class is deterministic prohibited whatever the text says", () => {
+    const facts = cleanFacts();
+    facts.restricted_class = confirmed("restricted_class", "ammunition");
+    const r = evaluateShipmentPolicy(facts, { textSignals: { signals: [], material: false } });
+    expect(r.disposition).toBe("prohibited");
+  });
+});
+
+describe("audit truth: proposals are risk signals, statements are reasons", () => {
+  for (const [key, code] of [
+    ["fragile", "fragile_shipment"],
+    ["temperature_sensitive", "temperature_sensitive"],
+    ["loading_uncertainty", "loading_uncertainty"],
+    ["stairs_access", "stairs_access_concern"],
+  ] as const) {
+    it(`${key}: proposed → riskSignals; confirmed → reasons; both review`, () => {
+      const proposed = cleanFacts();
+      proposed[key] = aiProposed(key, true);
+      const rp = evaluateShipmentPolicy(proposed);
+      expect(rp.disposition).toBe("needs_review");
+      expect(rp.riskSignals).toContain(code);
+      expect(rp.reasons).not.toContain(code);
+
+      const stated = cleanFacts();
+      stated[key] = confirmed(key, true);
+      const rs = evaluateShipmentPolicy(stated);
+      expect(rs.disposition).toBe("needs_review");
+      expect(rs.reasons).toContain(code);
+      expect(rs.riskSignals).not.toContain(code);
+    });
+  }
 });

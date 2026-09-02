@@ -113,6 +113,9 @@ describe("shipmentArgs", () => {
     "p_recipient_email",
     "p_recipient_name",
     "p_recipient_phone",
+    // Correction pass §2: the shipment-safety declaration is merchant-editable
+    // shipment truth; the database refuses an estimated quote without it.
+    "p_restricted_class",
     "p_service_level",
     "p_signature_required",
     "p_source",
@@ -296,7 +299,8 @@ describe("command layer invariants", () => {
     // is the estimate's second call site, chosen when the shipment came
     // through Smart Intake; a re-price of the stored shipment still uses the
     // bare estimate.
-    expect(Object.keys(RPC)).toHaveLength(8);
+    // Plus the atomic create-from-intake wrapper (correction pass §3): nine.
+    expect(Object.keys(RPC)).toHaveLength(9);
     expect((COMMANDS.match(/callRpc\(/g) || []).length).toBe(1 + Object.keys(RPC).length);
     expect((COMMANDS.match(/supabaseAdmin\.rpc\(/g) || []).length).toBe(1);
     for (const fn of Object.values(RPC)) {

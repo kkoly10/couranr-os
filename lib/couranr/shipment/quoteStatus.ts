@@ -22,11 +22,14 @@ export function applyShipmentPolicyToQuote(
 ): QuoteResult {
   if (policy.disposition === "allowed") return quote;
 
-  const reason: ReviewReasonCode =
-    policy.disposition === "prohibited" ? "shipment_prohibited" : "shipment_policy_review";
-  const reviewReasons = quote.reviewReasons.includes(reason)
-    ? quote.reviewReasons
-    : [...quote.reviewReasons, reason];
+  const codes: ReviewReasonCode[] =
+    policy.disposition === "prohibited"
+      ? ["shipment_prohibited"]
+      : policy.reasons.includes("safety_declaration_required")
+        ? ["safety_declaration_required", "shipment_policy_review"]
+        : ["shipment_policy_review"];
+  const reviewReasons = [...quote.reviewReasons];
+  for (const code of codes) if (!reviewReasons.includes(code)) reviewReasons.push(code);
 
   return {
     ...quote,

@@ -46,18 +46,26 @@ export function selectClarification(
 ): Clarification | null {
   const candidates: Candidate[] = [];
 
-  // 1 — safety. An unresolved restricted signal outranks everything: until a
-  // trusted actor answers, the shipment cannot be classified at all.
-  if (
-    policy.riskSignals.includes("restricted_signal_unresolved") &&
-    needsAnswer(facts, "restricted_class")
-  ) {
+  // 1 — safety. The declaration outranks everything: until a trusted actor
+  // states it, the shipment cannot be classified at all — with or without AI.
+  if (policy.reasons.includes("safety_declaration_required") && needsAnswer(facts, "restricted_class")) {
     candidates.push({
       factKey: "restricted_class",
       priority: 1,
       question:
-        "Does this shipment contain anything Couranr can't carry — alcohol, tobacco or vape products, medication, weapons or ammunition, hazardous materials, live animals, or cash?",
-      reason: "restricted_signal_unresolved",
+        "Does this shipment contain anything Couranr can't carry — alcohol, tobacco or vape products, medication, weapons or ammunition, hazardous materials, live animals, or cash? Confirm \"none of these\" or tell us which.",
+      reason: "safety_declaration_required",
+    });
+  } else if (policy.riskSignals.includes("restricted_signal_conflicts_declaration")) {
+    // The merchant said "none", but their own words carry a material
+    // restricted-item signal. Ask again, explicitly — a trusted "none" does
+    // not silence this one, and only a person can resolve it.
+    candidates.push({
+      factKey: "restricted_class",
+      priority: 1,
+      question:
+        "Your description mentions something Couranr may not be able to carry. Please re-confirm that none of the restricted classes apply, or tell us which one does.",
+      reason: "restricted_signal_conflicts_declaration",
     });
   }
   if (needsAnswer(facts, "battery_condition") && policy.reasons.includes("battery_condition_damaged")) {

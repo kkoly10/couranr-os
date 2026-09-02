@@ -190,6 +190,25 @@ export function isProhibitedClass(v: unknown): v is ProhibitedClass {
   return typeof v === "string" && (PROHIBITED_CLASSES as readonly string[]).includes(v);
 }
 
+/**
+ * The merchant's SHIPMENT-SAFETY DECLARATION — the one structured fact the
+ * deterministic policy requires before it can say `allowed`, with or without
+ * AI:
+ *
+ *   "none"            the merchant affirms none of the prohibited classes is
+ *                     present (the only value that permits an automatic quote)
+ *   <prohibited class> a specific confirmed class → deterministic prohibited
+ *   "unknown"         not sure / not answered → needs_review
+ *
+ * A MISSING declaration is treated exactly like "unknown". Absence of an AI
+ * signal is never absence of a safety concern.
+ */
+export type RestrictedClassDeclaration = ProhibitedClass | "none" | "unknown";
+
+export function isRestrictedClassDeclaration(v: unknown): v is RestrictedClassDeclaration {
+  return v === "none" || v === "unknown" || isProhibitedClass(v);
+}
+
 /* ------------------------------------------------------------- fact shape */
 
 export const FACT_SCHEMA_VERSION = "couranr-shipment-facts-v0-2026-09-02";
@@ -273,7 +292,10 @@ export function validateFactValue(key: FactKey, value: unknown): boolean {
   }
   switch (key) {
     case "weight_lb_exact":
-      return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 20_000;
+      // Strictly positive: 0 lb is not a weight anybody measured, and it must
+      // never be a synthetic escape hatch for "unknown" — that state is
+      // weight_band = unknown with a null exact weight.
+      return typeof value === "number" && Number.isFinite(value) && value > 0 && value <= 20_000;
     case "weight_band":
       return isWeightBand(value);
     case "declared_value_band":

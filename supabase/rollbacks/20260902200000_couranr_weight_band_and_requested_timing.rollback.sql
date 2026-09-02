@@ -31,6 +31,7 @@ begin
   select count(*) into v_count
     from public.couranr_delivery_requests
    where weight_band is not null
+      or restricted_class is not null
       or timing_intent is not null
       or requested_pickup_local is not null
       or requested_departure_at is not null;
@@ -45,12 +46,15 @@ exception when undefined_column then
 end
 $evidence$;
 
+drop function if exists private.couranr_assert_safety_declaration(text,text);
+drop function if exists private.couranr_assert_requested_timing(text,timestamptz,jsonb);
+
 /* ---------------- restore the two commands at their ORIGINAL arity ------ */
 /* New arity dropped first for the same ambiguity reason the forward
    migration dropped the old one first. */
 
 drop function if exists public.couranr_create_routed_delivery_request_draft(
-  uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,text,text,text,timestamptz,jsonb
+  uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,text,text,text,timestamptz,jsonb,text
 );
 
 create or replace function public.couranr_create_routed_delivery_request_draft(
@@ -143,7 +147,7 @@ end
 $fn$;
 
 drop function if exists public.couranr_calculate_routed_delivery_request_estimate(
-  uuid,uuid,integer,uuid,boolean,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,text,text,text,timestamptz,jsonb
+  uuid,uuid,integer,uuid,boolean,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,text,text,text,timestamptz,jsonb,text
 );
 
 create or replace function public.couranr_calculate_routed_delivery_request_estimate(
@@ -490,6 +494,7 @@ alter table public.couranr_delivery_requests
   drop column if exists requested_pickup_local,
   drop column if exists operating_timezone,
   drop column if exists requested_departure_at,
-  drop column if exists timing_review_reasons;
+  drop column if exists timing_review_reasons,
+  drop column if exists restricted_class;
 
 commit;

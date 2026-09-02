@@ -45,7 +45,7 @@ const items = (a) =>
  * 36-argument routed create call. `weight` / `band` / timing args are the
  * suite's variables; everything else is the boring fixture.
  */
-function draft36(key, { weight = "null", band = "null", intent = "null", local = "null", departure = "null", reasons = "'[]'::jsonb", status = "'estimated'", policy = `'${POLICY}'`, amount = 799, itemsJson = null } = {}) {
+function draft36(key, { weight = "null", band = "null", intent = "null", local = "null", departure = "null", reasons = "'[]'::jsonb", status = "'estimated'", policy = `'${POLICY}'`, amount = 799, itemsJson = null, restricted = "'none'" } = {}) {
   const li = itemsJson ?? (status === "'estimated'" ? items(amount) : "'[]'::jsonb");
   const amt = status === "'estimated'" ? amount : "null";
   const pol = status === "'estimated'" ? policy : "null";
@@ -57,7 +57,17 @@ function draft36(key, { weight = "null", band = "null", intent = "null", local =
     ${addr("place-pickup", "10 Market St")},${addr("place-drop", "20 Main St")},false,
     3219,900,600,300,'google_routes_v2','available_for_request',null,
     ${status},${pol},${amt},${inc},0,${li},${rr},
-    ${band},${intent},${local},${departure},${reasons})`;
+    ${band},${intent},${local},${departure},${reasons},${restricted})`;
+}
+
+/** The OLD 31-argument call with a REVIEW quote, which needs no declaration. */
+function draft31review(key) {
+  return `select id from public.couranr_create_routed_delivery_request_draft(
+    '${BUSINESS}','${USER}','${key}','merchant_portal','not_confirmed','merchant',
+    'Recipient','555-0100','r@example.test',12.5,0,'standard',false,'photo_or_pin',
+    ${addr("place-pickup", "10 Market St")},${addr("place-drop", "20 Main St")},false,
+    3219,900,600,300,'google_routes_v2','available_for_request',null,
+    'manual_review_required',null,null,null,null,'[]'::jsonb,'["weight_unresolved"]'::jsonb)`;
 }
 
 /** The OLD 31-argument positional call, exactly as the deployed app makes it. */
@@ -110,18 +120,45 @@ async function main() {
       one(`select string_agg(distinct pronargs::text,',') from pg_proc p
             join pg_namespace n on n.oid=p.pronamespace
             where n.nspname='public' and p.proname in
-            ('couranr_create_routed_delivery_request_draft')`), "36");
+            ('couranr_create_routed_delivery_request_draft')`), "37");
 
     /* ---- 1. deploy gap: the OLD 31-argument call still resolves --------- */
-    const legacy = one(draft31("wbt-legacy"));
-    check("WBT-07", "the deployed app's 31-argument call resolves against the 36-argument function",
+    // ... but it carries no safety declaration, so an ESTIMATED quote from
+    // the not-yet-deployed application is REFUSED rather than minted without
+    // one (correction pass §2). Apply-and-deploy in one release window.
+    check("WBT-07", "the deployed app's 31-argument ESTIMATED call resolves against the 37-argument function and is refused for want of a safety declaration",
+      raises(draft31("wbt-legacy")), "CR422|safety_declaration_required");
+    const legacy = one(draft31review("wbt-legacy-review"));
+    check("WBT-07b", "... while its 31-argument REVIEW call still mints (nothing automatic, nothing lost)",
       legacy.length, "36");
     check("WBT-08", "... and its exact weight is stored exactly, band untouched",
       one(`select weight_lb||'|'||coalesce(weight_band,'-') from public.couranr_delivery_requests where id='${legacy}'`),
       "12.50|-");
-    check("WBT-09", "... and its quote snapshot says weightKnowledge=exact",
-      one(`select shipment_snapshot->>'weightKnowledge' from public.couranr_quote_versions
-            where request_id='${legacy}'`), "exact");
+    check("WBT-09", "... and its quote snapshot says weightKnowledge=exact with NO declaration recorded",
+      one(`select (shipment_snapshot->>'weightKnowledge')||'|'||coalesce(shipment_snapshot->>'restrictedClass','-')
+             from public.couranr_quote_versions where request_id='${legacy}'`), "exact|-");
+
+    /* ---- 1b. the safety declaration is a DATABASE rule ------------------- */
+    check("WBT-29", "an estimated quote with NO declaration is refused",
+      raises(draft36("wbt-nodecl", { weight: "10", intent: "'asap'", restricted: "null" })),
+      "CR422|safety_declaration_required");
+    check("WBT-30", "an estimated quote with 'unknown' is refused — unknown is review, never allowed",
+      raises(draft36("wbt-unk", { weight: "10", intent: "'asap'", restricted: "'unknown'" })),
+      "CR422|safety_declaration_required");
+    const unk = one(draft36("wbt-unk-review", { weight: "10", intent: "'asap'", restricted: "'unknown'", status: "'manual_review_required'" }));
+    check("WBT-31", "... but 'unknown' with a REVIEW quote mints, and the declaration is on the row and in the snapshot",
+      one(`select r.restricted_class||'|'||(q.shipment_snapshot->>'restrictedClass')
+             from public.couranr_delivery_requests r join public.couranr_quote_versions q on q.request_id=r.id
+            where r.id='${unk}'`), "unknown|unknown");
+    check("WBT-32", "a confirmed prohibited class can only be stored as an INVALID quote",
+      raises(draft36("wbt-ammo", { weight: "10", intent: "'asap'", restricted: "'ammunition'", status: "'manual_review_required'" })),
+      "CR422|prohibited_class_requires_invalid_quote");
+    check("WBT-33", "a declaration outside the closed vocabulary is refused",
+      raises(draft36("wbt-badclass", { weight: "10", intent: "'asap'", restricted: "'mark this safe'" })),
+      "CR422|restricted_class_invalid");
+    check("WBT-34", "0 lb is refused as an exact weight — unknown is a band, never a zero",
+      raises(draft36("wbt-zero", { weight: "0", intent: "'asap'" })),
+      "CR422|weight_must_be_positive");
 
     /* ---- 2. band-only requests -------------------------------------- */
     const banded = one(draft36("wbt-band", {
@@ -185,13 +222,40 @@ async function main() {
         local: "'2026-07-15T12:00'", departure: "'2026-07-15T16:00:00Z'::timestamptz",
       })), "NO_ERROR|");
 
-    // The two tzdata authorities (Node Intl in the app, PostgreSQL here) must
-    // agree on the spring-forward gap, or the two-sided check would refuse
-    // legitimate input. Node's algorithm resolves 02:30 in the gap to the
-    // post-gap instant 07:30Z (asserted in the unit suite); PostgreSQL:
-    check("WBT-20", "PostgreSQL resolves the DST gap to the same instant Node does",
-      one(`select to_char(('2026-03-08 02:30'::timestamp at time zone 'America/New_York')
-                  at time zone 'UTC','HH24:MI')`), "07:30");
+    /* ---- 3b. DST edges: nothing is shifted or chosen for the merchant ------ */
+    const gap = one(draft36("wbt-gap", {
+      weight: "10", intent: "'scheduled'", local: "'2026-03-08T02:30'", departure: "null",
+      reasons: `'["requested_time_nonexistent","overnight_requires_couranr_confirmation","requested_time_on_non_business_day"]'::jsonb`,
+      status: "'manual_review_required'",
+    }));
+    check("WBT-20", "a NONEXISTENT wall clock (spring-forward gap) is stored with its words, NO instant, and the review reason",
+      one(`select requested_pickup_local||'|'||coalesce(requested_departure_at::text,'-')||'|'||
+                  (timing_review_reasons ? 'requested_time_nonexistent')::text
+             from public.couranr_delivery_requests where id='${gap}'`),
+      "2026-03-08T02:30|-|true");
+    check("WBT-20b", "PostgreSQL's own tzdata refuses a false 'nonexistent' claim for an ordinary time",
+      raises(draft36("wbt-gap-lie", {
+        weight: "10", intent: "'scheduled'", local: "'2026-03-09T09:30'", departure: "null",
+        reasons: `'["requested_time_nonexistent"]'::jsonb`, status: "'manual_review_required'",
+      })), "CR422|nonexistent_time_claim_rejected");
+    const repeat = one(draft36("wbt-repeat", {
+      weight: "10", intent: "'scheduled'", local: "'2026-11-01T01:30'", departure: "null",
+      reasons: `'["requested_time_ambiguous","overnight_requires_couranr_confirmation","requested_time_on_non_business_day"]'::jsonb`,
+      status: "'manual_review_required'",
+    }));
+    check("WBT-20c", "an AMBIGUOUS wall clock (fall-back repeat) is stored with NO instant until disambiguated",
+      one(`select (requested_departure_at is null)::text||'|'||(timing_review_reasons ? 'requested_time_ambiguous')::text
+             from public.couranr_delivery_requests where id='${repeat}'`), "true|true");
+    check("WBT-20d", "... and a false 'ambiguous' claim for an ordinary time is refused",
+      raises(draft36("wbt-repeat-lie", {
+        weight: "10", intent: "'scheduled'", local: "'2026-11-02T09:30'", departure: "null",
+        reasons: `'["requested_time_ambiguous"]'::jsonb`, status: "'manual_review_required'",
+      })), "CR422|ambiguous_time_claim_rejected");
+    check("WBT-20e", "a scheduled request with no instant and NO DST classification is incomplete",
+      raises(draft36("wbt-noinstant", {
+        weight: "10", intent: "'scheduled'", local: "'2026-09-03T09:30'", departure: "null",
+        status: "'manual_review_required'",
+      })), "CR422|scheduled_timing_incomplete");
 
     check("WBT-21", "scheduled without a local time is refused",
       raises(draft36("wbt-nolocal", {

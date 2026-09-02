@@ -84,7 +84,6 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
       sessionId: params.id,
       businessAccountId,
       sourceRevision: revised.value.current_revision,
-      businessCategory: typeof body?.businessCategory === "string" ? body.businessCategory : null,
     });
     return NextResponse.json({
       session: revised.value,
@@ -132,7 +131,6 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
       sessionId: params.id,
       businessAccountId,
       sourceRevision,
-      businessCategory: typeof body?.businessCategory === "string" ? body.businessCategory : null,
     });
     if (isIntakeFailure(interpreted)) return failureResponse(interpreted);
     return NextResponse.json({ run: interpreted.value.run });

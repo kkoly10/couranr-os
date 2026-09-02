@@ -51,7 +51,8 @@ function draft(key, { duration = 600, staticDuration = 600, delay = 0, policy = 
     'Recipient','555-0100','r@example.test',10,0,'standard',false,'photo_or_pin',
     ${addr("place-pickup","10 Market St")},${addr("place-drop","20 Main St")},false,
     3219,${duration},${staticDuration},${delay},'google_routes_v2','available_for_request',null,
-    'estimated','${policy}',${amount},2,0,${items(amount)},'[]'::jsonb)`;
+    'estimated','${policy}',${amount},2,0,${items(amount)},'[]'::jsonb,
+    p_restricted_class => 'none')`;
 }
 
 function main() {
@@ -179,7 +180,7 @@ function main() {
 
     check("PV2-14", "anon and authenticated cannot execute the routed create command",
       one(`select bool_or(has_function_privilege(r,
-             'public.couranr_create_routed_delivery_request_draft(uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,text,text,text,timestamptz,jsonb)',
+             'public.couranr_create_routed_delivery_request_draft(uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,text,text,text,timestamptz,jsonb,text)',
              'EXECUTE')) from unnest(array['anon','authenticated']) r`), "f");
 
     check("PV2-55", "the QVL predicates are not executable by anon or authenticated",

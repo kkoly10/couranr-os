@@ -39,8 +39,9 @@ import {
   type ShipmentFact,
   type WeightBand,
 } from "./facts";
+import type { RestrictedSignalScan } from "./restrictedSignals";
 
-export const SHIPMENT_POLICY_VERSION = "couranr-shipment-policy-v0-2026-09-02";
+export const SHIPMENT_POLICY_VERSION = "couranr-shipment-policy-v1-2026-09-03";
 
 export const POLICY_DISPOSITIONS = ["allowed", "needs_review", "prohibited"] as const;
 export type PolicyDisposition = (typeof POLICY_DISPOSITIONS)[number];
@@ -61,7 +62,18 @@ export type OperationalCapability = (typeof OPERATIONAL_CAPABILITIES)[number];
 /** Closed, persisted reason codes. Additions are policy versions. */
 export type PolicyReason =
   | "prohibited_class_confirmed"
+  /**
+   * No TRUSTED shipment-safety declaration exists (missing, "unknown", or
+   * only an untrusted proposal). Automatic `allowed` requires the merchant to
+   * affirm `restricted_class = none`; absence of an AI signal is never
+   * absence of a safety concern.
+   */
+  | "safety_declaration_required"
   | "restricted_signal_unresolved"
+  /** The merchant declared `none`, but the raw description carries a material restricted-item signal. */
+  | "restricted_signal_conflicts_declaration"
+  /** A deterministic lexical restricted-item signal in the raw description (escalation only). */
+  | "restricted_text_signal"
   | "battery_condition_damaged"
   | "weight_over_50_lb"
   | "weight_unresolved"
@@ -99,15 +111,34 @@ function fact(facts: FactMap, key: FactKey): ShipmentFact | undefined {
   return facts[key];
 }
 
-function trustedBool(facts: FactMap, key: FactKey): boolean {
+/**
+ * Audit truth (§9 of the correction pass): a fact a trusted actor stated
+ * populates deterministic `reasons`; the same fact as an unconfirmed AI
+ * proposal lands in `riskSignals`. Both may force review — what differs is
+ * what Operations is told the review is BASED on.
+ */
+function escalate(
+  facts: FactMap,
+  key: FactKey,
+  code: PolicyReason,
+  test: (value: unknown) => boolean,
+  reasons: PolicyReason[],
+  riskSignals: PolicyReason[]
+): void {
   const f = fact(facts, key);
-  return !!f && f.value === true && isTrustedAuthority(f.authority);
+  if (!f || !test(f.value)) return;
+  (isTrustedAuthority(f.authority) ? reasons : riskSignals).push(code);
 }
 
-function anyBool(facts: FactMap, key: FactKey): boolean {
-  const f = fact(facts, key);
-  return !!f && f.value === true;
-}
+export type PolicyEvaluationOptions = {
+  /**
+   * Deterministic lexical scan of the merchant's RAW description (see
+   * restrictedSignals.ts). Escalation-only input: it can add risk signals,
+   * force review, and contradict a `none` declaration — it can never
+   * prohibit and never clear.
+   */
+  textSignals?: RestrictedSignalScan | null;
+};
 
 /**
  * Resolve what is actually KNOWN about weight, refusing to invent precision:
@@ -136,37 +167,61 @@ export function resolveWeightKnowledge(facts: FactMap): {
   return { exactLb: trustedExact, band: trustedBand, conflicting };
 }
 
-export function evaluateShipmentPolicy(facts: FactMap): ShipmentPolicyResult {
+export function evaluateShipmentPolicy(
+  facts: FactMap,
+  options: PolicyEvaluationOptions = {}
+): ShipmentPolicyResult {
   const reasons: PolicyReason[] = [];
   const riskSignals: PolicyReason[] = [];
   const unresolved: FactKey[] = [];
+  const textSignals = options.textSignals ?? null;
 
-  /* ---- 1. Hard prohibition: trusted confirmation ONLY ------------------ */
+  /* ---- 1. Safety: a TRUSTED declaration is required for `allowed` -------- */
   const restricted = fact(facts, "restricted_class");
+  const trustedDeclaration =
+    restricted && isTrustedAuthority(restricted.authority) ? restricted.value : null;
   let prohibited = false;
-  if (restricted && isProhibitedClass(restricted.value)) {
-    if (isTrustedAuthority(restricted.authority)) {
-      prohibited = true;
-      reasons.push("prohibited_class_confirmed");
-    } else {
-      // A signal, not a fact. Escalates; cannot prohibit; cannot be waved
-      // away by any later "looks safe".
-      riskSignals.push("restricted_signal_unresolved");
+  if (trustedDeclaration !== null && isProhibitedClass(trustedDeclaration)) {
+    // Hard prohibition: trusted confirmation ONLY. Deterministic; no model
+    // can create it and no model can clear it.
+    prohibited = true;
+    reasons.push("prohibited_class_confirmed");
+  } else if (trustedDeclaration === "none") {
+    // The merchant affirmed none of the classes is present. The raw text can
+    // still contradict them materially ("12 bottles of beer" + "none"): that
+    // stays in review until a person resolves it — but it is a signal, so it
+    // is a risk signal, never a prohibition.
+    if (textSignals?.material) {
+      riskSignals.push("restricted_signal_conflicts_declaration");
       unresolved.push("restricted_class");
     }
-  } else if (restricted && restricted.value === "unknown") {
-    riskSignals.push("restricted_signal_unresolved");
+  } else {
+    // Missing, "unknown", or only an untrusted proposal. Absence of an AI
+    // signal is NOT absence of a safety concern: without the declaration
+    // there is no automatic quote, and the priority-1 question is asked.
+    reasons.push("safety_declaration_required");
     unresolved.push("restricted_class");
+    if (restricted && isProhibitedClass(restricted.value)) {
+      riskSignals.push("restricted_signal_unresolved");
+    }
+    if (textSignals && textSignals.signals.length > 0) {
+      riskSignals.push("restricted_text_signal");
+    }
   }
 
   /* ---- 2. Batteries ---------------------------------------------------- */
-  const battery = fact(facts, "battery_condition");
-  if (battery && battery.value === "damaged_defective_recalled") {
-    // Damaged/swollen/recalled lithium never auto-passes, whoever said it —
-    // escalation is allowed from any source (§13). Ordinary installed
-    // batteries in normal electronics are deliberately NOT a reason.
-    reasons.push("battery_condition_damaged");
-  }
+  // Damaged/swollen/recalled lithium never auto-passes, whoever said it —
+  // escalation is allowed from any source (§13); which column it lands in
+  // records who said it. Ordinary installed batteries in normal electronics
+  // are deliberately NOT a reason.
+  escalate(
+    facts,
+    "battery_condition",
+    "battery_condition_damaged",
+    (v) => v === "damaged_defective_recalled",
+    reasons,
+    riskSignals
+  );
 
   /* ---- 3. Weight ------------------------------------------------------- */
   const weight = resolveWeightKnowledge(facts);
@@ -195,30 +250,41 @@ export function evaluateShipmentPolicy(facts: FactMap): ShipmentPolicyResult {
   }
 
   /* ---- 4. Handling / capability review triggers ------------------------ */
-  const declaredValue = fact(facts, "declared_value_band");
-  if (declaredValue && declaredValue.value === "over_1000") {
-    reasons.push("high_declared_value");
-  }
-  if (anyBool(facts, "fragile")) reasons.push("fragile_shipment");
-  if (anyBool(facts, "temperature_sensitive")) reasons.push("temperature_sensitive");
-  if (anyBool(facts, "loading_uncertainty")) reasons.push("loading_uncertainty");
-  if (anyBool(facts, "stairs_access")) reasons.push("stairs_access_concern");
-  if (anyBool(facts, "setup_breakdown")) reasons.push("setup_breakdown_required");
-  const equipment = fact(facts, "special_equipment");
-  if (equipment && typeof equipment.value === "string" && equipment.value.trim() !== "" && equipment.value !== "none") {
-    reasons.push("special_equipment_required");
-  }
-  const vehicle = fact(facts, "vehicle_requirement");
-  if (vehicle && typeof vehicle.value === "string" && !["", "none", "standard"].includes(vehicle.value)) {
-    // A claimed non-standard vehicle need is an OPERATIONS review, never an
-    // automatic surcharge and never a hardcoded personal vehicle (§15).
-    reasons.push("vehicle_capability_review");
-  }
-  const size = fact(facts, "size_bulk");
+  // Each of these escalates from ANY source, but lands in `reasons` only when
+  // a trusted actor stated it and in `riskSignals` when only a model did.
+  escalate(facts, "declared_value_band", "high_declared_value", (v) => v === "over_1000", reasons, riskSignals);
+  escalate(facts, "fragile", "fragile_shipment", (v) => v === true, reasons, riskSignals);
+  escalate(facts, "temperature_sensitive", "temperature_sensitive", (v) => v === true, reasons, riskSignals);
+  escalate(facts, "loading_uncertainty", "loading_uncertainty", (v) => v === true, reasons, riskSignals);
+  escalate(facts, "stairs_access", "stairs_access_concern", (v) => v === true, reasons, riskSignals);
+  escalate(facts, "setup_breakdown", "setup_breakdown_required", (v) => v === true, reasons, riskSignals);
+  escalate(
+    facts,
+    "special_equipment",
+    "special_equipment_required",
+    (v) => typeof v === "string" && v.trim() !== "" && v !== "none",
+    reasons,
+    riskSignals
+  );
+  // A claimed non-standard vehicle need is an OPERATIONS review, never an
+  // automatic surcharge and never a hardcoded personal vehicle (§15).
+  escalate(
+    facts,
+    "vehicle_requirement",
+    "vehicle_capability_review",
+    (v) => typeof v === "string" && !["", "none", "standard"].includes(v),
+    reasons,
+    riskSignals
+  );
   const dims = fact(facts, "dimensions_in");
-  if (size && typeof size.value === "string" && /bulk|oversiz|large/i.test(size.value) && !dims) {
-    reasons.push("bulky_without_dimensions");
-  }
+  escalate(
+    facts,
+    "size_bulk",
+    "bulky_without_dimensions",
+    (v) => typeof v === "string" && /bulk|oversiz|large/i.test(v) && !dims,
+    reasons,
+    riskSignals
+  );
 
   /* ---- 5. Low-confidence material facts -------------------------------- */
   for (const key of Object.keys(facts) as FactKey[]) {
@@ -245,14 +311,20 @@ export function evaluateShipmentPolicy(facts: FactMap): ShipmentPolicyResult {
       ? "needs_review"
       : "allowed";
 
-  const capabilityReview =
-    reasons.includes("weight_over_50_lb") ||
-    reasons.includes("special_equipment_required") ||
-    reasons.includes("vehicle_capability_review") ||
-    reasons.includes("setup_breakdown_required") ||
-    reasons.includes("stairs_access_concern") ||
-    reasons.includes("loading_uncertainty") ||
-    reasons.includes("bulky_without_dimensions");
+  const capabilityCodes: PolicyReason[] = [
+    "weight_over_50_lb",
+    "special_equipment_required",
+    "vehicle_capability_review",
+    "setup_breakdown_required",
+    "stairs_access_concern",
+    "loading_uncertainty",
+    "bulky_without_dimensions",
+  ];
+  // Capability review is triggered by a stated OR a signalled need — the
+  // difference between them is audit truth, not whether Ops must look.
+  const capabilityReview = capabilityCodes.some(
+    (c) => reasons.includes(c) || riskSignals.includes(c)
+  );
   const operationalCapability: OperationalCapability = capabilityReview
     ? "needs_review"
     : "standard_lane";

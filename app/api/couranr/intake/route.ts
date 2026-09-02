@@ -55,11 +55,13 @@ export async function POST(req: NextRequest) {
 
   // First interpretation, inline. Provider trouble degrades to manual and is
   // reported honestly; it never blocks the session from existing.
+  // The business category the provider sees is resolved SERVER-SIDE from the
+  // authenticated business account (correction pass §6); the browser cannot
+  // supply provider context.
   const interpreted = await runInterpretation({
     sessionId: created.value.id,
     businessAccountId,
     sourceRevision: 1,
-    businessCategory: typeof body?.businessCategory === "string" ? body.businessCategory : null,
   });
 
   return NextResponse.json(

@@ -41,11 +41,11 @@ begin
      a re-run. Naming only the old arity would falsify the precondition on the
      recovery path, which is the PR #40 guard bug this shape exists to avoid. */
   if to_regprocedure('public.couranr_create_routed_delivery_request_draft(uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb)') is null
-     and to_regprocedure('public.couranr_create_routed_delivery_request_draft(uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,text,text,text,timestamptz,jsonb)') is null then
+     and to_regprocedure('public.couranr_create_routed_delivery_request_draft(uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,text,text,text,timestamptz,jsonb,text)') is null then
     raise exception 'Weight band cutover requires the routed create command';
   end if;
   if to_regprocedure('public.couranr_calculate_routed_delivery_request_estimate(uuid,uuid,integer,uuid,boolean,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb)') is null
-     and to_regprocedure('public.couranr_calculate_routed_delivery_request_estimate(uuid,uuid,integer,uuid,boolean,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,text,text,text,timestamptz,jsonb)') is null then
+     and to_regprocedure('public.couranr_calculate_routed_delivery_request_estimate(uuid,uuid,integer,uuid,boolean,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,text,text,text,timestamptz,jsonb,text)') is null then
     raise exception 'Weight band cutover requires the routed estimate command';
   end if;
 end
@@ -59,7 +59,11 @@ alter table public.couranr_delivery_requests
   add column if not exists requested_pickup_local text,
   add column if not exists operating_timezone     text,
   add column if not exists requested_departure_at timestamptz,
-  add column if not exists timing_review_reasons  jsonb not null default '[]'::jsonb;
+  add column if not exists timing_review_reasons  jsonb not null default '[]'::jsonb,
+  add column if not exists restricted_class       text;
+
+comment on column public.couranr_delivery_requests.restricted_class is
+  'The merchant''s shipment-safety declaration: none (affirms no prohibited class is present — the only value that permits an automatic estimated quote), a confirmed prohibited class (invalid quote only), or unknown (Couranr review). NULL on rows created before the declaration existed.';
 
 comment on column public.couranr_delivery_requests.weight_band is
   'SUR-001 governed band when only the band is known. NEVER read back as pounds. weight_lb null + band present is the honest "band-only" state.';
@@ -74,6 +78,13 @@ alter table public.couranr_delivery_requests
   add constraint couranr_dr_weight_band_chk check (
     weight_band is null
     or weight_band in ('0_25_lb','over_25_to_50_lb','over_50_lb','unknown'));
+
+alter table public.couranr_delivery_requests
+  drop constraint if exists couranr_dr_restricted_class_chk;
+alter table public.couranr_delivery_requests
+  add constraint couranr_dr_restricted_class_chk check (
+    restricted_class is null or restricted_class in ('none','unknown',
+      'alcohol','tobacco','vaping_nicotine','cannabis_thc','firearms','ammunition','prescription_medication','controlled_substances','fuel','compressed_gas','corrosive_hazmat','toxic_hazmat','infectious_material','regulated_dangerous_goods','fireworks','explosives','illegal_goods','stolen_goods','cash','negotiable_instruments','biological_specimens','live_animals','people'));
 
 alter table public.couranr_delivery_requests
   drop constraint if exists couranr_dr_timing_intent_chk;
@@ -92,7 +103,12 @@ alter table public.couranr_delivery_requests
 alter table public.couranr_delivery_requests
   add constraint couranr_dr_scheduled_complete_chk check (
     timing_intent is distinct from 'scheduled'
-    or (requested_pickup_local is not null and requested_departure_at is not null));
+    or (requested_pickup_local is not null
+        and (requested_departure_at is not null
+             /* TMZ-001 DST edges: a wall clock that does not exist or exists
+                twice has NO canonical instant until the merchant clarifies;
+                the row says which, and nothing shifts or picks for them. */
+             or timing_review_reasons ?| array['requested_time_nonexistent','requested_time_ambiguous'])));
 
 alter table public.couranr_delivery_requests
   drop constraint if exists couranr_dr_requested_local_format_chk;
@@ -106,6 +122,93 @@ alter table public.couranr_delivery_requests
 alter table public.couranr_delivery_requests
   add constraint couranr_dr_timing_reasons_array_chk check (
     jsonb_typeof(timing_review_reasons) = 'array');
+
+
+/* ------------------------------------------------ shared command guards -- */
+/* Both routed commands share these; defined in `private` like the appender
+   so nothing outside the command boundary can call them. */
+
+create or replace function private.couranr_assert_safety_declaration(
+  p_restricted_class text, p_quote_status text
+) returns void language plpgsql security invoker set search_path='' as $fn$
+begin
+  /* Shipment-safety declaration (correction pass §2). The database holds the
+     rule so NO application path — AI-assisted or manual — can mint an
+     automatic payable quote without the merchant's trusted affirmation that
+     none of Couranr's prohibited classes is present, and a confirmed
+     prohibited class can only ever be stored as an invalid quote.
+     DEPLOY GAP: an application that does not yet send the declaration is
+     refused for estimated quotes (never silently allowed); apply this
+     migration and deploy the application in the same release window. */
+  if p_restricted_class is not null and p_restricted_class not in ('none','unknown',
+      'alcohol','tobacco','vaping_nicotine','cannabis_thc','firearms','ammunition','prescription_medication','controlled_substances','fuel','compressed_gas','corrosive_hazmat','toxic_hazmat','infectious_material','regulated_dangerous_goods','fireworks','explosives','illegal_goods','stolen_goods','cash','negotiable_instruments','biological_specimens','live_animals','people') then
+    raise exception 'restricted_class_invalid' using errcode='CR422';
+  end if;
+  if p_quote_status = 'estimated' and coalesce(p_restricted_class,'unknown') <> 'none' then
+    raise exception 'safety_declaration_required' using errcode='CR422';
+  end if;
+  if p_restricted_class not in ('none','unknown') and p_restricted_class is not null
+     and p_quote_status <> 'invalid' then
+    raise exception 'prohibited_class_requires_invalid_quote' using errcode='CR422';
+  end if;
+end
+$fn$;
+
+create or replace function private.couranr_assert_requested_timing(
+  p_requested_pickup_local text, p_requested_departure_at timestamptz,
+  p_timing_review_reasons jsonb
+) returns void language plpgsql security invoker set search_path='' as $fn$
+declare
+  v_reasons jsonb := coalesce(p_timing_review_reasons,'[]'::jsonb);
+  v_pg_instant timestamptz;
+begin
+  if p_requested_pickup_local is null then
+    raise exception 'scheduled_timing_incomplete' using errcode='CR422';
+  end if;
+  v_pg_instant := replace(p_requested_pickup_local,'T',' ')::timestamp
+                    at time zone 'America/New_York';
+  if p_requested_departure_at is not null then
+    /* TMZ-001 two-sided timing validation, same shape as the traffic-delay
+       rule: the caller supplies BOTH the merchant's local wall-clock words
+       and the canonical instant, and the database re-derives the instant
+       with its own America/New_York tzdata and refuses a mismatch. Neither
+       side is trusted alone. */
+    if p_requested_departure_at is distinct from v_pg_instant then
+      raise exception 'requested_departure_mismatch' using errcode='CR422';
+    end if;
+    return;
+  end if;
+  /* No canonical instant. The ONLY legitimate reason is a DST edge the
+     caller has classified: a wall clock that does not exist (spring-forward
+     gap) or exists twice (fall-back repeat). Nothing shifts or picks for the
+     merchant — the words are preserved, the instant stays unresolved, and
+     the request goes to review. The database checks the classification
+     with its own tzdata so the claim cannot be used to skip the two-sided
+     rule for an ordinary time. */
+  if not (v_reasons ?| array['requested_time_nonexistent','requested_time_ambiguous']) then
+    raise exception 'scheduled_timing_incomplete' using errcode='CR422';
+  end if;
+  if v_reasons ? 'requested_time_nonexistent'
+     and to_char(v_pg_instant at time zone 'America/New_York','YYYY-MM-DD"T"HH24:MI')
+         = p_requested_pickup_local then
+    -- PostgreSQL shows the same wall clock back: the time exists after all.
+    raise exception 'nonexistent_time_claim_rejected' using errcode='CR422';
+  end if;
+  if v_reasons ? 'requested_time_ambiguous'
+     and to_char((v_pg_instant - interval '1 hour') at time zone 'America/New_York',
+                 'YYYY-MM-DD"T"HH24:MI') <> p_requested_pickup_local
+     and to_char((v_pg_instant + interval '1 hour') at time zone 'America/New_York',
+                 'YYYY-MM-DD"T"HH24:MI') <> p_requested_pickup_local then
+    -- Neither neighbouring hour shows the same wall clock: not a repeat.
+    raise exception 'ambiguous_time_claim_rejected' using errcode='CR422';
+  end if;
+end
+$fn$;
+
+revoke all on function private.couranr_assert_safety_declaration(text,text)
+  from public, anon, authenticated;
+revoke all on function private.couranr_assert_requested_timing(text,timestamptz,jsonb)
+  from public, anon, authenticated;
 
 /* ------------------------------------------- routed commands, new arity -- */
 /* Old arity dropped FIRST — see the ARITY note in the header. */
@@ -135,7 +238,11 @@ create or replace function public.couranr_create_routed_delivery_request_draft(
   p_timing_intent text default null,
   p_requested_pickup_local text default null,
   p_requested_departure_at timestamptz default null,
-  p_timing_review_reasons jsonb default null
+  p_timing_review_reasons jsonb default null,
+  /* Shipment-safety declaration (correction pass §2). Appended with a default
+     for the same deploy-gap reason; a caller that does not send it is
+     treated as "unknown", which cannot mint an estimated quote. */
+  p_restricted_class text default null
 )
 returns public.couranr_delivery_requests
 language plpgsql security invoker set search_path=''
@@ -151,20 +258,21 @@ begin
   if p_weight_lb is null and p_weight_band is null then
     raise exception 'weight_or_band_required' using errcode='CR422';
   end if;
+  /* 0 lb is never a measured weight and never a synthetic "unknown": unknown
+     is weight_band = unknown with a NULL exact weight. Historical rows are
+     untouched (this is a command guard, not a table CHECK). */
+  if p_weight_lb is not null and p_weight_lb <= 0 then
+    raise exception 'weight_must_be_positive' using errcode='CR422';
+  end if;
+  perform private.couranr_assert_safety_declaration(p_restricted_class, p_quote_status);
   /* TMZ-001 two-sided timing validation, same shape as the traffic-delay
      rule: the caller supplies BOTH the merchant's local wall-clock words and
      the canonical instant, and the database re-derives the instant with its
      own America/New_York tzdata and refuses a mismatch. Neither side is
      trusted alone. */
   if p_timing_intent = 'scheduled' then
-    if p_requested_pickup_local is null or p_requested_departure_at is null then
-      raise exception 'scheduled_timing_incomplete' using errcode='CR422';
-    end if;
-    if p_requested_departure_at is distinct from
-       (replace(p_requested_pickup_local,'T',' ')::timestamp
-          at time zone 'America/New_York') then
-      raise exception 'requested_departure_mismatch' using errcode='CR422';
-    end if;
+    perform private.couranr_assert_requested_timing(
+      p_requested_pickup_local, p_requested_departure_at, p_timing_review_reasons);
   end if;
 
   if p_route_distance_meters is not null then
@@ -179,7 +287,7 @@ begin
       request_state,review_state,service_area_review_state,
       source,readiness_state,payer_type,
       recipient_name,recipient_phone,recipient_email,
-      loaded_miles,weight_lb,weight_band,additional_stops,
+      loaded_miles,weight_lb,weight_band,restricted_class,additional_stops,
       timing_intent,requested_pickup_local,operating_timezone,
       requested_departure_at,timing_review_reasons,
       service_level,signature_required,proof_method,
@@ -190,7 +298,7 @@ begin
       p_business_account_id,p_created_by,p_idempotency_key,
       'draft','not_required','pending',p_source,p_readiness_state,p_payer_type,
       p_recipient_name,p_recipient_phone,p_recipient_email,
-      v_loaded_miles,p_weight_lb,p_weight_band,p_additional_stops,
+      v_loaded_miles,p_weight_lb,p_weight_band,p_restricted_class,p_additional_stops,
       p_timing_intent,p_requested_pickup_local,
       case when p_timing_intent is not null then 'America/New_York' end,
       p_requested_departure_at,coalesce(p_timing_review_reasons,'[]'::jsonb),
@@ -264,7 +372,9 @@ create or replace function public.couranr_calculate_routed_delivery_request_esti
   p_timing_intent text default null,
   p_requested_pickup_local text default null,
   p_requested_departure_at timestamptz default null,
-  p_timing_review_reasons jsonb default null
+  p_timing_review_reasons jsonb default null,
+  /* Shipment-safety declaration (correction pass §2), see the create command. */
+  p_restricted_class text default null
 )
 returns public.couranr_delivery_requests
 language plpgsql security invoker set search_path=''
@@ -274,6 +384,7 @@ declare
   v_quote public.couranr_quote_versions;
   v_loaded_miles numeric(10,3);
   v_payload jsonb;
+  v_stored_declaration text;
 begin
   /* SUR-001: at least one honest weight statement — but ONLY when this call
      REWRITES the shipment. In the no-update branch the stored row is
@@ -282,20 +393,27 @@ begin
   if p_update_shipment and p_weight_lb is null and p_weight_band is null then
     raise exception 'weight_or_band_required' using errcode='CR422';
   end if;
+  if p_update_shipment and p_weight_lb is not null and p_weight_lb <= 0 then
+    raise exception 'weight_must_be_positive' using errcode='CR422';
+  end if;
+  /* The declaration being committed is the argument when the shipment is
+     rewritten, else the stored one; either way an estimated quote needs a
+     trusted "none". */
+  select restricted_class into v_stored_declaration
+    from public.couranr_delivery_requests
+   where id = p_request_id and business_account_id = p_business_account_id;
+  perform private.couranr_assert_safety_declaration(
+    case when p_update_shipment then p_restricted_class
+         else coalesce(p_restricted_class, v_stored_declaration) end,
+    p_quote_status);
   /* TMZ-001 two-sided timing validation, same shape as the traffic-delay
      rule: the caller supplies BOTH the merchant's local wall-clock words and
      the canonical instant, and the database re-derives the instant with its
      own America/New_York tzdata and refuses a mismatch. Neither side is
      trusted alone. */
   if p_timing_intent = 'scheduled' then
-    if p_requested_pickup_local is null or p_requested_departure_at is null then
-      raise exception 'scheduled_timing_incomplete' using errcode='CR422';
-    end if;
-    if p_requested_departure_at is distinct from
-       (replace(p_requested_pickup_local,'T',' ')::timestamp
-          at time zone 'America/New_York') then
-      raise exception 'requested_departure_mismatch' using errcode='CR422';
-    end if;
+    perform private.couranr_assert_requested_timing(
+      p_requested_pickup_local, p_requested_departure_at, p_timing_review_reasons);
   end if;
 
   if p_route_distance_meters is not null then
@@ -316,6 +434,7 @@ begin
       recipient_name=p_recipient_name,recipient_phone=p_recipient_phone,
       recipient_email=p_recipient_email,loaded_miles=v_loaded_miles,
       weight_lb=p_weight_lb,weight_band=p_weight_band,
+      restricted_class=p_restricted_class,
       additional_stops=p_additional_stops,
       timing_intent=p_timing_intent,
       requested_pickup_local=p_requested_pickup_local,
@@ -566,6 +685,8 @@ begin
         when v_req.weight_lb is not null then 'exact'
         when v_req.weight_band is not null and v_req.weight_band <> 'unknown' then 'band'
         else 'unresolved' end,
+      /* The safety declaration this quote was minted under. */
+      'restrictedClass',v_req.restricted_class,
       'additionalStops',v_req.additional_stops,
       /* TMZ-001: the requested timing this quote was minted against, local
          words AND canonical instant, so the quote can explain itself. */
@@ -616,17 +737,17 @@ $fn$;
    new function here, so each new arity is locked down by hand. */
 
 revoke all on function public.couranr_create_routed_delivery_request_draft(
-  uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,text,text,text,timestamptz,jsonb
+  uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,text,text,text,timestamptz,jsonb,text
 ) from public, anon, authenticated, service_role;
 grant execute on function public.couranr_create_routed_delivery_request_draft(
-  uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,text,text,text,timestamptz,jsonb
+  uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,text,text,text,timestamptz,jsonb,text
 ) to service_role;
 
 revoke all on function public.couranr_calculate_routed_delivery_request_estimate(
-  uuid,uuid,integer,uuid,boolean,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,text,text,text,timestamptz,jsonb
+  uuid,uuid,integer,uuid,boolean,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,text,text,text,timestamptz,jsonb,text
 ) from public, anon, authenticated, service_role;
 grant execute on function public.couranr_calculate_routed_delivery_request_estimate(
-  uuid,uuid,integer,uuid,boolean,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,text,text,text,timestamptz,jsonb
+  uuid,uuid,integer,uuid,boolean,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,text,text,text,timestamptz,jsonb,text
 ) to service_role;
 
 revoke all on function private.couranr_append_routed_quote_version(

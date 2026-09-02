@@ -59,6 +59,7 @@ const ERROR_COPY: Record<string, string> = {
   google_place_unverified: "Couranr could not verify this Google address. Choose it again.",
   weight_required: "Enter the weight, or choose the honest range.",
   weight_band_invalid: "Choose one of the weight ranges.",
+  restricted_class_invalid: "Choose one of the restricted-item options.",
   timing_intent_invalid: "Choose a pickup timing.",
   requested_time_invalid: "Enter the requested pickup date and time.",
   weight_invalid: "Weight cannot be negative.",
@@ -83,6 +84,33 @@ function fieldErrorsFrom(details: unknown): FieldErrors {
 
 const GOOGLE_MAPS_BROWSER_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
 
+/** The closed prohibited-class vocabulary, in merchant words. */
+const RESTRICTED_CLASS_OPTIONS: ReadonlyArray<readonly [string, string]> = [
+  ["alcohol", "alcohol"],
+  ["tobacco", "tobacco"],
+  ["vaping_nicotine", "vape or nicotine products"],
+  ["cannabis_thc", "cannabis or THC products"],
+  ["firearms", "firearms"],
+  ["ammunition", "ammunition"],
+  ["prescription_medication", "prescription medication"],
+  ["controlled_substances", "controlled substances"],
+  ["fuel", "fuel"],
+  ["compressed_gas", "compressed gas"],
+  ["corrosive_hazmat", "corrosive materials"],
+  ["toxic_hazmat", "toxic materials"],
+  ["infectious_material", "infectious material"],
+  ["regulated_dangerous_goods", "regulated dangerous goods"],
+  ["fireworks", "fireworks"],
+  ["explosives", "explosives"],
+  ["illegal_goods", "illegal goods"],
+  ["stolen_goods", "stolen goods"],
+  ["cash", "cash"],
+  ["negotiable_instruments", "checks or other negotiable instruments"],
+  ["biological_specimens", "biological specimens"],
+  ["live_animals", "live animals"],
+  ["people", "people"],
+];
+
 export function NewDeliveryFlow() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -105,6 +133,12 @@ export function NewDeliveryFlow() {
    * "unknown", which prices as Couranr review rather than as a guess.
    */
   const [weightMode, setWeightMode] = React.useState("exact");
+  /**
+   * The shipment-safety declaration. "unknown" until the merchant actively
+   * says "none of these": an automatic price needs their affirmation, with
+   * or without Smart Intake, and Couranr reviews everything else.
+   */
+  const [restrictedClass, setRestrictedClass] = React.useState("unknown");
   /** TMZ-001 requested timing, evaluated server-side in America/New_York. */
   const [timingIntent, setTimingIntent] = React.useState("asap");
   const [requestedPickupLocal, setRequestedPickupLocal] = React.useState("");
@@ -227,6 +261,10 @@ export function NewDeliveryFlow() {
         setWeightMode(f.value);
       } else if (f.fact_key === "service_level" && typeof f.value === "string" && trusted) {
         setServiceLevel(f.value);
+      } else if (f.fact_key === "restricted_class" && typeof f.value === "string" && trusted) {
+        // Only a TRUSTED declaration reflects; a model's "none" is never
+        // pre-selected on the merchant's behalf.
+        setRestrictedClass(f.value);
       }
     }
   }
@@ -251,6 +289,7 @@ export function NewDeliveryFlow() {
       // Exact pounds OR a governed band — never both, never an invention.
       weightLb: weightMode === "exact" ? weightLb : null,
       weightBand: weightMode === "exact" ? null : weightMode,
+      restrictedClass,
       timingIntent,
       requestedPickupLocal: timingIntent === "scheduled" ? requestedPickupLocal : null,
       additionalStops: 0,
@@ -571,6 +610,31 @@ export function NewDeliveryFlow() {
                 {(p) => <Input {...p} value="1" disabled readOnly />}
               </Field>
             )}
+          </Grid>
+
+          <Grid columns={2}>
+            <Field
+              label="Restricted items"
+              required
+              error={fieldErrors.restrictedClass}
+              hint="An automatic price needs your confirmation that none of these are in the shipment. Anything else goes to Couranr review."
+            >
+              {(p) => (
+                <Select
+                  {...p}
+                  value={restrictedClass}
+                  onChange={(e) => setRestrictedClass(e.target.value)}
+                >
+                  <option value="unknown">Not sure yet — Couranr will review</option>
+                  <option value="none">None of these — I confirm</option>
+                  {RESTRICTED_CLASS_OPTIONS.map(([value, label]) => (
+                    <option key={value} value={value}>
+                      Contains: {label}
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
           </Grid>
 
           <Grid columns={2}>
