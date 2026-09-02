@@ -586,7 +586,7 @@ describe("QVL-001 quote validity is one number, not two", () => {
   const REPO = path.resolve(__dirname, "..");
   const QVL_SQL = () =>
     readFileSync(
-      path.join(REPO, "supabase/migrations/20260902100000_couranr_quote_validity_and_policy_pin.sql"),
+      path.join(REPO, "supabase/migrations/20260902161642_couranr_quote_validity_and_policy_pin.sql"),
       "utf8"
     );
   /* The database is the enforcement point. This binds the TypeScript constant

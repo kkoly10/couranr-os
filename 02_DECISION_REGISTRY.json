@@ -3872,7 +3872,7 @@
         "public.couranr_quote_versions"
       ],
       "affected_code_paths": [
-        "supabase/migrations/20260902100000_couranr_quote_validity_and_policy_pin.sql"
+        "supabase/migrations/20260902161642_couranr_quote_validity_and_policy_pin.sql"
       ],
       "acceptance_criteria": [
         "A typo such as couranr-pricing-v2-2026-09-1 cannot be minted.",
@@ -3949,7 +3949,7 @@
         "public.couranr_payment_obligations"
       ],
       "affected_code_paths": [
-        "supabase/migrations/20260902100000_couranr_quote_validity_and_policy_pin.sql",
+        "supabase/migrations/20260902161642_couranr_quote_validity_and_policy_pin.sql",
         "lib/couranr/pricing/policy.ts",
         "lib/couranr/errors.ts"
       ],

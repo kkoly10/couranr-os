@@ -512,9 +512,9 @@ function main() {
         return `ERROR|${String(e.message).split("\n").find((l) => /ERROR:/.test(l)) ?? "unknown"}`;
       }
     };
-    const QVL_FWD = "supabase/migrations/20260902100000_couranr_quote_validity_and_policy_pin.sql";
+    const QVL_FWD = "supabase/migrations/20260902161642_couranr_quote_validity_and_policy_pin.sql";
     const QVL_BACK =
-      "supabase/rollbacks/20260902100000_couranr_quote_validity_and_policy_pin.rollback.sql";
+      "supabase/rollbacks/20260902161642_couranr_quote_validity_and_policy_pin.rollback.sql";
     const fnCount = (schema, name) =>
       one(`select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
             where n.nspname='${schema}' and p.proname='${name}'`);
