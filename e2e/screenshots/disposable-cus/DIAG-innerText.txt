@@ -5,13 +5,34 @@ Service areas
 How it works
 Sign in
 Create business account
-!
-
 Delivery Help
 
-This help link is not available.
+Tell Couranr what you need and we will take it from here. This link is for one delivery.
 
-If you are expecting a delivery, the business that arranged it can send you a new link.
+How quickly we reply
+
+Couranr normally replies to messages within 15 minutes during operating hours. Operating hours are Monday to Friday, 6:00 AM to 6:00 PM.
+
+Couranr does not offer phone support. Everything is handled here so it stays attached to your delivery.
+
+Your messages
+
+You have not sent anything yet. Choose what this is about and tell us what is happening.
+
+Send a message
+What is this about?*
+I will not be available
+Access or entry instructions
+Something about the address
+How the handoff should work
+I did not expect this delivery
+There is a problem with the delivery
+Something else
+Tell us what is happening*
+
+Sending a message does not change your delivery on its own. Couranr will read it and confirm anything that needs to change.
+
+Send to Couranr
 
 Couranr for Business — local delivery infrastructure for local businesses.
 
