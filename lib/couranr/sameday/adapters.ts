@@ -128,9 +128,11 @@ const FIXTURE: Omit<SameDayAdapters, "mode"> = {
       return { state: "manual-review", note: "Couranr will confirm scheduled trips before pricing." };
     }
     /* A fixture amount, reachable ONLY in fixture mode and never a production
-       claim. It is not read from the governed pricing module: those values
-       describe the business quote, which this flow does not compute. */
-    return { state: "fixture-available", totalCents: 2299, note: "Example only — not a live quote." };
+       claim. It is deliberately the Pricing V2 base fare rather than a number
+       of its own: consumer Same Day will use the SAME universal engine, so an
+       example that drifted from it would teach the wrong price. It is still not
+       imported from the pricing module — this flow computes no quote. */
+    return { state: "fixture-available", totalCents: 799, note: "Example only — not a live quote." };
   },
   async submitRequest() {
     return { state: "received-preview" };

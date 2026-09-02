@@ -5,8 +5,7 @@ import { Button } from "@/components/couranr/primitives";
 import {
   CANCELLATION_CENTS,
   OVERNIGHT_WINDOW_COPY,
-  RETURN_MINIMUM_CENTS,
-  RETURN_PERCENT_OF_ORIGINAL,
+  RETURN_PRICING_COPY,
   dollars,
 } from "@/lib/couranr/public/governed";
 
@@ -14,7 +13,7 @@ import {
  * PUB-008's registry-required "expanded pricing details" state — a real
  * client-side disclosure over the full approved-charge schedule (SUR-001
  * weight bands and waiting, OVN-001 overnight as request-only, CAN-001
- * cancellation, REF-001 return, SUR-002 Route Saver).
+ * cancellation, REF-003 return, SUR-004 Route Saver).
  *
  * Overnight is listed with its surcharge but explicitly request-only: OVN-002
  * (the enablement mechanism) is unresolved, so there is no way to book it and
@@ -23,9 +22,9 @@ import {
  * V3: the three bordered Cards became one ruled schedule. §27.1 caps this page
  * at zero grid-dominant sections outside the two it names, and three cards of
  * tables inside a disclosure was a card grid hiding behind a button. The
- * cancellation and return amounts now render from `governed.ts` instead of
- * being typed in — they were `800`, `1500`, `1499` and `70%` as literals, which
- * agreed with CAN-001 and REF-001 only until either changed.
+ * cancellation and return copy now renders from `governed.ts` instead of being
+ * typed in — the return rule was once `1499` and `70%` as literals, which
+ * agreed with REF-001 only until REF-003 retired it.
  */
 
 type Row = { label: string; value: React.ReactNode };
@@ -51,8 +50,10 @@ export function PricingDetails(props: {
   overnightCents: number;
   waitingIncludedMinutes: number;
   waitingPerMinuteCents: number;
-  routeSaverFromCents: number;
-  routeSaverMinStops: number;
+  routeSaverStatusCopy: string;
+  trafficIncludedMinutes: number;
+  trafficPerMinuteCents: number;
+  trafficReviewOverMinutes: number;
 }) {
   const [open, setOpen] = React.useState(false);
 
@@ -94,8 +95,18 @@ export function PricingDetails(props: {
                 props.overnightCents,
               )} — request-only, when Couranr enables and confirms; never stacks with rush`,
             },
-            { label: "Tolls and parking", value: "At cost" },
-            { label: "Tips", value: "100% to the driver" },
+            {
+              label: "Predicted traffic delay",
+              value: `First ${props.trafficIncludedMinutes} minutes included, then ${dollars(
+                props.trafficPerMinuteCents,
+              )}/minute, quoted up front. Over ${props.trafficReviewOverMinutes} minutes Couranr reviews it. Once you accept a quote, later traffic never changes it.`,
+            },
+            {
+              label: "Tolls and parking",
+              value: "Actual documented cost, with no markup, shown separately",
+            },
+            { label: "Tips", value: "Separate, and 100% to the driver" },
+            { label: "Tax", value: "Separate from the delivery subtotal" },
           ]}
         />
 
@@ -118,25 +129,17 @@ export function PricingDetails(props: {
                 CANCELLATION_CENTS.afterArrivalUnavailable,
               )} failed-attempt fee plus approved waiting`,
             },
+            { label: "Return after pickup", value: RETURN_PRICING_COPY },
             {
-              label: "Return after pickup",
-              value: `${RETURN_PERCENT_OF_ORIGINAL}% of the original delivery charge, minimum ${dollars(
-                RETURN_MINIMUM_CENTS,
-              )}`,
+              label: "If Couranr caused it",
+              value: `${dollars(CANCELLATION_CENTS.couranrCaused)} — you are not charged for a cancellation, a failed pickup or a corrective return that was our fault`,
             },
           ]}
         />
 
         <Schedule
           heading="Route Saver"
-          rows={[
-            {
-              label: `${props.routeSaverMinStops}+ stops from one pickup`,
-              value: `From ${dollars(
-                props.routeSaverFromCents,
-              )} per stop, with the route order controlled by Couranr. Arranged with Couranr Operations.`,
-            },
-          ]}
+          rows={[{ label: "Multi-stop runs", value: props.routeSaverStatusCopy }]}
         />
       </div>
     </div>

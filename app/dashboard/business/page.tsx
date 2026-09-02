@@ -118,7 +118,7 @@ export default function BusinessDashboardPage() {
     setStoredBusinessAccountId(id);
   }
 
-  const courierHref = selectedId ? `/courier/quote?businessAccountId=${encodeURIComponent(selectedId)}` : "/courier/quote";
+  const courierHref = "/estimate";
   const docsHref = selectedId ? `/docs/request?businessAccountId=${encodeURIComponent(selectedId)}` : "/docs/request";
   const deliveriesOpsHref = selectedId
     ? `/dashboard/business/deliveries?businessAccountId=${encodeURIComponent(selectedId)}`

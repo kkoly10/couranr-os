@@ -173,7 +173,7 @@ export default function Page() {
             ordinary run.
           </li>
           <li className="cr-mkt-outcomes__item">
-            The first {MILE_TIERS[0].fromMile - 1} loaded miles are in the base price;
+            The first {MILE_TIERS[0].overMiles} loaded miles are in the base price;
             after that the published tiers apply, from{" "}
             {dollars(MILE_TIERS[0].perMileCents)} per mile.
           </li>

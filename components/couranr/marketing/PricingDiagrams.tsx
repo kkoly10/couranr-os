@@ -49,7 +49,6 @@ function tierRange(): { low: number; high: number } {
  */
 export function LoadedMilesDiagram() {
   const { low, high } = tierRange();
-  const firstBillable = INCLUDED_LOADED_MILES + 1;
 
   return (
     <figure className="cr-mkt-miles">
@@ -80,10 +79,12 @@ export function LoadedMilesDiagram() {
 
         <li className="cr-mkt-miles__leg cr-mkt-miles__leg--tiered">
           <span className="cr-mkt-miles__leg-rule" aria-hidden="true" />
-          <span className="cr-mkt-miles__leg-title">Mile {firstBillable} onward</span>
+          <span className="cr-mkt-miles__leg-title">
+            Past {INCLUDED_LOADED_MILES} loaded miles
+          </span>
           <span className="cr-mkt-miles__leg-note">
-            Priced by tier, {dollars(low)} to {dollars(high)} a mile — the table below is
-            the schedule.
+            Priced by tier, {dollars(low)} to {dollars(high)} a mile, and part of a
+            mile is billed as part of a mile — the table below is the schedule.
           </span>
         </li>
 

@@ -308,7 +308,7 @@ export function totalChargedCents(
     .reduce((sum, r) => sum + (r.capturedAmountCents ?? r.amountCents), 0);
 }
 
-/** `2299` → `"$22.99"`. Integer cents in, never a float. */
+/** `799` → `"$7.99"`. Integer cents in, never a float. */
 export function formatCents(cents: number, currency = "usd"): string {
   const sign = cents < 0 ? "-" : "";
   const abs = Math.abs(Math.trunc(cents));

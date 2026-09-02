@@ -67,7 +67,7 @@ export default function PublicHeader({
           <Link className="navItem" href="/auto">
             Auto
           </Link>
-          <Link className="navItem" href="/courier">
+          <Link className="navItem" href="/estimate">
             Courier
           </Link>
           <Link className="navItem" href="/docs">
@@ -112,7 +112,7 @@ export default function PublicHeader({
             <Link className="mobileItem" href="/auto">
               Auto
             </Link>
-            <Link className="mobileItem" href="/courier">
+            <Link className="mobileItem" href="/estimate">
               Courier
             </Link>
             <Link className="mobileItem" href="/docs">

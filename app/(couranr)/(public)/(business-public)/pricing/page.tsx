@@ -2,7 +2,6 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { Table, TableScroll, Text } from "@/components/couranr/primitives";
 import {
-  ADDITIONAL_STOP_CENTS,
   BASE_PRICE_CENTS,
   INCLUDED_LOADED_MILES,
   MANUAL_QUOTE_OVER_MILES,
@@ -10,13 +9,17 @@ import {
   MILE_TIERS,
   OVERNIGHT_WINDOW_COPY,
   PHOTO_OR_PIN_PROOF_CENTS,
-  ROUTE_SAVER_FROM_CENTS_PER_STOP,
-  ROUTE_SAVER_MIN_STOPS,
+  ROUTE_SAVER_STATUS_COPY,
   SERVICE_LEVEL_CENTS,
   SIGNATURE_CENTS,
+  TRAFFIC_DELAY_CENTS_PER_MINUTE,
+  TRAFFIC_DELAY_INCLUDED_MINUTES,
+  TRAFFIC_REVIEW_OVER_MINUTES,
   WAITING_INCLUDED_MINUTES,
   WAITING_PER_MINUTE_CENTS,
-  WEIGHT_BANDS,
+  WEIGHT_INCLUDED_THROUGH_LB,
+  WEIGHT_SURCHARGE_CENTS,
+  WEIGHT_SURCHARGE_THROUGH_LB,
   dollars,
 } from "@/lib/couranr/public/governed";
 import {
@@ -82,7 +85,6 @@ const SERVICE_LEVELS = [
 
 /** SUR-001's per-item charges that are neither service level nor weight. */
 const OPERATING_CHARGES = [
-  { name: "Additional stop", charge: `+${dollars(ADDITIONAL_STOP_CENTS)}` },
   { name: "Signature on delivery", charge: `+${dollars(SIGNATURE_CENTS)}` },
   {
     name: "Photo or PIN proof",
@@ -91,6 +93,10 @@ const OPERATING_CHARGES = [
   {
     name: "Waiting time",
     charge: `First ${WAITING_INCLUDED_MINUTES} min included, then ${dollars(WAITING_PER_MINUTE_CENTS)}/min`,
+  },
+  {
+    name: "Predicted traffic delay",
+    charge: `First ${TRAFFIC_DELAY_INCLUDED_MINUTES} min included, then ${dollars(TRAFFIC_DELAY_CENTS_PER_MINUTE)}/min`,
   },
 ];
 
@@ -144,8 +150,10 @@ export default function Page() {
             </h2>
             <p className="cr-mkt-band__body">
               Loaded miles are the miles your package actually travels, measured
-              server-side from the real addresses — not the towns you typed. Mile{" "}
-              {INCLUDED_LOADED_MILES + 1} is the first billable one.
+              server-side from the real addresses — not the towns you typed.
+              Everything past {INCLUDED_LOADED_MILES} loaded miles is billed by the
+              mile, and part of a mile is billed as part of a mile — nothing is
+              rounded up.
             </p>
             <p className="cr-mkt-band__note">
               Your business or your customer can pay, chosen per delivery.
@@ -198,9 +206,9 @@ export default function Page() {
             </thead>
             <tbody>
               {MILE_TIERS.map((t) => (
-                <tr key={t.fromMile}>
+                <tr key={t.overMiles}>
                   <td>
-                    {t.fromMile}–{t.toMile}
+                    Over {t.overMiles} through {t.throughMiles}
                   </td>
                   <td>{dollars(t.perMileCents)}</td>
                 </tr>
@@ -272,31 +280,34 @@ export default function Page() {
           <div className="cr-mkt-schedule__row">
             <dt>Weight</dt>
             <dd>
-              From {dollars(WEIGHT_BANDS[0].cents)} at {WEIGHT_BANDS[0].fromLb} lb, up to{" "}
-              {dollars(WEIGHT_BANDS[WEIGHT_BANDS.length - 1].cents)} at{" "}
-              {WEIGHT_BANDS[WEIGHT_BANDS.length - 1].toLb} lb
+              Included through {WEIGHT_INCLUDED_THROUGH_LB} lb, then{" "}
+              {dollars(WEIGHT_SURCHARGE_CENTS)} through {WEIGHT_SURCHARGE_THROUGH_LB} lb.
+              Over {WEIGHT_SURCHARGE_THROUGH_LB} lb is a Large Item and Couranr quotes it.
             </dd>
           </div>
           <div className="cr-mkt-schedule__row">
             <dt>Route Saver</dt>
-            <dd>
-              From {dollars(ROUTE_SAVER_FROM_CENTS_PER_STOP)} per stop, {ROUTE_SAVER_MIN_STOPS}+
-              stops from one pickup
-            </dd>
+            <dd>{ROUTE_SAVER_STATUS_COPY}</dd>
           </div>
         </dl>
 
         {/* Registry-required state: expanded pricing details. */}
         <PricingDetails
-          weightRows={WEIGHT_BANDS.map((b) => ({
-            label: `${b.fromLb}–${b.toLb} lb`,
-            price: `+${dollars(b.cents)}`,
-          }))}
+          weightRows={[
+            { label: `Through ${WEIGHT_INCLUDED_THROUGH_LB} lb`, price: "Included" },
+            {
+              label: `Over ${WEIGHT_INCLUDED_THROUGH_LB} through ${WEIGHT_SURCHARGE_THROUGH_LB} lb`,
+              price: `+${dollars(WEIGHT_SURCHARGE_CENTS)}`,
+            },
+            { label: `Over ${WEIGHT_SURCHARGE_THROUGH_LB} lb`, price: "Large Item — Couranr quotes it" },
+          ]}
           overnightCents={SERVICE_LEVEL_CENTS.overnight}
           waitingIncludedMinutes={WAITING_INCLUDED_MINUTES}
           waitingPerMinuteCents={WAITING_PER_MINUTE_CENTS}
-          routeSaverFromCents={ROUTE_SAVER_FROM_CENTS_PER_STOP}
-          routeSaverMinStops={ROUTE_SAVER_MIN_STOPS}
+          routeSaverStatusCopy={ROUTE_SAVER_STATUS_COPY}
+          trafficIncludedMinutes={TRAFFIC_DELAY_INCLUDED_MINUTES}
+          trafficPerMinuteCents={TRAFFIC_DELAY_CENTS_PER_MINUTE}
+          trafficReviewOverMinutes={TRAFFIC_REVIEW_OVER_MINUTES}
         />
       </section>
 
