@@ -3790,7 +3790,10 @@
         "resolution": "The engine is cut over to 799 cents covering the first two loaded miles, and the superseded policy version can no longer be minted.",
         "remediation_commit": "Pricing V2 cutover"
       },
-      "implementation_phase": "Pricing V2 cutover"
+      "implementation_phase": "Pricing V2 cutover",
+      "amended_by": [
+        "PRC-007"
+      ]
     },
     {
       "id": "PRC-006",
@@ -3840,6 +3843,115 @@
         "remediation_commit": "Pricing V2 cutover"
       },
       "implementation_phase": "Pricing V2 cutover"
+    },
+    {
+      "id": "PRC-007",
+      "category": "pricing",
+      "amends": "PRC-005",
+      "decision": "A newly minted automatic priced quote must carry EXACTLY couranr-pricing-v2-2026-09-01. Blacklisting the superseded identifier is insufficient.",
+      "value": {
+        "required_policy_version": "couranr-pricing-v2-2026-09-01",
+        "enforcement": "exact match at the mint boundary, not a denylist",
+        "applies_to": "quote_status='estimated' minted through couranr_append_routed_quote_version",
+        "unpriced_quotes": "unchanged — manual_review_required and invalid keep their nullable policy rules",
+        "historical_rows": "untouched and readable"
+      },
+      "status": "decided",
+      "decided_by": "owner",
+      "decided_at_utc": "2026-09-02T00:00:00Z",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§4 Pricing registry — Couranr Pricing Authority V2 amendment",
+      "affected_routes": [
+        "/app/business/deliveries/new"
+      ],
+      "affected_screen_ids": [
+        "MER-005",
+        "MER-006"
+      ],
+      "affected_database_objects": [
+        "public.couranr_quote_versions"
+      ],
+      "affected_code_paths": [
+        "supabase/migrations/20260902100000_couranr_quote_validity_and_policy_pin.sql"
+      ],
+      "acceptance_criteria": [
+        "A typo such as couranr-pricing-v2-2026-09-1 cannot be minted.",
+        "An invented future version cannot be minted.",
+        "An empty policy string cannot be minted.",
+        "An unpriced manual-review quote still mints with a null policy."
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "enforcement": "denylist of couranr-pricing-2026-07-31 only"
+        },
+        "code_location": "supabase/migrations/20260902042602_couranr_pricing_v2_traffic_authority.sql",
+        "resolution": "Replaced with an exact-match requirement in the minting path.",
+        "remediation_commit": "Pricing V2 closure"
+      },
+      "implementation_phase": "Pricing V2 closure"
+    },
+    {
+      "id": "QVL-001",
+      "category": "pricing",
+      "decision": "An unaccepted immediate quote is valid for 15 minutes on SERVER time; past that it must be rerouted and recalculated before it can be accepted, acknowledged or authorized. Quote N is never mutated.",
+      "value": {
+        "validity_seconds": 900,
+        "boundary": "half-open: valid for [0, 15:00), expired at 15:00 and beyond",
+        "clock": "server/database time; no browser timer participates",
+        "applies_to": "a quote_status='estimated' quote under couranr-pricing-v2-2026-09-01",
+        "exempt": [
+          "historical policy versions",
+          "manual_review_required and invalid quotes",
+          "any quote already accepted or authorized"
+        ],
+        "enforced_at": [
+          "couranr_submit_delivery_request_v2",
+          "couranr_accept_delivery_request_as_quoted",
+          "couranr_create_payment_obligation"
+        ],
+        "on_expiry": "refuse with quote_expired (CR410); never silently reprice",
+        "remedy": "a fresh canonical route + traffic calculation, which mints Quote N+1"
+      },
+      "status": "decided",
+      "decided_by": "owner",
+      "decided_at_utc": "2026-09-02T00:00:00Z",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§4 Pricing registry — \"Quote stability\"",
+      "affected_routes": [
+        "/app/business/deliveries/new",
+        "/operations/queue",
+        "/pay/[token]"
+      ],
+      "affected_screen_ids": [
+        "MER-005",
+        "MER-006",
+        "OPS-002"
+      ],
+      "affected_database_objects": [
+        "public.couranr_quote_versions",
+        "public.couranr_payment_obligations"
+      ],
+      "affected_code_paths": [
+        "supabase/migrations/20260902100000_couranr_quote_validity_and_policy_pin.sql",
+        "lib/couranr/pricing/policy.ts",
+        "lib/couranr/errors.ts"
+      ],
+      "acceptance_criteria": [
+        "A V2 estimated quote 14:59 old still submits.",
+        "The same quote at exactly 15:00 is refused with quote_expired.",
+        "A refusal does not mutate Quote N or move the request's state.",
+        "An obligation that already exists is returned unchanged 45 minutes later.",
+        "A quote under couranr-pricing-2026-07-31 never expires."
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "enforcement": "none — documentation only"
+        },
+        "code_location": "docs/couranr-mvp/PRODUCT_SPEC.md",
+        "resolution": "Enforced in the database at the three acceptance/authorization commands.",
+        "remediation_commit": "Pricing V2 closure"
+      },
+      "implementation_phase": "Pricing V2 closure"
     },
     {
       "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
