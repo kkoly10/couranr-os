@@ -1381,9 +1381,19 @@ async function groupL() {
     await signIn(page, USERS.merchant, { expectLanding: "/app/business" });
     const made = await createRequestThroughUi(page, accountId, { acknowledge: true });
     acceptId = made.id;
-    check("L1", "MER-006 offers the quote acknowledgment for a merchant-paid priced quote",
-      made.ackVisible, `checkboxPresent=${made.ackVisible}`);
-    await shot(page, "L1-mer006-acknowledgment");
+    /* When the intake could not be driven at all, `ackVisible` is false because
+       the form never rendered - not because MER-006 is missing its checkbox.
+       createRequestThroughUi has already recorded MER-005 as inconclusive; a
+       second, harder FAIL here would report a product defect the run never
+       reached. Both still exit non-zero. */
+    if (made.inconclusive) {
+      inconclusive("L1", "MER-006 quote acknowledgment",
+        "the intake never rendered, so the acknowledgment control was never reachable");
+    } else {
+      check("L1", "MER-006 offers the quote acknowledgment for a merchant-paid priced quote",
+        made.ackVisible, `checkboxPresent=${made.ackVisible}`);
+      await shot(page, "L1-mer006-acknowledgment");
+    }
 
     if (!acceptId) {
       inconclusive("L2", "submission persisted", "no new request row appeared after submit");

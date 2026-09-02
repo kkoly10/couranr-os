@@ -33,6 +33,9 @@ function raises(sql) {
 
 const BUSINESS = "11111111-1111-4111-8111-111111111111";
 const USER = "22222222-2222-4222-8222-222222222222";
+/* A separate Operations identity, because couranr_begin_payment_release gates
+   on profiles.role = 'admin' and the merchant fixture user must not hold it. */
+const OPS = "44444444-4444-4444-8444-444444444444";
 const addr = (pid, line1) =>
   `jsonb_build_object('googlePlaceId','${pid}','formattedAddress','${line1}, Stafford, VA 22554, USA',
    'line1','${line1}','line2',null,'city','Stafford','region','VA','postalCode','22554',
@@ -58,7 +61,9 @@ function main() {
          insert into public.business_accounts(id,name,slug,created_by)
            values ('${BUSINESS}','Pricing Fixture','pricing-fixture','${USER}');
          insert into public.business_members(business_account_id,user_id,role,status)
-           values ('${BUSINESS}','${USER}','owner','active');`);
+           values ('${BUSINESS}','${USER}','owner','active');
+         insert into auth.users(id,email) values ('${OPS}','ops@example.test');
+         insert into public.profiles(id,email,role) values ('${OPS}','ops@example.test','admin');`);
 
     console.log("\n  Pricing V2 authority — database execution\n");
 
@@ -380,6 +385,28 @@ function main() {
               'businessAccountId','${BUSINESS}','quoteVersionId','${c1.qId}'),
             now()::timestamptz)`),
       "rejected|quote_expired");
+
+    /* A refusal at the authorize boundary leaves a REAL Stripe hold on the
+       customer's card while Couranr's ledger still says requires_action, and
+       OPS-010 cannot release it - couranr_begin_payment_release raises CR409
+       unless the obligation is already 'authorized'. The convergence path is
+       the provider's own cancellation (an operator in Stripe, or the automatic
+       expiry of an uncaptured authorization), which this proves still applies
+       from requires_action. Executed, because reading the CASE arm does not
+       prove the transition guard lets it through. */
+    check("PV2-58", "an expired-quote refusal cannot be released through OPS-010",
+      raises(`select public.couranr_begin_payment_release('${c1.obId}'::uuid,'${OPS}'::uuid,
+              (select version from public.couranr_payment_obligations where id='${c1.obId}'),
+              'quote expired before authorization')`),
+      "CR409|only_an_authorized_hold_may_be_released");
+    check("PV2-59", "... but the provider's own cancellation still converges the ledger",
+      one(`select outcome||'|'||coalesce(payment_state,'-')
+           from public.couranr_apply_payment_intent_state(
+             'e-stale-cancel','payment_intent.canceled','${custIntent("e-stale")}',
+             'canceled',799,0,'usd',
+             jsonb_build_object('paymentObligationId','${c1.obId}','couranrRequestId','${c1.rid}',
+               'businessAccountId','${BUSINESS}','quoteVersionId','${c1.qId}'))`),
+      "applied|cancelled");
 
     /* ---- 7. a real authorization survives the clock ---------------------- */
     age(c2.rid, "45 minutes");
