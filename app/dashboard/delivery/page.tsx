@@ -77,7 +77,7 @@ export default function DeliveryDashboard() {
           <p className="pageSub">Track your active and past deliveries.</p>
         </div>
 
-        <button onClick={() => router.push("/courier/quote")} className="btn btnPrimary">
+        <button onClick={() => router.push("/estimate")} className="btn btnPrimary">
           New delivery
         </button>
       </div>

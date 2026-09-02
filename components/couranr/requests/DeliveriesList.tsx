@@ -259,7 +259,6 @@ export function DeliveriesList() {
           recipientName: row.recipientName,
           recipientPhone: row.recipientPhone,
           recipientEmail: row.recipientEmail,
-          loadedMiles: row.loadedMiles,
           weightLb: row.weightLb,
           additionalStops: row.additionalStops,
           serviceLevel: row.serviceLevel,

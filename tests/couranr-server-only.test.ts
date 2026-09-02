@@ -159,6 +159,15 @@ describe("server-only modules are unreachable from client code", () => {
       "lib/couranr/presets/commands.ts",
       "lib/couranr/requests/actor.ts",
       "lib/couranr/requests/commands.ts",
+      // Holds the server-only Google key and is the only caller of Place
+      // Details (New), so browser address facts cannot become authority.
+      "lib/couranr/routing/googlePlaces.ts",
+      // Holds the server-only Google key and is the only caller of Routes v2.
+      // Client code receives its result, never the credential or route call.
+      "lib/couranr/routing/googleRoutes.ts",
+      // Exact named-market authority. Keeping it server-only prevents a
+      // browser from self-classifying an unverified address as serviceable.
+      "lib/couranr/routing/market.ts",
       // MER-014/MER-015. Holds the service-role client AND the auth admin API
       // — `listUsers` walks every account in the project to resolve an invite
       // email, which is the last thing that may ever reach a browser bundle.

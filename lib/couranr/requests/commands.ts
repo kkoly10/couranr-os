@@ -1,6 +1,16 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { assertServerOnly } from "@/lib/couranr/serverOnly";
-import { quoteDelivery, type QuoteResult } from "@/lib/couranr/pricing";
+import {
+  COURANR_PRICING_POLICY_VERSION,
+  INCLUDED_LOADED_MILES,
+  type QuoteResult,
+} from "@/lib/couranr/pricing";
+import {
+  deriveCanonicalRouteAndQuote,
+  isCanonicalAddressResolutionError,
+  type CanonicalRouteEvidence,
+} from "@/lib/couranr/routing/googleRoutes";
+import type { GoogleAddressSnapshot } from "@/lib/couranr/routing/address";
 import {
   classifyDatabaseError,
   logServerFailure,
@@ -54,12 +64,12 @@ export const TABLE = "couranr_delivery_requests";
 export const EVENTS_TABLE = "couranr_delivery_request_events";
 
 export const RPC = {
-  create: "couranr_create_delivery_request_draft",
-  estimate: "couranr_calculate_delivery_request_estimate",
+  create: "couranr_create_routed_delivery_request_draft",
+  estimate: "couranr_calculate_routed_delivery_request_estimate",
   submit: "couranr_submit_delivery_request_v2",
   beginReview: "couranr_begin_delivery_request_review",
   accept: "couranr_accept_delivery_request_as_quoted",
-  requote: "couranr_requote_delivery_request",
+  requote: "couranr_requote_routed_delivery_request",
   decline: "couranr_decline_delivery_request",
 } as const;
 
@@ -234,19 +244,44 @@ async function loadRequest(
 }
 
 /**
- * Recomputes the quote from PERSISTED shipment fields. Never from a payload.
- * This is the `start-checkout:180-186` pattern: the server recomputes and the
- * client's numbers are irrelevant.
+ * Reads back the quote the DATABASE holds for this request. Never recomputes
+ * it, and never reads a payload.
+ *
+ * This used to re-derive the quote by re-running `quoteDelivery` over the
+ * persisted shipment columns. That was already the weaker choice - a stored
+ * quote is immutable commercial evidence, so reproducing it by recomputation
+ * makes the answer depend on today's engine rather than on what the payer was
+ * actually shown - and Pricing V2 made it outright wrong: traffic evidence
+ * lives on `couranr_quote_versions`, not on the request row, and V2 fails an
+ * automatic quote closed when the delay is absent. A re-derivation therefore
+ * answered `manual_review_required` / 0 cents / no line items for a request the
+ * database had just stored as `estimated`.
+ *
+ * The request row denormalizes every quote field, so reading is both correct
+ * and cheaper. `roundingApplied`, `taxIncluded` and `paymentDueCents` are
+ * engine invariants under every policy version this codebase can mint, which
+ * is why the stored columns are asserted rather than surfaced.
  */
-function quoteFromRow(row: DeliveryRequestRow, overnightRequested: boolean): QuoteResult {
-  return quoteDelivery({
-    loadedMiles: Number(row.loaded_miles ?? 0),
-    weightLb: Number(row.weight_lb ?? 0),
-    additionalStops: Number(row.additional_stops ?? 0),
-    serviceLevel: row.service_level,
-    signatureRequired: row.signature_required === true,
-    overnightRequested,
-  });
+function quoteFromRow(row: DeliveryRequestRow): QuoteResult {
+  const num = (v: unknown, fallback: number): number => {
+    if (v === null || v === undefined || v === "") return fallback;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : fallback;
+  };
+  return {
+    policyVersion: row.pricing_policy_version ?? COURANR_PRICING_POLICY_VERSION,
+    quoteStatus: row.quote_status,
+    deliverySubtotalCents: num(row.delivery_subtotal_cents, 0),
+    lineItems: Array.isArray(row.quote_line_items) ? row.quote_line_items : [],
+    includedLoadedMiles: num(row.included_loaded_miles, INCLUDED_LOADED_MILES),
+    billableLoadedMiles: num(row.billable_loaded_miles, 0),
+    trafficDelaySeconds: null,
+    reviewReasons: Array.isArray(row.review_reasons) ? row.review_reasons : [],
+    roundingApplied: false,
+    taxIncluded: false,
+    paymentDueCents: null,
+    validationErrors: [],
+  };
 }
 
 /**
@@ -258,7 +293,13 @@ function quoteFromRow(row: DeliveryRequestRow, overnightRequested: boolean): Quo
  * every state and own `business_account_id`, `created_by` and the idempotency
  * key as separate arguments.
  */
-export function shipmentArgs(draft: DeliveryRequestDraft) {
+export function shipmentArgs(
+  draft: DeliveryRequestDraft,
+  canonical: {
+    pickupAddress: GoogleAddressSnapshot;
+    dropoffAddress: GoogleAddressSnapshot;
+  }
+) {
   return {
     // This command is reached only from the canonical Business portal. Source
     // is server-owned origin identity, not a form-selectable capability name.
@@ -268,18 +309,35 @@ export function shipmentArgs(draft: DeliveryRequestDraft) {
     p_recipient_name: draft.recipientName,
     p_recipient_phone: draft.recipientPhone,
     p_recipient_email: draft.recipientEmail,
-    p_loaded_miles: draft.loadedMiles,
     p_weight_lb: draft.weightLb,
     p_additional_stops: draft.additionalStops,
     p_service_level: draft.serviceLevel,
     p_signature_required: draft.signatureRequired,
     p_proof_method: draft.proofMethod,
-    p_pickup_address: draft.pickupAddress,
-    p_dropoff_address: draft.dropoffAddress,
+    p_pickup_address: canonical.pickupAddress,
+    p_dropoff_address: canonical.dropoffAddress,
     // Overnight is not a column (the service-level CHECK allows three values).
     // The function stores it in normalized_request_payload so a later re-quote
     // reproduces the manual-review outcome instead of pricing it as standard.
     p_overnight_requested: draft.overnightRequested,
+  };
+}
+
+/** Exact Google route evidence passed only by this server command layer. */
+export function routeArgs(route: CanonicalRouteEvidence) {
+  return {
+    p_route_distance_meters: route.distanceMeters,
+    p_route_duration_seconds: route.durationSeconds,
+    // TRF-001. Both durations travel to the database, which re-derives the
+    // delay and refuses the write if the stored value is not exactly
+    // max(traffic - static, 0). The delay is therefore checked twice, on two
+    // sides of the boundary, and asserted by neither the browser nor this
+    // process alone.
+    p_route_static_duration_seconds: route.staticDurationSeconds,
+    p_route_traffic_delay_seconds: route.trafficDelaySeconds,
+    p_distance_source: route.distanceSource,
+    p_serviceability_outcome: route.serviceabilityOutcome,
+    p_route_review_reason: route.reviewReason,
   };
 }
 
@@ -303,6 +361,26 @@ export function quoteArgs(quote: QuoteResult) {
     p_quote_line_items: quote.lineItems,
     p_review_reasons: quote.reviewReasons,
   };
+}
+
+async function routeAndQuote(
+  operation: string,
+  shipment: Parameters<typeof deriveCanonicalRouteAndQuote>[0]
+): Promise<CommandResult<Awaited<ReturnType<typeof deriveCanonicalRouteAndQuote>>>> {
+  try {
+    return { ok: true, value: await deriveCanonicalRouteAndQuote(shipment) };
+  } catch (error) {
+    if (isCanonicalAddressResolutionError(error)) {
+      return fail({
+        operation,
+        code: "invalid_input",
+        detail: { field: error.field, reason: error.reason },
+        details: [{ code: "google_place_unverified", field: error.field }],
+        message: "Couranr could not verify one of the selected Google addresses.",
+      });
+    }
+    return fail({ operation, code: "internal", detail: error });
+  }
 }
 
 /* ------------------------------------------- create_delivery_request_draft */
@@ -335,14 +413,10 @@ export async function createDeliveryRequestDraft(params: {
     return denied(op, "role_may_not_write");
   }
 
-  const quote = quoteDelivery({
-    loadedMiles: draft.loadedMiles,
-    weightLb: draft.weightLb,
-    additionalStops: draft.additionalStops,
-    serviceLevel: draft.serviceLevel,
-    signatureRequired: draft.signatureRequired,
-    overnightRequested: draft.overnightRequested,
-  });
+  const routedResult = await routeAndQuote(op, draft);
+  if (isCommandFailure(routedResult)) return routedResult;
+  const routed = routedResult.value;
+  const quote = routed.quote;
 
   if (quote.quoteStatus === "invalid") {
     return fail({
@@ -362,7 +436,8 @@ export async function createDeliveryRequestDraft(params: {
     p_business_account_id: params.businessAccountId,
     p_created_by: params.actor.userId,
     p_idempotency_key: params.idempotencyKey,
-    ...shipmentArgs(draft),
+    ...shipmentArgs(draft, routed),
+    ...routeArgs(routed.route),
     ...quoteArgs(quote),
   });
   if (isCommandFailure(result)) return result;
@@ -373,10 +448,7 @@ export async function createDeliveryRequestDraft(params: {
       request: result.value,
       // Report the quote the DATABASE holds. On an idempotent replay the stored
       // request may differ from this attempt's payload, and the stored one wins.
-      quote: quoteFromRow(
-        result.value,
-        result.value.normalized_request_payload?.overnightRequested === true
-      ),
+      quote: quoteFromRow(result.value),
     },
   };
 }
@@ -390,7 +462,7 @@ export async function calculateDeliveryRequestEstimate(params: {
   expectedVersion: number;
   /**
    * An edited shipment. A draft is editable (`isEditable`), so re-estimating
-   * after the merchant changes an address or a distance must price what they
+   * after the merchant changes an address must price what they
    * changed it to. Omit to re-price the stored shipment unchanged.
    */
   rawInput?: unknown;
@@ -417,10 +489,20 @@ export async function calculateDeliveryRequestEstimate(params: {
   // Either the edited draft or the stored row — never a mix, so the stored
   // shipment and the stored quote can never describe different deliveries.
   let shipment: ReturnType<typeof shipmentArgs> | null = null;
-  let quote: QuoteResult;
+  let routed: Awaited<ReturnType<typeof deriveCanonicalRouteAndQuote>>;
 
   if (params.rawInput === undefined) {
-    quote = quoteFromRow(row, row.normalized_request_payload?.overnightRequested === true);
+    const routedResult = await routeAndQuote(op, {
+      pickupAddress: row.pickup_address,
+      dropoffAddress: row.dropoff_address,
+      weightLb: Number(row.weight_lb ?? 0),
+      additionalStops: Number(row.additional_stops ?? 0),
+      serviceLevel: row.service_level,
+      signatureRequired: row.signature_required === true,
+      overnightRequested: row.normalized_request_payload?.overnightRequested === true,
+    });
+    if (isCommandFailure(routedResult)) return routedResult;
+    routed = routedResult.value;
   } else {
     const normalized = normalizeDeliveryRequestInput(params.rawInput);
     if (isNormalizeFailure(normalized)) {
@@ -433,16 +515,13 @@ export async function calculateDeliveryRequestEstimate(params: {
       });
     }
     const draft = normalized.value;
-    shipment = shipmentArgs(draft);
-    quote = quoteDelivery({
-      loadedMiles: draft.loadedMiles,
-      weightLb: draft.weightLb,
-      additionalStops: draft.additionalStops,
-      serviceLevel: draft.serviceLevel,
-      signatureRequired: draft.signatureRequired,
-      overnightRequested: draft.overnightRequested,
-    });
+    const routedResult = await routeAndQuote(op, draft);
+    if (isCommandFailure(routedResult)) return routedResult;
+    routed = routedResult.value;
+    shipment = shipmentArgs(draft, routed);
   }
+
+  const quote = routed.quote;
 
   if (quote.quoteStatus === "invalid") {
     return fail({
@@ -463,7 +542,8 @@ export async function calculateDeliveryRequestEstimate(params: {
     p_expected_version: params.expectedVersion,
     p_actor_user_id: params.actor.userId,
     p_update_shipment: shipment !== null,
-    ...(shipment ?? shipmentArgsFromRow(row)),
+    ...(shipment ?? shipmentArgsFromRow(row, routed)),
+    ...routeArgs(routed.route),
     ...quoteArgs(quote),
   });
   if (isCommandFailure(result)) return result;
@@ -716,7 +796,18 @@ export async function requoteDeliveryRequest(params: {
   if (isCommandFailure(loaded)) return loaded;
   const { row, actorUserId } = loaded.value;
 
-  const quote = quoteFromRow(row, row.normalized_request_payload?.overnightRequested === true);
+  const routedResult = await routeAndQuote(op, {
+    pickupAddress: row.pickup_address,
+    dropoffAddress: row.dropoff_address,
+    weightLb: Number(row.weight_lb ?? 0),
+    additionalStops: Number(row.additional_stops ?? 0),
+    serviceLevel: row.service_level,
+    signatureRequired: row.signature_required === true,
+    overnightRequested: row.normalized_request_payload?.overnightRequested === true,
+  });
+  if (isCommandFailure(routedResult)) return routedResult;
+  const routed = routedResult.value;
+  const quote = routed.quote;
   if (quote.quoteStatus !== "estimated") {
     return fail({
       operation: op,
@@ -737,6 +828,7 @@ export async function requoteDeliveryRequest(params: {
     p_included_loaded_miles: quote.includedLoadedMiles,
     p_billable_loaded_miles: quote.billableLoadedMiles,
     p_quote_line_items: quote.lineItems,
+    ...routeArgs(routed.route),
     p_requote_reason: reason,
   });
   if (isCommandFailure(result)) return result;
@@ -950,7 +1042,13 @@ export async function listDeliveryRequests(params: {
  * default, and passing the stored values keeps the call self-consistent if that
  * branch ever changes.
  */
-function shipmentArgsFromRow(row: DeliveryRequestRow) {
+function shipmentArgsFromRow(
+  row: DeliveryRequestRow,
+  canonical: {
+    pickupAddress: GoogleAddressSnapshot;
+    dropoffAddress: GoogleAddressSnapshot;
+  }
+) {
   return {
     p_source: row.source,
     p_readiness_state: row.readiness_state,
@@ -958,14 +1056,13 @@ function shipmentArgsFromRow(row: DeliveryRequestRow) {
     p_recipient_name: row.recipient_name,
     p_recipient_phone: row.recipient_phone,
     p_recipient_email: row.recipient_email,
-    p_loaded_miles: row.loaded_miles,
     p_weight_lb: row.weight_lb,
     p_additional_stops: row.additional_stops,
     p_service_level: row.service_level,
     p_signature_required: row.signature_required,
     p_proof_method: row.proof_method,
-    p_pickup_address: row.pickup_address,
-    p_dropoff_address: row.dropoff_address,
+    p_pickup_address: canonical.pickupAddress,
+    p_dropoff_address: canonical.dropoffAddress,
     p_overnight_requested: row.normalized_request_payload?.overnightRequested === true,
   };
 }

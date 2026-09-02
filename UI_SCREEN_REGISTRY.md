@@ -236,7 +236,7 @@
 - **Allowed actions:** Estimate a delivery; create business account.
 - **Required states:** Standard; expanded pricing details; manual-quote notice.
 - **Authoritative source:** Spec §4, §16; copy and conversion authority docs/couranr-mvp/MARKETING_POSITIONING_AND_HOMEPAGE_BLUEPRINT.md (MKT-002)
-- **Mandatory correction/constraint:** Derive visually from PUB-001. First 3 miles $22.99; no monthly fee during pilot; all estimates subject to Couranr confirmation.
+- **Mandatory correction/constraint:** Derive visually from PUB-001. First 2 loaded miles $7.99; no monthly fee during pilot; all estimates subject to Couranr confirmation.
 - **Canonical visual:** `Derived from PUB-001 design system; no separate approved mock.`
 
 #### PUB-009 — Businesses page

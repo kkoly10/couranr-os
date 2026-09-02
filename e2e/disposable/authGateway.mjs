@@ -70,7 +70,7 @@ async function main() {
     const info = up({ quiet: true });
     console.log(`  ${info.migrationsApplied} migrations applied`);
 
-    pgrst = startPostgrest({
+    pgrst = await startPostgrest({
       dbUrl: dbUrl(),
       binary: PGRST_BIN,
       workDir: "/var/lib/postgresql/couranr-disposable/pgrst",

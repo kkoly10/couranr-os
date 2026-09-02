@@ -181,7 +181,7 @@ async function main() {
     const info = up({ quiet: true });
     console.log(`  ${info.migrationsApplied} migrations applied`);
 
-    pgrst = startPostgrest({
+    pgrst = await startPostgrest({
       dbUrl: dbUrl(),
       binary: PGRST_BIN,
       workDir: "/var/lib/postgresql/couranr-disposable/pgrst",
@@ -493,8 +493,25 @@ async function main() {
       }
       check("DUP1", "recipient name carried over",
         (await name.inputValue()) === "LIST-mixed recipient", await name.inputValue());
-      check("DUP2", "pickup street carried over",
-        (await fieldLabel(ownerPage, "Street address").first().inputValue()) === "12 Duplicate Way");
+      /**
+       * The create flow has no typed street field since the Places cutover —
+       * an address is a Google Place SNAPSHOT, rendered by the pickup card's
+       * "Selected address" alert. Reading that alert is a STRICTER assertion
+       * than the old inputValue(): NewDeliveryFlow's seededAddress() discards
+       * any seed missing googlePlaceId or addressSource, and a discarded seed
+       * renders no alert at all, so this fails closed on a mangled snapshot.
+       */
+      const pickupCard = ownerPage
+        .locator(".cr-card")
+        .filter({ has: ownerPage.getByRole("heading", { name: "Pickup", exact: true }) })
+        .first();
+      const selected = pickupCard.locator(".cr-alert__body");
+      await selected.first().waitFor({ state: "visible", timeout: 20_000 });
+      const selectedText = await selected.first().innerText();
+      check("DUP2", "pickup Place snapshot carried over, formatted address intact",
+        selectedText.includes("Selected address") &&
+          selectedText.includes("12 Duplicate Way, Stafford, VA 22554"),
+        selectedText.replace(/\s+/g, " "));
       check("DUP3", "no quote carried over — the flow is back at intake with no estimate",
         !new URL(ownerPage.url()).searchParams.get("step"));
       await ownerPage.screenshot({ path: path.join(SHOTS, "MER-004-duplicate-prefill.png"), fullPage: true });

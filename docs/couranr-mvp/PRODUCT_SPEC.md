@@ -10,6 +10,95 @@ decision amends it. `ui_screen_registry.json` owns screens and routes;
 implementation state. See
 [`authority/AUTHORITY_MANIFEST.json`](./authority/AUTHORITY_MANIFEST.json).
 
+## Couranr Pricing Authority V2 amendments — 2026-09-01
+
+These decisions amend the preserved historical pricing doctrine below, which
+described a $22.99 fare covering the first three loaded miles. Their atomic
+forms are PRC-005, MIL-003, MIL-004, SUR-003, SUR-004, REF-003, TRF-001 and
+ECO-001 in `02_DECISION_REGISTRY.json`.
+
+**Historical quotes are immutable.** Every quote already minted keeps its own
+`pricing_policy_version` and its own stored line items, and is read back from
+those stored facts. Today's engine is never re-run to reconstruct yesterday's
+price.
+
+- **One universal customer engine.** Couranr Business merchant-paid, Couranr
+  Business customer-paid and future consumer Couranr Same Day price identically.
+  Merchant vertical or category does not change the base fare or the mileage
+  rate — a restaurant, a bakery, a florist and a hardware store pay the same
+  core fare for the same physical shipment. Vertical may shape Smart Intake
+  presets later; it never touches the core delivery price.
+- **Standard fare.** $7.99 covers the first 2.000 loaded miles. Above that:
+  $1.25 per loaded mile over 2 through 10, $1.50 over 10 through 25. Above 25
+  loaded miles there is no automatic final price. Distance is the
+  server-authoritative Google route distance at thousandth-of-a-mile precision;
+  browser mileage is never accepted and mileage is never rounded up to a whole
+  mile. Money is integer cents with deterministic half-up rounding only where a
+  rate produces a fractional cent. The nearest-$0.25 rounding rule is retired.
+- **Weight.** Included through 25 lb; $3.00 over 25 through 50 lb; above 50 lb
+  is a Large Item requiring a manual quote. A band is a charge, never a claimed
+  weight, and never a statement that a vehicle is available.
+- **Service and options.** Priority +$5.00, Rush +$10.00, Overnight +$30.00
+  request-only and Couranr-confirmed, Signature +$3.00, photo/PIN proof
+  included. Rush and Overnight never stack. There is no platform fee, no
+  consumer surcharge, no payer differential, no category multiplier and no
+  payment-processing surcharge passed to the payer.
+- **Predicted traffic.** Priced up front from one canonical Google route
+  response carrying both the traffic-aware and static durations:
+  `delay = max(traffic_aware − static, 0)`. The first 5 minutes are included,
+  then $0.45 per minute; above 25 minutes the route needs review. If that
+  evidence cannot be obtained or validated, the request fails safe into review
+  rather than assuming no traffic. Once a payer accepts and authorizes a quote,
+  later real-world traffic never changes it. There is no post-delivery traffic
+  meter, no surge, no weather or event multiplier and no fixed evening
+  surcharge.
+- **Quote stability.** An unaccepted immediate quote is valid for 15 minutes,
+  after which it is rerouted and recalculated before acceptance. A material
+  price-driving change — pickup, destination, route, weight band, service level,
+  requested timing that changes the route or traffic calculation, signature, or
+  an explicit Operations requote — requires a fresh immutable Quote Version.
+  Quote N is never mutated.
+- **Base service definition.** The $7.99 base means one pickup, one destination,
+  a package ready for pickup, an ordinary handoff, 25 lb or less, ordinary
+  approved-vehicle capability and the first 2 loaded miles. It is not charged by
+  item count. Assembly, installation, setup or breakdown, heavy stair work,
+  substantial loading labour, special equipment, anything over 50 lb, and
+  special vehicle requirements are not silently inside that lane.
+- **Waiting.** The first 10 accumulated minutes per delivery are included.
+  Waiting begins only after the driver has recorded arrival and the handoff is
+  not ready. After that: $0.75 per minute on a standard vehicle, $1.00 per
+  minute on a rented van or truck, with partial minutes not rounded up. At 30
+  total waiting minutes automatic continuation ends and Operations decides.
+  **Governed authority only** — no fulfillment or payment path assesses it yet,
+  and none is invented here.
+- **Cancellation and failed pickup.** $0 before Couranr confirmation or driver
+  commitment; $8 after confirmation but before arrival; $15 once the driver has
+  arrived and pickup cannot occur; $0 whenever Couranr caused it. **Governed
+  authority only**, on the same basis as waiting.
+- **Returns.** A physical return is priced as a NEW physical route under this
+  policy, from the failed or current location to the return destination. The
+  "70% of the original charge, $14.99 minimum" rule is retired. If Couranr
+  caused the failure requiring the corrective return, the payer owes nothing.
+- **Tolls, parking, tax, tip, promotions.** Tolls and parking are actual
+  documented cost with no markup, as a separate operational line. Tax is
+  separate from the delivery subtotal and no taxability rule is invented here.
+  Tips are separate and 100% to the driver, never Couranr revenue. A promotion
+  never overwrites or mutates the standard quote: standard revenue, the
+  promotional credit with its reason, campaign and approver, and the amount
+  actually paid are preserved separately.
+- **Route Saver.** The "$16.99 per stop" public starting price is retired.
+  Route Saver stays a deferred future capability with no advertised price until
+  the Route Run aggregate and its economics exist. No replacement price is
+  invented now.
+- **Internal economics are separate from customer pricing.** Customer route
+  pricing uses loaded route distance only; driver approach and deadhead mileage
+  are never added to customer loaded mileage. Contribution reporting targets
+  roughly 20–25% contribution margin on ordinary completed deliveries before
+  company-level overhead, and below 20% is an internal Operations warning. It
+  must never change a customer price, mutate an accepted quote, create a hidden
+  multiplier, or automatically reject a request. Where the required cost inputs
+  are missing, contribution is UNKNOWN and profitability is never fabricated.
+
 ## Foundation Gate A amendments — 2026-08-31
 
 These decisions amend the preserved historical doctrine below. Their atomic

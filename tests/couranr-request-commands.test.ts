@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { RPC, quoteArgs, shipmentArgs } from "@/lib/couranr/requests/commands";
+import { RPC, quoteArgs, routeArgs, shipmentArgs } from "@/lib/couranr/requests/commands";
 import { classifyDatabaseError } from "@/lib/couranr/errors";
 import {
   DECLINE_MERCHANT_MESSAGE,
@@ -56,14 +56,41 @@ const RO_SQL = readFileSync(path.join(MIGRATIONS, RO_MIGRATION_NAME), "utf8").re
 
 function draft(overrides: Record<string, unknown> = {}) {
   const r = normalizeDeliveryRequestInput({
-    pickupAddress: { line1: "10 Market St", city: "Stafford", region: "VA", postalCode: "22554" },
-    dropoffAddress: { line1: "9 Elm Ave", city: "Fredericksburg", region: "VA", postalCode: "22401" },
-    loadedMiles: 4.2,
+    pickupAddress: {
+      googlePlaceId: "ChIJ-pickup", formattedAddress: "10 Market St, Stafford, VA 22554, USA",
+      line1: "10 Market St", line2: null, city: "Stafford", region: "VA",
+      postalCode: "22554", countryCode: "US", latitude: 38.422, longitude: -77.408,
+      addressSource: "google_places_new", instructions: null,
+    },
+    dropoffAddress: {
+      googlePlaceId: "ChIJ-dropoff", formattedAddress: "9 Elm Ave, Fredericksburg, VA 22401, USA",
+      line1: "9 Elm Ave", line2: null, city: "Fredericksburg", region: "VA",
+      postalCode: "22401", countryCode: "US", latitude: 38.303, longitude: -77.46,
+      addressSource: "google_places_new", instructions: null,
+    },
     weightLb: 12.5,
     ...overrides,
   });
   if (isNormalizeFailure(r)) throw new Error("fixture is invalid: " + JSON.stringify(r.errors));
   return r.value;
+}
+
+function canonicalAddresses() {
+  return {
+    pickupAddress: {
+      googlePlaceId: "ChIJ-pickup", formattedAddress: "10 Market St, Stafford, VA 22554, USA",
+      line1: "10 Market St", line2: null, city: "Stafford", region: "VA",
+      postalCode: "22554", countryCode: "US", latitude: 38.422, longitude: -77.408,
+      addressSource: "google_places_new" as const, instructions: null,
+    },
+    dropoffAddress: {
+      googlePlaceId: "ChIJ-dropoff",
+      formattedAddress: "9 Elm Ave, Fredericksburg, VA 22401, USA",
+      line1: "9 Elm Ave", line2: null, city: "Fredericksburg", region: "VA",
+      postalCode: "22401", countryCode: "US", latitude: 38.303, longitude: -77.46,
+      addressSource: "google_places_new" as const, instructions: null,
+    },
+  };
 }
 
 /**
@@ -78,7 +105,6 @@ describe("shipmentArgs", () => {
   const EXPECTED_KEYS = [
     "p_additional_stops",
     "p_dropoff_address",
-    "p_loaded_miles",
     "p_overnight_requested",
     "p_payer_type",
     "p_pickup_address",
@@ -94,12 +120,12 @@ describe("shipmentArgs", () => {
   ];
 
   it("covers every merchant-editable field", () => {
-    expect(Object.keys(shipmentArgs(draft())).sort()).toEqual(EXPECTED_KEYS);
+    expect(Object.keys(shipmentArgs(draft(), canonicalAddresses())).sort()).toEqual(EXPECTED_KEYS);
   });
 
   /** Identity and lifecycle are not the merchant's to edit. */
   it("names no identity or lifecycle field", () => {
-    const keys = Object.keys(shipmentArgs(draft()));
+    const keys = Object.keys(shipmentArgs(draft(), canonicalAddresses()));
     for (const forbidden of [
       "p_id",
       "p_business_account_id",
@@ -116,22 +142,33 @@ describe("shipmentArgs", () => {
   });
 
   it("carries no money field at all", () => {
-    for (const k of Object.keys(shipmentArgs(draft()))) {
+    for (const k of Object.keys(shipmentArgs(draft(), canonicalAddresses()))) {
       expect(k).not.toMatch(/cents|amount|price|subtotal|total/i);
     }
   });
 
+  it("carries no browser mileage or route evidence", () => {
+    const keys = Object.keys(shipmentArgs(draft(), canonicalAddresses()));
+    expect(keys).not.toContain("p_loaded_miles");
+    expect(keys).not.toContain("p_route_distance_meters");
+  });
+
   it("carries the overnight request, which has no column of its own", () => {
-    expect(shipmentArgs(draft({ overnightRequested: true })).p_overnight_requested).toBe(true);
-    expect(shipmentArgs(draft()).p_overnight_requested).toBe(false);
+    expect(
+      shipmentArgs(draft({ overnightRequested: true }), canonicalAddresses())
+        .p_overnight_requested
+    ).toBe(true);
+    expect(shipmentArgs(draft(), canonicalAddresses()).p_overnight_requested).toBe(false);
     // Overnight must never be smuggled in as a service level: the database
     // CHECK allows exactly standard, priority and rush.
-    expect(shipmentArgs(draft({ overnightRequested: true })).p_service_level).toBe("standard");
+    expect(
+      shipmentArgs(draft({ overnightRequested: true }), canonicalAddresses()).p_service_level
+    ).toBe("standard");
   });
 
   it("both write paths use it, so they cannot drift", () => {
     // createDeliveryRequestDraft and calculateDeliveryRequestEstimate.
-    expect((COMMANDS.match(/shipmentArgs\(draft\)/g) || []).length).toBe(2);
+    expect((COMMANDS.match(/shipmentArgs\(draft,\s*routed\)/g) || []).length).toBe(2);
   });
 
   it("re-estimate accepts an edited shipment", () => {
@@ -144,14 +181,47 @@ describe("shipmentArgs", () => {
   });
 });
 
+describe("routeArgs", () => {
+  it("carries exact server route evidence separately from merchant shipment input", () => {
+    expect(routeArgs({
+      serviceabilityOutcome: "available_for_request",
+      distanceSource: "google_routes_v2",
+      distanceMeters: 8047,
+      loadedMiles: 5,
+      durationSeconds: 720,
+      staticDurationSeconds: 600,
+      trafficDelaySeconds: 120,
+      reviewReason: null,
+    })).toEqual({
+      p_route_distance_meters: 8047,
+      p_route_duration_seconds: 720,
+      p_route_static_duration_seconds: 600,
+      p_route_traffic_delay_seconds: 120,
+      p_distance_source: "google_routes_v2",
+      p_serviceability_outcome: "available_for_request",
+      p_route_review_reason: null,
+    });
+  });
+});
+
 /**
  * `quoteArgs` is the single place a pricing result becomes RPC arguments.
  * The database re-checks every one of these, so each case here has a matching
  * CHECK or a CR422 guard on the other side.
  */
 describe("quoteArgs", () => {
-  const estimated = quoteDelivery({ loadedMiles: 4.2, weightLb: 12.5 });
-  const manual = quoteDelivery({ loadedMiles: 4.2, weightLb: 12.5, overnightRequested: true });
+  // trafficDelaySeconds is required for an automatic quote under TRF-001.
+  const estimated = quoteDelivery({
+    loadedMiles: 4.2,
+    weightLb: 12.5,
+    trafficDelaySeconds: 0,
+  });
+  const manual = quoteDelivery({
+    loadedMiles: 4.2,
+    weightLb: 12.5,
+    trafficDelaySeconds: 0,
+    overnightRequested: true,
+  });
 
   it("an estimate carries both the subtotal and the policy version", () => {
     const a = quoteArgs(estimated);
@@ -165,7 +235,7 @@ describe("quoteArgs", () => {
     expect(a.p_quote_status).toBe("manual_review_required");
     expect(a.p_delivery_subtotal_cents).toBe(null);
     expect(a.p_pricing_policy_version).toBe(null);
-    expect(a.p_review_reasons).toContain("overnight_not_offered_in_this_release");
+    expect(a.p_review_reasons).toContain("overnight_requires_couranr_confirmation");
   });
 
   /**

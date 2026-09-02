@@ -702,6 +702,9 @@
 
 .cr-textarea { min-height: 120px; resize: vertical; }
 
+/* Google Places (New) renders its own accessible input inside a web component. */
+.cr-google-place-autocomplete { display: block; width: 100%; }
+
 .cr-select {
   appearance: none;
   background-image: linear-gradient(45deg, transparent 50%, currentColor 50%),

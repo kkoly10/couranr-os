@@ -31,12 +31,13 @@ import {
   OPERATING_DAYS_COPY,
   OPERATING_WINDOW_COPY,
   OVERNIGHT_WINDOW_COPY,
-  ROUTE_SAVER_FROM_CENTS_PER_STOP,
-  ROUTE_SAVER_MIN_STOPS,
+  ROUTE_SAVER_STATUS_COPY,
   SAME_DAY_CUTOFF_COPY,
   SERVICE_LEVEL_CENTS,
   SUPPORT_COPY,
-  WEIGHT_BANDS,
+  WEIGHT_INCLUDED_THROUGH_LB,
+  WEIGHT_SURCHARGE_CENTS,
+  WEIGHT_SURCHARGE_THROUGH_LB,
   dollars,
 } from "@/lib/couranr/public/governed";
 import {
@@ -232,18 +233,16 @@ const DELIVERY_OPTIONS = [
   {
     title: "Bulky and extended-distance",
     Icon: IconTruck,
-    body: `Weight adds from ${dollars(WEIGHT_BANDS[0].cents)} at ${
-      WEIGHT_BANDS[0].fromLb
-    } lb. Over ${MANUAL_REVIEW_OVER_LB} lb, or past ${MANUAL_QUOTE_OVER_MILES} loaded miles, the request is captured for Couranr review instead of an automatic quote.`,
+    body: `Weight is included through ${WEIGHT_INCLUDED_THROUGH_LB} lb, then ${dollars(
+      WEIGHT_SURCHARGE_CENTS,
+    )} through ${WEIGHT_SURCHARGE_THROUGH_LB} lb. Over ${MANUAL_REVIEW_OVER_LB} lb, or past ${MANUAL_QUOTE_OVER_MILES} loaded miles, the request is captured for Couranr review instead of an automatic quote.`,
     tag: "Review and confirm",
   },
   {
     title: "Route Saver",
     Icon: IconRoute,
-    body: `From ${dollars(
-      ROUTE_SAVER_FROM_CENTS_PER_STOP,
-    )} per stop on runs of ${ROUTE_SAVER_MIN_STOPS} stops or more, with Couranr planning the route order.`,
-    tag: "Lower cost option",
+    body: ROUTE_SAVER_STATUS_COPY,
+    tag: "Planned",
   },
 ];
 

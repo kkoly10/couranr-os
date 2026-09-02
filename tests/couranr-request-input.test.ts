@@ -6,18 +6,33 @@ import {
 
 const VALID = {
   pickupAddress: {
+    googlePlaceId: "ChIJ-pickup",
+    formattedAddress: "10 Market St, Stafford, VA 22554, USA",
     line1: "10 Market St",
+    line2: null,
     city: "Stafford",
     region: "VA",
     postalCode: "22554",
+    countryCode: "US",
+    latitude: 38.422,
+    longitude: -77.408,
+    addressSource: "google_places_new",
+    instructions: null,
   },
   dropoffAddress: {
+    googlePlaceId: "ChIJ-dropoff",
+    formattedAddress: "9 Elm Ave, Fredericksburg, VA 22401, USA",
     line1: "9 Elm Ave",
+    line2: null,
     city: "Fredericksburg",
     region: "VA",
     postalCode: "22401",
+    countryCode: "US",
+    latitude: 38.303,
+    longitude: -77.46,
+    addressSource: "google_places_new",
+    instructions: null,
   },
-  loadedMiles: "4.2",
   weightLb: "12.5",
 };
 
@@ -31,7 +46,12 @@ describe("delivery-request input normalization", () => {
     const r = normalizeDeliveryRequestInput(VALID);
     expect(isNormalizeFailure(r)).toBe(false);
     if (isNormalizeFailure(r)) return;
-    expect(r.value.loadedMiles).toBe(4.2);
+    expect(r.value).not.toHaveProperty("loadedMiles");
+    expect(r.value.pickupAddress).toEqual({
+      googlePlaceId: "ChIJ-pickup",
+      line2: null,
+      instructions: null,
+    });
     expect(r.value.weightLb).toBe(12.5);
     expect(r.value.additionalStops).toBe(0);
     expect(r.value.serviceLevel).toBe("standard");
@@ -120,20 +140,46 @@ describe("delivery-request input normalization", () => {
         expect.arrayContaining(["missing_pickup_address", "missing_dropoff_address"])
       );
     });
-    it("requires a complete address", () => {
-      expect(codes({ ...VALID, dropoffAddress: { line1: "9 Elm Ave" } })).toContain(
-        "invalid_address"
-      );
+    it("drops browser-supplied address facts before server resolution", () => {
+      const r = normalizeDeliveryRequestInput({
+        ...VALID,
+        dropoffAddress: {
+          ...VALID.dropoffAddress,
+          formattedAddress: "forged",
+          line1: "forged",
+          city: "forged",
+          region: "ZZ",
+          postalCode: "00000",
+          countryCode: "XX",
+          latitude: 0,
+          longitude: 0,
+          line2: " Suite 5 ",
+          instructions: " Side door ",
+        },
+      });
+      expect(isNormalizeFailure(r)).toBe(false);
+      if (isNormalizeFailure(r)) return;
+      expect(r.value.dropoffAddress).toEqual({
+        googlePlaceId: "ChIJ-dropoff",
+        line2: "Suite 5",
+        instructions: "Side door",
+      });
     });
-    it("requires distance and weight", () => {
-      expect(codes({ ...VALID, loadedMiles: "", weightLb: "" })).toEqual(
-        expect.arrayContaining(["loaded_miles_required", "weight_required"])
-      );
+    it("requires weight but never browser mileage", () => {
+      expect(codes({ ...VALID, loadedMiles: "", weightLb: "" })).toContain("weight_required");
     });
-    it("rejects negative distance and weight", () => {
-      expect(codes({ ...VALID, loadedMiles: -1, weightLb: -2 })).toEqual(
-        expect.arrayContaining(["loaded_miles_invalid", "weight_invalid"])
-      );
+    it("ignores malicious browser mileage and rejects negative weight", () => {
+      const r = normalizeDeliveryRequestInput({ ...VALID, loadedMiles: 9999, weightLb: -2 });
+      expect(isNormalizeFailure(r)).toBe(true);
+      expect(codes({ ...VALID, loadedMiles: 9999, weightLb: -2 })).toContain("weight_invalid");
+    });
+    it("requires a Google Place identity but never trusts a browser source marker", () => {
+      const address = { ...VALID.pickupAddress, googlePlaceId: "" };
+      expect(codes({ ...VALID, pickupAddress: address })).toContain("google_place_required");
+      expect(codes({
+        ...VALID,
+        pickupAddress: { ...VALID.pickupAddress, addressSource: "forged" },
+      })).toEqual([]);
     });
     it("rejects a fractional stop count", () => {
       expect(codes({ ...VALID, additionalStops: "1.5" })).toContain(

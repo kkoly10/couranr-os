@@ -78,6 +78,9 @@
         "A quote for <=3 loaded miles with no surcharges totals 2299 cents.",
         "All money is computed server-side and stored in integer cents.",
         "No client-supplied amount is trusted."
+      ],
+      "amended_by": [
+        "PRC-005"
       ]
     },
     {
@@ -119,6 +122,9 @@
       "implementation_phase": "3",
       "acceptance_criteria": [
         "Mile 4 is the first billable additional mile."
+      ],
+      "amended_by": [
+        "MIL-003"
       ]
     },
     {
@@ -191,6 +197,9 @@
       "acceptance_criteria": [
         "A 12-mile quote bills miles 4-10 at 225 and miles 11-12 at 300.",
         "A 120-mile request produces no automatic quote and is flagged for manual quoting."
+      ],
+      "amended_by": [
+        "MIL-004"
       ]
     },
     {
@@ -288,6 +297,10 @@
         "Rush and overnight can never both apply to one delivery.",
         "Waiting is free for 10 minutes then billed per minute.",
         "A 210 lb request produces no automatic quote."
+      ],
+      "amended_by": [
+        "SUR-003",
+        "FND-004"
       ]
     },
     {
@@ -326,6 +339,10 @@
       "implementation_phase": "3",
       "acceptance_criteria": [
         "Route Saver requires at least three stops from one merchant pickup."
+      ],
+      "amended_by": [
+        "SUR-004",
+        "FND-005"
       ]
     },
     {
@@ -653,6 +670,9 @@
       "acceptance_criteria": [
         "A return never falls below the minimum charge.",
         "No refund path exists outside Operations."
+      ],
+      "amended_by": [
+        "REF-003"
       ]
     },
     {
@@ -1153,6 +1173,9 @@
       "acceptance_criteria": [
         "Payment state can advance without changing request state.",
         "No single column encodes payment and fulfilment together."
+      ],
+      "amended_by": [
+        "FND-006"
       ]
     },
     {
@@ -1428,7 +1451,10 @@
       ],
       "derivation_note": "The transition graph is not defined by any delivered package — Master Package section 8, the v1.0 package registry and TRN-001 all give vocabularies and actor authority only. It was drafted from the UML orthogonal-region coordination pattern and freight approval convention, then DECIDED BY THE OWNER on 2026-07-31, who made confirm-as-quoted payer-dependent. The UML material is supporting rationale, not authority.",
       "owner_approved": true,
-      "owner_approved_on": "2026-07-31"
+      "owner_approved_on": "2026-07-31",
+      "amended_by": [
+        "FND-003"
+      ]
     },
     {
       "id": "REV-002",
@@ -2125,6 +2151,9 @@
       ],
       "blocked_commits": [
         "pricing commit"
+      ],
+      "amended_by": [
+        "PRC-006"
       ]
     },
     {
@@ -3674,6 +3703,567 @@
       ],
       "decided_by": "owner",
       "decided_at_utc": "2026-08-31T00:00:00Z"
+    },
+    {
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§4 Pricing registry — Couranr Pricing Authority V2 amendment",
+      "affected_routes": [
+        "/estimate",
+        "/business/deliveries/new",
+        "/pricing",
+        "/business"
+      ],
+      "affected_screen_ids": [
+        "PUB-004",
+        "PUB-008",
+        "MER-006"
+      ],
+      "affected_database_objects": [
+        "public.couranr_quote_versions"
+      ],
+      "affected_code_paths": [
+        "lib/couranr/pricing/policy.ts",
+        "lib/couranr/pricing/quote.ts",
+        "lib/couranr/public/governed.ts"
+      ],
+      "status": "decided",
+      "decided_by": "owner",
+      "decided_at_utc": "2026-09-01T00:00:00Z",
+      "id": "PRC-005",
+      "category": "pricing",
+      "amends": "PRC-001",
+      "decision": "Pricing V2 supersedes the $22.99 first-three-mile standard fare for NEW quotes: one universal customer engine, $7.99 base covering the first two loaded miles, exact integer cents with deterministic half-up rounding, and no nearest-$0.25 rounding.",
+      "value": {
+        "base_price_cents": 799,
+        "covers_loaded_miles": 2,
+        "policy_version": "couranr-pricing-v2-2026-09-01",
+        "superseded_policy_version": "couranr-pricing-2026-07-31",
+        "universal_engine_for": [
+          "business_merchant_paid",
+          "business_customer_paid",
+          "future_consumer_same_day"
+        ],
+        "merchant_vertical_affects_core_price": false,
+        "payer_type_affects_delivery_subtotal": false,
+        "platform_fee_cents": 0,
+        "consumer_surcharge_cents": 0,
+        "payment_processing_surcharge_to_payer_cents": 0,
+        "quarter_dollar_rounding": false,
+        "money_rounding": "deterministic half-up to the cent, only where a rate produces a fractional cent",
+        "mileage_rounded_up_to_whole_miles": false,
+        "distance_precision": "thousandths of a loaded mile",
+        "distance_authority": "server-side Google Routes evidence only; browser mileage is never accepted",
+        "base_service_includes": [
+          "one pickup",
+          "one destination",
+          "package ready for pickup",
+          "ordinary handoff",
+          "25 lb or less",
+          "approved ordinary vehicle capability",
+          "first 2 loaded miles"
+        ],
+        "not_included_in_automatic_lane": [
+          "assembly",
+          "installation",
+          "setup or breakdown",
+          "heavy stair work",
+          "substantial loading labor",
+          "special equipment",
+          "over 50 lb",
+          "special vehicle requirements"
+        ],
+        "charged_by_item_count": false,
+        "historical_quotes": "immutable; retain their own pricing_policy_version and stored line items"
+      },
+      "acceptance_criteria": [
+        "A newly minted quote records pricing_policy_version couranr-pricing-v2-2026-09-01.",
+        "2.000 loaded miles prices at 799 cents.",
+        "No command can mint a quote under couranr-pricing-2026-07-31.",
+        "Merchant vertical or category is not an input to the pricing engine."
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "base_price_cents": 2299,
+          "covers_loaded_miles": 3
+        },
+        "code_location": "lib/couranr/pricing/policy.ts",
+        "resolution": "The engine is cut over to 799 cents covering the first two loaded miles, and the superseded policy version can no longer be minted.",
+        "remediation_commit": "Pricing V2 cutover"
+      },
+      "implementation_phase": "Pricing V2 cutover"
+    },
+    {
+      "id": "PRC-006",
+      "category": "pricing",
+      "amends": "PRC-004",
+      "decision": "The nearest-$0.25 rounding rule is RETIRED rather than given a condition. Pricing V2 computes exact integer cents and performs one deterministic half-up division only where a rate produces a fractional cent, so no increment-rounding trigger is needed and none exists.",
+      "value": {
+        "quarter_dollar_rounding": false,
+        "rounding_increment_cents": 0,
+        "money_rounding": "deterministic half-up to the cent, only where a rate produces a fractional cent",
+        "applies_to_policy_version": "couranr-pricing-v2-2026-09-01",
+        "historical_quotes": "immutable; a quote minted under couranr-pricing-2026-07-31 keeps whatever rounding it recorded"
+      },
+      "status": "decided",
+      "decided_by": "owner",
+      "decided_at_utc": "2026-09-01T00:00:00Z",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§4 Pricing registry — Couranr Pricing Authority V2 amendment",
+      "affected_routes": [
+        "/estimate",
+        "/business/deliveries/new",
+        "/pricing"
+      ],
+      "affected_screen_ids": [
+        "PUB-004",
+        "PUB-008",
+        "MER-006"
+      ],
+      "affected_database_objects": [
+        "public.couranr_quote_versions"
+      ],
+      "affected_code_paths": [
+        "lib/couranr/pricing/quote.ts",
+        "lib/couranr/pricing/types.ts"
+      ],
+      "acceptance_criteria": [
+        "A V2 quote result reports roundingApplied false.",
+        "No V2 total is a multiple of 25 cents by construction — 3.000 loaded miles prices at 924 cents.",
+        "A historical quote's stored amount is never re-rounded when it is read back."
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "rounding_increment_cents": 25
+        },
+        "code_location": "lib/couranr/pricing/quote.ts",
+        "resolution": "The engine applies no increment rounding at all; roundingApplied is typed as the literal false.",
+        "remediation_commit": "Pricing V2 cutover"
+      },
+      "implementation_phase": "Pricing V2 cutover"
+    },
+    {
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§4 Pricing registry — Couranr Pricing Authority V2 amendment",
+      "affected_routes": [
+        "/estimate",
+        "/business/deliveries/new",
+        "/pricing",
+        "/business"
+      ],
+      "affected_screen_ids": [
+        "PUB-004",
+        "PUB-008",
+        "MER-006"
+      ],
+      "affected_database_objects": [
+        "public.couranr_quote_versions"
+      ],
+      "affected_code_paths": [
+        "lib/couranr/pricing/policy.ts",
+        "lib/couranr/pricing/quote.ts",
+        "lib/couranr/public/governed.ts"
+      ],
+      "status": "decided",
+      "decided_by": "owner",
+      "decided_at_utc": "2026-09-01T00:00:00Z",
+      "id": "MIL-003",
+      "category": "pricing",
+      "amends": "MIL-001",
+      "decision": "The base fare includes the first two loaded miles, not the first three.",
+      "value": {
+        "included_loaded_miles": 2
+      },
+      "acceptance_criteria": [
+        "A 2.000-mile route bills no mileage beyond the base fare."
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "included_loaded_miles": 3
+        },
+        "code_location": "lib/couranr/pricing/policy.ts",
+        "resolution": "Included allowance cut over to 2 loaded miles.",
+        "remediation_commit": "Pricing V2 cutover"
+      },
+      "implementation_phase": "Pricing V2 cutover"
+    },
+    {
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§4 Pricing registry — Couranr Pricing Authority V2 amendment",
+      "affected_routes": [
+        "/estimate",
+        "/business/deliveries/new",
+        "/pricing",
+        "/business"
+      ],
+      "affected_screen_ids": [
+        "PUB-004",
+        "PUB-008",
+        "MER-006"
+      ],
+      "affected_database_objects": [
+        "public.couranr_quote_versions"
+      ],
+      "affected_code_paths": [
+        "lib/couranr/pricing/policy.ts",
+        "lib/couranr/pricing/quote.ts",
+        "lib/couranr/public/governed.ts"
+      ],
+      "status": "decided",
+      "decided_by": "owner",
+      "decided_at_utc": "2026-09-01T00:00:00Z",
+      "id": "MIL-004",
+      "category": "pricing",
+      "amends": "MIL-002",
+      "decision": "Pricing V2 mileage rates: 125 cents per loaded mile over 2 through 10, 150 cents over 10 through 25, and no automatic price above 25 loaded miles.",
+      "value": {
+        "tiers": [
+          {
+            "over_miles": 2,
+            "through_miles": 10,
+            "per_mile_cents": 125
+          },
+          {
+            "over_miles": 10,
+            "through_miles": 25,
+            "per_mile_cents": 150
+          }
+        ],
+        "over_25_miles": {
+          "auto_quote": false,
+          "outcome": "manual review"
+        },
+        "regression_examples_cents": {
+          "2.000": 799,
+          "3.000": 924,
+          "5.000": 1174,
+          "10.000": 1799,
+          "15.000": 2549,
+          "20.000": 3299,
+          "25.000": 4049
+        }
+      },
+      "acceptance_criteria": [
+        "Each regression example matches to the cent.",
+        "25.001 loaded miles produces manual review and no subtotal."
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "tiers": "4-10@225, 11-25@300, 26-50@350, 51-75@400, 76-100@475"
+        },
+        "code_location": "lib/couranr/pricing/policy.ts",
+        "resolution": "Tiers cut over to (2,10]@125 and (10,25]@150 with review above 25.",
+        "remediation_commit": "Pricing V2 cutover"
+      },
+      "implementation_phase": "Pricing V2 cutover"
+    },
+    {
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§4 Pricing registry — Couranr Pricing Authority V2 amendment",
+      "affected_routes": [
+        "/estimate",
+        "/business/deliveries/new",
+        "/pricing",
+        "/business"
+      ],
+      "affected_screen_ids": [
+        "PUB-004",
+        "PUB-008",
+        "MER-006"
+      ],
+      "affected_database_objects": [
+        "public.couranr_quote_versions"
+      ],
+      "affected_code_paths": [
+        "lib/couranr/pricing/policy.ts",
+        "lib/couranr/pricing/quote.ts",
+        "lib/couranr/public/governed.ts"
+      ],
+      "status": "decided",
+      "decided_by": "owner",
+      "decided_at_utc": "2026-09-01T00:00:00Z",
+      "id": "SUR-003",
+      "category": "pricing",
+      "amends": "SUR-001",
+      "decision": "Pricing V2 surcharges: priority +500, rush +1000, overnight +3000 request-only, signature +300, proof included, weight included through 25 lb and +300 through 50 lb with Large Item review above, and no additional-stop product.",
+      "value": {
+        "service_levels": {
+          "priority_cents": 500,
+          "rush_cents": 1000,
+          "overnight_cents": 3000,
+          "overnight_request_only": true,
+          "overnight_requires_couranr_confirmation": true,
+          "rush_and_overnight_stack": false
+        },
+        "signature_cents": 300,
+        "photo_or_pin_proof_cents": 0,
+        "weight": {
+          "included_through_lb": 25,
+          "surcharge_through_lb": 50,
+          "surcharge_cents": 300,
+          "over_50_lb": "Large Item review",
+          "band_implies_exact_weight": false,
+          "band_implies_vehicle_availability": false
+        },
+        "additional_stops": "no additional-stop product; one destination per delivery (FND-004)",
+        "waiting": {
+          "included_minutes": 10,
+          "per_minute_cents_after": 75,
+          "rented_van_or_truck_per_minute_cents_after": 100,
+          "starts": "only after the driver has recorded arrival and the handoff is not ready",
+          "partial_minutes_rounded_up": false,
+          "ops_decision_after_total_minutes": 30,
+          "runtime_status": "governed authority only; no fulfillment or payment path assesses it yet"
+        },
+        "tolls_and_parking": {
+          "basis": "actual documented cost",
+          "markup_percent": 0,
+          "presentation": "separate operational line item"
+        },
+        "tip": {
+          "driver_share_percent": 100,
+          "is_couranr_revenue": false,
+          "presentation": "separate"
+        },
+        "tax": {
+          "presentation": "separate from the delivery subtotal",
+          "taxability_rules": "unresolved, not invented here"
+        }
+      },
+      "acceptance_criteria": [
+        "Priority, rush and overnight amounts are exactly 500, 1000 and 3000 cents.",
+        "Rush and overnight cannot stack.",
+        "25 lb is included and 25.1 lb adds 300 cents; 50.1 lb produces Large Item review."
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "priority_cents": 700,
+          "rush_cents": 1200,
+          "weight_bands": "1000/2500/5000/8500"
+        },
+        "code_location": "lib/couranr/pricing/policy.ts",
+        "resolution": "Surcharges cut over to 500/1000 and a single 300-cent weight step through 50 lb.",
+        "remediation_commit": "Pricing V2 cutover"
+      },
+      "implementation_phase": "Pricing V2 cutover"
+    },
+    {
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§4 Pricing registry — Couranr Pricing Authority V2 amendment",
+      "affected_routes": [
+        "/estimate",
+        "/business/deliveries/new",
+        "/pricing",
+        "/business"
+      ],
+      "affected_screen_ids": [
+        "PUB-004",
+        "PUB-008",
+        "MER-006"
+      ],
+      "affected_database_objects": [
+        "public.couranr_quote_versions"
+      ],
+      "affected_code_paths": [
+        "lib/couranr/routing/googleRoutes.ts",
+        "lib/couranr/pricing/quote.ts"
+      ],
+      "status": "decided",
+      "decided_by": "owner",
+      "decided_at_utc": "2026-09-01T00:00:00Z",
+      "id": "TRF-001",
+      "category": "pricing",
+      "decision": "Predicted traffic delay is priced up front from canonical Google route evidence: the first five minutes are included, additional predicted delay is 45 cents per minute, and delay above 25 minutes needs review.",
+      "value": {
+        "delay_definition": "max(traffic_aware_duration_seconds - static_duration_seconds, 0)",
+        "evidence_source": "one canonical Google Routes response carrying both routes.duration (TRAFFIC_AWARE) and routes.staticDuration",
+        "included_seconds": 300,
+        "cents_per_minute": 45,
+        "review_over_seconds": 1500,
+        "quoted": "up front, on the immutable quote",
+        "reprices_accepted_quote": false,
+        "post_delivery_meter": false,
+        "clock_based_rush_hour_guess": false,
+        "surge_or_demand_multiplier": false,
+        "weather_multiplier": false,
+        "event_multiplier": false,
+        "missing_evidence_behaviour": "fail safe into review; never fabricate a traffic fact or assume a zero delay"
+      },
+      "acceptance_criteria": [
+        "Five minutes of predicted delay adds nothing.",
+        "Delay beyond five minutes bills 45 cents per minute of actual delay.",
+        "Delay above 25 minutes produces review and no automatic subtotal.",
+        "Absent or invalid traffic evidence produces review, not a zero-delay price.",
+        "A quote already accepted is never repriced by later traffic."
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "traffic_pricing": "none; route evidence carried only a single duration"
+        },
+        "code_location": "lib/couranr/routing/googleRoutes.ts",
+        "resolution": "Route evidence now carries both the traffic-aware and static durations and derives the delay server-side.",
+        "remediation_commit": "Pricing V2 cutover"
+      },
+      "implementation_phase": "Pricing V2 cutover"
+    },
+    {
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§4 Pricing registry — Couranr Pricing Authority V2 amendment",
+      "affected_routes": [
+        "/estimate",
+        "/business/deliveries/new",
+        "/pricing",
+        "/business"
+      ],
+      "affected_screen_ids": [
+        "PUB-004",
+        "PUB-008",
+        "MER-006"
+      ],
+      "affected_database_objects": [
+        "public.couranr_quote_versions"
+      ],
+      "affected_code_paths": [
+        "lib/couranr/public/governed.ts"
+      ],
+      "status": "decided",
+      "decided_by": "owner",
+      "decided_at_utc": "2026-09-01T00:00:00Z",
+      "id": "SUR-004",
+      "category": "pricing",
+      "amends": "SUR-002",
+      "decision": "The public '$16.99 per stop' Route Saver starting price is retired. Route Saver stays a deferred future capability with no advertised price until the Route Run aggregate and its economics exist.",
+      "value": {
+        "public_starting_price_cents_per_stop": null,
+        "public_price_claim_retired": true,
+        "historical_public_starting_price_cents_per_stop": 1699,
+        "status": "deferred future capability (FND-005)",
+        "replacement_pricing_invented_now": false
+      },
+      "acceptance_criteria": [
+        "No active public surface presents $16.99 as a current Route Saver price.",
+        "No replacement Route Saver price is introduced."
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "ROUTE_SAVER_FROM_CENTS_PER_STOP": 1699
+        },
+        "code_location": "lib/couranr/public/governed.ts",
+        "resolution": "The public price constant is removed; Route Saver is presented as planned and unpriced.",
+        "remediation_commit": "Pricing V2 cutover"
+      },
+      "implementation_phase": "Pricing V2 cutover"
+    },
+    {
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§4 Pricing registry — Couranr Pricing Authority V2 amendment",
+      "affected_routes": [
+        "/estimate",
+        "/business/deliveries/new",
+        "/pricing",
+        "/business"
+      ],
+      "affected_screen_ids": [
+        "PUB-004",
+        "PUB-008",
+        "MER-006"
+      ],
+      "affected_database_objects": [
+        "public.couranr_quote_versions"
+      ],
+      "affected_code_paths": [
+        "lib/couranr/pricing/policy.ts",
+        "lib/couranr/pricing/quote.ts",
+        "lib/couranr/public/governed.ts"
+      ],
+      "status": "decided",
+      "decided_by": "owner",
+      "decided_at_utc": "2026-09-01T00:00:00Z",
+      "id": "REF-003",
+      "category": "pricing",
+      "amends": "REF-001",
+      "decision": "A physical return is priced as a new physical route under Pricing V2 from the failed or current location to the return destination. The 70%-of-original, $14.99-minimum rule is retired.",
+      "value": {
+        "return_pricing": "new Pricing V2 route",
+        "historical_rule": {
+          "return_charge_percent_of_original": 70,
+          "return_minimum_cents": 1499
+        },
+        "couranr_caused_failure_payer_owes_cents": 0,
+        "runtime_status": "governed authority only; return and payment infrastructure does not yet assess it"
+      },
+      "acceptance_criteria": [
+        "No active surface presents the 70% / $14.99 rule as current.",
+        "No unsafe runtime return-charge path is created by this decision."
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "RETURN_PERCENT_OF_ORIGINAL": 70,
+          "RETURN_MINIMUM_CENTS": 1499
+        },
+        "code_location": "lib/couranr/public/governed.ts",
+        "resolution": "The percentage rule is removed from public authority; a return is a new Pricing V2 route.",
+        "remediation_commit": "Pricing V2 cutover"
+      },
+      "implementation_phase": "Pricing V2 cutover"
+    },
+    {
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§4 Pricing registry — Couranr Pricing Authority V2 amendment",
+      "affected_routes": [],
+      "affected_screen_ids": [],
+      "affected_database_objects": [],
+      "affected_code_paths": [],
+      "status": "decided",
+      "decided_by": "owner",
+      "decided_at_utc": "2026-09-01T00:00:00Z",
+      "id": "ECO-001",
+      "category": "internal economics",
+      "decision": "Internal contribution economics are separate from customer pricing and may never alter a customer price.",
+      "value": {
+        "customer_price_uses": "loaded route distance only",
+        "deadhead_added_to_customer_mileage": false,
+        "inputs_when_trustworthy": [
+          "customer delivery revenue",
+          "approach or deadhead distance",
+          "loaded distance",
+          "driver labour and time",
+          "vehicle operating cost",
+          "rental cost",
+          "waiting",
+          "payment processing",
+          "toll and parking borne by Couranr",
+          "other approved direct operating costs"
+        ],
+        "outputs": [
+          "estimated contribution dollars",
+          "estimated contribution margin"
+        ],
+        "target_contribution_margin_percent": {
+          "low": 20,
+          "high": 25,
+          "basis": "ordinary completed deliveries, before company-level overhead"
+        },
+        "below_target_behaviour": "internal Ops and economics warning only",
+        "may_change_customer_price": false,
+        "may_mutate_accepted_quote": false,
+        "may_create_hidden_multiplier": false,
+        "may_automatically_reject_a_request": false,
+        "missing_inputs_behaviour": "contribution is UNKNOWN; never fabricate profitability",
+        "runtime_status": "governed authority only"
+      },
+      "acceptance_criteria": [
+        "No pricing path reads a contribution or margin value.",
+        "Deadhead distance never enters customer mileage."
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "contribution_margin": "no implementation exists"
+        },
+        "code_location": "(none)",
+        "resolution": "Recorded as governed authority only. No runtime reads a contribution value, which is what keeps it from touching a customer price.",
+        "remediation_commit": "deferred to the economics batch"
+      },
+      "implementation_phase": "Pricing V2 cutover"
     }
   ]
 }

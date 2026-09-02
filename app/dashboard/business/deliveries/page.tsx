@@ -100,7 +100,7 @@ export default function BusinessDeliveriesPage() {
         </p>
         <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
           <Link href="/dashboard/business" style={btnGhost}>Back to Business Portal</Link>
-          <Link href={businessAccountId ? `/courier/quote?businessAccountId=${encodeURIComponent(businessAccountId)}` : "/courier/quote"} style={btnPrimary}>New delivery</Link>
+          <Link href={"/estimate"} style={btnPrimary}>New delivery</Link>
           {csvHref && (
             <a href={csvHref} download="business-deliveries.csv" style={btnGhost}>Export CSV</a>
           )}
@@ -137,7 +137,7 @@ export default function BusinessDeliveriesPage() {
           </div>
           <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
             <Link href="/dashboard/delivery" style={btnGhost}>Open detail</Link>
-            <Link href={businessAccountId ? `/courier/quote?businessAccountId=${encodeURIComponent(businessAccountId)}` : "/courier/quote"} style={btnGhost}>Re-order similar route</Link>
+            <Link href={"/estimate"} style={btnGhost}>Re-order similar route</Link>
           </div>
         </div>
       ))}

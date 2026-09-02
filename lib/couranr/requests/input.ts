@@ -1,4 +1,8 @@
 import { SERVICE_LEVEL_CENTS, type ServiceLevel } from "@/lib/couranr/pricing";
+import {
+  googlePlaceSelectionFromAddress,
+  type GooglePlaceSelection,
+} from "@/lib/couranr/routing/address";
 import type { ReadinessState } from "./states";
 import { READINESS_STATES } from "./states";
 
@@ -32,24 +36,15 @@ export const REQUEST_SOURCES = [
 ] as const;
 export type RequestSource = (typeof REQUEST_SOURCES)[number];
 
-export type AddressSnapshot = {
-  line1: string;
-  line2: string | null;
-  city: string;
-  region: string;
-  postalCode: string;
-  /** Free-text access notes. Never a secret, never a token. */
-  instructions: string | null;
-};
+export type AddressSelection = GooglePlaceSelection;
 
 export type DeliveryRequestDraft = {
   source: RequestSource;
-  pickupAddress: AddressSnapshot;
-  dropoffAddress: AddressSnapshot;
+  pickupAddress: AddressSelection;
+  dropoffAddress: AddressSelection;
   recipientName: string | null;
   recipientPhone: string | null;
   recipientEmail: string | null;
-  loadedMiles: number;
   weightLb: number;
   additionalStops: number;
   serviceLevel: ServiceLevel;
@@ -71,8 +66,7 @@ export type InputErrorCode =
   | "missing_pickup_address"
   | "missing_dropoff_address"
   | "invalid_address"
-  | "loaded_miles_required"
-  | "loaded_miles_invalid"
+  | "google_place_required"
   | "weight_required"
   | "weight_invalid"
   | "additional_stops_invalid"
@@ -168,28 +162,17 @@ function normalizeAddress(
   raw: unknown,
   errors: InputError[],
   field: string
-): AddressSnapshot | null {
+): AddressSelection | null {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
     errors.push({ code: "invalid_address", field });
     return null;
   }
-  const r = raw as Record<string, unknown>;
-  const line1 = str(r.line1);
-  const city = str(r.city);
-  const region = str(r.region);
-  const postalCode = str(r.postalCode ?? r.postal_code);
-  if (!line1 || !city || !region || !postalCode) {
-    errors.push({ code: "invalid_address", field });
+  const selection = googlePlaceSelectionFromAddress(raw);
+  if (!selection) {
+    errors.push({ code: "google_place_required", field });
     return null;
   }
-  return {
-    line1,
-    line2: str(r.line2),
-    city,
-    region,
-    postalCode,
-    instructions: str(r.instructions),
-  };
+  return selection;
 }
 
 // Deliberately permissive: this only rejects text that cannot be an address.
@@ -222,9 +205,9 @@ export function normalizeDeliveryRequestInput(raw: unknown): NormalizeResult {
       ? null
       : normalizeAddress(r.dropoffAddress, errors, "dropoffAddress");
 
-  const loadedMiles = num(r.loadedMiles);
-  if (loadedMiles === null) errors.push({ code: "loaded_miles_required", field: "loadedMiles" });
-  else if (loadedMiles < 0) errors.push({ code: "loaded_miles_invalid", field: "loadedMiles" });
+  // Deliberately do not read loadedMiles, distanceMeters or any equivalent
+  // client field. Unknown fields are not copied into the canonical draft; the
+  // server Routes call is the only mileage authority.
 
   const weightLb = num(r.weightLb);
   if (weightLb === null) errors.push({ code: "weight_required", field: "weightLb" });
@@ -286,7 +269,6 @@ export function normalizeDeliveryRequestInput(raw: unknown): NormalizeResult {
       recipientName: str(r.recipientName),
       recipientPhone: str(r.recipientPhone),
       recipientEmail,
-      loadedMiles: loadedMiles as number,
       weightLb: weightLb as number,
       additionalStops,
       serviceLevel,

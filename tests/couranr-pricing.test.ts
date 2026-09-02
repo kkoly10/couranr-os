@@ -1,356 +1,393 @@
-import { readFileSync } from "node:fs";
+import { REVIEW_REASON_LABELS } from "@/lib/couranr/requests/view";
+import { readFileSync, existsSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   BASE_PRICE_CENTS,
   COURANR_PRICING_POLICY_VERSION,
+  COURANR_PRICING_POLICY_VERSION_V1_HISTORICAL,
   INCLUDED_LOADED_MILES,
+  MAX_AUTOMATIC_LOADED_MILES,
+  MAX_AUTOMATIC_TRAFFIC_DELAY_SECONDS,
+  MAX_AUTOMATIC_WEIGHT_LB,
+  OVERNIGHT_CENTS,
+  SERVICE_LEVEL_CENTS,
   SIGNATURE_CENTS,
+  TRAFFIC_DELAY_CENTS_PER_MINUTE,
+  TRAFFIC_DELAY_INCLUDED_SECONDS,
+  WEIGHT_SURCHARGE_CENTS,
   quoteDelivery,
+  trafficDelayCents,
   weightBandCents,
   type QuoteInput,
 } from "@/lib/couranr/pricing";
 
-/** Convenience: a valid minimal input. */
+/**
+ * Couranr Pricing Authority V2.
+ *
+ * Every automatic quote needs traffic evidence, so the helper supplies a zero
+ * delay by default. That is deliberate rather than convenient: a test that
+ * omitted it would silently be testing the review path instead of the price.
+ */
 function q(over: Partial<QuoteInput> = {}) {
-  return quoteDelivery({ loadedMiles: 3, weightLb: 10, ...over });
+  return quoteDelivery({
+    loadedMiles: 3,
+    weightLb: 10,
+    trafficDelaySeconds: 0,
+    ...over,
+  });
 }
 
-/** Sum of mileage line items only. */
-function mileageCents(r: ReturnType<typeof quoteDelivery>) {
-  return r.lineItems
-    .filter((li) => li.code.startsWith("mileage_tier_"))
-    .reduce((s, li) => s + li.amountCents, 0);
-}
+const usd = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 
-describe("result shape", () => {
-  it("returns every required field", () => {
-    const r = q();
-    expect(r.policyVersion).toBe(COURANR_PRICING_POLICY_VERSION);
+describe("PRC-005 / MIL-003 / MIL-004 — the standard fare", () => {
+  it("stamps the V2 policy version, never the superseded one", () => {
+    expect(COURANR_PRICING_POLICY_VERSION).toBe("couranr-pricing-v2-2026-09-01");
+    expect(COURANR_PRICING_POLICY_VERSION).not.toBe(
+      COURANR_PRICING_POLICY_VERSION_V1_HISTORICAL
+    );
+    expect(q().policyVersion).toBe(COURANR_PRICING_POLICY_VERSION);
+  });
+
+  it("bases at $7.99 covering the first 2 loaded miles", () => {
+    expect(BASE_PRICE_CENTS).toBe(799);
+    expect(INCLUDED_LOADED_MILES).toBe(2);
+  });
+
+  /* The eight examples the owner specified, to the cent. These are the whole
+     point of the cutover, so they are asserted as exact totals rather than as
+     a formula that could drift with the code it is checking. */
+  it.each([
+    [2.0, 799],
+    [3.0, 924],
+    [5.0, 1174],
+    [10.0, 1799],
+    [15.0, 2549],
+    [20.0, 3299],
+    [25.0, 4049],
+  ])("%s loaded miles prices at exactly %i cents", (miles, cents) => {
+    const r = q({ loadedMiles: miles });
     expect(r.quoteStatus).toBe("estimated");
-    expect(typeof r.deliverySubtotalCents).toBe("number");
-    expect(Array.isArray(r.lineItems)).toBe(true);
-    expect(r.includedLoadedMiles).toBe(3);
-    expect(typeof r.billableLoadedMiles).toBe("number");
-    expect(Array.isArray(r.reviewReasons)).toBe(true);
-    expect(r.roundingApplied).toBe(false);
-    expect(r.taxIncluded).toBe(false);
-    expect(r.paymentDueCents).toBeNull();
+    expect(r.deliverySubtotalCents).toBe(cents);
+    expect(usd(r.deliverySubtotalCents)).toBe(usd(cents));
   });
 
-  it("gives every line item a stable code, label, quantity and amounts", () => {
-    const r = q({ loadedMiles: 30, weightLb: 60, additionalStops: 0, serviceLevel: "rush", signatureRequired: true });
-    expect(r.lineItems.length).toBeGreaterThan(4);
-    for (const li of r.lineItems) {
-      expect(typeof li.code).toBe("string");
-      expect(li.code.length).toBeGreaterThan(0);
-      expect(typeof li.label).toBe("string");
-      expect(li.label.length).toBeGreaterThan(0);
-      expect(Number.isFinite(li.quantity)).toBe(true);
-      expect(Number.isInteger(li.unitAmountCents)).toBe(true);
-      expect(Number.isInteger(li.amountCents)).toBe(true);
-    }
+  it("produces NO automatic subtotal above 25 loaded miles", () => {
+    const r = q({ loadedMiles: 25.001 });
+    expect(r.quoteStatus).toBe("manual_review_required");
+    expect(r.deliverySubtotalCents).toBe(0);
+    expect(r.lineItems).toEqual([]);
+    expect(r.reviewReasons).toContain("over_max_automatic_miles");
+    expect(MAX_AUTOMATIC_LOADED_MILES).toBe(25);
   });
 
-  /** PRC-004 and TAX-001 are unresolved; the engine must not pretend otherwise. */
-  it("never reports rounding, tax or a payable amount", () => {
-    for (const miles of [3, 10, 42, 100]) {
-      const r = q({ loadedMiles: miles, weightLb: 30 });
-      expect(r.roundingApplied).toBe(false);
-      expect(r.taxIncluded).toBe(false);
-      expect(r.paymentDueCents).toBeNull();
-      // The subtotal is the exact sum, never snapped to a 25c multiple.
-      expect(r.deliverySubtotalCents).toBe(
-        r.lineItems.reduce((s, li) => s + li.amountCents, 0)
-      );
-    }
+  it("never rounds mileage up to a whole mile", () => {
+    // 2.5 miles bills half a mile at 125c = 62.5c, half-up to 63c.
+    const half = q({ loadedMiles: 2.5 });
+    expect(half.deliverySubtotalCents).toBe(BASE_PRICE_CENTS + 63);
+    // If mileage were rounded up to 3 miles this would be 125c instead.
+    expect(half.deliverySubtotalCents).not.toBe(BASE_PRICE_CENTS + 125);
+  });
+
+  it("keeps thousandth-of-a-mile precision", () => {
+    const a = q({ loadedMiles: 2.001 });
+    const b = q({ loadedMiles: 2.002 });
+    expect(a.billableLoadedMiles).toBe(0.001);
+    expect(b.billableLoadedMiles).toBe(0.002);
   });
 });
 
-describe("mileage boundaries", () => {
-  // Expected mileage-only cents at each boundary, computed from the tier table:
-  //   4-10 @225, 11-25 @300, 26-50 @350, 51-75 @400, 76-100 @475
-  const T1 = 7 * 225;                     // miles 4-10   = 1575
-  const T2 = 15 * 300;                    // miles 11-25  = 4500
-  const T3 = 25 * 350;                    // miles 26-50  = 8750
-  const T4 = 25 * 400;                    // miles 51-75  = 10000
-  const T5 = 25 * 475;                    // miles 76-100 = 11875
+describe("SUR-003 — weight", () => {
+  it("includes 25 lb and charges $3.00 over 25 through 50 lb", () => {
+    expect(weightBandCents(25)).toBe(0);
+    expect(weightBandCents(25.1)).toBe(WEIGHT_SURCHARGE_CENTS);
+    expect(weightBandCents(50)).toBe(WEIGHT_SURCHARGE_CENTS);
+    expect(WEIGHT_SURCHARGE_CENTS).toBe(300);
+  });
 
-  const CASES: [number, number][] = [
-    [3, 0],
-    [4, 225],
-    [10, T1],
-    [11, T1 + 300],
-    [25, T1 + T2],
-    [26, T1 + T2 + 350],
-    [50, T1 + T2 + T3],
-    [51, T1 + T2 + T3 + 400],
-    [75, T1 + T2 + T3 + T4],
-    [76, T1 + T2 + T3 + T4 + 475],
-    [100, T1 + T2 + T3 + T4 + T5],
-  ];
+  it("puts the 25 lb boundary on the right side", () => {
+    expect(q({ weightLb: 25 }).deliverySubtotalCents).toBe(
+      q({ weightLb: 1 }).deliverySubtotalCents
+    );
+    expect(q({ weightLb: 25.1 }).deliverySubtotalCents).toBe(
+      q({ weightLb: 25 }).deliverySubtotalCents + 300
+    );
+  });
 
-  for (const [miles, expectedMileage] of CASES) {
-    it(`bills ${miles} loaded miles as ${expectedMileage} mileage cents`, () => {
-      const r = q({ loadedMiles: miles });
-      expect(r.quoteStatus).toBe("estimated");
-      expect(mileageCents(r)).toBe(expectedMileage);
-      expect(r.deliverySubtotalCents).toBe(BASE_PRICE_CENTS + expectedMileage);
-      expect(r.billableLoadedMiles).toBe(Math.max(0, miles - INCLUDED_LOADED_MILES));
-    });
-  }
+  it("puts the 50 lb boundary on the right side — over 50 is a Large Item", () => {
+    expect(q({ weightLb: 50 }).quoteStatus).toBe("estimated");
+    const large = q({ weightLb: 50.1 });
+    expect(large.quoteStatus).toBe("manual_review_required");
+    expect(large.reviewReasons).toContain("large_item_review");
+    expect(large.deliverySubtotalCents).toBe(0);
+    expect(MAX_AUTOMATIC_WEIGHT_LB).toBe(50);
+  });
+});
 
-  it("charges nothing beyond the base at or below the included allowance", () => {
-    for (const miles of [0, 1, 2, 3]) {
-      const r = q({ loadedMiles: miles });
-      expect(mileageCents(r)).toBe(0);
-      expect(r.billableLoadedMiles).toBe(0);
-      expect(r.deliverySubtotalCents).toBe(BASE_PRICE_CENTS);
+describe("SUR-003 — service levels and options", () => {
+  it("prices priority, rush and overnight at exactly the governed amounts", () => {
+    expect(SERVICE_LEVEL_CENTS.priority).toBe(500);
+    expect(SERVICE_LEVEL_CENTS.rush).toBe(1000);
+    expect(OVERNIGHT_CENTS).toBe(3000);
+  });
+
+  it("adds priority and rush to the subtotal exactly", () => {
+    const base = q().deliverySubtotalCents;
+    expect(q({ serviceLevel: "priority" }).deliverySubtotalCents).toBe(base + 500);
+    expect(q({ serviceLevel: "rush" }).deliverySubtotalCents).toBe(base + 1000);
+  });
+
+  it("charges $3.00 for signature and nothing for proof", () => {
+    expect(SIGNATURE_CENTS).toBe(300);
+    expect(q({ signatureRequired: true }).deliverySubtotalCents).toBe(
+      q().deliverySubtotalCents + 300
+    );
+    const proof = q().lineItems.find((li) => li.code === "proof");
+    expect(proof?.amountCents).toBe(0);
+  });
+
+  it("routes overnight to Couranr confirmation rather than pricing it", () => {
+    const r = q({ overnightRequested: true });
+    expect(r.quoteStatus).toBe("manual_review_required");
+    expect(r.reviewReasons).toContain("overnight_requires_couranr_confirmation");
+    expect(r.deliverySubtotalCents).toBe(0);
+  });
+
+  it("refuses to stack rush and overnight", () => {
+    const r = q({ serviceLevel: "rush", overnightRequested: true });
+    expect(r.quoteStatus).toBe("invalid");
+    expect(r.validationErrors).toContain("rush_and_overnight_conflict");
+    expect(r.deliverySubtotalCents).toBe(0);
+  });
+});
+
+describe("TRF-001 — predicted traffic", () => {
+  it("includes the first five minutes", () => {
+    expect(TRAFFIC_DELAY_INCLUDED_SECONDS).toBe(300);
+    expect(trafficDelayCents(0)).toBe(0);
+    expect(trafficDelayCents(299)).toBe(0);
+    expect(trafficDelayCents(300)).toBe(0);
+    expect(q({ trafficDelaySeconds: 300 }).deliverySubtotalCents).toBe(
+      q({ trafficDelaySeconds: 0 }).deliverySubtotalCents
+    );
+  });
+
+  it("charges 45 cents a minute beyond five minutes", () => {
+    expect(TRAFFIC_DELAY_CENTS_PER_MINUTE).toBe(45);
+    expect(trafficDelayCents(360)).toBe(45); // one minute over
+    expect(trafficDelayCents(600)).toBe(225); // five minutes over
+    expect(trafficDelayCents(1500)).toBe(900); // twenty minutes over
+  });
+
+  it("bills partial minutes as partial minutes, not rounded up", () => {
+    // 30 seconds over = 22.5c, half-up to 23c. Rounding the minute up would be 45c.
+    expect(trafficDelayCents(330)).toBe(23);
+    expect(trafficDelayCents(330)).not.toBe(45);
+  });
+
+  it("sends a delay above 25 minutes to review with no subtotal", () => {
+    expect(MAX_AUTOMATIC_TRAFFIC_DELAY_SECONDS).toBe(1500);
+    const r = q({ trafficDelaySeconds: 1501 });
+    expect(r.quoteStatus).toBe("manual_review_required");
+    expect(r.reviewReasons).toContain("over_max_automatic_traffic_delay");
+    expect(r.deliverySubtotalCents).toBe(0);
+  });
+
+  it("FAILS SAFE into review when traffic evidence is absent", () => {
+    // The dangerous alternative is treating "no evidence" as "no delay", which
+    // would under-price every route whose baseline Google declined to return.
+    for (const missing of [undefined, null]) {
+      const r = quoteDelivery({
+        loadedMiles: 3,
+        weightLb: 10,
+        trafficDelaySeconds: missing as number | null | undefined,
+      });
+      expect(r.quoteStatus).toBe("manual_review_required");
+      expect(r.reviewReasons).toContain("traffic_evidence_unavailable");
+      expect(r.deliverySubtotalCents).toBe(0);
     }
   });
 
-  it("sends 101 loaded miles to manual review with no estimate", () => {
-    const r = q({ loadedMiles: 101 });
-    expect(r.quoteStatus).toBe("manual_review_required");
-    expect(r.reviewReasons).toContain("over_max_automatic_miles");
-    expect(r.deliverySubtotalCents).toBe(0);
-    expect(r.lineItems).toEqual([]);
+  it("rejects a nonsensical delay instead of pricing it", () => {
+    expect(q({ trafficDelaySeconds: -1 }).validationErrors).toContain(
+      "traffic_delay_negative"
+    );
+    expect(q({ trafficDelaySeconds: Number.NaN }).validationErrors).toContain(
+      "traffic_delay_not_finite"
+    );
   });
 
-  it("still quotes exactly 100 miles automatically", () => {
-    expect(q({ loadedMiles: 100 }).quoteStatus).toBe("estimated");
-    expect(q({ loadedMiles: 100.001 }).quoteStatus).toBe("manual_review_required");
+  it("puts the traffic charge on the quote as its own evidenced line", () => {
+    const r = q({ trafficDelaySeconds: 600 });
+    const line = r.lineItems.find((li) => li.code === "traffic_delay");
+    expect(line?.amountCents).toBe(225);
+    expect(r.trafficDelaySeconds).toBe(600);
+  });
+});
+
+describe("one universal engine — no vertical, payer or channel differential", () => {
+  const shipment = { loadedMiles: 7.35, weightLb: 30, trafficDelaySeconds: 420 };
+
+  it("prices an identical physical shipment identically, whatever the merchant sells", () => {
+    // There is no category input to vary, which is the strongest form of this
+    // guarantee: the engine cannot be told what the merchant sells.
+    const inputKeys = Object.keys(quoteDelivery(shipment));
+    expect(inputKeys).not.toContain("category");
+    const a = quoteDelivery(shipment);
+    const b = quoteDelivery({ ...shipment });
+    expect(a.deliverySubtotalCents).toBe(b.deliverySubtotalCents);
   });
 
-  it("splits a route across every tier it reaches", () => {
-    const r = q({ loadedMiles: 80 });
-    const codes = r.lineItems.filter((l) => l.code.startsWith("mileage_tier_")).map((l) => l.code);
-    expect(codes).toEqual([
+  it("prices merchant-paid and customer-paid the same for the same job", () => {
+    // Payer type is not an engine input either, so the subtotal cannot diverge.
+    const src = readFileSync(
+      path.resolve(__dirname, "../lib/couranr/pricing/types.ts"),
+      "utf8"
+    );
+    const inputBlock = src.slice(
+      src.indexOf("export type QuoteInput"),
+      src.indexOf("export type QuoteStatus")
+    );
+    expect(inputBlock).not.toMatch(/payerType|payer_type/);
+    expect(inputBlock).not.toMatch(/category|vertical|merchantType/);
+  });
+
+  it("is reusable by a future consumer channel with no changes", () => {
+    // The same call, with no business identity anywhere in the input.
+    const consumer = quoteDelivery(shipment);
+    expect(consumer.quoteStatus).toBe("estimated");
+    expect(consumer.policyVersion).toBe(COURANR_PRICING_POLICY_VERSION);
+  });
+});
+
+describe("no invented fees", () => {
+  it("adds no platform fee, consumer surcharge or processing surcharge", () => {
+    const r = q();
+    const codes = r.lineItems.map((li) => li.code);
+    for (const forbidden of [
+      "platform_fee",
+      "consumer_surcharge",
+      "processing_fee",
+      "surge",
+      "category_multiplier",
+    ]) {
+      expect(codes).not.toContain(forbidden);
+    }
+    // The subtotal is exactly the sum of the lines — nothing is added after.
+    expect(r.deliverySubtotalCents).toBe(
+      r.lineItems.reduce((s, li) => s + li.amountCents, 0)
+    );
+  });
+
+  it("never decides what is payable, and never claims rounding or tax", () => {
+    const r = q();
+    expect(r.paymentDueCents).toBeNull();
+    expect(r.roundingApplied).toBe(false);
+    expect(r.taxIncluded).toBe(false);
+  });
+
+  it("applies no nearest-$0.25 rounding", () => {
+    // 3.001 miles is 799 + 0.125c -> 799 + 0 = 799... assert a non-quarter total.
+    const r = q({ loadedMiles: 5 });
+    expect(r.deliverySubtotalCents).toBe(1174);
+    expect(r.deliverySubtotalCents % 25).not.toBe(0);
+  });
+});
+
+describe("historical quotes stay historical", () => {
+  it("keeps the superseded policy identifier readable", () => {
+    expect(COURANR_PRICING_POLICY_VERSION_V1_HISTORICAL).toBe(
+      "couranr-pricing-2026-07-31"
+    );
+  });
+
+  it("keeps every historical line-item code interpretable", () => {
+    const types = readFileSync(
+      path.resolve(__dirname, "../lib/couranr/pricing/types.ts"),
+      "utf8"
+    );
+    for (const code of [
       "mileage_tier_4_10",
       "mileage_tier_11_25",
       "mileage_tier_26_50",
       "mileage_tier_51_75",
       "mileage_tier_76_100",
-    ]);
-  });
-
-  it("handles fractional miles without a fractional cent", () => {
-    const r = q({ loadedMiles: 4.5 });
-    // 1.5 billable miles in the 4-10 tier: 1500 milli * 225 / 1000 = 337.5 -> 338
-    expect(mileageCents(r)).toBe(338);
-    expect(Number.isInteger(r.deliverySubtotalCents)).toBe(true);
-    expect(r.billableLoadedMiles).toBeCloseTo(1.5, 6);
-  });
-});
-
-describe("weight boundaries", () => {
-  const CASES: [number, number][] = [
-    [0, 0], [25, 0],
-    [26, 1000], [50, 1000],
-    [51, 2500], [75, 2500],
-    [76, 5000], [150, 5000],
-    [151, 8500], [200, 8500],
-  ];
-
-  for (const [lb, cents] of CASES) {
-    it(`bills ${lb} lb as ${cents} cents`, () => {
-      expect(weightBandCents(lb)).toBe(cents);
-      const r = q({ weightLb: lb });
-      expect(r.quoteStatus).toBe("estimated");
-      expect(r.deliverySubtotalCents).toBe(BASE_PRICE_CENTS + cents);
-    });
-  }
-
-  it("sends 201 lb to manual review with no estimate", () => {
-    const r = q({ weightLb: 201 });
-    expect(r.quoteStatus).toBe("manual_review_required");
-    expect(r.reviewReasons).toContain("over_max_automatic_weight");
-    expect(r.deliverySubtotalCents).toBe(0);
-  });
-
-  it("still quotes exactly 200 lb automatically", () => {
-    expect(q({ weightLb: 200 }).quoteStatus).toBe("estimated");
-    expect(q({ weightLb: 200.5 }).quoteStatus).toBe("manual_review_required");
-  });
-
-  it("emits no weight line for a band that costs nothing", () => {
-    const r = q({ weightLb: 20 });
-    expect(r.lineItems.find((l) => l.code === "weight_band")).toBeUndefined();
-  });
-});
-
-describe("stops", () => {
-  it("charges nothing for zero additional stops", () => {
-    const r = q({ additionalStops: 0 });
-    expect(r.lineItems.find((l) => l.code === "additional_stops")).toBeUndefined();
-    expect(r.deliverySubtotalCents).toBe(BASE_PRICE_CENTS);
-  });
-
-  it("rejects one additional stop because one delivery has one destination", () => {
-    const r = q({ additionalStops: 1 });
-    expect(r.quoteStatus).toBe("invalid");
-    expect(r.validationErrors).toContain("additional_stops_unsupported");
-    expect(r.lineItems).toEqual([]);
-  });
-
-  it("rejects every positive additional-stop count", () => {
-    for (const n of [2, 3, 7]) {
-      const r = q({ additionalStops: n });
-      expect(r.quoteStatus).toBe("invalid");
-      expect(r.validationErrors).toContain("additional_stops_unsupported");
-    }
-  });
-});
-
-describe("service levels and signature", () => {
-  it("charges nothing extra for standard", () => {
-    const r = q({ serviceLevel: "standard" });
-    expect(r.lineItems.find((l) => l.code.startsWith("service_level_"))).toBeUndefined();
-  });
-
-  it("charges priority", () => {
-    const r = q({ serviceLevel: "priority" });
-    expect(r.lineItems.find((l) => l.code === "service_level_priority")!.amountCents).toBe(700);
-    expect(r.deliverySubtotalCents).toBe(BASE_PRICE_CENTS + 700);
-  });
-
-  it("charges rush", () => {
-    const r = q({ serviceLevel: "rush" });
-    expect(r.lineItems.find((l) => l.code === "service_level_rush")!.amountCents).toBe(1200);
-    expect(r.deliverySubtotalCents).toBe(BASE_PRICE_CENTS + 1200);
-  });
-
-  it("charges signature", () => {
-    const r = q({ signatureRequired: true });
-    expect(r.lineItems.find((l) => l.code === "signature")!.amountCents).toBe(SIGNATURE_CENTS);
-  });
-
-  it("always includes proof at zero", () => {
-    const li = q().lineItems.find((l) => l.code === "proof")!;
-    expect(li.amountCents).toBe(0);
-  });
-});
-
-describe("combined valid charges", () => {
-  it("sums an exact integer-cent total", () => {
-    const r = q({
-      loadedMiles: 12,
-      weightLb: 60,
-      additionalStops: 0,
-      serviceLevel: "rush",
-      signatureRequired: true,
-    });
-
-    // base 2299
-    // miles 4-10: 7 * 225 = 1575 ; miles 11-12: 2 * 300 = 600
-    // rush 1200 ; signature 300 ; weight 51-75 = 2500
-    const expected = 2299 + 1575 + 600 + 1200 + 300 + 2500;
-
-    expect(r.quoteStatus).toBe("estimated");
-    expect(r.deliverySubtotalCents).toBe(expected);
-    expect(r.deliverySubtotalCents).toBe(8474);
-    expect(Number.isInteger(r.deliverySubtotalCents)).toBe(true);
-  });
-
-  it("keeps every intermediate an integer number of cents", () => {
-    const inputs: QuoteInput[] = [
-      { loadedMiles: 0, weightLb: 0 },
-      { loadedMiles: 7.25, weightLb: 44.4, additionalStops: 0, serviceLevel: "priority" },
-      { loadedMiles: 99.999, weightLb: 199.9, signatureRequired: true },
-      { loadedMiles: 55.5, weightLb: 150, serviceLevel: "rush", additionalStops: 0 },
-    ];
-    for (const input of inputs) {
-      const r = quoteDelivery(input);
-      expect(Number.isInteger(r.deliverySubtotalCents)).toBe(true);
-      for (const li of r.lineItems) {
-        expect(Number.isInteger(li.amountCents)).toBe(true);
-        expect(Number.isInteger(li.unitAmountCents)).toBe(true);
-      }
-    }
-  });
-});
-
-describe("validation", () => {
-  const BAD: [string, QuoteInput, string][] = [
-    ["NaN miles", { loadedMiles: NaN, weightLb: 10 }, "loaded_miles_not_finite"],
-    ["Infinite miles", { loadedMiles: Infinity, weightLb: 10 }, "loaded_miles_not_finite"],
-    ["negative miles", { loadedMiles: -1, weightLb: 10 }, "loaded_miles_negative"],
-    ["NaN weight", { loadedMiles: 5, weightLb: NaN }, "weight_not_finite"],
-    ["Infinite weight", { loadedMiles: 5, weightLb: -Infinity }, "weight_not_finite"],
-    ["negative weight", { loadedMiles: 5, weightLb: -0.5 }, "weight_negative"],
-    ["negative stops", { loadedMiles: 5, weightLb: 10, additionalStops: -1 }, "additional_stops_negative"],
-    ["fractional stops", { loadedMiles: 5, weightLb: 10, additionalStops: 1.5 }, "additional_stops_not_whole"],
-    ["NaN stops", { loadedMiles: 5, weightLb: 10, additionalStops: NaN }, "additional_stops_not_finite"],
-    ["unknown service level", { loadedMiles: 5, weightLb: 10, serviceLevel: "express" as any }, "unknown_service_level"],
-    ["rush + overnight", { loadedMiles: 5, weightLb: 10, serviceLevel: "rush", overnightRequested: true }, "rush_and_overnight_conflict"],
-  ];
-
-  for (const [name, input, code] of BAD) {
-    it(`rejects ${name}`, () => {
-      const r = quoteDelivery(input);
-      expect(r.quoteStatus).toBe("invalid");
-      expect(r.validationErrors).toContain(code);
-      expect(r.deliverySubtotalCents).toBe(0);
-      expect(r.lineItems).toEqual([]);
-      expect(r.paymentDueCents).toBeNull();
-    });
-  }
-
-  it("reports several problems at once", () => {
-    const r = quoteDelivery({ loadedMiles: -1, weightLb: -1, additionalStops: -1 });
-    expect(r.validationErrors.length).toBeGreaterThanOrEqual(3);
-  });
-
-  it("accepts zero for every optional numeric field", () => {
-    expect(quoteDelivery({ loadedMiles: 0, weightLb: 0, additionalStops: 0 }).quoteStatus).toBe(
-      "estimated"
-    );
-  });
-});
-
-describe("overnight is not offered in this release", () => {
-  it("sends an overnight request to manual review", () => {
-    const r = q({ overnightRequested: true });
-    expect(r.quoteStatus).toBe("manual_review_required");
-    expect(r.reviewReasons).toContain("overnight_not_offered_in_this_release");
-    expect(r.deliverySubtotalCents).toBe(0);
-  });
-
-  it("treats rush plus overnight as invalid, not merely unavailable", () => {
-    const r = q({ overnightRequested: true, serviceLevel: "rush" });
-    expect(r.quoteStatus).toBe("invalid");
-    expect(r.validationErrors).toContain("rush_and_overnight_conflict");
-  });
-
-  it("allows overnight with priority to reach review rather than being rejected", () => {
-    const r = q({ overnightRequested: true, serviceLevel: "priority" });
-    expect(r.quoteStatus).toBe("manual_review_required");
-  });
-});
-
-describe("manual review combines reasons", () => {
-  it("reports both mileage and weight when both exceed the automatic limits", () => {
-    const r = quoteDelivery({ loadedMiles: 150, weightLb: 250 });
-    expect(r.quoteStatus).toBe("manual_review_required");
-    expect(r.reviewReasons).toContain("over_max_automatic_miles");
-    expect(r.reviewReasons).toContain("over_max_automatic_weight");
-  });
-
-  it("never returns money with a review result", () => {
-    for (const input of [
-      { loadedMiles: 101, weightLb: 10 },
-      { loadedMiles: 10, weightLb: 201 },
-      { loadedMiles: 10, weightLb: 10, overnightRequested: true },
+      "additional_stops",
     ]) {
-      const r = quoteDelivery(input);
-      expect(r.deliverySubtotalCents).toBe(0);
-      expect(r.lineItems).toEqual([]);
+      expect(types, `historical code ${code} must stay readable`).toContain(code);
+    }
+  });
+
+  it("does not re-run today's engine to reconstruct an old amount", () => {
+    // A historical $22.99 quote is 2299 because that is what was STORED. The
+    // V2 engine given the same shipment produces something else entirely, which
+    // is exactly why reconstruction would be wrong.
+    const recomputed = q({ loadedMiles: 3 }).deliverySubtotalCents;
+    expect(recomputed).toBe(924);
+    expect(recomputed).not.toBe(2299);
+  });
+
+  it("mints no quote under the superseded version", () => {
+    for (const miles of [2, 5, 25]) {
+      expect(q({ loadedMiles: miles }).policyVersion).not.toBe(
+        COURANR_PRICING_POLICY_VERSION_V1_HISTORICAL
+      );
     }
   });
 });
 
-/* ------------------------------------------------------------ structural */
+describe("the legacy pricing runtime is gone, not quarantined", () => {
+  const ROOT = path.resolve(__dirname, "..");
 
+  it.each([
+    "lib/delivery/policy.ts",
+    "lib/delivery/pricing.ts",
+    "app/api/delivery/quote/route.ts",
+    "app/api/delivery/start-checkout/route.ts",
+    "app/courier/page.tsx",
+    "app/courier/quote/page.tsx",
+    "components/courier/QuoteClient.tsx",
+  ])("%s no longer exists", (rel) => {
+    expect(existsSync(path.join(ROOT, rel))).toBe(false);
+  });
+
+  it("is imported by nothing", () => {
+    const hits: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of require("node:fs").readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (/\.(ts|tsx)$/.test(entry.name)) {
+          const src = readFileSync(full, "utf8");
+          if (/@\/lib\/delivery\/(policy|pricing)/.test(src)) hits.push(full);
+        }
+      }
+    };
+    for (const d of ["app", "lib", "components", "tests"]) walk(path.join(ROOT, d));
+    expect(hits, `still importing the retired calculator: ${hits.join(", ")}`).toEqual([]);
+  });
+
+  it("leaves no /courier link behind outside Operations tooling", () => {
+    const hits: string[] = [];
+    const walk = (dir: string) => {
+      for (const entry of require("node:fs").readdirSync(dir, { withFileTypes: true })) {
+        if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (/\.(ts|tsx)$/.test(entry.name)) {
+          const src = readFileSync(full, "utf8");
+          for (const m of src.matchAll(/["'`](\/courier[^"'`]*)/g)) {
+            if (!m[1].startsWith("/courier") || m[1].startsWith("/admin")) continue;
+            hits.push(`${path.relative(ROOT, full)} -> ${m[1]}`);
+          }
+        }
+      }
+    };
+    for (const d of ["app", "lib", "components"]) walk(path.join(ROOT, d));
+    expect(hits, hits.join("; ")).toEqual([]);
+  });
+});
 /**
  * Structural assertions scan SOURCE TEXT, so comments must be stripped first.
  * These modules deliberately document the legacy path they replace and quote
@@ -410,18 +447,136 @@ describe("engine is dependency-free and amount-free", () => {
   });
 });
 
-describe("legacy pricing is untouched by this commit", () => {
-  it("leaves the legacy constants at their shipped values", async () => {
-    const legacy = await import("@/lib/delivery/policy");
-    // These are WRONG per the Decision Registry, and deliberately unchanged
-    // here: correcting them is a separate reviewable commit.
-    expect(legacy.DELIVERY_BASE_FEE).toBe(15);
-    expect(legacy.DELIVERY_INCLUDED_MILES).toBe(4);
-    expect(legacy.DELIVERY_PER_MILE_RATE).toBe(1.75);
+
+/**
+ * The policy identifier lives in TWO places by necessity: this module, and the
+ * SQL guard that refuses to mint the superseded one. Nothing checked that they
+ * agreed, and a drift there would be silent — the database would go on
+ * refusing a string the engine no longer produces, which reads as working.
+ */
+describe("policy identifiers agree across the TypeScript/SQL boundary", () => {
+  const ROOT = path.resolve(__dirname, "..");
+  const migration = readFileSync(
+    path.join(ROOT, "supabase/migrations/20260902090000_couranr_pricing_v2_traffic_authority.sql"),
+    "utf8"
+  );
+  const rollback = readFileSync(
+    path.join(
+      ROOT,
+      "supabase/rollbacks/20260902090000_couranr_pricing_v2_traffic_authority.rollback.sql"
+    ),
+    "utf8"
+  );
+
+  it("the migration refuses exactly the version this module calls historical", () => {
+    expect(migration).toContain(`'${COURANR_PRICING_POLICY_VERSION_V1_HISTORICAL}'`);
+    expect(migration).toContain("superseded_pricing_policy_cannot_be_minted");
   });
 
-  it("keeps the canonical engine numerically distinct from the legacy one", () => {
-    expect(BASE_PRICE_CENTS).toBe(2299);
-    expect(INCLUDED_LOADED_MILES).toBe(3);
+  it("the rollback guards exactly the version this module mints", () => {
+    expect(rollback).toContain(`'${COURANR_PRICING_POLICY_VERSION}'`);
+    expect(rollback).toContain("pricing_v2_rollback_would_destroy_commercial_evidence");
+  });
+
+  it("the registry records both identifiers under PRC-005", () => {
+    const reg = JSON.parse(
+      readFileSync(path.join(ROOT, "02_DECISION_REGISTRY.json"), "utf8")
+    );
+    const prc005 = reg.decisions.find((d: any) => d.id === "PRC-005");
+    expect(prc005.value.policy_version).toBe(COURANR_PRICING_POLICY_VERSION);
+    expect(prc005.value.superseded_policy_version).toBe(
+      COURANR_PRICING_POLICY_VERSION_V1_HISTORICAL
+    );
+    expect(prc005.amends).toBe("PRC-001");
+  });
+});
+
+/* ------------------------------------------------------------------------ */
+/* Regressions from the twelve-lens adversarial review. Each of these failed  */
+/* against the code as first written.                                        */
+
+describe("a stored line item can explain its own amount", () => {
+  /* traffic_delay carried a SECONDS quantity against a per-MINUTE unit rate,
+     so quantity * unitAmountCents was 60x amountCents. These line items are
+     persisted verbatim into couranr_quote_versions as immutable evidence, so
+     the row's own arithmetic contradicted the amount it charged. */
+  it("every line item satisfies quantity * unitAmountCents === amountCents", () => {
+    const cases = [
+      { loadedMiles: 3, weightLb: 10, trafficDelaySeconds: 600 },
+      { loadedMiles: 17.5, weightLb: 40, trafficDelaySeconds: 361 },
+      { loadedMiles: 25, weightLb: 25, trafficDelaySeconds: 1500 },
+      { loadedMiles: 2, weightLb: 1, trafficDelaySeconds: 0 },
+    ];
+    for (const c of cases) {
+      const r = quoteDelivery({
+        serviceLevel: "standard",
+        signatureRequired: true,
+        overnightRequested: false,
+        ...c,
+      } as any);
+      for (const li of r.lineItems) {
+        expect(
+          Math.round(li.quantity * li.unitAmountCents),
+          `${li.code} at ${c.loadedMiles}mi/${c.trafficDelaySeconds}s: ` +
+            `${li.quantity} x ${li.unitAmountCents} != ${li.amountCents}`
+        ).toBe(li.amountCents);
+      }
+    }
+  });
+
+  it("the traffic quantity is minutes, and is NOT rounded up to a whole minute", () => {
+    // 6m30s of chargeable delay: 90s over the free window.
+    const r = quoteDelivery({
+      loadedMiles: 2, weightLb: 1, serviceLevel: "standard",
+      signatureRequired: false, overnightRequested: false,
+      trafficDelaySeconds: 390,
+    } as any);
+    const traffic = r.lineItems.find((l) => l.code === "traffic_delay")!;
+    expect(traffic.quantity).toBeCloseTo(1.5, 10);
+    expect(traffic.amountCents).toBe(68); // 90s * 45c/60s = 67.5 -> half-up 68
+  });
+});
+
+describe("every review reason the engine can emit is presentable", () => {
+  /* QuoteSummary and OperationsQueue both render `LABELS[code] ?? code`, so a
+     missing key shows a merchant the raw snake_case machine identifier. Four of
+     the six V2 codes had no label. */
+  it("REVIEW_REASON_LABELS covers every ReviewReasonCode with real prose", () => {
+    const EMITTABLE = [
+      "over_max_automatic_miles",
+      "large_item_review",
+      "overnight_requires_couranr_confirmation",
+      "over_max_automatic_traffic_delay",
+      "route_needs_review",
+      "traffic_evidence_unavailable",
+    ];
+    for (const code of EMITTABLE) {
+      const label = REVIEW_REASON_LABELS[code];
+      expect(label, `${code} has no merchant-facing label`).toBeTruthy();
+      expect(label, `${code} renders as its own machine code`).not.toBe(code);
+      expect(label).not.toMatch(/_/);
+    }
+  });
+
+  it("every reason the engine actually produces is in the map", () => {
+    const produced = new Set<string>();
+    const probes = [
+      { loadedMiles: 26, weightLb: 1, trafficDelaySeconds: 0 },
+      { loadedMiles: 2, weightLb: 51, trafficDelaySeconds: 0 },
+      { loadedMiles: 2, weightLb: 1, trafficDelaySeconds: 1501 },
+      { loadedMiles: 2, weightLb: 1, trafficDelaySeconds: null },
+      { loadedMiles: 2, weightLb: 1, trafficDelaySeconds: 0, overnightRequested: true },
+    ];
+    for (const p of probes) {
+      const r = quoteDelivery({
+        serviceLevel: "standard", signatureRequired: false,
+        overnightRequested: false, ...p,
+      } as any);
+      r.reviewReasons.forEach((c) => produced.add(c));
+    }
+    expect(produced.size).toBeGreaterThanOrEqual(5);
+    for (const c of produced) {
+      expect(REVIEW_REASON_LABELS[c], `engine emits ${c}, label map has no key`).toBeTruthy();
+    }
   });
 });

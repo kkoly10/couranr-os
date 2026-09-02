@@ -91,7 +91,13 @@ the time someone read it.
 - **The package copy must stay consistent with the root registry** wherever both carry the same decision. `tests/decision-registry-provenance.test.ts` enforces that the root file is a superset. If a change would make them disagree, that is a registry change, not a code change.
 - **Current code is shipped-state evidence, not authority.** It tells you what is running today. The moment it conflicts with the registry, the Master Package or the screen registry, the code is the defect — record what it does, then implement what the authority says.
 
-**Legacy repository behavior never overrides these.** Where the code and the spec disagree, the spec is right and the code is the defect. Known live conflicts: pricing is `$15` base / 4 included miles / `$1.75` per mile (`lib/delivery/policy.ts:13-15`) against a specified `$22.99` / 3 miles / tiered `$2.25–$4.75`; the service area is a 60-mile radius from Stafford (`lib/serviceArea.ts:1-4`) rather than the four named markets; overnight is unimplemented. These are Phase 3 work — do not "fix" them opportunistically, and do not treat the code as evidence of intent.
+**Legacy repository behavior never overrides these.** Where the code and the spec disagree, the spec is right and the code is the defect.
+
+**Pricing is now Couranr Pricing Authority V2** (PRC-005, MIL-003, MIL-004, SUR-003, SUR-004, REF-003, TRF-001, ECO-001): `$7.99` base covering the first `2.000` loaded miles, `$1.25`/mi over 2 through 10, `$1.50`/mi over 10 through 25, review above 25; weight included through 25 lb, `+$3.00` through 50 lb, Large Item review above; priority `+$5`, rush `+$10`, overnight `+$30` request-only, signature `+$3`; predicted traffic delay free for 5 minutes then `$0.45`/min, review above 25 minutes. Policy version `couranr-pricing-v2-2026-09-01`.
+
+The old `$22.99` / 3 miles / `$2.25–$4.75` model is **historical**: quotes minted under `couranr-pricing-2026-07-31` keep it forever and are read from their stored line items, and both the engine and the database refuse to mint that version again. The `$15` / 4 miles / `$1.75` legacy calculator and the `/courier` funnel that used it are **deleted**, not quarantined.
+
+Still a live conflict: the service area is a 60-mile radius from Stafford (`lib/serviceArea.ts:1-4`) rather than the four named markets. That is Phase 3 work — do not "fix" it opportunistically, and do not treat the code as evidence of intent.
 
 Product is being transformed from a mixed auto-rental / document-services / generic-courier app into one focused product: **Couranr, local delivery infrastructure for local businesses**. The auto and docs domains are legacy and slated for quarantine, not extension.
 

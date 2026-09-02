@@ -14,6 +14,7 @@
  * functions over their inputs; the disabled implementations refuse. There is no
  * network call in this file, by design and not by omission.
  */
+import { BASE_PRICE_CENTS } from "@/lib/couranr/pricing";
 import { resolveAdapterMode, type AdapterEnv, type AdapterMode } from "./adapterMode";
 
 export type AddressSuggestion = { id: string; label: string; detail: string };
@@ -128,9 +129,17 @@ const FIXTURE: Omit<SameDayAdapters, "mode"> = {
       return { state: "manual-review", note: "Couranr will confirm scheduled trips before pricing." };
     }
     /* A fixture amount, reachable ONLY in fixture mode and never a production
-       claim. It is not read from the governed pricing module: those values
-       describe the business quote, which this flow does not compute. */
-    return { state: "fixture-available", totalCents: 2299, note: "Example only — not a live quote." };
+       claim. It READS the Pricing V2 base fare rather than restating it:
+       consumer Same Day will use the SAME universal engine, so an example that
+       drifted from it would teach the wrong price, and a literal here is
+       exactly how that drift starts. Reading the constant is not computing a
+       quote — no trip input reaches it, and nothing above the included
+       allowance is priced. */
+    return {
+      state: "fixture-available",
+      totalCents: BASE_PRICE_CENTS,
+      note: "Example only — not a live quote.",
+    };
   },
   async submitRequest() {
     return { state: "received-preview" };

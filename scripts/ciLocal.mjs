@@ -128,9 +128,11 @@ const STAGES = [
     ["test:release:route", "release route"],
     ["test:idempotency", "idempotency substrate"],
     ["test:acceptance", "acceptance matrix"],
+    ["test:pricing-v2", "Pricing V2 traffic evidence, policy cutover and historical-quote immutability"],
     ["test:foundation-gate-a", "Foundation Gate A requester/quote/payment/plan/delivery adversarial matrix"],
     ["test:foundation-backfill", "Foundation Gate A deterministic historical backfill matrix"],
     ["test:foundation-rollbacks", "Foundation Gate A reversible-additive and hard-refusal rollback matrix"],
+    ["test:business-routing", "Business Places/Routes immutable-quote execution matrix"],
     ["test:messaging", "authenticated messaging"],
     ["test:auth-gateway", "auth gateway"],
     ["test:cus-fragments", "customer help fragments"],
@@ -146,9 +148,11 @@ const STAGES = [
       // five code failures and are one missing prerequisite. This container is
       // recycled without warning and the binary does not survive it.
       const postgresOnly = new Set([
+        "test:pricing-v2",
         "test:foundation-gate-a",
         "test:foundation-backfill",
         "test:foundation-rollbacks",
+        "test:business-routing",
       ]);
       if (!postgresOnly.has(script) && !postgrestPresent()) {
         return "postgrest binary is missing — run `npm run provision:postgrest` first";
