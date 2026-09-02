@@ -15,6 +15,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { resolveAdapterMode, fixturesEnabled } from "@/lib/couranr/sameday/adapterMode";
 import { getSameDayAdapters } from "@/lib/couranr/sameday/adapters";
+import { BASE_PRICE_CENTS } from "@/lib/couranr/pricing";
 
 const ROOT = path.join(__dirname, "..");
 const PROD = { nodeEnv: "production" as const };
@@ -170,6 +171,22 @@ describe("7. fixture success IS reachable in a sanctioned environment", () => {
     const a = getSameDayAdapters({ nodeEnv: "test" });
     expect(a.mode).toBe("fixture");
     expect((await a.quote({ pickup: "a", destination: "b", timing: "asap" })).state).toBe("fixture-available");
+  });
+
+  /* The fixture example is the only consumer-facing PRICE on the Same Day
+     surface. It teaches the base fare, so it must never be a literal that
+     outlives a policy change: this fails the moment the engine moves and the
+     example does not. */
+  it("the fixture example quotes the engine's base fare, not a copy of it", async () => {
+    const a = getSameDayAdapters({ nodeEnv: "test" });
+    const q = await a.quote({ pickup: "a", destination: "b", timing: "asap" });
+    expect(q.state).toBe("fixture-available");
+    expect(q.state === "fixture-available" && q.totalCents).toBe(BASE_PRICE_CENTS);
+    const src = readFileSync(path.join(ROOT, "lib/couranr/sameday/adapters.ts"), "utf8");
+    expect(src).toContain("totalCents: BASE_PRICE_CENTS");
+    expect(src, "a restated base fare is drift waiting to happen").not.toMatch(
+      /totalCents:\s*\d/
+    );
     expect((await a.submitRequest()).state).toBe("received-preview");
     expect((await a.authorizePayment()).state).toBe("authorized-fixture");
     expect((await a.searchAddress("main")).length).toBeGreaterThan(0);

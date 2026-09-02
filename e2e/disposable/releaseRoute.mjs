@@ -93,7 +93,7 @@ async function main() {
     const info = up({ quiet: true });
     console.log(`  ${info.migrationsApplied} migrations applied`);
 
-    pgrst = startPostgrest({
+    pgrst = await startPostgrest({
       dbUrl: dbUrl(),
       binary: PGRST_BIN,
       workDir: "/var/lib/postgresql/couranr-disposable/pgrst",
@@ -354,7 +354,7 @@ async function main() {
     try { if (appServer?.pid) process.kill(-appServer.pid, "SIGKILL"); } catch { /* gone */ }
     devDist.cleanup();
     try { stripe?.server?.close(); } catch { /* gone */ }
-    try { gateway?.close?.(); } catch { /* gone */ }
+    try { gateway?.server?.close(); } catch { /* gone */ }
     try { pgrst?.kill?.("SIGKILL"); } catch { /* gone */ }
     down({ quiet: true });
   }

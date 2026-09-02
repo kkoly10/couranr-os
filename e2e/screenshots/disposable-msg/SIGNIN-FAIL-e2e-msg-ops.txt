@@ -1,3 +1,5 @@
+url=http://127.0.0.1:3312/sign-in
+
 Skip to main content
 Pricing
 For businesses
@@ -5,13 +7,21 @@ Service areas
 How it works
 Sign in
 Create business account
+Sign in
 !
+Sign in did not complete
 
-Delivery Help
+Something went wrong on our side. Try again, and contact Couranr Support if it keeps happening.
 
-This help link is not available.
+Sign in to Couranr
 
-If you are expecting a delivery, the business that arranged it can send you a new link.
+Merchants, drivers and Couranr Operations all sign in here.
+
+Email*
+Password*
+Sign in
+
+New to Couranr? Set up your business.
 
 Couranr for Business — local delivery infrastructure for local businesses.
 

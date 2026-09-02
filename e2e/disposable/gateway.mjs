@@ -193,7 +193,41 @@ export const ANON_JWT = signJwt(
   JWT_SECRET
 );
 
-export function startPostgrest({ dbUrl, binary, workDir }) {
+/**
+ * Refuse to start on a port something else already holds.
+ *
+ * Without this the failure is a bare unhandled EADDRINUSE 'error' event, or —
+ * far worse — a SILENT one: a suite whose own PostgREST failed to bind keeps
+ * talking to the STALE one left by an earlier run, which points at a database
+ * that has since been destroyed and rebuilt. That produced five red tier-3
+ * suites in one `ci:local --all` run (`500 gateway_failure`, a help page with
+ * zero form controls) that all passed individually. Every one of them read as
+ * a product defect and none of them was.
+ *
+ * So: bind-test the port first and abort with the holder named. A confusing
+ * cascade becomes one honest sentence.
+ */
+async function assertPortFree(port, label) {
+  await new Promise((resolve, reject) => {
+    const probe = http.createServer();
+    probe.once("error", (e) => {
+      if (e.code !== "EADDRINUSE") return reject(e);
+      reject(
+        new Error(
+          `${label} cannot start: 127.0.0.1:${port} is already in use.\n` +
+            "  A previous disposable suite leaked its listener. Nothing here is a\n" +
+            "  product defect until this port is free. Find and kill the holder:\n" +
+            `    ps -eo pid,etimes,cmd | grep -E 'postgrest|node e2e'`
+        )
+      );
+    });
+    probe.once("listening", () => probe.close(() => resolve()));
+    probe.listen(port, "127.0.0.1");
+  });
+}
+
+export async function startPostgrest({ dbUrl, binary, workDir }) {
+  await assertPortFree(POSTGREST_PORT, "PostgREST");
   mkdirSync(workDir, { recursive: true });
   const conf = path.join(workDir, "postgrest.conf");
   writeFileSync(
@@ -449,7 +483,8 @@ async function handleAuth(req, res) {
   });
 }
 
-export function startGateway() {
+export async function startGateway() {
+  await assertPortFree(GATEWAY_PORT, "the auth gateway");
   const server = http.createServer((req, res) => {
     // The only rewrite: strip the Supabase REST prefix.
     const target = req.url.replace(/^\/rest\/v1/, "") || "/";
