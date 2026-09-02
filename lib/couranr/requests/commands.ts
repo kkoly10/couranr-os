@@ -12,6 +12,11 @@ import {
   type CanonicalRouteEvidence,
 } from "@/lib/couranr/routing/googleRoutes";
 import type { GoogleAddressSnapshot } from "@/lib/couranr/routing/address";
+import { applyShipmentPolicyToQuote } from "@/lib/couranr/shipment/quoteStatus";
+import {
+  isIntakeFailure,
+  loadIntakePolicySnapshot,
+} from "@/lib/couranr/intake/commands";
 import {
   classifyDatabaseError,
   logServerFailure,
@@ -408,11 +413,42 @@ async function routeAndQuote(
 
 /* ------------------------------------------- create_delivery_request_draft */
 
+/**
+ * §14 — fold the intake session's DETERMINISTIC policy disposition into the
+ * quote before anything is persisted: prohibited -> `invalid`, needs_review
+ * -> `manual_review_required`, both with no payable subtotal. The manual
+ * form path (no session) changes nothing.
+ */
+async function applyIntakePolicy(
+  operation: string,
+  quote: QuoteResult,
+  intakeSessionId: string | null | undefined,
+  businessAccountId: string
+): Promise<CommandResult<QuoteResult>> {
+  if (!intakeSessionId) return { ok: true, value: quote };
+  const snapshot = await loadIntakePolicySnapshot({
+    sessionId: intakeSessionId,
+    businessAccountId,
+  });
+  if (isIntakeFailure(snapshot)) {
+    return fail({
+      operation,
+      code: snapshot.code,
+      detail: { intakeSessionId, reason: "policy snapshot unavailable" },
+      message: snapshot.message,
+    });
+  }
+  if (!snapshot.value) return { ok: true, value: quote };
+  return { ok: true, value: applyShipmentPolicyToQuote(quote, snapshot.value) };
+}
+
 export async function createDeliveryRequestDraft(params: {
   actor: RequestActor;
   businessAccountId: string;
   rawInput: unknown;
   idempotencyKey: string;
+  /** Present when the shipment came through Smart Intake (P5-001). */
+  intakeSessionId?: string | null;
 }): Promise<CommandResult<{ request: DeliveryRequestRow; quote: QuoteResult }>> {
   const op = "createDeliveryRequestDraft";
   const permission = canActOnDeliveryRequest(params.actor, "create", params.businessAccountId);
@@ -439,9 +475,15 @@ export async function createDeliveryRequestDraft(params: {
   const routedResult = await routeAndQuote(op, draft);
   if (isCommandFailure(routedResult)) return routedResult;
   const routed = routedResult.value;
-  const quote = routed.quote;
+  const adjusted = await applyIntakePolicy(op, routed.quote, params.intakeSessionId, params.businessAccountId);
+  if (isCommandFailure(adjusted)) return adjusted;
+  const quote = adjusted.value;
 
-  if (quote.quoteStatus === "invalid") {
+  // Only an INPUT-invalid quote is refused as bad input. A policy-PROHIBITED
+  // quote is also `invalid` but with zero validation errors — that one is
+  // PERSISTED, because "Couranr cannot carry this" is an answer the merchant
+  // and Operations both need on the record, not a form error.
+  if (quote.quoteStatus === "invalid" && quote.validationErrors.length > 0) {
     return fail({
       operation: op,
       code: "invalid_input",
@@ -490,6 +532,8 @@ export async function calculateDeliveryRequestEstimate(params: {
    * changed it to. Omit to re-price the stored shipment unchanged.
    */
   rawInput?: unknown;
+  /** Present when the shipment came through Smart Intake (P5-001). */
+  intakeSessionId?: string | null;
 }): Promise<CommandResult<{ request: DeliveryRequestRow; quote: QuoteResult }>> {
   const op = "calculateDeliveryRequestEstimate";
   const permission = canActOnDeliveryRequest(params.actor, "create", params.businessAccountId);
@@ -553,9 +597,13 @@ export async function calculateDeliveryRequestEstimate(params: {
     shipment = shipmentArgs(draft, routed);
   }
 
-  const quote = routed.quote;
+  const adjusted = await applyIntakePolicy(op, routed.quote, params.intakeSessionId, params.businessAccountId);
+  if (isCommandFailure(adjusted)) return adjusted;
+  const quote = adjusted.value;
 
-  if (quote.quoteStatus === "invalid") {
+  // Input-invalid is refused; policy-prohibited `invalid` (zero validation
+  // errors) is persisted — see createDeliveryRequestDraft for why.
+  if (quote.quoteStatus === "invalid" && quote.validationErrors.length > 0) {
     return fail({
       operation: op,
       code: "invalid_input",

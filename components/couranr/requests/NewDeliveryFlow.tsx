@@ -38,6 +38,7 @@ import { formatCents, type DeliveryRequestView } from "@/lib/couranr/requests/vi
 import { DUPLICATE_STORAGE_KEY } from "@/lib/couranr/requests/listFilters";
 import type { GoogleAddressSnapshot } from "@/lib/couranr/routing/address";
 import { GooglePlaceAutocomplete } from "./GooglePlaceAutocomplete";
+import { SmartIntakePanel, type IntakeFactRow } from "./SmartIntakePanel";
 
 /**
  * MER-005 (Create delivery) and MER-006 (Delivery review and quote) — the same
@@ -56,7 +57,10 @@ const ERROR_COPY: Record<string, string> = {
   invalid_address: "Choose a complete street address from Google.",
   google_place_required: "Choose an address from the Google suggestions.",
   google_place_unverified: "Couranr could not verify this Google address. Choose it again.",
-  weight_required: "Enter the package weight in pounds.",
+  weight_required: "Enter the weight, or choose the honest range.",
+  weight_band_invalid: "Choose one of the weight ranges.",
+  timing_intent_invalid: "Choose a pickup timing.",
+  requested_time_invalid: "Enter the requested pickup date and time.",
   weight_invalid: "Weight cannot be negative.",
   additional_stops_invalid: "This delivery must have one destination.",
   additional_stops_unsupported: "Create one delivery per destination.",
@@ -95,6 +99,16 @@ export function NewDeliveryFlow() {
   const [recipientPhone, setRecipientPhone] = React.useState("");
   const [recipientEmail, setRecipientEmail] = React.useState("");
   const [weightLb, setWeightLb] = React.useState("");
+  /**
+   * SUR-001 band cutover. "exact" shows the pounds input; a band value says
+   * the honest thing when exact pounds are not genuinely known — including
+   * "unknown", which prices as Couranr review rather than as a guess.
+   */
+  const [weightMode, setWeightMode] = React.useState("exact");
+  /** TMZ-001 requested timing, evaluated server-side in America/New_York. */
+  const [timingIntent, setTimingIntent] = React.useState("asap");
+  const [requestedPickupLocal, setRequestedPickupLocal] = React.useState("");
+  const [intakeSessionId, setIntakeSessionId] = React.useState<string | null>(null);
   const [serviceLevel, setServiceLevel] = React.useState("standard");
   const [proofMethod, setProofMethod] = React.useState("photo_or_pin");
   const [readinessState, setReadinessState] = React.useState("not_confirmed");
@@ -192,6 +206,31 @@ export function NewDeliveryFlow() {
     };
   }, []);
 
+  /**
+   * §10 prefill rule: a >=85-confidence proposal MAY prefill an EMPTY field;
+   * a trusted (confirmed/overridden) fact always reflects. Nothing here
+   * overwrites what the merchant already typed, and none of it is authority —
+   * the server re-derives everything on calculate.
+   */
+  function onIntakeChange(state: { sessionId: string | null; facts: IntakeFactRow[] }) {
+    setIntakeSessionId(state.sessionId);
+    for (const f of state.facts) {
+      const trusted = f.authority === "confirmed" || f.authority === "overridden";
+      const prefillable = trusted || (f.confidence !== null && f.confidence >= 85);
+      if (!prefillable) continue;
+      if (f.fact_key === "weight_lb_exact" && typeof f.value === "number") {
+        if (trusted || weightLb === "") {
+          setWeightMode("exact");
+          setWeightLb(String(f.value));
+        }
+      } else if (f.fact_key === "weight_band" && typeof f.value === "string" && trusted) {
+        setWeightMode(f.value);
+      } else if (f.fact_key === "service_level" && typeof f.value === "string" && trusted) {
+        setServiceLevel(f.value);
+      }
+    }
+  }
+
   function goToStep(next: "intake" | "review") {
     router.push(next === "review" ? "?step=review" : "?step=intake", { scroll: true });
   }
@@ -209,7 +248,11 @@ export function NewDeliveryFlow() {
       recipientName,
       recipientPhone,
       recipientEmail,
-      weightLb,
+      // Exact pounds OR a governed band — never both, never an invention.
+      weightLb: weightMode === "exact" ? weightLb : null,
+      weightBand: weightMode === "exact" ? null : weightMode,
+      timingIntent,
+      requestedPickupLocal: timingIntent === "scheduled" ? requestedPickupLocal : null,
       additionalStops: 0,
       serviceLevel,
       signatureRequired,
@@ -225,11 +268,13 @@ export function NewDeliveryFlow() {
           expectedVersion: request.version,
           // The merchant may have edited the form since the first estimate.
           request: payload,
+          intakeSessionId,
         })
       : await createDeliveryRequest({
           businessAccountId,
           request: payload,
           idempotencyKey: idempotencyKey.current,
+          intakeSessionId,
         });
 
     setBusy(false);
@@ -481,22 +526,87 @@ export function NewDeliveryFlow() {
         <Card>
           <CardHeader
             title="Shipment"
-            description="Couranr calculates the estimate from these details."
+            description="Describe it in your own words — Couranr organizes the details, and you confirm what matters."
           />
+          {businessAccountId ? (
+            <SmartIntakePanel
+              businessAccountId={businessAccountId}
+              onIntakeChange={onIntakeChange}
+            />
+          ) : null}
           <Grid columns={2}>
-            <Field label="Weight (lb)" required error={fieldErrors.weightLb}>
+            <Field
+              label="Weight"
+              required
+              error={fieldErrors.weightLb ?? fieldErrors.weightBand}
+              hint="Exact pounds when you know them; otherwise the honest range."
+            >
               {(p) => (
-                <Input
+                <Select
                   {...p}
-                  inputMode="decimal"
-                  value={weightLb}
-                  onChange={(e) => setWeightLb(e.target.value)}
-                />
+                  value={weightMode}
+                  onChange={(e) => setWeightMode(e.target.value)}
+                >
+                  <option value="exact">I know the exact weight</option>
+                  <option value="0_25_lb">Under 25 lb</option>
+                  <option value="over_25_to_50_lb">25–50 lb</option>
+                  <option value="over_50_lb">Over 50 lb</option>
+                  <option value="unknown">Not sure yet</option>
+                </Select>
               )}
             </Field>
-            <Field label="Destinations" hint="One delivery is created per destination.">
-              {(p) => <Input {...p} value="1" disabled readOnly />}
+            {weightMode === "exact" ? (
+              <Field label="Weight (lb)" required error={fieldErrors.weightLb}>
+                {(p) => (
+                  <Input
+                    {...p}
+                    inputMode="decimal"
+                    value={weightLb}
+                    onChange={(e) => setWeightLb(e.target.value)}
+                  />
+                )}
+              </Field>
+            ) : (
+              <Field label="Destinations" hint="One delivery is created per destination.">
+                {(p) => <Input {...p} value="1" disabled readOnly />}
+              </Field>
+            )}
+          </Grid>
+
+          <Grid columns={2}>
+            <Field
+              label="Pickup timing"
+              required
+              error={fieldErrors.timingIntent}
+              hint="Times are Eastern (America/New_York). Same-day requests close at 4:00 PM."
+            >
+              {(p) => (
+                <Select
+                  {...p}
+                  value={timingIntent}
+                  onChange={(e) => setTimingIntent(e.target.value)}
+                >
+                  <option value="asap">As soon as possible</option>
+                  <option value="scheduled">Schedule a time</option>
+                </Select>
+              )}
             </Field>
+            {timingIntent === "scheduled" ? (
+              <Field
+                label="Requested pickup time"
+                required
+                error={fieldErrors.requestedPickupLocal}
+              >
+                {(p) => (
+                  <Input
+                    {...p}
+                    type="datetime-local"
+                    value={requestedPickupLocal}
+                    onChange={(e) => setRequestedPickupLocal(e.target.value)}
+                  />
+                )}
+              </Field>
+            ) : null}
           </Grid>
 
           <Grid columns={3}>

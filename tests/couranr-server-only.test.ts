@@ -356,8 +356,6 @@ describe("canonical server routes do not import the browser client", () => {
       // checked in the route before any database work, exactly as the tracking
       // route does, so junk URLs cannot be used to probe timing.
       "app/api/couranr/help/[token]/route.ts",
-      "app/api/couranr/intake/[id]/route.ts",
-      "app/api/couranr/intake/route.ts",
       { shape: /isWellFormedHelpToken\(/, redeem: /redeemHelpToken\(/ },
     ],
   ]);

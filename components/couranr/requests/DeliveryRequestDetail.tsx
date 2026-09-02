@@ -32,6 +32,7 @@ import { fetchFulfillment, type FulfillmentView } from "@/components/couranr/ful
 import {
   fetchDeliveryRequest,
   fetchMyBusinessAccounts,
+  type IntakeSessionView,
   isApiFailure,
   type ApiFailure,
 } from "./client";
@@ -145,6 +146,7 @@ function addressLines(a: any): string[] {
 export function DeliveryRequestDetail({ id }: { id: string }) {
   const [request, setRequest] = React.useState<DeliveryRequestView | null>(null);
   const [events, setEvents] = React.useState<any[]>([]);
+  const [intake, setIntake] = React.useState<IntakeSessionView | null>(null);
   const [failure, setFailure] = React.useState<ApiFailure | null>(null);
   const [loading, setLoading] = React.useState(true);
   /**
@@ -215,6 +217,7 @@ export function DeliveryRequestDetail({ id }: { id: string }) {
         if (!isApiFailure(r)) {
           setRequest(r.value.request);
           setEvents(r.value.events ?? []);
+          setIntake(r.value.intake ?? null);
           setIsOperations(businessAccountId === undefined);
           setViewerBusinessAccountId(businessAccountId ?? null);
           void reloadFulfillment(businessAccountId ?? null);
@@ -383,6 +386,69 @@ export function DeliveryRequestDetail({ id }: { id: string }) {
           />
           <MerchantProofPanel deliveryId={fulfillment.delivery.id} />
         </>
+      ) : null}
+
+      {/* P5-001 — what Couranr understood, for Operations. Deterministic
+          policy reasons and MODEL worries are shown apart, because they are
+          different things: one is Couranr's rules over confirmed facts, the
+          other is an unconfirmed signal. */}
+      {isOperations && intake ? (
+        <Card>
+          <CardHeader
+            title="Shipment understanding"
+            description={`Fact schema ${intake.session.fact_schema_version ?? ""} · policy ${intake.session.policy_version ?? "not evaluated"}`}
+          />
+          <Stack gap={3}>
+            {intake.revisions.length > 0 ? (
+              <div>
+                <Text size="sm" muted>Merchant said (revision {intake.revisions[intake.revisions.length - 1].revision}):</Text>
+                <Text>&ldquo;{intake.revisions[intake.revisions.length - 1].raw_description}&rdquo;</Text>
+              </div>
+            ) : null}
+            {intake.facts.length > 0 ? (
+              <TableScroll>
+                <Table caption="Structured facts and provenance">
+                  <thead>
+                    <tr><th>Fact</th><th>Value</th><th>Source</th><th>Authority</th></tr>
+                  </thead>
+                  <tbody>
+                    {intake.facts.map((f) => (
+                      <tr key={f.fact_key}>
+                        <td>{f.fact_key}</td>
+                        <td>{typeof f.value === "boolean" ? (f.value ? "yes" : "no") : String(f.value)}</td>
+                        <td>{f.source}</td>
+                        <td>
+                          <Badge tone={f.authority === "confirmed" || f.authority === "overridden" ? "success" : "neutral"}>
+                            {f.authority}
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </Table>
+              </TableScroll>
+            ) : null}
+            {intake.session.policy_disposition ? (
+              <div>
+                <Text size="sm" muted>
+                  Shipment policy: <strong>{intake.session.policy_disposition}</strong>
+                  {" · capability: "}{intake.session.operational_capability ?? "—"}
+                </Text>
+                {(intake.session.policy_reasons ?? []).length > 0 ? (
+                  <Text size="sm">Rules: {(intake.session.policy_reasons ?? []).join(", ")}</Text>
+                ) : null}
+                {(intake.session.policy_risk_signals ?? []).length > 0 ? (
+                  <Text size="sm">Model signals (unconfirmed): {(intake.session.policy_risk_signals ?? []).join(", ")}</Text>
+                ) : null}
+              </div>
+            ) : null}
+            {intake.session.current_clarification ? (
+              <Text size="sm" muted>
+                Open question to merchant: {intake.session.current_clarification.question}
+              </Text>
+            ) : null}
+          </Stack>
+        </Card>
       ) : null}
 
       {/* OPS-003 service plan, capture and the canonical delivery result. */}

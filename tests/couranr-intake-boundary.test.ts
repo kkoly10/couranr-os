@@ -153,7 +153,7 @@ describe("§18/§29 provider resolution", () => {
 
   it("an unrecognized provider name resolves to none, never to an invented vendor", () => {
     expect(
-      resolveSmartIntakeProvider({ COURANR_SMART_INTAKE_PROVIDER: "openai" } as NodeJS.ProcessEnv)
+      resolveSmartIntakeProvider({ COURANR_SMART_INTAKE_PROVIDER: "openai" } as unknown as NodeJS.ProcessEnv)
     ).toBeNull();
   });
 
@@ -162,7 +162,7 @@ describe("§18/§29 provider resolution", () => {
       resolveSmartIntakeProvider({
         COURANR_SMART_INTAKE_PROVIDER: "fake",
         NODE_ENV: "production",
-      } as NodeJS.ProcessEnv)
+      } as unknown as NodeJS.ProcessEnv)
     ).toBeNull();
   });
 
@@ -170,7 +170,7 @@ describe("§18/§29 provider resolution", () => {
     const provider = resolveSmartIntakeProvider({
       COURANR_SMART_INTAKE_PROVIDER: "fake",
       NODE_ENV: "test",
-    } as NodeJS.ProcessEnv);
+    } as unknown as NodeJS.ProcessEnv);
     expect(provider?.name).toBe("fake");
     const result = await provider!.interpret(
       {

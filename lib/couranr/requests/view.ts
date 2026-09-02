@@ -178,6 +178,10 @@ export const REVIEW_REASON_LABELS: Record<string, string> = {
   over_max_automatic_traffic_delay: "Predicted traffic delay is beyond the automatic estimate range",
   route_needs_review: "Driving route needs Couranr review",
   traffic_evidence_unavailable: "Traffic conditions could not be confirmed for this route",
+  weight_unresolved: "Weight needs to be confirmed before an automatic price",
+  timing_needs_review: "Requested timing needs Couranr review",
+  shipment_policy_review: "The shipment needs Couranr review before a price is set",
+  shipment_prohibited: "Couranr cannot carry this shipment",
   /* Retired V1 vocabulary, kept so historical requests still read. */
   over_max_automatic_weight: "Weight is beyond the automatic estimate range",
   overnight_not_offered_in_this_release: "Overnight is not offered in this release",

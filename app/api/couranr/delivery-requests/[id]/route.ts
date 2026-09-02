@@ -3,6 +3,7 @@ import { isActorDenied, resolveRequestActor } from "@/lib/couranr/requests/actor
 import { getDeliveryRequest, isCommandFailure } from "@/lib/couranr/requests/commands";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
 import { toDeliveryRequestView } from "@/lib/couranr/requests/view";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const dynamic = "force-dynamic";
 
@@ -30,8 +31,38 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
   });
   if (isCommandFailure(result)) return failureResponse(result);
 
+  /* P5-001 evidence for whoever may already see this request (the actor
+     check above is the authority; the session is keyed to the request the
+     actor was just allowed to read). Ops uses it to see what Couranr
+     understood, what was confirmed, and what the model merely worried about
+     — as the different things they are. */
+  let intake: Record<string, unknown> | null = null;
+  const { data: session } = await supabaseAdmin
+    .from("couranr_intake_sessions")
+    .select(
+      "id, current_revision, interpretation_status, current_clarification, policy_disposition, policy_reasons, policy_risk_signals, policy_unresolved, policy_version, operational_capability, fact_schema_version"
+    )
+    .eq("request_id", params.id)
+    .maybeSingle();
+  if (session) {
+    const [{ data: facts }, { data: revisions }] = await Promise.all([
+      supabaseAdmin
+        .from("couranr_intake_facts")
+        .select("fact_key, value, confidence, source, source_evidence, authority, revision, updated_at")
+        .eq("session_id", session.id)
+        .order("fact_key"),
+      supabaseAdmin
+        .from("couranr_intake_description_revisions")
+        .select("revision, raw_description, source, created_at")
+        .eq("session_id", session.id)
+        .order("revision"),
+    ]);
+    intake = { session, facts: facts ?? [], revisions: revisions ?? [] };
+  }
+
   return NextResponse.json({
     request: toDeliveryRequestView(result.value.request),
     events: result.value.events,
+    intake,
   });
 }

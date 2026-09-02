@@ -148,6 +148,44 @@ export function factMapFromRows(rows: IntakeRow[]): FactMap {
   return map;
 }
 
+/**
+ * The stored policy snapshot for the estimate path, reconstructed into the
+ * engine's result shape. Tenant-scoped; null when the session has no
+ * evaluation yet (the manual form path).
+ */
+export async function loadIntakePolicySnapshot(params: {
+  sessionId: string;
+  businessAccountId: string;
+}): Promise<IntakeResult<import("@/lib/couranr/shipment/policy").ShipmentPolicyResult | null>> {
+  const op = "loadIntakePolicySnapshot";
+  const { data, error } = await supabaseAdmin
+    .from("couranr_intake_sessions")
+    .select(
+      "policy_disposition, policy_reasons, policy_risk_signals, policy_unresolved, policy_version, operational_capability"
+    )
+    .eq("id", params.sessionId)
+    .eq("business_account_id", params.businessAccountId)
+    .maybeSingle();
+  if (error) {
+    return fail({ operation: op, code: classifyDatabaseError(error), detail: error.message });
+  }
+  if (!data) {
+    return fail({ operation: op, code: "not_found", message: "Intake session not found." });
+  }
+  if (!data.policy_disposition) return { ok: true, value: null };
+  return {
+    ok: true,
+    value: {
+      policyVersion: data.policy_version,
+      disposition: data.policy_disposition,
+      reasons: data.policy_reasons ?? [],
+      riskSignals: data.policy_risk_signals ?? [],
+      operationalCapability: data.operational_capability ?? "standard_lane",
+      unresolvedFacts: data.policy_unresolved ?? [],
+    } as import("@/lib/couranr/shipment/policy").ShipmentPolicyResult,
+  };
+}
+
 /* ------------------------------------------------------------ commands -- */
 
 export async function createIntakeSession(params: {
