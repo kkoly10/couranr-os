@@ -179,7 +179,7 @@ function main() {
 
     check("PV2-14", "anon and authenticated cannot execute the routed create command",
       one(`select bool_or(has_function_privilege(r,
-             'public.couranr_create_routed_delivery_request_draft(uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb)',
+             'public.couranr_create_routed_delivery_request_draft(uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,text,text,text,timestamptz,jsonb)',
              'EXECUTE')) from unnest(array['anon','authenticated']) r`), "f");
 
     check("PV2-55", "the QVL predicates are not executable by anon or authenticated",

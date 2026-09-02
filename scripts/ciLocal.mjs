@@ -129,6 +129,7 @@ const STAGES = [
     ["test:idempotency", "idempotency substrate"],
     ["test:acceptance", "acceptance matrix"],
     ["test:pricing-v2", "Pricing V2 traffic evidence, policy cutover and historical-quote immutability"],
+    ["test:weight-timing", "SUR-001 weight band + TMZ-001 requested timing execution matrix"],
     ["test:foundation-gate-a", "Foundation Gate A requester/quote/payment/plan/delivery adversarial matrix"],
     ["test:foundation-backfill", "Foundation Gate A deterministic historical backfill matrix"],
     ["test:foundation-rollbacks", "Foundation Gate A reversible-additive and hard-refusal rollback matrix"],
@@ -149,6 +150,7 @@ const STAGES = [
       // recycled without warning and the binary does not survive it.
       const postgresOnly = new Set([
         "test:pricing-v2",
+        "test:weight-timing",
         "test:foundation-gate-a",
         "test:foundation-backfill",
         "test:foundation-rollbacks",

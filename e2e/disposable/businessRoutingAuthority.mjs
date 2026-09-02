@@ -76,7 +76,7 @@ function main() {
       "place-pickup|place-drop-a|8047|5.000|600|google_routes_v2|available_for_request");
     check("BRA-DB-04", "routed RPC has no browser loaded-mile parameter",
       one(`select coalesce(array_position(proargnames,'p_loaded_miles'),0)
-             from pg_proc where oid='public.couranr_create_routed_delivery_request_draft(uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb)'::regprocedure`),
+             from pg_proc where oid='public.couranr_create_routed_delivery_request_draft(uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,text,text,text,timestamptz,jsonb)'::regprocedure`),
       "0");
 
     const version = one(`select version from public.couranr_delivery_requests where id='${request}'`);
@@ -118,9 +118,9 @@ function main() {
       "needs_review|8047|5.000|true");
     check("BRA-DB-08", "anon/authenticated cannot execute routed commands",
       raw(`select has_function_privilege('anon',
-          'public.couranr_create_routed_delivery_request_draft(uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb)',
+          'public.couranr_create_routed_delivery_request_draft(uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,text,text,text,timestamptz,jsonb)',
           'EXECUTE')||','||has_function_privilege('authenticated',
-          'public.couranr_create_routed_delivery_request_draft(uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb)',
+          'public.couranr_create_routed_delivery_request_draft(uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,text,text,text,timestamptz,jsonb)',
           'EXECUTE')`).trim(), "false,false");
     check("BRA-DB-09", "Foundation integrity remains clean",
       one("select count(*) from public.couranr_foundation_integrity()"), "0");
