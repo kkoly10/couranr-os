@@ -3893,23 +3893,38 @@
     {
       "id": "QVL-001",
       "category": "pricing",
-      "decision": "An unaccepted immediate quote is valid for 15 minutes on SERVER time; past that it must be rerouted and recalculated before it can be accepted, acknowledged or authorized. Quote N is never mutated.",
+      "decision": "An immediate V2 quote is valid for 15 minutes on SERVER time UNTIL THE ACTUAL PAYER approves that exact immutable Quote Version. Once the payer approves it inside the window the price is locked and later passage of time never reprices or expires it. Quote N is never mutated.",
       "value": {
         "validity_seconds": 900,
         "boundary": "half-open: valid for [0, 15:00), expired at 15:00 and beyond",
         "clock": "server/database time; no browser timer participates",
         "applies_to": "a quote_status='estimated' quote under couranr-pricing-v2-2026-09-01",
+        "what_the_window_gates": "only the ACT OF OBTAINING payer approval; never anything downstream of an approval already obtained",
+        "merchant_payer_approval": "p_acknowledged=true at submit, identifying THIS exact quote version. The merchant is the payer.",
+        "customer_payer_approval": "the Stripe authorization reaching requires_capture for the exact obligation — the transition that makes the obligation 'authorized', moves the request to 'confirmed' and records record_payer_quote_approval.",
+        "explicitly_not_approval": [
+          "creating a payment obligation — it begins 'not_started'",
+          "issuing a payment access token",
+          "redeeming a payment access token",
+          "attaching or creating a Stripe PaymentIntent — it reaches only 'requires_action'",
+          "Operations accept_as_quoted — Couranr is not the payer"
+        ],
+        "payment_token_ttl": "7 days, a CREDENTIAL ceiling only; it never extends the commercial window",
         "exempt": [
           "historical policy versions",
           "manual_review_required and invalid quotes",
-          "any quote already accepted or authorized"
+          "any quote the PAYER has approved"
         ],
         "enforced_at": [
-          "couranr_submit_delivery_request_v2",
+          "couranr_submit_delivery_request_v2 (only when p_acknowledged=true)",
           "couranr_accept_delivery_request_as_quoted",
-          "couranr_create_payment_obligation"
+          "couranr_create_payment_obligation",
+          "couranr_issue_payment_access_token",
+          "couranr_redeem_payment_access_token",
+          "couranr_attach_payment_intent",
+          "couranr_apply_payment_intent_state (the authorize branch)"
         ],
-        "on_expiry": "refuse with quote_expired (CR410); never silently reprice",
+        "on_expiry": "refuse with quote_expired — CR410 where the command raises, a governed rejected/quote_expired outcome where it returns one; never silently reprice",
         "remedy": "a fresh canonical route + traffic calculation, which mints Quote N+1"
       },
       "status": "decided",
@@ -3937,11 +3952,14 @@
         "lib/couranr/errors.ts"
       ],
       "acceptance_criteria": [
-        "A V2 estimated quote 14:59 old still submits.",
-        "The same quote at exactly 15:00 is refused with quote_expired.",
-        "A refusal does not mutate Quote N or move the request's state.",
-        "An obligation that already exists is returned unchanged 45 minutes later.",
-        "A quote under couranr-pricing-2026-07-31 never expires."
+        "A merchant who acknowledged at 14:59 can have that SAME quote accepted by Operations 30 minutes later, with no Quote N+1 and the same subtotal.",
+        "A merchant acknowledgment at exactly 15:00 is refused and records no acknowledgment event.",
+        "An unacknowledged stale request may enter review but cannot be confirmed at that price.",
+        "A freshly created obligation reports not_started and is not payer approval.",
+        "A valid requires_capture event on an expired quote is rejected as quote_expired, leaves the obligation unauthorized, the request at awaiting_quote_acceptance, and records no payer-approval event.",
+        "Customer authorization at 14:59 applies; at exactly 15:00 it is refused.",
+        "An obligation authorized in time is still authorized at 45 minutes.",
+        "A payment token with days of TTL remaining cannot open an expired quote."
       ],
       "conflict_with_current_code": {
         "code_value": {
@@ -3951,7 +3969,8 @@
         "resolution": "Enforced in the database at the three acceptance/authorization commands.",
         "remediation_commit": "Pricing V2 closure"
       },
-      "implementation_phase": "Pricing V2 closure"
+      "implementation_phase": "Pricing V2 closure",
+      "note": "An earlier revision confused COMMAND AND ROW EXISTENCE with payer approval. It expired quotes a payer had already approved, and left the real customer approval boundary — couranr_apply_payment_intent_state — unguarded, so an obligation created while the quote was fresh made the price immortal. Approval is now DERIVED from the evidence that already exists rather than duplicated into a flag."
     },
     {
       "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",

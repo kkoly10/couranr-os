@@ -167,11 +167,6 @@ begin
   if v_req.version is distinct from p_request_version then
     raise exception 'version_or_state_conflict' using errcode='CR409';
   end if;
-  /* PRC-001 V2 cutover. Historical rows keep their own identifier forever;
-     this command may never MINT the superseded one again. */
-  if p_pricing_policy_version = 'couranr-pricing-2026-07-31' then
-    raise exception 'superseded_pricing_policy_cannot_be_minted' using errcode='CR422';
-  end if;
   if p_quote_status not in ('estimated','manual_review_required','invalid') then
     raise exception 'invalid_quote_status' using errcode='CR422';
   end if;
@@ -261,6 +256,16 @@ begin
     if p_pricing_policy_version is null or p_delivery_subtotal_cents is null
        or p_delivery_subtotal_cents < 0 then
       raise exception 'quote_incomplete' using errcode='CR422';
+    end if;
+    /* PRC-007. An automatic priced quote minted here must be EXACTLY the
+       current policy. A denylist of the superseded identifier was the earlier
+       shape and it was too weak: it let every typo, invented string and
+       ungoverned future version through, and a stored quote whose policy
+       nobody recognises cannot be explained later. Historical rows are
+       untouched - this constrains MINTING only, and manual-review/unpriced
+       quotes keep their nullable rules below. */
+    if p_pricing_policy_version is distinct from 'couranr-pricing-v2-2026-09-01' then
+      raise exception 'unsupported_pricing_policy_version' using errcode='CR422';
     end if;
     if v_total is distinct from p_delivery_subtotal_cents::bigint then
       raise exception 'quote_subtotal_mismatch' using errcode='CR422';
@@ -614,8 +619,16 @@ begin
     return query select false,'request_not_payable'::text,v_req.id,v_tok.obligation_id,
       v_req.request_state,null::text,null::text,null::integer; return;
   end if;
-  select * into v_ob from public.couranr_payment_obligations
-   where id=v_tok.obligation_id and request_id=v_req.id and payment_state<>'cancelled';
+  /* ALIASED, and it must stay aliased. `returns table (… request_id uuid,
+     obligation_id uuid, payment_state text …)` makes those names OUT
+     parameters - ordinary PL/pgSQL variables in the body - so a bare
+     `request_id` here is ambiguous with the column and PostgreSQL refuses with
+     42702 rather than guessing. Migration 20260731234500 exists solely to fix
+     this, and the Gate A command cutover reintroduced it by re-declaring the
+     function without the alias, so redemption has been raising 42702 on every
+     call since. Restored here because this function is being replaced anyway. */
+  select o.* into v_ob from public.couranr_payment_obligations o
+   where o.id=v_tok.obligation_id and o.request_id=v_req.id and o.payment_state<>'cancelled';
   if not found then
     return query select false,'no_obligation'::text,v_req.id,null::uuid,
       v_req.request_state,null::text,null::text,null::integer; return;
@@ -623,8 +636,10 @@ begin
   /* QVL-001. A token with days of TTL left still cannot open an expired,
      unapproved commercial quote. Refused as a governed reason on this
      function's own result shape, never a raw driver error. */
-  select * into v_quote from public.couranr_quote_versions
-   where id=v_ob.quote_version_id and request_id=v_req.id;
+  /* Qualified: this function RETURNS TABLE with a `request_id` output column,
+     so a bare `request_id` here is ambiguous (42702) rather than the table's. */
+  select * into v_quote from public.couranr_quote_versions q
+   where q.id=v_ob.quote_version_id and q.request_id=v_req.id;
   if found and private.couranr_quote_version_is_expired(v_quote) then
     return query select false,'quote_expired'::text,v_req.id,v_ob.id,
       v_req.request_state,v_ob.payment_state,v_ob.payer_type,v_ob.amount_cents; return;
