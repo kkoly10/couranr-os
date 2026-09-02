@@ -88,9 +88,39 @@ function main() {
 
     /* ------------------------------------------------ policy cutover ---- */
 
+    /* PRC-007. The boundary is an EXACT match, not a blacklist. The blacklist
+       shape refused exactly one string and waved through every typo, invented
+       identifier and ungoverned future version - and a stored quote whose
+       policy nobody recognises cannot be explained later. */
     check("PV2-07", "the superseded policy version cannot be MINTED",
       raises(draft("v2-old-policy", { policy: "couranr-pricing-2026-07-31" })),
-      "CR422|superseded_pricing_policy_cannot_be_minted");
+      "CR422|unsupported_pricing_policy_version");
+
+    check("PV2-19", "a TYPO in the current policy version cannot be minted",
+      raises(draft("v2-typo", { policy: "couranr-pricing-v2-2026-09-1" })),
+      "CR422|unsupported_pricing_policy_version");
+
+    check("PV2-20", "an invented FUTURE policy version cannot be minted",
+      raises(draft("v2-future", { policy: "couranr-pricing-v3-2027-01-01" })),
+      "CR422|unsupported_pricing_policy_version");
+
+    check("PV2-21", "an empty policy string cannot be minted",
+      raises(draft("v2-empty", { policy: "" })),
+      "CR422|unsupported_pricing_policy_version");
+
+    /* The nullable rules for an unpriced quote are UNCHANGED by the pin: a
+       manual-review quote still carries no policy and no amount. */
+    const reviewId = one(`select id from public.couranr_create_routed_delivery_request_draft(
+      '${BUSINESS}','${USER}','v2-review','merchant_portal','not_confirmed','merchant',
+      'Recipient','555-0100','r@example.test',10,0,'standard',false,'photo_or_pin',
+      ${addr("place-pickup","10 Market St")},${addr("place-drop","20 Main St")},false,
+      null,null,null,null,'google_routes_v2','needs_review','outside_service_area',
+      'manual_review_required',null,null,null,null,'[]'::jsonb,
+      jsonb_build_array('route_needs_review'))`);
+    check("PV2-22", "an unpriced manual-review quote still mints with a null policy",
+      one(`select (pricing_policy_version is null)::text || '|' || quote_status
+             from public.couranr_quote_versions where request_id='${reviewId}'`),
+      "true|manual_review_required");
 
     /* ------------------------------- historical quotes are untouched ---- */
 
@@ -149,6 +179,81 @@ function main() {
 
     check("PV2-15", "Foundation integrity remains zero",
       one(`select count(*) from public.couranr_foundation_integrity()`), "0");
+
+    /* ------------------------------------------- QVL-001 quote validity --- */
+    /* The predicate being correct does not prove the COMMANDS call it. Each of
+       the three acceptance/authorization boundaries is exercised on a quote
+       aged past the window, on server time. */
+
+    /* Ageing a quote needs an explicit trigger bypass, and that is worth
+       stating rather than hiding: couranr_quote_versions carries an
+       append-only trigger, so a stored quote genuinely cannot be edited - the
+       first version of this helper was refused by
+       `quote_versions_are_append_only`, which is the immutability guarantee
+       doing its job. `session_replication_role='replica'` suspends the trigger
+       for this session only, on a disposable database, purely to move the
+       clock. Nothing in the product can take this path. */
+    const age = (rid, iv) =>
+      raw(`set session_replication_role='replica';
+           update public.couranr_quote_versions set created_at = now() - interval '${iv}'
+            where request_id = '${rid}';
+           set session_replication_role='origin';`);
+    const ver = (rid) => one(`select version from public.couranr_delivery_requests where id='${rid}'`);
+
+    // 14:59 must still submit; 15:00 must not. Two separate requests so the
+    // first is not consumed by the second.
+    const fresh = one(draft("qvl-fresh", { duration: 900, staticDuration: 600, delay: 300 }));
+    age(fresh, "14 minutes 59 seconds");
+    check("PV2-23", "at 14:59 the quote is still submittable",
+      raises(`select public.couranr_submit_delivery_request_v2('${fresh}','${BUSINESS}',${ver(fresh)},'${USER}',true)`),
+      "NO_ERROR|");
+
+    const stale = one(draft("qvl-stale", { duration: 900, staticDuration: 600, delay: 300 }));
+    age(stale, "15 minutes");
+    check("PV2-24", "at exactly 15:00 submit refuses with quote_expired",
+      raises(`select public.couranr_submit_delivery_request_v2('${stale}','${BUSINESS}',${ver(stale)},'${USER}',true)`),
+      "CR410|quote_expired");
+
+    // Accept: submit while fresh, then age the quote before Couranr accepts.
+    const acc = one(draft("qvl-accept", { duration: 900, staticDuration: 600, delay: 300 }));
+    raw(`select public.couranr_submit_delivery_request_v2('${acc}','${BUSINESS}',${ver(acc)},'${USER}',true)`);
+    age(acc, "20 minutes");
+    check("PV2-25", "accept_as_quoted refuses an expired quote",
+      raises(`select public.couranr_accept_delivery_request_as_quoted('${acc}','${BUSINESS}',${ver(acc)},'${USER}')`),
+      "CR410|quote_expired");
+    check("PV2-26", "... and Quote N was NOT mutated by the refusal",
+      one(`select subtotal_cents||'|'||pricing_policy_version from public.couranr_quote_versions
+            where request_id='${acc}'`), "799|couranr-pricing-v2-2026-09-01");
+    check("PV2-27", "... and the request did not move state",
+      one(`select request_state||'|'||review_state from public.couranr_delivery_requests where id='${acc}'`),
+      "pending_couranr_review|pending");
+
+    // Payment authorization: accept while fresh, then age before authorizing.
+    const pay = one(draft("qvl-pay", { duration: 900, staticDuration: 600, delay: 300 }));
+    raw(`select public.couranr_submit_delivery_request_v2('${pay}','${BUSINESS}',${ver(pay)},'${USER}',true)`);
+    raw(`update public.couranr_delivery_requests set review_state='pending' where id='${pay}'`);
+    raw(`select public.couranr_accept_delivery_request_as_quoted('${pay}','${BUSINESS}',${ver(pay)},'${USER}')`);
+    age(pay, "30 minutes");
+    check("PV2-28", "a NEW payment obligation is refused on an expired quote",
+      raises(`select public.couranr_create_payment_obligation('${pay}','${BUSINESS}','qvl-pay-key')`),
+      "CR410|quote_expired");
+
+    /* The other half of the rule, and the one a naive implementation breaks:
+       an obligation that ALREADY exists is never invalidated by time passing. */
+    const keep = one(draft("qvl-keep", { duration: 900, staticDuration: 600, delay: 300 }));
+    raw(`select public.couranr_submit_delivery_request_v2('${keep}','${BUSINESS}',${ver(keep)},'${USER}',true)`);
+    raw(`update public.couranr_delivery_requests set review_state='pending' where id='${keep}'`);
+    raw(`select public.couranr_accept_delivery_request_as_quoted('${keep}','${BUSINESS}',${ver(keep)},'${USER}')`);
+    const obId = one(`select id from public.couranr_create_payment_obligation('${keep}','${BUSINESS}','qvl-keep-key')`);
+    age(keep, "45 minutes");
+    check("PV2-29", "an ALREADY authorized obligation is not expired by the clock",
+      one(`select id from public.couranr_create_payment_obligation('${keep}','${BUSINESS}','qvl-keep-key')`), obId);
+
+    /* A historical quote never expires - old behaviour is preserved exactly. */
+    const histReq = "33333333-3333-4333-8333-333333333333";
+    check("PV2-30", "a historical V1 quote is exempt from the validity window",
+      one(`select private.couranr_quote_version_is_expired(q.*) from public.couranr_quote_versions q
+            where q.request_id='${histReq}'`), "f");
 
     /* ------------------------------------------------------- rollback --- */
 
