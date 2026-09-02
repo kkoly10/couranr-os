@@ -165,7 +165,7 @@ async function makeCharge(businessId, creatorId, recipient, state, amountCents) 
     // builder's defaults, so both are passed explicitly.
     recipientName: recipient,
     subtotalCents: amountCents,
-    pricingPolicyVersion: "disposable",
+    pricingPolicyVersion: "couranr-pricing-v2-2026-09-01",
   });
   const o = await seedCanonicalPaymentObligation(psqlTransport(psql), request, {
     paymentState: state,

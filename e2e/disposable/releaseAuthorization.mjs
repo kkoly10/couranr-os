@@ -288,7 +288,7 @@ async function main() {
             quote_version_id, pricing_policy_version, amount_cents, currency,
             payment_state, provider_payment_intent_id, idempotency_key, authorized_at)
          values ('${a.requestId}', '${businessId}', 'merchant', 1,
-                 '${a.quoteVersionId}', 'disposable',
+                 '${a.quoteVersionId}', 'couranr-pricing-v2-2026-09-01',
                  2299, 'usd', 'authorized', null, 'noint-${crypto.randomUUID()}', now())
          returning id`,
       ).split("|")[0],

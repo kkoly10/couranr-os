@@ -105,7 +105,7 @@ async function makeRequest(businessId, creatorId, opts) {
     pickupAddress: { line1: "1 Pickup Way", city: "Stafford", region: "VA", postalCode: "22554" },
     dropoffAddress: { line1, city: "Woodbridge", region: "VA", postalCode: "22191" },
     subtotalCents: 2299,
-    pricingPolicyVersion: "disposable",
+    pricingPolicyVersion: "couranr-pricing-v2-2026-09-01",
     upTo: state === "pending_couranr_review" ? "submitted" : "confirmed",
   });
   return request.requestId;
