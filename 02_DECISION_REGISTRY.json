@@ -4405,6 +4405,242 @@
         "remediation_commit": "deferred to the economics batch"
       },
       "implementation_phase": "Pricing V2 cutover"
+    },
+    {
+      "id": "TMZ-001",
+      "category": "operations",
+      "decision": "The Couranr MVP operating timezone is the IANA zone America/New_York. All MVP request-time operating semantics — earliest pickup, same-day cutoff, end of standard window, next-business-day and Friday-after-cutoff calculations, overnight request timing, merchant-entered scheduled pickup times and Google Routes future departureTime conversion — are evaluated in this zone on the SERVER. DST follows the zone automatically through IANA tzdata.",
+      "value": {
+        "operating_timezone": "America/New_York",
+        "never": [
+          "browser timezone",
+          "device timezone",
+          "raw UTC interpretation of local merchant input",
+          "fixed UTC-5",
+          "fixed UTC-4"
+        ],
+        "persistence": "the canonical scheduled instant is a timestamptz; the merchant's local wall-clock words are preserved verbatim beside it as evidence",
+        "validation": "two-sided: the application derives the instant with Intl tzdata and the database re-derives it with its own America/New_York rules, refusing a mismatch (requested_departure_mismatch)",
+        "future_expansion": "a second operating timezone is a future policy version, not infrastructure built now",
+        "timing_policy_version": "couranr-timing-v1-2026-09-02"
+      },
+      "status": "decided",
+      "decided_by": "owner",
+      "decided_at_utc": "2026-09-02T00:00:00Z",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§4 Operating hours",
+      "affected_routes": [
+        "/app/business/deliveries/new",
+        "/policy/delivery"
+      ],
+      "affected_screen_ids": [
+        "MER-005",
+        "MER-006",
+        "OPS-002",
+        "OPS-003"
+      ],
+      "affected_database_objects": [
+        "public.couranr_delivery_requests"
+      ],
+      "affected_code_paths": [
+        "lib/couranr/timing/policy.ts",
+        "lib/couranr/routing/googleRoutes.ts",
+        "supabase/migrations/20260902200000_couranr_weight_band_and_requested_timing.sql"
+      ],
+      "acceptance_criteria": [
+        "A 3:59 PM Eastern ASAP request is same-day eligible; 4:00 PM exactly is not.",
+        "Friday after the cutoff lands on Monday with no holiday calendar invented.",
+        "Winter and summer noon Eastern convert to different UTC instants (EST/EDT), proving no fixed offset.",
+        "A stored operating_timezone can hold nothing but America/New_York.",
+        "A canonical instant that does not match the merchant's local words is refused."
+      ],
+      "implementation_phase": "Smart Intake batch",
+      "conflict_with_current_code": {
+        "code_value": {
+          "timezone_handling": "no request-timing model existed; the only zone reference was the service-area radius module"
+        },
+        "code_location": "lib/couranr/timing/policy.ts (new)",
+        "resolution": "Implemented as the timing doctrine module plus request columns; server-side only.",
+        "remediation_commit": "Smart Intake batch"
+      }
+    },
+    {
+      "id": "SUR-005",
+      "category": "pricing",
+      "amends": "SUR-003",
+      "decision": "Exact weight is OPTIONAL shipment knowledge. A request must state EITHER a genuinely known exact weight OR a governed weight band (0_25_lb, over_25_to_50_lb, over_50_lb, unknown). No midpoint, bound, zero, sentinel or 'estimated exact weight' may ever be fabricated to satisfy an interface. Pricing V2 amounts are unchanged: a confirmed band prices identically to an exact weight in that band; over_50_lb and unknown leave the automatic lane.",
+      "value": {
+        "weight_bands": [
+          "0_25_lb",
+          "over_25_to_50_lb",
+          "over_50_lb",
+          "unknown"
+        ],
+        "pricing": {
+          "0_25_lb": "included",
+          "over_25_to_50_lb": "+$3.00",
+          "over_50_lb": "Large Item review",
+          "unknown": "weight_unresolved review"
+        },
+        "precedence": "a present exact weight wins; the band is consulted only when exact weight is null",
+        "snapshot_truth": "quote shipment snapshots record weightKnowledge as exact | band | unresolved and never convert a band into pounds",
+        "historical_rows": "exact weights on historical requests and quotes are untouched"
+      },
+      "status": "decided",
+      "decided_by": "owner",
+      "decided_at_utc": "2026-09-02T00:00:00Z",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§4 Pricing registry — weight",
+      "affected_routes": [
+        "/app/business/deliveries/new"
+      ],
+      "affected_screen_ids": [
+        "MER-005",
+        "MER-006"
+      ],
+      "affected_database_objects": [
+        "public.couranr_delivery_requests",
+        "public.couranr_quote_versions"
+      ],
+      "affected_code_paths": [
+        "lib/couranr/pricing/quote.ts",
+        "lib/couranr/shipment/facts.ts",
+        "supabase/migrations/20260902200000_couranr_weight_band_and_requested_timing.sql"
+      ],
+      "acceptance_criteria": [
+        "Exact 20 lb and a confirmed 0_25_lb band produce identical subtotals.",
+        "Exact 40 lb and a confirmed over_25_to_50_lb band produce identical subtotals.",
+        "over_50_lb has no automatic final price.",
+        "Unknown weight receives no invented pounds and prices as review.",
+        "A request stating nothing about weight is refused at the command boundary."
+      ],
+      "implementation_phase": "Smart Intake batch",
+      "conflict_with_current_code": {
+        "code_value": {
+          "weight": "input.ts required exact weightLb; two command sites substituted `?? 0` for a missing weight"
+        },
+        "code_location": "lib/couranr/requests/input.ts, lib/couranr/requests/commands.ts",
+        "resolution": "Exact weight nullable, governed band added, both zero-sentinels removed.",
+        "remediation_commit": "Smart Intake batch"
+      }
+    },
+    {
+      "id": "INT-001",
+      "category": "smart intake",
+      "decision": "Smart Intake is durable INPUT ENRICHMENT, never a second request system and never an authority. AI proposes; Couranr validates; a TRUSTED ACTOR confirms material facts; the server commits. A model conclusion at any confidence is still a proposal: it cannot mutate request state, mint Quote Versions, set mileage/traffic/serviceability/subtotal, choose a pricing policy version, change payment state, confirm a request, or choose an Operations outcome. A signal (model, keyword, similarity) may escalate to review but may never produce a hard prohibited outcome and may never downgrade a confirmed one.",
+      "value": {
+        "governing_rule": "AI PROPOSES. COURANR VALIDATES. A TRUSTED ACTOR CONFIRMS MATERIAL FACTS. SERVER COMMITS.",
+        "fact_authority": [
+          "proposed",
+          "confirmed",
+          "overridden",
+          "unknown"
+        ],
+        "fact_sources": [
+          "merchant_statement",
+          "saved_preset",
+          "merchant_default",
+          "previous_confirmed_delivery",
+          "ai_inference",
+          "deterministic_policy",
+          "unknown"
+        ],
+        "stale_results": "a completion for a superseded raw-description revision is retained as audit evidence and cannot become current",
+        "idempotency": "one logical interpretation (session, revision, prompt version, schema version, provider) converges on one run and one paid call",
+        "provider": "NO approved production AI provider exists or is selected here; the provider seam is neutral, the deterministic fake is structurally unavailable in production builds, and absence degrades to manual structured intake",
+        "data_minimization": "provider payloads carry the shipment description, versioned category and confirmed non-PII shipment facts only; there is no field for recipient contact, addresses, payment or auth material",
+        "clarification": "exactly one open question at a time, ranked safety > capability > priceability > timing > convenience",
+        "shipment_policy_version": "couranr-shipment-policy-v0-2026-09-02",
+        "fact_schema_version": "couranr-shipment-facts-v0-2026-09-02"
+      },
+      "status": "decided",
+      "decided_by": "owner",
+      "decided_at_utc": "2026-09-02T00:00:00Z",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§6 Smart Intake",
+      "affected_routes": [
+        "/app/business/deliveries/new",
+        "/operations/deliveries/[id]"
+      ],
+      "affected_screen_ids": [
+        "MER-005",
+        "MER-006",
+        "OPS-002",
+        "OPS-003"
+      ],
+      "affected_database_objects": [
+        "public.couranr_intake_sessions",
+        "public.couranr_intake_description_revisions",
+        "public.couranr_intake_runs",
+        "public.couranr_intake_facts",
+        "public.couranr_intake_fact_events"
+      ],
+      "affected_code_paths": [
+        "lib/couranr/intake/",
+        "lib/couranr/shipment/",
+        "supabase/migrations/20260902210000_couranr_smart_intake_v0.sql"
+      ],
+      "acceptance_criteria": [
+        "A stale out-of-order completion cannot replace current facts, the clarification, or the session head.",
+        "A 99%-confident rerun cannot overwrite a merchant-confirmed fact; the disagreement is retained as audit.",
+        "Prompt-injection text has zero authority over policy, pricing, mileage, traffic, review or state.",
+        "Provider malformed/timeout/unavailable degrades to manual without blocking the request flow.",
+        "Confirmed prohibited classes (alcohol, ammunition, controlled medication, live animals, people, …) are prohibited regardless of any model opinion; alcohol-free cleaner, toy guns, battery drills and ordinary electronics are not prohibited by wording alone."
+      ],
+      "implementation_phase": "Smart Intake batch",
+      "conflict_with_current_code": {
+        "code_value": {
+          "smart_intake": "did not exist"
+        },
+        "code_location": "lib/couranr/intake/ (new), supabase/migrations/20260902210000_couranr_smart_intake_v0.sql (new)",
+        "resolution": "Implemented as durable input enrichment behind the canonical command boundary.",
+        "remediation_commit": "Smart Intake batch"
+      }
+    },
+    {
+      "id": "TRF-002",
+      "category": "pricing",
+      "amends": "TRF-001",
+      "decision": "Scheduled (future-departure) traffic is now implemented. A scheduled request's canonical America/New_York-derived instant is sent to Google Routes as departureTime, so predicted traffic for the requested departure prices the quote; the delay derivation (duration minus staticDuration from ONE response) is unchanged. Only a genuinely future instant is sent; a past requested time is a timing review, never a Google call. Browsers still supply no route, duration, baseline, delay or mileage.",
+      "value": {
+        "immediate_requests": "no departureTime; Google prices current conditions (TRF-001 behavior unchanged)",
+        "scheduled_requests": "departureTime = the canonical requested instant, RFC3339",
+        "dst": "automatic via America/New_York tzdata (TMZ-001)"
+      },
+      "status": "decided",
+      "decided_by": "owner",
+      "decided_at_utc": "2026-09-02T00:00:00Z",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§4 Pricing registry — traffic",
+      "affected_routes": [
+        "/app/business/deliveries/new"
+      ],
+      "affected_screen_ids": [
+        "MER-005",
+        "MER-006"
+      ],
+      "affected_database_objects": [
+        "public.couranr_quote_versions"
+      ],
+      "affected_code_paths": [
+        "lib/couranr/routing/googleRoutes.ts",
+        "lib/couranr/timing/policy.ts"
+      ],
+      "acceptance_criteria": [
+        "A future canonical instant reaches the provider request verbatim as departureTime.",
+        "A past instant is never sent; the request carries a timing review instead.",
+        "Immediate routes are byte-identical to TRF-001 behavior.",
+        "The Pricing V2 traffic math is unchanged for scheduled routes."
+      ],
+      "implementation_phase": "Smart Intake batch",
+      "conflict_with_current_code": {
+        "code_value": {
+          "scheduled_traffic": "not implemented — computeCanonicalGoogleRoute sent no departureTime by design (TRF-001)"
+        },
+        "code_location": "lib/couranr/routing/googleRoutes.ts",
+        "resolution": "departureTime added for future canonical instants; immediate behavior unchanged.",
+        "remediation_commit": "Smart Intake batch"
+      }
     }
   ]
 }
