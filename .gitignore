@@ -48,3 +48,4 @@ next-env.d.ts
 
 # Throwaway analysis scripts. Use the session scratchpad; never commit these.
 .review-scratch/
+e2e/screenshots/smart-intake/dev-server.log

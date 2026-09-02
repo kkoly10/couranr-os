@@ -37,7 +37,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { mkdirSync, rmSync } from "node:fs";
+import { mkdirSync, openSync, rmSync } from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -60,7 +60,10 @@ const DIST = ".next-disposable-dev";
 const PGRST_BIN = postgrestTarget();
 
 const PORT = 3323;
-const BASE = `http://127.0.0.1:${PORT}`;
+// `localhost`, not 127.0.0.1: Next 16 dev serves /_next/* only to the
+// origins it trusts, and the default set is localhost alone — a browser on
+// 127.0.0.1 gets "Blocked cross-origin request" and a page that never hydrates.
+const BASE = `http://localhost:${PORT}`;
 const PASSWORD = "disposable-intake-1";
 
 const DESCRIPTION = "12 boxed flower arrangements, about 20 lb total, keep upright.";
@@ -134,10 +137,13 @@ async function main() {
 
     rmSync(path.join(ROOT, DIST), { recursive: true, force: true });
     console.log("  starting a dev server against the disposable stack...");
+    // The server's own output is kept: a dev server that compiles for two
+    // minutes or throws in a route looks identical to a hung one otherwise.
+    const serverLog = openSync(path.join(SHOTS, "dev-server.log"), "w");
     appServer = spawn("npx", ["next", "dev", "-p", String(PORT)], {
       cwd: ROOT,
       env,
-      stdio: "ignore",
+      stdio: ["ignore", serverLog, serverLog],
       detached: true,
     });
     const deadline = Date.now() + 240_000;
@@ -151,6 +157,13 @@ async function main() {
       }
     }
     if (!live) throw new Error("the application did not start");
+    // Pre-warm the two routes the run drives so the first browser wait is
+    // measuring the page, not Turbopack's cold compile of it.
+    for (const route of ["/sign-in", "/app/business/deliveries/new"]) {
+      const t0 = Date.now();
+      const r = await fetch(`${BASE}${route}`, { redirect: "manual" }).catch((e) => ({ status: `ERR ${e.message}` }));
+      console.log(`  warmed ${route}: ${r.status} in ${Date.now() - t0}ms`);
+    }
 
     /* ───────────────────────────── fixtures ───────────────────────────── */
 
@@ -184,7 +197,14 @@ async function main() {
       const page = await ctx.newPage();
       await page.goto(`${BASE}/sign-in`, { waitUntil: "domcontentloaded" });
       const emailField = fieldLabel(page, "Email");
-      await emailField.waitFor({ state: "visible", timeout: 120_000 });
+      try {
+        await emailField.waitFor({ state: "visible", timeout: 120_000 });
+      } catch (e) {
+        await page.screenshot({ path: path.join(SHOTS, "FAIL-sign-in.png"), fullPage: true }).catch(() => {});
+        console.log(`  sign-in page url=${page.url()} title=${await page.title().catch(() => "?")}`);
+        console.log(`  sign-in body: ${(await page.locator("body").innerText().catch(() => "?")).slice(0, 600)}`);
+        throw e;
+      }
       await emailField.fill(email);
       await fieldLabel(page, "Password").fill(PASSWORD);
       await page.getByRole("button", { name: /^Sign in$/ }).click();
@@ -327,23 +347,34 @@ async function main() {
     /* ═══════════ 4. the route refuses what it must ════════════════════ */
 
     console.log("\nRefusals — shape, anonymity, staleness");
-    const badShape = await page.request.post(`${BASE}/api/couranr/intake/${sessionId}`, {
-      data: { businessAccountId: bizId, action: "confirm", factKey: "weight_band", value: "roughly 30 pounds" },
+    // The canonical routes authenticate by BEARER token (the browser client
+    // attaches the session's access token to every call), not by cookie — so
+    // these probes carry the same credential the page does, minted the same
+    // way the sign-in did, from the disposable /auth/v1.
+    const tokenRes = await fetch(`${gateway.url}/auth/v1/token?grant_type=password`, {
+      method: "POST",
+      headers: { "content-type": "application/json", apikey: ANON_JWT },
+      body: JSON.stringify({ email: owner.email, password: PASSWORD }),
     });
+    const accessToken = (await tokenRes.json()).access_token;
+    if (typeof accessToken !== "string") throw new Error(`no access token: ${tokenRes.status}`);
+    const asOwner = (body) =>
+      fetch(`${BASE}/api/couranr/intake/${sessionId}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify(body),
+      });
+    const badShape = await asOwner({ businessAccountId: bizId, action: "confirm", factKey: "weight_band", value: "roughly 30 pounds" });
     check("U24", "a mis-shaped confirmation value is refused as invalid input",
-      badShape.status() === 400 || badShape.status() === 422, `status=${badShape.status()}`);
+      badShape.status === 400 || badShape.status === 422, `status=${badShape.status}`);
     check("U25", "... and no weight_band fact was written",
       sql(`select count(*) from public.couranr_intake_facts
             where session_id='${sessionId}' and fact_key='weight_band'`) === "0");
-    const junkKey = await page.request.post(`${BASE}/api/couranr/intake/${sessionId}`, {
-      data: { businessAccountId: bizId, action: "confirm", factKey: "charge_amount", value: 1 },
-    });
-    check("U26", "an unknown fact key is refused", junkKey.status() === 400 || junkKey.status() === 422,
-      `status=${junkKey.status()}`);
-    const stale = await page.request.post(`${BASE}/api/couranr/intake/${sessionId}`, {
-      data: { businessAccountId: bizId, action: "describe", description: "stale words", expectedRevision: 1 },
-    });
-    check("U27", "a stale revision CAS is refused as a conflict", stale.status() === 409, `status=${stale.status()}`);
+    const junkKey = await asOwner({ businessAccountId: bizId, action: "confirm", factKey: "charge_amount", value: 1 });
+    check("U26", "an unknown fact key is refused", junkKey.status === 400 || junkKey.status === 422,
+      `status=${junkKey.status}`);
+    const stale = await asOwner({ businessAccountId: bizId, action: "describe", description: "stale words", expectedRevision: 1 });
+    check("U27", "a stale revision CAS is refused as a conflict", stale.status === 409, `status=${stale.status}`);
     check("U28", "... and revision 3 was never written",
       sql(`select current_revision from public.couranr_intake_sessions where id='${sessionId}'`) === "2");
     const anon = await fetch(`${BASE}/api/couranr/intake`, {
