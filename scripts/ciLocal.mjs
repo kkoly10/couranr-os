@@ -256,6 +256,17 @@ const STAGES = [
     run: ["npm", ["run", "test:smart-intake-ui"]],
     why: "P5-001 Smart Intake panel driven in a real browser against the disposable stack — describe, suggest-not-prefill, confirm, hostile update, refusals",
     settle: settleDisposablePorts,
+    // Rule 2 again: a suite that died before its tally, or that counted a
+    // failure and still exited 0, must not read as a pass. The suite prints
+    // `N passed, N failed, N inconclusive` as its last line.
+    assert: (out) => {
+      const m = out.match(/(\d+) passed, (\d+) failed, (\d+) inconclusive/);
+      if (!m) return "could not find the suite's `N passed, N failed, N inconclusive` tally — did the run abort?";
+      const [, passed, failed] = m;
+      if (Number(failed) > 0) return `${failed} browser check(s) failed`;
+      if (Number(passed) === 0) return "the suite passed nothing — no check ran";
+      return null;
+    },
     needs: () => {
       if (!want.browser) return "tier 4 not requested — pass --browser or --all";
       // Runs `next dev` on its own distDir over the disposable database (the
@@ -302,6 +313,12 @@ if (argv.includes("--self-test")) {
   control("a vitest run that dropped test FILES is rejected", assertTests("Test Files  51 passed (53)"), true);
   control("a vitest run with every file passing is accepted", assertTests("Test Files  53 passed (53)"), false);
   control("a vitest run with no summary line at all is rejected", assertTests("boom"), true);
+
+  const assertUi = STAGES.find((s) => s.name === "test:smart-intake-ui").assert;
+  control("a browser suite with a failed check is rejected even on exit 0", assertUi("57 passed, 1 failed, 0 inconclusive"), true);
+  control("a browser suite that ran nothing is rejected", assertUi("0 passed, 0 failed, 0 inconclusive"), true);
+  control("a browser suite with no tally at all is rejected", assertUi("boom"), true);
+  control("a browser suite with every check passing is accepted", assertUi("58 passed, 0 failed, 0 inconclusive"), false);
 
   // And a stage whose command exits non-zero must be recorded as a failure
   // rather than shrugged off.

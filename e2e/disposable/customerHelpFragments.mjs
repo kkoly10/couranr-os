@@ -205,13 +205,20 @@ async function main() {
     // with PGRST301 "Expected 3 parts; got 1". A harness that bakes env into a
     // bundle can never reuse a bundle built with different env.
     rmSync(path.join(ROOT, DIST), { recursive: true, force: true });
-    // ALSO the default .next. tsconfig includes `.next/types/**/*.ts`, so a
-    // build into a DIFFERENT distDir still type-checks whatever route types a
-    // previous build left there — and never regenerates them. A stale
+    // ALSO the default .next's GENERATED TYPES. tsconfig includes
+    // `.next/types/**/*.ts` and `.next/dev/types/**/*.ts`, so a build into a
+    // DIFFERENT distDir still type-checks whatever route types a previous
+    // build left there — and never regenerates them. A stale
     // `.next/types/app/page.ts` for a route that has since moved into the
     // (couranr) group fails the disposable build with TS2307 on a file nobody
-    // edited. Measured: `rm -rf .next` is the difference between red and green.
-    rmSync(path.join(ROOT, ".next"), { recursive: true, force: true });
+    // edited. Measured: clearing them is the difference between red and green.
+    // Only the types, NOT the whole of .next: this suite runs inside
+    // `ci:local --all` AFTER tier 1's production build and BEFORE the tier-4
+    // `next start` gates that serve it — `rm -rf .next` here silently turned
+    // those five gates into "NOT RUN — no production build" every time.
+    for (const stale of ["types", path.join("dev", "types")]) {
+      rmSync(path.join(ROOT, ".next", stale), { recursive: true, force: true });
+    }
 
     console.log("  building the application against the disposable stack...");
     execFileSync("npx", ["next", "build"], {

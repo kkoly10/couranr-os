@@ -152,8 +152,14 @@ async function main() {
       // previous build left there — and never regenerates them. A stale
       // `.next/types/app/page.ts` for a route that has since moved into the
       // (couranr) group fails the disposable build with TS2307 on a file nobody
-      // edited. Measured: `rm -rf .next` is the difference between red and green.
-      rmSync(path.join(ROOT, ".next"), { recursive: true, force: true });
+      // edited. Measured: clearing them is the difference between red and green.
+      // Only the generated TYPES, never the whole of .next: inside `ci:local --all`
+      // this runs after tier 1's production build and before the tier-4 `next start`
+      // gates that serve it — `rm -rf .next` here silently turned those five gates
+      // into "NOT RUN — no production build" on every full run.
+      for (const stale of ["types", path.join("dev", "types")]) {
+        rmSync(path.join(ROOT, ".next", stale), { recursive: true, force: true });
+      }
       console.log("  building the application against the disposable stack...");
       execFileSync("npx", ["next", "build"], {
         cwd: ROOT,
