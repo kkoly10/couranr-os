@@ -374,9 +374,26 @@ export async function reconcilePaymentIntent(params: {
   }
 
   return applyVerifiedIntentState({
-    /* QVL-001: the intent's own created time, read back from Stripe by this
-       server. A reconcile can run long after the payer approved. */
-    authorizedAtUnixSeconds: typeof (pi as any).created === "number" ? (pi as any).created : null,
+    /*
+     * QVL-001: deliberately NOT supplied here, so the database falls back to
+     * its own now().
+     *
+     * A retrieve carries no authorization timestamp. `PaymentIntent.created`
+     * is "Time at which the object was created" (stripe@15.12.0,
+     * types/PaymentIntents.d.ts) — the moment the intent was minted, before
+     * the payer touched it — so passing it would date every authorization to
+     * whenever checkout opened and let a payer authorize an hour-old quote.
+     * Wrong in the permissive direction is the one direction that must not
+     * happen for money.
+     *
+     * now() is instead conservative: this runs seconds after the Payment
+     * Element reports success, so it refuses only an authorization that really
+     * is out of window. And it is not the last word — the signature-verified
+     * `payment_intent.amount_capturable_updated` webhook carries the true
+     * authorization moment in `event.created` and applies under its own event
+     * id, so a genuinely in-window approval that this path refuses is still
+     * authorized by the webhook. Proved by PV2-60/61.
+     */
     providerEventId: syntheticEventId(pi, params.obligationVersion),
     // Mapped to the event the state machine understands, so a retrieve and a
     // webhook take the same path and cannot disagree.

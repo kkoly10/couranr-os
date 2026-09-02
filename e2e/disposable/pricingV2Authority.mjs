@@ -279,10 +279,10 @@ function main() {
        be undone by the clock. */
 
     const custIntent = (n) => `pi_qvl_${n}`;
-    function authorizeEvent(obId, reqId, biz, quoteId, amount, evId, authorizedAt) {
+    function authorizeEvent(obId, reqId, biz, quoteId, amount, evId, authorizedAt, intentKey) {
       return `select outcome||'|'||coalesce(rejected_reason,'-')||'|'||coalesce(payment_state,'-')
               from public.couranr_apply_payment_intent_state(
-                '${evId}','payment_intent.amount_capturable_updated','${custIntent(evId)}',
+                '${evId}','payment_intent.amount_capturable_updated','${custIntent(intentKey ?? evId)}',
                 'requires_capture',${amount},${amount},'usd',
                 jsonb_build_object('paymentObligationId','${obId}','couranrRequestId','${reqId}',
                   'businessAccountId','${biz}','quoteVersionId','${quoteId}'),
@@ -407,6 +407,27 @@ function main() {
              jsonb_build_object('paymentObligationId','${c1.obId}','couranrRequestId','${c1.rid}',
                'businessAccountId','${BUSINESS}','quoteVersionId','${c1.qId}'))`),
       "applied|cancelled");
+
+    /* reconcilePaymentIntent supplies NO authorization moment, because a
+       PaymentIntent retrieve does not carry one - PaymentIntent.created is
+       when the intent was minted, not when the payer authorized. So that path
+       is judged at now() and refuses conservatively. What must remain true is
+       that its refusal does not become the final answer for an approval that
+       really was in window: the signature-verified webhook arrives under its
+       OWN event id carrying event.created, and still authorizes. */
+    const c5 = customerChain("qvl-c-reconcile");
+    raw(`select public.couranr_attach_payment_intent('${c5.obId}',
+          (select version from public.couranr_payment_obligations where id='${c5.obId}'),
+          '${custIntent("e-recon")}')`);
+    age(c5.rid, "20 minutes");
+    const inWindow = one(`select (created_at + interval '10 minutes')::text
+      from public.couranr_quote_versions where request_id='${c5.rid}'`);
+    check("PV2-60", "a reconcile with no authorization moment is judged at now() and refuses",
+      one(authorizeEvent(c5.obId, c5.rid, BUSINESS, c5.qId, 799, "e-recon")),
+      "rejected|quote_expired|requires_action");
+    check("PV2-61", "... and the webhook carrying the REAL moment still authorizes it",
+      one(authorizeEvent(c5.obId, c5.rid, BUSINESS, c5.qId, 799, "e-recon-hook", inWindow, "e-recon")),
+      "applied|-|authorized");
 
     /* ---- 7. a real authorization survives the clock ---------------------- */
     age(c2.rid, "45 minutes");
