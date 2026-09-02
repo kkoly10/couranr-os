@@ -38,7 +38,7 @@
  * Through the CURRENT canonical named commands, in the order the product runs
  * them, rather than by hand-assembling rows that happen to satisfy the checks:
  *
- *   couranr_create_delivery_request_draft      draft + quote #1  (version 1)
+ *   couranr_create_routed_delivery_request_draft   draft + quote #1 (version 1)
  *   couranr_submit_delivery_request_v2         -> pending_couranr_review
  *   couranr_accept_delivery_request_as_quoted  -> confirmed
  *   couranr_create_payment_obligation          obligation on the current quote
@@ -104,13 +104,23 @@ function sqlLit(value, type) {
  * ignores them and passes the same JS values as JSON.
  */
 export const COMMAND_SIGNATURES = {
-  couranr_create_delivery_request_draft: {
+  /*
+   * The ROUTED draft. The pre-routing command still exists for historical
+   * interpretation but Batch 1 revoked EXECUTE on it from service_role, so a
+   * fixture calling it now fails with "permission denied" the moment it runs
+   * as service_role rather than as the superuser — which is exactly what the
+   * supabase-js transport does.
+   */
+  couranr_create_routed_delivery_request_draft: {
     p_business_account_id: "uuid", p_created_by: "uuid", p_idempotency_key: "text",
     p_source: "text", p_readiness_state: "text", p_payer_type: "text",
     p_recipient_name: "text", p_recipient_phone: "text", p_recipient_email: "text",
-    p_loaded_miles: "numeric", p_weight_lb: "numeric", p_additional_stops: "integer",
+    p_weight_lb: "numeric", p_additional_stops: "integer",
     p_service_level: "text", p_signature_required: "boolean", p_proof_method: "text",
     p_pickup_address: "jsonb", p_dropoff_address: "jsonb", p_overnight_requested: "boolean",
+    p_route_distance_meters: "bigint", p_route_duration_seconds: "integer",
+    p_route_static_duration_seconds: "integer", p_route_traffic_delay_seconds: "integer",
+    p_distance_source: "text", p_serviceability_outcome: "text", p_route_review_reason: "text",
     p_quote_status: "text", p_pricing_policy_version: "text",
     p_delivery_subtotal_cents: "integer", p_included_loaded_miles: "integer",
     p_billable_loaded_miles: "numeric", p_quote_line_items: "jsonb",
@@ -273,6 +283,31 @@ export const syntheticIntentId = () => `pi_${uuid().replace(/-/g, "").slice(0, 2
  * exceeds `weightLb` because couranr_confirm_service_plan checks the vehicle
  * against the QUOTE's shipment snapshot.
  */
+/**
+ * A Google-Places-shaped address.
+ *
+ * The routed commands refuse anything else with `google_place_identity_required`
+ * — Batch 1's point being that a canonical request carries a VERIFIED place, not
+ * a typed string. Callers keep overriding line1/city for the assertions that read
+ * them back; this only supplies the identity fields those overrides omit.
+ */
+export function placeShapedAddress(base, placeId) {
+  return {
+    googlePlaceId: placeId,
+    formattedAddress: `${base.line1}, ${base.city ?? "Stafford"}, ${base.region ?? "VA"} ${base.postalCode ?? "22554"}, USA`,
+    line2: null,
+    city: "Stafford",
+    region: "VA",
+    postalCode: "22554",
+    countryCode: "US",
+    latitude: 38.422,
+    longitude: -77.408,
+    addressSource: "google_places_new",
+    instructions: null,
+    ...base,
+  };
+}
+
 export const FIXTURE_DEFAULTS = {
   source: "merchant_portal",
   readinessState: "not_confirmed",
@@ -347,7 +382,7 @@ export async function seedCanonicalQuotedRequest(t, opts) {
     marker,
   });
 
-  const draft = await t.rpc("couranr_create_delivery_request_draft", {
+  const draft = await t.rpc("couranr_create_routed_delivery_request_draft", {
     p_business_account_id: o.businessId,
     p_created_by: o.actorUserId,
     p_idempotency_key: o.idempotencyKey || `${marker}-${uuid()}`,
@@ -357,16 +392,27 @@ export async function seedCanonicalQuotedRequest(t, opts) {
     p_recipient_name: o.recipientName,
     p_recipient_phone: o.recipientPhone,
     p_recipient_email: o.recipientEmail,
-    p_loaded_miles: o.loadedMiles,
     p_weight_lb: o.weightLb,
     // M6: a new canonical request is single-destination by contract.
     p_additional_stops: 0,
     p_service_level: o.serviceLevel,
     p_signature_required: o.signatureRequired,
     p_proof_method: o.proofMethod,
-    p_pickup_address: o.pickupAddress,
-    p_dropoff_address: o.dropoffAddress,
+    p_pickup_address: placeShapedAddress(o.pickupAddress, "place-fixture-pickup"),
+    p_dropoff_address: placeShapedAddress(o.dropoffAddress, "place-fixture-dropoff"),
     p_overnight_requested: false,
+    // Route evidence. The meters are derived FROM the fixture's loaded miles
+    // using the same constant the database re-derives with, so its
+    // request_route_distance_mismatch check agrees. Baseline equals the
+    // traffic-aware duration, giving a zero delay: a fixture that wanted a
+    // surcharge would have to say so.
+    p_route_distance_meters: Math.round(o.loadedMiles * 1609.344),
+    p_route_duration_seconds: 600,
+    p_route_static_duration_seconds: 600,
+    p_route_traffic_delay_seconds: 0,
+    p_distance_source: "google_routes_v2",
+    p_serviceability_outcome: "available_for_request",
+    p_route_review_reason: null,
     p_quote_status: "estimated",
     p_pricing_policy_version: o.pricingPolicyVersion,
     p_delivery_subtotal_cents: o.subtotalCents,
