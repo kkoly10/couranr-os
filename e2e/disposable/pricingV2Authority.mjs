@@ -559,6 +559,20 @@ function main() {
     check("PV2-77", "... and refuses the superseded V1 identifier under the same rule",
       raises(draft("qvl-fw-v1", { policy: "couranr-pricing-2026-07-31" })),
       "CR422|unsupported_pricing_policy_version");
+    /* The recovery path. If the SQL commits but the migration ledger row does
+       not get written - the Supabase apply path writes it in a separate round
+       trip - the only fix is to run the migration again. The guard used to
+       name ONLY the 8-argument apply command, which this migration itself
+       drops, so a second run aborted claiming the Gate A cutover was missing:
+       false, and the most alarming possible way to be wrong. */
+    check("PV2-81", "the forward migration is re-runnable over itself",
+      applyScript(QVL_FWD), "NO_ERROR|");
+    const r3 = one(draft("qvl-rerun-stale"));
+    age(r3, "40 minutes");
+    check("PV2-82", "... and a second run leaves the guards behaving identically",
+      raises(`select public.couranr_submit_delivery_request_v2('${r3}','${BUSINESS}',${ver(r3)},'${USER}',true)`),
+      "CR410|quote_expired");
+
     check("PV2-76", "... with still exactly one 9-argument apply command",
       one(`select count(*)||'|'||coalesce(max(pronargs),0) from pg_proc p
              join pg_namespace n on n.oid=p.pronamespace

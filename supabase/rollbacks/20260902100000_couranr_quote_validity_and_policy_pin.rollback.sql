@@ -13,6 +13,22 @@
 -- already recorded are unaffected either way - nothing here reads or writes
 -- commercial evidence.
 --
+-- ORDER MATTERS IF THE APPLICATION HAS ALREADY SHIPPED. This removes
+-- public.couranr_obligation_quote_expired and the 9-argument apply command,
+-- both of which PR #40's application calls BY NAME - supabaseAdmin.rpc() posts
+-- named arguments and PostgREST resolves overloads by argument name, so a
+-- p_authorized_at key would no longer match anything. If that application is
+-- live, roll the APPLICATION back first, then run this. Rolling this back
+-- under the new application turns PaymentIntent reuse and every webhook
+-- application into a PGRST202.
+--
+-- ONE DELIBERATE NON-RESTORATION. couranr_redeem_payment_access_token comes
+-- back as the ALIASED body from 20260731234500, not as the body that is live
+-- in production today. Production's current copy is m4's, which lost the alias
+-- and raises 42702 on every call - token redemption is dead there right now.
+-- Restoring a function that is known to be broken would be fidelity to the
+-- wrong thing, so this restores the last body that actually worked.
+--
 -- Idempotent: every statement is create-or-replace or drop-if-exists, so a
 -- second run is a clean no-op rather than "function already exists".
 -- =====================================================================
@@ -732,6 +748,14 @@ drop function if exists private.couranr_quote_version_is_expired(
 drop function if exists private.couranr_quote_payer_approved(
   public.couranr_quote_versions
 );
+
+/* The forward migration DROPs the 8-argument form, which discards its
+   pg_description row with it, and the recreate below is a fresh CREATE on a
+   name that no longer exists. Without this the object would come back with no
+   comment at all, so forward-then-rollback would not restore what it found. */
+comment on function public.couranr_apply_payment_intent_state(
+  text,text,text,text,integer,integer,text,jsonb
+) is 'Applies a signature-verified Stripe PaymentIntent observation to the obligation and, on authorization, to the request. Governed outcomes only; never a raw driver error.';
 
 revoke all on function public.couranr_apply_payment_intent_state(
   text,text,text,text,integer,integer,text,jsonb

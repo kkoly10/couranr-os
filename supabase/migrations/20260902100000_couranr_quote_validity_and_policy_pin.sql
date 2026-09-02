@@ -46,8 +46,15 @@
 --      explained later.
 --
 -- ADDITIVE. No column or table dropped, no row rewritten, no historical quote
--- reinterpreted. Signatures unchanged, so every function is replaced in place
--- and no stale arity survives as an overload.
+-- reinterpreted. Ten of the eleven functions keep their exact signature and are
+-- replaced in place. The eleventh, couranr_apply_payment_intent_state, GAINS a
+-- defaulted parameter, which is a new signature - so it is dropped by its exact
+-- old signature and recreated, because `create or replace` would leave the old
+-- arity alive as an overload that still judged the window at webhook time.
+--
+-- RE-RUNNABLE. Every statement is `create or replace`, `drop ... if exists` or
+-- additive, and the precondition guard accepts EITHER arity of the apply
+-- command, so running this twice is a no-op rather than a false failure.
 -- =====================================================================
 
 begin;
@@ -62,7 +69,15 @@ begin
   if to_regprocedure('public.couranr_create_payment_obligation(uuid,uuid,text)') is null
      or to_regprocedure('public.couranr_submit_delivery_request_v2(uuid,uuid,integer,uuid,boolean)') is null
      or to_regprocedure('public.couranr_accept_delivery_request_as_quoted(uuid,uuid,integer,uuid)') is null
-     or to_regprocedure('public.couranr_apply_payment_intent_state(text,text,text,text,integer,integer,text,jsonb)') is null then
+     /* EITHER arity satisfies this. The 8-argument form is what Gate A left
+        behind and what this migration drops at the bottom of the file; the
+        9-argument form is what it puts back. Naming only the 8-argument one
+        made the migration falsify its own precondition, so a SECOND run - the
+        exact recovery path when the SQL commits but the migration ledger row
+        does not - aborted claiming the Gate A cutover was missing, which is
+        both false and the most alarming possible way to be wrong. */
+     or (to_regprocedure('public.couranr_apply_payment_intent_state(text,text,text,text,integer,integer,text,jsonb)') is null
+         and to_regprocedure('public.couranr_apply_payment_intent_state(text,text,text,text,integer,integer,text,jsonb,timestamptz)') is null) then
     raise exception 'Quote validity requires the Foundation Gate A command cutover';
   end if;
 end
@@ -796,7 +811,13 @@ drop function if exists public.couranr_apply_payment_intent_state(
   text,text,text,text,integer,integer,text,jsonb
 );
 
-create function public.couranr_apply_payment_intent_state(
+/* CREATE OR REPLACE, not a bare CREATE. The DROP above is `if exists`, so on a
+   SECOND run there is no 8-argument form left to drop and a bare CREATE hits
+   the 9-argument form this migration already installed - "function ... already
+   exists with same argument types" - aborting the whole re-run. Same signature,
+   so replacing in place is exactly right; the grants below are reissued either
+   way. Found by executing the migration twice, not by reading it. */
+create or replace function public.couranr_apply_payment_intent_state(
   p_provider_event_id text,p_event_type text,p_payment_intent_id text,
   p_intent_status text,p_amount integer,p_amount_capturable integer,
   p_currency text,p_metadata jsonb,
