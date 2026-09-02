@@ -177,6 +177,12 @@ function main() {
              'public.couranr_create_routed_delivery_request_draft(uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb)',
              'EXECUTE')) from unnest(array['anon','authenticated']) r`), "f");
 
+    check("PV2-55", "the QVL predicates are not executable by anon or authenticated",
+      one(`select bool_or(has_function_privilege(r, p.oid, 'EXECUTE'))::text
+             from pg_proc p, unnest(array['anon','authenticated']) r
+            where p.proname in ('couranr_quote_payer_approved','couranr_quote_version_is_expired',
+                                'couranr_obligation_quote_expired')`), "false");
+
     check("PV2-15", "Foundation integrity remains zero",
       one(`select count(*) from public.couranr_foundation_integrity()`), "0");
 

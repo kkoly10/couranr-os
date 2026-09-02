@@ -102,6 +102,12 @@ as $fn$
          and (e.metadata ->> 'quoteVersionId') = p_quote.id::text));
 $fn$;
 
+/* Explicitly revoked. This project's pg_default_acl grants arwdDxtm to anon,
+   authenticated AND service_role on every new function, so a private-schema
+   predicate is executable by anon unless it is taken away by hand - which is
+   why private.couranr_append_routed_quote_version does exactly this. Not
+   reachable over PostgREST (db-schemas is public only), but defence in depth
+   and consistent with the rest of the private surface. */
 comment on function private.couranr_quote_payer_approved is
   'QVL-001. True once the ACTUAL payer approved this exact quote version: merchant acknowledgment at submit, or a customer Stripe authorization that reached the obligation. Obligation, token and PaymentIntent existence are NOT approval.';
 
@@ -127,6 +133,20 @@ $fn$;
 
 comment on function private.couranr_quote_version_is_expired is
   'QVL-001. True only for a V2 estimated quote at or past 15 minutes old that the PAYER has not approved. An approved quote never expires; historical policy versions and unpriced quotes never expire.';
+
+revoke all on function private.couranr_quote_payer_approved(
+  public.couranr_quote_versions
+) from public, anon, authenticated, service_role;
+grant execute on function private.couranr_quote_payer_approved(
+  public.couranr_quote_versions
+) to service_role;
+
+revoke all on function private.couranr_quote_version_is_expired(
+  public.couranr_quote_versions, timestamptz
+) from public, anon, authenticated, service_role;
+grant execute on function private.couranr_quote_version_is_expired(
+  public.couranr_quote_versions, timestamptz
+) to service_role;
 
 /* ------------------------------------ read-only check for the app layer */
 /* ensurePaymentIntent REUSES an existing PaymentIntent without calling attach,
