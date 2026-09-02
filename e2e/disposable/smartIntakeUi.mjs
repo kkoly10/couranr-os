@@ -37,7 +37,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { mkdirSync, openSync, rmSync } from "node:fs";
+import { mkdirSync, openSync } from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -50,13 +50,16 @@ import {
   ANON_JWT,
 } from "./gateway.mjs";
 import { postgrestTarget } from "../../scripts/provisionPostgrest.mjs";
+import { claimDevDistDir } from "../devDistDir.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const SHOTS = path.join(ROOT, "e2e/screenshots/smart-intake");
 // A dev server, not a production build: the fake provider is structurally
 // unavailable under NODE_ENV=production (the §29 positive control), and this
-// run exists to drive it. Its own distDir so it never touches `.next`.
-const DIST = ".next-disposable-dev";
+// run exists to drive it. Its output goes to an isolated, gitignored dist dir
+// that is removed on exit — and the `include` entry Next appends to
+// tsconfig.json for it is restored (see e2e/devDistDir.mjs for why both).
+const devDist = claimDevDistDir("smart-intake");
 const PGRST_BIN = postgrestTarget();
 
 const PORT = 3323;
@@ -128,21 +131,19 @@ async function main() {
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ANON_JWT,
       SUPABASE_SERVICE_ROLE_KEY: SERVICE_ROLE_JWT,
       PORT: String(PORT),
-      COURANR_DIST_DIR: DIST,
       // The ONLY provider this run may see. `next dev` runs as development,
       // which is where the fake is allowed to exist.
       COURANR_SMART_INTAKE_PROVIDER: "fake",
     };
     delete env.NODE_ENV;
 
-    rmSync(path.join(ROOT, DIST), { recursive: true, force: true });
     console.log("  starting a dev server against the disposable stack...");
     // The server's own output is kept: a dev server that compiles for two
     // minutes or throws in a route looks identical to a hung one otherwise.
     const serverLog = openSync(path.join(SHOTS, "dev-server.log"), "w");
     appServer = spawn("npx", ["next", "dev", "-p", String(PORT)], {
       cwd: ROOT,
-      env,
+      env: { ...env, COURANR_DIST_DIR: devDist.rel },
       stdio: ["ignore", serverLog, serverLog],
       detached: true,
     });
@@ -407,7 +408,7 @@ async function main() {
     if (gateway?.server) gateway.server.close();
     if (pgrst) pgrst.kill("SIGTERM");
     down({ quiet: true });
-    rmSync(path.join(ROOT, DIST), { recursive: true, force: true });
+    devDist.cleanup();
     console.log("  disposable stack torn down");
   }
 }
