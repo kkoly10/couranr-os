@@ -1,4 +1,10 @@
 import { SERVICE_LEVEL_CENTS, type ServiceLevel } from "@/lib/couranr/pricing";
+import { isWeightBand, type WeightBand } from "@/lib/couranr/shipment/facts";
+import {
+  TIMING_INTENTS,
+  parseOperatingLocal,
+  type TimingIntent,
+} from "@/lib/couranr/timing/policy";
 import {
   googlePlaceSelectionFromAddress,
   type GooglePlaceSelection,
@@ -45,8 +51,22 @@ export type DeliveryRequestDraft = {
   recipientName: string | null;
   recipientPhone: string | null;
   recipientEmail: string | null;
-  weightLb: number;
+  /**
+   * SUR-001 band cutover: EITHER an exact weight OR a governed band must be
+   * present. `weightLb` null means the exact weight is not genuinely known —
+   * no midpoint, bound, zero or sentinel is ever substituted for it.
+   */
+  weightLb: number | null;
+  weightBand: WeightBand | null;
   additionalStops: number;
+  /** TMZ-001 requested timing. ASAP unless the merchant scheduled a time. */
+  timingIntent: TimingIntent;
+  /**
+   * Merchant-entered LOCAL wall-clock time (`YYYY-MM-DDTHH:MM`), meaningful
+   * only under the operating timezone. Preserved verbatim as evidence; the
+   * canonical instant is derived server-side, never accepted from a client.
+   */
+  requestedPickupLocal: string | null;
   serviceLevel: ServiceLevel;
   signatureRequired: boolean;
   proofMethod: ProofMethod;
@@ -69,6 +89,9 @@ export type InputErrorCode =
   | "google_place_required"
   | "weight_required"
   | "weight_invalid"
+  | "weight_band_invalid"
+  | "timing_intent_invalid"
+  | "requested_time_invalid"
   | "additional_stops_invalid"
   | "additional_stops_unsupported"
   | "unknown_service_level"
@@ -209,9 +232,38 @@ export function normalizeDeliveryRequestInput(raw: unknown): NormalizeResult {
   // client field. Unknown fields are not copied into the canonical draft; the
   // server Routes call is the only mileage authority.
 
+  // SUR-001 band cutover: exact weight OR a governed band, at least one.
+  // "I don't know the exact pounds" is expressed as a band (including
+  // `unknown`), never by inventing a number to satisfy this check.
   const weightLb = num(r.weightLb);
-  if (weightLb === null) errors.push({ code: "weight_required", field: "weightLb" });
-  else if (weightLb < 0) errors.push({ code: "weight_invalid", field: "weightLb" });
+  if (weightLb !== null && weightLb < 0) {
+    errors.push({ code: "weight_invalid", field: "weightLb" });
+  }
+  let weightBand: WeightBand | null = null;
+  if (r.weightBand !== undefined && r.weightBand !== null && r.weightBand !== "") {
+    if (isWeightBand(r.weightBand)) weightBand = r.weightBand;
+    else errors.push({ code: "weight_band_invalid", field: "weightBand" });
+  }
+  if (weightLb === null && weightBand === null) {
+    errors.push({ code: "weight_required", field: "weightLb" });
+  }
+
+  // TMZ-001 requested timing. The zone is Couranr's, so only the local
+  // wall-clock string is accepted; anything carrying its own timezone is
+  // refused by the parser.
+  const timingIntent = (str(r.timingIntent) ?? "asap") as TimingIntent;
+  if (!TIMING_INTENTS.includes(timingIntent)) {
+    errors.push({ code: "timing_intent_invalid", field: "timingIntent" });
+  }
+  let requestedPickupLocal: string | null = null;
+  if (timingIntent === "scheduled") {
+    const raw = str(r.requestedPickupLocal);
+    if (!raw || parseOperatingLocal(raw) === null) {
+      errors.push({ code: "requested_time_invalid", field: "requestedPickupLocal" });
+    } else {
+      requestedPickupLocal = raw;
+    }
+  }
 
   const rawStops = r.additionalStops;
   let additionalStops = 0;
@@ -269,8 +321,11 @@ export function normalizeDeliveryRequestInput(raw: unknown): NormalizeResult {
       recipientName: str(r.recipientName),
       recipientPhone: str(r.recipientPhone),
       recipientEmail,
-      weightLb: weightLb as number,
+      weightLb,
+      weightBand,
       additionalStops,
+      timingIntent,
+      requestedPickupLocal,
       serviceLevel,
       signatureRequired: bool(r.signatureRequired),
       proofMethod,

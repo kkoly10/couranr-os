@@ -16,6 +16,7 @@ import {
   type MileageTier,
   type ServiceLevel,
 } from "./policy";
+import { isWeightBand, type WeightBand } from "@/lib/couranr/shipment/facts";
 import type {
   LineItemCode,
   QuoteInput,
@@ -74,8 +75,20 @@ function validate(input: QuoteInput): ValidationErrorCode[] {
   if (!isFiniteNumber(input.loadedMiles)) errors.push("loaded_miles_not_finite");
   else if (input.loadedMiles < 0) errors.push("loaded_miles_negative");
 
-  if (!isFiniteNumber(input.weightLb)) errors.push("weight_not_finite");
-  else if (input.weightLb < 0) errors.push("weight_negative");
+  // Exact weight is OPTIONAL now (SUR-001 band cutover): null means "not
+  // genuinely known" and is handled as review, never as a validation failure
+  // and never as an invented number. A PRESENT weight must still be sane.
+  if (input.weightLb !== null && input.weightLb !== undefined) {
+    if (!isFiniteNumber(input.weightLb)) errors.push("weight_not_finite");
+    else if (input.weightLb < 0) errors.push("weight_negative");
+  }
+  if (
+    input.weightBand !== undefined &&
+    input.weightBand !== null &&
+    !isWeightBand(input.weightBand)
+  ) {
+    errors.push("weight_band_invalid");
+  }
 
   const stops = input.additionalStops ?? 0;
   if (!isFiniteNumber(stops)) errors.push("additional_stops_not_finite");
@@ -191,8 +204,24 @@ export function quoteDelivery(input: QuoteInput): QuoteResult {
   if (input.loadedMiles > MAX_AUTOMATIC_LOADED_MILES) {
     reviewReasons.push("over_max_automatic_miles");
   }
-  if (input.weightLb > MAX_AUTOMATIC_WEIGHT_LB) {
-    reviewReasons.push("large_item_review");
+  /*
+   * SUR-001 weight knowledge, in strict preference order: a known EXACT
+   * weight wins; else a governed BAND prices without manufacturing pounds;
+   * else the weight is UNRESOLVED and the quote is a review. There is no
+   * branch anywhere below that converts a band into a number of pounds.
+   */
+  const exactWeightLb =
+    input.weightLb !== null && input.weightLb !== undefined ? input.weightLb : null;
+  const band: WeightBand | null =
+    exactWeightLb === null && input.weightBand ? input.weightBand : null;
+
+  if (exactWeightLb !== null) {
+    if (exactWeightLb > MAX_AUTOMATIC_WEIGHT_LB) reviewReasons.push("large_item_review");
+  } else if (band !== null) {
+    if (band === "over_50_lb") reviewReasons.push("large_item_review");
+    else if (band === "unknown") reviewReasons.push("weight_unresolved");
+  } else {
+    reviewReasons.push("weight_unresolved");
   }
   if (input.overnightRequested === true) {
     // Overnight is decided and governed, but request-only: Couranr confirms it
@@ -273,7 +302,12 @@ export function quoteDelivery(input: QuoteInput): QuoteResult {
     });
   }
 
-  const weightCents = weightBandCents(input.weightLb);
+  const weightCents =
+    exactWeightLb !== null
+      ? weightBandCents(exactWeightLb)
+      : band === "over_25_to_50_lb"
+        ? WEIGHT_SURCHARGE_CENTS
+        : 0;
   if (weightCents > 0) {
     lineItems.push({
       code: "weight_band",

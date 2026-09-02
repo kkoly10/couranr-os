@@ -1,3 +1,5 @@
+import type { WeightBand } from "@/lib/couranr/shipment/facts";
+
 import type { ServiceLevel } from "./policy";
 
 /**
@@ -18,8 +20,22 @@ export type QuoteInput = {
    * `lib/couranr/routing/googleRoutes.ts`.
    */
   loadedMiles: number;
-  /** Package weight in pounds. May be fractional. */
-  weightLb: number;
+  /**
+   * EXACT package weight in pounds, when it is genuinely known. May be
+   * fractional. `null` means the exact weight is NOT known — which is a
+   * legitimate state, never to be papered over with a midpoint, a bound, a
+   * zero or any other invented number. When null, `weightBand` is what the
+   * engine prices from.
+   */
+  weightLb: number | null;
+  /**
+   * Governed weight band (SUR-001 V2), used ONLY when `weightLb` is null: a
+   * confirmed band is enough to price without manufacturing pounds.
+   * `over_50_lb` and `unknown` both leave the automatic lane — the former as
+   * a Large Item, the latter as an unresolved weight. When BOTH weight inputs
+   * are absent the quote goes to review as unresolved.
+   */
+  weightBand?: WeightBand | null;
   /** Compatibility input. Gate A accepts only 0: one quote/delivery has one destination. */
   additionalStops?: number;
   serviceLevel?: ServiceLevel;
@@ -99,6 +115,17 @@ export type ReviewReasonCode =
   /** Routing evidence could not be established; no distance or money is invented. */
   | "route_needs_review"
   /**
+   * Neither an exact weight nor a usable governed band is known. Review — the
+   * engine will not invent pounds to produce a number.
+   */
+  | "weight_unresolved"
+  /** Requested timing needs Couranr review (past time, non-business day, …). */
+  | "timing_needs_review"
+  /** Deterministic shipment policy demanded review; see the policy reasons. */
+  | "shipment_policy_review"
+  /** Confirmed prohibited shipment class — the quote is invalid, never priced. */
+  | "shipment_prohibited"
+  /**
    * Traffic evidence was required for an automatic quote and could not be
    * obtained or validated. Failing safe into review beats fabricating a
    * traffic fact.
@@ -111,6 +138,8 @@ export type ValidationErrorCode =
   | "loaded_miles_negative"
   | "weight_not_finite"
   | "weight_negative"
+  /** A weightBand value outside the governed vocabulary. */
+  | "weight_band_invalid"
   | "additional_stops_not_finite"
   | "additional_stops_negative"
   | "additional_stops_not_whole"

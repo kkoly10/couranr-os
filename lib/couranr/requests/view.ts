@@ -42,7 +42,14 @@ export type DeliveryRequestView = {
 
   loadedMiles: number | null;
   weightLb: number | null;
+  /** Governed band when only the band is known; null when exact weight is. */
+  weightBand: string | null;
   additionalStops: number;
+  /** TMZ-001 requested timing — evidence of what was ASKED, never confirmed. */
+  timingIntent: string | null;
+  requestedPickupLocal: string | null;
+  operatingTimezone: string | null;
+  requestedDepartureAt: string | null;
   serviceLevel: string;
   signatureRequired: boolean;
   proofMethod: string;
@@ -102,7 +109,12 @@ export function toDeliveryRequestView(row: Record<string, any>): DeliveryRequest
 
     loadedMiles: numOrNull(row.loaded_miles),
     weightLb: numOrNull(row.weight_lb),
+    weightBand: row.weight_band ?? null,
     additionalStops: Number(row.additional_stops ?? 0),
+    timingIntent: row.timing_intent ?? null,
+    requestedPickupLocal: row.requested_pickup_local ?? null,
+    operatingTimezone: row.operating_timezone ?? null,
+    requestedDepartureAt: row.requested_departure_at ?? null,
     serviceLevel: row.service_level,
     signatureRequired: row.signature_required === true,
     proofMethod: row.proof_method,

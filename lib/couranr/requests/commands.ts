@@ -5,6 +5,7 @@ import {
   INCLUDED_LOADED_MILES,
   type QuoteResult,
 } from "@/lib/couranr/pricing";
+import type { TimingEvaluation } from "@/lib/couranr/timing/policy";
 import {
   deriveCanonicalRouteAndQuote,
   isCanonicalAddressResolutionError,
@@ -113,6 +114,11 @@ const REQUEST_COLUMN_LIST = [
   "recipient_email",
   "loaded_miles",
   "weight_lb",
+  "weight_band",
+  "timing_intent",
+  "requested_pickup_local",
+  "operating_timezone",
+  "requested_departure_at",
   "additional_stops",
   "single_destination_contract",
   "service_level",
@@ -310,6 +316,7 @@ export function shipmentArgs(
     p_recipient_phone: draft.recipientPhone,
     p_recipient_email: draft.recipientEmail,
     p_weight_lb: draft.weightLb,
+    p_weight_band: draft.weightBand,
     p_additional_stops: draft.additionalStops,
     p_service_level: draft.serviceLevel,
     p_signature_required: draft.signatureRequired,
@@ -338,6 +345,22 @@ export function routeArgs(route: CanonicalRouteEvidence) {
     p_distance_source: route.distanceSource,
     p_serviceability_outcome: route.serviceabilityOutcome,
     p_route_review_reason: route.reviewReason,
+  };
+}
+
+/**
+ * TMZ-001 requested-timing arguments — SERVER-EVALUATED ONLY. The canonical
+ * instant comes from the timing evaluation this process just ran against
+ * America/New_York; the browser has no field that reaches any of these.
+ */
+export function timingArgs(t: TimingEvaluation) {
+  return {
+    p_timing_intent: t.intent,
+    p_requested_pickup_local: t.requestedPickupLocal,
+    p_requested_departure_at: t.requestedDepartureAt
+      ? t.requestedDepartureAt.toISOString()
+      : null,
+    p_timing_review_reasons: t.reviewReasons,
   };
 }
 
@@ -438,6 +461,7 @@ export async function createDeliveryRequestDraft(params: {
     p_idempotency_key: params.idempotencyKey,
     ...shipmentArgs(draft, routed),
     ...routeArgs(routed.route),
+    ...timingArgs(routed.timing),
     ...quoteArgs(quote),
   });
   if (isCommandFailure(result)) return result;
@@ -495,11 +519,19 @@ export async function calculateDeliveryRequestEstimate(params: {
     const routedResult = await routeAndQuote(op, {
       pickupAddress: row.pickup_address,
       dropoffAddress: row.dropoff_address,
-      weightLb: Number(row.weight_lb ?? 0),
+      // SUR-001 band cutover: a null stored weight STAYS null. The old `?? 0`
+      // was a sentinel — exactly the fabricated-pounds bug this batch bans.
+      weightLb:
+        row.weight_lb === null || row.weight_lb === undefined
+          ? null
+          : Number(row.weight_lb),
+      weightBand: row.weight_band ?? null,
       additionalStops: Number(row.additional_stops ?? 0),
       serviceLevel: row.service_level,
       signatureRequired: row.signature_required === true,
       overnightRequested: row.normalized_request_payload?.overnightRequested === true,
+      timingIntent: row.timing_intent === "scheduled" ? "scheduled" : "asap",
+      requestedPickupLocal: row.requested_pickup_local ?? null,
     });
     if (isCommandFailure(routedResult)) return routedResult;
     routed = routedResult.value;
@@ -544,6 +576,7 @@ export async function calculateDeliveryRequestEstimate(params: {
     p_update_shipment: shipment !== null,
     ...(shipment ?? shipmentArgsFromRow(row, routed)),
     ...routeArgs(routed.route),
+    ...timingArgs(routed.timing),
     ...quoteArgs(quote),
   });
   if (isCommandFailure(result)) return result;
@@ -799,11 +832,19 @@ export async function requoteDeliveryRequest(params: {
   const routedResult = await routeAndQuote(op, {
     pickupAddress: row.pickup_address,
     dropoffAddress: row.dropoff_address,
-    weightLb: Number(row.weight_lb ?? 0),
+    // SUR-001 band cutover: a null stored weight STAYS null. The old `?? 0`
+    // was a sentinel — exactly the fabricated-pounds bug this batch bans.
+    weightLb:
+      row.weight_lb === null || row.weight_lb === undefined
+        ? null
+        : Number(row.weight_lb),
+    weightBand: row.weight_band ?? null,
     additionalStops: Number(row.additional_stops ?? 0),
     serviceLevel: row.service_level,
     signatureRequired: row.signature_required === true,
     overnightRequested: row.normalized_request_payload?.overnightRequested === true,
+    timingIntent: row.timing_intent === "scheduled" ? "scheduled" : "asap",
+    requestedPickupLocal: row.requested_pickup_local ?? null,
   });
   if (isCommandFailure(routedResult)) return routedResult;
   const routed = routedResult.value;
@@ -1057,6 +1098,7 @@ function shipmentArgsFromRow(
     p_recipient_phone: row.recipient_phone,
     p_recipient_email: row.recipient_email,
     p_weight_lb: row.weight_lb,
+    p_weight_band: row.weight_band ?? null,
     p_additional_stops: row.additional_stops,
     p_service_level: row.service_level,
     p_signature_required: row.signature_required,

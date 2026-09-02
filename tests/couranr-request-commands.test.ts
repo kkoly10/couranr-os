@@ -116,6 +116,9 @@ describe("shipmentArgs", () => {
     "p_service_level",
     "p_signature_required",
     "p_source",
+    // SUR-001 band cutover: the governed band is merchant-editable shipment
+    // truth exactly like the exact weight it can stand in for.
+    "p_weight_band",
     "p_weight_lb",
   ];
 
