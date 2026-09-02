@@ -96,11 +96,17 @@ function placePayload(id: string, spec: PlaceSpec = {}) {
   };
 }
 
-function routeResponse(distanceMeters: number, duration = "600s") {
+function routeResponse(
+  distanceMeters: number,
+  duration = "600s",
+  // The BASELINE. Equal to `duration` by default, so a test that does not care
+  // about traffic gets a zero delay rather than an accidental surcharge.
+  staticDuration = duration,
+) {
   return {
     ok: true,
     status: 200,
-    json: async () => ({ routes: [{ distanceMeters, duration }] }),
+    json: async () => ({ routes: [{ distanceMeters, duration, staticDuration }] }),
   };
 }
 
@@ -293,6 +299,8 @@ describe("conservative named-market serviceability", () => {
       distanceMeters: 8047,
       loadedMiles: loadedMilesFromDistanceMeters(8047),
       durationSeconds: 600,
+      staticDurationSeconds: 600,
+      trafficDelaySeconds: 0,
     });
     expect(result.quote).toMatchObject({
       quoteStatus: "manual_review_required",
@@ -321,6 +329,8 @@ describe("server Routes authority", () => {
       distanceMeters: 8047,
       loadedMiles: loadedMilesFromDistanceMeters(8047),
       durationSeconds: 721,
+      staticDurationSeconds: 721,
+      trafficDelaySeconds: 0,
       reviewReason: null,
     });
     const [url, init] = fetcher.mock.calls[0]!;

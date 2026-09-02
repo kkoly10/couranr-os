@@ -11,7 +11,7 @@ ledgers own per-item state; this is their sum.
 The 721-line hand-written version of this file is preserved whole at
 [`autonomous-evidence/status-archive/IMPLEMENTATION_STATUS-2026-08-06.md`](./autonomous-evidence/status-archive/IMPLEMENTATION_STATUS-2026-08-06.md).
 It restated per-row evidence the ledgers already carried, and the restatement is
-what went stale: it counted 39 migrations while 57 were on disk.
+what went stale: it counted 39 migrations while 58 were on disk.
 
 ## Where truth lives
 
@@ -31,9 +31,9 @@ proves every generated view matches its source.
 
 | Status | Count |
 |---|---|
-| `complete_verified` | 17 |
+| `complete_verified` | 18 |
 | `not_started` | 14 |
-| `partial` | 7 |
+| `partial` | 6 |
 | `complete_pending_external` | 3 |
 | `complete_unverified` | 1 |
 
@@ -53,14 +53,14 @@ Still rendering `ScreenPlaceholder` (17): `DRV-009` · `DRV-010` · `OPS-001` ·
 
 | | count |
 |---|---|
-| Page routes | 102 |
+| Page routes | 96 |
 | …canonical, under `app/(couranr)` | 47 |
-| …legacy | 55 |
-| API routes | 142 |
+| …legacy | 49 |
+| API routes | 140 |
 | …canonical, under `app/api/couranr` | 71 |
-| …legacy | 71 |
-| Forward migrations | 57 |
-| Paired rollbacks | 57 |
+| …legacy | 69 |
+| Forward migrations | 58 |
+| Paired rollbacks | 58 |
 | Canonical screens | 68 |
 | …Core | 64 |
 | …MVP-complete | 4 |
@@ -72,7 +72,6 @@ Still rendering `ScreenPlaceholder` (17): `DRV-009` · `DRV-010` · `OPS-001` ·
 | `P1-003` | partial | Disable auto/docs mutation routes |
 | `P2-003` | partial | Implement idempotency, audit, and guest tokens |
 | `P3-001` | partial | Create policy registry |
-| `P3-002` | partial | Replace legacy pricing engine and tests |
 | `P4-002` | not_started | Implement categories and versioned presets |
 | `P5-001` | not_started | Implement Smart Intake schema and APIs |
 | `P6-004` | not_started | Implement balanced ledger and refunds |

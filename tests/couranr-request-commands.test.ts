@@ -206,8 +206,18 @@ describe("routeArgs", () => {
  * CHECK or a CR422 guard on the other side.
  */
 describe("quoteArgs", () => {
-  const estimated = quoteDelivery({ loadedMiles: 4.2, weightLb: 12.5 });
-  const manual = quoteDelivery({ loadedMiles: 4.2, weightLb: 12.5, overnightRequested: true });
+  // trafficDelaySeconds is required for an automatic quote under TRF-001.
+  const estimated = quoteDelivery({
+    loadedMiles: 4.2,
+    weightLb: 12.5,
+    trafficDelaySeconds: 0,
+  });
+  const manual = quoteDelivery({
+    loadedMiles: 4.2,
+    weightLb: 12.5,
+    trafficDelaySeconds: 0,
+    overnightRequested: true,
+  });
 
   it("an estimate carries both the subtotal and the policy version", () => {
     const a = quoteArgs(estimated);
@@ -221,7 +231,7 @@ describe("quoteArgs", () => {
     expect(a.p_quote_status).toBe("manual_review_required");
     expect(a.p_delivery_subtotal_cents).toBe(null);
     expect(a.p_pricing_policy_version).toBe(null);
-    expect(a.p_review_reasons).toContain("overnight_not_offered_in_this_release");
+    expect(a.p_review_reasons).toContain("overnight_requires_couranr_confirmation");
   });
 
   /**

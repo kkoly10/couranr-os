@@ -7,11 +7,18 @@ import {
   INCLUDED_LOADED_MILES,
   MARKETED_MARKETS,
   MILE_TIERS,
-  RETURN_MINIMUM_CENTS,
-  RETURN_PERCENT_OF_ORIGINAL,
-  ROUTE_SAVER_FROM_CENTS_PER_STOP,
+  RETURN_PRICING_COPY,
+  ROUTE_SAVER_STATUS_COPY,
+  SIGNATURE_CENTS,
+  TRAFFIC_DELAY_CENTS_PER_MINUTE,
+  TRAFFIC_DELAY_INCLUDED_MINUTES,
+  TRAFFIC_REVIEW_OVER_MINUTES,
+  WAITING_INCLUDED_MINUTES,
+  WAITING_PER_MINUTE_CENTS,
+  WEIGHT_INCLUDED_THROUGH_LB,
+  WEIGHT_SURCHARGE_CENTS,
+  WEIGHT_SURCHARGE_THROUGH_LB,
   SERVICE_LEVEL_CENTS,
-  WEIGHT_BANDS,
 } from "@/lib/couranr/public/governed";
 
 /**
@@ -169,38 +176,59 @@ describe("governed.ts agrees with the root decision registry", () => {
   const reg = JSON.parse(readFileSync(path.join(ROOT, "02_DECISION_REGISTRY.json"), "utf8"));
   const byId = new Map<string, any>(reg.decisions.map((d: any) => [d.id, d.value]));
 
-  it("PRC-001 base price", () => {
-    expect(BASE_PRICE_CENTS).toBe(byId.get("PRC-001").base_price_cents);
+  /* The amending record is the authority now. Asserting against PRC-001 would
+     re-pin the retired fare and make this parity test the thing keeping V1
+     alive. */
+  it("PRC-005 base price supersedes PRC-001", () => {
+    expect(BASE_PRICE_CENTS).toBe(byId.get("PRC-005").base_price_cents);
+    expect(byId.get("PRC-001").base_price_cents).toBe(2299);
+    expect(BASE_PRICE_CENTS).not.toBe(byId.get("PRC-001").base_price_cents);
   });
-  it("MIL-001 included miles", () => {
-    expect(INCLUDED_LOADED_MILES).toBe(byId.get("MIL-001").included_loaded_miles);
+  it("MIL-003 included miles supersedes MIL-001", () => {
+    expect(INCLUDED_LOADED_MILES).toBe(byId.get("MIL-003").included_loaded_miles);
+    expect(INCLUDED_LOADED_MILES).not.toBe(byId.get("MIL-001").included_loaded_miles);
   });
-  it("MIL-002 tiers, exactly", () => {
-    expect(MILE_TIERS.map((t) => [t.fromMile, t.toMile, t.perMileCents])).toEqual(
-      byId.get("MIL-002").tiers.map((t: any) => [t.from_mile, t.to_mile, t.per_mile_cents])
+  it("MIL-004 tiers, exactly", () => {
+    expect(MILE_TIERS.map((t) => [t.overMiles, t.throughMiles, t.perMileCents])).toEqual(
+      byId.get("MIL-004").tiers.map((t: any) => [t.over_miles, t.through_miles, t.per_mile_cents])
     );
   });
-  it("SUR-001 service levels and weight bands", () => {
-    expect(SERVICE_LEVEL_CENTS).toEqual(byId.get("SUR-001").service_level_cents);
-    expect(WEIGHT_BANDS.map((b) => [b.fromLb, b.toLb, b.cents])).toEqual(
-      byId.get("SUR-001").weight_cents.map((b: any) => [b.from_lb, b.to_lb, b.cents])
-    );
+  it("SUR-003 service levels and weight", () => {
+    const sur = byId.get("SUR-003");
+    expect(SERVICE_LEVEL_CENTS).toEqual({
+      priority: sur.service_levels.priority_cents,
+      rush: sur.service_levels.rush_cents,
+      overnight: sur.service_levels.overnight_cents,
+    });
+    expect(WEIGHT_INCLUDED_THROUGH_LB).toBe(sur.weight.included_through_lb);
+    expect(WEIGHT_SURCHARGE_THROUGH_LB).toBe(sur.weight.surcharge_through_lb);
+    expect(WEIGHT_SURCHARGE_CENTS).toBe(sur.weight.surcharge_cents);
+    expect(SIGNATURE_CENTS).toBe(sur.signature_cents);
+    expect(WAITING_INCLUDED_MINUTES).toBe(sur.waiting.included_minutes);
+    expect(WAITING_PER_MINUTE_CENTS).toBe(sur.waiting.per_minute_cents_after);
   });
-  it("SUR-002 Route Saver", () => {
-    expect(ROUTE_SAVER_FROM_CENTS_PER_STOP).toBe(
-      byId.get("SUR-002").public_starting_price_cents_per_stop
-    );
+  it("TRF-001 traffic pricing", () => {
+    const trf = byId.get("TRF-001");
+    expect(TRAFFIC_DELAY_INCLUDED_MINUTES * 60).toBe(trf.included_seconds);
+    expect(TRAFFIC_DELAY_CENTS_PER_MINUTE).toBe(trf.cents_per_minute);
+    expect(TRAFFIC_REVIEW_OVER_MINUTES * 60).toBe(trf.review_over_seconds);
+  });
+  it("SUR-004 retires the Route Saver public price and offers no replacement", () => {
+    expect(byId.get("SUR-004").public_starting_price_cents_per_stop).toBeNull();
+    expect(byId.get("SUR-004").public_price_claim_retired).toBe(true);
+    // The status copy must not smuggle a price back in as text.
+    expect(ROUTE_SAVER_STATUS_COPY).not.toMatch(/\$\s*\d/);
   });
   it("MKT-001 markets, in registry order", () => {
     expect([...MARKETED_MARKETS]).toEqual(byId.get("MKT-001").marketed_markets);
   });
   it("CAN-001 cancellation charges by stage", () => {
     const can = byId.get("CAN-001");
-    expect(CANCELLATION_CENTS.beforeAuthorization).toBe(can.before_authorization.charge_cents);
+    expect(CANCELLATION_CENTS.beforeConfirmation).toBe(can.before_authorization.charge_cents);
     expect(CANCELLATION_CENTS.afterAuthorizationBeforeConfirmation).toBe(
       can.after_authorization_before_confirmation.charge_cents
     );
-    expect(CANCELLATION_CENTS.couranrCannotConfirm).toBe(can.couranr_cannot_confirm.charge_cents);
+    expect(CANCELLATION_CENTS.couranrCaused).toBe(can.couranr_cannot_confirm.charge_cents);
     expect(CANCELLATION_CENTS.afterConfirmationBeforeArrival).toBe(
       can.after_confirmation_before_arrival.charge_cents
     );
@@ -208,9 +236,25 @@ describe("governed.ts agrees with the root decision registry", () => {
       can.after_arrival_package_or_merchant_unavailable.charge_cents
     );
   });
-  it("REF-001 return charge and floor", () => {
-    expect(RETURN_PERCENT_OF_ORIGINAL).toBe(byId.get("REF-001").return_charge_percent_of_original);
-    expect(RETURN_MINIMUM_CENTS).toBe(byId.get("REF-001").return_minimum_cents);
+  it("REF-003 retires the 70% / $14.99 return rule", () => {
+    expect(byId.get("REF-003").historical_rule.return_charge_percent_of_original).toBe(70);
+    expect(byId.get("REF-003").historical_rule.return_minimum_cents).toBe(1499);
+    // The live public copy must state neither.
+    expect(RETURN_PRICING_COPY).not.toMatch(/70\s*%/);
+    expect(RETURN_PRICING_COPY).not.toMatch(/14\.99/);
+  });
+
+  it("every amended parent carries a reciprocal amended_by", () => {
+    const byIdFull = new Map<string, any>(reg.decisions.map((d: any) => [d.id, d]));
+    for (const d of reg.decisions) {
+      if (!d.amends) continue;
+      const parent = byIdFull.get(d.amends);
+      expect(parent, `${d.id} amends a record that does not exist`).toBeTruthy();
+      expect(
+        parent.amended_by,
+        `${d.amends} does not list ${d.id} in amended_by, so the amendment is invisible when reading the parent`
+      ).toContain(d.id);
+    }
   });
 });
 
