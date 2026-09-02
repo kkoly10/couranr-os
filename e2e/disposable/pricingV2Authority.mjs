@@ -248,14 +248,19 @@ function main() {
     check("PV2-34", "... submitting without acknowledgment is not payer approval",
       one(`select private.couranr_quote_payer_approved(q.*) from public.couranr_quote_versions q
             where q.request_id='${m3}'`), "f");
-    /* Refused as quote_expired rather than merchant_acknowledgment_missing
-       because the expiry check runs first, and that is the more actionable
-       answer: the remedy is a requote, not chasing an approval the merchant
-       could not give on a dead quote either way. The identity check is
-       unchanged and still fires on a FRESH quote - proved next. */
+    /* Still refused, and refused FIRST on the acknowledgment it never got:
+       the expiry guard runs only on the branch that CONFIRMS, after the
+       merchant identity checks. Either answer blocks the stale price; this one
+       is the more precise account of why. The merchant window is really
+       enforced at SUBMIT (PV2-29, exactly 15:00 refused), and an in-window
+       acknowledgment is price-locked thereafter (PV2-25/26/27, accepted at 30
+       minutes at the same subtotal). The guard on the confirming branch is
+       defence in depth: every merchant path that reaches it has either
+       acknowledged the current quote - which the predicate reads as approval -
+       or been refused by CR412 first. */
     check("PV2-35", "... so it cannot be confirmed at that stale price",
       raises(`select public.couranr_accept_delivery_request_as_quoted('${m3}','${BUSINESS}',${ver(m3)},'${USER}')`),
-      "CR410|quote_expired");
+      "CR412|merchant_acknowledgment_missing");
 
     const m4 = one(draft("qvl-m-fresh-noack", { duration: 900, staticDuration: 600, delay: 300 }));
     raw(`select public.couranr_submit_delivery_request_v2('${m4}','${BUSINESS}',${ver(m4)},'${USER}',false)`);
@@ -269,13 +274,14 @@ function main() {
        be undone by the clock. */
 
     const custIntent = (n) => `pi_qvl_${n}`;
-    function authorizeEvent(obId, reqId, biz, quoteId, amount, evId) {
+    function authorizeEvent(obId, reqId, biz, quoteId, amount, evId, authorizedAt) {
       return `select outcome||'|'||coalesce(rejected_reason,'-')||'|'||coalesce(payment_state,'-')
               from public.couranr_apply_payment_intent_state(
                 '${evId}','payment_intent.amount_capturable_updated','${custIntent(evId)}',
                 'requires_capture',${amount},${amount},'usd',
                 jsonb_build_object('paymentObligationId','${obId}','couranrRequestId','${reqId}',
-                  'businessAccountId','${biz}','quoteVersionId','${quoteId}'))`;
+                  'businessAccountId','${biz}','quoteVersionId','${quoteId}'),
+                ${authorizedAt ? `'${authorizedAt}'::timestamptz` : "null"})`;
     }
     /* One customer-paid request, driven the way the product drives it. */
     function customerChain(key, ageBeforeAuth) {
@@ -349,6 +355,31 @@ function main() {
     check("PV2-50", "customer authorization at exactly 15:00 is refused",
       one(authorizeEvent(c3.obId, c3.rid, BUSINESS, c3.qId, 799, "e-1500")),
       "rejected|quote_expired|requires_action");
+
+    /* An approval obtained IN the window is not undone by a late webhook: the
+       payer confirmed at 14:00, 3DS and delivery took until well past 15:00,
+       and the event still applies because expiry is judged at the moment the
+       payer approved, not the moment we processed it. */
+    const c4 = customerChain("qvl-c-late-hook");
+    raw(`select public.couranr_attach_payment_intent('${c4.obId}',
+          (select version from public.couranr_payment_obligations where id='${c4.obId}'),
+          '${custIntent("e-late")}')`);
+    age(c4.rid, "40 minutes");
+    /* 14 minutes after the quote was minted, i.e. INSIDE the window - measured
+       against the aged quote's own created_at, not against wall clock. */
+    const approvedAt = one(`select (created_at + interval '14 minutes')::text
+      from public.couranr_quote_versions where request_id='${c4.rid}'`);
+    check("PV2-56", "a late webhook for an IN-WINDOW approval still applies",
+      one(authorizeEvent(c4.obId, c4.rid, BUSINESS, c4.qId, 799, "e-late", approvedAt)),
+      "applied|-|authorized");
+    check("PV2-57", "... and an out-of-window approval delivered late is still refused",
+      one(`select outcome||'|'||coalesce(rejected_reason,'-') from public.couranr_apply_payment_intent_state(
+            'e-late-2','payment_intent.amount_capturable_updated','${custIntent("e-stale")}',
+            'requires_capture',799,799,'usd',
+            jsonb_build_object('paymentObligationId','${c1.obId}','couranrRequestId','${c1.rid}',
+              'businessAccountId','${BUSINESS}','quoteVersionId','${c1.qId}'),
+            now()::timestamptz)`),
+      "rejected|quote_expired");
 
     /* ---- 7. a real authorization survives the clock ---------------------- */
     age(c2.rid, "45 minutes");

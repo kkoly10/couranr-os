@@ -317,6 +317,15 @@ export async function applyVerifiedIntentState(params: {
   amountCapturable: number;
   currency: string;
   metadata: Record<string, string> | null;
+  /**
+   * QVL-001. WHEN Stripe authorized, as unix seconds from the verified event
+   * or intent — not when this server got round to processing it. The payer
+   * approved then, and an approval obtained inside the 15-minute window is
+   * never undone by a 3DS challenge, a retry or a webhook backlog delivering
+   * late. Omitted only when the caller genuinely cannot know, and the database
+   * then falls back to its own now().
+   */
+  authorizedAtUnixSeconds?: number | null;
 }): Promise<PaymentResult<ApplyOutcome>> {
   const op = "applyVerifiedIntentState";
   const r = await callRpc<ApplyOutcome>(op, RPC.applyIntentState, {
@@ -328,6 +337,11 @@ export async function applyVerifiedIntentState(params: {
     p_amount_capturable: params.amountCapturable,
     p_currency: params.currency,
     p_metadata: params.metadata ?? {},
+    p_authorized_at:
+      typeof params.authorizedAtUnixSeconds === "number" &&
+      Number.isFinite(params.authorizedAtUnixSeconds)
+        ? new Date(params.authorizedAtUnixSeconds * 1000).toISOString()
+        : null,
   });
   if (isPaymentFailure(r)) return r;
   return { ok: true, value: r.value };
@@ -360,6 +374,9 @@ export async function reconcilePaymentIntent(params: {
   }
 
   return applyVerifiedIntentState({
+    /* QVL-001: the intent's own created time, read back from Stripe by this
+       server. A reconcile can run long after the payer approved. */
+    authorizedAtUnixSeconds: typeof (pi as any).created === "number" ? (pi as any).created : null,
     providerEventId: syntheticEventId(pi, params.obligationVersion),
     // Mapped to the event the state machine understands, so a retrieve and a
     // webhook take the same path and cannot disagree.

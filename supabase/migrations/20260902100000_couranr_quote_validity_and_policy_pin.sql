@@ -476,13 +476,6 @@ begin
   if not found or v_quote.quote_status<>'estimated' or v_quote.subtotal_cents is null then
     raise exception 'no_server_quote_to_confirm' using errcode='CR422';
   end if;
-  /* QVL-001. Operations accepting is NOT payer approval. The predicate exempts
-     a quote the PAYER already approved, so a merchant who acknowledged inside
-     the window is confirmable at any later time, while an unapproved quote -
-     every customer-paid one at this point - is not. */
-  if private.couranr_quote_version_is_expired(v_quote) then
-    raise exception 'quote_expired' using errcode = 'CR410';
-  end if;
 
   if v_quote.payer_type='merchant' then
     select metadata into v_ack from public.couranr_delivery_request_events
@@ -498,6 +491,18 @@ begin
     v_target:='confirmed';
   else
     v_target:='awaiting_quote_acceptance';
+  end if;
+
+  /* QVL-001, and ONLY on the branch that CONFIRMS. Operations accepting is not
+     payer approval, and Couranr's own review latency must not expire a quote:
+     a customer-paid request reviewed at 09:16 moves to awaiting_quote_acceptance
+     normally, and the window is then enforced where the CUSTOMER actually
+     approves. The merchant branch does confirm, so it is guarded - and a
+     merchant who acknowledged in time is exempt via the predicate, so this only
+     ever refuses a price nobody approved. */
+  if v_target = 'confirmed'
+     and private.couranr_quote_version_is_expired(v_quote) then
+    raise exception 'quote_expired' using errcode = 'CR410';
   end if;
 
   update public.couranr_delivery_requests set
@@ -784,10 +789,20 @@ begin
 end
 $fn$;
 
-create or replace function public.couranr_apply_payment_intent_state(
+/* The 8-argument form is DROPPED rather than replaced: adding a parameter
+   changes the signature, and `create or replace` would leave the old arity as a
+   live overload that still evaluates the window at webhook time. */
+drop function if exists public.couranr_apply_payment_intent_state(
+  text,text,text,text,integer,integer,text,jsonb
+);
+
+create function public.couranr_apply_payment_intent_state(
   p_provider_event_id text,p_event_type text,p_payment_intent_id text,
   p_intent_status text,p_amount integer,p_amount_capturable integer,
-  p_currency text,p_metadata jsonb
+  p_currency text,p_metadata jsonb,
+  /* When Stripe actually authorized. The payer approved THEN, not when this
+     webhook happened to be processed. */
+  p_authorized_at timestamptz default null
 )
 returns public.couranr_payment_apply_result
 language plpgsql security invoker set search_path=''
@@ -857,7 +872,14 @@ begin
              created while the quote was fresh must not make the price
              immortal. Refused as a governed 'rejected' outcome, so nothing is
              authorized, no approval is recorded and Quote N is untouched. */
-          if private.couranr_quote_version_is_expired(v_quote) then
+          /* Evaluated AS OF THE AUTHORIZATION, not as of now(). A payer who
+             confirmed at 14:30 approved inside the window even if 3DS, a
+             retry or a webhook backlog delivers this at 15:20 - and the rule
+             is that an approval obtained in time is never undone by later
+             time passing. Falls back to now() only when the caller cannot
+             supply the moment. */
+          if private.couranr_quote_version_is_expired(
+               v_quote, coalesce(p_authorized_at, now())) then
             v_outcome:='rejected';v_reason:='quote_expired';
           else
             v_target:='authorized';v_outcome:='applied';
@@ -947,5 +969,12 @@ begin
     ::public.couranr_payment_apply_result;
 end
 $fn$;
+
+revoke all on function public.couranr_apply_payment_intent_state(
+  text,text,text,text,integer,integer,text,jsonb,timestamptz
+) from public,anon,authenticated,service_role;
+grant execute on function public.couranr_apply_payment_intent_state(
+  text,text,text,text,integer,integer,text,jsonb,timestamptz
+) to service_role;
 
 commit;

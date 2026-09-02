@@ -154,6 +154,13 @@ export async function POST(req: NextRequest) {
     amountCapturable: Number(object.amount_capturable ?? 0),
     currency: String(object.currency ?? ""),
     metadata: (object.metadata as Record<string, string>) ?? {},
+    /*
+     * QVL-001. The signature-verified event carries WHEN Stripe recorded this,
+     * which is when the payer approved. Passing it means a 3DS challenge, a
+     * retry or a delivery backlog cannot expire an approval that was obtained
+     * inside the window.
+     */
+    authorizedAtUnixSeconds: typeof event.created === "number" ? event.created : null,
   });
 
   if (isPaymentFailure(result)) {

@@ -241,6 +241,11 @@ export const LINK_REFUSAL_REASONS = [
   "no_obligation",
   "already_authorized",
   "quote_changed",
+  /* QVL-001. The database answers this when the quote passed its 15 minutes
+     unapproved. Without it here redeemPaymentLink normalises the reason to
+     null and the payer is told the link "is not valid" - which is both wrong
+     and unactionable, when the truth is that the price needs recalculating. */
+  "quote_expired",
 ] as const;
 export type LinkRefusalReason = (typeof LINK_REFUSAL_REASONS)[number];
 

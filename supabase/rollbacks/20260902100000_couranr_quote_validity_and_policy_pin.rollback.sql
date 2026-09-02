@@ -475,8 +475,13 @@ begin
     return query select false,'request_not_payable'::text,v_req.id,v_tok.obligation_id,
       v_req.request_state,null::text,null::text,null::integer; return;
   end if;
-  select * into v_ob from public.couranr_payment_obligations
-   where id=v_tok.obligation_id and request_id=v_req.id and payment_state<>'cancelled';
+  /* ALIASED even on the rollback path. `returns table (… request_id …)` makes
+     that an OUT parameter, so the unaliased form raises 42702 on EVERY call -
+     migration 20260731234500 exists solely to fix it and the Gate A cutover
+     reintroduced it. Rolling QVL-001 back must not also roll back a bug fix
+     that has nothing to do with quote validity. */
+  select o.* into v_ob from public.couranr_payment_obligations o
+   where o.id=v_tok.obligation_id and o.request_id=v_req.id and o.payment_state<>'cancelled';
   if not found then
     return query select false,'no_obligation'::text,v_req.id,null::uuid,
       v_req.request_state,null::text,null::text,null::integer; return;
@@ -556,6 +561,13 @@ begin
   return v_ob;
 end
 $fn$;
+
+/* The forward migration DROPPED the 8-argument form to add the authorization
+   timestamp, so rolling back must drop the 9-argument form and recreate the 8
+   - otherwise both arities exist and every call is ambiguous. */
+drop function if exists public.couranr_apply_payment_intent_state(
+  text,text,text,text,integer,integer,text,jsonb,timestamptz
+);
 
 create or replace function public.couranr_apply_payment_intent_state(
   p_provider_event_id text,p_event_type text,p_payment_intent_id text,
@@ -709,11 +721,23 @@ begin
 end
 $fn$;
 
+/* Dropped FIRST: its body calls the predicates below, so leaving it behind
+   would turn every PaymentIntent reuse into a 500 against a function that no
+   longer exists. */
+drop function if exists public.couranr_obligation_quote_expired(uuid);
+
 drop function if exists private.couranr_quote_version_is_expired(
   public.couranr_quote_versions, timestamptz
 );
 drop function if exists private.couranr_quote_payer_approved(
   public.couranr_quote_versions
 );
+
+revoke all on function public.couranr_apply_payment_intent_state(
+  text,text,text,text,integer,integer,text,jsonb
+) from public,anon,authenticated,service_role;
+grant execute on function public.couranr_apply_payment_intent_state(
+  text,text,text,text,integer,integer,text,jsonb
+) to service_role;
 
 commit;
