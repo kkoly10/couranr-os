@@ -211,6 +211,22 @@ const STAGES = [
       return null;
     },
   })),
+  {
+    tier: 4,
+    name: "test:smart-intake-ui",
+    run: ["npm", ["run", "test:smart-intake-ui"]],
+    why: "P5-001 Smart Intake panel driven in a real browser against the disposable stack — describe, suggest-not-prefill, confirm, hostile update, refusals",
+    needs: () => {
+      if (!want.browser) return "tier 4 not requested — pass --browser or --all";
+      // Runs `next dev` on its own distDir over the disposable database (the
+      // fake provider is structurally unavailable in a production build), so
+      // it needs PostgREST, not `.next/BUILD_ID`.
+      if (!postgrestPresent()) {
+        return "postgrest binary is missing — run `npm run provision:postgrest` first";
+      }
+      return null;
+    },
+  },
 ];
 
 const TIERS = {
