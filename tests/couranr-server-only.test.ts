@@ -147,6 +147,9 @@ describe("server-only modules are unreachable from client code", () => {
       "lib/couranr/driver/proofPaths.ts",
       // Holds the service-role client and the Stripe secret key.
       "lib/couranr/fulfillment/commands.ts",
+      "lib/couranr/intake/commands.ts",
+      "lib/couranr/intake/interpret.ts",
+      "lib/couranr/intake/provider.ts",
       "lib/couranr/onboarding/commands.ts",
       // The payment modules hold the service-role client, the Stripe secret
       // key and the token hashing. None may ever be reachable from a bundle.
@@ -254,6 +257,8 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/driver/proof/[proofId]/url/route.ts",
       "app/api/couranr/driver/proof/finalize/route.ts",
       "app/api/couranr/help/[token]/route.ts",
+      "app/api/couranr/intake/[id]/route.ts",
+      "app/api/couranr/intake/route.ts",
       "app/api/couranr/me/activation/route.ts",
       "app/api/couranr/me/business-accounts/route.ts",
       "app/api/couranr/me/invitations/route.ts",
@@ -351,6 +356,8 @@ describe("canonical server routes do not import the browser client", () => {
       // checked in the route before any database work, exactly as the tracking
       // route does, so junk URLs cannot be used to probe timing.
       "app/api/couranr/help/[token]/route.ts",
+      "app/api/couranr/intake/[id]/route.ts",
+      "app/api/couranr/intake/route.ts",
       { shape: /isWellFormedHelpToken\(/, redeem: /redeemHelpToken\(/ },
     ],
   ]);
