@@ -308,6 +308,26 @@ describe("command layer invariants", () => {
     }
   });
 
+  /**
+   * The browser is not the memory of which intake session a request came
+   * from. The panel unmounts on the review step; a client that forgot its
+   * session must not be able to turn an intake-backed request into an
+   * unsynced manual one on the next estimate. `request_id` is unique on the
+   * sessions table, so the server can always find the one binding.
+   */
+  it("the estimate resolves the LINKED intake session server-side when the client sends none", () => {
+    const estimate = COMMANDS.slice(
+      COMMANDS.indexOf("export async function calculateDeliveryRequestEstimate"),
+      COMMANDS.indexOf("export async function submitDeliveryRequest")
+    );
+    expect(estimate).toContain("findLinkedIntakeSession({");
+    // The browser's value is read exactly once — as the seed of the resolved
+    // id — and every later decision reads the resolved id, never the param.
+    expect(estimate.match(/params\.intakeSessionId/g) ?? []).toHaveLength(1);
+    expect(estimate).toMatch(/if \(!intakeSessionId\) \{\s*const linked = await findLinkedIntakeSession\(/);
+    expect(estimate).toMatch(/shipment !== null && intakeSessionId && intakeRevision !== null/);
+  });
+
   it("uses the service-role client, never the browser client", () => {
     expect(COMMANDS).toMatch(/from "@\/lib\/supabaseAdmin"/);
     expect(COMMANDS).not.toMatch(/from "@\/lib\/supabaseClient"/);

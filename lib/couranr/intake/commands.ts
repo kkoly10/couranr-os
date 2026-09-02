@@ -205,6 +205,32 @@ export async function loadIntakePolicySnapshot(params: {
   };
 }
 
+/**
+ * The session already bound to a request, if any — the SERVER's memory of
+ * where a request's shipment facts came from. A browser that lost its state
+ * (a step remount, a reload) sends no session id; without this lookup its
+ * next estimate would silently turn an intake-backed request into an
+ * unsynced manual one, leaving Ops with facts that no longer describe the
+ * request. `request_id` is UNIQUE on the sessions table, so there is at most
+ * one binding to find.
+ */
+export async function findLinkedIntakeSession(params: {
+  requestId: string;
+  businessAccountId: string;
+}): Promise<IntakeResult<string | null>> {
+  const op = "findLinkedIntakeSession";
+  const { data, error } = await supabaseAdmin
+    .from("couranr_intake_sessions")
+    .select("id")
+    .eq("request_id", params.requestId)
+    .eq("business_account_id", params.businessAccountId)
+    .maybeSingle();
+  if (error) {
+    return fail({ operation: op, code: classifyDatabaseError(error), detail: error.message });
+  }
+  return { ok: true, value: typeof data?.id === "string" ? data.id : null };
+}
+
 /* ------------------------------------------------------------ commands -- */
 
 export async function createIntakeSession(params: {

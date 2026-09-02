@@ -17,6 +17,7 @@ import { evaluateShipmentPolicy, type PolicyDisposition } from "@/lib/couranr/sh
 import { factsFromDraft } from "@/lib/couranr/shipment/draftFacts";
 import {
   evaluateAndRecordIntakePolicy,
+  findLinkedIntakeSession,
   isIntakeFailure,
   linkIntakeSession,
   loadIntakePolicySnapshot,
@@ -705,6 +706,28 @@ export async function calculateDeliveryRequestEstimate(params: {
     });
   }
 
+  // The server remembers which intake session this request came from. A
+  // client that forgot (a remounted panel, a reload) must not be able to turn
+  // an intake-backed request into an unsynced manual one: once a session is
+  // bound to the request, every later estimate syncs the form into its facts
+  // and commits through the wrapper, whatever the browser sent.
+  let intakeSessionId: string | null = params.intakeSessionId ?? null;
+  if (!intakeSessionId) {
+    const linked = await findLinkedIntakeSession({
+      requestId: params.requestId,
+      businessAccountId: params.businessAccountId,
+    });
+    if (isIntakeFailure(linked)) {
+      return fail({
+        operation: op,
+        code: linked.code,
+        detail: { requestId: params.requestId, reason: "linked intake lookup failed" },
+        message: "Couranr could not read this delivery's intake record. Try again.",
+      });
+    }
+    intakeSessionId = linked.value;
+  }
+
   // Either the edited draft or the stored row — never a mix, so the stored
   // shipment and the stored quote can never describe different deliveries.
   let shipment: ReturnType<typeof shipmentArgs> | null = null;
@@ -747,16 +770,16 @@ export async function calculateDeliveryRequestEstimate(params: {
     routed = routedResult.value;
     shipment = shipmentArgs(draft, routed);
 
-    if (params.intakeSessionId) {
+    if (intakeSessionId) {
       // A session may have started AFTER this draft existed (manual form
       // first, description second): bind it before anything reads it as
       // this request's evidence. Then the form's statement wins the facts.
       const bound = await bindIntakeToRequest(
-        op, params.intakeSessionId, params.businessAccountId, params.requestId
+        op, intakeSessionId, params.businessAccountId, params.requestId
       );
       if (isCommandFailure(bound)) return bound;
       const synced = await syncIntakeWithForm(
-        op, params.intakeSessionId, params.businessAccountId, params.actor.userId, draft
+        op, intakeSessionId, params.businessAccountId, params.actor.userId, draft
       );
       if (isCommandFailure(synced)) return synced;
     }
@@ -765,7 +788,7 @@ export async function calculateDeliveryRequestEstimate(params: {
   const adjusted = await applyIntakePolicy(
     op,
     routed.quote,
-    params.intakeSessionId,
+    intakeSessionId,
     params.businessAccountId,
     // Manual path: the edited draft, or the stored shipment's own statement.
     shipment !== null && params.rawInput !== undefined
@@ -813,9 +836,9 @@ export async function calculateDeliveryRequestEstimate(params: {
   // re-validated against the trusted facts while both are locked (§26). A
   // re-price of the stored shipment has nothing new to validate.
   const result =
-    shipment !== null && params.intakeSessionId && intakeRevision !== null
+    shipment !== null && intakeSessionId && intakeRevision !== null
       ? await callRpc(op, RPC.commitIntake, {
-          p_session_id: params.intakeSessionId,
+          p_session_id: intakeSessionId,
           p_expected_intake_revision: intakeRevision,
           p_expected_policy_disposition: policyDisposition,
           ...estimateArgs,

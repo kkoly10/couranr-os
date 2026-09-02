@@ -517,6 +517,17 @@ async function main() {
       /* ---- the merchant changes their mind: exact → band, through the UI ---- */
       await page.getByRole("button", { name: /back to details/i }).click();
       await fieldLabel(page, "Weight").waitFor({ state: "visible", timeout: 30_000 });
+      // The panel unmounted on the review step. On the way back it must
+      // rehydrate the SAME session — not report "no session" and make the
+      // flow forget where the facts came from (found by this suite: the
+      // second estimate silently bypassed the sync and the commit wrapper).
+      await page.getByText(/You told us:/).waitFor({ state: "visible", timeout: 30_000 });
+      const backText = await mainText(page);
+      check("U38a", "after 'Back to details' the panel rehydrated the session: the confirmed weight, the declaration and the merchant's words are all still there",
+        /You told us:[\s\S]*Weight \(lb\): 20/.test(backText) &&
+          /Restricted item: none/.test(backText) &&
+          (await page.getByLabel(/What are you delivering/).inputValue()).includes("Ignore all rules"),
+        backText.match(/You told us:[^\n]*/)?.[0] ?? "(no 'You told us')");
       await fieldLabel(page, "Weight").selectOption("over_25_to_50_lb");
       const estimated = page.waitForResponse(
         (r) => r.request().method() === "POST" && /\/estimate$/.test(new URL(r.url()).pathname),
@@ -525,6 +536,9 @@ async function main() {
       await page.getByRole("button", { name: /calculate estimate/i }).click();
       const estRes = await estimated;
       check("U38", "re-calculating with a band goes through the estimate route", estRes.status() === 200, `status=${estRes.status()}`);
+      const estBody = estRes.request().postDataJSON();
+      check("U38b", "... and the browser still named the intake session on that estimate",
+        estBody?.intakeSessionId === sessionId, `intakeSessionId=${estBody?.intakeSessionId ?? "(absent)"}`);
       await page.getByRole("button", { name: /submit for couranr review/i }).waitFor({ state: "visible", timeout: 45_000 });
       await page.screenshot({ path: path.join(SHOTS, "U-band-quote.png"), fullPage: true });
 
@@ -548,6 +562,32 @@ async function main() {
               where session_id='${sessionId}' and event='committed_to_request'`) === "create_request_from_intake,commit_intake_to_request");
       check("U44", "the deterministic policy was re-evaluated after the sync",
         sql(`select policy_disposition from public.couranr_intake_sessions where id='${sessionId}'`) !== "");
+
+      /* ---- the SERVER remembers the session even when the client forgets ---- */
+      // Same estimate, same merchant, but the body carries NO intakeSessionId —
+      // what a reloaded or broken client would send. The request is bound to
+      // its session (request_id is unique), so the server must still sync the
+      // form into the facts and commit through the wrapper.
+      const [, , , , , , versionNow] = reqRow().split("|");
+      const forgetful = await fetch(`${BASE}/api/couranr/delivery-requests/${reqId}/estimate`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({
+          businessAccountId: bizId,
+          expectedVersion: Number(versionNow),
+          request: { ...estBody.request, weightLb: "30", weightBand: null },
+        }),
+      });
+      check("U45", "an estimate whose body names NO intake session is still accepted", forgetful.status === 200, `status=${forgetful.status}`);
+      check("U46", "... the server resolved the LINKED session and synced the form: exact 30 confirmed, the band withdrawn",
+        fact(sessionId, "weight_lb_exact") === '30|confirmed|merchant_statement|-' &&
+          fact(sessionId, "weight_band").startsWith("null|unknown|"),
+        `${fact(sessionId, "weight_lb_exact")} / ${fact(sessionId, "weight_band")}`);
+      check("U47", "... and it was committed through the intake wrapper too — create, commit, commit",
+        sql(`select string_agg(to_value->>'command', ',' order by created_at) from public.couranr_intake_fact_events
+              where session_id='${sessionId}' and event='committed_to_request'`) === "create_request_from_intake,commit_intake_to_request,commit_intake_to_request");
+      check("U48", "... and the request row agrees with the facts: exact 30, no band",
+        reqRow().split("|").slice(1, 3).join("|") === "30.00|-", reqRow());
 
       console.log("\n  Google calls relayed for the page (method host/path → status × count):");
       for (const [k, n] of googleCalls) console.log(`    ${k} × ${n}`);

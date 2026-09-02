@@ -570,6 +570,7 @@ export function NewDeliveryFlow() {
           {businessAccountId ? (
             <SmartIntakePanel
               businessAccountId={businessAccountId}
+              sessionId={intakeSessionId}
               onIntakeChange={onIntakeChange}
             />
           ) : null}

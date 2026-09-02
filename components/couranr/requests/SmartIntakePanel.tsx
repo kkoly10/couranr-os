@@ -77,9 +77,17 @@ function isTrusted(row: IntakeFactRow): boolean {
 
 export function SmartIntakePanel(props: {
   businessAccountId: string;
+  /**
+   * The session the parent flow already remembers. The panel unmounts on the
+   * review step; on the way back it must pick its session up again rather
+   * than report "no session" and make the parent forget where the shipment
+   * facts came from.
+   */
+  sessionId?: string | null;
   onIntakeChange: (state: { sessionId: string | null; facts: IntakeFactRow[] }) => void;
 }) {
   const { businessAccountId, onIntakeChange } = props;
+  const rememberedSessionId = props.sessionId ?? null;
   const [description, setDescription] = React.useState("");
   const [intake, setIntake] = React.useState<IntakeSessionView | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -101,14 +109,48 @@ export function SmartIntakePanel(props: {
   React.useEffect(() => {
     onIntakeChangeRef.current = onIntakeChange;
   }, [onIntakeChange]);
+  // Rehydration is pending while the parent remembers a session this mount
+  // has not loaded yet. Reporting `sessionId: null` in that window would wipe
+  // the parent's memory — the exact state loss this prop exists to prevent.
+  const rehydrating = session === null && rememberedSessionId !== null;
   React.useEffect(() => {
+    if (rehydrating) return;
     onIntakeChangeRef.current({ sessionId: session?.id ?? null, facts });
-  }, [session?.id, facts]);
+  }, [session?.id, facts, rehydrating]);
+
+  // One place turns a loaded session into panel state, for the actions and
+  // for the remount rehydration alike. A remount starts with an empty
+  // textarea; the merchant's latest words are the session's evidence, so
+  // they are shown again rather than a blank.
+  const applyLoaded = React.useCallback((loaded: IntakeSessionView) => {
+    setIntake(loaded);
+    setDescription((current) => {
+      if (current.trim().length > 0) return current;
+      const revisions = loaded.revisions ?? [];
+      const latest = revisions[revisions.length - 1];
+      return typeof latest?.raw_description === "string" ? latest.raw_description : current;
+    });
+  }, []);
 
   async function refresh(sessionId: string) {
     const loaded = await fetchIntake({ sessionId, businessAccountId });
-    if (!isApiFailure(loaded)) setIntake(loaded.value.intake);
+    if (!isApiFailure(loaded)) applyLoaded(loaded.value.intake);
   }
+
+  React.useEffect(() => {
+    if (!rehydrating || !rememberedSessionId) return;
+    let cancelled = false;
+    void fetchIntake({ sessionId: rememberedSessionId, businessAccountId }).then((loaded) => {
+      if (cancelled) return;
+      // Could not rehydrate: say so once and let the parent keep its session
+      // — the server resolves the linked session on calculate regardless.
+      if (isApiFailure(loaded)) setFailure(loaded);
+      else applyLoaded(loaded.value.intake);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [rehydrating, rememberedSessionId, businessAccountId, applyLoaded]);
 
   async function onOrganize() {
     if (busy || description.trim().length === 0) return;
