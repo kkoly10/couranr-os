@@ -10,6 +10,30 @@ const nextConfig = {
   ...(process.env.COURANR_DIST_DIR ? { distDir: process.env.COURANR_DIST_DIR } : {}),
   // IMPORTANT:
   // Do NOT use `output: "export"` because this app uses API routes + auth.
+
+  /**
+   * LEG-003 (registry, `decided`) mandates these hops, and its acceptance
+   * criterion is literally "No redirect target 404s."
+   *
+   * The Pricing V2 cutover DELETED app/courier/** along with the legacy
+   * calculator behind it. Deleting the pages without adding the redirects
+   * turned two URLs that used to serve a page into dead ends for anyone
+   * holding a bookmark or an indexed link - which is the acceptance criterion
+   * failing, not a cosmetic gap.
+   *
+   * The registry writes the checkout target as `/business/deliveries/new`.
+   * That path predates V10 Step A, which moved the merchant application under
+   * `/app/business`; the live route is the one used here. `permanent: false`
+   * because the merchant surface is still moving and a 308 is cached by
+   * browsers indefinitely.
+   */
+  async redirects() {
+    return [
+      { source: "/courier/quote", destination: "/estimate", permanent: false },
+      { source: "/courier/checkout", destination: "/app/business/deliveries/new", permanent: false },
+      { source: "/courier", destination: "/estimate", permanent: false },
+    ];
+  },
 };
 
 module.exports = nextConfig;
