@@ -80,24 +80,26 @@ stable
 security invoker
 set search_path = ''
 as $fn$
-  select case
-    /* The merchant IS the payer, and their acknowledgment names the exact
-       quote version it approved. */
-    when p_quote.payer_type = 'merchant' then exists (
+  select
+    /* An obligation that actually reached authorization is payer approval for
+       EITHER payer. Money changing hands is the strongest evidence there is,
+       and scoping this to customers only would leave a merchant quote
+       expirable after its own payment was authorized. 'not_started' and
+       'requires_action' are deliberately absent: an obligation that merely
+       exists, or an intent merely attached, is not approval. */
+    exists (
+      select 1 from public.couranr_payment_obligations o
+       where o.quote_version_id = p_quote.id
+         and o.payment_state in ('authorized','capture_pending','captured'))
+    /* And for a merchant-paid quote the merchant IS the payer, so their
+       acknowledgment - which names the exact quote version it approved - is
+       approval on its own, before any payment exists. */
+    or (p_quote.payer_type = 'merchant' and exists (
       select 1 from public.couranr_delivery_request_events e
        where e.request_id = p_quote.request_id
          and e.command    = 'submit_delivery_request'
          and coalesce((e.metadata ->> 'acknowledgment')::boolean, false) is true
-         and (e.metadata ->> 'quoteVersionId') = p_quote.id::text)
-    /* The customer approves by AUTHORIZING. Nothing earlier in the payment
-       flow counts, which is why 'not_started' and 'requires_action' are
-       absent from this list. */
-    when p_quote.payer_type = 'customer' then exists (
-      select 1 from public.couranr_payment_obligations o
-       where o.quote_version_id = p_quote.id
-         and o.payment_state in ('authorized','capture_pending','captured'))
-    else false
-  end;
+         and (e.metadata ->> 'quoteVersionId') = p_quote.id::text));
 $fn$;
 
 comment on function private.couranr_quote_payer_approved is
@@ -125,6 +127,38 @@ $fn$;
 
 comment on function private.couranr_quote_version_is_expired is
   'QVL-001. True only for a V2 estimated quote at or past 15 minutes old that the PAYER has not approved. An approved quote never expires; historical policy versions and unpriced quotes never expire.';
+
+/* ------------------------------------ read-only check for the app layer */
+/* ensurePaymentIntent REUSES an existing PaymentIntent without calling attach,
+   so the guard inside attach is never reached on that path and an intent
+   minted while the quote was fresh would stay confirmable indefinitely. The
+   application needs to ask the same question attach asks, and it must ask the
+   DATABASE rather than compute an age from a clock of its own. */
+create or replace function public.couranr_obligation_quote_expired(
+  p_obligation_id uuid
+)
+returns boolean
+language sql
+stable
+security invoker
+set search_path = ''
+as $fn$
+  select coalesce(
+    (select private.couranr_quote_version_is_expired(q.*)
+       from public.couranr_payment_obligations o
+       join public.couranr_quote_versions q
+         on q.id = o.quote_version_id and q.request_id = o.request_id
+      where o.id = p_obligation_id),
+    false);
+$fn$;
+
+comment on function public.couranr_obligation_quote_expired is
+  'QVL-001. True when this obligation''s quote is a V2 estimated quote past 15 minutes that the payer has not approved. Read-only; server time is the authority.';
+
+revoke all on function public.couranr_obligation_quote_expired(uuid)
+  from public, anon, authenticated, service_role;
+grant execute on function public.couranr_obligation_quote_expired(uuid)
+  to service_role;
 
 /* ------------------------------------------------- commands, re-enforced */
 create or replace function private.couranr_append_routed_quote_version(

@@ -314,6 +314,8 @@ function main() {
     check("PV2-45", "... Quote N is unchanged and no Quote N+1 was minted",
       one(`select count(*)||'|'||max(subtotal_cents) from public.couranr_quote_versions where request_id='${c1.rid}'`),
       "1|799");
+    check("PV2-54", "... and the app-layer reuse check agrees the quote is expired",
+      one(`select public.couranr_obligation_quote_expired('${c1.obId}')`), "t");
     check("PV2-46", "... a token with 7 days of TTL left still cannot open it",
       one(`select valid||'|'||reason from public.couranr_redeem_payment_access_token(repeat('a',64))`),
       "false|quote_expired");

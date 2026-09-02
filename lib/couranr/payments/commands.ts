@@ -33,6 +33,7 @@ assertServerOnly("lib/couranr/payments/commands.ts");
  */
 
 export const RPC = {
+  obligationQuoteExpired: "couranr_obligation_quote_expired",
   createObligation: "couranr_create_payment_obligation",
   attachIntent: "couranr_attach_payment_intent",
   applyIntentState: "couranr_apply_payment_intent_state",
@@ -230,6 +231,25 @@ export async function ensurePaymentIntent(params: {
 
   // Already has one: reuse it rather than creating a second.
   if (ob.provider_payment_intent_id) {
+    /*
+     * QVL-001. Reuse skips `attachIntent`, so the CR410 guard inside that
+     * command is never reached here - and a PaymentIntent minted while the
+     * quote was fresh would otherwise stay confirmable indefinitely, which is
+     * exactly the "an intent created while fresh must not make the price
+     * immortal" case. Ask the DATABASE, which owns the clock; never compute an
+     * age here.
+     */
+    const stale = await callRpc<boolean>(op, RPC.obligationQuoteExpired, {
+      p_obligation_id: ob.id,
+    });
+    if (isPaymentFailure(stale)) return stale;
+    if (stale.value === true) {
+      return fail({
+        operation: op,
+        code: "quote_expired",
+        detail: { reason: "quote_expired", obligationId: ob.id },
+      });
+    }
     try {
       const existing = await retrievePaymentIntent(String(ob.provider_payment_intent_id));
       if (!existing.client_secret) {
