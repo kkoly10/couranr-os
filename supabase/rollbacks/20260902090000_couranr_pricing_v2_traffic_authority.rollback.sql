@@ -110,7 +110,7 @@ drop function if exists private.couranr_append_routed_quote_version(
    V2 arities above without these would leave the database with NO quote-minting
    command: every merchant create, estimate and requote would fail. */
 
-create function private.couranr_append_routed_quote_version(
+create or replace function private.couranr_append_routed_quote_version(
   p_request_id               uuid,
   p_created_by_user_id       uuid,
   p_request_version          integer,
@@ -294,7 +294,7 @@ begin
 end
 $fn$;
 
-create function public.couranr_create_routed_quote_version(
+create or replace function public.couranr_create_routed_quote_version(
   p_request_id uuid,p_business_account_id uuid,p_expected_version integer,
   p_actor_user_id uuid,p_quote_status text,p_pricing_policy_version text,
   p_delivery_subtotal_cents integer,p_included_loaded_miles integer,
@@ -377,7 +377,7 @@ begin
 end
 $fn$;
 
-create function public.couranr_requote_routed_delivery_request(
+create or replace function public.couranr_requote_routed_delivery_request(
   p_request_id uuid,p_business_account_id uuid,p_expected_version integer,
   p_actor_user_id uuid,p_pricing_policy_version text,
   p_delivery_subtotal_cents integer,p_included_loaded_miles integer,
@@ -458,7 +458,7 @@ begin
 end
 $fn$;
 
-create function public.couranr_create_routed_delivery_request_draft(
+create or replace function public.couranr_create_routed_delivery_request_draft(
   p_business_account_id uuid,p_created_by uuid,p_idempotency_key text,
   p_source text,p_readiness_state text,p_payer_type text,
   p_recipient_name text,p_recipient_phone text,p_recipient_email text,
@@ -544,7 +544,7 @@ begin
 end
 $fn$;
 
-create function public.couranr_calculate_routed_delivery_request_estimate(
+create or replace function public.couranr_calculate_routed_delivery_request_estimate(
   p_request_id uuid,p_business_account_id uuid,p_expected_version integer,
   p_actor_user_id uuid,p_update_shipment boolean,
   p_source text,p_readiness_state text,p_payer_type text,
