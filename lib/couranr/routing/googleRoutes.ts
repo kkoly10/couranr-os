@@ -33,7 +33,26 @@ export type CanonicalRouteEvidence = {
   distanceSource: "google_routes_v2";
   distanceMeters: number | null;
   loadedMiles: number | null;
+  /**
+   * TRAFFIC-AWARE duration. The request pins `routingPreference:
+   * "TRAFFIC_AWARE"`, which is what makes Google compute this with live
+   * conditions; under TRAFFIC_UNAWARE it would equal `staticDurationSeconds`
+   * and every delay would be zero.
+   */
   durationSeconds: number | null;
+  /**
+   * BASELINE duration for the same route, excluding traffic. Google returns it
+   * as `routes.staticDuration`.
+   */
+  staticDurationSeconds: number | null;
+  /**
+   * `max(durationSeconds - staticDurationSeconds, 0)`, derived here so the
+   * pricing engine is handed one server-established number and never two
+   * durations it could be tricked into subtracting the wrong way round.
+   *
+   * `null` means no traffic evidence — which prices as review, never as zero.
+   */
+  trafficDelaySeconds: number | null;
   reviewReason: RouteReviewReason | null;
 };
 
@@ -74,6 +93,8 @@ function needsReview(reviewReason: RouteReviewReason): CanonicalRouteEvidence {
     distanceMeters: null,
     loadedMiles: null,
     durationSeconds: null,
+    staticDurationSeconds: null,
+    trafficDelaySeconds: null,
     reviewReason,
   };
 }
@@ -107,7 +128,12 @@ export async function computeCanonicalGoogleRoute(
       headers: {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": apiKey,
-        "X-Goog-FieldMask": "routes.distanceMeters,routes.duration",
+        // `routes.staticDuration` is the BASELINE duration excluding traffic;
+        // `routes.duration` is traffic-aware because routingPreference below is
+        // TRAFFIC_AWARE. Both are required: the delay is their difference, and
+        // a quote may not invent one.
+        "X-Goog-FieldMask":
+          "routes.distanceMeters,routes.duration,routes.staticDuration",
       },
       body: JSON.stringify({
         origin: { placeId: input.pickupPlaceId },
@@ -141,14 +167,23 @@ export async function computeCanonicalGoogleRoute(
     return needsReview("google_routes_no_route");
   }
 
-  const first = routes[0] as { distanceMeters?: unknown; duration?: unknown };
+  const first = routes[0] as {
+    distanceMeters?: unknown;
+    duration?: unknown;
+    staticDuration?: unknown;
+  };
   const distanceMeters = first.distanceMeters;
   const parsedDuration = durationSeconds(first.duration);
+  const parsedStaticDuration = durationSeconds(first.staticDuration);
   if (
     typeof distanceMeters !== "number" ||
     !Number.isSafeInteger(distanceMeters) ||
     distanceMeters < 0 ||
-    parsedDuration === null
+    parsedDuration === null ||
+    // A missing or malformed baseline is an INVALID response, not a zero
+    // delay. Treating it as zero would silently under-price every route whose
+    // baseline Google declined to return.
+    parsedStaticDuration === null
   ) {
     return needsReview("google_routes_invalid_response");
   }
@@ -159,6 +194,10 @@ export async function computeCanonicalGoogleRoute(
     distanceMeters,
     loadedMiles: loadedMilesFromDistanceMeters(distanceMeters),
     durationSeconds: parsedDuration,
+    staticDurationSeconds: parsedStaticDuration,
+    // Clamped at zero: a route that is FASTER than its baseline is a discount
+    // nobody decided, so it prices as no delay rather than as a credit.
+    trafficDelaySeconds: Math.max(parsedDuration - parsedStaticDuration, 0),
     reviewReason: null,
   };
 }
@@ -171,6 +210,7 @@ function routeReviewQuote(): QuoteResult {
     deliverySubtotalCents: 0,
     lineItems: [],
     billableLoadedMiles: 0,
+    trafficDelaySeconds: null,
     reviewReasons: ["route_needs_review"],
   };
 }
@@ -246,6 +286,9 @@ export async function deriveCanonicalRouteAndQuote(
       serviceLevel: shipment.serviceLevel,
       signatureRequired: shipment.signatureRequired,
       overnightRequested: shipment.overnightRequested,
+      // Server-derived from ONE canonical Google response. The shipment type
+      // carries no duration field at all, so a browser cannot reach this.
+      trafficDelaySeconds: route.trafficDelaySeconds,
     }),
   };
 }

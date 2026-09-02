@@ -7,4 +7,4 @@
  */
 export * from "./policy";
 export * from "./types";
-export { quoteDelivery, weightBandCents } from "./quote";
+export { quoteDelivery, trafficDelayCents, weightBandCents } from "./quote";

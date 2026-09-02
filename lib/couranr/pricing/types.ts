@@ -1,12 +1,22 @@
 import type { ServiceLevel } from "./policy";
 
 /**
- * Quote input. Every field describes the SHIPMENT, never a price: there is no
- * `total`, `amount`, `subtotal` or `price` field anywhere in this type, so a
- * caller structurally cannot supply an amount for the server to trust.
+ * Quote input. Every field describes the SHIPMENT or the server-established
+ * ROUTE EVIDENCE, never a price: there is no `total`, `amount`, `subtotal` or
+ * `price` field anywhere in this type, so a caller structurally cannot supply
+ * an amount for the server to trust.
+ *
+ * There is also deliberately no merchant vertical/category field. The core
+ * fare is identical across verticals by decision, and the absence of the input
+ * is what makes that unfalsifiable rather than merely intended.
  */
 export type QuoteInput = {
-  /** Loaded miles for the route. May be fractional. */
+  /**
+   * Loaded miles for the route, from server-side Google Routes evidence only.
+   * May be fractional; canonical precision is thousandths of a mile. A
+   * browser-supplied distance never reaches here — see
+   * `lib/couranr/routing/googleRoutes.ts`.
+   */
   loadedMiles: number;
   /** Package weight in pounds. May be fractional. */
   weightLb: number;
@@ -15,29 +25,51 @@ export type QuoteInput = {
   serviceLevel?: ServiceLevel;
   signatureRequired?: boolean;
   /**
-   * Overnight is a decided product (SUR-001) but is not offered by this
-   * release. Requesting it yields `manual_review_required`, and requesting it
-   * together with rush is invalid — the two never stack.
+   * Overnight is a decided, governed product (SUR-001) that is REQUEST-ONLY
+   * and Couranr-confirmed. Requesting it yields `manual_review_required`, and
+   * requesting it together with rush is invalid — the two never stack.
    */
   overnightRequested?: boolean;
+  /**
+   * Predicted traffic delay in seconds, derived server-side as
+   * `max(traffic_aware_duration - static_duration, 0)` from ONE canonical
+   * Google Routes response.
+   *
+   * `null`/absent means "no traffic evidence was established". The engine then
+   * charges no traffic and says so, rather than inventing a delay of zero.
+   */
+  trafficDelaySeconds?: number | null;
 };
 
 export type QuoteStatus = "estimated" | "manual_review_required" | "invalid";
 
-/** Stable machine codes. Safe to persist and to key UI copy from. */
+/** Stable machine codes minted by Pricing V2. Safe to persist and to key UI copy from. */
 export type LineItemCode =
   | "base_delivery"
+  | "mileage_tier_2_10"
+  | "mileage_tier_10_25"
+  | "service_level_priority"
+  | "service_level_rush"
+  | "signature"
+  | "weight_band"
+  | "traffic_delay"
+  | "proof";
+
+/**
+ * Codes minted by the SUPERSEDED V1 engine. Retained for exactly one reason:
+ * a historical quote row still carries them, and the product must be able to
+ * read and display that row. Nothing mints these any more.
+ */
+export type HistoricalLineItemCode =
   | "mileage_tier_4_10"
   | "mileage_tier_11_25"
   | "mileage_tier_26_50"
   | "mileage_tier_51_75"
   | "mileage_tier_76_100"
-  | "service_level_priority"
-  | "service_level_rush"
-  | "additional_stops"
-  | "signature"
-  | "weight_band"
-  | "proof";
+  | "additional_stops";
+
+/** What a stored line item's code may be, across every policy version. */
+export type StoredLineItemCode = LineItemCode | HistoricalLineItemCode;
 
 export type QuoteLineItem = {
   code: LineItemCode;
@@ -47,13 +79,31 @@ export type QuoteLineItem = {
   amountCents: number;
 };
 
+/**
+ * A line item as READ BACK from an immutable quote row, which may have been
+ * minted by any policy version. Rendering uses the stored label and amount;
+ * the engine is never re-run to reconstruct a historical price.
+ */
+export type StoredQuoteLineItem = Omit<QuoteLineItem, "code"> & {
+  code: StoredLineItemCode;
+};
+
 /** Stable machine codes for why a quote could not be produced automatically. */
 export type ReviewReasonCode =
   | "over_max_automatic_miles"
-  | "over_max_automatic_weight"
-  | "overnight_not_offered_in_this_release"
+  /** Above 50 lb: Large Item, manual quote. */
+  | "large_item_review"
+  | "overnight_requires_couranr_confirmation"
+  /** Predicted traffic delay above the automatic ceiling. */
+  | "over_max_automatic_traffic_delay"
   /** Routing evidence could not be established; no distance or money is invented. */
-  | "route_needs_review";
+  | "route_needs_review"
+  /**
+   * Traffic evidence was required for an automatic quote and could not be
+   * obtained or validated. Failing safe into review beats fabricating a
+   * traffic fact.
+   */
+  | "traffic_evidence_unavailable";
 
 /** Stable machine codes for a rejected input. */
 export type ValidationErrorCode =
@@ -66,25 +116,30 @@ export type ValidationErrorCode =
   | "additional_stops_not_whole"
   | "additional_stops_unsupported"
   | "unknown_service_level"
-  | "rush_and_overnight_conflict";
+  | "rush_and_overnight_conflict"
+  | "traffic_delay_not_finite"
+  | "traffic_delay_negative";
 
 export type QuoteResult = {
   policyVersion: string;
   quoteStatus: QuoteStatus;
   /**
    * Exact integer-cent sum of `lineItems`. Zero when the quote is not
-   * `estimated`. This is a delivery SUBTOTAL, not a final payable total:
-   * PRC-004 rounding is unresolved and TAX-001 tax is unresolved.
+   * `estimated`. This is a delivery SUBTOTAL, not a final payable total: tax,
+   * tip, tolls, parking and promotional credit are all separate and never
+   * folded in here.
    */
   deliverySubtotalCents: number;
   lineItems: QuoteLineItem[];
   includedLoadedMiles: number;
   /** Loaded miles billed above the included allowance. May be fractional. */
   billableLoadedMiles: number;
+  /** The delay this quote was priced on, echoed for evidence. */
+  trafficDelaySeconds: number | null;
   reviewReasons: ReviewReasonCode[];
-  /** Always false — PRC-004 is unresolved. */
+  /** Always false — the $0.25 rounding rule is retired. */
   roundingApplied: false;
-  /** Always false — TAX-001 is unresolved. */
+  /** Always false — tax is separate from the delivery subtotal. */
   taxIncluded: false;
   /** Always null — this engine never determines what is payable. */
   paymentDueCents: null;

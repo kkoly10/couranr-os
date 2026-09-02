@@ -316,6 +316,13 @@ export function routeArgs(route: CanonicalRouteEvidence) {
   return {
     p_route_distance_meters: route.distanceMeters,
     p_route_duration_seconds: route.durationSeconds,
+    // TRF-001. Both durations travel to the database, which re-derives the
+    // delay and refuses the write if the stored value is not exactly
+    // max(traffic - static, 0). The delay is therefore checked twice, on two
+    // sides of the boundary, and asserted by neither the browser nor this
+    // process alone.
+    p_route_static_duration_seconds: route.staticDurationSeconds,
+    p_route_traffic_delay_seconds: route.trafficDelaySeconds,
     p_distance_source: route.distanceSource,
     p_serviceability_outcome: route.serviceabilityOutcome,
     p_route_review_reason: route.reviewReason,

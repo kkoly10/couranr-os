@@ -3,12 +3,17 @@ import {
   COURANR_PRICING_POLICY_VERSION,
   INCLUDED_LOADED_MILES,
   MAX_AUTOMATIC_LOADED_MILES,
+  MAX_AUTOMATIC_TRAFFIC_DELAY_SECONDS,
   MAX_AUTOMATIC_WEIGHT_LB,
   MILEAGE_TIERS,
   PROOF_CENTS,
   SERVICE_LEVEL_CENTS,
   SIGNATURE_CENTS,
-  WEIGHT_BANDS,
+  TRAFFIC_DELAY_CENTS_PER_MINUTE,
+  TRAFFIC_DELAY_INCLUDED_SECONDS,
+  WEIGHT_INCLUDED_THROUGH_LB,
+  WEIGHT_SURCHARGE_CENTS,
+  type MileageTier,
   type ServiceLevel,
 } from "./policy";
 import type {
@@ -21,35 +26,42 @@ import type {
 } from "./types";
 
 /**
- * Canonical Couranr delivery quote engine.
+ * Canonical Couranr delivery quote engine — Pricing V2.
  *
  * INTEGER CENTS ONLY. No money value is ever held in a floating-point
- * intermediate. Distance and weight arrive as decimals (a route is 4.2 miles,
- * a parcel is 12.5 lb), so distance is converted once to integer thousandths of
- * a mile and every subsequent operation is integer arithmetic.
+ * intermediate. Distance arrives as a decimal (a route is 4.2 miles), so it is
+ * converted ONCE to integer thousandths of a mile and every subsequent
+ * operation is integer arithmetic. The only rounding applied to money is an
+ * explicit deterministic half-up at the two places where a rate produces a
+ * fractional cent: per-mile and per-minute.
  *
  * Dependency-free by design: no React, Next.js, Supabase or Stripe import.
  */
 
 /** Thousandths of a mile. Lets tier maths stay in integers. */
 const MILLI = 1000;
+const SECONDS_PER_MINUTE = 60;
 
-/** Half-up division of a non-negative integer by MILLI, without floats. */
-function divideMilliToCents(numerator: number): number {
-  return Math.floor((numerator + MILLI / 2) / MILLI);
+/**
+ * Deterministic half-up division of a non-negative integer, without floats.
+ *
+ * Half-up rather than banker's rounding because the authority says half-up,
+ * and because a quote must be reproducible from its inputs by anyone checking
+ * it — including a merchant with a calculator.
+ */
+function divideHalfUp(numerator: number, denominator: number): number {
+  return Math.floor((numerator + denominator / 2) / denominator);
 }
 
 function toMilliMiles(miles: number): number {
-  // One rounding of a DISTANCE (not money) to the nearest thousandth of a mile.
+  // One rounding of a DISTANCE (not money) to the nearest thousandth of a
+  // mile. Mileage is never rounded UP to a whole mile.
   return Math.round(miles * MILLI);
 }
 
 const TIER_CODE: Record<number, LineItemCode> = {
-  4: "mileage_tier_4_10",
-  11: "mileage_tier_11_25",
-  26: "mileage_tier_26_50",
-  51: "mileage_tier_51_75",
-  76: "mileage_tier_76_100",
+  2: "mileage_tier_2_10",
+  10: "mileage_tier_10_25",
 };
 
 function isFiniteNumber(v: unknown): v is number {
@@ -81,6 +93,14 @@ function validate(input: QuoteInput): ValidationErrorCode[] {
     errors.push("rush_and_overnight_conflict");
   }
 
+  // `undefined`/`null` is "no evidence", handled as a review reason rather
+  // than a validation error. A PRESENT delay must still be a sane number.
+  const delay = input.trafficDelaySeconds;
+  if (delay !== undefined && delay !== null) {
+    if (!isFiniteNumber(delay)) errors.push("traffic_delay_not_finite");
+    else if (delay < 0) errors.push("traffic_delay_negative");
+  }
+
   return errors;
 }
 
@@ -88,7 +108,8 @@ function emptyResult(
   quoteStatus: QuoteResult["quoteStatus"],
   reviewReasons: ReviewReasonCode[],
   validationErrors: ValidationErrorCode[],
-  billableLoadedMiles = 0
+  billableLoadedMiles = 0,
+  trafficDelaySeconds: number | null = null
 ): QuoteResult {
   return {
     policyVersion: COURANR_PRICING_POLICY_VERSION,
@@ -97,6 +118,7 @@ function emptyResult(
     lineItems: [],
     includedLoadedMiles: INCLUDED_LOADED_MILES,
     billableLoadedMiles,
+    trafficDelaySeconds,
     reviewReasons,
     roundingApplied: false,
     taxIncluded: false,
@@ -105,12 +127,51 @@ function emptyResult(
   };
 }
 
+/** Cents for one mileage tier over the interval it actually covers. */
+function tierAmountCents(
+  tier: MileageTier,
+  totalMilli: number,
+  includedMilli: number
+): { overlapMilli: number; amountCents: number } {
+  const overlapStart = Math.max(tier.overMiles * MILLI, includedMilli);
+  const overlapEnd = Math.min(tier.throughMiles * MILLI, totalMilli);
+  const overlapMilli = Math.max(0, overlapEnd - overlapStart);
+  return {
+    overlapMilli,
+    amountCents: divideHalfUp(overlapMilli * tier.perMileCents, MILLI),
+  };
+}
+
 /**
- * Produces a delivery estimate.
+ * Chargeable traffic cents for a predicted delay.
  *
- * The result is a SUBTOTAL. It is not a final payable amount: PRC-004 (the
- * $0.25 rounding trigger) and TAX-001 (tax treatment) are both unresolved, so
- * `roundingApplied` and `taxIncluded` are false and `paymentDueCents` is null.
+ * The first `TRAFFIC_DELAY_INCLUDED_SECONDS` are free. Beyond that the rate is
+ * per MINUTE but is applied to actual SECONDS, so a 6m30s delay costs 90s of
+ * traffic rather than being rounded up to two minutes.
+ */
+export function trafficDelayCents(delaySeconds: number): number {
+  const chargeable = Math.max(0, delaySeconds - TRAFFIC_DELAY_INCLUDED_SECONDS);
+  if (chargeable === 0) return 0;
+  return divideHalfUp(
+    chargeable * TRAFFIC_DELAY_CENTS_PER_MINUTE,
+    SECONDS_PER_MINUTE
+  );
+}
+
+/** SUR-001 V2 weight handling. A band is a charge, never a claimed weight. */
+export function weightBandCents(weightLb: number): number {
+  if (weightLb <= WEIGHT_INCLUDED_THROUGH_LB) return 0;
+  if (weightLb <= MAX_AUTOMATIC_WEIGHT_LB) return WEIGHT_SURCHARGE_CENTS;
+  // Above the automatic ceiling the caller must already have flagged review.
+  return 0;
+}
+
+/**
+ * Produces a delivery estimate under Pricing V2.
+ *
+ * The result is a SUBTOTAL. Tax, tip, tolls, parking and promotional credit
+ * are all separate concerns and are never folded into it, so `paymentDueCents`
+ * stays null: this engine does not decide what is payable.
  */
 export function quoteDelivery(input: QuoteInput): QuoteResult {
   const validationErrors = validate(input);
@@ -119,6 +180,9 @@ export function quoteDelivery(input: QuoteInput): QuoteResult {
   }
 
   const level: ServiceLevel = input.serviceLevel ?? "standard";
+  const rawDelay = input.trafficDelaySeconds;
+  const hasTrafficEvidence = rawDelay !== undefined && rawDelay !== null;
+  const delaySeconds = hasTrafficEvidence ? rawDelay : null;
 
   /* ---------------------------------------------------- manual review ---- */
 
@@ -128,12 +192,19 @@ export function quoteDelivery(input: QuoteInput): QuoteResult {
     reviewReasons.push("over_max_automatic_miles");
   }
   if (input.weightLb > MAX_AUTOMATIC_WEIGHT_LB) {
-    reviewReasons.push("over_max_automatic_weight");
+    reviewReasons.push("large_item_review");
   }
   if (input.overnightRequested === true) {
-    // Overnight is a decided product but is not offered by this release. The
-    // request is preserved for review rather than rejected.
-    reviewReasons.push("overnight_not_offered_in_this_release");
+    // Overnight is decided and governed, but request-only: Couranr confirms it
+    // rather than the engine charging it automatically.
+    reviewReasons.push("overnight_requires_couranr_confirmation");
+  }
+  if (!hasTrafficEvidence) {
+    // Fail safe. An automatic quote must be able to state its traffic fact;
+    // absent evidence is review, never an assumed zero delay.
+    reviewReasons.push("traffic_evidence_unavailable");
+  } else if (delaySeconds! > MAX_AUTOMATIC_TRAFFIC_DELAY_SECONDS) {
+    reviewReasons.push("over_max_automatic_traffic_delay");
   }
 
   const totalMilli = toMilliMiles(input.loadedMiles);
@@ -141,12 +212,14 @@ export function quoteDelivery(input: QuoteInput): QuoteResult {
   const billableMilli = Math.max(0, totalMilli - includedMilli);
 
   if (reviewReasons.length > 0) {
-    // No automatic estimate. Report billable miles for context, but no money.
+    // No automatic price. Report billable miles and the delay for context, but
+    // no money — a review must never carry a fabricated subtotal.
     return emptyResult(
       "manual_review_required",
       reviewReasons,
       [],
-      billableMilli / MILLI
+      billableMilli / MILLI,
+      delaySeconds
     );
   }
 
@@ -164,20 +237,16 @@ export function quoteDelivery(input: QuoteInput): QuoteResult {
 
   // Mileage: one line per tier the route actually reaches.
   for (const tier of MILEAGE_TIERS) {
-    // Tier `fromMile` = 4 means the interval (3, 10] for a 4-10 tier.
-    const tierStartMilli = (tier.fromMile - 1) * MILLI;
-    const tierEndMilli = tier.toMile * MILLI;
-
-    const overlapStart = Math.max(tierStartMilli, includedMilli);
-    const overlapEnd = Math.min(tierEndMilli, totalMilli);
-    const overlapMilli = Math.max(0, overlapEnd - overlapStart);
+    const { overlapMilli, amountCents } = tierAmountCents(
+      tier,
+      totalMilli,
+      includedMilli
+    );
     if (overlapMilli === 0) continue;
 
-    const amountCents = divideMilliToCents(overlapMilli * tier.perMileCents);
-
     lineItems.push({
-      code: TIER_CODE[tier.fromMile],
-      label: `Loaded miles ${tier.fromMile}–${tier.toMile}`,
+      code: TIER_CODE[tier.overMiles],
+      label: `Loaded miles over ${tier.overMiles} through ${tier.throughMiles}`,
       quantity: overlapMilli / MILLI,
       unitAmountCents: tier.perMileCents,
       amountCents,
@@ -208,10 +277,23 @@ export function quoteDelivery(input: QuoteInput): QuoteResult {
   if (weightCents > 0) {
     lineItems.push({
       code: "weight_band",
-      label: "Weight handling",
+      label: "Weight handling (over 25 lb through 50 lb)",
       quantity: 1,
       unitAmountCents: weightCents,
       amountCents: weightCents,
+    });
+  }
+
+  // Priced from the quote's own traffic evidence, up front. An accepted quote
+  // is never repriced by later real-world traffic.
+  const trafficCents = trafficDelayCents(delaySeconds!);
+  if (trafficCents > 0) {
+    lineItems.push({
+      code: "traffic_delay",
+      label: "Predicted traffic delay",
+      quantity: delaySeconds! - TRAFFIC_DELAY_INCLUDED_SECONDS,
+      unitAmountCents: TRAFFIC_DELAY_CENTS_PER_MINUTE,
+      amountCents: trafficCents,
     });
   }
 
@@ -237,19 +319,11 @@ export function quoteDelivery(input: QuoteInput): QuoteResult {
     lineItems,
     includedLoadedMiles: INCLUDED_LOADED_MILES,
     billableLoadedMiles: billableMilli / MILLI,
+    trafficDelaySeconds: delaySeconds,
     reviewReasons: [],
     roundingApplied: false,
     taxIncluded: false,
     paymentDueCents: null,
     validationErrors: [],
   };
-}
-
-/** SUR-001 weight bands. Continuous: each band runs up to and including maxLb. */
-export function weightBandCents(weightLb: number): number {
-  for (const band of WEIGHT_BANDS) {
-    if (weightLb <= band.maxLb) return band.cents;
-  }
-  // Above the last band the caller must already have flagged manual review.
-  return 0;
 }
