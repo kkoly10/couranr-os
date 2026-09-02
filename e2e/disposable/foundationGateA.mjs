@@ -75,7 +75,7 @@ function createBusinessRequest(key, amount = 2500) {
       '${BUSINESS}','${USER}','${key}','merchant_portal','not_confirmed','merchant',
       'Recipient','555-0100','recipient@example.test',10,0,'standard',false,
       'photo_or_pin',${address("10 Market St")},${address("20 Main St")},false,
-      8047,600,'google_routes_v2','available_for_request',null,
+      8047,600,600,0,'google_routes_v2','available_for_request',null,
       'estimated','foundation-test-v1',${amount},3,2,${items(amount)},'[]'::jsonb
     )
   `);
@@ -178,7 +178,7 @@ function main() {
     select id from public.couranr_create_routed_quote_version(
       '${request}','${BUSINESS}',${requestVersion(request)},'${USER}','estimated',
       'foundation-test-v1',2501,3,2,${items(2500)},'[]',
-      8047,600,'google_routes_v2','available_for_request',null)`, "quote_subtotal_mismatch");
+      8047,600,600,0,'google_routes_v2','available_for_request',null)`, "quote_subtotal_mismatch");
   submitAndAccept(request);
   check("FND-Q-05", "submission event names the exact quote UUID", one(`
     select metadata->>'quoteVersionId' from public.couranr_delivery_request_events
@@ -238,7 +238,7 @@ function main() {
   service(`select id from public.couranr_create_routed_quote_version(
     '${repriced}','${BUSINESS}',${staleExpectedVersion},'${USER}','estimated',
     'foundation-test-v2',3200,3,2,${items(3200)},'[]',
-    8047,600,'google_routes_v2','available_for_request',null)`);
+    8047,600,600,0,'google_routes_v2','available_for_request',null)`);
   const newQuote = currentQuote(repriced);
   check("FND-Q-04", "requote creates quote N+1 linked to quote N", one(`
     select (quote_number=2 and supersedes_quote_version_id='${oldQuote}'::uuid)::text
@@ -258,7 +258,7 @@ function main() {
     select id from public.couranr_create_routed_quote_version(
       '${repriced}','${BUSINESS}',${staleExpectedVersion},'${USER}','estimated',
       'foundation-test-v2',3300,3,2,${items(3300)},'[]',
-      8047,600,'google_routes_v2','available_for_request',null)`, "version_or_state_conflict");
+      8047,600,600,0,'google_routes_v2','available_for_request',null)`, "version_or_state_conflict");
   check("FND-PAY-02", "Q1 obligation retains its exact original quote", one(`
     select quote_version_id from public.couranr_payment_obligations where id='${oldObligation}'`), oldQuote);
 
@@ -329,7 +329,7 @@ function main() {
   service(`select id from public.couranr_create_routed_quote_version(
     '${raced}','${BUSINESS}',${staleVersion},'${USER}','estimated',
     'foundation-test-v2',5900,3,2,${items(5900)},'[]',
-    8047,600,'google_routes_v2','available_for_request',null)`);
+    8047,600,600,0,'google_routes_v2','available_for_request',null)`);
   const racedQuoteB = currentQuote(raced);
   check("FND-SUB-05", "the race actually created a second, different quote",
     String(racedQuoteB !== racedQuoteA), "true");

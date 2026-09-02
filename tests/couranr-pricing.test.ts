@@ -446,3 +446,46 @@ describe("engine is dependency-free and amount-free", () => {
   });
 });
 
+
+/**
+ * The policy identifier lives in TWO places by necessity: this module, and the
+ * SQL guard that refuses to mint the superseded one. Nothing checked that they
+ * agreed, and a drift there would be silent — the database would go on
+ * refusing a string the engine no longer produces, which reads as working.
+ */
+describe("policy identifiers agree across the TypeScript/SQL boundary", () => {
+  const ROOT = path.resolve(__dirname, "..");
+  const migration = readFileSync(
+    path.join(ROOT, "supabase/migrations/20260902090000_couranr_pricing_v2_traffic_authority.sql"),
+    "utf8"
+  );
+  const rollback = readFileSync(
+    path.join(
+      ROOT,
+      "supabase/rollbacks/20260902090000_couranr_pricing_v2_traffic_authority.rollback.sql"
+    ),
+    "utf8"
+  );
+
+  it("the migration refuses exactly the version this module calls historical", () => {
+    expect(migration).toContain(`'${COURANR_PRICING_POLICY_VERSION_V1_HISTORICAL}'`);
+    expect(migration).toContain("superseded_pricing_policy_cannot_be_minted");
+  });
+
+  it("the rollback guards exactly the version this module mints", () => {
+    expect(rollback).toContain(`'${COURANR_PRICING_POLICY_VERSION}'`);
+    expect(rollback).toContain("pricing_v2_rollback_would_destroy_commercial_evidence");
+  });
+
+  it("the registry records both identifiers under PRC-005", () => {
+    const reg = JSON.parse(
+      readFileSync(path.join(ROOT, "02_DECISION_REGISTRY.json"), "utf8")
+    );
+    const prc005 = reg.decisions.find((d: any) => d.id === "PRC-005");
+    expect(prc005.value.policy_version).toBe(COURANR_PRICING_POLICY_VERSION);
+    expect(prc005.value.superseded_policy_version).toBe(
+      COURANR_PRICING_POLICY_VERSION_V1_HISTORICAL
+    );
+    expect(prc005.amends).toBe("PRC-001");
+  });
+});
