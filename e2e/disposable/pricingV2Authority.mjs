@@ -469,6 +469,74 @@ function main() {
       raises(`select public.couranr_begin_payment_capture('${c2.rid}'::uuid,'${USER}'::uuid)`),
       "CR409|pickup_not_ready");
 
+    /* ------------------------------------ QVL rollback round trip ------- */
+    /* The forward migration is executed by up.mjs on every run of this suite.
+       Its ROLLBACK had never been executed by anything - foundationRollbacks
+       covers M1..M6 only - so it was a file nobody had ever run. Applied as a
+       SCRIPT rather than inside a DO block, because that is how a migration
+       actually reaches a database. */
+    const applyScript = (file) => {
+      try {
+        raw(readFileSync(file, "utf8")
+          .replace(/^\s*begin;\s*$/m, "").replace(/^\s*commit;\s*$/m, ""));
+        return "NO_ERROR|";
+      } catch (e) {
+        return `ERROR|${String(e.message).split("\n").find((l) => /ERROR:/.test(l)) ?? "unknown"}`;
+      }
+    };
+    const QVL_FWD = "supabase/migrations/20260902100000_couranr_quote_validity_and_policy_pin.sql";
+    const QVL_BACK =
+      "supabase/rollbacks/20260902100000_couranr_quote_validity_and_policy_pin.rollback.sql";
+    const fnCount = (schema, name) =>
+      one(`select count(*) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+            where n.nspname='${schema}' and p.proname='${name}'`);
+
+    check("PV2-66", "the QVL rollback applies cleanly", applyScript(QVL_BACK), "NO_ERROR|");
+    check("PV2-67", "... the private validity predicate is gone",
+      fnCount("private", "couranr_quote_version_is_expired"), "0");
+    check("PV2-68", "... the private payer-approval predicate is gone",
+      fnCount("private", "couranr_quote_payer_approved"), "0");
+    check("PV2-69", "... the app-layer reuse helper is gone",
+      fnCount("public", "couranr_obligation_quote_expired"), "0");
+    /* The arity trap: rolling back a function that GAINED a parameter has to
+       drop the new form, or both survive and every call is ambiguous. */
+    check("PV2-70", "... apply_payment_intent_state is back to exactly one 8-argument form",
+      one(`select count(*)||'|'||coalesce(max(pronargs),0) from pg_proc p
+             join pg_namespace n on n.oid=p.pronamespace
+            where n.nspname='public' and p.proname='couranr_apply_payment_intent_state'`),
+      "1|8");
+    const r1 = one(draft("qvl-rb-stale"));
+    age(r1, "40 minutes");
+    check("PV2-71", "... and a 40-minute-old quote can be acknowledged again",
+      raises(`select public.couranr_submit_delivery_request_v2('${r1}','${BUSINESS}',${ver(r1)},'${USER}',true)`),
+      "NO_ERROR|");
+    /* An UNKNOWN policy identifier, not the V1 one. The pre-QVL boundary is a
+       blacklist of the superseded string, so V1 is refused on both sides of
+       this rollback and would prove nothing. PRC-007 asked for an allow-list,
+       and this is the difference between the two: a fabricated version passes
+       a blacklist and must not pass a pin. */
+    check("PV2-72", "... and the pre-QVL boundary is only a blacklist, which a made-up version passes",
+      raises(draft("qvl-rb-policy", { policy: "couranr-pricing-v9-2099-01-01" })), "NO_ERROR|");
+
+    check("PV2-73", "the forward migration re-applies over its own rollback",
+      applyScript(QVL_FWD), "NO_ERROR|");
+    const r2 = one(draft("qvl-fw-stale"));
+    age(r2, "40 minutes");
+    check("PV2-74", "... and the 15-minute refusal is back",
+      raises(`select public.couranr_submit_delivery_request_v2('${r2}','${BUSINESS}',${ver(r2)},'${USER}',true)`),
+      "CR410|quote_expired");
+    check("PV2-75", "... and the pin refuses that same made-up version an allow-list must reject",
+      raises(draft("qvl-fw-policy", { policy: "couranr-pricing-v9-2099-01-01" })),
+      "CR422|unsupported_pricing_policy_version");
+    check("PV2-77", "... and refuses the superseded V1 identifier under the same rule",
+      raises(draft("qvl-fw-v1", { policy: "couranr-pricing-2026-07-31" })),
+      "CR422|unsupported_pricing_policy_version");
+    check("PV2-76", "... with still exactly one 9-argument apply command",
+      one(`select count(*)||'|'||coalesce(max(pronargs),0) from pg_proc p
+             join pg_namespace n on n.oid=p.pronamespace
+            where n.nspname='public' and p.proname='couranr_apply_payment_intent_state'`),
+      "1|9");
+
     /* ------------------------------------------------------- rollback --- */
 
     const rollback = readFileSync(
