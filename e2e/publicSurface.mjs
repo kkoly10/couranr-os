@@ -131,7 +131,7 @@ async function main() {
       await home.locator('a[href="/sign-up"]').first().isVisible());
     check("H9", "secondary CTA links to /estimate",
       await home.locator('a[href="/estimate"]').first().isVisible());
-    check("H10", "base price renders from governed constants", homeText.includes("$22.99"));
+    check("H10", "base price renders from governed constants", homeText.includes("$7.99"));
 
     // Ask Couranr — closed by default, opens an HONEST panel, closes again.
     check("H11", "Ask Couranr panel is CLOSED by default",
@@ -161,28 +161,40 @@ async function main() {
     await pricing.goto(`${BASE}/pricing`, { waitUntil: "networkidle" });
     let pricingText = await pricing.innerText("body");
 
-    check("P1", "registry-mandated trio: $22.99 / 3 miles / subject to Couranr confirmation",
-      pricingText.includes("$22.99") &&
-      /first 3 loaded miles/i.test(pricingText) &&
+    check("P1", "registry-mandated trio: $7.99 / 2 miles / subject to Couranr confirmation",
+      pricingText.includes("$7.99") &&
+      /first 2 loaded miles/i.test(pricingText) &&
       /subject to Couranr confirmation/.test(pricingText) &&
       /No monthly fee during the pilot/.test(pricingText));
-    check("P2", "every MIL-002 tier renders",
-      ["$2.25", "$3.00", "$3.50", "$4.00", "$4.75"].every((t) => pricingText.includes(t)));
+    check("P2", "every MIL-004 tier renders",
+      ["$1.25", "$1.50"].every((t) => pricingText.includes(t)));
+    check("P2b", "NO retired price survives anywhere on the page",
+      ["$22.99", "$2.25", "$4.75", "$16.99", "$14.99", "+$7.00", "+$12.00"]
+        .every((t) => !pricingText.includes(t)));
     check("P3", "manual-quote notice is ALWAYS visible (required state)",
-      /Manual quote notice/.test(pricingText) && /over 100 loaded miles/.test(pricingText) && /over 200 lb/.test(pricingText));
+      /Manual quote notice/.test(pricingText) && /over 25 loaded miles/.test(pricingText) && /over 50 lb/.test(pricingText));
     check("P4", "the collapsed page does NOT yet show the weight schedule",
-      !pricingText.includes("151–200 lb"));
+      !/Over 25 through 50 lb/.test(pricingText));
 
     await pricing.getByRole("button", { name: /Show the full schedule/ }).click();
     pricingText = await pricing.innerText("body");
-    check("P5", "EXPANDED state shows all four SUR-001 weight bands",
-      ["+$10.00", "+$25.00", "+$50.00", "+$85.00"].every((t) => pricingText.includes(t)));
-    check("P6", "waiting, return and cancellation schedule render exactly",
-      pricingText.includes("$0.75/minute") && pricingText.includes("minimum $14.99") && pricingText.includes("$8.00") && pricingText.includes("$15.00"));
+    check("P5", "EXPANDED state shows the SUR-003 weight schedule",
+      /Through 25 lb/.test(pricingText) &&
+      /Over 25 through 50 lb/.test(pricingText) &&
+      pricingText.includes("+$3.00") &&
+      /Large Item/.test(pricingText));
+    check("P6", "waiting, traffic, return and cancellation schedule render exactly",
+      pricingText.includes("$0.75/minute") &&
+      pricingText.includes("$0.45/minute") &&
+      /priced as a new delivery/i.test(pricingText) &&
+      !pricingText.includes("minimum $14.99") &&
+      pricingText.includes("$8.00") && pricingText.includes("$15.00"));
     check("P7", "overnight is +$30.00 and REQUEST-ONLY (OVN-001/OVN-002 gate)",
       pricingText.includes("+$30.00") && /request-only/.test(pricingText) && !/book overnight/i.test(pricingText));
-    check("P8", "Route Saver from $16.99 per stop (SUR-002)",
-      pricingText.includes("$16.99"));
+    check("P8", "Route Saver is PLANNED and carries no price (SUR-004 retires $16.99)",
+      /Route Saver/.test(pricingText) &&
+      /Not available during the pilot/.test(pricingText) &&
+      !pricingText.includes("$16.99"));
     assertClean("P", pricingText);
     await pricing.screenshot({ path: path.join(SHOTS, "PUB-008-expanded.png"), fullPage: true });
 

@@ -34,6 +34,7 @@
     "test:messaging": "node e2e/disposable/authenticatedMessaging.mjs",
     "test:auth-gateway": "node e2e/disposable/authGateway.mjs",
     "test:acceptance": "node e2e/disposable/acceptanceMatrix.mjs",
+    "test:pricing-v2": "node e2e/disposable/pricingV2Authority.mjs",
     "test:foundation-gate-a": "node e2e/disposable/foundationGateA.mjs",
     "test:foundation-backfill": "node e2e/disposable/foundationBackfill.mjs",
     "test:foundation-rollbacks": "node e2e/disposable/foundationRollbacks.mjs",
