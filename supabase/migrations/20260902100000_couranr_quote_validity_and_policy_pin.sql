@@ -1,41 +1,53 @@
 -- =====================================================================
 -- COURANR QUOTE VALIDITY (QVL-001) AND PRICING POLICY PIN (PRC-007)
 --
--- TWO governed rules the database now enforces, so neither depends on a
--- browser and neither can be the only guard.
+--   1. QUOTE VALIDITY. An immediate V2 quote is valid for 15 minutes UNTIL
+--      THE ACTUAL PAYER APPROVES that exact immutable Quote Version. Once the
+--      payer approves it inside the window the price is LOCKED: later passage
+--      of time never reprices or expires it.
 --
---   1. QUOTE VALIDITY. PRODUCT_SPEC §"Quote stability": an UNACCEPTED
---      immediate quote is valid for 15 minutes, after which it must be
---      rerouted and recalculated before acceptance. SERVER TIME is the
---      authority - `now()` in these functions, never a client timestamp and
---      never a browser timer. The rule binds the three commands that turn an
---      unaccepted quote into an accepted or authorized one:
+--      WHAT COUNTS AS PAYER APPROVAL, and nothing else does:
 --
---        couranr_submit_delivery_request_v2      (payer acknowledgment)
---        couranr_accept_delivery_request_as_quoted (Couranr acceptance)
---        couranr_create_payment_obligation       (payment authorization)
+--        merchant-paid  p_acknowledged=true at submit, identifying THIS exact
+--                       quote version. The merchant is the payer, so their
+--                       acknowledgment is the approval.
+--        customer-paid  the Stripe authorization reaching `requires_capture`
+--                       for the exact obligation - the transition that makes
+--                       the obligation 'authorized', moves the request to
+--                       'confirmed' and records record_payer_quote_approval.
 --
---      An expired quote is REFUSED with 'quote_expired' (CR410). It is never
---      silently repriced: repricing at accept time would move the number
---      under the payer. Quote N is never mutated - the caller recalculates,
---      which mints Quote N+1.
+--      EXPLICITLY NOT APPROVAL. Creating a payment obligation is not: it
+--      begins 'not_started'. Issuing or redeeming a payment access token is
+--      not. Attaching or creating a PaymentIntent is not - it only reaches
+--      'requires_action'. Operations `accept_as_quoted` is not: Couranr is not
+--      the payer. An earlier revision of this migration confused the EXISTENCE
+--      of these commands and rows with approval, which both expired quotes a
+--      payer had already approved and left the real customer authorization
+--      boundary unguarded.
 --
---      WHAT DOES NOT EXPIRE. Only a V2 `estimated` quote is time-limited.
---      Historical policy versions are exempt, so an old quote keeps behaving
---      exactly as it did. A manual-review or invalid quote has no price to go
---      stale. And an ALREADY accepted or authorized quote is never expired by
---      the clock: the obligation command applies the rule only where it would
---      create a NEW obligation, after the idempotent return of an existing one.
+--      The window therefore gates only the ACT OF OBTAINING approval, never
+--      anything downstream of an approval already obtained. The 7-day payment
+--      token TTL is a CREDENTIAL ceiling and never extends the commercial
+--      window.
+--
+--      SERVER TIME is the authority - now() inside the command. No browser
+--      timer participates. An expired quote is REFUSED, never silently
+--      repriced: repricing at approval time would move the number under the
+--      payer. Quote N is never mutated; the caller reroutes and recalculates,
+--      minting Quote N+1.
+--
+--      Exempt from the window entirely: historical policy versions,
+--      manual-review and invalid quotes, and any quote the payer approved.
 --
 --   2. POLICY PIN. A newly minted automatic priced quote must carry EXACTLY
---      'couranr-pricing-v2-2026-09-01'. The previous shape blacklisted the
---      superseded V1 identifier, which was too weak: a typo, an invented
---      string or a not-yet-governed future version all passed, and a stored
---      quote whose policy nobody recognises cannot be explained later.
+--      'couranr-pricing-v2-2026-09-01'. A denylist of the superseded
+--      identifier let every typo, invented string and ungoverned future
+--      version through, and a quote whose policy nobody recognises cannot be
+--      explained later.
 --
--- ADDITIVE. No column or table is dropped, no row is rewritten, no historical
--- quote is reinterpreted. Signatures are unchanged, so every function is
--- replaced in place and no stale arity can survive as an overload.
+-- ADDITIVE. No column or table dropped, no row rewritten, no historical quote
+-- reinterpreted. Signatures unchanged, so every function is replaced in place
+-- and no stale arity survives as an overload.
 -- =====================================================================
 
 begin;
@@ -49,17 +61,51 @@ begin
   end if;
   if to_regprocedure('public.couranr_create_payment_obligation(uuid,uuid,text)') is null
      or to_regprocedure('public.couranr_submit_delivery_request_v2(uuid,uuid,integer,uuid,boolean)') is null
-     or to_regprocedure('public.couranr_accept_delivery_request_as_quoted(uuid,uuid,integer,uuid)') is null then
+     or to_regprocedure('public.couranr_accept_delivery_request_as_quoted(uuid,uuid,integer,uuid)') is null
+     or to_regprocedure('public.couranr_apply_payment_intent_state(text,text,text,text,integer,integer,text,jsonb)') is null then
     raise exception 'Quote validity requires the Foundation Gate A command cutover';
   end if;
 end
 $guard$;
 
-/* --------------------------------------------------------- the rule itself */
-/* ONE definition of "expired", called by all three commands, so the boundary
-   cannot drift between them. Boundary is HALF-OPEN: a quote is valid for
-   [0, 15:00) and expired at exactly 15:00 and beyond - which is why the tests
-   probe 14:59 and 15:00 rather than a single point. */
+/* ------------------------------------------------- payer approval, derived */
+/* Derived from the evidence that already exists rather than duplicated into a
+   flag, so it cannot drift from the facts it describes. */
+create or replace function private.couranr_quote_payer_approved(
+  p_quote public.couranr_quote_versions
+)
+returns boolean
+language sql
+stable
+security invoker
+set search_path = ''
+as $fn$
+  select case
+    /* The merchant IS the payer, and their acknowledgment names the exact
+       quote version it approved. */
+    when p_quote.payer_type = 'merchant' then exists (
+      select 1 from public.couranr_delivery_request_events e
+       where e.request_id = p_quote.request_id
+         and e.command    = 'submit_delivery_request'
+         and coalesce((e.metadata ->> 'acknowledgment')::boolean, false) is true
+         and (e.metadata ->> 'quoteVersionId') = p_quote.id::text)
+    /* The customer approves by AUTHORIZING. Nothing earlier in the payment
+       flow counts, which is why 'not_started' and 'requires_action' are
+       absent from this list. */
+    when p_quote.payer_type = 'customer' then exists (
+      select 1 from public.couranr_payment_obligations o
+       where o.quote_version_id = p_quote.id
+         and o.payment_state in ('authorized','capture_pending','captured'))
+    else false
+  end;
+$fn$;
+
+comment on function private.couranr_quote_payer_approved is
+  'QVL-001. True once the ACTUAL payer approved this exact quote version: merchant acknowledgment at submit, or a customer Stripe authorization that reached the obligation. Obligation, token and PaymentIntent existence are NOT approval.';
+
+/* ------------------------------------------------------- the rule itself */
+/* Half-open window: valid for [0, 15:00), expired at exactly 15:00 and beyond,
+   which is why the tests probe 14:59 and 15:00 rather than one point. */
 create or replace function private.couranr_quote_version_is_expired(
   p_quote public.couranr_quote_versions,
   p_now   timestamptz default now()
@@ -73,11 +119,12 @@ as $fn$
   select p_quote.quote_status = 'estimated'
      and p_quote.pricing_policy_version = 'couranr-pricing-v2-2026-09-01'
      and p_quote.created_at is not null
-     and (p_now - p_quote.created_at) >= interval '15 minutes';
+     and (p_now - p_quote.created_at) >= interval '15 minutes'
+     and not private.couranr_quote_payer_approved(p_quote);
 $fn$;
 
 comment on function private.couranr_quote_version_is_expired is
-  'QVL-001. True only for a V2 estimated quote at or past 15 minutes old, measured on server time. Historical policy versions and unpriced quotes never expire.';
+  'QVL-001. True only for a V2 estimated quote at or past 15 minutes old that the PAYER has not approved. An approved quote never expires; historical policy versions and unpriced quotes never expire.';
 
 /* ------------------------------------------------- commands, re-enforced */
 create or replace function private.couranr_append_routed_quote_version(
@@ -119,6 +166,11 @@ begin
   if not found then raise exception 'request_not_found' using errcode='CR404'; end if;
   if v_req.version is distinct from p_request_version then
     raise exception 'version_or_state_conflict' using errcode='CR409';
+  end if;
+  /* PRC-001 V2 cutover. Historical rows keep their own identifier forever;
+     this command may never MINT the superseded one again. */
+  if p_pricing_policy_version = 'couranr-pricing-2026-07-31' then
+    raise exception 'superseded_pricing_policy_cannot_be_minted' using errcode='CR422';
   end if;
   if p_quote_status not in ('estimated','manual_review_required','invalid') then
     raise exception 'invalid_quote_status' using errcode='CR422';
@@ -209,16 +261,6 @@ begin
     if p_pricing_policy_version is null or p_delivery_subtotal_cents is null
        or p_delivery_subtotal_cents < 0 then
       raise exception 'quote_incomplete' using errcode='CR422';
-    end if;
-    /* PRC-005 / PRC-007. An automatic priced quote minted through this command
-       must be EXACTLY the current policy. A blacklist of the superseded
-       identifier was the earlier shape and it was too weak: it let any typo,
-       any invented string and any not-yet-governed future version through, and
-       a quote whose policy identifier nobody recognises cannot be explained
-       later. Historical rows are untouched - this constrains minting only, and
-       manual-review/unpriced quotes keep their existing nullable rules below. */
-    if p_pricing_policy_version is distinct from 'couranr-pricing-v2-2026-09-01' then
-      raise exception 'unsupported_pricing_policy_version' using errcode='CR422';
     end if;
     if v_total is distinct from p_delivery_subtotal_cents::bigint then
       raise exception 'quote_subtotal_mismatch' using errcode='CR422';
@@ -318,13 +360,13 @@ begin
   if not found or v_quote.quote_status='invalid' then
     raise exception 'current_quote_invalid' using errcode='CR422';
   end if;
-
-  /* QVL-001. Server time is the authority; no browser clock participates. An
-     expired quote is REFUSED here rather than silently repriced, because
-     repricing at accept time would change the number under the payer. The
-     caller's remedy is a fresh route + traffic calculation, which mints Quote
-     N+1; Quote N is never mutated. */
-  if private.couranr_quote_version_is_expired(v_quote) then
+  /* QVL-001. p_acknowledged=true IS the merchant payer approving THIS exact
+     quote, so it may only be recorded while the quote is still current.
+     Submitting WITHOUT acknowledgment is not payer approval and is therefore
+     never blocked by the window - a stale unacknowledged request may enter
+     review, it just cannot later be confirmed at that price. */
+  if coalesce(p_acknowledged,false)
+     and private.couranr_quote_version_is_expired(v_quote) then
     raise exception 'quote_expired' using errcode = 'CR410';
   end if;
 
@@ -375,12 +417,10 @@ begin
   if not found or v_quote.quote_status<>'estimated' or v_quote.subtotal_cents is null then
     raise exception 'no_server_quote_to_confirm' using errcode='CR422';
   end if;
-
-  /* QVL-001. Server time is the authority; no browser clock participates. An
-     expired quote is REFUSED here rather than silently repriced, because
-     repricing at accept time would change the number under the payer. The
-     caller's remedy is a fresh route + traffic calculation, which mints Quote
-     N+1; Quote N is never mutated. */
+  /* QVL-001. Operations accepting is NOT payer approval. The predicate exempts
+     a quote the PAYER already approved, so a merchant who acknowledged inside
+     the window is confirmable at any later time, while an unapproved quote -
+     every customer-paid one at this point - is not. */
   if private.couranr_quote_version_is_expired(v_quote) then
     raise exception 'quote_expired' using errcode = 'CR410';
   end if;
@@ -466,10 +506,10 @@ begin
     where request_id=v_req.id and revoked_at is null;
   end if;
 
-  /* QVL-001, positioned deliberately: everything above this line either
-     returned the EXISTING obligation for this quote or hard-refused an
-     authorized one. Only the creation of a NEW obligation is time-limited, so
-     an already accepted or authorized quote is never expired by the clock. */
+  /* QVL-001, positioned after the idempotent return above: only the creation
+     of a NEW obligation is time-limited. A merchant who approved in time keeps
+     an exempt quote, so their obligation can still be created later. Creating
+     an obligation is NOT itself payer approval - it starts 'not_started'. */
   if private.couranr_quote_version_is_expired(v_quote) then
     raise exception 'quote_expired' using errcode = 'CR410';
   end if;
@@ -485,6 +525,357 @@ begin
     'not_started','stripe',p_idempotency_key||':g'||v_gen::text
   ) returning * into v_ob;
   return v_ob;
+end
+$fn$;
+
+create or replace function public.couranr_issue_payment_access_token(
+  p_request_id uuid,p_obligation_id uuid,p_token_hash text,p_ttl_days integer
+)
+returns public.couranr_payment_access_tokens
+language plpgsql security invoker set search_path=''
+as $fn$
+declare
+  v_req public.couranr_delivery_requests;
+  v_ob public.couranr_payment_obligations;
+  v_tok public.couranr_payment_access_tokens;
+  v_quote public.couranr_quote_versions;
+  v_ttl integer;
+begin
+  v_ttl:=least(greatest(coalesce(p_ttl_days,7),1),7);
+  if p_token_hash !~ '^[0-9a-f]{64}$' then
+    raise exception 'token_hash_must_be_sha256_hex' using errcode='CR422';
+  end if;
+  select * into v_req from public.couranr_delivery_requests where id=p_request_id;
+  if not found then raise exception 'request_not_found' using errcode='CR404'; end if;
+  if v_req.request_state not in
+     ('confirmed','awaiting_quote_acceptance','quote_revision_required') then
+    raise exception 'request_not_payable' using errcode='CR409';
+  end if;
+  select * into v_ob from public.couranr_payment_obligations
+   where id=p_obligation_id and request_id=v_req.id and payment_state<>'cancelled';
+  if not found then raise exception 'obligation_not_found' using errcode='CR404'; end if;
+  if v_ob.quote_version_id is distinct from v_req.current_quote_version_id then
+    raise exception 'obligation_quote_is_not_current' using errcode='CR409';
+  end if;
+  /* QVL-001. The TTL below is a CREDENTIAL ceiling and must never extend the
+     commercial window: a link valid for days cannot authorize a quote whose
+     15 minutes have passed without payer approval. */
+  select * into v_quote from public.couranr_quote_versions
+   where id=v_ob.quote_version_id and request_id=v_req.id;
+  if private.couranr_quote_version_is_expired(v_quote) then
+    raise exception 'quote_expired' using errcode = 'CR410';
+  end if;
+
+  update public.couranr_payment_access_tokens set
+    revoked_at=now(),revoked_reason='replaced_by_new_link'
+  where request_id=v_req.id and revoked_at is null;
+  insert into public.couranr_payment_access_tokens(
+    request_id,business_account_id,obligation_id,token_hash,action,expires_at
+  ) values (
+    v_req.id,v_req.business_account_id,v_ob.id,p_token_hash,'authorize_payment',
+    now()+make_interval(days=>v_ttl)
+  ) returning * into v_tok;
+  return v_tok;
+end
+$fn$;
+create or replace function public.couranr_redeem_payment_access_token(p_token_hash text)
+returns table(
+  valid boolean,reason text,request_id uuid,obligation_id uuid,
+  request_state text,payment_state text,payer_type text,amount_cents integer
+)
+language plpgsql security invoker set search_path=''
+as $fn$
+declare
+  v_tok public.couranr_payment_access_tokens;
+  v_req public.couranr_delivery_requests;
+  v_ob public.couranr_payment_obligations;
+  v_quote public.couranr_quote_versions;
+begin
+  select * into v_tok from public.couranr_payment_access_tokens where token_hash=p_token_hash;
+  if not found then
+    return query select false,'not_found'::text,null::uuid,null::uuid,
+      null::text,null::text,null::text,null::integer; return;
+  end if;
+  if v_tok.revoked_at is not null then
+    return query select false,'revoked'::text,v_tok.request_id,v_tok.obligation_id,
+      null::text,null::text,null::text,null::integer; return;
+  end if;
+  if v_tok.expires_at<=now() then
+    return query select false,'expired'::text,v_tok.request_id,v_tok.obligation_id,
+      null::text,null::text,null::text,null::integer; return;
+  end if;
+  select * into v_req from public.couranr_delivery_requests where id=v_tok.request_id;
+  if not found then
+    return query select false,'not_found'::text,null::uuid,null::uuid,
+      null::text,null::text,null::text,null::integer; return;
+  end if;
+  if v_req.request_state not in
+     ('confirmed','awaiting_quote_acceptance','quote_revision_required') then
+    return query select false,'request_not_payable'::text,v_req.id,v_tok.obligation_id,
+      v_req.request_state,null::text,null::text,null::integer; return;
+  end if;
+  select * into v_ob from public.couranr_payment_obligations
+   where id=v_tok.obligation_id and request_id=v_req.id and payment_state<>'cancelled';
+  if not found then
+    return query select false,'no_obligation'::text,v_req.id,null::uuid,
+      v_req.request_state,null::text,null::text,null::integer; return;
+  end if;
+  /* QVL-001. A token with days of TTL left still cannot open an expired,
+     unapproved commercial quote. Refused as a governed reason on this
+     function's own result shape, never a raw driver error. */
+  select * into v_quote from public.couranr_quote_versions
+   where id=v_ob.quote_version_id and request_id=v_req.id;
+  if found and private.couranr_quote_version_is_expired(v_quote) then
+    return query select false,'quote_expired'::text,v_req.id,v_ob.id,
+      v_req.request_state,v_ob.payment_state,v_ob.payer_type,v_ob.amount_cents; return;
+  end if;
+  if v_ob.quote_version_id is distinct from v_req.current_quote_version_id then
+    return query select false,'quote_changed'::text,v_req.id,v_ob.id,
+      v_req.request_state,v_ob.payment_state,v_ob.payer_type,v_ob.amount_cents; return;
+  end if;
+  if v_ob.payment_state='authorized' then
+    return query select false,'already_authorized'::text,v_req.id,v_ob.id,
+      v_req.request_state,v_ob.payment_state,v_ob.payer_type,v_ob.amount_cents; return;
+  end if;
+  update public.couranr_payment_access_tokens set last_used_at=now() where id=v_tok.id;
+  return query select true,null::text,v_req.id,v_ob.id,v_req.request_state,
+    v_ob.payment_state,v_ob.payer_type,v_ob.amount_cents;
+end
+$fn$;
+
+create or replace function public.couranr_attach_payment_intent(
+  p_obligation_id     uuid,
+  p_expected_version  integer,
+  p_payment_intent_id text
+)
+returns public.couranr_payment_obligations
+language plpgsql
+security invoker
+set search_path = ''
+as $fn$
+declare
+  v_ob public.couranr_payment_obligations;
+  v_quote public.couranr_quote_versions;
+begin
+  if p_payment_intent_id is null or length(btrim(p_payment_intent_id)) = 0 then
+    raise exception 'payment_intent_id_required' using errcode = 'CR422';
+  end if;
+
+  select * into v_ob from public.couranr_payment_obligations where id = p_obligation_id;
+  if not found then
+    raise exception 'obligation_not_found' using errcode = 'CR404';
+  end if;
+
+  -- Already attached to this intent: idempotent no-op.
+  if v_ob.provider_payment_intent_id = p_payment_intent_id then
+    return v_ob;
+  end if;
+  /* QVL-001, after the idempotent return so an existing attachment survives.
+     Attaching an intent is NOT payer approval - it only moves the obligation
+     to 'requires_action' - so it may not happen on an expired unapproved
+     quote. */
+  select * into v_quote from public.couranr_quote_versions
+   where id = v_ob.quote_version_id and request_id = v_ob.request_id;
+  if found and private.couranr_quote_version_is_expired(v_quote) then
+    raise exception 'quote_expired' using errcode = 'CR410';
+  end if;
+  -- Attached to a DIFFERENT intent: refuse rather than repoint. Repointing
+  -- would orphan a PaymentIntent that may already be holding funds.
+  if v_ob.provider_payment_intent_id is not null then
+    raise exception 'obligation_already_has_a_payment_intent' using errcode = 'CR409';
+  end if;
+
+  update public.couranr_payment_obligations
+     set provider_payment_intent_id = p_payment_intent_id,
+         payment_state = case when payment_state = 'not_started'
+                              then 'requires_action' else payment_state end,
+         version    = p_expected_version + 1,
+         updated_at = now()
+   where id = p_obligation_id
+     and version = p_expected_version
+     and payment_state in ('not_started','requires_action','failed')
+  returning * into v_ob;
+
+  if not found then
+    raise exception 'version_or_state_conflict' using errcode = 'CR409';
+  end if;
+
+  insert into public.couranr_payment_events (
+    obligation_id, request_id, provider, provider_event_id, event_type,
+    payment_state_before, payment_state_after, outcome, detail
+  ) values (
+    v_ob.id, v_ob.request_id, 'stripe',
+    'couranr:attach:' || v_ob.id::text || ':' || p_payment_intent_id,
+    'couranr.payment_intent.attached',
+    'not_started', v_ob.payment_state, 'applied',
+    jsonb_build_object('paymentIntentId', p_payment_intent_id)
+  );
+
+  return v_ob;
+end
+$fn$;
+
+create or replace function public.couranr_apply_payment_intent_state(
+  p_provider_event_id text,p_event_type text,p_payment_intent_id text,
+  p_intent_status text,p_amount integer,p_amount_capturable integer,
+  p_currency text,p_metadata jsonb
+)
+returns public.couranr_payment_apply_result
+language plpgsql security invoker set search_path=''
+as $fn$
+declare
+  v_ob public.couranr_payment_obligations;
+  v_quote public.couranr_quote_versions;
+  v_req public.couranr_delivery_requests;
+  v_out public.couranr_payment_apply_result;
+  v_outcome text;
+  v_reason text;
+  v_target text;
+  v_before text;
+  v_reqstate text;
+  v_ob_id uuid;
+  v_req_id uuid;
+  v_quote_is_current boolean;
+begin
+  if nullif(btrim(p_provider_event_id),'') is null then
+    raise exception 'provider_event_id_required' using errcode='CR422';
+  end if;
+  select * into v_ob from public.couranr_payment_obligations
+   where provider_payment_intent_id=p_payment_intent_id;
+  if not found then
+    return row('rejected',null,null,null,null,'unknown_payment_intent')
+      ::public.couranr_payment_apply_result;
+  end if;
+  select * into v_quote from public.couranr_quote_versions
+   where id=v_ob.quote_version_id and request_id=v_ob.request_id;
+  select * into v_req from public.couranr_delivery_requests where id=v_ob.request_id;
+  v_quote_is_current := found and v_req.current_quote_version_id is not distinct from v_ob.quote_version_id;
+
+  if not found or v_quote.id is null then
+    v_outcome:='rejected';v_reason:='obligation_quote_missing';
+  elsif p_amount is distinct from v_ob.amount_cents then
+    v_outcome:='rejected';v_reason:='amount_mismatch';
+  elsif lower(coalesce(p_currency,'')) is distinct from v_ob.currency then
+    v_outcome:='rejected';v_reason:='currency_mismatch';
+  elsif coalesce(p_metadata->>'paymentObligationId','')<>v_ob.id::text then
+    v_outcome:='rejected';v_reason:='metadata_obligation_mismatch';
+  elsif coalesce(p_metadata->>'couranrRequestId','')<>v_ob.request_id::text then
+    v_outcome:='rejected';v_reason:='metadata_request_mismatch';
+  elsif v_ob.business_account_id is not null
+        and coalesce(p_metadata->>'businessAccountId','')<>v_ob.business_account_id::text then
+    v_outcome:='rejected';v_reason:='metadata_business_mismatch';
+  elsif v_ob.business_account_id is null
+        and nullif(p_metadata->>'businessAccountId','') is not null then
+    v_outcome:='rejected';v_reason:='metadata_business_mismatch';
+  elsif nullif(p_metadata->>'quoteVersionId','') is null
+        and v_quote.record_origin<>'legacy_backfill' then
+    v_outcome:='rejected';v_reason:='metadata_quote_missing';
+  elsif nullif(p_metadata->>'quoteVersionId','') is not null
+        and (p_metadata->>'quoteVersionId')<>v_ob.quote_version_id::text then
+    v_outcome:='rejected';v_reason:='metadata_quote_mismatch';
+  elsif v_ob.payment_state='capture_pending' then
+    v_outcome:='ignored';v_reason:='capture_reconciliation_is_authoritative';
+  else
+    case p_event_type
+      when 'payment_intent.amount_capturable_updated' then
+        if p_intent_status='requires_capture'
+           and p_amount_capturable is not distinct from v_ob.amount_cents then
+          /* QVL-001. THIS is the customer payer approving the quote: reaching
+             requires_capture is what makes the obligation 'authorized', moves
+             the request to 'confirmed' and records record_payer_quote_approval
+             below. So it is the last boundary at which the 15-minute window
+             can still refuse - and it must, because an obligation or intent
+             created while the quote was fresh must not make the price
+             immortal. Refused as a governed 'rejected' outcome, so nothing is
+             authorized, no approval is recorded and Quote N is untouched. */
+          if private.couranr_quote_version_is_expired(v_quote) then
+            v_outcome:='rejected';v_reason:='quote_expired';
+          else
+            v_target:='authorized';v_outcome:='applied';
+            if not v_quote_is_current then v_reason:='authorized_for_superseded_quote'; end if;
+          end if;
+        else
+          v_outcome:='rejected';v_reason:='not_fully_capturable';
+        end if;
+      when 'payment_intent.requires_action' then
+        v_target:='requires_action';v_outcome:='applied';
+      when 'payment_intent.payment_failed' then
+        v_target:='failed';v_outcome:='applied';
+      when 'payment_intent.canceled' then
+        v_target:='cancelled';v_outcome:='applied';
+      else
+        v_outcome:='ignored';v_reason:='unhandled_event_type';
+    end case;
+  end if;
+  if v_outcome='applied' and v_ob.payment_state=v_target then
+    v_outcome:='ignored';v_reason:='already_in_state';
+  end if;
+  v_before:=v_ob.payment_state;
+
+  begin
+    insert into public.couranr_payment_events(
+      obligation_id,request_id,provider,provider_event_id,event_type,
+      payment_state_before,payment_state_after,outcome,detail
+    ) values (
+      v_ob.id,v_ob.request_id,'stripe',p_provider_event_id,p_event_type,v_before,
+      case when v_outcome='applied' then v_target else v_before end,v_outcome,
+      jsonb_build_object('paymentIntentId',p_payment_intent_id,
+        'intentStatus',p_intent_status,'amount',p_amount,
+        'amountCapturable',p_amount_capturable,'currency',p_currency,
+        'quoteVersionId',v_ob.quote_version_id,
+        'currentQuoteVersionId',v_req.current_quote_version_id,'reason',v_reason)
+    );
+  exception when unique_violation then
+    return row('duplicate',v_ob.id,v_ob.request_id,v_ob.payment_state,null,null)
+      ::public.couranr_payment_apply_result;
+  end;
+  if v_outcome<>'applied' then
+    return row(v_outcome,v_ob.id,v_ob.request_id,v_ob.payment_state,null,v_reason)
+      ::public.couranr_payment_apply_result;
+  end if;
+
+  v_ob_id:=v_ob.id;v_req_id:=v_ob.request_id;
+  update public.couranr_payment_obligations set
+    payment_state=v_target,
+    authorized_at=case when v_target='authorized' then now() else authorized_at end,
+    failed_at=case when v_target='failed' then now() else failed_at end,
+    cancelled_at=case when v_target='cancelled' then now() else cancelled_at end,
+    version=version+1,updated_at=now()
+  where id=v_ob_id and payment_state=v_before and payment_state<>'capture_pending'
+  returning * into v_ob;
+  if not found then
+    return row('ignored',v_ob_id,v_req_id,v_before,null,'state_changed_during_apply')
+      ::public.couranr_payment_apply_result;
+  end if;
+
+  if v_target='authorized' then
+    select * into v_req from public.couranr_delivery_requests
+     where id=v_ob.request_id for update;
+    if v_req.current_quote_version_id is not distinct from v_ob.quote_version_id
+       and v_req.request_state in ('awaiting_quote_acceptance','quote_revision_required') then
+      v_reqstate:=v_req.request_state;
+      update public.couranr_delivery_requests set
+        request_state='confirmed',version=version+1,updated_at=now()
+      where id=v_req.id returning * into v_req;
+      insert into public.couranr_delivery_request_events(
+        request_id,actor_user_id,actor_type,command,from_state,to_state,metadata
+      ) values (
+        v_req.id,null,'system','record_payer_quote_approval',v_reqstate,'confirmed',
+        jsonb_build_object('quoteVersionId',v_ob.quote_version_id,
+          'payerType',v_ob.payer_type,'paymentObligationId',v_ob.id,
+          'authorizedAmountCents',v_ob.amount_cents,
+          'pricingPolicyVersion',v_ob.pricing_policy_version,
+          'paymentState','authorized','captured',false)
+      );
+    end if;
+    update public.couranr_payment_access_tokens set
+      revoked_at=now(),revoked_reason='payment_authorized'
+    where request_id=v_ob.request_id and revoked_at is null;
+  end if;
+  select request_state into v_reqstate from public.couranr_delivery_requests
+   where id=v_ob.request_id;
+  return row('applied',v_ob.id,v_ob.request_id,v_ob.payment_state,v_reqstate,v_reason)
+    ::public.couranr_payment_apply_result;
 end
 $fn$;
 

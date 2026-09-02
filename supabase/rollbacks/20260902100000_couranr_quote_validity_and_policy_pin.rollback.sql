@@ -3,16 +3,18 @@
 --
 -- Purely behavioural: this batch added no column, no constraint and no row,
 -- so there is nothing here that can destroy evidence and nothing to refuse
--- over. Rolling back restores the four PRE-QVL function bodies verbatim from
--- the migrations that defined them, extracted rather than retyped so they
--- cannot drift, and drops the shared predicate last.
+-- over. It restores the eight PRE-QVL bodies verbatim from the migrations
+-- that defined them, extracted rather than retyped so they cannot drift, and
+-- drops the two predicates last.
 --
--- WHAT ROLLING BACK COSTS, stated plainly: quotes stop expiring, and the
--- minting boundary falls back to blacklisting only the superseded V1
--- identifier. Quotes already minted are unaffected either way.
+-- WHAT ROLLING BACK COSTS, stated plainly: quotes stop expiring, the customer
+-- authorization boundary stops checking the window, and minting falls back to
+-- denying only the superseded V1 identifier. Approvals and authorizations
+-- already recorded are unaffected either way - nothing here reads or writes
+-- commercial evidence.
 --
--- Idempotent: every statement is `create or replace` or `drop ... if exists`,
--- so a second run is a clean no-op rather than a "function already exists".
+-- Idempotent: every statement is create-or-replace or drop-if-exists, so a
+-- second run is a clean no-op rather than "function already exists".
 -- =====================================================================
 
 begin;
@@ -396,8 +398,322 @@ begin
 end
 $fn$;
 
+create or replace function public.couranr_issue_payment_access_token(
+  p_request_id uuid,p_obligation_id uuid,p_token_hash text,p_ttl_days integer
+)
+returns public.couranr_payment_access_tokens
+language plpgsql security invoker set search_path=''
+as $fn$
+declare
+  v_req public.couranr_delivery_requests;
+  v_ob public.couranr_payment_obligations;
+  v_tok public.couranr_payment_access_tokens;
+  v_ttl integer;
+begin
+  v_ttl:=least(greatest(coalesce(p_ttl_days,7),1),7);
+  if p_token_hash !~ '^[0-9a-f]{64}$' then
+    raise exception 'token_hash_must_be_sha256_hex' using errcode='CR422';
+  end if;
+  select * into v_req from public.couranr_delivery_requests where id=p_request_id;
+  if not found then raise exception 'request_not_found' using errcode='CR404'; end if;
+  if v_req.request_state not in
+     ('confirmed','awaiting_quote_acceptance','quote_revision_required') then
+    raise exception 'request_not_payable' using errcode='CR409';
+  end if;
+  select * into v_ob from public.couranr_payment_obligations
+   where id=p_obligation_id and request_id=v_req.id and payment_state<>'cancelled';
+  if not found then raise exception 'obligation_not_found' using errcode='CR404'; end if;
+  if v_ob.quote_version_id is distinct from v_req.current_quote_version_id then
+    raise exception 'obligation_quote_is_not_current' using errcode='CR409';
+  end if;
+
+  update public.couranr_payment_access_tokens set
+    revoked_at=now(),revoked_reason='replaced_by_new_link'
+  where request_id=v_req.id and revoked_at is null;
+  insert into public.couranr_payment_access_tokens(
+    request_id,business_account_id,obligation_id,token_hash,action,expires_at
+  ) values (
+    v_req.id,v_req.business_account_id,v_ob.id,p_token_hash,'authorize_payment',
+    now()+make_interval(days=>v_ttl)
+  ) returning * into v_tok;
+  return v_tok;
+end
+$fn$;
+
+create or replace function public.couranr_redeem_payment_access_token(p_token_hash text)
+returns table(
+  valid boolean,reason text,request_id uuid,obligation_id uuid,
+  request_state text,payment_state text,payer_type text,amount_cents integer
+)
+language plpgsql security invoker set search_path=''
+as $fn$
+declare
+  v_tok public.couranr_payment_access_tokens;
+  v_req public.couranr_delivery_requests;
+  v_ob public.couranr_payment_obligations;
+begin
+  select * into v_tok from public.couranr_payment_access_tokens where token_hash=p_token_hash;
+  if not found then
+    return query select false,'not_found'::text,null::uuid,null::uuid,
+      null::text,null::text,null::text,null::integer; return;
+  end if;
+  if v_tok.revoked_at is not null then
+    return query select false,'revoked'::text,v_tok.request_id,v_tok.obligation_id,
+      null::text,null::text,null::text,null::integer; return;
+  end if;
+  if v_tok.expires_at<=now() then
+    return query select false,'expired'::text,v_tok.request_id,v_tok.obligation_id,
+      null::text,null::text,null::text,null::integer; return;
+  end if;
+  select * into v_req from public.couranr_delivery_requests where id=v_tok.request_id;
+  if not found then
+    return query select false,'not_found'::text,null::uuid,null::uuid,
+      null::text,null::text,null::text,null::integer; return;
+  end if;
+  if v_req.request_state not in
+     ('confirmed','awaiting_quote_acceptance','quote_revision_required') then
+    return query select false,'request_not_payable'::text,v_req.id,v_tok.obligation_id,
+      v_req.request_state,null::text,null::text,null::integer; return;
+  end if;
+  select * into v_ob from public.couranr_payment_obligations
+   where id=v_tok.obligation_id and request_id=v_req.id and payment_state<>'cancelled';
+  if not found then
+    return query select false,'no_obligation'::text,v_req.id,null::uuid,
+      v_req.request_state,null::text,null::text,null::integer; return;
+  end if;
+  if v_ob.quote_version_id is distinct from v_req.current_quote_version_id then
+    return query select false,'quote_changed'::text,v_req.id,v_ob.id,
+      v_req.request_state,v_ob.payment_state,v_ob.payer_type,v_ob.amount_cents; return;
+  end if;
+  if v_ob.payment_state='authorized' then
+    return query select false,'already_authorized'::text,v_req.id,v_ob.id,
+      v_req.request_state,v_ob.payment_state,v_ob.payer_type,v_ob.amount_cents; return;
+  end if;
+  update public.couranr_payment_access_tokens set last_used_at=now() where id=v_tok.id;
+  return query select true,null::text,v_req.id,v_ob.id,v_req.request_state,
+    v_ob.payment_state,v_ob.payer_type,v_ob.amount_cents;
+end
+$fn$;
+
+create or replace function public.couranr_attach_payment_intent(
+  p_obligation_id     uuid,
+  p_expected_version  integer,
+  p_payment_intent_id text
+)
+returns public.couranr_payment_obligations
+language plpgsql
+security invoker
+set search_path = ''
+as $fn$
+declare
+  v_ob public.couranr_payment_obligations;
+begin
+  if p_payment_intent_id is null or length(btrim(p_payment_intent_id)) = 0 then
+    raise exception 'payment_intent_id_required' using errcode = 'CR422';
+  end if;
+
+  select * into v_ob from public.couranr_payment_obligations where id = p_obligation_id;
+  if not found then
+    raise exception 'obligation_not_found' using errcode = 'CR404';
+  end if;
+
+  -- Already attached to this intent: idempotent no-op.
+  if v_ob.provider_payment_intent_id = p_payment_intent_id then
+    return v_ob;
+  end if;
+  -- Attached to a DIFFERENT intent: refuse rather than repoint. Repointing
+  -- would orphan a PaymentIntent that may already be holding funds.
+  if v_ob.provider_payment_intent_id is not null then
+    raise exception 'obligation_already_has_a_payment_intent' using errcode = 'CR409';
+  end if;
+
+  update public.couranr_payment_obligations
+     set provider_payment_intent_id = p_payment_intent_id,
+         payment_state = case when payment_state = 'not_started'
+                              then 'requires_action' else payment_state end,
+         version    = p_expected_version + 1,
+         updated_at = now()
+   where id = p_obligation_id
+     and version = p_expected_version
+     and payment_state in ('not_started','requires_action','failed')
+  returning * into v_ob;
+
+  if not found then
+    raise exception 'version_or_state_conflict' using errcode = 'CR409';
+  end if;
+
+  insert into public.couranr_payment_events (
+    obligation_id, request_id, provider, provider_event_id, event_type,
+    payment_state_before, payment_state_after, outcome, detail
+  ) values (
+    v_ob.id, v_ob.request_id, 'stripe',
+    'couranr:attach:' || v_ob.id::text || ':' || p_payment_intent_id,
+    'couranr.payment_intent.attached',
+    'not_started', v_ob.payment_state, 'applied',
+    jsonb_build_object('paymentIntentId', p_payment_intent_id)
+  );
+
+  return v_ob;
+end
+$fn$;
+
+create or replace function public.couranr_apply_payment_intent_state(
+  p_provider_event_id text,p_event_type text,p_payment_intent_id text,
+  p_intent_status text,p_amount integer,p_amount_capturable integer,
+  p_currency text,p_metadata jsonb
+)
+returns public.couranr_payment_apply_result
+language plpgsql security invoker set search_path=''
+as $fn$
+declare
+  v_ob public.couranr_payment_obligations;
+  v_quote public.couranr_quote_versions;
+  v_req public.couranr_delivery_requests;
+  v_out public.couranr_payment_apply_result;
+  v_outcome text;
+  v_reason text;
+  v_target text;
+  v_before text;
+  v_reqstate text;
+  v_ob_id uuid;
+  v_req_id uuid;
+  v_quote_is_current boolean;
+begin
+  if nullif(btrim(p_provider_event_id),'') is null then
+    raise exception 'provider_event_id_required' using errcode='CR422';
+  end if;
+  select * into v_ob from public.couranr_payment_obligations
+   where provider_payment_intent_id=p_payment_intent_id;
+  if not found then
+    return row('rejected',null,null,null,null,'unknown_payment_intent')
+      ::public.couranr_payment_apply_result;
+  end if;
+  select * into v_quote from public.couranr_quote_versions
+   where id=v_ob.quote_version_id and request_id=v_ob.request_id;
+  select * into v_req from public.couranr_delivery_requests where id=v_ob.request_id;
+  v_quote_is_current := found and v_req.current_quote_version_id is not distinct from v_ob.quote_version_id;
+
+  if not found or v_quote.id is null then
+    v_outcome:='rejected';v_reason:='obligation_quote_missing';
+  elsif p_amount is distinct from v_ob.amount_cents then
+    v_outcome:='rejected';v_reason:='amount_mismatch';
+  elsif lower(coalesce(p_currency,'')) is distinct from v_ob.currency then
+    v_outcome:='rejected';v_reason:='currency_mismatch';
+  elsif coalesce(p_metadata->>'paymentObligationId','')<>v_ob.id::text then
+    v_outcome:='rejected';v_reason:='metadata_obligation_mismatch';
+  elsif coalesce(p_metadata->>'couranrRequestId','')<>v_ob.request_id::text then
+    v_outcome:='rejected';v_reason:='metadata_request_mismatch';
+  elsif v_ob.business_account_id is not null
+        and coalesce(p_metadata->>'businessAccountId','')<>v_ob.business_account_id::text then
+    v_outcome:='rejected';v_reason:='metadata_business_mismatch';
+  elsif v_ob.business_account_id is null
+        and nullif(p_metadata->>'businessAccountId','') is not null then
+    v_outcome:='rejected';v_reason:='metadata_business_mismatch';
+  elsif nullif(p_metadata->>'quoteVersionId','') is null
+        and v_quote.record_origin<>'legacy_backfill' then
+    v_outcome:='rejected';v_reason:='metadata_quote_missing';
+  elsif nullif(p_metadata->>'quoteVersionId','') is not null
+        and (p_metadata->>'quoteVersionId')<>v_ob.quote_version_id::text then
+    v_outcome:='rejected';v_reason:='metadata_quote_mismatch';
+  elsif v_ob.payment_state='capture_pending' then
+    v_outcome:='ignored';v_reason:='capture_reconciliation_is_authoritative';
+  else
+    case p_event_type
+      when 'payment_intent.amount_capturable_updated' then
+        if p_intent_status='requires_capture'
+           and p_amount_capturable is not distinct from v_ob.amount_cents then
+          v_target:='authorized';v_outcome:='applied';
+          if not v_quote_is_current then v_reason:='authorized_for_superseded_quote'; end if;
+        else
+          v_outcome:='rejected';v_reason:='not_fully_capturable';
+        end if;
+      when 'payment_intent.requires_action' then
+        v_target:='requires_action';v_outcome:='applied';
+      when 'payment_intent.payment_failed' then
+        v_target:='failed';v_outcome:='applied';
+      when 'payment_intent.canceled' then
+        v_target:='cancelled';v_outcome:='applied';
+      else
+        v_outcome:='ignored';v_reason:='unhandled_event_type';
+    end case;
+  end if;
+  if v_outcome='applied' and v_ob.payment_state=v_target then
+    v_outcome:='ignored';v_reason:='already_in_state';
+  end if;
+  v_before:=v_ob.payment_state;
+
+  begin
+    insert into public.couranr_payment_events(
+      obligation_id,request_id,provider,provider_event_id,event_type,
+      payment_state_before,payment_state_after,outcome,detail
+    ) values (
+      v_ob.id,v_ob.request_id,'stripe',p_provider_event_id,p_event_type,v_before,
+      case when v_outcome='applied' then v_target else v_before end,v_outcome,
+      jsonb_build_object('paymentIntentId',p_payment_intent_id,
+        'intentStatus',p_intent_status,'amount',p_amount,
+        'amountCapturable',p_amount_capturable,'currency',p_currency,
+        'quoteVersionId',v_ob.quote_version_id,
+        'currentQuoteVersionId',v_req.current_quote_version_id,'reason',v_reason)
+    );
+  exception when unique_violation then
+    return row('duplicate',v_ob.id,v_ob.request_id,v_ob.payment_state,null,null)
+      ::public.couranr_payment_apply_result;
+  end;
+  if v_outcome<>'applied' then
+    return row(v_outcome,v_ob.id,v_ob.request_id,v_ob.payment_state,null,v_reason)
+      ::public.couranr_payment_apply_result;
+  end if;
+
+  v_ob_id:=v_ob.id;v_req_id:=v_ob.request_id;
+  update public.couranr_payment_obligations set
+    payment_state=v_target,
+    authorized_at=case when v_target='authorized' then now() else authorized_at end,
+    failed_at=case when v_target='failed' then now() else failed_at end,
+    cancelled_at=case when v_target='cancelled' then now() else cancelled_at end,
+    version=version+1,updated_at=now()
+  where id=v_ob_id and payment_state=v_before and payment_state<>'capture_pending'
+  returning * into v_ob;
+  if not found then
+    return row('ignored',v_ob_id,v_req_id,v_before,null,'state_changed_during_apply')
+      ::public.couranr_payment_apply_result;
+  end if;
+
+  if v_target='authorized' then
+    select * into v_req from public.couranr_delivery_requests
+     where id=v_ob.request_id for update;
+    if v_req.current_quote_version_id is not distinct from v_ob.quote_version_id
+       and v_req.request_state in ('awaiting_quote_acceptance','quote_revision_required') then
+      v_reqstate:=v_req.request_state;
+      update public.couranr_delivery_requests set
+        request_state='confirmed',version=version+1,updated_at=now()
+      where id=v_req.id returning * into v_req;
+      insert into public.couranr_delivery_request_events(
+        request_id,actor_user_id,actor_type,command,from_state,to_state,metadata
+      ) values (
+        v_req.id,null,'system','record_payer_quote_approval',v_reqstate,'confirmed',
+        jsonb_build_object('quoteVersionId',v_ob.quote_version_id,
+          'payerType',v_ob.payer_type,'paymentObligationId',v_ob.id,
+          'authorizedAmountCents',v_ob.amount_cents,
+          'pricingPolicyVersion',v_ob.pricing_policy_version,
+          'paymentState','authorized','captured',false)
+      );
+    end if;
+    update public.couranr_payment_access_tokens set
+      revoked_at=now(),revoked_reason='payment_authorized'
+    where request_id=v_ob.request_id and revoked_at is null;
+  end if;
+  select request_state into v_reqstate from public.couranr_delivery_requests
+   where id=v_ob.request_id;
+  return row('applied',v_ob.id,v_ob.request_id,v_ob.payment_state,v_reqstate,v_reason)
+    ::public.couranr_payment_apply_result;
+end
+$fn$;
+
 drop function if exists private.couranr_quote_version_is_expired(
   public.couranr_quote_versions, timestamptz
+);
+drop function if exists private.couranr_quote_payer_approved(
+  public.couranr_quote_versions
 );
 
 commit;
