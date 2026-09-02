@@ -4086,7 +4086,10 @@
         "surge_or_demand_multiplier": false,
         "weather_multiplier": false,
         "event_multiplier": false,
-        "missing_evidence_behaviour": "fail safe into review; never fabricate a traffic fact or assume a zero delay"
+        "missing_evidence_behaviour": "fail safe into review; never fabricate a traffic fact or assume a zero delay",
+        "traffic_basis": "immediate departure only",
+        "departure_time_sent_to_google": false,
+        "scheduled_or_future_departure_traffic": "not implemented — deferred"
       },
       "acceptance_criteria": [
         "Five minutes of predicted delay adds nothing.",
@@ -4103,7 +4106,8 @@
         "resolution": "Route evidence now carries both the traffic-aware and static durations and derives the delay server-side.",
         "remediation_commit": "Pricing V2 cutover"
       },
-      "implementation_phase": "Pricing V2 cutover"
+      "implementation_phase": "Pricing V2 cutover",
+      "note": "SCOPE, stated rather than implied: the Routes request pins routingPreference TRAFFIC_AWARE and sends NO departureTime, so Google prices the traffic conditions for now. That is correct for the only timing the Business create-delivery flow can currently express - it has no canonical requested departure-time input. Future or scheduled departure traffic is therefore NOT implemented and must not be described as complete; it belongs to the next Business timing / Smart Intake batch, which owns the input schema. No scheduling model is invented here."
     },
     {
       "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
@@ -4155,7 +4159,7 @@
     },
     {
       "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
-      "authority_section": "§4 Pricing registry — Couranr Pricing Authority V2 amendment",
+      "authority_section": "§4 Pricing registry — Couranr Pricing Authority V2 amendment (supersedes the return pricing in §11 Delivery lifecycle, proof, exceptions, and returns)",
       "affected_routes": [
         "/estimate",
         "/business/deliveries/new",
@@ -4204,7 +4208,8 @@
         "resolution": "The percentage rule is removed from public authority; a return is a new Pricing V2 route.",
         "remediation_commit": "Pricing V2 cutover"
       },
-      "implementation_phase": "Pricing V2 cutover"
+      "implementation_phase": "Pricing V2 cutover",
+      "note": "§11 still reads 'Return: 70% of original, $14.99 minimum' because PRODUCT_SPEC.md's §1–§18 are a byte-verbatim extraction of the Master Package, proven in both directions by tests/couranr-product-spec.test.ts. That line is preserved history, not live authority: the §4 amendment layer retires it, and this record is what makes the supersession explicit to anyone who greps §11 first."
     },
     {
       "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",

@@ -855,10 +855,17 @@ async function groupH() {
     await signIn(page, USERS.merchant, { expectLanding: "/app/business" });
     await page.goto(`${BASE_URL}/app/business/deliveries/new`, { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(3500);
+    /* "Loaded miles" is GONE by design: distance is server-side Routes
+       evidence now, and a browser mileage field would be a money input the
+       server does not trust. Asserting it renders would assert the defect the
+       Places cutover removed - so this asserts its ABSENCE alongside the
+       fields that legitimately remain. */
     const miles = await page.getByLabel("Loaded miles").count();
     const weight = await page.getByLabel("Weight (lb)").count();
-    check("H1", "MER-005 renders its shipment fields for a merchant",
-      miles === 1 && weight === 1, `loadedMiles=${miles} weight=${weight}`);
+    const search = await page.getByLabel(/Search address/i).count();
+    check("H1", "MER-005 renders its shipment fields, and no browser mileage input",
+      miles === 0 && weight === 1 && search === 2,
+      `loadedMiles=${miles} (want 0) weight=${weight} searchAddress=${search} (want 2)`);
     await shot(page, "H1-new-delivery");
     await ctx.close();
   }
@@ -1249,30 +1256,39 @@ async function createRequestThroughUi(page, accountId, { acknowledge }) {
   const beforeIds = new Set(before.map((r) => r.id));
 
   await page.goto(`${BASE_URL}/app/business/deliveries/new`, { waitUntil: "domcontentloaded" });
-  await page.getByLabel("Loaded miles").waitFor({ state: "visible", timeout: 25000 });
 
-  /**
-   * Labels are NOT matched exactly. `Field` appends a required marker, so the
-   * rendered label text is "Street address*" and "Loaded miles*", while an
-   * optional field reads "Suite, unit or floor (optional)". An exact match
-   * finds nothing — which is how the first version of this helper timed out.
+  /*
+   * The Places cutover REPLACED this intake. There is no "Street address",
+   * "City", "State", "ZIP" or "Loaded miles" control any more: an address is a
+   * Google Place snapshot chosen through PlaceAutocompleteElement, and
+   * distance comes from server-side Routes evidence, never a browser field.
+   * This helper filled all five and timed out on the first.
+   *
+   * It cannot be fixed by choosing different selectors. Selecting a Place needs
+   * the Google Maps JS API, which this container's Chromium cannot reach, and
+   * NEXT_PUBLIC_GOOGLE_MAPS_API_KEY is unset here - so the page renders its own
+   * "Address search is unavailable" warning and the flow genuinely is not
+   * drivable. Faking a selection would prove nothing about the real widget.
+   *
+   * So it reports INCONCLUSIVE rather than pretending, and says why. That is
+   * deliberately not a silent skip. Unblocking it needs a Places-capable
+   * environment or a sanctioned Maps stub, which belongs with the Business
+   * timing / Smart Intake batch.
    */
-  const fill = (label, value) => page.getByLabel(label).first().fill(value);
-  // Pickup and Dropoff use the SAME field labels, so they are scoped by card.
-  const card = (title) =>
-    page.locator(".cr-card").filter({ has: page.getByRole("heading", { name: title }) }).first();
-  const inCard = (title, label, value) => card(title).getByLabel(label).first().fill(value);
-
-  await inCard("Pickup", "Street address", SHIPMENT.pickup.line1);
-  await inCard("Pickup", "City", SHIPMENT.pickup.city);
-  await inCard("Pickup", "State", SHIPMENT.pickup.region);
-  await inCard("Pickup", "ZIP", SHIPMENT.pickup.postalCode);
-  await inCard("Dropoff", "Street address", SHIPMENT.dropoff.line1);
-  await inCard("Dropoff", "City", SHIPMENT.dropoff.city);
-  await inCard("Dropoff", "State", SHIPMENT.dropoff.region);
-  await inCard("Dropoff", "ZIP", SHIPMENT.dropoff.postalCode);
-  await fill("Loaded miles", SHIPMENT.loadedMiles);
-  await fill("Weight (lb)", SHIPMENT.weightLb);
+  const placesReady = await page
+    .locator("gmp-place-autocomplete, .cr-google-place-autocomplete")
+    .first()
+    .isVisible()
+    .catch(() => false);
+  if (!placesReady) {
+    inconclusive(
+      "MER-005",
+      "create a delivery through the UI",
+      "Google Places autocomplete did not render - no browser Maps key in this environment, and " +
+        "the typed Street/City/State/ZIP/Loaded-miles intake it replaced no longer exists"
+    );
+    return { id: null, ackVisible: false, inconclusive: true };
+  }
 
   await page.getByRole("button", { name: /calculate estimate/i }).click();
   await page.getByRole("button", { name: /submit for couranr review/i }).waitFor({
