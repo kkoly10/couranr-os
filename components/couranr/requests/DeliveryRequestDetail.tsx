@@ -415,7 +415,15 @@ export function DeliveryRequestDetail({ id }: { id: string }) {
                     {intake.facts.map((f) => (
                       <tr key={f.fact_key}>
                         <td>{f.fact_key}</td>
-                        <td>{typeof f.value === "boolean" ? (f.value ? "yes" : "no") : String(f.value)}</td>
+                        <td>
+                          {f.value === null
+                            ? "withdrawn"
+                            : typeof f.value === "boolean"
+                              ? f.value
+                                ? "yes"
+                                : "no"
+                              : String(f.value)}
+                        </td>
                         <td>{f.source}</td>
                         <td>
                           <Badge tone={f.authority === "confirmed" || f.authority === "overridden" ? "success" : "neutral"}>

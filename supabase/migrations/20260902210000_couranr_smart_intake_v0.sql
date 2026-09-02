@@ -188,7 +188,7 @@ create table if not exists public.couranr_intake_fact_events (
   created_at     timestamptz not null default now(),
 
   constraint couranr_ife_event_chk check (event in
-    ('proposed','confirmed','overridden','ai_disagreement_retained',
+    ('proposed','confirmed','overridden','retracted','ai_disagreement_retained',
      'committed_to_request'))
 );
 
@@ -328,12 +328,15 @@ create or replace function public.couranr_begin_intake_run(
   p_idempotency_key     text,
   p_input_data_classes  jsonb
 )
-returns public.couranr_intake_runs
+returns jsonb
 language plpgsql security invoker set search_path=''
 as $fn$
 declare
   v_session public.couranr_intake_sessions;
-  v_run public.couranr_intake_runs;
+  -- jsonb, not the row type: PL/pgSQL refuses a record variable inside a
+  -- multi-item INTO list, and the run leaves this function as jsonb anyway.
+  v_run jsonb;
+  v_claimed boolean;
 begin
   select * into v_session from public.couranr_intake_sessions
    where id = p_session_id and business_account_id = p_business_account_id;
@@ -349,9 +352,13 @@ begin
     raise exception 'input_data_classes_must_be_array' using errcode='CR422';
   end if;
 
-  -- §7 idempotency: one logical operation converges onto one run, however
-  -- many times the HTTP layer retried it.
-  insert into public.couranr_intake_runs(
+  /* §7 idempotency, and the part a row-level converge alone does not give:
+     exactly ONE caller is told it CLAIMED the run. Two concurrent callers
+     both converge on the same row, but only the inserter gets claimed=true
+     and is the one that spends provider money; the other returns the
+     pending run and waits for it. The `xmax = 0` test is the standard way
+     to tell an inserted row from a conflict-updated one in one statement. */
+  insert into public.couranr_intake_runs as r (
     session_id, source_revision, prompt_version, fact_schema_version,
     provider, idempotency_key, input_data_classes, status
   ) values (
@@ -360,10 +367,9 @@ begin
     p_provider, p_idempotency_key, coalesce(p_input_data_classes,'[]'::jsonb),
     'pending'
   )
-  on conflict (session_id, idempotency_key) do nothing;
-
-  select * into v_run from public.couranr_intake_runs
-   where session_id = p_session_id and idempotency_key = p_idempotency_key;
+  on conflict (session_id, idempotency_key)
+    do update set idempotency_key = excluded.idempotency_key
+  returning to_jsonb(r), (r.xmax = 0) into v_run, v_claimed;
 
   update public.couranr_intake_sessions
      set interpretation_status = case when interpretation_status = 'none'
@@ -371,7 +377,7 @@ begin
          updated_at = now()
    where id = p_session_id;
 
-  return v_run;
+  return jsonb_build_object('run', v_run, 'claimed', v_claimed);
 end
 $fn$;
 
@@ -593,6 +599,108 @@ begin
 end
 $fn$;
 
+/* A merchant's LATER statement can withdraw an earlier one: intake confirmed
+   "12 lb exact", then the structured form says "25–50 lb". Both cannot stand
+   — the policy engine would read a conflict and the commit check would refuse
+   the band as contradicting the exact. The row is not deleted (service_role
+   holds no DELETE on facts, deliberately): it becomes authority='unknown'
+   with a null value, which every reader already treats as "not known" — the
+   engine ignores untrusted authority, the commit check compares only
+   confirmed/overridden, the panel hides it. The withdrawal is audited like
+   every other fact change, with the value it replaced. */
+create or replace function public.couranr_retract_intake_fact(
+  p_session_id          uuid,
+  p_business_account_id uuid,
+  p_actor_user_id       uuid,
+  p_fact_key            text
+)
+returns public.couranr_intake_facts
+language plpgsql security invoker set search_path=''
+as $fn$
+declare
+  v_session public.couranr_intake_sessions;
+  v_existing public.couranr_intake_facts;
+  v_fact public.couranr_intake_facts;
+begin
+  select * into v_session from public.couranr_intake_sessions
+   where id = p_session_id and business_account_id = p_business_account_id
+   for update;
+  if not found then
+    raise exception 'intake_session_not_found' using errcode='CR404';
+  end if;
+
+  select * into v_existing from public.couranr_intake_facts
+   where session_id = p_session_id and fact_key = p_fact_key;
+  if not found then
+    raise exception 'intake_fact_not_found' using errcode='CR404';
+  end if;
+  if v_existing.authority = 'unknown' then
+    -- Already withdrawn: idempotent, no second event.
+    return v_existing;
+  end if;
+
+  update public.couranr_intake_facts
+     set value = 'null'::jsonb,
+         confidence = null,
+         source = 'merchant_statement',
+         requires_confirmation = false,
+         authority = 'unknown',
+         actor_user_id = p_actor_user_id,
+         revision = revision + 1,
+         updated_at = now()
+   where session_id = p_session_id and fact_key = p_fact_key
+  returning * into v_fact;
+
+  insert into public.couranr_intake_fact_events(
+    session_id, fact_key, event, from_value, to_value,
+    from_authority, to_authority, actor_user_id
+  ) values (
+    p_session_id, p_fact_key, 'retracted',
+    v_existing.value, 'null'::jsonb, v_existing.authority, 'unknown', p_actor_user_id
+  );
+
+  update public.couranr_intake_sessions set updated_at = now() where id = p_session_id;
+  return v_fact;
+end
+$fn$;
+
+/* An intake session starts before its request exists (the merchant describes
+   first, the draft is created on calculate). Linking is a one-time, tenant-
+   scoped act: a session already bound to a DIFFERENT request is refused, so
+   evidence can never be re-pointed at another delivery. */
+create or replace function public.couranr_link_intake_session(
+  p_session_id          uuid,
+  p_business_account_id uuid,
+  p_request_id          uuid
+)
+returns public.couranr_intake_sessions
+language plpgsql security invoker set search_path=''
+as $fn$
+declare
+  v_session public.couranr_intake_sessions;
+begin
+  select * into v_session from public.couranr_intake_sessions
+   where id = p_session_id and business_account_id = p_business_account_id
+   for update;
+  if not found then
+    raise exception 'intake_session_not_found' using errcode='CR404';
+  end if;
+  if not exists (select 1 from public.couranr_delivery_requests
+                  where id = p_request_id
+                    and business_account_id = p_business_account_id) then
+    raise exception 'request_not_found' using errcode='CR404';
+  end if;
+  if v_session.request_id is not null and v_session.request_id <> p_request_id then
+    raise exception 'intake_session_already_linked' using errcode='CR409';
+  end if;
+  update public.couranr_intake_sessions
+     set request_id = p_request_id, updated_at = now()
+   where id = p_session_id
+  returning * into v_session;
+  return v_session;
+end
+$fn$;
+
 create or replace function public.couranr_record_intake_policy(
   p_session_id            uuid,
   p_business_account_id   uuid,
@@ -778,6 +886,16 @@ grant execute on function public.couranr_complete_intake_run(uuid,uuid,text,json
 revoke all on function public.couranr_confirm_intake_fact(uuid,uuid,uuid,text,jsonb,text)
   from public, anon, authenticated, service_role;
 grant execute on function public.couranr_confirm_intake_fact(uuid,uuid,uuid,text,jsonb,text)
+  to service_role;
+
+revoke all on function public.couranr_link_intake_session(uuid,uuid,uuid)
+  from public, anon, authenticated, service_role;
+grant execute on function public.couranr_link_intake_session(uuid,uuid,uuid)
+  to service_role;
+
+revoke all on function public.couranr_retract_intake_fact(uuid,uuid,uuid,text)
+  from public, anon, authenticated, service_role;
+grant execute on function public.couranr_retract_intake_fact(uuid,uuid,uuid,text)
   to service_role;
 
 revoke all on function public.couranr_record_intake_policy(uuid,uuid,text,jsonb,jsonb,jsonb,text,text,jsonb,uuid)

@@ -38,6 +38,7 @@ import {
   isValidationFailure,
   validateProviderOutput,
 } from "./interpret";
+import { planIntakeFactSync, type IntakeFormStatement } from "./sync";
 
 assertServerOnly("lib/couranr/intake/commands.ts");
 
@@ -47,6 +48,8 @@ const RPC = {
   beginRun: "couranr_begin_intake_run",
   completeRun: "couranr_complete_intake_run",
   confirmFact: "couranr_confirm_intake_fact",
+  retractFact: "couranr_retract_intake_fact",
+  linkSession: "couranr_link_intake_session",
   recordPolicy: "couranr_record_intake_policy",
 } as const;
 
@@ -148,20 +151,28 @@ export function factMapFromRows(rows: IntakeRow[]): FactMap {
   return map;
 }
 
+export type IntakePolicySnapshot = {
+  /** Null when the session has no evaluation yet (the manual form path). */
+  policy: import("@/lib/couranr/shipment/policy").ShipmentPolicyResult | null;
+  /** The revision the commit command must be told, so a stale read is refused. */
+  currentRevision: number;
+  requestId: string | null;
+};
+
 /**
  * The stored policy snapshot for the estimate path, reconstructed into the
- * engine's result shape. Tenant-scoped; null when the session has no
- * evaluation yet (the manual form path).
+ * engine's result shape, together with the session's current revision —
+ * the CAS value `couranr_commit_intake_to_request` requires. Tenant-scoped.
  */
 export async function loadIntakePolicySnapshot(params: {
   sessionId: string;
   businessAccountId: string;
-}): Promise<IntakeResult<import("@/lib/couranr/shipment/policy").ShipmentPolicyResult | null>> {
+}): Promise<IntakeResult<IntakePolicySnapshot>> {
   const op = "loadIntakePolicySnapshot";
   const { data, error } = await supabaseAdmin
     .from("couranr_intake_sessions")
     .select(
-      "policy_disposition, policy_reasons, policy_risk_signals, policy_unresolved, policy_version, operational_capability"
+      "policy_disposition, policy_reasons, policy_risk_signals, policy_unresolved, policy_version, operational_capability, current_revision, request_id"
     )
     .eq("id", params.sessionId)
     .eq("business_account_id", params.businessAccountId)
@@ -172,17 +183,23 @@ export async function loadIntakePolicySnapshot(params: {
   if (!data) {
     return fail({ operation: op, code: "not_found", message: "Intake session not found." });
   }
-  if (!data.policy_disposition) return { ok: true, value: null };
+  const policy = data.policy_disposition
+    ? ({
+        policyVersion: data.policy_version,
+        disposition: data.policy_disposition,
+        reasons: data.policy_reasons ?? [],
+        riskSignals: data.policy_risk_signals ?? [],
+        operationalCapability: data.operational_capability ?? "standard_lane",
+        unresolvedFacts: data.policy_unresolved ?? [],
+      } as import("@/lib/couranr/shipment/policy").ShipmentPolicyResult)
+    : null;
   return {
     ok: true,
     value: {
-      policyVersion: data.policy_version,
-      disposition: data.policy_disposition,
-      reasons: data.policy_reasons ?? [],
-      riskSignals: data.policy_risk_signals ?? [],
-      operationalCapability: data.operational_capability ?? "standard_lane",
-      unresolvedFacts: data.policy_unresolved ?? [],
-    } as import("@/lib/couranr/shipment/policy").ShipmentPolicyResult,
+      policy,
+      currentRevision: Number(data.current_revision),
+      requestId: data.request_id ?? null,
+    },
   };
 }
 
@@ -237,6 +254,74 @@ export async function confirmIntakeFact(params: {
     p_value: params.value,
     p_authority: params.authority,
   });
+}
+
+export async function retractIntakeFact(params: {
+  sessionId: string;
+  businessAccountId: string;
+  actorUserId: string;
+  factKey: FactKey;
+}): Promise<IntakeResult<IntakeRow>> {
+  return callRpc("retractIntakeFact", RPC.retractFact, {
+    p_session_id: params.sessionId,
+    p_business_account_id: params.businessAccountId,
+    p_actor_user_id: params.actorUserId,
+    p_fact_key: params.factKey,
+  });
+}
+
+/**
+ * Bind a session that started before its request existed to that request.
+ * Idempotent for the same request; a session already bound elsewhere is
+ * refused (CR409), so evidence can never be re-pointed at another delivery.
+ */
+export async function linkIntakeSession(params: {
+  sessionId: string;
+  businessAccountId: string;
+  requestId: string;
+}): Promise<IntakeResult<IntakeRow>> {
+  return callRpc("linkIntakeSession", RPC.linkSession, {
+    p_session_id: params.sessionId,
+    p_business_account_id: params.businessAccountId,
+    p_request_id: params.requestId,
+  });
+}
+
+/**
+ * Bring the fact record into agreement with what the structured form states
+ * (see sync.ts for the rules). Each step is its own command; the first
+ * failure stops the sync and is reported, leaving the record partially
+ * updated but always internally valid — every step is a legal fact state.
+ */
+export async function syncFormFactsIntoIntake(params: {
+  sessionId: string;
+  businessAccountId: string;
+  actorUserId: string;
+  statement: IntakeFormStatement;
+}): Promise<IntakeResult<{ steps: number }>> {
+  const loaded = await loadIntakeSession(params);
+  if (isIntakeFailure(loaded)) return loaded;
+  const steps = planIntakeFactSync(loaded.value.facts as never, params.statement);
+  for (const step of steps) {
+    const result =
+      step.op === "confirm"
+        ? await confirmIntakeFact({
+            sessionId: params.sessionId,
+            businessAccountId: params.businessAccountId,
+            actorUserId: params.actorUserId,
+            factKey: step.factKey,
+            value: step.value,
+            authority: step.authority,
+          })
+        : await retractIntakeFact({
+            sessionId: params.sessionId,
+            businessAccountId: params.businessAccountId,
+            actorUserId: params.actorUserId,
+            factKey: step.factKey,
+          });
+    if (isIntakeFailure(result)) return result;
+  }
+  return { ok: true, value: { steps: steps.length } };
 }
 
 /**
@@ -315,10 +400,16 @@ export async function runInterpretation(params: {
     p_input_data_classes: PROVIDER_INPUT_DATA_CLASSES,
   });
   if (isIntakeFailure(begun)) return begun;
-  const run = begun.value;
-
-  // Converged onto an already-finished run: idempotent, no second paid call.
-  if (run.status !== "pending") {
+  // The command answers `{ run, claimed }`: exactly ONE caller per
+  // (session, idempotency key) is told it claimed the run. Everyone else
+  // converged onto that row — finished or still in flight — and must NOT
+  // spend a second provider call on it.
+  const run: IntakeRow = begun.value.run ?? {};
+  const claimed = begun.value.claimed === true;
+  if (!run.id) {
+    return fail({ operation: op, code: "conflict", detail: { reason: "begin returned no run" } });
+  }
+  if (!claimed || run.status !== "pending") {
     return { ok: true, value: { run, session: null } };
   }
 

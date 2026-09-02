@@ -87,11 +87,22 @@ export function SmartIntakePanel(props: {
   const [clarificationAnswer, setClarificationAnswer] = React.useState("");
 
   const session = intake?.session ?? null;
-  const facts = React.useMemo(() => intake?.facts ?? [], [intake]);
+  // A withdrawn fact (authority `unknown`, null value) is not a statement of
+  // anything; it never reaches the parent form or the screen.
+  const facts = React.useMemo(
+    () => (intake?.facts ?? []).filter((f) => f.authority !== "unknown" && f.value !== null),
+    [intake]
+  );
 
+  // Latest-callback ref: the parent's handler closes over ITS latest form
+  // state (it reads `weightLb` to decide whether a field is empty). Calling a
+  // captured render's copy would decide from stale values.
+  const onIntakeChangeRef = React.useRef(onIntakeChange);
   React.useEffect(() => {
-    onIntakeChange({ sessionId: session?.id ?? null, facts });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    onIntakeChangeRef.current = onIntakeChange;
+  }, [onIntakeChange]);
+  React.useEffect(() => {
+    onIntakeChangeRef.current({ sessionId: session?.id ?? null, facts });
   }, [session?.id, facts]);
 
   async function refresh(sessionId: string) {

@@ -44,6 +44,8 @@ drop function if exists public.couranr_commit_intake_to_request(
   integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,
   text,text,text,timestamptz,jsonb
 );
+drop function if exists public.couranr_retract_intake_fact(uuid,uuid,uuid,text);
+drop function if exists public.couranr_link_intake_session(uuid,uuid,uuid);
 drop function if exists public.couranr_record_intake_policy(uuid,uuid,text,jsonb,jsonb,jsonb,text,text,jsonb,uuid);
 drop function if exists public.couranr_confirm_intake_fact(uuid,uuid,uuid,text,jsonb,text);
 drop function if exists public.couranr_complete_intake_run(uuid,uuid,text,jsonb,text,integer,jsonb);

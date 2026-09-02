@@ -112,14 +112,16 @@ async function main() {
       "CR409|version_or_state_conflict");
 
     /* ---- 2. the §6 out-of-order race ------------------------------------- */
-    const run1 = one(`select id from public.couranr_begin_intake_run(
-      '${session}','${BIZ_A}',1,'prompt-v1','v0','fake','key-rev1','["shipment_description"]'::jsonb)`);
-    check("SI-08", "a duplicate begin CONVERGES on the same run — one row, one paid call",
-      one(`select (id='${run1}')::text||'|'||(
-             select count(*) from public.couranr_intake_runs where session_id='${session}')
-           from public.couranr_begin_intake_run(
-             '${session}','${BIZ_A}',1,'prompt-v1','v0','fake','key-rev1','["shipment_description"]'::jsonb)`),
-      "true|1");
+    const begun1 = one(`select public.couranr_begin_intake_run(
+      '${session}','${BIZ_A}',1,'prompt-v1','v0','fake','key-rev1','["shipment_description"]'::jsonb)::text`);
+    const run1 = JSON.parse(begun1).run.id;
+    check("SI-08a", "the first begin CLAIMS the run — this caller spends the provider money",
+      JSON.parse(begun1).claimed, "true");
+    const begunDup = JSON.parse(one(`select public.couranr_begin_intake_run(
+      '${session}','${BIZ_A}',1,'prompt-v1','v0','fake','key-rev1','["shipment_description"]'::jsonb)::text`));
+    check("SI-08", "a duplicate begin CONVERGES on the same run — one row, and it is NOT claimed",
+      `${begunDup.run.id === run1}|${begunDup.claimed}|${one(`select count(*) from public.couranr_intake_runs where session_id='${session}'`)}`,
+      "true|false|1");
 
     // Merchant corrects the description: 20 boxes -> 2 boxes.
     raw(`select public.couranr_add_intake_revision(
@@ -129,8 +131,8 @@ async function main() {
         '${session}','${BIZ_A}',1,'prompt-v1','v0','fake','key-stale','[]'::jsonb)`),
       "CR409|stale_source_revision");
 
-    const run2 = one(`select id from public.couranr_begin_intake_run(
-      '${session}','${BIZ_A}',2,'prompt-v1','v0','fake','key-rev2','["shipment_description"]'::jsonb)`);
+    const run2 = JSON.parse(one(`select public.couranr_begin_intake_run(
+      '${session}','${BIZ_A}',2,'prompt-v1','v0','fake','key-rev2','["shipment_description"]'::jsonb)::text`)).run.id;
     // Run 2 (current words) completes FIRST.
     raw(`select public.couranr_complete_intake_run('${run2}','${BIZ_A}','success',
       '[{"key":"quantity","value":2,"confidence":92,"source":"ai_inference","sourceEvidence":"2 boxes","requiresConfirmation":true},
@@ -162,8 +164,8 @@ async function main() {
       one(`select coalesce(current_clarification::text,'-') from public.couranr_intake_sessions
             where id='${session}'`), "-");
 
-    const run3 = one(`select id from public.couranr_begin_intake_run(
-      '${session}','${BIZ_A}',2,'prompt-v1','v0','fake','key-rerun','[]'::jsonb)`);
+    const run3 = JSON.parse(one(`select public.couranr_begin_intake_run(
+      '${session}','${BIZ_A}',2,'prompt-v1','v0','fake','key-rerun','[]'::jsonb)::text`)).run.id;
     raw(`select public.couranr_complete_intake_run('${run3}','${BIZ_A}','success',
       '[{"key":"weight_band","value":"0_25_lb","confidence":99,"source":"ai_inference","requiresConfirmation":true},
         {"key":"charge_amount","value":1,"source":"ai_inference"},
@@ -192,14 +194,14 @@ async function main() {
       "CR422|authority_must_be_trusted");
 
     /* ---- 4. provider failure degrades to manual --------------------------- */
-    const run4 = one(`select id from public.couranr_begin_intake_run(
-      '${session}','${BIZ_A}',2,'prompt-v1','v0','fake','key-fail','[]'::jsonb)`);
+    const run4 = JSON.parse(one(`select public.couranr_begin_intake_run(
+      '${session}','${BIZ_A}',2,'prompt-v1','v0','fake','key-fail','[]'::jsonb)::text`)).run.id;
     raw(`select public.couranr_complete_intake_run('${run4}','${BIZ_A}','malformed',null,null,90,null)`);
     check("SI-21", "malformed output lands the session in MANUAL, request flow unblocked",
       one(`select interpretation_status from public.couranr_intake_sessions where id='${session}'`),
       "manual");
-    const run5 = one(`select id from public.couranr_begin_intake_run(
-      '${session}','${BIZ_A}',2,'prompt-v1','v0','fake','key-unavail','[]'::jsonb)`);
+    const run5 = JSON.parse(one(`select public.couranr_begin_intake_run(
+      '${session}','${BIZ_A}',2,'prompt-v1','v0','fake','key-unavail','[]'::jsonb)::text`)).run.id;
     raw(`select public.couranr_complete_intake_run('${run5}','${BIZ_A}','unavailable',null,null,10,null)`);
     check("SI-22", "provider unavailable is its own honest status",
       one(`select interpretation_status from public.couranr_intake_sessions where id='${session}'`),
@@ -213,6 +215,23 @@ async function main() {
     check("SI-24", "tenant B cannot begin runs on tenant A's session",
       raises(`select public.couranr_begin_intake_run(
         '${session}','${BIZ_B}',2,'p','v0','fake','key-b','[]'::jsonb)`),
+      "CR404|intake_session_not_found");
+
+    /* ---- 5b. linking a standalone session to its request ------------------- */
+    const standalone = one(`select id from public.couranr_create_intake_session(
+      '${BIZ_A}',null,'${USER_A}','a standalone description, request comes later','v0')`);
+    const reqA2 = draftFor(BIZ_A, USER_A, "si-req-a2");
+    check("SI-37", "a standalone session links to its request once the draft exists",
+      one(`select (request_id='${reqA2}')::text from public.couranr_link_intake_session(
+             '${standalone}','${BIZ_A}','${reqA2}')`), "true");
+    check("SI-38", "... linking is idempotent for the same request",
+      raises(`select public.couranr_link_intake_session('${standalone}','${BIZ_A}','${reqA2}')`),
+      "NO_ERROR|");
+    check("SI-39", "... but cannot be re-pointed at a different request",
+      raises(`select public.couranr_link_intake_session('${standalone}','${BIZ_A}','${reqA}')`),
+      "CR409|intake_session_already_linked");
+    check("SI-40", "... and tenant B cannot link A's session to anything",
+      raises(`select public.couranr_link_intake_session('${standalone}','${BIZ_B}','${reqA2}')`),
       "CR404|intake_session_not_found");
 
     /* ---- 6. commit through the canonical command -------------------------- */
@@ -255,6 +274,42 @@ async function main() {
     check("SI-30", "... and the commit binding is audited",
       one(`select count(*) from public.couranr_intake_fact_events
             where session_id='${session}' and event='committed_to_request'`), "1");
+
+    /* ---- 6b. the merchant changes their mind: retraction ------------------- */
+    // The primary-flow dead end: intake confirmed a band, the structured form
+    // now says 12 lb exact. Without retraction the commit refuses the exact
+    // as contradicting the band the merchant no longer means.
+    check("SI-41", "a confirmed fact can be WITHDRAWN — authority unknown, value null, row kept",
+      one(`select authority||'|'||value::text||'|'||revision from public.couranr_retract_intake_fact(
+             '${session}','${BIZ_A}','${USER_A}','weight_band')`),
+      // revision 2: the band was never proposed (SI-13 asked for it), so
+      // SI-15's confirmation INSERTED at 1 and the withdrawal bumped it once.
+      "unknown|null|2");
+    check("SI-42", "... the withdrawal is audited with the value it replaced",
+      one(`select from_value::text||'|'||from_authority||'|'||to_authority
+             from public.couranr_intake_fact_events
+            where session_id='${session}' and fact_key='weight_band' and event='retracted'`),
+      '"over_25_to_50_lb"|confirmed|unknown');
+    check("SI-43", "... and withdrawing it again is idempotent (no second event)",
+      one(`select public.couranr_retract_intake_fact('${session}','${BIZ_A}','${USER_A}','weight_band') is distinct from null
+           and (select count(*) from public.couranr_intake_fact_events
+                 where session_id='${session}' and fact_key='weight_band' and event='retracted') = 1`),
+      "t");
+    raw(`select public.couranr_confirm_intake_fact(
+      '${session}','${BIZ_A}','${USER_A}','weight_lb_exact','12'::jsonb,'confirmed')`);
+    const ver2 = one(`select version from public.couranr_delivery_requests where id='${reqA}'`);
+    const commitExact = commitArgs("null")
+      .replace(`'${reqA}','${BIZ_A}',${ver},`, `'${reqA}','${BIZ_A}',${ver2},`)
+      .replace(`null,0,'standard'`, `12,0,'standard'`);
+    check("SI-44", "after the flip, committing 12 lb EXACT with a null band is accepted",
+      raises(`select public.couranr_commit_intake_to_request(${commitExact})`), "NO_ERROR|");
+    check("SI-45", "... and the request row now carries the exact with NULL band",
+      one(`select coalesce(weight_lb::text,'-')||'|'||coalesce(weight_band,'-')
+             from public.couranr_delivery_requests where id='${reqA}'`), "12.00|-");
+    check("SI-46", "withdrawing a fact that was never stated is not-found, and tenant B cannot withdraw at all",
+      raises(`select public.couranr_retract_intake_fact('${session}','${BIZ_A}','${USER_A}','dimensions_in')`)
+        + " / " + raises(`select public.couranr_retract_intake_fact('${session}','${BIZ_B}','${USER_B}','weight_lb_exact')`),
+      "CR404|intake_fact_not_found / CR404|intake_session_not_found");
 
     /* ---- 7. privileges ----------------------------------------------------- */
     check("SI-31", "no intake function is executable by anon or authenticated",

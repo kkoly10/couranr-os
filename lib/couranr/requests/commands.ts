@@ -14,8 +14,11 @@ import {
 import type { GoogleAddressSnapshot } from "@/lib/couranr/routing/address";
 import { applyShipmentPolicyToQuote } from "@/lib/couranr/shipment/quoteStatus";
 import {
+  evaluateAndRecordIntakePolicy,
   isIntakeFailure,
+  linkIntakeSession,
   loadIntakePolicySnapshot,
+  syncFormFactsIntoIntake,
 } from "@/lib/couranr/intake/commands";
 import {
   classifyDatabaseError,
@@ -72,6 +75,9 @@ export const EVENTS_TABLE = "couranr_delivery_request_events";
 export const RPC = {
   create: "couranr_create_routed_delivery_request_draft",
   estimate: "couranr_calculate_routed_delivery_request_estimate",
+  // P5-001 §26: the routed estimate, wrapped so the shipment arguments are
+  // re-validated against the CURRENT trusted intake facts in one transaction.
+  commitIntake: "couranr_commit_intake_to_request",
   submit: "couranr_submit_delivery_request_v2",
   beginReview: "couranr_begin_delivery_request_review",
   accept: "couranr_accept_delivery_request_as_quoted",
@@ -417,15 +423,16 @@ async function routeAndQuote(
  * §14 — fold the intake session's DETERMINISTIC policy disposition into the
  * quote before anything is persisted: prohibited -> `invalid`, needs_review
  * -> `manual_review_required`, both with no payable subtotal. The manual
- * form path (no session) changes nothing.
+ * form path (no session) changes nothing. Also returns the session's current
+ * revision, which the commit command requires as its CAS value.
  */
 async function applyIntakePolicy(
   operation: string,
   quote: QuoteResult,
   intakeSessionId: string | null | undefined,
   businessAccountId: string
-): Promise<CommandResult<QuoteResult>> {
-  if (!intakeSessionId) return { ok: true, value: quote };
+): Promise<CommandResult<{ quote: QuoteResult; intakeRevision: number | null }>> {
+  if (!intakeSessionId) return { ok: true, value: { quote, intakeRevision: null } };
   const snapshot = await loadIntakePolicySnapshot({
     sessionId: intakeSessionId,
     businessAccountId,
@@ -438,8 +445,86 @@ async function applyIntakePolicy(
       message: snapshot.message,
     });
   }
-  if (!snapshot.value) return { ok: true, value: quote };
-  return { ok: true, value: applyShipmentPolicyToQuote(quote, snapshot.value) };
+  const { policy, currentRevision } = snapshot.value;
+  return {
+    ok: true,
+    value: {
+      quote: policy ? applyShipmentPolicyToQuote(quote, policy) : quote,
+      intakeRevision: currentRevision,
+    },
+  };
+}
+
+/**
+ * The structured form is the merchant's LATER statement of the commercial
+ * facts (see intake/sync.ts). Bring the fact record into agreement with it
+ * and re-run the deterministic policy over the result, so that the policy
+ * fold and the commit check below both read facts that describe THIS
+ * shipment — not the one the conversation described before the merchant
+ * changed a field.
+ */
+async function syncIntakeWithForm(
+  operation: string,
+  intakeSessionId: string,
+  businessAccountId: string,
+  actorUserId: string,
+  draft: DeliveryRequestDraft
+): Promise<CommandResult<null>> {
+  const synced = await syncFormFactsIntoIntake({
+    sessionId: intakeSessionId,
+    businessAccountId,
+    actorUserId,
+    statement: {
+      weightLb: draft.weightLb,
+      weightBand: draft.weightBand,
+      serviceLevel: draft.serviceLevel,
+      timingIntent: draft.timingIntent,
+      requestedPickupLocal: draft.requestedPickupLocal,
+    },
+  });
+  if (isIntakeFailure(synced)) {
+    return fail({
+      operation,
+      code: synced.code,
+      detail: { intakeSessionId, reason: "fact sync failed" },
+      message: synced.message,
+    });
+  }
+  const evaluated = await evaluateAndRecordIntakePolicy({
+    sessionId: intakeSessionId,
+    businessAccountId,
+  });
+  if (isIntakeFailure(evaluated)) {
+    return fail({
+      operation,
+      code: evaluated.code,
+      detail: { intakeSessionId, reason: "policy evaluation failed" },
+      message: evaluated.message,
+    });
+  }
+  return { ok: true, value: null };
+}
+
+/** Bind the session to its request; CR409 when it belongs to another. */
+async function bindIntakeToRequest(
+  operation: string,
+  intakeSessionId: string,
+  businessAccountId: string,
+  requestId: string
+): Promise<CommandResult<null>> {
+  const linked = await linkIntakeSession({ sessionId: intakeSessionId, businessAccountId, requestId });
+  if (isIntakeFailure(linked)) {
+    return fail({
+      operation,
+      code: linked.code,
+      detail: { intakeSessionId, requestId, reason: "link failed" },
+      message:
+        linked.code === "conflict"
+          ? "This shipment description belongs to a different delivery."
+          : linked.message,
+    });
+  }
+  return { ok: true, value: null };
 }
 
 export async function createDeliveryRequestDraft(params: {
@@ -475,9 +560,15 @@ export async function createDeliveryRequestDraft(params: {
   const routedResult = await routeAndQuote(op, draft);
   if (isCommandFailure(routedResult)) return routedResult;
   const routed = routedResult.value;
+  if (params.intakeSessionId) {
+    const synced = await syncIntakeWithForm(
+      op, params.intakeSessionId, params.businessAccountId, params.actor.userId, draft
+    );
+    if (isCommandFailure(synced)) return synced;
+  }
   const adjusted = await applyIntakePolicy(op, routed.quote, params.intakeSessionId, params.businessAccountId);
   if (isCommandFailure(adjusted)) return adjusted;
-  const quote = adjusted.value;
+  const quote = adjusted.value.quote;
 
   // Only an INPUT-invalid quote is refused as bad input. A policy-PROHIBITED
   // quote is also `invalid` but with zero validation errors — that one is
@@ -507,6 +598,16 @@ export async function createDeliveryRequestDraft(params: {
     ...quoteArgs(quote),
   });
   if (isCommandFailure(result)) return result;
+
+  // The session started before the request existed; bind it now so the
+  // evidence Ops reads on this request is the conversation that produced it.
+  // Idempotent on replay (same request), refused for a foreign request.
+  if (params.intakeSessionId) {
+    const bound = await bindIntakeToRequest(
+      op, params.intakeSessionId, params.businessAccountId, result.value.id
+    );
+    if (isCommandFailure(bound)) return bound;
+  }
 
   return {
     ok: true,
@@ -595,11 +696,25 @@ export async function calculateDeliveryRequestEstimate(params: {
     if (isCommandFailure(routedResult)) return routedResult;
     routed = routedResult.value;
     shipment = shipmentArgs(draft, routed);
+
+    if (params.intakeSessionId) {
+      // A session may have started AFTER this draft existed (manual form
+      // first, description second): bind it before anything reads it as
+      // this request's evidence. Then the form's statement wins the facts.
+      const bound = await bindIntakeToRequest(
+        op, params.intakeSessionId, params.businessAccountId, params.requestId
+      );
+      if (isCommandFailure(bound)) return bound;
+      const synced = await syncIntakeWithForm(
+        op, params.intakeSessionId, params.businessAccountId, params.actor.userId, draft
+      );
+      if (isCommandFailure(synced)) return synced;
+    }
   }
 
   const adjusted = await applyIntakePolicy(op, routed.quote, params.intakeSessionId, params.businessAccountId);
   if (isCommandFailure(adjusted)) return adjusted;
-  const quote = adjusted.value;
+  const { quote, intakeRevision } = adjusted.value;
 
   // Input-invalid is refused; policy-prohibited `invalid` (zero validation
   // errors) is persisted — see createDeliveryRequestDraft for why.
@@ -616,7 +731,7 @@ export async function calculateDeliveryRequestEstimate(params: {
   // The function ignores every shipment argument when p_update_shipment is
   // false, so the stored row is passed through unchanged rather than rewritten
   // from a partially reconstructed draft.
-  const result = await callRpc(op, RPC.estimate, {
+  const estimateArgs = {
     p_request_id: params.requestId,
     p_business_account_id: params.businessAccountId,
     p_expected_version: params.expectedVersion,
@@ -626,7 +741,19 @@ export async function calculateDeliveryRequestEstimate(params: {
     ...routeArgs(routed.route),
     ...timingArgs(routed.timing),
     ...quoteArgs(quote),
-  });
+  };
+  // An edited shipment that came through Smart Intake is committed through
+  // the wrapper: same estimate, same CAS, plus the shipment arguments are
+  // re-validated against the trusted facts while both are locked (§26). A
+  // re-price of the stored shipment has nothing new to validate.
+  const result =
+    shipment !== null && params.intakeSessionId && intakeRevision !== null
+      ? await callRpc(op, RPC.commitIntake, {
+          p_session_id: params.intakeSessionId,
+          p_expected_intake_revision: intakeRevision,
+          ...estimateArgs,
+        })
+      : await callRpc(op, RPC.estimate, estimateArgs);
   if (isCommandFailure(result)) return result;
 
   return { ok: true, value: { request: result.value, quote } };

@@ -289,10 +289,14 @@ describe("command layer invariants", () => {
   });
 
   it("has exactly one rpc call per mutating command", () => {
-    // One helper definition plus one call site per mutating command. Seven
-    // commands now: create, estimate, submit, begin-review, and the three
-    // review outcomes.
-    expect(Object.keys(RPC)).toHaveLength(7);
+    // One helper definition plus one call site per mutating command. Eight
+    // now: create, estimate, submit, begin-review, the three review outcomes,
+    // and P5-001's intake commit — the routed estimate wrapped so the shipment
+    // arguments are re-validated against the trusted intake facts (§26). It
+    // is the estimate's second call site, chosen when the shipment came
+    // through Smart Intake; a re-price of the stored shipment still uses the
+    // bare estimate.
+    expect(Object.keys(RPC)).toHaveLength(8);
     expect((COMMANDS.match(/callRpc\(/g) || []).length).toBe(1 + Object.keys(RPC).length);
     expect((COMMANDS.match(/supabaseAdmin\.rpc\(/g) || []).length).toBe(1);
     for (const fn of Object.values(RPC)) {
@@ -335,10 +339,12 @@ describe("command functions migration", () => {
    * has.
    */
   it("every name TypeScript calls is created by some forward migration", () => {
+    // `create or replace` counts: the later migrations are written to replay
+    // over themselves, and a replaced function is still one production has.
     const createdAnywhere = new Set(
-      Array.from(ALL_FORWARD_SQL.matchAll(/create\s+function\s+public\.(\w+)/gi)).map((m) =>
-        m[1].toLowerCase()
-      )
+      Array.from(
+        ALL_FORWARD_SQL.matchAll(/create\s+(?:or\s+replace\s+)?function\s+public\.(\w+)/gi)
+      ).map((m) => m[1].toLowerCase())
     );
     for (const fn of Object.values(RPC)) {
       expect(createdAnywhere.has(fn.toLowerCase()), `${fn} is called but never created`).toBe(true);

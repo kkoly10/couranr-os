@@ -9,7 +9,7 @@ import {
   loadIntakeSession,
   runInterpretation,
 } from "@/lib/couranr/intake/commands";
-import { isFactKey } from "@/lib/couranr/shipment/facts";
+import { isFactKey, validateFactValue } from "@/lib/couranr/shipment/facts";
 
 export const dynamic = "force-dynamic";
 
@@ -96,6 +96,12 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     const factKey = body?.factKey;
     if (!isFactKey(factKey)) {
       return routeFailure("invalid_input", "Unknown fact.");
+    }
+    // The browser is a trusted ACTOR, not a trusted SHAPE: a confirmation
+    // must still be a legal value for its key, or a mis-typed band would
+    // become a confirmed fact the engine cannot read.
+    if (!validateFactValue(factKey, body?.value)) {
+      return routeFailure("invalid_input", "That value is not valid for this detail.");
     }
     const authority = body?.authority === "overridden" ? "overridden" : "confirmed";
     const confirmed = await confirmIntakeFact({

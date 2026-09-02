@@ -150,6 +150,7 @@ describe("server-only modules are unreachable from client code", () => {
       "lib/couranr/intake/commands.ts",
       "lib/couranr/intake/interpret.ts",
       "lib/couranr/intake/provider.ts",
+      "lib/couranr/intake/sync.ts",
       "lib/couranr/onboarding/commands.ts",
       // The payment modules hold the service-role client, the Stripe secret
       // key and the token hashing. None may ever be reachable from a bundle.
