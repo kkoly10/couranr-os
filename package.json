@@ -36,6 +36,7 @@
     "test:acceptance": "node e2e/disposable/acceptanceMatrix.mjs",
     "test:pricing-v2": "node e2e/disposable/pricingV2Authority.mjs",
     "test:weight-timing": "node e2e/disposable/weightBandTiming.mjs",
+    "test:smart-intake": "node e2e/disposable/smartIntake.mjs",
     "test:foundation-gate-a": "node e2e/disposable/foundationGateA.mjs",
     "test:foundation-backfill": "node e2e/disposable/foundationBackfill.mjs",
     "test:foundation-rollbacks": "node e2e/disposable/foundationRollbacks.mjs",
