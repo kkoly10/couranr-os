@@ -129,7 +129,7 @@ async function makeRequest(businessId, creatorId, marker, { state, readiness = "
     recipientName: `${marker} recipient`,
     readinessState: readiness,
     subtotalCents: 2299,
-    pricingPolicyVersion: "disposable",
+    pricingPolicyVersion: "couranr-pricing-v2-2026-09-01",
     upTo,
   });
   seeded.set(request.requestId, request);

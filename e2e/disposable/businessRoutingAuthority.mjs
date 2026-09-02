@@ -44,7 +44,7 @@ function createAvailable(key, dropPlace = "place-drop-a", meters = 8047, amount 
     'Recipient','555-0100','recipient@example.test',10,0,'standard',false,'photo_or_pin',
     ${address("place-pickup", "10 Market St")},${address(dropPlace, "20 Main St")},false,
     ${meters},600,600,0,'google_routes_v2','available_for_request',null,
-    'estimated','routing-test-v1',${amount},3,2,${items(amount)},'[]'::jsonb)`);
+    'estimated','couranr-pricing-v2-2026-09-01',${amount},3,2,${items(amount)},'[]'::jsonb)`);
 }
 
 function main() {
@@ -86,7 +86,7 @@ function main() {
       10,0,'standard',false,'photo_or_pin',
       ${address("place-pickup", "10 Market St")},${address("place-drop-b", "90 Changed St")},false,
       16093,900,900,0,'google_routes_v2','available_for_request',null,
-      'estimated','routing-test-v1',4500,3,7,${items(4500)},'[]'::jsonb)`);
+      'estimated','couranr-pricing-v2-2026-09-01',4500,3,7,${items(4500)},'[]'::jsonb)`);
     check("BRA-DB-05", "address change appends Quote 2 and preserves Quote 1",
       one(`select string_agg(quote_number||':'||(dropoff_address_snapshot->>'googlePlaceId')||':'||
               route_distance_meters,',' order by quote_number)

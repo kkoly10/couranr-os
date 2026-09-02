@@ -159,7 +159,7 @@ async function makeRequest(businessId, creatorId, marker) {
     // renders the recipient — the marker has to survive.
     recipientName: marker,
     subtotalCents: 2299,
-    pricingPolicyVersion: "disposable",
+    pricingPolicyVersion: "couranr-pricing-v2-2026-09-01",
     upTo: "submitted",
   });
   return request.requestId;

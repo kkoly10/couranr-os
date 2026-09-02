@@ -76,7 +76,7 @@ function createBusinessRequest(key, amount = 2500) {
       'Recipient','555-0100','recipient@example.test',10,0,'standard',false,
       'photo_or_pin',${address("10 Market St")},${address("20 Main St")},false,
       8047,600,600,0,'google_routes_v2','available_for_request',null,
-      'estimated','foundation-test-v1',${amount},3,2,${items(amount)},'[]'::jsonb
+      'estimated','couranr-pricing-v2-2026-09-01',${amount},3,2,${items(amount)},'[]'::jsonb
     )
   `);
 }
@@ -177,7 +177,7 @@ function main() {
   raises("FND-Q-03", "named quote command rejects false arithmetic", `
     select id from public.couranr_create_routed_quote_version(
       '${request}','${BUSINESS}',${requestVersion(request)},'${USER}','estimated',
-      'foundation-test-v1',2501,3,2,${items(2500)},'[]',
+      'couranr-pricing-v2-2026-09-01',2501,3,2,${items(2500)},'[]',
       8047,600,600,0,'google_routes_v2','available_for_request',null)`, "quote_subtotal_mismatch");
   submitAndAccept(request);
   check("FND-Q-05", "submission event names the exact quote UUID", one(`
@@ -237,7 +237,7 @@ function main() {
   const staleExpectedVersion = requestVersion(repriced);
   service(`select id from public.couranr_create_routed_quote_version(
     '${repriced}','${BUSINESS}',${staleExpectedVersion},'${USER}','estimated',
-    'foundation-test-v2',3200,3,2,${items(3200)},'[]',
+    'couranr-pricing-v2-2026-09-01',3200,3,2,${items(3200)},'[]',
     8047,600,600,0,'google_routes_v2','available_for_request',null)`);
   const newQuote = currentQuote(repriced);
   check("FND-Q-04", "requote creates quote N+1 linked to quote N", one(`
@@ -257,7 +257,7 @@ function main() {
   raises("FND-Q-04", "concurrent requote loser is refused by request CAS", `
     select id from public.couranr_create_routed_quote_version(
       '${repriced}','${BUSINESS}',${staleExpectedVersion},'${USER}','estimated',
-      'foundation-test-v2',3300,3,2,${items(3300)},'[]',
+      'couranr-pricing-v2-2026-09-01',3300,3,2,${items(3300)},'[]',
       8047,600,600,0,'google_routes_v2','available_for_request',null)`, "version_or_state_conflict");
   check("FND-PAY-02", "Q1 obligation retains its exact original quote", one(`
     select quote_version_id from public.couranr_payment_obligations where id='${oldObligation}'`), oldQuote);
@@ -315,7 +315,7 @@ function main() {
     select metadata->>'quoteVersionId' from public.couranr_delivery_request_events
      where request_id='${reviewed}' and command='submit_delivery_request'`), quoteA);
   check("FND-SUB-03", "no client quote argument reaches the request row", one(`
-    select (delivery_subtotal_cents=4100 and pricing_policy_version='foundation-test-v1'
+    select (delivery_subtotal_cents=4100 and pricing_policy_version='couranr-pricing-v2-2026-09-01'
             and current_quote_version_id='${quoteA}'::uuid)::text
       from public.couranr_delivery_requests where id='${reviewed}'`), "true");
   check("FND-SUB-04", "no client quote argument mints or mutates a quote version", one(`
@@ -328,7 +328,7 @@ function main() {
   const staleVersion = requestVersion(raced); // exactly what the review UI holds
   service(`select id from public.couranr_create_routed_quote_version(
     '${raced}','${BUSINESS}',${staleVersion},'${USER}','estimated',
-    'foundation-test-v2',5900,3,2,${items(5900)},'[]',
+    'couranr-pricing-v2-2026-09-01',5900,3,2,${items(5900)},'[]',
     8047,600,600,0,'google_routes_v2','available_for_request',null)`);
   const racedQuoteB = currentQuote(raced);
   check("FND-SUB-05", "the race actually created a second, different quote",
@@ -341,7 +341,7 @@ function main() {
   raises("FND-SUB-07", "the legacy signature propagates the CAS rather than swallowing it", `
     select id from public.couranr_submit_delivery_request(
       '${raced}','${BUSINESS}',${staleVersion},'${USER}',
-      'estimated','foundation-test-v1',5200,3,2,${items(5200)},'[]'::jsonb,true)`,
+      'estimated','couranr-pricing-v2-2026-09-01',5200,3,2,${items(5200)},'[]'::jsonb,true)`,
     "version_or_state_conflict");
   check("FND-SUB-08", "the refused submit moved nothing", one(`
     select (request_state='draft' and submitted_at is null

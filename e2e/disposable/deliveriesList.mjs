@@ -132,7 +132,7 @@ async function makeRequest(businessId, creatorId, marker, opts) {
     recipientName: `${marker} recipient`,
     readinessState: readiness,
     subtotalCents: 2299,
-    pricingPolicyVersion: "disposable",
+    pricingPolicyVersion: "couranr-pricing-v2-2026-09-01",
     // DUP2 reads this exact street back out of the duplicate form.
     ...(addresses
       ? {

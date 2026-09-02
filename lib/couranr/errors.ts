@@ -22,6 +22,7 @@ export type PublicErrorCode =
   | "wrong_state"
   | "version_conflict"
   | "conflict"
+  | "quote_expired"
   | "internal";
 
 export type PublicError = {
@@ -102,6 +103,8 @@ const DEFAULT_MESSAGE: Record<PublicErrorCode, string> = {
   version_conflict:
     "This changed while you were working on it. Reload and try again.",
   conflict: "This could not be completed. Reload and try again.",
+  quote_expired:
+    "This estimate is no longer current. Recalculate to get an up-to-date price before continuing.",
   internal: "Something went wrong on our side. Nothing was changed.",
 };
 
@@ -113,6 +116,7 @@ export const PUBLIC_STATUS: Record<PublicErrorCode, number> = {
   wrong_state: 409,
   version_conflict: 409,
   conflict: 409,
+  quote_expired: 409,
   internal: 500,
 };
 
@@ -194,6 +198,12 @@ export function classifyDatabaseError(err: any): PublicErrorCode {
       // distinct from version_conflict because "reload and try again" is
       // actively wrong advice here — reloading changes nothing.
       return "conflict";
+    case "CR410":
+      // QVL-001. The quote passed its 15-minute validity window before it was
+      // accepted, acknowledged or authorized. Distinct from every other code
+      // here because the remedy is specific and the caller CAN act on it:
+      // recalculate, which mints Quote N+1. Reloading alone changes nothing.
+      return "quote_expired";
     case "CR422":
       // The server passed itself an inconsistent quote. That is our bug, not
       // the caller's input, so it must not read as a validation failure.

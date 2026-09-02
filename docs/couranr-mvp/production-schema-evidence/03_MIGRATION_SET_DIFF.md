@@ -80,12 +80,12 @@ Present in the repository; this version is not recorded as applied in production
 
 | version | repository name | git path |
 |---|---|---|
-| 20260831035450 | fnd_a_m1_universal_requester | supabase/migrations/20260831035450_fnd_a_m1_universal_requester.sql |
-| 20260831035452 | fnd_a_m2_immutable_quote_schema | supabase/migrations/20260831035452_fnd_a_m2_immutable_quote_schema.sql |
-| 20260831035454 | fnd_a_m3_deterministic_quote_backfill | supabase/migrations/20260831035454_fnd_a_m3_deterministic_quote_backfill.sql |
-| 20260831035456 | fnd_a_m4_command_cutover | supabase/migrations/20260831035456_fnd_a_m4_command_cutover.sql |
-| 20260831035458 | fnd_a_m5_invariant_cutover | supabase/migrations/20260831035458_fnd_a_m5_invariant_cutover.sql |
-| 20260831035500 | fnd_a_m6_single_destination | supabase/migrations/20260831035500_fnd_a_m6_single_destination.sql |
+| 20260901051549 | fnd_a_m1_universal_requester | supabase/migrations/20260901051549_fnd_a_m1_universal_requester.sql |
+| 20260901051555 | fnd_a_m2_immutable_quote_schema | supabase/migrations/20260901051555_fnd_a_m2_immutable_quote_schema.sql |
+| 20260901051601 | fnd_a_m3_deterministic_quote_backfill | supabase/migrations/20260901051601_fnd_a_m3_deterministic_quote_backfill.sql |
+| 20260901051609 | fnd_a_m4_command_cutover | supabase/migrations/20260901051609_fnd_a_m4_command_cutover.sql |
+| 20260901051617 | fnd_a_m5_invariant_cutover | supabase/migrations/20260901051617_fnd_a_m5_invariant_cutover.sql |
+| 20260901051627 | fnd_a_m6_single_destination | supabase/migrations/20260901051627_fnd_a_m6_single_destination.sql |
 
 ## Observation: names appearing in both B and C
 

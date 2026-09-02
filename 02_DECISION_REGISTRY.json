@@ -3790,7 +3790,10 @@
         "resolution": "The engine is cut over to 799 cents covering the first two loaded miles, and the superseded policy version can no longer be minted.",
         "remediation_commit": "Pricing V2 cutover"
       },
-      "implementation_phase": "Pricing V2 cutover"
+      "implementation_phase": "Pricing V2 cutover",
+      "amended_by": [
+        "PRC-007"
+      ]
     },
     {
       "id": "PRC-006",
@@ -3840,6 +3843,139 @@
         "remediation_commit": "Pricing V2 cutover"
       },
       "implementation_phase": "Pricing V2 cutover"
+    },
+    {
+      "id": "PRC-007",
+      "category": "pricing",
+      "amends": "PRC-005",
+      "decision": "A newly minted automatic priced quote must carry EXACTLY couranr-pricing-v2-2026-09-01. Blacklisting the superseded identifier is insufficient.",
+      "value": {
+        "required_policy_version": "couranr-pricing-v2-2026-09-01",
+        "enforcement": "exact match at the mint boundary, not a denylist",
+        "applies_to": "quote_status='estimated' minted through couranr_append_routed_quote_version",
+        "unpriced_quotes": "unchanged — manual_review_required and invalid keep their nullable policy rules",
+        "historical_rows": "untouched and readable"
+      },
+      "status": "decided",
+      "decided_by": "owner",
+      "decided_at_utc": "2026-09-02T00:00:00Z",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§4 Pricing registry — Couranr Pricing Authority V2 amendment",
+      "affected_routes": [
+        "/app/business/deliveries/new"
+      ],
+      "affected_screen_ids": [
+        "MER-005",
+        "MER-006"
+      ],
+      "affected_database_objects": [
+        "public.couranr_quote_versions"
+      ],
+      "affected_code_paths": [
+        "supabase/migrations/20260902161642_couranr_quote_validity_and_policy_pin.sql"
+      ],
+      "acceptance_criteria": [
+        "A typo such as couranr-pricing-v2-2026-09-1 cannot be minted.",
+        "An invented future version cannot be minted.",
+        "An empty policy string cannot be minted.",
+        "An unpriced manual-review quote still mints with a null policy."
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "enforcement": "denylist of couranr-pricing-2026-07-31 only"
+        },
+        "code_location": "supabase/migrations/20260902042602_couranr_pricing_v2_traffic_authority.sql",
+        "resolution": "Replaced with an exact-match requirement in the minting path.",
+        "remediation_commit": "Pricing V2 closure"
+      },
+      "implementation_phase": "Pricing V2 closure"
+    },
+    {
+      "id": "QVL-001",
+      "category": "pricing",
+      "decision": "An immediate V2 quote is valid for 15 minutes on SERVER time UNTIL THE ACTUAL PAYER approves that exact immutable Quote Version. Once the payer approves it inside the window the price is locked and later passage of time never reprices or expires it. Quote N is never mutated.",
+      "value": {
+        "validity_seconds": 900,
+        "boundary": "half-open: valid for [0, 15:00), expired at 15:00 and beyond",
+        "clock": "server/database time; no browser timer participates",
+        "applies_to": "a quote_status='estimated' quote under couranr-pricing-v2-2026-09-01",
+        "what_the_window_gates": "only the ACT OF OBTAINING payer approval; never anything downstream of an approval already obtained",
+        "merchant_payer_approval": "p_acknowledged=true at submit, identifying THIS exact quote version. The merchant is the payer.",
+        "customer_payer_approval": "the Stripe authorization reaching requires_capture for the exact obligation — the transition that makes the obligation 'authorized', moves the request to 'confirmed' and records record_payer_quote_approval.",
+        "explicitly_not_approval": [
+          "creating a payment obligation — it begins 'not_started'",
+          "issuing a payment access token",
+          "redeeming a payment access token",
+          "attaching or creating a Stripe PaymentIntent — it reaches only 'requires_action'",
+          "Operations accept_as_quoted — Couranr is not the payer"
+        ],
+        "payment_token_ttl": "7 days, a CREDENTIAL ceiling only; it never extends the commercial window",
+        "exempt": [
+          "historical policy versions",
+          "manual_review_required and invalid quotes",
+          "any quote the PAYER has approved"
+        ],
+        "enforced_at": [
+          "couranr_submit_delivery_request_v2 (only when p_acknowledged=true)",
+          "couranr_accept_delivery_request_as_quoted",
+          "couranr_create_payment_obligation",
+          "couranr_issue_payment_access_token",
+          "couranr_redeem_payment_access_token",
+          "couranr_attach_payment_intent",
+          "couranr_apply_payment_intent_state (the authorize branch)"
+        ],
+        "on_expiry": "refuse with quote_expired — CR410 where the command raises, a governed rejected/quote_expired outcome where it returns one; never silently reprice",
+        "remedy": "a fresh canonical route + traffic calculation, which mints Quote N+1",
+        "authorization_moment": "the window is judged AS OF the authorization, not as of processing: the signature-verified webhook supplies event.created, so 3DS, a retry or a delivery backlog never expires an approval obtained in time. A PaymentIntent retrieve carries no authorization timestamp — PaymentIntent.created is when the intent was minted — so the reconcile path supplies none and is judged at server now(), which is conservative and never more permissive than the webhook.",
+        "refused_authorization_consequence": "a refusal at the authorize boundary leaves a real provider hold while the obligation stays requires_action, and OPS-010 cannot release it — couranr_begin_payment_release requires 'authorized'. The ledger converges through the provider's own payment_intent.canceled, which applies from requires_action to cancelled. An Operations-initiated release of an unauthorized hold is NOT decided here."
+      },
+      "status": "decided",
+      "decided_by": "owner",
+      "decided_at_utc": "2026-09-02T00:00:00Z",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§4 Pricing registry — \"Quote stability\"",
+      "affected_routes": [
+        "/app/business/deliveries/new",
+        "/operations/queue",
+        "/pay/[token]"
+      ],
+      "affected_screen_ids": [
+        "MER-005",
+        "MER-006",
+        "OPS-002"
+      ],
+      "affected_database_objects": [
+        "public.couranr_quote_versions",
+        "public.couranr_payment_obligations"
+      ],
+      "affected_code_paths": [
+        "supabase/migrations/20260902161642_couranr_quote_validity_and_policy_pin.sql",
+        "lib/couranr/pricing/policy.ts",
+        "lib/couranr/errors.ts"
+      ],
+      "acceptance_criteria": [
+        "A merchant who acknowledged at 14:59 can have that SAME quote accepted by Operations 30 minutes later, with no Quote N+1 and the same subtotal.",
+        "A merchant acknowledgment at exactly 15:00 is refused and records no acknowledgment event.",
+        "An unacknowledged stale request may enter review but cannot be confirmed at that price.",
+        "A freshly created obligation reports not_started and is not payer approval.",
+        "A valid requires_capture event on an expired quote is rejected as quote_expired, leaves the obligation unauthorized, the request at awaiting_quote_acceptance, and records no payer-approval event.",
+        "Customer authorization at 14:59 applies; at exactly 15:00 it is refused.",
+        "An obligation authorized in time is still authorized at 45 minutes.",
+        "A payment token with days of TTL remaining cannot open an expired quote.",
+        "A late webhook for an approval obtained inside the window still applies; the same webhook for an out-of-window approval is still refused.",
+        "The reconcile path never dates an authorization from PaymentIntent.created.",
+        "The rollback removes both predicates, the reuse helper, and the 9-argument apply, leaving exactly one 8-argument form."
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "enforcement": "none — documentation only"
+        },
+        "code_location": "docs/couranr-mvp/PRODUCT_SPEC.md",
+        "resolution": "Enforced in the database at all seven acceptance/authorization commands listed in value.enforced_at, plus the application-layer PaymentIntent reuse path, which asks the database rather than computing an age of its own.",
+        "remediation_commit": "Pricing V2 closure"
+      },
+      "implementation_phase": "Pricing V2 closure",
+      "note": "An earlier revision confused COMMAND AND ROW EXISTENCE with payer approval. It expired quotes a payer had already approved, and left the real customer approval boundary — couranr_apply_payment_intent_state — unguarded, so an obligation created while the quote was fresh made the price immortal. Approval is now DERIVED from the evidence that already exists rather than duplicated into a flag."
     },
     {
       "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
@@ -4086,7 +4222,10 @@
         "surge_or_demand_multiplier": false,
         "weather_multiplier": false,
         "event_multiplier": false,
-        "missing_evidence_behaviour": "fail safe into review; never fabricate a traffic fact or assume a zero delay"
+        "missing_evidence_behaviour": "fail safe into review; never fabricate a traffic fact or assume a zero delay",
+        "traffic_basis": "immediate departure only",
+        "departure_time_sent_to_google": false,
+        "scheduled_or_future_departure_traffic": "not implemented — deferred"
       },
       "acceptance_criteria": [
         "Five minutes of predicted delay adds nothing.",
@@ -4103,7 +4242,8 @@
         "resolution": "Route evidence now carries both the traffic-aware and static durations and derives the delay server-side.",
         "remediation_commit": "Pricing V2 cutover"
       },
-      "implementation_phase": "Pricing V2 cutover"
+      "implementation_phase": "Pricing V2 cutover",
+      "note": "SCOPE, stated rather than implied: the Routes request pins routingPreference TRAFFIC_AWARE and sends NO departureTime, so Google prices the traffic conditions for now. That is correct for the only timing the Business create-delivery flow can currently express - it has no canonical requested departure-time input. Future or scheduled departure traffic is therefore NOT implemented and must not be described as complete; it belongs to the next Business timing / Smart Intake batch, which owns the input schema. No scheduling model is invented here."
     },
     {
       "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
@@ -4155,7 +4295,7 @@
     },
     {
       "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
-      "authority_section": "§4 Pricing registry — Couranr Pricing Authority V2 amendment",
+      "authority_section": "§4 Pricing registry — Couranr Pricing Authority V2 amendment (supersedes the return pricing in §11 Delivery lifecycle, proof, exceptions, and returns)",
       "affected_routes": [
         "/estimate",
         "/business/deliveries/new",
@@ -4204,7 +4344,8 @@
         "resolution": "The percentage rule is removed from public authority; a return is a new Pricing V2 route.",
         "remediation_commit": "Pricing V2 cutover"
       },
-      "implementation_phase": "Pricing V2 cutover"
+      "implementation_phase": "Pricing V2 cutover",
+      "note": "§11 still reads 'Return: 70% of original, $14.99 minimum' because PRODUCT_SPEC.md's §1–§18 are a byte-verbatim extraction of the Master Package, proven in both directions by tests/couranr-product-spec.test.ts. That line is preserved history, not live authority: the §4 amendment layer retires it, and this record is what makes the supersession explicit to anyone who greps §11 first."
     },
     {
       "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",

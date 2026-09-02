@@ -129,6 +129,17 @@ export const PROOF_CENTS = 0;
  */
 export const TRAFFIC_DELAY_INCLUDED_SECONDS = 5 * 60;
 export const TRAFFIC_DELAY_CENTS_PER_MINUTE = 45;
+/**
+ * QVL-001. How long an UNACCEPTED immediate quote stays current.
+ *
+ * The database is the enforcement point and server time is the authority -
+ * `private.couranr_quote_version_is_expired` is what actually refuses a stale
+ * acceptance. This constant exists so the application can say the same number
+ * in copy and in tests without restating it, and
+ * `tests/couranr-pricing.test.ts` asserts the two agree.
+ */
+export const QUOTE_VALIDITY_SECONDS = 900;
+
 export const MAX_AUTOMATIC_TRAFFIC_DELAY_SECONDS = 25 * 60;
 
 /* ------------------------------------------------------------- unstated */

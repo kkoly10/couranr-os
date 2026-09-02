@@ -64,6 +64,13 @@ const REFUSAL_COPY: Record<string, { title: string; body: string }> = {
     title: "The price for this delivery has changed",
     body: "This link was for a previous quote. Ask the business to send the updated one.",
   },
+  /* QVL-001. Distinct from `expired`, which is the LINK's seven-day TTL, and
+     from `quote_changed`, which means a newer quote exists. This one means the
+     price itself needs recalculating before anyone can pay it. */
+  quote_expired: {
+    title: "This estimate is no longer current",
+    body: "Delivery estimates are held for 15 minutes. Ask the business to send an up-to-date price.",
+  },
   already_authorized: {
     title: "This delivery is already authorized",
     body: "Nothing further is needed. Couranr has what it needs to go ahead.",

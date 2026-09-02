@@ -33,6 +33,7 @@ assertServerOnly("lib/couranr/payments/commands.ts");
  */
 
 export const RPC = {
+  obligationQuoteExpired: "couranr_obligation_quote_expired",
   createObligation: "couranr_create_payment_obligation",
   attachIntent: "couranr_attach_payment_intent",
   applyIntentState: "couranr_apply_payment_intent_state",
@@ -230,6 +231,25 @@ export async function ensurePaymentIntent(params: {
 
   // Already has one: reuse it rather than creating a second.
   if (ob.provider_payment_intent_id) {
+    /*
+     * QVL-001. Reuse skips `attachIntent`, so the CR410 guard inside that
+     * command is never reached here - and a PaymentIntent minted while the
+     * quote was fresh would otherwise stay confirmable indefinitely, which is
+     * exactly the "an intent created while fresh must not make the price
+     * immortal" case. Ask the DATABASE, which owns the clock; never compute an
+     * age here.
+     */
+    const stale = await callRpc<boolean>(op, RPC.obligationQuoteExpired, {
+      p_obligation_id: ob.id,
+    });
+    if (isPaymentFailure(stale)) return stale;
+    if (stale.value === true) {
+      return fail({
+        operation: op,
+        code: "quote_expired",
+        detail: { reason: "quote_expired", obligationId: ob.id },
+      });
+    }
     try {
       const existing = await retrievePaymentIntent(String(ob.provider_payment_intent_id));
       if (!existing.client_secret) {
@@ -297,6 +317,15 @@ export async function applyVerifiedIntentState(params: {
   amountCapturable: number;
   currency: string;
   metadata: Record<string, string> | null;
+  /**
+   * QVL-001. WHEN Stripe authorized, as unix seconds from the verified event
+   * or intent — not when this server got round to processing it. The payer
+   * approved then, and an approval obtained inside the 15-minute window is
+   * never undone by a 3DS challenge, a retry or a webhook backlog delivering
+   * late. Omitted only when the caller genuinely cannot know, and the database
+   * then falls back to its own now().
+   */
+  authorizedAtUnixSeconds?: number | null;
 }): Promise<PaymentResult<ApplyOutcome>> {
   const op = "applyVerifiedIntentState";
   const r = await callRpc<ApplyOutcome>(op, RPC.applyIntentState, {
@@ -308,6 +337,11 @@ export async function applyVerifiedIntentState(params: {
     p_amount_capturable: params.amountCapturable,
     p_currency: params.currency,
     p_metadata: params.metadata ?? {},
+    p_authorized_at:
+      typeof params.authorizedAtUnixSeconds === "number" &&
+      Number.isFinite(params.authorizedAtUnixSeconds)
+        ? new Date(params.authorizedAtUnixSeconds * 1000).toISOString()
+        : null,
   });
   if (isPaymentFailure(r)) return r;
   return { ok: true, value: r.value };
@@ -340,6 +374,26 @@ export async function reconcilePaymentIntent(params: {
   }
 
   return applyVerifiedIntentState({
+    /*
+     * QVL-001: deliberately NOT supplied here, so the database falls back to
+     * its own now().
+     *
+     * A retrieve carries no authorization timestamp. `PaymentIntent.created`
+     * is "Time at which the object was created" (stripe@15.12.0,
+     * types/PaymentIntents.d.ts) — the moment the intent was minted, before
+     * the payer touched it — so passing it would date every authorization to
+     * whenever checkout opened and let a payer authorize an hour-old quote.
+     * Wrong in the permissive direction is the one direction that must not
+     * happen for money.
+     *
+     * now() is instead conservative: this runs seconds after the Payment
+     * Element reports success, so it refuses only an authorization that really
+     * is out of window. And it is not the last word — the signature-verified
+     * `payment_intent.amount_capturable_updated` webhook carries the true
+     * authorization moment in `event.created` and applies under its own event
+     * id, so a genuinely in-window approval that this path refuses is still
+     * authorized by the webhook. Proved by PV2-60/61.
+     */
     providerEventId: syntheticEventId(pi, params.obligationVersion),
     // Mapped to the event the state machine understands, so a retrieve and a
     // webhook take the same path and cannot disagree.

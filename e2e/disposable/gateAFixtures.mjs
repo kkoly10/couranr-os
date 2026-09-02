@@ -323,7 +323,13 @@ export const FIXTURE_DEFAULTS = {
   pickupAddress: { line1: "12 Test St", city: "Stafford", region: "VA", postalCode: "22554" },
   dropoffAddress: { line1: "9 Drop Ct", city: "Woodbridge", region: "VA", postalCode: "22191" },
   subtotalCents: 2299,
-  pricingPolicyVersion: "disposable",
+  /* PRC-007 pins the mint boundary to an EXACT policy version, so a synthetic
+     "disposable" placeholder is now correctly refused by the database - it was
+     minting `estimated` quotes under an identifier no authority governs, which
+     is precisely what the pin exists to stop. Fixtures use the real version;
+     a suite that wants a historical one inserts it directly rather than
+     minting it through the command. */
+  pricingPolicyVersion: "couranr-pricing-v2-2026-09-01",
   includedLoadedMiles: 3,
   timezone: "America/New_York",
   vehicleRequirement: { vehicleClass: "van", maxPayloadLb: 2000 },

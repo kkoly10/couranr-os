@@ -707,7 +707,12 @@ describe("a missing acknowledgment is a different conflict from a stale version"
     // new code has to be added here deliberately and pass the legality rules
     // above — CR400 does: five characters, legal alphabet, and it ends in "400"
     // rather than the "000" that would make it a category code.
-    expect([...codes].sort()).toEqual(["CR400", "CR403", "CR404", "CR409", "CR412", "CR422"]);
+    // CR410 is QVL-001's quote_expired, added deliberately: five characters,
+    // legal alphabet, not 00000, and it ends in "410" rather than the "000"
+    // that would make it a category code trappable only as a whole class.
+    expect([...codes].sort()).toEqual([
+      "CR400", "CR403", "CR404", "CR409", "CR410", "CR412", "CR422",
+    ]);
   });
 
   /**

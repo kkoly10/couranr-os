@@ -5,12 +5,12 @@ import { describe, expect, it } from "vitest";
 
 const ROOT = process.cwd();
 const read = (relative: string) => readFileSync(path.join(ROOT, relative), "utf8");
-const M1 = read("supabase/migrations/20260831035450_fnd_a_m1_universal_requester.sql");
-const M2 = read("supabase/migrations/20260831035452_fnd_a_m2_immutable_quote_schema.sql");
-const M3 = read("supabase/migrations/20260831035454_fnd_a_m3_deterministic_quote_backfill.sql");
-const M4 = read("supabase/migrations/20260831035456_fnd_a_m4_command_cutover.sql");
-const M5 = read("supabase/migrations/20260831035458_fnd_a_m5_invariant_cutover.sql");
-const M6 = read("supabase/migrations/20260831035500_fnd_a_m6_single_destination.sql");
+const M1 = read("supabase/migrations/20260901051549_fnd_a_m1_universal_requester.sql");
+const M2 = read("supabase/migrations/20260901051555_fnd_a_m2_immutable_quote_schema.sql");
+const M3 = read("supabase/migrations/20260901051601_fnd_a_m3_deterministic_quote_backfill.sql");
+const M4 = read("supabase/migrations/20260901051609_fnd_a_m4_command_cutover.sql");
+const M5 = read("supabase/migrations/20260901051617_fnd_a_m5_invariant_cutover.sql");
+const M6 = read("supabase/migrations/20260901051627_fnd_a_m6_single_destination.sql");
 const packageJson = JSON.parse(read("package.json"));
 
 describe("Foundation Gate A static authority", () => {
@@ -162,10 +162,10 @@ describe("Foundation Gate A static authority", () => {
 
   it("FND-MIG-02 rollback refuses to destroy live semantic quote history", () => {
     const rollbacks = [
-      "20260831035452_fnd_a_m2_immutable_quote_schema.rollback.sql",
-      "20260831035456_fnd_a_m4_command_cutover.rollback.sql",
-      "20260831035458_fnd_a_m5_invariant_cutover.rollback.sql",
-      "20260831035500_fnd_a_m6_single_destination.rollback.sql",
+      "20260901051555_fnd_a_m2_immutable_quote_schema.rollback.sql",
+      "20260901051609_fnd_a_m4_command_cutover.rollback.sql",
+      "20260901051617_fnd_a_m5_invariant_cutover.rollback.sql",
+      "20260901051627_fnd_a_m6_single_destination.rollback.sql",
     ].map((file) => read(`supabase/rollbacks/${file}`)).join("\n");
     expect(rollbacks).toMatch(/record_origin\s*=\s*'runtime'/);
     expect(rollbacks).toMatch(/forward repair/i);

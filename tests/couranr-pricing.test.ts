@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   BASE_PRICE_CENTS,
+  QUOTE_VALIDITY_SECONDS,
   COURANR_PRICING_POLICY_VERSION,
   COURANR_PRICING_POLICY_VERSION_V1_HISTORICAL,
   INCLUDED_LOADED_MILES,
@@ -457,13 +458,13 @@ describe("engine is dependency-free and amount-free", () => {
 describe("policy identifiers agree across the TypeScript/SQL boundary", () => {
   const ROOT = path.resolve(__dirname, "..");
   const migration = readFileSync(
-    path.join(ROOT, "supabase/migrations/20260902090000_couranr_pricing_v2_traffic_authority.sql"),
+    path.join(ROOT, "supabase/migrations/20260902042602_couranr_pricing_v2_traffic_authority.sql"),
     "utf8"
   );
   const rollback = readFileSync(
     path.join(
       ROOT,
-      "supabase/rollbacks/20260902090000_couranr_pricing_v2_traffic_authority.rollback.sql"
+      "supabase/rollbacks/20260902042602_couranr_pricing_v2_traffic_authority.rollback.sql"
     ),
     "utf8"
   );
@@ -578,5 +579,42 @@ describe("every review reason the engine can emit is presentable", () => {
     for (const c of produced) {
       expect(REVIEW_REASON_LABELS[c], `engine emits ${c}, label map has no key`).toBeTruthy();
     }
+  });
+});
+
+describe("QVL-001 quote validity is one number, not two", () => {
+  const REPO = path.resolve(__dirname, "..");
+  const QVL_SQL = () =>
+    readFileSync(
+      path.join(REPO, "supabase/migrations/20260902161642_couranr_quote_validity_and_policy_pin.sql"),
+      "utf8"
+    );
+  /* The database is the enforcement point. This binds the TypeScript constant
+     to the interval the migration actually uses, so the two cannot drift the
+     way the Same Day fixture drifted from BASE_PRICE_CENTS. */
+  it("the constant matches the interval the migration enforces", () => {
+    const sql = QVL_SQL();
+    const m = sql.match(/>=\s*interval\s*'(\d+)\s*minutes'/);
+    expect(m, "the migration must state the window as an interval").toBeTruthy();
+    expect(Number(m![1]) * 60).toBe(QUOTE_VALIDITY_SECONDS);
+    expect(QUOTE_VALIDITY_SECONDS).toBe(900);
+  });
+
+  it("the window is enforced in SQL, never from a browser clock", () => {
+    const sql = QVL_SQL();
+    // Server time only: the predicate defaults p_now to now() and no command
+    // passes a caller-supplied timestamp into it.
+    expect(sql).toContain("p_now   timestamptz default now()");
+    expect(sql).not.toMatch(/couranr_quote_version_is_expired\(v_quote,\s*p_/);
+  });
+
+  it("the policy pin is an exact match, not a blacklist", () => {
+    const sql = QVL_SQL();
+    expect(sql).toContain(
+      "if p_pricing_policy_version is distinct from 'couranr-pricing-v2-2026-09-01' then"
+    );
+    // The superseded identifier must NOT be singled out any more: an exact
+    // match already refuses it, and a blacklist waves typos through.
+    expect(sql).not.toContain("superseded_pricing_policy_cannot_be_minted");
   });
 });

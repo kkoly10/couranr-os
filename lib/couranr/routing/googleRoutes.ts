@@ -139,6 +139,19 @@ export async function computeCanonicalGoogleRoute(
         origin: { placeId: input.pickupPlaceId },
         destination: { placeId: input.dropoffPlaceId },
         travelMode: "DRIVE",
+        /*
+         * IMMEDIATE traffic only, and that is a deliberate limit rather than
+         * an oversight. No `departureTime` is sent, so Google prices the
+         * conditions for NOW - which is the only timing the Business
+         * create-delivery flow can currently express, because it has no
+         * canonical requested departure-time input (TRF-001).
+         *
+         * Future/scheduled departure traffic is NOT implemented. When the
+         * Business timing / Smart Intake batch introduces a governed
+         * departure-time input, it becomes an extra field on this request
+         * object and the derivation below is unchanged - the seam is here and
+         * needs no restructuring. Do not invent that schema from this file.
+         */
         routingPreference: "TRAFFIC_AWARE",
         computeAlternativeRoutes: false,
         units: "IMPERIAL",

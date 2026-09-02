@@ -105,7 +105,7 @@ drop function if exists private.couranr_append_routed_quote_version(
 
 /* ------------------------------------------------------------------ restore */
 /* The five Batch 1 definitions, byte-identical to
-   supabase/migrations/20260901090000_couranr_business_google_routing_authority.sql
+   supabase/migrations/20260901220707_couranr_business_google_routing_authority.sql
    (extracted from it rather than retyped, so they cannot drift). Dropping the
    V2 arities above without these would leave the database with NO quote-minting
    command: every merchant create, estimate and requote would fail. */
