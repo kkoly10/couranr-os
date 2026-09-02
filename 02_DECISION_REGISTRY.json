@@ -2151,6 +2151,9 @@
       ],
       "blocked_commits": [
         "pricing commit"
+      ],
+      "amended_by": [
+        "PRC-006"
       ]
     },
     {
@@ -3772,10 +3775,6 @@
         "charged_by_item_count": false,
         "historical_quotes": "immutable; retain their own pricing_policy_version and stored line items"
       },
-      "resolves": {
-        "previously": "unresolved",
-        "note": "PRC-004's nearest-$0.25 rounding condition is retired rather than defined. Pricing V2 rounds money half-up to the cent only where a rate produces a fractional cent, so no rounding trigger is needed."
-      },
       "acceptance_criteria": [
         "A newly minted quote records pricing_policy_version couranr-pricing-v2-2026-09-01.",
         "2.000 loaded miles prices at 799 cents.",
@@ -3789,6 +3788,55 @@
         },
         "code_location": "lib/couranr/pricing/policy.ts",
         "resolution": "The engine is cut over to 799 cents covering the first two loaded miles, and the superseded policy version can no longer be minted.",
+        "remediation_commit": "Pricing V2 cutover"
+      },
+      "implementation_phase": "Pricing V2 cutover"
+    },
+    {
+      "id": "PRC-006",
+      "category": "pricing",
+      "amends": "PRC-004",
+      "decision": "The nearest-$0.25 rounding rule is RETIRED rather than given a condition. Pricing V2 computes exact integer cents and performs one deterministic half-up division only where a rate produces a fractional cent, so no increment-rounding trigger is needed and none exists.",
+      "value": {
+        "quarter_dollar_rounding": false,
+        "rounding_increment_cents": 0,
+        "money_rounding": "deterministic half-up to the cent, only where a rate produces a fractional cent",
+        "applies_to_policy_version": "couranr-pricing-v2-2026-09-01",
+        "historical_quotes": "immutable; a quote minted under couranr-pricing-2026-07-31 keeps whatever rounding it recorded"
+      },
+      "status": "decided",
+      "decided_by": "owner",
+      "decided_at_utc": "2026-09-01T00:00:00Z",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§4 Pricing registry — Couranr Pricing Authority V2 amendment",
+      "affected_routes": [
+        "/estimate",
+        "/business/deliveries/new",
+        "/pricing"
+      ],
+      "affected_screen_ids": [
+        "PUB-004",
+        "PUB-008",
+        "MER-006"
+      ],
+      "affected_database_objects": [
+        "public.couranr_quote_versions"
+      ],
+      "affected_code_paths": [
+        "lib/couranr/pricing/quote.ts",
+        "lib/couranr/pricing/types.ts"
+      ],
+      "acceptance_criteria": [
+        "A V2 quote result reports roundingApplied false.",
+        "No V2 total is a multiple of 25 cents by construction — 3.000 loaded miles prices at 924 cents.",
+        "A historical quote's stored amount is never re-rounded when it is read back."
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "rounding_increment_cents": 25
+        },
+        "code_location": "lib/couranr/pricing/quote.ts",
+        "resolution": "The engine applies no increment rounding at all; roundingApplied is typed as the literal false.",
         "remediation_commit": "Pricing V2 cutover"
       },
       "implementation_phase": "Pricing V2 cutover"
