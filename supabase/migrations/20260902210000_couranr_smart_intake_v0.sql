@@ -602,7 +602,12 @@ create or replace function public.couranr_record_intake_policy(
   p_policy_unresolved     jsonb,
   p_policy_version        text,
   p_operational_capability text,
-  p_clarification         jsonb
+  p_clarification         jsonb,
+  /* The run this evaluation was derived from. A policy pass computed after a
+     run that has since been superseded must NOT overwrite the current
+     clarification/policy — the same §6 stale rule, one layer up. Null means
+     a manual-path evaluation with no run. */
+  p_run_id                uuid default null
 )
 returns public.couranr_intake_sessions
 language plpgsql security invoker set search_path=''
@@ -610,6 +615,17 @@ as $fn$
 declare
   v_session public.couranr_intake_sessions;
 begin
+  if p_run_id is not null then
+    select * into v_session from public.couranr_intake_sessions
+     where id = p_session_id and business_account_id = p_business_account_id
+     for update;
+    if not found then
+      raise exception 'intake_session_not_found' using errcode='CR404';
+    end if;
+    if v_session.current_run_id is distinct from p_run_id then
+      raise exception 'stale_interpretation_run' using errcode='CR409';
+    end if;
+  end if;
   update public.couranr_intake_sessions
      set policy_disposition = p_policy_disposition,
          policy_reasons = coalesce(p_policy_reasons,'[]'::jsonb),
@@ -764,9 +780,9 @@ revoke all on function public.couranr_confirm_intake_fact(uuid,uuid,uuid,text,js
 grant execute on function public.couranr_confirm_intake_fact(uuid,uuid,uuid,text,jsonb,text)
   to service_role;
 
-revoke all on function public.couranr_record_intake_policy(uuid,uuid,text,jsonb,jsonb,jsonb,text,text,jsonb)
+revoke all on function public.couranr_record_intake_policy(uuid,uuid,text,jsonb,jsonb,jsonb,text,text,jsonb,uuid)
   from public, anon, authenticated, service_role;
-grant execute on function public.couranr_record_intake_policy(uuid,uuid,text,jsonb,jsonb,jsonb,text,text,jsonb)
+grant execute on function public.couranr_record_intake_policy(uuid,uuid,text,jsonb,jsonb,jsonb,text,text,jsonb,uuid)
   to service_role;
 
 revoke all on function public.couranr_commit_intake_to_request(
