@@ -557,12 +557,19 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
         <div className="cr-send-panel">
           <fieldset className="cr-send-field">
             <legend className="cr-send-field__label">{SEND_COPY.timing_question}</legend>
-            {(
-              [
-                ["asap", SEND_COPY.timing_asap],
-                ["today", SEND_COPY.timing_today],
-                ["schedule", SEND_COPY.timing_schedule],
-              ] as const
+            {/* LIVE mode is ASAP ONLY (review item 5): the backend prices and
+                dispatches every consumer request as ASAP, so rendering a
+                choice it ignores would be a control that lies. Consumer
+                scheduled timing is DEFERRED, not hidden behind a dead radio.
+                Fixture/preview keeps the three choices for visual
+                preservation of the shipped design. */}
+            {(mode === "live"
+              ? ([["asap", SEND_COPY.timing_asap]] as const)
+              : ([
+                  ["asap", SEND_COPY.timing_asap],
+                  ["today", SEND_COPY.timing_today],
+                  ["schedule", SEND_COPY.timing_schedule],
+                ] as const)
             ).map(([v, label]) => (
               <label key={v} className="cr-send-choice">
                 <input
@@ -578,10 +585,9 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
               </label>
             ))}
           </fieldset>
-          {/* These choices are PRESENTATION. They map to no service level and
-              no price: SUR-001's amounts describe the business quote, and this
-              flow computes nothing. */}
-          <p className="cr-send-note">Couranr confirms timing before anything is scheduled.</p>
+          <p className="cr-send-note">
+            {mode === "live" ? SEND_COPY.timing_live_note : "Couranr confirms timing before anything is scheduled."}
+          </p>
 
           <div className="cr-send-actions">
             <button type="button" className="cr-button cr-button--ghost" onClick={() => setPhase("item")}>

@@ -145,6 +145,10 @@ export const SEND_COPY = {
   timing_asap: "As soon as possible",
   timing_today: "Today",
   timing_schedule: "Schedule it",
+  /* Live V1 is ASAP only; Couranr confirms the exact timing after the
+     request. Scheduled consumer timing is deferred, so live mode never
+     renders a choice the backend would ignore. */
+  timing_live_note: "Couranr picks up as soon as possible and confirms the exact timing with you after your request.",
   review_heading: "Here’s your delivery",
   contact_heading: "Where should we send updates?",
   acknowledgement: "I confirm this item is eligible for delivery and I have authority to send or collect it.",

@@ -21,6 +21,7 @@ import { quoteArgs, routeArgs, timingArgs } from "@/lib/couranr/requests/command
 import { factsFromDraft } from "@/lib/couranr/shipment/draftFacts";
 import { evaluateShipmentPolicy } from "@/lib/couranr/shipment/policy";
 import { applyShipmentPolicyToQuote } from "@/lib/couranr/shipment/quoteStatus";
+import { scanRestrictedSignals } from "@/lib/couranr/shipment/restrictedSignals";
 import {
   isRestrictedClassDeclaration,
   isWeightBand,
@@ -515,7 +516,13 @@ export async function estimateConsumerSend(params: {
 
   // §24: MANUAL STRUCTURED intake — the SAME deterministic policy the
   // business path runs, over the guest's structured statement. No session, no
-  // AI, no second policy.
+  // AI, no second policy — and no second scanner: the guest's OWN item
+  // description runs through the existing deterministic scanRestrictedSignals
+  // lexicon (review item 1). Text signals are ESCALATION ONLY by the policy
+  // engine's design: a declaration of 'none' that conflicts with a material
+  // signal becomes needs_review (no payable quote), and text alone can never
+  // produce 'prohibited' — only a confirmed prohibited declaration does that.
+  const textSignals = scanRestrictedSignals(body.shipment.description ?? "");
   const policy = evaluateShipmentPolicy(
     factsFromDraft({
       weightLb: body.shipment.weightLb,
@@ -524,7 +531,8 @@ export async function estimateConsumerSend(params: {
       serviceLevel: "standard",
       timingIntent: "asap",
       requestedPickupLocal: null,
-    })
+    }),
+    { textSignals }
   );
   const quote: QuoteResult = applyShipmentPolicyToQuote(routed.quote, policy);
 

@@ -336,3 +336,96 @@ describe("the consumer migration keeps the security posture", () => {
     expect(sql).not.toMatch(/drop\s+(table|column)\s/i);
   });
 });
+
+/* ------------------------ restricted-signal parity (review item 1) ------- */
+
+import { scanRestrictedSignals } from "@/lib/couranr/shipment/restrictedSignals";
+import { evaluateShipmentPolicy } from "@/lib/couranr/shipment/policy";
+import { factsFromDraft } from "@/lib/couranr/shipment/draftFacts";
+import { applyShipmentPolicyToQuote } from "@/lib/couranr/shipment/quoteStatus";
+import type { QuoteResult } from "@/lib/couranr/pricing/types";
+
+/**
+ * The consumer's free-text item description runs through the SAME
+ * deterministic scanner the Smart Intake path uses, as ESCALATION-ONLY
+ * evidence into the SAME policy engine. These execute the real scanner and
+ * the real engine — nothing is mocked — over exactly the path
+ * estimateConsumerSend composes: scanRestrictedSignals(description) →
+ * evaluateShipmentPolicy(factsFromDraft(structured), { textSignals }) →
+ * applyShipmentPolicyToQuote.
+ */
+describe("consumer restricted-signal parity (review item 1)", () => {
+  const PRICED: QuoteResult = {
+    quoteStatus: "estimated",
+    deliverySubtotalCents: 1234,
+    lineItems: [{ code: "base", label: "Base", amountCents: 1234 }],
+    reviewReasons: [],
+    validationErrors: [],
+  } as unknown as QuoteResult;
+
+  function consumerPolicyFor(description: string, restrictedClass: string) {
+    const textSignals = scanRestrictedSignals(description);
+    return evaluateShipmentPolicy(
+      factsFromDraft({
+        weightLb: 10,
+        weightBand: null,
+        restrictedClass,
+        serviceLevel: "standard",
+        timingIntent: "asap",
+        requestedPickupLocal: null,
+      } as any),
+      { textSignals }
+    );
+  }
+
+  it("'12 bottles of beer' declared 'none' -> needs_review, no payable quote", () => {
+    const policy = consumerPolicyFor("12 bottles of beer", "none");
+    expect(policy.disposition).toBe("needs_review");
+    expect(policy.riskSignals).toContain("restricted_signal_conflicts_declaration");
+    const quote = applyShipmentPolicyToQuote(PRICED, policy);
+    expect(quote.quoteStatus).toBe("manual_review_required");
+    expect(quote.deliverySubtotalCents).toBe(0);
+    expect(quote.lineItems).toEqual([]);
+  });
+
+  it("'box of 9mm ammunition' declared 'none' -> needs_review", () => {
+    const policy = consumerPolicyFor("box of 9mm ammunition", "none");
+    expect(policy.disposition).toBe("needs_review");
+    expect(policy.riskSignals).toContain("restricted_signal_conflicts_declaration");
+    expect(applyShipmentPolicyToQuote(PRICED, policy).quoteStatus).toBe("manual_review_required");
+  });
+
+  for (const benign of [
+    "alcohol-free cleaning solution",
+    "toy gun",
+    "gunmetal lamp",
+    "battery-powered drill",
+    "ordinary laptop",
+  ]) {
+    it(`'${benign}' declared 'none' stays allowed — text can never hard-prohibit`, () => {
+      const policy = consumerPolicyFor(benign, "none");
+      expect(policy.disposition).toBe("allowed");
+      expect(applyShipmentPolicyToQuote(PRICED, policy).quoteStatus).toBe("estimated");
+    });
+  }
+
+  it("a consumer-confirmed prohibited class is deterministic prohibited regardless of text", () => {
+    const policy = consumerPolicyFor("just some stuff", "firearms");
+    expect(policy.disposition).toBe("prohibited");
+    expect(applyShipmentPolicyToQuote(PRICED, policy).quoteStatus).toBe("invalid");
+  });
+
+  it("text signals ESCALATE only: even 'beer' plus a prohibited declaration never upgrades past the declaration's own verdict", () => {
+    // The declaration alone already decides 'prohibited'; the signal adds
+    // nothing and must not change the mechanism.
+    const withText = consumerPolicyFor("12 bottles of beer", "alcohol");
+    const withoutText = consumerPolicyFor("", "alcohol");
+    expect(withText.disposition).toBe(withoutText.disposition);
+  });
+
+  it("estimateConsumerSend actually wires the scan into the policy call", () => {
+    const code = stripped(LIB);
+    expect(code).toMatch(/scanRestrictedSignals\(body\.shipment\.description \?\? ""\)/);
+    expect(code).toMatch(/evaluateShipmentPolicy\([\s\S]{0,400}\{ textSignals \}/);
+  });
+});

@@ -805,3 +805,27 @@ describe("SendFlow's structured inputs stay in parity with the governed vocabula
     expect(sendFlow).not.toMatch(/confirmPayment|loadStripe|PaymentIntent/);
   });
 });
+
+/* -------------------------- live timing truth (review item 5) ------------ */
+
+describe("live consumer timing is ASAP only (review item 5)", () => {
+  const sendFlow = readFileSync("components/couranr/sameday/SendFlow.tsx", "utf8");
+
+  it("live mode renders no timing choice the backend ignores", () => {
+    // The choices list is mode-gated: live gets exactly the ASAP entry, and
+    // the today/schedule radios exist only outside live mode (fixture keeps
+    // them for visual preservation of the shipped design).
+    expect(sendFlow).toMatch(
+      /mode === "live"\s*\?\s*\(\[\["asap", SEND_COPY\.timing_asap\]\] as const\)/
+    );
+    expect(sendFlow).toMatch(/SEND_COPY\.timing_live_note/);
+  });
+
+  it("the wire stays ASAP regardless — the fixed intent is not a UI courtesy", () => {
+    // Companion to "timing is the funnel's fixed ASAP intent" above: the live
+    // adapter's estimate body pins timing server-honestly whatever the UI
+    // shows.
+    const adapters = readFileSync("lib/couranr/sameday/liveAdapters.ts", "utf8");
+    expect(adapters).toMatch(/timing:\s*\{\s*intent:\s*"asap"\s*\}/);
+  });
+});
