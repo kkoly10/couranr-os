@@ -281,7 +281,7 @@ function main() {
       8047,600,600,0,'google_routes_v2','available_for_request',null,
       'estimated','couranr-pricing-v2-2026-09-01',2500,3,2,
       '[{"code":"base","amountCents":2500}]'::jsonb,'[]'::jsonb,
-      p_restricted_class => 'none');
+      null,null,null,null,'[]'::jsonb,'none');
     insert into public.couranr_delivery_requests(
       requester_kind,business_account_id,created_by,consumer_contact_snapshot,
       idempotency_scope,idempotency_key,source

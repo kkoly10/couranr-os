@@ -241,7 +241,7 @@ async function main() {
     // at the current revision) — the application records one before pricing.
     const recordPolicy = (sid, disposition, reasons = "'[]'::jsonb") => raw(`select public.couranr_record_intake_policy(
       '${sid}','${BIZ_A}','${disposition}',${reasons},'[]'::jsonb,'[]'::jsonb,
-      'couranr-shipment-policy-v1-2026-09-03','standard_lane',null,null,
+      'couranr-shipment-policy-v1-2026-09-02','standard_lane',null,null,
       '{"signals":[],"material":false}'::jsonb)`);
     check("SI-24b", "committing before any policy was recorded is refused as STALE policy",
       raises(`select public.couranr_commit_intake_to_request('${session}',2,'${reqA}','${BIZ_A}',

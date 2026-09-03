@@ -45,7 +45,7 @@ function createAvailable(key, dropPlace = "place-drop-a", meters = 8047, amount 
     ${address("place-pickup", "10 Market St")},${address(dropPlace, "20 Main St")},false,
     ${meters},600,600,0,'google_routes_v2','available_for_request',null,
     'estimated','couranr-pricing-v2-2026-09-01',${amount},3,2,${items(amount)},'[]'::jsonb,
-    p_restricted_class => 'none')`);
+    null,null,null,null,'[]'::jsonb,'none')`);
 }
 
 function main() {
@@ -88,7 +88,7 @@ function main() {
       ${address("place-pickup", "10 Market St")},${address("place-drop-b", "90 Changed St")},false,
       16093,900,900,0,'google_routes_v2','available_for_request',null,
       'estimated','couranr-pricing-v2-2026-09-01',4500,3,7,${items(4500)},'[]'::jsonb,
-      p_restricted_class => 'none')`);
+      null,null,null,null,'[]'::jsonb,'none')`);
     check("BRA-DB-05", "address change appends Quote 2 and preserves Quote 1",
       one(`select string_agg(quote_number||':'||(dropoff_address_snapshot->>'googlePlaceId')||':'||
               route_distance_meters,',' order by quote_number)
@@ -100,7 +100,8 @@ function main() {
       'Recipient','555-0100','recipient@example.test',10,0,'standard',false,'photo_or_pin',
       ${address("place-pickup", "10 Market St")},${address("place-review", "30 Review St")},false,
       null,null,null,null,'google_routes_v2','needs_review','google_routes_unavailable',
-      'manual_review_required',null,null,3,0,'[]'::jsonb,'["route_needs_review"]'::jsonb)`);
+      'manual_review_required',null,null,3,0,'[]'::jsonb,'["route_needs_review"]'::jsonb,
+      null,null,null,null,'[]'::jsonb,null)`);
     check("BRA-DB-06", "Google failure persists needs_review with no distance or amount",
       one(`select serviceability_outcome||'|'||(route_distance_meters is null)||'|'||
                   (loaded_distance_miles is null)||'|'||(subtotal_cents is null)
@@ -112,7 +113,8 @@ function main() {
       'Recipient','555-0100','recipient@example.test',10,0,'standard',false,'photo_or_pin',
       ${address("place-pickup", "10 Market St")},${address("place-surrounding", "100 King St")},false,
       8047,600,600,0,'google_routes_v2','needs_review','market_needs_review',
-      'manual_review_required',null,null,3,0,'[]'::jsonb,'["route_needs_review"]'::jsonb)`);
+      'manual_review_required',null,null,3,0,'[]'::jsonb,'["route_needs_review"]'::jsonb,
+      null,null,null,null,'[]'::jsonb,null)`);
     check("BRA-DB-07", "successful out-of-market route remains needs_review with evidence",
       one(`select serviceability_outcome||'|'||route_distance_meters||'|'||
                   loaded_distance_miles||'|'||(subtotal_cents is null)

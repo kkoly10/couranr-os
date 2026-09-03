@@ -82,6 +82,8 @@ function draft31(key) {
 
 const MIG = "supabase/migrations/20260902200000_couranr_weight_band_and_requested_timing.sql";
 const RB = "supabase/rollbacks/20260902200000_couranr_weight_band_and_requested_timing.rollback.sql";
+const FENCE = "supabase/migrations/20260902220000_couranr_legacy_arity_fence.sql";
+const FENCE_RB = "supabase/rollbacks/20260902220000_couranr_legacy_arity_fence.rollback.sql";
 const applyScript = (file) => {
   try {
     raw(readFileSync(file, "utf8").replace(/^\s*begin;\s*$/m, "").replace(/^\s*commit;\s*$/m, ""));
@@ -103,33 +105,44 @@ async function main() {
     console.log("\n  Weight band + requested timing — database execution\n");
 
     /* ---- 0. rollback/replay on the EVIDENCE-FREE database first --------- */
-    check("WBT-01", "the rollback applies cleanly before any evidence exists",
+    // up() applied the whole sequence INCLUDING the postdeploy fence, so the
+    // suite starts in the post-cutover world: strict arity only.
+    check("WBT-00", "after the fence only the STRICT arity exists",
+      one(`select string_agg(distinct pronargs::text,',' order by pronargs::text) from pg_proc p
+            join pg_namespace n on n.oid=p.pronamespace
+            where n.nspname='public' and p.proname='couranr_create_routed_delivery_request_draft'`), "37");
+    check("WBT-01", "the weight/timing rollback applies cleanly before any evidence exists",
       applyScript(RB), "NO_ERROR|");
     check("WBT-02", "... and the columns are gone",
       one(`select count(*) from information_schema.columns
             where table_name='couranr_delivery_requests' and column_name in
             ('weight_band','timing_intent','requested_departure_at')`), "0");
-    check("WBT-03", "... and the routed create is back to its 31-argument arity",
-      one(`select max(pronargs) from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+    check("WBT-03", "... and the routed create is back to its 31-argument arity ONLY (the rollback restores the old command even when the fence had retired it)",
+      one(`select string_agg(distinct pronargs::text,',' order by pronargs::text) from pg_proc p
+            join pg_namespace n on n.oid=p.pronamespace
             where n.nspname='public' and p.proname='couranr_create_routed_delivery_request_draft'`), "31");
+    check("WBT-03b", "the fence REFUSES to run while the strict arity is absent — it can never leave the database with no routed commands",
+      applyScript(FENCE).includes("legacy_arity_fence_requires_strict_commands"), true);
     check("WBT-04", "the forward migration replays over its own rollback",
       applyScript(MIG), "NO_ERROR|");
     check("WBT-05", "... and is re-runnable over itself (second run, recovery path)",
       applyScript(MIG), "NO_ERROR|");
-    check("WBT-06", "... with exactly ONE arity of each routed command",
-      one(`select string_agg(distinct pronargs::text,',') from pg_proc p
+    check("WBT-06", "... leaving BOTH arities live — the zero-downtime compatibility window (correction pass §2)",
+      one(`select string_agg(distinct pronargs::text,',' order by pronargs::text) from pg_proc p
             join pg_namespace n on n.oid=p.pronamespace
-            where n.nspname='public' and p.proname in
-            ('couranr_create_routed_delivery_request_draft')`), "37");
+            where n.nspname='public' and p.proname='couranr_create_routed_delivery_request_draft'`), "31,37");
 
-    /* ---- 1. deploy gap: the OLD 31-argument call still resolves --------- */
-    // ... but it carries no safety declaration, so an ESTIMATED quote from
-    // the not-yet-deployed application is REFUSED rather than minted without
-    // one (correction pass §2). Apply-and-deploy in one release window.
-    check("WBT-07", "the deployed app's 31-argument ESTIMATED call resolves against the 37-argument function and is refused for want of a safety declaration",
-      raises(draft31("wbt-legacy")), "CR422|safety_declaration_required");
+    /* ---- 1. deploy gap, PREDEPLOY side: the old application still works - */
+    // The retained 31-argument arity carries the PRODUCTION behavior: the
+    // deployed application keeps minting estimated quotes with no safety
+    // declaration until the new application ships. Zero downtime — the old
+    // shape is not refused, it is served by the old command.
+    const legacyEst = one(draft31("wbt-legacy"));
+    check("WBT-07", "PREDEPLOY: the deployed app's 31-argument ESTIMATED call mints normally through the retained old arity",
+      one(`select quote_status||'|'||coalesce(restricted_class,'-') from public.couranr_delivery_requests where id='${legacyEst}'`),
+      "estimated|-");
     const legacy = one(draft31review("wbt-legacy-review"));
-    check("WBT-07b", "... while its 31-argument REVIEW call still mints (nothing automatic, nothing lost)",
+    check("WBT-07b", "... and its 31-argument REVIEW call mints too (nothing automatic, nothing lost)",
       legacy.length, "36");
     check("WBT-08", "... and its exact weight is stored exactly, band untouched",
       one(`select weight_lb||'|'||coalesce(weight_band,'-') from public.couranr_delivery_requests where id='${legacy}'`),
@@ -137,6 +150,25 @@ async function main() {
     check("WBT-09", "... and its quote snapshot says weightKnowledge=exact with NO declaration recorded",
       one(`select (shipment_snapshot->>'weightKnowledge')||'|'||coalesce(shipment_snapshot->>'restrictedClass','-')
              from public.couranr_quote_versions where request_id='${legacy}'`), "exact|-");
+
+    /* ---- 1b. deploy gap, POSTDEPLOY side: the fence retires the old shape */
+    check("WBT-09b", "the fence applies over the compatibility window",
+      applyScript(FENCE), "NO_ERROR|");
+    check("WBT-09c", "POSTDEPLOY: the old 31-argument shape no longer exists at all — 42883, not a policy refusal",
+      raises(draft31("wbt-legacy-postfence")).includes("does not exist"), true);
+    const postFenceId = one(draft36("wbt-postfence", { weight: "10", intent: "'asap'", restricted: "'none'" }));
+    check("WBT-09d", "... while the STRICT arity keeps minting",
+      one(`select quote_status from public.couranr_delivery_requests where id='${postFenceId}'`),
+      "estimated");
+    check("WBT-09e", "the fence rollback restores the PREDEPLOY window and is what an application rollback runs first",
+      applyScript(FENCE_RB) === "NO_ERROR|" &&
+        one(`select string_agg(distinct pronargs::text,',' order by pronargs::text) from pg_proc p
+              join pg_namespace n on n.oid=p.pronamespace
+              where n.nspname='public' and p.proname='couranr_create_routed_delivery_request_draft'`) === "31,37" &&
+        one(draft31("wbt-legacy-refenced")).length === 36, "true");
+    check("WBT-09f", "... and the fence re-applies (re-runnable), closing the window again",
+      applyScript(FENCE) === "NO_ERROR|" &&
+        raises(draft31("wbt-legacy-refenced2")).includes("does not exist"), true);
 
     /* ---- 1b. the safety declaration is a DATABASE rule ------------------- */
     check("WBT-29", "an estimated quote with NO declaration is refused",
@@ -284,7 +316,7 @@ async function main() {
         jsonb_build_object('code','base_delivery','label','Base','quantity',1,'unitAmountCents',799,'amountCents',799),
         jsonb_build_object('code','weight_band','label','Weight handling','quantity',1,'unitAmountCents',300,'amountCents',300)),
       '[]'::jsonb,
-      null,null,null,null,null)`);
+      null,null,null,null,null,null)`);
     check("WBT-24", "a no-shipment-update estimate PRESERVES the stored band",
       one(`select coalesce(weight_lb::text,'-')||'|'||weight_band from public.couranr_delivery_requests where id='${banded}'`),
       "-|over_25_to_50_lb");

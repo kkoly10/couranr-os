@@ -41,7 +41,7 @@ import {
 } from "./facts";
 import type { RestrictedSignalScan } from "./restrictedSignals";
 
-export const SHIPMENT_POLICY_VERSION = "couranr-shipment-policy-v1-2026-09-03";
+export const SHIPMENT_POLICY_VERSION = "couranr-shipment-policy-v1-2026-09-02";
 
 export const POLICY_DISPOSITIONS = ["allowed", "needs_review", "prohibited"] as const;
 export type PolicyDisposition = (typeof POLICY_DISPOSITIONS)[number];

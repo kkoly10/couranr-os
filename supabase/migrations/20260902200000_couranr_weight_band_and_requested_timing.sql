@@ -17,11 +17,23 @@
 --      with its own America/New_York rules and refuses a mismatch. Requested
 --      timing is evidence of what was ASKED — never a confirmation.
 --
--- ARITY. The two routed commands each gain five DEFAULTED parameters,
--- appended at the END. The old arity is DROPPED FIRST: with defaults, both
--- arities alive would make every named PostgREST call ambiguous (PGRST203).
--- Defaults are what keep the deploy gap safe — the already-deployed
--- application's calls, which do not send the new arguments, still resolve.
+-- ARITY — ZERO-DOWNTIME COMPATIBILITY CUTOVER (correction pass §2).
+-- The OLD 31/33-argument commands are RETAINED UNCHANGED: the currently
+-- deployed application keeps creating and estimating deliveries normally
+-- after this migration is applied (PREDEPLOY). The NEW STRICT 37/39-argument
+-- arities are added alongside with NO DEFAULTS AT ALL, so resolution is
+-- provably unambiguous in both notations:
+--   · the old application's named PostgREST call (31/33 keys) cannot supply
+--     the strict arity's required p_weight_band/p_timing_*/p_restricted_class
+--     and resolves ONLY to the old arity;
+--   · the new application's call (all 37/39 keys) names parameters the old
+--     arity does not declare and resolves ONLY to the strict arity;
+--   · a positional 31/33-value call matches only the old arity, a 37/39-value
+--     call only the strict one — no PGRST203, no 42725.
+-- The safety-declaration, weight-honesty and timing rules live ONLY in the
+-- strict bodies. The old arity is retired by the separate POSTDEPLOY fence
+-- migration 20260902220000_couranr_legacy_arity_fence.sql, applied after the
+-- new application is serving — see docs/couranr-mvp/SMART_INTAKE_DEPLOY_CUTOVER.md.
 --
 -- ADDITIVE otherwise: no column dropped, no row rewritten, no historical
 -- quote reinterpreted. RE-RUNNABLE: every statement is create-or-replace,
@@ -137,9 +149,11 @@ begin
      automatic payable quote without the merchant's trusted affirmation that
      none of Couranr's prohibited classes is present, and a confirmed
      prohibited class can only ever be stored as an invalid quote.
-     DEPLOY GAP: an application that does not yet send the declaration is
-     refused for estimated quotes (never silently allowed); apply this
-     migration and deploy the application in the same release window. */
+     DEPLOY GAP: only the STRICT arity calls this guard. The retained old
+     arity keeps the already-deployed application minting exactly as it does
+     in production today, so applying this migration causes zero downtime;
+     the POSTDEPLOY fence migration retires the old arity once the new
+     application (which always states a declaration) is serving. */
   if p_restricted_class is not null and p_restricted_class not in ('none','unknown',
       'alcohol','tobacco','vaping_nicotine','cannabis_thc','firearms','ammunition','prescription_medication','controlled_substances','fuel','compressed_gas','corrosive_hazmat','toxic_hazmat','infectious_material','regulated_dangerous_goods','fireworks','explosives','illegal_goods','stolen_goods','cash','negotiable_instruments','biological_specimens','live_animals','people') then
     raise exception 'restricted_class_invalid' using errcode='CR422';
@@ -210,12 +224,9 @@ revoke all on function private.couranr_assert_safety_declaration(text,text)
 revoke all on function private.couranr_assert_requested_timing(text,timestamptz,jsonb)
   from public, anon, authenticated;
 
-/* ------------------------------------------- routed commands, new arity -- */
-/* Old arity dropped FIRST — see the ARITY note in the header. */
-
-drop function if exists public.couranr_create_routed_delivery_request_draft(
-  uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb
-);
+/* ---------------------------------------- routed commands, STRICT arity -- */
+/* The old arity is NOT dropped here — see the ARITY note in the header. The
+   POSTDEPLOY fence migration retires it once the new application serves. */
 
 create or replace function public.couranr_create_routed_delivery_request_draft(
   p_business_account_id uuid,p_created_by uuid,p_idempotency_key text,
@@ -231,18 +242,18 @@ create or replace function public.couranr_create_routed_delivery_request_draft(
   p_quote_status text,p_pricing_policy_version text,
   p_delivery_subtotal_cents integer,p_included_loaded_miles integer,
   p_billable_loaded_miles numeric,p_quote_line_items jsonb,p_review_reasons jsonb,
-  /* SUR-001 / TMZ-001 — appended with defaults so the deploy gap is safe:
-     the already-deployed application's named calls, which do not send these,
-     still resolve against this function. */
-  p_weight_band text default null,
-  p_timing_intent text default null,
-  p_requested_pickup_local text default null,
-  p_requested_departure_at timestamptz default null,
-  p_timing_review_reasons jsonb default null,
-  /* Shipment-safety declaration (correction pass §2). Appended with a default
-     for the same deploy-gap reason; a caller that does not send it is
-     treated as "unknown", which cannot mint an estimated quote. */
-  p_restricted_class text default null
+  /* SUR-001 / TMZ-001 / safety declaration — STRICT arity: NO defaults, on
+     purpose. Every one of these must be stated explicitly (null is a
+     statement), so the old application's 31-key call can never resolve here
+     and a call that matches this arity is unambiguously the new application
+     or the Smart Intake wrappers. The retained old arity handles the deploy
+     gap instead of defaults. */
+  p_weight_band text,
+  p_timing_intent text,
+  p_requested_pickup_local text,
+  p_requested_departure_at timestamptz,
+  p_timing_review_reasons jsonb,
+  p_restricted_class text
 )
 returns public.couranr_delivery_requests
 language plpgsql security invoker set search_path=''
@@ -346,10 +357,6 @@ begin
 end
 $fn$;
 
-drop function if exists public.couranr_calculate_routed_delivery_request_estimate(
-  uuid,uuid,integer,uuid,boolean,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb
-);
-
 create or replace function public.couranr_calculate_routed_delivery_request_estimate(
   p_request_id uuid,p_business_account_id uuid,p_expected_version integer,
   p_actor_user_id uuid,p_update_shipment boolean,
@@ -365,16 +372,13 @@ create or replace function public.couranr_calculate_routed_delivery_request_esti
   p_quote_status text,p_pricing_policy_version text,
   p_delivery_subtotal_cents integer,p_included_loaded_miles integer,
   p_billable_loaded_miles numeric,p_quote_line_items jsonb,p_review_reasons jsonb,
-  /* SUR-001 / TMZ-001 — appended with defaults so the deploy gap is safe:
-     the already-deployed application's named calls, which do not send these,
-     still resolve against this function. */
-  p_weight_band text default null,
-  p_timing_intent text default null,
-  p_requested_pickup_local text default null,
-  p_requested_departure_at timestamptz default null,
-  p_timing_review_reasons jsonb default null,
-  /* Shipment-safety declaration (correction pass §2), see the create command. */
-  p_restricted_class text default null
+  /* STRICT arity, NO defaults — see the create command. */
+  p_weight_band text,
+  p_timing_intent text,
+  p_requested_pickup_local text,
+  p_requested_departure_at timestamptz,
+  p_timing_review_reasons jsonb,
+  p_restricted_class text
 )
 returns public.couranr_delivery_requests
 language plpgsql security invoker set search_path=''

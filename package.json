@@ -37,6 +37,7 @@
     "test:acceptance": "node e2e/disposable/acceptanceMatrix.mjs",
     "test:pricing-v2": "node e2e/disposable/pricingV2Authority.mjs",
     "test:weight-timing": "node e2e/disposable/weightBandTiming.mjs",
+    "test:deploy-cutover": "node e2e/disposable/deployCutover.mjs",
     "test:smart-intake": "node e2e/disposable/smartIntake.mjs",
     "test:smart-intake-ui": "node e2e/disposable/smartIntakeUi.mjs",
     "test:foundation-gate-a": "node e2e/disposable/foundationGateA.mjs",

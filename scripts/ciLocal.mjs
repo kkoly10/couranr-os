@@ -168,6 +168,7 @@ const STAGES = [
     ["test:acceptance", "acceptance matrix"],
     ["test:pricing-v2", "Pricing V2 traffic evidence, policy cutover and historical-quote immutability"],
     ["test:weight-timing", "SUR-001 weight band + TMZ-001 requested timing execution matrix"],
+    ["test:deploy-cutover", "zero-downtime arity cutover proven through PostgREST — old shape mints predeploy, PGRST202 postdeploy, never PGRST203"],
     ["test:smart-intake", "P5-001 Smart Intake stale-race/idempotency/provenance/tenancy execution matrix"],
     ["test:foundation-gate-a", "Foundation Gate A requester/quote/payment/plan/delivery adversarial matrix"],
     ["test:foundation-backfill", "Foundation Gate A deterministic historical backfill matrix"],

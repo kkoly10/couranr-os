@@ -315,7 +315,7 @@ async function main() {
     check("U13", "the deterministic policy was recorded on the session after the confirmation",
       afterConfirm[3] !== "-" &&
         sql(`select policy_version from public.couranr_intake_sessions where id='${sessionId}'`) ===
-          "couranr-shipment-policy-v1-2026-09-03",
+          "couranr-shipment-policy-v1-2026-09-02",
       sessionRow());
     await page.waitForTimeout(600);
     check("U14", "a TRUSTED fact reflects into the structured form: exact mode, 20 lb",

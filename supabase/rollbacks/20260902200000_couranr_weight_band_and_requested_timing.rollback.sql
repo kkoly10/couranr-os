@@ -5,7 +5,10 @@
 -- sends p_weight_band and the timing arguments by name; after this rollback
 -- those match nothing and every create/estimate becomes a PGRST202. Roll the
 -- APPLICATION back first, then run this. The pre-batch application works on
--- either side of it.
+-- either side of it. If the POSTDEPLOY fence (20260902220000) has been
+-- applied, roll IT back first (that alone restores the old arity for an
+-- application rollback); this rollback also restores the old arity itself,
+-- so it is safe in either order — but only this one drops the strict arity.
 --
 -- EVIDENCE GUARD. Once any request carries a weight band or requested-timing
 -- evidence, dropping the columns would destroy shipment evidence that quotes
@@ -50,8 +53,10 @@ drop function if exists private.couranr_assert_safety_declaration(text,text);
 drop function if exists private.couranr_assert_requested_timing(text,timestamptz,jsonb);
 
 /* ---------------- restore the two commands at their ORIGINAL arity ------ */
-/* New arity dropped first for the same ambiguity reason the forward
-   migration dropped the old one first. */
+/* Strict arity dropped first. Since the compatibility restructure the forward
+   migration RETAINS the old arity, so the create-or-replace below is usually
+   a verbatim no-op — it matters only when the fence had retired the old
+   arity and its rollback was skipped. */
 
 drop function if exists public.couranr_create_routed_delivery_request_draft(
   uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,text,text,text,timestamptz,jsonb,text
