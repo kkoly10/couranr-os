@@ -7,6 +7,7 @@ import {
   getSameDayAdapters,
   type AddressSuggestion,
   type AvailabilityVerdict,
+  type IntakeProposal,
   type IntakeReading,
   type QuoteReading,
 } from "@/lib/couranr/sameday/adapters";
@@ -222,6 +223,81 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
     setIntake({ state: "analyzing" });
     setIntake(await adapters.readIntake(item));
     invalidateQuote();
+  }
+
+  /* INT-002: STRUCTURED suggestions from Consumer Smart Intake. A material
+     suggestion (weight, band, restricted class) changes the form ONLY through
+     the guest's explicit "Use this" — never a silent prefill; the rest is
+     read-only context. Nothing here is authority: the server re-derives
+     everything on the estimate, and the model's free text never renders. */
+  const intakeProposals: IntakeProposal[] =
+    "proposals" in intake && Array.isArray(intake.proposals) ? intake.proposals : [];
+
+  function describeProposal(p: IntakeProposal): string {
+    const v = p.value;
+    const word = (x: unknown) => String(x).replace(/_/g, " ");
+    switch (p.key) {
+      case "item_category":
+        return `Item: ${word(v)}`;
+      case "item_subtype":
+        return `Type: ${word(v)}`;
+      case "quantity":
+        return `Quantity: ${String(v)}`;
+      case "package_count":
+        return `Packages: ${String(v)}`;
+      case "weight_lb_exact":
+        return `Weight: ${String(v)} lb`;
+      case "weight_band":
+        return `Weight: ${
+          typeof v === "string" && Object.prototype.hasOwnProperty.call(WEIGHT_BAND_LABELS, v)
+            ? WEIGHT_BAND_LABELS[v as keyof typeof WEIGHT_BAND_LABELS]
+            : word(v)
+        }`;
+      case "fragile":
+        return v === true ? "Fragile" : "Not fragile";
+      case "handling_requirements":
+        return `Handling: ${word(v)}`;
+      case "restricted_class": {
+        if (v === "none") return "No restricted items";
+        const match = RESTRICTED_CLASS_OPTIONS.find(([value]) => value === v);
+        return match ? `Contains: ${match[1]}` : `Restricted: ${word(v)}`;
+      }
+      default:
+        return `${word(p.key)}: ${word(v)}`;
+    }
+  }
+
+  /** The form action a material suggestion offers, or null for context-only. */
+  function suggestionAction(p: IntakeProposal): (() => void) | null {
+    const v = p.value;
+    if (p.key === "weight_lb_exact" && typeof v === "number" && Number.isFinite(v) && v > 0) {
+      return () => {
+        setWeightMode("exact");
+        setWeightLb(String(v));
+        invalidateQuote();
+      };
+    }
+    if (
+      p.key === "weight_band" &&
+      typeof v === "string" &&
+      (v === "unknown" || Object.prototype.hasOwnProperty.call(WEIGHT_BAND_LABELS, v))
+    ) {
+      return () => {
+        setWeightMode(v);
+        invalidateQuote();
+      };
+    }
+    if (
+      p.key === "restricted_class" &&
+      typeof v === "string" &&
+      (v === "none" || v === "unknown" || RESTRICTED_CLASS_OPTIONS.some(([value]) => value === v))
+    ) {
+      return () => {
+        setRestrictedClass(v);
+        invalidateQuote();
+      };
+    }
+    return null;
   }
 
   async function computeQuote(): Promise<QuoteReading> {
@@ -569,6 +645,13 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
             <label className="cr-send-field__label" htmlFor="send-item">
               {SEND_COPY.item_question}
             </label>
+            {/* INT-002 disclosure: at the START of the item step, before any
+                description is read — always visible in live mode. */}
+            {mode === "live" ? (
+              <p className="cr-send-field__hint" data-couranr-ai-disclosure="true">
+                {SEND_COPY.item_ai_disclosure}
+              </p>
+            ) : null}
             <textarea
               id="send-item"
               className="cr-input cr-send-textarea"
@@ -584,6 +667,32 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
               {intake.state === "needs-follow-up" ? intake.question : null}
               {intake.state === "unavailable" ? "Couranr will read this when you submit." : null}
             </p>
+            {mode === "live" && intakeProposals.length > 0 ? (
+              <ul
+                className="cr-send-suggestions"
+                data-couranr-intake-suggestions="true"
+                aria-label="Suggestions from your description"
+              >
+                {intakeProposals.map((p) => {
+                  const action = suggestionAction(p);
+                  return (
+                    <li key={p.key} className="cr-send-suggestion__row" data-couranr-suggestion={p.key}>
+                      <span>{describeProposal(p)}</span>
+                      {action ? (
+                        <button
+                          type="button"
+                          className="cr-button cr-button--secondary"
+                          onClick={action}
+                          aria-label={`Use this: ${describeProposal(p)}`}
+                        >
+                          Use this
+                        </button>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            ) : null}
           </div>
 
           {/* The structured inputs the canonical quote requires (SUR-001):

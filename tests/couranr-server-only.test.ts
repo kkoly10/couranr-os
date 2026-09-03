@@ -113,6 +113,10 @@ describe("server-only modules are unreachable from client code", () => {
       // the boundary — service_role bypasses RLS, so a browser holding this
       // would read any business's money.
       "lib/couranr/billing/commands.ts",
+      // INT-002. Composes Consumer Smart Intake over the shared intake
+      // commands (service-role) and reads the kill switch. A bundle reaching
+      // it would ship the write path for a guest's intake evidence.
+      "lib/couranr/consumer/intake.ts",
       // Batch 3 §D. Holds the service-role client, the guest-session hashing
       // and every consumer command wrapper. A bundle reaching it would ship
       // the code that turns an anonymous URL header into authority.
@@ -246,6 +250,7 @@ describe("canonical server routes do not import the browser client", () => {
   it("covers every canonical route", () => {
     expect(canonical.map(rel).sort()).toEqual([
       "app/api/couranr/consumer/estimate/route.ts",
+      "app/api/couranr/consumer/interpret/route.ts",
       "app/api/couranr/consumer/pay/route.ts",
       "app/api/couranr/consumer/places/route.ts",
       "app/api/couranr/consumer/reconcile-payment/route.ts",
@@ -383,6 +388,10 @@ describe("canonical server routes do not import the browser client", () => {
     ],
     [
       "app/api/couranr/consumer/refresh-quote/route.ts",
+      { shape: /redeemGuestSessionToken\(/, redeem: /redeemGuestSessionToken\(/ },
+    ],
+    [
+      "app/api/couranr/consumer/interpret/route.ts",
       { shape: /redeemGuestSessionToken\(/, redeem: /redeemGuestSessionToken\(/ },
     ],
     [

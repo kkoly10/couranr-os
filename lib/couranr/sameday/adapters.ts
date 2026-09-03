@@ -29,9 +29,22 @@ export type AvailabilityVerdict =
   | { state: "review-needed"; note: string }
   | { state: "unavailable"; note: string };
 
+/**
+ * ADDITIVE (INT-002): a STRUCTURED proposal from Consumer Smart Intake. The
+ * value is a closed-vocabulary fact (a weight band, a restricted class, a
+ * category, a count) — never model prose. Material keys need the guest's
+ * explicit "Use this"; nothing is prefilled silently.
+ */
+export type IntakeProposal = {
+  key: string;
+  value: unknown;
+  confidence: number | null;
+  requiresConfirmation: boolean;
+};
+
 export type IntakeReading =
-  | { state: "interpreted"; summary: string; needsFollowUp?: string }
-  | { state: "needs-follow-up"; question: string }
+  | { state: "interpreted"; summary: string; needsFollowUp?: string; proposals?: IntakeProposal[] }
+  | { state: "needs-follow-up"; question: string; proposals?: IntakeProposal[] }
   | { state: "unavailable" };
 
 export type QuoteReading =

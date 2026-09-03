@@ -30,6 +30,7 @@ import type {
   AddressSuggestion,
   AvailabilityVerdict,
   ConsumerRequestReading,
+  IntakeProposal,
   IntakeReading,
   PaymentOutcome,
   PaymentReconciliation,
@@ -53,6 +54,7 @@ const API = {
   pay: "/api/couranr/consumer/pay",
   reconcile: "/api/couranr/consumer/reconcile-payment",
   refresh: "/api/couranr/consumer/refresh-quote",
+  interpret: "/api/couranr/consumer/interpret",
 } as const;
 
 /** The two review reasons that are about the TRIP rather than the shipment. */
@@ -99,6 +101,45 @@ function defaultStorage(): MinimalStorage | null {
 }
 
 /* -------------------------------------------------------- pure mappings -- */
+
+/** The proposal keys a guest may be shown — mirrors the server allow-list. */
+export const INTAKE_PROPOSAL_KEYS = [
+  "item_category",
+  "item_subtype",
+  "quantity",
+  "package_count",
+  "weight_lb_exact",
+  "weight_band",
+  "fragile",
+  "handling_requirements",
+  "restricted_class",
+] as const;
+
+/** The server's `intake.proposals`, kept only where every field has its shape. */
+export function proposalsFromIntake(intake: unknown): IntakeProposal[] {
+  const raw = (intake as { proposals?: unknown } | null)?.proposals;
+  if (!Array.isArray(raw)) return [];
+  const out: IntakeProposal[] = [];
+  for (const p of raw as Array<Record<string, unknown>>) {
+    if (!p || typeof p !== "object") continue;
+    const key = typeof p.key === "string" ? p.key : "";
+    if (!(INTAKE_PROPOSAL_KEYS as readonly string[]).includes(key)) continue;
+    if (p.value === undefined) continue;
+    out.push({
+      key,
+      value: p.value,
+      confidence: typeof p.confidence === "number" ? p.confidence : null,
+      requiresConfirmation: p.requiresConfirmation !== false,
+    });
+  }
+  return out;
+}
+
+/** The one clarification question, or null. */
+export function clarificationFromIntake(intake: unknown): string | null {
+  const q = (intake as { clarification?: { question?: unknown } } | null)?.clarification?.question;
+  return typeof q === "string" && q.trim() !== "" ? q : null;
+}
 
 /**
  * UI contact -> API contact. The UI field is `mobile`; the API and the
@@ -389,12 +430,21 @@ export function createLiveSameDayAdapters(
     },
 
     async readIntake(text: string): Promise<IntakeReading> {
-      /* NO AI FOR GUESTS (§24). The summary is the visitor's own words,
-         echoed as evidence — never a model claim. The server applies the same
-         deterministic policy the Business portal runs. */
+      /* INT-002: the guest's words are interpreted on the SAME Smart Intake
+         substrate merchants use. The summary shown is STILL the guest's own
+         words — the model's free text never renders. What comes back is a
+         list of STRUCTURED proposals the guest must choose on the form, plus
+         at most one clarification question. A switched-off feature, a rate
+         limit, a refusal or a network failure degrades to the words alone. */
       const t = text.trim();
       if (!t) return { state: "unavailable" };
-      return { state: "interpreted", summary: t };
+      const r = await guestCall(API.interpret, { method: "POST", body: { description: t } });
+      // NESTED key: `intake`.
+      const intake = r && r.ok ? (r.body as { intake?: unknown } | null)?.intake : null;
+      const proposals = proposalsFromIntake(intake);
+      const question = clarificationFromIntake(intake);
+      if (question) return { state: "needs-follow-up", question, proposals };
+      return { state: "interpreted", summary: t, proposals };
     },
 
     async quote(input: QuoteInput): Promise<QuoteReading> {

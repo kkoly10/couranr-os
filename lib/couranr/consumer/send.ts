@@ -34,6 +34,7 @@ import {
   reconcilePaymentIntent,
 } from "@/lib/couranr/payments/commands";
 import { issueTrackingLink, isTrackingFailure } from "@/lib/couranr/tracking/commands";
+import { recordConsumerIntakeEvidenceAfterEstimate } from "./intake";
 
 assertServerOnly("lib/couranr/consumer/send.ts");
 
@@ -604,6 +605,19 @@ export async function estimateConsumerSend(params: {
     });
   }
   if (isConsumerFailure(result)) return result;
+
+  // INT-002: the guest's FORM statement becomes the confirmed intake facts —
+  // the trusted-actor trail beside the AI proposals. Enrichment never blocks
+  // the money path: the hook logs and swallows its own failures.
+  await recordConsumerIntakeEvidenceAfterEstimate({
+    session: params.session,
+    requestId: String(result.value.id),
+    statement: {
+      weightLb: body.shipment.weightLb,
+      weightBand: body.shipment.weightBand,
+      restrictedClass: body.shipment.restrictedClass,
+    },
+  });
 
   return { ok: true, value: await estimateFromRow(result.value) };
 }

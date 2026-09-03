@@ -104,6 +104,7 @@ const SUBMIT = "/api/couranr/consumer/submit";
 const REQUEST = "/api/couranr/consumer/request";
 const PAY = "/api/couranr/consumer/pay";
 const RECONCILE = "/api/couranr/consumer/reconcile-payment";
+const INTERPRET = "/api/couranr/consumer/interpret";
 
 const GOOD_QUOTE_INPUT = {
   pickup: "A",
@@ -528,24 +529,93 @@ describe("checkAvailability: honest passthrough with the estimate's memory", () 
   });
 });
 
-/* ---------------------------------------------------- 7. no-AI intake ---- */
+/* ------------------------------------------ 7. Consumer Smart Intake ---- */
 
-describe("readIntake echoes the sender's words — no model claim for guests (§24)", () => {
-  it("interprets by echoing, verbatim", async () => {
-    const a = live({ fetchImpl: fakeFetch({}).impl, storage: null });
-    const r = await a.readIntake("  a birthday cake for Main Street  ");
-    expect(r).toEqual({ state: "interpreted", summary: "a birthday cake for Main Street" });
+describe("readIntake — structured proposals from the shared substrate, never model prose (INT-002)", () => {
+  const INTAKE_OK = () => ({
+    body: {
+      intake: {
+        status: "interpreted",
+        revision: 1,
+        proposals: [
+          { key: "weight_band", value: "over_25_to_50_lb", confidence: 70, requiresConfirmation: true },
+          { key: "item_category", value: "home_goods", confidence: 90, requiresConfirmation: false },
+          // Not a consumer key: must be dropped even if a server sent it.
+          { key: "payer_type", value: "merchant", confidence: 99, requiresConfirmation: false },
+          // Malformed: no value.
+          { key: "quantity", confidence: 50 },
+        ],
+        clarification: null,
+      },
+    },
   });
 
-  it("says nothing about nothing", async () => {
-    const a = live({ fetchImpl: fakeFetch({}).impl, storage: null });
-    expect((await a.readIntake("   ")).state).toBe("unavailable");
+  it("POSTs { description } under the guest header and returns the guest's OWN words plus the proposals", async () => {
+    const f = fakeFetch({ [S]: SESSION_OK, [INTERPRET]: INTAKE_OK });
+    const r = await live({ fetchImpl: f.impl, storage: null }).readIntake("  a lamp and a rug  ");
+    expect(r).toEqual({
+      state: "interpreted",
+      summary: "a lamp and a rug",
+      proposals: [
+        { key: "weight_band", value: "over_25_to_50_lb", confidence: 70, requiresConfirmation: true },
+        { key: "item_category", value: "home_goods", confidence: 90, requiresConfirmation: false },
+      ],
+    });
+    const call = f.of(INTERPRET)[0];
+    expect(call.init?.method).toBe("POST");
+    expect(JSON.parse(String(call.init?.body))).toEqual({ description: "a lamp and a rug" });
+    expect((call.init?.headers as Record<string, string>)["x-couranr-guest"]).toBeTruthy();
   });
 
-  it("makes no network call at all", async () => {
-    const f = fakeFetch({ [S]: SESSION_OK });
-    await live({ fetchImpl: f.impl, storage: null }).readIntake("a cake");
+  it("the one clarification maps to needs-follow-up, proposals kept", async () => {
+    const f = fakeFetch({
+      [S]: SESSION_OK,
+      [INTERPRET]: () => ({
+        body: {
+          intake: {
+            status: "interpreted",
+            proposals: [{ key: "restricted_class", value: "alcohol", confidence: 95, requiresConfirmation: true }],
+            clarification: { factKey: "restricted_class", question: "Does this include alcohol?" },
+          },
+        },
+      }),
+    });
+    const r = await live({ fetchImpl: f.impl, storage: null }).readIntake("12 bottles of beer");
+    expect(r.state).toBe("needs-follow-up");
+    if (r.state === "needs-follow-up") {
+      expect(r.question).toBe("Does this include alcohol?");
+      expect(r.proposals?.[0]?.key).toBe("restricted_class");
+    }
+  });
+
+  it("says nothing about nothing — and makes no network call for whitespace", async () => {
+    const f = fakeFetch({ [S]: SESSION_OK, [INTERPRET]: INTAKE_OK });
+    expect((await live({ fetchImpl: f.impl, storage: null }).readIntake("   ")).state).toBe("unavailable");
     expect(f.calls.length).toBe(0);
+  });
+
+  it("a switched-off feature, a refusal or a dead network degrade to the words alone", async () => {
+    const off = fakeFetch({
+      [S]: SESSION_OK,
+      [INTERPRET]: () => ({ body: { intake: { status: "unavailable", proposals: [], clarification: null } } }),
+    });
+    expect(await live({ fetchImpl: off.impl, storage: null }).readIntake("a cake")).toEqual({
+      state: "interpreted",
+      summary: "a cake",
+      proposals: [],
+    });
+    const refused = fakeFetch({ [S]: SESSION_OK, [INTERPRET]: () => ({ status: 500, body: { error: "x" } }) });
+    expect(await live({ fetchImpl: refused.impl, storage: null }).readIntake("a cake")).toEqual({
+      state: "interpreted",
+      summary: "a cake",
+      proposals: [],
+    });
+    const dead = fakeFetch({ [S]: () => { throw new Error("offline"); } });
+    expect(await live({ fetchImpl: dead.impl, storage: null }).readIntake("a cake")).toEqual({
+      state: "interpreted",
+      summary: "a cake",
+      proposals: [],
+    });
   });
 });
 

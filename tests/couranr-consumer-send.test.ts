@@ -46,9 +46,10 @@ const stripped = (src: string) =>
 /* ------------------------------------------------- the route inventory --- */
 
 describe("consumer route inventory", () => {
-  it("holds exactly the eight contracted routes", () => {
+  it("holds exactly the nine contracted routes", () => {
     expect(ROUTE_FILES.map(rel)).toEqual([
       "app/api/couranr/consumer/estimate/route.ts",
+      "app/api/couranr/consumer/interpret/route.ts",
       "app/api/couranr/consumer/pay/route.ts",
       "app/api/couranr/consumer/places/route.ts",
       "app/api/couranr/consumer/reconcile-payment/route.ts",
@@ -82,6 +83,12 @@ describe("consumer route inventory", () => {
         expect(code).toMatch(/estimateConsumerSend\(\{ session: session\.value, body \}\)/);
         // The route itself never dereferences the body.
         expect(/\bbody\s*\.\s*[a-zA-Z]/.test(code)).toBe(false);
+      } else if (rel(file) === "app/api/couranr/consumer/interpret/route.ts") {
+        // INT-002: the ONLY other body-taking route. `{ description }` goes to
+        // the lib verbatim, which refuses any second key before anything runs.
+        expect((code.match(/req\.json\(\)/g) || []).length).toBe(1);
+        expect(code).toMatch(/interpretConsumerDescription\(\{ session: session\.value, body \}\)/);
+        expect(/\bbody\s*\.\s*[a-zA-Z]/.test(code)).toBe(false);
       } else {
         expect(/req\.json\(\)|req\.text\(\)|req\.formData\(\)/.test(code)).toBe(false);
       }
@@ -113,13 +120,23 @@ describe("shipment authority is shared, not copied (PRC-005 / §24)", () => {
     expect(LIB).not.toMatch(/quoteDelivery\(/);
   });
 
-  it("no Anthropic and no intake session for anonymous guests (§24)", () => {
-    // Comments stripped: the doc comment EXPLAINS the absence by name, which
-    // is the positive control that the strings below are the right probes.
+  it("Consumer Smart Intake rides the SHARED substrate through one lib and never a provider adapter (INT-002)", () => {
+    // INT-002 superseded the batch-3 "no AI for guests" engineering decision.
+    // The consumer send lib reaches intake ONLY through ./intake, and neither
+    // consumer file names a provider adapter or vendor SDK directly.
     const code = stripped(LIB);
-    expect(code).not.toMatch(/couranr\/intake/);
+    expect(code).toMatch(/from "\.\/intake"/);
+    expect(code).not.toMatch(/couranr\/intake\//);
     expect(code).not.toMatch(/anthropic/i);
-    expect(LIB).toMatch(/intake/i);
+    const intakeLib = stripped(readFileSync(path.join(ROOT, "lib/couranr/consumer/intake.ts"), "utf8"));
+    expect(intakeLib).toMatch(/from "@\/lib\/couranr\/intake\/commands"/);
+    expect(intakeLib).not.toMatch(/anthropicProvider|@anthropic-ai|resolveSmartIntakeProvider/);
+    // The kill switch is the ONE arming key, READ by the lib and by no route
+    // (a route may mention it in a comment; comments are stripped here).
+    expect(intakeLib).toMatch(/COURANR_CONSUMER_INTAKE/);
+    for (const file of ROUTE_FILES) {
+      expect(stripped(readFileSync(file, "utf8"))).not.toMatch(/COURANR_CONSUMER_INTAKE/);
+    }
   });
 
   it("service level and proof method are fixed by the funnel", () => {

@@ -157,6 +157,7 @@ describe("canonical routes cannot leak a database detail", () => {
   it("covers every canonical route", () => {
     expect(ROUTES.map(rel).sort()).toEqual([
       "app/api/couranr/consumer/estimate/route.ts",
+      "app/api/couranr/consumer/interpret/route.ts",
       "app/api/couranr/consumer/pay/route.ts",
       "app/api/couranr/consumer/places/route.ts",
       "app/api/couranr/consumer/reconcile-payment/route.ts",
