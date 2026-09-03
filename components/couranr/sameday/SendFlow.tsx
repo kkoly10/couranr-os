@@ -219,19 +219,36 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
     setAvailability(verdict);
   }
 
-  async function readItem() {
-    setIntake({ state: "analyzing" });
-    setIntake(await adapters.readIntake(item));
-    invalidateQuote();
-  }
-
   /* INT-002: STRUCTURED suggestions from Consumer Smart Intake. A material
      suggestion (weight, band, restricted class) changes the form ONLY through
      the guest's explicit "Use this" — never a silent prefill; the rest is
      read-only context. Nothing here is authority: the server re-derives
-     everything on the estimate, and the model's free text never renders. */
-  const intakeProposals: IntakeProposal[] =
-    "proposals" in intake && Array.isArray(intake.proposals) ? intake.proposals : [];
+     everything on the estimate, and the model's free text never renders.
+
+     Held in their OWN state, not derived from `intake`: while a re-read is in
+     flight the last suggestions stay on screen. A read that blanked them would
+     eat the very click that chose one — clicking "Use this" blurs the textarea,
+     and the blur is what triggers the read. */
+  const [intakeProposals, setIntakeProposals] = React.useState<IntakeProposal[]>([]);
+  const lastIntakeRead = React.useRef("");
+  const intakeReadSeq = React.useRef(0);
+
+  async function readItem() {
+    const t = item.trim();
+    /* Same words, same answer: the server converges on the same revision and
+       spends nothing — so the browser does not even ask. */
+    if (t === lastIntakeRead.current) return;
+    lastIntakeRead.current = t;
+    const seq = ++intakeReadSeq.current;
+    setIntake({ state: "analyzing" });
+    const reading = await adapters.readIntake(item);
+    /* Two reads in flight (the words changed twice): only the NEWEST answer
+       may land. A slower, earlier answer describes words no longer typed. */
+    if (seq !== intakeReadSeq.current) return;
+    setIntake(reading);
+    setIntakeProposals("proposals" in reading && Array.isArray(reading.proposals) ? reading.proposals : []);
+    invalidateQuote();
+  }
 
   function describeProposal(p: IntakeProposal): string {
     const v = p.value;
