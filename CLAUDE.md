@@ -97,7 +97,7 @@ the time someone read it.
 
 The old `$22.99` / 3 miles / `$2.25–$4.75` model is **historical**: quotes minted under `couranr-pricing-2026-07-31` keep it forever and are read from their stored line items, and both the engine and the database refuse to mint that version again. The `$15` / 4 miles / `$1.75` legacy calculator and the `/courier` funnel that used it are **deleted**, not quarantined.
 
-Still a live conflict: the service area is a 60-mile radius from Stafford (`lib/serviceArea.ts:1-4`) rather than the four named markets. That is Phase 3 work — do not "fix" it opportunistically, and do not treat the code as evidence of intent.
+**Service-area truth (corrected 2026-09-03).** The canonical Couranr Business route authority is the exact launch-market classifier from PR #38, `lib/couranr/routing/market.ts`: Washington DC, Stafford VA, Woodbridge VA and Fredericksburg VA, and BOTH endpoints must sit inside one of those exact markets for an automatic quote — anything outside or surrounding is `needs_review`. `lib/serviceArea.ts` (a 60-mile radius from Stafford) is stale legacy debt whose only remaining importer is the legacy `components/SiteFooter.tsx`; it is not authority for any canonical route and must not be made authoritative again. Do not redesign the PR #38 classifier.
 
 Product is being transformed from a mixed auto-rental / document-services / generic-courier app into one focused product: **Couranr, local delivery infrastructure for local businesses**. The auto and docs domains are legacy and slated for quarantine, not extension.
 

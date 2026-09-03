@@ -113,9 +113,15 @@ describe("shipmentArgs", () => {
     "p_recipient_email",
     "p_recipient_name",
     "p_recipient_phone",
+    // Correction pass §2: the shipment-safety declaration is merchant-editable
+    // shipment truth; the database refuses an estimated quote without it.
+    "p_restricted_class",
     "p_service_level",
     "p_signature_required",
     "p_source",
+    // SUR-001 band cutover: the governed band is merchant-editable shipment
+    // truth exactly like the exact weight it can stand in for.
+    "p_weight_band",
     "p_weight_lb",
   ];
 
@@ -286,15 +292,40 @@ describe("command layer invariants", () => {
   });
 
   it("has exactly one rpc call per mutating command", () => {
-    // One helper definition plus one call site per mutating command. Seven
-    // commands now: create, estimate, submit, begin-review, and the three
-    // review outcomes.
-    expect(Object.keys(RPC)).toHaveLength(7);
+    // One helper definition plus one call site per mutating command. Eight
+    // now: create, estimate, submit, begin-review, the three review outcomes,
+    // and P5-001's intake commit — the routed estimate wrapped so the shipment
+    // arguments are re-validated against the trusted intake facts (§26). It
+    // is the estimate's second call site, chosen when the shipment came
+    // through Smart Intake; a re-price of the stored shipment still uses the
+    // bare estimate.
+    // Plus the atomic create-from-intake wrapper (correction pass §3): nine.
+    expect(Object.keys(RPC)).toHaveLength(9);
     expect((COMMANDS.match(/callRpc\(/g) || []).length).toBe(1 + Object.keys(RPC).length);
     expect((COMMANDS.match(/supabaseAdmin\.rpc\(/g) || []).length).toBe(1);
     for (const fn of Object.values(RPC)) {
       expect(COMMANDS_RAW, `no RPC name for ${fn}`).toContain(fn);
     }
+  });
+
+  /**
+   * The browser is not the memory of which intake session a request came
+   * from. The panel unmounts on the review step; a client that forgot its
+   * session must not be able to turn an intake-backed request into an
+   * unsynced manual one on the next estimate. `request_id` is unique on the
+   * sessions table, so the server can always find the one binding.
+   */
+  it("the estimate resolves the LINKED intake session server-side when the client sends none", () => {
+    const estimate = COMMANDS.slice(
+      COMMANDS.indexOf("export async function calculateDeliveryRequestEstimate"),
+      COMMANDS.indexOf("export async function submitDeliveryRequest")
+    );
+    expect(estimate).toContain("findLinkedIntakeSession({");
+    // The browser's value is read exactly once — as the seed of the resolved
+    // id — and every later decision reads the resolved id, never the param.
+    expect(estimate.match(/params\.intakeSessionId/g) ?? []).toHaveLength(1);
+    expect(estimate).toMatch(/if \(!intakeSessionId\) \{\s*const linked = await findLinkedIntakeSession\(/);
+    expect(estimate).toMatch(/shipment !== null && intakeSessionId && intakeRevision !== null/);
   });
 
   it("uses the service-role client, never the browser client", () => {
@@ -332,10 +363,12 @@ describe("command functions migration", () => {
    * has.
    */
   it("every name TypeScript calls is created by some forward migration", () => {
+    // `create or replace` counts: the later migrations are written to replay
+    // over themselves, and a replaced function is still one production has.
     const createdAnywhere = new Set(
-      Array.from(ALL_FORWARD_SQL.matchAll(/create\s+function\s+public\.(\w+)/gi)).map((m) =>
-        m[1].toLowerCase()
-      )
+      Array.from(
+        ALL_FORWARD_SQL.matchAll(/create\s+(?:or\s+replace\s+)?function\s+public\.(\w+)/gi)
+      ).map((m) => m[1].toLowerCase())
     );
     for (const fn of Object.values(RPC)) {
       expect(createdAnywhere.has(fn.toLowerCase()), `${fn} is called but never created`).toBe(true);

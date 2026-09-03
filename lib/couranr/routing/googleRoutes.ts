@@ -1,6 +1,13 @@
 import { assertServerOnly } from "@/lib/couranr/serverOnly";
 import { quoteDelivery, type QuoteResult } from "@/lib/couranr/pricing";
 import type { ServiceLevel } from "@/lib/couranr/pricing";
+import type { ReviewReasonCode } from "@/lib/couranr/pricing/types";
+import type { WeightBand } from "@/lib/couranr/shipment/facts";
+import {
+  evaluateRequestTiming,
+  type TimingEvaluation,
+  type TimingIntent,
+} from "@/lib/couranr/timing/policy";
 import {
   googlePlaceSelectionFromAddress,
   type GoogleAddressSnapshot,
@@ -59,11 +66,16 @@ export type CanonicalRouteEvidence = {
 export type RoutableQuoteShipment = {
   pickupAddress: unknown;
   dropoffAddress: unknown;
-  weightLb: number;
+  /** Exact pounds when genuinely known; else null and the band speaks. */
+  weightLb: number | null;
+  weightBand: WeightBand | null;
   additionalStops: number;
   serviceLevel: ServiceLevel;
   signatureRequired: boolean;
   overnightRequested: boolean;
+  /** TMZ-001 requested timing; ASAP requests carry no local time. */
+  timingIntent: TimingIntent;
+  requestedPickupLocal: string | null;
 };
 
 type FetchLike = GoogleProviderFetch;
@@ -115,7 +127,19 @@ function durationSeconds(raw: unknown): number | null {
  * merchant-entered distance or an unverified address string.
  */
 export async function computeCanonicalGoogleRoute(
-  input: { pickupPlaceId: string; dropoffPlaceId: string },
+  input: {
+    pickupPlaceId: string;
+    dropoffPlaceId: string;
+    /**
+     * TRF-001 scheduled traffic: the canonical FUTURE departure instant,
+     * derived server-side from the merchant's America/New_York wall-clock
+     * request. When present and in the future it is sent to Google as
+     * `departureTime`, so `routes.duration` prices the traffic conditions of
+     * the requested departure rather than of right now. Never accepted from
+     * a browser — the only writer is the timing evaluation in this module.
+     */
+    departureAt?: Date | null;
+  },
   fetchImpl: FetchLike = fetch
 ): Promise<CanonicalRouteEvidence> {
   const apiKey = process.env.GOOGLE_MAPS_SERVER_API_KEY;
@@ -140,18 +164,20 @@ export async function computeCanonicalGoogleRoute(
         destination: { placeId: input.dropoffPlaceId },
         travelMode: "DRIVE",
         /*
-         * IMMEDIATE traffic only, and that is a deliberate limit rather than
-         * an oversight. No `departureTime` is sent, so Google prices the
-         * conditions for NOW - which is the only timing the Business
-         * create-delivery flow can currently express, because it has no
-         * canonical requested departure-time input (TRF-001).
+         * TRF-001. Immediate requests send no `departureTime`, so Google
+         * prices the conditions for NOW. A SCHEDULED request supplies the
+         * canonical future instant (already America/New_York-derived,
+         * DST-correct), and Google prices the predicted conditions of that
+         * departure instead. Either way the delay derivation below is
+         * unchanged: duration minus staticDuration from ONE response.
          *
-         * Future/scheduled departure traffic is NOT implemented. When the
-         * Business timing / Smart Intake batch introduces a governed
-         * departure-time input, it becomes an extra field on this request
-         * object and the derivation below is unchanged - the seam is here and
-         * needs no restructuring. Do not invent that schema from this file.
+         * Only a genuinely FUTURE instant is sent — Google rejects past
+         * departure times, and a past requested time is already a timing
+         * review, not something to route around.
          */
+        ...(input.departureAt && input.departureAt.getTime() > Date.now()
+          ? { departureTime: input.departureAt.toISOString() }
+          : {}),
         routingPreference: "TRAFFIC_AWARE",
         computeAlternativeRoutes: false,
         units: "IMPERIAL",
@@ -228,14 +254,35 @@ function routeReviewQuote(): QuoteResult {
   };
 }
 
+/**
+ * Quote-level fold of timing review reasons. ASAP after the cutoff is NORMAL
+ * next-business-day behavior, not a review; everything else the timing
+ * doctrine flags does need Couranr's eyes. Overnight maps onto the pricing
+ * engine's existing code so the two paths cannot drift apart.
+ */
+function timingQuoteReviewReasons(t: TimingEvaluation): ReviewReasonCode[] {
+  const out: ReviewReasonCode[] = [];
+  for (const reason of t.reviewReasons) {
+    if (reason === "same_day_after_cutoff" && t.intent === "asap") continue;
+    if (reason === "overnight_requires_couranr_confirmation") {
+      out.push("overnight_requires_couranr_confirmation");
+    } else if (!out.includes("timing_needs_review")) {
+      out.push("timing_needs_review");
+    }
+  }
+  return out;
+}
+
 export async function deriveCanonicalRouteAndQuote(
   shipment: RoutableQuoteShipment,
-  fetchImpl: FetchLike = fetch
+  fetchImpl: FetchLike = fetch,
+  now: Date = new Date()
 ): Promise<{
   pickupAddress: GoogleAddressSnapshot;
   dropoffAddress: GoogleAddressSnapshot;
   route: CanonicalRouteEvidence;
   quote: QuoteResult;
+  timing: TimingEvaluation;
 }> {
   const pickupSelection = googlePlaceSelectionFromAddress(shipment.pickupAddress);
   const dropoffSelection = googlePlaceSelectionFromAddress(shipment.dropoffAddress);
@@ -263,16 +310,28 @@ export async function deriveCanonicalRouteAndQuote(
     resolve("pickupAddress", pickupSelection),
     resolve("dropoffAddress", dropoffSelection),
   ]);
+  // TMZ-001: the SERVER evaluates requested timing against America/New_York.
+  // The canonical departure instant this produces is the ONLY thing that can
+  // become Google's departureTime — a browser has no field to supply one.
+  const timing = evaluateRequestTiming(
+    {
+      intent: shipment.timingIntent,
+      requestedPickupLocal: shipment.requestedPickupLocal,
+    },
+    now
+  );
+
   const route = await computeCanonicalGoogleRoute(
     {
       pickupPlaceId: pickupAddress.googlePlaceId,
       dropoffPlaceId: dropoffAddress.googlePlaceId,
+      departureAt: timing.requestedDepartureAt,
     },
     fetchImpl
   );
 
   if (route.loadedMiles === null) {
-    return { pickupAddress, dropoffAddress, route, quote: routeReviewQuote() };
+    return { pickupAddress, dropoffAddress, route, quote: routeReviewQuote(), timing };
   }
 
   if (!isCouranrAutoApprovedRouteMarket(pickupAddress, dropoffAddress)) {
@@ -285,23 +344,43 @@ export async function deriveCanonicalRouteAndQuote(
         reviewReason: "market_needs_review",
       },
       quote: routeReviewQuote(),
+      timing,
     };
   }
 
-  return {
-    pickupAddress,
-    dropoffAddress,
-    route,
-    quote: quoteDelivery({
-      loadedMiles: route.loadedMiles,
-      weightLb: shipment.weightLb,
-      additionalStops: shipment.additionalStops,
-      serviceLevel: shipment.serviceLevel,
-      signatureRequired: shipment.signatureRequired,
-      overnightRequested: shipment.overnightRequested,
-      // Server-derived from ONE canonical Google response. The shipment type
-      // carries no duration field at all, so a browser cannot reach this.
-      trafficDelaySeconds: route.trafficDelaySeconds,
-    }),
-  };
+  const quote = quoteDelivery({
+    loadedMiles: route.loadedMiles,
+    weightLb: shipment.weightLb,
+    weightBand: shipment.weightBand,
+    additionalStops: shipment.additionalStops,
+    serviceLevel: shipment.serviceLevel,
+    signatureRequired: shipment.signatureRequired,
+    overnightRequested: shipment.overnightRequested,
+    // Server-derived from ONE canonical Google response. The shipment type
+    // carries no duration field at all, so a browser cannot reach this.
+    trafficDelaySeconds: route.trafficDelaySeconds,
+  });
+
+  // Timing review folds in AFTER pricing so a timing concern converts an
+  // estimated quote into a review — it never silently reprices anything.
+  const timingReasons = timingQuoteReviewReasons(timing).filter(
+    (r) => !quote.reviewReasons.includes(r)
+  );
+  if (timingReasons.length > 0 && quote.quoteStatus !== "invalid") {
+    return {
+      pickupAddress,
+      dropoffAddress,
+      route,
+      quote: {
+        ...quote,
+        quoteStatus: "manual_review_required",
+        deliverySubtotalCents: 0,
+        lineItems: [],
+        reviewReasons: [...quote.reviewReasons, ...timingReasons],
+      },
+      timing,
+    };
+  }
+
+  return { pickupAddress, dropoffAddress, route, quote, timing };
 }

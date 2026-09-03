@@ -106,11 +106,17 @@ export function createDeliveryRequest(input: {
   businessAccountId: string;
   request: unknown;
   idempotencyKey: string;
+  /** Smart Intake session backing this shipment, when there is one. */
+  intakeSessionId?: string | null;
 }) {
   return call<{ request: DeliveryRequestView }>("/api/couranr/delivery-requests", {
     method: "POST",
     idempotencyKey: input.idempotencyKey,
-    body: { businessAccountId: input.businessAccountId, request: input.request },
+    body: {
+      businessAccountId: input.businessAccountId,
+      request: input.request,
+      intakeSessionId: input.intakeSessionId ?? null,
+    },
   });
 }
 
@@ -120,6 +126,7 @@ export function estimateDeliveryRequest(input: {
   expectedVersion: number;
   /** The edited shipment. Omit to re-price what the server already holds. */
   request?: unknown;
+  intakeSessionId?: string | null;
 }) {
   return call<{ request: DeliveryRequestView }>(
     `/api/couranr/delivery-requests/${input.id}/estimate`,
@@ -129,6 +136,7 @@ export function estimateDeliveryRequest(input: {
         businessAccountId: input.businessAccountId,
         expectedVersion: input.expectedVersion,
         request: input.request,
+        intakeSessionId: input.intakeSessionId ?? null,
       },
     }
   );
@@ -158,11 +166,87 @@ export function submitDeliveryRequestFromBrowser(input: {
   );
 }
 
+/* ------------------------------------------------ Smart Intake (P5-001) -- */
+
+export type IntakeSessionView = {
+  session: Record<string, any>;
+  facts: Array<Record<string, any>>;
+  revisions: Array<Record<string, any>>;
+};
+
+export function startIntake(input: {
+  businessAccountId: string;
+  description: string;
+  requestId?: string | null;
+}) {
+  return call<{ session: Record<string, any>; run: Record<string, any> | null }>(
+    "/api/couranr/intake",
+    {
+      method: "POST",
+      body: {
+        businessAccountId: input.businessAccountId,
+        description: input.description,
+        requestId: input.requestId ?? null,
+      },
+    }
+  );
+}
+
+export function fetchIntake(input: { sessionId: string; businessAccountId: string }) {
+  return call<{ intake: IntakeSessionView }>(
+    `/api/couranr/intake/${input.sessionId}?businessAccountId=${encodeURIComponent(input.businessAccountId)}`
+  );
+}
+
+export function describeIntake(input: {
+  sessionId: string;
+  businessAccountId: string;
+  description: string;
+  expectedRevision: number;
+  isClarificationResponse?: boolean;
+}) {
+  return call<{ session: Record<string, any>; run: Record<string, any> | null }>(
+    `/api/couranr/intake/${input.sessionId}`,
+    {
+      method: "POST",
+      body: {
+        action: "describe",
+        businessAccountId: input.businessAccountId,
+        description: input.description,
+        expectedRevision: input.expectedRevision,
+        isClarificationResponse: input.isClarificationResponse === true,
+      },
+    }
+  );
+}
+
+export function confirmIntakeFactFromBrowser(input: {
+  sessionId: string;
+  businessAccountId: string;
+  factKey: string;
+  value: unknown;
+  authority?: "confirmed" | "overridden";
+}) {
+  return call<{ fact: Record<string, any>; session: Record<string, any> | null }>(
+    `/api/couranr/intake/${input.sessionId}`,
+    {
+      method: "POST",
+      body: {
+        action: "confirm",
+        businessAccountId: input.businessAccountId,
+        factKey: input.factKey,
+        value: input.value,
+        authority: input.authority ?? "confirmed",
+      },
+    }
+  );
+}
+
 export function fetchDeliveryRequest(input: { id: string; businessAccountId?: string }) {
   const qs = input.businessAccountId
     ? `?businessAccountId=${encodeURIComponent(input.businessAccountId)}`
     : "";
-  return call<{ request: DeliveryRequestView; events: any[] }>(
+  return call<{ request: DeliveryRequestView; events: any[]; intake?: IntakeSessionView | null }>(
     `/api/couranr/delivery-requests/${input.id}${qs}`
   );
 }

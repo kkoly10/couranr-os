@@ -47,6 +47,22 @@ export function QuoteSummary({ request }: { request: DeliveryRequestView }) {
     );
   }
 
+  if (q.status === "invalid" && q.reviewReasons.includes("shipment_prohibited")) {
+    return (
+      <Card>
+        <CardHeader
+          title="Couranr can't carry this shipment"
+          description="Based on what you confirmed, this delivery includes something Couranr is not able to transport."
+        />
+        <Alert tone="danger" title="No estimate">
+          No price is shown because Couranr cannot perform this delivery. If any
+          detail above is wrong, correct it and recalculate — otherwise this
+          request cannot proceed.
+        </Alert>
+      </Card>
+    );
+  }
+
   if (q.status !== "estimated") {
     return (
       <Card>

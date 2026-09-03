@@ -9,6 +9,14 @@ export default defineConfig({
     environmentMatchGlobs: [["tests/**/*.dom.test.tsx", "jsdom"]],
     globals: true,
     include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
+    /**
+     * The LIVE provider smoke (tests/live) is deliberately NOT part of the
+     * deterministic suite: it needs a real API key and real network, and a
+     * skipped file would print `N passed | 1 skipped`, which the local gate's
+     * `Test Files X passed (Y)` parser correctly refuses. It runs only through
+     * `npm run smoke:smart-intake` (vitest.live.config.ts).
+     */
+    exclude: ["**/node_modules/**", "**/dist/**", "**/.next*/**", "tests/live/**"],
     setupFiles: ["tests/setup.dom.ts"],
     /**
      * 15s, not the 5s default.

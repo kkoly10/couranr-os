@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "test": "vitest",
     "test:run": "vitest run",
+    "smoke:smart-intake": "node scripts/smartIntakeSmoke.mjs",
     "check": "npm run lint && npm run typecheck && npm run test:run && npm run build",
     "ci:local": "node scripts/ciLocal.mjs",
     "db:disposable": "node e2e/disposable/up.mjs",
@@ -35,6 +36,10 @@
     "test:auth-gateway": "node e2e/disposable/authGateway.mjs",
     "test:acceptance": "node e2e/disposable/acceptanceMatrix.mjs",
     "test:pricing-v2": "node e2e/disposable/pricingV2Authority.mjs",
+    "test:weight-timing": "node e2e/disposable/weightBandTiming.mjs",
+    "test:deploy-cutover": "node e2e/disposable/deployCutover.mjs",
+    "test:smart-intake": "node e2e/disposable/smartIntake.mjs",
+    "test:smart-intake-ui": "node e2e/disposable/smartIntakeUi.mjs",
     "test:foundation-gate-a": "node e2e/disposable/foundationGateA.mjs",
     "test:foundation-backfill": "node e2e/disposable/foundationBackfill.mjs",
     "test:foundation-rollbacks": "node e2e/disposable/foundationRollbacks.mjs",
@@ -56,6 +61,7 @@
     "couranr:integrity": "node scripts/couranrIntegrity.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.123.0",
     "@stripe/react-stripe-js": "3.1.1",
     "@stripe/stripe-js": "^4.5.0",
     "@supabase/ssr": "0.12.4",

@@ -1,3 +1,9 @@
+import {
+  OPERATING_DAYS_COPY,
+  OPERATING_WINDOW_COPY,
+  SAME_DAY_CUTOFF_COPY,
+} from "@/lib/couranr/public/governed";
+
 export default function DeliveryPolicyPage() {
   return (
     <div style={{ maxWidth: 900, margin: "0 auto", padding: "28px 24px" }}>
@@ -36,17 +42,21 @@ export default function DeliveryPolicyPage() {
         to cover dispatch and time.
       </Section>
 
+      {/* HRS/TMZ-001 — rendered from the governed module so this page cannot
+          drift from authority again. It used to open three hours later than
+          the doctrine says, which is exactly the class of stale active claim
+          the timing-truth regression now scans for. */}
       <Section title="Business Hours & Cutoff">
         <ul style={ul}>
           <li>
-            Business hours: <strong>9:00 AM – 6:00 PM</strong>
+            Operating hours: <strong>{OPERATING_DAYS_COPY}, {OPERATING_WINDOW_COPY}</strong>
           </li>
           <li>
-            Same-day cutoff: <strong>4:00 PM</strong>
+            Same-day cutoff: <strong>{SAME_DAY_CUTOFF_COPY} Eastern</strong>
           </li>
           <li>
-            Orders placed after <strong>4:00 PM</strong> are delivered the{" "}
-            <strong>next business day</strong> by default.
+            Requests placed after the cutoff are normally fulfilled the{" "}
+            <strong>next business day</strong>.
           </li>
         </ul>
       </Section>

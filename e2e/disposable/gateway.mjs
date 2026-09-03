@@ -71,13 +71,30 @@
  */
 
 import http from "node:http";
+import net from "node:net";
 import crypto from "node:crypto";
-import { spawn } from "node:child_process";
-import { writeFileSync, mkdirSync } from "node:fs";
+import { execFileSync, spawn } from "node:child_process";
+import { readdirSync, readFileSync, readlinkSync, writeFileSync, mkdirSync } from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
-const POSTGREST_PORT = Number(process.env.COURANR_PGRST_PORT || 55433);
-const GATEWAY_PORT = Number(process.env.COURANR_GATEWAY_PORT || 55434);
+export const POSTGREST_PORT = Number(process.env.COURANR_PGRST_PORT || 55433);
+export const GATEWAY_PORT = Number(process.env.COURANR_GATEWAY_PORT || 55434);
+
+/**
+ * How long a start waits for its port to come free before giving up.
+ *
+ * MEASURED: a suite's listen handle is released the instant `server.close()`
+ * runs (7 ms in the harness), but the suite's PROCESS can outlive that by up
+ * to the server's 60 s `headersTimeout` when a client left a half-open
+ * connection behind — and any process outside `ci:local`'s own chain (a suite
+ * run by hand, another agent's harness) holds the port for as long as it
+ * likes. Refusing instantly turned each of those into an EADDRINUSE at four
+ * seconds that read as a product defect. Waiting a bounded time, out loud,
+ * turns the transient case into a pause and the real case into a sentence
+ * that names the holder.
+ */
+export const PORT_SETTLE_MS = Number(process.env.COURANR_PORT_SETTLE_MS || 20_000);
 
 /**
  * PostgREST authenticates as `authenticator` and SET ROLEs from the JWT. With
@@ -193,41 +210,185 @@ export const ANON_JWT = signJwt(
   JWT_SECRET
 );
 
-/**
- * Refuse to start on a port something else already holds.
- *
- * Without this the failure is a bare unhandled EADDRINUSE 'error' event, or —
- * far worse — a SILENT one: a suite whose own PostgREST failed to bind keeps
- * talking to the STALE one left by an earlier run, which points at a database
- * that has since been destroyed and rebuilt. That produced five red tier-3
- * suites in one `ci:local --all` run (`500 gateway_failure`, a help page with
- * zero form controls) that all passed individually. Every one of them read as
- * a product defect and none of them was.
- *
- * So: bind-test the port first and abort with the holder named. A confusing
- * cascade becomes one honest sentence.
- */
-async function assertPortFree(port, label) {
-  await new Promise((resolve, reject) => {
-    const probe = http.createServer();
-    probe.once("error", (e) => {
-      if (e.code !== "EADDRINUSE") return reject(e);
-      reject(
-        new Error(
-          `${label} cannot start: 127.0.0.1:${port} is already in use.\n` +
-            "  A previous disposable suite leaked its listener. Nothing here is a\n" +
-            "  product defect until this port is free. Find and kill the holder:\n" +
-            `    ps -eo pid,etimes,cmd | grep -E 'postgrest|node e2e'`
-        )
-      );
-    });
-    probe.once("listening", () => probe.close(() => resolve()));
+/** True when 127.0.0.1:port can be bound right now. Any error but EADDRINUSE throws. */
+export function isPortFree(port) {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.once("error", (e) => (e.code === "EADDRINUSE" ? resolve(false) : reject(e)));
+    probe.once("listening", () => probe.close(() => resolve(true)));
     probe.listen(port, "127.0.0.1");
   });
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/**
+ * Who holds a listening TCP port: `{ pid, etimes, command }`, or null when no
+ * holder can be identified.
+ *
+ * `/proc` first, because this container has neither `ss` nor `netstat`
+ * (measured: `ss: not found`), and a lookup that depends on a missing tool
+ * reports "nobody" for a port that is plainly busy. `/proc/net/tcp` lists the
+ * listener's socket inode (`0100007F:D88A … 0A … <inode>` for 127.0.0.1:55434,
+ * state 0A = LISTEN) and `/proc/<pid>/fd/*` links to `socket:[<inode>]`. That
+ * needs permission to read other processes' fd tables; when it finds nothing,
+ * `lsof` and then `fuser` — both present here — get a turn.
+ */
+export function describePortHolder(port) {
+  const hex = port.toString(16).toUpperCase().padStart(4, "0");
+  let pid = null;
+
+  try {
+    const inodes = new Set();
+    for (const table of ["/proc/net/tcp", "/proc/net/tcp6"]) {
+      let text;
+      try {
+        text = readFileSync(table, "utf8");
+      } catch {
+        continue;
+      }
+      for (const line of text.split("\n").slice(1)) {
+        const f = line.trim().split(/\s+/);
+        // sl local rem st tx:rx tr:when retrnsmt uid timeout inode
+        if (f.length < 10 || f[3] !== "0A") continue;
+        if (f[1].endsWith(`:${hex}`)) inodes.add(f[9]);
+      }
+    }
+    if (inodes.size) {
+      const wanted = new Set([...inodes].map((i) => `socket:[${i}]`));
+      for (const entry of readdirSync("/proc")) {
+        if (!/^\d+$/.test(entry)) continue;
+        let fds;
+        try {
+          fds = readdirSync(`/proc/${entry}/fd`);
+        } catch {
+          continue;
+        }
+        for (const fd of fds) {
+          let target;
+          try {
+            target = readlinkSync(`/proc/${entry}/fd/${fd}`);
+          } catch {
+            continue;
+          }
+          if (wanted.has(target)) {
+            pid = Number(entry);
+            break;
+          }
+        }
+        if (pid !== null) break;
+      }
+    }
+  } catch {
+    /* fall through to the external tools */
+  }
+
+  const external = (cmd, args, pick) => {
+    try {
+      const out = execFileSync(cmd, args, { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+      const found = pick(out);
+      return Number.isInteger(found) && found > 0 ? found : null;
+    } catch {
+      return null;
+    }
+  };
+  if (pid === null) {
+    pid = external("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-Fp"], (out) =>
+      Number((out.match(/^p(\d+)/m) || [])[1])
+    );
+  }
+  if (pid === null) {
+    pid = external("fuser", [`${port}/tcp`], (out) => Number((out.match(/(\d+)/) || [])[1]));
+  }
+  if (pid === null) return null;
+
+  let command = "";
+  try {
+    command = readFileSync(`/proc/${pid}/cmdline`, "utf8").split("\0").filter(Boolean).join(" ");
+  } catch {
+    /* not readable */
+  }
+  let etimes = null;
+  try {
+    const out = execFileSync("ps", ["-o", "etimes=,args=", "-p", String(pid)], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    const m = out.match(/^(\d+)\s*(.*)$/s);
+    if (m) {
+      etimes = Number(m[1]);
+      if (!command) command = m[2].trim();
+    }
+  } catch {
+    /* ps unavailable */
+  }
+  return { pid, etimes, command: command.slice(0, 160) };
+}
+
+export function formatPortHolder(holder) {
+  if (!holder) return "holder not identifiable from /proc, lsof or fuser";
+  const up = holder.etimes === null ? "" : ` (up ${holder.etimes}s)`;
+  return `held by pid ${holder.pid}${up}: ${holder.command || "<command unreadable>"}`;
+}
+
+/**
+ * Wait, out loud and for a bounded time, for a port to come free; then refuse
+ * with the holder NAMED if it never does.
+ *
+ * Without the refusal the failure is a bare unhandled EADDRINUSE 'error'
+ * event, or — far worse — a SILENT one: a suite whose own PostgREST failed to
+ * bind keeps talking to the STALE one left by an earlier run, which points at
+ * a database that has since been destroyed and rebuilt. That produced five red
+ * tier-3 suites in one `ci:local --all` run (`500 gateway_failure`, a help
+ * page with zero form controls) that all passed individually. Every one of
+ * them read as a product defect and none of them was.
+ *
+ * Without the wait the refusal itself fired too early. The next `ci:local
+ * --all` produced five more red suites, this time on THIS message, at four
+ * seconds each, while a process outside the chain held 127.0.0.1:55434 — and
+ * the message pointed at "a previous disposable suite" and a `ps | grep`
+ * instead of at the pid. So: poll for up to `timeoutMs`, say who is holding
+ * the port the moment a wait begins, and put that pid in the error.
+ *
+ * The `log` sink is injectable so `scripts/ciLocal.mjs` can collect the lines
+ * and print them under its own stage header.
+ */
+export async function waitForPortFree(port, label, { timeoutMs = PORT_SETTLE_MS, log = console.log } = {}) {
+  const started = Date.now();
+  let announced = false;
+  let holder = null;
+  for (;;) {
+    if (await isPortFree(port)) {
+      if (announced) log(`${label}: 127.0.0.1:${port} freed after ${((Date.now() - started) / 1000).toFixed(1)}s`);
+      return;
+    }
+    // The holder is looked up once when the wait begins and once more when it
+    // gives up — not on every 250 ms poll, since each lookup walks /proc.
+    if (!announced) {
+      announced = true;
+      holder = describePortHolder(port);
+      log(
+        `${label}: 127.0.0.1:${port} is busy — ${formatPortHolder(holder)} — ` +
+          `waiting up to ${timeoutMs / 1000}s for it to free`
+      );
+    }
+    if (Date.now() - started >= timeoutMs) {
+      holder = describePortHolder(port) ?? holder;
+      throw new Error(
+        `${label} cannot start: 127.0.0.1:${port} is still in use after ` +
+          `${timeoutMs / 1000}s — ${formatPortHolder(holder)}.\n` +
+          "  Nothing here is a product defect until this port is free. Stop that\n" +
+          "  process (a disposable suite that has not finished tearing down, or a\n" +
+          "  harness started outside ci:local); if no pid was named, list candidates:\n" +
+          `    ps -eo pid,etimes,cmd | grep -E 'postgrest|node e2e'`
+      );
+    }
+    await sleep(250);
+  }
+}
+
 export async function startPostgrest({ dbUrl, binary, workDir }) {
-  await assertPortFree(POSTGREST_PORT, "PostgREST");
+  await waitForPortFree(POSTGREST_PORT, "PostgREST");
   mkdirSync(workDir, { recursive: true });
   const conf = path.join(workDir, "postgrest.conf");
   writeFileSync(
@@ -483,8 +644,32 @@ async function handleAuth(req, res) {
   });
 }
 
-export async function startGateway() {
-  await assertPortFree(GATEWAY_PORT, "the auth gateway");
+/**
+ * Make `server.close()` release everything, not only the listen handle.
+ *
+ * Every suite tears down with `gateway.server.close()` and then lets the
+ * process drain. Node's `http.Server#close` closes IDLE keep-alive sockets
+ * (since v19), but a connection that is mid-request stays open until
+ * `headersTimeout` (60 s), and it is exactly such a connection a killed
+ * `next-server` or a torn-down browser leaves behind. MEASURED in
+ * `startGateway`'s harness: with one half-open client the port was free 7 ms
+ * after `close()`, but the process was still alive 8 s later. `closeAllConnections`
+ * destroys the busy sockets so the 'close' event and the process exit follow
+ * immediately, and `unref` keeps a not-yet-released handle from pinning the
+ * event loop by itself.
+ */
+function releaseEverythingOnClose(server) {
+  const nativeClose = server.close.bind(server);
+  server.close = function close(cb) {
+    nativeClose(cb);
+    server.closeAllConnections?.();
+    server.unref();
+    return server;
+  };
+}
+
+export async function startGateway({ settleMs = PORT_SETTLE_MS } = {}) {
+  await waitForPortFree(GATEWAY_PORT, "the auth gateway", { timeoutMs: settleMs });
   const server = http.createServer((req, res) => {
     // The only rewrite: strip the Supabase REST prefix.
     const target = req.url.replace(/^\/rest\/v1/, "") || "/";
@@ -552,10 +737,23 @@ export async function startGateway() {
     req.pipe(upstream);
   });
 
-  return new Promise((resolve) => {
-    server.listen(GATEWAY_PORT, "127.0.0.1", () =>
-      resolve({ server, url: `http://127.0.0.1:${GATEWAY_PORT}` })
-    );
+  releaseEverythingOnClose(server);
+
+  return new Promise((resolve, reject) => {
+    // The probe and the bind are two steps; a holder that appears between them
+    // must surface as a rejection with the port named, not as an unhandled
+    // 'error' event that kills the suite with a bare stack trace.
+    const onError = (e) =>
+      reject(
+        e.code === "EADDRINUSE"
+          ? new Error(`the auth gateway lost the race for 127.0.0.1:${GATEWAY_PORT} — ${formatPortHolder(describePortHolder(GATEWAY_PORT))}`)
+          : e
+      );
+    server.once("error", onError);
+    server.listen(GATEWAY_PORT, "127.0.0.1", () => {
+      server.off("error", onError);
+      resolve({ server, url: `http://127.0.0.1:${GATEWAY_PORT}` });
+    });
   });
 }
 
@@ -571,4 +769,63 @@ export async function waitForPostgrest(timeoutMs = 30_000) {
     await new Promise((r) => setTimeout(r, 300));
   }
   return false;
+}
+
+/**
+ * POSITIVE CONTROL — `node e2e/disposable/gateway.mjs --port-control`.
+ *
+ * Holds an OS-assigned port in this process, asks `waitForPortFree` for it
+ * with a short deadline, and requires the refusal to name THIS pid — then
+ * releases the port and requires the same wait to succeed. A holder lookup
+ * that silently answers "nobody" fails here instead of in the middle of a
+ * `ci:local --all` run. Never touches 55433/55434, so it is safe beside a
+ * live suite.
+ */
+async function portControl() {
+  const holder = net.createServer();
+  await new Promise((r) => holder.listen(0, "127.0.0.1", r));
+  const port = holder.address().port;
+  const lines = [];
+  let refusal = null;
+  const t0 = Date.now();
+  try {
+    await waitForPortFree(port, "port control", { timeoutMs: 600, log: (m) => lines.push(m) });
+  } catch (e) {
+    refusal = e.message;
+  }
+  const waited = Date.now() - t0;
+  const checks = [
+    ["a held port is refused, not passed", refusal !== null],
+    ["the refusal waited for the deadline instead of failing instantly", waited >= 550],
+    [`the refusal names the holder pid (${process.pid})`, (refusal || "").includes(`pid ${process.pid}`)],
+    ["the wait announced itself with the holder before giving up", lines.length === 1 && lines[0].includes(`pid ${process.pid}`)],
+  ];
+  await new Promise((r) => holder.close(r));
+  let freed = true;
+  try {
+    await waitForPortFree(port, "port control", { timeoutMs: 600, log: () => {} });
+  } catch {
+    freed = false;
+  }
+  checks.push(["the same port is accepted once released", freed]);
+
+  let bad = 0;
+  for (const [what, ok] of checks) {
+    if (!ok) bad += 1;
+    console.log(`  ${ok ? "PASS" : "FAIL"}  ${what}`);
+  }
+  if (refusal) console.log(`\n  refusal text:\n    ${refusal.split("\n").join("\n    ")}`);
+  console.log(`\n  port control: ${bad === 0 ? "ok" : `${bad} FAILED`}`);
+  process.exitCode = bad === 0 ? 0 : 1;
+}
+
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href &&
+  process.argv.includes("--port-control")
+) {
+  portControl().catch((e) => {
+    console.error(e.stack || e.message);
+    process.exitCode = 1;
+  });
 }

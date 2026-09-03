@@ -44,7 +44,8 @@ function createAvailable(key, dropPlace = "place-drop-a", meters = 8047, amount 
     'Recipient','555-0100','recipient@example.test',10,0,'standard',false,'photo_or_pin',
     ${address("place-pickup", "10 Market St")},${address(dropPlace, "20 Main St")},false,
     ${meters},600,600,0,'google_routes_v2','available_for_request',null,
-    'estimated','couranr-pricing-v2-2026-09-01',${amount},3,2,${items(amount)},'[]'::jsonb)`);
+    'estimated','couranr-pricing-v2-2026-09-01',${amount},3,2,${items(amount)},'[]'::jsonb,
+    null,null,null,null,'[]'::jsonb,'none')`);
 }
 
 function main() {
@@ -76,7 +77,7 @@ function main() {
       "place-pickup|place-drop-a|8047|5.000|600|google_routes_v2|available_for_request");
     check("BRA-DB-04", "routed RPC has no browser loaded-mile parameter",
       one(`select coalesce(array_position(proargnames,'p_loaded_miles'),0)
-             from pg_proc where oid='public.couranr_create_routed_delivery_request_draft(uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb)'::regprocedure`),
+             from pg_proc where oid='public.couranr_create_routed_delivery_request_draft(uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,text,text,text,timestamptz,jsonb,text)'::regprocedure`),
       "0");
 
     const version = one(`select version from public.couranr_delivery_requests where id='${request}'`);
@@ -86,7 +87,8 @@ function main() {
       10,0,'standard',false,'photo_or_pin',
       ${address("place-pickup", "10 Market St")},${address("place-drop-b", "90 Changed St")},false,
       16093,900,900,0,'google_routes_v2','available_for_request',null,
-      'estimated','couranr-pricing-v2-2026-09-01',4500,3,7,${items(4500)},'[]'::jsonb)`);
+      'estimated','couranr-pricing-v2-2026-09-01',4500,3,7,${items(4500)},'[]'::jsonb,
+      null,null,null,null,'[]'::jsonb,'none')`);
     check("BRA-DB-05", "address change appends Quote 2 and preserves Quote 1",
       one(`select string_agg(quote_number||':'||(dropoff_address_snapshot->>'googlePlaceId')||':'||
               route_distance_meters,',' order by quote_number)
@@ -98,7 +100,8 @@ function main() {
       'Recipient','555-0100','recipient@example.test',10,0,'standard',false,'photo_or_pin',
       ${address("place-pickup", "10 Market St")},${address("place-review", "30 Review St")},false,
       null,null,null,null,'google_routes_v2','needs_review','google_routes_unavailable',
-      'manual_review_required',null,null,3,0,'[]'::jsonb,'["route_needs_review"]'::jsonb)`);
+      'manual_review_required',null,null,3,0,'[]'::jsonb,'["route_needs_review"]'::jsonb,
+      null,null,null,null,'[]'::jsonb,null)`);
     check("BRA-DB-06", "Google failure persists needs_review with no distance or amount",
       one(`select serviceability_outcome||'|'||(route_distance_meters is null)||'|'||
                   (loaded_distance_miles is null)||'|'||(subtotal_cents is null)
@@ -110,7 +113,8 @@ function main() {
       'Recipient','555-0100','recipient@example.test',10,0,'standard',false,'photo_or_pin',
       ${address("place-pickup", "10 Market St")},${address("place-surrounding", "100 King St")},false,
       8047,600,600,0,'google_routes_v2','needs_review','market_needs_review',
-      'manual_review_required',null,null,3,0,'[]'::jsonb,'["route_needs_review"]'::jsonb)`);
+      'manual_review_required',null,null,3,0,'[]'::jsonb,'["route_needs_review"]'::jsonb,
+      null,null,null,null,'[]'::jsonb,null)`);
     check("BRA-DB-07", "successful out-of-market route remains needs_review with evidence",
       one(`select serviceability_outcome||'|'||route_distance_meters||'|'||
                   loaded_distance_miles||'|'||(subtotal_cents is null)
@@ -118,9 +122,9 @@ function main() {
       "needs_review|8047|5.000|true");
     check("BRA-DB-08", "anon/authenticated cannot execute routed commands",
       raw(`select has_function_privilege('anon',
-          'public.couranr_create_routed_delivery_request_draft(uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb)',
+          'public.couranr_create_routed_delivery_request_draft(uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,text,text,text,timestamptz,jsonb,text)',
           'EXECUTE')||','||has_function_privilege('authenticated',
-          'public.couranr_create_routed_delivery_request_draft(uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb)',
+          'public.couranr_create_routed_delivery_request_draft(uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,text,text,text,timestamptz,jsonb,text)',
           'EXECUTE')`).trim(), "false,false");
     check("BRA-DB-09", "Foundation integrity remains clean",
       one("select count(*) from public.couranr_foundation_integrity()"), "0");

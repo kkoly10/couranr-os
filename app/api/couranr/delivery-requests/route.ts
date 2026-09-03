@@ -50,6 +50,10 @@ export async function POST(req: NextRequest) {
     // idempotency key are read above and are not part of the priced input.
     rawInput: body?.request,
     idempotencyKey,
+    intakeSessionId:
+      typeof body?.intakeSessionId === "string" && UUID_RE.test(body.intakeSessionId)
+        ? body.intakeSessionId
+        : null,
   });
 
   if (isCommandFailure(result)) return failureResponse(result);

@@ -38,11 +38,49 @@
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import {
+  GATEWAY_PORT,
+  POSTGREST_PORT,
+  PORT_SETTLE_MS,
+  waitForPortFree,
+} from "../e2e/disposable/gateway.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const argv = process.argv.slice(2);
+
+/**
+ * Wait for the disposable stack's two fixed ports to be free before a stage
+ * that will bind them starts.
+ *
+ * WHY. One `ci:local --all` run went red on five tier-3 suites — release
+ * route, acceptance, messaging, auth gateway, customer help fragments: every
+ * suite that starts the auth gateway — each within four seconds of starting,
+ * each on "127.0.0.1:55434 is already in use", and each passing when run by
+ * itself afterwards. The holder was not a stage in this chain: `spawnSync`
+ * returns only after the stage's own process has exited, and a closed listen
+ * handle releases its port synchronously (measured at 7 ms). It was a process
+ * OUTSIDE the chain — a suite started by hand or by another session — that
+ * the instant refusal turned into five red stages that read as product
+ * defects. So: before each such stage, wait a bounded time for both ports and
+ * print who is holding them; if they never free, fail the stage on THAT
+ * sentence, with the pid, rather than on the suite's cascade.
+ *
+ * Returns the lines to print (empty when nothing had to wait). Throws with the
+ * holder named when a port stays busy for `PORT_SETTLE_MS`.
+ */
+async function settleDisposablePorts() {
+  const notes = [];
+  for (const [port, label] of [
+    [POSTGREST_PORT, "PostgREST"],
+    [GATEWAY_PORT, "the auth gateway"],
+  ]) {
+    await waitForPortFree(port, label, { log: (m) => notes.push(m) });
+  }
+  return notes;
+}
 
 /** The same resolution order `scripts/provisionPostgrest.mjs` uses. */
 function postgrestPresent() {
@@ -129,6 +167,9 @@ const STAGES = [
     ["test:idempotency", "idempotency substrate"],
     ["test:acceptance", "acceptance matrix"],
     ["test:pricing-v2", "Pricing V2 traffic evidence, policy cutover and historical-quote immutability"],
+    ["test:weight-timing", "SUR-001 weight band + TMZ-001 requested timing execution matrix"],
+    ["test:deploy-cutover", "zero-downtime arity cutover proven through PostgREST — old shape mints predeploy, PGRST202 postdeploy, never PGRST203"],
+    ["test:smart-intake", "P5-001 Smart Intake stale-race/idempotency/provenance/tenancy execution matrix"],
     ["test:foundation-gate-a", "Foundation Gate A requester/quote/payment/plan/delivery adversarial matrix"],
     ["test:foundation-backfill", "Foundation Gate A deterministic historical backfill matrix"],
     ["test:foundation-rollbacks", "Foundation Gate A reversible-additive and hard-refusal rollback matrix"],
@@ -141,6 +182,7 @@ const STAGES = [
     name: script,
     run: ["npm", ["run", script]],
     why,
+    settle: settleDisposablePorts,
     needs: () => {
       if (!want.db) return "tier 3 not requested — pass --db or --all";
       // Every tier-3 suite spawns PostgREST. Without the binary each one dies
@@ -149,6 +191,8 @@ const STAGES = [
       // recycled without warning and the binary does not survive it.
       const postgresOnly = new Set([
         "test:pricing-v2",
+        "test:weight-timing",
+        "test:smart-intake",
         "test:foundation-gate-a",
         "test:foundation-backfill",
         "test:foundation-rollbacks",
@@ -207,6 +251,34 @@ const STAGES = [
       return null;
     },
   })),
+  {
+    tier: 4,
+    name: "test:smart-intake-ui",
+    run: ["npm", ["run", "test:smart-intake-ui"]],
+    why: "P5-001 Smart Intake panel driven in a real browser against the disposable stack — describe, suggest-not-prefill, confirm, hostile update, refusals",
+    settle: settleDisposablePorts,
+    // Rule 2 again: a suite that died before its tally, or that counted a
+    // failure and still exited 0, must not read as a pass. The suite prints
+    // `N passed, N failed, N inconclusive` as its last line.
+    assert: (out) => {
+      const m = out.match(/(\d+) passed, (\d+) failed, (\d+) inconclusive/);
+      if (!m) return "could not find the suite's `N passed, N failed, N inconclusive` tally — did the run abort?";
+      const [, passed, failed] = m;
+      if (Number(failed) > 0) return `${failed} browser check(s) failed`;
+      if (Number(passed) === 0) return "the suite passed nothing — no check ran";
+      return null;
+    },
+    needs: () => {
+      if (!want.browser) return "tier 4 not requested — pass --browser or --all";
+      // Runs `next dev` on its own distDir over the disposable database (the
+      // fake provider is structurally unavailable in a production build), so
+      // it needs PostgREST, not `.next/BUILD_ID`.
+      if (!postgrestPresent()) {
+        return "postgrest binary is missing — run `npm run provision:postgrest` first";
+      }
+      return null;
+    },
+  },
 ];
 
 const TIERS = {
@@ -243,10 +315,45 @@ if (argv.includes("--self-test")) {
   control("a vitest run with every file passing is accepted", assertTests("Test Files  53 passed (53)"), false);
   control("a vitest run with no summary line at all is rejected", assertTests("boom"), true);
 
+  const assertUi = STAGES.find((s) => s.name === "test:smart-intake-ui").assert;
+  control("a browser suite with a failed check is rejected even on exit 0", assertUi("57 passed, 1 failed, 0 inconclusive"), true);
+  control("a browser suite that ran nothing is rejected", assertUi("0 passed, 0 failed, 0 inconclusive"), true);
+  control("a browser suite with no tally at all is rejected", assertUi("boom"), true);
+  control("a browser suite with every check passing is accepted", assertUi("58 passed, 0 failed, 0 inconclusive"), false);
+
   // And a stage whose command exits non-zero must be recorded as a failure
   // rather than shrugged off.
   const r = spawnSync("node", ["-e", "process.exit(3)"], { cwd: ROOT, encoding: "utf8" });
   control("a stage that exits non-zero is a failure", r.status === 0 ? null : `exit ${r.status}`, true);
+
+  // And the settle step must refuse a port another process holds, naming the
+  // holder, rather than pass and let the suite discover it four seconds in.
+  // An OS-assigned port, so this never touches 55433/55434 beside a live suite.
+  {
+    const holder = net.createServer();
+    await new Promise((r) => holder.listen(0, "127.0.0.1", r));
+    const port = holder.address().port;
+    let refusal = null;
+    try {
+      await waitForPortFree(port, "settle control", { timeoutMs: 400, log: () => {} });
+    } catch (e) {
+      refusal = e.message;
+    }
+    await new Promise((r) => holder.close(r));
+    control("a port held by another process is refused", refusal, true);
+    control(
+      `the refusal names the holder pid (${process.pid})`,
+      refusal && refusal.includes(`pid ${process.pid}`) ? null : `holder not named in: ${refusal}`,
+      false,
+    );
+    let freed = null;
+    try {
+      await waitForPortFree(port, "settle control", { timeoutMs: 400, log: () => {} });
+    } catch (e) {
+      freed = e.message;
+    }
+    control("the same port is accepted once released", freed, false);
+  }
 
   process.exit(bad ? 1 : 0);
 }
@@ -275,6 +382,22 @@ for (const stage of STAGES) {
     continue;
   }
   const [cmd, args] = stage.run;
+  if (stage.settle) {
+    let notes;
+    try {
+      notes = await stage.settle();
+    } catch (e) {
+      const [first, ...rest] = String(e.message || e).split("\n");
+      console.log(`── tier ${stage.tier} · ${stage.name} … FAIL (settle) — ${first}`);
+      console.log(rest.map((l) => `      ${l}`).join("\n"));
+      results.push({ ...stage, ok: false, failure: `settle: ${first}`, secs: (PORT_SETTLE_MS / 1000).toFixed(1) });
+      continue;
+    }
+    if (notes.length) {
+      console.log("   settle · waiting for the disposable ports so the suite does not fail at 4s on an EADDRINUSE that reads as a product defect:");
+      for (const n of notes) console.log(`   settle · ${n}`);
+    }
+  }
   process.stdout.write(`── tier ${stage.tier} · ${stage.name} … `);
   const t0 = Date.now();
   const r = spawnSync(cmd, args, { cwd: ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });

@@ -42,7 +42,16 @@ export type DeliveryRequestView = {
 
   loadedMiles: number | null;
   weightLb: number | null;
+  /** Governed band when only the band is known; null when exact weight is. */
+  weightBand: string | null;
+  /** The merchant's shipment-safety declaration this request was priced under. */
+  restrictedClass: string | null;
   additionalStops: number;
+  /** TMZ-001 requested timing — evidence of what was ASKED, never confirmed. */
+  timingIntent: string | null;
+  requestedPickupLocal: string | null;
+  operatingTimezone: string | null;
+  requestedDepartureAt: string | null;
   serviceLevel: string;
   signatureRequired: boolean;
   proofMethod: string;
@@ -102,7 +111,13 @@ export function toDeliveryRequestView(row: Record<string, any>): DeliveryRequest
 
     loadedMiles: numOrNull(row.loaded_miles),
     weightLb: numOrNull(row.weight_lb),
+    weightBand: row.weight_band ?? null,
+    restrictedClass: row.restricted_class ?? null,
     additionalStops: Number(row.additional_stops ?? 0),
+    timingIntent: row.timing_intent ?? null,
+    requestedPickupLocal: row.requested_pickup_local ?? null,
+    operatingTimezone: row.operating_timezone ?? null,
+    requestedDepartureAt: row.requested_departure_at ?? null,
     serviceLevel: row.service_level,
     signatureRequired: row.signature_required === true,
     proofMethod: row.proof_method,
@@ -166,6 +181,12 @@ export const REVIEW_REASON_LABELS: Record<string, string> = {
   over_max_automatic_traffic_delay: "Predicted traffic delay is beyond the automatic estimate range",
   route_needs_review: "Driving route needs Couranr review",
   traffic_evidence_unavailable: "Traffic conditions could not be confirmed for this route",
+  weight_unresolved: "Weight needs to be confirmed before an automatic price",
+  timing_needs_review: "Requested timing needs Couranr review",
+  shipment_policy_review: "The shipment needs Couranr review before a price is set",
+  safety_declaration_required:
+    "Confirm that the shipment contains none of the items Couranr can't carry before an automatic price",
+  shipment_prohibited: "Couranr cannot carry this shipment",
   /* Retired V1 vocabulary, kept so historical requests still read. */
   over_max_automatic_weight: "Weight is beyond the automatic estimate range",
   overnight_not_offered_in_this_release: "Overnight is not offered in this release",

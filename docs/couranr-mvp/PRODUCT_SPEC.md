@@ -10,6 +10,71 @@ decision amends it. `ui_screen_registry.json` owns screens and routes;
 implementation state. See
 [`authority/AUTHORITY_MANIFEST.json`](./authority/AUTHORITY_MANIFEST.json).
 
+## Smart Intake, weight bands, operating timezone and scheduled traffic amendments — 2026-09-02
+
+Atomic forms: TMZ-001, SUR-005, INT-001, TRF-002 in `02_DECISION_REGISTRY.json`.
+
+### §4 Operating hours — operating timezone (TMZ-001)
+
+The MVP operating timezone is the IANA zone **America/New_York**, by owner
+decision. Every request-time operating semantic — the 6:00 AM earliest pickup,
+the 4:00 PM same-day cutoff, the 6:00 PM end of the standard window,
+next-business-day and Friday-after-cutoff calculations, overnight request
+timing, merchant-entered scheduled pickup times and Google Routes future
+`departureTime` conversion — is evaluated in this zone on the server. DST
+follows the zone automatically through tzdata; no fixed EST/EDT offset exists
+anywhere. Browser and device timezones have no authority. The canonical
+persisted scheduled instant is unambiguous (`timestamptz`), and the merchant's
+local wall-clock words are preserved verbatim beside it as evidence. Requested
+timing is ESTIMATED until Couranr confirms it; the Service Plan remains the
+confirmed planning object. A second operating timezone is a future policy
+version, not infrastructure built now.
+
+### §4 Pricing registry — weight knowledge (SUR-005)
+
+Exact weight is OPTIONAL shipment knowledge. A request states EITHER a
+genuinely known exact weight OR a governed band — `0_25_lb`,
+`over_25_to_50_lb`, `over_50_lb`, `unknown` — and nothing anywhere fabricates
+pounds (no midpoints, bounds, zeros or sentinels) to satisfy an interface.
+Pricing V2 amounts are unchanged: a confirmed band prices identically to an
+exact weight in that band; `over_50_lb` is Large Item review; `unknown` is a
+weight-unresolved review. Quote shipment snapshots tell the truth about which
+kind of weight knowledge priced them (`exact` | `band` | `unresolved`).
+Historical exact weights are untouched.
+
+### §4 Pricing registry — scheduled traffic (TRF-002, amending TRF-001)
+
+Scheduled (future-departure) traffic is implemented: a scheduled request's
+canonical America/New_York-derived instant travels to Google Routes as
+`departureTime`, so predicted conditions for the requested departure price the
+quote. The delay derivation — traffic-aware duration minus static duration
+from ONE canonical response — is unchanged, immediate requests are unchanged,
+past requested times are a timing review rather than a Google call, and
+browsers still supply no route evidence of any kind.
+
+### §6 Smart Intake (INT-001, P5-001 V0)
+
+Smart Intake is durable INPUT ENRICHMENT — never a second request system and
+never an authority. The governing rule: **AI proposes; Couranr validates; a
+trusted actor confirms material facts; the server commits.** The merchant's
+raw description is preserved verbatim as append-only evidence; every
+structured fact carries source, confidence and a four-value authority
+(`proposed`/`confirmed`/`overridden`/`unknown`); a model conclusion at any
+confidence is still a proposal and can never overwrite a confirmed fact, whose
+later disagreements are retained as audit. Interpretation is idempotent per
+(session, revision, prompt version, schema version, provider) and a stale
+out-of-order completion is recorded as superseded evidence with no effect on
+current state. The deterministic shipment policy (not the model) folds
+confirmed facts into `allowed`/`needs_review`/`prohibited`, mapping onto quote
+status as estimated / manual-review-with-no-payable-subtotal /
+invalid-with-no-payable-subtotal. One clarification is asked at a time, ranked
+safety > capability > priceability > timing > convenience. Provider payloads
+carry the description, versioned category and confirmed non-PII shipment facts
+only. No production AI provider is selected; the seam is neutral, the
+deterministic fake is structurally unavailable in production builds, and
+provider absence degrades to manual structured intake without blocking any
+request.
+
 ## Couranr Pricing Authority V2 amendments — 2026-09-01
 
 These decisions amend the preserved historical pricing doctrine below, which

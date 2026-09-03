@@ -125,6 +125,10 @@ export const COMMAND_SIGNATURES = {
     p_delivery_subtotal_cents: "integer", p_included_loaded_miles: "integer",
     p_billable_loaded_miles: "numeric", p_quote_line_items: "jsonb",
     p_review_reasons: "jsonb",
+    // STRICT arity (20260902200000, no defaults): every argument is stated.
+    p_weight_band: "text", p_timing_intent: "text",
+    p_requested_pickup_local: "text", p_requested_departure_at: "timestamptz",
+    p_timing_review_reasons: "jsonb", p_restricted_class: "text",
   },
   couranr_submit_delivery_request_v2: {
     p_request_id: "uuid", p_business_account_id: "uuid", p_expected_version: "integer",
@@ -420,6 +424,16 @@ export async function seedCanonicalQuotedRequest(t, opts) {
     p_serviceability_outcome: "available_for_request",
     p_route_review_reason: null,
     p_quote_status: "estimated",
+    // Correction pass §2: an estimated quote requires the merchant's trusted
+    // "none" declaration; the fixture states it like a real merchant would.
+    // The STRICT arity has no defaults, so every argument is stated — null is
+    // an explicit statement, not an omission.
+    p_restricted_class: "none",
+    p_weight_band: null,
+    p_timing_intent: null,
+    p_requested_pickup_local: null,
+    p_requested_departure_at: null,
+    p_timing_review_reasons: [],
     p_pricing_policy_version: o.pricingPolicyVersion,
     p_delivery_subtotal_cents: o.subtotalCents,
     p_included_loaded_miles: o.includedLoadedMiles,

@@ -186,6 +186,8 @@ describe("canonical routes cannot leak a database detail", () => {
       "app/api/couranr/driver/proof/[proofId]/url/route.ts",
       "app/api/couranr/driver/proof/finalize/route.ts",
       "app/api/couranr/help/[token]/route.ts",
+      "app/api/couranr/intake/[id]/route.ts",
+      "app/api/couranr/intake/route.ts",
       "app/api/couranr/me/activation/route.ts",
       "app/api/couranr/me/business-accounts/route.ts",
       "app/api/couranr/me/invitations/route.ts",

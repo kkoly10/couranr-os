@@ -52,6 +52,10 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     expectedVersion,
     // Undefined when the caller only wants a re-price of what is stored.
     rawInput: body?.request,
+    intakeSessionId:
+      typeof body?.intakeSessionId === "string" && UUID_RE.test(body.intakeSessionId)
+        ? body.intakeSessionId
+        : null,
   });
 
   if (isCommandFailure(result)) return failureResponse(result);
