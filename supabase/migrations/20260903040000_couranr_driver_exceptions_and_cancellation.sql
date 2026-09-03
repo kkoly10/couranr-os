@@ -252,17 +252,42 @@ end $fn$;
  * and never from the pre-arrival states, where unassignment and cancellation
  * are the honest verbs.
  *
+ * THE CUSTODY GATE (correction pass, review item 4). Closing releases the
+ * driver and vehicle, so closure demands evidence proportional to custody:
+ *
+ *   at_pickup — nothing is in custody, but a failed pickup is a DRIVER-
+ *   witnessed fact: an OPEN pickup-stage discrepancy must exist. An operator
+ *   click is not evidence on its own.
+ *
+ *   picked_up / in_transit / at_dropoff — the driver has (or may still have)
+ *   the goods. Closure requires BOTH an OPEN dropoff-stage exception AND a
+ *   non-empty p_custody_resolution: the trusted Operations account of how
+ *   the goods were physically resolved, persisted in the immutable delivery
+ *   event. Without custody resolution the exception stays open and the
+ *   resources stay truthfully assigned — that is the correct state, not a
+ *   bug to work around.
+ *
+ * The discrepancy row itself is left OPEN — it is evidence, and 'open' vs
+ * 'safe_to_continue' is the only vocabulary it has; the custody resolution
+ * lives in the delivery event. The one-open-row-per-delivery index means a
+ * pickup-stage row must be resolved safe_to_continue before a dropoff
+ * exception can be reported — the forward flow already guarantees that,
+ * because complete_pickup refuses while any discrepancy is open.
+ *
  * Money is NOT here. A failed pickup's $15 retention and a Couranr-caused
  * $0 both run through couranr_begin_payment_refund (20260903020000), which
  * derives every amount server-side. This command records what happened to
- * the GOODS.
+ * the GOODS. No return is priced and no second delivery is created — a
+ * required physical return is a separate future Pricing V2 route.
  */
+drop function if exists public.couranr_close_delivery_undeliverable(uuid, integer, uuid, text, text);
 create or replace function public.couranr_close_delivery_undeliverable(
-  p_delivery_id      uuid,
-  p_expected_version integer,
-  p_actor_user_id    uuid,
-  p_reason           text,
-  p_stage_note       text default null
+  p_delivery_id        uuid,
+  p_expected_version   integer,
+  p_actor_user_id      uuid,
+  p_reason             text,
+  p_stage_note         text default null,
+  p_custody_resolution text default null
 )
 returns public.couranr_deliveries
 language plpgsql security invoker set search_path = ''
@@ -298,6 +323,31 @@ begin
     raise exception 'delivery_not_closable_from_state' using errcode = 'CR409';
   end if;
   v_from := v_dlv.fulfillment_state;
+
+  if v_from = 'at_pickup' then
+    -- Failed pickup: only with the driver's own recorded evidence.
+    if not exists (
+      select 1 from public.couranr_pickup_discrepancies
+       where delivery_id = p_delivery_id
+         and discrepancy_state = 'open'
+         and stage = 'pickup'
+    ) then
+      raise exception 'pickup_discrepancy_evidence_required' using errcode = 'CR409';
+    end if;
+  else
+    -- The driver has or may still have physical custody. Both halves, always.
+    if not exists (
+      select 1 from public.couranr_pickup_discrepancies
+       where delivery_id = p_delivery_id
+         and discrepancy_state = 'open'
+         and stage = 'dropoff'
+    ) then
+      raise exception 'dropoff_exception_evidence_required' using errcode = 'CR409';
+    end if;
+    if p_custody_resolution is null or length(btrim(p_custody_resolution)) = 0 then
+      raise exception 'custody_resolution_required' using errcode = 'CR400';
+    end if;
+  end if;
 
   update public.couranr_deliveries
      set fulfillment_state = 'could_not_deliver',
@@ -347,7 +397,12 @@ begin
     p_delivery_id, p_actor_user_id, 'operations', 'close_delivery_undeliverable',
     v_from, 'could_not_deliver',
     jsonb_build_object('reason', btrim(p_reason), 'stageNote', p_stage_note,
-                       'assignmentId', v_asg.id)
+                       'assignmentId', v_asg.id,
+                       -- Immutable custody evidence: how the goods were
+                       -- physically resolved before resources were released.
+                       'custodyResolution',
+                       case when p_custody_resolution is null then null
+                            else btrim(p_custody_resolution) end)
   );
 
   return v_dlv;
@@ -461,9 +516,9 @@ revoke all on function public.couranr_report_dropoff_exception(uuid, uuid, text,
 grant execute on function public.couranr_report_dropoff_exception(uuid, uuid, text, text)
   to service_role;
 
-revoke all on function public.couranr_close_delivery_undeliverable(uuid, integer, uuid, text, text)
+revoke all on function public.couranr_close_delivery_undeliverable(uuid, integer, uuid, text, text, text)
   from public, anon, authenticated, service_role;
-grant execute on function public.couranr_close_delivery_undeliverable(uuid, integer, uuid, text, text)
+grant execute on function public.couranr_close_delivery_undeliverable(uuid, integer, uuid, text, text, text)
   to service_role;
 
 revoke all on function public.couranr_cancel_delivery(uuid, integer, uuid, text)

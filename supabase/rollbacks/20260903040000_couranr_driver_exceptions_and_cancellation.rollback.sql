@@ -76,6 +76,7 @@ end
 $evidence$;
 
 drop function if exists public.couranr_cancel_delivery(uuid, integer, uuid, text);
+drop function if exists public.couranr_close_delivery_undeliverable(uuid, integer, uuid, text, text, text);
 drop function if exists public.couranr_close_delivery_undeliverable(uuid, integer, uuid, text, text);
 drop function if exists public.couranr_report_dropoff_exception(uuid, uuid, text, text);
 

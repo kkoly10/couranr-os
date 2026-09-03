@@ -331,6 +331,12 @@ async function main() {
   /* ------------------------------------------- §31 drop-off exception --- */
 
   psql(`select public.couranr_start_route_to_dropoff('${D1}', ${dver(D1)}, '${drvAUser}')`);
+  /* Review item 4, the other half: with NO dropoff exception on record, a
+     custody delivery cannot be closed even WITH a custody note — an operator
+     click plus prose is not driver-witnessed evidence. */
+  eq("DX-20a", "in custody with no exception, closure is refused outright",
+     raises(`select public.couranr_close_delivery_undeliverable('${D1}', ${dver(D1)}, '${ops}', 'no evidence', null, 'goods handled somehow')`),
+     "CR409|dropoff_exception_evidence_required");
   const verBefore = dver(D1);
   const exc = rowOf(
     `public.couranr_report_dropoff_exception('${D1}', '${drvAUser}', 'recipient_unavailable', 'nobody answers')`,
@@ -363,8 +369,23 @@ async function main() {
   eq("DX-29", "a non-Operations actor cannot close a delivery undeliverable",
      raises(`select public.couranr_close_delivery_undeliverable('${D1}', ${dver(D1)}, '${drvAUser}', 'no', null)`),
      "CR403|operations_access_required");
-  psql(`select public.couranr_close_delivery_undeliverable('${D1}', ${dver(D1)}, '${ops}', 'recipient never appeared', 'at_dropoff')`);
-  eq("DX-25", "Operations closed at_dropoff -> could_not_deliver", dlv(D1), "could_not_deliver");
+  /* THE CUSTODY GATE (review item 4). D1 is at_dropoff with an OPEN dropoff
+     exception (DX-20) — but the driver still holds the goods, so closure
+     additionally demands the Operations custody-resolution account. Without
+     it the delivery stays open and the resources stay truthfully assigned. */
+  eq("DX-25a", "in custody, closure without custody resolution is refused even with the exception open",
+     raises(`select public.couranr_close_delivery_undeliverable('${D1}', ${dver(D1)}, '${ops}', 'recipient never appeared', 'at_dropoff')`),
+     "CR400|custody_resolution_required");
+  eq("DX-25b", "... and the refusal released nothing",
+     `${dlv(D1)}|${drvCol(driverA, "availability_state")}`, "at_dropoff|on_delivery");
+  psql(`select public.couranr_close_delivery_undeliverable('${D1}', ${dver(D1)}, '${ops}', 'recipient never appeared', 'at_dropoff', 'driver A returned the goods to the merchant dock at 16:40')`);
+  eq("DX-25", "with exception + custody resolution, Operations closed at_dropoff -> could_not_deliver", dlv(D1), "could_not_deliver");
+  eq("DX-25c", "the custody resolution is persisted in the immutable delivery event",
+     one(`select metadata->>'custodyResolution' from public.couranr_delivery_events
+           where delivery_id='${D1}' and command='close_delivery_undeliverable'`),
+     "driver A returned the goods to the merchant dock at 16:40");
+  eq("DX-25d", "closure moved no money on its own: no refund attempt exists anywhere",
+     one(`select count(*) from public.couranr_payment_refunds`), "0");
   eq("DX-26", "the assignment is closed with the truthful end reason",
      one(`select assignment_state || '|' || end_reason || '|' || (ended_at is not null)::text
             from public.couranr_delivery_assignments where id='${asg1.id}'`),
@@ -432,9 +453,37 @@ async function main() {
   eq("DX-34", "cancel is refused once the driver has arrived (too late)",
      raises(`select public.couranr_cancel_delivery('${D3}', ${dver(D3)}, '${ops}', 'changed mind')`),
      "CR409|too_late_to_cancel");
+  /* Review item 4: a failed pickup is a DRIVER-witnessed fact. With no open
+     pickup discrepancy, at_pickup closure is refused. */
+  eq("DX-35a", "at_pickup closure without a pickup discrepancy is refused",
+     raises(`select public.couranr_close_delivery_undeliverable('${D3}', ${dver(D3)}, '${ops}', 'failed pickup — merchant unavailable', 'at_pickup')`),
+     "CR409|pickup_discrepancy_evidence_required");
+  psql(`select public.couranr_report_pickup_discrepancy('${D3}', '${drvAUser}', 'loading_not_available', 'nobody at the dock')`);
   psql(`select public.couranr_close_delivery_undeliverable('${D3}', ${dver(D3)}, '${ops}', 'failed pickup — merchant unavailable', 'at_pickup')`);
-  eq("DX-35", "undeliverable closure also works from at_pickup (failed pickup)",
+  eq("DX-35", "with the driver's discrepancy on record, failed-pickup closure works from at_pickup",
      `${dlv(D3)}|${drvCol(driverA, "availability_state")}`, "could_not_deliver|available");
+
+  /* Stage specificity: the at_pickup gate wants a PICKUP-stage row — a
+     dropoff-stage row (synthetically inserted; the forward flow cannot make
+     one at this stage) does not satisfy it. The mirror case — a custody
+     delivery whose only open row is pickup-stage — is structurally
+     unreachable: complete_pickup, the only door into custody, refuses while
+     ANY discrepancy is open (DX-16/17). */
+  const D5 = (await seedDelivery(`dx5-${crypto.randomUUID().slice(0, 6)}`)).deliveryId;
+  const asg5 = assign(D5, driverA, vehA);
+  psql(startRoute(D5, dver(D5), drvAUser));
+  psql(arrivePickup(D5, dver(D5), drvAUser, 38.42, -77.40));
+  psql(`insert into public.couranr_pickup_discrepancies
+          (delivery_id, assignment_id, reason, notes, discrepancy_state, stage, reported_by_driver_id)
+        values ('${D5}', '${asg5.id}', 'other', 'synthetic stage probe', 'open', 'dropoff', '${driverA}')`);
+  eq("DX-35b", "a dropoff-stage row does NOT satisfy the at_pickup evidence gate",
+     raises(`select public.couranr_close_delivery_undeliverable('${D5}', ${dver(D5)}, '${ops}', 'failed pickup', 'at_pickup')`),
+     "CR409|pickup_discrepancy_evidence_required");
+  psql(`update public.couranr_pickup_discrepancies set stage='pickup'
+         where delivery_id='${D5}' and discrepancy_state='open'`);
+  psql(`select public.couranr_close_delivery_undeliverable('${D5}', ${dver(D5)}, '${ops}', 'failed pickup', 'at_pickup')`);
+  eq("DX-35c", "the same row re-staged 'pickup' satisfies it — the predicate reads the stage",
+     `${dlv(D5)}|${drvCol(driverA, "availability_state")}`, "could_not_deliver|available");
 
   const D4 = (await seedDelivery(`dx4-${crypto.randomUUID().slice(0, 6)}`)).deliveryId;
   const asg4 = assign(D4, driverA, vehA);

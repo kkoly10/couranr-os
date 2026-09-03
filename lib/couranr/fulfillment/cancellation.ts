@@ -79,6 +79,13 @@ export function isCancellationReason(v: unknown): v is CancellationReason {
 const PRE_ARRIVAL_STATES = ["scheduled", "assigned", "en_route_to_pickup"] as const;
 /** Delivery states from which only the undeliverable path may close. */
 const POST_ARRIVAL_STATES = ["at_pickup", "picked_up", "in_transit", "at_dropoff"] as const;
+/**
+ * States in which the driver has, or may still have, physical custody
+ * (custody begins at complete_pickup). Review item 4: the $15
+ * failed-pickup retention and the plain failed-pickup closure are
+ * at_pickup-only concepts and must NEVER attach to goods already picked up.
+ */
+const CUSTODY_STATES = ["picked_up", "in_transit", "at_dropoff"] as const;
 
 export type CancellationOutcome = {
   /** Which governed path ran. */
@@ -129,7 +136,7 @@ async function callRpc<T = Record<string, any>>(
  * `not_supported` result means V0 refuses to move this money at all.
  */
 function refundReasonFor(
-  stage: "pre_arrival" | "post_arrival",
+  stage: "pre_arrival" | "at_pickup" | "in_custody",
   reason: CancellationReason
 ): RefundReason | "not_supported" {
   if (reason === "couranr_caused") return "couranr_caused_failure";
@@ -141,8 +148,19 @@ function refundReasonFor(
     // failed_pickup makes no sense before anyone arrived.
     return "not_supported";
   }
-  // post_arrival
-  if (reason === "failed_pickup") return "failed_pickup_after_arrival";
+  if (stage === "at_pickup") {
+    // Failed pickup is EXACTLY this stage: the driver arrived, nothing is in
+    // custody, and the pickup could not occur.
+    if (reason === "failed_pickup") return "failed_pickup_after_arrival";
+    return "not_supported";
+  }
+  /*
+   * in_custody (picked_up / in_transit / at_dropoff): failed_pickup is a
+   * pickup-stage concept — its $15 retention must never be selectable here
+   * (review item 4). Only couranr_caused (handled above, $0 retained) moves
+   * money once the goods are in a driver's hands; everything else is a
+   * governed refusal, never an invented settlement.
+   */
   return "not_supported";
 }
 
@@ -303,7 +321,11 @@ export async function cancelDeliveryWithRecovery(params: {
     });
   }
 
-  const refundReason = refundReasonFor(preArrival ? "pre_arrival" : "post_arrival", params.reason);
+  const inCustody = (CUSTODY_STATES as readonly string[]).includes(state);
+  const refundReason = refundReasonFor(
+    preArrival ? "pre_arrival" : inCustody ? "in_custody" : "at_pickup",
+    params.reason
+  );
   if (refundReason === "not_supported") {
     return fail({
       operation: op,
@@ -311,7 +333,9 @@ export async function cancelDeliveryWithRecovery(params: {
       detail: { reason: "not_supported", state, cancellationReason: params.reason },
       message: preArrival
         ? "A failed pickup can only be recorded once a driver has arrived. Use a cancellation reason instead."
-        : "Cancelling at this stage is outside what Couranr can settle automatically. Send this to Couranr Support / the forward repair path.",
+        : inCustody && params.reason === "failed_pickup"
+          ? "A failed pickup applies only at the pickup door. These goods were already picked up — the driver has custody, and the failed-pickup settlement cannot attach to them."
+          : "Cancelling at this stage is outside what Couranr can settle automatically. Send this to Couranr Support / the forward repair path.",
     });
   }
 
@@ -328,6 +352,13 @@ export async function cancelDeliveryWithRecovery(params: {
         p_actor_user_id: params.actor.userId,
         p_reason: `${params.reason} — ${note}`,
         p_stage_note: state,
+        /*
+         * Custody evidence (review item 4): for goods already picked up the
+         * operator's mandatory note IS the custody-resolution account, and
+         * the SQL command refuses without it (and without an open dropoff
+         * exception). At the pickup door there is no custody to resolve.
+         */
+        p_custody_resolution: inCustody ? note : null,
       });
   if (isFulfillmentFailure(closed)) return closed;
 
