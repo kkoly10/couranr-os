@@ -484,8 +484,18 @@ export function DeliveryRequestDetail({ id }: { id: string }) {
         />
       ) : null}
 
-      {/* OPS-003 execution: the timeline, both credentials, the discrepancy
-          blocker, pre-pickup unassignment and the 900-second proof viewer. */}
+      {/* OPS-003 execution: the timeline with the delivery's recorded events
+          and arrival/waiting evidence (SUR-003: evidence only, never a
+          charge), both credentials, the discrepancy/exception panel with the
+          reachable safe-to-continue action, pre-pickup unassignment and the
+          900-second proof viewer.
+
+          The open issue and the event history are NOT threaded from here:
+          they come from the Operations-only dispatch-panel endpoint, which
+          the execution panel already reads for the live delivery version —
+          threading a second copy from this component would just be one more
+          read that can go stale. The `discrepancy`/`events` props remain for
+          callers that already hold fresher rows. */}
       {isOperations && fulfillment?.delivery ? (
         <OperationsExecutionPanel
           deliveryId={fulfillment.delivery.id}

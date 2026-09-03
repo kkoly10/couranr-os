@@ -20,6 +20,7 @@ import {
   isDiscrepancyReason,
   isFulfillmentState,
   DISCREPANCY_REASON_LABELS,
+  DROPOFF_EXCEPTION_REASON_LABELS,
   FULFILLMENT_LABELS,
   type FulfillmentState,
 } from "@/lib/couranr/driver/states";
@@ -53,14 +54,15 @@ import { formatProofWhen, proofStageLabel, proofTypeLabel } from "./MerchantProo
  */
 
 /**
- * The open pickup issue, supplied by the caller.
+ * The open issue, supplied by the caller OR read from the panel endpoint.
  *
- * A PROP RATHER THAN A FETCH, because no read endpoint returns a discrepancy —
- * `couranr_pickup_discrepancies` is written by two commands and read by neither
- * route. Clearing one needs its id AND its current version, and inventing a
- * version to make a button work is exactly the kind of confident guess this
- * codebase has already paid for. Without this prop the blocker is still shown
- * (see `derivedBlockerOpen`); only the action is withheld.
+ * This began as a prop-only shape because no read endpoint returned a
+ * discrepancy — `couranr_pickup_discrepancies` was written by two commands and
+ * read by no route, which made the Operations safe-to-continue route
+ * unreachable from any browser. `getDispatchPanel` now returns the open row
+ * (id, version, reason, stage, note, timestamps), and this panel reads it from
+ * the same fetch it already makes for the live delivery version. A caller-
+ * supplied prop still wins, so existing wiring keeps its meaning.
  */
 export type OpenPickupDiscrepancy = {
   discrepancyId: string;
@@ -68,6 +70,10 @@ export type OpenPickupDiscrepancy = {
   version: number;
   /** A `DISCREPANCY_REASONS` value. Anything else is rendered verbatim. */
   reason?: string;
+  /** 'pickup' (blocks complete_pickup while open) or 'dropoff' (§31 evidence). */
+  stage?: string;
+  /** The driver's own words, shown to Operations verbatim. */
+  note?: string | null;
   reportedAt?: string;
 };
 
@@ -97,25 +103,62 @@ export function OperationsExecutionPanel({
   onChanged?: () => void;
 }) {
   /*
-   * The live delivery version. `fetchDispatchPanel` already returns it, so
-   * this costs the read the panel would make anyway and removes the chance of
-   * unassigning against a version the operator's screen has outgrown.
+   * The live delivery version, the OPEN issue and the delivery's own event
+   * history. `fetchDispatchPanel` already returns all three, so this costs
+   * the read the panel would make anyway — and it is what finally makes the
+   * safe-to-continue command reachable: clearing an issue needs the row's id
+   * AND current version, which no browser could previously obtain.
    */
   const [liveVersion, setLiveVersion] = React.useState<number | null>(null);
+  const [fetchedDiscrepancy, setFetchedDiscrepancy] =
+    React.useState<OpenPickupDiscrepancy | null>(null);
+  const [fetchedEvents, setFetchedEvents] = React.useState<ExecutionEvent[] | null>(null);
+  const [panelGeneration, setPanelGeneration] = React.useState(0);
   React.useEffect(() => {
     let cancelled = false;
     void fetchDispatchPanel(deliveryId).then((r) => {
       if (cancelled || isApiFailure(r)) return;
       const v = r.value.delivery?.version;
       if (typeof v === "number") setLiveVersion(v);
+      // The panel endpoint's two evidence fields. DispatchPanelView is owned
+      // by the client module; until its type gains them the shape is read
+      // through a local view of the same JSON.
+      const extra = r.value as typeof r.value & {
+        openDiscrepancy?: {
+          id: string;
+          version: number;
+          reason: string;
+          stage: string;
+          note: string | null;
+          reportedAt: string | null;
+        } | null;
+        deliveryEvents?: PanelDeliveryEvent[];
+      };
+      setFetchedDiscrepancy(
+        extra.openDiscrepancy
+          ? {
+              discrepancyId: extra.openDiscrepancy.id,
+              version: extra.openDiscrepancy.version,
+              reason: extra.openDiscrepancy.reason,
+              stage: extra.openDiscrepancy.stage,
+              note: extra.openDiscrepancy.note,
+              reportedAt: extra.openDiscrepancy.reportedAt ?? undefined,
+            }
+          : null
+      );
+      setFetchedEvents(Array.isArray(extra.deliveryEvents) ? extra.deliveryEvents : []);
     });
     return () => {
       cancelled = true;
     };
-  }, [deliveryId]);
+  }, [deliveryId, panelGeneration]);
   const deliveryVersion = liveVersion ?? deliveryVersionProp ?? 0;
 
-  const eventList = Array.isArray(events) ? events : [];
+  // A caller-supplied prop wins; the panel's own read fills the gap that made
+  // safe-to-continue unreachable.
+  const effectiveDiscrepancy = discrepancy ?? fetchedDiscrepancy;
+  const eventList: ExecutionEvent[] =
+    Array.isArray(events) && events.length > 0 ? events : fetchedEvents ?? [];
   const known = isFulfillmentState(fulfillmentState);
   const state: FulfillmentState | null = known ? (fulfillmentState as FulfillmentState) : null;
 
@@ -134,12 +177,18 @@ export function OperationsExecutionPanel({
           }
         />
         <DeliveryExecutionTimeline current={fulfillmentState} events={eventList} />
+        <WaitingEvidence events={eventList} fulfillmentState={fulfillmentState} />
       </Card>
 
       <DiscrepancyBlocker
-        discrepancy={discrepancy ?? null}
+        discrepancy={effectiveDiscrepancy ?? null}
         events={eventList}
-        onResolved={onChanged}
+        onResolved={() => {
+          // Re-read the panel so the cleared issue and its event show without
+          // a manual reload, then let the parent refresh its own reads.
+          setPanelGeneration((g) => g + 1);
+          onChanged?.();
+        }}
       />
 
       {/*
@@ -164,6 +213,112 @@ export function OperationsExecutionPanel({
   );
 }
 
+/* ---------------------------------------------------- waiting evidence -- */
+
+/** A delivery event as the panel endpoint returns it. */
+type PanelDeliveryEvent = ExecutionEvent & {
+  id?: string;
+  from_state?: string | null;
+  to_state?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+const DROPOFF_COMPLETIONS = [
+  "complete_direct_handoff_delivery",
+  "complete_photo_or_pin_delivery",
+  "complete_signature_delivery",
+  "complete_leave_at_door_delivery",
+] as const;
+
+type WaitingSpan = {
+  label: string;
+  arrivedAt: string;
+  endedAt: string | null;
+  minutes: number | null;
+  ongoing: boolean;
+};
+
+/**
+ * Arrival -> completion gaps, derived from RECORDED events only.
+ *
+ * SUR-003: waiting time is governed-authority-only — Couranr records the
+ * evidence and a human reviews it; nothing on any screen assesses a charge.
+ * That is why this returns timestamps and a gap, never a figure of money.
+ */
+function deriveWaitingSpans(
+  events: readonly ExecutionEvent[],
+  fulfillmentState: string
+): WaitingSpan[] {
+  const list = events.filter((e) => e && typeof e.created_at === "string");
+  const spans: WaitingSpan[] = [];
+
+  const build = (
+    label: string,
+    arriveCommand: string,
+    endCommands: readonly string[],
+    ongoingState: string
+  ) => {
+    const arrivals = list.filter((e) => e.command === arriveCommand);
+    const arrived = arrivals[arrivals.length - 1];
+    if (!arrived) return;
+    const ended =
+      list.find(
+        (e) => endCommands.includes(e.command) && e.created_at >= arrived.created_at
+      ) ?? null;
+    const start = new Date(arrived.created_at).getTime();
+    const end = ended ? new Date(ended.created_at).getTime() : Date.now();
+    const valid = Number.isFinite(start) && Number.isFinite(end) && end >= start;
+    spans.push({
+      label,
+      arrivedAt: arrived.created_at,
+      endedAt: ended?.created_at ?? null,
+      minutes: valid ? Math.round((end - start) / 60000) : null,
+      ongoing: !ended && fulfillmentState === ongoingState,
+    });
+  };
+
+  build("Pickup", "arrive_at_pickup", ["complete_pickup"], "at_pickup");
+  build("Drop-off", "arrive_at_dropoff", DROPOFF_COMPLETIONS, "at_dropoff");
+  return spans;
+}
+
+function WaitingEvidence({
+  events,
+  fulfillmentState,
+}: {
+  events: readonly ExecutionEvent[];
+  fulfillmentState: string;
+}) {
+  const spans = deriveWaitingSpans(events, fulfillmentState);
+  if (spans.length === 0) return null;
+  return (
+    <Stack gap={1}>
+      <Text size="sm" strong>
+        Arrival and waiting evidence
+      </Text>
+      {spans.map((s) => (
+        <Text key={s.label} size="xs" muted>
+          {s.label}: arrived {formatProofWhen(s.arrivedAt)}
+          {s.endedAt
+            ? ` — completed ${formatProofWhen(s.endedAt)}${
+                s.minutes !== null ? ` (${s.minutes} min on site)` : ""
+              }`
+            : s.ongoing
+              ? s.minutes !== null
+                ? ` — still on site (${s.minutes} min so far)`
+                : " — still on site"
+              : " — completion not recorded"}
+        </Text>
+      ))}
+      {/* SUR-003: governed authority only. Evidence, never a charge. */}
+      <Text size="xs" muted>
+        Recorded as evidence for Couranr review only. No waiting charge is assessed from this
+        display.
+      </Text>
+    </Stack>
+  );
+}
+
 /* ------------------------------------------------------------- blocker -- */
 
 /**
@@ -176,8 +331,11 @@ export function OperationsExecutionPanel({
 function derivedBlockerOpen(events: readonly ExecutionEvent[]): boolean {
   let open = false;
   for (const e of events) {
-    if (e?.command === "report_pickup_discrepancy") open = true;
-    else if (e?.command === "resolve_pickup_discrepancy_safe_to_continue") open = false;
+    if (e?.command === "report_pickup_discrepancy" || e?.command === "report_dropoff_exception") {
+      open = true;
+    } else if (e?.command === "resolve_pickup_discrepancy_safe_to_continue") {
+      open = false;
+    }
   }
   return open;
 }
@@ -218,12 +376,21 @@ function DiscrepancyBlocker({
     onResolved?.();
   }
 
+  // The §31 drop-off exception uses the SAME row and the SAME clearing
+  // command, but it is EVIDENCE, not a completion gate: nothing blocks the
+  // driver's completion rules while it is open, so the copy must not claim a
+  // block that does not exist.
+  const isDropoff = discrepancy?.stage === "dropoff";
+  const issueTitle = isDropoff ? "Drop-off issue" : "Pickup issue";
+
   if (cleared) {
     return (
       <Card>
-        <CardHeader title="Pickup issue" actions={<Badge tone="success">Cleared</Badge>} />
+        <CardHeader title={issueTitle} actions={<Badge tone="success">Cleared</Badge>} />
         <Alert tone="success" title="Cleared as safe to continue">
-          The driver can complete this pickup. Couranr recorded who cleared it and when.
+          {isDropoff
+            ? "Couranr recorded who reviewed this drop-off issue and when."
+            : "The driver can complete this pickup. Couranr recorded who cleared it and when."}
         </Alert>
       </Card>
     );
@@ -233,22 +400,40 @@ function DiscrepancyBlocker({
     discrepancy?.reason && isDiscrepancyReason(discrepancy.reason)
       ? DISCREPANCY_REASON_LABELS[discrepancy.reason]
       : discrepancy?.reason
-        ? String(discrepancy.reason).replace(/_/g, " ")
+        ? DROPOFF_EXCEPTION_REASON_LABELS[discrepancy.reason] ??
+          String(discrepancy.reason).replace(/_/g, " ")
         : null;
 
   return (
     <Card>
       <CardHeader
-        title="Pickup issue"
-        description="The driver stopped and reported a problem with the shipment."
-        actions={<Badge tone="danger">Pickup blocked</Badge>}
+        title={issueTitle}
+        description={
+          isDropoff
+            ? "The driver reported a problem while out with the shipment."
+            : "The driver stopped and reported a problem with the shipment."
+        }
+        actions={
+          isDropoff ? (
+            <Badge tone="warning">Needs review</Badge>
+          ) : (
+            <Badge tone="danger">Pickup blocked</Badge>
+          )
+        }
       />
 
       <Stack gap={4}>
-        <Alert tone="danger" title="This pickup cannot be completed">
-          Couranr will not let the driver complete this pickup while the issue is open. They are
-          waiting on Couranr Operations, not on the sender.
-        </Alert>
+        {isDropoff ? (
+          <Alert tone="warning" title="Recorded at drop-off — needs Couranr review">
+            The driver recorded this problem after pickup. It does not change the delivery&rsquo;s
+            state, price or completion rules; it is evidence for Couranr Operations to act on.
+          </Alert>
+        ) : (
+          <Alert tone="danger" title="This pickup cannot be completed">
+            Couranr will not let the driver complete this pickup while the issue is open. They are
+            waiting on Couranr Operations, not on the sender.
+          </Alert>
+        )}
 
         {reasonLabel ? (
           <Stack gap={1}>
@@ -256,6 +441,7 @@ function DiscrepancyBlocker({
               What the driver reported
             </Text>
             <Text strong>{reasonLabel}</Text>
+            {discrepancy?.note ? <Text size="sm">&ldquo;{discrepancy.note}&rdquo;</Text> : null}
             {discrepancy?.reportedAt ? (
               <Text size="xs" muted>
                 Reported {formatProofWhen(discrepancy.reportedAt)}
@@ -281,8 +467,9 @@ function DiscrepancyBlocker({
         ) : confirming ? (
           <Stack gap={3}>
             <Alert tone="warning" title="Clear this as safe to continue?">
-              This tells the driver the shipment is safe to carry as it is. It does not change the
-              price, the vehicle or the schedule, and it cannot be undone.
+              {isDropoff
+                ? "This records that Couranr Operations reviewed the driver's report. It does not change the price, the schedule or the completion rules, and it cannot be undone."
+                : "This tells the driver the shipment is safe to carry as it is. It does not change the price, the vehicle or the schedule, and it cannot be undone."}
             </Alert>
             <Cluster gap={3}>
               <Button
