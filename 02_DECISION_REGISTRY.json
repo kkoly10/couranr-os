@@ -2165,11 +2165,55 @@
     {
       "id": "TAX-001",
       "category": "pricing",
-      "decision": "Tax treatment of the delivery charge is not addressed by any authority.",
-      "value": null,
-      "status": "unresolved",
+      "decision": "Couranr delivery charges are tax-treated by delivery jurisdiction for the MVP: Virginia delivery service is not subject to Virginia retail sales/use tax when separately stated; a separately charged delivery in the District of Columbia is taxable. Couranr will not charge a real customer where the applicable tax treatment is unresolved.",
+      "value": {
+        "policy_version": "couranr-tax-v1-2026-09-03",
+        "virginia": {
+          "treatment": "not subject to Virginia retail sales/use tax for the Couranr delivery charge when separately stated as delivery/transportation",
+          "automatic_tax_rate_percent": 0,
+          "conditions": [
+            "Couranr's charge is separately stated as delivery/transportation",
+            "Couranr does not combine a handling or other taxable charge into that line"
+          ],
+          "official_basis": [
+            "Virginia Code § 58.1-609.5(3)",
+            "23 VAC 10-210-6000",
+            "Virginia Tax P.D. 16-140 (prepaid/delivery service; separately stated delivery charge not subject to retail sales tax)"
+          ]
+        },
+        "district_of_columbia": {
+          "treatment": "taxable retail sale when a separate charge is made for a delivery in the District",
+          "rate_schedule_percent": [
+            {
+              "through": "2026-09-30",
+              "rate": 6
+            },
+            {
+              "from": "2026-10-01",
+              "rate": 7
+            }
+          ],
+          "official_basis": [
+            "D.C. Code § 47-2001(n)(1)(Q)",
+            "D.C. Code § 47-2002",
+            "D.C. Office of Tax and Revenue Sales and Use Tax FAQs"
+          ],
+          "registration_note": "Physical delivery in the District creates physical-presence nexus; Couranr must be registered to collect/remit before external paid D.C. deliveries."
+        },
+        "automatic_mvp_rules": [
+          "A delivery whose pickup and dropoff are both in Virginia uses 0% delivery sales tax.",
+          "A delivery whose dropoff is in the District of Columbia applies the D.C. delivery tax rate effective on the taxable transaction date.",
+          "A cross-border delivery with a D.C. pickup and a non-D.C. dropoff is manual-review-only until a sourced rule for that direction is added.",
+          "No real-customer authorization/capture may proceed when tax jurisdiction is unresolved."
+        ],
+        "pilot_constraints": [
+          "The first controlled paid pilot should be Virginia-only so TAX-001 does not require a new tax-calculation code path before the pilot.",
+          "Do not use a pilot requiring toll/parking tax treatment or another unresolved ancillary-charge tax rule."
+        ]
+      },
+      "status": "decided",
       "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
-      "authority_section": "§4 Pricing registry — no tax line exists",
+      "authority_section": "TAX-001 — jurisdiction-specific delivery tax treatment, resolved from official Virginia and District of Columbia tax authority sources",
       "affected_routes": [
         "/pay/[token]",
         "/business/settings/billing"
@@ -2185,12 +2229,16 @@
           "tax": "not modelled"
         },
         "code_location": "no tax handling exists",
-        "resolution": "Cannot be inferred.",
-        "remediation_commit": null
+        "resolution": "Virginia-only pilot is permitted at 0% on the separately stated Couranr delivery charge. D.C. paid delivery remains blocked until the D.C. delivery-tax calculation/collection path is implemented.",
+        "remediation_commit": "pilot-entry D.C. tax implementation after Controlled Business Pilot #1"
       },
-      "implementation_phase": "4",
+      "implementation_phase": "Pilot Entry",
       "acceptance_criteria": [
-        "Tax treatment is decided before any real customer is charged."
+        "A Virginia-only Couranr delivery shows a separately stated delivery charge and 0 cents of Virginia sales tax.",
+        "A D.C.-dropoff delivery cannot authorize or capture payment until the applicable D.C. delivery tax is calculated and included.",
+        "The D.C. rate is 6.0% through 2026-09-30 and 7.0% beginning 2026-10-01.",
+        "A D.C.-pickup/non-D.C.-dropoff delivery remains manual-review-only until its tax treatment is explicitly sourced.",
+        "No client-supplied tax amount or jurisdiction is trusted."
       ],
       "missing": "No authority states whether delivery is taxable in the launch markets, who remits, or how tax appears on a receipt.",
       "blocked_screen_ids": [
@@ -2199,7 +2247,9 @@
       ],
       "blocked_commits": [
         "payments slice"
-      ]
+      ],
+      "decided_by": "owner",
+      "decided_at_utc": "2026-09-03T23:56:00Z"
     },
     {
       "id": "TRM-002",
