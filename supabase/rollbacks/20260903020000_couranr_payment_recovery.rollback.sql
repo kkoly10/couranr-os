@@ -245,6 +245,6 @@ alter table public.couranr_payment_obligations
   drop column if exists refunded_amount_cents,
   drop column if exists refunded_at;
 
-drop table if exists public.couranr_payment_refunds;
+drop table if exists public.couranr_payment_refunds restrict;
 
 commit;

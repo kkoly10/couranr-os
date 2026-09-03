@@ -23,6 +23,7 @@ import { ReviewOutcomeActions } from "./ReviewOutcomeActions";
 import { MerchantPaymentPanel } from "@/components/couranr/payments/MerchantPaymentPanel";
 import { MerchantReadinessPanel } from "@/components/couranr/fulfillment/MerchantReadinessPanel";
 import { OperationsPlanPanel } from "@/components/couranr/fulfillment/OperationsPlanPanel";
+import { OperationsPaymentRecoveryPanel } from "@/components/couranr/fulfillment/OperationsPaymentRecoveryPanel";
 import { OperationsAssignmentPanel } from "@/components/couranr/dispatch/OperationsAssignmentPanel";
 import { OperationsExecutionPanel } from "@/components/couranr/dispatch/OperationsExecutionPanel";
 import { MerchantProofPanel } from "@/components/couranr/dispatch/MerchantProofPanel";
@@ -457,6 +458,19 @@ export function DeliveryRequestDetail({ id }: { id: string }) {
             ) : null}
           </Stack>
         </Card>
+      ) : null}
+
+      {/* Batch 3 §E — payment evidence and the governed recoveries. Renders
+          for every request state (the stale-hold case is precisely a request
+          that never confirmed), and self-guards on a payment existing. */}
+      {isOperations ? (
+        <OperationsPaymentRecoveryPanel
+          request={request}
+          fulfillment={fulfillment}
+          onChanged={() => {
+            void reloadFulfillment(null);
+          }}
+        />
       ) : null}
 
       {/* OPS-003 service plan, capture and the canonical delivery result. */}

@@ -12,6 +12,14 @@ export type FulfillmentView = {
     currency: string;
     paymentState: string;
     payerType: string;
+    /* Batch 3 §A/§B evidence (see the fulfillment route). */
+    authorizedAt: string | null;
+    authorizedAtSource: "provider_event" | "processing_fallback" | null;
+    authorizationProcessedAt: string | null;
+    capturedAmountCents: number | null;
+    refundedAmountCents: number | null;
+    refundedAt: string | null;
+    staleProviderHold: boolean;
   } | null;
   servicePlan: {
     id: string;
@@ -109,5 +117,41 @@ export function issuePaymentLinkFromBrowser(input: {
   return call<{ token: string; expiresAt: string; amountCents: number; paymentState: string }>(
     `/api/couranr/delivery-requests/${input.id}/payment-link`,
     { method: "POST", body: { businessAccountId: input.businessAccountId } }
+  );
+}
+
+/**
+ * Batch 3 §E — the recovery actions. Reasons are CLOSED vocabularies; there
+ * is no amount anywhere on any of these calls.
+ */
+export async function releaseHoldFromBrowser(input: { id: string; reason: string }) {
+  return call<{ release: { obligationId: string; paymentState: string } }>(
+    `/api/couranr/operations/delivery-requests/${input.id}/release`,
+    { method: "POST", body: JSON.stringify({ reason: input.reason }) }
+  );
+}
+
+export async function refundFromBrowser(input: { id: string; reason: string }) {
+  return call<{ refund: { refundId: string; attemptState: string; amountCents: number; retainedCents: number; reason: string } }>(
+    `/api/couranr/operations/delivery-requests/${input.id}/refund`,
+    { method: "POST", body: JSON.stringify({ reason: input.reason }) }
+  );
+}
+
+export async function reconcileRefundFromBrowser(input: { id: string }) {
+  return call<{ refund: { refundId: string; attemptState: string; amountCents: number; retainedCents: number; reason: string } }>(
+    `/api/couranr/operations/delivery-requests/${input.id}/reconcile-refund`,
+    { method: "POST", body: JSON.stringify({}) }
+  );
+}
+
+export async function cancelDeliveryFromBrowser(input: {
+  id: string;
+  reason: string;
+  note?: string;
+}) {
+  return call<{ cancellation: Record<string, unknown> }>(
+    `/api/couranr/operations/delivery-requests/${input.id}/cancel-delivery`,
+    { method: "POST", body: JSON.stringify({ reason: input.reason, note: input.note ?? null }) }
   );
 }
