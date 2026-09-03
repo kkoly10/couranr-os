@@ -3,23 +3,26 @@ import { isActorDenied, resolveRequestActor } from "@/lib/couranr/requests/actor
 import { isFulfillmentFailure, refundPayment } from "@/lib/couranr/fulfillment/commands";
 import { getDeliveryRequest, isCommandFailure } from "@/lib/couranr/requests/commands";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
-import { REFUND_REASONS, type RefundReason } from "@/lib/couranr/payments/states";
 
 export const dynamic = "force-dynamic";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
- * POST — refund captured money under a GOVERNED reason (batch 3 §B/§30).
+ * POST — the STANDALONE refund action: FULL REFUND only (correction pass,
+ * review item 6).
  *
- * The body carries exactly one field: a reason from the closed
- * `REFUND_REASONS` vocabulary. There is NO amount parameter anywhere on this
- * path — `couranr_begin_payment_refund` derives the figure from the captured
- * amount and CAN-001's retention table, so no browser, merchant or operator
- * can type a refund figure.
+ * Cancellation retentions ($8 / $15 / Couranr-caused) are derived from the
+ * delivery's STORED lifecycle stage by `cancelDeliveryWithRecovery` on the
+ * cancel-delivery route — a dropdown here must never SUBSTITUTE a reason for
+ * that stored stage, so this route refuses every retention reason outright.
+ * The wider `REFUND_REASONS` vocabulary stays for the internal governed
+ * orchestration only.
  *
- * Safe to retry. The attempt row is persisted before Stripe is called and a
- * replay converges on it under the same provider idempotency key.
+ * There is still NO amount parameter anywhere on this path —
+ * `couranr_begin_payment_refund` derives the figure server-side. Safe to
+ * retry: the attempt row is persisted before Stripe is called and a replay
+ * converges on it under the same provider idempotency key.
  */
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -32,12 +35,15 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   try {
     body = await req.json();
   } catch {
-    return routeFailure("invalid_input", "Pick a governed refund reason.");
+    return routeFailure("invalid_input", "The standalone refund action refunds in full. Send reason 'full_refund'.");
   }
 
   const reason = typeof body?.reason === "string" ? body.reason : "";
-  if (!(REFUND_REASONS as readonly string[]).includes(reason)) {
-    return routeFailure("invalid_input", "Pick a governed refund reason.");
+  if (reason !== "full_refund") {
+    return routeFailure(
+      "invalid_input",
+      "The standalone refund action refunds in full only. Cancellation retentions run through the Cancel delivery action, where Couranr derives the stage."
+    );
   }
 
   const loaded = await getDeliveryRequest({
@@ -51,7 +57,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     actor: actor.actor,
     requestId: params.id,
     businessAccountId: loaded.value.request.business_account_id ?? null,
-    reason: reason as RefundReason,
+    reason: "full_refund",
   });
   if (isFulfillmentFailure(result)) return failureResponse(result);
 

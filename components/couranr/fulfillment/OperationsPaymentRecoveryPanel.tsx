@@ -15,20 +15,16 @@ import {
 import { isApiFailure, withReference } from "@/components/couranr/requests/client";
 
 /**
- * OPS-003 — payment evidence and recovery (batch 3 §E).
+ * OPS-003 — payment evidence and recovery (batch 3 §E, corrected per review
+ * item 6).
  *
- * Everything here is EXPLICIT AND NARROW: release takes a reason, refunds take
- * one of four governed reasons whose amounts the database derives (CAN-001),
- * cancellation composes the same commands. There is no amount field, no state
- * dropdown, and nothing that could move money outside a named command.
+ * Everything here is EXPLICIT AND NARROW: release takes a reason, the ONE
+ * standalone refund action refunds in full (retentions are derived from the
+ * delivery's stored stage on the Cancel path — never picked from a dropdown),
+ * and cancellation composes the same commands with a mandatory note. There is
+ * no amount field, no state dropdown, and nothing that could move money
+ * outside a named command.
  */
-
-const REFUND_ACTIONS = [
-  { value: "full_refund", label: "Full refund" },
-  { value: "cancel_after_confirmation_before_arrival", label: "Cancellation refund (Couranr keeps $8.00)" },
-  { value: "failed_pickup_after_arrival", label: "Failed-pickup refund (Couranr keeps $15.00)" },
-  { value: "couranr_caused_failure", label: "Couranr-caused failure ($0 kept)" },
-];
 
 const CANCEL_REASONS = [
   { value: "merchant_request", label: "Merchant asked to cancel" },
@@ -36,6 +32,46 @@ const CANCEL_REASONS = [
   { value: "couranr_caused", label: "Couranr caused the failure" },
   { value: "failed_pickup", label: "Driver arrived; pickup cannot occur" },
 ];
+
+type PaymentView = NonNullable<FulfillmentView["payment"]>;
+
+/**
+ * The V0 refund-surface truth table, extracted pure so it is testable:
+ *
+ *   captured, no attempt (or a failed one)   → the Full refund button only
+ *   attempt requested / pending_unknown      → Reconcile only (outcome is
+ *                                              in flight or unknown — a second
+ *                                              submit would be a guess)
+ *   attempt succeeded, or state 'refunded'   → NEITHER button; show the
+ *                                              refunded and retained figures
+ *                                              truthfully. One refund chain
+ *                                              per obligation is the schema's
+ *                                              own rule; the screen must not
+ *                                              imply a second one exists.
+ */
+export function refundControlsFor(payment: PaymentView): {
+  showFullRefund: boolean;
+  showReconcile: boolean;
+  settled: { refundedCents: number; retainedCents: number } | null;
+} {
+  const attempt = payment.refundAttempt;
+  const settled =
+    payment.paymentState === "refunded" || attempt?.state === "succeeded"
+      ? {
+          refundedCents: payment.refundedAmountCents ?? attempt?.amountCents ?? 0,
+          retainedCents: attempt?.retainedCents ?? 0,
+        }
+      : null;
+  if (settled) return { showFullRefund: false, showReconcile: false, settled };
+  if (attempt && (attempt.state === "requested" || attempt.state === "pending_unknown")) {
+    return { showFullRefund: false, showReconcile: true, settled: null };
+  }
+  return {
+    showFullRefund: payment.paymentState === "captured",
+    showReconcile: false,
+    settled: null,
+  };
+}
 
 export function OperationsPaymentRecoveryPanel({
   request,
@@ -50,8 +86,8 @@ export function OperationsPaymentRecoveryPanel({
   const [error, setError] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
   const [releaseReason, setReleaseReason] = React.useState("");
-  const [refundReason, setRefundReason] = React.useState(REFUND_ACTIONS[0].value);
   const [cancelReason, setCancelReason] = React.useState(CANCEL_REASONS[0].value);
+  const [cancelNote, setCancelNote] = React.useState("");
 
   const payment = fulfillment?.payment ?? null;
   const delivery = fulfillment?.delivery ?? null;
@@ -59,8 +95,7 @@ export function OperationsPaymentRecoveryPanel({
 
   const releasable =
     payment.staleProviderHold || payment.paymentState === "authorized";
-  const refundable =
-    payment.paymentState === "captured" || payment.paymentState === "refunded";
+  const refund = refundControlsFor(payment);
   const cancellable =
     delivery != null &&
     ["scheduled", "assigned", "en_route_to_pickup", "at_pickup", "picked_up", "in_transit", "at_dropoff"].includes(
@@ -161,38 +196,31 @@ export function OperationsPaymentRecoveryPanel({
           </Stack>
         ) : null}
 
-        {refundable ? (
+        {refund.settled ? (
+          <Alert tone="success" title="Refund settled">
+            {formatCents(refund.settled.refundedCents)} was refunded to the payer
+            {refund.settled.retainedCents > 0
+              ? ` and Couranr retained ${formatCents(refund.settled.retainedCents)} under CAN-001.`
+              : "."}{" "}
+            One refund chain settles a payment; there is nothing further to refund here.
+          </Alert>
+        ) : null}
+
+        {refund.showReconcile ? (
           <Stack gap={2}>
-            <Field label="Governed refund" hint="The amount is derived by Couranr from the captured amount and CAN-001. There is no amount field.">
-              {(a) => (
-                <Select {...a} value={refundReason} onChange={(e) => setRefundReason(e.target.value)}>
-                  {REFUND_ACTIONS.map((o) => (
-                    <option key={o.value} value={o.value}>
-                      {o.label}
-                    </option>
-                  ))}
-                </Select>
-              )}
-            </Field>
+            <Alert tone="warning" title="Refund outcome not yet confirmed">
+              A refund attempt is recorded but the provider&apos;s answer is not.
+              Reconcile reads the provider&apos;s own records and converges — it
+              never creates a second refund on its own.
+            </Alert>
             <Cluster gap={2}>
-              <Button
-                disabled={busy}
-                onClick={() =>
-                  run(
-                    () => refundFromBrowser({ id: request.id, reason: refundReason }),
-                    "The refund settled with the provider and was recorded."
-                  )
-                }
-              >
-                Refund
-              </Button>
               <Button
                 variant="secondary"
                 disabled={busy}
                 onClick={() =>
                   run(
                     () => reconcileRefundFromBrowser({ id: request.id }),
-                    "The refund converged with the provider&apos;s record."
+                    "The refund converged with the provider's record."
                   )
                 }
               >
@@ -202,9 +230,32 @@ export function OperationsPaymentRecoveryPanel({
           </Stack>
         ) : null}
 
+        {refund.showFullRefund ? (
+          <Stack gap={2}>
+            <Text muted size="sm">
+              The standalone refund refunds the captured amount in full. Cancellation
+              retentions are derived from the delivery&apos;s stage by the Cancel action —
+              never chosen here. There is no amount field.
+            </Text>
+            <Cluster gap={2}>
+              <Button
+                disabled={busy}
+                onClick={() =>
+                  run(
+                    () => refundFromBrowser({ id: request.id }),
+                    "The refund settled with the provider and was recorded."
+                  )
+                }
+              >
+                Refund in full
+              </Button>
+            </Cluster>
+          </Stack>
+        ) : null}
+
         {cancellable ? (
           <Stack gap={2}>
-            <Field label="Cancel this delivery" hint="Composes the governed commands: the delivery closes, and money comes back per CAN-001.">
+            <Field label="Cancel this delivery" hint="Composes the governed commands: the delivery closes, and money comes back per CAN-001 from the delivery's STORED stage.">
               {(a) => (
                 <Select {...a} value={cancelReason} onChange={(e) => setCancelReason(e.target.value)}>
                   {CANCEL_REASONS.map((o) => (
@@ -215,13 +266,33 @@ export function OperationsPaymentRecoveryPanel({
                 </Select>
               )}
             </Field>
+            <Field
+              label="What happened?"
+              required
+              hint="Recorded in the delivery's audit trail. For a delivery whose goods were already picked up, say how the goods were physically resolved."
+            >
+              {(a) => (
+                <Input
+                  {...a}
+                  value={cancelNote}
+                  onChange={(e) => setCancelNote(e.target.value)}
+                  maxLength={500}
+                  placeholder="e.g. customer cancelled before the driver left"
+                />
+              )}
+            </Field>
             <Cluster gap={2}>
               <Button
                 variant="destructive"
-                disabled={busy}
+                disabled={busy || !cancelNote.trim()}
                 onClick={() =>
                   run(
-                    () => cancelDeliveryFromBrowser({ id: request.id, reason: cancelReason }),
+                    () =>
+                      cancelDeliveryFromBrowser({
+                        id: request.id,
+                        reason: cancelReason,
+                        note: cancelNote.trim(),
+                      }),
                     "The delivery was closed and the governed money recovery ran."
                   )
                 }

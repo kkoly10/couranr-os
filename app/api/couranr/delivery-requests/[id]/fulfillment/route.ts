@@ -6,7 +6,11 @@ import {
   isFulfillmentFailure,
 } from "@/lib/couranr/fulfillment/commands";
 import { getDeliveryRequest, isCommandFailure } from "@/lib/couranr/requests/commands";
-import { getObligationForRequest, isPaymentFailure } from "@/lib/couranr/payments/commands";
+import {
+  getNewestRefundAttemptForObligation,
+  getObligationForRequest,
+  isPaymentFailure,
+} from "@/lib/couranr/payments/commands";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
 
 export const dynamic = "force-dynamic";
@@ -44,6 +48,29 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
   const ob = await getObligationForRequest({ requestId: params.id, businessAccountId });
   if (isPaymentFailure(ob)) return failureResponse(ob);
 
+  // Review item 6: the screen's refund controls are decided by the newest
+  // attempt's state, not guessed from the obligation alone.
+  let refundAttempt: {
+    state: string;
+    amountCents: number;
+    retainedCents: number;
+    reason: string;
+  } | null = null;
+  if (ob.value.obligation) {
+    const att = await getNewestRefundAttemptForObligation({
+      obligationId: String(ob.value.obligation.id),
+    });
+    if (isPaymentFailure(att)) return failureResponse(att);
+    refundAttempt = att.value.attempt
+      ? {
+          state: att.value.attempt.attempt_state,
+          amountCents: att.value.attempt.amount_cents,
+          retainedCents: att.value.attempt.retained_cents,
+          reason: att.value.attempt.reason,
+        }
+      : null;
+  }
+
   const plan = await getServicePlan({ requestId: params.id });
   if (isFulfillmentFailure(plan)) return failureResponse(plan);
 
@@ -75,6 +102,7 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
           staleProviderHold:
             Boolean(ob.value.obligation.provider_payment_intent_id) &&
             ["not_started", "requires_action"].includes(String(ob.value.obligation.payment_state)),
+          refundAttempt,
         }
       : null,
     servicePlan: plan.value.plan

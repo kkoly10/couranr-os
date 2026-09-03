@@ -186,6 +186,38 @@ export async function getObligationForRequest(params: {
 }
 
 /**
+ * The newest refund attempt for an obligation, or null when none exists.
+ *
+ * Correction pass, review item 6: the recovery screen must be TRUTHFUL about
+ * the refund chain — an in-flight/unknown attempt shows Reconcile, a settled
+ * one shows the refunded and retained figures and no second Refund button.
+ * That truth has to come from the server; the browser learns nothing else.
+ */
+export async function getNewestRefundAttemptForObligation(params: {
+  obligationId: string;
+}): Promise<
+  PaymentResult<{
+    attempt: {
+      attempt_state: "requested" | "pending_unknown" | "succeeded" | "failed";
+      amount_cents: number;
+      retained_cents: number;
+      reason: string;
+    } | null;
+  }>
+> {
+  const op = "getNewestRefundAttemptForObligation";
+  const { data, error } = (await supabaseAdmin
+    .from("couranr_payment_refunds")
+    .select("attempt_state,amount_cents,retained_cents,reason")
+    .eq("obligation_id", params.obligationId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()) as { data: any; error: any };
+  if (error) return fail({ operation: op, code: "internal", detail: error.message });
+  return { ok: true, value: { attempt: data ?? null } };
+}
+
+/**
  * The live obligation for a PaymentIntent, by intent id.
  *
  * The webhook needs this BEFORE it applies anything: an obligation already in
