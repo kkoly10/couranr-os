@@ -266,7 +266,7 @@ export async function cancelDeliveryWithRecovery(params: {
   /* --------------- terminal delivery: RESUME the saga (§2) -------------- */
 
   const deliveryState = delivery ? String(delivery.fulfillment_state ?? "") : null;
-  if (deliveryState === "cancelled" || deliveryState === "could_not_deliver") {
+  if (delivery && (deliveryState === "cancelled" || deliveryState === "could_not_deliver")) {
     return resumeSettlementFromClosureEvidence(
       op,
       { actor: params.actor, requestId: params.requestId, businessAccountId: params.businessAccountId },
