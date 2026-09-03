@@ -15,9 +15,9 @@
 --      key, actor, attempt state), the same
 --      persist -> external call -> reconcile shape capture uses. Amounts are
 --      NEVER caller-supplied: the command derives them from the captured
---      amount and the governed cancellation retention
---      ($0 before confirmation / $8 after confirmation before driver arrival /
---       $15 failed pickup after arrival / $0 Couranr-caused), so no browser,
+--      amount and the governed cancellation retention — CAN-001, verbatim:
+--      $0 before confirmation / $8 after confirmation before driver arrival /
+--      $15 failed pickup after arrival / $0 Couranr-caused — so no browser,
 --      merchant, consumer or operator can type a refund figure. A timeout
 --      after submitting to the provider parks the attempt at
 --      'pending_unknown' — UNKNOWN, not failed — and reconciliation converges
@@ -387,8 +387,10 @@ begin
     raise exception 'version_or_state_conflict' using errcode = 'CR409';
   end if;
 
-  /* THE GOVERNED AMOUNT. Owner-approved cancellation retention only —
-     there is no parameter through which any caller chooses a figure. */
+  /* THE GOVERNED AMOUNT. Owner-approved cancellation retention (CAN-001)
+     only — there is no parameter through which any caller chooses a figure.
+     A physical return is a NEW Pricing V2 route per REF-003, never a refund
+     calculation, and Quote N is never mutated. */
   v_retained := case p_reason
     when 'full_refund'                              then 0
     when 'couranr_caused_failure'                   then 0
