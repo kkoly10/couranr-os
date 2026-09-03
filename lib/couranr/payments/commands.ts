@@ -168,7 +168,11 @@ export async function getObligationForRequest(params: {
     .select(
       "id,request_id,business_account_id,payer_type,request_version,pricing_policy_version," +
         "quote_version_id,amount_cents,currency,payment_state,provider,provider_payment_intent_id,version," +
-        "created_at,updated_at,authorized_at,failed_at,cancelled_at"
+        "created_at,updated_at,authorized_at,failed_at,cancelled_at," +
+        // Batch 3 §A/§B evidence: the provider's trusted authorization instant
+        // (or the honest processing_fallback marker), and the refund stamps.
+        "authorization_processed_at,authorized_at_source,captured_at,captured_amount_cents," +
+        "refunded_at,refunded_amount_cents"
     )
     .eq("request_id", params.requestId)
     .neq("payment_state", "cancelled");

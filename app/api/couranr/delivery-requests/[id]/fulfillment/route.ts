@@ -60,6 +60,21 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
           currency: ob.value.obligation.currency,
           paymentState: ob.value.obligation.payment_state,
           payerType: ob.value.obligation.payer_type,
+          // Batch 3 §A: the commercial approval instant and what it is.
+          // provider_event = the signature-verified provider instant;
+          // processing_fallback = provider instant unknown, stamp is Couranr
+          // processing time. Never invented either way.
+          authorizedAt: ob.value.obligation.authorized_at ?? null,
+          authorizedAtSource: ob.value.obligation.authorized_at_source ?? null,
+          authorizationProcessedAt: ob.value.obligation.authorization_processed_at ?? null,
+          capturedAmountCents: ob.value.obligation.captured_amount_cents ?? null,
+          refundedAmountCents: ob.value.obligation.refunded_amount_cents ?? null,
+          refundedAt: ob.value.obligation.refunded_at ?? null,
+          // Batch 3 §B: a provider hold with no local authorization — the
+          // stale-quote case Operations must be able to release.
+          staleProviderHold:
+            Boolean(ob.value.obligation.provider_payment_intent_id) &&
+            ["not_started", "requires_action"].includes(String(ob.value.obligation.payment_state)),
         }
       : null,
     servicePlan: plan.value.plan
