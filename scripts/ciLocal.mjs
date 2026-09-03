@@ -169,6 +169,9 @@ const STAGES = [
     ["test:pricing-v2", "Pricing V2 traffic evidence, policy cutover and historical-quote immutability"],
     ["test:weight-timing", "SUR-001 weight band + TMZ-001 requested timing execution matrix"],
     ["test:deploy-cutover", "zero-downtime arity cutover proven through PostgREST — old shape mints predeploy, PGRST202 postdeploy, never PGRST203"],
+    ["test:payment-recovery", "batch 3 §A/§B — authorization evidence, stale-hold release, governed refunds"],
+    ["test:driver-execution", "batch 3 §C driver/proof adversarial matrix — exceptions, undeliverable closure, cancel, PIN discipline, proof-gated completion"],
+    ["test:consumer-send", "batch 3 §D consumer guest sessions, sibling commands, tenancy isolation, price parity, QVL"],
     ["test:smart-intake", "P5-001 Smart Intake stale-race/idempotency/provenance/tenancy execution matrix"],
     ["test:foundation-gate-a", "Foundation Gate A requester/quote/payment/plan/delivery adversarial matrix"],
     ["test:foundation-backfill", "Foundation Gate A deterministic historical backfill matrix"],
@@ -190,6 +193,9 @@ const STAGES = [
       // five code failures and are one missing prerequisite. This container is
       // recycled without warning and the binary does not survive it.
       const postgresOnly = new Set([
+        "test:payment-recovery",
+        "test:driver-execution",
+        "test:consumer-send",
         "test:pricing-v2",
         "test:weight-timing",
         "test:smart-intake",
