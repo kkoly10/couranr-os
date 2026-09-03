@@ -1004,6 +1004,20 @@ export async function releaseAuthorization(params: {
   requestId: string;
   businessAccountId: string | null;
   reason: string;
+  /**
+   * B3-I §5 — the CAN-001 escape guard. A generic hold release must NOT be
+   * usable on a normal authorized hold attached to an ACTIVE CONFIRMED
+   * request: that hold's governed action is a cancellation with the $8
+   * receivable (or a $0 release for couranr-caused), not an unrelated
+   * technical release that walks away from the settlement. The standalone
+   * release route leaves this false, so a confirmed+authorized obligation is
+   * refused there. `cancelDeliveryWithRecovery` passes `true` because it has
+   * already ESTABLISHED the durable settlement before releasing — the
+   * governed path is the ONE caller allowed to release a confirmed hold.
+   * Technical release stays open for stale-quote / rejected / recovery holds,
+   * because those requests are not `confirmed`.
+   */
+  governedCancellation?: boolean;
 }): Promise<FulfillmentResult<{ obligationId: string; paymentState: string }>> {
   const op = "releaseAuthorization";
 
@@ -1065,6 +1079,35 @@ export async function releaseAuthorization(params: {
 
   if (ob.payment_state === "cancelled") {
     return { ok: true, value: { obligationId: String(ob.id), paymentState: "cancelled" } };
+  }
+
+  /*
+   * B3-I §5 — refuse a generic release of a CONFIRMED + authorized hold. This
+   * is read from stored facts, not trusted from the caller: the request state
+   * is looked up here, so a route cannot bypass the guard by omitting a param.
+   * The governed cancellation path opts out explicitly (`governedCancellation`)
+   * having already recorded the $8 settlement first. Only `authorized` is
+   * guarded — a stale/rejected/recovery hold is either not `authorized` or its
+   * request is not `confirmed`, so technical release stays available there.
+   */
+  if (!params.governedCancellation && ob.payment_state === "authorized") {
+    const { data: reqRow, error: reqErr } = (await supabaseAdmin
+      .from("couranr_delivery_requests")
+      .select("request_state")
+      .eq("id", ob.request_id)
+      .maybeSingle()) as { data: any; error: any };
+    if (reqErr) {
+      return fail({ operation: op, code: "internal", detail: { reason: "request_read", message: reqErr.message } });
+    }
+    if (reqRow?.request_state === "confirmed") {
+      return fail({
+        operation: op,
+        code: "conflict",
+        detail: { reason: "release_blocked_confirmed_active" },
+        message:
+          "This is a confirmed delivery with an authorized hold. Releasing it here would bypass CAN-001. Use the governed Cancel action, which records the $8 settlement (or $0 when Couranr caused it) before the hold is released.",
+      });
+    }
   }
 
   const begun = await callRpc<any>(op, "couranr_begin_payment_release", {

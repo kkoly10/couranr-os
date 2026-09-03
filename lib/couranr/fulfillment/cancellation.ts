@@ -531,12 +531,41 @@ async function cancelBeforeDelivery(
     });
   }
 
-  const confirmedBeforeDelivery =
+  /* §2 — a CONFIRMED request with an authorized hold and no delivery is a REAL
+     CAN-001 $8 stage (the canonical delivery is created only after capture).
+     The stage is derived from STORED facts that SURVIVE a provider release:
+     after the hold is released the obligation reads `cancelled`, so a retry
+     re-finds the $8 stage through the settlement receivable it recorded FIRST
+     — the $8 can never disappear merely because provider state is now
+     cancelled. */
+  const settlementExists = ob != null && (await cancellationSettlementExists(String(ob.id)));
+  const settlementObligationId =
     request.request_state === "confirmed" &&
     ob != null &&
-    String(ob.payment_state) === "authorized" &&
-    reason !== "couranr_caused";
+    reason !== "couranr_caused" &&
+    (String(ob.payment_state) === "authorized" || settlementExists)
+      ? String(ob.id)
+      : null;
 
+  /* THE DURABLE SETTLEMENT IDENTITY IS ESTABLISHED BEFORE ANY PROVIDER CALL.
+     couranr_record_cancellation_settlement is idempotent on
+     couranr:cancellation_receivable:<obligation>, so if the process dies after
+     this — before OR after the release, before the request terminates — a
+     retry rediscovers the SAME $8 receivable. */
+  if (settlementObligationId) {
+    const recorded = await callRpc(op, "couranr_record_cancellation_settlement", {
+      p_obligation_id: settlementObligationId,
+      p_actor_user_id: params.actor.userId,
+      p_retained_due_cents: 800,
+      p_reason: `cancellation:${reason} — ${note}`,
+    });
+    if (isFulfillmentFailure(recorded)) return recorded;
+  }
+
+  /* THEN release the provider hold — idempotent: a retry after a successful
+     release reads `cancelled` and returns it without calling Stripe again.
+     `governedCancellation` opts past the §5 confirmed-active guard, which the
+     settlement above has earned by being recorded first. */
   let payment: CancellationOutcome["payment"] = { kind: "none" };
   if (ob && ob.provider_payment_intent_id) {
     const released = await releaseAuthorization({
@@ -544,6 +573,7 @@ async function cancelBeforeDelivery(
       requestId: params.requestId,
       businessAccountId: params.businessAccountId,
       reason: `cancellation:${reason} — ${note}`,
+      governedCancellation: true,
     });
     if (isFulfillmentFailure(released)) return released;
     payment = {
@@ -553,27 +583,18 @@ async function cancelBeforeDelivery(
     };
   }
 
-  if (confirmedBeforeDelivery && payment.kind === "released") {
-    /* The canonical delivery is created only after capture, so CONFIRMED
-       with only an authorization is a REAL CAN-001 $8 stage. The full hold
-       was released (the provider-safe action without partial capture); the
-       $8 is recorded as a durable receivable, never fabricated as a
-       provider charge, and a retry converges on the same record. */
-    const recorded = await callRpc(op, "couranr_record_cancellation_settlement", {
-      p_obligation_id: payment.obligationId,
-      p_actor_user_id: params.actor.userId,
-      p_retained_due_cents: 800,
-      p_reason: `cancellation:${reason} — ${note}`,
-    });
-    if (isFulfillmentFailure(recorded)) return recorded;
+  if (settlementObligationId) {
     payment = {
       kind: "released_with_receivable",
-      obligationId: payment.obligationId,
-      paymentState: payment.paymentState,
+      obligationId: payment.kind === "released" ? payment.obligationId : settlementObligationId,
+      paymentState: payment.kind === "released" ? payment.paymentState : String(ob?.payment_state ?? ""),
       retainedDueCents: 800,
     };
   }
 
+  /* THEN terminate the request. A crash before this leaves the settlement and
+     the release done; the retry re-establishes the same settlement, re-runs the
+     idempotent release, and terminates. */
   const requestState = await terminateRequest(op, params, `cancellation:${reason} — ${note}`);
   if (isFulfillmentFailure(requestState)) return requestState;
 
@@ -586,6 +607,22 @@ async function cancelBeforeDelivery(
       payment,
     },
   };
+}
+
+/**
+ * §2 — does the durable CAN-001 receivable already stand for this obligation?
+ * The settlement identity is `couranr:cancellation_receivable:<obligation>`,
+ * written before the provider release, so this is what lets a retry recognise
+ * a confirmed-$8 stage after the hold has already gone to `cancelled`.
+ */
+async function cancellationSettlementExists(obligationId: string): Promise<boolean> {
+  const { data } = (await supabaseAdmin
+    .from("couranr_payment_events")
+    .select("id")
+    .eq("provider", "stripe")
+    .eq("provider_event_id", `couranr:cancellation_receivable:${obligationId}`)
+    .maybeSingle()) as { data: any; error: any };
+  return data != null;
 }
 
 /**

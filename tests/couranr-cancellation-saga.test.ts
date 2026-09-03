@@ -23,7 +23,11 @@ const h = vi.hoisted(() => ({
     request: null as any,
     obligation: null as any,
     closureEvent: null as any,
+    /** The couranr:cancellation_receivable:<ob> event, when it already stands. */
+    settlementEvent: null as any,
   },
+  /** Records the composition order so a test can prove settlement-before-release. */
+  order: [] as string[],
   getCanonicalDelivery: vi.fn<any>(),
   refundPayment: vi.fn<any>(),
   releaseAuthorization: vi.fn<any>(),
@@ -37,6 +41,7 @@ vi.mock("@/lib/supabaseAdmin", () => {
       if (table === "couranr_delivery_requests") return { data: h.db.request, error: null };
       if (table === "couranr_payment_obligations") return { data: h.db.obligation, error: null };
       if (table === "couranr_delivery_events") return { data: h.db.closureEvent, error: null };
+      if (table === "couranr_payment_events") return { data: h.db.settlementEvent, error: null };
       return { data: null, error: null };
     };
     return c;
@@ -73,6 +78,7 @@ function rpcAnswers() {
       return { data: { request_state: "cancelled" }, error: null };
     }
     if (fn === "couranr_record_cancellation_settlement") {
+      h.order.push("record_settlement");
       return { data: { detail: { retainedDueCents: args?.p_retained_due_cents } }, error: null };
     }
     return { data: null, error: { code: "XX000", message: `unexpected rpc ${fn}` } };
@@ -91,14 +97,16 @@ beforeEach(() => {
   h.db.request = { id: REQUEST_ID, request_state: "confirmed" };
   h.db.obligation = null;
   h.db.closureEvent = null;
+  h.db.settlementEvent = null;
+  h.order = [];
   h.getCanonicalDelivery.mockResolvedValue({ ok: true, value: { delivery: null } });
   h.refundPayment.mockResolvedValue({
     ok: true,
     value: { refundId: "f", attemptState: "succeeded", amountCents: 100, retainedCents: 800, reason: "cancel_after_confirmation_before_arrival" },
   });
-  h.releaseAuthorization.mockResolvedValue({
-    ok: true,
-    value: { obligationId: "ob-1", paymentState: "cancelled" },
+  h.releaseAuthorization.mockImplementation(async () => {
+    h.order.push("release");
+    return { ok: true, value: { obligationId: "ob-1", paymentState: "cancelled" } };
   });
   rpcAnswers();
 });
@@ -261,6 +269,90 @@ describe("no-delivery cancellation stages from STORED facts (§4)", () => {
     const r = await cancelDeliveryWithRecovery({ ...baseArgs, reason: "merchant_request" });
     expect(r.ok).toBe(false);
     expect(h.releaseAuthorization).toHaveBeenCalledTimes(0);
+  });
+});
+
+describe("confirmed-before-delivery settlement is DURABLE across the release (B3-I §2)", () => {
+  it("records the $8 settlement BEFORE the provider release", async () => {
+    h.db.request = { id: REQUEST_ID, request_state: "confirmed" };
+    h.db.obligation = { id: "ob-1", payment_state: "authorized", provider_payment_intent_id: "pi_1" };
+
+    const r = await cancelDeliveryWithRecovery({ ...baseArgs, reason: "merchant_request" });
+    expect(r.ok).toBe(true);
+    // The durable settlement identity is established BEFORE any provider call.
+    expect(h.order.indexOf("record_settlement")).toBe(0);
+    expect(h.order.indexOf("release")).toBeGreaterThan(h.order.indexOf("record_settlement"));
+  });
+
+  it("§2A: retry after release succeeded but before request termination — the $8 is rediscovered from the receivable, not lost", async () => {
+    // THE WORLD THE RETRY SEES: the settlement was recorded, the hold was
+    // already released (so the obligation now reads `cancelled`), and the
+    // request was never terminated. The OLD code keyed the $8 stage on
+    // payment_state === 'authorized' and would DROP the receivable here.
+    h.db.request = { id: REQUEST_ID, request_state: "confirmed" };
+    h.db.obligation = { id: "ob-1", payment_state: "cancelled", provider_payment_intent_id: "pi_1" };
+    h.db.settlementEvent = { id: "evt-receivable" };
+
+    const r = await cancelDeliveryWithRecovery({ ...baseArgs, reason: "merchant_request" });
+
+    expect(r.ok).toBe(true);
+    // The $8 is re-established idempotently — never dropped because provider
+    // state is now cancelled.
+    const rec = callsTo("couranr_record_cancellation_settlement");
+    expect(rec).toHaveLength(1);
+    expect(rec[0][1]).toMatchObject({ p_retained_due_cents: 800, p_obligation_id: "ob-1" });
+    // Release is idempotent (already cancelled) — exactly one call, no
+    // duplicate provider mutation.
+    expect(h.releaseAuthorization).toHaveBeenCalledTimes(1);
+    // The request terminates.
+    expect(callsTo("couranr_cancel_delivery_request")).toHaveLength(1);
+    if (r.ok) {
+      expect(r.value.payment.kind).toBe("released_with_receivable");
+      expect(r.value.requestState).toBe("cancelled");
+      if (r.value.payment.kind === "released_with_receivable") {
+        expect(r.value.payment.retainedDueCents).toBe(800);
+      }
+    }
+  });
+
+  it("§2B: a provider release failure AFTER the settlement leaves the $8 durable and returns a retryable failure", async () => {
+    h.db.request = { id: REQUEST_ID, request_state: "confirmed" };
+    h.db.obligation = { id: "ob-1", payment_state: "authorized", provider_payment_intent_id: "pi_1" };
+    h.releaseAuthorization.mockImplementation(async () => {
+      h.order.push("release");
+      return { ok: false, code: "internal", correlationId: "cr_x" };
+    });
+
+    const r = await cancelDeliveryWithRecovery({ ...baseArgs, reason: "merchant_request" });
+
+    // The settlement was recorded BEFORE the release attempt, so it is durable.
+    expect(h.order[0]).toBe("record_settlement");
+    expect(callsTo("couranr_record_cancellation_settlement")).toHaveLength(1);
+    // The release failed, so the op returns a failure to retry and does NOT
+    // terminate the request — provider recovery continues safely next time.
+    expect(r.ok).toBe(false);
+    expect(callsTo("couranr_cancel_delivery_request")).toHaveLength(0);
+  });
+
+  it("§2C: provider already released on a previous attempt — the retry re-finds the SAME settlement, no second receivable, no second provider mutation", async () => {
+    // Same shape as §2A (settlement stands, hold cancelled). This asserts the
+    // no-duplicate property specifically: the record command is invoked exactly
+    // once per attempt with the SAME obligation, and the SQL idempotency on
+    // couranr:cancellation_receivable:<ob> (proven in paymentRecovery PR-29b)
+    // guarantees a single receivable across all retries.
+    h.db.request = { id: REQUEST_ID, request_state: "confirmed" };
+    h.db.obligation = { id: "ob-1", payment_state: "cancelled", provider_payment_intent_id: "pi_1" };
+    h.db.settlementEvent = { id: "evt-receivable" };
+
+    const first = await cancelDeliveryWithRecovery({ ...baseArgs, reason: "merchant_request" });
+    const second = await cancelDeliveryWithRecovery({ ...baseArgs, reason: "merchant_request" });
+
+    expect(first.ok && second.ok).toBe(true);
+    const rec = callsTo("couranr_record_cancellation_settlement");
+    expect(rec).toHaveLength(2); // one per attempt — each idempotent at the DB
+    expect(rec.every((c: any[]) => c[1].p_obligation_id === "ob-1")).toBe(true);
+    // No refund path is taken (this is a released-hold receivable, not captured money).
+    expect(h.refundPayment).toHaveBeenCalledTimes(0);
   });
 });
 

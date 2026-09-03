@@ -91,6 +91,62 @@ export function refundControlsFor(
   return { ...NONE, showFullRefund: payment.paymentState === "captured" };
 }
 
+/** Delivery states from which the governed Cancel action still applies. */
+const CANCELLABLE_DELIVERY_STATES = [
+  "scheduled",
+  "assigned",
+  "en_route_to_pickup",
+  "at_pickup",
+  "picked_up",
+  "in_transit",
+  "at_dropoff",
+];
+/** Request states from which the request itself is still cancellable. */
+const CANCELLABLE_REQUEST_STATES = [
+  "draft",
+  "awaiting_quote_acceptance",
+  "pending_couranr_review",
+  "quote_revision_required",
+  "confirmed",
+];
+
+/**
+ * B3-I §5 — which recovery actions the panel offers, extracted pure so the
+ * gating is testable and matches the server's authority exactly:
+ *
+ *   Cancel is the governed CAN-001 action. It is available for a cancellable
+ *   REQUEST even when no canonical delivery row exists yet (a confirmed request
+ *   whose payment is authorized but not captured); with a delivery, the
+ *   delivery's own state gates it.
+ *
+ *   The generic technical Release is for stale / rejected / recovery holds, NOT
+ *   for a normal authorized hold on an ACTIVE CONFIRMED request: that hold's
+ *   governed action is Cancel (the $8 receivable), and the server refuses a
+ *   generic release of it (releaseAuthorization). So a confirmed+authorized
+ *   hold shows Cancel, never Release; stale holds and non-confirmed
+ *   authorizations still show Release.
+ */
+export function recoveryActionsFor(input: {
+  requestState: string;
+  paymentState: string;
+  staleProviderHold: boolean;
+  deliveryState: string | null;
+}): { releasable: boolean; cancellable: boolean } {
+  const cancellable =
+    input.deliveryState != null
+      ? CANCELLABLE_DELIVERY_STATES.includes(input.deliveryState)
+      : CANCELLABLE_REQUEST_STATES.includes(input.requestState);
+  const confirmedActiveHold =
+    input.deliveryState == null &&
+    input.requestState === "confirmed" &&
+    input.paymentState === "authorized";
+  const releasable =
+    !confirmedActiveHold &&
+    (input.staleProviderHold ||
+      (input.paymentState === "authorized" && input.requestState !== "confirmed"));
+  return { releasable, cancellable };
+}
+
 export function OperationsPaymentRecoveryPanel({
   request,
   fulfillment,
@@ -112,14 +168,13 @@ export function OperationsPaymentRecoveryPanel({
   const delivery = fulfillment?.delivery ?? null;
   if (!payment) return null;
 
-  const releasable =
-    payment.staleProviderHold || payment.paymentState === "authorized";
   const refund = refundControlsFor(payment, delivery?.fulfillmentState ?? null);
-  const cancellable =
-    delivery != null &&
-    ["scheduled", "assigned", "en_route_to_pickup", "at_pickup", "picked_up", "in_transit", "at_dropoff"].includes(
-      delivery.fulfillmentState
-    );
+  const { releasable, cancellable } = recoveryActionsFor({
+    requestState: String(request.requestState),
+    paymentState: payment.paymentState,
+    staleProviderHold: payment.staleProviderHold,
+    deliveryState: delivery?.fulfillmentState ?? null,
+  });
 
   async function run(action: () => Promise<{ ok: boolean } & Record<string, any>>, done: string) {
     setBusy(true);

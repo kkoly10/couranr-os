@@ -55,11 +55,18 @@ assertServerOnly("lib/couranr/consumer/send.ts");
  * `factsFromDraft` — so PRC-005 parity (consumer surcharge 0, category has no
  * price effect) holds by construction: there is exactly one engine.
  *
- * CONSUMER AI DECISION (§24): NO Anthropic call for anonymous guests in this
- * batch — no safe anonymous cross-session abuse control exists. The intake is
- * MANUAL STRUCTURED: the free-text description is stored as request evidence
+ * CONSUMER AI (INT-002): deterministic STRUCTURED intake is the always-on
+ * path — the free-text description is stored as request evidence
  * (normalized_request_payload.consumerDescription) and policy runs on the
- * structured facts only. Nothing here imports lib/couranr/intake/*.
+ * structured facts only, so a delivery can always be priced and submitted
+ * with no model in the loop. Consumer Smart Intake is OPTIONAL enrichment
+ * layered on top, behind COURANR_CONSUMER_INTAKE=live and its own abuse
+ * controls (lib/couranr/consumer/intake.ts): a guest's description may be
+ * interpreted into PROPOSAL-only structured facts that the guest confirms by
+ * an explicit form action. Model output never sets price, state, route or a
+ * restricted outcome. This module imports intake only through
+ * `./intake` — never a provider adapter — and only for that optional
+ * evidence hook.
  */
 
 export const RPC = {
@@ -515,14 +522,16 @@ export async function estimateConsumerSend(params: {
     return fail({ operation: op, code: "internal", detail: error });
   }
 
-  // §24: MANUAL STRUCTURED intake — the SAME deterministic policy the
-  // business path runs, over the guest's structured statement. No session, no
-  // AI, no second policy — and no second scanner: the guest's OWN item
-  // description runs through the existing deterministic scanRestrictedSignals
-  // lexicon (review item 1). Text signals are ESCALATION ONLY by the policy
-  // engine's design: a declaration of 'none' that conflicts with a material
-  // signal becomes needs_review (no payable quote), and text alone can never
-  // produce 'prohibited' — only a confirmed prohibited declaration does that.
+  // DETERMINISTIC STRUCTURED pricing/safety — the SAME policy the business
+  // path runs, over the guest's structured statement, and the ALWAYS-ON path
+  // that needs no model. The guest's OWN item description runs through the
+  // existing deterministic scanRestrictedSignals lexicon (no second scanner).
+  // Text signals are ESCALATION ONLY by the policy engine's design: a
+  // declaration of 'none' that conflicts with a material signal becomes
+  // needs_review (no payable quote), and text alone can never produce
+  // 'prohibited' — only a confirmed prohibited declaration does. Consumer
+  // Smart Intake (INT-002) is a separate, optional enrichment layer and never
+  // reaches this pricing/safety path.
   const textSignals = scanRestrictedSignals(body.shipment.description ?? "");
   const policy = evaluateShipmentPolicy(
     factsFromDraft({

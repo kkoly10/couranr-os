@@ -36,7 +36,10 @@ vi.mock("@/lib/couranr/fulfillment/commands", () => ({
 }));
 
 import { POST as refundRoutePost } from "@/app/api/couranr/operations/delivery-requests/[id]/refund/route";
-import { refundControlsFor } from "@/components/couranr/fulfillment/OperationsPaymentRecoveryPanel";
+import {
+  recoveryActionsFor,
+  refundControlsFor,
+} from "@/components/couranr/fulfillment/OperationsPaymentRecoveryPanel";
 
 const REQUEST_ID = "9a8b7c6d-1234-4abc-8def-0123456789ab";
 
@@ -265,5 +268,84 @@ describe("settled_no_refund_due and the cancellation lock (final closure §3)", 
     const c = refundControlsFor(base, "delivered");
     expect(c.showFullRefund).toBe(true);
     expect(c.showResumeSettlement).toBe(false);
+  });
+});
+
+/* --------------- B3-I §5: the release / cancel gating ------------------- */
+
+describe("recoveryActionsFor — the CAN-001 escape guard in the panel", () => {
+  it("confirmed + authorized + no delivery: Cancel, NEVER generic Release", () => {
+    const c = recoveryActionsFor({
+      requestState: "confirmed",
+      paymentState: "authorized",
+      staleProviderHold: false,
+      deliveryState: null,
+    });
+    expect(c.cancellable).toBe(true);
+    expect(c.releasable).toBe(false);
+  });
+
+  it("authorized but NOT confirmed: Release stays available (the $0 / stale path)", () => {
+    for (const requestState of ["awaiting_quote_acceptance", "pending_couranr_review"]) {
+      const c = recoveryActionsFor({
+        requestState,
+        paymentState: "authorized",
+        staleProviderHold: false,
+        deliveryState: null,
+      });
+      expect(c.releasable, requestState).toBe(true);
+      expect(c.cancellable, requestState).toBe(true);
+    }
+  });
+
+  it("a stale provider hold always shows Release, whatever the request state", () => {
+    const c = recoveryActionsFor({
+      requestState: "confirmed",
+      paymentState: "authorized",
+      staleProviderHold: true,
+      deliveryState: null,
+    });
+    // staleProviderHold is the rejected/non-commercial technical case — but a
+    // confirmed active hold is still governed by Cancel, so the escape guard
+    // wins: no generic Release for a confirmed active hold.
+    expect(c.releasable).toBe(false);
+    expect(c.cancellable).toBe(true);
+
+    const nonConfirmed = recoveryActionsFor({
+      requestState: "quote_revision_required",
+      paymentState: "authorized",
+      staleProviderHold: true,
+      deliveryState: null,
+    });
+    expect(nonConfirmed.releasable).toBe(true);
+  });
+
+  it("a cancellable REQUEST without a delivery row still shows Cancel", () => {
+    const c = recoveryActionsFor({
+      requestState: "pending_couranr_review",
+      paymentState: "authorized",
+      staleProviderHold: false,
+      deliveryState: null,
+    });
+    expect(c.cancellable).toBe(true);
+  });
+
+  it("with a delivery, the delivery state gates Cancel and a confirmed active hold no longer applies", () => {
+    const active = recoveryActionsFor({
+      requestState: "confirmed",
+      paymentState: "captured",
+      staleProviderHold: false,
+      deliveryState: "assigned",
+    });
+    expect(active.cancellable).toBe(true);
+
+    const terminal = recoveryActionsFor({
+      requestState: "confirmed",
+      paymentState: "refunded",
+      staleProviderHold: false,
+      deliveryState: "delivered",
+    });
+    expect(terminal.cancellable).toBe(false);
+    expect(terminal.releasable).toBe(false);
   });
 });

@@ -353,9 +353,12 @@ async function main() {
     eq("PR-21d", "... a retried cancellation begin converges on the SAME settled row",
        one(refundBegin(hOb.obligationId, ops, hOb.version + 1, "cancel_after_confirmation_before_arrival")),
        "settled_no_refund_due|0|799");
-    eq("PR-21e", "... and a later STANDALONE full_refund can never mint a second refund — it replays the settlement",
-       one(refundBegin(hOb.obligationId, ops, hOb.version + 1, "full_refund")),
-       "settled_no_refund_due|0|799");
+    eq("PR-21e", "... and a later STANDALONE full_refund is REFUSED, not converged onto the $8 settlement (§3/§4)",
+       raises(refundBegin(hOb.obligationId, ops, hOb.version + 1, "full_refund")).split("|")[1],
+       "refund_settlement_reason_conflict");
+    eq("PR-21e2", "... and that refusal wrote NOTHING — still exactly one refund row",
+       one(`select count(*) from public.couranr_payment_refunds where obligation_id='${hOb.obligationId}'`),
+       "1");
     eq("PR-21f", "... schema-enforced too: a second live attempt row is impossible (23505)",
        raises(`insert into public.couranr_payment_refunds
                  (obligation_id, request_id, provider_payment_intent_id, amount_cents,
@@ -371,6 +374,48 @@ async function main() {
     eq("PR-21g", "a $12.50 capture under the $15 failed-pickup fee settles zero-due with retained 1250",
        one(refundBegin(h2Ob.obligationId, ops, h2Ob.version, "failed_pickup_after_arrival")),
        "settled_no_refund_due|0|1250");
+
+    /* B3-I §3 — a refund attempt BINDS the obligation to one governed money
+       settlement. A begin with a DIFFERENT reason than the live attempt is a
+       conflict — the cancellation can never complete a standing full_refund as
+       if it were the $8 settlement, and a full_refund can never ride an
+       unfinished cancellation refund. No second provider write is issued. */
+    const raOb = await seedCaptured(`pra-${crypto.randomUUID().slice(0, 6)}`, { subtotalCents: 5000 });
+    one(refundBegin(raOb.obligationId, ops, raOb.version, "full_refund"));
+    eq("PR-30a", "live full_refund + a cancellation $8 begin -> reason conflict",
+       raises(refundBegin(raOb.obligationId, ops, raOb.version + 1, "cancel_after_confirmation_before_arrival")).split("|")[1],
+       "refund_settlement_reason_conflict");
+    eq("PR-30b", "... and NOTHING was written — still exactly one attempt row",
+       one(`select count(*) from public.couranr_payment_refunds where obligation_id='${raOb.obligationId}'`),
+       "1");
+    eq("PR-30c", "... the SAME full_refund reason retried still converges on the live attempt",
+       one(`select (attempt_state='requested')::text from public.couranr_begin_payment_refund(
+              '${raOb.obligationId}','${ops}',${raOb.version + 1},'full_refund')`),
+       "true");
+
+    const rbOb = await seedCaptured(`prb-${crypto.randomUUID().slice(0, 6)}`, { subtotalCents: 5000 });
+    one(refundBegin(rbOb.obligationId, ops, rbOb.version, "cancel_after_confirmation_before_arrival"));
+    eq("PR-30d", "live cancellation $8 + a standalone full_refund begin -> reason conflict",
+       raises(refundBegin(rbOb.obligationId, ops, rbOb.version + 1, "full_refund")).split("|")[1],
+       "refund_settlement_reason_conflict");
+    eq("PR-30e", "... and the same cancellation reason retried converges on the live attempt",
+       one(`select (attempt_state='requested')::text from public.couranr_begin_payment_refund(
+              '${rbOb.obligationId}','${ops}',${rbOb.version + 1},'cancel_after_confirmation_before_arrival')`),
+       "true");
+
+    /* B3-I §4 — a cancellation-governed settlement, even one whose refund
+       attempt FAILED (no longer live), cannot be REPLACED by a standalone full
+       refund. The recovery is to retry the SAME cancellation reason. */
+    const rcOb = await seedCaptured(`prc-${crypto.randomUUID().slice(0, 6)}`, { subtotalCents: 5000 });
+    one(refundBegin(rcOb.obligationId, ops, rcOb.version, "cancel_after_confirmation_before_arrival"));
+    const [rcRefId, rcAmt] = refundRow(rcOb.obligationId).split("|");
+    one(`select attempt_state from public.couranr_complete_payment_refund('${rcRefId}','re_x','failed',${rcAmt})`);
+    eq("PR-31a", "a FAILED cancellation attempt still blocks a standalone full_refund (§4)",
+       raises(`select public.couranr_begin_payment_refund('${rcOb.obligationId}','${ops}',${rcOb.version + 1},'full_refund')`).split("|")[1],
+       "refund_settlement_reason_conflict");
+    eq("PR-31b", "... the recovery — retry the SAME cancellation reason — is allowed and creates a fresh attempt",
+       one(refundBegin(rcOb.obligationId, ops, rcOb.version + 1, "cancel_after_confirmation_before_arrival")),
+       "requested|4200|800");
 
     const iOb = await seedCaptured(`pri-${crypto.randomUUID().slice(0, 6)}`);
     one(refundBegin(iOb.obligationId, ops, iOb.version, "full_refund"));

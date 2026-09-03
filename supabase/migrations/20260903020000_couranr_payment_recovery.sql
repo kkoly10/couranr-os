@@ -371,20 +371,43 @@ begin
     raise exception 'obligation_not_found' using errcode = 'CR404';
   end if;
 
-  /* Idempotent replay FIRST: a live attempt (requested, unknown or already
-     succeeded) is returned as-is so a retrying operator resumes it instead of
-     minting a second provider refund. */
+  /* Idempotent replay FIRST — but ONLY onto the SAME governed settlement
+     (B3-I §3). A live attempt (requested, unknown, succeeded, or the
+     zero-due settlement) is resumed as-is when the incoming reason MATCHES
+     the money settlement it represents; a DIFFERENT reason must never
+     converge onto it, or a cancellation could complete a standing
+     full_refund attempt as though it were the $8 settlement, and a
+     standalone full_refund could ride an unfinished cancellation refund.
+     Two different money settlements on one obligation is the conflict this
+     refuses — no second provider write is issued while one is unresolved. */
   select * into v_existing from public.couranr_payment_refunds
    where obligation_id = p_obligation_id
      and attempt_state in ('requested','pending_unknown','succeeded','settled_no_refund_due')
    order by created_at desc limit 1;
   if found then
-    /* This includes settled_no_refund_due: once a governed cancellation
-       settlement consumed the capture, EVERY later begin — a retried
-       cancellation and a standalone full_refund alike — converges on that
-       settled row. The server, not the screen, is what makes a second
-       standalone refund impossible after a cancellation settlement. */
+    if v_existing.reason is distinct from p_reason then
+      raise exception 'refund_settlement_reason_conflict' using errcode = 'CR409';
+    end if;
+    /* Same reason: a retried cancellation, or a retried standalone full
+       refund, resumes THIS attempt (including a settled_no_refund_due) via
+       the list-first convergence in the app layer. */
     return v_existing;
+  end if;
+
+  /* B3-I §4 — a cancellation-governed settlement, once established, cannot be
+     REPLACED by a standalone full refund merely because its refund attempt is
+     no longer live (e.g. a `failed` attempt). The evidence is a refund attempt
+     carrying a retention-bearing cancellation reason, in ANY state. The
+     recovery is to retry the SAME cancellation reason (which resumes that
+     settlement), never to route captured money out through a full refund. The
+     server, not the Ops screen, is what makes this impossible. */
+  if p_reason = 'full_refund' and exists (
+    select 1 from public.couranr_payment_refunds
+     where obligation_id = p_obligation_id
+       and reason in ('cancel_after_confirmation_before_arrival',
+                      'failed_pickup_after_arrival')
+  ) then
+    raise exception 'refund_settlement_reason_conflict' using errcode = 'CR409';
   end if;
 
   /* Refunds move CAPTURED money only (§7). A hold is a release, an

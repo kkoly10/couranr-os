@@ -15,10 +15,14 @@
  *   statement; the server derives route, market, policy and price. The one
  *   payment amount this module ever holds (`amountCents`) is the server's
  *   echo of its own stored obligation, displayed and never sent back.
- * - NO AI FOR GUESTS (§24, governed): `readIntake` echoes the visitor's own
- *   words as evidence and claims no model output. The server runs the same
- *   deterministic policy the Business portal runs, over the structured
- *   statement.
+ * - CONSUMER SMART INTAKE (INT-002): `readIntake` still shows the visitor's
+ *   OWN words as the summary — the model's free text never renders — but posts
+ *   the description to the interpret route, which (behind
+ *   COURANR_CONSUMER_INTAKE=live) returns PROPOSAL-only structured facts the
+ *   guest confirms by an explicit form choice. Deterministic structured
+ *   pricing/safety on the Business portal's own engine remains the always-on
+ *   path; a switched-off feature, a rate limit or a network failure degrades
+ *   to the words alone.
  * - The guest session is minted ONCE and kept in memory plus sessionStorage
  *   (`couranr-send-guest`). Storage can THROW — private windows, blocked site
  *   data — so every touch is wrapped and the adapter degrades to memory-only.
