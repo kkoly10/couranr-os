@@ -394,18 +394,28 @@ begin
     return v_existing;
   end if;
 
-  /* B3-I §4 — a cancellation-governed settlement, once established, cannot be
-     REPLACED by a standalone full refund merely because its refund attempt is
-     no longer live (e.g. a `failed` attempt). The evidence is a refund attempt
-     carrying a retention-bearing cancellation reason, in ANY state. The
-     recovery is to retry the SAME cancellation reason (which resumes that
-     settlement), never to route captured money out through a full refund. The
-     server, not the Ops screen, is what makes this impossible. */
+  /* B3-I §4 / B3-J #2 — a cancellation-governed settlement, once established,
+     cannot be REPLACED by a standalone full refund merely because its refund
+     attempt is no longer live (e.g. a `failed` attempt). The evidence is a
+     refund attempt carrying ANY governed CANCELLATION reason, in ANY state —
+     that is EVERY reason except `full_refund`. In V0 the reason CHECK
+     (couranr_pr_reason_chk) pins the vocabulary to exactly
+     {full_refund, cancel_before_confirmation,
+      cancel_after_confirmation_before_arrival, failed_pickup_after_arrival,
+      couranr_caused_failure}, so `reason <> 'full_refund'` IS the complete set
+     of cancellation-governed reasons — the earlier two-reason list silently
+     let a failed `couranr_caused_failure` (and, defensively,
+     `cancel_before_confirmation`) attempt be overwritten by a generic full
+     refund, diverging from the Ops panel, which already treats any failed
+     non-full_refund attempt as cancellation-governed (Resume, never Full
+     refund). The recovery is to retry the SAME cancellation reason (which
+     resumes that settlement), never to route captured money out through a
+     full refund. The server, not the Ops screen, is what makes this
+     impossible. */
   if p_reason = 'full_refund' and exists (
     select 1 from public.couranr_payment_refunds
      where obligation_id = p_obligation_id
-       and reason in ('cancel_after_confirmation_before_arrival',
-                      'failed_pickup_after_arrival')
+       and reason <> 'full_refund'
   ) then
     raise exception 'refund_settlement_reason_conflict' using errcode = 'CR409';
   end if;
@@ -727,6 +737,105 @@ $fn$;
 revoke all on function public.couranr_record_cancellation_settlement(uuid,uuid,integer,text)
   from public, anon, authenticated, service_role;
 grant execute on function public.couranr_record_cancellation_settlement(uuid,uuid,integer,text)
+  to service_role;
+
+/* ------------- governed cancellation IDENTITY (B3-J #1) ---------------- */
+
+/*
+ * The DURABLE, IDEMPOTENT governed-cancellation identity for a CONFIRMED
+ * request cancelled BEFORE its canonical delivery exists — the ONE anchor the
+ * no-delivery saga (cancelBeforeDelivery) reads on every retry. It is recorded
+ * BEFORE any provider I/O and locks BOTH the closed governed reason and its
+ * server-derived retained-due amount, for the $8 receivable AND the $0
+ * couranr-caused case alike.
+ *
+ * WHY a distinct primitive from couranr_record_cancellation_settlement: that
+ * function models a RECEIVABLE ($8/$15 owed) and cannot truthfully represent a
+ * $0 couranr-caused cancellation, which owes nothing — modelling $0 as a
+ * "receivable" would be a fake debt. This records the governed DECISION: for
+ * $0 it writes a `couranr.cancellation.no_charge` event (nothing owed), for
+ * $8 a `couranr.cancellation.receivable` (owed, collected=false). The event id
+ * is keyed on the OBLIGATION ONLY — `couranr:cancellation_governed:<ob>` — so
+ * the FIRST recorded reason WINS: a retry posting a DIFFERENT reason collides
+ * on the unique (provider, provider_event_id) and gets back the ORIGINAL row,
+ * reason and amount unchanged. The database, not the app, is what makes the
+ * original governed reason authoritative; the retry body is never trusted.
+ *
+ * The retained-due amount is DERIVED FROM the reason and re-checked here, so a
+ * caller cannot pass an amount that contradicts the governed reason:
+ *   merchant_request / customer_request -> 800     couranr_caused -> 0
+ */
+create or replace function public.couranr_record_cancellation_identity(
+  p_obligation_id      uuid,
+  p_actor_user_id      uuid,
+  p_governed_reason    text,
+  p_retained_due_cents integer
+)
+returns public.couranr_payment_events
+language plpgsql security invoker set search_path = ''
+as $fn$
+declare
+  v_role text;
+  v_ob   public.couranr_payment_obligations;
+  v_ev   public.couranr_payment_events;
+begin
+  select role into v_role from public.profiles where id = p_actor_user_id;
+  if v_role is distinct from 'admin' then
+    raise exception 'operations_access_required' using errcode = 'CR403';
+  end if;
+
+  -- Closed governed-reason vocabulary for a no-delivery cancellation. failed_
+  -- pickup is a with-delivery stage and never reaches this path.
+  if p_governed_reason not in ('merchant_request','customer_request','couranr_caused') then
+    raise exception 'cancellation_reason_not_governed' using errcode = 'CR400';
+  end if;
+
+  -- The amount is derived from the reason, server-side; a contradictory pair is
+  -- refused rather than trusted.
+  if (p_governed_reason in ('merchant_request','customer_request') and p_retained_due_cents <> 800)
+     or (p_governed_reason = 'couranr_caused' and p_retained_due_cents <> 0) then
+    raise exception 'settlement_amount_not_governed' using errcode = 'CR422';
+  end if;
+
+  select * into v_ob from public.couranr_payment_obligations
+   where id = p_obligation_id for update;
+  if not found then
+    raise exception 'obligation_not_found' using errcode = 'CR404';
+  end if;
+
+  begin
+    insert into public.couranr_payment_events(
+      obligation_id, request_id, provider, provider_event_id, event_type,
+      payment_state_before, payment_state_after, outcome, detail
+    ) values (
+      v_ob.id, v_ob.request_id, 'stripe',
+      'couranr:cancellation_governed:' || v_ob.id::text,
+      -- Truthful: a receivable is owed only when something is retained.
+      case when p_retained_due_cents > 0
+           then 'couranr.cancellation.receivable'
+           else 'couranr.cancellation.no_charge' end,
+      v_ob.payment_state, v_ob.payment_state, 'applied',
+      jsonb_build_object('governedReason', p_governed_reason,
+        'retainedDueCents', p_retained_due_cents,
+        'actorUserId', p_actor_user_id)
+      || case when p_retained_due_cents > 0
+              then jsonb_build_object('collected', false)
+              else '{}'::jsonb end
+    ) returning * into v_ev;
+  exception when unique_violation then
+    -- The governed identity already stands; the ORIGINAL reason wins. A retry
+    -- posting a different reason converges on the first-recorded identity.
+    select * into v_ev from public.couranr_payment_events
+     where provider = 'stripe'
+       and provider_event_id = 'couranr:cancellation_governed:' || v_ob.id::text;
+  end;
+  return v_ev;
+end
+$fn$;
+
+revoke all on function public.couranr_record_cancellation_identity(uuid,uuid,text,integer)
+  from public, anon, authenticated, service_role;
+grant execute on function public.couranr_record_cancellation_identity(uuid,uuid,text,integer)
   to service_role;
 
 revoke all on function public.couranr_begin_payment_refund(uuid,uuid,integer,text)

@@ -200,9 +200,10 @@ function refundReasonFor(
  * Operations only. Composes existing commands exclusively —
  * `releaseAuthorization`, `couranr_cancel_delivery`,
  * `couranr_close_delivery_undeliverable`, `refundPayment`,
- * `couranr_record_cancellation_settlement` and
- * `couranr_cancel_delivery_request` — and supplies no amount, no retention
- * and no target state to any of them.
+ * `couranr_record_cancellation_identity` (the no-delivery governed-reason
+ * anchor) and `couranr_cancel_delivery_request` — and supplies no amount, no
+ * retention and no target state to any of them: the retained-due amount is
+ * derived server-side from the governed reason.
  *
  * Durability: the CLOSED governed reason is persisted in the immutable
  * closure event (p_governed_reason), so when closure succeeded but money
@@ -531,48 +532,66 @@ async function cancelBeforeDelivery(
     });
   }
 
-  /* §2 — a CONFIRMED request with an authorized hold and no delivery is a REAL
-     CAN-001 $8 stage (the canonical delivery is created only after capture).
-     The stage is derived from STORED facts that SURVIVE a provider release:
-     after the hold is released the obligation reads `cancelled`, so a retry
-     re-finds the $8 stage through the settlement receivable it recorded FIRST
-     — the $8 can never disappear merely because provider state is now
-     cancelled. */
-  const settlementExists = ob != null && (await cancellationSettlementExists(String(ob.id)));
-  const settlementObligationId =
+  /* B3-J #1 — a CONFIRMED request with an authorization and no delivery owes a
+     GOVERNED cancellation settlement (the canonical delivery is created only
+     after capture). Its closed reason and server-derived retained-due amount
+     are locked into ONE durable identity BEFORE any provider I/O, and the
+     ORIGINAL identity WINS on every retry: the identity is keyed on the
+     obligation, so a retry posting a DIFFERENT reason gets the first-recorded
+     reason and amount back from the database. The retry body's reason is never
+     trusted once an identity stands — this closes the reason-substitution
+     window where a couranr_caused ($0) first attempt could be overwritten by a
+     later merchant_request ($8), or an $8 identity be terminated under a $0
+     reason. The stage applies while the request is confirmed and the
+     authorization still exists (`authorized`) or was already released on a
+     prior attempt (`cancelled`); captured/refunded were refused above. */
+  const governs =
     request.request_state === "confirmed" &&
     ob != null &&
-    reason !== "couranr_caused" &&
-    (String(ob.payment_state) === "authorized" || settlementExists)
-      ? String(ob.id)
-      : null;
+    ["authorized", "cancelled"].includes(String(ob.payment_state));
 
-  /* THE DURABLE SETTLEMENT IDENTITY IS ESTABLISHED BEFORE ANY PROVIDER CALL.
-     couranr_record_cancellation_settlement is idempotent on
-     couranr:cancellation_receivable:<obligation>, so if the process dies after
-     this — before OR after the release, before the request terminates — a
-     retry rediscovers the SAME $8 receivable. */
-  if (settlementObligationId) {
-    const recorded = await callRpc(op, "couranr_record_cancellation_settlement", {
-      p_obligation_id: settlementObligationId,
+  let identity: { governedReason: CancellationReason; retainedDueCents: number } | null = null;
+  if (governs) {
+    /* The retained-due amount is DERIVED from the posted reason; the database
+       re-derives it, refuses a contradictory pair, and — because the event id
+       is keyed on the obligation alone — returns the ORIGINAL identity when one
+       already stands, so a conflicting retry can never substitute a new reason
+       or amount. couranr_record_cancellation_identity is idempotent, so a crash
+       after it (before OR after the release, before termination) rediscovers
+       the SAME governed identity. */
+    const derivedRetained = reason === "couranr_caused" ? 0 : 800;
+    const recorded = await callRpc<any>(op, "couranr_record_cancellation_identity", {
+      p_obligation_id: String(ob.id),
       p_actor_user_id: params.actor.userId,
-      p_retained_due_cents: 800,
-      p_reason: `cancellation:${reason} — ${note}`,
+      p_governed_reason: reason,
+      p_retained_due_cents: derivedRetained,
     });
     if (isFulfillmentFailure(recorded)) return recorded;
+    const detail = (recorded.value?.detail ?? {}) as {
+      governedReason?: string;
+      retainedDueCents?: number;
+    };
+    identity = {
+      governedReason: (detail.governedReason ?? reason) as CancellationReason,
+      retainedDueCents: Number(detail.retainedDueCents ?? derivedRetained),
+    };
   }
+
+  /* The reason that governs from here on is the ORIGINAL recorded one, not the
+     retry body's. */
+  const governedReason: CancellationReason = identity ? identity.governedReason : reason;
 
   /* THEN release the provider hold — idempotent: a retry after a successful
      release reads `cancelled` and returns it without calling Stripe again.
      `governedCancellation` opts past the §5 confirmed-active guard, which the
-     settlement above has earned by being recorded first. */
+     identity above has earned by being recorded first. */
   let payment: CancellationOutcome["payment"] = { kind: "none" };
   if (ob && ob.provider_payment_intent_id) {
     const released = await releaseAuthorization({
       actor: params.actor,
       requestId: params.requestId,
       businessAccountId: params.businessAccountId,
-      reason: `cancellation:${reason} — ${note}`,
+      reason: `cancellation:${governedReason} — ${note}`,
       governedCancellation: true,
     });
     if (isFulfillmentFailure(released)) return released;
@@ -583,19 +602,24 @@ async function cancelBeforeDelivery(
     };
   }
 
-  if (settlementObligationId) {
+  /* The receivable is owed only when the ORIGINAL governed identity retained
+     something ($8 for a merchant/customer cancellation). A $0 couranr-caused
+     identity owes nothing, so the payment stays a plain release — no fake
+     receivable is fabricated. */
+  if (identity && identity.retainedDueCents > 0) {
     payment = {
       kind: "released_with_receivable",
-      obligationId: payment.kind === "released" ? payment.obligationId : settlementObligationId,
+      obligationId: payment.kind === "released" ? payment.obligationId : String(ob?.id ?? ""),
       paymentState: payment.kind === "released" ? payment.paymentState : String(ob?.payment_state ?? ""),
-      retainedDueCents: 800,
+      retainedDueCents: identity.retainedDueCents,
     };
   }
 
-  /* THEN terminate the request. A crash before this leaves the settlement and
-     the release done; the retry re-establishes the same settlement, re-runs the
-     idempotent release, and terminates. */
-  const requestState = await terminateRequest(op, params, `cancellation:${reason} — ${note}`);
+  /* THEN terminate the request under the AUTHORITATIVE governed reason. A crash
+     before this leaves the identity and the release done; the retry re-reads
+     the same identity, re-runs the idempotent release, and terminates under the
+     same reason — never the retry body's. */
+  const requestState = await terminateRequest(op, params, `cancellation:${governedReason} — ${note}`);
   if (isFulfillmentFailure(requestState)) return requestState;
 
   return {
@@ -607,22 +631,6 @@ async function cancelBeforeDelivery(
       payment,
     },
   };
-}
-
-/**
- * §2 — does the durable CAN-001 receivable already stand for this obligation?
- * The settlement identity is `couranr:cancellation_receivable:<obligation>`,
- * written before the provider release, so this is what lets a retry recognise
- * a confirmed-$8 stage after the hold has already gone to `cancelled`.
- */
-async function cancellationSettlementExists(obligationId: string): Promise<boolean> {
-  const { data } = (await supabaseAdmin
-    .from("couranr_payment_events")
-    .select("id")
-    .eq("provider", "stripe")
-    .eq("provider_event_id", `couranr:cancellation_receivable:${obligationId}`)
-    .maybeSingle()) as { data: any; error: any };
-  return data != null;
 }
 
 /**

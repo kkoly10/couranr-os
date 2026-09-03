@@ -417,6 +417,23 @@ async function main() {
        one(refundBegin(rcOb.obligationId, ops, rcOb.version + 1, "cancel_after_confirmation_before_arrival")),
        "requested|4200|800");
 
+    /* B3-J #2 — the guard covers EVERY cancellation-governed reason, not just
+       the two retention-bearing ones. A FAILED couranr_caused_failure attempt
+       ($0 retained, Couranr's fault) equally blocks a standalone full_refund:
+       the governed reason must stay couranr_caused_failure, mirroring the Ops
+       panel, which already treats any failed non-full_refund attempt as
+       cancellation-governed. */
+    const rdOb = await seedCaptured(`prd2-${crypto.randomUUID().slice(0, 6)}`, { subtotalCents: 5000 });
+    one(refundBegin(rdOb.obligationId, ops, rdOb.version, "couranr_caused_failure"));
+    const [rdRefId, rdAmt] = refundRow(rdOb.obligationId).split("|");
+    one(`select attempt_state from public.couranr_complete_payment_refund('${rdRefId}','re_x','failed',${rdAmt})`);
+    eq("PR-31c", "a FAILED couranr_caused_failure attempt also blocks a standalone full_refund (§4 / B3-J #2)",
+       raises(`select public.couranr_begin_payment_refund('${rdOb.obligationId}','${ops}',${rdOb.version + 1},'full_refund')`).split("|")[1],
+       "refund_settlement_reason_conflict");
+    eq("PR-31d", "... the recovery — retry the SAME couranr_caused_failure reason — is allowed",
+       one(refundBegin(rdOb.obligationId, ops, rdOb.version + 1, "couranr_caused_failure")),
+       "requested|5000|0");
+
     const iOb = await seedCaptured(`pri-${crypto.randomUUID().slice(0, 6)}`);
     one(refundBegin(iOb.obligationId, ops, iOb.version, "full_refund"));
     const [iRefId, iAmount] = refundRow(iOb.obligationId).split("|");
@@ -481,6 +498,48 @@ async function main() {
     eq("PR-29d", "... and a non-Operations actor is refused",
        raises(`select public.couranr_record_cancellation_settlement(
                  '${rOb.obligationId}', '${merchant}', 800, 'x')`).split("|")[1],
+       "operations_access_required");
+
+    /* B3-J #1 — the governed cancellation IDENTITY for the no-delivery saga:
+       ONE durable event locking the closed reason AND its server-derived
+       amount, for the $8 case AND the $0 couranr-caused case, keyed on the
+       obligation so the FIRST recorded reason WINS on every retry. */
+    const gid = await seedAttached(`gid-${crypto.randomUUID().slice(0, 6)}`);
+    eq("PR-32a", "an $8 identity records as a receivable with collected:false and its governed reason",
+       one(`select event_type || '|' || (detail->>'governedReason') || '|' || (detail->>'retainedDueCents') || '|' || coalesce(detail->>'collected','<none>')
+              from public.couranr_record_cancellation_identity(
+                '${gid.obligationId}', '${ops}', 'merchant_request', 800)`),
+       "couranr.cancellation.receivable|merchant_request|800|false");
+    eq("PR-32b", "FIRST REASON WINS: a retry posting couranr_caused/$0 gets the ORIGINAL merchant_request/$8 back, and there is exactly ONE identity event",
+       one(`select (select (detail->>'governedReason') || '|' || (detail->>'retainedDueCents')
+                    from public.couranr_record_cancellation_identity(
+                      '${gid.obligationId}', '${ops}', 'couranr_caused', 0))
+                   || '|' ||
+                   (select count(*) from public.couranr_payment_events
+                     where provider_event_id = 'couranr:cancellation_governed:${gid.obligationId}')`),
+       "merchant_request|800|1");
+
+    const gz = await seedAttached(`gz-${crypto.randomUUID().slice(0, 6)}`);
+    eq("PR-32c", "a $0 couranr_caused identity is a truthful no_charge event, NOT a fake receivable (no collected key)",
+       one(`select event_type || '|' || (detail->>'governedReason') || '|' || (detail->>'retainedDueCents') || '|' || coalesce(detail->>'collected','<none>')
+              from public.couranr_record_cancellation_identity(
+                '${gz.obligationId}', '${ops}', 'couranr_caused', 0)`),
+       "couranr.cancellation.no_charge|couranr_caused|0|<none>");
+    eq("PR-32d", "the retained-due amount is DERIVED from the reason — couranr_caused with 800 is refused",
+       raises(`select public.couranr_record_cancellation_identity(
+                 '${gz.obligationId}', '${ops}', 'couranr_caused', 800)`).split("|")[1],
+       "settlement_amount_not_governed");
+    eq("PR-32e", "... and merchant_request with 0 is refused",
+       raises(`select public.couranr_record_cancellation_identity(
+                 '${gz.obligationId}', '${ops}', 'merchant_request', 0)`).split("|")[1],
+       "settlement_amount_not_governed");
+    eq("PR-32f", "an ungoverned reason is refused",
+       raises(`select public.couranr_record_cancellation_identity(
+                 '${gz.obligationId}', '${ops}', 'failed_pickup', 0)`).split("|")[1],
+       "cancellation_reason_not_governed");
+    eq("PR-32g", "a non-Operations actor is refused",
+       raises(`select public.couranr_record_cancellation_identity(
+                 '${gz.obligationId}', '${merchant}', 'couranr_caused', 0)`).split("|")[1],
        "operations_access_required");
 
     const integrity = await gateAIntegrityIssues(psqlTransport(psql));
