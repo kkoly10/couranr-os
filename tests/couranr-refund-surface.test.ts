@@ -109,46 +109,61 @@ describe("refundControlsFor — the V0 panel truth table", () => {
   } as any;
 
   it("captured with no attempt → the Full refund button only", () => {
-    expect(refundControlsFor(base)).toEqual({
+    expect(refundControlsFor(base, null)).toEqual({
       showFullRefund: true,
       showReconcile: false,
+      showResumeSettlement: false,
       settled: null,
     });
   });
 
   it("a failed attempt frees the slot again → Full refund only", () => {
-    const c = refundControlsFor({
-      ...base,
-      refundAttempt: { state: "failed", amountCents: 799, retainedCents: 0, reason: "full_refund" },
-    });
+    const c = refundControlsFor(
+      {
+        ...base,
+        refundAttempt: { state: "failed", amountCents: 799, retainedCents: 0, reason: "full_refund" },
+      },
+      null
+    );
     expect(c.showFullRefund).toBe(true);
     expect(c.showReconcile).toBe(false);
   });
 
   for (const state of ["requested", "pending_unknown"] as const) {
     it(`an attempt at '${state}' → Reconcile only, never a second Refund`, () => {
-      const c = refundControlsFor({
-        ...base,
-        refundAttempt: { state, amountCents: 799, retainedCents: 0, reason: "full_refund" },
+      const c = refundControlsFor(
+        {
+          ...base,
+          refundAttempt: { state, amountCents: 799, retainedCents: 0, reason: "full_refund" },
+        },
+        null
+      );
+      expect(c).toEqual({
+        showFullRefund: false,
+        showReconcile: true,
+        showResumeSettlement: false,
+        settled: null,
       });
-      expect(c).toEqual({ showFullRefund: false, showReconcile: true, settled: null });
     });
   }
 
   it("a succeeded attempt → neither button; the figures are shown truthfully", () => {
-    const c = refundControlsFor({
-      ...base,
-      paymentState: "captured", // partial refund: obligation not yet 'refunded'
-      refundedAmountCents: 799,
-      refundAttempt: { state: "succeeded", amountCents: 799, retainedCents: 800, reason: "cancel_after_confirmation_before_arrival" },
-    });
+    const c = refundControlsFor(
+      {
+        ...base,
+        paymentState: "captured", // partial refund: obligation not yet 'refunded'
+        refundedAmountCents: 799,
+        refundAttempt: { state: "succeeded", amountCents: 799, retainedCents: 800, reason: "cancel_after_confirmation_before_arrival" },
+      },
+      null
+    );
     expect(c.showFullRefund).toBe(false);
     expect(c.showReconcile).toBe(false);
     expect(c.settled).toEqual({ refundedCents: 799, retainedCents: 800 });
   });
 
   it("paymentState 'refunded' → settled even if the attempt row was not projected", () => {
-    const c = refundControlsFor({ ...base, paymentState: "refunded", refundedAmountCents: 799 });
+    const c = refundControlsFor({ ...base, paymentState: "refunded", refundedAmountCents: 799 }, null);
     expect(c.showFullRefund).toBe(false);
     expect(c.showReconcile).toBe(false);
     expect(c.settled).toEqual({ refundedCents: 799, retainedCents: 0 });
@@ -182,5 +197,73 @@ describe("the browser surface stays narrow", () => {
   it("the cancel action collects the mandatory note the route requires", () => {
     expect(panel).toMatch(/cancelNote/);
     expect(panel).toMatch(/note:\s*cancelNote\.trim\(\)/);
+  });
+});
+
+/* --------------- final closure pass §3: settled + cancellation lock ------ */
+
+describe("settled_no_refund_due and the cancellation lock (final closure §3)", () => {
+  const base = {
+    id: "ob",
+    amountCents: 799,
+    currency: "usd",
+    paymentState: "captured",
+    payerType: "customer",
+    authorizedAt: null,
+    authorizedAtSource: null,
+    authorizationProcessedAt: null,
+    capturedAmountCents: 799,
+    refundedAmountCents: 0,
+    refundedAt: null,
+    staleProviderHold: false,
+    refundAttempt: null,
+  } as any;
+
+  it("a zero-due settlement is SETTLED: no buttons, the actual retained figure shown", () => {
+    const c = refundControlsFor(
+      {
+        ...base,
+        refundAttempt: {
+          state: "settled_no_refund_due",
+          amountCents: 0,
+          retainedCents: 799,
+          reason: "cancel_after_confirmation_before_arrival",
+        },
+      },
+      "cancelled"
+    );
+    expect(c.showFullRefund).toBe(false);
+    expect(c.showReconcile).toBe(false);
+    expect(c.showResumeSettlement).toBe(false);
+    expect(c.settled).toEqual({ refundedCents: 0, retainedCents: 799 });
+  });
+
+  it("a FAILED cancellation-governed attempt never re-offers standalone Full refund — Resume only", () => {
+    const c = refundControlsFor(
+      {
+        ...base,
+        refundAttempt: {
+          state: "failed",
+          amountCents: 100,
+          retainedCents: 800,
+          reason: "cancel_after_confirmation_before_arrival",
+        },
+      },
+      "cancelled"
+    );
+    expect(c.showFullRefund).toBe(false);
+    expect(c.showResumeSettlement).toBe(true);
+  });
+
+  it("a terminal cancelled delivery with captured, unsettled money offers Resume, not Full refund", () => {
+    const c = refundControlsFor(base, "could_not_deliver");
+    expect(c.showFullRefund).toBe(false);
+    expect(c.showResumeSettlement).toBe(true);
+  });
+
+  it("a DELIVERED delivery with captured money keeps the standalone Full refund", () => {
+    const c = refundControlsFor(base, "delivered");
+    expect(c.showFullRefund).toBe(true);
+    expect(c.showResumeSettlement).toBe(false);
   });
 });

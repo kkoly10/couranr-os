@@ -378,12 +378,17 @@ async function main() {
      "CR400|custody_resolution_required");
   eq("DX-25b", "... and the refusal released nothing",
      `${dlv(D1)}|${drvCol(driverA, "availability_state")}`, "at_dropoff|on_delivery");
-  psql(`select public.couranr_close_delivery_undeliverable('${D1}', ${dver(D1)}, '${ops}', 'recipient never appeared', 'at_dropoff', 'driver A returned the goods to the merchant dock at 16:40')`);
+  psql(`select public.couranr_close_delivery_undeliverable('${D1}', ${dver(D1)}, '${ops}', 'recipient never appeared', 'at_dropoff', 'driver A returned the goods to the merchant dock at 16:40', 'couranr_caused')`);
   eq("DX-25", "with exception + custody resolution, Operations closed at_dropoff -> could_not_deliver", dlv(D1), "could_not_deliver");
   eq("DX-25c", "the custody resolution is persisted in the immutable delivery event",
      one(`select metadata->>'custodyResolution' from public.couranr_delivery_events
            where delivery_id='${D1}' and command='close_delivery_undeliverable'`),
      "driver A returned the goods to the merchant dock at 16:40");
+  eq("DX-25e", "the CLOSED governed reason is persisted too — the saga's resume evidence (final closure §2)",
+     one(`select (metadata->>'governedReason') || '|' || (metadata->>'stageNote')
+            from public.couranr_delivery_events
+           where delivery_id='${D1}' and command='close_delivery_undeliverable'`),
+     "couranr_caused|at_dropoff");
   eq("DX-25d", "closure moved no money on its own: no refund attempt exists anywhere",
      one(`select count(*) from public.couranr_payment_refunds`), "0");
   eq("DX-26", "the assignment is closed with the truthful end reason",
@@ -490,8 +495,12 @@ async function main() {
   eq("DX-40", "a non-Operations actor cannot cancel",
      raises(`select public.couranr_cancel_delivery('${D4}', ${dver(D4)}, '${merchant}', 'please')`),
      "CR403|operations_access_required");
-  psql(`select public.couranr_cancel_delivery('${D4}', ${dver(D4)}, '${ops}', 'merchant cancelled the order')`);
+  psql(`select public.couranr_cancel_delivery('${D4}', ${dver(D4)}, '${ops}', 'merchant cancelled the order', 'merchant_request')`);
   eq("DX-36", "cancel works from assigned", dlv(D4), "cancelled");
+  eq("DX-36b", "... with the governed reason persisted for saga resume",
+     one(`select metadata->>'governedReason' from public.couranr_delivery_events
+           where delivery_id='${D4}' and command='cancel_delivery'`),
+     "merchant_request");
   eq("DX-37", "the assignment is cancelled and the driver released",
      one(`select assignment_state || '|' || end_reason from public.couranr_delivery_assignments
            where id='${asg4.id}'`) + `|${drvCol(driverA, "availability_state")}`,

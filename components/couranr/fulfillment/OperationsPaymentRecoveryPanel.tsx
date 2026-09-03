@@ -10,6 +10,7 @@ import {
   refundFromBrowser,
   reconcileRefundFromBrowser,
   releaseHoldFromBrowser,
+  resumeCancellationSettlementFromBrowser,
   type FulfillmentView,
 } from "./client";
 import { isApiFailure, withReference } from "@/components/couranr/requests/client";
@@ -36,41 +37,58 @@ const CANCEL_REASONS = [
 type PaymentView = NonNullable<FulfillmentView["payment"]>;
 
 /**
- * The V0 refund-surface truth table, extracted pure so it is testable:
+ * The V0 refund-surface truth table, extracted pure so it is testable
+ * (review item 6, tightened by the final closure pass §3):
  *
- *   captured, no attempt (or a failed one)   → the Full refund button only
- *   attempt requested / pending_unknown      → Reconcile only (outcome is
- *                                              in flight or unknown — a second
- *                                              submit would be a guess)
- *   attempt succeeded, or state 'refunded'   → NEITHER button; show the
- *                                              refunded and retained figures
- *                                              truthfully. One refund chain
- *                                              per obligation is the schema's
- *                                              own rule; the screen must not
- *                                              imply a second one exists.
+ *   settled — succeeded, settled_no_refund_due, or state 'refunded'
+ *     → NEITHER button; show the refunded and retained figures truthfully.
+ *       One refund chain per obligation is the schema's own rule.
+ *   attempt requested / pending_unknown
+ *     → Reconcile only (a second submit would be a guess).
+ *   a CANCELLATION-governed settlement exists but did not finish — a failed
+ *   cancellation attempt, or a terminal cancelled/undeliverable delivery
+ *   whose captured money never settled
+ *     → Resume the cancellation settlement. NEVER standalone Full refund:
+ *       the governed reason is recorded and only that settlement may run.
+ *   captured, no cancellation settlement in play
+ *     → the one standalone Full refund button.
  */
-export function refundControlsFor(payment: PaymentView): {
+export function refundControlsFor(
+  payment: PaymentView,
+  deliveryState: string | null
+): {
   showFullRefund: boolean;
   showReconcile: boolean;
+  showResumeSettlement: boolean;
   settled: { refundedCents: number; retainedCents: number } | null;
 } {
+  const NONE = {
+    showFullRefund: false,
+    showReconcile: false,
+    showResumeSettlement: false,
+    settled: null,
+  };
   const attempt = payment.refundAttempt;
   const settled =
-    payment.paymentState === "refunded" || attempt?.state === "succeeded"
+    payment.paymentState === "refunded" ||
+    attempt?.state === "succeeded" ||
+    attempt?.state === "settled_no_refund_due"
       ? {
           refundedCents: payment.refundedAmountCents ?? attempt?.amountCents ?? 0,
           retainedCents: attempt?.retainedCents ?? 0,
         }
       : null;
-  if (settled) return { showFullRefund: false, showReconcile: false, settled };
+  if (settled) return { ...NONE, settled };
   if (attempt && (attempt.state === "requested" || attempt.state === "pending_unknown")) {
-    return { showFullRefund: false, showReconcile: true, settled: null };
+    return { ...NONE, showReconcile: true };
   }
-  return {
-    showFullRefund: payment.paymentState === "captured",
-    showReconcile: false,
-    settled: null,
-  };
+  const cancellationGoverned =
+    (attempt?.state === "failed" && attempt.reason !== "full_refund") ||
+    (deliveryState === "cancelled" || deliveryState === "could_not_deliver");
+  if (payment.paymentState === "captured" && cancellationGoverned) {
+    return { ...NONE, showResumeSettlement: true };
+  }
+  return { ...NONE, showFullRefund: payment.paymentState === "captured" };
 }
 
 export function OperationsPaymentRecoveryPanel({
@@ -88,6 +106,7 @@ export function OperationsPaymentRecoveryPanel({
   const [releaseReason, setReleaseReason] = React.useState("");
   const [cancelReason, setCancelReason] = React.useState(CANCEL_REASONS[0].value);
   const [cancelNote, setCancelNote] = React.useState("");
+  const [resumeNote, setResumeNote] = React.useState("");
 
   const payment = fulfillment?.payment ?? null;
   const delivery = fulfillment?.delivery ?? null;
@@ -95,7 +114,7 @@ export function OperationsPaymentRecoveryPanel({
 
   const releasable =
     payment.staleProviderHold || payment.paymentState === "authorized";
-  const refund = refundControlsFor(payment);
+  const refund = refundControlsFor(payment, delivery?.fulfillmentState ?? null);
   const cancellable =
     delivery != null &&
     ["scheduled", "assigned", "en_route_to_pickup", "at_pickup", "picked_up", "in_transit", "at_dropoff"].includes(
@@ -225,6 +244,45 @@ export function OperationsPaymentRecoveryPanel({
                 }
               >
                 Reconcile refund
+              </Button>
+            </Cluster>
+          </Stack>
+        ) : null}
+
+        {refund.showResumeSettlement ? (
+          <Stack gap={2}>
+            <Alert tone="warning" title="Cancellation settlement unfinished">
+              This delivery closed under a governed cancellation but its money
+              never settled. Resume runs THAT settlement from the recorded
+              closure evidence — the fee cannot be changed, and no standalone
+              refund exists while a cancellation settlement is owed.
+            </Alert>
+            <Field label="Resume note" required hint="Recorded in the audit trail.">
+              {(a) => (
+                <Input
+                  {...a}
+                  value={resumeNote}
+                  onChange={(e) => setResumeNote(e.target.value)}
+                  maxLength={500}
+                  placeholder="e.g. retrying after the provider outage"
+                />
+              )}
+            </Field>
+            <Cluster gap={2}>
+              <Button
+                disabled={busy || !resumeNote.trim()}
+                onClick={() =>
+                  run(
+                    () =>
+                      resumeCancellationSettlementFromBrowser({
+                        id: request.id,
+                        note: resumeNote.trim(),
+                      }),
+                    "The cancellation settlement resumed and converged."
+                  )
+                }
+              >
+                Resume cancellation settlement
               </Button>
             </Cluster>
           </Stack>

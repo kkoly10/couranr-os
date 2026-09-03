@@ -49,3 +49,8 @@ next-env.d.ts
 # Throwaway analysis scripts. Use the session scratchpad; never commit these.
 .review-scratch/
 e2e/screenshots/smart-intake/dev-server.log
+
+# Disposable PostgreSQL clusters created at the repo root by COURANR_DISPOSABLE_DIR
+/couranr-c2*/
+/couranr-pv2probe/
+/couranr-b3*/

@@ -76,6 +76,37 @@ end
 $evidence$;
 
 drop function if exists public.couranr_cancel_delivery(uuid, integer, uuid, text);
+drop function if exists public.couranr_cancel_delivery_request(uuid, uuid, text);
+
+/* Narrow the request-event command list back ONLY when no cancellation
+   evidence exists — an event row carrying 'cancel_delivery_request' would be
+   orphaned by the narrower CHECK, so refuse and require forward repair. */
+do $evidence$
+declare v_count bigint;
+begin
+  select count(*) into v_count from public.couranr_delivery_request_events
+   where command = 'cancel_delivery_request';
+  if v_count > 0 then
+    raise exception
+      'refusing to narrow couranr_dre_command_chk: % cancel_delivery_request event(s) exist; forward repair required',
+      v_count;
+  end if;
+end
+$evidence$;
+alter table public.couranr_delivery_request_events
+  drop constraint if exists couranr_dre_command_chk;
+alter table public.couranr_delivery_request_events
+  add constraint couranr_dre_command_chk check (command = any (array[
+    'create_delivery_request_draft','calculate_delivery_request_estimate',
+    'create_quote_version','submit_delivery_request','begin_delivery_request_review',
+    'accept_delivery_request_as_quoted','requote_delivery_request',
+    'decline_delivery_request','record_payer_quote_approval',
+    'begin_delivery_preparation','mark_delivery_ready','mark_delivery_not_ready',
+    'mark_delivery_unavailable'
+  ]));
+
+drop function if exists public.couranr_cancel_delivery(uuid, integer, uuid, text, text);
+drop function if exists public.couranr_close_delivery_undeliverable(uuid, integer, uuid, text, text, text, text);
 drop function if exists public.couranr_close_delivery_undeliverable(uuid, integer, uuid, text, text, text);
 drop function if exists public.couranr_close_delivery_undeliverable(uuid, integer, uuid, text, text);
 drop function if exists public.couranr_report_dropoff_exception(uuid, uuid, text, text);

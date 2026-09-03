@@ -22,7 +22,11 @@ const h = vi.hoisted(() => {
     },
   };
   const rpc = vi.fn<any>();
-  const db: { obligation: any; attempt: any } = { obligation: null, attempt: null };
+  const db: { obligation: any; attempt: any; beginResult: any } = {
+    obligation: null,
+    attempt: null,
+    beginResult: null,
+  };
   return { stripe, rpc, db };
 });
 
@@ -45,7 +49,24 @@ vi.mock("@/lib/supabaseAdmin", () => {
   return { supabaseAdmin: { from: (t: string) => chain(t), rpc: h.rpc } };
 });
 
-import { reconcileRefund } from "@/lib/couranr/fulfillment/commands";
+vi.mock("@/lib/couranr/requests/actor", () => ({
+  resolveRequestActor: vi.fn(async () => ({
+    actor: { kind: "operations", userId: "00000000-0000-4000-8000-000000000001" },
+  })),
+  isActorDenied: (r: any) => Boolean(r?.code),
+}));
+
+vi.mock("@/lib/couranr/requests/commands", () => ({
+  REQUEST_VIEW_COLUMNS: "id",
+  getDeliveryRequest: vi.fn(async () => ({
+    ok: true,
+    value: { request: { business_account_id: null } },
+  })),
+  isCommandFailure: (r: any) => r?.ok === false,
+}));
+
+import { reconcileRefund, refundPayment } from "@/lib/couranr/fulfillment/commands";
+import { POST as refundRoutePost } from "@/app/api/couranr/operations/delivery-requests/[id]/refund/route";
 
 const OPS = { kind: "operations", userId: "00000000-0000-4000-8000-000000000001" } as const;
 
@@ -76,6 +97,9 @@ const ATTEMPT = {
 
 function rpcAnswers() {
   h.rpc.mockImplementation(async (fn: string) => {
+    if (fn === "couranr_begin_payment_refund") {
+      return { data: h.db.beginResult ?? { ...ATTEMPT }, error: null };
+    }
     if (fn === "couranr_mark_payment_refund_unknown") {
       return { data: { ...ATTEMPT, attempt_state: "pending_unknown" }, error: null };
     }
@@ -99,6 +123,7 @@ beforeEach(() => {
   h.rpc.mockReset();
   h.db.obligation = { ...OBLIGATION };
   h.db.attempt = { ...ATTEMPT };
+  h.db.beginResult = null;
   rpcAnswers();
 });
 
@@ -236,5 +261,84 @@ describe("reconcileRefund never writes after an unknown read", () => {
 
     expect(h.stripe.refunds.create).toHaveBeenCalledTimes(0);
     expect(r.ok).toBe(false);
+  });
+});
+
+/* ---------------- every write entry point (final closure pass §1) -------- */
+
+describe("refundPayment rides the SAME convergence path", () => {
+  const args2 = {
+    actor: OPS,
+    requestId: OBLIGATION.request_id,
+    businessAccountId: null as string | null,
+    reason: "full_refund" as const,
+  };
+
+  it("an old pending_unknown attempt + a LIST failure makes zero creates", () => {
+    // The exact reviewer scenario: begin replays a stale attempt whose
+    // idempotency key is long expired; the list is the only safe proof and
+    // the list is down — so nothing may be written.
+    h.db.beginResult = { ...ATTEMPT, attempt_state: "pending_unknown" };
+    h.stripe.refunds.list.mockRejectedValue(new Error("ECONNRESET"));
+    return refundPayment(args2).then((r) => {
+      expect(h.stripe.refunds.create).toHaveBeenCalledTimes(0);
+      expect(callsTo("couranr_mark_payment_refund_unknown")).toHaveLength(1);
+      expect(r.ok).toBe(false);
+    });
+  });
+
+  it("an existing provider match converges without a create", async () => {
+    h.db.beginResult = { ...ATTEMPT, attempt_state: "requested" };
+    h.stripe.refunds.list.mockResolvedValue({
+      data: [{ id: "re_ours", amount: 799, status: "succeeded", metadata: { couranrRefundId: ATTEMPT.id } }],
+      has_more: false,
+    });
+    const r = await refundPayment(args2);
+    expect(h.stripe.refunds.create).toHaveBeenCalledTimes(0);
+    expect(callsTo("couranr_complete_payment_refund")).toHaveLength(1);
+    expect(r.ok).toBe(true);
+  });
+
+  it("fully proven absence submits exactly one create under the attempt's key", async () => {
+    h.db.beginResult = { ...ATTEMPT, attempt_state: "requested" };
+    h.stripe.refunds.list.mockResolvedValue({ data: [], has_more: false });
+    h.stripe.refunds.create.mockResolvedValue({ id: "re_new", amount: 799, status: "succeeded" });
+    const r = await refundPayment(args2);
+    expect(h.stripe.refunds.create).toHaveBeenCalledTimes(1);
+    expect(h.stripe.refunds.create.mock.calls[0][1]).toEqual({ idempotencyKey: ATTEMPT.refund_key });
+    expect(r.ok).toBe(true);
+  });
+
+  it("a settled_no_refund_due settlement makes ZERO provider calls of any kind", async () => {
+    h.db.beginResult = {
+      ...ATTEMPT,
+      attempt_state: "settled_no_refund_due",
+      amount_cents: 0,
+      retained_cents: 799,
+      reason: "cancel_after_confirmation_before_arrival",
+    };
+    const r = await refundPayment({ ...args2, reason: "cancel_after_confirmation_before_arrival" });
+    expect(h.stripe.refunds.list).toHaveBeenCalledTimes(0);
+    expect(h.stripe.refunds.create).toHaveBeenCalledTimes(0);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.attemptState).toBe("settled_no_refund_due");
+      expect(r.value.amountCents).toBe(0);
+      expect(r.value.retainedCents).toBe(799);
+    }
+  });
+});
+
+describe("the standalone /refund route rides the same path (real commands)", () => {
+  it("old pending_unknown + list failure through the ROUTE makes zero creates", async () => {
+    h.db.beginResult = { ...ATTEMPT, attempt_state: "pending_unknown" };
+    h.stripe.refunds.list.mockRejectedValue(new Error("ETIMEDOUT"));
+    const req = { json: async () => ({ reason: "full_refund" }) } as any;
+    const res = await refundRoutePost(req, {
+      params: Promise.resolve({ id: "9a8b7c6d-1234-4abc-8def-0123456789ab" }),
+    });
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(h.stripe.refunds.create).toHaveBeenCalledTimes(0);
+    expect(callsTo("couranr_mark_payment_refund_unknown")).toHaveLength(1);
   });
 });

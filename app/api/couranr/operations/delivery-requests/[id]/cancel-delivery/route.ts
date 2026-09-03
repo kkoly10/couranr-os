@@ -20,13 +20,17 @@ const NOTE_MAX = 500;
  *
  * The body carries a REASON from a closed vocabulary and a NOTE — never an
  * amount, never a fee, never a target state. Which money command runs
- * (release, $8-retained refund, $15 failed-pickup refund, $0 Couranr-caused)
- * is derived server-side from the STORED delivery stage and the reason;
+ * (release, $8-retained refund, $15 failed-pickup refund, $0 Couranr-caused,
+ * or the zero-due settlement when the retention consumes the capture) is
+ * derived server-side from the STORED request/payment/delivery facts;
  * every figure lives in `couranr_begin_payment_refund`'s own retention table.
  *
- * Safe to retry: both closure commands replay idempotently and the refund
- * converges on the same persisted attempt under one provider idempotency
- * key, so a second click can neither cancel twice nor refund twice.
+ * Safe to retry AS A SAGA (final closure pass §2): the closure persists the
+ * governed reason, so a retry on an already-terminal delivery RESUMES the
+ * original settlement from that evidence — the reason posted on a retry
+ * (`resume: true` may omit it entirely) is IGNORED there, and provider
+ * convergence is the list-first path, so nothing can cancel twice, refund
+ * twice, or change the fee after closure.
  */
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -42,8 +46,12 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     return routeFailure("invalid_input", "Say why this delivery is being cancelled.");
   }
 
+  /* `resume: true` re-enters a terminal delivery's settlement: the governed
+     reason then comes from the immutable closure evidence, never the body,
+     so the reason may be omitted. A first cancellation still requires one. */
+  const resume = body?.resume === true;
   const reason = typeof body?.reason === "string" ? body.reason : "";
-  if (!isCancellationReason(reason)) {
+  if (!resume && !isCancellationReason(reason)) {
     return routeFailure("invalid_input", "Pick a governed cancellation reason.");
   }
   const note = typeof body?.note === "string" ? body.note.trim() : "";
@@ -66,7 +74,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     requestId: params.id,
     businessAccountId: loaded.value.request.business_account_id ?? null,
     deliveryId,
-    reason,
+    reason: isCancellationReason(reason) ? reason : null,
     note,
   });
   if (isFulfillmentFailure(result)) return failureResponse(result);

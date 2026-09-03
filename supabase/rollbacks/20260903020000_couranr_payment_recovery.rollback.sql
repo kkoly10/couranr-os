@@ -30,6 +30,7 @@ $evidence$;
 
 drop function if exists public.couranr_complete_payment_refund(uuid,text,text,integer);
 drop function if exists public.couranr_mark_payment_refund_unknown(uuid,jsonb);
+drop function if exists public.couranr_record_cancellation_settlement(uuid,uuid,integer,text);
 drop function if exists public.couranr_begin_payment_refund(uuid,uuid,integer,text);
 
 create or replace function public.couranr_begin_payment_release(

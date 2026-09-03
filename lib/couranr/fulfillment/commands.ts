@@ -1163,7 +1163,7 @@ type RefundAttemptRow = {
   retained_cents: number;
   reason: string;
   refund_key: string;
-  attempt_state: "requested" | "pending_unknown" | "succeeded" | "failed";
+  attempt_state: "requested" | "pending_unknown" | "succeeded" | "failed" | "settled_no_refund_due";
 };
 
 export type RefundOutcome = {
@@ -1216,12 +1216,18 @@ async function readObligationForRecovery(
  *      idempotency key, actor — BEFORE Stripe is called. Nobody types an
  *      amount anywhere: the SQL derives it from the captured amount and the
  *      owner-approved cancellation retention.
- *   2. `stripe.refunds.create` under the attempt's own idempotency key, so a
- *      resumed attempt converges on the SAME provider refund.
+ *   2. The ONE provider-convergence path (final closure pass §1): list the
+ *      provider's refunds, converge on a match, and create ONLY when a
+ *      fully-read list proves absence. A resumed old attempt can therefore
+ *      never mint a second provider refund — the proof is the list, never an
+ *      idempotency key that may have expired.
  *   3. `couranr_complete_payment_refund` records what the provider actually
  *      said. An error or timeout is NOT evidence about the money: the attempt
- *      parks at `pending_unknown` and `reconcileRefund` — never a retry loop —
- *      converges it later.
+ *      parks at `pending_unknown` and a later reconcile converges it.
+ *
+ * When the governed retention consumes the whole capture the SQL settles the
+ * attempt as `settled_no_refund_due` — a REAL completed settlement with the
+ * actual retained figure and zero provider calls (final closure pass §3).
  */
 export async function refundPayment(params: {
   actor: RequestActor;
@@ -1261,8 +1267,8 @@ export async function refundPayment(params: {
   });
   if (isFulfillmentFailure(begun)) return begun;
   const attempt = begun.value;
-  if (attempt.attempt_state === "succeeded") {
-    // Idempotent replay: the money already moved exactly once.
+  if (attempt.attempt_state === "succeeded" || attempt.attempt_state === "settled_no_refund_due") {
+    // Idempotent replay: the money already moved (or settled) exactly once.
     return {
       ok: true,
       value: {
@@ -1275,7 +1281,7 @@ export async function refundPayment(params: {
     };
   }
 
-  return submitAndCompleteRefund(op, attempt);
+  return convergeRefundAttemptWithProvider(op, attempt);
 }
 
 /**
@@ -1311,7 +1317,7 @@ export async function reconcileRefund(params: {
     .from("couranr_payment_refunds")
     .select("id,obligation_id,request_id,provider_payment_intent_id,provider_refund_id,amount_cents,retained_cents,reason,refund_key,attempt_state")
     .eq("obligation_id", String(ob.id))
-    .in("attempt_state", ["requested", "pending_unknown", "succeeded"])
+    .in("attempt_state", ["requested", "pending_unknown", "succeeded", "settled_no_refund_due"])
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle()) as { data: RefundAttemptRow | null; error: any };
@@ -1326,7 +1332,7 @@ export async function reconcileRefund(params: {
       message: "There is no refund to reconcile on this delivery.",
     });
   }
-  if (attempt.attempt_state === "succeeded") {
+  if (attempt.attempt_state === "succeeded" || attempt.attempt_state === "settled_no_refund_due") {
     return {
       ok: true,
       value: {
@@ -1339,6 +1345,28 @@ export async function reconcileRefund(params: {
     };
   }
 
+  return convergeRefundAttemptWithProvider(op, attempt);
+}
+
+/**
+ * THE ONE provider-convergence path (final closure pass §1). EVERY write
+ * entry — refundPayment, reconcileRefund, the standalone /refund route and
+ * cancellation recovery — funnels an unsettled attempt through here:
+ *
+ *   list the intent's refunds (paginated, page-capped)
+ *     → match on metadata.couranrRefundId → converge via completion; a
+ *       completion failure RETURNS and can never fall through to a create
+ *     → fully-read list proves absence    → exactly one refunds.create,
+ *       under the attempt's own key
+ *     → read failure / absence unproven   → pending_unknown, ZERO writes
+ *
+ * Expired Stripe idempotency keys are never relied on as duplicate
+ * protection; the list is the proof, the key is only request-level hygiene.
+ */
+async function convergeRefundAttemptWithProvider(
+  op: string,
+  attempt: RefundAttemptRow
+): Promise<FulfillmentResult<RefundOutcome>> {
   /*
    * LIST FIRST — and NEVER write after an unknown read. Stripe idempotency
    * keys expire after 24 hours (documented), so "re-create under the same

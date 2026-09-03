@@ -275,14 +275,23 @@ create table if not exists public.couranr_payment_refunds (
     references public.couranr_delivery_requests (id)
     on update cascade on delete restrict,
   constraint couranr_pr_provider_chk check (provider = 'stripe'),
-  constraint couranr_pr_amount_chk check (amount_cents > 0),
+  -- A provider refund always moves money; the zero-due settlement (final
+  -- closure pass §3: the governed retention consumed the capture) is the ONE
+  -- shape allowed to carry amount 0 — and it must then retain something and
+  -- name no provider refund, because none exists.
+  constraint couranr_pr_amount_chk check (
+    amount_cents > 0
+    or (attempt_state = 'settled_no_refund_due' and amount_cents = 0)),
   constraint couranr_pr_retained_chk check (retained_cents >= 0),
+  constraint couranr_pr_settled_zero_chk check (
+    attempt_state <> 'settled_no_refund_due'
+    or (amount_cents = 0 and retained_cents > 0 and provider_refund_id is null)),
   constraint couranr_pr_reason_chk check (reason in (
     'full_refund','cancel_before_confirmation',
     'cancel_after_confirmation_before_arrival','failed_pickup_after_arrival',
     'couranr_caused_failure')),
   constraint couranr_pr_state_chk check (attempt_state in (
-    'requested','pending_unknown','succeeded','failed')),
+    'requested','pending_unknown','succeeded','failed','settled_no_refund_due')),
   constraint couranr_pr_refund_key_uniq unique (refund_key),
   constraint couranr_pr_succeeded_has_provider_id_chk check (
     attempt_state <> 'succeeded' or provider_refund_id is not null)
@@ -292,10 +301,11 @@ comment on table public.couranr_payment_refunds is
   'One provider refund ATTEMPT, persisted BEFORE Stripe is called (batch 3 §B). Amounts are server-derived from the captured amount and the governed cancellation retention; there is no caller-supplied amount anywhere. pending_unknown means the provider outcome is genuinely unknown and reconciliation must converge on this row under refund_key.';
 
 -- At most one LIVE attempt chain per obligation: a failed attempt may be
--- retried with a fresh row; requested/unknown/succeeded block a second one.
+-- retried with a fresh row; requested/unknown/succeeded — and the settled
+-- zero-due outcome, which is a COMPLETED settlement — block a second one.
 create unique index if not exists couranr_pr_one_live_attempt_uniq
   on public.couranr_payment_refunds (obligation_id)
-  where attempt_state in ('requested','pending_unknown','succeeded');
+  where attempt_state in ('requested','pending_unknown','succeeded','settled_no_refund_due');
 
 create index if not exists couranr_pr_request_idx
   on public.couranr_payment_refunds (request_id);
@@ -363,9 +373,14 @@ begin
      minting a second provider refund. */
   select * into v_existing from public.couranr_payment_refunds
    where obligation_id = p_obligation_id
-     and attempt_state in ('requested','pending_unknown','succeeded')
+     and attempt_state in ('requested','pending_unknown','succeeded','settled_no_refund_due')
    order by created_at desc limit 1;
   if found then
+    /* This includes settled_no_refund_due: once a governed cancellation
+       settlement consumed the capture, EVERY later begin — a retried
+       cancellation and a standalone full_refund alike — converges on that
+       settled row. The server, not the screen, is what makes a second
+       standalone refund impossible after a cancellation settlement. */
     return v_existing;
   end if;
 
@@ -405,9 +420,48 @@ begin
   v_amount := v_ob.captured_amount_cents
               - coalesce(v_ob.refunded_amount_cents, 0)
               - v_retained;
+  if v_amount <= 0 and v_retained > 0 then
+    /* THE RETENTION CONSUMED THE CAPTURE (final closure pass §3). CAN-001's
+       $8/$15 can exceed a small Pricing V2 capture ($7.99): the refund due
+       is max(captured - retention, 0) = 0, Stripe is called ZERO times, and
+       the outcome is a REAL settled record — never a fake $0 provider
+       refund and never a dangling error. The retained figure is the ACTUAL
+       amount kept: never more than what was captured. */
+    insert into public.couranr_payment_refunds(
+      obligation_id, request_id, provider_payment_intent_id,
+      amount_cents, retained_cents, reason, refund_key, attempt_state,
+      actor_user_id
+    ) values (
+      v_ob.id, v_ob.request_id, v_ob.provider_payment_intent_id,
+      0,
+      least(v_retained, v_ob.captured_amount_cents - coalesce(v_ob.refunded_amount_cents, 0)),
+      p_reason,
+      'couranr:refund:' || gen_random_uuid()::text, 'settled_no_refund_due',
+      p_actor_user_id
+    ) returning * into v_refund;
+    update public.couranr_payment_obligations
+       set version = version + 1, updated_at = now()
+     where id = p_obligation_id and version = p_expected_version;
+    insert into public.couranr_payment_events(
+      obligation_id, request_id, provider, provider_event_id, event_type,
+      payment_state_before, payment_state_after, outcome, detail
+    ) values (
+      v_ob.id, v_ob.request_id, 'stripe',
+      'couranr:refund_settled:' || v_refund.id::text,
+      'couranr.refund.settled_no_refund_due',
+      v_ob.payment_state, v_ob.payment_state, 'applied',
+      jsonb_build_object('refundId', v_refund.id, 'reason', p_reason,
+        'retainedCents', v_refund.retained_cents,
+        'governedRetentionCents', v_retained,
+        'capturedCents', v_ob.captured_amount_cents,
+        'actorUserId', p_actor_user_id)
+    );
+    return v_refund;
+  end if;
   if v_amount <= 0 then
-    /* Nothing to give back: the governed retention consumes the capture.
-       No negative refund exists by construction. */
+    /* Defence only: with a $0 retention this is reachable solely through
+       shapes the earlier guards already refuse. No negative refund exists
+       by construction. */
     raise exception 'nothing_to_refund_after_retention' using errcode = 'CR422';
   end if;
 
@@ -575,6 +629,79 @@ begin
   end if;
 end
 $fn$;
+
+/* ---------------- cancellation receivable (final closure pass §4) ------- */
+
+/*
+ * A CONFIRMED request cancelled BEFORE its canonical delivery exists (the
+ * delivery is created only after capture) owes the $8 CAN-001 settlement,
+ * but the money is still only an authorization and PARTIAL CAPTURE IS NOT
+ * BUILT in V0. The provider-safe action is releasing the full hold; the $8
+ * is then a Couranr RECEIVABLE — owed, not collected, and never fabricated
+ * as a provider charge. This records it as the smallest explicit durable
+ * primitive: one immutable payment event under a deterministic id, so a
+ * retried cancellation converges on the SAME receivable instead of minting
+ * a second one. Collection (if ever) is a future owner decision.
+ */
+create or replace function public.couranr_record_cancellation_settlement(
+  p_obligation_id      uuid,
+  p_actor_user_id      uuid,
+  p_retained_due_cents integer,
+  p_reason             text
+)
+returns public.couranr_payment_events
+language plpgsql security invoker set search_path = ''
+as $fn$
+declare
+  v_role text;
+  v_ob   public.couranr_payment_obligations;
+  v_ev   public.couranr_payment_events;
+begin
+  select role into v_role from public.profiles where id = p_actor_user_id;
+  if v_role is distinct from 'admin' then
+    raise exception 'operations_access_required' using errcode = 'CR403';
+  end if;
+  -- CAN-001's closed retention figures; no caller invents an amount.
+  if p_retained_due_cents not in (800, 1500) then
+    raise exception 'settlement_amount_not_governed' using errcode = 'CR422';
+  end if;
+  if p_reason is null or length(btrim(p_reason)) = 0 then
+    raise exception 'reason_required' using errcode = 'CR400';
+  end if;
+
+  select * into v_ob from public.couranr_payment_obligations
+   where id = p_obligation_id for update;
+  if not found then
+    raise exception 'obligation_not_found' using errcode = 'CR404';
+  end if;
+
+  begin
+    insert into public.couranr_payment_events(
+      obligation_id, request_id, provider, provider_event_id, event_type,
+      payment_state_before, payment_state_after, outcome, detail
+    ) values (
+      v_ob.id, v_ob.request_id, 'stripe',
+      'couranr:cancellation_receivable:' || v_ob.id::text,
+      'couranr.cancellation.receivable',
+      v_ob.payment_state, v_ob.payment_state, 'applied',
+      jsonb_build_object('retainedDueCents', p_retained_due_cents,
+        'reason', btrim(p_reason), 'collected', false,
+        'actorUserId', p_actor_user_id)
+    ) returning * into v_ev;
+  exception when unique_violation then
+    -- The receivable already stands; a retry converges on it unchanged.
+    select * into v_ev from public.couranr_payment_events
+     where provider = 'stripe'
+       and provider_event_id = 'couranr:cancellation_receivable:' || v_ob.id::text;
+  end;
+  return v_ev;
+end
+$fn$;
+
+revoke all on function public.couranr_record_cancellation_settlement(uuid,uuid,integer,text)
+  from public, anon, authenticated, service_role;
+grant execute on function public.couranr_record_cancellation_settlement(uuid,uuid,integer,text)
+  to service_role;
 
 revoke all on function public.couranr_begin_payment_refund(uuid,uuid,integer,text)
   from public, anon, authenticated, service_role;

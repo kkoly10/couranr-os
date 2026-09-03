@@ -281,13 +281,17 @@ end $fn$;
  * required physical return is a separate future Pricing V2 route.
  */
 drop function if exists public.couranr_close_delivery_undeliverable(uuid, integer, uuid, text, text);
+drop function if exists public.couranr_close_delivery_undeliverable(uuid, integer, uuid, text, text, text);
 create or replace function public.couranr_close_delivery_undeliverable(
   p_delivery_id        uuid,
   p_expected_version   integer,
   p_actor_user_id      uuid,
   p_reason             text,
   p_stage_note         text default null,
-  p_custody_resolution text default null
+  p_custody_resolution text default null,
+  /* Final closure pass §2: the CLOSED cancellation-reason enum for saga
+     resume — see couranr_cancel_delivery. */
+  p_governed_reason    text default null
 )
 returns public.couranr_deliveries
 language plpgsql security invoker set search_path = ''
@@ -398,6 +402,7 @@ begin
     v_from, 'could_not_deliver',
     jsonb_build_object('reason', btrim(p_reason), 'stageNote', p_stage_note,
                        'assignmentId', v_asg.id,
+                       'governedReason', p_governed_reason,
                        -- Immutable custody evidence: how the goods were
                        -- physically resolved before resources were released.
                        'custodyResolution',
@@ -420,11 +425,17 @@ end $fn$;
  * and its payment records all remain. CAN-001's fee consequences run through
  * the §B refund/release commands, composed in TypeScript.
  */
+drop function if exists public.couranr_cancel_delivery(uuid, integer, uuid, text);
 create or replace function public.couranr_cancel_delivery(
   p_delivery_id      uuid,
   p_expected_version integer,
   p_actor_user_id    uuid,
-  p_reason           text
+  p_reason           text,
+  /* Final closure pass §2: the CLOSED cancellation-reason enum, persisted so
+     a terminal retry can resume the SAME governed money settlement without
+     ever accepting a new browser reason. Free-text p_reason stays the
+     human-readable account. */
+  p_governed_reason  text default null
 )
 returns public.couranr_deliveries
 language plpgsql security invoker set search_path = ''
@@ -498,7 +509,8 @@ begin
   ) values (
     p_delivery_id, p_actor_user_id, 'operations', 'cancel_delivery',
     v_from, 'cancelled',
-    jsonb_build_object('reason', btrim(p_reason), 'assignmentId', v_asg.id)
+    jsonb_build_object('reason', btrim(p_reason), 'assignmentId', v_asg.id,
+                       'governedReason', p_governed_reason)
   );
 
   return v_dlv;
@@ -511,19 +523,104 @@ end $fn$;
  * authenticated AND service_role, so the REVOKE is what creates the boundary
  * — a bare GRANT would be a silent no-op.
  */
+/* ------------------- 5. terminate the REQUEST truthfully ---------------- */
+
+/*
+ * Final closure pass §4: a user-visible cancellation must not leave a
+ * confirmed or pending delivery REQUEST active — the delivery closes, the
+ * money settles, and the request itself must say so. 'cancelled' has been in
+ * the canonical request vocabulary since 20260731045417 with, deliberately,
+ * no writer; this is that writer: Operations-only, reached through the
+ * cancellation recovery composition, never a bare "set state" (the caller
+ * has already run the governed fulfillment closure and money commands).
+ * Terminal states replay idempotently; delivered work is never rewound.
+ */
+alter table public.couranr_delivery_request_events
+  drop constraint if exists couranr_dre_command_chk;
+alter table public.couranr_delivery_request_events
+  add constraint couranr_dre_command_chk check (command = any (array[
+    'create_delivery_request_draft','calculate_delivery_request_estimate',
+    'create_quote_version','submit_delivery_request','begin_delivery_request_review',
+    'accept_delivery_request_as_quoted','requote_delivery_request',
+    'decline_delivery_request','record_payer_quote_approval',
+    'begin_delivery_preparation','mark_delivery_ready','mark_delivery_not_ready',
+    'mark_delivery_unavailable','cancel_delivery_request'
+  ]));
+
+create or replace function public.couranr_cancel_delivery_request(
+  p_request_id    uuid,
+  p_actor_user_id uuid,
+  p_reason        text
+)
+returns public.couranr_delivery_requests
+language plpgsql security invoker set search_path = ''
+as $fn$
+declare
+  v_role text;
+  v_req  public.couranr_delivery_requests;
+  v_from text;
+begin
+  select role into v_role from public.profiles where id = p_actor_user_id;
+  if v_role is distinct from 'admin' then
+    raise exception 'operations_access_required' using errcode = 'CR403';
+  end if;
+  if p_reason is null or length(btrim(p_reason)) = 0 then
+    raise exception 'reason_required' using errcode = 'CR400';
+  end if;
+
+  select * into v_req from public.couranr_delivery_requests
+   where id = p_request_id for update;
+  if not found then
+    raise exception 'request_not_found' using errcode = 'CR404';
+  end if;
+
+  if v_req.request_state = 'cancelled' then
+    return v_req;  -- idempotent replay, no second event
+  end if;
+  if v_req.request_state in ('declined', 'closed') then
+    raise exception 'request_already_terminal' using errcode = 'CR409';
+  end if;
+  v_from := v_req.request_state;
+
+  update public.couranr_delivery_requests
+     set request_state = 'cancelled',
+         version = version + 1,
+         updated_at = now()
+   where id = p_request_id and request_state = v_from
+  returning * into v_req;
+  if not found then
+    raise exception 'version_or_state_conflict' using errcode = 'CR409';
+  end if;
+
+  insert into public.couranr_delivery_request_events(
+    request_id, actor_user_id, actor_type, command, from_state, to_state, metadata
+  ) values (
+    v_req.id, p_actor_user_id, 'operations', 'cancel_delivery_request',
+    v_from, 'cancelled',
+    jsonb_build_object('reason', btrim(p_reason))
+  );
+  return v_req;
+end
+$fn$;
+
+revoke all on function public.couranr_cancel_delivery_request(uuid, uuid, text)
+  from public, anon, authenticated, service_role;
+grant execute on function public.couranr_cancel_delivery_request(uuid, uuid, text)
+  to service_role;
+
 revoke all on function public.couranr_report_dropoff_exception(uuid, uuid, text, text)
   from public, anon, authenticated, service_role;
 grant execute on function public.couranr_report_dropoff_exception(uuid, uuid, text, text)
   to service_role;
 
-revoke all on function public.couranr_close_delivery_undeliverable(uuid, integer, uuid, text, text, text)
+revoke all on function public.couranr_close_delivery_undeliverable(uuid, integer, uuid, text, text, text, text)
   from public, anon, authenticated, service_role;
-grant execute on function public.couranr_close_delivery_undeliverable(uuid, integer, uuid, text, text, text)
+grant execute on function public.couranr_close_delivery_undeliverable(uuid, integer, uuid, text, text, text, text)
   to service_role;
 
-revoke all on function public.couranr_cancel_delivery(uuid, integer, uuid, text)
+revoke all on function public.couranr_cancel_delivery(uuid, integer, uuid, text, text)
   from public, anon, authenticated, service_role;
-grant execute on function public.couranr_cancel_delivery(uuid, integer, uuid, text)
+grant execute on function public.couranr_cancel_delivery(uuid, integer, uuid, text, text)
   to service_role;
 
 commit;

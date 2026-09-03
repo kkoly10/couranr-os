@@ -350,6 +350,7 @@ describe("delivery-request state machine", () => {
     expect([...reachable].sort()).toEqual(
       [
         "awaiting_quote_acceptance",
+        "cancelled",
         "confirmed",
         "declined",
         "draft",
@@ -358,8 +359,10 @@ describe("delivery-request state machine", () => {
       ].sort()
     );
 
-    // Payment and fulfillment states stay unreachable from a review decision.
-    for (const s of ["cancelled", "closed", "awaiting_merchant_confirmation"] as RequestState[]) {
+    // `cancelled` gained its governed writer in the final closure pass
+    // (couranr_cancel_delivery_request, run inside cancellation recovery so
+    // the money settles first). The rest stay unreachable.
+    for (const s of ["closed", "awaiting_merchant_confirmation"] as RequestState[]) {
       expect(reachable.has(s), `${s} became reachable`).toBe(false);
     }
   });

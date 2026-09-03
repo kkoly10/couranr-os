@@ -36,7 +36,9 @@
  *   PR-18  governed cancellation refund retains exactly $8
  *   PR-19  failed pickup retains exactly $15
  *   PR-20  Couranr-caused failure retains $0
- *   PR-21  retention >= captured -> nothing_to_refund (no negative refund)
+ *   PR-21  retention >= captured -> settled_no_refund_due: a REAL settled
+ *          outcome, actual retained = captured, ZERO provider refunds, and
+ *          no later standalone full refund can ever exist (final closure §3)
  *   PR-22  completion amount mismatch is refused, nothing written
  *   PR-23  refund beyond captured is unwritable (23514 bounds CHECK)
  *   PR-24  an uncaptured obligation cannot be refunded               CR409
@@ -46,6 +48,8 @@
  *   PR-27  the refund commands take NO amount parameter (proved from the
  *          catalog) and anon/authenticated hold no EXECUTE on any of them
  *   PR-28  the seeded fixtures leave couranr_foundation_integrity() clean
+ *   PR-29  §4 receivable: $8 owed on confirmed-before-delivery cancellation,
+ *          recorded once, idempotent, governed figures only, Operations only
  */
 import crypto from "node:crypto";
 import { up, psql } from "./up.mjs";
@@ -325,12 +329,48 @@ async function main() {
     await governed("PR-19", "failed_pickup_after_arrival", 1500);
     await governed("PR-20", "couranr_caused_failure", 0);
 
+    /* §3 — THE RETENTION CONSUMES THE CAPTURE. A $7.99 Pricing V2 capture
+       against the $8 cancellation retention: refund due max(7.99-8, 0)=0,
+       Stripe is called zero times (there is no provider id to even record),
+       and the settlement is REAL and durable — retained = the ACTUAL capture,
+       never the nominal $8. */
     const hOb = await seedCaptured(`prh-${crypto.randomUUID().slice(0, 6)}`, { subtotalCents: 799 });
-    eq("PR-21", "retention >= captured -> nothing_to_refund (no negative refund exists)",
-       hOb.amountCents <= 1500
-         ? raises(refundBegin(hOb.obligationId, ops, hOb.version, "failed_pickup_after_arrival")).split("|")[1]
-         : "fixture_amount_too_large",
-       "nothing_to_refund_after_retention");
+    eq("PR-21a", "$7.99 capture + $8 cancellation -> settled_no_refund_due, retained 799, refund 0",
+       one(refundBegin(hOb.obligationId, ops, hOb.version, "cancel_after_confirmation_before_arrival")),
+       "settled_no_refund_due|0|799");
+    eq("PR-21b", "... durable: the settlement row and its audited event both exist, with NO provider refund id",
+       one(`select r.attempt_state || '|' || coalesce(r.provider_refund_id,'-') || '|' ||
+                   (select count(*) from public.couranr_payment_events e
+                     where e.obligation_id='${hOb.obligationId}'
+                       and e.event_type='couranr.refund.settled_no_refund_due')
+              from public.couranr_payment_refunds r
+             where r.obligation_id='${hOb.obligationId}'`),
+       "settled_no_refund_due|-|1");
+    eq("PR-21c", "... the obligation keeps its captured money (retained, not refunded)",
+       one(`select payment_state || '|' || coalesce(refunded_amount_cents,0)
+              from public.couranr_payment_obligations where id='${hOb.obligationId}'`),
+       "captured|0");
+    eq("PR-21d", "... a retried cancellation begin converges on the SAME settled row",
+       one(refundBegin(hOb.obligationId, ops, hOb.version + 1, "cancel_after_confirmation_before_arrival")),
+       "settled_no_refund_due|0|799");
+    eq("PR-21e", "... and a later STANDALONE full_refund can never mint a second refund — it replays the settlement",
+       one(refundBegin(hOb.obligationId, ops, hOb.version + 1, "full_refund")),
+       "settled_no_refund_due|0|799");
+    eq("PR-21f", "... schema-enforced too: a second live attempt row is impossible (23505)",
+       raises(`insert into public.couranr_payment_refunds
+                 (obligation_id, request_id, provider_payment_intent_id, amount_cents,
+                  retained_cents, reason, refund_key, attempt_state, actor_user_id)
+               select obligation_id, request_id, provider_payment_intent_id, 100,
+                      0, 'full_refund', 'couranr:refund:probe-' || gen_random_uuid()::text,
+                      'requested', actor_user_id
+                 from public.couranr_payment_refunds where obligation_id='${hOb.obligationId}'`),
+       "23505|duplicate key value violates unique constraint \"couranr_pr_one_live_attempt_uniq\"");
+
+    /* The same invariant under the $15 failed-pickup fee. */
+    const h2Ob = await seedCaptured(`ph2-${crypto.randomUUID().slice(0, 6)}`, { subtotalCents: 1250 });
+    eq("PR-21g", "a $12.50 capture under the $15 failed-pickup fee settles zero-due with retained 1250",
+       one(refundBegin(h2Ob.obligationId, ops, h2Ob.version, "failed_pickup_after_arrival")),
+       "settled_no_refund_due|0|1250");
 
     const iOb = await seedCaptured(`pri-${crypto.randomUUID().slice(0, 6)}`);
     one(refundBegin(iOb.obligationId, ops, iOb.version, "full_refund"));
@@ -373,6 +413,30 @@ async function main() {
                ('couranr_begin_payment_refund','couranr_mark_payment_refund_unknown',
                 'couranr_complete_payment_refund')`),
        "false");
+
+    /* §4 — the confirmed-before-delivery receivable: released hold + $8 owed,
+       recorded as ONE immutable payment event, converging on retries. */
+    const rOb = await seedAttached(`prr-${crypto.randomUUID().slice(0, 6)}`);
+    eq("PR-29a", "the $8 receivable records once with collected:false",
+       one(`select event_type || '|' || (detail->>'retainedDueCents') || '|' || (detail->>'collected')
+              from public.couranr_record_cancellation_settlement(
+                '${rOb.obligationId}', '${ops}', 800, 'cancellation:merchant_request — e2e')`),
+       "couranr.cancellation.receivable|800|false");
+    eq("PR-29b", "... a retry converges on the SAME event, never a second receivable",
+       one(`select (select (detail->>'reason') from public.couranr_record_cancellation_settlement(
+                      '${rOb.obligationId}', '${ops}', 800, 'retry'))
+                   || '|' ||
+                   (select count(*) from public.couranr_payment_events
+                     where provider_event_id = 'couranr:cancellation_receivable:${rOb.obligationId}')`),
+       "cancellation:merchant_request — e2e|1");
+    eq("PR-29c", "... only CAN-001's own figures are recordable",
+       raises(`select public.couranr_record_cancellation_settlement(
+                 '${rOb.obligationId}', '${ops}', 999, 'x')`).split("|")[1],
+       "settlement_amount_not_governed");
+    eq("PR-29d", "... and a non-Operations actor is refused",
+       raises(`select public.couranr_record_cancellation_settlement(
+                 '${rOb.obligationId}', '${merchant}', 800, 'x')`).split("|")[1],
+       "operations_access_required");
 
     const integrity = await gateAIntegrityIssues(psqlTransport(psql));
     eq("PR-28", "the seeded fixtures leave couranr_foundation_integrity() clean",

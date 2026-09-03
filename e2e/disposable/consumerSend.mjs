@@ -627,6 +627,23 @@ async function main() {
          ${estimateArgs(r8, newSession().id, Number(reqCol(r8, "version")))})`).split("|")[1],
        "request_not_found");
 
+    /* ═════════ the request lifecycle ends truthfully (final closure §4) ═ */
+
+    eq("CS-48a", "couranr_cancel_delivery_request: a pending request terminates as 'cancelled'",
+       one(`select request_state from public.couranr_cancel_delivery_request(
+              '${r8}', '${ops}', 'cancellation:customer_request — e2e')`),
+       "cancelled");
+    eq("CS-48b", "... the event is recorded once and a replay converges without a second one",
+       one(`select (select request_state from public.couranr_cancel_delivery_request(
+                      '${r8}', '${ops}', 'again'))
+                   || '|' ||
+                   (select count(*) from public.couranr_delivery_request_events
+                     where request_id='${r8}' and command='cancel_delivery_request')`),
+       "cancelled|1");
+    eq("CS-48c", "... and a non-Operations actor is refused",
+       raises(`select public.couranr_cancel_delivery_request('${r8}', null, 'x')`).split("|")[1],
+       "operations_access_required");
+
     /* ═════════ honest storage + posture ═════════ */
 
     const s6 = newSession();

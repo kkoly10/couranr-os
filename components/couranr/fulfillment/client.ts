@@ -20,9 +20,11 @@ export type FulfillmentView = {
     refundedAmountCents: number | null;
     refundedAt: string | null;
     staleProviderHold: boolean;
-    /** Newest refund attempt, or null when none exists (review item 6). */
+    /** Newest refund attempt, or null when none exists (review item 6).
+        `settled_no_refund_due` (final closure §3) is a COMPLETED settlement:
+        the governed retention consumed the capture, zero provider refunds. */
     refundAttempt: {
-      state: "requested" | "pending_unknown" | "succeeded" | "failed";
+      state: "requested" | "pending_unknown" | "succeeded" | "failed" | "settled_no_refund_due";
       amountCents: number;
       retainedCents: number;
       reason: string;
@@ -170,5 +172,20 @@ export async function cancelDeliveryFromBrowser(input: {
   return call<{ cancellation: Record<string, unknown> }>(
     `/api/couranr/operations/delivery-requests/${input.id}/cancel-delivery`,
     { method: "POST", body: { reason: input.reason, note: input.note } }
+  );
+}
+
+/**
+ * Resume a terminal delivery's cancellation settlement (final closure §2).
+ * No reason travels: the governed reason lives in the immutable closure
+ * evidence, and nothing posted after closure can change the fee.
+ */
+export async function resumeCancellationSettlementFromBrowser(input: {
+  id: string;
+  note: string;
+}) {
+  return call<{ cancellation: Record<string, unknown> }>(
+    `/api/couranr/operations/delivery-requests/${input.id}/cancel-delivery`,
+    { method: "POST", body: { resume: true, note: input.note } }
   );
 }
