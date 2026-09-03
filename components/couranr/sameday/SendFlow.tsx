@@ -11,6 +11,9 @@ import {
   type QuoteReading,
 } from "@/lib/couranr/sameday/adapters";
 import type { AdapterMode } from "@/lib/couranr/sameday/adapterMode";
+import { WEIGHT_BAND_LABELS } from "@/lib/couranr/shipment/weightBandLabels";
+import { CouranrPaymentElement } from "@/components/couranr/payments/CouranrPaymentElement";
+import { formatCents } from "@/lib/couranr/requests/view";
 
 /**
  * PUB-004's `/send` flow — presentation and state only.
@@ -49,9 +52,48 @@ type AddressState = {
   value: string;
   status: "blank" | "focused" | "typing" | "loading" | "results" | "selected" | "empty" | "error";
   results: AddressSuggestion[];
+  /**
+   * ADDITIVE, live mode: the Google Place ID of the SELECTED suggestion. The
+   * canonical estimate takes place identities, never free text — typing after
+   * a selection clears it, so a stale identity can never describe a new trip.
+   */
+  placeId?: string;
 };
 
 const emptyAddress: AddressState = { value: "", status: "blank", results: [] };
+
+/**
+ * The shipment-safety declaration options — SAME closed vocabulary and SAME
+ * merchant-facing copy as `NewDeliveryFlow`'s select, held in parity by
+ * tests/couranr-sameday-live.test.ts. "unknown" until the sender actively
+ * confirms: an automatic price needs their affirmation, and Couranr reviews
+ * everything else.
+ */
+const RESTRICTED_CLASS_OPTIONS: ReadonlyArray<readonly [string, string]> = [
+  ["alcohol", "alcohol"],
+  ["tobacco", "tobacco"],
+  ["vaping_nicotine", "vape or nicotine products"],
+  ["cannabis_thc", "cannabis or THC products"],
+  ["firearms", "firearms"],
+  ["ammunition", "ammunition"],
+  ["prescription_medication", "prescription medication"],
+  ["controlled_substances", "controlled substances"],
+  ["fuel", "fuel"],
+  ["compressed_gas", "compressed gas"],
+  ["corrosive_hazmat", "corrosive materials"],
+  ["toxic_hazmat", "toxic materials"],
+  ["infectious_material", "infectious material"],
+  ["regulated_dangerous_goods", "regulated dangerous goods"],
+  ["fireworks", "fireworks"],
+  ["explosives", "explosives"],
+  ["illegal_goods", "illegal goods"],
+  ["stolen_goods", "stolen goods"],
+  ["cash", "cash"],
+  ["negotiable_instruments", "checks or other negotiable instruments"],
+  ["biological_specimens", "biological specimens"],
+  ["live_animals", "live animals"],
+  ["people", "people"],
+];
 
 export function SendFlow({ mode, productionStop }: { mode: AdapterMode; productionStop: string }) {
   const router = useRouter();
@@ -59,8 +101,17 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
   const adapters = React.useMemo(
     /* The mode comes from the server. Passing it back in means the client
        resolver agrees with the server's decision instead of re-deriving it
-       from an environment the browser cannot see. */
-    () => getSameDayAdapters(mode === "fixture" ? { nodeEnv: "test" } : { nodeEnv: "production" }),
+       from an environment the browser cannot see. `live` mirrors the same
+       trick: the server armed it (two-key arming in adapterMode.ts), so the
+       client hands the resolver an input that resolves the same answer. */
+    () =>
+      getSameDayAdapters(
+        mode === "fixture"
+          ? { nodeEnv: "test" }
+          : mode === "live"
+            ? { nodeEnv: "development", consumerSendFlag: "live" }
+            : { nodeEnv: "production" },
+      ),
     [mode],
   );
 
@@ -72,6 +123,12 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
   const [availability, setAvailability] = React.useState<AvailabilityVerdict | null>(null);
 
   const [item, setItem] = React.useState("");
+  /* The three structured inputs the canonical quote requires (SUR-001 /
+     PRC-005): an honest weight statement — exact pounds OR a governed band,
+     never both, never an invention — and the shipment-safety declaration. */
+  const [weightMode, setWeightMode] = React.useState("exact");
+  const [weightLb, setWeightLb] = React.useState("");
+  const [restrictedClass, setRestrictedClass] = React.useState("unknown");
   const [intake, setIntake] = React.useState<IntakeReading | { state: "untouched" } | { state: "analyzing" }>({ state: "untouched" });
   const [readiness, setReadiness] = React.useState<"yes" | "no" | null>(null);
   const [reference, setReference] = React.useState("");
@@ -83,14 +140,34 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
   const [acknowledged, setAcknowledged] = React.useState(false);
 
   const [payment, setPayment] = React.useState<
-    "not-available" | "preparing" | "form-shell" | "processing" | "authorized-fixture" | "failed"
-  >(mode === "fixture" ? "form-shell" : "not-available");
+    | "not-available"
+    | "preparing"
+    | "form-shell"
+    | "processing"
+    | "authorized-fixture"
+    | "authorization-required"
+    | "failed"
+  >(mode === "disabled" ? "not-available" : "form-shell");
   const [received, setReceived] = React.useState(false);
+
+  /* Live mode only. The clientSecret and the amount are the SERVER's — the
+     amount is displayed and never sent anywhere; the intent already carries
+     it. The tracking token comes from the request GET, once, when one exists. */
+  const [livePayment, setLivePayment] = React.useState<{
+    clientSecret: string;
+    amountCents: number;
+  } | null>(null);
+  const [liveNote, setLiveNote] = React.useState<string | null>(null);
+  const [trackingToken, setTrackingToken] = React.useState<string | null>(null);
 
   /* An edit that would change a quote marks the existing one STALE rather than
      leaving a number on screen that no longer describes the trip. */
   const invalidateQuote = React.useCallback(() => {
-    setQuote((q) => (q && "state" in q && q.state === "fixture-available" ? { state: "stale" } : q));
+    setQuote((q) =>
+      q && "state" in q && (q.state === "fixture-available" || q.state === "live-available")
+        ? { state: "stale" }
+        : q,
+    );
   }, []);
 
   function chooseIntent(next: Intent) {
@@ -104,7 +181,8 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
     set: React.Dispatch<React.SetStateAction<AddressState>>,
     value: string,
   ) {
-    set((s) => ({ ...s, value, status: value ? "typing" : "blank", results: [] }));
+    /* Typing clears the selected place identity — free text is never one. */
+    set((s) => ({ ...s, value, status: value ? "typing" : "blank", results: [], placeId: undefined }));
     invalidateQuote();
     if (value.trim().length < 2) return;
     set((s) => ({ ...s, status: "loading" }));
@@ -116,7 +194,12 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
     set: React.Dispatch<React.SetStateAction<AddressState>>,
     s: AddressSuggestion,
   ) {
-    set({ value: `${s.label}, ${s.detail}`, status: "selected", results: [] });
+    set({
+      value: s.detail ? `${s.label}, ${s.detail}` : s.label,
+      status: "selected",
+      results: [],
+      placeId: s.id,
+    });
     invalidateQuote();
   }
 
@@ -139,13 +222,59 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
         pickup: pickup.value,
         destination: destination.value,
         timing: timing ?? "asap",
+        /* Live-only structured inputs; fixtures ignore every one of them. The
+           adapter maps the UI's `mobile` to the API/DB key `phone`. */
+        pickupPlaceId: pickup.placeId ?? null,
+        dropoffPlaceId: destination.placeId ?? null,
+        contact: { name: contact.name, mobile: contact.mobile, email: contact.email },
+        shipment: {
+          description: item,
+          weightLb: weightMode === "exact" && weightLb.trim() !== "" ? Number(weightLb) : null,
+          weightBand: weightMode === "exact" ? null : weightMode,
+          restrictedClass,
+        },
       }),
     );
   }
 
+  /* Live mode: the request GET is the only voice on whether a tracking link
+     exists. When it names none, the received screen simply shows none. */
+  async function finishLive() {
+    const view = adapters.readRequest ? await adapters.readRequest() : null;
+    setTrackingToken(view?.trackingToken ?? null);
+    setReceived(true);
+  }
+
   async function submit() {
     setPayment("processing");
+    setLiveNote(null);
     const outcome = await adapters.submitRequest();
+
+    if (mode === "live") {
+      if (outcome.state !== "received") {
+        setLiveNote(outcome.state === "unavailable" ? outcome.note : null);
+        setPayment("failed");
+        return;
+      }
+      const auth = await adapters.authorizePayment();
+      if (auth.state === "authorization-required") {
+        /* The server minted the intent; the one Payment Element confirms it,
+           and only the server's reconcile can call it authorized. */
+        setLivePayment({ clientSecret: auth.clientSecret, amountCents: auth.amountCents });
+        setPayment("authorization-required");
+        return;
+      }
+      if (auth.state === "not-payable") {
+        /* Normal consumer path: NO AUTO-ACCEPT. The request is received and
+           in Couranr review; payment opens after Couranr confirms it. */
+        await finishLive();
+        return;
+      }
+      setLiveNote("note" in auth ? auth.note : null);
+      setPayment("failed");
+      return;
+    }
+
     if (outcome.state !== "received-preview") {
       /* The production path stops HERE. A disabled adapter cannot return
          success, so this branch is what a real visitor reaches. */
@@ -231,10 +360,20 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
           {SEND_COPY.received_heading}
         </h1>
         <p className="cr-mkt-editorial__body cr-type-lead">{SEND_COPY.received_support}</p>
-        {/* NO confirmation number, driver, ETA or tracking token. None exists —
-            no request was created — and inventing one would be a fabricated
-            record on a customer's screen. */}
-        <p className="cr-send-note">Preview only. No delivery was requested.</p>
+        {/* Live mode: the tracking link renders ONLY when the request GET
+            returned a token — the server is the one voice on whether tracking
+            exists, and nothing here invents a reference. In every other mode
+            no request was created, and saying so is the only honest line;
+            inventing a confirmation would be a fabricated record on a
+            customer's screen. */}
+        {mode === "live" && trackingToken ? (
+          <p className="cr-send-note">
+            <a href={`/track/${trackingToken}`}>Track this delivery</a>
+          </p>
+        ) : null}
+        {mode === "live" ? null : (
+          <p className="cr-send-note">Preview only. No delivery was requested.</p>
+        )}
       </section>
     );
   }
@@ -307,6 +446,78 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
               {intake.state === "needs-follow-up" ? intake.question : null}
               {intake.state === "unavailable" ? "Couranr will read this when you submit." : null}
             </p>
+          </div>
+
+          {/* The structured inputs the canonical quote requires (SUR-001):
+              an honest weight statement and the shipment-safety declaration.
+              Band labels come from WEIGHT_BAND_LABELS so the 25 lb boundary
+              can only ever be described one way. */}
+          <div className="cr-send-field">
+            <label className="cr-send-field__label" htmlFor="send-weight">
+              Weight
+            </label>
+            <select
+              id="send-weight"
+              className="cr-input"
+              value={weightMode}
+              onChange={(e) => {
+                setWeightMode(e.target.value);
+                invalidateQuote();
+              }}
+            >
+              <option value="exact">I know the exact weight</option>
+              <option value="0_25_lb">{WEIGHT_BAND_LABELS["0_25_lb"]}</option>
+              <option value="over_25_to_50_lb">{WEIGHT_BAND_LABELS.over_25_to_50_lb}</option>
+              <option value="over_50_lb">{WEIGHT_BAND_LABELS.over_50_lb}</option>
+              <option value="unknown">Not sure yet</option>
+            </select>
+            {weightMode === "exact" ? (
+              <>
+                <label className="cr-send-field__label" htmlFor="send-weight-lb">
+                  Weight (lb)
+                </label>
+                <input
+                  id="send-weight-lb"
+                  className="cr-input"
+                  type="number"
+                  min="0"
+                  step="0.1"
+                  inputMode="decimal"
+                  value={weightLb}
+                  onChange={(e) => {
+                    setWeightLb(e.target.value);
+                    invalidateQuote();
+                  }}
+                />
+              </>
+            ) : null}
+          </div>
+
+          <div className="cr-send-field">
+            <label className="cr-send-field__label" htmlFor="send-restricted">
+              Restricted items
+            </label>
+            <p className="cr-send-field__hint">
+              An automatic price needs your confirmation that none of these are in the shipment.
+              Anything else goes to Couranr review.
+            </p>
+            <select
+              id="send-restricted"
+              className="cr-input"
+              value={restrictedClass}
+              onChange={(e) => {
+                setRestrictedClass(e.target.value);
+                invalidateQuote();
+              }}
+            >
+              <option value="unknown">Not sure yet — Couranr will review</option>
+              <option value="none">None of these — I confirm</option>
+              {RESTRICTED_CLASS_OPTIONS.map(([value, label]) => (
+                <option key={value} value={value}>
+                  Contains: {label}
+                </option>
+              ))}
+            </select>
           </div>
 
           {intent === "pickup" ? (
@@ -421,6 +632,9 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
             {quote?.state === "manual-review" ? quote.note : null}
             {quote?.state === "unavailable" ? quote.note : null}
             {quote?.state === "fixture-available" ? quote.note : null}
+            {/* The live price is the SERVER's number, echoed. Nothing here
+                computed it and nothing here can change it. */}
+            {quote?.state === "live-available" ? `Total: ${formatCents(quote.totalCents)}` : null}
           </p>
 
           <div className="cr-send-field">
@@ -439,6 +653,20 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
                   type={type}
                   value={contact[k]}
                   onChange={(e) => setContact((c) => ({ ...c, [k]: e.target.value }))}
+                  onBlur={() => {
+                    /* Live mode: the FIRST estimate needs contact (it freezes
+                       the draft's contact snapshot), so the price is fetched
+                       once the visitor provides a way to reach them. A quote
+                       already standing is left alone — contact never moves a
+                       price. */
+                    if (
+                      mode === "live" &&
+                      quote?.state !== "live-available" &&
+                      quote?.state !== "calculating"
+                    ) {
+                      void computeQuote();
+                    }
+                  }}
                 />
               </label>
             ))}
@@ -484,17 +712,37 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
 
           {payment === "form-shell" ? (
             <>
-              <p className="cr-send-note">A payment form appears here when Same Day ordering opens.</p>
+              {mode === "live" ? (
+                quote?.state === "live-available" ? (
+                  <p className="cr-send-note">Total: {formatCents(quote.totalCents)}</p>
+                ) : null
+              ) : (
+                <p className="cr-send-note">A payment form appears here when Same Day ordering opens.</p>
+              )}
               <button type="button" className="cr-button cr-button--primary" onClick={() => void submit()}>
                 Request this delivery
               </button>
             </>
           ) : null}
 
+          {payment === "authorization-required" && livePayment ? (
+            /* The ONE Stripe Payment Element. The amount is the server's echo
+               of its stored obligation; authorization is a fact only the
+               server's reconcile may establish, and the element enforces that. */
+            <CouranrPaymentElement
+              clientSecret={livePayment.clientSecret}
+              amountCents={livePayment.amountCents}
+              reconcile={async () =>
+                adapters.reconcilePayment ? adapters.reconcilePayment() : {}
+              }
+              onAuthorized={() => void finishLive()}
+            />
+          ) : null}
+
           {payment === "processing" ? <p className="cr-send-note">Working…</p> : null}
           {payment === "failed" ? (
             <p className="cr-field__error" role="alert">
-              That did not go through. Nothing was charged.
+              {liveNote ?? "That did not go through. Nothing was charged."}
             </p>
           ) : null}
 

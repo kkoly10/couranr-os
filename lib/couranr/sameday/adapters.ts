@@ -12,10 +12,15 @@
  *
  * NOTHING HERE TALKS TO A SERVER. The fixture implementations are pure
  * functions over their inputs; the disabled implementations refuse. There is no
- * network call in this file, by design and not by omission.
+ * network call in this file, by design and not by omission. Since batch 3 §D a
+ * third mode exists — `live`, built in `./liveAdapters.ts`, which is the ONE
+ * place Same Day talks to the consumer API. This file only chooses it, and only
+ * when `resolveAdapterMode` says the environment armed it (two-key arming; see
+ * adapterMode.ts).
  */
 import { BASE_PRICE_CENTS } from "@/lib/couranr/pricing";
 import { resolveAdapterMode, type AdapterEnv, type AdapterMode } from "./adapterMode";
+import { createLiveSameDayAdapters } from "./liveAdapters";
 
 export type AddressSuggestion = { id: string; label: string; detail: string };
 
@@ -31,25 +36,85 @@ export type IntakeReading =
 
 export type QuoteReading =
   | { state: "fixture-available"; totalCents: number; note: string }
+  /* ADDITIVE (batch 3 §D): the live sibling of `fixture-available`. Every
+     number in it is server-derived — the browser sent place identities and a
+     structured shipment statement, never an amount. `expiresAt` is QVL-001's
+     15-minute display hint; the database owns the clock. */
+  | {
+      state: "live-available";
+      totalCents: number;
+      quoteVersionId: string | null;
+      requestId: string;
+      expiresAt: string | null;
+    }
   | { state: "manual-review"; note: string }
   | { state: "unavailable"; note: string };
 
 export type SubmitOutcome =
   | { state: "received-preview" }
+  /* ADDITIVE: the live submit — a real request now exists in Couranr review. */
+  | { state: "received"; requestId: string | null }
   | { state: "unavailable"; note: string };
 
 export type PaymentOutcome =
   | { state: "authorized-fixture" }
+  /* ADDITIVE: live payment never authorizes here. The server minted a payment
+     intent; the browser must confirm it through the one Stripe Payment Element
+     and then the SERVER (reconcile) is the only voice on whether it authorized. */
+  | { state: "authorization-required"; clientSecret: string; amountCents: number }
+  /* ADDITIVE: the request was received but payment is not open — for the
+     consumer funnel that is normal: NO AUTO-ACCEPT, Couranr review opens it. */
+  | { state: "not-payable"; note: string }
   | { state: "not-available"; note: string };
+
+/**
+ * The quote input. The three original fields are what the fixture reads; the
+ * optional fields are ADDITIVE and live-only — fixtures ignore them, and the
+ * live adapter refuses (with an instructive note, no network call) until the
+ * ones the canonical estimate requires are present.
+ */
+export type QuoteInput = {
+  pickup: string;
+  destination: string;
+  timing: string;
+  pickupPlaceId?: string | null;
+  dropoffPlaceId?: string | null;
+  /** UI field names. The adapter maps `mobile` -> the API/DB key `phone`. */
+  contact?: { name?: string; mobile?: string; email?: string };
+  shipment?: {
+    description?: string | null;
+    weightLb?: number | null;
+    weightBand?: string | null;
+    restrictedClass?: string;
+    signatureRequired?: boolean;
+    overnightRequested?: boolean;
+  };
+};
+
+/** What the server said after it re-read the PaymentIntent. Server words only. */
+export type PaymentReconciliation = { outcome?: string; paymentState?: string | null };
+
+/** The guest's own-request projection, verbatim from the consumer request GET. */
+export type ConsumerRequestReading = {
+  state: string;
+  quoteStatus: string;
+  totalCents: number | null;
+  paymentState: string | null;
+  trackingToken?: string;
+};
 
 export type SameDayAdapters = {
   mode: AdapterMode;
   searchAddress(query: string): Promise<AddressSuggestion[]>;
   checkAvailability(pickup: string, destination: string): Promise<AvailabilityVerdict>;
   readIntake(text: string): Promise<IntakeReading>;
-  quote(input: { pickup: string; destination: string; timing: string }): Promise<QuoteReading>;
+  quote(input: QuoteInput): Promise<QuoteReading>;
   submitRequest(): Promise<SubmitOutcome>;
   authorizePayment(): Promise<PaymentOutcome>;
+  /* ADDITIVE, live-only, both OPTIONAL so the fixture and disabled objects
+     stay byte-identical to what shipped. A component must feature-check. */
+  reconcilePayment?(): Promise<PaymentReconciliation>;
+  readRequest?(): Promise<ConsumerRequestReading | null>;
 };
 
 /** The production stop, verbatim from MKT-005. */
@@ -151,5 +216,11 @@ const FIXTURE: Omit<SameDayAdapters, "mode"> = {
 
 export function getSameDayAdapters(env?: AdapterEnv): SameDayAdapters {
   const { mode } = resolveAdapterMode(env);
+  if (mode === "live") {
+    /* A fresh closure per call: the live adapters carry per-flow state (the
+       guest session handle, the last estimate). `SendFlow` memoizes one set
+       per mount, so this is one flow's state, never shared across visitors. */
+    return { mode, ...createLiveSameDayAdapters() };
+  }
   return { mode, ...(mode === "fixture" ? FIXTURE : DISABLED) };
 }
