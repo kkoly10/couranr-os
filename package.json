@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "test": "vitest",
     "test:run": "vitest run",
+    "email:preview": "node scripts/emailPreview.mjs",
     "smoke:smart-intake": "node scripts/smartIntakeSmoke.mjs",
     "check": "npm run lint && npm run typecheck && npm run test:run && npm run build",
     "ci:local": "node scripts/ciLocal.mjs",
