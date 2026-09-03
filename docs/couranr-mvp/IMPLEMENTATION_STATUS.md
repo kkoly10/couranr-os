@@ -11,7 +11,7 @@ ledgers own per-item state; this is their sum.
 The 721-line hand-written version of this file is preserved whole at
 [`autonomous-evidence/status-archive/IMPLEMENTATION_STATUS-2026-08-06.md`](./autonomous-evidence/status-archive/IMPLEMENTATION_STATUS-2026-08-06.md).
 It restated per-row evidence the ledgers already carried, and the restatement is
-what went stale: it counted 39 migrations while 66 were on disk.
+what went stale: it counted 39 migrations while 67 were on disk.
 
 ## Where truth lives
 
@@ -56,11 +56,11 @@ Still rendering `ScreenPlaceholder` (17): `DRV-009` · `DRV-010` · `OPS-001` ·
 | Page routes | 96 |
 | …canonical, under `app/(couranr)` | 47 |
 | …legacy | 49 |
-| API routes | 153 |
-| …canonical, under `app/api/couranr` | 84 |
+| API routes | 154 |
+| …canonical, under `app/api/couranr` | 85 |
 | …legacy | 69 |
-| Forward migrations | 66 |
-| Paired rollbacks | 66 |
+| Forward migrations | 67 |
+| Paired rollbacks | 67 |
 | Canonical screens | 68 |
 | …Core | 64 |
 | …MVP-complete | 4 |
@@ -107,7 +107,6 @@ each is in the ledger row itself — `test_evidence`, `browser_verified` and
 | SHA | covers | rows |
 |---|---|---|
 | `08f59f8d0cc062c36252a7295f86513618187965` | 1 screen | MER-004 |
-| `0b4d4a4c58d3c699d17f5f1348e12511cf444069` | 1 work item | P5-001 |
 | `0d57ba736000e8ecb9d28c87a4e78a683599a316` | 1 work item | P3-002 |
 | `14fa99fbcf8103d33bb7267a8f4729421bccd400` | 1 work item | P6-001 |
 | `1b3a1c90c88a554f1ac1ff1e6a6d06a97d602150` | 3 screens | CUS-006, CUS-008, PUB-006 |
@@ -120,7 +119,8 @@ each is in the ledger row itself — `test_evidence`, `browser_verified` and
 | `807c8ed6316cf420dbffa171f5a65b1692dd6830` | 3 screens | MER-003, MER-016, OPS-007 |
 | `91515ca5ca26e813bcc14b77b2e72dd475202ea8` | 3 work items, 6 screens | P8-001, P8-002, P8-004, CUS-001, CUS-003, DRV-008, MER-012, OPS-005, PUB-007 |
 | `981748b95c0916b15274eb8ef20be1bb1b41f4db` | 1 screen | MER-013 |
-| `b506649d6c008782777e853b244d7019ac269515` | 2 work items, 1 screen | P6-004, P7-005, PUB-004 |
+| `a8ce376cf303e3b62b889dc7831a3e81dd5522ad` | 1 work item, 1 screen | P5-001, PUB-004 |
+| `b506649d6c008782777e853b244d7019ac269515` | 2 work items | P6-004, P7-005 |
 | `c2cac8b9ffeaaf7e9a6a528a9eac5d057a2801f9` | 1 work item | P2-001 |
 | `c90ec4025fad951cc6a26eea208a687cc18c8cef` | 1 work item, 1 screen | P4-002, OPS-003 |
 | `c9e0fe573da29177fa72979911a7e60bf3beb0df` | 2 screens | MER-014, MER-015 |
