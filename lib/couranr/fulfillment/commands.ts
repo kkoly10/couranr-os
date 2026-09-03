@@ -1280,10 +1280,11 @@ export async function refundPayment(params: {
 
 /**
  * Converge an attempt whose provider outcome is unknown (`requested` after a
- * crash, or `pending_unknown` after a timeout). Re-submits under the SAME
- * provider idempotency key, so Stripe returns the ORIGINAL refund if one was
- * created and creates it exactly once if not — a duplicate provider refund is
- * structurally impossible on this path.
+ * crash, or `pending_unknown` after a timeout). Lists the provider's refunds
+ * first and converges on a match; submits under the attempt's own idempotency
+ * key ONLY when a fully-read list proves no refund exists. A provider READ
+ * failure ends the reconcile with zero provider writes — expired idempotency
+ * keys are never relied on as duplicate protection.
  */
 export async function reconcileRefund(params: {
   actor: RequestActor;
@@ -1339,46 +1340,101 @@ export async function reconcileRefund(params: {
   }
 
   /*
-   * LIST FIRST. Stripe idempotency keys expire after 24 hours (documented),
-   * so "re-create under the same key" alone is only convergent inside that
-   * window. Listing the intent's refunds and matching our own
-   * metadata.couranrRefundId converges on the provider's record regardless of
-   * age; only when the provider provably has NO refund do we (re)submit under
-   * the attempt's key — inside the window that replays the original request,
-   * and outside it the list has already established absence.
+   * LIST FIRST — and NEVER write after an unknown read. Stripe idempotency
+   * keys expire after 24 hours (documented), so "re-create under the same
+   * key" alone is only convergent inside that window; on an attempt older
+   * than that, a re-create after a FAILED list could mint a SECOND live
+   * refund. So the rule is absolute:
+   *
+   *   - the list fails or times out  → the outcome stays UNKNOWN. Park the
+   *     attempt at pending_unknown, make ZERO provider write calls, and tell
+   *     Operations to reconcile later.
+   *   - the list succeeds and carries our metadata.couranrRefundId → converge
+   *     on the provider's record. No create — a completion failure here
+   *     RETURNS; it can never fall through to a create.
+   *   - the list succeeds and DEFINITIVELY establishes absence (every page
+   *     read, no match) → submit exactly once under the attempt's own key.
+   *   - the list succeeds but absence is NOT established (has_more after the
+   *     page cap) → same as a failed read: unknown, zero writes.
    */
+  let match: any = null;
+  let absenceEstablished = false;
   try {
-    const listed = await getStripeClient().refunds.list({
-      payment_intent: attempt.provider_payment_intent_id,
-      limit: 100,
-    });
-    const match = (listed?.data ?? []).find(
-      (r: any) => r?.metadata?.couranrRefundId === attempt.id
-    );
-    if (match) {
-      const done = await callRpc<RefundAttemptRow>(op, "couranr_complete_payment_refund", {
-        p_refund_id: attempt.id,
-        p_provider_refund_id: String(match.id ?? ""),
-        p_refund_status: String(match.status ?? ""),
-        p_amount_cents: Number(match.amount ?? 0),
+    // A payment intent carries a handful of refunds at most; the page cap is
+    // defence against a pathological provider answer, not an expected path.
+    const MAX_REFUND_LIST_PAGES = 10;
+    let startingAfter: string | undefined;
+    for (let page = 0; page < MAX_REFUND_LIST_PAGES; page += 1) {
+      const listed = await getStripeClient().refunds.list({
+        payment_intent: attempt.provider_payment_intent_id,
+        limit: 100,
+        ...(startingAfter ? { starting_after: startingAfter } : {}),
       });
-      if (isFulfillmentFailure(done)) return done;
-      const settled = done.value;
-      return {
-        ok: true,
-        value: {
-          refundId: settled.id,
-          attemptState: settled.attempt_state,
-          amountCents: settled.amount_cents,
-          retainedCents: settled.retained_cents,
-          reason: settled.reason,
-        },
-      };
+      const rows = listed?.data ?? [];
+      match = rows.find((r: any) => r?.metadata?.couranrRefundId === attempt.id) ?? null;
+      if (match) break;
+      if (!listed?.has_more) {
+        absenceEstablished = true;
+        break;
+      }
+      const last = rows[rows.length - 1];
+      if (!last?.id) break; // cannot page further — absence NOT established
+      startingAfter = String(last.id);
     }
-  } catch {
-    // The list is an optimization for convergence, not the mechanism of
-    // record; a failed list falls through to the idempotent re-submit.
+  } catch (e: any) {
+    await callRpc(op, "couranr_mark_payment_refund_unknown", {
+      p_refund_id: attempt.id,
+      p_detail: {
+        phase: "reconcile_list",
+        type: e?.type ?? null,
+        code: e?.code ?? null,
+        statusCode: e?.statusCode ?? null,
+      },
+    });
+    return fail({
+      operation: op,
+      code: "internal",
+      detail: { reason: "refund_outcome_unknown", phase: "reconcile_list" },
+      message:
+        "Couranr could not read the refund state from the payment provider, so nothing was submitted. Reconcile again later — no refund was created by this attempt.",
+    });
   }
+
+  if (match) {
+    const done = await callRpc<RefundAttemptRow>(op, "couranr_complete_payment_refund", {
+      p_refund_id: attempt.id,
+      p_provider_refund_id: String(match.id ?? ""),
+      p_refund_status: String(match.status ?? ""),
+      p_amount_cents: Number(match.amount ?? 0),
+    });
+    if (isFulfillmentFailure(done)) return done;
+    const settled = done.value;
+    return {
+      ok: true,
+      value: {
+        refundId: settled.id,
+        attemptState: settled.attempt_state,
+        amountCents: settled.amount_cents,
+        retainedCents: settled.retained_cents,
+        reason: settled.reason,
+      },
+    };
+  }
+
+  if (!absenceEstablished) {
+    await callRpc(op, "couranr_mark_payment_refund_unknown", {
+      p_refund_id: attempt.id,
+      p_detail: { phase: "reconcile_list_incomplete" },
+    });
+    return fail({
+      operation: op,
+      code: "internal",
+      detail: { reason: "refund_outcome_unknown", phase: "reconcile_list_incomplete" },
+      message:
+        "The payment provider's refund list could not be read to the end, so absence is not proven and nothing was submitted. Reconcile again later.",
+    });
+  }
+
   return submitAndCompleteRefund(op, attempt);
 }
 
