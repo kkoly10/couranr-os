@@ -235,7 +235,7 @@ describe("refreshConsumerSendQuote — re-price the SAME request from STORED fac
 
   it("a router that cannot re-verify the stored places is a conflict with zero writes", async () => {
     h.derive.mockRejectedValue(
-      new CanonicalAddressResolutionError("dropoff", "google_places_invalid_response")
+      new CanonicalAddressResolutionError("dropoffAddress", "google_places_invalid_response")
     );
     const r = await refreshConsumerSendQuote({ session: SESSION });
     expect(isConsumerFailure(r)).toBe(true);
