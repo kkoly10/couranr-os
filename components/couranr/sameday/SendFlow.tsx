@@ -163,6 +163,8 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
   /* True when the server says the payment is authorized while Couranr review
      is still pending — the CAP-001 posture the received screen must state. */
   const [authorizedPending, setAuthorizedPending] = React.useState(false);
+  /* True when the server says the request is confirmed (resume path). */
+  const [confirmed, setConfirmed] = React.useState(false);
 
   /* An edit that would change a quote marks the existing one STALE rather than
      leaving a number on screen that no longer describes the trip. */
@@ -297,6 +299,9 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
         return;
       }
       if (view.state === "confirmed") {
+        /* The raw tracking token is shown once by doctrine; a later resume
+           may not get it back. The STATUS is still the truth to show. */
+        setConfirmed(true);
         setTrackingToken(view.trackingToken ?? null);
         setReceived(true);
         return;
@@ -434,7 +439,9 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
         <h1 id="send-h" className="cr-type-statement">
           {SEND_COPY.received_heading}
         </h1>
-        <p className="cr-mkt-editorial__body cr-type-lead">{SEND_COPY.received_support}</p>
+        <p className="cr-mkt-editorial__body cr-type-lead">
+          {mode === "live" && confirmed ? "Couranr confirmed your delivery." : SEND_COPY.received_support}
+        </p>
         {/* CAP-001 truth: authorized is not charged. Shown only when the
             server says the payment is authorized and review is pending. */}
         {mode === "live" && authorizedPending ? (
