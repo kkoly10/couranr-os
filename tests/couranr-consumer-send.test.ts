@@ -6,6 +6,7 @@ import {
   FORBIDDEN_CONSUMER_KEYS,
   GUEST_SESSION_TTL_MINUTES,
   findForbiddenConsumerKey,
+  isConsumerSendBodyFailure,
   validateConsumerSendBody,
 } from "@/lib/couranr/consumer/send";
 
@@ -205,7 +206,7 @@ describe("validateConsumerSendBody", () => {
   it("refuses a body carrying any forbidden field outright", () => {
     const r = validateConsumerSendBody({ ...valid, totalCents: 1 });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.reason).toBe("forbidden_field");
+    if (isConsumerSendBodyFailure(r)) expect(r.reason).toBe("forbidden_field");
   });
 
   it("SUR-001: refuses zero weight and a body that says nothing about weight", () => {

@@ -121,6 +121,16 @@ export type EstimateBodyResult =
   | { ok: false; note: string };
 
 /**
+ * `tsconfig` sets `"strict": false`; without `strictNullChecks` a bare
+ * `if (!r.ok)` does not narrow this union. An explicit predicate does.
+ */
+export function isEstimateBodyFailure(
+  r: EstimateBodyResult
+): r is { ok: false; note: string } {
+  return r.ok === false;
+}
+
+/**
  * Build the estimate request body, or say plainly what is still missing.
  * Refusals here are LOCAL and free — no network call happens until the body
  * can be an honest, complete statement. Contact is required even though the
@@ -388,7 +398,7 @@ export function createLiveSameDayAdapters(
 
     async quote(input: QuoteInput): Promise<QuoteReading> {
       const built = buildEstimateBody(input);
-      if (!built.ok) return { state: "unavailable", note: built.note };
+      if (isEstimateBodyFailure(built)) return { state: "unavailable", note: built.note };
       const r = await guestCall(API.estimate, { method: "POST", body: built.body });
       if (!r) return { state: "unavailable", note: NOTES.serviceDown };
       if (!r.ok) {

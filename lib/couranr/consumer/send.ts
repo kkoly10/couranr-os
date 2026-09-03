@@ -298,9 +298,21 @@ function str(v: unknown): string | null {
   return t === "" ? null : t;
 }
 
-export function validateConsumerSendBody(
-  raw: unknown
-): { ok: true; value: ConsumerSendBody } | { ok: false; reason: string } {
+export type ConsumerSendBodyResult =
+  | { ok: true; value: ConsumerSendBody }
+  | { ok: false; reason: string };
+
+/**
+ * `tsconfig` sets `"strict": false`; without `strictNullChecks` a bare
+ * `if (!r.ok)` does not narrow this union. An explicit predicate does.
+ */
+export function isConsumerSendBodyFailure(
+  r: ConsumerSendBodyResult
+): r is { ok: false; reason: string } {
+  return r.ok === false;
+}
+
+export function validateConsumerSendBody(raw: unknown): ConsumerSendBodyResult {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
     return { ok: false, reason: "not_an_object" };
   }
@@ -464,7 +476,7 @@ export async function estimateConsumerSend(params: {
   const op = "estimateConsumerSend";
 
   const parsed = validateConsumerSendBody(params.body);
-  if (!parsed.ok) {
+  if (isConsumerSendBodyFailure(parsed)) {
     return fail({
       operation: op,
       code: "invalid_input",

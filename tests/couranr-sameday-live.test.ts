@@ -31,6 +31,7 @@ import {
   GUEST_STORAGE_KEY,
   buildEstimateBody,
   consumerContactFromSend,
+  isEstimateBodyFailure,
   createLiveSameDayAdapters,
   isRouteReviewReason,
   quoteReadingFromEstimate,
@@ -346,7 +347,7 @@ describe("buildEstimateBody: honest statement or a local refusal", () => {
   it("refuses locally without both selected place identities", () => {
     const r = buildEstimateBody({ ...GOOD_QUOTE_INPUT, dropoffPlaceId: null });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.note).toContain("suggestions");
+    if (isEstimateBodyFailure(r)) expect(r.note).toContain("suggestions");
   });
 
   it("refuses locally without an honest weight statement (SUR-001)", () => {

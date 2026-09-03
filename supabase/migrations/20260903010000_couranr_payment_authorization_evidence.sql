@@ -61,6 +61,18 @@ alter table public.couranr_payment_obligations
     authorized_at_source is null
     or authorized_at_source in ('provider_event','processing_fallback'));
 
+/* Backfill FROM EVIDENCE ONLY: the historical stamp WAS processing time.
+   MUST run BEFORE the evidence CHECK below — ADD CONSTRAINT validates every
+   existing row at once, so on any database that already holds authorized
+   obligations (production, or the pre-seeded backfill suite) the reverse
+   order fails with "is violated by some row". Caught executed, not read:
+   e2e/disposable/foundationBackfill.mjs. */
+update public.couranr_payment_obligations
+   set authorization_processed_at = authorized_at,
+       authorized_at_source = 'processing_fallback'
+ where authorized_at is not null
+   and (authorization_processed_at is null or authorized_at_source is null);
+
 /* One-directional, like the stamp fix: a row that carries an authorization
    stamp must say where it came from, and processing evidence must exist with
    it. Rows never authorized carry neither. */
@@ -70,13 +82,6 @@ alter table public.couranr_payment_obligations
   add constraint couranr_po_authorization_evidence_chk check (
     (authorized_at is null)
     or (authorized_at_source is not null and authorization_processed_at is not null));
-
-/* Backfill FROM EVIDENCE ONLY: the historical stamp WAS processing time. */
-update public.couranr_payment_obligations
-   set authorization_processed_at = authorized_at,
-       authorized_at_source = 'processing_fallback'
- where authorized_at is not null
-   and (authorization_processed_at is null or authorized_at_source is null);
 
 create or replace function public.couranr_apply_payment_intent_state(
   p_provider_event_id text,p_event_type text,p_payment_intent_id text,
