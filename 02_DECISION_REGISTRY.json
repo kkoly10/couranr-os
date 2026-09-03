@@ -4614,7 +4614,7 @@
     {
       "id": "INT-002",
       "category": "smart intake",
-      "decision": "Consumer Smart Intake on /send is INT-001 applied unchanged to the anonymous guest, who is the TRUSTED ACTOR for their OWN request only. AI proposes item category, quantity, fragility, handling and a weight or restricted-class suggestion from the guest's description; Couranr's deterministic policy and Pricing V2 remain the only authorities; the guest confirms every material fact by an explicit form action (choosing a suggestion or stating the value themselves) and nothing is prefilled silently; the server commits. The guest is told at the START of the item step that AI reads the description. The anonymous surface carries its own abuse controls: one paid call per description revision (identical trimmed words never buy another), 12 paid calls per guest session per rolling hour, ONE global consumer allowance of 300 paid calls per rolling hour, a kill switch (COURANR_CONSUMER_INTAKE must equal 'live'; absent means unavailable with zero provider calls and zero writes), and a 4000-character input cap. The provider payload is the same minimized shape as INT-001 (description, no business category, confirmed non-PII facts) with phone, email and card patterns redacted; recipient contact and addresses never travel. Human review stays exactly where §13 puts it; a model conclusion still cannot move price, state, route or a restricted outcome.",
+      "decision": "Consumer Smart Intake on /send is INT-001 applied unchanged to the anonymous guest, who is the TRUSTED ACTOR for their OWN request only. AI proposes a count, fragility, and a weight or restricted-class suggestion from the guest's description — closed-vocabulary, numeric or boolean facts only, because no free-text model output is ever rendered to a guest; Couranr's deterministic policy and Pricing V2 remain the only authorities; the guest confirms every material fact by an explicit form action (choosing a suggestion or stating the value themselves) and nothing is prefilled silently; the server commits. The guest is told at the START of the item step that AI reads the description. The anonymous surface carries its own abuse controls: one paid call per description revision (identical trimmed words never buy another), 12 paid calls per guest session per rolling hour, ONE global consumer allowance of 300 paid calls per rolling hour, a kill switch (COURANR_CONSUMER_INTAKE must equal 'live'; absent means unavailable with zero provider calls and zero writes), and a 4000-character input cap. The provider payload is the same minimized shape as INT-001 (description, no business category, confirmed non-PII facts) with phone, email and card patterns redacted; recipient contact and addresses never travel. Human review stays exactly where §13 puts it; a model conclusion still cannot move price, state, route or a restricted outcome.",
       "value": {
         "governing_rule": "AI PROPOSES. COURANR VALIDATES. A TRUSTED ACTOR CONFIRMS MATERIAL FACTS. SERVER COMMITS.",
         "trusted_actor": "the guest, for their own request only, by explicit form action; a proposal is never a silent prefill of a material fact",
@@ -4644,7 +4644,16 @@
         "provider": "the merchant provider seam and model allowlist, unchanged (Anthropic, claude-sonnet-5)",
         "difference_from_merchant_intake": "merchants may see a >=85-confidence prefill of an EMPTY field; guests never do — every material suggestion needs an explicit 'Use this'",
         "shipment_policy_version": "couranr-shipment-policy-v0-2026-09-02",
-        "fact_schema_version": "couranr-shipment-facts-v0-2026-09-02"
+        "fact_schema_version": "couranr-shipment-facts-v0-2026-09-02",
+        "guest_visible_fact_keys": [
+          "quantity",
+          "package_count",
+          "weight_lb_exact",
+          "weight_band",
+          "fragile",
+          "restricted_class"
+        ],
+        "never_guest_visible": "the free-string keys (item_category, item_subtype, handling_requirements, and every other short-string key) — stored as substrate evidence, never rendered"
       },
       "status": "decided",
       "decided_by": "owner",

@@ -102,16 +102,14 @@ function defaultStorage(): MinimalStorage | null {
 
 /* -------------------------------------------------------- pure mappings -- */
 
-/** The proposal keys a guest may be shown — mirrors the server allow-list. */
+/** The proposal keys a guest may be shown — mirrors the server allow-list:
+    closed-vocabulary, numeric or boolean facts only, never a free string. */
 export const INTAKE_PROPOSAL_KEYS = [
-  "item_category",
-  "item_subtype",
   "quantity",
   "package_count",
   "weight_lb_exact",
   "weight_band",
   "fragile",
-  "handling_requirements",
   "restricted_class",
 ] as const;
 

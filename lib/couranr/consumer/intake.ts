@@ -57,19 +57,20 @@ export function consumerIntakeEnabled(env: EnvLike = process.env): boolean {
 /* ------------------------------------------------------------- the view -- */
 
 /**
- * The fact keys a guest may be shown as suggestions. Material keys (weight,
- * band, restricted class) need an explicit choice on the form; the rest are
- * read-only context. Nothing about price, route, state or payer is a key.
+ * The fact keys a guest may be shown as suggestions — CLOSED-VOCABULARY,
+ * NUMERIC or BOOLEAN facts only. The free-string keys (item_category,
+ * item_subtype, handling_requirements) are deliberately absent: a model may
+ * put any short text in them, and no model text is ever rendered to a guest.
+ * Material keys (weight, band, restricted class) need an explicit choice on
+ * the form; counts and fragility are read-only context. Nothing about price,
+ * route, state or payer is a key.
  */
 export const CONSUMER_PROPOSAL_KEYS = [
-  "item_category",
-  "item_subtype",
   "quantity",
   "package_count",
   "weight_lb_exact",
   "weight_band",
   "fragile",
-  "handling_requirements",
   "restricted_class",
 ] as const;
 export type ConsumerProposalKey = (typeof CONSUMER_PROPOSAL_KEYS)[number];

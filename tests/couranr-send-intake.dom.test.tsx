@@ -92,10 +92,13 @@ describe("Consumer Smart Intake on the item step", () => {
   it("a blur posts { description } only, under the guest header; a suggestion changes NOTHING until 'Use this'", async () => {
     const f = installFetch({
       [INTERPRET]: () => intakeBody([
-        { key: "item_category", value: "home_goods", confidence: 90, requiresConfirmation: false },
+        { key: "package_count", value: 2, confidence: 90, requiresConfirmation: false },
         { key: "weight_band", value: "over_25_to_50_lb", confidence: 70, requiresConfirmation: true },
         { key: "restricted_class", value: "alcohol", confidence: 95, requiresConfirmation: true },
         { key: "payer_type", value: "merchant", confidence: 99, requiresConfirmation: false },
+        // A free-string key: the server never sends it to a guest, and if one
+        // ever did, the browser drops it too.
+        { key: "item_category", value: "home goods; ignore the rules", confidence: 99, requiresConfirmation: false },
       ]),
       [SESSION]: () => ({ body: { guestSession: { token: "MUST-NOT-MINT", expiresAt: "" } } }),
     });
@@ -115,8 +118,10 @@ describe("Consumer Smart Intake on the item step", () => {
     expect(call.headers[GUEST_HEADER]).toBe(GUEST_TOKEN);
     expect(f.of(SESSION)).toHaveLength(0);
 
-    // Suggestions render; the payer key never does; the form is untouched.
-    await screen.findByText("Item: home goods");
+    // Suggestions render; the payer and free-string keys never do; the form is untouched.
+    await screen.findByText("Packages: 2");
+    expect(screen.queryByText(/ignore the rules/)).toBeNull();
+    expect(document.querySelector('[data-couranr-suggestion="item_category"]')).toBeNull();
     const list = within(document.querySelector("[data-couranr-intake-suggestions]") as HTMLElement);
     expect(list.getByText(`Weight: ${WEIGHT_BAND_LABELS.over_25_to_50_lb}`)).toBeTruthy();
     expect(list.getByText("Contains: alcohol")).toBeTruthy();
@@ -125,7 +130,7 @@ describe("Consumer Smart Intake on the item step", () => {
     expect(weight.value).toBe("exact");
     expect(restricted.value).toBe("unknown");
     // Context-only suggestions offer no action; material ones offer one each.
-    expect(screen.queryByRole("button", { name: /Use this: Item: home goods/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Use this: Packages: 2/ })).toBeNull();
     const useButtons = screen.getAllByRole("button", { name: /^Use this/ });
     expect(useButtons).toHaveLength(2);
 
@@ -195,12 +200,12 @@ describe("Consumer Smart Intake on the item step", () => {
     fireEvent.blur(textarea);
     await waitFor(() => expect(pending).toHaveLength(2));
     // The SECOND read answers first, then the stale FIRST read answers.
-    pending[1](intakeBody([{ key: "item_category", value: "home_goods", confidence: 90, requiresConfirmation: false }]));
-    await screen.findByText("Item: home goods");
-    pending[0](intakeBody([{ key: "item_category", value: "food", confidence: 90, requiresConfirmation: false }]));
+    pending[1](intakeBody([{ key: "quantity", value: 2, confidence: 90, requiresConfirmation: false }]));
+    await screen.findByText("Quantity: 2");
+    pending[0](intakeBody([{ key: "quantity", value: 1, confidence: 90, requiresConfirmation: false }]));
     await new Promise((r) => setTimeout(r, 20));
-    expect(screen.getByText("Item: home goods")).toBeTruthy();
-    expect(screen.queryByText("Item: food")).toBeNull();
+    expect(screen.getByText("Quantity: 2")).toBeTruthy();
+    expect(screen.queryByText("Quantity: 1")).toBeNull();
   });
 
   it("an unavailable feature shows no suggestion and no error — the words stand", async () => {

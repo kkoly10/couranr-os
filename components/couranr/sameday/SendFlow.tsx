@@ -254,10 +254,6 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
     const v = p.value;
     const word = (x: unknown) => String(x).replace(/_/g, " ");
     switch (p.key) {
-      case "item_category":
-        return `Item: ${word(v)}`;
-      case "item_subtype":
-        return `Type: ${word(v)}`;
       case "quantity":
         return `Quantity: ${String(v)}`;
       case "package_count":
@@ -272,8 +268,6 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
         }`;
       case "fragile":
         return v === true ? "Fragile" : "Not fragile";
-      case "handling_requirements":
-        return `Handling: ${word(v)}`;
       case "restricted_class": {
         if (v === "none") return "No restricted items";
         const match = RESTRICTED_CLASS_OPTIONS.find(([value]) => value === v);
