@@ -694,7 +694,7 @@ end
 $fn$;
 
 comment on function public.couranr_submit_consumer_delivery_request is
-  'Submits a guest consumer draft FOR COURANR REVIEW (no auto-accept; payment unlocks only after Operations accepts, per the customer-paid spine). Verifies the session binding inside SQL and refuses CR422 consumer_contact_required when the frozen contact snapshot has neither phone nor email. SECURITY INVOKER, service_role only.';
+  'Submits a guest consumer draft in CAP-001 order: an estimated quote moves to awaiting_quote_acceptance so the payer authorizes BEFORE Couranr review (review_state stays pending; nothing is auto-accepted); a manual_review_required quote has no payable price and moves to pending_couranr_review first. Verifies the session binding inside SQL and refuses CR422 consumer_contact_required when the frozen contact snapshot has neither phone nor email. SECURITY INVOKER, service_role only.';
 
 /* ---------------------------------------------------------------- grants - */
 /* pg_default_acl grants arwdDxtm to anon/authenticated/service_role on every

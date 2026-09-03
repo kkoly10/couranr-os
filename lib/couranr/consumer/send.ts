@@ -584,7 +584,10 @@ export async function estimateConsumerSend(params: {
   } else {
     const loaded = await loadOwnRequest(op, params.session);
     if (isConsumerFailure(loaded)) return loaded;
-    if (loaded.value.request_state !== "draft") {
+    // Mirrors the SQL gate: re-pricing is the consumer's own recovery seam
+    // up to (and including) awaiting payer authorization — never past
+    // authorization, never once Couranr review begins.
+    if (!["draft", "awaiting_quote_acceptance"].includes(String(loaded.value.request_state))) {
       return fail({
         operation: op,
         code: "wrong_state",
@@ -600,6 +603,142 @@ export async function estimateConsumerSend(params: {
       ...sharedArgs,
     });
   }
+  if (isConsumerFailure(result)) return result;
+
+  return { ok: true, value: await estimateFromRow(result.value) };
+}
+
+/**
+ * Re-price the session's OWN request from its STORED canonical facts (final
+ * closure pass §5). A resumed page has lost the original form inputs, so a
+ * QVL-expired quote cannot be honestly refreshed by re-posting local state —
+ * this command rebuilds the estimate entirely from what the request already
+ * carries: the stored canonical address snapshots (their Google place
+ * identities), the stored weight statement, declaration and description.
+ * Nothing is fabricated, no second request is minted, and the same SQL gate
+ * applies: draft or awaiting_quote_acceptance only.
+ */
+export async function refreshConsumerSendQuote(params: {
+  session: GuestSession;
+}): Promise<ConsumerResult<ConsumerEstimate>> {
+  const op = "refreshConsumerSendQuote";
+  if (!params.session.requestId) {
+    return fail({ operation: op, code: "not_found", detail: { reason: "session has no request" } });
+  }
+  const { data: row, error } = (await supabaseAdmin
+    .from("couranr_delivery_requests")
+    .select(
+      OWN_REQUEST_COLUMNS +
+        ",pickup_address,dropoff_address,weight_lb,weight_band,restricted_class," +
+        "signature_required,additional_stops,normalized_request_payload"
+    )
+    .eq("id", params.session.requestId)
+    .eq("requester_kind", "consumer")
+    .eq("idempotency_scope", `consumer:${params.session.id}`)
+    .maybeSingle()) as { data: any; error: any };
+  if (error) {
+    return fail({ operation: op, code: "internal", detail: { message: error.message } });
+  }
+  if (!row) {
+    return fail({ operation: op, code: "not_found", detail: { reason: "own request missing" } });
+  }
+  if (!["draft", "awaiting_quote_acceptance"].includes(String(row.request_state))) {
+    return fail({
+      operation: op,
+      code: "wrong_state",
+      detail: { from: row.request_state },
+      message: "This delivery has already been submitted and can no longer be re-priced.",
+    });
+  }
+
+  const pickupPlaceId = row.pickup_address?.googlePlaceId;
+  const dropoffPlaceId = row.dropoff_address?.googlePlaceId;
+  if (typeof pickupPlaceId !== "string" || !pickupPlaceId || typeof dropoffPlaceId !== "string" || !dropoffPlaceId) {
+    // Missing authoritative inputs are a refusal, never an invention.
+    return fail({
+      operation: op,
+      code: "conflict",
+      detail: { reason: "stored_route_facts_missing" },
+      message: "This request's stored addresses cannot be re-priced automatically. Start a fresh estimate.",
+    });
+  }
+
+  const payload = row.normalized_request_payload ?? {};
+  const description =
+    typeof payload.consumerDescription === "string" ? payload.consumerDescription : null;
+  const overnightRequested = payload.overnightRequested === true;
+  const weightLb = row.weight_lb === null || row.weight_lb === undefined ? null : Number(row.weight_lb);
+  const weightBand = isWeightBand(row.weight_band) ? row.weight_band : null;
+  const restrictedClass = String(row.restricted_class ?? "unknown");
+  const signatureRequired = Boolean(row.signature_required);
+  const additionalStops = Number(row.additional_stops ?? 0);
+
+  let routed: Awaited<ReturnType<typeof deriveCanonicalRouteAndQuote>>;
+  try {
+    routed = await deriveCanonicalRouteAndQuote({
+      pickupAddress: row.pickup_address,
+      dropoffAddress: row.dropoff_address,
+      weightLb,
+      weightBand,
+      additionalStops,
+      serviceLevel: "standard",
+      signatureRequired,
+      overnightRequested,
+      timingIntent: "asap",
+      requestedPickupLocal: null,
+    });
+  } catch (refreshError) {
+    if (isCanonicalAddressResolutionError(refreshError)) {
+      return fail({
+        operation: op,
+        code: "conflict",
+        detail: { field: refreshError.field, reason: refreshError.reason },
+        message: "Couranr could not re-verify this request's stored addresses.",
+      });
+    }
+    return fail({ operation: op, code: "internal", detail: refreshError });
+  }
+
+  // The SAME safety parity as a fresh estimate: the stored description runs
+  // the deterministic scanner into the policy engine, escalation-only.
+  const textSignals = scanRestrictedSignals(description ?? "");
+  const policy = evaluateShipmentPolicy(
+    factsFromDraft({
+      weightLb,
+      weightBand,
+      restrictedClass,
+      serviceLevel: "standard",
+      timingIntent: "asap",
+      requestedPickupLocal: null,
+    } as Parameters<typeof factsFromDraft>[0]),
+    { textSignals }
+  );
+  const quote: QuoteResult = applyShipmentPolicyToQuote(routed.quote, policy);
+
+  const result = await callRpc<Record<string, any>>(op, RPC.estimate, {
+    p_request_id: params.session.requestId,
+    p_guest_session_id: params.session.id,
+    p_expected_version: Number(row.version),
+    // Shipment facts are already the stored truth; only the quote refreshes.
+    p_update_shipment: false,
+    p_shipment_description: description,
+    p_recipient_name: null as string | null,
+    p_recipient_phone: null as string | null,
+    p_recipient_email: null as string | null,
+    p_weight_lb: weightLb,
+    p_weight_band: weightBand,
+    p_restricted_class: restrictedClass,
+    p_additional_stops: additionalStops,
+    p_service_level: "standard",
+    p_signature_required: signatureRequired,
+    p_proof_method: "photo_or_pin",
+    p_pickup_address: routed.pickupAddress,
+    p_dropoff_address: routed.dropoffAddress,
+    p_overnight_requested: overnightRequested,
+    ...routeArgs(routed.route),
+    ...timingArgs(routed.timing),
+    ...quoteArgs(quote),
+  });
   if (isConsumerFailure(result)) return result;
 
   return { ok: true, value: await estimateFromRow(result.value) };

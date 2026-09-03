@@ -52,6 +52,7 @@ const API = {
   request: "/api/couranr/consumer/request",
   pay: "/api/couranr/consumer/pay",
   reconcile: "/api/couranr/consumer/reconcile-payment",
+  refresh: "/api/couranr/consumer/refresh-quote",
 } as const;
 
 /** The two review reasons that are about the TRIP rather than the shipment. */
@@ -471,6 +472,30 @@ export function createLiveSameDayAdapters(
         clientSecret: p.clientSecret,
         amountCents: p.amountCents,
       };
+    },
+
+    async refreshQuote(): Promise<QuoteReading> {
+      /* No body AT ALL: the server re-prices from the request's stored
+         canonical facts. Nothing local survives a reload, and nothing local
+         is authoritative anyway. */
+      const r = await guestCall(API.refresh, { method: "POST" });
+      if (!r) return { state: "unavailable", note: NOTES.serviceDown };
+      if (!r.ok) {
+        return { state: "unavailable", note: noteFromFailure(r.body, NOTES.cannotPrice) };
+      }
+      const est = (r.body as { estimate?: EstimateLike } | null)?.estimate;
+      if (!est || typeof est !== "object") {
+        return { state: "unavailable", note: NOTES.cannotPrice };
+      }
+      const reading = quoteReadingFromEstimate(est);
+      if (reading.state === "live-available") {
+        lastEstimate = {
+          requestId: reading.requestId,
+          quoteStatus: "estimated",
+          reviewReasons: [],
+        };
+      }
+      return reading;
     },
 
     async reconcilePayment(): Promise<PaymentReconciliation> {

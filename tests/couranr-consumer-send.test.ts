@@ -46,12 +46,13 @@ const stripped = (src: string) =>
 /* ------------------------------------------------- the route inventory --- */
 
 describe("consumer route inventory", () => {
-  it("holds exactly the seven contracted routes", () => {
+  it("holds exactly the eight contracted routes", () => {
     expect(ROUTE_FILES.map(rel)).toEqual([
       "app/api/couranr/consumer/estimate/route.ts",
       "app/api/couranr/consumer/pay/route.ts",
       "app/api/couranr/consumer/places/route.ts",
       "app/api/couranr/consumer/reconcile-payment/route.ts",
+      "app/api/couranr/consumer/refresh-quote/route.ts",
       "app/api/couranr/consumer/request/route.ts",
       "app/api/couranr/consumer/session/route.ts",
       "app/api/couranr/consumer/submit/route.ts",

@@ -165,6 +165,9 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
   const [authorizedPending, setAuthorizedPending] = React.useState(false);
   /* True when the server says the request is confirmed (resume path). */
   const [confirmed, setConfirmed] = React.useState(false);
+  /* Final closure §5: a resumed request is ALREADY SUBMITTED — the payment
+     button must go straight to /pay and never POST /submit again. */
+  const [resumePay, setResumePay] = React.useState(false);
 
   /* An edit that would change a quote marks the existing one STALE rather than
      leaving a number on screen that no longer describes the trip. */
@@ -221,10 +224,9 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
     invalidateQuote();
   }
 
-  async function computeQuote() {
+  async function computeQuote(): Promise<QuoteReading> {
     setQuote({ state: "calculating" });
-    setQuote(
-      await adapters.quote({
+    const reading = await adapters.quote({
         pickup: pickup.value,
         destination: destination.value,
         timing: timing ?? "asap",
@@ -239,8 +241,9 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
           weightBand: weightMode === "exact" ? null : weightMode,
           restrictedClass,
         },
-      }),
-    );
+      });
+    setQuote(reading);
+    return reading;
   }
 
   /* Live mode: the request GET is the only voice on whether a tracking link
@@ -273,7 +276,9 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
       const view = adapters.readRequest ? await adapters.readRequest() : null;
       if (cancelled || !view) return;
       if (view.state === "awaiting_quote_acceptance" || view.state === "quote_revision_required") {
-        /* Awaiting the payer: straight to payment, with the server's number. */
+        /* Awaiting the payer: straight to payment, with the server's number.
+           The request is already submitted, so the CTA continues payment. */
+        setResumePay(true);
         setIntent((v) => v ?? "send");
         setPhase("payment");
         if (typeof view.totalCents === "number") {
@@ -316,6 +321,54 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /* QVL-001 recovery (final closure §5): the price aged out. A resumed page
+     has NO form state, so re-posting local inputs would fabricate an
+     estimate — the server re-prices the SAME bound request from its STORED
+     canonical facts instead. Quote N+1 comes back; the visitor confirms the
+     fresh total and pays THAT, never the stale number. */
+  async function refreshExpiredQuote() {
+    let fresh: QuoteReading;
+    if (adapters.refreshQuote) {
+      setQuote({ state: "calculating" });
+      fresh = await adapters.refreshQuote();
+      setQuote(fresh);
+    } else {
+      fresh = await computeQuote();
+    }
+    if (fresh.state === "live-available" || fresh.state === "fixture-available") {
+      setLiveNote("The price was refreshed — please confirm the new total.");
+      setPayment("form-shell");
+      return;
+    }
+    /* The stored facts could not be re-priced, or the request moved on. Show
+       the server's reason — never a "refreshed" total that does not exist. */
+    setLiveNote("note" in fresh ? fresh.note : "Couranr could not refresh the price right now.");
+    setPayment("failed");
+  }
+
+  /* Final closure §5: the RESUMED payment action. The request already exists
+     and was already submitted — this calls /pay directly and NEVER /submit. */
+  async function continuePayment() {
+    setPayment("processing");
+    setLiveNote(null);
+    const auth = await adapters.authorizePayment();
+    if (auth.state === "authorization-required") {
+      setLivePayment({ clientSecret: auth.clientSecret, amountCents: auth.amountCents });
+      setPayment("authorization-required");
+      return;
+    }
+    if (auth.state === "quote-expired") {
+      await refreshExpiredQuote();
+      return;
+    }
+    if (auth.state === "not-payable") {
+      await finishLive();
+      return;
+    }
+    setLiveNote("note" in auth ? auth.note : null);
+    setPayment("failed");
+  }
+
   async function submit() {
     setPayment("processing");
     setLiveNote(null);
@@ -336,12 +389,7 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
         return;
       }
       if (auth.state === "quote-expired") {
-        /* QVL-001: the price aged out before authorization. Re-estimating
-           mints Quote N+1; the visitor confirms the fresh total and pays
-           that — never the stale number. */
-        await computeQuote();
-        setLiveNote("The price was refreshed — please confirm the new total.");
-        setPayment("form-shell");
+        await refreshExpiredQuote();
         return;
       }
       if (auth.state === "not-payable") {
@@ -815,8 +863,20 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
               ) : (
                 <p className="cr-send-note">A payment form appears here when Same Day ordering opens.</p>
               )}
-              <button type="button" className="cr-button cr-button--primary" onClick={() => void submit()}>
-                Request this delivery
+              {/* The resume/refresh note: "Couranr updated the price" or
+                  "The price was refreshed" — the server's reason the total
+                  on screen may differ from the one the visitor last saw. */}
+              {mode === "live" && liveNote ? (
+                <p className="cr-send-note" role="status">
+                  {liveNote}
+                </p>
+              ) : null}
+              <button
+                type="button"
+                className="cr-button cr-button--primary"
+                onClick={() => void (resumePay ? continuePayment() : submit())}
+              >
+                {resumePay ? "Continue to payment" : "Request this delivery"}
               </button>
             </>
           ) : null}

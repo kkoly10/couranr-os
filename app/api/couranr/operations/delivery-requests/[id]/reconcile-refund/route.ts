@@ -13,9 +13,10 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
  *
  * The ONLY way out of `pending_unknown` (and a `requested` attempt orphaned
  * by a crash). It never mints a new attempt: the provider is asked what
- * actually happened — list by our own metadata first, then a re-submit under
- * the SAME idempotency key — so a duplicate provider refund is structurally
- * impossible on this path.
+ * actually happened — the intent's refunds are listed and matched on our own
+ * metadata; only a fully-read list that proves absence permits a create, and
+ * a read failure leaves the attempt unknown with ZERO writes — so a duplicate
+ * provider refund is structurally impossible on this path.
  *
  * Takes no amount, no reason and no provider identifier.
  */

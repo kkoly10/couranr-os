@@ -21,8 +21,10 @@
 --      merchant, consumer or operator can type a refund figure. A timeout
 --      after submitting to the provider parks the attempt at
 --      'pending_unknown' — UNKNOWN, not failed — and reconciliation converges
---      onto the SAME attempt row under the same provider idempotency key, so
---      a retry can never issue a second provider refund.
+--      onto the SAME attempt row LIST-FIRST: the provider's refunds are read,
+--      a match completes the row, and only a fully-read list that proves
+--      absence permits a create. A read failure leaves the row unknown with
+--      zero writes, so a retry can never issue a second provider refund.
 --
 -- ADDITIVE: one table, two obligation columns, two CHECKs, four commands,
 -- two in-place function replacements (same signatures). No historical row
@@ -258,9 +260,10 @@ create table if not exists public.couranr_payment_refunds (
   amount_cents                integer not null,
   retained_cents              integer not null default 0,
   reason                      text not null,
-  -- The provider idempotency key. Derived from this row's id, so a resumed
-  -- attempt re-submits under the SAME key and Stripe returns the original
-  -- refund instead of minting a second one.
+  -- The provider idempotency key, derived from this row's id. Request-level
+  -- hygiene only: provider keys expire, so duplicate protection is the app's
+  -- list-first convergence (a provider match, or a fully-read list proving
+  -- absence, before any create) — never this key.
   refund_key                  text not null,
   attempt_state               text not null default 'requested',
   actor_user_id               uuid not null,

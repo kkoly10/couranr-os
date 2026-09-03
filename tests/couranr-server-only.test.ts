@@ -249,6 +249,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/consumer/pay/route.ts",
       "app/api/couranr/consumer/places/route.ts",
       "app/api/couranr/consumer/reconcile-payment/route.ts",
+      "app/api/couranr/consumer/refresh-quote/route.ts",
       "app/api/couranr/consumer/request/route.ts",
       "app/api/couranr/consumer/session/route.ts",
       "app/api/couranr/consumer/submit/route.ts",
@@ -378,6 +379,10 @@ describe("canonical server routes do not import the browser client", () => {
     ],
     [
       "app/api/couranr/consumer/reconcile-payment/route.ts",
+      { shape: /redeemGuestSessionToken\(/, redeem: /redeemGuestSessionToken\(/ },
+    ],
+    [
+      "app/api/couranr/consumer/refresh-quote/route.ts",
       { shape: /redeemGuestSessionToken\(/, redeem: /redeemGuestSessionToken\(/ },
     ],
     [

@@ -22,7 +22,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
  * There is still NO amount parameter anywhere on this path —
  * `couranr_begin_payment_refund` derives the figure server-side. Safe to
  * retry: the attempt row is persisted before Stripe is called and a replay
- * converges on it under the same provider idempotency key.
+ * converges on it LIST-FIRST — a provider match completes the row, and only
+ * a fully-read list proving absence permits a create.
  */
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;

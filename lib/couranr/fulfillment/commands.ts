@@ -1484,9 +1484,10 @@ async function submitAndCompleteRefund(
     /*
      * AN ERROR IS NOT EVIDENCE ABOUT THE MONEY — the capture rule, verbatim.
      * The request may have reached Stripe; a refund may exist. Park the
-     * attempt at pending_unknown and let reconcileRefund converge under the
-     * same idempotency key. Never mark failed from an HTTP error, never
-     * retry in a loop from here.
+     * attempt at pending_unknown and let reconcileRefund converge list-first
+     * (a provider match, or a fully-read list proving absence, before any
+     * create). Never mark failed from an HTTP error, never retry in a loop
+     * from here.
      */
     await callRpc(op, "couranr_mark_payment_refund_unknown", {
       p_refund_id: attempt.id,

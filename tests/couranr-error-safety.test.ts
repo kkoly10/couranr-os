@@ -160,6 +160,7 @@ describe("canonical routes cannot leak a database detail", () => {
       "app/api/couranr/consumer/pay/route.ts",
       "app/api/couranr/consumer/places/route.ts",
       "app/api/couranr/consumer/reconcile-payment/route.ts",
+      "app/api/couranr/consumer/refresh-quote/route.ts",
       "app/api/couranr/consumer/request/route.ts",
       "app/api/couranr/consumer/session/route.ts",
       "app/api/couranr/consumer/submit/route.ts",

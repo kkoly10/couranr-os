@@ -119,6 +119,11 @@ export type SameDayAdapters = {
      stay byte-identical to what shipped. A component must feature-check. */
   reconcilePayment?(): Promise<PaymentReconciliation>;
   readRequest?(): Promise<ConsumerRequestReading | null>;
+  /* ADDITIVE, live-only (final closure §5): re-price the session's OWN bound
+     request from its STORED canonical facts — the resume path's honest answer
+     to a QVL-expired quote, since a reloaded page has no form state to
+     re-post and must never mint a second request. */
+  refreshQuote?(): Promise<QuoteReading>;
 };
 
 /** The production stop, verbatim from MKT-005. */
