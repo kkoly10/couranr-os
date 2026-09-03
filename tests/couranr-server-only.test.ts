@@ -153,6 +153,10 @@ describe("server-only modules are unreachable from client code", () => {
       "lib/couranr/intake/commands.ts",
       "lib/couranr/intake/interpret.ts",
       "lib/couranr/intake/provider.ts",
+      // Pure redaction/tag-neutralization, no secrets — but it shapes exactly
+      // what a provider is shown, and a browser bundle must never carry the
+      // patterns a hostile merchant could study to evade.
+      "lib/couranr/intake/sanitize.ts",
       "lib/couranr/intake/sync.ts",
       // The ONLY test seam: a process-wide "which provider answers merchants"
       // slot. A bundle must never carry it.

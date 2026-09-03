@@ -107,7 +107,7 @@ export function selectClarification(
       factKey: "weight_band",
       priority: 3,
       question:
-        "Roughly how heavy is the full shipment — under 25 lb, 25–50 lb, or over 50 lb?",
+        "Roughly how heavy is the full shipment — 25 lb or less, more than 25 lb up to 50 lb, or over 50 lb?",
       reason: "weight_unresolved",
     });
   }

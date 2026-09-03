@@ -39,7 +39,9 @@ import {
   minimizeConfirmedFactsForProvider,
   isValidationFailure,
   validateProviderOutput,
+  verifySourceEvidence,
 } from "./interpret";
+import { sanitizeDescriptionForProvider } from "./sanitize";
 import { planIntakeFactSync, type IntakeFormStatement } from "./sync";
 
 assertServerOnly("lib/couranr/intake/commands.ts");
@@ -503,6 +505,15 @@ export async function runInterpretation(params: {
 
   const businessCategory = await resolveProviderBusinessCategory(params.businessAccountId);
 
+  // §3 — the RAW description stays in the database untouched; what EVERY
+  // provider (fake included) is shown is the sanitized text, with obvious
+  // email/phone/card patterns replaced by fixed redaction tokens. The
+  // Anthropic adapter sanitizes again on its own (idempotent), belt and
+  // braces. §5 compares evidence against this same string.
+  const providerVisibleText = sanitizeDescriptionForProvider(
+    String(currentRevision.raw_description ?? "")
+  ).sanitized;
+
   const startedAt = Date.now();
   let outcome;
   try {
@@ -510,7 +521,7 @@ export async function runInterpretation(params: {
       {
         promptVersion: PROMPT_VERSION,
         factSchemaVersion: FACT_SCHEMA_VERSION,
-        shipmentDescription: currentRevision.raw_description,
+        shipmentDescription: providerVisibleText,
         businessCategory,
         confirmedFacts: minimizeConfirmedFactsForProvider(confirmed),
       },
@@ -535,7 +546,13 @@ export async function runInterpretation(params: {
     p_output_tokens: outcome.usage?.outputTokens ?? null,
   };
 
-  const validated = validateProviderOutput(outcome.rawJson);
+  // §5 — immediately after validation, drop any sourceEvidence that does not
+  // occur verbatim in the text the provider was shown. The proposal survives;
+  // only the false "this is a quote" claim is nulled.
+  const validated = verifySourceEvidence(
+    validateProviderOutput(outcome.rawJson),
+    providerVisibleText
+  );
   if (isValidationFailure(validated)) {
     const done = await complete(validated.reason, { p_latency_ms: latency, ...audit });
     if (isIntakeFailure(done)) return done;

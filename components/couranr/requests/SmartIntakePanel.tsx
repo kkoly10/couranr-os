@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Alert, Button, Cluster, Stack } from "@/components/couranr/primitives";
 import { Field, Textarea } from "@/components/couranr/forms";
+import { WEIGHT_BAND_LABELS } from "@/lib/couranr/shipment/weightBandLabels";
 import {
   confirmIntakeFactFromBrowser,
   describeIntake,
@@ -58,9 +59,7 @@ const FACT_LABELS: Record<string, string> = {
 };
 
 const BAND_LABELS: Record<string, string> = {
-  "0_25_lb": "Under 25 lb",
-  over_25_to_50_lb: "25–50 lb",
-  over_50_lb: "Over 50 lb",
+  ...WEIGHT_BAND_LABELS,
   unknown: "Not sure",
 };
 
@@ -220,7 +219,10 @@ export function SmartIntakePanel(props: {
     <Stack gap={3}>
       <Field
         label="What are you delivering?"
-        hint='For example: "12 boxed flower arrangements, about 20 lb total, keep upright."'
+        hint={
+          'For example: "12 boxed flower arrangements, about 20 lb total, keep upright." ' +
+          "Describe the items only — please don't include customer contact or payment details."
+        }
       >
         {(p) => (
           <Textarea

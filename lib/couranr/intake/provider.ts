@@ -43,7 +43,7 @@ import {
 
 assertServerOnly("lib/couranr/intake/provider.ts");
 
-export const PROMPT_VERSION = "couranr-intake-prompt-v0-2026-09-02";
+export const PROMPT_VERSION = "couranr-intake-prompt-v1-2026-09-02";
 export const PROVIDER_TIMEOUT_MS = 10_000;
 
 /**

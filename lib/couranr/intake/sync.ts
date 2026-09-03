@@ -7,7 +7,7 @@
  * calculate the fact record is brought into agreement with it before policy
  * runs and before the commit command re-validates the arguments against the
  * trusted facts. Without this step the primary flow dead-ends: intake
- * confirms "12 lb exact", the merchant flips the select to "25–50 lb", and
+ * confirms "12 lb exact", the merchant flips the select to "More than 25 lb, up to 50 lb", and
  * the commit refuses the band as contradicting the exact.
  *
  * Pure planning here; the writes happen in commands.ts. Rules:

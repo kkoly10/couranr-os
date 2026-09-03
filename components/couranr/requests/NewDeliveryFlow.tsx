@@ -14,6 +14,7 @@ import {
   Stack,
 } from "@/components/couranr/primitives";
 import { CheckboxRow, Field, Input, Select, Textarea } from "@/components/couranr/forms";
+import { WEIGHT_BAND_LABELS } from "@/lib/couranr/shipment/weightBandLabels";
 import {
   CardSkeleton,
   ConflictState,
@@ -588,9 +589,9 @@ export function NewDeliveryFlow() {
                   onChange={(e) => setWeightMode(e.target.value)}
                 >
                   <option value="exact">I know the exact weight</option>
-                  <option value="0_25_lb">Under 25 lb</option>
-                  <option value="over_25_to_50_lb">25–50 lb</option>
-                  <option value="over_50_lb">Over 50 lb</option>
+                  <option value="0_25_lb">{WEIGHT_BAND_LABELS["0_25_lb"]}</option>
+                  <option value="over_25_to_50_lb">{WEIGHT_BAND_LABELS.over_25_to_50_lb}</option>
+                  <option value="over_50_lb">{WEIGHT_BAND_LABELS.over_50_lb}</option>
                   <option value="unknown">Not sure yet</option>
                 </Select>
               )}

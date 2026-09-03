@@ -165,6 +165,35 @@ export function validateProviderOutput(rawJson: string): ProviderOutputValidatio
 }
 
 /**
+ * §5 — verify the provider's "this is a verbatim quote" claim. A proposal's
+ * `sourceEvidence` must OCCUR in the text the provider was shown (the
+ * SANITIZED description from `sanitizeDescriptionForProvider` — the same
+ * string handed to `provider.interpret`, before the adapter's own tag
+ * neutralization). If it does not occur as an exact substring, the evidence
+ * is set to null and the proposal is KEPT: its value stands on its own and
+ * still needs a trusted actor; only the quote claim is dropped.
+ *
+ * The comparison is deliberately case-sensitive and unnormalized — the
+ * instruction to the model says EXACT span, so a case-mismatched or
+ * paraphrased quote is not evidence. Null evidence stays null. Pure: the
+ * input is never mutated; a validation failure passes through unchanged.
+ */
+export function verifySourceEvidence(
+  validated: ProviderOutputValidation,
+  providerVisibleText: string
+): ProviderOutputValidation {
+  if (isValidationFailure(validated)) return validated;
+  return {
+    ...validated,
+    proposals: validated.proposals.map((p) =>
+      p.sourceEvidence === null || providerVisibleText.includes(p.sourceEvidence)
+        ? { ...p }
+        : { ...p, sourceEvidence: null }
+    ),
+  };
+}
+
+/**
  * `tsconfig` sets `"strict": false`; without `strictNullChecks` a bare
  * `if (!v.ok)` does not narrow this union. An explicit predicate does.
  */
