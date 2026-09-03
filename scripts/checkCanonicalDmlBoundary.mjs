@@ -11,6 +11,7 @@ const PROTECTED = [
   "couranr_quote_versions",
   "couranr_payment_obligations",
   "couranr_payment_events",
+  "couranr_payment_refunds",
   "couranr_service_plans",
   "couranr_deliveries",
   "couranr_delivery_events",

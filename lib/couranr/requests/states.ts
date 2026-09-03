@@ -75,6 +75,7 @@ export const REQUEST_COMMANDS = [
   "mark_delivery_ready",
   "mark_delivery_not_ready",
   "mark_delivery_unavailable",
+  "cancel_delivery_request",
 ] as const;
 export type RequestCommand = (typeof REQUEST_COMMANDS)[number];
 
@@ -121,11 +122,12 @@ export function targetStates(to: CommandTarget): readonly RequestState[] {
 }
 
 /**
- * `cancelled`, `closed` and `awaiting_merchant_confirmation` are canonical
- * states that no command here can reach. They are declared above because the
- * database enforces the full vocabulary; leaving them unreachable is
- * deliberate. `cancelled` and `closed` belong to the payment and fulfillment
- * slices, which are not built yet.
+ * `closed` and `awaiting_merchant_confirmation` are canonical states that no
+ * command here can reach. They are declared above because the database
+ * enforces the full vocabulary; leaving them unreachable is deliberate.
+ * `cancelled` gained its governed writer in the batch 3 final closure pass —
+ * couranr_cancel_delivery_request, Operations-only, reached through the
+ * cancellation recovery composition so the money always settles first.
  */
 export const COMMAND_RULES: Readonly<Record<RequestCommand, CommandRule>> = {
   create_delivery_request_draft: {
@@ -256,6 +258,22 @@ export const COMMAND_RULES: Readonly<Record<RequestCommand, CommandRule>> = {
     to: "unchanged",
     capability: "submit",
     readinessState: "unavailable",
+  },
+
+  /* Final closure pass §4: a user-visible cancellation must not leave a
+     confirmed or pending request active. Operations-only; runs INSIDE the
+     cancellation recovery composition (money settles first), never as a
+     bare state edit or a standalone route. */
+  cancel_delivery_request: {
+    from: [
+      "draft",
+      "awaiting_quote_acceptance",
+      "pending_couranr_review",
+      "quote_revision_required",
+      "confirmed",
+    ],
+    to: "cancelled",
+    capability: "review",
   },
 };
 

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isDriverFailure, reportPickupDiscrepancy } from "@/lib/couranr/driver/commands";
-import { DISCREPANCY_REASONS } from "@/lib/couranr/driver/states";
+import {
+  isDriverFailure,
+  reportDropoffException,
+  reportPickupDiscrepancy,
+} from "@/lib/couranr/driver/commands";
+import { DISCREPANCY_REASONS, DROPOFF_EXCEPTION_EXTRA_REASONS } from "@/lib/couranr/driver/states";
 import { isActorDenied, resolveUserId } from "@/lib/couranr/requests/actor";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
 
@@ -11,17 +15,27 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 const MAX_NOTES = 1000;
 
 /**
- * POST — the driver reports something wrong at pickup.
+ * POST — the driver reports something wrong with the shipment.
+ *
+ * Two explicit stages, chosen by the body's `stage` field (default 'pickup'):
+ *
+ *   'pickup'  → couranr_report_pickup_discrepancy. SQL-gated to at_pickup;
+ *               blocks complete_pickup while open.
+ *   'dropoff' → couranr_report_dropoff_exception (§31). SQL-gated to
+ *               picked_up / in_transit / at_dropoff; evidence only — it gates
+ *               nothing for the driver, but it is one of the two halves
+ *               Operations needs before a custody delivery can be closed
+ *               undeliverable (review item 4).
  *
  * Raising an issue is all a driver can do with it. Nothing here clears one:
  * `discrepancy_state` moves only through the Operations-gated
- * safe-to-continue command, and while an issue is open the SQL refuses to
- * complete pickup at all. That asymmetry is the point — the person under
- * time pressure at a loading dock is not the person who decides the shipment
- * is fine to carry.
+ * safe-to-continue command. That asymmetry is the point — the person under
+ * time pressure at a door is not the person who decides the shipment is fine.
  *
  * The reason is one of a closed set, checked here so an unknown value cannot
- * reach a text column and become an unqueryable category of its own.
+ * reach a text column and become an unqueryable category of its own; the
+ * drop-off stage additionally accepts the two drop-off realities the pickup
+ * vocabulary has no word for.
  */
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -37,9 +51,21 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     return routeFailure("invalid_input", "Expected a JSON body.");
   }
 
+  const stage = body?.stage === "dropoff" ? "dropoff" : "pickup";
+
+  const allowedReasons: readonly string[] =
+    stage === "dropoff"
+      ? [...DISCREPANCY_REASONS, ...DROPOFF_EXCEPTION_EXTRA_REASONS]
+      : DISCREPANCY_REASONS;
+
   const reason = typeof body?.reason === "string" ? body.reason.trim() : "";
-  if (!(DISCREPANCY_REASONS as readonly string[]).includes(reason)) {
-    return routeFailure("invalid_input", "Choose what is wrong with this pickup.");
+  if (!allowedReasons.includes(reason)) {
+    return routeFailure(
+      "invalid_input",
+      stage === "dropoff"
+        ? "Choose what is wrong with this delivery."
+        : "Choose what is wrong with this pickup."
+    );
   }
 
   const notes = typeof body?.notes === "string" ? body.notes.trim() : "";
@@ -47,12 +73,20 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     return routeFailure("invalid_input", `Keep the notes under ${MAX_NOTES} characters.`);
   }
 
-  const r = await reportPickupDiscrepancy({
-    userId: auth.userId,
-    deliveryId: params.id,
-    reason,
-    notes: notes.length > 0 ? notes : null,
-  });
+  const r =
+    stage === "dropoff"
+      ? await reportDropoffException({
+          userId: auth.userId,
+          deliveryId: params.id,
+          reason,
+          notes: notes.length > 0 ? notes : null,
+        })
+      : await reportPickupDiscrepancy({
+          userId: auth.userId,
+          deliveryId: params.id,
+          reason,
+          notes: notes.length > 0 ? notes : null,
+        });
   if (isDriverFailure(r)) return failureResponse(r);
   return NextResponse.json({ discrepancy: r.value });
 }

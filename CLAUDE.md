@@ -135,7 +135,10 @@ billing condition, not an incident, and it makes GitHub CI unusable as a gate:
   PR. Neither says anything about the code.
 - The reset date is not something this repo controls or tracks.
 
-So: **run the whole gate locally, before every push, and report the local run.**
+So: **run the gate locally, before every push, and report the local run.**
+Owner decision 2026-09-03: until the MVP is built the per-push gate is
+`npm run ci:local -- --db` (tiers 1–3). `--all` adds the browser tier and runs
+once at MVP completion, not per push.
 
 ```bash
 npm run ci:local                 # tiers 1–2, ~45s, needs no external process
@@ -345,6 +348,9 @@ drop the things that only produced narrative.
   released again, and only a concurrency probe caught the mutex.
 - Driving the UI or the route in a real browser. This found a nested-key read
   and a broken replay path that 1632 green tests and a clean typecheck missed.
+  **DEFERRED to MVP completion by owner decision 2026-09-03** — not per slice.
+  Until then a jsdom functional test that drives the real component against a
+  recorded fetch is the stand-in.
 - Verifying a production claim with a catalog query rather than an apply's
   success flag.
 
@@ -426,9 +432,27 @@ So: **call the function, with a fixture that satisfies its constraints, and read
 - **A test that reads SQL text is a guard on the file, not a guarantee about the database.** Both are worth having. Only one of them catches this.
 - Report which functions you executed and which you could not, and why.
 
-### Browser verification — MANDATORY for anything with a UI
+### Browser verification — DEFERRED until the MVP is built (owner decision 2026-09-03)
 
-**A UI deliverable is not done until it has been driven in a real browser.** Green unit tests, a passing typecheck and a 200 from `curl` are all necessary and none of them are sufficient — every one of those passed while `/sign-in` was a placeholder, while "Sign out" was a `<Link>` that left the session live, and while a failed workspace lookup rendered as "you have no business". A jsdom test asserts what a component returns; only a browser proves what a person can actually do.
+**Owner decision, 2026-09-03: do NOT run browser/Playwright verification per
+slice or per push until the MVP is fully built.** It was costing hours per pass
+and the owner has chosen to run all of it once, at MVP completion. Until then:
+
+- The per-push gate is `npm run ci:local -- --db` (tiers 1–3). The browser
+  tier (`--browser` / `--all`) is NOT part of the per-push gate. If a brief
+  asks for a browser drive, skip it and say so in the report.
+- The verification budget goes to **code quality: bugs, duplication, races and
+  concurrency**, and those MUST be fully tested — executed unit tests with
+  mocked providers, disposable-PostgreSQL suites that CALL every SQL command,
+  concurrency probes (two callers on the same row), and independent adversarial
+  review of money-moving diffs. A jsdom functional test (`tests/**/*.dom.test.tsx`)
+  is the accepted stand-in for a UI regression.
+- Everything below this paragraph describes how the browser gates work and
+  what they have caught. It stays here for the MVP-completion pass; it is not
+  a per-slice requirement any more.
+
+**A UI deliverable is not done until it has been driven in a real browser.**
+*(Deferred to MVP completion — see the owner decision above.)* Green unit tests, a passing typecheck and a 200 from `curl` are all necessary and none of them are sufficient — every one of those passed while `/sign-in` was a placeholder, while "Sign out" was a `<Link>` that left the session live, and while a failed workspace lookup rendered as "you have no business". A jsdom test asserts what a component returns; only a browser proves what a person can actually do.
 
 So: **seed data, start the dev server, drive the UI, assert on what rendered.** Every time.
 

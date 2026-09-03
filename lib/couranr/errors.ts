@@ -216,3 +216,36 @@ export function classifyDatabaseError(err: any): PublicErrorCode {
       return "internal";
   }
 }
+
+/**
+ * The public failure shape every canonical server lib returns — `{ ok:false,
+ * code, correlationId, message? }` — built the one way it should be built:
+ * the detail is LOGGED under a correlation id and never crosses the boundary.
+ * (`lib/couranr/consumer/send.ts` and `lib/couranr/intake/commands.ts` still
+ * carry local copies of this builder from before it existed; new code uses
+ * this one.)
+ */
+export type PublicFailure = {
+  ok: false;
+  code: PublicErrorCode;
+  correlationId: string;
+  message?: string;
+};
+
+export function publicFailure(params: {
+  operation: string;
+  code: PublicErrorCode;
+  detail?: unknown;
+  message?: string;
+}): PublicFailure {
+  const correlationId = newCorrelationId();
+  logServerFailure({
+    correlationId,
+    operation: params.operation,
+    code: params.code,
+    detail: params.detail,
+  });
+  const out: PublicFailure = { ok: false, code: params.code, correlationId };
+  if (params.message) out.message = params.message;
+  return out;
+}

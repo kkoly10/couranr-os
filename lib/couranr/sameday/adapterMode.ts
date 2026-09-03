@@ -20,7 +20,7 @@
  * pretend.
  */
 
-export type AdapterMode = "fixture" | "disabled";
+export type AdapterMode = "fixture" | "disabled" | "live";
 
 export type AdapterModeResolution = {
   mode: AdapterMode;
@@ -32,7 +32,10 @@ export type AdapterModeResolution = {
     | "test"
     | "preview_enabled"
     | "preview_not_enabled"
-    | "unknown_environment";
+    | "unknown_environment"
+    | "live_enabled"
+    | "production_live_enabled"
+    | "production_live_refused";
   /** True when configuration asked for something this environment refuses. */
   misconfigured: boolean;
 };
@@ -45,6 +48,19 @@ export type AdapterEnv = {
   vercelEnv?: string;
   /** The explicit opt-in. Honoured on preview ONLY. */
   fixtureFlag?: string;
+  /**
+   * TWO-KEY LIVE ARMING (batch 3 §D). Key one: `COURANR_CONSUMER_SEND` must be
+   * EXACTLY the string "live" — not "1", not "true"; a switch this consequential
+   * is armed by naming the thing, never by truthiness.
+   */
+  consumerSendFlag?: string;
+  /**
+   * Key two: `COURANR_CONSUMER_SEND_PRODUCTION`, also exactly "live". Required
+   * IN ADDITION to key one before a production environment resolves `live`.
+   * MKT-005's production stop stays the default: one key in production is a
+   * recorded misconfiguration that still resolves `disabled`.
+   */
+  consumerSendProductionFlag?: string;
 };
 
 export function readAdapterEnv(): AdapterEnv {
@@ -52,6 +68,8 @@ export function readAdapterEnv(): AdapterEnv {
     nodeEnv: process.env.NODE_ENV,
     vercelEnv: process.env.VERCEL_ENV,
     fixtureFlag: process.env.COURANR_SAMEDAY_FIXTURES,
+    consumerSendFlag: process.env.COURANR_CONSUMER_SEND,
+    consumerSendProductionFlag: process.env.COURANR_CONSUMER_SEND_PRODUCTION,
   };
 }
 
@@ -84,6 +102,27 @@ export function resolveAdapterMode(env: AdapterEnv = readAdapterEnv()): AdapterM
      deployment sets VERCEL_ENV=production, and a non-Vercel production build
      has no VERCEL_ENV and falls back to NODE_ENV. */
   const isProduction = vercel ? vercel === "production" : node === "production";
+
+  /* TWO-KEY LIVE ARMING, checked before every other branch so that a
+     deliberately armed environment cannot be re-classified as fixtures.
+     `live` wires `/send` to the real consumer API — a real request, a real
+     price, a real payment — so it is the one mode that must NEVER be an
+     accident:
+       - key one alone arms every NON-production environment;
+       - production requires BOTH keys, and one key there is a recorded
+         misconfiguration that still resolves `disabled` (MKT-005's stop is
+         the behaviour, the flag is the report — same shape as the fixture
+         refusal below);
+       - both values must be exactly "live". Truthiness does not arm. */
+  if (env.consumerSendFlag === "live") {
+    if (!isProduction) {
+      return { mode: "live", reason: "live_enabled", misconfigured: false };
+    }
+    return env.consumerSendProductionFlag === "live"
+      ? { mode: "live", reason: "production_live_enabled", misconfigured: false }
+      : { mode: "disabled", reason: "production_live_refused", misconfigured: true };
+  }
+
   if (isProduction) {
     /* Asking for fixtures in production is a CONFIGURATION ERROR, surfaced as
        one. It still resolves disabled — the refusal is the behaviour, the flag

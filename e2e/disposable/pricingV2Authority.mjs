@@ -417,18 +417,25 @@ function main() {
       "rejected|quote_expired");
 
     /* A refusal at the authorize boundary leaves a REAL Stripe hold on the
-       customer's card while Couranr's ledger still says requires_action, and
-       OPS-010 cannot release it - couranr_begin_payment_release raises CR409
-       unless the obligation is already 'authorized'. The convergence path is
-       the provider's own cancellation (an operator in Stripe, or the automatic
-       expiry of an uncaptured authorization), which this proves still applies
-       from requires_action. Executed, because reading the CASE arm does not
-       prove the transition guard lets it through. */
-    check("PV2-58", "an expired-quote refusal cannot be released through OPS-010",
-      raises(`select public.couranr_begin_payment_release('${c1.obId}'::uuid,'${OPS}'::uuid,
+       customer's card while Couranr's ledger still says requires_action. Until
+       batch 3 OPS-010 refused to touch it ('only_an_authorized_hold_may_be_
+       released') and the ONLY convergence was the provider's own cancellation.
+       20260903020000 widened the release gate to exactly this stale-hold case:
+       'not_started' and 'requires_action' join 'authorized' as releasable, so
+       an operator can begin the release instead of waiting for Stripe's
+       authorization expiry. begin records the attempt and moves NOTHING but
+       the version - payment_state stays requires_action until a provider
+       outcome arrives (e2e/disposable/paymentRecovery.mjs drives both sides).
+       The provider's own cancellation must STILL converge the ledger after a
+       begun-but-unfinished attempt, which PV2-59 now proves on top of this
+       row. Executed, because reading the CASE arm does not prove the
+       transition guard lets it through. */
+    check("PV2-58", "an expired-quote stale hold IS releasable through OPS-010 since batch 3",
+      one(`select outcome||'|'||coalesce(payment_state,'-')||'|'||coalesce(rejected_reason,'-')
+           from public.couranr_begin_payment_release('${c1.obId}'::uuid,'${OPS}'::uuid,
               (select version from public.couranr_payment_obligations where id='${c1.obId}'),
               'quote expired before authorization')`),
-      "CR409|only_an_authorized_hold_may_be_released");
+      "applied|requires_action|-");
     check("PV2-59", "... but the provider's own cancellation still converges the ledger",
       one(`select outcome||'|'||coalesce(payment_state,'-')
            from public.couranr_apply_payment_intent_state(

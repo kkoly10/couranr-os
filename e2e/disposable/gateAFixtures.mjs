@@ -130,6 +130,9 @@ export const COMMAND_SIGNATURES = {
     p_requested_pickup_local: "text", p_requested_departure_at: "timestamptz",
     p_timing_review_reasons: "jsonb", p_restricted_class: "text",
   },
+  couranr_attach_payment_intent: {
+    p_obligation_id: "uuid", p_expected_version: "integer", p_payment_intent_id: "text",
+  },
   couranr_submit_delivery_request_v2: {
     p_request_id: "uuid", p_business_account_id: "uuid", p_expected_version: "integer",
     p_actor_user_id: "uuid", p_acknowledged: "boolean",
@@ -225,6 +228,10 @@ const OBLIGATION_PATCH_SQL = {
   payment_state: (v) => `'${esc(v)}'::text`,
   provider_payment_intent_id: (v) => `'${esc(v)}'::text`,
   authorized_at: () => "now()",
+  // couranr_po_authorization_evidence_chk (batch 3 §A): an authorization stamp
+  // must say where it came from. A fixture stamp IS processing time.
+  authorization_processed_at: () => "now()",
+  authorized_at_source: (v) => `'${esc(v)}'::text`,
   captured_at: () => "now()",
   captured_amount_cents: (v) => `(${Number(v)})::integer`,
   cancelled_at: () => "now()",
@@ -251,7 +258,7 @@ export function supabaseTransport(sb) {
     },
     async patchObligation(obligationId, patch) {
       const row = { ...patch, updated_at: new Date().toISOString() };
-      for (const k of ["authorized_at", "captured_at", "cancelled_at", "failed_at"]) {
+      for (const k of ["authorized_at", "authorization_processed_at", "captured_at", "cancelled_at", "failed_at"]) {
         if (k in row && row[k] !== null) row[k] = new Date().toISOString();
       }
       unwrap(
@@ -505,7 +512,12 @@ export async function seedCanonicalPaymentObligation(t, request, opts = {}) {
     if (intentId) patch.provider_payment_intent_id = intentId;
     // couranr_po_authorized_stamp_chk: authorized_at is required from
     // `authorized` onward, not only while the state IS authorized.
-    if (NEEDS_AUTHORIZATION.includes(state)) patch.authorized_at = true;
+    if (NEEDS_AUTHORIZATION.includes(state)) {
+      patch.authorized_at = true;
+      // couranr_po_authorization_evidence_chk (batch 3 §A).
+      patch.authorization_processed_at = true;
+      patch.authorized_at_source = "processing_fallback";
+    }
     // couranr_po_captured_stamp_chk / couranr_po_captured_amount_chk.
     if (state === "captured" || state === "refunded") {
       patch.captured_at = true;

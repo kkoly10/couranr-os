@@ -4220,6 +4220,20 @@
 .cr-send-suggestion__label { font-weight: 600; color: var(--couranr-text); }
 .cr-send-suggestion__detail { font-size: var(--couranr-text-sm); color: var(--couranr-text-muted); }
 
+/* INT-002: a Consumer Smart Intake suggestion row — the read-only statement
+   and, for a material fact, the guest's explicit "Use this". */
+.cr-send-suggestion__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--couranr-space-3, 0.75rem);
+  padding: var(--couranr-space-2, 0.5rem) 0;
+  border-top: 1px solid var(--couranr-border);
+}
+.cr-send-suggestion__row:first-child {
+  border-top: 0;
+}
+
 .cr-send-choice {
   display: flex;
   align-items: flex-start;

@@ -207,9 +207,9 @@ export function verifyFidelity() {
      * no `couranr_` prefix. They are asserted by name below instead, so this
      * probe cannot silently stop covering them.
      */
-    ["33 couranr_ tables (including immutable quote versions)",
+    ["35 couranr_ tables (including immutable quote versions)",
       () => one(`select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace
-                 where n.nspname='public' and c.relkind='r' and c.relname like 'couranr%'`) === "33"],
+                 where n.nspname='public' and c.relkind='r' and c.relname like 'couranr%'`) === "35"],
     ["the merchant-customer tables exist and are service_role-only",
       () =>
         one(`select has_table_privilege('service_role','public.merchant_customers','INSERT')

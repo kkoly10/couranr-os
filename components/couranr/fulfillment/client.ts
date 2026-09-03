@@ -12,6 +12,23 @@ export type FulfillmentView = {
     currency: string;
     paymentState: string;
     payerType: string;
+    /* Batch 3 §A/§B evidence (see the fulfillment route). */
+    authorizedAt: string | null;
+    authorizedAtSource: "provider_event" | "processing_fallback" | null;
+    authorizationProcessedAt: string | null;
+    capturedAmountCents: number | null;
+    refundedAmountCents: number | null;
+    refundedAt: string | null;
+    staleProviderHold: boolean;
+    /** Newest refund attempt, or null when none exists (review item 6).
+        `settled_no_refund_due` (final closure §3) is a COMPLETED settlement:
+        the governed retention consumed the capture, zero provider refunds. */
+    refundAttempt: {
+      state: "requested" | "pending_unknown" | "succeeded" | "failed" | "settled_no_refund_due";
+      amountCents: number;
+      retainedCents: number;
+      reason: string;
+    } | null;
   } | null;
   servicePlan: {
     id: string;
@@ -109,5 +126,66 @@ export function issuePaymentLinkFromBrowser(input: {
   return call<{ token: string; expiresAt: string; amountCents: number; paymentState: string }>(
     `/api/couranr/delivery-requests/${input.id}/payment-link`,
     { method: "POST", body: { businessAccountId: input.businessAccountId } }
+  );
+}
+
+/**
+ * Batch 3 §E — the recovery actions. Reasons are CLOSED vocabularies; there
+ * is no amount anywhere on any of these calls.
+ *
+ * `call()` JSON-encodes `init.body` itself, so every body here is a PLAIN
+ * OBJECT. Passing a pre-stringified body double-encodes it — the server then
+ * reads a string, every field is undefined, and the button can never work.
+ * That exact defect shipped once; do not reintroduce it.
+ */
+export async function releaseHoldFromBrowser(input: { id: string; reason: string }) {
+  return call<{ release: { obligationId: string; paymentState: string } }>(
+    `/api/couranr/operations/delivery-requests/${input.id}/release`,
+    { method: "POST", body: { reason: input.reason } }
+  );
+}
+
+/**
+ * The STANDALONE refund is FULL REFUND only (review item 6). Cancellation
+ * retentions are derived server-side from the delivery's stored stage on the
+ * cancel-delivery path — the browser cannot pick a retention reason here.
+ */
+export async function refundFromBrowser(input: { id: string }) {
+  return call<{ refund: { refundId: string; attemptState: string; amountCents: number; retainedCents: number; reason: string } }>(
+    `/api/couranr/operations/delivery-requests/${input.id}/refund`,
+    { method: "POST", body: { reason: "full_refund" } }
+  );
+}
+
+export async function reconcileRefundFromBrowser(input: { id: string }) {
+  return call<{ refund: { refundId: string; attemptState: string; amountCents: number; retainedCents: number; reason: string } }>(
+    `/api/couranr/operations/delivery-requests/${input.id}/reconcile-refund`,
+    { method: "POST", body: {} }
+  );
+}
+
+export async function cancelDeliveryFromBrowser(input: {
+  id: string;
+  reason: string;
+  note: string;
+}) {
+  return call<{ cancellation: Record<string, unknown> }>(
+    `/api/couranr/operations/delivery-requests/${input.id}/cancel-delivery`,
+    { method: "POST", body: { reason: input.reason, note: input.note } }
+  );
+}
+
+/**
+ * Resume a terminal delivery's cancellation settlement (final closure §2).
+ * No reason travels: the governed reason lives in the immutable closure
+ * evidence, and nothing posted after closure can change the fee.
+ */
+export async function resumeCancellationSettlementFromBrowser(input: {
+  id: string;
+  note: string;
+}) {
+  return call<{ cancellation: Record<string, unknown> }>(
+    `/api/couranr/operations/delivery-requests/${input.id}/cancel-delivery`,
+    { method: "POST", body: { resume: true, note: input.note } }
   );
 }

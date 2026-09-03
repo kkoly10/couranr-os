@@ -428,6 +428,37 @@ export async function reportPickupDiscrepancy(p: {
   };
 }
 
+/**
+ * §31 — the assigned driver records a problem AFTER pickup (picked_up /
+ * in_transit / at_dropoff; the SQL command enforces the states and the
+ * assignment). Evidence only: it gates nothing for the driver, but an OPEN
+ * dropoff exception is one of the two halves Operations needs before
+ * `couranr_close_delivery_undeliverable` will release a driver who has
+ * custody (review item 4).
+ */
+export async function reportDropoffException(p: {
+  userId: string;
+  deliveryId: string;
+  reason: string;
+  notes?: string | null;
+}): Promise<DriverResult<{ discrepancyId: string; state: string; version: number }>> {
+  const r = await callRpc("reportDropoffException", "couranr_report_dropoff_exception", {
+    p_delivery_id: p.deliveryId,
+    p_actor_user_id: p.userId,
+    p_reason: p.reason,
+    p_notes: p.notes ?? null,
+  });
+  if (!r.ok) return r;
+  return {
+    ok: true,
+    value: {
+      discrepancyId: String(r.value.id),
+      state: String(r.value.discrepancy_state),
+      version: Number(r.value.version),
+    },
+  };
+}
+
 /** Operations only — the gate is the route's actor check plus this one. */
 export async function resolveSafePickupDiscrepancy(p: {
   actor: RequestActor;

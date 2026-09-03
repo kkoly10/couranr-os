@@ -262,6 +262,26 @@ export function isDiscrepancyReason(v: unknown): v is DiscrepancyReason {
 }
 
 /**
+ * §31 — the two DROP-OFF realities the pickup vocabulary had no word for.
+ *
+ * They live BESIDE `DISCREPANCY_REASONS` rather than inside it, deliberately:
+ * that list is pinned one-to-one against the ORIGINAL pickup reason CHECK
+ * (20260802030000) by the unit tests, and the database's widened CHECK
+ * (20260903040000) is a superset that keeps every original value. A renderer
+ * looks these up after `DISCREPANCY_REASON_LABELS` and falls back to the
+ * underscore-stripped identifier for anything newer than this build.
+ */
+export const DROPOFF_EXCEPTION_EXTRA_REASONS = [
+  "recipient_unavailable",
+  "address_or_access_problem",
+] as const;
+
+export const DROPOFF_EXCEPTION_REASON_LABELS: Record<string, string> = {
+  recipient_unavailable: "The recipient is not available",
+  address_or_access_problem: "The address or access is a problem",
+};
+
+/**
  * Whether the stored shipment triggers the large-or-unusual pickup
  * requirements.
  *

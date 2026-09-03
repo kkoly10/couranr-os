@@ -113,6 +113,14 @@ describe("server-only modules are unreachable from client code", () => {
       // the boundary — service_role bypasses RLS, so a browser holding this
       // would read any business's money.
       "lib/couranr/billing/commands.ts",
+      // INT-002. Composes Consumer Smart Intake over the shared intake
+      // commands (service-role) and reads the kill switch. A bundle reaching
+      // it would ship the write path for a guest's intake evidence.
+      "lib/couranr/consumer/intake.ts",
+      // Batch 3 §D. Holds the service-role client, the guest-session hashing
+      // and every consumer command wrapper. A bundle reaching it would ship
+      // the code that turns an anonymous URL header into authority.
+      "lib/couranr/consumer/send.ts",
       // Holds the service-role client and every conversation command. A bundle
       // reaching it would ship the write path for messages — and the module
       // that calls `couranr_conversation_thread`, which is the one door to a
@@ -146,6 +154,9 @@ describe("server-only modules are unreachable from client code", () => {
       // are the part of a private object that leaks furthest.
       "lib/couranr/driver/proofPaths.ts",
       // Holds the service-role client and the Stripe secret key.
+      // Batch 3 §C. Composes cancellation with the governed money recovery —
+      // release for holds, CAN-001 retention refunds for captured money.
+      "lib/couranr/fulfillment/cancellation.ts",
       "lib/couranr/fulfillment/commands.ts",
       // Holds the Anthropic API key inside the client it constructs, and the
       // system prompt that governs what a model is told about merchant text.
@@ -238,6 +249,15 @@ describe("canonical server routes do not import the browser client", () => {
    */
   it("covers every canonical route", () => {
     expect(canonical.map(rel).sort()).toEqual([
+      "app/api/couranr/consumer/estimate/route.ts",
+      "app/api/couranr/consumer/interpret/route.ts",
+      "app/api/couranr/consumer/pay/route.ts",
+      "app/api/couranr/consumer/places/route.ts",
+      "app/api/couranr/consumer/reconcile-payment/route.ts",
+      "app/api/couranr/consumer/refresh-quote/route.ts",
+      "app/api/couranr/consumer/request/route.ts",
+      "app/api/couranr/consumer/session/route.ts",
+      "app/api/couranr/consumer/submit/route.ts",
       "app/api/couranr/conversations/[id]/messages/route.ts",
       "app/api/couranr/conversations/[id]/read/route.ts",
       "app/api/couranr/conversations/[id]/route.ts",
@@ -293,9 +313,12 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/operations/deliveries/[id]/unassign/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/accept-as-quoted/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/begin-review/route.ts",
+      "app/api/couranr/operations/delivery-requests/[id]/cancel-delivery/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/capture/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/decline/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/reconcile-capture/route.ts",
+      "app/api/couranr/operations/delivery-requests/[id]/reconcile-refund/route.ts",
+      "app/api/couranr/operations/delivery-requests/[id]/refund/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/release/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/requote/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/service-plan/route.ts",
@@ -340,6 +363,45 @@ describe("canonical server routes do not import the browser client", () => {
    * ship an unauthenticated route.
    */
   const TOKEN_AUTHORIZED = new Map<string, { shape: RegExp; redeem: RegExp }>([
+    /*
+     * Batch 3 §D. The consumer guest routes authorize by the opaque
+     * x-couranr-guest header: shape-checked before hashing, then redeemed
+     * against the hash-only session store with ONE uniform refusal.
+     * (consumer/session mints the credential and is inventoried below as
+     * deliberately unauthenticated — it creates authority, it holds none.)
+     */
+    [
+      "app/api/couranr/consumer/estimate/route.ts",
+      { shape: /redeemGuestSessionToken\(/, redeem: /redeemGuestSessionToken\(/ },
+    ],
+    [
+      "app/api/couranr/consumer/pay/route.ts",
+      { shape: /redeemGuestSessionToken\(/, redeem: /redeemGuestSessionToken\(/ },
+    ],
+    [
+      "app/api/couranr/consumer/places/route.ts",
+      { shape: /redeemGuestSessionToken\(/, redeem: /redeemGuestSessionToken\(/ },
+    ],
+    [
+      "app/api/couranr/consumer/reconcile-payment/route.ts",
+      { shape: /redeemGuestSessionToken\(/, redeem: /redeemGuestSessionToken\(/ },
+    ],
+    [
+      "app/api/couranr/consumer/refresh-quote/route.ts",
+      { shape: /redeemGuestSessionToken\(/, redeem: /redeemGuestSessionToken\(/ },
+    ],
+    [
+      "app/api/couranr/consumer/interpret/route.ts",
+      { shape: /redeemGuestSessionToken\(/, redeem: /redeemGuestSessionToken\(/ },
+    ],
+    [
+      "app/api/couranr/consumer/request/route.ts",
+      { shape: /redeemGuestSessionToken\(/, redeem: /redeemGuestSessionToken\(/ },
+    ],
+    [
+      "app/api/couranr/consumer/submit/route.ts",
+      { shape: /redeemGuestSessionToken\(/, redeem: /redeemGuestSessionToken\(/ },
+    ],
     [
       "app/api/couranr/pay/[token]/reconcile/route.ts",
       { shape: /isWellFormedToken\(/, redeem: /redeemPaymentLink\(/ },
@@ -377,6 +439,17 @@ describe("canonical server routes do not import the browser client", () => {
       const src = SOURCE.get(file) ?? "";
       const name = rel(file);
 
+      /*
+       * Batch 3 §D. consumer/session MINTS the guest credential: it is
+       * unauthenticated BY DESIGN (the 256-bit token it returns once is the
+       * authorization for every other consumer route, which this test forces
+       * to redeem it). Hold it to its own contract instead of an auth check.
+       */
+      if (name === "app/api/couranr/consumer/session/route.ts") {
+        expect(src, `${name} must mint through createGuestSession`).toMatch(/createGuestSession\(/);
+        expect(src, `${name} must document its unauthenticated design`).toMatch(/UNAUTHENTICATED BY DESIGN/);
+        continue;
+      }
       const tokenRule = TOKEN_AUTHORIZED.get(name);
       if (tokenRule) {
         // It must actually redeem the token, and reject a malformed one

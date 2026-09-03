@@ -55,6 +55,8 @@ const RPC = {
   retractFact: "couranr_retract_intake_fact",
   linkSession: "couranr_link_intake_session",
   recordPolicy: "couranr_record_intake_policy",
+  /* INT-002 */
+  upsertConsumer: "couranr_upsert_consumer_intake_description",
 } as const;
 
 export type IntakeFailure = {
@@ -65,6 +67,41 @@ export type IntakeFailure = {
 };
 export type IntakeResult<T> = { ok: true; value: T } | IntakeFailure;
 export type IntakeRow = Record<string, any>;
+
+/**
+ * INT-002: an intake session belongs to EXACTLY one scope — a business account
+ * (merchant Smart Intake) or a consumer guest session (/send). Every
+ * scope-taking command sends both columns; the SQL refuses a call naming both
+ * or neither (CR422 intake_scope_required), and this union makes the same
+ * mistake a type error. One substrate, one pipeline, two owners.
+ */
+export type IntakeScope =
+  | { businessAccountId: string; guestSessionId?: undefined }
+  | { guestSessionId: string; businessAccountId?: undefined };
+
+function scopeArgs(scope: IntakeScope): {
+  p_business_account_id: string | null;
+  p_guest_session_id: string | null;
+} {
+  return {
+    p_business_account_id: scope.businessAccountId ?? null,
+    p_guest_session_id: scope.guestSessionId ?? null,
+  };
+}
+
+/** The one column a scoped READ filters on. */
+function scopeColumn(scope: IntakeScope): [column: string, value: string] {
+  return scope.businessAccountId !== undefined
+    ? ["business_account_id", scope.businessAccountId]
+    : ["guest_session_id", scope.guestSessionId];
+}
+
+/** A clean scope object from any params bag that carries one. */
+function pickScope(scope: IntakeScope): IntakeScope {
+  return scope.businessAccountId !== undefined
+    ? { businessAccountId: scope.businessAccountId }
+    : { guestSessionId: scope.guestSessionId };
+}
 
 export function isIntakeFailure(r: { ok: boolean }): r is IntakeFailure {
   return r.ok === false;
@@ -106,16 +143,16 @@ async function callRpc(
 
 /* ------------------------------------------------------------- reads ---- */
 
-export async function loadIntakeSession(params: {
-  sessionId: string;
-  businessAccountId: string;
-}): Promise<IntakeResult<{ session: IntakeRow; facts: IntakeRow[]; revisions: IntakeRow[] }>> {
+export async function loadIntakeSession(
+  params: { sessionId: string } & IntakeScope
+): Promise<IntakeResult<{ session: IntakeRow; facts: IntakeRow[]; revisions: IntakeRow[] }>> {
   const op = "loadIntakeSession";
+  const [scopeCol, scopeVal] = scopeColumn(params);
   const { data: session, error } = await supabaseAdmin
     .from("couranr_intake_sessions")
     .select("*")
     .eq("id", params.sessionId)
-    .eq("business_account_id", params.businessAccountId)
+    .eq(scopeCol, scopeVal)
     .maybeSingle();
   if (error) {
     return fail({ operation: op, code: classifyDatabaseError(error), detail: error.message });
@@ -268,17 +305,19 @@ export async function addIntakeRevision(params: {
   });
 }
 
-export async function confirmIntakeFact(params: {
-  sessionId: string;
-  businessAccountId: string;
-  actorUserId: string;
-  factKey: FactKey;
-  value: unknown;
-  authority: "confirmed" | "overridden";
-}): Promise<IntakeResult<IntakeRow>> {
+export async function confirmIntakeFact(
+  params: {
+    sessionId: string;
+    /** null for a guest: the SQL records the source as consumer_statement. */
+    actorUserId: string | null;
+    factKey: FactKey;
+    value: unknown;
+    authority: "confirmed" | "overridden";
+  } & IntakeScope
+): Promise<IntakeResult<IntakeRow>> {
   return callRpc("confirmIntakeFact", RPC.confirmFact, {
     p_session_id: params.sessionId,
-    p_business_account_id: params.businessAccountId,
+    ...scopeArgs(params),
     p_actor_user_id: params.actorUserId,
     p_fact_key: params.factKey,
     p_value: params.value,
@@ -286,15 +325,12 @@ export async function confirmIntakeFact(params: {
   });
 }
 
-export async function retractIntakeFact(params: {
-  sessionId: string;
-  businessAccountId: string;
-  actorUserId: string;
-  factKey: FactKey;
-}): Promise<IntakeResult<IntakeRow>> {
+export async function retractIntakeFact(
+  params: { sessionId: string; actorUserId: string | null; factKey: FactKey } & IntakeScope
+): Promise<IntakeResult<IntakeRow>> {
   return callRpc("retractIntakeFact", RPC.retractFact, {
     p_session_id: params.sessionId,
-    p_business_account_id: params.businessAccountId,
+    ...scopeArgs(params),
     p_actor_user_id: params.actorUserId,
     p_fact_key: params.factKey,
   });
@@ -305,14 +341,12 @@ export async function retractIntakeFact(params: {
  * Idempotent for the same request; a session already bound elsewhere is
  * refused (CR409), so evidence can never be re-pointed at another delivery.
  */
-export async function linkIntakeSession(params: {
-  sessionId: string;
-  businessAccountId: string;
-  requestId: string;
-}): Promise<IntakeResult<IntakeRow>> {
+export async function linkIntakeSession(
+  params: { sessionId: string; requestId: string } & IntakeScope
+): Promise<IntakeResult<IntakeRow>> {
   return callRpc("linkIntakeSession", RPC.linkSession, {
     p_session_id: params.sessionId,
-    p_business_account_id: params.businessAccountId,
+    ...scopeArgs(params),
     p_request_id: params.requestId,
   });
 }
@@ -323,21 +357,23 @@ export async function linkIntakeSession(params: {
  * failure stops the sync and is reported, leaving the record partially
  * updated but always internally valid — every step is a legal fact state.
  */
-export async function syncFormFactsIntoIntake(params: {
-  sessionId: string;
-  businessAccountId: string;
-  actorUserId: string;
-  statement: IntakeFormStatement;
-}): Promise<IntakeResult<{ steps: number }>> {
+export async function syncFormFactsIntoIntake(
+  params: {
+    sessionId: string;
+    actorUserId: string | null;
+    statement: IntakeFormStatement;
+  } & IntakeScope
+): Promise<IntakeResult<{ steps: number }>> {
   const loaded = await loadIntakeSession(params);
   if (isIntakeFailure(loaded)) return loaded;
+  const scope = pickScope(params);
   const steps = planIntakeFactSync(loaded.value.facts as never, params.statement);
   for (const step of steps) {
     const result =
       step.op === "confirm"
         ? await confirmIntakeFact({
             sessionId: params.sessionId,
-            businessAccountId: params.businessAccountId,
+            ...scope,
             actorUserId: params.actorUserId,
             factKey: step.factKey,
             value: step.value,
@@ -345,7 +381,7 @@ export async function syncFormFactsIntoIntake(params: {
           })
         : await retractIntakeFact({
             sessionId: params.sessionId,
-            businessAccountId: params.businessAccountId,
+            ...scope,
             actorUserId: params.actorUserId,
             factKey: step.factKey,
           });
@@ -360,11 +396,9 @@ export async function syncFormFactsIntoIntake(params: {
  * every interpretation and every confirmation, so what Ops reads is always
  * derived from the actual fact state, never from a captured intermediate.
  */
-export async function evaluateAndRecordIntakePolicy(params: {
-  sessionId: string;
-  businessAccountId: string;
-  runId?: string | null;
-}): Promise<IntakeResult<IntakeRow>> {
+export async function evaluateAndRecordIntakePolicy(
+  params: { sessionId: string; runId?: string | null } & IntakeScope
+): Promise<IntakeResult<IntakeRow>> {
   const loaded = await loadIntakeSession(params);
   if (isIntakeFailure(loaded)) return loaded;
   const facts = factMapFromRows(loaded.value.facts);
@@ -378,7 +412,7 @@ export async function evaluateAndRecordIntakePolicy(params: {
   const clarification = selectClarification(facts, policy);
   return callRpc("recordIntakePolicy", RPC.recordPolicy, {
     p_session_id: params.sessionId,
-    p_business_account_id: params.businessAccountId,
+    ...scopeArgs(params),
     p_policy_disposition: policy.disposition,
     p_policy_reasons: policy.reasons,
     p_policy_risk_signals: policy.riskSignals,
@@ -410,6 +444,47 @@ export async function resolveProviderBusinessCategory(
   return isBusinessCategory(data.business_category) ? data.business_category : null;
 }
 
+/* -------------------------------------------------- INT-002 consumer -- */
+
+/**
+ * The guest's description, upserted onto the ONE intake session bound to
+ * their guest session. The SQL adds no revision for identical trimmed words
+ * (no second paid call) and appends revision N+1 for changed words.
+ */
+export async function upsertConsumerIntakeDescription(params: {
+  guestSessionId: string;
+  description: string;
+}): Promise<IntakeResult<{ session: IntakeRow; revisionAdded: boolean }>> {
+  const op = "upsertConsumerIntakeDescription";
+  const r = await callRpc(op, RPC.upsertConsumer, {
+    p_guest_session_id: params.guestSessionId,
+    p_description: params.description,
+    p_fact_schema_version: FACT_SCHEMA_VERSION,
+  });
+  if (isIntakeFailure(r)) return r;
+  const session = r.value?.session;
+  if (!session || typeof session.id !== "string") {
+    return fail({ operation: op, code: "conflict", detail: { reason: "upsert returned no session" } });
+  }
+  return { ok: true, value: { session, revisionAdded: r.value.revisionAdded === true } };
+}
+
+/** The consumer intake session bound to a guest session, or null. */
+export async function findConsumerIntakeSession(
+  guestSessionId: string
+): Promise<IntakeResult<IntakeRow | null>> {
+  const op = "findConsumerIntakeSession";
+  const { data, error } = await supabaseAdmin
+    .from("couranr_intake_sessions")
+    .select("id, current_revision, request_id, interpretation_status")
+    .eq("guest_session_id", guestSessionId)
+    .maybeSingle();
+  if (error) {
+    return fail({ operation: op, code: classifyDatabaseError(error), detail: error.message });
+  }
+  return { ok: true, value: data ?? null };
+}
+
 /* ------------------------------------------------------ interpretation -- */
 
 function interpretationIdempotencyKey(params: {
@@ -426,11 +501,9 @@ function interpretationIdempotencyKey(params: {
     .digest("hex");
 }
 
-export async function runInterpretation(params: {
-  sessionId: string;
-  businessAccountId: string;
-  sourceRevision: number;
-}): Promise<IntakeResult<{ run: IntakeRow; session: IntakeRow | null }>> {
+export async function runInterpretation(
+  params: { sessionId: string; sourceRevision: number } & IntakeScope
+): Promise<IntakeResult<{ run: IntakeRow; session: IntakeRow | null }>> {
   const op = "runInterpretation";
   // Provider resolution has exactly one door (env allowlist, plus the
   // sanctioned test seam that does not exist in production). There is no
@@ -440,7 +513,7 @@ export async function runInterpretation(params: {
 
   const begun = await callRpc(op, RPC.beginRun, {
     p_session_id: params.sessionId,
-    p_business_account_id: params.businessAccountId,
+    ...scopeArgs(params),
     p_source_revision: params.sourceRevision,
     p_prompt_version: PROMPT_VERSION,
     p_fact_schema_version: FACT_SCHEMA_VERSION,
@@ -473,7 +546,7 @@ export async function runInterpretation(params: {
   const complete = (status: string, extras: Record<string, unknown> = {}) =>
     callRpc(op, RPC.completeRun, {
       p_run_id: run.id,
-      p_business_account_id: params.businessAccountId,
+      ...scopeArgs(params),
       p_status: status,
       p_proposals: null,
       p_output_hash: null,
@@ -503,7 +576,12 @@ export async function runInterpretation(params: {
     confirmed[f.fact_key] = { value: f.value, authority: f.authority };
   }
 
-  const businessCategory = await resolveProviderBusinessCategory(params.businessAccountId);
+  // INT-002: a guest has no business category; the provider sees null, the
+  // same value a merchant outside the closed registry gets.
+  const businessCategory =
+    params.businessAccountId !== undefined
+      ? await resolveProviderBusinessCategory(params.businessAccountId)
+      : null;
 
   // §3 — the RAW description stays in the database untouched; what EVERY
   // provider (fake included) is shown is the sanitized text, with obvious
@@ -583,7 +661,7 @@ export async function runInterpretation(params: {
   if (done.value.status === "success") {
     const recorded = await evaluateAndRecordIntakePolicy({
       sessionId: params.sessionId,
-      businessAccountId: params.businessAccountId,
+      ...pickScope(params),
       runId: run.id,
     });
     if (!isIntakeFailure(recorded)) {

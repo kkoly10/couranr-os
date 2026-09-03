@@ -11,7 +11,7 @@ ledgers own per-item state; this is their sum.
 The 721-line hand-written version of this file is preserved whole at
 [`autonomous-evidence/status-archive/IMPLEMENTATION_STATUS-2026-08-06.md`](./autonomous-evidence/status-archive/IMPLEMENTATION_STATUS-2026-08-06.md).
 It restated per-row evidence the ledgers already carried, and the restatement is
-what went stale: it counted 39 migrations while 62 were on disk.
+what went stale: it counted 39 migrations while 67 were on disk.
 
 ## Where truth lives
 
@@ -32,8 +32,8 @@ proves every generated view matches its source.
 | Status | Count |
 |---|---|
 | `complete_verified` | 18 |
-| `not_started` | 12 |
-| `partial` | 8 |
+| `not_started` | 10 |
+| `partial` | 10 |
 | `complete_pending_external` | 3 |
 | `complete_unverified` | 1 |
 
@@ -56,11 +56,11 @@ Still rendering `ScreenPlaceholder` (17): `DRV-009` · `DRV-010` · `OPS-001` ·
 | Page routes | 97 |
 | …canonical, under `app/(couranr)` | 47 |
 | …legacy | 50 |
-| API routes | 143 |
-| …canonical, under `app/api/couranr` | 73 |
+| API routes | 155 |
+| …canonical, under `app/api/couranr` | 85 |
 | …legacy | 70 |
-| Forward migrations | 62 |
-| Paired rollbacks | 62 |
+| Forward migrations | 67 |
+| Paired rollbacks | 67 |
 | Canonical screens | 68 |
 | …Core | 64 |
 | …MVP-complete | 4 |
@@ -74,10 +74,10 @@ Still rendering `ScreenPlaceholder` (17): `DRV-009` · `DRV-010` · `OPS-001` ·
 | `P3-001` | partial | Create policy registry |
 | `P4-002` | partial | Implement categories and versioned presets |
 | `P5-001` | partial | Implement Smart Intake schema and APIs |
-| `P6-004` | not_started | Implement balanced ledger and refunds |
+| `P6-004` | partial | Implement balanced ledger and refunds |
 | `P7-002` | partial | Implement Operations Queue and review |
 | `P7-004` | partial | Implement private proof and offline sync |
-| `P7-005` | not_started | Implement wait/cancel/return/incident/weather |
+| `P7-005` | partial | Implement wait/cancel/return/incident/weather |
 | `P8-003` | partial | Implement Driving Mode alert suppression |
 | `P9-001` | not_started | Implement AI data broker and audit |
 | `P9-002` | not_started | Implement Ghost drafts and operator coach |
@@ -95,6 +95,8 @@ Still rendering `ScreenPlaceholder` (17): `DRV-009` · `DRV-010` · `OPS-001` ·
 | Item | Blocker or deferment |
 |---|---|
 | `P5-001` | NATURAL-LANGUAGE AI IS NOT PILOT-LIVE: the Anthropic adapter exists and is unit-tested against the SDK contract, but the live smoke has not been executed (no ANTHROPIC_API_KEY in the verification environment) and the production environment is not configured. The platform degrades to manual structured intake by design; the fake provider is structurally unavailable in production. |
+| `P6-004` | Live Stripe refund round trip not executed in any environment; V0 supports one refund chain per obligation (full or single governed partial) |
+| `P7-005` | Waiting-fee assessment requires an owner decision on the charging mechanism (no payer reauthorization path exists); recorded as evidence only |
 
 ## Verification SHAs
 
@@ -105,24 +107,24 @@ each is in the ledger row itself — `test_evidence`, `browser_verified` and
 | SHA | covers | rows |
 |---|---|---|
 | `08f59f8d0cc062c36252a7295f86513618187965` | 1 screen | MER-004 |
-| `0b4d4a4c58d3c699d17f5f1348e12511cf444069` | 1 work item | P5-001 |
 | `0d57ba736000e8ecb9d28c87a4e78a683599a316` | 1 work item | P3-002 |
 | `14fa99fbcf8103d33bb7267a8f4729421bccd400` | 1 work item | P6-001 |
 | `1b3a1c90c88a554f1ac1ff1e6a6d06a97d602150` | 3 screens | CUS-006, CUS-008, PUB-006 |
 | `2848a8f33bde8362bd3c9fcfb9266781fcecb77a` | 2 screens | PUB-012, PUB-013 |
 | `32893e21401a6f056821c4caaa7858460c7356b8` | 1 screen | MER-001 |
-| `401b3eea5cd96bb09d224f3b113ba6091bba807d` | 27 work items, 37 screens | P0-001, P0-002, P1-001, P1-002, P1-003, P1-004, P2-002, P4-001, P5-002, P6-003, P6-004, P7-001, P7-002, P7-003, P7-004, P7-005, P8-003, P9-001, P9-002, P9-003, P9-004, P10-001, P10-002, P11-001, P12-001, P12-002, P10-007, CUS-002, CUS-004, CUS-005, CUS-007, DRV-001, DRV-002, DRV-003, DRV-004, DRV-005, DRV-006, DRV-007, DRV-009, DRV-010, MER-002, MER-006, MER-007, OPS-001, OPS-002, OPS-004, OPS-006, OPS-008, OPS-009, OPS-010, OPS-011, OPS-012, OPS-013, OPS-014, OPS-015, OPS-016, OPS-017, OPS-018, OPS-019, OPS-020, OPS-021, PUB-002, PUB-003, PUB-005 |
+| `401b3eea5cd96bb09d224f3b113ba6091bba807d` | 24 work items, 37 screens | P0-001, P0-002, P1-001, P1-002, P1-003, P1-004, P2-002, P4-001, P5-002, P7-001, P7-002, P7-003, P7-004, P8-003, P9-001, P9-002, P9-003, P9-004, P10-001, P10-002, P11-001, P12-001, P12-002, P10-007, CUS-002, CUS-004, CUS-005, CUS-007, DRV-001, DRV-002, DRV-003, DRV-004, DRV-005, DRV-006, DRV-007, DRV-009, DRV-010, MER-002, MER-006, MER-007, OPS-001, OPS-002, OPS-004, OPS-006, OPS-008, OPS-009, OPS-010, OPS-011, OPS-012, OPS-013, OPS-014, OPS-015, OPS-016, OPS-017, OPS-018, OPS-019, OPS-020, OPS-021, PUB-002, PUB-003, PUB-005 |
+| `484826a18423eba050aabd6db7daf1287837a793` | 2 work items | P6-004, P7-005 |
 | `50f576e991dd249849d93206fc9e7cda330e71b7` | 1 screen | MER-005 |
 | `6d97bc132efdb7ed165dae11189077b2ea34d6f9` | 1 work item | P3-001 |
+| `795ae0d42131ac76abf7402f0686e139cece4ea5` | 2 work items | P2-003, P6-003 |
 | `807c8ed6316cf420dbffa171f5a65b1692dd6830` | 3 screens | MER-003, MER-016, OPS-007 |
 | `91515ca5ca26e813bcc14b77b2e72dd475202ea8` | 3 work items, 6 screens | P8-001, P8-002, P8-004, CUS-001, CUS-003, DRV-008, MER-012, OPS-005, PUB-007 |
 | `981748b95c0916b15274eb8ef20be1bb1b41f4db` | 1 screen | MER-013 |
+| `a8ce376cf303e3b62b889dc7831a3e81dd5522ad` | 1 work item, 1 screen | P5-001, PUB-004 |
 | `c2cac8b9ffeaaf7e9a6a528a9eac5d057a2801f9` | 1 work item | P2-001 |
 | `c90ec4025fad951cc6a26eea208a687cc18c8cef` | 1 work item, 1 screen | P4-002, OPS-003 |
 | `c9e0fe573da29177fa72979911a7e60bf3beb0df` | 2 screens | MER-014, MER-015 |
-| `ca5ac5b0273317b19c1dc728327d9752054f9d8b` | 1 work item | P2-003 |
 | `cd697e48889389b5365562d4e7f3c82413c10ea9` | 2 screens | MER-008, MER-009 |
 | `d0271ade57785985a4d38bd5328ee0605a24465b` | 1 work item | P6-002 |
-| `d2852ec85cab2ef8561dc96f17d66ad475643ce5` | 1 screen | PUB-004 |
 | `ec4a2af8f7c1de0bee4e3c021b50c875acdd6633` | 4 work items, 5 screens | P10-003, P10-004, P10-005, P10-006, PUB-001, PUB-008, PUB-009, PUB-010, PUB-011 |
 | `f4bff8d0d29fa8be2e9ea1a37bcfa5fd1520005c` | 2 screens | MER-010, MER-011 |

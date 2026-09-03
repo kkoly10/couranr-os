@@ -444,14 +444,55 @@ export async function replaceDeliveryAssignment(params: {
 /* ------------------------------------------------- Operations reading -- */
 
 /**
- * Everything OPS-003 needs to draw the assignment panel: the delivery, the
- * active assignment, and the two rosters with a per-row eligibility reason
- * computed by the DATABASE against this delivery's stored requirement.
+ * The metadata keys a delivery event may carry into the browser.
  *
- * The eligibility reason is computed server-side rather than in the selector
- * because the browser has no business deciding whether a vehicle can carry a
- * load, and because a second implementation of that rule would eventually
- * disagree with the one that actually gates the write.
+ * An ALLOW-LIST rather than a strip-list, because at least one writer puts a
+ * payment identifier in this column: `create_delivery_from_capture` records
+ * `paymentObligationId`. Everything listed here is operational evidence —
+ * positions, counts, the discrepancy and assignment being referenced — and
+ * nothing is a payment id, an amount, or a provider identifier.
+ */
+const SAFE_EVENT_METADATA_KEYS = [
+  "assignmentId",
+  "discrepancyId",
+  "reason",
+  "stage",
+  "stageNote",
+  "latitude",
+  "longitude",
+  "accuracyM",
+  "observedPackageCount",
+  "largeOrUnusual",
+  "driverAssigned",
+] as const;
+
+function sanitizeEventMetadata(metadata: unknown): Record<string, any> {
+  if (!metadata || typeof metadata !== "object") return {};
+  const out: Record<string, any> = {};
+  for (const key of SAFE_EVENT_METADATA_KEYS) {
+    if (key in (metadata as Record<string, any>)) out[key] = (metadata as Record<string, any>)[key];
+  }
+  return out;
+}
+
+/** The open discrepancy row, shaped for the Operations panel. */
+export type OpenDiscrepancyView = {
+  id: string;
+  version: number;
+  reason: string;
+  stage: string;
+  note: string | null;
+  reportedAt: string | null;
+  createdAt: string;
+};
+
+/**
+ * Everything OPS-003 needs to draw the assignment panel: the delivery, the
+ * active assignment, the two rosters with a per-row eligibility reason
+ * computed by the DATABASE against this delivery's stored requirement — and,
+ * since batch 3 §C, the OPEN discrepancy row and the delivery's own event
+ * history, which are what make the safe-to-continue action reachable and the
+ * arrival/waiting evidence renderable.
  */
 export async function getDispatchPanel(params: {
   actor: RequestActor;
@@ -463,6 +504,8 @@ export async function getDispatchPanel(params: {
     drivers: Record<string, any>[];
     vehicles: Record<string, any>[];
     events: Record<string, any>[];
+    openDiscrepancy: OpenDiscrepancyView | null;
+    deliveryEvents: Record<string, any>[];
   }>
 > {
   const op = "getDispatchPanel";
@@ -490,6 +533,35 @@ export async function getDispatchPanel(params: {
     .eq("delivery_id", params.deliveryId)
     .order("created_at", { ascending: true })) as { data: any; error: any };
 
+  /*
+   * The OPEN discrepancy, id and version included — the two facts the
+   * safe-to-continue command cannot run without. This is the read endpoint
+   * `couranr_pickup_discrepancies` never had: the table was written by two
+   * commands and read by none, so the Operations clearing route existed but
+   * was unreachable from any browser.
+   */
+  const { data: discrepancy, error: pdErr } = (await supabaseAdmin
+    .from("couranr_pickup_discrepancies")
+    .select("id,version,reason,stage,notes,reported_at,created_at")
+    .eq("delivery_id", params.deliveryId)
+    .eq("discrepancy_state", "open")
+    .maybeSingle()) as { data: any; error: any };
+  if (pdErr) return fail({ operation: op, code: "internal", detail: pdErr.message });
+
+  /*
+   * The delivery's own event history — arrivals, discrepancies, completions —
+   * which the assignment events alone never showed, so the Operations
+   * timeline had no arrival or discrepancy evidence to render. Metadata is
+   * passed through an allow-list: no payment identifiers (SUR-003 reads this
+   * as EVIDENCE; nothing here is a charge).
+   */
+  const { data: deliveryEvents, error: deErr } = (await supabaseAdmin
+    .from("couranr_delivery_events")
+    .select("id,command,actor_type,from_state,to_state,metadata,created_at")
+    .eq("delivery_id", params.deliveryId)
+    .order("created_at", { ascending: true })) as { data: any[] | null; error: any };
+  if (deErr) return fail({ operation: op, code: "internal", detail: deErr.message });
+
   return {
     ok: true,
     value: {
@@ -498,6 +570,26 @@ export async function getDispatchPanel(params: {
       drivers: drivers.value.drivers,
       vehicles: vehicles.value.vehicles,
       events: events ?? [],
+      openDiscrepancy: discrepancy
+        ? {
+            id: String(discrepancy.id),
+            version: Number(discrepancy.version),
+            reason: String(discrepancy.reason),
+            stage: String(discrepancy.stage ?? "pickup"),
+            note: discrepancy.notes ?? null,
+            reportedAt: discrepancy.reported_at ?? null,
+            createdAt: String(discrepancy.created_at),
+          }
+        : null,
+      deliveryEvents: (deliveryEvents ?? []).map((e) => ({
+        id: e.id,
+        command: e.command,
+        actor_type: e.actor_type,
+        from_state: e.from_state,
+        to_state: e.to_state,
+        created_at: e.created_at,
+        metadata: sanitizeEventMetadata(e.metadata),
+      })),
     },
   };
 }

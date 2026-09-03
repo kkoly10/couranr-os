@@ -156,6 +156,15 @@ describe("classifyDatabaseError", () => {
 describe("canonical routes cannot leak a database detail", () => {
   it("covers every canonical route", () => {
     expect(ROUTES.map(rel).sort()).toEqual([
+      "app/api/couranr/consumer/estimate/route.ts",
+      "app/api/couranr/consumer/interpret/route.ts",
+      "app/api/couranr/consumer/pay/route.ts",
+      "app/api/couranr/consumer/places/route.ts",
+      "app/api/couranr/consumer/reconcile-payment/route.ts",
+      "app/api/couranr/consumer/refresh-quote/route.ts",
+      "app/api/couranr/consumer/request/route.ts",
+      "app/api/couranr/consumer/session/route.ts",
+      "app/api/couranr/consumer/submit/route.ts",
       "app/api/couranr/conversations/[id]/messages/route.ts",
       "app/api/couranr/conversations/[id]/read/route.ts",
       "app/api/couranr/conversations/[id]/route.ts",
@@ -211,9 +220,12 @@ describe("canonical routes cannot leak a database detail", () => {
       "app/api/couranr/operations/deliveries/[id]/unassign/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/accept-as-quoted/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/begin-review/route.ts",
+      "app/api/couranr/operations/delivery-requests/[id]/cancel-delivery/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/capture/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/decline/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/reconcile-capture/route.ts",
+      "app/api/couranr/operations/delivery-requests/[id]/reconcile-refund/route.ts",
+      "app/api/couranr/operations/delivery-requests/[id]/refund/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/release/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/requote/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/service-plan/route.ts",

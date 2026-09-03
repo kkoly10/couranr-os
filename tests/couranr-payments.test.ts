@@ -66,9 +66,18 @@ describe("authorization only", () => {
    * a false green or deleting the guard, so it is narrowed to the invariant
    * that still holds.
    */
-  it("only one function may write captured, and nothing may write refunded", () => {
+  it("only one function may write captured, and only the refund completion may write refunded", () => {
     expect(SQL).toContain("'refunded'");
-    expect(SQL).not.toMatch(/payment_state\s*=\s*'refunded'/);
+    /*
+     * Batch 3 §B gave `refunded` its ONE writer: the CASE inside
+     * couranr_complete_payment_refund, reachable only after Stripe confirmed
+     * a succeeded refund whose amounts sum to exactly the captured amount.
+     * Guard the count, not the absence.
+     */
+    const refundWriters = [...SQL.matchAll(/payment_state\s*=\s*case when v_total = captured_amount_cents\s*then 'refunded'/g)];
+    expect(refundWriters).toHaveLength(1);
+    const bareRefunded = [...SQL.matchAll(/set\s+payment_state\s*=\s*'refunded'/g)];
+    expect(bareRefunded).toHaveLength(0);
     expect(SQL).not.toMatch(/v_target\s*:=\s*'refunded'/);
 
     /*

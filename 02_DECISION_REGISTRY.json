@@ -3252,12 +3252,14 @@
           "timing_asap": "As soon as possible",
           "timing_today": "Today",
           "timing_schedule": "Schedule it",
+          "timing_live_note": "Couranr picks up as soon as possible and confirms the exact timing with you after your request.",
           "review_heading": "Here’s your delivery",
           "contact_heading": "Where should we send updates?",
           "acknowledgement": "I confirm this item is eligible for delivery and I have authority to send or collect it.",
           "production_stop": "Same Day ordering isn’t live yet.",
           "received_heading": "We have your request.",
-          "received_support": "Couranr is confirming your delivery."
+          "received_support": "Couranr is confirming your delivery.",
+          "item_ai_disclosure": "Couranr uses AI to read this description and suggest your shipment details. You confirm everything before you pay, and Couranr — not the AI — sets the price and what can be carried."
         },
         "chrome": {
           "same_day": "Same Day",
@@ -4608,6 +4610,96 @@
         "resolution": "Implemented as durable input enrichment behind the canonical command boundary.",
         "remediation_commit": "Smart Intake batch"
       }
+    },
+    {
+      "id": "INT-002",
+      "category": "smart intake",
+      "decision": "Consumer Smart Intake on /send is INT-001 applied unchanged to the anonymous guest, who is the TRUSTED ACTOR for their OWN request only. AI proposes a count, fragility, and a weight or restricted-class suggestion from the guest's description — closed-vocabulary, numeric or boolean facts only, because no free-text model output is ever rendered to a guest; Couranr's deterministic policy and Pricing V2 remain the only authorities; the guest confirms every material fact by an explicit form action (choosing a suggestion or stating the value themselves) and nothing is prefilled silently; the server commits. The guest is told at the START of the item step that AI reads the description. The anonymous surface carries its own abuse controls: one paid call per description revision (identical trimmed words never buy another), 12 paid calls per guest session per rolling hour, ONE global consumer allowance of 300 paid calls per rolling hour, a kill switch (COURANR_CONSUMER_INTAKE must equal 'live'; absent means unavailable with zero provider calls and zero writes), and a 4000-character input cap. The provider payload is the same minimized shape as INT-001 (description, no business category, confirmed non-PII facts) with phone, email and card patterns redacted; recipient contact and addresses never travel. Human review stays exactly where §13 puts it; a model conclusion still cannot move price, state, route or a restricted outcome.",
+      "value": {
+        "governing_rule": "AI PROPOSES. COURANR VALIDATES. A TRUSTED ACTOR CONFIRMS MATERIAL FACTS. SERVER COMMITS.",
+        "trusted_actor": "the guest, for their own request only, by explicit form action; a proposal is never a silent prefill of a material fact",
+        "fact_sources_added": [
+          "consumer_statement"
+        ],
+        "disclosure": {
+          "placement": "start of the item step, before any description is read; always visible in live mode",
+          "copy_key": "MKT-005.value.send.item_ai_disclosure",
+          "basis": [
+            "Anthropic Usage Policy — consumer-facing products must disclose AI interaction at the start of a session",
+            "EU AI Act Article 50 — natural persons must be informed they interact with an AI system unless obvious (in force 2026-08-02)",
+            "US state commercial-chatbot disclosure laws (Maine; New Jersey at the start of the interaction; California B.O.T. Act; Utah on request)"
+          ]
+        },
+        "abuse_controls": {
+          "one_paid_call_per_description_revision": true,
+          "per_guest_session_paid_calls_per_hour": 12,
+          "consumer_global_paid_calls_per_hour": 300,
+          "kill_switch": "COURANR_CONSUMER_INTAKE === 'live' enables; anything else is unavailable with zero provider calls and zero writes",
+          "description_max_chars": 4000,
+          "worst_case_spend_note": "300 calls/hour at ~2,300 input + ~200 output tokens on claude-sonnet-5 is about $2/hour; exhausting the allowance degrades every guest to the manual structured form, never to a blocked request"
+        },
+        "data_minimization": "description (phone/email/card patterns redacted), no business category, confirmed non-PII facts only; no name, recipient contact, address or payment material has a field",
+        "human_review": "unchanged from §13; nothing here executes",
+        "eligibility": "adults only, per the delivery terms; no minors guidance applies",
+        "provider": "the merchant provider seam and model allowlist, unchanged (Anthropic, claude-sonnet-5)",
+        "difference_from_merchant_intake": "merchants may see a >=85-confidence prefill of an EMPTY field; guests never do — every material suggestion needs an explicit 'Use this'",
+        "shipment_policy_version": "couranr-shipment-policy-v0-2026-09-02",
+        "fact_schema_version": "couranr-shipment-facts-v0-2026-09-02",
+        "guest_visible_fact_keys": [
+          "quantity",
+          "package_count",
+          "weight_lb_exact",
+          "weight_band",
+          "fragile",
+          "restricted_class"
+        ],
+        "never_guest_visible": "the free-string keys (item_category, item_subtype, handling_requirements, and every other short-string key) — stored as substrate evidence, never rendered"
+      },
+      "status": "decided",
+      "decided_by": "owner",
+      "decided_at_utc": "2026-09-03T15:30:00Z",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§13 AI systems; §6 Smart Intake",
+      "affected_routes": [
+        "/send",
+        "/estimate"
+      ],
+      "affected_screen_ids": [
+        "PUB-004",
+        "OPS-003"
+      ],
+      "affected_database_objects": [
+        "public.couranr_intake_sessions",
+        "public.couranr_intake_description_revisions",
+        "public.couranr_intake_runs",
+        "public.couranr_intake_facts",
+        "public.couranr_intake_fact_events",
+        "public.couranr_consumer_guest_sessions"
+      ],
+      "affected_code_paths": [
+        "lib/couranr/consumer/intake.ts",
+        "lib/couranr/intake/",
+        "app/api/couranr/consumer/interpret/route.ts",
+        "components/couranr/sameday/SendFlow.tsx",
+        "lib/couranr/sameday/liveAdapters.ts",
+        "supabase/migrations/20260903050000_couranr_consumer_smart_intake.sql"
+      ],
+      "conflict_with_current_code": {
+        "code_location": "lib/couranr/consumer/send.ts",
+        "code_value": {
+          "guest_provider_call": "none — batch 3 deliberately made no provider call for anonymous guests because no anonymous abuse control existed"
+        },
+        "resolution": "INT-002 supplies the controls (kill switch, per-revision idempotency, per-session and global hourly allowances) and authorizes the call; lib/couranr/consumer/intake.ts implements it on the shared substrate in this slice"
+      },
+      "implementation_phase": "launch batch 3 follow-up",
+      "acceptance_criteria": [
+        "With the kill switch off, a guest description makes zero provider calls and zero intake writes.",
+        "The same trimmed description interpreted twice spends exactly one paid call; a 13th call in an hour for one guest session and a 301st consumer call in an hour are rate_limited with no provider call.",
+        "A guest can read and write ONLY the intake session bound to their own guest session; a business scope cannot reach it and vice versa.",
+        "No material fact (weight, restricted class) changes on the form until the guest chooses a suggestion; the disclosure is visible before any description is read.",
+        "Prompt-injection text in a guest description has zero authority over policy, pricing, mileage, traffic, review or state.",
+        "Provider malformed/timeout/unavailable and an exhausted allowance degrade to the manual structured form without blocking the estimate."
+      ]
     },
     {
       "id": "TRF-002",

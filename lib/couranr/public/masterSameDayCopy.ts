@@ -138,6 +138,10 @@ export const SEND_COPY = {
   trip_destination: "Where is it going?",
   item_question: "What are we delivering?",
   item_example: "A birthday cake I already paid for at Main Street Bakery.",
+  /* INT-002: the AI disclosure, shown at the START of the item step in live
+     mode — before any description is read. Registry MKT-005 owns the text. */
+  item_ai_disclosure:
+    "Couranr uses AI to read this description and suggest your shipment details. You confirm everything before you pay, and Couranr — not the AI — sets the price and what can be carried.",
   readiness_question: "Is it ready for pickup?",
   readiness_yes: "Yes, the business says it’s ready",
   readiness_no: "Not yet / I’m not sure",
@@ -145,6 +149,10 @@ export const SEND_COPY = {
   timing_asap: "As soon as possible",
   timing_today: "Today",
   timing_schedule: "Schedule it",
+  /* Live V1 is ASAP only; Couranr confirms the exact timing after the
+     request. Scheduled consumer timing is deferred, so live mode never
+     renders a choice the backend would ignore. */
+  timing_live_note: "Couranr picks up as soon as possible and confirms the exact timing with you after your request.",
   review_heading: "Here’s your delivery",
   contact_heading: "Where should we send updates?",
   acknowledgement: "I confirm this item is eligible for delivery and I have authority to send or collect it.",
