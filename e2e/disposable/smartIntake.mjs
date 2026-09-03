@@ -8,8 +8,12 @@
  * the commit wrapper that refuses to mint a quote from facts the merchant has
  * since changed. Every one is CALLED with real rows.
  */
-import { up, psql } from "./up.mjs";
+import { up, psql, dbUrl } from "./up.mjs";
 import { readFileSync } from "node:fs";
+import crypto from "node:crypto";
+import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 
 let pass = 0, fail = 0;
 const one = (q) => psql(q).trim();
@@ -56,6 +60,62 @@ function draftFor(biz, user, key) {
 
 const MIG = "supabase/migrations/20260902210000_couranr_smart_intake_v0.sql";
 const RB = "supabase/rollbacks/20260902210000_couranr_smart_intake_v0.rollback.sql";
+/* INT-002 (consumer scope) layers on this substrate; rollbacks run newest first. */
+const MIG2 = "supabase/migrations/20260903050000_couranr_consumer_smart_intake.sql";
+const RB2 = "supabase/rollbacks/20260903050000_couranr_consumer_smart_intake.rollback.sql";
+
+/* ---- INT-002 consumer fixtures (the consumer suite's shapes, kept local) ---- */
+const execFileP = promisify(execFile);
+const PGBIN = process.env.COURANR_PGBIN || "/usr/lib/postgresql/16/bin";
+/** A SECOND connection: the race probe needs two transactions in flight. */
+async function psqlAsync(sql) {
+  const { stdout } = await execFileP(path.join(PGBIN, "psql"),
+    [dbUrl(), "-tAq", "-v", "ON_ERROR_STOP=1", "-c", sql], { encoding: "utf8" });
+  return stdout.trim();
+}
+const esc = (v) => String(v).replace(/'/g, "''");
+const jsonLit = (v) => `'${esc(JSON.stringify(v))}'::jsonb`;
+const sha256 = (raw) => crypto.createHash("sha256").update(raw, "utf8").digest("hex");
+function place(line1, city, postalCode, placeId) {
+  return { googlePlaceId: placeId, formattedAddress: `${line1}, ${city}, VA ${postalCode}, USA`, line1, line2: null,
+    city, region: "VA", postalCode, countryCode: "US", latitude: 38.422, longitude: -77.408,
+    addressSource: "google_places_new", instructions: null };
+}
+const C_PICKUP = place("12 Send St", "Stafford", "22554", "place-consumer-pickup");
+const C_DROPOFF = place("9 Receive Ct", "Woodbridge", "22191", "place-consumer-dropoff");
+const C_METERS_5MI = Math.round(5 * 1609.344);
+const C_LINE_ITEMS = [{ code: "delivery_base", label: "Delivery", amountCents: 2299 }];
+function newGuest(ttl = "null::integer") {
+  const raw = crypto.randomBytes(32).toString("base64url");
+  const id = one(`select id from public.couranr_create_consumer_guest_session(
+       p_token_hash := '${sha256(raw)}', p_ttl_minutes := ${ttl})`);
+  return { id, raw };
+}
+function consumerCreateArgs(sessionId) {
+  return `
+    p_guest_session_id := '${sessionId}'::uuid,
+    p_idempotency_key := 'cs-${crypto.randomUUID()}',
+    p_contact := ${jsonLit({ phone: "+15715550188" })},
+    p_shipment_description := 'a small box of books',
+    p_recipient_name := null::text, p_recipient_phone := null::text, p_recipient_email := null::text,
+    p_weight_lb := (20)::numeric, p_additional_stops := 0,
+    p_service_level := 'standard', p_signature_required := false, p_proof_method := 'photo_or_pin',
+    p_pickup_address := ${jsonLit(C_PICKUP)}, p_dropoff_address := ${jsonLit(C_DROPOFF)},
+    p_overnight_requested := false,
+    p_route_distance_meters := ${C_METERS_5MI}, p_route_duration_seconds := 600,
+    p_route_static_duration_seconds := 600, p_route_traffic_delay_seconds := 0,
+    p_distance_source := 'google_routes_v2', p_serviceability_outcome := 'available_for_request',
+    p_route_review_reason := null::text,
+    p_quote_status := 'estimated', p_pricing_policy_version := '${POLICY}',
+    p_delivery_subtotal_cents := 2299, p_included_loaded_miles := 3, p_billable_loaded_miles := (5)::numeric,
+    p_quote_line_items := ${jsonLit(C_LINE_ITEMS)}, p_review_reasons := '[]'::jsonb,
+    p_weight_band := null::text, p_timing_intent := null::text, p_requested_pickup_local := null::text,
+    p_requested_departure_at := null::timestamptz, p_timing_review_reasons := '[]'::jsonb,
+    p_restricted_class := 'none'`;
+}
+/** A guest-scoped begin, in the widened positional shape (business null, guest last). */
+const guestBegin = (sess, rev, key, guest) =>
+  `select public.couranr_begin_intake_run('${sess}',null,${rev},'prompt-v1','v0','fake','${key}','["shipment_description"]'::jsonb,null,'${guest}')::text`;
 const applyScript = (file) => {
   try {
     raw(readFileSync(file, "utf8").replace(/^\s*begin;\s*$/m, "").replace(/^\s*commit;\s*$/m, ""));
@@ -80,15 +140,20 @@ async function main() {
     console.log("\n  Smart Intake V0 — database execution\n");
 
     /* ---- 0. rollback/replay on the evidence-free database ---------------- */
+    check("SI-00", "the INT-002 rollback applies cleanly first (rollbacks run newest first)",
+      applyScript(RB2), "NO_ERROR|");
     check("SI-01", "the rollback applies cleanly before any commit evidence exists",
       applyScript(RB), "NO_ERROR|");
     check("SI-02", "... and the intake tables are gone",
       one(`select count(*) from information_schema.tables
             where table_name like 'couranr_intake%'`), "0");
-    check("SI-03", "the forward migration replays over its own rollback",
-      applyScript(MIG), "NO_ERROR|");
-    check("SI-04", "... and is re-runnable over itself",
-      applyScript(MIG), "NO_ERROR|");
+    check("SI-03", "the forward migrations replay over their own rollbacks, in order",
+      applyScript(MIG) + applyScript(MIG2), "NO_ERROR|NO_ERROR|");
+    /* Re-running 20260902210000 alone would resurrect the predecessor signatures
+       beside the widened ones (every positional call becomes 42725 ambiguous);
+       20260903050000 is what makes the pair re-runnable, so it always follows. */
+    check("SI-04", "... and the pair is re-runnable over itself",
+      applyScript(MIG) + applyScript(MIG2), "NO_ERROR|NO_ERROR|");
 
     /* ---- 1. session + revisions ------------------------------------------ */
     const reqA = draftFor(BIZ_A, USER_A, "si-req-a");
@@ -489,6 +554,188 @@ async function main() {
              'public.couranr_intake_fact_events','UPDATE')::text`),
       "false");
 
+
+    /* ---- 7c. INT-002: the consumer scope on the SAME substrate ------------ */
+    const sessRev = one(`select current_revision from public.couranr_intake_sessions where id='${session}'`);
+    const guest = newGuest();
+    const guestB = newGuest();
+    const G = guest.id, GB = guestB.id;
+    const up1 = JSON.parse(one(`select public.couranr_upsert_consumer_intake_description('${G}','a lamp and two framed prints')::text`));
+    const csess = up1.session.id;
+    check("SI-C01", "a guest's first description creates the ONE consumer intake session (no business, no actor)",
+      one(`select coalesce(business_account_id::text,'null')||'|'||guest_session_id||'|'||
+                  coalesce(created_by_user_id::text,'null')||'|'||current_revision
+             from public.couranr_intake_sessions where id='${csess}'`),
+      `null|${G}|null|1`);
+    check("SI-C01b", "... revision 1 is the guest's words verbatim, source consumer_statement, no actor",
+      one(`select source||'|'||coalesce(actor_user_id::text,'null')||'|'||raw_description
+             from public.couranr_intake_description_revisions where session_id='${csess}' and revision=1`),
+      "consumer_statement|null|a lamp and two framed prints");
+    check("SI-C01c", "... and the upsert reports the revision as added", up1.revisionAdded, "true");
+    const up2 = JSON.parse(one(`select public.couranr_upsert_consumer_intake_description('${G}','  a lamp and two framed prints  ')::text`));
+    check("SI-C02", "the SAME words (whitespace aside) add no revision — no second paid call can follow",
+      `${up2.revisionAdded}|${up2.session.current_revision}`, "false|1");
+    const up3 = JSON.parse(one(`select public.couranr_upsert_consumer_intake_description('${G}','a lamp, two framed prints and 12 bottles of beer')::text`));
+    check("SI-C03", "changed words append revision 2",
+      `${up3.revisionAdded}|${up3.session.current_revision}|` +
+        one(`select count(*) from public.couranr_intake_description_revisions where session_id='${csess}'`),
+      "true|2|2");
+    check("SI-C03b", "a second guest has no session of its own yet",
+      one(`select count(*) from public.couranr_intake_sessions where guest_session_id='${GB}'`), "0");
+    const dead = newGuest();
+    raw(`update public.couranr_consumer_guest_sessions set revoked_at = now() where id='${dead.id}'`);
+    check("SI-C04", "a revoked guest session cannot open intake",
+      raises(`select public.couranr_upsert_consumer_intake_description('${dead.id}','anything')`),
+      "CR404|guest_session_not_available");
+    check("SI-C04b", "an over-long description is refused before any row",
+      raises(`select public.couranr_upsert_consumer_intake_description('${GB}', repeat('x', 4001))`),
+      "CR422|description_required");
+
+    check("SI-C05", "the 9-argument positional business call is still unambiguous after the widening",
+      raises(`select public.couranr_begin_intake_run('${session}','${BIZ_A}',${sessRev},'prompt-v1','v0','fake','key-scope-check','["shipment_description"]'::jsonb)`).split("|")[0],
+      "NO_ERROR");
+    const gb1 = JSON.parse(one(guestBegin(csess, 2, "g-key-rev2", G)));
+    check("SI-C06", "a guest-scoped begin claims the run", `${gb1.claimed}|${gb1.run.status}`, "true|pending");
+    const gb1d = JSON.parse(one(guestBegin(csess, 2, "g-key-rev2", G)));
+    check("SI-C06b", "a duplicate begin converges on the SAME run without a second claim",
+      `${gb1d.claimed}|${gb1d.run.id === gb1.run.id}`, "false|true");
+    check("SI-C07", "a business scope cannot reach a guest's session",
+      raises(`select public.couranr_begin_intake_run('${csess}','${BIZ_A}',2,'prompt-v1','v0','fake','g-key-x','[]'::jsonb)`),
+      "CR404|intake_session_not_found");
+    check("SI-C07b", "a guest scope cannot reach a business session",
+      raises(`select public.couranr_begin_intake_run('${session}',null,${sessRev},'prompt-v1','v0','fake','g-key-y','[]'::jsonb,null,'${G}')`),
+      "CR404|intake_session_not_found");
+    check("SI-C07c", "another guest cannot reach this guest's session",
+      raises(guestBegin(csess, 2, "g-key-other", GB).replace("::text", "")),
+      "CR404|intake_session_not_found");
+    check("SI-C08", "naming BOTH scopes is refused before any read",
+      raises(`select public.couranr_begin_intake_run('${csess}','${BIZ_A}',2,'prompt-v1','v0','fake','g-key-z','[]'::jsonb,null,'${G}')`),
+      "CR422|intake_scope_required");
+    check("SI-C08b", "naming NEITHER scope is refused",
+      raises(`select public.couranr_begin_intake_run('${csess}',null,2,'prompt-v1','v0','fake','g-key-w','[]'::jsonb,null,null)`),
+      "CR422|intake_scope_required");
+
+    raw(`select public.couranr_complete_intake_run('${gb1.run.id}',null,'success',
+      '[{"key":"item_category","value":"home_goods","confidence":90,"source":"ai_inference","sourceEvidence":"a lamp","requiresConfirmation":false},
+        {"key":"weight_band","value":"0_25_lb","confidence":70,"source":"ai_inference","sourceEvidence":null,"requiresConfirmation":true},
+        {"key":"restricted_class","value":"alcohol","confidence":95,"source":"ai_inference","sourceEvidence":"12 bottles of beer","requiresConfirmation":true}]'::jsonb,
+      'hash-c1',120,'{"factKey":"restricted_class","question":"Does this include alcohol?"}'::jsonb,'fake-model',10,5,'${G}')`);
+    check("SI-C09", "a guest-scoped completion persists proposals with no actor and marks the session interpreted",
+      one(`select s.interpretation_status||'|'||
+                  (select count(*) from public.couranr_intake_facts f where f.session_id=s.id and f.authority='proposed')||'|'||
+                  (select count(*) from public.couranr_intake_facts f where f.session_id=s.id and f.actor_user_id is not null)
+             from public.couranr_intake_sessions s where s.id='${csess}'`),
+      "interpreted|3|0");
+    check("SI-C09b", "a business scope cannot complete a guest's run",
+      raises(`select public.couranr_complete_intake_run('${gb1.run.id}','${BIZ_A}','success','[]'::jsonb,'h',1,null)`),
+      "CR404|intake_run_not_found");
+
+    raw(`select public.couranr_confirm_intake_fact('${csess}',null,null,'weight_band','"over_25_to_50_lb"'::jsonb,'confirmed','${G}')`);
+    check("SI-C10", "the guest's own statement confirms a fact with source consumer_statement and no actor",
+      one(`select source||'|'||authority||'|'||coalesce(actor_user_id::text,'null')||'|'||value::text
+             from public.couranr_intake_facts where session_id='${csess}' and fact_key='weight_band'`),
+      'consumer_statement|confirmed|null|"over_25_to_50_lb"');
+    check("SI-C10b", "... audited as a confirmed event with no actor",
+      one(`select count(*) from public.couranr_intake_fact_events
+            where session_id='${csess}' and fact_key='weight_band' and event='confirmed' and actor_user_id is null`), "1");
+    check("SI-C10c", "a business actor cannot confirm on a guest session",
+      raises(`select public.couranr_confirm_intake_fact('${csess}','${BIZ_A}','${USER_A}','weight_band','"0_25_lb"'::jsonb,'confirmed')`),
+      "CR404|intake_session_not_found");
+    raw(`select public.couranr_retract_intake_fact('${csess}',null,null,'weight_band','${G}')`);
+    check("SI-C11", "a guest retraction withdraws with source consumer_statement",
+      one(`select source||'|'||authority from public.couranr_intake_facts where session_id='${csess}' and fact_key='weight_band'`),
+      "consumer_statement|unknown");
+    raw(`select public.couranr_record_intake_policy('${csess}',null,'needs_review','["restricted_signal"]'::jsonb,'[]'::jsonb,'[]'::jsonb,
+           'couranr-shipment-policy-v0-2026-09-02','needs_review',null,'${gb1.run.id}',null,'${G}')`);
+    check("SI-C12", "a guest-scoped policy record lands on the session stamped with the revision it read",
+      one(`select policy_disposition||'|'||policy_revision from public.couranr_intake_sessions where id='${csess}'`),
+      "needs_review|2");
+    check("SI-C12b", "a business scope cannot record policy on a guest session",
+      raises(`select public.couranr_record_intake_policy('${csess}','${BIZ_A}','allowed','[]'::jsonb,'[]'::jsonb,'[]'::jsonb,'v','standard_lane',null,null,null)`),
+      "CR404|intake_session_not_found");
+
+    const creq = one(`select id from public.couranr_create_consumer_delivery_request_draft(${consumerCreateArgs(G)})`);
+    check("SI-C13", "a guest links the ONE request their session owns",
+      one(`select request_id from public.couranr_link_intake_session('${csess}',null,'${creq}','${G}')`), creq);
+    check("SI-C13b", "... idempotently",
+      one(`select request_id from public.couranr_link_intake_session('${csess}',null,'${creq}','${G}')`), creq);
+    check("SI-C13c", "a guest cannot link a request it does not own",
+      raises(`select public.couranr_link_intake_session('${csess}',null,'${reqA}','${G}')`), "CR404|request_not_found");
+    check("SI-C13d", "a business scope cannot link a consumer request",
+      raises(`select public.couranr_link_intake_session('${session}','${BIZ_A}','${creq}')`), "CR404|request_not_found");
+    const g2 = newGuest();
+    const creq2 = one(`select id from public.couranr_create_consumer_delivery_request_draft(${consumerCreateArgs(g2.id)})`);
+    const upg2 = JSON.parse(one(`select public.couranr_upsert_consumer_intake_description('${g2.id}','books')::text`));
+    check("SI-C13e", "a guest who already has a request opens intake already linked to it", upg2.session.request_id, creq2);
+
+    /* the race: two CONNECTIONS begin the same logical run at once */
+    const rg = newGuest();
+    const upr = JSON.parse(one(`select public.couranr_upsert_consumer_intake_description('${rg.id}','a rug')::text`));
+    const [ra, rb] = await Promise.all([
+      psqlAsync(guestBegin(upr.session.id, 1, "race-1", rg.id)),
+      psqlAsync(guestBegin(upr.session.id, 1, "race-1", rg.id)),
+    ]);
+    const RA = JSON.parse(ra), RBB = JSON.parse(rb);
+    check("SI-C16", "two connections racing the same guest begin: exactly one claims, both hold the same run",
+      `${[RA.claimed, RBB.claimed].filter(Boolean).length}|${RA.run.id === RBB.run.id}`, "1|true");
+
+    /* per-session allowance: G already spent one paid call (gb1) */
+    for (let i = 0; i < 11; i++) raw(guestBegin(csess, 2, `g-budget-${i}`, G));
+    const limited = JSON.parse(one(guestBegin(csess, 2, "g-budget-13", G)));
+    check("SI-C14", "the 13th paid call in an hour for one guest session is rate_limited, with the CONSUMER counter",
+      `${limited.rateLimited}|${limited.run.status}|${limited.sessionCallsLastHour}|${"consumerCallsLastHour" in limited}|${"businessCallsLastHour" in limited}`,
+      "true|rate_limited|12|true|false");
+
+    /* the global consumer allowance: minting sessions cannot widen it */
+    const consumerPaid = Number(one(`select count(*) from public.couranr_intake_runs r
+       join public.couranr_intake_sessions s on s.id=r.session_id
+      where s.guest_session_id is not null and r.provider<>'none' and r.status<>'rate_limited'`));
+    raw(`do $$ declare i int; g uuid; s uuid; begin
+      for i in 1..${300 - consumerPaid} loop
+        insert into public.couranr_consumer_guest_sessions(token_hash, expires_at)
+          values (md5('seed-a'||i)||md5('seed-b'||i), now() + interval '1 hour') returning id into g;
+        insert into public.couranr_intake_sessions(guest_session_id, fact_schema_version)
+          values (g, 'v0') returning id into s;
+        insert into public.couranr_intake_runs(session_id, source_revision, prompt_version, fact_schema_version,
+          provider, idempotency_key, status, started_at)
+          values (s, 1, 'prompt-v1', 'v0', 'fake', 'seed-'||i, 'success', now());
+      end loop; end $$;`);
+    const fresh = newGuest();
+    const upf = JSON.parse(one(`select public.couranr_upsert_consumer_intake_description('${fresh.id}','a chair')::text`));
+    const gl = JSON.parse(one(guestBegin(upf.session.id, 1, "fresh-1", fresh.id)));
+    check("SI-C15", "the 301st consumer paid call in an hour is rate_limited even for a brand-new guest",
+      `${gl.rateLimited}|${gl.consumerCallsLastHour}`, "true|300");
+    check("SI-C15b", "... while the business allowance is a separate ledger (the business call is not refused)",
+      raises(`select public.couranr_begin_intake_run('${session}','${BIZ_A}',${sessRev},'prompt-v1','v0','fake','biz-after-consumer-cap','[]'::jsonb)`).split("|")[0],
+      "NO_ERROR");
+
+    check("SI-C17", "anon/authenticated cannot execute any consumer-scope command; service_role can",
+      one(`select string_agg(p.proname||':'||has_function_privilege('anon',p.oid,'EXECUTE')::text
+                  ||has_function_privilege('authenticated',p.oid,'EXECUTE')::text
+                  ||has_function_privilege('service_role',p.oid,'EXECUTE')::text, ',' order by p.proname)
+             from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+            where n.nspname='public' and p.proname in ('couranr_upsert_consumer_intake_description',
+              'couranr_begin_intake_run','couranr_complete_intake_run','couranr_confirm_intake_fact',
+              'couranr_retract_intake_fact','couranr_link_intake_session','couranr_record_intake_policy')`),
+      "couranr_begin_intake_run:falsefalsetrue,couranr_complete_intake_run:falsefalsetrue,couranr_confirm_intake_fact:falsefalsetrue,couranr_link_intake_session:falsefalsetrue,couranr_record_intake_policy:falsefalsetrue,couranr_retract_intake_fact:falsefalsetrue,couranr_upsert_consumer_intake_description:falsefalsetrue");
+    check("SI-C17b", "exactly ONE signature per widened command remains (no ambiguous overload)",
+      one(`select string_agg(proname||'='||cnt, ',' order by proname) from (
+             select p.proname, count(*) cnt from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+              where n.nspname='public' and p.proname in ('couranr_begin_intake_run','couranr_complete_intake_run',
+                'couranr_confirm_intake_fact','couranr_retract_intake_fact','couranr_link_intake_session',
+                'couranr_record_intake_policy') group by 1) x`),
+      "couranr_begin_intake_run=1,couranr_complete_intake_run=1,couranr_confirm_intake_fact=1,couranr_link_intake_session=1,couranr_record_intake_policy=1,couranr_retract_intake_fact=1");
+
+    const bizSessions = one(`select count(*) from public.couranr_intake_sessions where business_account_id is not null`);
+    check("SI-C18", "the INT-002 rollback applies cleanly (consumer evidence is uncommitted)", applyScript(RB2), "NO_ERROR|");
+    check("SI-C18b", "... the predecessor 9-argument begin is back and the consumer scope column is gone",
+      one(`select (select pronargs from pg_proc where proname='couranr_begin_intake_run')||'|'||
+                  (select count(*) from information_schema.columns
+                    where table_name='couranr_intake_sessions' and column_name='guest_session_id')`), "9|0");
+    check("SI-C18c", "... business evidence survives",
+      one(`select count(*) from public.couranr_intake_sessions`), bizSessions);
+    check("SI-C18d", "the forward migration replays over its rollback", applyScript(MIG2), "NO_ERROR|");
+
     /* ---- 8. rollback hard-refuses once commit evidence exists -------------- */
     const attempted = applyScript(RB);
     check("SI-35", "the rollback HARD-REFUSES once facts were committed to a request",
@@ -496,7 +743,7 @@ async function main() {
     check("SI-36", "... and the intake evidence survives the refusal",
       one(`select count(*) from public.couranr_intake_sessions where id='${session}'`), "1");
   } finally {
-    console.log(`\n  Smart Intake V0: ${pass} passed, ${fail} failed\n`);
+    console.log(`\n  Smart Intake V0 + INT-002 consumer scope: ${pass} passed, ${fail} failed\n`);
   }
   process.exit(fail === 0 ? 0 : 1);
 }
