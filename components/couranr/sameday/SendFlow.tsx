@@ -11,6 +11,7 @@ import {
   type QuoteReading,
 } from "@/lib/couranr/sameday/adapters";
 import type { AdapterMode } from "@/lib/couranr/sameday/adapterMode";
+import { GUEST_STORAGE_KEY } from "@/lib/couranr/sameday/liveAdapters";
 import { WEIGHT_BAND_LABELS } from "@/lib/couranr/shipment/weightBandLabels";
 import { CouranrPaymentElement } from "@/components/couranr/payments/CouranrPaymentElement";
 import { formatCents } from "@/lib/couranr/requests/view";
@@ -159,6 +160,9 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
   } | null>(null);
   const [liveNote, setLiveNote] = React.useState<string | null>(null);
   const [trackingToken, setTrackingToken] = React.useState<string | null>(null);
+  /* True when the server says the payment is authorized while Couranr review
+     is still pending — the CAP-001 posture the received screen must state. */
+  const [authorizedPending, setAuthorizedPending] = React.useState(false);
 
   /* An edit that would change a quote marks the existing one STALE rather than
      leaving a number on screen that no longer describes the trip. */
@@ -242,8 +246,70 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
   async function finishLive() {
     const view = adapters.readRequest ? await adapters.readRequest() : null;
     setTrackingToken(view?.trackingToken ?? null);
+    setAuthorizedPending(
+      view?.paymentState === "authorized" && view?.state === "pending_couranr_review"
+    );
     setReceived(true);
   }
+
+  /* RESUMABLE LIVE PATH (review item 2): a reload resumes from the CANONICAL
+     request/payment state instead of restarting the funnel. Live-only and
+     feature-checked — fixture and disabled adapters have no readRequest and
+     gain nothing here — and it runs only when a guest session is ALREADY
+     stored, so a first visit never mints one just by loading the page. */
+  React.useEffect(() => {
+    if (mode !== "live" || !adapters.readRequest) return;
+    let stored: string | null = null;
+    try {
+      stored = window.sessionStorage.getItem(GUEST_STORAGE_KEY);
+    } catch {
+      stored = null;
+    }
+    if (!stored) return;
+    let cancelled = false;
+    void (async () => {
+      const view = adapters.readRequest ? await adapters.readRequest() : null;
+      if (cancelled || !view) return;
+      if (view.state === "awaiting_quote_acceptance" || view.state === "quote_revision_required") {
+        /* Awaiting the payer: straight to payment, with the server's number. */
+        setIntent((v) => v ?? "send");
+        setPhase("payment");
+        if (typeof view.totalCents === "number") {
+          setQuote({
+            state: "live-available",
+            totalCents: view.totalCents,
+            quoteVersionId: null,
+            requestId: "",
+            expiresAt: null,
+          });
+        }
+        setLiveNote(
+          view.state === "quote_revision_required"
+            ? "Couranr updated the price — please approve the new total."
+            : null
+        );
+        setPayment("form-shell");
+        return;
+      }
+      if (view.state === "pending_couranr_review") {
+        setAuthorizedPending(view.paymentState === "authorized");
+        setReceived(true);
+        return;
+      }
+      if (view.state === "confirmed") {
+        setTrackingToken(view.trackingToken ?? null);
+        setReceived(true);
+        return;
+      }
+      /* draft (or anything else): the funnel starts normally and the stored
+         session simply keeps owning the same request. */
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // Mount-only by design: the canonical state is re-read per page load.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function submit() {
     setPayment("processing");
@@ -264,9 +330,18 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
         setPayment("authorization-required");
         return;
       }
+      if (auth.state === "quote-expired") {
+        /* QVL-001: the price aged out before authorization. Re-estimating
+           mints Quote N+1; the visitor confirms the fresh total and pays
+           that — never the stale number. */
+        await computeQuote();
+        setLiveNote("The price was refreshed — please confirm the new total.");
+        setPayment("form-shell");
+        return;
+      }
       if (auth.state === "not-payable") {
-        /* Normal consumer path: NO AUTO-ACCEPT. The request is received and
-           in Couranr review; payment opens after Couranr confirms it. */
+        /* The manual-review path: the request is in Couranr review with no
+           payable price yet, and the received screen says exactly that. */
         await finishLive();
         return;
       }
@@ -360,6 +435,14 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
           {SEND_COPY.received_heading}
         </h1>
         <p className="cr-mkt-editorial__body cr-type-lead">{SEND_COPY.received_support}</p>
+        {/* CAP-001 truth: authorized is not charged. Shown only when the
+            server says the payment is authorized and review is pending. */}
+        {mode === "live" && authorizedPending ? (
+          <p className="cr-send-note">
+            Your payment is authorized. You&apos;ll only be charged after Couranr
+            confirms your delivery.
+          </p>
+        ) : null}
         {/* Live mode: the tracking link renders ONLY when the request GET
             returned a token — the server is the one voice on whether tracking
             exists, and nothing here invents a reference. In every other mode

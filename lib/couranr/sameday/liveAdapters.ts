@@ -441,9 +441,15 @@ export function createLiveSameDayAdapters(
       const r = await guestCall(API.pay, { method: "POST" });
       if (!r) return { state: "not-payable", note: NOTES.serviceDown };
       if (!r.ok) {
-        /* Normal for the consumer funnel: NO AUTO-ACCEPT means a freshly
-           submitted request is in Couranr review and not payable yet. The
-           server's message says exactly that. */
+        /* QVL-001 (review item 2): an expired quote has a SPECIFIC remedy —
+           re-estimate, which mints Quote N+1 — so it maps to its own state
+           instead of a dead end. Everything else is the review posture: the
+           manual path, or a request already authorized and under review; the
+           server's message says exactly which. */
+        const code = (r.body as { code?: unknown } | null)?.code;
+        if (code === "quote_expired") {
+          return { state: "quote-expired", note: noteFromFailure(r.body, NOTES.cannotPrice) };
+        }
         return { state: "not-payable", note: noteFromFailure(r.body, NOTES.notPayable) };
       }
       // NESTED key: `payment`.

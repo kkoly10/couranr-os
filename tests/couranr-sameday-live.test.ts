@@ -829,3 +829,65 @@ describe("live consumer timing is ASAP only (review item 5)", () => {
     expect(adapters).toMatch(/timing:\s*\{\s*intent:\s*"asap"\s*\}/);
   });
 });
+
+/* --------------------- CAP-001 consumer order (review item 2) ------------ */
+
+describe("CAP-001 payment order surfaces (review item 2)", () => {
+  it("a quote_expired refusal maps to its OWN state — the remedy is re-estimate", async () => {
+    const f = fakeFetch({
+      [S]: SESSION_OK,
+      [PAY]: () => ({
+        status: 410,
+        body: { error: "The quote expired.", code: "quote_expired" },
+      }),
+    });
+    const r = await live({ fetchImpl: f.impl, storage: null }).authorizePayment();
+    expect(r.state).toBe("quote-expired");
+  });
+
+  it("other refusals still map to not-payable, never quote-expired", async () => {
+    const f = fakeFetch({
+      [S]: SESSION_OK,
+      [PAY]: () => ({
+        status: 409,
+        body: { error: "Couranr is reviewing this delivery.", code: "wrong_state" },
+      }),
+    });
+    expect((await live({ fetchImpl: f.impl, storage: null }).authorizePayment()).state).toBe(
+      "not-payable"
+    );
+  });
+
+  const sendFlow = readFileSync("components/couranr/sameday/SendFlow.tsx", "utf8");
+
+  it("the resume path is live-only, feature-checked and gated on a STORED session", () => {
+    // A reload resumes from the canonical request/payment state; a first
+    // visit must not mint a guest session just by loading the page.
+    expect(sendFlow).toMatch(/mode !== "live" \|\| !adapters\.readRequest/);
+    expect(sendFlow).toMatch(/sessionStorage\.getItem\(GUEST_STORAGE_KEY\)/);
+    expect(sendFlow).toMatch(/if \(!stored\) return;/);
+  });
+
+  it("the resume mapping covers all four canonical postures", () => {
+    for (const state of [
+      "awaiting_quote_acceptance",
+      "quote_revision_required",
+      "pending_couranr_review",
+      "confirmed",
+    ]) {
+      expect(sendFlow).toContain(`"${state}"`);
+    }
+    expect(sendFlow).toMatch(/Couranr updated the price/);
+  });
+
+  it("submit recovers from quote expiry by re-estimating, not by dead-ending", () => {
+    expect(sendFlow).toMatch(/auth\.state === "quote-expired"/);
+    expect(sendFlow).toMatch(/The price was refreshed/);
+  });
+
+  it("the received screen states the authorized-not-charged truth only when the server says so", () => {
+    expect(sendFlow).toMatch(/authorizedPending/);
+    expect(sendFlow).toMatch(/paymentState === "authorized" && view\?\.state === "pending_couranr_review"/);
+    expect(sendFlow).toMatch(/only be charged after Couranr/);
+  });
+});

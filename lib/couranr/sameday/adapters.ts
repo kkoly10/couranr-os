@@ -62,9 +62,13 @@ export type PaymentOutcome =
      intent; the browser must confirm it through the one Stripe Payment Element
      and then the SERVER (reconcile) is the only voice on whether it authorized. */
   | { state: "authorization-required"; clientSecret: string; amountCents: number }
-  /* ADDITIVE: the request was received but payment is not open — for the
-     consumer funnel that is normal: NO AUTO-ACCEPT, Couranr review opens it. */
+  /* ADDITIVE: the request was received but payment is not open — the manual-
+     review path, or a request already authorized and under Couranr review. */
   | { state: "not-payable"; note: string }
+  /* ADDITIVE (review item 2): QVL-001 expired the quote before authorization.
+     The remedy is specific — re-estimate, which mints Quote N+1 — so the UI
+     gets a distinct state instead of parsing a message. */
+  | { state: "quote-expired"; note: string }
   | { state: "not-available"; note: string };
 
 /**

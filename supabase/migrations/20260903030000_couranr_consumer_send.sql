@@ -26,17 +26,33 @@
 --      any business's row: every read and write is scoped by that derived
 --      value in the WHERE clause.
 --
---   3. CONSUMER SUBMIT. couranr_submit_delivery_request_v2 already branches
---      its event actor on requester_kind, but it cannot verify a guest
---      session, and leaving draft trips couranr_dr_consumer_submitted_contact_chk
---      (23514 -> opaque 'internal') when the frozen contact snapshot has
---      neither phone nor email. couranr_submit_consumer_delivery_request
---      verifies the session INSIDE SQL and refuses CR422
---      'consumer_contact_required' before the CHECK can. It submits FOR
---      COURANR REVIEW ONLY — no auto-accept: a customer-paid request reaches
---      its payable state (awaiting_quote_acceptance) through the existing
---      Operations accept command, exactly as a customer-paid business request
---      does, and payment unlocks only after that acceptance.
+--   3. CONSUMER SUBMIT — CAP-001 ORDER (corrected per independent review).
+--      couranr_submit_delivery_request_v2 already branches its event actor on
+--      requester_kind, but it cannot verify a guest session, and leaving
+--      draft trips couranr_dr_consumer_submitted_contact_chk (23514 ->
+--      opaque 'internal') when the frozen contact snapshot has neither phone
+--      nor email. couranr_submit_consumer_delivery_request verifies the
+--      session INSIDE SQL and refuses CR422 'consumer_contact_required'
+--      before the CHECK can. Per CAP-001 ("payment is authorized BEFORE
+--      Couranr review and captured only after Couranr confirms"), an
+--      automatic 'estimated' quote submits into the payable
+--      'awaiting_quote_acceptance' with review_state 'pending' — payer
+--      authorization comes first and NOTHING claims Operations reviewed
+--      anything. A 'manual_review_required' quote has no payable price and
+--      goes to Couranr review first — the governed exception, since no
+--      amount may be fabricated for it. Still NO auto-accept anywhere.
+--
+--   3b. CONSUMER-AWARE AUTHORIZE + ACCEPT. This migration REPLACES (in
+--      apply-order, after 20260903010000/20260902161642 defined them)
+--      couranr_apply_payment_intent_state and
+--      couranr_accept_delivery_request_as_quoted with bodies that differ
+--      ONLY in the consumer branch: a consumer authorization records payer
+--      approval for the exact quote version and moves the request INTO
+--      Couranr review (pending_couranr_review, review_state still
+--      'pending'); Operations acceptance then recognises the standing payer
+--      approval and confirms WITHOUT demanding a second authorization.
+--      Business behavior is byte-preserved. The rollback restores both
+--      predecessor bodies verbatim.
 --
 --   4. TRACKING. couranr_delivery_access_tokens.business_account_id becomes
 --      NULLABLE (additive relaxation) so a confirmed consumer request can
@@ -524,7 +540,12 @@ begin
       version=p_expected_version+1,updated_at=now()
     where id=p_request_id and requester_kind='consumer'
       and idempotency_scope=v_scope
-      and version=p_expected_version and request_state='draft'
+      and version=p_expected_version
+      -- CAP-001 recovery seam (review item 2): the consumer may re-price
+      -- their OWN request while it awaits payer authorization — the quote
+      -- may have expired under QVL before payment. Never past authorization,
+      -- never once Couranr review begins.
+      and request_state in ('draft','awaiting_quote_acceptance')
     returning * into v_req;
   else
     update public.couranr_delivery_requests set
@@ -533,7 +554,12 @@ begin
       version=p_expected_version+1,updated_at=now()
     where id=p_request_id and requester_kind='consumer'
       and idempotency_scope=v_scope
-      and version=p_expected_version and request_state='draft'
+      and version=p_expected_version
+      -- CAP-001 recovery seam (review item 2): the consumer may re-price
+      -- their OWN request while it awaits payer authorization — the quote
+      -- may have expired under QVL before payment. Never past authorization,
+      -- never once Couranr review begins.
+      and request_state in ('draft','awaiting_quote_acceptance')
     returning * into v_req;
   end if;
   if not found then
@@ -552,7 +578,7 @@ begin
     request_id,actor_user_id,actor_type,command,from_state,to_state,metadata
   ) values (
     v_req.id,null,'customer','calculate_delivery_request_estimate',
-    'draft','draft',jsonb_build_object(
+    v_req.request_state,v_req.request_state,jsonb_build_object(
       'quoteVersionId',v_quote.id,'quoteNumber',v_quote.quote_number,
       'quoteStatus',v_quote.quote_status,'reviewReasons',v_quote.review_reasons,
       'serviceabilityOutcome',p_serviceability_outcome,
@@ -630,12 +656,22 @@ begin
   /* NO QVL gate, deliberately, mirroring the v2 unacknowledged branch: a
      consumer submit is NOT payer approval (PAY-001: the customer approves by
      authorizing payment, and that boundary is guarded in the payment
-     commands). A stale-quoted request may enter Couranr review; it just can
-     never be paid at that price. NO AUTO-ACCEPT either: the request goes to
-     pending_couranr_review, and only the existing Operations accept command
-     moves a customer-paid request to its payable awaiting_quote_acceptance. */
+     commands).
+
+     CAP-001 ORDER (correction pass, review item 2): payment is authorized
+     BEFORE Couranr review. An automatic 'estimated' quote therefore submits
+     into 'awaiting_quote_acceptance' — the payable posture that says exactly
+     "waiting for the payer", with review_state 'pending' saying exactly
+     "Couranr review has not happened". Nothing here pretends Operations
+     accepted anything. A 'manual_review_required' quote has no payable
+     price, so it goes to Couranr review FIRST ('pending_couranr_review') —
+     the one governed exception CAP-001's order allows, because no amount may
+     be fabricated for it. */
   update public.couranr_delivery_requests set
-    request_state='pending_couranr_review',review_state='pending',submitted_at=now(),
+    request_state=case when v_quote.quote_status='estimated'
+                       then 'awaiting_quote_acceptance'
+                       else 'pending_couranr_review' end,
+    review_state='pending',submitted_at=now(),
     version=p_expected_version+1,updated_at=now()
   where id=v_req.id and version=p_expected_version
   returning * into v_req;
@@ -644,7 +680,7 @@ begin
   insert into public.couranr_delivery_request_events(
     request_id,actor_user_id,actor_type,command,from_state,to_state,metadata
   ) values (
-    v_req.id,null,'customer','submit_delivery_request','draft','pending_couranr_review',
+    v_req.id,null,'customer','submit_delivery_request','draft',v_req.request_state,
     jsonb_build_object(
       'quoteVersionId',v_quote.id,'quoteNumber',v_quote.quote_number,
       'payerType',v_quote.payer_type,'acknowledgment',false,
@@ -663,6 +699,363 @@ comment on function public.couranr_submit_consumer_delivery_request is
 /* ---------------------------------------------------------------- grants - */
 /* pg_default_acl grants arwdDxtm to anon/authenticated/service_role on every
    new function here, so each one is locked down by hand. */
+
+
+/* -------------------- 3b. CAP-001 consumer payment order ---------------- */
+
+/*
+ * REPLACEMENTS, not new commands. In apply order this migration runs after
+ * 20260903010000 (which owns couranr_apply_payment_intent_state's evidence
+ * semantics) and 20260902161642 (which owns
+ * couranr_accept_delivery_request_as_quoted). Each body below is that
+ * predecessor's text with ONLY the consumer branch added; business behavior
+ * is byte-preserved, and the rollback restores both predecessor bodies
+ * verbatim. Signatures unchanged, so grants carry over (CREATE OR REPLACE
+ * preserves ACLs) and the QVL pin tests still count exactly one 9-argument
+ * apply command.
+ */
+
+create or replace function public.couranr_apply_payment_intent_state(
+  p_provider_event_id text,p_event_type text,p_payment_intent_id text,
+  p_intent_status text,p_amount integer,p_amount_capturable integer,
+  p_currency text,p_metadata jsonb,
+  /* When Stripe actually authorized. The payer approved THEN, not when this
+     webhook happened to be processed. */
+  p_authorized_at timestamptz default null
+)
+returns public.couranr_payment_apply_result
+language plpgsql security invoker set search_path=''
+as $fn$
+declare
+  v_ob public.couranr_payment_obligations;
+  v_quote public.couranr_quote_versions;
+  v_req public.couranr_delivery_requests;
+  v_out public.couranr_payment_apply_result;
+  v_outcome text;
+  v_reason text;
+  v_target text;
+  v_before text;
+  v_reqstate text;
+  v_ob_id uuid;
+  v_req_id uuid;
+  v_quote_is_current boolean;
+  v_req_target text;
+begin
+  if nullif(btrim(p_provider_event_id),'') is null then
+    raise exception 'provider_event_id_required' using errcode='CR422';
+  end if;
+  select * into v_ob from public.couranr_payment_obligations
+   where provider_payment_intent_id=p_payment_intent_id;
+  if not found then
+    return row('rejected',null,null,null,null,'unknown_payment_intent')
+      ::public.couranr_payment_apply_result;
+  end if;
+  select * into v_quote from public.couranr_quote_versions
+   where id=v_ob.quote_version_id and request_id=v_ob.request_id;
+  select * into v_req from public.couranr_delivery_requests where id=v_ob.request_id;
+  v_quote_is_current := found and v_req.current_quote_version_id is not distinct from v_ob.quote_version_id;
+
+  if not found or v_quote.id is null then
+    v_outcome:='rejected';v_reason:='obligation_quote_missing';
+  elsif p_amount is distinct from v_ob.amount_cents then
+    v_outcome:='rejected';v_reason:='amount_mismatch';
+  elsif lower(coalesce(p_currency,'')) is distinct from v_ob.currency then
+    v_outcome:='rejected';v_reason:='currency_mismatch';
+  elsif coalesce(p_metadata->>'paymentObligationId','')<>v_ob.id::text then
+    v_outcome:='rejected';v_reason:='metadata_obligation_mismatch';
+  elsif coalesce(p_metadata->>'couranrRequestId','')<>v_ob.request_id::text then
+    v_outcome:='rejected';v_reason:='metadata_request_mismatch';
+  elsif v_ob.business_account_id is not null
+        and coalesce(p_metadata->>'businessAccountId','')<>v_ob.business_account_id::text then
+    v_outcome:='rejected';v_reason:='metadata_business_mismatch';
+  elsif v_ob.business_account_id is null
+        and nullif(p_metadata->>'businessAccountId','') is not null then
+    v_outcome:='rejected';v_reason:='metadata_business_mismatch';
+  elsif nullif(p_metadata->>'quoteVersionId','') is null
+        and v_quote.record_origin<>'legacy_backfill' then
+    v_outcome:='rejected';v_reason:='metadata_quote_missing';
+  elsif nullif(p_metadata->>'quoteVersionId','') is not null
+        and (p_metadata->>'quoteVersionId')<>v_ob.quote_version_id::text then
+    v_outcome:='rejected';v_reason:='metadata_quote_mismatch';
+  elsif v_ob.payment_state='capture_pending' then
+    v_outcome:='ignored';v_reason:='capture_reconciliation_is_authoritative';
+  else
+    case p_event_type
+      when 'payment_intent.amount_capturable_updated' then
+        if p_intent_status='requires_capture'
+           and p_amount_capturable is not distinct from v_ob.amount_cents then
+          /* QVL-001. THIS is the customer payer approving the quote: reaching
+             requires_capture is what makes the obligation 'authorized', moves
+             the request to 'confirmed' and records record_payer_quote_approval
+             below. So it is the last boundary at which the 15-minute window
+             can still refuse - and it must, because an obligation or intent
+             created while the quote was fresh must not make the price
+             immortal. Refused as a governed 'rejected' outcome, so nothing is
+             authorized, no approval is recorded and Quote N is untouched. */
+          /* Evaluated AS OF THE AUTHORIZATION, not as of now(). A payer who
+             confirmed at 14:30 approved inside the window even if 3DS, a
+             retry or a webhook backlog delivers this at 15:20 - and the rule
+             is that an approval obtained in time is never undone by later
+             time passing. Falls back to now() only when the caller cannot
+             supply the moment. */
+          if private.couranr_quote_version_is_expired(
+               v_quote, coalesce(p_authorized_at, now())) then
+            v_outcome:='rejected';v_reason:='quote_expired';
+          else
+            v_target:='authorized';v_outcome:='applied';
+            if not v_quote_is_current then v_reason:='authorized_for_superseded_quote'; end if;
+          end if;
+        else
+          v_outcome:='rejected';v_reason:='not_fully_capturable';
+        end if;
+      when 'payment_intent.requires_action' then
+        v_target:='requires_action';v_outcome:='applied';
+      when 'payment_intent.payment_failed' then
+        v_target:='failed';v_outcome:='applied';
+      when 'payment_intent.canceled' then
+        v_target:='cancelled';v_outcome:='applied';
+      else
+        v_outcome:='ignored';v_reason:='unhandled_event_type';
+    end case;
+  end if;
+  /* §A EVIDENCE UPGRADE. The synchronous reconcile path authorizes with NO
+     provider instant (processing_fallback, by design — PaymentIntent.created
+     is mint time, not approval). When the signature-verified webhook for the
+     SAME authorization later arrives with the trusted event.created, the row
+     is already 'authorized' and the state machine would shrug it off as
+     already_in_state — losing the audit truth forever. Instead: converge the
+     provider evidence onto the same obligation. State does not move, no
+     approval is re-evaluated (an approval already granted is never undone),
+     the event id keeps webhook idempotency, and only a fallback-sourced row
+     can upgrade — trusted provider evidence is never overwritten. */
+  if v_outcome='applied' and v_target='authorized'
+     and v_ob.payment_state='authorized'
+     and p_authorized_at is not null
+     and v_ob.authorized_at_source='processing_fallback' then
+    begin
+      insert into public.couranr_payment_events(
+        obligation_id,request_id,provider,provider_event_id,event_type,
+        payment_state_before,payment_state_after,outcome,detail
+      ) values (
+        v_ob.id,v_ob.request_id,'stripe',p_provider_event_id,p_event_type,
+        'authorized','authorized','applied',
+        jsonb_build_object('paymentIntentId',p_payment_intent_id,
+          'reason','authorization_time_reconciled',
+          'providerAuthorizedAt',p_authorized_at,
+          'previousAuthorizedAt',v_ob.authorized_at,
+          'previousSource','processing_fallback')
+      );
+    exception when unique_violation then
+      return row('duplicate',v_ob.id,v_ob.request_id,v_ob.payment_state,null,null)
+        ::public.couranr_payment_apply_result;
+    end;
+    update public.couranr_payment_obligations set
+      authorized_at=p_authorized_at,
+      authorized_at_source='provider_event',
+      version=version+1,updated_at=now()
+    where id=v_ob.id and payment_state='authorized';
+    select request_state into v_reqstate from public.couranr_delivery_requests
+     where id=v_ob.request_id;
+    return row('applied',v_ob.id,v_ob.request_id,'authorized',v_reqstate,
+               'authorization_time_reconciled')
+      ::public.couranr_payment_apply_result;
+  end if;
+  if v_outcome='applied' and v_ob.payment_state=v_target then
+    v_outcome:='ignored';v_reason:='already_in_state';
+  end if;
+  v_before:=v_ob.payment_state;
+
+  begin
+    insert into public.couranr_payment_events(
+      obligation_id,request_id,provider,provider_event_id,event_type,
+      payment_state_before,payment_state_after,outcome,detail
+    ) values (
+      v_ob.id,v_ob.request_id,'stripe',p_provider_event_id,p_event_type,v_before,
+      case when v_outcome='applied' then v_target else v_before end,v_outcome,
+      jsonb_build_object('paymentIntentId',p_payment_intent_id,
+        'intentStatus',p_intent_status,'amount',p_amount,
+        'amountCapturable',p_amount_capturable,'currency',p_currency,
+        'quoteVersionId',v_ob.quote_version_id,
+        'currentQuoteVersionId',v_req.current_quote_version_id,'reason',v_reason)
+    );
+  exception when unique_violation then
+    return row('duplicate',v_ob.id,v_ob.request_id,v_ob.payment_state,null,null)
+      ::public.couranr_payment_apply_result;
+  end;
+  if v_outcome<>'applied' then
+    return row(v_outcome,v_ob.id,v_ob.request_id,v_ob.payment_state,null,v_reason)
+      ::public.couranr_payment_apply_result;
+  end if;
+
+  v_ob_id:=v_ob.id;v_req_id:=v_ob.request_id;
+  update public.couranr_payment_obligations set
+    payment_state=v_target,
+    /* Correction (batch 3 §A): the provider's trusted authorization instant is
+       the commercial evidence; Couranr's processing moment is bookkeeping.
+       When the caller cannot supply a trustworthy provider instant the row
+       says so (processing_fallback) instead of dressing processing time up
+       as an authorization time. */
+    authorized_at=case when v_target='authorized'
+                       then coalesce(p_authorized_at, now()) else authorized_at end,
+    authorization_processed_at=case when v_target='authorized'
+                       then now() else authorization_processed_at end,
+    authorized_at_source=case when v_target='authorized'
+                       then case when p_authorized_at is not null
+                                 then 'provider_event' else 'processing_fallback' end
+                       else authorized_at_source end,
+    failed_at=case when v_target='failed' then now() else failed_at end,
+    cancelled_at=case when v_target='cancelled' then now() else cancelled_at end,
+    version=version+1,updated_at=now()
+  where id=v_ob_id and payment_state=v_before and payment_state<>'capture_pending'
+  returning * into v_ob;
+  if not found then
+    return row('ignored',v_ob_id,v_req_id,v_before,null,'state_changed_during_apply')
+      ::public.couranr_payment_apply_result;
+  end if;
+
+  if v_target='authorized' then
+    select * into v_req from public.couranr_delivery_requests
+     where id=v_ob.request_id for update;
+    if v_req.current_quote_version_id is not distinct from v_ob.quote_version_id
+       and v_req.request_state in ('awaiting_quote_acceptance','quote_revision_required') then
+      v_reqstate:=v_req.request_state;
+      /* CAP-001 (correction pass, review item 2): the payer's approval is
+         recorded for the EXACT quote version either way. WHERE the request
+         goes next depends on whether Couranr review already happened: a
+         consumer request still awaiting review (review_state 'pending')
+         truthfully ENTERS Couranr review — nothing claims Operations
+         accepted anything — while a business request, or a consumer request
+         Operations already reviewed via requote ('requoted'), confirms
+         exactly as before. review_state itself is NOT touched. */
+      if v_req.requester_kind='consumer' and v_req.review_state='pending' then
+        v_req_target:='pending_couranr_review';
+      else
+        v_req_target:='confirmed';
+      end if;
+      update public.couranr_delivery_requests set
+        request_state=v_req_target,version=version+1,updated_at=now()
+      where id=v_req.id returning * into v_req;
+      insert into public.couranr_delivery_request_events(
+        request_id,actor_user_id,actor_type,command,from_state,to_state,metadata
+      ) values (
+        v_req.id,null,'system','record_payer_quote_approval',v_reqstate,v_req_target,
+        jsonb_build_object('quoteVersionId',v_ob.quote_version_id,
+          'payerType',v_ob.payer_type,'paymentObligationId',v_ob.id,
+          'authorizedAmountCents',v_ob.amount_cents,
+          'pricingPolicyVersion',v_ob.pricing_policy_version,
+          'paymentState','authorized','captured',false,
+          'couranrReviewPending',v_req_target='pending_couranr_review')
+      );
+    end if;
+    update public.couranr_payment_access_tokens set
+      revoked_at=now(),revoked_reason='payment_authorized'
+    where request_id=v_ob.request_id and revoked_at is null;
+  end if;
+  select request_state into v_reqstate from public.couranr_delivery_requests
+   where id=v_ob.request_id;
+  return row('applied',v_ob.id,v_ob.request_id,v_ob.payment_state,v_reqstate,v_reason)
+    ::public.couranr_payment_apply_result;
+end
+$fn$;
+
+create or replace function public.couranr_accept_delivery_request_as_quoted(
+  p_request_id uuid,p_business_account_id uuid,p_expected_version integer,
+  p_actor_user_id uuid
+)
+returns public.couranr_delivery_requests
+language plpgsql security invoker set search_path=''
+as $fn$
+declare
+  v_req public.couranr_delivery_requests;
+  v_quote public.couranr_quote_versions;
+  v_ack jsonb;
+  v_target text;
+begin
+  select * into v_req from public.couranr_delivery_requests
+   where id=p_request_id and business_account_id is not distinct from p_business_account_id
+   for update;
+  if not found then raise exception 'request_not_found' using errcode='CR404'; end if;
+  if v_req.current_quote_version_id is null then
+    raise exception 'no_server_quote_to_confirm' using errcode='CR422';
+  end if;
+  select * into v_quote from public.couranr_quote_versions
+   where id=v_req.current_quote_version_id and request_id=v_req.id;
+  if not found or v_quote.quote_status<>'estimated' or v_quote.subtotal_cents is null then
+    raise exception 'no_server_quote_to_confirm' using errcode='CR422';
+  end if;
+
+  if v_req.requester_kind='consumer' then
+    /* CAP-001 (correction pass, review item 2): the consumer payer
+       authorizes BEFORE Couranr review, so by the time Operations accepts,
+       payer approval for the EXACT current quote must already stand — the
+       same derived predicate QVL-001 trusts. Acceptance then CONFIRMS with
+       NO second authorization; a consumer request here without approval is
+       a governed refusal, never a silent confirm and never a bounce back to
+       awaiting_quote_acceptance. */
+    if private.couranr_quote_payer_approved(v_quote) then
+      v_target:='confirmed';
+    else
+      raise exception 'consumer_quote_not_payer_approved' using errcode='CR409';
+    end if;
+  elsif v_quote.payer_type='merchant' then
+    select metadata into v_ack from public.couranr_delivery_request_events
+     where request_id=v_req.id and command='submit_delivery_request'
+     order by created_at desc limit 1;
+    if v_ack is null
+       or coalesce((v_ack->>'acknowledgment')::boolean,false) is not true then
+      raise exception 'merchant_acknowledgment_missing' using errcode='CR412';
+    end if;
+    if (v_ack->>'quoteVersionId') is distinct from v_quote.id::text then
+      raise exception 'quote_revised_since_acknowledgment' using errcode='CR412';
+    end if;
+    v_target:='confirmed';
+  else
+    v_target:='awaiting_quote_acceptance';
+  end if;
+
+  /* QVL-001, and ONLY on the branch that CONFIRMS. Operations accepting is not
+     payer approval, and Couranr's own review latency must not expire a quote:
+     a customer-paid request reviewed at 09:16 moves to awaiting_quote_acceptance
+     normally, and the window is then enforced where the CUSTOMER actually
+     approves. The merchant branch does confirm, so it is guarded - and a
+     merchant who acknowledged in time is exempt via the predicate, so this only
+     ever refuses a price nobody approved. */
+  if v_target = 'confirmed'
+     and private.couranr_quote_version_is_expired(v_quote) then
+    raise exception 'quote_expired' using errcode = 'CR410';
+  end if;
+
+  update public.couranr_delivery_requests set
+    request_state=v_target,review_state='accepted_as_quoted',
+    version=p_expected_version+1,updated_at=now()
+  where id=v_req.id and version=p_expected_version
+    and request_state='pending_couranr_review' and review_state='pending'
+  returning * into v_req;
+  if not found then raise exception 'version_or_state_conflict' using errcode='CR409'; end if;
+
+  insert into public.couranr_delivery_request_events(
+    request_id,actor_user_id,actor_type,command,from_state,to_state,metadata
+  ) values (
+    v_req.id,p_actor_user_id,'operations','accept_delivery_request_as_quoted',
+    'pending_couranr_review',v_target,
+    jsonb_build_object('quoteVersionId',v_quote.id,'quoteNumber',v_quote.quote_number,
+      'payerType',v_quote.payer_type,'reviewState','accepted_as_quoted',
+      'quoteChanged',false)
+  );
+  return v_req;
+end
+$fn$;
+
+revoke all on function public.couranr_apply_payment_intent_state(
+  text,text,text,text,integer,integer,text,jsonb,timestamptz
+) from public,anon,authenticated,service_role;
+grant execute on function public.couranr_apply_payment_intent_state(
+  text,text,text,text,integer,integer,text,jsonb,timestamptz
+) to service_role;
+revoke all on function public.couranr_accept_delivery_request_as_quoted(uuid,uuid,integer,uuid)
+  from public,anon,authenticated,service_role;
+grant execute on function public.couranr_accept_delivery_request_as_quoted(uuid,uuid,integer,uuid)
+  to service_role;
 
 revoke all on function public.couranr_create_consumer_guest_session(text,integer)
   from public, anon, authenticated, service_role;

@@ -430,10 +430,10 @@ async function main() {
        "consumer_contact_required");
 
     const r1v2 = Number(reqCol(r1, "version"));
-    eq("CS-30", "submit with phone -> pending_couranr_review, NO auto-accept",
+    eq("CS-30", "CAP-001: submit with an estimated quote -> awaiting_quote_acceptance (payable BEFORE review), review still pending",
        one(`select request_state || '|' || review_state || '|' || (submitted_at is not null)::text
               from public.couranr_submit_consumer_delivery_request('${r1}','${s1.id}',${r1v2})`),
-       "pending_couranr_review|pending|true");
+       "awaiting_quote_acceptance|pending|true");
     eq("CS-30b", "the submit event has a customer actor with NO user id and NO acknowledgment",
        one(`select actor_type || '|' || coalesce(actor_user_id::text,'-')
                  || '|' || (metadata->>'acknowledgment')
@@ -441,22 +441,15 @@ async function main() {
              where request_id='${r1}' and command='submit_delivery_request'`),
        "customer|-|false");
 
-    const ops = seedActor(`ops+${crypto.randomUUID().slice(0, 8)}@e2e.couranr.test`, "admin");
-    const r1v3 = Number(reqCol(r1, "version"));
-    eq("CS-31", "Operations accept -> awaiting_quote_acceptance (payment AFTER review)",
-       one(`select request_state from public.couranr_accept_delivery_request_as_quoted(
-              '${r1}', null::uuid, ${r1v3}, '${ops}')`),
-       "awaiting_quote_acceptance");
-
     const obRow = one(`select id || '|' || coalesce(business_account_id::text,'-')
              || '|' || payment_state || '|' || amount_cents
         from public.couranr_create_payment_obligation('${r1}', null::uuid, 'consumer:${s1.id}')`);
     const [obId, obBiz, obState, obAmount] = obRow.split("|");
-    eq("CS-32", "obligation created with business NULL, amount off the quote",
+    eq("CS-31", "the obligation is creatable BEFORE any Couranr review — business NULL, amount off the quote",
        `${obBiz}|${obState}|${obAmount}`, "-|not_started|2299");
 
     const intentId = syntheticIntentId();
-    eq("CS-33", "the PaymentIntent attaches (requires_action)",
+    eq("CS-32", "the PaymentIntent attaches (requires_action)",
        one(`select payment_state from public.couranr_attach_payment_intent('${obId}', 1, '${intentId}')`),
        "requires_action");
 
@@ -469,21 +462,51 @@ async function main() {
            jsonb_build_object('paymentObligationId','${obId}',
              'couranrRequestId','${r1}','quoteVersionId','${qvId}'${extraMeta}),
            ${authorizedAt})`;
-    eq("CS-34", "metadata naming a business for a null-business obligation is rejected",
+    eq("CS-33", "metadata naming a business for a null-business obligation is rejected",
        one(applyConsumer({
          eventId: `evt-${obId}-biz`,
          extraMeta: `,'businessAccountId','${bizId}'`,
        })),
        "rejected|metadata_business_mismatch");
     const T20 = new Date(Date.now() + 20 * 60 * 1000).toISOString();
-    eq("CS-35", "QVL-001: an out-of-window consumer authorization is refused quote_expired",
+    eq("CS-34", "QVL-001: an out-of-window consumer authorization is refused quote_expired",
        one(applyConsumer({ eventId: `evt-${obId}-stale`, authorizedAt: `'${T20}'::timestamptz` })),
        "rejected|quote_expired");
-    eq("CS-36", "the in-window verified authorization applies",
+    eq("CS-35", "CAP-001: the in-window authorization applies and ENTERS Couranr review — nothing claims acceptance",
        one(applyConsumer({ eventId: `evt-${obId}-ok` })) + "|" +
          one(`select payment_state from public.couranr_payment_obligations where id='${obId}'`) + "|" +
-         reqCol(r1, "request_state"),
-       "applied|-|authorized|confirmed");
+         reqCol(r1, "request_state") + "|" + reqCol(r1, "review_state"),
+       "applied|-|authorized|pending_couranr_review|pending");
+    eq("CS-35b", "payer approval is recorded for the EXACT quote version, into review, claiming no acceptance",
+       one(`select to_state || '|' || (metadata->>'quoteVersionId' = '${qvId}')::text
+                 || '|' || (metadata->>'couranrReviewPending')
+              from public.couranr_delivery_request_events
+             where request_id='${r1}' and command='record_payer_quote_approval'`),
+       "pending_couranr_review|true|true");
+
+    const ops = seedActor(`ops+${crypto.randomUUID().slice(0, 8)}@e2e.couranr.test`, "admin");
+    const r1v4 = Number(reqCol(r1, "version"));
+    eq("CS-36", "Operations accept recognises the standing approval -> confirmed, NO second authorization",
+       one(`select request_state || '|' || review_state
+              from public.couranr_accept_delivery_request_as_quoted(
+              '${r1}', null::uuid, ${r1v4}, '${ops}')`) + "|" +
+         one(`select count(*) || '|' || max(payment_state)
+                from public.couranr_payment_obligations where request_id='${r1}'`),
+       "confirmed|accepted_as_quoted|1|authorized");
+    eq("CS-36b", "a consumer request in review WITHOUT payer approval cannot be silently accepted",
+       (() => {
+         const sx = newSession();
+         const rx = one(`select id from public.couranr_create_consumer_delivery_request_draft(
+           ${createArgs(sx.id)})`);
+         psql(`select public.couranr_submit_consumer_delivery_request(
+                 '${rx}','${sx.id}',${Number(reqCol(rx, "version"))})`);
+         // Synthetic probe: force the review posture with no authorization.
+         psql(`update public.couranr_delivery_requests
+                  set request_state='pending_couranr_review' where id='${rx}'`);
+         return raises(`select public.couranr_accept_delivery_request_as_quoted(
+                 '${rx}', null::uuid, ${Number(reqCol(rx, "version"))}, '${ops}')`).split("|")[1];
+       })(),
+       "consumer_quote_not_payer_approved");
 
     /* ═════════ tracking with business NULL ═════════ */
 
@@ -506,6 +529,104 @@ async function main() {
          .split("|")[1],
        "request_not_trackable");
 
+    /* ═════════ Quote N+1: an old approval never transfers ═════════ */
+
+    const s7 = newSession();
+    const r7 = one(`select id from public.couranr_create_consumer_delivery_request_draft(
+      ${createArgs(s7.id)})`);
+    psql(`select public.couranr_submit_consumer_delivery_request(
+            '${r7}','${s7.id}',${Number(reqCol(r7, "version"))})`);
+    const ob7Row = one(`select id || '|' || amount_cents
+        from public.couranr_create_payment_obligation('${r7}', null::uuid, 'consumer:${s7.id}')`);
+    const [ob7, ob7Amount] = ob7Row.split("|");
+    const intent7 = syntheticIntentId();
+    psql(`select public.couranr_attach_payment_intent('${ob7}', 1, '${intent7}')`);
+    const qv7 = one(`select quote_version_id from public.couranr_payment_obligations where id='${ob7}'`);
+    const apply7 = (eventId, quoteId, amount) =>
+      `select outcome || '|' || coalesce(rejected_reason,'-')
+         from public.couranr_apply_payment_intent_state(
+           '${eventId}', 'payment_intent.amount_capturable_updated', '${intent7}',
+           'requires_capture', ${amount}, ${amount}, 'usd',
+           jsonb_build_object('paymentObligationId','${ob7}',
+             'couranrRequestId','${r7}','quoteVersionId','${quoteId}'),
+           null)`;
+    psql(apply7(`evt-${ob7}-ok`, qv7, ob7Amount));
+    eq("CS-46a", "the authorized request awaits Couranr review",
+       reqCol(r7, "request_state") + "|" + reqCol(r7, "review_state"),
+       "pending_couranr_review|pending");
+
+    /* Operations changes the commercial facts: Quote N+1 via the governed
+       requote command. */
+    psql(`select public.couranr_requote_routed_delivery_request(
+      p_request_id := '${r7}'::uuid, p_business_account_id := null::uuid,
+      p_expected_version := ${Number(reqCol(r7, "version"))},
+      p_actor_user_id := '${ops}'::uuid,
+      p_pricing_policy_version := '${POLICY}',
+      p_delivery_subtotal_cents := 2799, p_included_loaded_miles := 3,
+      p_billable_loaded_miles := (7)::numeric,
+      p_quote_line_items := ${jsonLit([{ code: "delivery_base", label: "Delivery", amountCents: 2799 }])},
+      p_route_distance_meters := ${METERS_5MI}, p_route_duration_seconds := 720,
+      p_route_static_duration_seconds := 700, p_route_traffic_delay_seconds := 20,
+      p_distance_source := 'google_routes_v2',
+      p_serviceability_outcome := 'available_for_request',
+      p_route_review_reason := null::text,
+      p_requote_reason := 'distance corrected at review')`);
+    const qv7b = reqCol(r7, "current_quote_version_id");
+    eq("CS-46b", "requote -> quote_revision_required with a NEW current quote",
+       reqCol(r7, "request_state") + "|" + reqCol(r7, "review_state") + "|" + (qv7b !== qv7),
+       "quote_revision_required|requoted|true");
+    eq("CS-46c", "replaying the OLD authorization cannot confirm the revised request",
+       one(apply7(`evt-${ob7}-replay`, qv7, ob7Amount)) + "|" + reqCol(r7, "request_state"),
+       "ignored|already_in_state|quote_revision_required");
+    eq("CS-46d", "a new obligation is refused while the obsolete authorized hold stands",
+       raises(`select public.couranr_create_payment_obligation(
+               '${r7}', null::uuid, 'consumer:${s7.id}')`).split("|")[1],
+       "payment_quote_superseded_requires_resolution");
+    psql(`select public.couranr_begin_payment_release('${ob7}'::uuid, '${ops}'::uuid,
+            (select version from public.couranr_payment_obligations where id='${ob7}'),
+            'quote revised at Couranr review — payer will re-authorize')`);
+    psql(`select public.couranr_complete_payment_release('${ob7}', '${intent7}', 'canceled')`);
+    const ob7bRow = one(`select id || '|' || amount_cents
+        from public.couranr_create_payment_obligation('${r7}', null::uuid, 'consumer:${s7.id}')`);
+    const [ob7b, ob7bAmount] = ob7bRow.split("|");
+    const intent7b = syntheticIntentId();
+    psql(`select public.couranr_attach_payment_intent('${ob7b}', 1, '${intent7b}')`);
+    eq("CS-46e", "after the governed release, Quote N+1 gets its OWN authorization at the NEW price",
+       ob7bAmount + "|" +
+         one(`select outcome || '|' || coalesce(rejected_reason,'-')
+                from public.couranr_apply_payment_intent_state(
+                  'evt-${ob7b}-ok', 'payment_intent.amount_capturable_updated', '${intent7b}',
+                  'requires_capture', 2799, 2799, 'usd',
+                  jsonb_build_object('paymentObligationId','${ob7b}',
+                    'couranrRequestId','${r7}','quoteVersionId','${qv7b}'),
+                  null)`) + "|" + reqCol(r7, "request_state"),
+       "2799|applied|-|confirmed");
+
+    /* ═════════ recovery: re-estimate before authorization ═════════ */
+
+    const s8 = newSession();
+    const r8 = one(`select id from public.couranr_create_consumer_delivery_request_draft(
+      ${createArgs(s8.id)})`);
+    psql(`select public.couranr_submit_consumer_delivery_request(
+            '${r8}','${s8.id}',${Number(reqCol(r8, "version"))})`);
+    const qv8 = reqCol(r8, "current_quote_version_id");
+    psql(`select public.couranr_calculate_consumer_delivery_request_estimate(
+      ${estimateArgs(r8, s8.id, Number(reqCol(r8, "version")), {
+        subtotal: "2499",
+        lineItems: jsonLit([{ code: "delivery_base", label: "Delivery", amountCents: 2499 }]),
+      })})`);
+    eq("CS-47a", "the consumer may re-price their OWN request while awaiting authorization",
+       reqCol(r8, "request_state") + "|" +
+         (reqCol(r8, "current_quote_version_id") !== qv8) + "|" +
+         one(`select q.subtotal_cents from public.couranr_quote_versions q
+               where q.id = (select current_quote_version_id
+                               from public.couranr_delivery_requests where id='${r8}')`),
+       "awaiting_quote_acceptance|true|2499");
+    eq("CS-47b", "a FOREIGN session still cannot touch it there",
+       raises(`select public.couranr_calculate_consumer_delivery_request_estimate(
+         ${estimateArgs(r8, newSession().id, Number(reqCol(r8, "version")))})`).split("|")[1],
+       "request_not_found");
+
     /* ═════════ honest storage + posture ═════════ */
 
     const s6 = newSession();
@@ -524,6 +645,15 @@ async function main() {
               join public.couranr_delivery_requests r on r.current_quote_version_id = q.id
              where r.id='${r6}'`).trim(),
        "t");
+    eq("CS-41c", "CAP-001's governed exception: a manual-review submit goes to Couranr review FIRST",
+       one(`select request_state || '|' || review_state
+              from public.couranr_submit_consumer_delivery_request(
+              '${r6}','${s6.id}',${Number(reqCol(r6, "version"))})`),
+       "pending_couranr_review|pending");
+    eq("CS-41d", "... and stays non-payable — no amount is fabricated for it",
+       raises(`select public.couranr_create_payment_obligation(
+               '${r6}', null::uuid, 'consumer:${s6.id}')`).split("|")[1],
+       "request_not_payable");
 
     eq("CS-43", "anon/authenticated hold EXECUTE on NONE of the six new commands",
        one(`select bool_or(has_function_privilege('anon', p.oid, 'EXECUTE')

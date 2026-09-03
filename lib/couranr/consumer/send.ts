@@ -720,10 +720,12 @@ export async function getConsumerSendView(params: {
 /* --------------------------------------------------------------- paying --- */
 
 /**
- * Start payment for the session's request — ONLY once it is in a payable
- * state, which for the consumer V0 means Couranr review has accepted it
- * (`awaiting_quote_acceptance` onward). Amounts come from the stored
- * obligation, never from any caller.
+ * Start payment for the session's request — ONLY while it is in a payable
+ * state. Under CAP-001 (review item 2) that is BEFORE Couranr review for an
+ * automatic estimated quote: submit lands in `awaiting_quote_acceptance`,
+ * the consumer authorizes, and only then does the request enter Couranr
+ * review. `quote_revision_required` re-opens payment for the revised price.
+ * Amounts come from the stored obligation, never from any caller.
  */
 export async function payConsumerSend(params: {
   session: GuestSession;
@@ -739,7 +741,7 @@ export async function payConsumerSend(params: {
       detail: { from: state },
       message:
         state === "pending_couranr_review"
-          ? "Couranr is reviewing this delivery. Payment opens once Couranr confirms it."
+          ? "Couranr is reviewing this delivery. Nothing more is needed from you right now."
           : "This delivery is not ready for payment.",
     });
   }
