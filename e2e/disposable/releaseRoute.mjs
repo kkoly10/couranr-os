@@ -228,6 +228,27 @@ async function main() {
       return { requestId: chain.requestId, obligationId: chain.obligationId, intentId: intent.id };
     }
 
+    /**
+     * B3-I §5 — the LEGITIMATE technical-release scenario: an authorized hold
+     * on a request that is NOT confirmed (a stale quote hold — a requote left
+     * the old authorization behind). The governed-cancellation escape guard
+     * forbids a generic release of a CONFIRMED authorized hold, so the
+     * whole-chain fixture (always confirmed) is the WRONG shape for the happy
+     * path. Build confirmed+authorized (the only path the obligation command
+     * accepts to reach `authorized`) and then move the request to
+     * `quote_revision_required` — a non-confirmed payable state where release
+     * is genuinely the recovery operation and the hold is now stale.
+     */
+    async function seedAuthorizedHold() {
+      const hold = await seed("authorized"); // chain => confirmed + authorized
+      psql(
+        `update public.couranr_delivery_requests
+            set request_state='quote_revision_required'
+          where id='${hold.requestId}'::uuid`,
+      );
+      return hold;
+    }
+
     async function tokenFor(email) {
       const r = await fetch(`${gateway.url}/auth/v1/token?grant_type=password`, {
         method: "POST",
@@ -259,7 +280,9 @@ async function main() {
 
     /* ------------------------------------------------------------ gates */
 
-    const a = await seed("authorized");
+    // The happy-path release fixture is a NON-confirmed authorized hold — the
+    // stale/rejected/recovery case §5 keeps release available for.
+    const a = await seedAuthorizedHold();
 
     const anon = await release(null, a.requestId, { reason: "x" });
     bodies.push(anon.raw);
@@ -325,6 +348,26 @@ async function main() {
     const after = stripeCalls().filter((c) => c.includes("/cancel")).length;
     check("E11", "a replay is accepted and calls Stripe no second time",
       replay.status === 200 && after === before, `${replay.status}, cancels ${before}->${after}`);
+
+    /* ----------------------------------- §5: confirmed hold is refused */
+
+    // A CONFIRMED + authorized hold is NOT generically releasable — the
+    // governed action is Cancel with the $8 receivable. The chain fixture is
+    // confirmed, so it is exactly this forbidden shape.
+    const confirmedHold = await seed("authorized");
+    const beforeConf = stripeCalls().filter((c) => c.includes("/cancel")).length;
+    const confRel = await release(opsEmail, confirmedHold.requestId, {
+      reason: "trying to release a confirmed active hold",
+    });
+    bodies.push(confRel.raw);
+    check("E6z", "a CONFIRMED + authorized hold is refused at the route (§5 CAN-001 escape)",
+      confRel.status === 409, `${confRel.status} ${confRel.raw.slice(0, 80)}`);
+    check("E6z2", "... and the obligation is untouched",
+      one(`select payment_state from public.couranr_payment_obligations where id='${confirmedHold.obligationId}'`) ===
+        "authorized");
+    check("E6z3", "... and NO Stripe cancel was made for it",
+      stripeCalls().filter((c) => c.includes("/cancel")).length === beforeConf,
+      `cancels ${beforeConf}->${stripeCalls().filter((c) => c.includes("/cancel")).length}`);
 
     /* ------------------------------------------------- captured refuses */
 
