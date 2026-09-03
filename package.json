@@ -46,6 +46,7 @@
     "test:business-routing": "node e2e/disposable/businessRoutingAuthority.mjs",
     "typecheck:canonical": "tsc --noEmit -p tsconfig.canonical.json",
     "typecheck:couranr-foundation": "tsc -p tsconfig.couranr-foundation.json",
+    "test:payment-recovery": "node e2e/disposable/paymentRecovery.mjs",
     "test:release": "node e2e/disposable/releaseAuthorization.mjs",
     "test:release:route": "node e2e/disposable/releaseRoute.mjs",
     "test:idempotency": "node e2e/disposable/idempotencySubstrate.mjs",

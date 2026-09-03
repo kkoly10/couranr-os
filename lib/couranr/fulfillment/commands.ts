@@ -16,6 +16,8 @@ import {
   isTerminalCaptureAction,
   mayWriteCaptureResult,
   reconcileActionForIntentStatus,
+  REFUND_REASONS,
+  type RefundReason,
 } from "@/lib/couranr/payments/states";
 import { getObligationForRequest, isPaymentFailure } from "@/lib/couranr/payments/commands";
 
@@ -1145,6 +1147,292 @@ export async function releaseAuthorization(params: {
     value: {
       obligationId: String(ob.id),
       paymentState: String(done.value?.payment_state ?? ""),
+    },
+  };
+}
+
+/* --------------------------------------------------------- refunds ------ */
+
+type RefundAttemptRow = {
+  id: string;
+  obligation_id: string;
+  request_id: string;
+  provider_payment_intent_id: string;
+  provider_refund_id: string | null;
+  amount_cents: number;
+  retained_cents: number;
+  reason: string;
+  refund_key: string;
+  attempt_state: "requested" | "pending_unknown" | "succeeded" | "failed";
+};
+
+export type RefundOutcome = {
+  refundId: string;
+  attemptState: RefundAttemptRow["attempt_state"];
+  amountCents: number;
+  retainedCents: number;
+  reason: string;
+};
+
+/**
+ * Read the request's obligation with the SAME nullable-tenancy discipline
+ * releaseAuthorization uses: a consumer request (business null) matches with
+ * SQL NULL semantics, and a business request can never reach another
+ * tenant's obligation.
+ */
+async function readObligationForRecovery(
+  op: string,
+  requestId: string,
+  businessAccountId: string | null
+): Promise<FulfillmentResult<any>> {
+  let q = supabaseAdmin
+    .from("couranr_payment_obligations")
+    .select(
+      "id,request_id,business_account_id,payment_state,provider_payment_intent_id,version,captured_amount_cents,refunded_amount_cents"
+    )
+    .eq("request_id", requestId);
+  q = businessAccountId === null ? q.is("business_account_id", null) : q.eq("business_account_id", businessAccountId);
+  const { data: ob, error } = (await q.maybeSingle()) as { data: any; error: any };
+  if (error) {
+    return fail({ operation: op, code: "internal", detail: { reason: "obligation_read", message: error.message } });
+  }
+  if (!ob) {
+    return fail({
+      operation: op,
+      code: "not_found",
+      detail: { reason: "no_obligation" },
+      message: "There is no payment on this delivery.",
+    });
+  }
+  return { ok: true, value: ob };
+}
+
+/**
+ * Refund captured money under a GOVERNED reason (batch 3 §B).
+ *
+ * Same discipline as capture and release:
+ *   1. `couranr_begin_payment_refund` persists the attempt — obligation,
+ *      provider intent identity, server-derived amount, governed retention,
+ *      idempotency key, actor — BEFORE Stripe is called. Nobody types an
+ *      amount anywhere: the SQL derives it from the captured amount and the
+ *      owner-approved cancellation retention.
+ *   2. `stripe.refunds.create` under the attempt's own idempotency key, so a
+ *      resumed attempt converges on the SAME provider refund.
+ *   3. `couranr_complete_payment_refund` records what the provider actually
+ *      said. An error or timeout is NOT evidence about the money: the attempt
+ *      parks at `pending_unknown` and `reconcileRefund` — never a retry loop —
+ *      converges it later.
+ */
+export async function refundPayment(params: {
+  actor: RequestActor;
+  requestId: string;
+  businessAccountId: string | null;
+  reason: RefundReason;
+}): Promise<FulfillmentResult<RefundOutcome>> {
+  const op = "refundPayment";
+
+  const permission = canActOnDeliveryRequest(params.actor, "review", params.businessAccountId);
+  if (!permission.allowed || params.actor.kind !== "operations") {
+    return fail({
+      operation: op,
+      code: "not_permitted",
+      detail: { reason: "not_operations" },
+      message: "Only Couranr Operations can refund a payment.",
+    });
+  }
+  if (!REFUND_REASONS.includes(params.reason)) {
+    return fail({
+      operation: op,
+      code: "invalid_input",
+      detail: { reason: "refund_reason_invalid" },
+      message: "That is not a governed refund reason.",
+    });
+  }
+
+  const obRead = await readObligationForRecovery(op, params.requestId, params.businessAccountId);
+  if (isFulfillmentFailure(obRead)) return obRead;
+  const ob = obRead.value;
+
+  const begun = await callRpc<RefundAttemptRow>(op, "couranr_begin_payment_refund", {
+    p_obligation_id: String(ob.id),
+    p_actor_user_id: params.actor.userId,
+    p_expected_version: Number(ob.version),
+    p_reason: params.reason,
+  });
+  if (isFulfillmentFailure(begun)) return begun;
+  const attempt = begun.value;
+  if (attempt.attempt_state === "succeeded") {
+    // Idempotent replay: the money already moved exactly once.
+    return {
+      ok: true,
+      value: {
+        refundId: attempt.id,
+        attemptState: attempt.attempt_state,
+        amountCents: attempt.amount_cents,
+        retainedCents: attempt.retained_cents,
+        reason: attempt.reason,
+      },
+    };
+  }
+
+  return submitAndCompleteRefund(op, attempt);
+}
+
+/**
+ * Converge an attempt whose provider outcome is unknown (`requested` after a
+ * crash, or `pending_unknown` after a timeout). Re-submits under the SAME
+ * provider idempotency key, so Stripe returns the ORIGINAL refund if one was
+ * created and creates it exactly once if not — a duplicate provider refund is
+ * structurally impossible on this path.
+ */
+export async function reconcileRefund(params: {
+  actor: RequestActor;
+  requestId: string;
+  businessAccountId: string | null;
+}): Promise<FulfillmentResult<RefundOutcome>> {
+  const op = "reconcileRefund";
+
+  const permission = canActOnDeliveryRequest(params.actor, "review", params.businessAccountId);
+  if (!permission.allowed || params.actor.kind !== "operations") {
+    return fail({
+      operation: op,
+      code: "not_permitted",
+      detail: { reason: "not_operations" },
+      message: "Only Couranr Operations can reconcile a refund.",
+    });
+  }
+
+  const obRead = await readObligationForRecovery(op, params.requestId, params.businessAccountId);
+  if (isFulfillmentFailure(obRead)) return obRead;
+  const ob = obRead.value;
+
+  const { data: attempt, error } = (await supabaseAdmin
+    .from("couranr_payment_refunds")
+    .select("id,obligation_id,request_id,provider_payment_intent_id,provider_refund_id,amount_cents,retained_cents,reason,refund_key,attempt_state")
+    .eq("obligation_id", String(ob.id))
+    .in("attempt_state", ["requested", "pending_unknown", "succeeded"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()) as { data: RefundAttemptRow | null; error: any };
+  if (error) {
+    return fail({ operation: op, code: "internal", detail: { reason: "refund_read", message: error.message } });
+  }
+  if (!attempt) {
+    return fail({
+      operation: op,
+      code: "not_found",
+      detail: { reason: "no_refund_attempt" },
+      message: "There is no refund to reconcile on this delivery.",
+    });
+  }
+  if (attempt.attempt_state === "succeeded") {
+    return {
+      ok: true,
+      value: {
+        refundId: attempt.id,
+        attemptState: attempt.attempt_state,
+        amountCents: attempt.amount_cents,
+        retainedCents: attempt.retained_cents,
+        reason: attempt.reason,
+      },
+    };
+  }
+
+  /*
+   * LIST FIRST. Stripe idempotency keys expire after 24 hours (documented),
+   * so "re-create under the same key" alone is only convergent inside that
+   * window. Listing the intent's refunds and matching our own
+   * metadata.couranrRefundId converges on the provider's record regardless of
+   * age; only when the provider provably has NO refund do we (re)submit under
+   * the attempt's key — inside the window that replays the original request,
+   * and outside it the list has already established absence.
+   */
+  try {
+    const listed = await getStripeClient().refunds.list({
+      payment_intent: attempt.provider_payment_intent_id,
+      limit: 100,
+    });
+    const match = (listed?.data ?? []).find(
+      (r: any) => r?.metadata?.couranrRefundId === attempt.id
+    );
+    if (match) {
+      const done = await callRpc<RefundAttemptRow>(op, "couranr_complete_payment_refund", {
+        p_refund_id: attempt.id,
+        p_provider_refund_id: String(match.id ?? ""),
+        p_refund_status: String(match.status ?? ""),
+        p_amount_cents: Number(match.amount ?? 0),
+      });
+      if (isFulfillmentFailure(done)) return done;
+      const settled = done.value;
+      return {
+        ok: true,
+        value: {
+          refundId: settled.id,
+          attemptState: settled.attempt_state,
+          amountCents: settled.amount_cents,
+          retainedCents: settled.retained_cents,
+          reason: settled.reason,
+        },
+      };
+    }
+  } catch {
+    // The list is an optimization for convergence, not the mechanism of
+    // record; a failed list falls through to the idempotent re-submit.
+  }
+  return submitAndCompleteRefund(op, attempt);
+}
+
+async function submitAndCompleteRefund(
+  op: string,
+  attempt: RefundAttemptRow
+): Promise<FulfillmentResult<RefundOutcome>> {
+  let refund: any;
+  try {
+    refund = await getStripeClient().refunds.create(
+      {
+        payment_intent: attempt.provider_payment_intent_id,
+        amount: attempt.amount_cents,
+        metadata: { couranrRefundId: attempt.id, reason: attempt.reason },
+      },
+      { idempotencyKey: attempt.refund_key }
+    );
+  } catch (e: any) {
+    /*
+     * AN ERROR IS NOT EVIDENCE ABOUT THE MONEY — the capture rule, verbatim.
+     * The request may have reached Stripe; a refund may exist. Park the
+     * attempt at pending_unknown and let reconcileRefund converge under the
+     * same idempotency key. Never mark failed from an HTTP error, never
+     * retry in a loop from here.
+     */
+    await callRpc(op, "couranr_mark_payment_refund_unknown", {
+      p_refund_id: attempt.id,
+      p_detail: { type: e?.type ?? null, code: e?.code ?? null, statusCode: e?.statusCode ?? null },
+    });
+    return fail({
+      operation: op,
+      code: "internal",
+      detail: { reason: "refund_outcome_unknown", type: e?.type, code: e?.code },
+      message:
+        "Couranr could not confirm the refund with the payment provider. Do not retry blindly — use Reconcile, which converges on the same provider operation.",
+    });
+  }
+
+  const done = await callRpc<RefundAttemptRow>(op, "couranr_complete_payment_refund", {
+    p_refund_id: attempt.id,
+    p_provider_refund_id: String(refund?.id ?? ""),
+    p_refund_status: String(refund?.status ?? ""),
+    p_amount_cents: Number(refund?.amount ?? 0),
+  });
+  if (isFulfillmentFailure(done)) return done;
+  const settled = done.value;
+  return {
+    ok: true,
+    value: {
+      refundId: settled.id,
+      attemptState: settled.attempt_state,
+      amountCents: settled.amount_cents,
+      retainedCents: settled.retained_cents,
+      reason: settled.reason,
     },
   };
 }

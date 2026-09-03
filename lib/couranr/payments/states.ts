@@ -252,3 +252,17 @@ export type LinkRefusalReason = (typeof LINK_REFUSAL_REASONS)[number];
 export function isLinkRefusalReason(v: unknown): v is LinkRefusalReason {
   return typeof v === "string" && (LINK_REFUSAL_REASONS as readonly string[]).includes(v);
 }
+
+/**
+ * Batch 3 §B — the CLOSED refund-reason vocabulary. The amount is derived in
+ * SQL from the captured amount and the governed cancellation retention; there
+ * is deliberately NO type through which an amount could travel.
+ */
+export const REFUND_REASONS = [
+  "full_refund",
+  "cancel_before_confirmation",
+  "cancel_after_confirmation_before_arrival",
+  "failed_pickup_after_arrival",
+  "couranr_caused_failure",
+] as const;
+export type RefundReason = (typeof REFUND_REASONS)[number];
