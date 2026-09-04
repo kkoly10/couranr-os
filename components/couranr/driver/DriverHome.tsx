@@ -65,7 +65,7 @@ export function DriverHome() {
   const s = driverStatus(state.view);
 
   return (
-    <div className="cr-driver-page cr-driver-home">
+    <div className="cr-driver-page">
       <header className="cr-driver-home__header">
         <div>
           <h1 className="cr-driver-title">
