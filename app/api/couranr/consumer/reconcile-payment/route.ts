@@ -5,6 +5,7 @@ import {
   reconcileConsumerPayment,
 } from "@/lib/couranr/consumer/send";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
+import { advanceAutomaticFulfillment } from "@/lib/couranr/automation/engine";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +21,9 @@ export async function POST(req: NextRequest) {
 
   const r = await reconcileConsumerPayment({ session: session.value });
   if (isConsumerFailure(r)) return failureResponse(r);
+  if (session.value.requestId) {
+    await advanceAutomaticFulfillment(String(session.value.requestId));
+  }
   return NextResponse.json({
     payment: { outcome: r.value.outcome, paymentState: r.value.paymentState },
   });
