@@ -317,7 +317,7 @@ describe("conservative named-market serviceability", () => {
   });
 });
 
-describe("server Routes authority", () => {
+describe("server Mapbox route authority", () => {
   it("uses only the server Mapbox token and derives loaded miles from distance", async () => {
     const fetcher = vi.fn(
       async (_input: string | URL | Request) => routeResponse(8047, 721.4)
@@ -416,6 +416,51 @@ describe("server Routes authority", () => {
     expect(result.route.loadedMiles).toBe(loadedMilesFromDistanceMeters(8047));
     expect(result.quote.quoteStatus).toBe("estimated");
     expect(result.quote.deliverySubtotalCents).toBeLessThan(100_000);
+  });
+});
+
+describe("routing cutover boundary", () => {
+  it("keeps the legacy Google Routes file provider-only and unreachable from active routing", () => {
+    const legacy = readFileSync(
+      path.join(ROOT, "lib/couranr/routing/googleRoutes.ts"),
+      "utf8"
+    );
+    const canonical = readFileSync(
+      path.join(ROOT, "lib/couranr/routing/canonicalRoute.ts"),
+      "utf8"
+    );
+    const requests = readFileSync(
+      path.join(ROOT, "lib/couranr/requests/commands.ts"),
+      "utf8"
+    );
+    const consumer = readFileSync(
+      path.join(ROOT, "lib/couranr/consumer/send.ts"),
+      "utf8"
+    );
+    const automation = readFileSync(
+      path.join(ROOT, "lib/couranr/automation/engine.ts"),
+      "utf8"
+    );
+
+    expect(legacy).toContain("LEGACY / DISABLED FALLBACK ONLY");
+    expect(legacy).toContain("computeLegacyGoogleRoute");
+    expect(legacy).not.toContain("deriveCanonicalRouteAndQuote");
+    expect(legacy).not.toContain("quoteDelivery(");
+    expect(legacy).not.toContain("resolveCanonicalGooglePlace");
+
+    for (const [name, src] of [
+      ["canonical", canonical],
+      ["requests", requests],
+      ["consumer", consumer],
+      ["automation", automation],
+    ] as const) {
+      expect(src, name).not.toContain('routing/googleRoutes');
+    }
+
+    expect(canonical).toContain('from "./mapboxDirections"');
+    expect(requests).toContain('from "@/lib/couranr/routing/canonicalRoute"');
+    expect(consumer).toContain('from "@/lib/couranr/routing/canonicalRoute"');
+    expect(automation).toContain('from "@/lib/couranr/routing/mapboxDirections"');
   });
 });
 
