@@ -115,6 +115,13 @@ describe("D0 scope control", () => {
     expect(CONTRACT).toContain("Messaging failure must never roll back creation");
   });
 
+  it("records the dual-role Operations participant conflict instead of hiding it", () => {
+    expect(CONTRACT).toContain("couranr_cvp_live_user_uniq");
+    expect(CONTRACT).toContain("dual-role");
+    expect(CONTRACT).toContain("surface/context-aware");
+    expect(CONTRACT).toContain("Option 1 is the narrower MVP direction");
+  });
+
   it("does not smuggle deferred Driver product into the authority batch", () => {
     for (const deferred of [
       "no weekly shift planner",
