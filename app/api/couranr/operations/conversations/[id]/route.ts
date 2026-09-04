@@ -38,7 +38,7 @@ export async function GET(
   });
   if (isConversationFailure(result)) return failureResponse(result);
 
-  const { conversation, viewerKind, messages, unreadCount } = result.value;
+  const { conversation, viewerKind, messages } = result.value;
   return NextResponse.json({
     conversation: {
       id: conversation.id,
@@ -52,6 +52,5 @@ export async function GET(
     },
     viewerKind,
     messages,
-    unreadCount,
   });
 }
