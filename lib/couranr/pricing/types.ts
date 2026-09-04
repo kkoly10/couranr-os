@@ -14,10 +14,11 @@ import type { ServiceLevel } from "./policy";
  */
 export type QuoteInput = {
   /**
-   * Loaded miles for the route, from server-side Google Routes evidence only.
-   * May be fractional; canonical precision is thousandths of a mile. A
-   * browser-supplied distance never reaches here — see
-   * `lib/couranr/routing/googleRoutes.ts`.
+   * Loaded miles for the route, from server-side canonical route evidence only.
+   * Current authority is Mapbox Directions v5 driving-traffic over canonical
+   * Google Place coordinates. May be fractional; canonical precision is
+   * thousandths of a mile. A browser-supplied distance never reaches here —
+   * see `lib/couranr/routing/canonicalRoute.ts`.
    */
   loadedMiles: number;
   /**
@@ -49,7 +50,7 @@ export type QuoteInput = {
   /**
    * Predicted traffic delay in seconds, derived server-side as
    * `max(traffic_aware_duration - static_duration, 0)` from ONE canonical
-   * Google Routes response.
+   * Mapbox driving-traffic response (`duration - duration_typical`).
    *
    * `null`/absent means "no traffic evidence was established". The engine then
    * charges no traffic and says so, rather than inventing a delay of zero.
