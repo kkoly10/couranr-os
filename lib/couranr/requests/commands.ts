@@ -10,7 +10,7 @@ import {
   deriveCanonicalRouteAndQuote,
   isCanonicalAddressResolutionError,
   type CanonicalRouteEvidence,
-} from "@/lib/couranr/routing/googleRoutes";
+} from "@/lib/couranr/routing/canonicalRoute";
 import type { GoogleAddressSnapshot } from "@/lib/couranr/routing/address";
 import { applyShipmentPolicyToQuote } from "@/lib/couranr/shipment/quoteStatus";
 import { evaluateShipmentPolicy, type PolicyDisposition } from "@/lib/couranr/shipment/policy";
@@ -376,7 +376,7 @@ export function shipmentArgs(
   };
 }
 
-/** Exact Google route evidence passed only by this server command layer. */
+/** Exact canonical route evidence passed only by this server command layer. */
 export function routeArgs(route: CanonicalRouteEvidence) {
   return {
     p_route_distance_meters: route.distanceMeters,
