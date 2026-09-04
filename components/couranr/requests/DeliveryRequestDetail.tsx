@@ -39,7 +39,7 @@ import {
   isApiFailure,
   type ApiFailure,
 } from "./client";
-import { REQUEST_STATE_LABELS, type DeliveryRequestView } from "@/lib/couranr/requests/view";
+import { formatCents, REQUEST_STATE_LABELS, type DeliveryRequestView } from "@/lib/couranr/requests/view";
 import { declineMessageFor } from "@/lib/couranr/requests/states";
 
 /**
