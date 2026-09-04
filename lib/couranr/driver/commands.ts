@@ -544,64 +544,108 @@ export async function issueHandoffCode(p: {
   ttlMinutes?: number;
 }): Promise<DriverResult<IssuedCode>> {
   const operation = "issueHandoffCode";
-  const code = generateHandoffCode();
+  const MAX_GENERATION_ATTEMPTS = 4;
 
-  // The generation the digest must be bound to is not knowable before the
-  // insert, so the digest is computed against the generation SQL will assign.
-  // Reading max(generation) here would race; instead the command is called
-  // twice-safe by computing for the next generation and letting the unique
-  // index on (delivery_id, kind, generation) reject a loser.
-  const { data: cur } = (await supabaseAdmin
-    .from("couranr_handoff_codes")
-    .select("generation")
-    .eq("delivery_id", p.deliveryId)
-    .eq("code_kind", p.kind)
-    .order("generation", { ascending: false })
-    .limit(1)) as { data: any };
-  const generation = Number(cur?.[0]?.generation ?? 0) + 1;
+  /**
+   * Generation is part of the HMAC domain, so the raw code and the generation
+   * the database stores must be committed together. The SQL command now takes
+   * p_expected_generation and checks it while holding the delivery row lock,
+   * BEFORE superseding the current credential. If another issuer wins between
+   * this read and that lock, CR409 handoff_generation_conflict writes nothing;
+   * we refresh and mint a NEW raw code for the new generation.
+   */
+  for (let attempt = 0; attempt < MAX_GENERATION_ATTEMPTS; attempt += 1) {
+    const { data: cur, error: generationError } = (await supabaseAdmin
+      .from("couranr_handoff_codes")
+      .select("generation")
+      .eq("delivery_id", p.deliveryId)
+      .eq("code_kind", p.kind)
+      .order("generation", { ascending: false })
+      .limit(1)) as { data: any; error: any };
 
-  let digest: string;
-  try {
-    digest = handoffCodeDigest({
-      kind: p.kind,
-      deliveryId: p.deliveryId,
-      generation,
-      code,
-    });
-  } catch (e: any) {
-    // A missing or unusable secret fails CLOSED, as a sanitized internal
-    // error. No credential row is written, and the reason never reaches the
-    // caller — a configuration probe is not something an API should answer.
-    return fail({
-      operation,
-      code: "internal",
-      detail: {
-        reason: e instanceof HandoffSecretUnavailable ? "handoff_secret_unavailable" : "digest_failed",
+    if (generationError) {
+      return fail({
+        operation,
+        code: classifyDatabaseError(generationError),
+        detail: { reason: "generation_read_failed", code: generationError?.code },
+      });
+    }
+
+    const generation = Number(cur?.[0]?.generation ?? 0) + 1;
+    const code = generateHandoffCode();
+
+    let digest: string;
+    try {
+      digest = handoffCodeDigest({
+        kind: p.kind,
+        deliveryId: p.deliveryId,
+        generation,
+        code,
+      });
+    } catch (e: any) {
+      // A missing or unusable secret fails CLOSED. No credential row is
+      // written and the raw code is discarded with this stack frame.
+      return fail({
+        operation,
+        code: "internal",
+        detail: {
+          reason:
+            e instanceof HandoffSecretUnavailable
+              ? "handoff_secret_unavailable"
+              : "digest_failed",
+        },
+      });
+    }
+
+    const { data, error } = (await supabaseAdmin.rpc("couranr_issue_handoff_code", {
+      p_delivery_id: p.deliveryId,
+      p_code_kind: p.kind,
+      p_expected_generation: generation,
+      p_code_digest: digest,
+      p_actor_user_id: p.actorUserId,
+      p_ttl_minutes: p.ttlMinutes ?? 1440,
+    })) as { data: any; error: any };
+
+    if (error) {
+      if (error?.code === "CR409" && error?.message === "handoff_generation_conflict") {
+        continue;
+      }
+      return fromRpcError(operation, error);
+    }
+
+    if (!data) {
+      return fail({ operation, code: "conflict", detail: { reason: "no row returned" } });
+    }
+
+    const storedGeneration = Number(data.generation);
+    if (storedGeneration !== generation) {
+      // Defense in depth. The SQL CAS should make this impossible; returning a
+      // raw code signed for a different generation would be worse than failing.
+      return fail({
+        operation,
+        code: "internal",
+        detail: { reason: "handoff_generation_mismatch" },
+      });
+    }
+
+    return {
+      ok: true,
+      value: {
+        code,
+        kind: p.kind,
+        generation: storedGeneration,
+        expiresAt: String(data.expires_at),
+        warning: CODE_SHOWN_ONCE_WARNING,
       },
-    });
+    };
   }
 
-  const r = await callRpc(operation, "couranr_issue_handoff_code", {
-    p_delivery_id: p.deliveryId,
-    p_code_kind: p.kind,
-    p_code_digest: digest,
-    p_actor_user_id: p.actorUserId,
-    p_ttl_minutes: p.ttlMinutes ?? 1440,
+  return fail({
+    operation,
+    code: "conflict",
+    detail: { reason: "handoff_generation_contention" },
+    message: "The handoff code changed at the same time. Try again.",
   });
-  if (!r.ok) return r;
-
-  // Only the fields the issuer needs. Never the digest, never the attempt
-  // count, never a previous generation.
-  return {
-    ok: true,
-    value: {
-      code,
-      kind: p.kind,
-      generation: Number(r.value.generation),
-      expiresAt: String(r.value.expires_at),
-      warning: CODE_SHOWN_ONCE_WARNING,
-    },
-  };
 }
 
 /**
