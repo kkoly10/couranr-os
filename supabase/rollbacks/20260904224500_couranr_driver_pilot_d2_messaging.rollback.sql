@@ -8,6 +8,20 @@ begin;
 set local statement_timeout='120s';
 set local lock_timeout='10s';
 
+do $guard$
+begin
+  if exists (
+    select 1
+      from public.couranr_conversation_messages
+     where authorship='human'
+       and author_user_id is not null
+  ) then
+    raise exception
+      'unsafe rollback: Operations-authored human messages depend on author_user_id; use a forward repair';
+  end if;
+end
+$guard$;
+
 drop trigger if exists couranr_delivery_chat_membership_tenure_trg
   on public.business_members;
 drop function if exists private.couranr_delivery_chat_membership_tenure() restrict;
