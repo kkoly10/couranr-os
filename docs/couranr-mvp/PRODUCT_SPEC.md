@@ -20,8 +20,8 @@ The MVP operating timezone is the IANA zone **America/New_York**, by owner
 decision. Every request-time operating semantic — the 6:00 AM earliest pickup,
 the 4:00 PM same-day cutoff, the 6:00 PM end of the standard window,
 next-business-day and Friday-after-cutoff calculations, overnight request
-timing, merchant-entered scheduled pickup times and Google Routes future
-`departureTime` conversion — is evaluated in this zone on the server. DST
+timing, merchant-entered scheduled pickup times and Mapbox Directions future
+`depart_at` conversion — is evaluated in this zone on the server. DST
 follows the zone automatically through tzdata; no fixed EST/EDT offset exists
 anywhere. Browser and device timezones have no authority. The canonical
 persisted scheduled instant is unambiguous (`timestamptz`), and the merchant's
@@ -45,12 +45,13 @@ Historical exact weights are untouched.
 ### §4 Pricing registry — scheduled traffic (TRF-002, amending TRF-001)
 
 Scheduled (future-departure) traffic is implemented: a scheduled request's
-canonical America/New_York-derived instant travels to Google Routes as
-`departureTime`, so predicted conditions for the requested departure price the
-quote. The delay derivation — traffic-aware duration minus static duration
-from ONE canonical response — is unchanged, immediate requests are unchanged,
-past requested times are a timing review rather than a Google call, and
-browsers still supply no route evidence of any kind.
+canonical America/New_York-derived instant travels to Mapbox Directions v5
+driving-traffic as `depart_at`, so predicted conditions for the requested
+departure price the quote. The delay derivation — route `duration` minus
+`duration_typical` from ONE canonical response — is unchanged, immediate
+requests omit `depart_at`, past requested times are a timing review, and
+browsers still supply no route evidence of any kind. Google Places remains the
+canonical address-identity provider; Google Routes is not the active router.
 
 ### §6 Smart Intake (INT-001, P5-001 V0)
 
@@ -96,7 +97,7 @@ price.
 - **Standard fare.** $7.99 covers the first 2.000 loaded miles. Above that:
   $1.25 per loaded mile over 2 through 10, $1.50 over 10 through 25. Above 25
   loaded miles there is no automatic final price. Distance is the
-  server-authoritative Google route distance at thousandth-of-a-mile precision;
+  server-authoritative Mapbox Directions route distance at thousandth-of-a-mile precision;
   browser mileage is never accepted and mileage is never rounded up to a whole
   mile. Money is integer cents with deterministic half-up rounding only where a
   rate produces a fractional cent. The nearest-$0.25 rounding rule is retired.
@@ -108,9 +109,9 @@ price.
   included. Rush and Overnight never stack. There is no platform fee, no
   consumer surcharge, no payer differential, no category multiplier and no
   payment-processing surcharge passed to the payer.
-- **Predicted traffic.** Priced up front from one canonical Google route
-  response carrying both the traffic-aware and static durations:
-  `delay = max(traffic_aware − static, 0)`. The first 5 minutes are included,
+- **Predicted traffic.** Priced up front from one canonical Mapbox
+  driving-traffic response carrying `duration` and `duration_typical`:
+  `delay = max(duration − duration_typical, 0)`. The first 5 minutes are included,
   then $0.45 per minute; above 25 minutes the route needs review. If that
   evidence cannot be obtained or validated, the request fails safe into review
   rather than assuming no traffic. Once a payer accepts and authorizes a quote,
