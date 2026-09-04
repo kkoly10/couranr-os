@@ -6,6 +6,7 @@ import {
 } from "@/lib/couranr/requests/commands";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
 import { toDeliveryRequestView } from "@/lib/couranr/requests/view";
+import { advanceAutomaticFulfillment } from "@/lib/couranr/automation/engine";
 
 export const dynamic = "force-dynamic";
 
@@ -54,5 +55,6 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
 
   if (isCommandFailure(result)) return failureResponse(result);
 
+  await advanceAutomaticFulfillment(params.id);
   return NextResponse.json({ request: toDeliveryRequestView(result.value.request) });
 }
