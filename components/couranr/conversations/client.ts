@@ -69,8 +69,11 @@ export type ThreadView = {
   };
   viewerKind: ParticipantKind;
   messages: ThreadMessage[];
-  /** A GENUINE count: these messages have already passed the visibility rule. */
-  unreadCount: number;
+  /**
+   * Participant reads return a genuine count after visibility filtering.
+   * Operations is a shared queue, so that surface deliberately omits it.
+   */
+  unreadCount?: number;
 };
 
 export type InboxView = {
