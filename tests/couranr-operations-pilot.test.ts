@@ -29,15 +29,27 @@ describe("pilot Operations console", () => {
     expect(source).not.toContain("ScreenPlaceholder");
   });
 
-  it("gives OPS-002 distinct phone cards and desktop table presentations", () => {
+  it("gives OPS-002 distinct phone cards and a desktop operational worklist", () => {
     const source = read("components/couranr/requests/OperationsQueue.tsx");
     const css = read("app/(couranr)/couranr.css");
 
     expect(source).toContain('className="cr-ops-queue__mobile"');
     expect(source).toContain('className="cr-ops-queue__desktop"');
     expect(source).toContain('className="cr-ops-queue-card"');
-    expect(css).toContain(".cr-ops-queue__table");
-    expect(css).toMatch(/\.cr-ops-queue__table\s*\{[^}]*min-width:/s);
-    expect(css).toMatch(/@media \(min-width: 760px\)[\s\S]*\.cr-ops-queue__mobile\s*\{\s*display:\s*none;/);
+    expect(source).toContain('className="cr-ops-worklist"');
+    expect(source).not.toContain("<TableScroll>");
+    expect(css).toContain(".cr-ops-worklist__row");
+    expect(css).toMatch(/@media \(min-width: 960px\)[\s\S]*\.cr-ops-queue__mobile\s*\{\s*display:\s*none;/);
+  });
+
+  it("opens the canonical OPS-003 workbench after begin-review succeeds", () => {
+    const source = read("components/couranr/requests/OperationsQueue.tsx");
+
+    expect(source).toContain("const router = useRouter()");
+    expect(source).toContain(
+      'router.push(`/operations/deliveries/${r.value.request.id}`)'
+    );
+    expect(source).toContain("disabled={busy}");
+    expect(source).toContain("Review delivery");
   });
 });
