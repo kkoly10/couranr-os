@@ -30,6 +30,7 @@ export async function GET(req: NextRequest) {
       requestState: row.request.request_state,
       readinessState: row.request.readiness_state,
       paymentState: row.payment?.payment_state ?? null,
+      promotionalCreditApplied: Boolean(row.promotionalCredit),
       servicePlanConfirmed: row.servicePlan !== null,
       canonicalDeliveryExists: row.delivery !== null,
       assignmentActive: Boolean(row.assignment),
@@ -47,6 +48,14 @@ export async function GET(req: NextRequest) {
             payerType: row.payment.payer_type,
             amountCents: row.payment.amount_cents,
             currency: row.payment.currency,
+          }
+        : null,
+      promotionalCredit: row.promotionalCredit
+        ? {
+            standardQuoteCents: row.promotionalCredit.standard_quote_cents,
+            amountPaidCents: row.promotionalCredit.amount_paid_cents,
+            promotionalCreditCents: row.promotionalCredit.promotional_credit_cents,
+            currency: row.promotionalCredit.currency,
           }
         : null,
       servicePlan: row.servicePlan
