@@ -8,6 +8,7 @@ import { formatCents, type DeliveryRequestView } from "@/lib/couranr/requests/vi
 import {
   captureFromBrowser,
   confirmServicePlanFromBrowser,
+  finalizePromotionalCreditDeliveryFromBrowser,
   reconcileCaptureFromBrowser,
   type FulfillmentView,
 } from "./client";
@@ -53,6 +54,7 @@ export function OperationsPlanPanel({
 
   const plan = fulfillment?.servicePlan ?? null;
   const payment = fulfillment?.payment ?? null;
+  const credit = fulfillment?.promotionalCredit ?? null;
   const delivery = fulfillment?.delivery ?? null;
   const readiness = fulfillment?.readinessState ?? "not_confirmed";
 
@@ -60,6 +62,13 @@ export function OperationsPlanPanel({
     Boolean(plan) &&
     readiness === "ready" &&
     payment?.paymentState === "authorized" &&
+    !credit &&
+    !delivery;
+
+  const canFinalizeCredit =
+    Boolean(plan) &&
+    readiness === "ready" &&
+    Boolean(credit) &&
     !delivery;
 
   /*
@@ -133,11 +142,28 @@ export function OperationsPlanPanel({
     onChanged();
   }
 
+
+  async function finalizeCredit() {
+    setBusy(true);
+    setError(null);
+    const r = await finalizePromotionalCreditDeliveryFromBrowser({ id: request.id });
+    setBusy(false);
+    if (isApiFailure(r)) {
+      setError(withReference(r));
+      return;
+    }
+    onChanged();
+  }
+
   return (
     <Card>
       <CardHeader
-        title="Service plan and capture"
-        description="Confirm the pickup window and vehicle, then capture the authorized payment."
+        title="Service plan and settlement"
+        description={
+          credit
+            ? "Confirm the pickup window and vehicle, then schedule against the approved Couranr pilot credit."
+            : "Confirm the pickup window and vehicle, then capture the authorized payment."
+        }
         actions={
           delivery ? (
             <Badge tone="success">Scheduled</Badge>
@@ -155,19 +181,39 @@ export function OperationsPlanPanel({
         <Grid columns={3}>
           <Detail label="Pickup readiness" value={readiness.replace(/_/g, " ")} />
           <Detail
-            label="Payment"
-            value={payment ? payment.paymentState.replace(/_/g, " ") : "none"}
+            label={credit ? "Settlement" : "Payment"}
+            value={
+              credit
+                ? "Couranr pilot credit"
+                : payment
+                  ? payment.paymentState.replace(/_/g, " ")
+                  : "none"
+            }
           />
           <Detail
             label="Amount"
-            value={payment ? formatCents(payment.amountCents) : "—"}
+            value={
+              credit
+                ? `${formatCents(credit.standardQuoteCents)} quote · ${formatCents(
+                    credit.promotionalCreditCents
+                  )} credit`
+                : payment
+                  ? formatCents(payment.amountCents)
+                  : "—"
+            }
           />
         </Grid>
 
         {delivery ? (
           <Alert tone="success" title="Canonical delivery created">
-            {formatCents(delivery.capturedAmountCents)} captured. Pickup{" "}
-            {new Date(delivery.scheduledPickupStart).toLocaleString()} –{" "}
+            {delivery.promotionalCreditId
+              ? `${formatCents(delivery.standardQuoteCents ?? 0)} standard quote · ${formatCents(
+                  delivery.amountPaidCents ?? 0
+                )} paid · ${formatCents(
+                  delivery.promotionalCreditCents ?? 0
+                )} Couranr pilot credit. `
+              : `${formatCents(delivery.capturedAmountCents)} captured. `}
+            Pickup {new Date(delivery.scheduledPickupStart).toLocaleString()} –{" "}
             {new Date(delivery.scheduledPickupEnd).toLocaleString()} ({delivery.timezone}).
             No driver is assigned yet.
           </Alert>
@@ -320,6 +366,15 @@ export function OperationsPlanPanel({
               <Button variant="primary" loading={busy} onClick={reconcile}>
                 Check with the payment provider
               </Button>
+            ) : credit ? (
+              <Button
+                variant="primary"
+                loading={busy}
+                disabled={!canFinalizeCredit}
+                onClick={finalizeCredit}
+              >
+                Schedule with pilot credit
+              </Button>
             ) : (
               <Button variant="primary" loading={busy} disabled={!canCapture} onClick={capture}>
                 Capture {payment ? formatCents(payment.amountCents) : ""} and schedule
@@ -328,15 +383,24 @@ export function OperationsPlanPanel({
           </Cluster>
         ) : null}
 
-        {!canCapture && !delivery && !captureUnresolved && !capturedNotScheduled && !reauthorizationRequired ? (
+        {!canCapture &&
+        !canFinalizeCredit &&
+        !delivery &&
+        !captureUnresolved &&
+        !capturedNotScheduled &&
+        !reauthorizationRequired ? (
           <Text size="xs" muted>
             {!plan
-              ? "Confirm a service plan before capturing."
+              ? credit
+                ? "Confirm a service plan before scheduling this credited delivery."
+                : "Confirm a service plan before capturing."
               : readiness !== "ready"
                 ? "The merchant has not marked this ready yet."
-                : payment?.paymentState !== "authorized"
-                  ? "The payment is not authorized."
-                  : ""}
+                : credit
+                  ? "The promotional credit cannot be finalized from this state."
+                  : payment?.paymentState !== "authorized"
+                    ? "The payment is not authorized."
+                    : ""}
           </Text>
         ) : null}
       </Stack>
