@@ -50,6 +50,12 @@ async function rpc<T = any>(
   return { ok: true, value: data as T };
 }
 
+function isRpcFailure<T>(
+  result: { ok: true; value: T } | { ok: false; message: string }
+): result is { ok: false; message: string } {
+  return result.ok === false;
+}
+
 /**
  * Advance one request through the parts of the normal lane that do not depend
  * on wall-clock dispatch.
@@ -66,7 +72,7 @@ export async function advanceAutomaticFulfillment(
     "couranr_try_auto_accept_standard_request",
     { p_request_id: requestId }
   );
-  if (!accepted.ok) {
+  if (isRpcFailure(accepted)) {
     return { ok: false, requestId, outcome: "auto_accept_failed", reason: accepted.message };
   }
 
@@ -79,7 +85,7 @@ export async function advanceAutomaticFulfillment(
       p_now: new Date().toISOString(),
     }
   );
-  if (!planned.ok) {
+  if (isRpcFailure(planned)) {
     return { ok: false, requestId, outcome: "auto_plan_failed", reason: planned.message };
   }
 
@@ -343,7 +349,7 @@ async function dispatchOne(plan: Record<string, any>): Promise<AutoResult> {
     "couranr_reserve_automatic_dispatch_candidate",
     { p_request_id: requestId, p_now: new Date().toISOString() }
   );
-  if (!reserved.ok) {
+  if (isRpcFailure(reserved)) {
     return { ok: false, requestId, outcome: "candidate_reservation_failed", reason: reserved.message };
   }
 
@@ -454,7 +460,7 @@ async function dispatchOne(plan: Record<string, any>): Promise<AutoResult> {
     }
   );
 
-  if (!assigned.ok) {
+  if (isRpcFailure(assigned)) {
     await releaseReservation(reservationId, "assignment_commit_failed");
     await openDispatchException(plan, "assignment_commit_failed", {
       message: assigned.message,
