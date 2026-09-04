@@ -62,6 +62,19 @@ export function operationsWorkbenchState(
     case "pending_review":
       return { phase: "review", lifecycleStage: stage };
 
+    case "automation_exception":
+      switch (input.automationExceptionStage) {
+        case "review":
+          return { phase: "review", lifecycleStage: stage };
+        case "commercial":
+          return { phase: "commercial", lifecycleStage: stage };
+        case "dispatch":
+          return { phase: "dispatch", lifecycleStage: stage };
+        case "planning":
+        default:
+          return { phase: "plan", lifecycleStage: stage };
+      }
+
     case "awaiting_payment_authorization":
     case "payment_reauthorization_required":
     case "capture_pending":
@@ -73,6 +86,7 @@ export function operationsWorkbenchState(
     case "captured_not_scheduled":
       return { phase: "plan", lifecycleStage: stage };
 
+    case "automatic_scheduled":
     case "captured_scheduled":
       return { phase: "dispatch", lifecycleStage: stage };
 
