@@ -15,12 +15,15 @@ const THREAD = read("components/couranr/conversations/ConversationThread.tsx");
 const INBOX = read("components/couranr/conversations/OperationsInbox.tsx");
 
 describe("D2 delivery-chat issuance", () => {
-  it("issues one chat only after a canonical delivery row exists", () => {
+  it("issues one chat only after a canonical BUSINESS delivery row exists", () => {
     expect(SQL).toContain("couranr_ensure_delivery_chat");
     expect(SQL).toContain("from public.couranr_deliveries d");
     expect(SQL).toContain("where d.id = p_delivery_id");
     expect(SQL).toContain("on conflict (delivery_id, kind) where delivery_id is not null");
     expect(SQL).toContain("'delivery_chat'");
+    expect(SQL).toContain("if v_business_account_id is null then");
+    expect(SQL).toContain("return null;");
+    expect(SQL).toContain("where d.business_account_id is not null");
   });
 
   it("joins only TRM-002-authorized active merchant roles", () => {
@@ -111,6 +114,7 @@ describe("D2 dual-role Operations boundary", () => {
 
 describe("D2 scope controls", () => {
   it("does not add customer-driver chat, a marketplace, or a second delivery lifecycle", () => {
+    expect(SQL).toContain("Consumer deliveries intentionally have no merchant participant and no");
     expect(SQL).not.toMatch(/participant_kind\s*=\s*'customer'/);
     expect(SQL).not.toMatch(/\b(gig|marketplace|bid|earnings|surge)\b/i);
     expect(SQL).not.toMatch(/insert into public\.couranr_deliveries/);
