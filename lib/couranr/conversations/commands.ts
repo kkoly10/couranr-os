@@ -314,7 +314,7 @@ export async function readThread(params: {
 export async function readOperationsThread(params: {
   conversationId: string;
   actorUserId: string;
-}): Promise<ConversationResult<Omit<ThreadView, "viewerParticipantId">>> {
+}): Promise<ConversationResult<Omit<ThreadView, "viewerParticipantId" | "unreadCount">>> {
   const actor = await requireOperationsUser(
     params.actorUserId,
     "conversations.readOperationsThread.actor"
@@ -366,9 +366,6 @@ export async function readOperationsThread(params: {
       conversation: conversation.data as unknown as ConversationRow,
       viewerKind: "operations",
       messages,
-      // OPS-005 is a shared queue, not a personal participant mailbox. Do not
-      // manufacture a per-operator unread count.
-      unreadCount: 0,
     },
   };
 }
