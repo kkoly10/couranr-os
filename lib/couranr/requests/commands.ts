@@ -1058,7 +1058,12 @@ async function loadForReview(
   // check — and so a future command cannot forget it.
   if (actor.kind === "anonymous") return denied(op, "anonymous");
 
-  const transition = resolveTransition(command, row.request_state, row.payer_type as PayerType);
+  const transition = resolveTransition(
+    command,
+    row.request_state,
+    row.payer_type as PayerType,
+    { operationsAssisted: row.source === "operations" }
+  );
   if (isTransitionDenied(transition)) {
     return fail({
       operation: op,
