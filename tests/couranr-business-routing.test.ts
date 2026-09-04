@@ -411,13 +411,21 @@ describe("server Routes authority", () => {
 describe("browser/server key boundary", () => {
   it("uses the public key only in the browser and the server key only in providers", () => {
     const browser = readFileSync(
-      path.join(ROOT, "components/couranr/requests/NewDeliveryFlow.tsx"),
+      path.join(ROOT, "components/couranr/requests/BusinessPlaceAutocomplete.tsx"),
+      "utf8"
+    );
+    const client = readFileSync(
+      path.join(ROOT, "components/couranr/requests/client.ts"),
       "utf8"
     );
     const places = readFileSync(path.join(ROOT, "lib/couranr/routing/googlePlaces.ts"), "utf8");
     const routes = readFileSync(path.join(ROOT, "lib/couranr/routing/googleRoutes.ts"), "utf8");
-    expect(browser).toContain("NEXT_PUBLIC_GOOGLE_MAPS_API_KEY");
-    expect(browser).not.toContain("GOOGLE_MAPS_SERVER_API_KEY");
+    // The browser no longer owns ANY Google key. It calls Couranr's scoped
+    // merchant Places route; server providers alone hold the server key.
+    expect(browser + client).not.toContain("NEXT_PUBLIC_GOOGLE_MAPS_API_KEY");
+    expect(browser + client).not.toContain("GOOGLE_MAPS_SERVER_API_KEY");
+    expect(browser).toContain("searchBusinessPlaces");
+    expect(browser).toContain("resolveBusinessPlace");
     expect(places).toContain("GOOGLE_MAPS_SERVER_API_KEY");
     expect(routes).toContain("GOOGLE_MAPS_SERVER_API_KEY");
     expect(places + routes).not.toContain("NEXT_PUBLIC_GOOGLE_MAPS_API_KEY");
