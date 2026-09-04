@@ -174,7 +174,13 @@ describe("shipmentArgs", () => {
 
   it("both write paths use it, so they cannot drift", () => {
     // createDeliveryRequestDraft and calculateDeliveryRequestEstimate.
-    expect((COMMANDS.match(/shipmentArgs\(draft,\s*routed\)/g) || []).length).toBe(2);
+    expect(
+      (
+        COMMANDS.match(
+          /shipmentArgs\(draft,\s*routed,\s*operationsAssisted \? "operations" : "merchant_portal"\)/g
+        ) || []
+      ).length
+    ).toBe(2);
   });
 
   it("re-estimate accepts an edited shipment", () => {
