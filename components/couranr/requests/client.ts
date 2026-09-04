@@ -282,6 +282,12 @@ export type QueueEntry = {
     amountCents: number;
     currency: string;
   } | null;
+  promotionalCredit: {
+    standardQuoteCents: number;
+    amountPaidCents: number;
+    promotionalCreditCents: number;
+    currency: string;
+  } | null;
   servicePlan: {
     scheduledPickupStart: string;
     scheduledPickupEnd: string;
