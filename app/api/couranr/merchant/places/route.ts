@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isActorDenied, resolveRequestActor } from "@/lib/couranr/requests/actor";
 import { routeFailure, routeInternalFailure } from "@/lib/couranr/requests/respond";
+import { claimPaidApiCall } from "@/lib/couranr/providers/paidApiGuard";
 import {
   isGooglePlaceResolutionError,
   resolveCanonicalGooglePlace,
@@ -50,6 +51,11 @@ export async function GET(req: NextRequest) {
       detail: { reason: "google_maps_server_key_missing" },
       message: "Address lookup is unavailable right now.",
     });
+  }
+
+  const spend = await claimPaidApiCall("google_places_autocomplete");
+  if (!spend.allowed) {
+    return NextResponse.json({ suggestions: [] });
   }
 
   let response: Response;
