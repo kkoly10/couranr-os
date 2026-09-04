@@ -1495,30 +1495,30 @@ describe("server-only driver modules are unreachable from any component", () => 
 describe("the driver-execution panels are actually mounted", () => {
   const read = (p: string) => readFileSync(path.join(ROOT, p), "utf8");
 
-  it("MER-007/OPS-003 renders every panel it imports", () => {
-    const src = read("components/couranr/requests/DeliveryRequestDetail.tsx");
+  it("MER-007 and the stage-aware OPS-003 workbench render every panel they import", () => {
+    const detail = read("components/couranr/requests/DeliveryRequestDetail.tsx");
+    const workbench = read("components/couranr/operations/OperationsDeliveryWorkbench.tsx");
+
+    for (const panel of ["DeliveryExecutionTimeline", "HandoffCodePanel", "MerchantProofPanel"]) {
+      expect(detail, `${panel} is imported but never rendered`).toContain(`<${panel}`);
+    }
     for (const panel of [
-      "DeliveryExecutionTimeline",
-      "HandoffCodePanel",
-      "MerchantProofPanel",
+      "ReviewOutcomeActions",
+      "OperationsPlanPanel",
+      "OperationsPaymentRecoveryPanel",
       "OperationsAssignmentPanel",
       "OperationsExecutionPanel",
     ]) {
-      // An import with no JSX is the defect this catches: it type-checks, and
-      // the screen is simply missing.
-      expect(src, `${panel} is imported but never rendered`).toContain(`<${panel}`);
+      expect(workbench, `${panel} is imported but never rendered`).toContain(`<${panel}`);
     }
-    // Proof media has an Operations-only viewer, so that panel stays behind the
-    // operations branch — the sender is not an authorized viewer.
-    expect(src).toMatch(/isOperations && fulfillment\?\.delivery \? \(\s*<OperationsExecutionPanel/);
+    expect(detail).toContain("<OperationsDeliveryWorkbench");
+    expect(workbench).toContain('work.phase === "execute"');
+    expect(workbench).toContain("<OperationsExecutionPanel");
   });
 
-  it("assigning a driver tells the parent, so the execution panel is not left stale", () => {
-    // Assignment moves the delivery `scheduled` -> `assigned`, which is what
-    // the panel below reads to offer pre-pickup unassignment.
-    expect(read("components/couranr/requests/DeliveryRequestDetail.tsx")).toMatch(
-      /<OperationsAssignmentPanel[\s\S]{0,400}?onChanged=/
-    );
+  it("assigning a driver tells the workbench parent, so execution is not left stale", () => {
+    const workbench = read("components/couranr/operations/OperationsDeliveryWorkbench.tsx");
+    expect(workbench).toMatch(/<OperationsAssignmentPanel[\s\S]{0,400}?onChanged=/);
     expect(read("components/couranr/dispatch/OperationsAssignmentPanel.tsx")).toContain(
       "onChanged?.()"
     );

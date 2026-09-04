@@ -4715,11 +4715,11 @@
 
 .cr-ops-case__phase[data-state="current"] {
   color: var(--couranr-text);
-  border-bottom-color: var(--couranr-accent);
+  border-bottom-color: var(--couranr-route-blue);
 }
 
 .cr-ops-case__phase[data-state="current"] .cr-ops-case__phase-dot {
-  background: var(--couranr-accent);
+  background: var(--couranr-route-blue);
 }
 
 .cr-ops-case__current {
