@@ -5937,6 +5937,7 @@ export type Database = {
         Args: { p_token_id: string }
         Returns: {
           author_participant_id: string | null
+          author_user_id: string | null
           authorship: string
           body: string
           conversation_id: string
