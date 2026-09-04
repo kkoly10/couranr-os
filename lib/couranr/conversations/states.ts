@@ -212,6 +212,38 @@ export function canSee(kind: ParticipantKind, visibility: Visibility): boolean {
 }
 
 /**
+ * Which visibility a HUMAN participant may ADDRESS.
+ *
+ * This is intentionally NOT the same question as `canSee`. For example, a
+ * driver may read `driver_and_couranr`, but must not be able to author a
+ * `merchant_and_couranr` note merely because that visibility is valid in the
+ * same delivery-chat row kind. UI hiding is not authority: the named server
+ * command enforces this matrix and the database repeats it as defence in depth.
+ *
+ * Closed MVP matrix:
+ *   operations -> all four
+ *   driver     -> participants | driver_and_couranr
+ *   merchant   -> participants | merchant_and_couranr
+ *   customer   -> participants only
+ *
+ * FAILS CLOSED for an unrecognised participant or visibility.
+ */
+export function canAddress(kind: ParticipantKind, visibility: Visibility): boolean {
+  switch (kind) {
+    case "operations":
+      return true;
+    case "driver":
+      return visibility === "participants" || visibility === "driver_and_couranr";
+    case "merchant":
+      return visibility === "participants" || visibility === "merchant_and_couranr";
+    case "customer":
+      return visibility === "participants";
+    default:
+      return false;
+  }
+}
+
+/**
  * AI drafts are excluded for every viewer, with no exception for Operations.
  *
  * Separate from `canSee` because it is not a visibility question: a draft is
