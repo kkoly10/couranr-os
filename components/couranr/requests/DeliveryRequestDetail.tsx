@@ -1,9 +1,11 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import {
   Alert,
   Badge,
+  buttonClassName,
   Card,
   CardHeader,
   Grid,
@@ -302,6 +304,14 @@ export function DeliveryRequestDetail({
     );
   }
 
+  const businessApprovalNeeded =
+    isOperations &&
+    request.requesterKind === "business" &&
+    request.source === "operations" &&
+    request.payerType === "merchant" &&
+    (request.requestState === "awaiting_quote_acceptance" ||
+      request.requestState === "quote_revision_required");
+
   return (
     <Stack gap={6}>
       <Card>
@@ -376,6 +386,35 @@ export function DeliveryRequestDetail({
       </Card>
 
       <QuoteSummary request={request} />
+
+      {businessApprovalNeeded ? (
+        <Card>
+          <CardHeader
+            title="Business approval required"
+            description="Couranr can approve the service. Operations cannot approve the price for the business."
+          />
+          <Stack gap={3}>
+            <Text size="sm">
+              Switch to the Business view to authorize{" "}
+              <strong>{formatCents(request.quote.deliverySubtotalCents)}</strong> as the actual
+              Business payer. This keeps Operations approval and payer approval as two
+              separate, truthful actions.
+            </Text>
+            <div>
+              <Link
+                href={`/app/business/deliveries/${request.id}`}
+                className={buttonClassName({ variant: "primary" })}
+              >
+                Open Business approval
+              </Link>
+            </div>
+            <Text size="xs" muted>
+              Only an active member of this Business can continue there. Couranr Operations
+              does not inherit that payer authority.
+            </Text>
+          </Stack>
+        </Card>
+      ) : null}
 
       {/* MER-007 payment. Operations reviews; it does not pay. */}
       {!isOperations ? (
