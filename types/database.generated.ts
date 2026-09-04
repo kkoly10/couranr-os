@@ -5985,6 +5985,7 @@ export type Database = {
           p_code_digest: string
           p_code_kind: string
           p_delivery_id: string
+          p_expected_generation: number
           p_ttl_minutes: number
         }
         Returns: {
