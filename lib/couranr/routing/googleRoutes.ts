@@ -1,4 +1,5 @@
 import { assertServerOnly } from "@/lib/couranr/serverOnly";
+import { claimPaidApiCall } from "@/lib/couranr/providers/paidApiGuard";
 import { quoteDelivery, type QuoteResult } from "@/lib/couranr/pricing";
 import type { ServiceLevel } from "@/lib/couranr/pricing";
 import type { ReviewReasonCode } from "@/lib/couranr/pricing/types";
@@ -31,6 +32,7 @@ export type RouteServiceabilityOutcome = "available_for_request" | "needs_review
 export type RouteReviewReason =
   | "google_routes_not_configured"
   | "google_routes_unavailable"
+  | "google_routes_cost_guard"
   | "google_routes_no_route"
   | "google_routes_invalid_response"
   | "market_needs_review";
@@ -144,6 +146,9 @@ export async function computeCanonicalGoogleRoute(
 ): Promise<CanonicalRouteEvidence> {
   const apiKey = process.env.GOOGLE_MAPS_SERVER_API_KEY;
   if (!apiKey) return needsReview("google_routes_not_configured");
+
+  const spend = await claimPaidApiCall("google_routes_compute_routes", fetchImpl);
+  if (!spend.allowed) return needsReview("google_routes_cost_guard");
 
   let response: Pick<Response, "ok" | "status" | "json">;
   try {
