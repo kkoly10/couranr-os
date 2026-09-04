@@ -3958,7 +3958,7 @@
         "clock": "server/database time; no browser timer participates",
         "applies_to": "a quote_status='estimated' quote under couranr-pricing-v2-2026-09-01",
         "what_the_window_gates": "only the ACT OF OBTAINING payer approval; never anything downstream of an approval already obtained",
-        "merchant_payer_approval": "p_acknowledged=true at submit, identifying THIS exact quote version. The merchant is the payer.",
+        "merchant_payer_approval": "Merchant self-service: p_acknowledged=true at submit, identifying THIS exact quote version. Operations-assisted Business entry: Operations approval is NOT payer approval; after Couranr confirms service, the merchant must authorize the exact quote through the existing payment path, and requires_capture becomes the payer-approval evidence.",
         "customer_payer_approval": "the Stripe authorization reaching requires_capture for the exact obligation — the transition that makes the obligation 'authorized', moves the request to 'confirmed' and records record_payer_quote_approval.",
         "explicitly_not_approval": [
           "creating a payment obligation — it begins 'not_started'",
