@@ -156,7 +156,7 @@ function issueCode(deliveryId, kind, digest, actor) {
           where delivery_id='${deliveryId}' and code_kind='${kind}'`),
   );
   return rowOf(
-    `public.couranr_issue_handoff_code(
+    `public.couranr_issue_handoff_code_cas(
        '${deliveryId}', '${kind}', ${generation}, '${digest}', '${actor}', 60)`,
   );
 }
@@ -284,7 +284,7 @@ async function main() {
   eq("DX-09", "a wrong digest is 'invalid', not an exception",
      verifyCode(D1, "merchant_pickup", digestOf("wrong"), drvAUser), "invalid");
   eq("DX-10a", "the issue command refuses a raw six-digit code",
-     raises(`select public.couranr_issue_handoff_code('${D1}','merchant_pickup',2,'123456','${ops}',60)`),
+     raises(`select public.couranr_issue_handoff_code_cas('${D1}','merchant_pickup',2,'123456','${ops}',60)`),
      "CR400|digest_required");
   eq("DX-10b", "the schema refuses a raw six-digit code outright",
      raises(`insert into public.couranr_handoff_codes
@@ -321,7 +321,7 @@ async function main() {
       order by generation desc limit 1`,
   );
   eq("DX-14a", "a stale issuer is refused before it can write generation drift",
-     raises(`select public.couranr_issue_handoff_code(
+     raises(`select public.couranr_issue_handoff_code_cas(
        '${D1}','merchant_pickup',${liveGenerationBeforeConflict},
        '${digestOf("stale-writer")}','${ops}',60)`),
      "CR409|handoff_generation_conflict");
