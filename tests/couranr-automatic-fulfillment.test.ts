@@ -12,6 +12,10 @@ const CORRECTION = readFileSync(
   join(MIGRATIONS, "20260904154559_couranr_automatic_fulfillment_v1_corrections.sql"),
   "utf8"
 ).toLowerCase();
+const CREDIT_GUARDS = readFileSync(
+  join(MIGRATIONS, "20260904170431_couranr_credit_invariant_guard_parity.sql"),
+  "utf8"
+).toLowerCase();
 const ENGINE = readFileSync(join(ROOT, "lib/couranr/automation/engine.ts"), "utf8");
 const CRON = readFileSync(
   join(ROOT, "app/api/couranr/internal/automation/tick/route.ts"),
@@ -48,6 +52,33 @@ describe("automatic fulfillment commercial identity", () => {
     expect(fn).toMatch(/v_ob\.payment_state<>'authorized'/);
     expect(fn).toMatch(/v_ob\.quote_version_id is distinct from v_quote\.id/);
     expect(fn).toMatch(/case when v_credit\.id is null then v_ob\.id else null end/);
+  });
+
+  it("the canonical plan invariant accepts exactly one real settlement authority", () => {
+    const fn = CREDIT_GUARDS.slice(
+      CREDIT_GUARDS.indexOf("create or replace function private.couranr_enforce_plan_quote"),
+      CREDIT_GUARDS.indexOf("create or replace function private.couranr_enforce_delivery_quote")
+    );
+    expect(fn).toContain("new.payment_obligation_id is not null and new.promotional_credit_id is null");
+    expect(fn).toContain("new.promotional_credit_id is not null and new.payment_obligation_id is null");
+    expect(fn).toContain("status='applied'");
+    expect(fn).toContain("new.quote_version_id is distinct from v_c.quote_version_id");
+    expect(fn).toContain("new.promotional_credit_id");
+  });
+
+  it("the canonical delivery invariant validates and freezes credit economics", () => {
+    const fn = CREDIT_GUARDS.slice(
+      CREDIT_GUARDS.indexOf("create or replace function private.couranr_enforce_delivery_quote")
+    );
+    expect(fn).toContain("new.promotional_credit_id");
+    expect(fn).toContain("new.standard_quote_cents");
+    expect(fn).toContain("new.amount_paid_cents");
+    expect(fn).toContain("new.promotional_credit_cents");
+    expect(fn).toContain("v_p.promotional_credit_id is distinct from v_c.id");
+    expect(fn).toContain("new.captured_amount_cents is distinct from 0");
+    expect(fn).toContain("new.standard_quote_cents is distinct from v_c.standard_quote_cents");
+    expect(fn).toContain("new.amount_paid_cents is distinct from v_c.amount_paid_cents");
+    expect(fn).toContain("new.promotional_credit_cents is distinct from v_c.promotional_credit_cents");
   });
 });
 
