@@ -4668,3 +4668,66 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+
+
+/* -------------------------------------------------------------------------
+   OPS-003 lifecycle workbench
+   One case, one current action. Historical/request detail stays below the
+   workbench rather than competing with the operator's next command.
+   ------------------------------------------------------------------------- */
+.cr-ops-case {
+  scroll-margin-top: calc(60px + var(--couranr-space-4));
+}
+
+.cr-ops-case__progress {
+  list-style: none;
+  margin: 0 0 var(--couranr-space-5);
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--couranr-space-2);
+}
+
+.cr-ops-case__phase {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--couranr-space-2);
+  padding: var(--couranr-space-2) 0;
+  color: var(--couranr-text-muted);
+  font-size: var(--couranr-text-xs);
+  font-weight: var(--couranr-weight-semibold);
+  border-bottom: 2px solid var(--couranr-border);
+}
+
+.cr-ops-case__phase-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--couranr-border-strong);
+}
+
+.cr-ops-case__phase[data-state="done"] {
+  color: var(--couranr-text);
+  border-bottom-color: var(--couranr-text-muted);
+}
+
+.cr-ops-case__phase[data-state="current"] {
+  color: var(--couranr-text);
+  border-bottom-color: var(--couranr-accent);
+}
+
+.cr-ops-case__phase[data-state="current"] .cr-ops-case__phase-dot {
+  background: var(--couranr-accent);
+}
+
+.cr-ops-case__current {
+  scroll-margin-top: calc(60px + var(--couranr-space-4));
+}
+
+@media (max-width: 760px) {
+  .cr-ops-case__progress {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}

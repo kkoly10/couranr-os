@@ -84,7 +84,7 @@ export function OperationsQueue() {
     // Beginning review is an audited state transition and this control is also
     // the operator's doorway into OPS-003. Staying on the queue after a 200
     // made the action look dead and encouraged repeated clicks.
-    router.push(`/operations/deliveries/${r.value.request.id}`);
+    router.push(`/operations/deliveries/${r.value.request.id}#ops-current-action`);
   }
 
   if (entries === null) {
@@ -266,7 +266,7 @@ function MobileQueueCard({
             {r.submittedAt ? ` · ${new Date(r.submittedAt).toLocaleString()}` : ""}
           </Text>
           <Link
-            href={`/operations/deliveries/${r.id}`}
+            href={`/operations/deliveries/${r.id}#ops-current-action`}
             className="cr-ops-queue-card__route"
           >
             {routeSummary(r)}
@@ -331,20 +331,30 @@ function MobileQueueCard({
           </Button>
         ) : (
           <Link
-            href={`/operations/deliveries/${r.id}`}
+            href={`/operations/deliveries/${r.id}#ops-current-action`}
             className={buttonClassName({ variant: "secondary", block: true })}
           >
             {stage === "captured_not_scheduled"
               ? "Finish scheduling"
               : stage === "capture_pending"
                 ? "Check provider — do not retry"
-                : stage === "ready_for_planning"
-                  ? "Plan delivery"
-                  : stage === "service_plan_confirmed"
-                    ? entry.promotionalCredit
-                      ? "Schedule credited delivery"
-                      : "Capture payment"
-                    : "Open delivery"}
+                : stage === "payment_reauthorization_required"
+                  ? "Recover payment"
+                  : stage === "awaiting_payment_authorization"
+                    ? "Open commercial status"
+                    : stage === "merchant_preparing"
+                      ? "Open readiness"
+                      : stage === "ready_for_planning"
+                        ? "Plan delivery"
+                        : stage === "service_plan_confirmed"
+                          ? entry.promotionalCredit
+                            ? "Schedule credited delivery"
+                            : "Capture payment"
+                          : stage === "captured_scheduled"
+                            ? "Assign driver"
+                            : stage === "driver_assigned"
+                              ? "Monitor delivery"
+                              : "Open delivery"}
           </Link>
         )}
       </div>
@@ -406,7 +416,7 @@ function DesktopQueueRow({
     >
       <div className="cr-ops-worklist__delivery">
         <Link
-          href={`/operations/deliveries/${r.id}`}
+          href={`/operations/deliveries/${r.id}#ops-current-action`}
           className="cr-ops-worklist__route"
         >
           {routeSummary(r)}
@@ -467,20 +477,30 @@ function DesktopQueueRow({
           </Button>
         ) : (
           <Link
-            href={`/operations/deliveries/${r.id}`}
+            href={`/operations/deliveries/${r.id}#ops-current-action`}
             className={buttonClassName({ variant: "secondary", size: "sm" })}
           >
             {stage === "captured_not_scheduled"
               ? "Finish scheduling"
               : stage === "capture_pending"
                 ? "Check provider"
-                : stage === "ready_for_planning"
-                  ? "Plan delivery"
-                  : stage === "service_plan_confirmed"
-                    ? entry.promotionalCredit
-                      ? "Schedule credited delivery"
-                      : "Capture payment"
-                    : "Open delivery"}
+                : stage === "payment_reauthorization_required"
+                  ? "Recover payment"
+                  : stage === "awaiting_payment_authorization"
+                    ? "Open commercial status"
+                    : stage === "merchant_preparing"
+                      ? "Open readiness"
+                      : stage === "ready_for_planning"
+                        ? "Plan delivery"
+                        : stage === "service_plan_confirmed"
+                          ? entry.promotionalCredit
+                            ? "Schedule credited delivery"
+                            : "Capture payment"
+                          : stage === "captured_scheduled"
+                            ? "Assign driver"
+                            : stage === "driver_assigned"
+                              ? "Monitor delivery"
+                              : "Open delivery"}
           </Link>
         )}
       </div>

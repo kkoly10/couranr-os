@@ -25,6 +25,10 @@ import {
 import { intentIdempotencyKey } from "@/lib/couranr/payments/stripe";
 import { REQUEST_VIEW_COLUMNS } from "@/lib/couranr/requests/commands";
 import { REQUEST_STATES } from "@/lib/couranr/requests/states";
+import {
+  operationsWorkbenchState,
+  OPERATIONS_WORKBENCH_PHASES,
+} from "@/lib/couranr/operations/workbench";
 
 const ROOT = join(__dirname, "..");
 
@@ -274,6 +278,58 @@ describe("OPS-002 stage metadata", () => {
   /* The one stage where the correct action is none at all. */
   it("the capture_pending description tells an operator not to retry", () => {
     expect(LIFECYCLE_STAGE_DESCRIPTIONS.capture_pending.toLowerCase()).toContain("do not retry");
+  });
+});
+
+describe("OPS-003 lifecycle workbench grouping", () => {
+  const grouped = (over: Partial<LifecycleInput> & { fulfillmentState?: string | null }) =>
+    operationsWorkbenchState({
+      ...BASE,
+      ...over,
+    });
+
+  it("groups each operational job into one current phase", () => {
+    expect(grouped({ requestState: "pending_couranr_review", paymentState: null }).phase).toBe("review");
+    expect(grouped({ paymentState: null }).phase).toBe("commercial");
+    expect(grouped({ readinessState: "ready", promotionalCreditApplied: true }).phase).toBe("plan");
+    expect(
+      grouped({
+        readinessState: "ready",
+        promotionalCreditApplied: true,
+        canonicalDeliveryExists: true,
+      }).phase
+    ).toBe("dispatch");
+    expect(
+      grouped({
+        readinessState: "ready",
+        promotionalCreditApplied: true,
+        canonicalDeliveryExists: true,
+        assignmentActive: true,
+      }).phase
+    ).toBe("execute");
+  });
+
+  it("terminal delivery evidence wins over an active assignment", () => {
+    for (const fulfillmentState of ["delivered", "could_not_deliver", "cancelled"]) {
+      expect(
+        grouped({
+          canonicalDeliveryExists: true,
+          assignmentActive: true,
+          fulfillmentState,
+        }).phase
+      ).toBe("complete");
+    }
+  });
+
+  it("declares the operator-facing phases in lifecycle order", () => {
+    expect(OPERATIONS_WORKBENCH_PHASES).toEqual([
+      "review",
+      "commercial",
+      "plan",
+      "dispatch",
+      "execute",
+      "complete",
+    ]);
   });
 });
 

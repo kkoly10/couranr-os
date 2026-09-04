@@ -1,11 +1,9 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import {
   Alert,
   Badge,
-  buttonClassName,
   Card,
   CardHeader,
   Grid,
@@ -21,16 +19,12 @@ import {
   PermissionDeniedState,
 } from "@/components/couranr/states";
 import { QuoteSummary } from "./QuoteSummary";
-import { ReviewOutcomeActions } from "./ReviewOutcomeActions";
 import { MerchantPaymentPanel } from "@/components/couranr/payments/MerchantPaymentPanel";
 import { MerchantReadinessPanel } from "@/components/couranr/fulfillment/MerchantReadinessPanel";
-import { OperationsPlanPanel } from "@/components/couranr/fulfillment/OperationsPlanPanel";
-import { OperationsPaymentRecoveryPanel } from "@/components/couranr/fulfillment/OperationsPaymentRecoveryPanel";
-import { OperationsAssignmentPanel } from "@/components/couranr/dispatch/OperationsAssignmentPanel";
-import { OperationsExecutionPanel } from "@/components/couranr/dispatch/OperationsExecutionPanel";
 import { MerchantProofPanel } from "@/components/couranr/dispatch/MerchantProofPanel";
 import { HandoffCodePanel } from "@/components/couranr/dispatch/HandoffCodePanel";
 import { DeliveryExecutionTimeline } from "@/components/couranr/dispatch/DeliveryExecutionTimeline";
+import { OperationsDeliveryWorkbench } from "@/components/couranr/operations/OperationsDeliveryWorkbench";
 import { fetchFulfillment, type FulfillmentView } from "@/components/couranr/fulfillment/client";
 import {
   fetchDeliveryRequest,
@@ -311,16 +305,35 @@ export function DeliveryRequestDetail({
     );
   }
 
-  const businessApprovalNeeded =
-    isOperations &&
-    request.requesterKind === "business" &&
-    request.source === "operations" &&
-    request.payerType === "merchant" &&
-    (request.requestState === "awaiting_quote_acceptance" ||
-      request.requestState === "quote_revision_required");
+
+
+  const refreshOperations = () => {
+    void reloadFulfillment(null);
+    void fetchDeliveryRequest({ id }).then((r) => {
+      if (!isApiFailure(r)) {
+        setRequest(r.value.request);
+        setEvents(r.value.events ?? []);
+        setIntake(r.value.intake ?? null);
+      }
+    });
+  };
 
   return (
     <Stack gap={6}>
+      {isOperations ? (
+        <OperationsDeliveryWorkbench
+          request={request}
+          fulfillment={fulfillment}
+          fulfillmentUnavailable={fulfillmentUnavailable}
+          onRequestUpdated={(next) => {
+            setRequest(next);
+            refreshOperations();
+          }}
+          onLifecycleChanged={refreshOperations}
+        />
+      ) : null}
+
+      {!isOperations ? (
       <Card>
         <CardHeader
           title="Status"
@@ -353,6 +366,7 @@ export function DeliveryRequestDetail({
           <Detail label="Service area" value={serviceAreaCopy(request.serviceAreaReviewState)} />
         </Grid>
       </Card>
+      ) : null}
 
       <Grid columns={2}>
         <Card>
@@ -394,34 +408,7 @@ export function DeliveryRequestDetail({
 
       <QuoteSummary request={request} />
 
-      {businessApprovalNeeded ? (
-        <Card>
-          <CardHeader
-            title="Business approval required"
-            description="Couranr can approve the service. Operations cannot approve the price for the business."
-          />
-          <Stack gap={3}>
-            <Text size="sm">
-              Switch to the Business view to authorize{" "}
-              <strong>{formatCents(request.quote.deliverySubtotalCents)}</strong> as the actual
-              Business payer. This keeps Operations approval and payer approval as two
-              separate, truthful actions.
-            </Text>
-            <div>
-              <Link
-                href={`/app/business/deliveries/${request.id}`}
-                className={buttonClassName({ variant: "primary" })}
-              >
-                Open Business approval
-              </Link>
-            </div>
-            <Text size="xs" muted>
-              Only an active member of this Business can continue there. Couranr Operations
-              does not inherit that payer authority.
-            </Text>
-          </Stack>
-        </Card>
-      ) : null}
+
 
       {fulfillment?.promotionalCredit ? (
         <Card>
@@ -571,77 +558,7 @@ export function DeliveryRequestDetail({
         </Card>
       ) : null}
 
-      {/* Batch 3 §E — payment evidence and the governed recoveries. Renders
-          for every request state (the stale-hold case is precisely a request
-          that never confirmed), and self-guards on a payment existing. */}
-      {isOperations ? (
-        <OperationsPaymentRecoveryPanel
-          request={request}
-          fulfillment={fulfillment}
-          onChanged={() => {
-            void reloadFulfillment(null);
-          }}
-        />
-      ) : null}
 
-      {/* OPS-003 service plan, capture and the canonical delivery result. */}
-      {isOperations ? (
-        <OperationsPlanPanel
-          request={request}
-          fulfillment={fulfillment}
-          onChanged={() => {
-            void reloadFulfillment(null);
-            void fetchDeliveryRequest({ id }).then((r) => {
-              if (!isApiFailure(r)) setRequest(r.value.request);
-            });
-          }}
-        />
-      ) : null}
-
-      {/* OPS-003 managed dispatch. Only once a canonical delivery exists —
-          there is nothing to assign a driver to before that. */}
-      {isOperations && fulfillment?.delivery ? (
-        <OperationsAssignmentPanel
-          deliveryId={fulfillment.delivery.id}
-          // Assigning moves the delivery to `assigned`, which is what the
-          // execution panel below reads to offer pre-pickup unassignment.
-          onChanged={() => void reloadFulfillment(null)}
-        />
-      ) : null}
-
-      {/* OPS-003 execution: the timeline with the delivery's recorded events
-          and arrival/waiting evidence (SUR-003: evidence only, never a
-          charge), both credentials, the discrepancy/exception panel with the
-          reachable safe-to-continue action, pre-pickup unassignment and the
-          900-second proof viewer.
-
-          The open issue and the event history are NOT threaded from here:
-          they come from the Operations-only dispatch-panel endpoint, which
-          the execution panel already reads for the live delivery version —
-          threading a second copy from this component would just be one more
-          read that can go stale. The `discrepancy`/`events` props remain for
-          callers that already hold fresher rows. */}
-      {isOperations && fulfillment?.delivery ? (
-        <OperationsExecutionPanel
-          deliveryId={fulfillment.delivery.id}
-          fulfillmentState={fulfillment.delivery.fulfillmentState}
-          onChanged={() => void reloadFulfillment(null)}
-        />
-      ) : null}
-
-      {isOperations ? (
-        <ReviewOutcomeActions
-          request={request}
-          onUpdated={(next) => {
-            setRequest(next);
-            // The decision appended an event. Re-read so the history below
-            // shows it instead of going stale until the next full load.
-            fetchDeliveryRequest({ id }).then((r) => {
-              if (!isApiFailure(r)) setEvents(r.value.events ?? []);
-            });
-          }}
-        />
-      ) : null}
 
       <Card>
         <CardHeader title="History" description="Every change Couranr recorded for this request." />

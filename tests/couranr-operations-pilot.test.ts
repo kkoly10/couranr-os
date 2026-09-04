@@ -47,9 +47,30 @@ describe("pilot Operations console", () => {
 
     expect(source).toContain("const router = useRouter()");
     expect(source).toContain(
-      'router.push(`/operations/deliveries/${r.value.request.id}`)'
+      'router.push(`/operations/deliveries/${r.value.request.id}#ops-current-action`)'
     );
     expect(source).toContain("disabled={busy}");
     expect(source).toContain("Review delivery");
+  });
+
+  it("makes OPS-003 a stage-aware lifecycle workbench rather than a permanent review page", () => {
+    const page = read("app/(couranr)/operations/deliveries/[id]/page.tsx");
+    const detail = read("components/couranr/requests/DeliveryRequestDetail.tsx");
+    const workbench = read("components/couranr/operations/OperationsDeliveryWorkbench.tsx");
+    const queue = read("components/couranr/requests/OperationsQueue.tsx");
+
+    expect(page).toContain("Delivery workbench");
+    expect(page).not.toContain('title="Delivery review"');
+    expect(detail).toContain("OperationsDeliveryWorkbench");
+    expect(workbench).toContain("Review");
+    expect(workbench).toContain("Commercial");
+    expect(workbench).toContain("Plan");
+    expect(workbench).toContain("Dispatch");
+    expect(workbench).toContain("Execute");
+    expect(workbench).toContain("Complete");
+    expect(workbench).toContain('id="ops-current-action"');
+    expect(queue).toContain("Assign driver");
+    expect(queue).toContain("Monitor delivery");
+    expect(queue).toContain("#ops-current-action");
   });
 });

@@ -198,7 +198,7 @@ function AttentionRow({ entry }: { entry: QueueEntry }) {
 
   return (
     <Link
-      href={`/operations/deliveries/${request.id}`}
+      href={`/operations/deliveries/${request.id}#ops-current-action`}
       className="cr-ops-attention"
     >
       <div className="cr-ops-attention__main">
