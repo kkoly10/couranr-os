@@ -116,12 +116,13 @@ export const PROOF_CENTS = 0;
 /* --------------------------------------------------------------- traffic */
 
 /**
- * TRF-001: predicted-traffic pricing, quoted UP FRONT from Google route
- * evidence — never from a clock-based "rush hour" guess, and never as a
+ * TRF-001: predicted-traffic pricing, quoted UP FRONT from canonical Mapbox
+ * driving-traffic evidence — never from a clock-based "rush hour" guess, and never as a
  * post-delivery meter.
  *
  * `traffic_delay_seconds = max(traffic_aware_duration - static_duration, 0)`,
- * both durations coming from the same canonical Google Routes response.
+ * both durations coming from the same canonical Mapbox response as `duration`
+ * and `duration_typical`.
  *
  * Once the payer accepts and authorizes the immutable quote, later real-world
  * traffic cannot raise that quote: the amount lives on the quote version, and
