@@ -737,7 +737,8 @@ export async function calculateDeliveryRequestEstimate(params: {
   if (writeDenial) return writeDenial;
   if (params.actor.kind === "anonymous") return denied(op, "anonymous");
   const operationsAssisted = params.writeAuthority === "operations";
-  if (operationsAssisted && params.intakeSessionId) {
+  const requestedIntakeSessionId = params.intakeSessionId ?? null;
+  if (operationsAssisted && requestedIntakeSessionId) {
     return denied(op, "operations_intake_not_enabled");
   }
 
@@ -763,7 +764,7 @@ export async function calculateDeliveryRequestEstimate(params: {
   // an intake-backed request into an unsynced manual one: once a session is
   // bound to the request, every later estimate syncs the form into its facts
   // and commits through the wrapper, whatever the browser sent.
-  let intakeSessionId: string | null = params.intakeSessionId ?? null;
+  let intakeSessionId: string | null = requestedIntakeSessionId;
   if (!intakeSessionId) {
     const linked = await findLinkedIntakeSession({
       requestId: params.requestId,
