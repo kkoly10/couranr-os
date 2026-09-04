@@ -181,6 +181,9 @@ describe("server-only modules are unreachable from client code", () => {
       "lib/couranr/payments/commands.ts",
       "lib/couranr/payments/stripe.ts",
       "lib/couranr/payments/tokens.ts",
+      // Enforces environment gating and database-backed hard budgets for real
+      // paid provider calls. It holds service-role budget authority.
+      "lib/couranr/providers/paidApiGuard.ts",
       // Holds the service-role client and every preset write. A preset shapes
       // what every future delivery is prefilled with, so a browser reaching
       // this would let anyone rewrite the defaults for a whole business.
