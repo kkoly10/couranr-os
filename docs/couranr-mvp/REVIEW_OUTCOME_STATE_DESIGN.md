@@ -83,7 +83,8 @@ Each outcome sets `review_state` **and** fires one explicit guarded transition o
 
 | Command | UI label | `payer_type` | `review_state` | `request_state` |
 |---|---|---|---|---|
-| `couranr_accept_delivery_request_as_quoted` | Confirm as quoted | **merchant** | `accepted_as_quoted` | **`confirmed`** |
+| `couranr_accept_delivery_request_as_quoted` | Confirm as quoted | **merchant, payer already approved** | `accepted_as_quoted` | **`confirmed`** |
+| | | **merchant, Operations-assisted and not yet approved** | `accepted_as_quoted` | `awaiting_quote_acceptance` |
 | | | **customer** | `accepted_as_quoted` | `awaiting_quote_acceptance` |
 | `couranr_requote_delivery_request` | Send revised quote | either | `requoted` | `quote_revision_required` |
 | `couranr_decline_delivery_request` | Could not confirm service | either | `declined` | `declined` |
@@ -93,11 +94,19 @@ Preconditions for all: `request_state = pending_couranr_review`,
 
 ### Why confirm-as-quoted is payer-dependent
 
-**Merchant-paid → `confirmed`.** The merchant approved the exact displayed quote
-when they submitted. Operations confirmed it *without changing the price*, so a
-second merchant approval would ask the same party to approve the same number
-twice. This is the owner's decision and it overrides the draft, which had both
-payer types waiting.
+**Merchant-paid self-service → `confirmed`.** When the merchant submitted
+the request themselves, they approved the exact displayed quote at submission.
+Operations confirming it *without changing the price* does not ask the same
+payer to approve the same number twice.
+
+**Merchant-paid Operations-assisted → `awaiting_quote_acceptance`.** Couranr
+entering a request from a call, text or email deliberately records
+`acknowledgment = false`. Operations may confirm that Couranr will perform the
+service, but Operations is not the payer and cannot manufacture the merchant's
+price approval. The request therefore waits for the real Business payer to
+authorize the exact immutable quote through the existing payment path. If that
+unapproved quote has already crossed QVL-001's 15-minute window, acceptance is
+refused while the request is still in review so Operations can mint Quote N+1.
 
 **Customer-paid → `awaiting_quote_acceptance`.** The merchant cannot approve a
 customer-paid quote on the customer's behalf. The customer must still see and
@@ -107,7 +116,8 @@ are that path.
 ### The acknowledgment that makes the merchant shortcut safe
 
 Skipping an approval step is only sound if the approval genuinely happened
-earlier. So the merchant-paid direct transition to `confirmed` is gated on proof:
+earlier. So the merchant self-service direct transition to `confirmed` is gated on proof.
+Operations-assisted merchant requests do not use this shortcut:
 
 - `MER-006` submission copy states plainly:
   *"I approve this delivery estimate if Couranr confirms it without changes."*
