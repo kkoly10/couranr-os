@@ -53,12 +53,12 @@ Still rendering `ScreenPlaceholder` (16): `DRV-009` · `DRV-010` · `OPS-006` ·
 
 | | count |
 |---|---|
-| Page routes | 97 |
-| …canonical, under `app/(couranr)` | 47 |
+| Page routes | 98 |
+| …canonical, under `app/(couranr)` | 48 |
 | …legacy | 50 |
-| API routes | 155 |
+| API routes | 162 |
 | …canonical, under `app/api/couranr` | 93 |
-| …legacy | 70 |
+| …legacy | 69 |
 | Forward migrations | 74 |
 | Paired rollbacks | 74 |
 | Canonical screens | 68 |
