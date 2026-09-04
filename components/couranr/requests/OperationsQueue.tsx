@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   Badge,
   Button,
+  buttonClassName,
   Card,
   CardHeader,
   Cluster,
@@ -180,13 +181,12 @@ function StageSection({
   const tone = LIFECYCLE_STAGE_TONE[stage] ?? "neutral";
 
   return (
-    <Card padding="flush" data-stage={stage}>
-      {/*
-        The badge carries the COUNT, not the stage name — the title already
-        says the stage, and repeating it twice in one header just adds noise
-        while the colour is what makes `capture pending` stand out from
-        `captured`.
-      */}
+    <Card
+      padding="flush"
+      data-stage={stage}
+      id={`stage-${stage}`}
+      className="cr-ops-queue-stage"
+    >
       <CardHeader
         title={label}
         description={description}
@@ -196,33 +196,180 @@ function StageSection({
           </Badge>
         }
       />
-      <TableScroll>
-        <Table caption={`Submission, route, payment and scheduled pickup for each ${label.toLowerCase()} request`}>
-          <thead>
-            <tr>
-              <th scope="col">Submitted</th>
-              <th scope="col">Route</th>
-              <th scope="col">Payment</th>
-              <th scope="col">Pickup window</th>
-              <th scope="col">Amount</th>
-              <th scope="col">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((e) => (
-              <QueueRow
-                key={e.request.id}
-                entry={e}
-                stage={stage}
-                busy={busyId === e.request.id}
-                onBeginReview={onBeginReview}
-              />
-            ))}
-          </tbody>
-        </Table>
-      </TableScroll>
+
+      <div className="cr-ops-queue__mobile" aria-label={`${label} deliveries`}>
+        {rows.map((entry) => (
+          <MobileQueueCard
+            key={entry.request.id}
+            entry={entry}
+            stage={stage}
+            busy={busyId === entry.request.id}
+            onBeginReview={onBeginReview}
+          />
+        ))}
+      </div>
+
+      <div className="cr-ops-queue__desktop">
+        <TableScroll>
+          <Table
+            className="cr-ops-queue__table"
+            caption={`Submission, route, payment and scheduled pickup for each ${label.toLowerCase()} request`}
+          >
+            <thead>
+              <tr>
+                <th scope="col">Submitted</th>
+                <th scope="col">Route</th>
+                <th scope="col">Payment</th>
+                <th scope="col">Pickup window</th>
+                <th scope="col">Amount</th>
+                <th scope="col">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((e) => (
+                <QueueRow
+                  key={e.request.id}
+                  entry={e}
+                  stage={stage}
+                  busy={busyId === e.request.id}
+                  onBeginReview={onBeginReview}
+                />
+              ))}
+            </tbody>
+          </Table>
+        </TableScroll>
+      </div>
     </Card>
   );
+}
+
+function MobileQueueCard({
+  entry,
+  stage,
+  busy,
+  onBeginReview,
+}: {
+  entry: QueueEntry;
+  stage: LifecycleStage;
+  busy: boolean;
+  onBeginReview: (r: DeliveryRequestView) => void;
+}) {
+  const r = entry.request;
+  const window_ = entry.delivery ?? entry.servicePlan;
+  const amount = entry.delivery
+    ? entry.delivery.capturedAmountCents
+    : entry.payment?.amountCents ?? r.quote.deliverySubtotalCents;
+
+  return (
+    <article
+      className="cr-ops-queue-card"
+      data-request-id={r.id}
+      data-stage={stage}
+    >
+      <div className="cr-ops-queue-card__top">
+        <div className="cr-ops-queue-card__identity">
+          <Text size="xs" muted>
+            {r.requesterKind === "consumer" ? "Consumer delivery" : "Business delivery"}
+            {r.submittedAt ? ` · ${new Date(r.submittedAt).toLocaleString()}` : ""}
+          </Text>
+          <Link
+            href={`/operations/deliveries/${r.id}`}
+            className="cr-ops-queue-card__route"
+          >
+            {routeSummary(r)}
+          </Link>
+          <Text size="sm" muted>
+            {r.loadedMiles === null ? "Distance pending" : `${r.loadedMiles} loaded mi`}
+          </Text>
+        </div>
+        <Text strong numeric className="cr-ops-queue-card__amount">
+          {formatCents(amount)}
+        </Text>
+      </div>
+
+      {r.quote.reviewReasons.length > 0 ? (
+        <Text size="xs" muted className="cr-ops-queue-card__reason">
+          {r.quote.reviewReasons.map((c) => REVIEW_REASON_LABELS[c] ?? c).join("; ")}
+        </Text>
+      ) : null}
+
+      <dl className="cr-ops-queue-card__facts">
+        <MobileFact
+          label="Payment"
+          value={
+            entry.payment
+              ? PAYMENT_LABELS[entry.payment.paymentState] ?? entry.payment.paymentState
+              : "Not started"
+          }
+        />
+        <MobileFact
+          label="Payer"
+          value={
+            entry.payment
+              ? entry.payment.payerType === "customer"
+                ? "Customer"
+                : "Merchant"
+              : "—"
+          }
+        />
+        <MobileFact
+          label="Pickup"
+          value={window_ ? new Date(window_.scheduledPickupStart).toLocaleString() : "Not scheduled"}
+        />
+        <MobileFact
+          label="Recipient"
+          value={r.recipientName || "Not provided"}
+        />
+      </dl>
+
+      <div className="cr-ops-queue-card__action">
+        {stage === "pending_review" ? (
+          <Button
+            block
+            loading={busy}
+            onClick={() => onBeginReview(r)}
+          >
+            Open for review
+          </Button>
+        ) : (
+          <Link
+            href={`/operations/deliveries/${r.id}`}
+            className={buttonClassName({ variant: "secondary", block: true })}
+          >
+            {stage === "captured_not_scheduled"
+              ? "Finish scheduling"
+              : stage === "capture_pending"
+                ? "Check provider — do not retry"
+                : stage === "ready_for_planning"
+                  ? "Plan delivery"
+                  : stage === "service_plan_confirmed"
+                    ? "Capture payment"
+                    : "Open delivery"}
+          </Link>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function MobileFact({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="cr-ops-queue-card__fact">
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </div>
+  );
+}
+
+function routeSummary(r: DeliveryRequestView): string {
+  const part = (value: unknown) => {
+    if (!value || typeof value !== "object") return "";
+    const a = value as Record<string, unknown>;
+    const city = typeof a.city === "string" ? a.city.trim() : "";
+    const region = typeof a.region === "string" ? a.region.trim() : "";
+    return [city, region].filter(Boolean).join(", ");
+  };
+  return `${part(r.pickupAddress) || "Pickup"} → ${part(r.dropoffAddress) || "Dropoff"}`;
 }
 
 function QueueRow({

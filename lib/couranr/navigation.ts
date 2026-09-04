@@ -144,7 +144,12 @@ export function navigationFor(role: ShellRole): NavItem[] {
 
   const group = ROLE_GROUP[role];
 
-  const candidates = CANONICAL_SCREENS.filter((s) => s.group === group)
+  const candidates = CANONICAL_SCREENS.filter(
+    (s) =>
+      s.group === group &&
+      (role !== "operations" ||
+        (s.status !== "placeholder_only" && s.status !== "missing"))
+  )
     .map((s) => ({ screen: s, label: NAV_LABELS[s.id], href: firstCleanRoute(s) }))
     .flatMap((c) =>
       c.label && c.href && !COLLIDING.has(c.href)

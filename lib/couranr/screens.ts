@@ -100,7 +100,7 @@ const SCREENS: CanonicalScreen[] = [
   { id: "DRV-008", name: "Driver messages", group: "driver", routes: ["/driver/messages"], tier: "core", phase: "8–9", viewport: "mobile-primary", status: "partial" },
   { id: "DRV-009", name: "Driver availability", group: "driver", routes: ["/driver/availability"], tier: "core", phase: "7", viewport: "mobile-primary", status: "placeholder_only" },
   { id: "DRV-010", name: "Vehicle profile", group: "driver", routes: ["/driver/vehicle"], tier: "core", phase: "7", viewport: "mobile-primary", status: "placeholder_only" },
-  { id: "OPS-001", name: "Operations dashboard", group: "operations", routes: ["/operations"], tier: "core", phase: "7–10", viewport: "desktop-primary", status: "placeholder_only" },
+  { id: "OPS-001", name: "Operations dashboard", group: "operations", routes: ["/operations"], tier: "core", phase: "7–10", viewport: "desktop-primary", status: "functional_unverified" },
   { id: "OPS-002", name: "Queue and managed dispatch", group: "operations", routes: ["/operations/queue", "/operations/deliveries"], tier: "core", phase: "7", viewport: "desktop-primary", status: "partial" },
   { id: "OPS-003", name: "Delivery review workspace", group: "operations", routes: ["/operations/deliveries/[id]"], tier: "core", phase: "7", viewport: "desktop-primary", status: "functional_verified" },
   { id: "OPS-004", name: "Requote and promotional credit", group: "operations", routes: ["/operations/deliveries/[id]?panel=requote"], tier: "core", phase: "6–7", viewport: "desktop-primary", status: "partial" },

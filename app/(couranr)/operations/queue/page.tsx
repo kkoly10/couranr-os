@@ -1,23 +1,20 @@
 import { PageHeader } from "@/components/couranr/shell/parts";
 import { OperationsQueue } from "@/components/couranr/requests/OperationsQueue";
 
-export const metadata = { title: "Queue and managed dispatch — Couranr" };
+export const metadata = { title: "Operations queue — Couranr" };
 
 /**
- * OPS-002 — the Couranr Operations Queue.
+ * OPS-002 — the live Operations work queue.
  *
- * The whole lifecycle, not just review: a request stays here from submission
- * until it is captured and scheduled, grouped by what it is waiting on.
- *
- * Driver assignment is the rest of this screen and is not in this slice — a
- * captured delivery is scheduled with no driver on it.
+ * Mobile renders stacked delivery cards; tablet/desktop keeps the dense table.
+ * Both are fed by the same server-derived lifecycle stage and actions.
  */
 export default function Page() {
   return (
     <>
       <PageHeader
-        title="Couranr Operations Queue"
-        description="Every delivery request Couranr still has work on, grouped by what it is waiting on."
+        title="Operations queue"
+        description="Work the oldest delivery that needs Couranr first. Waiting and recently scheduled work stay visible without crowding out action."
       />
       <OperationsQueue />
     </>

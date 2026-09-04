@@ -21,7 +21,7 @@ export default function Page() {
     <>
       <PageHeader
         title="Merchant management"
-        description="Activation review. Merchant health, risk and account controls are not built yet."
+        description="Review business workspaces waiting on a Couranr activation decision."
         breadcrumbs={[{ label: "Couranr Operations" }, { label: "Merchants" }]}
       />
       <ActivationReview />
