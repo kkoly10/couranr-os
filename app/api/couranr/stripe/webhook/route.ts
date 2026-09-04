@@ -12,6 +12,7 @@ import {
 } from "@/lib/couranr/fulfillment/commands";
 import { logServerFailure, newCorrelationId } from "@/lib/couranr/errors";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
+import { advanceAutomaticFulfillment } from "@/lib/couranr/automation/engine";
 
 export const dynamic = "force-dynamic";
 // The signature is computed over the exact bytes Stripe sent. Any framework
@@ -179,6 +180,10 @@ export async function POST(req: NextRequest) {
    * it does not match our records, and retrying will never change that. It is
    * recorded in couranr_payment_events with its reason.
    */
+  if (result.value.request_id) {
+    await advanceAutomaticFulfillment(String(result.value.request_id));
+  }
+
   return ack(result.value.outcome, {
     paymentState: result.value.payment_state,
     requestState: result.value.request_state,
