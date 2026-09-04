@@ -57,17 +57,17 @@ describe("pilot Operations console", () => {
     const page = read("app/(couranr)/operations/deliveries/[id]/page.tsx");
     const detail = read("components/couranr/requests/DeliveryRequestDetail.tsx");
     const workbench = read("components/couranr/operations/OperationsDeliveryWorkbench.tsx");
+    const workbenchModel = read("lib/couranr/operations/workbench.ts");
     const queue = read("components/couranr/requests/OperationsQueue.tsx");
 
     expect(page).toContain("Delivery workbench");
     expect(page).not.toContain('title="Delivery review"');
     expect(detail).toContain("OperationsDeliveryWorkbench");
-    expect(workbench).toContain("Review");
-    expect(workbench).toContain("Commercial");
-    expect(workbench).toContain("Plan");
-    expect(workbench).toContain("Dispatch");
-    expect(workbench).toContain("Execute");
-    expect(workbench).toContain("Complete");
+    expect(workbench).toContain("OPERATIONS_WORKBENCH_PHASES");
+    expect(workbench).toContain("OPERATIONS_WORKBENCH_LABELS");
+    for (const label of ["Review", "Commercial", "Plan", "Dispatch", "Execute", "Complete"]) {
+      expect(workbenchModel).toContain(`"${label}"`);
+    }
     expect(workbench).toContain('id="ops-current-action"');
     expect(queue).toContain("Assign driver");
     expect(queue).toContain("Monitor delivery");
