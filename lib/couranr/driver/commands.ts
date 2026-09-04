@@ -597,7 +597,7 @@ export async function issueHandoffCode(p: {
       });
     }
 
-    const { data, error } = (await supabaseAdmin.rpc("couranr_issue_handoff_code", {
+    const { data, error } = (await supabaseAdmin.rpc("couranr_issue_handoff_code_cas", {
       p_delivery_id: p.deliveryId,
       p_code_kind: p.kind,
       p_expected_generation: generation,
