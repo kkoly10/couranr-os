@@ -150,8 +150,14 @@ const completePickup = (d, v, actor, vehicleId) =>
       38.42, -77.40, 8.5, null, null, null, null, null)`;
 
 function issueCode(deliveryId, kind, digest, actor) {
+  const generation = Number(
+    one(`select coalesce(max(generation),0)+1
+           from public.couranr_handoff_codes
+          where delivery_id='${deliveryId}' and code_kind='${kind}'`),
+  );
   return rowOf(
-    `public.couranr_issue_handoff_code('${deliveryId}', '${kind}', '${digest}', '${actor}', 60)`,
+    `public.couranr_issue_handoff_code(
+       '${deliveryId}', '${kind}', ${generation}, '${digest}', '${actor}', 60)`,
   );
 }
 // Actor-scoped since 20260802070000: only the ASSIGNED driver may attempt.
@@ -278,7 +284,7 @@ async function main() {
   eq("DX-09", "a wrong digest is 'invalid', not an exception",
      verifyCode(D1, "merchant_pickup", digestOf("wrong"), drvAUser), "invalid");
   eq("DX-10a", "the issue command refuses a raw six-digit code",
-     raises(`select public.couranr_issue_handoff_code('${D1}','merchant_pickup','123456','${ops}',60)`),
+     raises(`select public.couranr_issue_handoff_code('${D1}','merchant_pickup',3,'123456','${ops}',60)`),
      "CR400|digest_required");
   eq("DX-10b", "the schema refuses a raw six-digit code outright",
      raises(`insert into public.couranr_handoff_codes
@@ -304,6 +310,33 @@ async function main() {
            where conrelid = 'public.couranr_handoff_codes'::regclass
              and conname = 'couranr_hc_digest_shape_chk'`),
      "true");
+
+  const liveGenerationBeforeConflict = Number(
+    one(`select max(generation) from public.couranr_handoff_codes
+           where delivery_id='${D1}' and code_kind='merchant_pickup'`),
+  );
+  const activeDigestBeforeConflict = one(
+    `select code_digest from public.couranr_handoff_codes
+      where delivery_id='${D1}' and code_kind='merchant_pickup' and code_state='consumed'
+      order by generation desc limit 1`,
+  );
+  eq("DX-14a", "a stale issuer is refused before it can write generation drift",
+     raises(`select public.couranr_issue_handoff_code(
+       '${D1}','merchant_pickup',${liveGenerationBeforeConflict},
+       '${digestOf("stale-writer")}','${ops}',60)`),
+     "CR409|handoff_generation_conflict");
+  eq("DX-14b", "... and the conflict wrote/superseded nothing",
+     one(`select max(generation)::text || '|' ||
+                 count(*) filter (where code_state='active')::text || '|' ||
+                 count(*) filter (where code_state='consumed')::text
+            from public.couranr_handoff_codes
+           where delivery_id='${D1}' and code_kind='merchant_pickup'`),
+     `${liveGenerationBeforeConflict}|0|1`);
+  eq("DX-14c", "... and the consumed credential digest stayed untouched",
+     one(`select code_digest from public.couranr_handoff_codes
+            where delivery_id='${D1}' and code_kind='merchant_pickup'
+              and generation=${liveGenerationBeforeConflict}`),
+     activeDigestBeforeConflict);
 
   /* ------------------------------------------------- discrepancy -------- */
 
