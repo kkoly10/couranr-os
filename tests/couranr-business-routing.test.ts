@@ -124,7 +124,7 @@ function providerFetcher(
     | ReturnType<typeof routeResponse>
     | ((url: URL) => ReturnType<typeof routeResponse>) = routeResponse(8047)
 ) {
-  return vi.fn(async (input: string | URL | Request) => {
+  return vi.fn(async (input: string | URL | Request, _init?: RequestInit) => {
     const url = String(input);
     if (url.startsWith("https://places.googleapis.com/v1/places/")) {
       const placeId = decodeURIComponent(url.slice(url.lastIndexOf("/") + 1));
