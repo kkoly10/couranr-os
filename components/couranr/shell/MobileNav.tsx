@@ -271,6 +271,7 @@ export function DriverTabBar({ items }: { items: NavItem[] }) {
 }
 
 const TAB_GLYPH: Record<string, string> = {
+  "DRV-001": "⌂",
   "DRV-008": "✉",
   "DRV-009": "◷",
   "DRV-010": "⛟",
