@@ -17,7 +17,7 @@ import type { QuoteResult } from "@/lib/couranr/pricing";
 import {
   deriveCanonicalRouteAndQuote,
   isCanonicalAddressResolutionError,
-} from "@/lib/couranr/routing/googleRoutes";
+} from "@/lib/couranr/routing/canonicalRoute";
 import { quoteArgs, routeArgs, timingArgs } from "@/lib/couranr/requests/commands";
 import { factsFromDraft } from "@/lib/couranr/shipment/draftFacts";
 import { evaluateShipmentPolicy } from "@/lib/couranr/shipment/policy";
@@ -51,7 +51,7 @@ assertServerOnly("lib/couranr/consumer/send.ts");
  * SHIPMENT AUTHORITY IS SHARED, NOT COPIED. The estimate runs the SAME
  * canonical pipeline the Business portal uses — Place Details via
  * `resolveCanonicalGooglePlace`, route evidence via
- * `deriveCanonicalRouteAndQuote` (Google Routes v2 + the PR #38 market
+ * `deriveCanonicalRouteAndQuote` (Mapbox Directions v5 traffic + the PR #38 market
  * classifier + Pricing V2), the deterministic shipment policy over
  * `factsFromDraft` — so PRC-005 parity (consumer surcharge 0, category has no
  * price effect) holds by construction: there is exactly one engine.
