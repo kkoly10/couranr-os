@@ -33,10 +33,10 @@ begin
     raise exception 'actor_required' using errcode='CR403';
   end if;
   if p_expected_version is null or p_expected_version < 1 then
-    raise exception 'version_required' using errcode='CR422';
+    raise exception 'version_required' using errcode='CR400';
   end if;
   if p_preference not in ('available','unavailable') then
-    raise exception 'availability_preference_invalid' using errcode='CR422';
+    raise exception 'availability_preference_invalid' using errcode='CR400';
   end if;
 
   select * into v_driver
@@ -50,7 +50,7 @@ begin
 
   if p_preference='available'
      and (v_driver.driver_state<>'active' or not v_driver.active) then
-    raise exception 'driver_not_active' using errcode='CR409';
+    raise exception 'driver_not_active' using errcode='CR412';
   end if;
 
   update public.couranr_drivers
