@@ -221,6 +221,18 @@ describe("delivery-request state machine", () => {
       expect(d.nextState).toBe("confirmed");
     });
 
+    it("holds an Operations-assisted merchant-paid request for Business approval", () => {
+      const d = resolveTransition(
+        "accept_delivery_request_as_quoted",
+        "pending_couranr_review",
+        "merchant",
+        { operationsAssisted: true }
+      );
+      expect(d.allowed).toBe(true);
+      if (!d.allowed) return;
+      expect(d.nextState).toBe("awaiting_quote_acceptance");
+    });
+
     it("holds a customer-paid request at awaiting_quote_acceptance", () => {
       const d = resolveTransition(
         "accept_delivery_request_as_quoted",
