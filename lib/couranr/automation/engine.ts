@@ -237,6 +237,37 @@ async function dispatchOne(plan: Record<string, any>): Promise<AutoResult> {
     };
   }
 
+  /*
+   * An automatic plan remains confirmed for audit history after assignment
+   * and completion. The cron therefore sees it forever unless the worker
+   * short-circuits on the canonical delivery. Without this guard, every tick
+   * after assignment could reserve ANOTHER available driver/vehicle before
+   * noticing the delivery was already assigned, temporarily starving real
+   * work and leaking active dispatch reservations.
+   */
+  const { data: existingDelivery, error: existingDeliveryError } = (await supabaseAdmin
+    .from("couranr_deliveries")
+    .select("id,fulfillment_state")
+    .eq("request_id", requestId)
+    .maybeSingle()) as { data: any; error: any };
+
+  if (existingDeliveryError) {
+    recordFailure("automaticFulfillment.dispatch.loadExistingDelivery", {
+      requestId,
+      message: existingDeliveryError.message,
+    });
+    return { ok: false, requestId, outcome: "delivery_load_failed" };
+  }
+
+  if (existingDelivery && existingDelivery.fulfillment_state !== "scheduled") {
+    return {
+      ok: true,
+      requestId,
+      outcome: String(existingDelivery.fulfillment_state),
+      deliveryId: String(existingDelivery.id),
+    };
+  }
+
   const pickupPlaceId = req.pickup_address?.googlePlaceId;
   const dropoffPlaceId = req.dropoff_address?.googlePlaceId;
   if (
@@ -393,8 +424,10 @@ async function dispatchOne(plan: Record<string, any>): Promise<AutoResult> {
   }
 
   if (delivery.fulfillment_state !== "scheduled") {
-    // Another idempotent worker may have already assigned it.
+    // Another idempotent worker may have assigned it after our early read.
+    // Release THIS worker's short-lived reservation before returning.
     if (delivery.fulfillment_state === "assigned") {
+      await releaseReservation(reservationId, "delivery_already_assigned");
       return { ok: true, requestId, outcome: "assigned", deliveryId };
     }
     await releaseReservation(reservationId, "delivery_not_scheduled");
