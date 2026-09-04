@@ -197,7 +197,7 @@ describe("routeArgs", () => {
   it("carries exact server route evidence separately from merchant shipment input", () => {
     expect(routeArgs({
       serviceabilityOutcome: "available_for_request",
-      distanceSource: "google_routes_v2",
+      distanceSource: "mapbox_directions_v5",
       distanceMeters: 8047,
       loadedMiles: 5,
       durationSeconds: 720,
@@ -209,7 +209,7 @@ describe("routeArgs", () => {
       p_route_duration_seconds: 720,
       p_route_static_duration_seconds: 600,
       p_route_traffic_delay_seconds: 120,
-      p_distance_source: "google_routes_v2",
+      p_distance_source: "mapbox_directions_v5",
       p_serviceability_outcome: "available_for_request",
       p_route_review_reason: null,
     });
