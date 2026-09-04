@@ -160,6 +160,32 @@ async function releaseReservation(reservationId: string, reason: string) {
   );
 }
 
+
+async function scheduleRouteRecheck(
+  servicePlanId: string,
+  reason: string,
+  delayMinutes: number
+) {
+  await rpc(
+    "automaticFulfillment.scheduleRouteRecheck",
+    "couranr_schedule_route_recheck",
+    {
+      p_service_plan_id: servicePlanId,
+      p_reason: reason,
+      p_delay_minutes: delayMinutes,
+      p_now: new Date().toISOString(),
+    }
+  );
+}
+
+async function clearRouteRecheck(servicePlanId: string) {
+  await rpc(
+    "automaticFulfillment.clearRouteRecheck",
+    "couranr_clear_route_recheck",
+    { p_service_plan_id: servicePlanId }
+  );
+}
+
 async function openDispatchException(
   plan: Record<string, any>,
   reason: string,
@@ -202,6 +228,20 @@ async function clearRecoverableDispatchException(requestId: string) {
 
 async function dispatchOne(plan: Record<string, any>): Promise<AutoResult> {
   const requestId = String(plan.request_id);
+
+  // Cheap database backoff BEFORE any paid provider call. The cron may wake
+  // every five minutes; Google must not.
+  if (
+    plan.next_route_recheck_at &&
+    new Date(String(plan.next_route_recheck_at)).getTime() > Date.now()
+  ) {
+    return {
+      ok: true,
+      requestId,
+      outcome: "waiting",
+      reason: "route_recheck_not_due",
+    };
+  }
 
   const { data: req, error: reqError } = (await supabaseAdmin
     .from("couranr_delivery_requests")
@@ -305,8 +345,11 @@ async function dispatchOne(plan: Record<string, any>): Promise<AutoResult> {
     route.durationSeconds === null ||
     route.trafficDelaySeconds === null
   ) {
+    const costGuarded = route.reviewReason === "google_routes_cost_guard";
+    await scheduleRouteRecheck(String(plan.id), "route_revalidation_failed", costGuarded ? 360 : 15);
     await openDispatchException(plan, "route_revalidation_failed", {
       routeReviewReason: route.reviewReason,
+      nextRetryPolicyMinutes: costGuarded ? 360 : 15,
     });
     return {
       ok: false,
@@ -329,10 +372,12 @@ async function dispatchOne(plan: Record<string, any>): Promise<AutoResult> {
 
   // Revalidation is a fulfillment guard, never a repricing path.
   if (route.loadedMiles > 25 || route.trafficDelaySeconds > 25 * 60) {
+    await scheduleRouteRecheck(String(plan.id), "route_outside_auto_lane_at_dispatch", 15);
     await openDispatchException(plan, "route_outside_auto_lane_at_dispatch", {
       loadedMiles: route.loadedMiles,
       trafficDelaySeconds: route.trafficDelaySeconds,
       approvedQuoteUntouched: true,
+      nextRetryPolicyMinutes: 15,
     });
     return {
       ok: false,
@@ -342,6 +387,7 @@ async function dispatchOne(plan: Record<string, any>): Promise<AutoResult> {
     };
   }
 
+  await clearRouteRecheck(String(plan.id));
   await clearRecoverableDispatchException(requestId);
 
   const reserved = await rpc<Record<string, any>>(
@@ -518,7 +564,8 @@ export async function runAutomaticFulfillmentTick(
     .from("couranr_service_plans")
     .select(
       "id,request_id,promotional_credit_id,scheduled_pickup_start,scheduled_pickup_end," +
-        "dispatch_not_before,dispatch_deadline,expected_service_end,planner_version,market_key"
+        "dispatch_not_before,dispatch_deadline,expected_service_end,planner_version,market_key," +
+        "next_route_recheck_at,route_recheck_count"
     )
     .eq("plan_state", "confirmed")
     .eq("plan_source", "automatic")
