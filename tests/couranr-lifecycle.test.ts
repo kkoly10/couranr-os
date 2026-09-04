@@ -78,6 +78,12 @@ describe("OPS-002 lifecycle stage derivation", () => {
       at({ paymentState: "captured" }),
       at({ paymentState: "failed" }),
       at({ canonicalDeliveryExists: true }),
+      at({
+        readinessState: "ready",
+        servicePlanConfirmed: true,
+        servicePlanSource: "automatic",
+      }),
+      at({ automationExceptionOpen: true, automationExceptionStage: "planning" }),
       at({ canonicalDeliveryExists: true, assignmentActive: true }),
       at({ requestState: "declined" }),
     ]);
@@ -231,10 +237,12 @@ describe("OPS-002 stage metadata", () => {
     }
   });
 
-  it("the queue shows every stage except not_actionable", () => {
-    expect([...QUEUE_STAGES].sort()).toEqual(
-      LIFECYCLE_STAGES.filter((s) => s !== "not_actionable").sort()
-    );
+  it("normal automatic schedules and assigned deliveries are not Operations queue work", () => {
+    expect(QUEUE_STAGES).not.toContain("automatic_scheduled");
+    expect(QUEUE_STAGES).not.toContain("driver_assigned");
+    expect(QUEUE_STAGES).not.toContain("not_actionable");
+    expect(QUEUE_STAGES).toContain("automation_exception");
+    expect(QUEUE_STAGES).toContain("ready_for_planning");
   });
 
   /* Ties would make the queue's section order depend on sort stability. */
@@ -247,9 +255,8 @@ describe("OPS-002 stage metadata", () => {
     const ranks = QUEUE_STAGES.map((s) => LIFECYCLE_STAGE_ORDER[s]);
     expect(ranks).toEqual([...ranks].sort((a, b) => a - b));
     expect(QUEUE_STAGES[0]).toBe("pending_review");
-    // The most COMPLETE stage sorts last. Dispatch added one beyond
-    // `captured_scheduled`, which is now outstanding work rather than the end.
-    expect(QUEUE_STAGES[QUEUE_STAGES.length - 1]).toBe("driver_assigned");
+    // Assigned and normal automatic work are intentionally not queue chores.
+    expect(QUEUE_STAGES[QUEUE_STAGES.length - 1]).toBe("captured_scheduled");
   });
 
   /* Money taken is never a success cue until the delivery actually exists. */
@@ -263,16 +270,12 @@ describe("OPS-002 stage metadata", () => {
     expect(LIFECYCLE_STAGE_TONE.capture_pending).toBe("warning");
   });
 
-  it("only a dispatched delivery reads as success", () => {
-    /*
-     * `captured_scheduled` used to be the end of the road and was a success
-     * cue. Dispatch moved the finish line: a captured, scheduled delivery with
-     * no driver is OUTSTANDING WORK, and colouring it success tells an operator
-     * it is done when it still needs a driver. Same class of lie as calling a
-     * capture "scheduled" before the delivery exists.
-     */
+  it("automatic scheduling is success without becoming an Operations chore", () => {
     expect(LIFECYCLE_STAGE_TONE.captured_scheduled).toBe("warning");
+    expect(LIFECYCLE_STAGE_TONE.automatic_scheduled).toBe("success");
     expect(LIFECYCLE_STAGE_TONE.driver_assigned).toBe("success");
+    expect(QUEUE_STAGES).not.toContain("automatic_scheduled");
+    expect(QUEUE_STAGES).not.toContain("driver_assigned");
   });
 
   /* The one stage where the correct action is none at all. */
@@ -299,6 +302,24 @@ describe("OPS-003 lifecycle workbench grouping", () => {
         canonicalDeliveryExists: true,
       }).phase
     ).toBe("dispatch");
+    expect(
+      grouped({
+        readinessState: "ready",
+        promotionalCreditApplied: true,
+        servicePlanConfirmed: true,
+        servicePlanSource: "automatic",
+      }).lifecycleStage
+    ).toBe("automatic_scheduled");
+    expect(
+      grouped({
+        readinessState: "ready",
+        promotionalCreditApplied: true,
+        servicePlanConfirmed: true,
+        servicePlanSource: "automatic",
+        automationExceptionOpen: true,
+        automationExceptionStage: "planning",
+      }).phase
+    ).toBe("plan");
     expect(
       grouped({
         readinessState: "ready",
