@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isActorDenied, resolveRequestActor } from "@/lib/couranr/requests/actor";
 import {
   getCanonicalDelivery,
+  getPromotionalCredit,
   getServicePlan,
   isFulfillmentFailure,
 } from "@/lib/couranr/fulfillment/commands";
@@ -71,6 +72,9 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
       : null;
   }
 
+  const credit = await getPromotionalCredit({ requestId: params.id });
+  if (isFulfillmentFailure(credit)) return failureResponse(credit);
+
   const plan = await getServicePlan({ requestId: params.id });
   if (isFulfillmentFailure(plan)) return failureResponse(plan);
 
@@ -105,6 +109,22 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
           refundAttempt,
         }
       : null,
+    promotionalCredit: credit.value.credit
+      ? {
+          id: credit.value.credit.id,
+          quoteVersionId: credit.value.credit.quote_version_id,
+          standardQuoteCents: credit.value.credit.standard_quote_cents,
+          amountPaidCents: credit.value.credit.amount_paid_cents,
+          promotionalCreditCents: credit.value.credit.promotional_credit_cents,
+          currency: credit.value.credit.currency,
+          reason: credit.value.credit.reason,
+          campaign: credit.value.credit.campaign,
+          market: credit.value.credit.market,
+          category: credit.value.credit.category,
+          approvedAt: credit.value.credit.approved_at,
+          status: credit.value.credit.status,
+        }
+      : null,
     servicePlan: plan.value.plan
       ? {
           id: plan.value.plan.id,
@@ -120,6 +140,10 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
           id: delivery.value.delivery.id,
           fulfillmentState: delivery.value.delivery.fulfillment_state,
           capturedAmountCents: delivery.value.delivery.captured_amount_cents,
+          standardQuoteCents: delivery.value.delivery.standard_quote_cents ?? null,
+          amountPaidCents: delivery.value.delivery.amount_paid_cents ?? null,
+          promotionalCreditCents: delivery.value.delivery.promotional_credit_cents ?? null,
+          promotionalCreditId: delivery.value.delivery.promotional_credit_id ?? null,
           scheduledPickupStart: delivery.value.delivery.scheduled_pickup_start,
           scheduledPickupEnd: delivery.value.delivery.scheduled_pickup_end,
           timezone: delivery.value.delivery.timezone,
