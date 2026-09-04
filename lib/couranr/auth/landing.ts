@@ -166,12 +166,18 @@ export function normalizeNext(raw: unknown): NormalizedNext {
 }
 
 /**
- * Resolves where to send a caller, honouring `next` only when it belongs to the
- * surface the SERVER decided they own.
+ * Resolves where to send a caller, honouring `next` only when the SERVER facts
+ * prove they may use that surface.
  *
- * The browser may ask; it may not choose. A merchant asking for `/operations`
- * gets `/app/business`, not a 403 page they cannot act on — the redirect is the
- * refusal.
+ * A profile still has ONE primary/default surface: admin defaults to
+ * Operations. But an admin may also be a real active Business member. An
+ * explicit deep-link into that Business surface is then legitimate — it is
+ * how a dual-role pilot operator can switch hats and exercise the Business
+ * payer authority Operations deliberately does not have. This is navigation
+ * only; every API route still verifies the membership independently.
+ *
+ * The browser may ask; it may not invent entitlement. A merchant asking for
+ * `/operations` still gets `/app/business`.
  */
 export function resolveLanding(facts: LandingFacts, rawNext?: unknown): LandingDecision {
   const surface = resolveSurface(facts);
@@ -192,7 +198,27 @@ export function resolveLanding(facts: LandingFacts, rawNext?: unknown): LandingD
   }
 
   const target = surfaceOf(normalized.path);
-  if (target === null || target !== surface) {
+  if (target === null) {
+    return { destination: fallback, surface, usedNext: false, rejectedNextReason: "wrong_surface" };
+  }
+
+  /*
+   * Dual-role pilot rule. Admin remains Operations by DEFAULT, but an explicit
+   * Business deep-link is allowed when the server found at least one active
+   * membership. That lets the same human intentionally switch from Couranr
+   * authority to Business payer authority without ever granting Operations
+   * the payer capability.
+   */
+  if (
+    target === "business" &&
+    surface === "operations" &&
+    facts.role === "admin" &&
+    facts.activeMembershipCount > 0
+  ) {
+    return { destination: normalized.path, surface: "business", usedNext: true };
+  }
+
+  if (target !== surface) {
     return { destination: fallback, surface, usedNext: false, rejectedNextReason: "wrong_surface" };
   }
 
