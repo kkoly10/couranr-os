@@ -38,7 +38,7 @@ const METRICS: Array<{
 }> = [
   { label: "Needs review", stages: ["pending_review"], tone: "info" },
   { label: "Ready to plan", stages: ["ready_for_planning"], tone: "info" },
-  { label: "Ready to capture", stages: ["service_plan_confirmed"], tone: "info" },
+  { label: "Plan confirmed", stages: ["service_plan_confirmed"], tone: "info" },
   { label: "Needs driver", stages: ["captured_scheduled"], tone: "warning" },
   { label: "Active deliveries", stages: ["driver_assigned"], tone: "success" },
   {
