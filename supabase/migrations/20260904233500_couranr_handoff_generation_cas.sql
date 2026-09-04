@@ -15,9 +15,11 @@ begin;
 set local statement_timeout = '120s';
 set local lock_timeout = '10s';
 
-drop function public.couranr_issue_handoff_code(uuid,text,text,uuid,integer);
-
-create function public.couranr_issue_handoff_code(
+-- Keep the existing five-argument command during cutover. Production can apply
+-- this additive migration before the application deploy; the old deployment
+-- continues calling the legacy service-role-only function, and the new
+-- deployment switches to this CAS command without an incompatible window.
+create function public.couranr_issue_handoff_code_cas(
   p_delivery_id         uuid,
   p_code_kind           text,
   p_expected_generation integer,
@@ -98,9 +100,9 @@ $fn$;
 
 -- pg_default_acl grants new public functions broadly in this project. Revoke
 -- first, then restore the existing service-role-only command boundary.
-revoke all on function public.couranr_issue_handoff_code(uuid,text,integer,text,uuid,integer)
+revoke all on function public.couranr_issue_handoff_code_cas(uuid,text,integer,text,uuid,integer)
   from public, anon, authenticated, service_role;
-grant execute on function public.couranr_issue_handoff_code(uuid,text,integer,text,uuid,integer)
+grant execute on function public.couranr_issue_handoff_code_cas(uuid,text,integer,text,uuid,integer)
   to service_role;
 
 commit;
