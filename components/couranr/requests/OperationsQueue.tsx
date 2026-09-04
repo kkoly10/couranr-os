@@ -2,16 +2,13 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   Badge,
   Button,
   buttonClassName,
-  Card,
-  CardHeader,
   Cluster,
   Stack,
-  Table,
-  TableScroll,
   Text,
 } from "@/components/couranr/primitives";
 import {
@@ -52,6 +49,7 @@ import {
  * Capture button on a row whose capture is already in flight.
  */
 export function OperationsQueue() {
+  const router = useRouter();
   const [entries, setEntries] = React.useState<QueueEntry[] | null>(null);
   const [total, setTotal] = React.useState(0);
   const [failure, setFailure] = React.useState<ApiFailure | null>(null);
@@ -83,11 +81,10 @@ export function OperationsQueue() {
       return;
     }
     setFailure(null);
-    setEntries((prev) =>
-      (prev ?? []).map((e) =>
-        e.request.id === r.value.request.id ? { ...e, request: r.value.request } : e
-      )
-    );
+    // Beginning review is an audited state transition and this control is also
+    // the operator's doorway into OPS-003. Staying on the queue after a 200
+    // made the action look dead and encouraged repeated clicks.
+    router.push(`/operations/deliveries/${r.value.request.id}`);
   }
 
   if (entries === null) {
@@ -181,21 +178,25 @@ function StageSection({
   const tone = LIFECYCLE_STAGE_TONE[stage] ?? "neutral";
 
   return (
-    <Card
-      padding="flush"
+    <section
       data-stage={stage}
       id={`stage-${stage}`}
       className="cr-ops-queue-stage"
+      aria-labelledby={`stage-title-${stage}`}
     >
-      <CardHeader
-        title={label}
-        description={description}
-        actions={
-          <Badge tone={tone}>
-            {rows.length} request{rows.length === 1 ? "" : "s"}
-          </Badge>
-        }
-      />
+      <div className="cr-ops-queue-stage__header">
+        <div className="cr-ops-queue-stage__copy">
+          <h2 id={`stage-title-${stage}`} className="cr-ops-queue-stage__title">
+            {label}
+          </h2>
+          {description ? (
+            <p className="cr-ops-queue-stage__description">{description}</p>
+          ) : null}
+        </div>
+        <Badge tone={tone}>
+          {rows.length} request{rows.length === 1 ? "" : "s"}
+        </Badge>
+      </div>
 
       <div className="cr-ops-queue__mobile" aria-label={`${label} deliveries`}>
         {rows.map((entry) => (
@@ -210,36 +211,26 @@ function StageSection({
       </div>
 
       <div className="cr-ops-queue__desktop">
-        <TableScroll>
-          <Table
-            className="cr-ops-queue__table"
-            caption={`Submission, route, payment and scheduled pickup for each ${label.toLowerCase()} request`}
-          >
-            <thead>
-              <tr>
-                <th scope="col">Submitted</th>
-                <th scope="col">Route</th>
-                <th scope="col">Payment</th>
-                <th scope="col">Pickup window</th>
-                <th scope="col">Amount</th>
-                <th scope="col">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((e) => (
-                <QueueRow
-                  key={e.request.id}
-                  entry={e}
-                  stage={stage}
-                  busy={busyId === e.request.id}
-                  onBeginReview={onBeginReview}
-                />
-              ))}
-            </tbody>
-          </Table>
-        </TableScroll>
+        <div className="cr-ops-worklist" role="list" aria-label={`${label} deliveries`}>
+          <div className="cr-ops-worklist__head" aria-hidden="true">
+            <span>Delivery</span>
+            <span>Payment</span>
+            <span>Pickup</span>
+            <span>Total</span>
+            <span>Next step</span>
+          </div>
+          {rows.map((entry) => (
+            <DesktopQueueRow
+              key={entry.request.id}
+              entry={entry}
+              stage={stage}
+              busy={busyId === entry.request.id}
+              onBeginReview={onBeginReview}
+            />
+          ))}
+        </div>
       </div>
-    </Card>
+    </section>
   );
 }
 
@@ -327,9 +318,10 @@ function MobileQueueCard({
           <Button
             block
             loading={busy}
+            disabled={busy}
             onClick={() => onBeginReview(r)}
           >
-            Open for review
+            Review delivery
           </Button>
         ) : (
           <Link
@@ -372,7 +364,7 @@ function routeSummary(r: DeliveryRequestView): string {
   return `${part(r.pickupAddress) || "Pickup"} → ${part(r.dropoffAddress) || "Dropoff"}`;
 }
 
-function QueueRow({
+function DesktopQueueRow({
   entry,
   stage,
   busy,
@@ -384,93 +376,97 @@ function QueueRow({
   onBeginReview: (r: DeliveryRequestView) => void;
 }) {
   const r = entry.request;
-  /*
-   * A PLANNED window is not a SCHEDULED one — the delivery dispatch acts on
-   * may not exist yet — so the column says which it is showing rather than
-   * presenting a service plan as though it were a booking.
-   */
   const window_ = entry.delivery ?? entry.servicePlan;
   const windowIsBooked = Boolean(entry.delivery);
+  const amount = entry.delivery
+    ? entry.delivery.capturedAmountCents
+    : entry.payment?.amountCents ?? r.quote.deliverySubtotalCents;
+  const paymentLabel = entry.payment
+    ? PAYMENT_LABELS[entry.payment.paymentState] ?? entry.payment.paymentState
+    : "Not started";
 
   return (
-    <tr data-request-id={r.id} data-stage={stage}>
-      <td>{r.submittedAt ? new Date(r.submittedAt).toLocaleString() : "—"}</td>
-      <td>
-        {/*
-          OPS-003, not the merchant surface. Linking Operations at /app/business/…
-          sent them to a route the surface guard redirects them off, which made
-          the review workspace unreachable from the queue.
-        */}
-        <Link href={`/operations/deliveries/${r.id}`}>
-          {r.loadedMiles === null ? "Open" : `${r.loadedMiles} mi`}
+    <article
+      className="cr-ops-worklist__row"
+      role="listitem"
+      data-request-id={r.id}
+      data-stage={stage}
+    >
+      <div className="cr-ops-worklist__delivery">
+        <Link
+          href={`/operations/deliveries/${r.id}`}
+          className="cr-ops-worklist__route"
+        >
+          {routeSummary(r)}
         </Link>
+        <div className="cr-ops-worklist__meta">
+          <span>{r.requesterKind === "consumer" ? "Consumer" : "Business"}</span>
+          <span>
+            {r.loadedMiles === null ? "Distance pending" : `${r.loadedMiles} loaded mi`}
+          </span>
+          {r.submittedAt ? <span>{new Date(r.submittedAt).toLocaleString()}</span> : null}
+        </div>
         {r.quote.reviewReasons.length > 0 ? (
-          <Text size="xs" muted>
+          <Text size="xs" muted className="cr-ops-worklist__reason">
             {r.quote.reviewReasons.map((c) => REVIEW_REASON_LABELS[c] ?? c).join("; ")}
           </Text>
         ) : null}
-      </td>
-      <td data-payment-state={entry.payment?.paymentState ?? "none"}>
-        {entry.payment ? (
-          <>
-            <Text size="sm">{PAYMENT_LABELS[entry.payment.paymentState] ?? entry.payment.paymentState}</Text>
-            <Text size="xs" muted>
-              {entry.payment.payerType === "customer" ? "Customer pays" : "Merchant pays"}
-            </Text>
-          </>
-        ) : (
-          <Text size="sm" muted>
-            Not started
-          </Text>
-        )}
-      </td>
-      <td>
+      </div>
+
+      <div className="cr-ops-worklist__cell">
+        <Text size="sm" strong>{paymentLabel}</Text>
+        <Text size="xs" muted>
+          {entry.payment
+            ? entry.payment.payerType === "customer"
+              ? "Customer pays"
+              : "Merchant pays"
+            : "No payment yet"}
+        </Text>
+      </div>
+
+      <div className="cr-ops-worklist__cell">
+        <Text size="sm">
+          {window_ ? new Date(window_.scheduledPickupStart).toLocaleString() : "Not scheduled"}
+        </Text>
         {window_ ? (
-          <>
-            <Text size="sm">{new Date(window_.scheduledPickupStart).toLocaleString()}</Text>
-            <Text size="xs" muted>
-              {window_.timezone} · {windowIsBooked ? "scheduled" : "planned"}
-            </Text>
-          </>
-        ) : (
-          <Text size="sm" muted>
-            —
+          <Text size="xs" muted>
+            {window_.timezone} · {windowIsBooked ? "scheduled" : "planned"}
           </Text>
-        )}
-      </td>
-      <td>
-        {entry.delivery
-          ? formatCents(entry.delivery.capturedAmountCents)
-          : formatCents(entry.payment?.amountCents ?? r.quote.deliverySubtotalCents)}
-      </td>
-      <td>
-        {/*
-          Exactly one action per stage, and none at all where the correct move
-          is to wait. `capture_pending` offers nothing on purpose: a retry
-          there is a second capture of money that may already be taken.
-        */}
+        ) : null}
+      </div>
+
+      <Text strong numeric className="cr-ops-worklist__amount">
+        {formatCents(amount)}
+      </Text>
+
+      <div className="cr-ops-worklist__action">
         {stage === "pending_review" ? (
-          <Button size="sm" variant="secondary" loading={busy} onClick={() => onBeginReview(r)}>
-            Open for review
+          <Button
+            size="sm"
+            loading={busy}
+            disabled={busy}
+            onClick={() => onBeginReview(r)}
+          >
+            Review delivery
           </Button>
-        ) : stage === "captured_not_scheduled" ? (
-          <Link href={`/operations/deliveries/${r.id}`}>Finish scheduling</Link>
-        ) : stage === "capture_pending" ? (
-          // A link, not a button: the action is to ASK the provider what
-          // happened, never to capture again. Leaving this row with no way
-          // forward at all was its own defect — the reconcile is on OPS-003.
-          <Link href={`/operations/deliveries/${r.id}`}>Do not retry — check the provider</Link>
         ) : (
-          <Link href={`/operations/deliveries/${r.id}`}>
-            {stage === "ready_for_planning"
-              ? "Plan"
-              : stage === "service_plan_confirmed"
-                ? "Capture"
-                : "View"}
+          <Link
+            href={`/operations/deliveries/${r.id}`}
+            className={buttonClassName({ variant: "secondary", size: "sm" })}
+          >
+            {stage === "captured_not_scheduled"
+              ? "Finish scheduling"
+              : stage === "capture_pending"
+                ? "Check provider"
+                : stage === "ready_for_planning"
+                  ? "Plan delivery"
+                  : stage === "service_plan_confirmed"
+                    ? "Capture payment"
+                    : "Open delivery"}
           </Link>
         )}
-      </td>
-    </tr>
+      </div>
+    </article>
   );
 }
 
