@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { normalizeDeliveryRequestInput, isNormalizeFailure } from "@/lib/couranr/requests/input";
 import { shipmentArgs } from "@/lib/couranr/requests/commands";
 import { normalizeGooglePlaceSelection } from "@/lib/couranr/routing/address";
@@ -9,11 +9,11 @@ import {
   GooglePlaceResolutionError,
   resolveCanonicalGooglePlace,
 } from "@/lib/couranr/routing/googlePlaces";
+import { deriveCanonicalRouteAndQuote } from "@/lib/couranr/routing/canonicalRoute";
 import {
-  computeCanonicalGoogleRoute,
-  deriveCanonicalRouteAndQuote,
+  computeCanonicalMapboxRoute,
   loadedMilesFromDistanceMeters,
-} from "@/lib/couranr/routing/googleRoutes";
+} from "@/lib/couranr/routing/mapboxDirections";
 import {
   COURANR_AUTO_APPROVED_MARKETS,
   isCouranrAutoApprovedMarket,
@@ -21,11 +21,18 @@ import {
 
 const ROOT = path.resolve(__dirname, "..");
 const ORIGINAL_SERVER_KEY = process.env.GOOGLE_MAPS_SERVER_API_KEY;
+const ORIGINAL_MAPBOX_TOKEN = process.env.MAPBOX_ACCESS_TOKEN;
+
+beforeEach(() => {
+  process.env.MAPBOX_ACCESS_TOKEN = "test-mapbox-token";
+});
 
 afterEach(() => {
   vi.restoreAllMocks();
   if (ORIGINAL_SERVER_KEY === undefined) delete process.env.GOOGLE_MAPS_SERVER_API_KEY;
   else process.env.GOOGLE_MAPS_SERVER_API_KEY = ORIGINAL_SERVER_KEY;
+  if (ORIGINAL_MAPBOX_TOKEN === undefined) delete process.env.MAPBOX_ACCESS_TOKEN;
+  else process.env.MAPBOX_ACCESS_TOKEN = ORIGINAL_MAPBOX_TOKEN;
 });
 
 function address(id: string, line1 = "10 Market St") {
@@ -98,15 +105,16 @@ function placePayload(id: string, spec: PlaceSpec = {}) {
 
 function routeResponse(
   distanceMeters: number,
-  duration = "600s",
-  // The BASELINE. Equal to `duration` by default, so a test that does not care
-  // about traffic gets a zero delay rather than an accidental surcharge.
-  staticDuration = duration,
+  duration = 600,
+  typicalDuration = duration,
 ) {
   return {
     ok: true,
     status: 200,
-    json: async () => ({ routes: [{ distanceMeters, duration, staticDuration }] }),
+    json: async () => ({
+      code: "Ok",
+      routes: [{ distance: distanceMeters, duration, duration_typical: typicalDuration }],
+    }),
   };
 }
 
@@ -114,10 +122,9 @@ function providerFetcher(
   places: Record<string, ReturnType<typeof placePayload>>,
   route:
     | ReturnType<typeof routeResponse>
-    | ((body: { origin: { placeId: string }; destination: { placeId: string } }) =>
-        ReturnType<typeof routeResponse>) = routeResponse(8047)
+    | ((url: URL) => ReturnType<typeof routeResponse>) = routeResponse(8047)
 ) {
-  return vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+  return vi.fn(async (input: string | URL | Request) => {
     const url = String(input);
     if (url.startsWith("https://places.googleapis.com/v1/places/")) {
       const placeId = decodeURIComponent(url.slice(url.lastIndexOf("/") + 1));
@@ -126,9 +133,8 @@ function providerFetcher(
         ? { ok: true, status: 200, json: async () => payload }
         : { ok: false, status: 404, json: async () => ({}) };
     }
-    if (url === "https://routes.googleapis.com/directions/v2:computeRoutes") {
-      const body = JSON.parse(String(init?.body));
-      return typeof route === "function" ? route(body) : route;
+    if (url.startsWith("https://api.mapbox.com/directions/v5/mapbox/driving-traffic/")) {
+      return typeof route === "function" ? route(new URL(url)) : route;
     }
     throw new Error(`unexpected provider URL: ${url}`);
   });
@@ -312,20 +318,23 @@ describe("conservative named-market serviceability", () => {
 });
 
 describe("server Routes authority", () => {
-  it("uses only the server key and derives loaded miles from distanceMeters", async () => {
-    process.env.GOOGLE_MAPS_SERVER_API_KEY = "server-secret-test-key";
+  it("uses only the server Mapbox token and derives loaded miles from distance", async () => {
     const fetcher = vi.fn(
-      async (_input: string | URL | Request, _init?: RequestInit) =>
-        routeResponse(8047, "721.4s")
+      async (_input: string | URL | Request) => routeResponse(8047, 721.4)
     );
-    const result = await computeCanonicalGoogleRoute(
-      { pickupPlaceId: "place-a", dropoffPlaceId: "place-b" },
+    const result = await computeCanonicalMapboxRoute(
+      {
+        pickupLatitude: 38.422,
+        pickupLongitude: -77.408,
+        dropoffLatitude: 38.3032,
+        dropoffLongitude: -77.4605,
+      },
       fetcher
     );
 
     expect(result).toEqual({
       serviceabilityOutcome: "available_for_request",
-      distanceSource: "google_routes_v2",
+      distanceSource: "mapbox_directions_v5",
       distanceMeters: 8047,
       loadedMiles: loadedMilesFromDistanceMeters(8047),
       durationSeconds: 721,
@@ -333,12 +342,10 @@ describe("server Routes authority", () => {
       trafficDelaySeconds: 0,
       reviewReason: null,
     });
-    const [url, init] = fetcher.mock.calls[0]!;
-    expect(url).toBe("https://routes.googleapis.com/directions/v2:computeRoutes");
-    expect(JSON.parse(String(init?.body))).toMatchObject({
-      origin: { placeId: "place-a" },
-      destination: { placeId: "place-b" },
-    });
+    const [rawUrl] = fetcher.mock.calls[0]!;
+    const url = new URL(String(rawUrl));
+    expect(url.pathname).toContain("/directions/v5/mapbox/driving-traffic/");
+    expect(url.searchParams.get("access_token")).toBe("test-mapbox-token");
   });
 
   it("re-estimates from a changed verified Place ID", async () => {
@@ -347,9 +354,13 @@ describe("server Routes authority", () => {
       {
         "place-pickup": placePayload("place-pickup"),
         "place-dropoff": placePayload("place-dropoff", { city: "Fredericksburg" }),
-        "place-farther": placePayload("place-farther", { city: "Woodbridge" }),
+        "place-farther": placePayload("place-farther", {
+          city: "Woodbridge",
+          latitude: 38.9,
+          longitude: -77.1,
+        }),
       },
-      (body) => routeResponse(body.destination.placeId === "place-farther" ? 32187 : 8047)
+      (url) => routeResponse(url.pathname.includes("-77.1,38.9") ? 32187 : 8047)
     );
     const first = await deriveCanonicalRouteAndQuote(draft(), fetcher);
     const changed = await deriveCanonicalRouteAndQuote(
@@ -371,7 +382,7 @@ describe("server Routes authority", () => {
       "place-dropoff": placePayload("place-dropoff", { city: "Fredericksburg" }),
     });
     fetcher.mockImplementation(async (input) => {
-      if (String(input).includes("routes.googleapis.com")) {
+      if (String(input).includes("api.mapbox.com/directions/v5/mapbox/driving-traffic")) {
         return { ok: false, status: 503, json: async () => ({}) };
       }
       const placeId = decodeURIComponent(String(input).slice(String(input).lastIndexOf("/") + 1));
@@ -387,12 +398,12 @@ describe("server Routes authority", () => {
       serviceabilityOutcome: "needs_review",
       distanceMeters: null,
       loadedMiles: null,
-      reviewReason: "google_routes_unavailable",
+      reviewReason: "mapbox_directions_unavailable",
     });
     expect(result.quote.quoteStatus).toBe("manual_review_required");
   });
 
-  it("ignores malicious client mileage and prices the verified Google route", async () => {
+  it("ignores malicious client mileage and prices the verified Mapbox route", async () => {
     process.env.GOOGLE_MAPS_SERVER_API_KEY = "server-secret-test-key";
     const tampered = draft({ loadedMiles: 9999, distanceMeters: 1 });
     const result = await deriveCanonicalRouteAndQuote(
@@ -419,15 +430,19 @@ describe("browser/server key boundary", () => {
       "utf8"
     );
     const places = readFileSync(path.join(ROOT, "lib/couranr/routing/googlePlaces.ts"), "utf8");
-    const routes = readFileSync(path.join(ROOT, "lib/couranr/routing/googleRoutes.ts"), "utf8");
-    // The browser no longer owns ANY Google key. It calls Couranr's scoped
-    // merchant Places route; server providers alone hold the server key.
+    const routes = readFileSync(path.join(ROOT, "lib/couranr/routing/mapboxDirections.ts"), "utf8");
+    const canonical = readFileSync(path.join(ROOT, "lib/couranr/routing/canonicalRoute.ts"), "utf8");
+    // Browser code owns neither provider's server credential. Google verifies
+    // address identity; Mapbox owns distance/traffic on the server.
     expect(browser + client).not.toContain("NEXT_PUBLIC_GOOGLE_MAPS_API_KEY");
     expect(browser + client).not.toContain("GOOGLE_MAPS_SERVER_API_KEY");
+    expect(browser + client).not.toContain("MAPBOX_ACCESS_TOKEN");
     expect(browser).toContain("searchBusinessPlaces");
     expect(browser).toContain("resolveBusinessPlace");
     expect(places).toContain("GOOGLE_MAPS_SERVER_API_KEY");
-    expect(routes).toContain("GOOGLE_MAPS_SERVER_API_KEY");
-    expect(places + routes).not.toContain("NEXT_PUBLIC_GOOGLE_MAPS_API_KEY");
+    expect(routes).toContain("MAPBOX_ACCESS_TOKEN");
+    expect(routes).not.toContain("GOOGLE_MAPS_SERVER_API_KEY");
+    expect(canonical).toContain("resolveCanonicalGooglePlace");
+    expect(canonical).toContain("computeCanonicalMapboxRoute");
   });
 });
