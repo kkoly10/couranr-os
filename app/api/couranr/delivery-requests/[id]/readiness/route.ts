@@ -4,6 +4,7 @@ import { isFulfillmentFailure, setReadiness } from "@/lib/couranr/fulfillment/co
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
 import { READINESS_STATES, type ReadinessState } from "@/lib/couranr/requests/states";
 import { toDeliveryRequestView } from "@/lib/couranr/requests/view";
+import { advanceAutomaticFulfillment } from "@/lib/couranr/automation/engine";
 
 export const dynamic = "force-dynamic";
 
@@ -55,5 +56,8 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   });
   if (isFulfillmentFailure(result)) return failureResponse(result);
 
+  if (readiness === "ready") {
+    await advanceAutomaticFulfillment(params.id);
+  }
   return NextResponse.json({ request: toDeliveryRequestView(result.value.request) });
 }
