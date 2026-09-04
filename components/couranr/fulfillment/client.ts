@@ -51,6 +51,16 @@ export type FulfillmentView = {
     scheduledPickupEnd: string;
     timezone: string;
     vehicleRequirement: { vehicleClass?: string; maxPayloadLb?: number };
+    planSource: "operations" | "automatic";
+    plannerVersion: string | null;
+    marketKey: string | null;
+    dispatchNotBefore: string | null;
+    dispatchDeadline: string | null;
+    expectedServiceEnd: string | null;
+    lastRevalidatedAt: string | null;
+    revalidatedLoadedMiles: number | null;
+    revalidatedRouteDurationSeconds: number | null;
+    revalidatedTrafficDelaySeconds: number | null;
   } | null;
   delivery: {
     id: string;
@@ -63,7 +73,34 @@ export type FulfillmentView = {
     scheduledPickupStart: string;
     scheduledPickupEnd: string;
     timezone: string;
+    planSource: "operations" | "automatic";
+    plannerVersion: string | null;
+    marketKey: string | null;
+    dispatchNotBefore: string | null;
+    dispatchDeadline: string | null;
+    expectedServiceEnd: string | null;
+    lastRevalidatedAt: string | null;
+    revalidatedLoadedMiles: number | null;
+    revalidatedRouteDurationSeconds: number | null;
+    revalidatedTrafficDelaySeconds: number | null;
     driverAssigned: boolean;
+    assignment: {
+      id: string;
+      driverId: string;
+      vehicleId: string;
+      assignmentSource: "operations" | "automatic";
+      assignedAt: string;
+      version: number;
+    } | null;
+  } | null;
+  automationException: {
+    id: string;
+    stage: "review" | "planning" | "dispatch" | "commercial";
+    reason: string;
+    detail: Record<string, unknown>;
+    attempts: number;
+    firstSeenAt: string;
+    lastSeenAt: string;
   } | null;
 };
 
