@@ -44,12 +44,31 @@ Messaging failure must never roll back creation of a valid delivery.
 Do not hardcode a founder/operator user into every thread.
 
 The Operations Inbox remains a role-authorized cross-business projection.
-When a specific authenticated Operations user needs to open or send in a
-thread, D2 will idempotently establish that user's `operations` participant
-row after verifying `profiles.role='admin'`.
 
-That gives every human message a real author and audit identity without
-pretending "Couranr Operations" is one shared auth user.
+**Adversarial correction:** D2 must not blindly "lazy join" an Operations
+participant for every admin. The current live-participant unique index
+`couranr_cvp_live_user_uniq` permits only one live participant row per
+`(conversation_id, user_id)`. A real Couranr user can be dual-role — for
+example, an Operations admin can also be the owner of the pilot business. That
+same person may need to act as **merchant on /business** and **Operations on
+/operations** without those authorities bleeding into each other.
+
+Therefore D2 must make Operations thread access **surface/context-aware**. It
+must either:
+
+1. add an Operations-specific read/send authority path that verifies
+   `profiles.role='admin'` and records the real actor without requiring a
+   second live participant row; or
+2. deliberately change the participant uniqueness + resolver contract so two
+   role-specific participant rows can coexist and every route explicitly names
+   which actor context it is resolving.
+
+Option 1 is the narrower MVP direction. A second participant row must not be
+added until this dual-role ambiguity is resolved end to end.
+
+This preserves real human audit identity without pretending "Couranr
+Operations" is one shared auth user or leaking Operations-only visibility into
+the merchant surface.
 
 ## 4. Driver tenure
 
