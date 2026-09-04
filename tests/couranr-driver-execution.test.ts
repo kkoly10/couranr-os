@@ -807,3 +807,44 @@ describe("the driver API surface", () => {
     expect(body).toMatch(/couranr_driver_assignment_for/);
   });
 });
+
+
+describe("handoff credential generation concurrency", () => {
+  const CAS_MIGRATION = readFileSync(
+    path.join(MIGRATIONS, "20260904233500_couranr_handoff_generation_cas.sql"),
+    "utf8"
+  );
+  const COMMANDS = readFileSync(path.join(ROOT, "lib/couranr/driver/commands.ts"), "utf8");
+
+  it("binds the expected HMAC generation into the SQL command", () => {
+    expect(CAS_MIGRATION).toMatch(/p_expected_generation\s+integer/);
+    expect(CAS_MIGRATION).toMatch(/p_expected_generation\s*<>\s*v_gen/);
+    expect(CAS_MIGRATION).toContain("handoff_generation_conflict");
+  });
+
+  it("checks generation before superseding the currently usable credential", () => {
+    const mismatch = CAS_MIGRATION.indexOf("if p_expected_generation <> v_gen then");
+    const supersede = CAS_MIGRATION.indexOf("update public.couranr_handoff_codes");
+    expect(mismatch).toBeGreaterThan(-1);
+    expect(supersede).toBeGreaterThan(-1);
+    expect(mismatch).toBeLessThan(supersede);
+  });
+
+  it("the server retries a generation conflict with a newly generated code", () => {
+    const at = COMMANDS.indexOf("export async function issueHandoffCode");
+    expect(at).toBeGreaterThan(-1);
+    const body = COMMANDS.slice(at, COMMANDS.indexOf("/**\n * Verify a submitted code", at));
+    expect(body).toContain("MAX_GENERATION_ATTEMPTS");
+    expect(body).toContain('error?.message === "handoff_generation_conflict"');
+    expect(body).toContain("continue;");
+    expect(body).toContain("const code = generateHandoffCode()");
+    expect(body).toMatch(/p_expected_generation:\s*generation/);
+  });
+
+  it("never returns a code whose stored generation differs from the signed generation", () => {
+    const at = COMMANDS.indexOf("export async function issueHandoffCode");
+    const body = COMMANDS.slice(at, COMMANDS.indexOf("/**\n * Verify a submitted code", at));
+    expect(body).toMatch(/storedGeneration\s*!==\s*generation/);
+    expect(body).toContain("handoff_generation_mismatch");
+  });
+});
