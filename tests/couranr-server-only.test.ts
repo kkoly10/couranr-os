@@ -350,6 +350,8 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/operations/discrepancies/[id]/safe-to-continue/route.ts",
       "app/api/couranr/operations/drivers/route.ts",
       "app/api/couranr/operations/inbox/route.ts",
+      "app/api/couranr/operations/conversations/[id]/route.ts",
+      "app/api/couranr/operations/conversations/[id]/messages/route.ts",
       "app/api/couranr/operations/proof/[proofId]/url/route.ts",
       "app/api/couranr/operations/queue/route.ts",
       "app/api/couranr/operations/vehicles/[id]/route.ts",
