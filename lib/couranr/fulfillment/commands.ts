@@ -146,7 +146,8 @@ export async function setReadiness(params: {
     p_request_id: params.requestId,
     p_business_account_id: params.businessAccountId,
     p_expected_version: params.expectedVersion,
-    p_actor_user_id: params.actor.userId,
+    p_actor_user_id:
+      params.actor && params.actor.kind === "operations" ? params.actor.userId : null,
   });
   if (isFulfillmentFailure(r)) return r;
   return { ok: true, value: { request: r.value } };
@@ -232,20 +233,37 @@ export type CaptureOutcome = {
  * the FIRST capture rather than performing a second.
  */
 export async function capturePayment(params: {
-  actor: RequestActor;
+  actor?: RequestActor;
   requestId: string;
   businessAccountId: string | null;
+  /**
+   * Server-owned automation authority. No route accepts this flag from a
+   * browser; it is used only by the automatic dispatch engine after the
+   * database has confirmed an automatic plan and a short-lived candidate
+   * reservation.
+   */
+  automation?: boolean;
 }): Promise<FulfillmentResult<CaptureOutcome>> {
   const op = "capturePayment";
 
-  const permission = canActOnDeliveryRequest(params.actor, "review", params.businessAccountId);
-  if (!permission.allowed || params.actor.kind !== "operations") {
-    return fail({
-      operation: op,
-      code: "not_permitted",
-      detail: { reason: "not_operations" },
-      message: "Only Couranr Operations can capture a payment.",
-    });
+  if (params.automation !== true) {
+    if (!params.actor) {
+      return fail({
+        operation: op,
+        code: "not_permitted",
+        detail: { reason: "actor_required" },
+        message: "Only Couranr Operations can capture a payment.",
+      });
+    }
+    const permission = canActOnDeliveryRequest(params.actor, "review", params.businessAccountId);
+    if (!permission.allowed || params.actor.kind !== "operations") {
+      return fail({
+        operation: op,
+        code: "not_permitted",
+        detail: { reason: "not_operations" },
+        message: "Only Couranr Operations can capture a payment.",
+      });
+    }
   }
 
   /*
@@ -417,6 +435,24 @@ export async function capturePayment(params: {
   }
 
   return convertAfterCapture(op, params.requestId, { id: ob.id, payment_state: "captured" });
+}
+
+/**
+ * Automatic-dispatch twin of the Operations capture command.
+ *
+ * It does not create a second money path: this reaches the SAME guarded
+ * capture workflow above, including capture_pending, Stripe idempotency,
+ * provider verification and idempotent delivery conversion. The only
+ * difference is authority — a trusted server worker, not an operator click.
+ */
+export async function capturePaymentForAutomation(params: {
+  requestId: string;
+}): Promise<FulfillmentResult<CaptureOutcome>> {
+  return capturePayment({
+    requestId: params.requestId,
+    businessAccountId: null,
+    automation: true,
+  });
 }
 
 /** Step 4. Idempotent: a second call returns the same delivery. */
@@ -722,6 +758,22 @@ export async function createDeliveryFromPromotionalCredit(params: {
     });
   }
 
+  const r = await callRpc<Record<string, any>>(op, RPC.createDeliveryFromCredit, {
+    p_request_id: params.requestId,
+  });
+  if (isFulfillmentFailure(r)) return r;
+  return { ok: true, value: { delivery: r.value } };
+}
+
+/**
+ * Automatic planner/dispatch may finalize a fully credited request without
+ * impersonating Operations. SQL still verifies current quote identity,
+ * readiness, the confirmed plan and the applied credit.
+ */
+export async function createDeliveryFromPromotionalCreditForAutomation(params: {
+  requestId: string;
+}): Promise<FulfillmentResult<{ delivery: Record<string, any> }>> {
+  const op = "createDeliveryFromPromotionalCreditForAutomation";
   const r = await callRpc<Record<string, any>>(op, RPC.createDeliveryFromCredit, {
     p_request_id: params.requestId,
   });
