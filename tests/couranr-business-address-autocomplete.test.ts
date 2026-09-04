@@ -14,7 +14,8 @@ describe("Business address autocomplete pilot path", () => {
     expect(flow).not.toContain("next/script");
     expect(flow).not.toContain("NEXT_PUBLIC_GOOGLE_MAPS_API_KEY");
     expect(flow).not.toContain("GooglePlaceAutocomplete");
-    const client = read("components/couranr/requests/client.ts");\n    expect(client).toContain("/api/couranr/merchant/places");
+    const client = read("components/couranr/requests/client.ts");
+    expect(client).toContain("/api/couranr/merchant/places");
     expect(component).toContain('role="combobox"');
     expect(component).toContain('role="listbox"');
   });
