@@ -172,14 +172,14 @@ export const COMMAND_RULES: Readonly<Record<RequestCommand, CommandRule>> = {
   /* --- review outcomes (REV-001, owner-approved 2026-07-31) ------------- */
 
   /**
-   * Merchant-paid goes straight to `confirmed`: the merchant approved this
-   * exact quote at submission and Operations did not change it, so asking the
-   * same party to approve the same number twice adds nothing. That shortcut is
-   * gated on the acknowledgment recorded in the submission event — the SQL
-   * function refuses with a conflict when it is absent.
+   * Merchant-paid self-service goes straight to `confirmed`: the merchant
+   * approved this exact quote at submission and Operations did not change it.
    *
-   * Customer-paid waits at `awaiting_quote_acceptance`: a merchant cannot
-   * approve a price on the customer's behalf.
+   * Merchant-paid Operations-assisted entry is different by construction:
+   * Operations submitted with acknowledgment=false, so Couranr may confirm
+   * service but the request must wait at `awaiting_quote_acceptance` for the
+   * real Business payer. Customer-paid requests wait there for the same
+   * authority reason: Couranr is not the payer.
    */
   accept_delivery_request_as_quoted: {
     from: ["pending_couranr_review"],
@@ -337,7 +337,8 @@ export function isTransitionDenied(d: TransitionDecision): d is TransitionDenied
 export function resolveTransition(
   command: RequestCommand,
   current: RequestState,
-  payerType?: PayerType
+  payerType?: PayerType,
+  context: { operationsAssisted?: boolean } = {}
 ): TransitionDecision {
   const rule = COMMAND_RULES[command];
   if (!rule) return { allowed: false, reason: "unknown_command" };
@@ -346,6 +347,13 @@ export function resolveTransition(
   if (isPayerDependent(rule.to)) {
     if (payerType !== "merchant" && payerType !== "customer") {
       return { allowed: false, reason: "payer_required" };
+    }
+    if (
+      command === "accept_delivery_request_as_quoted" &&
+      payerType === "merchant" &&
+      context.operationsAssisted === true
+    ) {
+      return { allowed: true, nextState: "awaiting_quote_acceptance" };
     }
     return { allowed: true, nextState: rule.to[payerType] };
   }
