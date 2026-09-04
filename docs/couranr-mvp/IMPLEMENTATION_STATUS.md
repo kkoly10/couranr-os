@@ -47,7 +47,9 @@ proves every generated view matches its source.
 | `functional_unverified` | 6 |
 | `missing` | 4 |
 
-Still rendering `ScreenPlaceholder` (16): `DRV-009` · `DRV-010` · `OPS-006` · `OPS-009` · `OPS-010` · `OPS-011` · `OPS-012` · `OPS-013` · `OPS-014` · `OPS-015` · `OPS-016` · `OPS-017` · `OPS-018` · `OPS-019` · `OPS-020` · `OPS-021`.
+Still rendering `ScreenPlaceholder` (14): `OPS-006` · `OPS-009` · `OPS-010` · `OPS-011` · `OPS-012` · `OPS-013` · `OPS-014` · `OPS-015` · `OPS-016` · `OPS-017` · `OPS-018` · `OPS-019` · `OPS-020` · `OPS-021`.
+
+Driver Pilot D1 replaces DRV-009 and DRV-010 placeholders with self-scoped operating surfaces. DRV-001 now uses the canonical Couranr assignment feed only; the legacy `/api/driver/my-deliveries` dashboard feed is no longer part of the canonical Driver experience. DRV-010 remains `partial` because compliance evidence/expiry is not represented as verified until it can actually block dispatch.
 
 ## Measured repository state
 
