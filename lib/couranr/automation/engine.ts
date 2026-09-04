@@ -1,6 +1,6 @@
 import { assertServerOnly } from "@/lib/couranr/serverOnly";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { computeCanonicalGoogleRoute } from "@/lib/couranr/routing/googleRoutes";
+import { computeCanonicalMapboxRoute } from "@/lib/couranr/routing/mapboxDirections";
 import {
   capturePaymentForAutomation,
   createDeliveryFromPromotionalCreditForAutomation,
@@ -230,7 +230,7 @@ async function dispatchOne(plan: Record<string, any>): Promise<AutoResult> {
   const requestId = String(plan.request_id);
 
   // Cheap database backoff BEFORE any paid provider call. The cron may wake
-  // every five minutes; Google must not.
+  // every five minutes; the paid routing provider must not.
   if (
     plan.next_route_recheck_at &&
     new Date(String(plan.next_route_recheck_at)).getTime() > Date.now()
@@ -314,15 +314,23 @@ async function dispatchOne(plan: Record<string, any>): Promise<AutoResult> {
     };
   }
 
-  const pickupPlaceId = req.pickup_address?.googlePlaceId;
-  const dropoffPlaceId = req.dropoff_address?.googlePlaceId;
+  const pickupLatitude = req.pickup_address?.latitude;
+  const pickupLongitude = req.pickup_address?.longitude;
+  const dropoffLatitude = req.dropoff_address?.latitude;
+  const dropoffLongitude = req.dropoff_address?.longitude;
   if (
-    typeof pickupPlaceId !== "string" ||
-    pickupPlaceId.length === 0 ||
-    typeof dropoffPlaceId !== "string" ||
-    dropoffPlaceId.length === 0
+    typeof pickupLatitude !== "number" ||
+    typeof pickupLongitude !== "number" ||
+    typeof dropoffLatitude !== "number" ||
+    typeof dropoffLongitude !== "number" ||
+    !Number.isFinite(pickupLatitude) ||
+    !Number.isFinite(pickupLongitude) ||
+    !Number.isFinite(dropoffLatitude) ||
+    !Number.isFinite(dropoffLongitude)
   ) {
-    await openDispatchException(plan, "route_evidence_missing", {});
+    await openDispatchException(plan, "route_evidence_missing", {
+      reason: "canonical_coordinates_missing",
+    });
     return {
       ok: false,
       requestId,
@@ -331,9 +339,11 @@ async function dispatchOne(plan: Record<string, any>): Promise<AutoResult> {
     };
   }
 
-  const route = await computeCanonicalGoogleRoute({
-    pickupPlaceId,
-    dropoffPlaceId,
+  const route = await computeCanonicalMapboxRoute({
+    pickupLatitude,
+    pickupLongitude,
+    dropoffLatitude,
+    dropoffLongitude,
     departureAt: plan.scheduled_pickup_start
       ? new Date(String(plan.scheduled_pickup_start))
       : null,
@@ -345,7 +355,7 @@ async function dispatchOne(plan: Record<string, any>): Promise<AutoResult> {
     route.durationSeconds === null ||
     route.trafficDelaySeconds === null
   ) {
-    const costGuarded = route.reviewReason === "google_routes_cost_guard";
+    const costGuarded = route.reviewReason === "mapbox_directions_cost_guard";
     await scheduleRouteRecheck(String(plan.id), "route_revalidation_failed", costGuarded ? 360 : 15);
     await openDispatchException(plan, "route_revalidation_failed", {
       routeReviewReason: route.reviewReason,
