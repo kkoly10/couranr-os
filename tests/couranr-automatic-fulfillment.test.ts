@@ -1,0 +1,221 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+
+const ROOT = join(__dirname, "..");
+const MIGRATIONS = join(ROOT, "supabase", "migrations");
+const FOUNDATION = readFileSync(
+  join(MIGRATIONS, "20260904152329_couranr_automatic_fulfillment_v1.sql"),
+  "utf8"
+).toLowerCase();
+const CORRECTION = readFileSync(
+  join(MIGRATIONS, "20260904154559_couranr_automatic_fulfillment_v1_corrections.sql"),
+  "utf8"
+).toLowerCase();
+const ENGINE = readFileSync(join(ROOT, "lib/couranr/automation/engine.ts"), "utf8");
+const CRON = readFileSync(
+  join(ROOT, "app/api/couranr/internal/automation/tick/route.ts"),
+  "utf8"
+);
+const VERCEL = readFileSync(join(ROOT, "vercel.json"), "utf8");
+const source = (path: string) => readFileSync(join(ROOT, path), "utf8");
+
+describe("automatic fulfillment commercial identity", () => {
+  it("uses credit or Stripe obligation, never fake dual settlement", () => {
+    expect(CORRECTION).toContain("couranr_sp_settlement_identity_chk");
+    expect(CORRECTION).toContain("couranr_dlv_settlement_identity_chk");
+    expect(CORRECTION).toMatch(/promotional_credit_id is null and payment_obligation_id is not null/);
+    expect(CORRECTION).toMatch(/promotional_credit_id is not null and payment_obligation_id is null/);
+    expect(CORRECTION).not.toContain("payment_obligation_history_missing");
+  });
+
+  it("credited conversion stores no fake payment obligation", () => {
+    const fn = CORRECTION.slice(
+      CORRECTION.indexOf("create or replace function public.couranr_create_delivery_from_promotional_credit"),
+      CORRECTION.indexOf("revoke all on function public.couranr_create_delivery_from_promotional_credit")
+    );
+    expect(fn).toMatch(/v_req\.id\s*,\s*v_req\.business_account_id\s*,\s*null\s*,\s*v_credit\.id\s*,\s*v_plan\.id/);
+    expect(fn).toContain("'paymentobligationid',null");
+    expect(fn).toContain("v_req.current_quote_version_id is distinct from v_quote.id");
+  });
+
+  it("card planning still requires an authorized current-quote obligation", () => {
+    const fn = CORRECTION.slice(
+      CORRECTION.indexOf("create or replace function public.couranr_try_auto_plan"),
+      CORRECTION.indexOf("revoke all on function public.couranr_try_auto_plan")
+    );
+    expect(fn).toMatch(/if v_credit\.id is null then[\s\S]*v_ob\.id is null/);
+    expect(fn).toMatch(/v_ob\.payment_state<>'authorized'/);
+    expect(fn).toMatch(/v_ob\.quote_version_id is distinct from v_quote\.id/);
+    expect(fn).toMatch(/case when v_credit\.id is null then v_ob\.id else null end/);
+  });
+});
+
+describe("automatic scheduling and capacity", () => {
+  it("does not silently move an explicit scheduled request when capacity is full", () => {
+    const fn = CORRECTION.slice(
+      CORRECTION.indexOf("create or replace function public.couranr_try_auto_plan"),
+      CORRECTION.indexOf("revoke all on function public.couranr_try_auto_plan")
+    );
+    expect(fn).toContain("v_scheduled := v_req.timing_intent='scheduled'");
+    expect(fn).toMatch(/if v_scheduled then[\s\S]*'capacity_unavailable'[\s\S]*return jsonb_build_object\('outcome','exception'/);
+    expect(fn).toContain("v_candidate := v_candidate + interval '15 minutes'");
+  });
+
+  it("serializes capacity allocation", () => {
+    expect(FOUNDATION).toContain("pg_advisory_xact_lock(hashtext('couranr-capacity:'||v_market))");
+    expect(FOUNDATION).toContain("couranr_capacity_reservations");
+    expect(FOUNDATION).toContain("couranr_cr_market_window_idx");
+  });
+
+  it("turns non-standard facts into review instead of guessing", () => {
+    const reasons = [
+      "quote_not_automatic",
+      "quote_requires_review",
+      "timing_requires_review",
+      "shipment_safety_not_confirmed",
+      "multiple_stops_not_automatic",
+      "route_not_automatic",
+      "traffic_not_automatic",
+      "overnight_not_automatic",
+      "weight_not_automatic",
+    ];
+    for (const reason of reasons) expect(FOUNDATION).toContain("'" + reason + "'");
+  });
+});
+
+describe("late-bound dispatch", () => {
+  it("reserves one request driver and vehicle before commit", () => {
+    expect(FOUNDATION).toContain("couranr_drsv_one_active_request");
+    expect(FOUNDATION).toContain("couranr_drsv_one_active_driver");
+    expect(FOUNDATION).toContain("couranr_drsv_one_active_vehicle");
+    expect(FOUNDATION).toContain("interval '5 minutes'");
+  });
+
+  it("records automatic assignment as system-owned", () => {
+    const fn = FOUNDATION.slice(
+      FOUNDATION.indexOf("create or replace function public.couranr_commit_automatic_assignment"),
+      FOUNDATION.indexOf("revoke all on function public.couranr_reserve_automatic_dispatch_candidate")
+    );
+    expect(fn).toContain("'automatic',v_res.id");
+    expect(fn).toContain("null,'system','assign_delivery'");
+    expect(fn).not.toContain("p_actor_user_id");
+  });
+
+  it("blocks manual assignment from racing an active automatic reservation", () => {
+    expect(FOUNDATION).toContain("private.couranr_assignment_reservation_guard");
+    expect(FOUNDATION).toContain("delivery_reserved_for_automatic_dispatch");
+    expect(FOUNDATION).toContain("automatic_dispatch_reservation_invalid");
+  });
+
+  it("revalidates route without repricing", () => {
+    const dispatch = ENGINE.slice(
+      ENGINE.indexOf("async function dispatchOne"),
+      ENGINE.indexOf("export async function runAutomaticFulfillmentTick")
+    );
+    expect(dispatch).toContain("computeCanonicalGoogleRoute");
+    expect(dispatch).toContain("couranr_record_auto_revalidation");
+    expect(dispatch).toContain("approvedQuoteUntouched: true");
+    expect(dispatch).not.toContain("quoteDelivery(");
+    expect(dispatch).not.toContain("requote");
+  });
+});
+
+describe("money safety", () => {
+  it("reuses the existing capture workflow", () => {
+    expect(ENGINE).toContain("capturePaymentForAutomation");
+    const fulfillment = source("lib/couranr/fulfillment/commands.ts");
+    const wrapper = fulfillment.slice(
+      fulfillment.indexOf("export async function capturePaymentForAutomation"),
+      fulfillment.indexOf("/** Step 4.")
+    );
+    expect(wrapper).toContain("return capturePayment({");
+    expect(wrapper).toContain("automation: true");
+  });
+
+  it("system capture supplies no fake Operations actor id", () => {
+    const fulfillment = source("lib/couranr/fulfillment/commands.ts");
+    const capture = fulfillment.slice(
+      fulfillment.indexOf("export async function capturePayment(params"),
+      fulfillment.indexOf("export async function capturePaymentForAutomation")
+    );
+    expect(capture).toContain('params.actor && params.actor.kind === "operations" ? params.actor.userId : null');
+  });
+
+  it("capture uncertainty becomes an exception", () => {
+    expect(ENGINE).toContain("payment_capture_requires_reconciliation");
+    expect(ENGINE).toContain("providerOutcomeUnknown");
+    expect(ENGINE).toContain("releaseReservation");
+  });
+});
+
+describe("Operations is exception-first", () => {
+  it("filters real work in SQL before pagination", () => {
+    expect(CORRECTION).toContain("couranr_operations_queue_candidates");
+    expect(CORRECTION).toContain("couranr_automation_exceptions");
+    expect(CORRECTION).toContain("p.plan_source='automatic'");
+    expect(CORRECTION).toMatch(/limit greatest\(1,least\(coalesce\(p_limit,200\),200\)\)/);
+  });
+
+  it("manual takeover resolves the exception it replaces", () => {
+    expect(CORRECTION).toContain("private.couranr_resolve_manual_plan_exception");
+    expect(CORRECTION).toContain("private.couranr_resolve_manual_dispatch_exception");
+    expect(CORRECTION).toContain("exception_state='resolved'");
+  });
+
+  it("queue and workbench consume plan source and explicit exception truth", () => {
+    const queue = source("app/api/couranr/operations/queue/route.ts");
+    const workbench = source("components/couranr/operations/OperationsDeliveryWorkbench.tsx");
+    expect(queue).toContain("servicePlanSource");
+    expect(queue).toContain("automationExceptionOpen");
+    expect(workbench).toContain('work.lifecycleStage === "automatic_scheduled"');
+    expect(workbench).toContain('work.lifecycleStage === "automation_exception"');
+    expect(workbench).toContain("<AutomaticFulfillmentPanel");
+  });
+});
+
+describe("execution wiring", () => {
+  it("advances from every canonical lifecycle seam that can unblock automation", () => {
+    const hooks = [
+      "app/api/couranr/delivery-requests/[id]/submit/route.ts",
+      "app/api/couranr/operations/delivery-requests/[id]/submit/route.ts",
+      "app/api/couranr/operations/delivery-requests/[id]/accept-as-quoted/route.ts",
+      "app/api/couranr/delivery-requests/[id]/readiness/route.ts",
+      "app/api/couranr/delivery-requests/[id]/reconcile-payment/route.ts",
+      "app/api/couranr/consumer/submit/route.ts",
+      "app/api/couranr/consumer/reconcile-payment/route.ts",
+      "app/api/couranr/pay/[token]/reconcile/route.ts",
+      "app/api/couranr/stripe/webhook/route.ts",
+    ];
+    for (const path of hooks) expect(source(path), path).toContain("advanceAutomaticFulfillment");
+  });
+
+  it("has a secret-authenticated periodic catch-up worker", () => {
+    expect(CRON).toContain("process.env.CRON_SECRET");
+    expect(CRON).toContain('req.headers.get("authorization")');
+    expect(CRON).toContain("runAutomaticFulfillmentTick");
+    expect(CRON).toContain("automation_not_configured");
+    expect(CRON).toContain("{ status: 503 }");
+    expect(CRON).toContain("{ status: 401 }");
+    expect(VERCEL).toContain('"*/5 * * * *"');
+  });
+});
+
+describe("positive controls", () => {
+  it("rejects the unsafe dual-settlement shape", () => {
+    expect(CORRECTION).not.toContain(
+      "(promotional_credit_id is not null and payment_obligation_id is not null)"
+    );
+  });
+
+  it("detects repricing if it is ever added to the worker", () => {
+    expect(ENGINE).not.toContain("quoteDelivery(");
+  });
+
+  it("detects automatic Operations impersonation", () => {
+    const fn = FOUNDATION.slice(
+      FOUNDATION.indexOf("create or replace function public.couranr_commit_automatic_assignment")
+    );
+    expect(fn).not.toContain("'operations','assign_delivery'");
+  });
+});
