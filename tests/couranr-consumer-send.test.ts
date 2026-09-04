@@ -124,7 +124,7 @@ describe("consumer route inventory", () => {
 
 describe("shipment authority is shared, not copied (PRC-005 / §24)", () => {
   it("the consumer lib prices through the canonical shared pipeline only", () => {
-    expect(LIB).toMatch(/from "@\/lib\/couranr\/routing\/googleRoutes"/);
+    expect(LIB).toMatch(/from "@\/lib\/couranr\/routing\/canonicalRoute"/);
     expect(LIB).toMatch(/deriveCanonicalRouteAndQuote\(/);
     expect(LIB).toMatch(/evaluateShipmentPolicy\(/);
     expect(LIB).toMatch(/applyShipmentPolicyToQuote\(/);
