@@ -353,7 +353,7 @@
 .cr-driver-assignment {
   background: var(--couranr-surface);
   border: 1px solid var(--couranr-border);
-  border-radius: var(--couranr-radius-xl);
+  border-radius: var(--couranr-radius-lg);
   padding: var(--couranr-space-5);
   box-shadow: 0 1px 2px rgba(13, 21, 37, 0.04);
 }
@@ -367,7 +367,7 @@
 .cr-driver-status-card__body {
   padding: var(--couranr-space-4);
   border-radius: var(--couranr-radius-lg);
-  background: var(--couranr-surface-subtle);
+  background: var(--couranr-surface-sunken);
   display: flex;
   flex-direction: column;
   gap: var(--couranr-space-2);
@@ -402,7 +402,7 @@
 .cr-driver-route {
   padding: var(--couranr-space-4);
   border-radius: var(--couranr-radius-lg);
-  background: var(--couranr-surface-subtle);
+  background: var(--couranr-surface-sunken);
 }
 
 .cr-driver-route__stop {
@@ -493,7 +493,7 @@
 .cr-driver-note {
   padding: var(--couranr-space-4);
   border-radius: var(--couranr-radius-lg);
-  background: var(--couranr-surface-subtle);
+  background: var(--couranr-surface-sunken);
   color: var(--couranr-text-muted);
   font-size: var(--couranr-text-sm);
   line-height: 1.55;
