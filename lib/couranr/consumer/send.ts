@@ -76,6 +76,7 @@ export const RPC = {
   create: "couranr_create_consumer_delivery_request_draft",
   estimate: "couranr_calculate_consumer_delivery_request_estimate",
   submit: "couranr_submit_consumer_delivery_request",
+  setReadiness: "couranr_set_consumer_pickup_readiness",
   createObligation: "couranr_create_payment_obligation",
 } as const;
 
@@ -765,6 +766,45 @@ export async function refreshConsumerSendQuote(params: {
   if (isConsumerFailure(result)) return result;
 
   return { ok: true, value: await estimateFromRow(result.value) };
+}
+
+/* ------------------------------------------------------------- readiness -- */
+
+/**
+ * Record the guest's EXPLICIT pickup-readiness declaration on the same
+ * canonical readiness_state Business uses (FND-006). This is deliberately
+ * allowed before payment/review: readiness describes the package, not money.
+ * Commercial settlement still gates planning in the lifecycle/SQL planner.
+ *
+ * The guest session is the authority boundary. The SQL re-verifies the
+ * session/request binding and refuses terminal requests, so no browser can
+ * name another request or a target outside the closed ready/not_ready pair.
+ */
+export async function setConsumerPickupReadiness(params: {
+  session: GuestSession;
+  readiness: "ready" | "not_ready";
+}): Promise<ConsumerResult<{ readinessState: string; requestVersion: number }>> {
+  const op = "setConsumerPickupReadiness";
+  if (!params.session.requestId) {
+    return fail({ operation: op, code: "not_found", detail: { reason: "session has no request" } });
+  }
+  if (params.readiness !== "ready" && params.readiness !== "not_ready") {
+    return fail({ operation: op, code: "invalid_input", detail: { readiness: params.readiness } });
+  }
+
+  const r = await callRpc<Record<string, any>>(op, RPC.setReadiness, {
+    p_guest_session_id: params.session.id,
+    p_readiness: params.readiness,
+  });
+  if (isConsumerFailure(r)) return r;
+
+  return {
+    ok: true,
+    value: {
+      readinessState: String(r.value.readiness_state),
+      requestVersion: Number(r.value.version),
+    },
+  };
 }
 
 /* ------------------------------------------------------------ submitting -- */
