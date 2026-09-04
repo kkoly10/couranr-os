@@ -136,11 +136,14 @@ grant execute on function public.couranr_cvm_enforce_author_addressing()
 alter table public.couranr_drivers
   add column if not exists availability_preference text not null default 'available';
 
+-- Backfill only rows whose current idle truth is unavailable. The new column's
+-- default already represents available/on_delivery correctly, and this WHERE
+-- makes the migration safe to re-run without erasing a future
+-- "offline after this delivery" preference on an in-flight driver.
 update public.couranr_drivers
-   set availability_preference = case
-         when availability_state = 'unavailable' then 'unavailable'
-         else 'available'
-       end;
+   set availability_preference = 'unavailable'
+ where availability_state = 'unavailable'
+   and availability_preference is distinct from 'unavailable';
 
 alter table public.couranr_drivers
   drop constraint if exists couranr_drv_availability_preference_chk;
