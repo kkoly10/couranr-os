@@ -33,8 +33,9 @@ import { isApiFailure, loadOperationsInbox, type InboxView } from "./client";
  * excluded from participant queries, exports, realtime, and notifications."
  * Operations is the one viewer that MAY read an internal note — and even here
  * AI drafts are excluded, because a draft is unsent. Both rules live in the
- * database: no role holds SELECT on the message table, and the reader function
- * filters by the viewer's own participant row.
+ * database: no role holds SELECT on the message table. D2 gives this surface an
+ * explicit admin-verified Operations reader rather than inventing a second live
+ * participant row for an admin who may also be the merchant owner.
  *
  * REQUIRED STATES: "Unread; urgent; active delivery; waiting on party; AI
  * draft; escalated; closed." Two are not rendered and are not faked — "AI
