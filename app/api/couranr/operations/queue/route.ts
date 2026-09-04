@@ -129,11 +129,11 @@ export async function GET(req: NextRequest) {
      * "that is everything", and the row an operator never sees is the one that
      * is oldest and most overdue.
      */
-    total: Math.min(result.value.total, entries.length),
+    total: result.value.total,
     /*
      * Compares against the WORK entries only. Recently-scheduled rows are
      * folded in on top of the window and are not part of what was truncated.
      */
-    truncated: result.value.total > result.value.entries.length,
+    truncated: result.value.total > entries.length,
   });
 }
