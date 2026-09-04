@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { assertServerOnly } from "@/lib/couranr/serverOnly";
+import { claimPaidApiCall } from "@/lib/couranr/providers/paidApiGuard";
 import {
   classifyDatabaseError,
   logServerFailure,
@@ -1034,6 +1035,11 @@ export async function autocompleteConsumerPlaces(
   const apiKey = process.env.GOOGLE_MAPS_SERVER_API_KEY;
   if (!apiKey) {
     fail({ operation: op, code: "internal", detail: { reason: "places not configured" } });
+    return { ok: true, value: { suggestions: [] } };
+  }
+
+  const spend = await claimPaidApiCall("google_places_autocomplete", fetchImpl);
+  if (!spend.allowed) {
     return { ok: true, value: { suggestions: [] } };
   }
 
