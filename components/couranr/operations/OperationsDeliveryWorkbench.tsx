@@ -251,7 +251,7 @@ function CurrentAction({
       onChanged={onLifecycleChanged}
     />
   ) : (
-    <Alert tone="neutral" title="No further Operations action">
+    <Alert tone="info" title="No further Operations action">
       This request is closed, declined or cancelled.
     </Alert>
   );
