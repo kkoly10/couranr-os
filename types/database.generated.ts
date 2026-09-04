@@ -5985,6 +5985,40 @@ export type Database = {
           p_code_digest: string
           p_code_kind: string
           p_delivery_id: string
+          p_ttl_minutes: number
+        }
+        Returns: {
+          code_digest: string
+          code_kind: string
+          code_state: string
+          consumed_at: string | null
+          created_at: string
+          delivery_id: string
+          expires_at: string
+          failed_attempts: number
+          generation: number
+          id: string
+          issued_at: string
+          issued_by: string
+          last_attempt_at: string | null
+          locked_at: string | null
+          superseded_at: string | null
+          updated_at: string
+          version: number
+        }
+        SetofOptions: {
+          from: "*"
+          to: "couranr_handoff_codes"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      couranr_issue_handoff_code_cas: {
+        Args: {
+          p_actor_user_id: string
+          p_code_digest: string
+          p_code_kind: string
+          p_delivery_id: string
           p_expected_generation: number
           p_ttl_minutes: number
         }
