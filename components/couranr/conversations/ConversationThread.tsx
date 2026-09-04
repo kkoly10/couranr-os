@@ -18,8 +18,10 @@ import {
   isApiFailure,
   markRead,
   newMessageKey,
+  readOperationsThread,
   readThread,
   sendMessage,
+  sendOperationsMessage,
   type ThreadView,
 } from "./client";
 import { SUPPORT_TARGET_MINUTES, type Visibility } from "@/lib/couranr/conversations/states";
@@ -70,9 +72,11 @@ const DUE_TONE: Record<string, "neutral" | "info" | "warning" | "danger"> = {
 export function ConversationThread({
   conversationId,
   onChanged,
+  context = "participant",
 }: {
   conversationId: string;
   onChanged?: () => void;
+  context?: "participant" | "operations";
 }) {
   const [state, setState] = React.useState<
     { phase: "loading" } | { phase: "failed"; error: string } | { phase: "ready"; view: ThreadView }
@@ -88,7 +92,10 @@ export function ConversationThread({
 
   const load = React.useCallback(async () => {
     setState({ phase: "loading" });
-    const r = await readThread(conversationId);
+    const r =
+      context === "operations"
+        ? await readOperationsThread(conversationId)
+        : await readThread(conversationId);
     if (isApiFailure(r)) {
       setState({ phase: "failed", error: r.error });
       return;
@@ -98,8 +105,8 @@ export function ConversationThread({
     // Marking read is a side effect of having seen the thread, and its failure
     // must not break rendering it. "Unread" being briefly stale is a smaller
     // problem than an unreadable thread.
-    void markRead(conversationId);
-  }, [conversationId]);
+    if (context === "participant") void markRead(conversationId);
+  }, [conversationId, context]);
 
   React.useEffect(() => {
     void load();
@@ -111,12 +118,20 @@ export function ConversationThread({
     setSending(true);
     setSendError(null);
 
-    const r = await sendMessage({
-      conversationId,
-      body,
-      idempotencyKey: messageKey.current,
-      visibility,
-    });
+    const r =
+      context === "operations"
+        ? await sendOperationsMessage({
+            conversationId,
+            body,
+            idempotencyKey: messageKey.current,
+            visibility,
+          })
+        : await sendMessage({
+            conversationId,
+            body,
+            idempotencyKey: messageKey.current,
+            visibility,
+          });
 
     setSending(false);
     if (isApiFailure(r)) {
