@@ -81,4 +81,14 @@ describe("Operations-assisted business delivery entry", () => {
     expect(review).toContain("Confirm service & request business approval");
     expect(review).toContain("it does not approve the price for the business");
   });
+
+  it("shows the Operations-to-Business payer handoff instead of impersonating approval", () => {
+    const detail = read("components/couranr/requests/DeliveryRequestDetail.tsx");
+    expect(detail).toContain("Business approval required");
+    expect(detail).toContain("Open Business approval");
+    expect(detail).toContain('/app/business/deliveries/');
+    expect(detail).toContain('request.source === "operations"');
+    expect(detail).toContain('request.requestState === "awaiting_quote_acceptance"');
+    expect(detail).toContain('request.requestState === "quote_revision_required"');
+  });
 });
