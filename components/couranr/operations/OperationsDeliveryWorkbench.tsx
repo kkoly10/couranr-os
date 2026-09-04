@@ -16,6 +16,7 @@ import {
 import { ErrorState } from "@/components/couranr/states";
 import { ReviewOutcomeActions } from "@/components/couranr/requests/ReviewOutcomeActions";
 import { OperationsPlanPanel } from "@/components/couranr/fulfillment/OperationsPlanPanel";
+import { AutomaticFulfillmentPanel } from "@/components/couranr/fulfillment/AutomaticFulfillmentPanel";
 import { OperationsPaymentRecoveryPanel } from "@/components/couranr/fulfillment/OperationsPaymentRecoveryPanel";
 import { OperationsAssignmentPanel } from "@/components/couranr/dispatch/OperationsAssignmentPanel";
 import { OperationsExecutionPanel } from "@/components/couranr/dispatch/OperationsExecutionPanel";
@@ -51,6 +52,9 @@ export function OperationsDeliveryWorkbench({
     paymentState: fulfillment?.payment?.paymentState ?? null,
     promotionalCreditApplied: Boolean(fulfillment?.promotionalCredit),
     servicePlanConfirmed: Boolean(fulfillment?.servicePlan),
+    servicePlanSource: fulfillment?.servicePlan?.planSource ?? null,
+    automationExceptionOpen: Boolean(fulfillment?.automationException),
+    automationExceptionStage: fulfillment?.automationException?.stage ?? null,
     canonicalDeliveryExists: Boolean(fulfillment?.delivery),
     assignmentActive: Boolean(fulfillment?.delivery?.driverAssigned),
     fulfillmentState: fulfillment?.delivery?.fulfillmentState ?? null,
@@ -151,6 +155,47 @@ function CurrentAction({
   onRequestUpdated: (next: DeliveryRequestView) => void;
   onLifecycleChanged: () => void;
 }) {
+  if (work.lifecycleStage === "automatic_scheduled") {
+    return <AutomaticFulfillmentPanel fulfillment={fulfillment} />;
+  }
+
+  if (work.lifecycleStage === "automation_exception") {
+    const stage = fulfillment?.automationException?.stage ?? null;
+    return (
+      <Stack gap={4}>
+        <AutomaticFulfillmentPanel fulfillment={fulfillment} />
+        {stage === "planning" ? (
+          <OperationsPlanPanel
+            request={request}
+            fulfillment={fulfillment}
+            onChanged={onLifecycleChanged}
+          />
+        ) : null}
+        {stage === "commercial" ? (
+          <OperationsPaymentRecoveryPanel
+            request={request}
+            fulfillment={fulfillment}
+            onChanged={onLifecycleChanged}
+          />
+        ) : null}
+        {stage === "dispatch" ? (
+          fulfillment?.delivery ? (
+            <OperationsAssignmentPanel
+              deliveryId={fulfillment.delivery.id}
+              onChanged={onLifecycleChanged}
+            />
+          ) : (
+            <OperationsPlanPanel
+              request={request}
+              fulfillment={fulfillment}
+              onChanged={onLifecycleChanged}
+            />
+          )
+        ) : null}
+      </Stack>
+    );
+  }
+
   if (work.phase === "review") {
     return <ReviewOutcomeActions request={request} onUpdated={onRequestUpdated} />;
   }
@@ -267,6 +312,11 @@ function workbenchCopy(
         title: "Review this delivery",
         description: "Decide whether Couranr can serve it as quoted, needs a revised quote, or cannot confirm service.",
       };
+    case "automation_exception":
+      return {
+        title: "Automation needs Operations",
+        description: "Couranr stopped safely and recorded the exact exception. Resolve only that exception; normal planning remains machine-owned.",
+      };
     case "awaiting_payment_authorization":
       return {
         title: "Secure commercial approval",
@@ -305,6 +355,11 @@ function workbenchCopy(
       return {
         title: "Finish scheduling",
         description: "Payment is already captured. Create the canonical delivery without taking money again.",
+      };
+    case "automatic_scheduled":
+      return {
+        title: "Scheduled automatically",
+        description: "Couranr owns the pickup window and late-bound dispatch. No Operations action is required unless an exception opens.",
       };
     case "captured_scheduled":
       return {
