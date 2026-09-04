@@ -292,6 +292,17 @@ export type QueueEntry = {
     scheduledPickupStart: string;
     scheduledPickupEnd: string;
     timezone: string;
+    planSource: "operations" | "automatic";
+    plannerVersion: string | null;
+    dispatchNotBefore: string | null;
+    dispatchDeadline: string | null;
+    expectedServiceEnd: string | null;
+  } | null;
+  automationException: {
+    stage: "review" | "planning" | "dispatch" | "commercial";
+    reason: string;
+    attempts: number;
+    lastSeenAt: string;
   } | null;
   delivery: {
     id: string;
@@ -300,6 +311,11 @@ export type QueueEntry = {
     scheduledPickupStart: string;
     scheduledPickupEnd: string;
     timezone: string;
+    planSource: "operations" | "automatic";
+    plannerVersion: string | null;
+    dispatchNotBefore: string | null;
+    dispatchDeadline: string | null;
+    expectedServiceEnd: string | null;
     driverAssigned: boolean;
   } | null;
 };
