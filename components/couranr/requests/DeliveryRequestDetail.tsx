@@ -463,6 +463,46 @@ export function DeliveryRequestDetail({
         />
       ) : null}
 
+      {!isOperations && fulfillment?.servicePlan ? (
+        <Card>
+          <CardHeader
+            title="Pickup schedule"
+            description={
+              fulfillment.servicePlan.planSource === "automatic"
+                ? "Couranr scheduled this delivery automatically from your request and current capacity."
+                : "Couranr Operations confirmed this pickup window."
+            }
+          />
+          <Grid columns={3}>
+            <Detail
+              label="Pickup start"
+              value={new Date(fulfillment.servicePlan.scheduledPickupStart).toLocaleString()}
+            />
+            <Detail
+              label="Pickup end"
+              value={new Date(fulfillment.servicePlan.scheduledPickupEnd).toLocaleString()}
+            />
+            <Detail
+              label="Status"
+              value={
+                fulfillment.delivery?.driverAssigned
+                  ? "Driver assigned"
+                  : fulfillment.servicePlan.planSource === "automatic"
+                    ? "Scheduled — Couranr will dispatch automatically"
+                    : "Scheduled"
+              }
+            />
+          </Grid>
+          {fulfillment.servicePlan.planSource === "automatic" &&
+          fulfillment.servicePlan.expectedServiceEnd ? (
+            <Text size="xs" muted>
+              Expected service window ends around{" "}
+              {new Date(fulfillment.servicePlan.expectedServiceEnd).toLocaleString()}.
+            </Text>
+          ) : null}
+        </Card>
+      ) : null}
+
       {/* MER-007 execution. Only once a canonical delivery exists — before
           that there is no driver, no state to follow and no proof.
 
