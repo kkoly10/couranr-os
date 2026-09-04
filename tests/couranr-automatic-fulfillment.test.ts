@@ -225,7 +225,7 @@ describe("execution wiring", () => {
     expect(route).toContain("advanceAutomaticFulfillment");
     expect(adapter).toContain("setPickupReadiness");
     expect(flow).toContain('mode === "live" && readiness === null');
-    expect(flow).not.toContain("readiness === null ? "ready"");
+    expect(flow).not.toContain('readiness === null ? "ready"');
   });
 });
 
