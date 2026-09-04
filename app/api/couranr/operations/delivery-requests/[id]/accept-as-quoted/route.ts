@@ -15,11 +15,12 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
  * POST — Couranr confirms the request at its stored quote (REV-001).
  *
  * The route accepts NO amount and NO target state. The price comes off the
- * stored request inside the SQL command, and the command name alone selects
- * where the request lands: `confirmed` for a merchant-paid request whose
- * submission recorded the merchant approving this quote, and
- * `awaiting_quote_acceptance` for a customer-paid one, because a merchant
- * cannot approve a price on the customer's behalf.
+ * stored request inside the SQL command. A merchant self-service request whose
+ * submission recorded payer approval may become `confirmed`. A truthful
+ * Operations-assisted merchant request has acknowledgment=false, so Couranr
+ * may confirm service while leaving it at `awaiting_quote_acceptance` for the
+ * real Business payer. Customer-paid requests likewise cannot be approved by
+ * Operations.
  *
  * Confirming authorizes no payment, captures no payment, and creates no order
  * and no delivery.
