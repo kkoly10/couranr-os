@@ -150,6 +150,10 @@ describe("server-only modules are unreachable from client code", () => {
       // The single accessor for that secret. There is no fallback in it, so a
       // client import would not "degrade" — it would ship the key itself.
       "lib/couranr/driver/handoffSecret.ts",
+      // D1. Self-scoped Driver profile reads and the service-role availability
+      // command wrapper. Browser components call it only through canonical API
+      // routes; importing it into a client bundle would bypass that boundary.
+      "lib/couranr/driver/profile.ts",
       // Mints signed upload and read URLs, and holds the storage read that is
       // the authority at finalization.
       "lib/couranr/driver/proof.ts",
@@ -284,6 +288,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/delivery-requests/[id]/submit/route.ts",
       "app/api/couranr/delivery-requests/route.ts",
       "app/api/couranr/driver/assignment/route.ts",
+      "app/api/couranr/driver/availability/route.ts",
       "app/api/couranr/driver/deliveries/[id]/arrive-at-dropoff/route.ts",
       "app/api/couranr/driver/deliveries/[id]/arrive-at-pickup/route.ts",
       "app/api/couranr/driver/deliveries/[id]/complete-direct-handoff/route.ts",
@@ -297,6 +302,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/driver/deliveries/[id]/start-pickup-route/route.ts",
       "app/api/couranr/driver/deliveries/[id]/verify-pickup-code/route.ts",
       "app/api/couranr/driver/deliveries/[id]/verify-recipient-code/route.ts",
+      "app/api/couranr/driver/profile/route.ts",
       "app/api/couranr/driver/proof/[proofId]/url/route.ts",
       "app/api/couranr/driver/proof/finalize/route.ts",
       "app/api/couranr/help/[token]/route.ts",
