@@ -49,4 +49,36 @@ describe("Operations-assisted business delivery entry", () => {
     expect(migration).toContain("new.actor_type := 'operations'");
     expect(migration).toContain("'submit_delivery_request'");
   });
+
+
+  it("does not confuse a dual-role admin/owner with the Operations surface", () => {
+    const actor = read("lib/couranr/requests/actor.ts");
+    const detail = read("components/couranr/requests/DeliveryRequestDetail.tsx");
+    const opsPage = read("app/(couranr)/operations/deliveries/[id]/page.tsx");
+    const businessPage = read("app/(couranr)/app/business/deliveries/[id]/page.tsx");
+
+    expect(actor).toContain("resolve the membership first for an explicit business scope");
+    expect(actor.indexOf("if (membership)")).toBeLessThan(
+      actor.indexOf("Compatibility fallback for Operations callers")
+    );
+    expect(detail).toContain('surface: "operations" | "business"');
+    expect(detail).toContain('if (surface === "operations")');
+    expect(opsPage).toContain('surface="operations"');
+    expect(businessPage).toContain('surface="business"');
+  });
+
+  it("hands an Operations-entered merchant quote to the real Business payer", () => {
+    const migration = read(
+      "supabase/migrations/20260904051500_operations_assisted_payer_handoff.sql"
+    );
+    const review = read("components/couranr/requests/ReviewOutcomeActions.tsx");
+
+    expect(migration).toContain("v_req.source='operations'");
+    expect(migration).toContain("v_submit_actor='operations'");
+    expect(migration).toContain("v_target:='awaiting_quote_acceptance'");
+    expect(migration).toContain("private.couranr_quote_version_is_expired(v_quote)");
+    expect(migration).toContain("payerApprovalPending");
+    expect(review).toContain("Confirm service & request business approval");
+    expect(review).toContain("it does not approve the price for the business");
+  });
 });
