@@ -247,9 +247,11 @@ function MobileQueueCard({
 }) {
   const r = entry.request;
   const window_ = entry.delivery ?? entry.servicePlan;
-  const amount = entry.delivery
-    ? entry.delivery.capturedAmountCents
-    : entry.payment?.amountCents ?? r.quote.deliverySubtotalCents;
+  const amount = entry.promotionalCredit
+    ? entry.promotionalCredit.standardQuoteCents
+    : entry.delivery
+      ? entry.delivery.capturedAmountCents
+      : entry.payment?.amountCents ?? r.quote.deliverySubtotalCents;
 
   return (
     <article
@@ -288,19 +290,23 @@ function MobileQueueCard({
         <MobileFact
           label="Payment"
           value={
-            entry.payment
-              ? PAYMENT_LABELS[entry.payment.paymentState] ?? entry.payment.paymentState
-              : "Not started"
+            entry.promotionalCredit
+              ? "Couranr pilot credit"
+              : entry.payment
+                ? PAYMENT_LABELS[entry.payment.paymentState] ?? entry.payment.paymentState
+                : "Not started"
           }
         />
         <MobileFact
           label="Payer"
           value={
-            entry.payment
-              ? entry.payment.payerType === "customer"
-                ? "Customer"
-                : "Merchant"
-              : "—"
+            entry.promotionalCredit
+              ? "Couranr"
+              : entry.payment
+                ? entry.payment.payerType === "customer"
+                  ? "Customer"
+                  : "Merchant"
+                : "—"
           }
         />
         <MobileFact
@@ -335,7 +341,9 @@ function MobileQueueCard({
                 : stage === "ready_for_planning"
                   ? "Plan delivery"
                   : stage === "service_plan_confirmed"
-                    ? "Capture payment"
+                    ? entry.promotionalCredit
+                      ? "Schedule credited delivery"
+                      : "Capture payment"
                     : "Open delivery"}
           </Link>
         )}
@@ -378,12 +386,16 @@ function DesktopQueueRow({
   const r = entry.request;
   const window_ = entry.delivery ?? entry.servicePlan;
   const windowIsBooked = Boolean(entry.delivery);
-  const amount = entry.delivery
-    ? entry.delivery.capturedAmountCents
-    : entry.payment?.amountCents ?? r.quote.deliverySubtotalCents;
-  const paymentLabel = entry.payment
-    ? PAYMENT_LABELS[entry.payment.paymentState] ?? entry.payment.paymentState
-    : "Not started";
+  const amount = entry.promotionalCredit
+    ? entry.promotionalCredit.standardQuoteCents
+    : entry.delivery
+      ? entry.delivery.capturedAmountCents
+      : entry.payment?.amountCents ?? r.quote.deliverySubtotalCents;
+  const paymentLabel = entry.promotionalCredit
+    ? "Couranr pilot credit"
+    : entry.payment
+      ? PAYMENT_LABELS[entry.payment.paymentState] ?? entry.payment.paymentState
+      : "Not started";
 
   return (
     <article
@@ -416,11 +428,15 @@ function DesktopQueueRow({
       <div className="cr-ops-worklist__cell">
         <Text size="sm" strong>{paymentLabel}</Text>
         <Text size="xs" muted>
-          {entry.payment
-            ? entry.payment.payerType === "customer"
-              ? "Customer pays"
-              : "Merchant pays"
-            : "No payment yet"}
+          {entry.promotionalCredit
+            ? `${formatCents(entry.promotionalCredit.amountPaidCents)} paid · ${formatCents(
+                entry.promotionalCredit.promotionalCreditCents
+              )} credit`
+            : entry.payment
+              ? entry.payment.payerType === "customer"
+                ? "Customer pays"
+                : "Merchant pays"
+              : "No payment yet"}
         </Text>
       </div>
 
@@ -461,7 +477,9 @@ function DesktopQueueRow({
                 : stage === "ready_for_planning"
                   ? "Plan delivery"
                   : stage === "service_plan_confirmed"
-                    ? "Capture payment"
+                    ? entry.promotionalCredit
+                      ? "Schedule credited delivery"
+                      : "Capture payment"
                     : "Open delivery"}
           </Link>
         )}
