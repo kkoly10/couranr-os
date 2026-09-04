@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isActorDenied, resolveRequestActor } from "@/lib/couranr/requests/actor";
 import {
+  getActiveAssignmentForDelivery,
   getCanonicalDelivery,
+  getOpenAutomationException,
   getPromotionalCredit,
   getServicePlan,
   isFulfillmentFailure,
@@ -81,6 +83,14 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
   const delivery = await getCanonicalDelivery({ requestId: params.id, businessAccountId });
   if (isFulfillmentFailure(delivery)) return failureResponse(delivery);
 
+  const assignment = delivery.value.delivery
+    ? await getActiveAssignmentForDelivery({ deliveryId: String(delivery.value.delivery.id) })
+    : { ok: true as const, value: { assignment: null } };
+  if (isFulfillmentFailure(assignment)) return failureResponse(assignment);
+
+  const automationException = await getOpenAutomationException({ requestId: params.id });
+  if (isFulfillmentFailure(automationException)) return failureResponse(automationException);
+
   return NextResponse.json({
     readinessState: loaded.value.request.readiness_state,
     requestState: loaded.value.request.request_state,
@@ -133,6 +143,18 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
           scheduledPickupEnd: plan.value.plan.scheduled_pickup_end,
           timezone: plan.value.plan.timezone,
           vehicleRequirement: plan.value.plan.vehicle_requirement,
+          planSource: plan.value.plan.plan_source,
+          plannerVersion: plan.value.plan.planner_version ?? null,
+          marketKey: plan.value.plan.market_key ?? null,
+          dispatchNotBefore: plan.value.plan.dispatch_not_before ?? null,
+          dispatchDeadline: plan.value.plan.dispatch_deadline ?? null,
+          expectedServiceEnd: plan.value.plan.expected_service_end ?? null,
+          lastRevalidatedAt: plan.value.plan.last_revalidated_at ?? null,
+          revalidatedLoadedMiles: plan.value.plan.revalidated_loaded_miles ?? null,
+          revalidatedRouteDurationSeconds:
+            plan.value.plan.revalidated_route_duration_seconds ?? null,
+          revalidatedTrafficDelaySeconds:
+            plan.value.plan.revalidated_traffic_delay_seconds ?? null,
         }
       : null,
     delivery: delivery.value.delivery
@@ -147,9 +169,40 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
           scheduledPickupStart: delivery.value.delivery.scheduled_pickup_start,
           scheduledPickupEnd: delivery.value.delivery.scheduled_pickup_end,
           timezone: delivery.value.delivery.timezone,
-          // No driver is assigned in this slice, and saying so explicitly is
-          // better than an absent field a screen might read as "unknown".
-          driverAssigned: false,
+          planSource: delivery.value.delivery.plan_source,
+          plannerVersion: delivery.value.delivery.planner_version ?? null,
+          marketKey: delivery.value.delivery.market_key ?? null,
+          dispatchNotBefore: delivery.value.delivery.dispatch_not_before ?? null,
+          dispatchDeadline: delivery.value.delivery.dispatch_deadline ?? null,
+          expectedServiceEnd: delivery.value.delivery.expected_service_end ?? null,
+          lastRevalidatedAt: delivery.value.delivery.last_revalidated_at ?? null,
+          revalidatedLoadedMiles: delivery.value.delivery.revalidated_loaded_miles ?? null,
+          revalidatedRouteDurationSeconds:
+            delivery.value.delivery.revalidated_route_duration_seconds ?? null,
+          revalidatedTrafficDelaySeconds:
+            delivery.value.delivery.revalidated_traffic_delay_seconds ?? null,
+          driverAssigned: Boolean(assignment.value.assignment),
+          assignment: assignment.value.assignment
+            ? {
+                id: assignment.value.assignment.id,
+                driverId: assignment.value.assignment.driver_id,
+                vehicleId: assignment.value.assignment.vehicle_id,
+                assignmentSource: assignment.value.assignment.assignment_source,
+                assignedAt: assignment.value.assignment.assigned_at,
+                version: assignment.value.assignment.version,
+              }
+            : null,
+        }
+      : null,
+    automationException: automationException.value.exception
+      ? {
+          id: automationException.value.exception.id,
+          stage: automationException.value.exception.exception_stage,
+          reason: automationException.value.exception.reason,
+          detail: automationException.value.exception.detail,
+          attempts: automationException.value.exception.attempts,
+          firstSeenAt: automationException.value.exception.first_seen_at,
+          lastSeenAt: automationException.value.exception.last_seen_at,
         }
       : null,
   });
