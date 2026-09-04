@@ -15,7 +15,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
           { label: "Delivery detail" },
         ]}
       />
-      <DeliveryRequestDetail id={params.id} />
+      <DeliveryRequestDetail id={params.id} surface="business" />
     </>
   );
 }
