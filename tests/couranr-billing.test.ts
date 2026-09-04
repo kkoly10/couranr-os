@@ -266,23 +266,22 @@ describe("the gaps are cited, not editorial", () => {
     }
   });
 
-  it("the receipt gap is UNDECIDED and cites TAX-001", () => {
-    // The distinction matters: an unbuilt thing is unblocked by an engineer,
-    // an undecided one only by the owner. Getting this wrong sends the
-    // problem to the wrong person.
+  it("the receipt gap is UNBUILT and cites the decided TAX-001 authority", () => {
     const receipt = BILLING_GAPS.find((g) => g.id === "downloadable_receipt")!;
-    expect(receipt.kind).toBe("undecided");
-    expect(receipt.blockedBy).toContain("TAX-001");
+    expect(receipt.kind).toBe("unbuilt");
+    expect(receipt.blockedBy).toContain("TAX-001 is decided");
+    expect(receipt.blockedBy).toContain("Virginia");
+    expect(receipt.blockedBy).toContain("D.C.");
   });
 
-  it("TAX-001 really is unresolved and really does block MER-016", () => {
-    // Read from the registry itself, so this test fails the day the decision
-    // lands rather than leaving the screen apologising for nothing.
+  it("TAX-001 is decided and keeps MER-016 in its affected surface", () => {
     const registry = JSON.parse(readFileSync(path.join(ROOT, "02_DECISION_REGISTRY.json"), "utf8"));
     const tax = registry.decisions.find((d: any) => d.id === "TAX-001");
     expect(tax).toBeTruthy();
-    expect(tax.status).toBe("unresolved");
-    expect(tax.blocked_screen_ids).toContain("MER-016");
+    expect(tax.status).toBe("decided");
+    expect(tax.affected_screen_ids).toContain("MER-016");
+    expect(tax.value.virginia.automatic_tax_rate_percent).toBe(0);
+    expect(tax.value.district_of_columbia.rate_schedule_percent).toHaveLength(2);
   });
 
   it("the refund gap matches the payment vocabulary's own unreachable set", () => {
