@@ -47,13 +47,13 @@ vi.mock("@/lib/supabaseAdmin", () => {
   return { supabaseAdmin: { from: (t: string) => chain(t), rpc: h.rpc } };
 });
 
-vi.mock("@/lib/couranr/routing/googleRoutes", async (importOriginal) => {
+vi.mock("@/lib/couranr/routing/canonicalRoute", async (importOriginal) => {
   const real = (await importOriginal()) as Record<string, unknown>;
   return { ...real, deriveCanonicalRouteAndQuote: h.derive };
 });
 
 import { refreshConsumerSendQuote, RPC, isConsumerFailure } from "@/lib/couranr/consumer/send";
-import { CanonicalAddressResolutionError } from "@/lib/couranr/routing/googleRoutes";
+import { CanonicalAddressResolutionError } from "@/lib/couranr/routing/canonicalRoute";
 
 const SESSION = {
   id: "5e550000-0000-4000-8000-0000000000aa",
@@ -95,7 +95,7 @@ function routed(totalCents = 1399) {
     dropoffAddress: { ...DROPOFF, resolvedAt: "now" },
     route: {
       serviceabilityOutcome: "automatic",
-      distanceSource: "google_routes_v2",
+      distanceSource: "mapbox_directions_v5",
       distanceMeters: 8046,
       loadedMiles: 5,
       durationSeconds: 900,
