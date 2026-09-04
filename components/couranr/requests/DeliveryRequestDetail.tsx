@@ -144,7 +144,13 @@ function addressLines(a: any): string[] {
   ].filter(Boolean);
 }
 
-export function DeliveryRequestDetail({ id }: { id: string }) {
+export function DeliveryRequestDetail({
+  id,
+  surface,
+}: {
+  id: string;
+  surface: "operations" | "business";
+}) {
   const [request, setRequest] = React.useState<DeliveryRequestView | null>(null);
   const [events, setEvents] = React.useState<any[]>([]);
   const [intake, setIntake] = React.useState<IntakeSessionView | null>(null);
@@ -202,26 +208,58 @@ export function DeliveryRequestDetail({ id }: { id: string }) {
     let cancelled = false;
 
     (async () => {
-      // The route re-scopes by business account, so the client has to say which
-      // one it is acting as. The server still verifies membership.
+      /*
+       * The route already knows which authority surface invoked this component;
+       * do not infer it from whether the signed-in person ALSO belongs to a
+       * Business workspace. Pilot operators can legitimately be Business
+       * owners, and that old heuristic hid every Operations decision control.
+       */
+      if (surface === "operations") {
+        const r = await fetchDeliveryRequest({ id });
+        if (cancelled) return;
+        if (isApiFailure(r)) {
+          setFailure(r);
+          setLoading(false);
+          return;
+        }
+        setFailure(null);
+        setRequest(r.value.request);
+        setEvents(r.value.events ?? []);
+        setIntake(r.value.intake ?? null);
+        setIsOperations(true);
+        setViewerBusinessAccountId(null);
+        void reloadFulfillment(null);
+        setLoading(false);
+        return;
+      }
+
+      // Business surface: resolve an explicit tenant membership and never fall
+      // back to the unscoped Operations read just because this user is dual-role.
       const accounts = await fetchMyBusinessAccounts();
-      const ids = isApiFailure(accounts)
-        ? []
-        : accounts.value.businessAccounts.map((a) => a.businessAccountId);
+      if (cancelled) return;
+      if (isApiFailure(accounts)) {
+        setFailure(accounts);
+        setLoading(false);
+        return;
+      }
 
-      // An Operations user has no membership rows; it reads with no scope.
-      const attempts: Array<string | undefined> = ids.length > 0 ? ids : [undefined];
+      const ids = accounts.value.businessAccounts.map((a) => a.businessAccountId);
+      if (ids.length === 0) {
+        setLoading(false);
+        return;
+      }
 
-      for (const businessAccountId of attempts) {
+      for (const businessAccountId of ids) {
         const r = await fetchDeliveryRequest({ id, businessAccountId });
         if (cancelled) return;
         if (!isApiFailure(r)) {
+          setFailure(null);
           setRequest(r.value.request);
           setEvents(r.value.events ?? []);
           setIntake(r.value.intake ?? null);
-          setIsOperations(businessAccountId === undefined);
-          setViewerBusinessAccountId(businessAccountId ?? null);
-          void reloadFulfillment(businessAccountId ?? null);
+          setIsOperations(false);
+          setViewerBusinessAccountId(businessAccountId);
+          void reloadFulfillment(businessAccountId);
           setLoading(false);
           return;
         }
@@ -239,7 +277,7 @@ export function DeliveryRequestDetail({ id }: { id: string }) {
     return () => {
       cancelled = true;
     };
-  }, [id, reloadFulfillment]);
+  }, [id, reloadFulfillment, surface]);
 
   if (loading) {
     return (
