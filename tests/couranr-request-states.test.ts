@@ -8,6 +8,7 @@ import {
   QUEUE_STATES,
   READINESS_STATES,
   REQUEST_COMMANDS,
+  REQUEST_EVENT_COMMANDS,
   REQUEST_STATES,
   REVIEW_OUTCOME_COMMANDS,
   RETIRED_DECLINE_REASONS,
@@ -72,9 +73,10 @@ function checkConstraintLiterals(sql: string, constraint: string): string[] | nu
 describe("delivery-request state machine", () => {
   /**
    * The vocabularies here and the database CHECK constraints are two
-   * enforcement points for the same rule. If they drift, the application
-   * happily builds a payload the database then rejects at runtime — so they
-   * are compared directly.
+   * enforcement points for the same rule. Request states/readiness/review map
+   * directly. The delivery-request EVENT constraint uses the wider
+   * REQUEST_EVENT_COMMANDS vocabulary because system automation writes audit
+   * events that are not actor-invocable request commands.
    */
   describe("agrees with the database CHECK constraints", () => {
     const cases: Array<[string, readonly string[]]> = [
@@ -82,7 +84,7 @@ describe("delivery-request state machine", () => {
       ["couranr_dr_readiness_state_chk", READINESS_STATES],
       ["couranr_dr_review_state_chk", REVIEW_STATES],
       ["couranr_dr_service_area_state_chk", SERVICE_AREA_REVIEW_STATES],
-      ["couranr_dre_command_chk", REQUEST_COMMANDS],
+      ["couranr_dre_command_chk", REQUEST_EVENT_COMMANDS],
     ];
 
     for (const [constraint, values] of cases) {
