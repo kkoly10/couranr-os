@@ -119,6 +119,16 @@ describe("late-bound dispatch", () => {
     expect(dispatch).not.toContain("quoteDelivery(");
     expect(dispatch).not.toContain("requote");
   });
+
+  it("short-circuits completed or assigned deliveries before reserving again", () => {
+    const dispatch = ENGINE.slice(
+      ENGINE.indexOf("async function dispatchOne"),
+      ENGINE.indexOf("export async function runAutomaticFulfillmentTick")
+    );
+    expect(dispatch).toContain("loadExistingDelivery");
+    expect(dispatch).toContain('existingDelivery.fulfillment_state !== "scheduled"');
+    expect(dispatch).toContain('releaseReservation(reservationId, "delivery_already_assigned")');
+  });
 });
 
 describe("money safety", () => {
@@ -184,6 +194,7 @@ describe("execution wiring", () => {
       "app/api/couranr/delivery-requests/[id]/reconcile-payment/route.ts",
       "app/api/couranr/consumer/submit/route.ts",
       "app/api/couranr/consumer/reconcile-payment/route.ts",
+      "app/api/couranr/consumer/readiness/route.ts",
       "app/api/couranr/pay/[token]/reconcile/route.ts",
       "app/api/couranr/stripe/webhook/route.ts",
     ];
@@ -198,6 +209,23 @@ describe("execution wiring", () => {
     expect(CRON).toContain("{ status: 503 }");
     expect(CRON).toContain("{ status: 401 }");
     expect(VERCEL).toContain('"*/5 * * * *"');
+  });
+
+  it("consumer readiness writes the shared canonical readiness state", () => {
+    const migration = source(
+      "supabase/migrations/20260904155724_couranr_consumer_readiness_parity.sql"
+    ).toLowerCase();
+    const route = source("app/api/couranr/consumer/readiness/route.ts");
+    const adapter = source("lib/couranr/sameday/liveAdapters.ts");
+    const flow = source("components/couranr/sameday/SendFlow.tsx");
+    expect(migration).toContain("couranr_set_consumer_pickup_readiness");
+    expect(migration).toContain("readiness_state=p_readiness");
+    expect(migration).toContain("'customer',v_command");
+    expect(route).toContain("setConsumerPickupReadiness");
+    expect(route).toContain("advanceAutomaticFulfillment");
+    expect(adapter).toContain("setPickupReadiness");
+    expect(flow).toContain('mode === "live" && readiness === null');
+    expect(flow).not.toContain("readiness === null ? "ready"");
   });
 });
 
