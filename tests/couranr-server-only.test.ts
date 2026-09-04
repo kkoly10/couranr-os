@@ -190,12 +190,17 @@ describe("server-only modules are unreachable from client code", () => {
       "lib/couranr/providers/paidApiGuard.ts",
       "lib/couranr/requests/actor.ts",
       "lib/couranr/requests/commands.ts",
+      // Provider-neutral composition: Google verifies address identity,
+      // Mapbox owns route/distance/traffic. Neither authority reaches clients.
+      "lib/couranr/routing/canonicalRoute.ts",
       // Holds the server-only Google key and is the only caller of Place
       // Details (New), so browser address facts cannot become authority.
       "lib/couranr/routing/googlePlaces.ts",
-      // Holds the server-only Google key and is the only caller of Routes v2.
-      // Client code receives its result, never the credential or route call.
+      // Disabled legacy rollback implementation. It still contains the Google
+      // Routes credential path and therefore remains server-only.
       "lib/couranr/routing/googleRoutes.ts",
+      // Current route authority. Holds MAPBOX_ACCESS_TOKEN and paid-call guard.
+      "lib/couranr/routing/mapboxDirections.ts",
       // Exact named-market authority. Keeping it server-only prevents a
       // browser from self-classifying an unverified address as serviceable.
       "lib/couranr/routing/market.ts",
