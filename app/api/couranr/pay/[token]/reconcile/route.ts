@@ -7,6 +7,7 @@ import {
 } from "@/lib/couranr/payments/commands";
 import { isWellFormedToken } from "@/lib/couranr/payments/tokens";
 import { failureResponse } from "@/lib/couranr/requests/respond";
+import { advanceAutomaticFulfillment } from "@/lib/couranr/automation/engine";
 
 export const dynamic = "force-dynamic";
 
@@ -54,6 +55,7 @@ export async function POST(_req: NextRequest, props: { params: Promise<{ token: 
   });
   if (isPaymentFailure(applied)) return failureResponse(applied);
 
+  await advanceAutomaticFulfillment(String(requestId));
   return NextResponse.json({
     outcome: applied.value.outcome,
     paymentState: applied.value.payment_state,
