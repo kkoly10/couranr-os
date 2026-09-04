@@ -16,6 +16,10 @@ const CREDIT_GUARDS = readFileSync(
   join(MIGRATIONS, "20260904170431_couranr_credit_invariant_guard_parity.sql"),
   "utf8"
 ).toLowerCase();
+const PAID_API_GUARD = readFileSync(
+  join(MIGRATIONS, "20260904172708_couranr_paid_api_spend_guard_v1.sql"),
+  "utf8"
+).toLowerCase();
 const ENGINE = readFileSync(join(ROOT, "lib/couranr/automation/engine.ts"), "utf8");
 const CRON = readFileSync(
   join(ROOT, "app/api/couranr/internal/automation/tick/route.ts"),
@@ -257,6 +261,50 @@ describe("execution wiring", () => {
     expect(adapter).toContain("setPickupReadiness");
     expect(flow).toContain('mode === "live" && readiness === null');
     expect(flow).not.toContain('readiness === null ? "ready"');
+  });
+});
+
+describe("paid provider cost safety", () => {
+  it("puts hard prelaunch daily caps in server-owned policy", () => {
+    expect(PAID_API_GUARD).toContain("'google_routes_compute_routes',50,true");
+    expect(PAID_API_GUARD).toContain("'google_places_autocomplete',200,true");
+    expect(PAID_API_GUARD).toContain("'google_places_details',100,true");
+    expect(PAID_API_GUARD).toContain("couranr_claim_external_api_call");
+    expect(PAID_API_GUARD).toContain("request_count < v_policy.daily_limit");
+  });
+
+  it("blocks real paid provider calls outside production unless explicitly opted in", () => {
+    const guard = source("lib/couranr/providers/paidApiGuard.ts");
+    expect(guard).toContain('process.env.VERCEL_ENV === "production"');
+    expect(guard).toContain('process.env.COURANR_ALLOW_PAID_PROVIDER_CALLS === "true"');
+    expect(guard).toContain("paid_provider_calls_disabled_outside_production");
+    expect(guard).toContain("if (fetchImpl !== fetch) return { allowed: true }");
+  });
+
+  it("routes and both Places paths claim budget before real provider fetches", () => {
+    const routes = source("lib/couranr/routing/googleRoutes.ts");
+    const details = source("lib/couranr/routing/googlePlaces.ts");
+    const merchant = source("app/api/couranr/merchant/places/route.ts");
+    const consumer = source("lib/couranr/consumer/send.ts");
+    expect(routes.indexOf("claimPaidApiCall")).toBeLessThan(routes.indexOf("fetchImpl(COMPUTE_ROUTES_URL"));
+    expect(details.indexOf("claimPaidApiCall")).toBeLessThan(details.indexOf("fetchImpl("));
+    expect(merchant.indexOf('claimPaidApiCall("google_places_autocomplete")')).toBeLessThan(
+      merchant.indexOf("fetch(PLACES_AUTOCOMPLETE_URL")
+    );
+    const claimPos = consumer.lastIndexOf('claimPaidApiCall("google_places_autocomplete"');
+    const fetchPos = consumer.indexOf("fetchImpl(PLACES_AUTOCOMPLETE_URL", claimPos);
+    expect(claimPos).toBeGreaterThan(-1);
+    expect(fetchPos).toBeGreaterThan(claimPos);
+  });
+
+  it("a five-minute cron does not imply a five-minute Google retry", () => {
+    expect(ENGINE).toContain("next_route_recheck_at");
+    expect(ENGINE).toContain("route_recheck_not_due");
+    expect(ENGINE).toContain("scheduleRouteRecheck");
+    expect(ENGINE).toContain('"route_outside_auto_lane_at_dispatch", 15');
+    expect(ENGINE).toContain("costGuarded ? 360 : 15");
+    expect(PAID_API_GUARD).toContain("next_route_recheck_at");
+    expect(PAID_API_GUARD).toContain("route_recheck_count");
   });
 });
 
