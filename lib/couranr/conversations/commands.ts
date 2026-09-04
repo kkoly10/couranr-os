@@ -182,6 +182,43 @@ export async function resolveParticipant(params: {
   };
 }
 
+
+/**
+ * Verifies explicit Operations context before any cross-business thread work.
+ *
+ * Route guards are not enough for a named server command: a future caller may
+ * invoke this module directly. Keeping the real profile check here means the
+ * command remains safe regardless of which HTTP wrapper calls it.
+ */
+async function requireOperationsUser(
+  userId: string,
+  operation: string
+): Promise<ConversationResult<{ userId: string }>> {
+  const { data, error } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) {
+    return fail({
+      code: classifyDatabaseError(error),
+      operation,
+      detail: error,
+    });
+  }
+
+  if (data?.role !== "admin") {
+    return fail({
+      code: "not_permitted",
+      operation,
+      message: "Couranr Operations access required.",
+    });
+  }
+
+  return { ok: true, value: { userId } };
+}
+
 /* -------------------------------------------------------------- reading */
 
 export type ThreadView = {
@@ -278,6 +315,12 @@ export async function readOperationsThread(params: {
   conversationId: string;
   actorUserId: string;
 }): Promise<ConversationResult<Omit<ThreadView, "viewerParticipantId">>> {
+  const actor = await requireOperationsUser(
+    params.actorUserId,
+    "conversations.readOperationsThread.actor"
+  );
+  if (isConversationFailure(actor)) return actor;
+
   const conversation = await supabaseAdmin
     .from("couranr_conversations")
     .select(
@@ -781,6 +824,12 @@ export async function sendMessage(
 export async function sendOperationsMessage(
   params: SendMessageParams
 ): Promise<ConversationResult<SentMessage>> {
+  const actor = await requireOperationsUser(
+    params.userId,
+    "conversations.sendOperationsMessage.actor"
+  );
+  if (isConversationFailure(actor)) return actor;
+
   const body = typeof params.body === "string" ? params.body.trim() : "";
   if (body.length === 0 || body.length > 4000) {
     return fail({
