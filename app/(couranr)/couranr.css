@@ -4731,3 +4731,10 @@
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+
+
+/* Server-backed Business address autocomplete. The result list is positioned
+   relative to this field wrapper; no Google key or provider UI lives here. */
+.cr-root .cr-place-search {
+  position: relative;
+}
