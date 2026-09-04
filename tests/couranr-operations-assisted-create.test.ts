@@ -90,7 +90,10 @@ describe("Operations-assisted business delivery entry", () => {
     expect(workbench).toContain("Open Business approval");
     expect(workbench).toContain('/app/business/deliveries/');
     expect(workbench).toContain('request.source === "operations"');
-    expect(workbench).toContain('request.requestState === "awaiting_quote_acceptance"');
-    expect(workbench).toContain('request.requestState === "quote_revision_required"');
+    const lifecycle = read("lib/couranr/fulfillment/lifecycle.ts");
+    expect(lifecycle).toContain('"awaiting_quote_acceptance"');
+    expect(lifecycle).toContain('"quote_revision_required"');
+    expect(lifecycle).toContain('if (!commerciallySecured) return "awaiting_payment_authorization"');
+    expect(workbench).toContain('work.phase === "commercial"');
   });
 });
