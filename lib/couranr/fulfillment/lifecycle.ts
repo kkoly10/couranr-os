@@ -75,6 +75,8 @@ export type LifecycleInput = {
   requestState: string;
   readinessState: string;
   paymentState: string | null;
+  /** True when Couranr has applied a full promotional credit to the exact current quote. */
+  promotionalCreditApplied?: boolean;
   /** True only for a plan in `confirmed`; a cancelled plan is not a plan. */
   servicePlanConfirmed: boolean;
   canonicalDeliveryExists: boolean;
@@ -124,7 +126,9 @@ export function lifecycleStage(input: LifecycleInput): LifecycleStage {
     return "not_actionable";
   }
 
-  if (input.paymentState !== "authorized") return "awaiting_payment_authorization";
+  const commerciallySecured =
+    input.paymentState === "authorized" || input.promotionalCreditApplied === true;
+  if (!commerciallySecured) return "awaiting_payment_authorization";
 
   /*
    * Readiness gates the plan, not the other way round.
@@ -165,7 +169,7 @@ export const LIFECYCLE_STAGE_LABELS: Readonly<Record<LifecycleStage, string>> = 
   capture_pending: "Capture pending",
   payment_reauthorization_required: "Payment authorization needs attention",
   captured_not_scheduled: "Captured — not yet scheduled",
-  captured_scheduled: "Captured — needs a driver",
+  captured_scheduled: "Scheduled — needs a driver",
   driver_assigned: "Driver assigned",
   not_actionable: "No action available",
 };
@@ -175,16 +179,18 @@ export const LIFECYCLE_STAGE_DESCRIPTIONS: Readonly<Record<LifecycleStage, strin
   pending_review: "Open each request to confirm, requote or decline it.",
   awaiting_payment_authorization:
     "Couranr confirmed the quote. Nothing can be planned until the payer authorizes the hold.",
-  merchant_preparing: "The hold is in place. Waiting for the merchant to mark the shipment ready.",
+  merchant_preparing:
+    "Commercial settlement is in place. Waiting for the merchant to mark the shipment ready.",
   ready_for_planning: "Ready to schedule. Confirm a pickup window and vehicle requirement.",
-  service_plan_confirmed: "Planned and ready to capture the authorized amount.",
+  service_plan_confirmed:
+    "Plan confirmed. Capture the authorized payment or finalize the approved Couranr credit.",
   capture_pending:
     "A capture is in flight and its outcome is not yet confirmed. Do not retry — Couranr will resolve it.",
   payment_reauthorization_required:
     "The provider ended this authorization. Nothing was taken. The payer must authorize again before this can be planned or captured.",
   captured_not_scheduled:
     "The payment was taken but no delivery exists yet. Finish scheduling — do not capture again.",
-  captured_scheduled: "Payment captured and scheduled. No driver is assigned yet.",
+  captured_scheduled: "Scheduled and commercially settled. No driver is assigned yet.",
   driver_assigned: "A driver and vehicle are committed to this delivery.",
   not_actionable: "Closed, declined or cancelled.",
 };
