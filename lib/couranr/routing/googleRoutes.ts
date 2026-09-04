@@ -1,106 +1,49 @@
 import { assertServerOnly } from "@/lib/couranr/serverOnly";
 import { claimPaidApiCall } from "@/lib/couranr/providers/paidApiGuard";
-import { quoteDelivery, type QuoteResult } from "@/lib/couranr/pricing";
-import type { ServiceLevel } from "@/lib/couranr/pricing";
-import type { ReviewReasonCode } from "@/lib/couranr/pricing/types";
-import type { WeightBand } from "@/lib/couranr/shipment/facts";
-import {
-  evaluateRequestTiming,
-  type TimingEvaluation,
-  type TimingIntent,
-} from "@/lib/couranr/timing/policy";
-import {
-  googlePlaceSelectionFromAddress,
-  type GoogleAddressSnapshot,
-  type GooglePlaceSelection,
-} from "./address";
-import {
-  isGooglePlaceResolutionError,
-  resolveCanonicalGooglePlace,
-  type GooglePlaceResolutionReason,
-  type GoogleProviderFetch,
-} from "./googlePlaces";
-import { isCouranrAutoApprovedRouteMarket } from "./market";
 
 assertServerOnly("lib/couranr/routing/googleRoutes.ts");
 
+/**
+ * LEGACY / DISABLED FALLBACK ONLY.
+ *
+ * Couranr's canonical routing authority is now:
+ *   canonicalRoute.ts -> mapboxDirections.ts
+ *
+ * Nothing in production application code imports this module. The paid API
+ * budget row for google_routes_compute_routes is also disabled in production.
+ * This provider is intentionally retained only as rollback/reference code
+ * during the Mapbox transition. It MUST NOT own quote derivation, timing,
+ * address resolution, or dispatch orchestration.
+ */
 const COMPUTE_ROUTES_URL =
   "https://routes.googleapis.com/directions/v2:computeRoutes";
 const METERS_PER_MILE = 1609.344;
 
-export type RouteServiceabilityOutcome = "available_for_request" | "needs_review";
-export type RouteReviewReason =
-  | "google_routes_not_configured"
-  | "google_routes_unavailable"
-  | "google_routes_cost_guard"
-  | "google_routes_no_route"
-  | "google_routes_invalid_response"
-  | "market_needs_review";
-
-export type CanonicalRouteEvidence = {
-  serviceabilityOutcome: RouteServiceabilityOutcome;
+export type LegacyGoogleRouteEvidence = {
+  serviceabilityOutcome: "available_for_request" | "needs_review";
   distanceSource: "google_routes_v2";
   distanceMeters: number | null;
   loadedMiles: number | null;
-  /**
-   * TRAFFIC-AWARE duration. The request pins `routingPreference:
-   * "TRAFFIC_AWARE"`, which is what makes Google compute this with live
-   * conditions; under TRAFFIC_UNAWARE it would equal `staticDurationSeconds`
-   * and every delay would be zero.
-   */
   durationSeconds: number | null;
-  /**
-   * BASELINE duration for the same route, excluding traffic. Google returns it
-   * as `routes.staticDuration`.
-   */
   staticDurationSeconds: number | null;
-  /**
-   * `max(durationSeconds - staticDurationSeconds, 0)`, derived here so the
-   * pricing engine is handed one server-established number and never two
-   * durations it could be tricked into subtracting the wrong way round.
-   *
-   * `null` means no traffic evidence — which prices as review, never as zero.
-   */
   trafficDelaySeconds: number | null;
-  reviewReason: RouteReviewReason | null;
+  reviewReason:
+    | "google_routes_not_configured"
+    | "google_routes_unavailable"
+    | "google_routes_cost_guard"
+    | "google_routes_no_route"
+    | "google_routes_invalid_response"
+    | null;
 };
 
-export type RoutableQuoteShipment = {
-  pickupAddress: unknown;
-  dropoffAddress: unknown;
-  /** Exact pounds when genuinely known; else null and the band speaks. */
-  weightLb: number | null;
-  weightBand: WeightBand | null;
-  additionalStops: number;
-  serviceLevel: ServiceLevel;
-  signatureRequired: boolean;
-  overnightRequested: boolean;
-  /** TMZ-001 requested timing; ASAP requests carry no local time. */
-  timingIntent: TimingIntent;
-  requestedPickupLocal: string | null;
-};
+type FetchLike = (
+  input: string | URL | Request,
+  init?: RequestInit
+) => Promise<Pick<Response, "ok" | "status" | "json">>;
 
-type FetchLike = GoogleProviderFetch;
-
-export type CanonicalAddressField = "pickupAddress" | "dropoffAddress";
-
-export class CanonicalAddressResolutionError extends Error {
-  constructor(
-    readonly field: CanonicalAddressField,
-    readonly reason: GooglePlaceResolutionReason
-  ) {
-    super(`${field}:${reason}`);
-    this.name = "CanonicalAddressResolutionError";
-  }
-}
-
-export function isCanonicalAddressResolutionError(
-  error: unknown
-): error is CanonicalAddressResolutionError {
-  return error instanceof CanonicalAddressResolutionError;
-}
-
-function needsReview(reviewReason: RouteReviewReason): CanonicalRouteEvidence {
+function needsReview(
+  reviewReason: Exclude<LegacyGoogleRouteEvidence["reviewReason"], null>
+): LegacyGoogleRouteEvidence {
   return {
     serviceabilityOutcome: "needs_review",
     distanceSource: "google_routes_v2",
@@ -113,8 +56,7 @@ function needsReview(reviewReason: RouteReviewReason): CanonicalRouteEvidence {
   };
 }
 
-/** Three decimals is the canonical precision used by request and quote rows. */
-export function loadedMilesFromDistanceMeters(distanceMeters: number): number {
+function loadedMilesFromDistanceMeters(distanceMeters: number): number {
   return Math.round((distanceMeters / METERS_PER_MILE) * 1000) / 1000;
 }
 
@@ -125,25 +67,20 @@ function durationSeconds(raw: unknown): number | null {
 }
 
 /**
- * Canonical Routes API authority. Waypoints are Google Place IDs, never a
- * merchant-entered distance or an unverified address string.
+ * Legacy provider-only call. The server-side spend guard currently denies real
+ * Google Routes calls because its production budget row is inactive.
+ *
+ * This function deliberately accepts only already-canonical Google Place IDs
+ * and returns route evidence. It cannot create quotes or change request state.
  */
-export async function computeCanonicalGoogleRoute(
+export async function computeLegacyGoogleRoute(
   input: {
     pickupPlaceId: string;
     dropoffPlaceId: string;
-    /**
-     * TRF-001 scheduled traffic: the canonical FUTURE departure instant,
-     * derived server-side from the merchant's America/New_York wall-clock
-     * request. When present and in the future it is sent to Google as
-     * `departureTime`, so `routes.duration` prices the traffic conditions of
-     * the requested departure rather than of right now. Never accepted from
-     * a browser — the only writer is the timing evaluation in this module.
-     */
     departureAt?: Date | null;
   },
   fetchImpl: FetchLike = fetch
-): Promise<CanonicalRouteEvidence> {
+): Promise<LegacyGoogleRouteEvidence> {
   const apiKey = process.env.GOOGLE_MAPS_SERVER_API_KEY;
   if (!apiKey) return needsReview("google_routes_not_configured");
 
@@ -157,10 +94,6 @@ export async function computeCanonicalGoogleRoute(
       headers: {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": apiKey,
-        // `routes.staticDuration` is the BASELINE duration excluding traffic;
-        // `routes.duration` is traffic-aware because routingPreference below is
-        // TRAFFIC_AWARE. Both are required: the delay is their difference, and
-        // a quote may not invent one.
         "X-Goog-FieldMask":
           "routes.distanceMeters,routes.duration,routes.staticDuration",
       },
@@ -168,18 +101,6 @@ export async function computeCanonicalGoogleRoute(
         origin: { placeId: input.pickupPlaceId },
         destination: { placeId: input.dropoffPlaceId },
         travelMode: "DRIVE",
-        /*
-         * TRF-001. Immediate requests send no `departureTime`, so Google
-         * prices the conditions for NOW. A SCHEDULED request supplies the
-         * canonical future instant (already America/New_York-derived,
-         * DST-correct), and Google prices the predicted conditions of that
-         * departure instead. Either way the delay derivation below is
-         * unchanged: duration minus staticDuration from ONE response.
-         *
-         * Only a genuinely FUTURE instant is sent — Google rejects past
-         * departure times, and a past requested time is already a timing
-         * review, not something to route around.
-         */
         ...(input.departureAt && input.departureAt.getTime() > Date.now()
           ? { departureTime: input.departureAt.toISOString() }
           : {}),
@@ -219,14 +140,12 @@ export async function computeCanonicalGoogleRoute(
   const distanceMeters = first.distanceMeters;
   const parsedDuration = durationSeconds(first.duration);
   const parsedStaticDuration = durationSeconds(first.staticDuration);
+
   if (
     typeof distanceMeters !== "number" ||
     !Number.isSafeInteger(distanceMeters) ||
     distanceMeters < 0 ||
     parsedDuration === null ||
-    // A missing or malformed baseline is an INVALID response, not a zero
-    // delay. Treating it as zero would silently under-price every route whose
-    // baseline Google declined to return.
     parsedStaticDuration === null
   ) {
     return needsReview("google_routes_invalid_response");
@@ -239,153 +158,7 @@ export async function computeCanonicalGoogleRoute(
     loadedMiles: loadedMilesFromDistanceMeters(distanceMeters),
     durationSeconds: parsedDuration,
     staticDurationSeconds: parsedStaticDuration,
-    // Clamped at zero: a route that is FASTER than its baseline is a discount
-    // nobody decided, so it prices as no delay rather than as a credit.
     trafficDelaySeconds: Math.max(parsedDuration - parsedStaticDuration, 0),
     reviewReason: null,
   };
-}
-
-function routeReviewQuote(): QuoteResult {
-  const basis = quoteDelivery({ loadedMiles: 0, weightLb: 0, additionalStops: 0 });
-  return {
-    ...basis,
-    quoteStatus: "manual_review_required",
-    deliverySubtotalCents: 0,
-    lineItems: [],
-    billableLoadedMiles: 0,
-    trafficDelaySeconds: null,
-    reviewReasons: ["route_needs_review"],
-  };
-}
-
-/**
- * Quote-level fold of timing review reasons. ASAP after the cutoff is NORMAL
- * next-business-day behavior, not a review; everything else the timing
- * doctrine flags does need Couranr's eyes. Overnight maps onto the pricing
- * engine's existing code so the two paths cannot drift apart.
- */
-function timingQuoteReviewReasons(t: TimingEvaluation): ReviewReasonCode[] {
-  const out: ReviewReasonCode[] = [];
-  for (const reason of t.reviewReasons) {
-    if (reason === "same_day_after_cutoff" && t.intent === "asap") continue;
-    if (reason === "overnight_requires_couranr_confirmation") {
-      out.push("overnight_requires_couranr_confirmation");
-    } else if (!out.includes("timing_needs_review")) {
-      out.push("timing_needs_review");
-    }
-  }
-  return out;
-}
-
-export async function deriveCanonicalRouteAndQuote(
-  shipment: RoutableQuoteShipment,
-  fetchImpl: FetchLike = fetch,
-  now: Date = new Date()
-): Promise<{
-  pickupAddress: GoogleAddressSnapshot;
-  dropoffAddress: GoogleAddressSnapshot;
-  route: CanonicalRouteEvidence;
-  quote: QuoteResult;
-  timing: TimingEvaluation;
-}> {
-  const pickupSelection = googlePlaceSelectionFromAddress(shipment.pickupAddress);
-  const dropoffSelection = googlePlaceSelectionFromAddress(shipment.dropoffAddress);
-
-  const resolve = async (
-    field: CanonicalAddressField,
-    selection: GooglePlaceSelection | null
-  ) => {
-    if (!selection) {
-      throw new CanonicalAddressResolutionError(field, "google_places_invalid_response");
-    }
-    try {
-      return await resolveCanonicalGooglePlace(selection, fetchImpl);
-    } catch (error) {
-      if (isGooglePlaceResolutionError(error)) {
-        throw new CanonicalAddressResolutionError(field, error.reason);
-      }
-      throw error;
-    }
-  };
-
-  // The two independent Place Details reads start together. Routes waits for
-  // both because its waypoints must be the exact identities just verified.
-  const [pickupAddress, dropoffAddress] = await Promise.all([
-    resolve("pickupAddress", pickupSelection),
-    resolve("dropoffAddress", dropoffSelection),
-  ]);
-  // TMZ-001: the SERVER evaluates requested timing against America/New_York.
-  // The canonical departure instant this produces is the ONLY thing that can
-  // become Google's departureTime — a browser has no field to supply one.
-  const timing = evaluateRequestTiming(
-    {
-      intent: shipment.timingIntent,
-      requestedPickupLocal: shipment.requestedPickupLocal,
-    },
-    now
-  );
-
-  const route = await computeCanonicalGoogleRoute(
-    {
-      pickupPlaceId: pickupAddress.googlePlaceId,
-      dropoffPlaceId: dropoffAddress.googlePlaceId,
-      departureAt: timing.requestedDepartureAt,
-    },
-    fetchImpl
-  );
-
-  if (route.loadedMiles === null) {
-    return { pickupAddress, dropoffAddress, route, quote: routeReviewQuote(), timing };
-  }
-
-  if (!isCouranrAutoApprovedRouteMarket(pickupAddress, dropoffAddress)) {
-    return {
-      pickupAddress,
-      dropoffAddress,
-      route: {
-        ...route,
-        serviceabilityOutcome: "needs_review",
-        reviewReason: "market_needs_review",
-      },
-      quote: routeReviewQuote(),
-      timing,
-    };
-  }
-
-  const quote = quoteDelivery({
-    loadedMiles: route.loadedMiles,
-    weightLb: shipment.weightLb,
-    weightBand: shipment.weightBand,
-    additionalStops: shipment.additionalStops,
-    serviceLevel: shipment.serviceLevel,
-    signatureRequired: shipment.signatureRequired,
-    overnightRequested: shipment.overnightRequested,
-    // Server-derived from ONE canonical Google response. The shipment type
-    // carries no duration field at all, so a browser cannot reach this.
-    trafficDelaySeconds: route.trafficDelaySeconds,
-  });
-
-  // Timing review folds in AFTER pricing so a timing concern converts an
-  // estimated quote into a review — it never silently reprices anything.
-  const timingReasons = timingQuoteReviewReasons(timing).filter(
-    (r) => !quote.reviewReasons.includes(r)
-  );
-  if (timingReasons.length > 0 && quote.quoteStatus !== "invalid") {
-    return {
-      pickupAddress,
-      dropoffAddress,
-      route,
-      quote: {
-        ...quote,
-        quoteStatus: "manual_review_required",
-        deliverySubtotalCents: 0,
-        lineItems: [],
-        reviewReasons: [...quote.reviewReasons, ...timingReasons],
-      },
-      timing,
-    };
-  }
-
-  return { pickupAddress, dropoffAddress, route, quote, timing };
 }
