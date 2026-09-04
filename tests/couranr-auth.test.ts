@@ -232,6 +232,23 @@ describe("resolveLanding honours next only within the caller's own surface", () 
     expect(d.usedNext).toBe(true);
   });
 
+  it("lets a dual-role admin intentionally open a Business page they belong to", () => {
+    const both: LandingFacts = { role: "admin", activeMembershipCount: 1 };
+    const d = resolveLanding(both, "/app/business/deliveries/request-id");
+    expect(d.destination).toBe("/app/business/deliveries/request-id");
+    expect(d.surface).toBe("business");
+    expect(d.usedNext).toBe(true);
+    // Default navigation is unchanged: the same person still lands in Ops.
+    expect(defaultDestination(both)).toBe("/operations");
+  });
+
+  it("does not let an admin with no Business membership use the Business surface", () => {
+    const d = resolveLanding(ADMIN, "/app/business/deliveries/request-id");
+    expect(d.destination).toBe("/operations");
+    expect(d.usedNext).toBe(false);
+    expect(d.rejectedNextReason).toBe("wrong_surface");
+  });
+
   it("falls back for an external next rather than honouring it", () => {
     const d = resolveLanding(MERCHANT, "https://evil.test/business");
     expect(d.destination).toBe("/app/business");
