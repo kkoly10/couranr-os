@@ -190,9 +190,11 @@ export function OperationsPilotDashboard() {
 function AttentionRow({ entry }: { entry: QueueEntry }) {
   const stage = entry.stage as LifecycleStage;
   const request = entry.request;
-  const amount = entry.delivery
-    ? entry.delivery.capturedAmountCents
-    : entry.payment?.amountCents ?? request.quote.deliverySubtotalCents;
+  const amount = entry.promotionalCredit
+    ? entry.promotionalCredit.standardQuoteCents
+    : entry.delivery
+      ? entry.delivery.capturedAmountCents
+      : entry.payment?.amountCents ?? request.quote.deliverySubtotalCents;
 
   return (
     <Link
@@ -214,7 +216,11 @@ function AttentionRow({ entry }: { entry: QueueEntry }) {
         <Text size="sm" muted>
           {request.loadedMiles == null ? "Distance pending" : `${request.loadedMiles} loaded mi`}
           {" · "}
-          {entry.payment ? paymentLabel(entry.payment.paymentState) : "Payment not started"}
+          {entry.promotionalCredit
+            ? "Couranr pilot credit"
+            : entry.payment
+              ? paymentLabel(entry.payment.paymentState)
+              : "Payment not started"}
         </Text>
       </div>
       <div className="cr-ops-attention__aside">
