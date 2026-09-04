@@ -101,6 +101,13 @@ begin
 end
 $fn$;
 
+drop trigger if exists couranr_cvm_author_addressing_trg
+  on public.couranr_conversation_messages;
+create trigger couranr_cvm_author_addressing_trg
+before insert or update of conversation_id, author_participant_id, author_user_id, visibility, authorship
+on public.couranr_conversation_messages
+for each row execute function public.couranr_cvm_enforce_author_addressing();
+
 -- ---------------------------------------------------------------------------
 -- 2. Operations reader.
 --
