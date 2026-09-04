@@ -34,10 +34,11 @@ import { SUPPORT_TARGET_MINUTES, type Visibility } from "@/lib/couranr/conversat
  * field. An internal note or an AI draft is not filtered out here — it never
  * arrives. There is no property on `ThreadMessage` that could betray one.
  *
- * The composer's visibility control appears ONLY for an Operations viewer,
- * because `couranr_internal` is the only value a non-Operations participant
- * could address and must not. The server refuses it regardless; hiding the
- * control means a merchant is never offered a choice that would be rejected.
+ * The composer mirrors the D0 ACTOR addressing matrix: drivers can address
+ * everyone or Driver + Couranr, merchants can address everyone or Merchant +
+ * Couranr, customers can address participants only, and Operations can address
+ * every lane valid for the conversation kind. The server and database remain
+ * authoritative; the control only exposes choices the actor may actually use.
  *
  * TRM-001: no phone number, no 24/7 claim, no founder voice. The response
  * target is stated as what Couranr normally does, never as a guarantee.
@@ -50,17 +51,28 @@ const VISIBILITY_LABELS: Partial<Record<Visibility, string>> = {
   merchant_and_couranr: "Merchant and Couranr",
 };
 
-/** What each viewer may address. Mirrors the SQL kind × visibility matrix. */
+/** What each viewer may address. Mirrors D0 actor authority + kind validity. */
 function addressableBy(viewerKind: string, conversationKind: string): Visibility[] {
-  if (viewerKind !== "operations") return ["participants"];
-  if (conversationKind === "delivery_chat") {
-    return ["participants", "couranr_internal", "driver_and_couranr", "merchant_and_couranr"];
+  if (viewerKind === "driver") {
+    return conversationKind === "delivery_chat"
+      ? ["participants", "driver_and_couranr"]
+      : ["participants"];
   }
-  if (conversationKind === "merchant_support") {
-    return ["participants", "couranr_internal", "merchant_and_couranr"];
+  if (viewerKind === "merchant") {
+    return conversationKind === "delivery_chat" || conversationKind === "merchant_support"
+      ? ["participants", "merchant_and_couranr"]
+      : ["participants"];
   }
-  // delivery_help admits only these two.
-  return ["participants", "couranr_internal"];
+  if (viewerKind === "operations") {
+    if (conversationKind === "delivery_chat") {
+      return ["participants", "couranr_internal", "driver_and_couranr", "merchant_and_couranr"];
+    }
+    if (conversationKind === "merchant_support") {
+      return ["participants", "couranr_internal", "merchant_and_couranr"];
+    }
+    return ["participants", "couranr_internal"];
+  }
+  return ["participants"];
 }
 
 const DUE_TONE: Record<string, "neutral" | "info" | "warning" | "danger"> = {
@@ -166,7 +178,7 @@ export function ConversationThread({
 
   const { view } = state;
   const options = addressableBy(view.viewerKind, view.conversation.kind);
-  const isOperations = view.viewerKind === "operations";
+  const showsAudienceControl = options.length > 1;
 
   return (
     <Stack gap={4}>
@@ -220,10 +232,9 @@ export function ConversationThread({
         <Stack gap={3}>
           <Heading level={3}>Reply</Heading>
 
-          {/* Operations only. `couranr_internal` is the one value a merchant or
-              driver could name and must not, and the server refuses it anyway —
-              hiding the control means nobody is offered a rejected choice. */}
-          {isOperations ? (
+          {/* The UI mirrors actor authority, but does not confer it. A crafted
+              request is still checked by the server command and database. */}
+          {showsAudienceControl ? (
             <Field label="Who can see this?" required>
               {(p) => (
                 <Select
