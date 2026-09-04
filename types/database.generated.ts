@@ -717,6 +717,7 @@ export type Database = {
       couranr_conversation_messages: {
         Row: {
           author_participant_id: string | null
+          author_user_id: string | null
           authorship: string
           body: string
           conversation_id: string
@@ -728,6 +729,7 @@ export type Database = {
         }
         Insert: {
           author_participant_id?: string | null
+          author_user_id?: string | null
           authorship?: string
           body: string
           conversation_id: string
@@ -739,6 +741,7 @@ export type Database = {
         }
         Update: {
           author_participant_id?: string | null
+          author_user_id?: string | null
           authorship?: string
           body?: string
           conversation_id?: string
@@ -5304,6 +5307,7 @@ export type Database = {
         Args: { p_conversation_id: string; p_viewer_user_id: string }
         Returns: {
           author_participant_id: string | null
+          author_user_id: string | null
           authorship: string
           body: string
           conversation_id: string
@@ -5319,6 +5323,50 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      couranr_operations_conversation_thread: {
+        Args: { p_actor_user_id: string; p_conversation_id: string }
+        Returns: {
+          author_participant_id: string | null
+          author_user_id: string | null
+          authorship: string
+          body: string
+          conversation_id: string
+          created_at: string
+          id: string
+          idempotency_key: string
+          topic: string | null
+          visibility: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "couranr_conversation_messages"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
+      couranr_ensure_delivery_chat: {
+        Args: { p_delivery_id: string }
+        Returns: string
+      }
+      couranr_join_assignment_delivery_chat: {
+        Args: { p_delivery_id: string; p_driver_id: string }
+        Returns: string
+      }
+      couranr_leave_assignment_delivery_chat: {
+        Args: {
+          p_delivery_id: string
+          p_driver_id: string
+          p_left_at?: string
+        }
+        Returns: number
+      }
+      couranr_reconcile_delivery_chats: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          active_drivers_checked: number
+          deliveries_checked: number
+        }[]
       }
       couranr_create_delivery_from_capture: {
         Args: { p_request_id: string }
@@ -5889,6 +5937,7 @@ export type Database = {
         Args: { p_token_id: string }
         Returns: {
           author_participant_id: string | null
+          author_user_id: string | null
           authorship: string
           body: string
           conversation_id: string

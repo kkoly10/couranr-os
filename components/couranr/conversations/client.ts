@@ -69,8 +69,11 @@ export type ThreadView = {
   };
   viewerKind: ParticipantKind;
   messages: ThreadMessage[];
-  /** A GENUINE count: these messages have already passed the visibility rule. */
-  unreadCount: number;
+  /**
+   * Participant reads return a genuine count after visibility filtering.
+   * Operations is a shared queue, so that surface deliberately omits it.
+   */
+  unreadCount?: number;
 };
 
 export type InboxView = {
@@ -86,6 +89,10 @@ export function listConversations(): Promise<ApiResult<{ conversations: Conversa
 
 export function readThread(id: string): Promise<ApiResult<ThreadView>> {
   return call(`/api/couranr/conversations/${encodeURIComponent(id)}`);
+}
+
+export function readOperationsThread(id: string): Promise<ApiResult<ThreadView>> {
+  return call(`/api/couranr/operations/conversations/${encodeURIComponent(id)}`);
 }
 
 /**
@@ -113,6 +120,28 @@ export function sendMessage(params: {
       topic: params.topic ?? null,
     },
   });
+}
+
+
+export function sendOperationsMessage(params: {
+  conversationId: string;
+  body: string;
+  idempotencyKey: string;
+  visibility?: Visibility;
+  topic?: CustomerTopic | null;
+}): Promise<ApiResult<{ messageId: string; replayed: boolean }>> {
+  return call(
+    `/api/couranr/operations/conversations/${encodeURIComponent(params.conversationId)}/messages`,
+    {
+      method: "POST",
+      body: {
+        body: params.body,
+        idempotencyKey: params.idempotencyKey,
+        visibility: params.visibility,
+        topic: params.topic ?? null,
+      },
+    }
+  );
 }
 
 export function markRead(id: string): Promise<ApiResult<{ lastReadAt: string }>> {

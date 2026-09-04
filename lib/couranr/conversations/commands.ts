@@ -56,6 +56,7 @@ assertServerOnly("lib/couranr/conversations/commands.ts");
 
 export const RPC = {
   thread: "couranr_conversation_thread",
+  operationsThread: "couranr_operations_conversation_thread",
 } as const;
 
 export type ConversationFailure = {
@@ -181,6 +182,43 @@ export async function resolveParticipant(params: {
   };
 }
 
+
+/**
+ * Verifies explicit Operations context before any cross-business thread work.
+ *
+ * Route guards are not enough for a named server command: a future caller may
+ * invoke this module directly. Keeping the real profile check here means the
+ * command remains safe regardless of which HTTP wrapper calls it.
+ */
+async function requireOperationsUser(
+  userId: string,
+  operation: string
+): Promise<ConversationResult<{ userId: string }>> {
+  const { data, error } = await supabaseAdmin
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (error) {
+    return fail({
+      code: classifyDatabaseError(error),
+      operation,
+      detail: error,
+    });
+  }
+
+  if (data?.role !== "admin") {
+    return fail({
+      code: "not_permitted",
+      operation,
+      message: "Couranr Operations access required.",
+    });
+  }
+
+  return { ok: true, value: { userId } };
+}
+
 /* -------------------------------------------------------------- reading */
 
 export type ThreadView = {
@@ -259,6 +297,75 @@ export async function readThread(params: {
       viewerParticipantId: participant.value.id,
       messages,
       unreadCount,
+    },
+  };
+}
+
+
+/**
+ * Reads one thread in the explicit Operations surface context.
+ *
+ * This deliberately does NOT resolve a participant row. OPS-005 is a
+ * cross-business projection and an admin may simultaneously be a merchant in
+ * the same thread. The database RPC verifies profiles.role='admin' and applies
+ * the Operations visibility envelope without creating a second live
+ * participant, which keeps /app/business authority separate.
+ */
+export async function readOperationsThread(params: {
+  conversationId: string;
+  actorUserId: string;
+}): Promise<ConversationResult<Omit<ThreadView, "viewerParticipantId" | "unreadCount">>> {
+  const actor = await requireOperationsUser(
+    params.actorUserId,
+    "conversations.readOperationsThread.actor"
+  );
+  if (isConversationFailure(actor)) return actor;
+
+  const conversation = await supabaseAdmin
+    .from("couranr_conversations")
+    .select(
+      "id, kind, business_account_id, delivery_id, request_id, status, waiting_on, urgency, " +
+        "received_at, response_due_at, first_couranr_response_at, due_state, updated_at, version"
+    )
+    .eq("id", params.conversationId)
+    .maybeSingle();
+
+  if (conversation.error) {
+    return fail({
+      code: classifyDatabaseError(conversation.error),
+      operation: "conversations.readOperationsThread.conversation",
+      detail: conversation.error,
+    });
+  }
+  if (!conversation.data) {
+    return fail({
+      code: "not_found",
+      operation: "conversations.readOperationsThread.conversation",
+      message: "That conversation is not available.",
+    });
+  }
+
+  const { data, error } = await supabaseAdmin.rpc(RPC.operationsThread, {
+    p_conversation_id: params.conversationId,
+    p_actor_user_id: params.actorUserId,
+  });
+
+  if (error) {
+    return fail({
+      code: classifyDatabaseError(error),
+      operation: "conversations.readOperationsThread.messages",
+      detail: error,
+    });
+  }
+
+  const messages = toParticipantThread((data || []) as MessageRow[], "operations");
+
+  return {
+    ok: true,
+    value: {
+      conversation: conversation.data as unknown as ConversationRow,
+      viewerKind: "operations",
+      messages,
     },
   };
 }
@@ -698,6 +805,130 @@ export async function sendMessage(
   // tracking, authorized refunds, or state commands"
   // (05_AI_COMMUNICATION_SPEC.md §Kill switches). The message is already
   // committed; nothing below may change that.
+  await enqueueForAssistant(params.conversationId, messageId);
+
+  return { ok: true, value: { messageId, replayed: false } };
+}
+
+
+/**
+ * Operations-only human message write.
+ *
+ * The route authenticates the actor as Operations first; the D2 database
+ * author-addressing trigger repeats profiles.role='admin' so a future caller
+ * cannot bypass that check. No Operations participant row is created.
+ */
+export async function sendOperationsMessage(
+  params: SendMessageParams
+): Promise<ConversationResult<SentMessage>> {
+  const actor = await requireOperationsUser(
+    params.userId,
+    "conversations.sendOperationsMessage.actor"
+  );
+  if (isConversationFailure(actor)) return actor;
+
+  const body = typeof params.body === "string" ? params.body.trim() : "";
+  if (body.length === 0 || body.length > 4000) {
+    return fail({
+      code: "invalid_input",
+      operation: "conversations.sendOperationsMessage",
+      message: "A message must be between 1 and 4000 characters.",
+    });
+  }
+
+  const rawKey =
+    typeof params.idempotencyKey === "string" ? params.idempotencyKey.trim() : "";
+  if (rawKey.length === 0) {
+    return fail({
+      code: "invalid_input",
+      operation: "conversations.sendOperationsMessage",
+      message: "An idempotency key is required.",
+    });
+  }
+
+  const visibility: Visibility = params.visibility || "participants";
+  if (!canAddress("operations", visibility)) {
+    return fail({
+      code: "not_permitted",
+      operation: "conversations.sendOperationsMessage.addressing",
+      message: "That message audience is not available to you.",
+    });
+  }
+
+  // Namespace the browser key by real Operations actor. The table's durable
+  // UNIQUE remains (conversation,idempotency_key), but an Operations retry can
+  // never collide with a merchant/driver key in the same thread.
+  const key = `ops:${params.userId}:${rawKey}`;
+
+  const existing = await supabaseAdmin
+    .from("couranr_conversation_messages")
+    .select("id, conversation_id, idempotency_key")
+    .eq("conversation_id", params.conversationId)
+    .eq("idempotency_key", key)
+    .maybeSingle();
+
+  if (existing.error) {
+    return fail({
+      code: classifyDatabaseError(existing.error),
+      operation: "conversations.sendOperationsMessage.replayCheck",
+      detail: existing.error,
+    });
+  }
+  if (existing.data) {
+    return { ok: true, value: { messageId: existing.data.id, replayed: true } };
+  }
+
+  const inserted = await supabaseAdmin
+    .from("couranr_conversation_messages")
+    .insert({
+      conversation_id: params.conversationId,
+      author_participant_id: null,
+      author_user_id: params.userId,
+      visibility,
+      authorship: "human",
+      topic: params.topic ?? null,
+      body,
+      idempotency_key: key,
+    })
+    .select("id")
+    .single();
+
+  if (inserted.error) {
+    const raced = await supabaseAdmin
+      .from("couranr_conversation_messages")
+      .select("id, conversation_id, idempotency_key")
+      .eq("conversation_id", params.conversationId)
+      .eq("idempotency_key", key)
+      .maybeSingle();
+
+    if (raced.data) {
+      return { ok: true, value: { messageId: raced.data.id, replayed: true } };
+    }
+
+    return fail({
+      code: classifyDatabaseError(inserted.error),
+      operation: "conversations.sendOperationsMessage.insert",
+      detail: inserted.error,
+    });
+  }
+
+  const messageId = inserted.data.id;
+
+  await recordEvent({
+    conversationId: params.conversationId,
+    messageId,
+    eventType: "message_sent",
+    actorKind: "operations",
+    actorUserId: params.userId,
+    metadata: { visibility, authorship: "human", topic: params.topic ?? null },
+  });
+
+  await stampDeadlines({
+    conversationId: params.conversationId,
+    actorKind: "operations",
+    visibility,
+  });
+
   await enqueueForAssistant(params.conversationId, messageId);
 
   return { ok: true, value: { messageId, replayed: false } };
