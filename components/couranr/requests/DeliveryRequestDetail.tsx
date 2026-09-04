@@ -116,8 +116,15 @@ function confirmedBody(
     return "Couranr could not load the payment status for this delivery just now. Refresh, or contact Couranr Support.";
   }
   const state = fulfillment?.payment?.paymentState ?? null;
+  const credit = fulfillment?.promotionalCredit ?? null;
+  if (fulfillment?.delivery?.promotionalCreditId) {
+    return "Couranr's promotional credit covers this delivery and it is scheduled. No card payment was captured. No driver has been assigned yet.";
+  }
   if (fulfillment?.delivery || state === "captured") {
     return "The payment has been captured and this delivery is scheduled. No driver has been assigned yet.";
+  }
+  if (credit) {
+    return "Couranr's promotional credit covers the quoted delivery amount. No card payment was captured. The delivery can proceed to service planning.";
   }
   if (state === "capture_pending") {
     return "Couranr is completing the payment for this delivery. No driver has been assigned yet.";
@@ -416,8 +423,35 @@ export function DeliveryRequestDetail({
         </Card>
       ) : null}
 
-      {/* MER-007 payment. Operations reviews; it does not pay. */}
-      {!isOperations ? (
+      {fulfillment?.promotionalCredit ? (
+        <Card>
+          <CardHeader
+            title="Couranr promotional credit"
+            description="This pilot delivery is commercially covered without fabricating a Stripe authorization."
+          />
+          <Grid columns={3}>
+            <Detail
+              label="Standard quote"
+              value={formatCents(fulfillment.promotionalCredit.standardQuoteCents)}
+            />
+            <Detail
+              label="Amount paid"
+              value={formatCents(fulfillment.promotionalCredit.amountPaidCents)}
+            />
+            <Detail
+              label="Couranr credit"
+              value={formatCents(fulfillment.promotionalCredit.promotionalCreditCents)}
+            />
+          </Grid>
+          <Text size="xs" muted>
+            {fulfillment.promotionalCredit.reason} · {fulfillment.promotionalCredit.campaign}
+          </Text>
+        </Card>
+      ) : null}
+
+      {/* MER-007 payment. Operations reviews; it does not pay. A fully credited
+          pilot request deliberately suppresses card authorization. */}
+      {!isOperations && !fulfillment?.promotionalCredit ? (
         <MerchantPaymentPanel
           request={request}
           businessAccountId={viewerBusinessAccountId}
