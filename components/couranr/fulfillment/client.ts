@@ -30,6 +30,20 @@ export type FulfillmentView = {
       reason: string;
     } | null;
   } | null;
+  promotionalCredit: {
+    id: string;
+    quoteVersionId: string;
+    standardQuoteCents: number;
+    amountPaidCents: number;
+    promotionalCreditCents: number;
+    currency: string;
+    reason: string;
+    campaign: string;
+    market: string;
+    category: string;
+    approvedAt: string;
+    status: string;
+  } | null;
   servicePlan: {
     id: string;
     planState: string;
@@ -42,6 +56,10 @@ export type FulfillmentView = {
     id: string;
     fulfillmentState: string;
     capturedAmountCents: number;
+    standardQuoteCents: number | null;
+    amountPaidCents: number | null;
+    promotionalCreditCents: number | null;
+    promotionalCreditId: string | null;
     scheduledPickupStart: string;
     scheduledPickupEnd: string;
     timezone: string;
@@ -95,6 +113,15 @@ export function confirmServicePlanFromBrowser(input: {
 export function captureFromBrowser(input: { id: string }) {
   return call<{ paymentState: string; deliveryId: string; fulfillmentState: string }>(
     `/api/couranr/operations/delivery-requests/${input.id}/capture`,
+    { method: "POST", body: {} }
+  );
+}
+
+
+/** Finalize a delivery whose exact quote is fully covered by a Couranr credit. */
+export function finalizePromotionalCreditDeliveryFromBrowser(input: { id: string }) {
+  return call<{ deliveryId: string; fulfillmentState: string; settlement: string }>(
+    `/api/couranr/operations/delivery-requests/${input.id}/promotional-credit-delivery`,
     { method: "POST", body: {} }
   );
 }
