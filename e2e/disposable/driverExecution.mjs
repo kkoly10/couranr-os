@@ -284,7 +284,7 @@ async function main() {
   eq("DX-09", "a wrong digest is 'invalid', not an exception",
      verifyCode(D1, "merchant_pickup", digestOf("wrong"), drvAUser), "invalid");
   eq("DX-10a", "the issue command refuses a raw six-digit code",
-     raises(`select public.couranr_issue_handoff_code('${D1}','merchant_pickup',3,'123456','${ops}',60)`),
+     raises(`select public.couranr_issue_handoff_code('${D1}','merchant_pickup',2,'123456','${ops}',60)`),
      "CR400|digest_required");
   eq("DX-10b", "the schema refuses a raw six-digit code outright",
      raises(`insert into public.couranr_handoff_codes
