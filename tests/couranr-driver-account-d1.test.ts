@@ -33,6 +33,14 @@ describe("Driver Pilot D1 self-scoping", () => {
     expect(AVAIL_ROUTE).toContain('preference !== "available" && preference !== "unavailable"');
   });
 
+  it("uses the repository's command-code contract for bad input, state and concurrency", () => {
+    expect(MIGRATION).toContain("version_required' using errcode='CR400'");
+    expect(MIGRATION).toContain("availability_preference_invalid' using errcode='CR400'");
+    expect(MIGRATION).toContain("driver_not_active' using errcode='CR412'");
+    expect(MIGRATION).toContain("version_conflict' using errcode='CR409'");
+    expect(MIGRATION).not.toContain("errcode='CR422'");
+  });
+
   it("Driver self-service exposes exactly one write authority: personal availability intent", () => {
     expect(MIGRATION).toContain("couranr_set_my_driver_availability");
     expect(MIGRATION).not.toContain("couranr_set_my_vehicle_availability");
