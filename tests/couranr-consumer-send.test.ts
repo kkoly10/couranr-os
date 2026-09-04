@@ -46,12 +46,13 @@ const stripped = (src: string) =>
 /* ------------------------------------------------- the route inventory --- */
 
 describe("consumer route inventory", () => {
-  it("holds exactly the nine contracted routes", () => {
+  it("holds exactly the ten contracted routes", () => {
     expect(ROUTE_FILES.map(rel)).toEqual([
       "app/api/couranr/consumer/estimate/route.ts",
       "app/api/couranr/consumer/interpret/route.ts",
       "app/api/couranr/consumer/pay/route.ts",
       "app/api/couranr/consumer/places/route.ts",
+      "app/api/couranr/consumer/readiness/route.ts",
       "app/api/couranr/consumer/reconcile-payment/route.ts",
       "app/api/couranr/consumer/refresh-quote/route.ts",
       "app/api/couranr/consumer/request/route.ts",
@@ -84,11 +85,23 @@ describe("consumer route inventory", () => {
         // The route itself never dereferences the body.
         expect(/\bbody\s*\.\s*[a-zA-Z]/.test(code)).toBe(false);
       } else if (rel(file) === "app/api/couranr/consumer/interpret/route.ts") {
-        // INT-002: the ONLY other body-taking route. `{ description }` goes to
-        // the lib verbatim, which refuses any second key before anything runs.
+        // INT-002: the description body is handed to the guarded lib.
         expect((code.match(/req\.json\(\)/g) || []).length).toBe(1);
         expect(code).toMatch(/interpretConsumerDescription\(\{ session: session\.value, body \}\)/);
         expect(/\bbody\s*\.\s*[a-zA-Z]/.test(code)).toBe(false);
+      } else if (rel(file) === "app/api/couranr/consumer/readiness/route.ts") {
+        // FND-006: this route has one intentionally tiny body vocabulary:
+        // { readiness: "ready" | "not_ready" }. It cannot name a request or
+        // any commercial/routing fact; the guest session supplies identity.
+        expect((code.match(/req\.json\(\)/g) || []).length).toBe(1);
+        expect(code).toContain("setConsumerPickupReadiness");
+        expect(code).toMatch(/\.readiness/);
+        for (const rx of [
+          /body\s*\.\s*(amount|total|price|subtotal|cents)/i,
+          /body\s*\.\s*(requestId|businessAccountId|target|policy|route)/i,
+        ]) {
+          expect(rx.test(code), `${rel(file)} reads forbidden readiness payload data`).toBe(false);
+        }
       } else {
         expect(/req\.json\(\)|req\.text\(\)|req\.formData\(\)/.test(code)).toBe(false);
       }
