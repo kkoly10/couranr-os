@@ -25,10 +25,14 @@ import {
 import { QuoteSummary } from "./QuoteSummary";
 import {
   createDeliveryRequest,
+  createOperationsDeliveryRequest,
   estimateDeliveryRequest,
+  estimateOperationsDeliveryRequest,
   fetchMyBusinessAccounts,
+  fetchOperationsBusinesses,
   newIdempotencyKey,
   submitDeliveryRequestFromBrowser,
+  submitOperationsDeliveryRequest,
   isApiFailure,
   withReference,
   type ApiFailure,
@@ -109,8 +113,13 @@ const RESTRICTED_CLASS_OPTIONS: ReadonlyArray<readonly [string, string]> = [
   ["people", "people"],
 ];
 
-export function NewDeliveryFlow() {
+export function NewDeliveryFlow({
+  mode = "merchant",
+}: {
+  mode?: "merchant" | "operations";
+} = {}) {
   const router = useRouter();
+  const isOperations = mode === "operations";
   const searchParams = useSearchParams();
   const step = searchParams.get("step") === "review" ? "review" : "intake";
 
@@ -143,6 +152,7 @@ export function NewDeliveryFlow() {
   const [serviceLevel, setServiceLevel] = React.useState("standard");
   const [proofMethod, setProofMethod] = React.useState("photo_or_pin");
   const [readinessState, setReadinessState] = React.useState("not_confirmed");
+  const [payerType, setPayerType] = React.useState<"merchant" | "customer">("merchant");
   const [signatureRequired, setSignatureRequired] = React.useState(false);
   const [overnightRequested, setOvernightRequested] = React.useState(false);
 
@@ -216,7 +226,7 @@ export function NewDeliveryFlow() {
 
   React.useEffect(() => {
     let cancelled = false;
-    fetchMyBusinessAccounts().then((r) => {
+    (isOperations ? fetchOperationsBusinesses() : fetchMyBusinessAccounts()).then((r) => {
       if (cancelled) return;
       if (isApiFailure(r)) {
         // Same fail-closed rule as onboarding: a failed lookup leaves account
@@ -235,7 +245,7 @@ export function NewDeliveryFlow() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [isOperations]);
 
   /**
    * §10 prefill rule: a >=85-confidence proposal MAY prefill an EMPTY field;
@@ -277,7 +287,7 @@ export function NewDeliveryFlow() {
     setBusy(true);
 
     const payload = {
-      source: "merchant_portal",
+      source: isOperations ? "operations" : "merchant_portal",
       pickupAddress: pickup,
       dropoffAddress: dropoff,
       recipientName,
@@ -293,25 +303,38 @@ export function NewDeliveryFlow() {
       serviceLevel,
       signatureRequired,
       proofMethod,
+      payerType,
       readinessState,
       overnightRequested,
     };
 
     const result = request
-      ? await estimateDeliveryRequest({
-          id: request.id,
-          businessAccountId,
-          expectedVersion: request.version,
-          // The merchant may have edited the form since the first estimate.
-          request: payload,
-          intakeSessionId,
-        })
-      : await createDeliveryRequest({
-          businessAccountId,
-          request: payload,
-          idempotencyKey: idempotencyKey.current,
-          intakeSessionId,
-        });
+      ? isOperations
+        ? await estimateOperationsDeliveryRequest({
+            id: request.id,
+            businessAccountId,
+            expectedVersion: request.version,
+            request: payload,
+          })
+        : await estimateDeliveryRequest({
+            id: request.id,
+            businessAccountId,
+            expectedVersion: request.version,
+            request: payload,
+            intakeSessionId,
+          })
+      : isOperations
+        ? await createOperationsDeliveryRequest({
+            businessAccountId,
+            request: payload,
+            idempotencyKey: idempotencyKey.current,
+          })
+        : await createDeliveryRequest({
+            businessAccountId,
+            request: payload,
+            idempotencyKey: idempotencyKey.current,
+            intakeSessionId,
+          });
 
     setBusy(false);
     if (isApiFailure(result)) {
@@ -331,27 +354,35 @@ export function NewDeliveryFlow() {
     if (!request) return;
     setFailure(null);
     setBusy(true);
-    const result = await submitDeliveryRequestFromBrowser({
-      id: request.id,
-      businessAccountId,
-      expectedVersion: request.version,
-      // Only meaningful when this business is paying and there is a priced
-      // quote to approve. Sent as false otherwise so the server never records
-      // an approval of a number the merchant was not shown.
-      merchantAcknowledged: canAcknowledge(request) && approveQuote,
-    });
+    const result = isOperations
+      ? await submitOperationsDeliveryRequest({
+          id: request.id,
+          businessAccountId,
+          expectedVersion: request.version,
+        })
+      : await submitDeliveryRequestFromBrowser({
+          id: request.id,
+          businessAccountId,
+          expectedVersion: request.version,
+          // Only meaningful when this business is paying and there is a priced
+          // quote to approve. Sent as false otherwise so the server never records
+          // an approval of a number the merchant was not shown.
+          merchantAcknowledged: canAcknowledge(request) && approveQuote,
+        });
     setBusy(false);
     if (isApiFailure(result)) {
       setFailure(result);
       return;
     }
-    router.push(`/app/business/deliveries/${result.value.request.id}`);
+    router.push(isOperations
+      ? `/operations/deliveries/${result.value.request.id}`
+      : `/app/business/deliveries/${result.value.request.id}`);
   }
 
   if (accounts === null && accountsError) {
     return (
       <ErrorState
-        title="We could not check your account"
+        title={isOperations ? "We could not load active businesses" : "We could not check your account"}
         body={withReference(accountsError)}
         action={{ label: "Reload", onClick: () => router.refresh() }}
       />
@@ -360,7 +391,7 @@ export function NewDeliveryFlow() {
 
   if (accounts === null) {
     return (
-      <LoadingState label="Loading your business account">
+      <LoadingState label={isOperations ? "Loading active businesses" : "Loading your business account"}>
         <CardSkeleton lines={4} />
       </LoadingState>
     );
@@ -377,7 +408,13 @@ export function NewDeliveryFlow() {
   }
 
   if (accounts.length === 0) {
-    return (
+    return isOperations ? (
+      <EmptyState
+        title="No active businesses"
+        body="Create or activate a business workspace before entering an assisted delivery."
+        action={{ label: "Back to Operations", href: "/operations" }}
+      />
+    ) : (
       <EmptyState
         title="No business account yet"
         body="Finish setting up your business account before creating a delivery."
@@ -416,12 +453,18 @@ export function NewDeliveryFlow() {
         <Card>
           <CardHeader
             title="What happens next"
-            description="Submitting sends this to Couranr review."
+            description={isOperations
+              ? "Creating this assisted request sends it into the normal Couranr review queue."
+              : "Submitting sends this to Couranr review."}
           />
           <ul className="cr-list">
             <li>Couranr reviews the request before any delivery is scheduled.</li>
             <li>No payment is taken when you submit.</li>
-            <li>You can track the request from your deliveries list.</li>
+            <li>
+              {isOperations
+                ? "This entry records Operations as the creator; it does not impersonate or approve for the merchant."
+                : "You can track the request from your deliveries list."}
+            </li>
           </ul>
         </Card>
 
@@ -434,7 +477,7 @@ export function NewDeliveryFlow() {
           Couranr will send it back as a revised quote for approval instead.
           That is why it is optional and unticked by default.
         */}
-        {canAcknowledge(request) ? (
+        {!isOperations && canAcknowledge(request) ? (
           <Card>
             <CardHeader
               title="Approve this estimate"
@@ -451,9 +494,15 @@ export function NewDeliveryFlow() {
           </Card>
         ) : null}
 
+        {isOperations ? (
+          <Alert tone="info" title="Payer approval stays separate">
+            Entering a phone or email order records the request, but it does not count as the merchant approving the quote. Merchant-paid requests still require payer approval before confirmation.
+          </Alert>
+        ) : null}
+
         <Cluster gap={3}>
           <Button variant="primary" loading={busy} onClick={onSubmitForReview}>
-            Submit for Couranr review
+            {isOperations ? "Create delivery for review" : "Submit for Couranr review"}
           </Button>
           <Button variant="ghost" onClick={() => goToStep("intake")} disabled={busy}>
             Back to details
@@ -473,10 +522,13 @@ export function NewDeliveryFlow() {
           <ErrorState title="This could not be priced" body={withReference(failure)} />
         ) : null}
 
-        {accounts.length > 1 ? (
+        {isOperations || accounts.length > 1 ? (
           <Card>
-            <CardHeader title="Business account" />
-            <Field label="Delivering for" required>
+            <CardHeader
+              title={isOperations ? "Business" : "Business account"}
+              description={isOperations ? "Choose the business this call, email or manual request belongs to." : undefined}
+            />
+            <Field label={isOperations ? "Create delivery for" : "Delivering for"} required>
               {(p) => (
                 <Select
                   {...p}
@@ -546,7 +598,7 @@ export function NewDeliveryFlow() {
             title="Shipment"
             description="Describe it in your own words — Couranr organizes the details, and you confirm what matters."
           />
-          {businessAccountId ? (
+          {!isOperations && businessAccountId ? (
             <SmartIntakePanel
               businessAccountId={businessAccountId}
               sessionId={intakeSessionId}
@@ -616,6 +668,27 @@ export function NewDeliveryFlow() {
               )}
             </Field>
           </Grid>
+
+          {isOperations ? (
+            <Grid columns={2}>
+              <Field
+                label="Who pays?"
+                required
+                hint="This chooses the payer path. It does not record their approval."
+              >
+                {(p) => (
+                  <Select
+                    {...p}
+                    value={payerType}
+                    onChange={(e) => setPayerType(e.target.value as "merchant" | "customer")}
+                  >
+                    <option value="merchant">Business / merchant</option>
+                    <option value="customer">Customer / recipient</option>
+                  </Select>
+                )}
+              </Field>
+            </Grid>
+          ) : null}
 
           <Grid columns={2}>
             <Field
@@ -722,7 +795,10 @@ export function NewDeliveryFlow() {
           >
             Calculate estimate
           </Button>
-          <Link className="cr-button cr-button--ghost" href="/app/business/deliveries">
+          <Link
+            className="cr-button cr-button--ghost"
+            href={isOperations ? "/operations" : "/app/business/deliveries"}
+          >
             Cancel
           </Link>
         </Cluster>

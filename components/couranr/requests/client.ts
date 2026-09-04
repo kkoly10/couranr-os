@@ -395,3 +395,64 @@ export function resolveBusinessPlace(input: {
     }
   );
 }
+
+
+export function fetchOperationsBusinesses() {
+  return call<{ businessAccounts: BusinessAccountOption[] }>(
+    "/api/couranr/operations/businesses"
+  );
+}
+
+export function createOperationsDeliveryRequest(input: {
+  businessAccountId: string;
+  request: unknown;
+  idempotencyKey: string;
+}) {
+  return call<{ request: DeliveryRequestView }>(
+    "/api/couranr/operations/delivery-requests",
+    {
+      method: "POST",
+      idempotencyKey: input.idempotencyKey,
+      body: {
+        businessAccountId: input.businessAccountId,
+        request: input.request,
+      },
+    }
+  );
+}
+
+export function estimateOperationsDeliveryRequest(input: {
+  id: string;
+  businessAccountId: string;
+  expectedVersion: number;
+  request?: unknown;
+}) {
+  return call<{ request: DeliveryRequestView }>(
+    `/api/couranr/operations/delivery-requests/${input.id}/estimate`,
+    {
+      method: "POST",
+      body: {
+        businessAccountId: input.businessAccountId,
+        expectedVersion: input.expectedVersion,
+        request: input.request,
+      },
+    }
+  );
+}
+
+export function submitOperationsDeliveryRequest(input: {
+  id: string;
+  businessAccountId: string;
+  expectedVersion: number;
+}) {
+  return call<{ request: DeliveryRequestView }>(
+    `/api/couranr/operations/delivery-requests/${input.id}/submit`,
+    {
+      method: "POST",
+      body: {
+        businessAccountId: input.businessAccountId,
+        expectedVersion: input.expectedVersion,
+      },
+    }
+  );
+}

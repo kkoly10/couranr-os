@@ -155,7 +155,7 @@ export function OperationsPilotDashboard() {
           <div className="cr-ops-ready-state">
             <Text strong>Pilot console is clear.</Text>
             <Text muted size="sm">
-              Create the next controlled delivery from the Business workspace. It will appear here as soon as Couranr has work to do.
+              Create a business delivery here in Operations, or wait for a merchant/customer request. New work appears here as soon as Couranr has something to do.
             </Text>
           </div>
         ) : (

@@ -220,6 +220,29 @@ function denied(operation: string, reason: string): CommandFailure {
   });
 }
 
+
+export type RequestWriteAuthority = "merchant" | "operations";
+
+/**
+ * Merchant writes keep DRP-001 unchanged. Operations-assisted entry is an
+ * explicit server-only opt-in used only by /api/couranr/operations/* routes.
+ * An Operations actor does NOT become a merchant member and the normal merchant
+ * routes still refuse Operations create/submit.
+ */
+function requestWriteDenial(
+  operation: string,
+  actor: RequestActor,
+  capability: "create" | "submit",
+  businessAccountId: string,
+  authority: RequestWriteAuthority | undefined
+): CommandFailure | null {
+  if (authority === "operations") {
+    return actor.kind === "operations" ? null : denied(operation, "role_may_not_write");
+  }
+  const permission = canActOnDeliveryRequest(actor, capability, businessAccountId);
+  return permission.allowed ? null : denied(operation, permission.reason);
+}
+
 /**
  * Wraps an RPC call. A PostgREST error is classified by its SQLSTATE and never
  * forwarded; the driver's own message goes only to the server log.
@@ -323,12 +346,13 @@ export function shipmentArgs(
   canonical: {
     pickupAddress: GoogleAddressSnapshot;
     dropoffAddress: GoogleAddressSnapshot;
-  }
+  },
+  source: "merchant_portal" | "operations" = "merchant_portal"
 ) {
   return {
-    // This command is reached only from the canonical Business portal. Source
-    // is server-owned origin identity, not a form-selectable capability name.
-    p_source: "merchant_portal",
+    // Source is server-owned origin identity. The browser's raw `source` field
+    // is normalized for evidence but never decides which authority path wrote.
+    p_source: source,
     p_readiness_state: draft.readinessState,
     p_payer_type: draft.payerType,
     p_recipient_name: draft.recipientName,
@@ -579,10 +603,19 @@ export async function createDeliveryRequestDraft(params: {
   idempotencyKey: string;
   /** Present when the shipment came through Smart Intake (P5-001). */
   intakeSessionId?: string | null;
+  /** Explicit Operations-assisted entry; never set by merchant routes. */
+  writeAuthority?: RequestWriteAuthority;
 }): Promise<CommandResult<{ request: DeliveryRequestRow; quote: QuoteResult }>> {
   const op = "createDeliveryRequestDraft";
-  const permission = canActOnDeliveryRequest(params.actor, "create", params.businessAccountId);
-  if (!permission.allowed) return denied(op, permission.reason);
+  const writeDenial = requestWriteDenial(
+    op,
+    params.actor,
+    "create",
+    params.businessAccountId,
+    params.writeAuthority
+  );
+  if (writeDenial) return writeDenial;
+  const operationsAssisted = params.writeAuthority === "operations";
 
   const normalized = normalizeDeliveryRequestInput(params.rawInput);
   if (isNormalizeFailure(normalized)) {
@@ -596,10 +629,14 @@ export async function createDeliveryRequestDraft(params: {
   }
   const draft: DeliveryRequestDraft = normalized.value;
 
-  if (params.actor.kind !== "member") {
-    // Operations does not create on a merchant's behalf in this slice, and an
-    // anonymous actor never reaches here. `created_by` must be a real member.
+  if (
+    params.actor.kind !== "member" &&
+    !(operationsAssisted && params.actor.kind === "operations")
+  ) {
     return denied(op, "role_may_not_write");
+  }
+  if (operationsAssisted && params.intakeSessionId) {
+    return denied(op, "operations_intake_not_enabled");
   }
 
   const routedResult = await routeAndQuote(op, draft);
@@ -639,7 +676,7 @@ export async function createDeliveryRequestDraft(params: {
     p_business_account_id: params.businessAccountId,
     p_created_by: params.actor.userId,
     p_idempotency_key: params.idempotencyKey,
-    ...shipmentArgs(draft, routed),
+    ...shipmentArgs(draft, routed, operationsAssisted ? "operations" : "merchant_portal"),
     ...routeArgs(routed.route),
     ...timingArgs(routed.timing),
     ...quoteArgs(quote),
@@ -686,15 +723,30 @@ export async function calculateDeliveryRequestEstimate(params: {
   rawInput?: unknown;
   /** Present when the shipment came through Smart Intake (P5-001). */
   intakeSessionId?: string | null;
+  /** Explicit Operations-assisted entry; never set by merchant routes. */
+  writeAuthority?: RequestWriteAuthority;
 }): Promise<CommandResult<{ request: DeliveryRequestRow; quote: QuoteResult }>> {
   const op = "calculateDeliveryRequestEstimate";
-  const permission = canActOnDeliveryRequest(params.actor, "create", params.businessAccountId);
-  if (!permission.allowed) return denied(op, permission.reason);
+  const writeDenial = requestWriteDenial(
+    op,
+    params.actor,
+    "create",
+    params.businessAccountId,
+    params.writeAuthority
+  );
+  if (writeDenial) return writeDenial;
   if (params.actor.kind === "anonymous") return denied(op, "anonymous");
+  const operationsAssisted = params.writeAuthority === "operations";
+  if (operationsAssisted && params.intakeSessionId) {
+    return denied(op, "operations_intake_not_enabled");
+  }
 
   const loaded = await loadRequest(op, params.requestId, params.businessAccountId);
   if (isCommandFailure(loaded)) return loaded;
   const row = loaded.value;
+  if (operationsAssisted && row.source !== "operations") {
+    return denied(op, "wrong_origin");
+  }
 
   const transition = resolveTransition("calculate_delivery_request_estimate", row.request_state);
   if (!transition.allowed) {
@@ -768,7 +820,7 @@ export async function calculateDeliveryRequestEstimate(params: {
     const routedResult = await routeAndQuote(op, draft);
     if (isCommandFailure(routedResult)) return routedResult;
     routed = routedResult.value;
-    shipment = shipmentArgs(draft, routed);
+    shipment = shipmentArgs(draft, routed, operationsAssisted ? "operations" : "merchant_portal");
 
     if (intakeSessionId) {
       // A session may have started AFTER this draft existed (manual form
@@ -867,15 +919,27 @@ export async function submitDeliveryRequest(params: {
    * submitted, and confirming it will require the payer's approval.
    */
   merchantAcknowledged?: boolean;
+  /** Explicit Operations-assisted entry; never set by merchant routes. */
+  writeAuthority?: RequestWriteAuthority;
 }): Promise<CommandResult<{ request: DeliveryRequestRow }>> {
   const op = "submitDeliveryRequest";
-  const permission = canActOnDeliveryRequest(params.actor, "submit", params.businessAccountId);
-  if (!permission.allowed) return denied(op, permission.reason);
+  const writeDenial = requestWriteDenial(
+    op,
+    params.actor,
+    "submit",
+    params.businessAccountId,
+    params.writeAuthority
+  );
+  if (writeDenial) return writeDenial;
   if (params.actor.kind === "anonymous") return denied(op, "anonymous");
+  const operationsAssisted = params.writeAuthority === "operations";
 
   const loaded = await loadRequest(op, params.requestId, params.businessAccountId);
   if (isCommandFailure(loaded)) return loaded;
   const row = loaded.value;
+  if (operationsAssisted && row.source !== "operations") {
+    return denied(op, "wrong_origin");
+  }
 
   const transition = resolveTransition("submit_delivery_request", row.request_state);
   if (!transition.allowed) {
@@ -903,7 +967,8 @@ export async function submitDeliveryRequest(params: {
     p_business_account_id: params.businessAccountId,
     p_expected_version: params.expectedVersion,
     p_actor_user_id: params.actor.userId,
-    p_acknowledged: params.merchantAcknowledged === true,
+    // Operations entering a call/email order is NOT the merchant approving it.
+    p_acknowledged: operationsAssisted ? false : params.merchantAcknowledged === true,
   });
   if (isCommandFailure(result)) return result;
 
@@ -1388,6 +1453,10 @@ function permissionMessage(reason: string): string {
       return "Only Couranr Operations can review a delivery request.";
     case "role_may_not_write":
       return "Your role can view deliveries but cannot create or submit them.";
+    case "wrong_origin":
+      return "This request was not created through Operations assisted entry.";
+    case "operations_intake_not_enabled":
+      return "Smart Intake is not enabled for Operations-assisted entry yet.";
     default:
       return "You do not have access to this delivery request.";
   }
