@@ -216,8 +216,8 @@ export const BILLING_GAPS: readonly BillingGap[] = [
     merchantCopy:
       "A downloadable receipt is not available yet. This page is a record of what Couranr charged, not a tax document.",
     blockedBy:
-      "TAX-001 is unresolved and names MER-016 in blocked_screen_ids: no authority states whether delivery is taxable in the launch markets, who remits, or how tax appears on a receipt.",
-    kind: "undecided",
+      "TAX-001 is decided. Virginia-only pilot delivery charges are separately stated at 0 cents Virginia sales tax; the downloadable tax-receipt surface and the D.C. tax calculation/collection path are not implemented yet.",
+    kind: "unbuilt",
   },
   {
     id: "refunds_and_credits",
