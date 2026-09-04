@@ -107,7 +107,11 @@ export function OperationsInbox() {
         >
           Back to the inbox
         </Button>
-        <ConversationThread conversationId={openId} onChanged={() => void load()} />
+        <ConversationThread
+          conversationId={openId}
+          context="operations"
+          onChanged={() => void load()}
+        />
       </Stack>
     );
   }
