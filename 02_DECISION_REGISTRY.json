@@ -3782,6 +3782,8 @@
       "affected_code_paths": [
         "lib/couranr/pricing/policy.ts",
         "lib/couranr/pricing/quote.ts",
+        "lib/couranr/routing/canonicalRoute.ts",
+        "lib/couranr/routing/mapboxDirections.ts",
         "lib/couranr/public/governed.ts"
       ],
       "status": "decided",
@@ -3810,7 +3812,7 @@
         "money_rounding": "deterministic half-up to the cent, only where a rate produces a fractional cent",
         "mileage_rounded_up_to_whole_miles": false,
         "distance_precision": "thousandths of a loaded mile",
-        "distance_authority": "server-side Google Routes evidence only; browser mileage is never accepted",
+        "distance_authority": "server-side Mapbox Directions v5 driving-traffic evidence from canonical Google Place coordinates; browser mileage is never accepted",
         "base_service_includes": [
           "one pickup",
           "one destination",
@@ -4261,7 +4263,8 @@
         "public.couranr_quote_versions"
       ],
       "affected_code_paths": [
-        "lib/couranr/routing/googleRoutes.ts",
+        "lib/couranr/routing/canonicalRoute.ts",
+        "lib/couranr/routing/mapboxDirections.ts",
         "lib/couranr/pricing/quote.ts"
       ],
       "status": "decided",
@@ -4269,10 +4272,10 @@
       "decided_at_utc": "2026-09-01T00:00:00Z",
       "id": "TRF-001",
       "category": "pricing",
-      "decision": "Predicted traffic delay is priced up front from canonical Google route evidence: the first five minutes are included, additional predicted delay is 45 cents per minute, and delay above 25 minutes needs review.",
+      "decision": "Predicted traffic delay is priced up front from canonical server route evidence: the first five minutes are included, additional predicted delay is 45 cents per minute, and delay above 25 minutes needs review.",
       "value": {
         "delay_definition": "max(traffic_aware_duration_seconds - static_duration_seconds, 0)",
-        "evidence_source": "one canonical Google Routes response carrying both routes.duration (TRAFFIC_AWARE) and routes.staticDuration",
+        "evidence_source": "one canonical Mapbox Directions v5 driving-traffic response carrying routes[0].duration and routes[0].duration_typical",
         "included_seconds": 300,
         "cents_per_minute": 45,
         "review_over_seconds": 1500,
@@ -4284,9 +4287,11 @@
         "weather_multiplier": false,
         "event_multiplier": false,
         "missing_evidence_behaviour": "fail safe into review; never fabricate a traffic fact or assume a zero delay",
-        "traffic_basis": "immediate departure only",
+        "traffic_basis": "current or canonical scheduled departure",
         "departure_time_sent_to_google": false,
-        "scheduled_or_future_departure_traffic": "not implemented — deferred"
+        "scheduled_or_future_departure_traffic": "implemented via Mapbox depart_at",
+        "route_provider": "mapbox_directions_v5_driving_traffic",
+        "google_routes_runtime_status": "disabled fallback; historical Google route evidence remains valid"
       },
       "acceptance_criteria": [
         "Five minutes of predicted delay adds nothing.",
@@ -4304,7 +4309,7 @@
         "remediation_commit": "Pricing V2 cutover"
       },
       "implementation_phase": "Pricing V2 cutover",
-      "note": "SCOPE, stated rather than implied: the Routes request pins routingPreference TRAFFIC_AWARE and sends NO departureTime, so Google prices the traffic conditions for now. That is correct for the only timing the Business create-delivery flow can currently express - it has no canonical requested departure-time input. Future or scheduled departure traffic is therefore NOT implemented and must not be described as complete; it belongs to the next Business timing / Smart Intake batch, which owns the input schema. No scheduling model is invented here.",
+      "note": "Current routing authority is Mapbox Directions v5 driving-traffic. Google Places remains canonical address identity. Google Routes is disabled by the paid-provider budget policy and retained only as a rollback implementation; historical Google route evidence is immutable.",
       "amended_by": [
         "TRF-002"
       ]
@@ -4473,7 +4478,7 @@
     {
       "id": "TMZ-001",
       "category": "operations",
-      "decision": "The Couranr MVP operating timezone is the IANA zone America/New_York. All MVP request-time operating semantics — earliest pickup, same-day cutoff, end of standard window, next-business-day and Friday-after-cutoff calculations, overnight request timing, merchant-entered scheduled pickup times and Google Routes future departureTime conversion — are evaluated in this zone on the SERVER. DST follows the zone automatically through IANA tzdata.",
+      "decision": "The Couranr MVP operating timezone is the IANA zone America/New_York. All MVP request-time operating semantics — earliest pickup, same-day cutoff, end of standard window, next-business-day and Friday-after-cutoff calculations, overnight request timing, merchant-entered scheduled pickup times and Mapbox future depart_at conversion — are evaluated in this zone on the SERVER. DST follows the zone automatically through IANA tzdata.",
       "value": {
         "operating_timezone": "America/New_York",
         "never": [
@@ -4508,7 +4513,8 @@
       ],
       "affected_code_paths": [
         "lib/couranr/timing/policy.ts",
-        "lib/couranr/routing/googleRoutes.ts",
+        "lib/couranr/routing/canonicalRoute.ts",
+        "lib/couranr/routing/mapboxDirections.ts",
         "supabase/migrations/20260902200000_couranr_weight_band_and_requested_timing.sql"
       ],
       "acceptance_criteria": [
@@ -4755,11 +4761,12 @@
       "id": "TRF-002",
       "category": "pricing",
       "amends": "TRF-001",
-      "decision": "Scheduled (future-departure) traffic is now implemented. A scheduled request's canonical America/New_York-derived instant is sent to Google Routes as departureTime, so predicted traffic for the requested departure prices the quote; the delay derivation (duration minus staticDuration from ONE response) is unchanged. Only a genuinely future instant is sent; a past requested time is a timing review, never a Google call. Browsers still supply no route, duration, baseline, delay or mileage.",
+      "decision": "Scheduled (future-departure) traffic is implemented. A scheduled request's canonical America/New_York-derived instant is sent to Mapbox Directions as depart_at, so predicted traffic for the requested departure prices the quote; the delay derivation (duration minus duration_typical from one response) is unchanged. Only a genuinely future instant is sent; a past requested time is a timing review. Browsers still supply no route, duration, baseline, delay or mileage.",
       "value": {
-        "immediate_requests": "no departureTime; Google prices current conditions (TRF-001 behavior unchanged)",
-        "scheduled_requests": "departureTime = the canonical requested instant, RFC3339",
-        "dst": "automatic via America/New_York tzdata (TMZ-001)"
+        "immediate_requests": "no depart_at; Mapbox driving-traffic prices current conditions",
+        "scheduled_requests": "depart_at = the canonical requested instant, RFC3339",
+        "dst": "automatic via America/New_York tzdata (TMZ-001)",
+        "provider": "mapbox_directions_v5_driving_traffic"
       },
       "status": "decided",
       "decided_by": "owner",
@@ -4777,23 +4784,24 @@
         "public.couranr_quote_versions"
       ],
       "affected_code_paths": [
-        "lib/couranr/routing/googleRoutes.ts",
+        "lib/couranr/routing/canonicalRoute.ts",
+        "lib/couranr/routing/mapboxDirections.ts",
         "lib/couranr/timing/policy.ts"
       ],
       "acceptance_criteria": [
-        "A future canonical instant reaches the provider request verbatim as departureTime.",
+        "A future canonical instant reaches the provider request verbatim as depart_at.",
         "A past instant is never sent; the request carries a timing review instead.",
-        "Immediate routes are byte-identical to TRF-001 behavior.",
+        "Immediate routes omit depart_at and use current driving-traffic conditions.",
         "The Pricing V2 traffic math is unchanged for scheduled routes."
       ],
       "implementation_phase": "Smart Intake batch",
       "conflict_with_current_code": {
         "code_value": {
-          "scheduled_traffic": "not implemented — computeCanonicalGoogleRoute sent no departureTime by design (TRF-001)"
+          "previous_provider": "Google Routes departureTime"
         },
         "code_location": "lib/couranr/routing/googleRoutes.ts",
-        "resolution": "departureTime added for future canonical instants; immediate behavior unchanged.",
-        "remediation_commit": "Smart Intake batch"
+        "resolution": "Mapbox Directions v5 driving-traffic is now the canonical route provider; scheduled instants use depart_at.",
+        "remediation_commit": "Mapbox routing cutover"
       }
     }
   ]
