@@ -571,8 +571,8 @@ export function DriverShell({
       </header>
 
       <main id="cr-main" tabIndex={-1} className="cr-shell__main">
-        <Container>
-          <div className="cr-shell__content">{children}</div>
+        <Container width="narrow">
+          <div className="cr-shell__content cr-driver-content">{children}</div>
         </Container>
       </main>
 
