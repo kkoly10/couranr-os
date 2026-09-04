@@ -43,6 +43,7 @@ export const RPC = {
   completeCapture: "couranr_complete_payment_capture",
   failCapture: "couranr_fail_payment_capture",
   createDelivery: "couranr_create_delivery_from_capture",
+  createDeliveryFromCredit: "couranr_create_delivery_from_promotional_credit",
   resolveTerminal: "couranr_resolve_terminal_capture_failure",
 } as const;
 
@@ -667,16 +668,66 @@ export async function applyVerifiedCaptureOutcome(params: {
 /* ----------------------------------------------------------- reads ----- */
 
 const PLAN_COLUMNS =
-  "id,request_id,business_account_id,payment_obligation_id,request_version,quote_version_id," +
+  "id,request_id,business_account_id,payment_obligation_id,promotional_credit_id,request_version,quote_version_id," +
   "scheduled_pickup_start,scheduled_pickup_end,timezone,vehicle_id,vehicle_requirement," +
   "plan_state,confirmed_by,confirmed_at,version";
 
 const DELIVERY_COLUMNS =
-  "id,request_id,business_account_id,payment_obligation_id,service_plan_id," +
-  "request_version,quote_version_id,pricing_policy_version,captured_amount_cents,currency," +
+  "id,request_id,business_account_id,payment_obligation_id,promotional_credit_id,service_plan_id," +
+  "request_version,quote_version_id,pricing_policy_version,captured_amount_cents," +
+  "standard_quote_cents,amount_paid_cents,promotional_credit_cents,currency," +
   "pickup_address,dropoff_address,recipient,shipment,service_level," +
   "signature_required,proof_method,scheduled_pickup_start,scheduled_pickup_end," +
   "timezone,vehicle_id,vehicle_requirement,fulfillment_state,version,created_at";
+
+export async function getPromotionalCredit(params: {
+  requestId: string;
+}): Promise<FulfillmentResult<{ credit: Record<string, any> | null }>> {
+  const { data, error } = (await supabaseAdmin
+    .from("couranr_promotional_credits")
+    .select(
+      "id,request_id,business_account_id,quote_version_id,standard_quote_cents," +
+        "amount_paid_cents,promotional_credit_cents,currency,reason,campaign,market,category," +
+        "approved_by,approved_at,status"
+    )
+    .eq("request_id", params.requestId)
+    .eq("status", "applied")
+    .maybeSingle()) as { data: any; error: any };
+  if (error) {
+    return fail({ operation: "getPromotionalCredit", code: "internal", detail: error.message });
+  }
+  return { ok: true, value: { credit: data ?? null } };
+}
+
+/**
+ * Finalize a fully credited pilot request into a canonical delivery.
+ *
+ * This does not touch Stripe and does not mutate the payment obligation. The
+ * database verifies that the approved credit covers the exact current quote,
+ * the merchant is ready, and the service plan is confirmed.
+ */
+export async function createDeliveryFromPromotionalCredit(params: {
+  actor: RequestActor;
+  requestId: string;
+  businessAccountId: string | null;
+}): Promise<FulfillmentResult<{ delivery: Record<string, any> }>> {
+  const op = "createDeliveryFromPromotionalCredit";
+  const permission = canActOnDeliveryRequest(params.actor, "review", params.businessAccountId);
+  if (!permission.allowed || params.actor.kind !== "operations") {
+    return fail({
+      operation: op,
+      code: "not_permitted",
+      detail: { reason: "not_operations" },
+      message: "Only Couranr Operations can finalize a promotional-credit delivery.",
+    });
+  }
+
+  const r = await callRpc<Record<string, any>>(op, RPC.createDeliveryFromCredit, {
+    p_request_id: params.requestId,
+  });
+  if (isFulfillmentFailure(r)) return r;
+  return { ok: true, value: { delivery: r.value } };
+}
 
 export async function getServicePlan(params: {
   requestId: string;
@@ -709,6 +760,7 @@ export type LifecycleQueueEntry = {
   assignment?: Record<string, any> | null;
   request: Record<string, any>;
   payment: Record<string, any> | null;
+  promotionalCredit: Record<string, any> | null;
   servicePlan: Record<string, any> | null;
   delivery: Record<string, any> | null;
 };
@@ -869,11 +921,16 @@ export async function listOperationsLifecycle(params: {
     return { rows: results.flatMap((r: any) => r.data ?? []), error: null };
   }
 
-  const [obs, plans, deliveries] = await Promise.all([
+  const [obs, credits, plans, deliveries] = await Promise.all([
     joinAll(
       "couranr_payment_obligations",
       "id,request_id,payment_state,payer_type,amount_cents,currency",
       (q) => q.neq("payment_state", "cancelled")
+    ),
+    joinAll(
+      "couranr_promotional_credits",
+      "id,request_id,quote_version_id,standard_quote_cents,amount_paid_cents,promotional_credit_cents,currency,status",
+      (q) => q.eq("status", "applied")
     ),
     joinAll(
       "couranr_service_plans",
@@ -887,7 +944,7 @@ export async function listOperationsLifecycle(params: {
     ),
   ]);
 
-  for (const r of [obs, plans, deliveries]) {
+  for (const r of [obs, credits, plans, deliveries]) {
     if (r.error) {
       return fail({
         operation: op,
@@ -904,6 +961,7 @@ export async function listOperationsLifecycle(params: {
     return m;
   };
   const obMap = byRequest(obs.rows);
+  const creditMap = byRequest(credits.rows);
   const planMap = byRequest(plans.rows);
   const deliveryMap = byRequest(deliveries.rows);
 
@@ -951,6 +1009,7 @@ export async function listOperationsLifecycle(params: {
         return {
           request,
           payment: obMap.get(String(request.id)) ?? null,
+          promotionalCredit: creditMap.get(String(request.id)) ?? null,
           servicePlan: planMap.get(String(request.id)) ?? null,
           delivery,
           assignment: delivery ? assignmentByDelivery.get(String(delivery.id)) ?? null : null,
