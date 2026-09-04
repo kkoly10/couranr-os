@@ -69,7 +69,7 @@ describe("Operations-assisted business delivery entry", () => {
 
   it("hands an Operations-entered merchant quote to the real Business payer", () => {
     const migration = read(
-      "supabase/migrations/20260904051500_operations_assisted_payer_handoff.sql"
+      "supabase/migrations/20260904050016_operations_assisted_payer_handoff.sql"
     );
     const review = read("components/couranr/requests/ReviewOutcomeActions.tsx");
 
