@@ -329,6 +329,31 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
           restrictedClass,
         },
       });
+
+    /*
+     * FND-006 readiness parity. The estimate creates/binds the canonical guest
+     * request, then the explicit answer is written onto the SAME
+     * readiness_state Business uses. No answer is inferred from intent.
+     */
+    if (
+      mode === "live" &&
+      readiness !== null &&
+      reading.state !== "unavailable" &&
+      adapters.setPickupReadiness
+    ) {
+      const saved = await adapters.setPickupReadiness(
+        readiness === "yes" ? "ready" : "not_ready"
+      );
+      if (!saved.ok) {
+        const failed: QuoteReading = {
+          state: "unavailable",
+          note: saved.note ?? "Couranr could not save pickup readiness.",
+        };
+        setQuote(failed);
+        return failed;
+      }
+    }
+
     setQuote(reading);
     return reading;
   }
@@ -778,25 +803,32 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
             </select>
           </div>
 
-          {intent === "pickup" ? (
+          {intent === "pickup" || mode === "live" ? (
             <fieldset className="cr-send-field">
               <legend className="cr-send-field__label">{SEND_COPY.readiness_question}</legend>
-              {([["yes", SEND_COPY.readiness_yes], ["no", SEND_COPY.readiness_no]] as const).map(([v, label]) => (
+              {([
+                ["yes", intent === "send" ? "Yes, it’s ready to hand over" : SEND_COPY.readiness_yes],
+                ["no", SEND_COPY.readiness_no],
+              ] as const).map(([v, label]) => (
                 <label key={v} className="cr-send-choice">
                   <input type="radio" name="readiness" checked={readiness === v} onChange={() => setReadiness(v)} />
                   <span>{label}</span>
                 </label>
               ))}
-              <label className="cr-send-field__label" htmlFor="send-ref">
-                Pickup or order reference (optional)
-              </label>
-              <input
-                id="send-ref"
-                className="cr-input"
-                type="text"
-                value={reference}
-                onChange={(e) => setReference(e.target.value)}
-              />
+              {intent === "pickup" ? (
+                <>
+                  <label className="cr-send-field__label" htmlFor="send-ref">
+                    Pickup or order reference (optional)
+                  </label>
+                  <input
+                    id="send-ref"
+                    className="cr-input"
+                    type="text"
+                    value={reference}
+                    onChange={(e) => setReference(e.target.value)}
+                  />
+                </>
+              ) : null}
             </fieldset>
           ) : null}
 
@@ -804,7 +836,12 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
             <button type="button" className="cr-button cr-button--ghost" onClick={() => setPhase("trip")}>
               Back
             </button>
-            <button type="button" className="cr-button cr-button--primary" onClick={() => setPhase("timing")}>
+            <button
+              type="button"
+              className="cr-button cr-button--primary"
+              disabled={mode === "live" && readiness === null}
+              onClick={() => setPhase("timing")}
+            >
               Continue
             </button>
           </div>
@@ -874,7 +911,16 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
                 [intent === "send" ? "From" : "Pick up from", pickup.value],
                 ["To", destination.value],
                 ["Item", item],
-                ...(intent === "pickup" ? [["Ready", readiness === "yes" ? SEND_COPY.readiness_yes : SEND_COPY.readiness_no] as const] : []),
+                ...(intent === "pickup" || mode === "live"
+                  ? [[
+                      "Ready",
+                      readiness === "yes"
+                        ? intent === "send"
+                          ? "Yes, it’s ready to hand over"
+                          : SEND_COPY.readiness_yes
+                        : SEND_COPY.readiness_no,
+                    ] as const]
+                  : []),
                 ["When", timing ?? ""],
                 ["Contact", contact.name],
               ] as const
