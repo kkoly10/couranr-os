@@ -888,126 +888,51 @@ export async function listOperationsLifecycle(params: {
   const limit = Math.min(Math.max(params.limit ?? 200, 1), 200);
 
   /*
-   * SCHEDULED WORK IS EXCLUDED FROM THE OLDEST-FIRST WINDOW.
-   *
-   * A captured, scheduled request stays in `confirmed` forever — no state
-   * change ever removes it — so with a single oldest-first query the window
-   * fills with finished work and new review work is starved out of Operations
-   * entirely. The queue would look healthy while nobody could see the newest
-   * submission.
-   *
-   * So completed rows are fetched separately, newest-first and capped, and are
-   * excluded from the work window by id.
-   *
-   * KNOWN LIMIT: the exclusion list is every canonical delivery, which grows
-   * without bound. It is tiny today and this keeps the query in one round trip;
-   * the durable fix is a database-side filter, which needs a reviewed
-   * migration. `truncated` reports the shortfall rather than hiding it.
+   * SQL chooses the WORK SET before pagination. That matters: filtering normal
+   * automatic schedules only after LIMIT would let hundreds of machine-owned
+   * rows crowd real exceptions/manual work out of the first page.
    */
-  const DONE_WINDOW = 25;
-  const { data: doneRows, error: doneErr } = (await supabaseAdmin
-    .from("couranr_deliveries")
-    .select("request_id,created_at")
-    .order("created_at", { ascending: false })) as { data: any[]; error: any };
+  const { data: candidateRows, error: candidateError } = (await supabaseAdmin.rpc(
+    "couranr_operations_queue_candidates",
+    { p_limit: limit }
+  )) as { data: Array<{ request_id: string; total_count: number | string }> | null; error: any };
 
-  if (doneErr) {
+  if (candidateError) {
     return fail({
       operation: op,
       code: "internal",
-      detail: doneErr.message,
+      detail: candidateError.message,
       message: "The Couranr Operations Queue could not be loaded.",
     });
   }
 
-  const doneIds = (doneRows ?? []).map((d) => String(d.request_id));
-  const recentDoneIds = doneIds.slice(0, DONE_WINDOW);
+  const candidates = candidateRows ?? [];
+  const ids = candidates.map((r) => String(r.request_id));
+  const total =
+    candidates.length > 0 ? Number(candidates[0].total_count ?? candidates.length) : 0;
+  if (ids.length === 0) return { ok: true, value: { entries: [], total } };
 
-  let workQuery = supabaseAdmin
+  const { data: requestRows, error: requestError } = (await supabaseAdmin
     .from("couranr_delivery_requests")
-    // The same allow-list the detail view is fed, so both screens render one
-    // request from identical inputs.
-    .select(REQUEST_VIEW_COLUMNS, { count: "exact" })
-    // Nothing pre-submission and nothing terminal: a queue is work to be done.
-    .in("request_state", [
-      "pending_couranr_review",
-      "confirmed",
-      "awaiting_quote_acceptance",
-      "quote_revision_required",
-    ]);
-  if (doneIds.length > 0) {
-    workQuery = workQuery.not("id", "in", `(${doneIds.join(",")})`);
-  }
+    .select(REQUEST_VIEW_COLUMNS)
+    .in("id", ids)) as { data: any[]; error: any };
 
-  const {
-    data: requests,
-    error,
-    count,
-  } = (await workQuery
-    /*
-     * Oldest first, which is how a work queue is worked. `created_at` breaks
-     * the tie so the page is stable rather than reordering between refreshes
-     * on rows submitted in the same instant.
-     */
-    .order("submitted_at", { ascending: true, nullsFirst: false })
-    .order("created_at", { ascending: true })
-    .limit(limit)) as { data: any[]; error: any; count: number | null };
-
-  if (error) {
+  if (requestError) {
     return fail({
       operation: op,
       code: "internal",
-      detail: error.message,
+      detail: requestError.message,
       message: "The Couranr Operations Queue could not be loaded.",
     });
   }
 
-  /*
-   * The most recently scheduled work, folded back in so Operations can still
-   * see what it just completed — capped, and newest-first, so it can never
-   * crowd out the work window again.
-   */
-  let doneRequests: any[] = [];
-  if (recentDoneIds.length > 0) {
-    const { data, error: recentErr } = (await supabaseAdmin
-      .from("couranr_delivery_requests")
-      .select(REQUEST_VIEW_COLUMNS)
-      .in("id", recentDoneIds)) as { data: any[]; error: any };
-    if (recentErr) {
-      return fail({
-        operation: op,
-        code: "internal",
-        detail: recentErr.message,
-        message: "The Couranr Operations Queue could not be loaded.",
-      });
-    }
-    // Preserve the newest-first order the delivery query established.
-    const rank = new Map(recentDoneIds.map((id, i) => [id, i]));
-    doneRequests = (data ?? []).sort(
-      (a, b) => (rank.get(String(a.id)) ?? 0) - (rank.get(String(b.id)) ?? 0)
-    );
-  }
+  const requestRank = new Map(ids.map((id, index) => [id, index]));
+  const rows = (requestRows ?? []).sort(
+    (a, b) =>
+      (requestRank.get(String(a.id)) ?? Number.MAX_SAFE_INTEGER) -
+      (requestRank.get(String(b.id)) ?? Number.MAX_SAFE_INTEGER)
+  );
 
-  const workRows = requests ?? [];
-  const rows = [...workRows, ...doneRequests];
-  /*
-   * `total` counts the WORK window only — the number the "showing the N oldest
-   * of M" notice is about. Folding completed rows into it would understate how
-   * much unworked queue is hidden.
-   */
-  const total = typeof count === "number" ? count : workRows.length;
-  if (rows.length === 0) return { ok: true, value: { entries: [], total } };
-
-  const ids = rows.map((r) => String(r.id));
-
-  /*
-   * Chunked, because `.in()` becomes a query STRING.
-   *
-   * PostgREST renders this as `request_id=in.(uuid,uuid,…)` in the request
-   * line, and 200 UUIDs is roughly 7.4 KB of URL — close enough to the proxy's
-   * header-buffer limit that a full queue would start returning errors while a
-   * small one worked, which is the worst possible failure curve. 50 per batch
-   * keeps every request comfortably small.
-   */
   const CHUNK = 50;
   const chunks: string[][] = [];
   for (let i = 0; i < ids.length; i += CHUNK) chunks.push(ids.slice(i, i + CHUNK));
@@ -1079,24 +1004,20 @@ export async function listOperationsLifecycle(params: {
   const deliveryMap = byRequest(deliveries.rows);
   const exceptionMap = byRequest(exceptions.rows);
 
-  /*
-   * Active assignments for the deliveries in this page, keyed by delivery id.
-   *
-   * Chunked on DELIVERY id rather than request id — the assignment table has no
-   * request_id, and adding one would be a second copy of a fact the delivery
-   * already holds. Only deliveries that exist are looked up, so an empty queue
-   * costs nothing.
-   */
   const deliveryIds = deliveries.rows.map((d: any) => String(d.id));
   const assignmentByDelivery = new Map<string, any>();
   if (deliveryIds.length > 0) {
     const dChunks: string[][] = [];
-    for (let i = 0; i < deliveryIds.length; i += CHUNK) dChunks.push(deliveryIds.slice(i, i + CHUNK));
+    for (let i = 0; i < deliveryIds.length; i += CHUNK) {
+      dChunks.push(deliveryIds.slice(i, i + CHUNK));
+    }
     const results = await Promise.all(
       dChunks.map((batch) =>
         supabaseAdmin
           .from("couranr_delivery_assignments")
-          .select("id,delivery_id,driver_id,vehicle_id,assignment_state,assigned_at,version")
+          .select(
+            "id,delivery_id,driver_id,vehicle_id,assignment_state,assignment_source,assigned_at,version"
+          )
           .eq("assignment_state", "active")
           .in("delivery_id", batch)
       )
@@ -1126,7 +1047,9 @@ export async function listOperationsLifecycle(params: {
           promotionalCredit: creditMap.get(String(request.id)) ?? null,
           servicePlan: planMap.get(String(request.id)) ?? null,
           delivery,
-          assignment: delivery ? assignmentByDelivery.get(String(delivery.id)) ?? null : null,
+          assignment: delivery
+            ? assignmentByDelivery.get(String(delivery.id)) ?? null
+            : null,
           automationException: exceptionMap.get(String(request.id)) ?? null,
         };
       }),
