@@ -80,6 +80,20 @@ export const REQUEST_COMMANDS = [
 export type RequestCommand = (typeof REQUEST_COMMANDS)[number];
 
 /**
+ * Audit-event vocabulary is wider than the actor-invocable transition model.
+ * These three names are written only by trusted server/database automation;
+ * forcing them into COMMAND_RULES would falsely imply a browser/actor command
+ * exists for planning or promotional settlement.
+ */
+export const REQUEST_EVENT_COMMANDS = [
+  ...REQUEST_COMMANDS,
+  "auto_accept_delivery_request",
+  "auto_plan_delivery_request",
+  "apply_promotional_credit",
+] as const;
+export type RequestEventCommand = (typeof REQUEST_EVENT_COMMANDS)[number];
+
+/**
  * Where a command leaves the request.
  *
  * A plain state, `"unchanged"` when the command only records, or — for
