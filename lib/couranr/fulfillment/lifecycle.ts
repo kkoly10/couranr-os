@@ -15,6 +15,8 @@ import type { RequestState } from "@/lib/couranr/requests/states";
 export const LIFECYCLE_STAGES = [
   /** Submitted, waiting for a Couranr reviewer to pick it up. */
   "pending_review",
+  /** The machine-owned path opened an explicit exception for Operations. */
+  "automation_exception",
   /** Reviewed and priced; the payer has not put a hold on the money yet. */
   "awaiting_payment_authorization",
   /** Money is held. The merchant has not said the shipment is ready. */
@@ -43,7 +45,9 @@ export const LIFECYCLE_STAGES = [
    * only remaining step is conversion.
    */
   "captured_not_scheduled",
-  /** Money taken and a canonical delivery exists, waiting on dispatch. */
+  /** Normal-lane work is scheduled by the machine and waiting for its dispatch horizon. */
+  "automatic_scheduled",
+  /** Money taken and a manually planned canonical delivery exists, waiting on dispatch. */
   "captured_scheduled",
   /**
    * A driver and a vehicle are committed to the delivery. Distinct from
@@ -79,6 +83,11 @@ export type LifecycleInput = {
   promotionalCreditApplied?: boolean;
   /** True only for a plan in `confirmed`; a cancelled plan is not a plan. */
   servicePlanConfirmed: boolean;
+  /** Who owns the confirmed plan. Automatic plans are not Operations chores. */
+  servicePlanSource?: "operations" | "automatic" | string | null;
+  /** One explicit machine-owned exception means Operations really does have work. */
+  automationExceptionOpen?: boolean;
+  automationExceptionStage?: string | null;
   canonicalDeliveryExists: boolean;
 };
 
@@ -93,10 +102,16 @@ export type LifecycleInput = {
  * - Only then does the request state decide.
  */
 export function lifecycleStage(input: LifecycleInput): LifecycleStage {
+  // An open exception is the one reason normal automation becomes Operations
+  // work. It outranks the ordinary schedule projection, including a canonical
+  // delivery that exists but could not be assigned.
+  if (input.automationExceptionOpen) return "automation_exception";
+
   if (input.canonicalDeliveryExists) {
-    // Dispatch is the last thing that happens to a captured delivery in this
-    // slice, so it is checked first among the terminal-ish stages.
-    return input.assignmentActive ? "driver_assigned" : "captured_scheduled";
+    if (input.assignmentActive) return "driver_assigned";
+    return input.servicePlanSource === "automatic"
+      ? "automatic_scheduled"
+      : "captured_scheduled";
   }
   if (input.paymentState === "capture_pending") return "capture_pending";
 
@@ -140,28 +155,35 @@ export function lifecycleStage(input: LifecycleInput): LifecycleStage {
    * and contradicted what OPS-003 showed for the same request.
    */
   if (input.readinessState !== "ready") return "merchant_preparing";
-  if (input.servicePlanConfirmed) return "service_plan_confirmed";
+  if (input.servicePlanConfirmed) {
+    return input.servicePlanSource === "automatic"
+      ? "automatic_scheduled"
+      : "service_plan_confirmed";
+  }
   return "ready_for_planning";
 }
 
 /** Queue ordering. Lower sorts first — the oldest blocked work at the top. */
 export const LIFECYCLE_STAGE_ORDER: Readonly<Record<LifecycleStage, number>> = {
   pending_review: 0,
-  ready_for_planning: 1,
-  service_plan_confirmed: 2,
-  capture_pending: 3,
-  payment_reauthorization_required: 4,
-  captured_not_scheduled: 5,
-  merchant_preparing: 6,
-  awaiting_payment_authorization: 7,
-  captured_scheduled: 8,
-  driver_assigned: 9,
+  automation_exception: 1,
+  ready_for_planning: 2,
+  service_plan_confirmed: 3,
+  capture_pending: 4,
+  payment_reauthorization_required: 5,
+  captured_not_scheduled: 6,
+  merchant_preparing: 7,
+  awaiting_payment_authorization: 8,
+  automatic_scheduled: 9,
+  captured_scheduled: 10,
+  driver_assigned: 11,
   // Always last: nothing here is queue work.
-  not_actionable: 10,
+  not_actionable: 12,
 };
 
 export const LIFECYCLE_STAGE_LABELS: Readonly<Record<LifecycleStage, string>> = {
   pending_review: "Pending Couranr review",
+  automation_exception: "Automation needs Operations",
   awaiting_payment_authorization: "Awaiting payment authorization",
   merchant_preparing: "Merchant preparing",
   ready_for_planning: "Ready for planning",
@@ -169,6 +191,7 @@ export const LIFECYCLE_STAGE_LABELS: Readonly<Record<LifecycleStage, string>> = 
   capture_pending: "Capture pending",
   payment_reauthorization_required: "Payment authorization needs attention",
   captured_not_scheduled: "Captured — not yet scheduled",
+  automatic_scheduled: "Scheduled automatically",
   captured_scheduled: "Scheduled — needs a driver",
   driver_assigned: "Driver assigned",
   not_actionable: "No action available",
@@ -177,6 +200,8 @@ export const LIFECYCLE_STAGE_LABELS: Readonly<Record<LifecycleStage, string>> = 
 /** What Operations is waiting on, in the queue's own voice. */
 export const LIFECYCLE_STAGE_DESCRIPTIONS: Readonly<Record<LifecycleStage, string>> = {
   pending_review: "Open each request to confirm, requote or decline it.",
+  automation_exception:
+    "Automatic fulfillment stopped safely. Open the delivery to resolve the recorded exception.",
   awaiting_payment_authorization:
     "Couranr confirmed the quote. Nothing can be planned until the payer authorizes the hold.",
   merchant_preparing:
@@ -190,6 +215,8 @@ export const LIFECYCLE_STAGE_DESCRIPTIONS: Readonly<Record<LifecycleStage, strin
     "The provider ended this authorization. Nothing was taken. The payer must authorize again before this can be planned or captured.",
   captured_not_scheduled:
     "The payment was taken but no delivery exists yet. Finish scheduling — do not capture again.",
+  automatic_scheduled:
+    "Couranr scheduled this normal-lane delivery automatically. No Operations action is required unless an exception opens.",
   captured_scheduled: "Scheduled and commercially settled. No driver is assigned yet.",
   driver_assigned: "A driver and vehicle are committed to this delivery.",
   not_actionable: "Closed, declined or cancelled.",
@@ -203,8 +230,14 @@ export const LIFECYCLE_STAGE_DESCRIPTIONS: Readonly<Record<LifecycleStage, strin
  * hand-written order is a second thing to keep in step, and the one that
  * drifted would silently reorder the screen an operator works top-down.
  */
+const NON_QUEUE_STAGES = new Set<LifecycleStage>([
+  "not_actionable",
+  "automatic_scheduled",
+  "driver_assigned",
+]);
+
 export const QUEUE_STAGES: readonly LifecycleStage[] = LIFECYCLE_STAGES.filter(
-  (s) => s !== "not_actionable"
+  (s) => !NON_QUEUE_STAGES.has(s)
 ).sort((a, b) => LIFECYCLE_STAGE_ORDER[a] - LIFECYCLE_STAGE_ORDER[b]);
 
 /**
@@ -215,6 +248,7 @@ export const LIFECYCLE_STAGE_TONE: Readonly<
   Record<LifecycleStage, "neutral" | "info" | "success" | "warning" | "danger">
 > = {
   pending_review: "info",
+  automation_exception: "warning",
   awaiting_payment_authorization: "neutral",
   merchant_preparing: "neutral",
   ready_for_planning: "info",
@@ -222,6 +256,7 @@ export const LIFECYCLE_STAGE_TONE: Readonly<
   capture_pending: "warning",
   payment_reauthorization_required: "danger",
   captured_not_scheduled: "warning",
+  automatic_scheduled: "success",
   captured_scheduled: "warning",
   driver_assigned: "success",
   not_actionable: "neutral",
