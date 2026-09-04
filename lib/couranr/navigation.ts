@@ -65,6 +65,7 @@ const NAV_LABELS: Record<string, string> = {
   "MER-014": "Settings",
 
   // Driver — field-first, small set.
+  "DRV-001": "Home",
   "DRV-008": "Messages",
   "DRV-009": "Availability",
   "DRV-010": "Vehicle",
