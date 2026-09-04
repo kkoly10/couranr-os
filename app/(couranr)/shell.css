@@ -518,8 +518,7 @@
   line-height: 1.5;
 }
 
-.cr-driver-facts-grid,
-.cr-driver-edit-grid {
+.cr-driver-facts-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--couranr-space-4);
@@ -542,27 +541,6 @@
   border-radius: 999px;
   color: var(--couranr-text);
   font-size: var(--couranr-text-sm);
-}
-
-.cr-driver-check-grid {
-  display: grid;
-  gap: var(--couranr-space-2);
-}
-
-.cr-driver-check {
-  display: flex;
-  align-items: center;
-  gap: var(--couranr-space-3);
-  min-height: 44px;
-  padding: var(--couranr-space-2) var(--couranr-space-3);
-  border: 1px solid var(--couranr-border);
-  border-radius: var(--couranr-radius-md);
-  cursor: pointer;
-}
-
-.cr-driver-check input {
-  width: 18px;
-  height: 18px;
 }
 
 .cr-driver-vehicle-switcher {
@@ -596,8 +574,7 @@
     align-items: flex-start;
   }
 
-  .cr-driver-facts-grid,
-  .cr-driver-edit-grid {
+  .cr-driver-facts-grid {
     grid-template-columns: 1fr;
   }
 
