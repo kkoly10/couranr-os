@@ -29,7 +29,7 @@ export default async function Page(props: { params: Promise<{ id: string }> }) {
           { label: "Delivery review" },
         ]}
       />
-      <DeliveryRequestDetail id={params.id} />
+      <DeliveryRequestDetail id={params.id} surface="operations" />
     </>
   );
 }
