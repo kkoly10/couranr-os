@@ -8,6 +8,10 @@ begin;
 set local statement_timeout='120s';
 set local lock_timeout='10s';
 
+drop trigger if exists couranr_delivery_chat_membership_tenure_trg
+  on public.business_members;
+drop function if exists private.couranr_delivery_chat_membership_tenure() restrict;
+
 drop trigger if exists couranr_delivery_chat_assignment_tenure_trg
   on public.couranr_delivery_assignments;
 drop function if exists private.couranr_delivery_chat_assignment_tenure() restrict;
