@@ -1598,6 +1598,7 @@ export type Database = {
         Row: {
           active: boolean
           availability_state: string
+          availability_preference: string
           contact_phone: string | null
           created_at: string
           display_name: string
@@ -1611,6 +1612,7 @@ export type Database = {
         Insert: {
           active?: boolean
           availability_state?: string
+          availability_preference?: string
           contact_phone?: string | null
           created_at?: string
           display_name: string
@@ -1624,6 +1626,7 @@ export type Database = {
         Update: {
           active?: boolean
           availability_state?: string
+          availability_preference?: string
           contact_phone?: string | null
           created_at?: string
           display_name?: string
