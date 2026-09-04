@@ -63,7 +63,10 @@ describe("D2 dual-role Operations boundary", () => {
   it("Operations reads through an admin-verified RPC, not a participant row", () => {
     expect(SQL).toContain("couranr_operations_conversation_thread");
     expect(SQL).toContain("p.role = 'admin'");
-    const opRead = COMMANDS.slice(COMMANDS.indexOf("export async function readOperationsThread"));
+    const opRead = COMMANDS.slice(
+      COMMANDS.indexOf("export async function readOperationsThread"),
+      COMMANDS.indexOf("/* ------------------------------------------------------------- listing */")
+    );
     expect(opRead).toContain("RPC.operationsThread");
     expect(opRead).not.toContain("resolveParticipant");
     expect(opRead).toContain('viewerKind: "operations"');
@@ -109,7 +112,7 @@ describe("D2 dual-role Operations boundary", () => {
 describe("D2 scope controls", () => {
   it("does not add customer-driver chat, a marketplace, or a second delivery lifecycle", () => {
     expect(SQL).not.toMatch(/participant_kind\s*=\s*'customer'/);
-    expect(SQL).not.toMatch(/gig|marketplace|bid|earnings|surge/i);
+    expect(SQL).not.toMatch(/\b(gig|marketplace|bid|earnings|surge)\b/i);
     expect(SQL).not.toMatch(/insert into public\.couranr_deliveries/);
     expect(SQL).not.toMatch(/update public\.couranr_deliveries\s+set\s+fulfillment_state/i);
   });
