@@ -5,6 +5,7 @@ import {
   submitConsumerSend,
 } from "@/lib/couranr/consumer/send";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
+import { advanceAutomaticFulfillment } from "@/lib/couranr/automation/engine";
 
 export const dynamic = "force-dynamic";
 
@@ -22,5 +23,8 @@ export async function POST(req: NextRequest) {
 
   const r = await submitConsumerSend({ session: session.value });
   if (isConsumerFailure(r)) return failureResponse(r);
+  if (session.value.requestId) {
+    await advanceAutomaticFulfillment(String(session.value.requestId));
+  }
   return NextResponse.json({ request: { state: r.value.state } });
 }
