@@ -11,6 +11,7 @@ import {
   type CustomerTopic,
   type ParticipantKind,
   type Visibility,
+  canAddress,
   canSee,
   dueStateAt,
   nextOperatingPeriodAt,
@@ -598,6 +599,18 @@ export async function sendMessage(
   }
 
   const visibility: Visibility = params.visibility || "participants";
+
+  // Addressing is an ACTOR permission, not merely a property of the
+  // conversation kind. The UI deliberately hides private audiences a caller
+  // may not use, but a crafted request can still name them, so the named server
+  // command must fail closed before any idempotency lookup or INSERT.
+  if (!canAddress(participant.value.participantKind, visibility)) {
+    return fail({
+      code: "not_permitted",
+      operation: "conversations.sendMessage.addressing",
+      message: "That message audience is not available to you.",
+    });
+  }
 
   // (4) idempotency. The UNIQUE is the authority; this is the fast path.
   const existing = await supabaseAdmin
