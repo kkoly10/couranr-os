@@ -1,89 +1,100 @@
 /**
- * TRF-001 scheduled traffic — the canonical FUTURE departure instant reaches
- * Google's request as `departureTime`, DST-correct via America/New_York, and
- * no browser field exists that could supply any of it.
+ * TRF-002 scheduled traffic — the canonical future departure instant reaches
+ * Mapbox as depart_at, while route distance/duration remain server-owned.
  */
 import { describe, expect, it } from "vitest";
-import { computeCanonicalGoogleRoute } from "@/lib/couranr/routing/googleRoutes";
+import { computeCanonicalMapboxRoute } from "@/lib/couranr/routing/mapboxDirections";
 
-function fakeRoutesFetch(captured: { body?: Record<string, unknown> }) {
-  return async (_url: string | URL | Request, init?: RequestInit) => {
-    captured.body = JSON.parse(String(init?.body));
+function fakeDirectionsFetch(captured: { url?: string }) {
+  return async (input: string | URL | Request) => {
+    captured.url = String(input);
     return {
       ok: true,
       status: 200,
       json: async () => ({
-        routes: [{ distanceMeters: 8047, duration: "900s", staticDuration: "600s" }],
+        code: "Ok",
+        routes: [{ distance: 8047, duration: 900, duration_typical: 600 }],
       }),
     } as unknown as Response;
   };
 }
 
-const PLACES = { pickupPlaceId: "ChIJ-a", dropoffPlaceId: "ChIJ-b" };
+const COORDS = {
+  pickupLatitude: 38.422,
+  pickupLongitude: -77.408,
+  dropoffLatitude: 38.3032,
+  dropoffLongitude: -77.4605,
+};
 
-describe("scheduled Google departureTime", () => {
-  it("an immediate route sends NO departureTime — current conditions price it", async () => {
-    process.env.GOOGLE_MAPS_SERVER_API_KEY = "test-key";
-    const captured: { body?: Record<string, unknown> } = {};
-    const r = await computeCanonicalGoogleRoute(PLACES, fakeRoutesFetch(captured) as never);
-    expect(captured.body?.departureTime).toBeUndefined();
+describe("scheduled Mapbox depart_at", () => {
+  it("an immediate route sends no depart_at and uses current traffic", async () => {
+    process.env.MAPBOX_ACCESS_TOKEN = "test-token";
+    const captured: { url?: string } = {};
+    const r = await computeCanonicalMapboxRoute(
+      COORDS,
+      fakeDirectionsFetch(captured) as never
+    );
+    const url = new URL(captured.url!);
+    expect(url.searchParams.get("depart_at")).toBeNull();
+    expect(url.pathname).toContain("/directions/v5/mapbox/driving-traffic/");
     expect(r.trafficDelaySeconds).toBe(300);
+    expect(r.distanceSource).toBe("mapbox_directions_v5");
   });
 
-  it("a FUTURE canonical instant is sent verbatim as RFC3339 departureTime", async () => {
-    process.env.GOOGLE_MAPS_SERVER_API_KEY = "test-key";
-    const captured: { body?: Record<string, unknown> } = {};
+  it("a future canonical instant is sent verbatim as depart_at", async () => {
+    process.env.MAPBOX_ACCESS_TOKEN = "test-token";
+    const captured: { url?: string } = {};
     const departureAt = new Date(Date.now() + 24 * 3600 * 1000);
-    await computeCanonicalGoogleRoute(
-      { ...PLACES, departureAt },
-      fakeRoutesFetch(captured) as never
+    await computeCanonicalMapboxRoute(
+      { ...COORDS, departureAt },
+      fakeDirectionsFetch(captured) as never
     );
-    expect(captured.body?.departureTime).toBe(departureAt.toISOString());
-    // The rest of the canonical request is unchanged by scheduling.
-    expect(captured.body?.routingPreference).toBe("TRAFFIC_AWARE");
+    const url = new URL(captured.url!);
+    expect(url.searchParams.get("depart_at")).toBe(departureAt.toISOString());
   });
 
-  it("a PAST instant is never sent — a past request is a timing review, not a Google error", async () => {
-    process.env.GOOGLE_MAPS_SERVER_API_KEY = "test-key";
-    const captured: { body?: Record<string, unknown> } = {};
-    await computeCanonicalGoogleRoute(
-      { ...PLACES, departureAt: new Date(Date.now() - 3600 * 1000) },
-      fakeRoutesFetch(captured) as never
+  it("a past instant is never sent", async () => {
+    process.env.MAPBOX_ACCESS_TOKEN = "test-token";
+    const captured: { url?: string } = {};
+    await computeCanonicalMapboxRoute(
+      { ...COORDS, departureAt: new Date(Date.now() - 3600_000) },
+      fakeDirectionsFetch(captured) as never
     );
-    expect(captured.body?.departureTime).toBeUndefined();
+    expect(new URL(captured.url!).searchParams.get("depart_at")).toBeNull();
   });
 
-  it("the traffic derivation is IDENTICAL for scheduled routes — duration minus staticDuration", async () => {
-    process.env.GOOGLE_MAPS_SERVER_API_KEY = "test-key";
-    const captured: { body?: Record<string, unknown> } = {};
-    const r = await computeCanonicalGoogleRoute(
-      { ...PLACES, departureAt: new Date(Date.now() + 3600 * 1000) },
-      fakeRoutesFetch(captured) as never
+  it("traffic delay remains duration minus typical duration", async () => {
+    process.env.MAPBOX_ACCESS_TOKEN = "test-token";
+    const r = await computeCanonicalMapboxRoute(
+      COORDS,
+      fakeDirectionsFetch({}) as never
     );
     expect(r.durationSeconds).toBe(900);
     expect(r.staticDurationSeconds).toBe(600);
     expect(r.trafficDelaySeconds).toBe(300);
   });
 
-  it("the route input type has no duration, staticDuration, delay or mileage field a browser could fill", async () => {
-    // Structural: the only accepted keys are the two Place IDs and the
-    // server-derived instant. A payload smuggling browser traffic evidence has
-    // nowhere to land.
-    process.env.GOOGLE_MAPS_SERVER_API_KEY = "test-key";
-    const captured: { body?: Record<string, unknown> } = {};
-    await computeCanonicalGoogleRoute(
+  it("the route input accepts coordinates and canonical time, never browser mileage", async () => {
+    process.env.MAPBOX_ACCESS_TOKEN = "test-token";
+    const captured: { url?: string } = {};
+    await computeCanonicalMapboxRoute(
       {
-        ...PLACES,
+        ...COORDS,
         durationSeconds: 1,
         staticDurationSeconds: 1,
         trafficDelaySeconds: 0,
         loadedMiles: 0.1,
       } as never,
-      fakeRoutesFetch(captured) as never
+      fakeDirectionsFetch(captured) as never
     );
-    expect(captured.body?.departureTime).toBeUndefined();
-    for (const k of ["durationSeconds", "staticDurationSeconds", "trafficDelaySeconds", "loadedMiles"]) {
-      expect(captured.body?.[k]).toBeUndefined();
+    const url = new URL(captured.url!);
+    for (const k of [
+      "durationSeconds",
+      "staticDurationSeconds",
+      "trafficDelaySeconds",
+      "loadedMiles",
+    ]) {
+      expect(url.searchParams.get(k)).toBeNull();
     }
   });
 });
