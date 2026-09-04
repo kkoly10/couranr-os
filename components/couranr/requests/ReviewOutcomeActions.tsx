@@ -115,6 +115,7 @@ export function ReviewOutcomeActions({
   }
 
   const merchantPays = request.payerType === "merchant";
+  const operationsAssistedMerchant = merchantPays && request.source === "operations";
   const priced = request.quote.status === "estimated" && request.quote.deliverySubtotalCents !== null;
 
   return (
@@ -138,7 +139,9 @@ export function ReviewOutcomeActions({
             title={
               failure.code === "conflict"
                 ? "This request needs the payer's approval"
-                : "This decision was not recorded"
+                : failure.code === "quote_expired"
+                  ? "Refresh the quote before asking the business to approve"
+                  : "This decision was not recorded"
             }
             body={withReference(failure)}
           />
@@ -151,13 +154,17 @@ export function ReviewOutcomeActions({
           </Alert>
         ) : (
           <Text size="sm" muted>
-            {merchantPays
-              ? `Confirming accepts ${formatCents(
+            {operationsAssistedMerchant
+              ? `Couranr entered this request for the business. Confirming service accepts ${formatCents(
                   request.quote.deliverySubtotalCents
-                )} as quoted. The business is paying and approved this estimate at submission, so no further approval is requested.`
-              : `Confirming accepts ${formatCents(
-                  request.quote.deliverySubtotalCents
-                )} as quoted. The customer is paying, so the request waits for the customer to approve the price.`}
+                )} as Couranr's quote, but it does not approve the price for the business. The request will wait for the business to authorize the amount.`
+              : merchantPays
+                ? `Confirming accepts ${formatCents(
+                    request.quote.deliverySubtotalCents
+                  )} as quoted. The business is paying and approved this estimate at submission, so no further approval is requested.`
+                : `Confirming accepts ${formatCents(
+                    request.quote.deliverySubtotalCents
+                  )} as quoted. The customer is paying, so the request waits for the customer to approve the price.`}
           </Text>
         )}
 
@@ -169,7 +176,9 @@ export function ReviewOutcomeActions({
               disabled={!priced}
               onClick={() => run("accept")}
             >
-              Confirm as quoted
+              {operationsAssistedMerchant
+                ? "Confirm service & request business approval"
+                : "Confirm as quoted"}
             </Button>
             <Button variant="secondary" onClick={() => setOpen("requote")} disabled={busy}>
               Send revised quote
