@@ -116,10 +116,17 @@ export async function resolveRequestActor(
     return { ok: true, actor: { kind: "operations", userId }, userId };
   }
 
-  if (isOperations) {
-    return { ok: true, actor: { kind: "operations", userId }, userId };
-  }
-
+  /*
+   * An explicit businessAccountId means the caller is asking to act in that
+   * Business workspace. This matters for dual-role pilot users: an admin can
+   * also be a real owner/manager/dispatcher. The old resolver always promoted
+   * an admin profile to Operations first, so the same signed-in person could
+   * never exercise their legitimate Business payer authority.
+   *
+   * We therefore resolve the membership first for an explicit business scope.
+   * Operations remains a fallback only when no membership exists; Operations-
+   * only routes pass null above and are unchanged.
+   */
   const { data: member, error: memberError } = await supabaseAdmin
     .from("business_members")
     .select("business_account_id,user_id,role,status")
@@ -140,7 +147,18 @@ export async function resolveRequestActor(
       }
     : null;
 
-  return { ok: true, actor: { kind: "member", userId, membership }, userId };
+  if (membership) {
+    return { ok: true, actor: { kind: "member", userId, membership }, userId };
+  }
+
+  // Compatibility fallback for Operations callers that deliberately carry a
+  // business id through a shared read route. Write/payment commands still run
+  // their own capability checks, so this does not grant merchant authority.
+  if (isOperations) {
+    return { ok: true, actor: { kind: "operations", userId }, userId };
+  }
+
+  return { ok: true, actor: { kind: "member", userId, membership: null }, userId };
 }
 
 export type MembershipLookupFailed = { ok: false; detail: string };
