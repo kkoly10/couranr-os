@@ -319,7 +319,8 @@ export async function capturePayment(params: {
 
   const begun = await callRpc<Record<string, any>>(op, RPC.beginCapture, {
     p_request_id: params.requestId,
-    p_actor_user_id: params.actor.userId,
+    p_actor_user_id:
+      params.actor && params.actor.kind === "operations" ? params.actor.userId : null,
   });
   if (isFulfillmentFailure(begun)) return begun;
 
