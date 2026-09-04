@@ -6,6 +6,7 @@ assertServerOnly("lib/couranr/providers/paidApiGuard.ts");
 
 export type PaidApiKey =
   | "google_routes_compute_routes"
+  | "mapbox_directions"
   | "google_places_autocomplete"
   | "google_places_details";
 
