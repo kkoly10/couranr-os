@@ -707,7 +707,9 @@ export async function applyVerifiedCaptureOutcome(params: {
 const PLAN_COLUMNS =
   "id,request_id,business_account_id,payment_obligation_id,promotional_credit_id,request_version,quote_version_id," +
   "scheduled_pickup_start,scheduled_pickup_end,timezone,vehicle_id,vehicle_requirement," +
-  "plan_state,confirmed_by,confirmed_at,version";
+  "plan_state,confirmed_by,confirmed_at,version,plan_source,planner_version,market_key," +
+  "dispatch_not_before,dispatch_deadline,expected_service_end,last_revalidated_at," +
+  "revalidated_loaded_miles,revalidated_route_duration_seconds,revalidated_traffic_delay_seconds";
 
 const DELIVERY_COLUMNS =
   "id,request_id,business_account_id,payment_obligation_id,promotional_credit_id,service_plan_id," +
@@ -715,7 +717,10 @@ const DELIVERY_COLUMNS =
   "standard_quote_cents,amount_paid_cents,promotional_credit_cents,currency," +
   "pickup_address,dropoff_address,recipient,shipment,service_level," +
   "signature_required,proof_method,scheduled_pickup_start,scheduled_pickup_end," +
-  "timezone,vehicle_id,vehicle_requirement,fulfillment_state,version,created_at";
+  "timezone,vehicle_id,vehicle_requirement,fulfillment_state,version,created_at," +
+  "plan_source,planner_version,market_key,dispatch_not_before,dispatch_deadline," +
+  "expected_service_end,last_revalidated_at,revalidated_loaded_miles," +
+  "revalidated_route_duration_seconds,revalidated_traffic_delay_seconds";
 
 export async function getPromotionalCredit(params: {
   requestId: string;
@@ -795,6 +800,52 @@ export async function getServicePlan(params: {
   return { ok: true, value: { plan: data ?? null } };
 }
 
+/** The one live machine-owned exception for a request, when there is one. */
+export async function getOpenAutomationException(params: {
+  requestId: string;
+}): Promise<FulfillmentResult<{ exception: Record<string, any> | null }>> {
+  const { data, error } = (await supabaseAdmin
+    .from("couranr_automation_exceptions")
+    .select(
+      "id,request_id,service_plan_id,delivery_id,exception_stage,reason,detail," +
+        "exception_state,attempts,first_seen_at,last_seen_at"
+    )
+    .eq("request_id", params.requestId)
+    .eq("exception_state", "open")
+    .maybeSingle()) as { data: any; error: any };
+  if (error) {
+    return fail({
+      operation: "getOpenAutomationException",
+      code: "internal",
+      detail: error.message,
+    });
+  }
+  return { ok: true, value: { exception: data ?? null } };
+}
+
+/** Active assignment truth for the canonical delivery, never a UI constant. */
+export async function getActiveAssignmentForDelivery(params: {
+  deliveryId: string;
+}): Promise<FulfillmentResult<{ assignment: Record<string, any> | null }>> {
+  const { data, error } = (await supabaseAdmin
+    .from("couranr_delivery_assignments")
+    .select(
+      "id,delivery_id,driver_id,vehicle_id,assignment_state,assignment_source," +
+        "dispatch_reservation_id,assigned_at,version"
+    )
+    .eq("delivery_id", params.deliveryId)
+    .eq("assignment_state", "active")
+    .maybeSingle()) as { data: any; error: any };
+  if (error) {
+    return fail({
+      operation: "getActiveAssignmentForDelivery",
+      code: "internal",
+      detail: error.message,
+    });
+  }
+  return { ok: true, value: { assignment: data ?? null } };
+}
+
 /**
  * OPS-002. Every request Operations still has work on, with the payment,
  * plan and delivery each one's stage is derived from.
@@ -811,6 +862,8 @@ export async function getServicePlan(params: {
 export type LifecycleQueueEntry = {
   /** The live assignment for this entry's delivery, when there is one. */
   assignment?: Record<string, any> | null;
+  /** One explicit machine-owned exception, if Operations actually has work. */
+  automationException?: Record<string, any> | null;
   request: Record<string, any>;
   payment: Record<string, any> | null;
   promotionalCredit: Record<string, any> | null;
@@ -974,7 +1027,7 @@ export async function listOperationsLifecycle(params: {
     return { rows: results.flatMap((r: any) => r.data ?? []), error: null };
   }
 
-  const [obs, credits, plans, deliveries] = await Promise.all([
+  const [obs, credits, plans, deliveries, exceptions] = await Promise.all([
     joinAll(
       "couranr_payment_obligations",
       "id,request_id,payment_state,payer_type,amount_cents,currency",
@@ -987,17 +1040,24 @@ export async function listOperationsLifecycle(params: {
     ),
     joinAll(
       "couranr_service_plans",
-      "id,request_id,plan_state,scheduled_pickup_start,scheduled_pickup_end,timezone,vehicle_requirement",
+      "id,request_id,plan_state,scheduled_pickup_start,scheduled_pickup_end,timezone,vehicle_requirement," +
+        "plan_source,planner_version,market_key,dispatch_not_before,dispatch_deadline,expected_service_end",
       (q) => q.eq("plan_state", "confirmed")
     ),
     joinAll(
       "couranr_deliveries",
-      "id,request_id,fulfillment_state,captured_amount_cents,scheduled_pickup_start,scheduled_pickup_end,timezone",
+      "id,request_id,fulfillment_state,captured_amount_cents,scheduled_pickup_start,scheduled_pickup_end,timezone," +
+        "plan_source,planner_version,market_key,dispatch_not_before,dispatch_deadline,expected_service_end",
       (q) => q
+    ),
+    joinAll(
+      "couranr_automation_exceptions",
+      "id,request_id,service_plan_id,delivery_id,exception_stage,reason,detail,exception_state,attempts,first_seen_at,last_seen_at",
+      (q) => q.eq("exception_state", "open")
     ),
   ]);
 
-  for (const r of [obs, credits, plans, deliveries]) {
+  for (const r of [obs, credits, plans, deliveries, exceptions]) {
     if (r.error) {
       return fail({
         operation: op,
@@ -1017,6 +1077,7 @@ export async function listOperationsLifecycle(params: {
   const creditMap = byRequest(credits.rows);
   const planMap = byRequest(plans.rows);
   const deliveryMap = byRequest(deliveries.rows);
+  const exceptionMap = byRequest(exceptions.rows);
 
   /*
    * Active assignments for the deliveries in this page, keyed by delivery id.
@@ -1066,6 +1127,7 @@ export async function listOperationsLifecycle(params: {
           servicePlan: planMap.get(String(request.id)) ?? null,
           delivery,
           assignment: delivery ? assignmentByDelivery.get(String(delivery.id)) ?? null : null,
+          automationException: exceptionMap.get(String(request.id)) ?? null,
         };
       }),
       total,
