@@ -475,23 +475,14 @@ as $fn$
 declare
   v_old_authorized boolean := false;
   v_new_authorized boolean := false;
+  v_identity_changed boolean := false;
 begin
-  if tg_op <> 'INSERT' then
+  if tg_op = 'DELETE' then
     v_old_authorized :=
       old.status = 'active'
       and old.role in ('owner','manager','dispatcher');
 
-    if v_old_authorized
-       and (
-         tg_op = 'DELETE'
-         or new.status is distinct from old.status
-         or new.role is distinct from old.role
-         or new.user_id is distinct from old.user_id
-         or new.business_account_id is distinct from old.business_account_id
-       ) then
-      -- Security revocation is ATOMIC with the membership change. If this
-      -- fails, the membership mutation fails too rather than leaving stale
-      -- message access behind.
+    if v_old_authorized then
       update public.couranr_conversation_participants p
          set left_at = greatest(p.joined_at, now())
        where p.participant_kind = 'merchant'
@@ -505,21 +496,16 @@ begin
               and cv.business_account_id = old.business_account_id
          );
     end if;
+
+    return old;
   end if;
 
-  if tg_op <> 'DELETE' then
-    v_new_authorized :=
-      new.status = 'active'
-      and new.role in ('owner','manager','dispatcher');
+  v_new_authorized :=
+    new.status = 'active'
+    and new.role in ('owner','manager','dispatcher');
 
-    if v_new_authorized
-       and (
-         tg_op = 'INSERT'
-         or not v_old_authorized
-         or new.role is distinct from old.role
-         or new.user_id is distinct from old.user_id
-         or new.business_account_id is distinct from old.business_account_id
-       ) then
+  if tg_op = 'INSERT' then
+    if v_new_authorized then
       insert into public.couranr_conversation_participants(
         conversation_id,
         participant_kind,
@@ -543,9 +529,68 @@ begin
              and p.left_at is null
         );
     end if;
+
+    return new;
   end if;
 
-  return coalesce(new, old);
+  -- UPDATE from here onward: both OLD and NEW are defined.
+  v_old_authorized :=
+    old.status = 'active'
+    and old.role in ('owner','manager','dispatcher');
+
+  v_identity_changed :=
+    new.status is distinct from old.status
+    or new.role is distinct from old.role
+    or new.user_id is distinct from old.user_id
+    or new.business_account_id is distinct from old.business_account_id;
+
+  if v_old_authorized and v_identity_changed then
+    -- Security revocation is ATOMIC with the membership change. If this fails,
+    -- the membership mutation fails too rather than leaving stale access.
+    update public.couranr_conversation_participants p
+       set left_at = greatest(p.joined_at, now())
+     where p.participant_kind = 'merchant'
+       and p.user_id = old.user_id
+       and p.left_at is null
+       and exists (
+         select 1
+           from public.couranr_conversations cv
+          where cv.id = p.conversation_id
+            and cv.kind = 'delivery_chat'
+            and cv.business_account_id = old.business_account_id
+       );
+  end if;
+
+  if v_new_authorized
+     and (
+       not v_old_authorized
+       or v_identity_changed
+     ) then
+    insert into public.couranr_conversation_participants(
+      conversation_id,
+      participant_kind,
+      user_id,
+      member_role
+    )
+    select
+      cv.id,
+      'merchant',
+      new.user_id,
+      new.role
+    from public.couranr_conversations cv
+    where cv.kind = 'delivery_chat'
+      and cv.business_account_id = new.business_account_id
+      and not exists (
+        select 1
+          from public.couranr_conversation_participants p
+         where p.conversation_id = cv.id
+           and p.participant_kind = 'merchant'
+           and p.user_id = new.user_id
+           and p.left_at is null
+      );
+  end if;
+
+  return new;
 end
 $fn$;
 
