@@ -108,6 +108,9 @@ describe("server-only modules are unreachable from client code", () => {
       // the one call that can put a workspace LIVE. A browser must never hold
       // the code that grants activation.
       "lib/couranr/activation/commands.ts",
+      // Automatic planning/dispatch owns service-role reads, server routing,
+      // capture orchestration and system-only assignment.
+      "lib/couranr/automation/engine.ts",
       // Reads every charge Couranr raised against a business. Read-only, but
       // it holds the service-role client and the cross-tenant filter that IS
       // the boundary — service_role bypasses RLS, so a browser holding this
@@ -253,6 +256,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/consumer/interpret/route.ts",
       "app/api/couranr/consumer/pay/route.ts",
       "app/api/couranr/consumer/places/route.ts",
+      "app/api/couranr/consumer/readiness/route.ts",
       "app/api/couranr/consumer/reconcile-payment/route.ts",
       "app/api/couranr/consumer/refresh-quote/route.ts",
       "app/api/couranr/consumer/request/route.ts",
@@ -290,6 +294,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/help/[token]/route.ts",
       "app/api/couranr/intake/[id]/route.ts",
       "app/api/couranr/intake/route.ts",
+      "app/api/couranr/internal/automation/tick/route.ts",
       "app/api/couranr/me/activation/route.ts",
       "app/api/couranr/me/business-accounts/route.ts",
       "app/api/couranr/me/invitations/route.ts",
@@ -303,9 +308,11 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/merchant/deliveries/[id]/pickup-code/route.ts",
       "app/api/couranr/merchant/deliveries/[id]/proof/route.ts",
       "app/api/couranr/merchant/deliveries/[id]/recipient-code/route.ts",
+      "app/api/couranr/merchant/places/route.ts",
       "app/api/couranr/merchant/presets/route.ts",
       "app/api/couranr/merchant/website-tools/route.ts",
       "app/api/couranr/operations/activation/route.ts",
+      "app/api/couranr/operations/businesses/route.ts",
       "app/api/couranr/operations/deliveries/[id]/assignment/route.ts",
       "app/api/couranr/operations/deliveries/[id]/help-link/route.ts",
       "app/api/couranr/operations/deliveries/[id]/pickup-code/route.ts",
@@ -316,12 +323,16 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/operations/delivery-requests/[id]/cancel-delivery/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/capture/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/decline/route.ts",
+      "app/api/couranr/operations/delivery-requests/[id]/estimate/route.ts",
+      "app/api/couranr/operations/delivery-requests/[id]/promotional-credit-delivery/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/reconcile-capture/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/reconcile-refund/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/refund/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/release/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/requote/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/service-plan/route.ts",
+      "app/api/couranr/operations/delivery-requests/[id]/submit/route.ts",
+      "app/api/couranr/operations/delivery-requests/route.ts",
       "app/api/couranr/operations/discrepancies/[id]/safe-to-continue/route.ts",
       "app/api/couranr/operations/drivers/route.ts",
       "app/api/couranr/operations/inbox/route.ts",
@@ -383,6 +394,10 @@ describe("canonical server routes do not import the browser client", () => {
       { shape: /redeemGuestSessionToken\(/, redeem: /redeemGuestSessionToken\(/ },
     ],
     [
+      "app/api/couranr/consumer/readiness/route.ts",
+      { shape: /redeemGuestSessionToken\(/, redeem: /redeemGuestSessionToken\(/ },
+    ],
+    [
       "app/api/couranr/consumer/reconcile-payment/route.ts",
       { shape: /redeemGuestSessionToken\(/, redeem: /redeemGuestSessionToken\(/ },
     ],
@@ -433,6 +448,7 @@ describe("canonical server routes do not import the browser client", () => {
     ],
   ]);
   const SIGNATURE_AUTHORIZED = new Set(["app/api/couranr/stripe/webhook/route.ts"]);
+  const CRON_AUTHORIZED = new Set(["app/api/couranr/internal/automation/tick/route.ts"]);
 
   it("every canonical route authorizes its caller somehow", () => {
     for (const file of canonical) {
@@ -462,6 +478,16 @@ describe("canonical server routes do not import the browser client", () => {
         expect(src, `${name} does not verify a signature`).toMatch(/constructEvent\(/);
         expect(src, `${name} does not use its own signing secret`).toMatch(
           /STRIPE_COURANR_WEBHOOK_SECRET/
+        );
+        continue;
+      }
+      if (CRON_AUTHORIZED.has(name)) {
+        expect(src, `${name} does not require CRON_SECRET`).toMatch(/process\.env\.CRON_SECRET/);
+        expect(src, `${name} does not verify the bearer Authorization header`).toMatch(
+          /authorization[\s\S]*Bearer/
+        );
+        expect(src, `${name} must fail closed when the secret is absent`).toMatch(
+          /automation_not_configured/
         );
         continue;
       }
