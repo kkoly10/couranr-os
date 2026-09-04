@@ -111,6 +111,13 @@ export type QuoteInput = {
 /** What the server said after it re-read the PaymentIntent. Server words only. */
 export type PaymentReconciliation = { outcome?: string; paymentState?: string | null };
 
+/** Guest-declared pickup readiness, persisted on canonical readiness_state. */
+export type ReadinessOutcome = {
+  ok: boolean;
+  state?: "ready" | "not_ready";
+  note?: string;
+};
+
 /** The guest's own-request projection, verbatim from the consumer request GET. */
 export type ConsumerRequestReading = {
   state: string;
@@ -131,6 +138,8 @@ export type SameDayAdapters = {
   /* ADDITIVE, live-only, both OPTIONAL so the fixture and disabled objects
      stay byte-identical to what shipped. A component must feature-check. */
   reconcilePayment?(): Promise<PaymentReconciliation>;
+  /** Live-only: persists the explicit guest declaration on shared readiness_state. */
+  setPickupReadiness?(readiness: "ready" | "not_ready"): Promise<ReadinessOutcome>;
   readRequest?(): Promise<ConsumerRequestReading | null>;
   /* ADDITIVE, live-only (final closure §5): re-price the session's OWN bound
      request from its STORED canonical facts — the resume path's honest answer
