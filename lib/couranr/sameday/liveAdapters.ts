@@ -38,6 +38,7 @@ import type {
   IntakeReading,
   PaymentOutcome,
   PaymentReconciliation,
+  ReadinessOutcome,
   QuoteInput,
   QuoteReading,
   SameDayAdapters,
@@ -57,6 +58,7 @@ const API = {
   request: "/api/couranr/consumer/request",
   pay: "/api/couranr/consumer/pay",
   reconcile: "/api/couranr/consumer/reconcile-payment",
+  readiness: "/api/couranr/consumer/readiness",
   refresh: "/api/couranr/consumer/refresh-quote",
   interpret: "/api/couranr/consumer/interpret",
 } as const;
@@ -569,6 +571,32 @@ export function createLiveSameDayAdapters(
         outcome: typeof p.outcome === "string" ? p.outcome : undefined,
         paymentState,
       };
+    },
+
+    async setPickupReadiness(
+      readiness: "ready" | "not_ready"
+    ): Promise<ReadinessOutcome> {
+      const r = await guestCall(API.readiness, {
+        method: "POST",
+        body: { readiness },
+      });
+      if (!r) return { ok: false, note: NOTES.serviceDown };
+      if (!r.ok) {
+        return {
+          ok: false,
+          note: noteFromFailure(r.body, "Couranr could not save pickup readiness."),
+        };
+      }
+      const value = (r.body as {
+        readiness?: { state?: unknown };
+      } | null)?.readiness;
+      if (
+        !value ||
+        (value.state !== "ready" && value.state !== "not_ready")
+      ) {
+        return { ok: false, note: "Couranr could not confirm pickup readiness." };
+      }
+      return { ok: true, state: value.state };
     },
 
     async readRequest(): Promise<ConsumerRequestReading | null> {
