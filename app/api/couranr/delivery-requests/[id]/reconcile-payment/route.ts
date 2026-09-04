@@ -6,6 +6,7 @@ import {
   reconcilePaymentIntent,
 } from "@/lib/couranr/payments/commands";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
+import { advanceAutomaticFulfillment } from "@/lib/couranr/automation/engine";
 
 export const dynamic = "force-dynamic";
 
@@ -55,6 +56,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   });
   if (isPaymentFailure(applied)) return failureResponse(applied);
 
+  await advanceAutomaticFulfillment(params.id);
   return NextResponse.json({
     outcome: applied.value.outcome,
     paymentState: applied.value.payment_state,
