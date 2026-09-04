@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isActorDenied, resolveRequestActor } from "@/lib/couranr/requests/actor";
 import { isFulfillmentFailure, listOperationsLifecycle } from "@/lib/couranr/fulfillment/commands";
-import { lifecycleStage } from "@/lib/couranr/fulfillment/lifecycle";
+import {
+  lifecycleStage,
+  QUEUE_STAGES,
+  type LifecycleStage,
+} from "@/lib/couranr/fulfillment/lifecycle";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
 import { toDeliveryRequestView } from "@/lib/couranr/requests/view";
 
@@ -25,13 +29,16 @@ export async function GET(req: NextRequest) {
   const result = await listOperationsLifecycle({ actor: actor.actor });
   if (isFulfillmentFailure(result)) return failureResponse(result);
 
-  const entries = result.value.entries.map((row) => {
+  const mappedEntries = result.value.entries.map((row) => {
     const stage = lifecycleStage({
       requestState: row.request.request_state,
       readinessState: row.request.readiness_state,
       paymentState: row.payment?.payment_state ?? null,
       promotionalCreditApplied: Boolean(row.promotionalCredit),
       servicePlanConfirmed: row.servicePlan !== null,
+      servicePlanSource: row.servicePlan?.plan_source ?? null,
+      automationExceptionOpen: Boolean(row.automationException),
+      automationExceptionStage: row.automationException?.exception_stage ?? null,
       canonicalDeliveryExists: row.delivery !== null,
       assignmentActive: Boolean(row.assignment),
     });
@@ -63,6 +70,19 @@ export async function GET(req: NextRequest) {
             scheduledPickupStart: row.servicePlan.scheduled_pickup_start,
             scheduledPickupEnd: row.servicePlan.scheduled_pickup_end,
             timezone: row.servicePlan.timezone,
+            planSource: row.servicePlan.plan_source,
+            plannerVersion: row.servicePlan.planner_version ?? null,
+            dispatchNotBefore: row.servicePlan.dispatch_not_before ?? null,
+            dispatchDeadline: row.servicePlan.dispatch_deadline ?? null,
+            expectedServiceEnd: row.servicePlan.expected_service_end ?? null,
+          }
+        : null,
+      automationException: row.automationException
+        ? {
+            stage: row.automationException.exception_stage,
+            reason: row.automationException.reason,
+            attempts: row.automationException.attempts,
+            lastSeenAt: row.automationException.last_seen_at,
           }
         : null,
       delivery: row.delivery
@@ -73,6 +93,11 @@ export async function GET(req: NextRequest) {
             scheduledPickupStart: row.delivery.scheduled_pickup_start,
             scheduledPickupEnd: row.delivery.scheduled_pickup_end,
             timezone: row.delivery.timezone,
+            planSource: row.delivery.plan_source,
+            plannerVersion: row.delivery.planner_version ?? null,
+            dispatchNotBefore: row.delivery.dispatch_not_before ?? null,
+            dispatchDeadline: row.delivery.dispatch_deadline ?? null,
+            expectedServiceEnd: row.delivery.expected_service_end ?? null,
             // Read from the live assignment row, never assumed. This used to
             // be a hard-coded `false` with a comment saying dispatch did not
             // exist yet; it does now, and a stale constant here would tell an
@@ -92,6 +117,10 @@ export async function GET(req: NextRequest) {
     };
   });
 
+  const entries = mappedEntries.filter((entry) =>
+    (QUEUE_STAGES as readonly LifecycleStage[]).includes(entry.stage as LifecycleStage)
+  );
+
   return NextResponse.json({
     entries,
     /*
@@ -100,11 +129,11 @@ export async function GET(req: NextRequest) {
      * "that is everything", and the row an operator never sees is the one that
      * is oldest and most overdue.
      */
-    total: result.value.total,
+    total: Math.min(result.value.total, entries.length),
     /*
      * Compares against the WORK entries only. Recently-scheduled rows are
      * folded in on top of the window and are not part of what was truncated.
      */
-    truncated: result.value.total > entries.filter((e) => e.stage !== "captured_scheduled").length,
+    truncated: result.value.total > result.value.entries.length,
   });
 }
