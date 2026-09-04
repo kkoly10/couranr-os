@@ -1,4 +1,5 @@
 import { assertServerOnly } from "@/lib/couranr/serverOnly";
+import { claimPaidApiCall } from "@/lib/couranr/providers/paidApiGuard";
 import {
   normalizeGooglePlaceSelection,
   type GoogleAddressSnapshot,
@@ -14,6 +15,7 @@ const PLACE_DETAILS_FIELD_MASK = "id,formattedAddress,addressComponents,location
 export type GooglePlaceResolutionReason =
   | "google_places_not_configured"
   | "google_places_unavailable"
+  | "google_places_cost_guard"
   | "google_places_invalid_response"
   | "google_places_identity_mismatch";
 
@@ -46,6 +48,11 @@ export async function resolveCanonicalGooglePlace(
   const apiKey = process.env.GOOGLE_MAPS_SERVER_API_KEY;
   if (!apiKey) {
     throw new GooglePlaceResolutionError("google_places_not_configured");
+  }
+
+  const spend = await claimPaidApiCall("google_places_details", fetchImpl);
+  if (!spend.allowed) {
+    throw new GooglePlaceResolutionError("google_places_cost_guard");
   }
 
   let response: Pick<Response, "ok" | "status" | "json">;
