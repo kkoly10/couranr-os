@@ -458,7 +458,106 @@ on public.couranr_delivery_assignments
 for each row execute function private.couranr_delivery_chat_assignment_tenure();
 
 -- ---------------------------------------------------------------------------
--- 5. Privilege boundary + one-time reconciliation.
+-- 5. Merchant membership tenure.
+--
+-- The participant row records the role AT JOIN for audit, but current access
+-- must still follow current membership. Losing an authorized role or leaving
+-- the business closes the live participant atomically; gaining an authorized
+-- role joins existing delivery chats with a fresh tenure row.
+-- ---------------------------------------------------------------------------
+
+create or replace function private.couranr_delivery_chat_membership_tenure()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $fn$
+declare
+  v_old_authorized boolean := false;
+  v_new_authorized boolean := false;
+begin
+  if tg_op <> 'INSERT' then
+    v_old_authorized :=
+      old.status = 'active'
+      and old.role in ('owner','manager','dispatcher');
+
+    if v_old_authorized
+       and (
+         tg_op = 'DELETE'
+         or new.status is distinct from old.status
+         or new.role is distinct from old.role
+         or new.user_id is distinct from old.user_id
+         or new.business_account_id is distinct from old.business_account_id
+       ) then
+      -- Security revocation is ATOMIC with the membership change. If this
+      -- fails, the membership mutation fails too rather than leaving stale
+      -- message access behind.
+      update public.couranr_conversation_participants p
+         set left_at = greatest(p.joined_at, now())
+       where p.participant_kind = 'merchant'
+         and p.user_id = old.user_id
+         and p.left_at is null
+         and exists (
+           select 1
+             from public.couranr_conversations cv
+            where cv.id = p.conversation_id
+              and cv.kind = 'delivery_chat'
+              and cv.business_account_id = old.business_account_id
+         );
+    end if;
+  end if;
+
+  if tg_op <> 'DELETE' then
+    v_new_authorized :=
+      new.status = 'active'
+      and new.role in ('owner','manager','dispatcher');
+
+    if v_new_authorized
+       and (
+         tg_op = 'INSERT'
+         or not v_old_authorized
+         or new.role is distinct from old.role
+         or new.user_id is distinct from old.user_id
+         or new.business_account_id is distinct from old.business_account_id
+       ) then
+      insert into public.couranr_conversation_participants(
+        conversation_id,
+        participant_kind,
+        user_id,
+        member_role
+      )
+      select
+        cv.id,
+        'merchant',
+        new.user_id,
+        new.role
+      from public.couranr_conversations cv
+      where cv.kind = 'delivery_chat'
+        and cv.business_account_id = new.business_account_id
+        and not exists (
+          select 1
+            from public.couranr_conversation_participants p
+           where p.conversation_id = cv.id
+             and p.participant_kind = 'merchant'
+             and p.user_id = new.user_id
+             and p.left_at is null
+        );
+    end if;
+  end if;
+
+  return coalesce(new, old);
+end
+$fn$;
+
+drop trigger if exists couranr_delivery_chat_membership_tenure_trg
+  on public.business_members;
+create trigger couranr_delivery_chat_membership_tenure_trg
+after insert or delete or update of role, status, user_id, business_account_id
+on public.business_members
+for each row execute function private.couranr_delivery_chat_membership_tenure();
+
+-- ---------------------------------------------------------------------------
+-- 6. Privilege boundary + one-time reconciliation.
 -- ---------------------------------------------------------------------------
 
 do $grant$
