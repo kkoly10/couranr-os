@@ -2,7 +2,7 @@
 -- Driver Pilot Readiness D2 — reachable delivery chat + Operations context
 --
 -- Goals:
---   * every canonical delivery can have exactly one delivery_chat;
+--   * every BUSINESS delivery can have exactly one delivery_chat;
 --   * authorized merchant members join when the chat is issued;
 --   * the assigned driver joins/leaves with assignment tenure;
 --   * assignment/delivery writes NEVER roll back because messaging issuance
@@ -182,8 +182,11 @@ begin
   if not found then
     raise exception 'delivery_not_found' using errcode = 'CR404';
   end if;
+  -- Consumer deliveries intentionally have no merchant participant and no
+  -- delivery_chat. Customer communication stays on the one-delivery Delivery
+  -- Help token surface; there is never unrestricted customer-driver chat.
   if v_business_account_id is null then
-    raise exception 'delivery_business_scope_missing' using errcode = 'CR422';
+    return null;
   end if;
 
   insert into public.couranr_conversations(
@@ -259,6 +262,10 @@ declare
   v_driver_user_id uuid;
 begin
   v_conversation_id := public.couranr_ensure_delivery_chat(p_delivery_id);
+
+  if v_conversation_id is null then
+    return null;
+  end if;
 
   select d.user_id
     into v_driver_user_id
@@ -348,7 +355,9 @@ declare
   v_drivers integer := 0;
 begin
   for v_delivery in
-    select d.id from public.couranr_deliveries d
+    select d.id
+      from public.couranr_deliveries d
+     where d.business_account_id is not null
   loop
     perform public.couranr_ensure_delivery_chat(v_delivery.id);
     v_deliveries := v_deliveries + 1;
@@ -357,8 +366,10 @@ begin
   for v_assignment in
     select a.delivery_id, a.driver_id
       from public.couranr_delivery_assignments a
+      join public.couranr_deliveries d on d.id = a.delivery_id
      where a.assignment_state = 'active'
        and a.ended_at is null
+       and d.business_account_id is not null
   loop
     perform public.couranr_join_assignment_delivery_chat(
       v_assignment.delivery_id,
