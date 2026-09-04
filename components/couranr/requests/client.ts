@@ -356,3 +356,42 @@ export function withReference(failure: { error: string; correlationId?: string }
     ? `${failure.error} Reference ${failure.correlationId}.`
     : failure.error;
 }
+
+
+export type BusinessPlaceSuggestion = {
+  placeId: string;
+  text: string;
+};
+
+export function searchBusinessPlaces(input: {
+  businessAccountId: string;
+  query: string;
+}) {
+  const qs = new URLSearchParams({
+    businessAccountId: input.businessAccountId,
+    query: input.query,
+  });
+  return call<{ suggestions: BusinessPlaceSuggestion[] }>(
+    `/api/couranr/merchant/places?${qs.toString()}`
+  );
+}
+
+export function resolveBusinessPlace(input: {
+  businessAccountId: string;
+  placeId: string;
+  line2?: string | null;
+  instructions?: string | null;
+}) {
+  return call<{ address: import("@/lib/couranr/routing/address").GoogleAddressSnapshot }>(
+    "/api/couranr/merchant/places",
+    {
+      method: "POST",
+      body: {
+        businessAccountId: input.businessAccountId,
+        placeId: input.placeId,
+        line2: input.line2 ?? null,
+        instructions: input.instructions ?? null,
+      },
+    }
+  );
+}

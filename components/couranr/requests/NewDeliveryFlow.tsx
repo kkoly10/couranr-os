@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import Link from "next/link";
-import Script from "next/script";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   Alert,
@@ -38,7 +37,7 @@ import {
 import { formatCents, type DeliveryRequestView } from "@/lib/couranr/requests/view";
 import { DUPLICATE_STORAGE_KEY } from "@/lib/couranr/requests/listFilters";
 import type { GoogleAddressSnapshot } from "@/lib/couranr/routing/address";
-import { GooglePlaceAutocomplete } from "./GooglePlaceAutocomplete";
+import { BusinessPlaceAutocomplete } from "./BusinessPlaceAutocomplete";
 import { SmartIntakePanel, type IntakeFactRow } from "./SmartIntakePanel";
 
 /**
@@ -83,8 +82,6 @@ function fieldErrorsFrom(details: unknown): FieldErrors {
   return out;
 }
 
-const GOOGLE_MAPS_BROWSER_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "";
-
 /** The closed prohibited-class vocabulary, in merchant words. */
 const RESTRICTED_CLASS_OPTIONS: ReadonlyArray<readonly [string, string]> = [
   ["alcohol", "alcohol"],
@@ -123,7 +120,6 @@ export function NewDeliveryFlow() {
 
   const [pickup, setPickup] = React.useState<GoogleAddressSnapshot | null>(null);
   const [dropoff, setDropoff] = React.useState<GoogleAddressSnapshot | null>(null);
-  const [placesReady, setPlacesReady] = React.useState(false);
   const [recipientName, setRecipientName] = React.useState("");
   const [recipientPhone, setRecipientPhone] = React.useState("");
   const [recipientEmail, setRecipientEmail] = React.useState("");
@@ -471,17 +467,6 @@ export function NewDeliveryFlow() {
 
   return (
     <form onSubmit={onCalculate} noValidate>
-      {GOOGLE_MAPS_BROWSER_KEY ? (
-        <Script
-          id="couranr-google-maps-places-new"
-          src={`https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(
-            GOOGLE_MAPS_BROWSER_KEY
-          )}&v=weekly&loading=async&libraries=places`}
-          strategy="afterInteractive"
-          onLoad={() => setPlacesReady(true)}
-          onReady={() => setPlacesReady(true)}
-        />
-      ) : null}
       <Stack gap={6}>
         {failure && failure.status === 403 ? <PermissionDeniedState /> : null}
         {failure && failure.status !== 403 ? (
@@ -514,23 +499,16 @@ export function NewDeliveryFlow() {
           title="Pickup"
           value={pickup}
           onChange={setPickup}
-          placesReady={placesReady}
+          businessAccountId={businessAccountId}
           error={fieldErrors.pickupAddress}
         />
         <AddressCard
           title="Dropoff"
           value={dropoff}
           onChange={setDropoff}
-          placesReady={placesReady}
+          businessAccountId={businessAccountId}
           error={fieldErrors.dropoffAddress}
         />
-
-        {!GOOGLE_MAPS_BROWSER_KEY ? (
-          <Alert tone="warning" title="Address search is unavailable">
-            Couranr needs its browser Google Maps key configured before a delivery can be
-            created.
-          </Alert>
-        ) : null}
 
         <Card>
           <CardHeader title="Recipient" description="Optional. Used for delivery contact only." />
@@ -738,8 +716,6 @@ export function NewDeliveryFlow() {
             loading={busy}
             disabled={
               businessAccountId === "" ||
-              !GOOGLE_MAPS_BROWSER_KEY ||
-              !placesReady ||
               !pickup ||
               !dropoff
             }
@@ -759,13 +735,13 @@ function AddressCard({
   title,
   value,
   onChange,
-  placesReady,
+  businessAccountId,
   error,
 }: {
   title: string;
   value: GoogleAddressSnapshot | null;
   onChange: (v: GoogleAddressSnapshot | null) => void;
-  placesReady: boolean;
+  businessAccountId: string;
   error?: string;
 }) {
   const setOptional = (key: "line2" | "instructions") =>
@@ -780,11 +756,10 @@ function AddressCard({
       <Stack gap={3}>
         <Field label="Search address" required error={error}>
           {() => (
-            <GooglePlaceAutocomplete
-              ready={placesReady}
+            <BusinessPlaceAutocomplete
+              businessAccountId={businessAccountId}
               value={value}
               onChange={onChange}
-              onInvalidSelection={() => onChange(null)}
             />
           )}
         </Field>
