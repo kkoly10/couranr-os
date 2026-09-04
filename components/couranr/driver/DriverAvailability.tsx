@@ -166,7 +166,7 @@ export function DriverAvailability() {
 
       <Card>
         <Stack gap={3}>
-          <h2 className="cr-driver-card-title">Assigned vehicle</h2>
+          <h2 className="cr-driver-card-title">Vehicle on your profile</h2>
           {activeVehicle ? (
             <>
               <div className="cr-driver-fact-row">
@@ -185,7 +185,7 @@ export function DriverAvailability() {
                 </Badge>
               </div>
               <Link href="/driver/vehicle" className="cr-button cr-button--secondary">
-                View vehicle
+                View vehicle profile
               </Link>
             </>
           ) : (
