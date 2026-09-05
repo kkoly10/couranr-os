@@ -4,9 +4,6 @@ begin;
 set local statement_timeout = '120s';
 set local lock_timeout = '10s';
 
-grant execute on function public.couranr_verify_activation_contact(uuid,uuid)
-  to service_role;
-
 drop trigger if exists couranr_workspace_contact_activation_invalidation_trg
   on public.couranr_merchant_workspaces;
 drop function if exists private.couranr_invalidate_activation_contact_on_workspace_update();
