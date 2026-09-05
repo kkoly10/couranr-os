@@ -44,11 +44,13 @@ export function MerchantReadinessPanel({
   request,
   fulfillment,
   businessAccountId,
+  canManage = true,
   onChanged,
 }: {
   request: DeliveryRequestView;
   fulfillment: FulfillmentView | null;
   businessAccountId: string | null;
+  canManage?: boolean;
   onChanged: () => void;
 }) {
   const [busy, setBusy] = React.useState<string | null>(null);
@@ -122,6 +124,12 @@ export function MerchantReadinessPanel({
       />
 
       <Stack gap={3}>
+        {!canManage ? (
+          <Alert tone="info" title="Preparation controls are read only">
+            An owner, manager, or dispatcher must change pickup readiness or replace a customer payment link.
+          </Alert>
+        ) : null}
+
         {error ? <ErrorState title="That could not be saved" body={error} /> : null}
 
         {delivery ? (
@@ -152,7 +160,7 @@ export function MerchantReadinessPanel({
           </Alert>
         ) : null}
 
-        {reauthorizationRequired && customerPays ? (
+        {canManage && reauthorizationRequired && customerPays ? (
           <Stack gap={2}>
             <Button
               variant="primary"
@@ -191,7 +199,7 @@ export function MerchantReadinessPanel({
           </Alert>
         ) : null}
 
-        {!frozen ? (
+        {canManage && !frozen ? (
           <Cluster gap={3}>
             {READINESS_COMMANDS.filter(
               (c) => c.to !== readiness && canChangeReadiness(readiness, c.to)
