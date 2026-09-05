@@ -594,6 +594,96 @@ export async function getDispatchPanel(params: {
   };
 }
 
+/* --------------------------------------- merchant delivery authority --- */
+
+async function merchantBusinessScopeForDeliveryRow(
+  delivery: Record<string, any>
+): Promise<DispatchResult<{ businessAccountId: string; requestId: string }>> {
+  const op = "merchantBusinessScopeForDelivery";
+  const requestId = String(delivery?.request_id ?? "");
+  const directBusinessAccountId =
+    typeof delivery?.business_account_id === "string" ? delivery.business_account_id : "";
+
+  if (directBusinessAccountId) {
+    return {
+      ok: true,
+      value: { businessAccountId: directBusinessAccountId, requestId },
+    };
+  }
+
+  /*
+   * Hosted Consumer deliveries deliberately keep business_account_id NULL.
+   * Merchant authority therefore comes from the durable hosted intake, never
+   * from fabricating merchant tenancy onto the request/service-plan/delivery.
+   */
+  const { data: request, error: requestError } = (await supabaseAdmin
+    .from("couranr_delivery_requests")
+    .select("id,source,requester_kind,business_account_id")
+    .eq("id", requestId)
+    .maybeSingle()) as { data: any; error: any };
+  if (requestError) {
+    return fail({ operation: op, code: "internal", detail: requestError.message });
+  }
+  if (
+    !request ||
+    request.source !== "hosted_request" ||
+    request.requester_kind !== "consumer" ||
+    request.business_account_id !== null
+  ) {
+    return fail({
+      operation: op,
+      code: "not_found",
+      detail: { reason: "merchant_delivery_scope_not_found", requestId },
+      message: "Delivery not found.",
+    });
+  }
+
+  const { data: intake, error: intakeError } = (await supabaseAdmin
+    .from("couranr_hosted_request_intakes")
+    .select("host_business_account_id")
+    .eq("request_id", requestId)
+    .maybeSingle()) as { data: any; error: any };
+  if (intakeError) {
+    return fail({ operation: op, code: "internal", detail: intakeError.message });
+  }
+  const hostBusinessAccountId = String(intake?.host_business_account_id ?? "");
+  if (!hostBusinessAccountId) {
+    return fail({
+      operation: op,
+      code: "not_found",
+      detail: { reason: "hosted_business_scope_not_found", requestId },
+      message: "Delivery not found.",
+    });
+  }
+
+  return {
+    ok: true,
+    value: { businessAccountId: hostBusinessAccountId, requestId },
+  };
+}
+
+/**
+ * Resolve the merchant that may administer one canonical delivery.
+ *
+ * Direct merchant deliveries use delivery.business_account_id. Hosted
+ * Consumer deliveries use their immutable hosted-intake relationship.
+ */
+export async function resolveMerchantBusinessForDelivery(
+  deliveryId: string
+): Promise<DispatchResult<{ businessAccountId: string; requestId: string }>> {
+  const op = "resolveMerchantBusinessForDelivery";
+  const { data: delivery, error } = (await supabaseAdmin
+    .from("couranr_deliveries")
+    .select("id,request_id,business_account_id")
+    .eq("id", deliveryId)
+    .maybeSingle()) as { data: any; error: any };
+  if (error) return fail({ operation: op, code: "internal", detail: error.message });
+  if (!delivery) {
+    return fail({ operation: op, code: "not_found", message: "Delivery not found." });
+  }
+  return merchantBusinessScopeForDeliveryRow(delivery);
+}
+
 /* ---------------------------------------------------- driver reading --- */
 
 /**
@@ -651,17 +741,21 @@ export async function getAssignedDeliveryForDriver(params: {
     .eq("id", assignment.vehicle_id)
     .maybeSingle()) as { data: any; error: any };
 
-  // Merchant handoff contact. Read narrowly: the workspace's own contact
-  // details, never the account's billing or ownership records.
+  // Merchant handoff contact. Hosted Consumer deliveries have NULL delivery
+  // tenancy, so resolve the durable host relationship before looking up the
+  // workspace contact the driver actually needs at pickup.
+  const merchantScope = await merchantBusinessScopeForDeliveryRow(delivery);
+  if (isDispatchFailure(merchantScope)) return merchantScope;
+
   const { data: workspace } = (await supabaseAdmin
     .from("couranr_merchant_workspaces")
     .select("contact_phone,business_account_id")
-    .eq("business_account_id", delivery.business_account_id)
+    .eq("business_account_id", merchantScope.value.businessAccountId)
     .maybeSingle()) as { data: any; error: any };
   const { data: account } = (await supabaseAdmin
     .from("business_accounts")
     .select("name")
-    .eq("id", delivery.business_account_id)
+    .eq("id", merchantScope.value.businessAccountId)
     .maybeSingle()) as { data: any; error: any };
 
   return {
