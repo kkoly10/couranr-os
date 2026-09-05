@@ -206,7 +206,7 @@ export function BillingRecords() {
             <Alert tone="info" title="No stored payment method">
               Couranr does not store a payment method yet. For business-paid
               deliveries, an authorized business user confirms payment on that
-              delivery. Customer-paid deliveries use the customer's own secure
+              delivery. Customer-paid deliveries use the customer&apos;s own secure
               payment link. Nothing is charged until Couranr confirms service.
             </Alert>
           ) : null}
