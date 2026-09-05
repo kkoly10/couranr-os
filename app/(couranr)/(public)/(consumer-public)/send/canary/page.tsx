@@ -4,6 +4,8 @@ import {
   consumerSendServerLive,
 } from "@/lib/couranr/sameday/serverGate";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: "Couranr Same Day canary access",
   robots: { index: false, follow: false },
