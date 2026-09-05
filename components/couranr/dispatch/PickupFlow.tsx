@@ -89,6 +89,7 @@ export function PickupFlow({
   const [pinRequestError, setPinRequestError] = React.useState<string | null>(null);
   const [qrBusy, setQrBusy] = React.useState(false);
   const [qrError, setQrError] = React.useState<string | null>(null);
+  const [manualCodeOpen, setManualCodeOpen] = React.useState(false);
 
   const [submitting, setSubmitting] = React.useState(false);
   const [submitError, setSubmitError] = React.useState<string | null>(null);
@@ -277,9 +278,15 @@ export function PickupFlow({
               {qrBusy ? <Text size="xs" muted>Reading pickup QR…</Text> : null}
               {qrError ? <Alert tone="warning" title="QR not verified">{qrError}</Alert> : null}
 
-              <details>
-                <summary>Enter six-digit code instead</summary>
-                <Stack gap={3} style={{ marginTop: "var(--couranr-space-3)" }}>
+              <Button
+                variant="ghost"
+                onClick={() => setManualCodeOpen((open) => !open)}
+                aria-expanded={manualCodeOpen}
+              >
+                {manualCodeOpen ? "Hide six-digit fallback" : "Enter six-digit code instead"}
+              </Button>
+              {manualCodeOpen ? (
+                <Stack gap={3}>
                   <Field label="Pickup code">
                     {(a) => (
                       <Input
@@ -306,7 +313,7 @@ export function PickupFlow({
                     Verify code
                   </Button>
                 </Stack>
-              </details>
+              ) : null}
             </>
           )}
 
@@ -485,7 +492,7 @@ export function LocationBlock({ location }: { location: LocationState }) {
             loadingLabel="Finding…"
             onClick={location.request}
           >
-            {location.status === "not_requested" ? "Use my location" : "Try again"}
+            {location.status === "not_requested" ? "Share location" : "Try again"}
           </Button>
         }
       />
