@@ -6,7 +6,7 @@ import {
 } from "@/lib/couranr/consumer/send";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
 
-export const dynamic="force-dynamic";
+export const dynamic = "force-dynamic";
 
 /**
  * Anonymous by login, not by scope: the guest token resolves exactly one
