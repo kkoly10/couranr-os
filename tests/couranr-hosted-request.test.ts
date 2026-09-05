@@ -263,6 +263,11 @@ describe("hosted abuse and provider-cost boundaries", () => {
     expect(HOSTED_RATE_SQL).toContain(
       "c_places_per_intake_hour constant integer:=12"
     );
+    expect(HOSTED_RATE_SQL).toContain(
+      "c_places_per_host_hour constant integer:=60"
+    );
+    expect(HOSTED_RATE_SQL).toContain("couranr-hosted-places:");
+    expect(HOSTED_RATE_SQL).toContain("sum(h.places_request_count)");
     expect(HOSTED_RATE_SQL).toContain("for update");
     expect(HOSTED_RATE_SQL).toContain("places_request_count");
     const claim = HOSTED_PLACES_ROUTE.indexOf("claimHostedPlaceSearch");
