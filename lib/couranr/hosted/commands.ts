@@ -34,6 +34,7 @@ import {
   TRACKING_TOKEN_TTL_DAYS,
 } from "@/lib/couranr/tracking/tokens";
 import {
+  confirmHostedPickupManifest,
   isPickupManifestFailure,
   setHostedCustomerPickupManifest,
 } from "@/lib/couranr/pickup/manifest";
@@ -970,6 +971,25 @@ export async function validateHostedRequestByMerchant(params: {
       message:
         "The customer reported a restricted item. Keep that declaration or choose Unknown for Couranr review.",
     });
+  }
+
+  // FREE authority write before any Google/Mapbox work. A viewer, stale tab,
+  // foreign merchant, or conflicting manifest is refused here without spending
+  // provider budget. The manifest CAS is independent of request/quote version.
+  const confirmedPickup = await confirmHostedPickupManifest({
+    requestId: params.requestId,
+    hostBusinessAccountId: params.hostBusinessAccountId,
+    actorUserId: params.actorUserId,
+    expectedManifestVersion: Number(requestRow.pickup_manifest_version ?? 0),
+    manifest: params.input.pickupManifest,
+  });
+  if (isPickupManifestFailure(confirmedPickup)) {
+    return {
+      ok: false,
+      code: confirmedPickup.code,
+      correlationId: confirmedPickup.correlationId,
+      message: confirmedPickup.message,
+    };
   }
 
   let routed: Awaited<ReturnType<typeof deriveCanonicalRouteAndQuote>>;
