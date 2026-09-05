@@ -75,6 +75,7 @@ const NOTES = {
   chooseSuggestions: "Choose both addresses from the suggestions.",
   weightRequired: "Enter the weight, or choose the honest range.",
   descriptionRequired: "Tell Couranr what the driver should look for at pickup.",
+  descriptionTooLong: "Keep the pickup description to 1,000 characters or fewer.",
   packageCountInvalid: "Package count must be a whole number from 1 to 9,999, or left blank.",
   contactRequired: "Add your mobile number or email on the review step, then check the price.",
   review: "Couranr will review this delivery and confirm the price with you.",
@@ -219,6 +220,7 @@ export function buildEstimateBody(input: QuoteInput): EstimateBodyResult {
       ? ship.description.trim()
       : null;
   if (!description) return { ok: false, note: NOTES.descriptionRequired };
+  if (description.length > 1000) return { ok: false, note: NOTES.descriptionTooLong };
 
   const packageCount =
     ship?.packageCount === null || ship?.packageCount === undefined
