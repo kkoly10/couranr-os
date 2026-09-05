@@ -78,6 +78,8 @@ export type ActivationView = {
   /** Merchant-safe copy derived from a code. The code itself never ships. */
   blockedReason: string | null;
   contactVerifiedAt: string | null;
+  contactVerificationRequestedAt: string | null;
+  operationsContactPhone: string | null;
   testDeliveryRequestId: string | null;
   requestedAt: string | null;
   acknowledgements: Record<string, string>;
@@ -103,7 +105,7 @@ export async function getActivation(params: {
   const row = await supabaseAdmin
     .from("couranr_workspace_activations")
     .select(
-      "activation_state,blocked_reason_code,contact_verified_at,test_delivery_request_id,requested_at"
+      "activation_state,blocked_reason_code,contact_verified_at,contact_verification_requested_at,test_delivery_request_id,requested_at"
     )
     .eq("business_account_id", params.businessAccountId)
     .maybeSingle();
@@ -130,6 +132,20 @@ export async function getActivation(params: {
     });
   }
 
+  const workspace = await supabaseAdmin
+    .from("couranr_merchant_workspaces")
+    .select("contact_phone")
+    .eq("business_account_id", params.businessAccountId)
+    .maybeSingle();
+
+  if (workspace.error) {
+    return fail({
+      operation: op,
+      code: "internal",
+      detail: { lookup: "couranr_merchant_workspaces", error: workspace.error },
+    });
+  }
+
   // Newest acceptance per kind wins; the query is already newest-first.
   const accepted: Record<string, string> = {};
   for (const a of acks.data as any[]) {
@@ -153,6 +169,8 @@ export async function getActivation(params: {
       blockedReason:
         facts.state === "blocked" ? blockReasonMessage(row.data?.blocked_reason_code) : null,
       contactVerifiedAt: facts.contactVerifiedAt,
+      contactVerificationRequestedAt: row.data?.contact_verification_requested_at ?? null,
+      operationsContactPhone: workspace.data?.contact_phone ?? null,
       testDeliveryRequestId: facts.testDeliveryRequestId,
       requestedAt: row.data?.requested_at ?? null,
       acknowledgements: accepted,
@@ -169,6 +187,8 @@ export type ActivationQueueEntry = {
   businessName: string;
   state: string;
   requestedAt: string | null;
+  contactVerificationRequestedAt: string | null;
+  contactVerifiedAt: string | null;
   blockedReason: string | null;
   reviewedAt: string | null;
 };
@@ -199,18 +219,24 @@ export type AcknowledgementRecord = {
  */
 export async function listActivationsForOperations(params: {
   state?: string;
+  contactVerificationPending?: boolean;
 }): Promise<ActivationResult<{ entries: ActivationQueueEntry[] }>> {
   const op = "listActivationsForOperations";
 
   let query = supabaseAdmin
     .from("couranr_workspace_activations")
     .select(
-      "business_account_id,activation_state,blocked_reason_code,requested_at,reviewed_at"
+      "business_account_id,activation_state,blocked_reason_code,requested_at,reviewed_at,contact_verification_requested_at,contact_verified_at"
     )
     .order("requested_at", { ascending: true, nullsFirst: false })
     .limit(200);
 
   if (params.state) query = query.eq("activation_state", params.state);
+  if (params.contactVerificationPending) {
+    query = query
+      .not("contact_verification_requested_at", "is", null)
+      .is("contact_verified_at", null);
+  }
 
   const { data, error } = await query;
   if (error || !Array.isArray(data)) {
@@ -244,6 +270,8 @@ export async function listActivationsForOperations(params: {
         businessName: names[String(row.business_account_id)] || "(unnamed business)",
         state: String(row.activation_state),
         requestedAt: row.requested_at ?? null,
+        contactVerificationRequestedAt: row.contact_verification_requested_at ?? null,
+        contactVerifiedAt: row.contact_verified_at ?? null,
         blockedReason:
           String(row.activation_state) === "blocked"
             ? blockReasonMessage(row.blocked_reason_code)
@@ -337,15 +365,36 @@ export async function acceptAcknowledgement(params: {
   return { ok: true, value: { state: String(r.value.activation_state) } };
 }
 
-export async function verifyContact(params: {
+export async function requestContactVerification(params: {
   actor: ActorMembership;
   businessAccountId: string;
 }): Promise<ActivationResult<{ state: string }>> {
-  const op = "verifyContact";
-  const r = await callRpc<Record<string, any>>(op, "couranr_verify_activation_contact", {
-    p_business_account_id: params.businessAccountId,
-    p_actor_user_id: params.actor.userId,
-  });
+  const op = "requestContactVerification";
+  const r = await callRpc<Record<string, any>>(
+    op,
+    "couranr_request_activation_contact_verification",
+    {
+      p_business_account_id: params.businessAccountId,
+      p_actor_user_id: params.actor.userId,
+    }
+  );
+  if (isActivationFailure(r)) return r;
+  return { ok: true, value: { state: String(r.value.activation_state) } };
+}
+
+export async function verifyContactForOperations(params: {
+  operationsUserId: string;
+  businessAccountId: string;
+}): Promise<ActivationResult<{ state: string }>> {
+  const op = "verifyContactForOperations";
+  const r = await callRpc<Record<string, any>>(
+    op,
+    "couranr_verify_activation_contact_by_operations",
+    {
+      p_business_account_id: params.businessAccountId,
+      p_actor_user_id: params.operationsUserId,
+    }
+  );
   if (isActivationFailure(r)) return r;
   return { ok: true, value: { state: String(r.value.activation_state) } };
 }
