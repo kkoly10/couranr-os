@@ -30,6 +30,31 @@ begin
 end
 $guard$;
 
+alter table public.couranr_delivery_request_events
+  drop constraint couranr_dre_command_chk;
+alter table public.couranr_delivery_request_events
+  add constraint couranr_dre_command_chk check (command in (
+    'create_delivery_request_draft',
+    'create_hosted_delivery_request',
+    'calculate_delivery_request_estimate',
+    'create_quote_version',
+    'submit_delivery_request',
+    'validate_hosted_delivery_request',
+    'begin_delivery_request_review',
+    'accept_delivery_request_as_quoted',
+    'auto_accept_delivery_request',
+    'auto_plan_delivery_request',
+    'requote_delivery_request',
+    'decline_delivery_request',
+    'record_payer_quote_approval',
+    'begin_delivery_preparation',
+    'mark_delivery_ready',
+    'mark_delivery_not_ready',
+    'mark_delivery_unavailable',
+    'cancel_delivery_request',
+    'apply_promotional_credit'
+  ));
+
 create table public.couranr_hosted_request_intakes (
   id uuid primary key default gen_random_uuid(),
   host_business_account_id uuid not null
@@ -360,7 +385,7 @@ begin
   insert into public.couranr_delivery_request_events(
     request_id,actor_user_id,actor_type,command,from_state,to_state,metadata
   ) values (
-    v_req.id,null,'customer','create_delivery_request_draft',null,
+    v_req.id,null,'customer','create_hosted_delivery_request',null,
     'awaiting_merchant_confirmation',
     jsonb_build_object(
       'source','hosted_request',
@@ -507,21 +532,6 @@ begin
     p_distance_source,p_serviceability_outcome,p_route_review_reason
   );
 
-  insert into public.couranr_delivery_request_events(
-    request_id,actor_user_id,actor_type,command,from_state,to_state,metadata
-  ) values (
-    v_req.id,p_actor_user_id,'merchant','calculate_delivery_request_estimate',
-    'awaiting_merchant_confirmation','awaiting_merchant_confirmation',
-    jsonb_build_object(
-      'quoteVersionId',v_quote.id,
-      'quoteNumber',v_quote.quote_number,
-      'quoteStatus',v_quote.quote_status,
-      'reviewReasons',v_quote.review_reasons,
-      'hostBusinessAccountId',p_host_business_account_id,
-      'merchantValidated',true
-    )
-  );
-
   update public.couranr_delivery_requests set
     request_state='pending_couranr_review',
     review_state='pending',
@@ -536,7 +546,7 @@ begin
   insert into public.couranr_delivery_request_events(
     request_id,actor_user_id,actor_type,command,from_state,to_state,metadata
   ) values (
-    v_req.id,p_actor_user_id,'merchant','submit_delivery_request',
+    v_req.id,p_actor_user_id,'merchant','validate_hosted_delivery_request',
     'awaiting_merchant_confirmation','pending_couranr_review',
     jsonb_build_object(
       'quoteVersionId',v_quote.id,
