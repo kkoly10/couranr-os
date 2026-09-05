@@ -27,6 +27,10 @@ const HOSTED_CHAT_SQL = readFileSync(
   path.join(ROOT, "supabase/migrations/20260905065500_couranr_hosted_delivery_chat_scope.sql"),
   "utf8"
 );
+const HOSTED_HELP_SQL = readFileSync(
+  path.join(ROOT, "supabase/migrations/20260905070000_couranr_hosted_delivery_help_scope.sql"),
+  "utf8"
+);
 const HOSTED_COMMANDS = readFileSync(
   path.join(ROOT, "lib/couranr/hosted/commands.ts"),
   "utf8"
@@ -289,6 +293,29 @@ describe("hosted adversarial closure", () => {
     expect(HOSTED_CHAT_SQL).toContain("if v_business_account_id is null then");
     expect(HOSTED_CHAT_SQL).toContain("return null;");
     expect(HOSTED_CHAT_SQL).toContain("couranr_join_assignment_delivery_chat");
+  });
+
+  it("carries hosted relationship scope into Delivery Help without forging tenancy", () => {
+    expect(HOSTED_HELP_SQL).toContain("couranr_hosted_request_intakes");
+    expect(HOSTED_HELP_SQL).toContain("h.host_business_account_id");
+    expect(HOSTED_HELP_SQL).toContain("r.source='hosted_request'");
+    expect(HOSTED_HELP_SQL).toContain("r.requester_kind='consumer'");
+    expect(HOSTED_HELP_SQL).toContain("r.business_account_id is null");
+    expect(HOSTED_HELP_SQL).toContain("couranr_help_access_tokens");
+    // Direct Consumer Same Day still has no merchant relationship; this narrow
+    // fix must not invent one merely to satisfy the legacy non-null help schema.
+    expect(HOSTED_HELP_SQL).toContain("if v_business is null then");
+    expect(HOSTED_HELP_SQL).toContain("'delivery_not_found'");
+  });
+
+  it("hands a confirmed hosted customer to a one-delivery tracking credential", () => {
+    const start = HOSTED_COMMANDS.indexOf("export async function readHostedRequest");
+    const end = HOSTED_COMMANDS.indexOf("/* ------------------------------------------------------ merchant context", start);
+    const read = HOSTED_COMMANDS.slice(start, end);
+    expect(read).toContain('state === "confirmed"');
+    expect(read).toContain('"couranr_delivery_access_tokens"');
+    expect(read).toContain("issueTrackingLink");
+    expect(read).toContain("value.trackingToken");
   });
 
   it("keeps hosted merchant authority after Consumer-owned delivery creation", () => {
