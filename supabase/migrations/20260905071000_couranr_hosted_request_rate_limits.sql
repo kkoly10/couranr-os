@@ -65,13 +65,6 @@ begin
     raise exception 'hosted_request_rate_limited' using errcode='CR429';
   end if;
 
-  -- Expired, never-submitted sessions are not audit evidence. Prune them
-  -- opportunistically so repeated public opens cannot grow this table forever.
-  delete from public.couranr_hosted_request_intakes h
-   where h.host_business_account_id=v_host.business_account_id
-     and h.request_id is null
-     and h.expires_at < now()-interval '1 day';
-
   insert into public.couranr_hosted_request_intakes(
     host_business_account_id,host_slug_snapshot,token_hash,expires_at
   ) values (
