@@ -762,6 +762,7 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
               id="send-item"
               className="cr-input cr-send-textarea"
               rows={4}
+              maxLength={1000}
               placeholder={SEND_COPY.item_example}
               value={item}
               onChange={(e) => setItem(e.target.value)}
