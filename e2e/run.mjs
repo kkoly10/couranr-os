@@ -3886,18 +3886,22 @@ async function groupQ() {
       await page.goto(driverUrl, { waitUntil: "domcontentloaded" });
       await qShareLocation(page);
 
-      const pin = page.getByLabel(/six-digit pickup code/i);
+      // PRF-002: QR is primary in the product; E2E exercises the exact
+      // six-digit fallback against the same server credential without
+      // fabricating camera input.
+      await page.getByRole("button", { name: /enter six-digit code instead/i }).click();
+      const pin = page.getByLabel(/pickup code/i);
       await pin.waitFor({ state: "visible", timeout: 25000 });
       await pin.fill(pickupCode);
-      await page.getByRole("button", { name: /^check code$/i }).click();
-      await page.getByText(/code accepted/i).first().waitFor({ state: "visible", timeout: 25000 });
+      await page.getByRole("button", { name: /^verify code$/i }).click();
+      await page.getByText(/sender verified/i).first().waitFor({ state: "visible", timeout: 25000 });
       const consumed = await waitForRow("Q14 code consumed", () => handoffCodesFor(deliveryId),
         (rows) => rows.some((c) => c.code_kind === "merchant_pickup" && c.code_state === "consumed"),
         30000);
       check("Q14", "the correct code is accepted and the row is consumed",
         Boolean(consumed), "");
 
-      const shipment = await qUploadProof(page, deliveryId, /photo of the shipment/i, "shipment_photo");
+      const shipment = await qUploadProof(page, deliveryId, /photo of the pickup/i, "shipment_photo");
       const shot = (shipment ?? []).find((p) => p.proof_type === "shipment_photo");
       check("Q15", "the shipment photo reached storage and was finalized against it",
         Boolean(shot) && shot.byte_size === Q_PNG.length && shot.storage_bucket === "delivery-photos",
@@ -3911,17 +3915,18 @@ async function groupQ() {
         Math.abs(Number(shot?.captured_latitude) - GEO_STAFFORD.latitude) < 0.01,
         `lat=${shot?.captured_latitude} lng=${shot?.captured_longitude}`);
 
-      await qUploadProof(page, deliveryId, /photo of its condition/i, "condition_photo");
-      check("Q18", "the condition photo is a SECOND, separately recorded proof",
-        (await proofsFor(deliveryId)).filter((p) => p.proof_stage === "pickup").length >= 2, "");
+      const pickupProofs = (await proofsFor(deliveryId))
+        .filter((p) => p.proof_stage === "pickup");
+      check("Q18", "ordinary Pickup Handoff V2 records one routine pickup photo",
+        pickupProofs.some((p) => p.proof_type === "shipment_photo") &&
+        !pickupProofs.some((p) => p.proof_type === "condition_photo"),
+        `types=${pickupProofs.map((p) => p.proof_type).join(",")}`);
 
-      await page.getByLabel(/packages you are collecting/i).fill("3");
-      await page.getByLabel(/first name of the person handing it over/i).fill("Robin");
-      await page.getByLabel(/i am loading this shipment into/i).check();
-
-      const complete = page.getByRole("button", { name: /^complete pickup$/i });
+      // No package count, staff identity, condition photo or vehicle checkbox
+      // is re-entered on the PRF-002 happy path.
+      const complete = page.getByRole("button", { name: /^confirm pickup$/i });
       await complete.waitFor({ state: "visible", timeout: 20000 });
-      check("Q19", "complete pickup unlocks only once every requirement is met",
+      check("Q19", "pickup confirmation unlocks after sender verification, photo and location",
         !(await complete.isDisabled()),
         (await page.textContent("body"))?.replace(/\s+/g, " ").slice(0, 300) ?? "");
       await complete.click();
