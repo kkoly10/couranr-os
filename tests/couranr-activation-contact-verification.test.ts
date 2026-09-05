@@ -7,6 +7,10 @@ const SQL = readFileSync(
   path.join(ROOT, "supabase/migrations/20260905023000_couranr_activation_contact_verification.sql"),
   "utf8"
 );
+const RETIRE = readFileSync(
+  path.join(ROOT, "supabase/migrations/20260905023100_couranr_retire_merchant_contact_self_verification.sql"),
+  "utf8"
+);
 const MERCHANT_ROUTE = readFileSync(
   path.join(ROOT, "app/api/couranr/me/activation/route.ts"),
   "utf8"
@@ -22,7 +26,7 @@ const CHECKLIST = readFileSync(
 
 describe("MER-003 operations-verified contact", () => {
   it("retires merchant self-attestation as an executable authority path", () => {
-    expect(SQL).toMatch(
+    expect(RETIRE).toMatch(
       /revoke execute on function public\.couranr_verify_activation_contact\(uuid,uuid\)\s+from service_role/i
     );
     expect(MERCHANT_ROUTE).not.toContain('action === "verify_contact"');
