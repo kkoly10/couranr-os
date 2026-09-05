@@ -139,6 +139,8 @@ describe("production canary containment", () => {
     expect(SQL).toContain("constraint couranr_cca_guest_session_uniq unique (guest_session_id)");
     expect(SQL).toContain("canary_guest_session_already_created");
     expect(SQL).toContain("couranr_create_consumer_canary_guest_session");
+    expect(SQL).toContain("pg_advisory_xact_lock(hashtext('couranr-consumer-send-canary'))");
+    expect(SQL).toContain("consumer_canary_already_active");
   });
 
   it("keeps canary storage service-role-only", () => {
