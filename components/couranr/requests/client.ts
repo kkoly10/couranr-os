@@ -329,6 +329,10 @@ export function validateHostedRequestFromBrowser(input: {
   weightBand: string | null;
   restrictedClass: string;
   signatureRequired: boolean;
+  pickupDescription: string;
+  pickupPackageCount: number | null;
+  pickupOrderReference: string | null;
+  pickupHandlingNotes: string | null;
 }) {
   return call<{ request: DeliveryRequestView }>(
     `/api/couranr/delivery-requests/${input.id}/validate-hosted`,
