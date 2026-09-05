@@ -68,10 +68,16 @@ begin
     raise exception 'role_may_not_manage_activation' using errcode = 'CR403';
   end if;
 
+  -- Hold the workspace row while this command finishes. Without this lock a
+  -- concurrent Settings save could change the phone after we read it but
+  -- before the activation row is written, leaving evidence for the old number
+  -- attached to the new one. The phone row and activation row are always
+  -- locked in this order, matching the update trigger and avoiding inversion.
   select nullif(btrim(contact_phone), '')
     into v_phone
     from public.couranr_merchant_workspaces
-   where business_account_id = p_business_account_id;
+   where business_account_id = p_business_account_id
+   for share;
 
   if v_phone is null then
     raise exception 'operations_contact_required' using errcode = 'CR409';
@@ -139,10 +145,16 @@ begin
     raise exception 'operations_access_required' using errcode = 'CR403';
   end if;
 
+  -- Hold the workspace row while this command finishes. Without this lock a
+  -- concurrent Settings save could change the phone after we read it but
+  -- before the activation row is written, leaving evidence for the old number
+  -- attached to the new one. The phone row and activation row are always
+  -- locked in this order, matching the update trigger and avoiding inversion.
   select nullif(btrim(contact_phone), '')
     into v_phone
     from public.couranr_merchant_workspaces
-   where business_account_id = p_business_account_id;
+   where business_account_id = p_business_account_id
+   for share;
 
   if v_phone is null then
     raise exception 'operations_contact_required' using errcode = 'CR409';
