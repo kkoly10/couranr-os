@@ -85,6 +85,25 @@ describe("Pickup Handoff V2 authority fences", () => {
     );
   });
 
+  it("enforces the pickup manifest at the server request-state boundary", () => {
+    expect(migration).toContain("pickup_manifest_policy_version");
+    expect(migration).toContain("couranr_pickup_manifest_v2_insert_trg");
+    expect(migration).toContain("couranr_pickup_manifest_v2_advance_trg");
+    expect(migration).toContain("pickup_manifest_required");
+    expect(migration).toContain("pickup_manifest_authority_invalid");
+    expect(migration).toContain("merchant_confirmed");
+    expect(migration).toContain("new.request_state not in ('cancelled','declined','closed')");
+
+    // Existing requests are grandfathered: the marker is stamped only on new
+    // INSERTs. There is deliberately no UPDATE/backfill of old request rows.
+    expect(migration).toContain(
+      "new.pickup_manifest_policy_version := 'pickup-handoff-v2'"
+    );
+    expect(migration).not.toMatch(
+      /update\s+public\.couranr_delivery_requests[\s\S]{0,180}pickup_manifest_policy_version/i
+    );
+  });
+
   it("requires objective custody evidence and no routine driver restatement", () => {
     const start = migration.indexOf(
       "create or replace function public.couranr_complete_pickup_v2"
