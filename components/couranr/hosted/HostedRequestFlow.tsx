@@ -85,6 +85,7 @@ export function HostedRequestFlow({
   const [recipientPhone, setRecipientPhone] = React.useState("");
   const [recipientEmail, setRecipientEmail] = React.useState("");
   const [description, setDescription] = React.useState("");
+  const [packageCount, setPackageCount] = React.useState("");
   const [weightBand, setWeightBand] = React.useState<WeightBand>("0_25_lb");
   const [restrictedClass, setRestrictedClass] = React.useState<"none" | "unknown">("none");
   const [signatureRequired, setSignatureRequired] = React.useState(false);
@@ -258,6 +259,7 @@ export function HostedRequestFlow({
         },
         shipment: {
           description: description.trim(),
+          packageCount: packageCount.trim() === "" ? null : Number(packageCount),
           weightBand,
           restrictedClass,
           signatureRequired,
@@ -433,6 +435,23 @@ export function HostedRequestFlow({
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Example: one boxed lamp and two small bags"
+                />
+              )}
+            </Field>
+
+            <Field
+              label="How many packages?"
+              hint="Optional if you do not know. The driver will see this as the expected pickup count."
+            >
+              {(p) => (
+                <Input
+                  {...p}
+                  type="number"
+                  min={1}
+                  max={9999}
+                  inputMode="numeric"
+                  value={packageCount}
+                  onChange={(e) => setPackageCount(e.target.value)}
                 />
               )}
             </Field>
