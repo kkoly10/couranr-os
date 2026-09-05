@@ -261,6 +261,7 @@ export function buildEstimateBody(input: QuoteInput): EstimateBodyResult {
 type EstimateLike = {
   requestId?: unknown;
   quoteStatus?: unknown;
+  pickupManifestVersion?: unknown;
   totalCents?: unknown;
   reviewReasons?: unknown;
   quoteVersionId?: unknown;
@@ -488,13 +489,23 @@ export function createLiveSameDayAdapters(
       const requestId = typeof est.requestId === "string" ? est.requestId : null;
       if (!requestId) return { state: "unavailable", note: NOTES.cannotPrice };
 
+      // Every estimate echoes the CURRENT independent pickup-manifest CAS.
+      // This closes the reload/two-tab hole: a re-estimate after a page reload
+      // does not guess generation 0 and cannot silently overwrite a newer
+      // sender statement.
+      const estimateManifestVersion = Number(est.pickupManifestVersion);
+      const expectedManifestVersion =
+        Number.isInteger(estimateManifestVersion) && estimateManifestVersion >= 0
+          ? estimateManifestVersion
+          : pickupManifestVersion;
+
       // Expected-pickup identity is committed only after the canonical estimate
       // has created/bound this guest's request. This RPC is free; all local
       // manifest validation happened before the route/price provider call.
       const manifest = await guestCall(API.pickupManifest, {
         method: "POST",
         body: {
-          expectedManifestVersion: pickupManifestVersion,
+          expectedManifestVersion,
           description: input.shipment?.description ?? "",
           packageCount: input.shipment?.packageCount ?? null,
           orderReference: input.shipment?.orderReference ?? null,
