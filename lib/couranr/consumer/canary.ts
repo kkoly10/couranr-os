@@ -81,6 +81,26 @@ export async function createConsumerCanaryGuestSession(
   };
 }
 
+export async function claimConsumerCanaryPlaceSearch(
+  guestSessionId: string
+): Promise<boolean> {
+  const { data, error } = (await supabaseAdmin.rpc(
+    "couranr_claim_consumer_canary_place_search",
+    { p_guest_session_id: guestSessionId }
+  )) as { data: unknown; error: any };
+  return !error && data === true;
+}
+
+export async function claimConsumerCanaryEstimate(
+  guestSessionId: string
+): Promise<boolean> {
+  const { data, error } = (await supabaseAdmin.rpc(
+    "couranr_claim_consumer_canary_estimate",
+    { p_guest_session_id: guestSessionId }
+  )) as { data: unknown; error: any };
+  return !error && data === true;
+}
+
 export function newConsumerCanaryCookieSecret(): string {
   return generateAccessToken();
 }
