@@ -366,16 +366,22 @@ describe("hosted adversarial closure", () => {
     const end = HOSTED_COMMANDS.indexOf("/* ------------------------------------------------------ merchant context", start);
     const read = HOSTED_COMMANDS.slice(start, end);
     expect(read).toContain('state === "confirmed"');
-    expect(read).toContain('"couranr_delivery_access_tokens"');
-    expect(read).toContain("issueTrackingLink");
+    expect(read).toContain("RPC.issueTrackingIfAbsent");
+    expect(read).toContain("generateTrackingToken");
+    expect(read).toContain("hashTrackingToken");
     expect(read).toContain("value.trackingToken");
 
     // The token itself may carry the host relationship for sanitized sender
-    // display, while the Consumer-owned request remains NULL-tenancy.
+    // display, while the Consumer-owned request remains NULL-tenancy. Hosted
+    // status reads use a database-serialized issue-if-absent command so two
+    // concurrent tabs cannot revoke each other's freshly issued credential.
     expect(HOSTED_TRACKING_SQL).toContain("couranr_hosted_request_intakes");
     expect(HOSTED_TRACKING_SQL).toContain("h.host_business_account_id");
     expect(HOSTED_TRACKING_SQL).toContain("v_req.business_account_id");
     expect(HOSTED_TRACKING_SQL).toContain("v_relationship_business_id");
+    expect(HOSTED_TRACKING_SQL).toContain("couranr_issue_hosted_tracking_if_absent");
+    expect(HOSTED_TRACKING_SQL).toContain("pg_advisory_xact_lock");
+    expect(HOSTED_TRACKING_SQL).toContain("return false;");
     expect(HOSTED_TRACKING_SQL).not.toContain(
       "update public.couranr_delivery_requests"
     );
