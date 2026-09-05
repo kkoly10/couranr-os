@@ -405,10 +405,6 @@ export async function decideActivation(params: {
     p_actor_user_id: params.operationsUserId,
     p_grant: params.grant,
     p_blocked_reason_code: params.grant ? null : (params.blockedReasonCode ?? null),
-    // Server-governed current versions. The database re-checks these at the
-    // exact instant Operations grants, so a policy change while a workspace is
-    // waiting in review cannot be bypassed by an old checklist snapshot.
-    p_required_acks: ACKNOWLEDGEMENT_VERSIONS,
   });
   if (isActivationFailure(r)) return r;
   return { ok: true, value: { state: String(r.value.activation_state) } };
