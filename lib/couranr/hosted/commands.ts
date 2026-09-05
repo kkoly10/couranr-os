@@ -371,14 +371,12 @@ export async function validateHostedRequest(params: {
 
   const body = params.rawInput && typeof params.rawInput === "object" ? (params.rawInput as any) : {};
   const pickupPlaceId = cleanText(body.pickupPlaceId, 512);
-  const dropoffPlaceId = cleanText(body.dropoffPlaceId, 512);
   const payerType = body.payerType;
   const restrictedClass = body.restrictedClass;
   const signatureRequired = body.signatureRequired;
   const weight = exactOrBand(body);
   if (
     !pickupPlaceId ||
-    !dropoffPlaceId ||
     !weight ||
     !isRestrictedClassDeclaration(restrictedClass) ||
     (payerType !== "merchant" && payerType !== "customer") ||
@@ -407,7 +405,9 @@ export async function validateHostedRequest(params: {
   try {
     routed = await deriveCanonicalRouteAndQuote({
       pickupAddress: { googlePlaceId: pickupPlaceId },
-      dropoffAddress: { googlePlaceId: dropoffPlaceId },
+      // The customer-selected destination is durable intake evidence.
+      // Validation confirms it; a browser cannot replace it while validating.
+      dropoffAddress: { googlePlaceId: intake.value.dropoffPlaceId },
       weightLb: weight.weightLb,
       weightBand: weight.weightBand,
       additionalStops: 0,
