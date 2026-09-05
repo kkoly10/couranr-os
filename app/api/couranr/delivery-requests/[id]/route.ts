@@ -4,6 +4,10 @@ import { getDeliveryRequest, isCommandFailure } from "@/lib/couranr/requests/com
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
 import { toDeliveryRequestView } from "@/lib/couranr/requests/view";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import {
+  getHostedIntakeForMerchant,
+  isHostedFailure,
+} from "@/lib/couranr/hosted/commands";
 
 export const dynamic = "force-dynamic";
 
@@ -60,9 +64,25 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
     intake = { session, facts: facts ?? [], revisions: revisions ?? [] };
   }
 
+  let hosted = null;
+  if (
+    businessAccountId !== null &&
+    result.value.request.requester_kind === "consumer" &&
+    result.value.request.source === "hosted_request"
+  ) {
+    const hostedResult = await getHostedIntakeForMerchant({
+      actor: actor.actor,
+      hostBusinessAccountId: businessAccountId,
+      requestId: params.id,
+    });
+    if (isHostedFailure(hostedResult)) return failureResponse(hostedResult);
+    hosted = hostedResult.value;
+  }
+
   return NextResponse.json({
     request: toDeliveryRequestView(result.value.request),
     events: result.value.events,
     intake,
+    hosted,
   });
 }
