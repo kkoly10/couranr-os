@@ -227,6 +227,7 @@ describe("execution wiring", () => {
   it("advances from every canonical lifecycle seam that can unblock automation", () => {
     const hooks = [
       "app/api/couranr/delivery-requests/[id]/submit/route.ts",
+      "app/api/couranr/delivery-requests/[id]/validate-hosted/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/submit/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/accept-as-quoted/route.ts",
       "app/api/couranr/delivery-requests/[id]/readiness/route.ts",
