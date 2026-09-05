@@ -699,11 +699,21 @@ begin
   end if;
 
   if not exists (
-    select 1 from public.couranr_handoff_codes
-     where delivery_id=p_delivery_id
-       and code_kind='merchant_pickup'
-       and code_state='consumed'
+    select 1
+      from public.couranr_handoff_codes c
+     where c.delivery_id=p_delivery_id
+       and c.code_kind='merchant_pickup'
+       and c.code_state='consumed'
+       and c.generation=(
+         select max(latest.generation)
+           from public.couranr_handoff_codes latest
+          where latest.delivery_id=p_delivery_id
+            and latest.code_kind='merchant_pickup'
+       )
   ) then
+    -- Regeneration has real revocation semantics: if the sender creates a
+    -- newer pickup credential after an earlier one was consumed, the newer
+    -- generation must be verified before custody can complete.
     raise exception 'pickup_code_not_accepted' using errcode='CR409';
   end if;
 
