@@ -23,6 +23,7 @@ export type PublicErrorCode =
   | "version_conflict"
   | "conflict"
   | "quote_expired"
+  | "rate_limited"
   | "internal";
 
 export type PublicError = {
@@ -105,6 +106,7 @@ const DEFAULT_MESSAGE: Record<PublicErrorCode, string> = {
   conflict: "This could not be completed. Reload and try again.",
   quote_expired:
     "This estimate is no longer current. Recalculate to get an up-to-date price before continuing.",
+  rate_limited: "Too many requests. Wait a little and try again.",
   internal: "Something went wrong on our side. Nothing was changed.",
 };
 
@@ -117,6 +119,7 @@ export const PUBLIC_STATUS: Record<PublicErrorCode, number> = {
   version_conflict: 409,
   conflict: 409,
   quote_expired: 409,
+  rate_limited: 429,
   internal: 500,
 };
 
@@ -198,6 +201,8 @@ export function classifyDatabaseError(err: any): PublicErrorCode {
       // distinct from version_conflict because "reload and try again" is
       // actively wrong advice here — reloading changes nothing.
       return "conflict";
+    case "CR429":
+      return "rate_limited";
     case "CR410":
       // QVL-001. The quote passed its 15-minute validity window before it was
       // accepted, acknowledged or authorized. Distinct from every other code
