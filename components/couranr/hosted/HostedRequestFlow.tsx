@@ -22,6 +22,10 @@ function storageKey(slug: string) {
   return `couranr-hosted-request:${slug}`;
 }
 
+function trackingStorageKey(slug: string) {
+  return `couranr-hosted-tracking:${slug}`;
+}
+
 function statusCopy(view: RequestView | null, merchantName: string) {
   if (!view?.submitted || view.requestState === "awaiting_merchant_confirmation") {
     return {
@@ -124,13 +128,52 @@ export function HostedRequestFlow({
     }
     const payload = await response.json().catch(() => null);
     if (!response.ok || !payload) return;
+
+    if (typeof payload.trackingToken === "string" && payload.trackingToken) {
+      // Tracking is a 30-day bearer credential designed for the customer to
+      // retain/share. Persist it separately from the 24-hour intake session so
+      // a later status refresh cannot make the one-time raw token disappear.
+      window.localStorage.setItem(
+        trackingStorageKey(merchantSlug),
+        payload.trackingToken
+      );
+    } else {
+      const persistedTracking = window.localStorage.getItem(
+        trackingStorageKey(merchantSlug)
+      );
+      if (persistedTracking) payload.trackingToken = persistedTracking;
+    }
+
     setRequestView(payload as RequestView);
     if (payload.submitted) setSubmitted(true);
   }, [apiBase, merchantSlug]);
 
   React.useEffect(() => {
     const existing = window.sessionStorage.getItem(storageKey(merchantSlug));
-    if (!existing) return;
+    const persistedTracking = window.localStorage.getItem(
+      trackingStorageKey(merchantSlug)
+    );
+
+    if (!existing) {
+      // The intake session intentionally expires much sooner than tracking.
+      // If the customer already received the tracking credential, do not dump
+      // them back into a fresh request form merely because that intake session
+      // ended.
+      if (persistedTracking) {
+        setSubmitted(true);
+        setRequestView({
+          submitted: true,
+          requestState: "confirmed",
+          quoteStatus: null,
+          merchantValidated: true,
+          paymentPending: false,
+          terminal: false,
+          trackingToken: persistedTracking,
+        });
+      }
+      return;
+    }
+
     setToken(existing);
     void readStatus(existing);
   }, [merchantSlug, readStatus]);
