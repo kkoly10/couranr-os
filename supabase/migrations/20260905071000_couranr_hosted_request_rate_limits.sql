@@ -62,7 +62,7 @@ begin
      and h.created_at > now()-interval '1 hour';
 
   if v_recent >= c_sessions_per_host_hour then
-    raise exception 'hosted_request_rate_limited' using errcode='CR409';
+    raise exception 'hosted_request_rate_limited' using errcode='CR429';
   end if;
 
   -- Expired, never-submitted sessions are not audit evidence. Prune them
