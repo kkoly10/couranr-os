@@ -23,6 +23,10 @@ const HOSTED_CLOSURE_SQL = readFileSync(
   path.join(ROOT, "supabase/migrations/20260905065000_couranr_hosted_adversarial_closure.sql"),
   "utf8"
 );
+const HOSTED_CHAT_SQL = readFileSync(
+  path.join(ROOT, "supabase/migrations/20260905065500_couranr_hosted_delivery_chat_scope.sql"),
+  "utf8"
+);
 const HOSTED_COMMANDS = readFileSync(
   path.join(ROOT, "lib/couranr/hosted/commands.ts"),
   "utf8"
@@ -274,6 +278,17 @@ describe("hosted adversarial closure", () => {
     );
     expect(customerPayerGuard).toBeGreaterThanOrEqual(0);
     expect(customerPayerGuard).toBeLessThan(linkObligation);
+  });
+
+  it("carries hosted merchant scope into assignment messaging without changing Consumer tenancy", () => {
+    expect(HOSTED_CHAT_SQL).toContain("couranr_hosted_request_intakes");
+    expect(HOSTED_CHAT_SQL).toContain("h.host_business_account_id");
+    expect(HOSTED_CHAT_SQL).toContain("r.source='hosted_request'");
+    expect(HOSTED_CHAT_SQL).toContain("r.requester_kind='consumer'");
+    expect(HOSTED_CHAT_SQL).toContain("r.business_account_id is null");
+    expect(HOSTED_CHAT_SQL).toContain("if v_business_account_id is null then");
+    expect(HOSTED_CHAT_SQL).toContain("return null;");
+    expect(HOSTED_CHAT_SQL).toContain("couranr_join_assignment_delivery_chat");
   });
 
   it("keeps hosted merchant authority after Consumer-owned delivery creation", () => {
