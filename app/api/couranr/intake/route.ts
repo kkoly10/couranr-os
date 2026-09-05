@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isActorDenied, resolveRequestActor } from "@/lib/couranr/requests/actor";
+import { isActorDenied, requireBusinessCapability, resolveRequestActor } from "@/lib/couranr/requests/actor";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
 import {
   createIntakeSession,
@@ -33,9 +33,11 @@ export async function POST(req: NextRequest) {
   }
   const actor = await resolveRequestActor(req, businessAccountId);
   if (isActorDenied(actor)) return routeFailure(actor.code, actor.error);
-  if (actor.actor.kind === "anonymous") {
-    return routeFailure("not_permitted", "Sign in to continue.");
-  }
+  // Smart Intake is the front of delivery creation — require a member of this
+  // business with create authority (DRP-001). The dead `kind === "anonymous"`
+  // check admitted any signed-in user.
+  const denied = requireBusinessCapability(actor.actor, "create", businessAccountId);
+  if (denied) return routeFailure(denied.code, denied.error);
 
   const description = typeof body?.description === "string" ? body.description : "";
   if (description.trim().length === 0 || description.length > 4000) {
@@ -48,7 +50,7 @@ export async function POST(req: NextRequest) {
   const created = await createIntakeSession({
     businessAccountId,
     requestId,
-    actorUserId: actor.actor.userId,
+    actorUserId: actor.userId,
     description,
   });
   if (isIntakeFailure(created)) return failureResponse(created);
