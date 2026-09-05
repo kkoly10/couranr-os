@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-const call = vi.fn();
+const { call } = vi.hoisted(() => ({ call: vi.fn() }));
 
 vi.mock("@/components/couranr/requests/client", () => ({
   call,
