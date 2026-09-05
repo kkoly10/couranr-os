@@ -22,6 +22,13 @@ create table if not exists public.couranr_consumer_canary_access (
   session_created_at timestamptz,
   revoked_at timestamptz,
 
+  -- Production spend containment. These counters belong to the ONE canary
+  -- relationship, not to browser input and not to provider billing state.
+  places_window_started_at timestamptz,
+  places_request_count integer not null default 0,
+  estimates_window_started_at timestamptz,
+  estimate_request_count integer not null default 0,
+
   constraint couranr_cca_token_hash_uniq unique (token_hash),
   constraint couranr_cca_token_hash_shape_chk
     check (token_hash ~ '^[0-9a-f]{64}$'),
@@ -40,7 +47,9 @@ create table if not exists public.couranr_consumer_canary_access (
   constraint couranr_cca_session_shape_chk check (
     (guest_session_id is null and session_created_at is null)
     or (guest_session_id is not null and session_created_at is not null)
-  )
+  ),
+  constraint couranr_cca_places_count_chk check (places_request_count >= 0),
+  constraint couranr_cca_estimate_count_chk check (estimate_request_count >= 0)
 );
 
 comment on table public.couranr_consumer_canary_access is
@@ -201,6 +210,94 @@ begin
 end
 $fn$;
 
+create or replace function public.couranr_claim_consumer_canary_place_search(
+  p_guest_session_id uuid
+)
+returns boolean
+language plpgsql
+security invoker
+set search_path=''
+as $fn$
+declare
+  v_access public.couranr_consumer_canary_access;
+  c_places_per_hour constant integer:=12;
+begin
+  select * into v_access
+    from public.couranr_consumer_canary_access
+   where guest_session_id=p_guest_session_id
+   for update;
+
+  if not found
+     or v_access.revoked_at is not null
+     or v_access.expires_at<=now()
+     or v_access.redeemed_at is null then
+    return false;
+  end if;
+
+  if v_access.places_window_started_at is null
+     or v_access.places_window_started_at<=now()-interval '1 hour' then
+    update public.couranr_consumer_canary_access
+       set places_window_started_at=now(),
+           places_request_count=1
+     where id=v_access.id;
+    return true;
+  end if;
+
+  if v_access.places_request_count>=c_places_per_hour then
+    return false;
+  end if;
+
+  update public.couranr_consumer_canary_access
+     set places_request_count=places_request_count+1
+   where id=v_access.id;
+  return true;
+end
+$fn$;
+
+create or replace function public.couranr_claim_consumer_canary_estimate(
+  p_guest_session_id uuid
+)
+returns boolean
+language plpgsql
+security invoker
+set search_path=''
+as $fn$
+declare
+  v_access public.couranr_consumer_canary_access;
+  c_estimates_per_hour constant integer:=6;
+begin
+  select * into v_access
+    from public.couranr_consumer_canary_access
+   where guest_session_id=p_guest_session_id
+   for update;
+
+  if not found
+     or v_access.revoked_at is not null
+     or v_access.expires_at<=now()
+     or v_access.redeemed_at is null then
+    return false;
+  end if;
+
+  if v_access.estimates_window_started_at is null
+     or v_access.estimates_window_started_at<=now()-interval '1 hour' then
+    update public.couranr_consumer_canary_access
+       set estimates_window_started_at=now(),
+           estimate_request_count=1
+     where id=v_access.id;
+    return true;
+  end if;
+
+  if v_access.estimate_request_count>=c_estimates_per_hour then
+    return false;
+  end if;
+
+  update public.couranr_consumer_canary_access
+     set estimate_request_count=estimate_request_count+1
+   where id=v_access.id;
+  return true;
+end
+$fn$;
+
 create or replace function public.couranr_revoke_consumer_canary_access(
   p_id uuid
 )
@@ -239,6 +336,10 @@ revoke all on function public.couranr_resolve_consumer_canary_cookie(text)
   from public,anon,authenticated,service_role;
 revoke all on function public.couranr_create_consumer_canary_guest_session(text,text,integer)
   from public,anon,authenticated,service_role;
+revoke all on function public.couranr_claim_consumer_canary_place_search(uuid)
+  from public,anon,authenticated,service_role;
+revoke all on function public.couranr_claim_consumer_canary_estimate(uuid)
+  from public,anon,authenticated,service_role;
 revoke all on function public.couranr_revoke_consumer_canary_access(uuid)
   from public,anon,authenticated,service_role;
 
@@ -249,6 +350,10 @@ grant execute on function public.couranr_redeem_consumer_canary_access(text,text
 grant execute on function public.couranr_resolve_consumer_canary_cookie(text)
   to service_role;
 grant execute on function public.couranr_create_consumer_canary_guest_session(text,text,integer)
+  to service_role;
+grant execute on function public.couranr_claim_consumer_canary_place_search(uuid)
+  to service_role;
+grant execute on function public.couranr_claim_consumer_canary_estimate(uuid)
   to service_role;
 grant execute on function public.couranr_revoke_consumer_canary_access(uuid)
   to service_role;
