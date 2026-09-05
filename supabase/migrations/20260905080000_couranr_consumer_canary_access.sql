@@ -191,14 +191,18 @@ begin
     raise exception 'canary_guest_session_already_created' using errcode='CR409';
   end if;
 
-  insert into public.couranr_consumer_guest_sessions(token_hash,expires_at)
-  values (
-    p_guest_token_hash,
-    least(
-      now()+make_interval(mins=>v_ttl),
-      v_access.expires_at
-    )
-  )
+  -- Reuse the canonical guest-session issuer rather than duplicating its
+  -- token/TTL authority. The canary may only SHORTEN that session to its own
+  -- access expiry; it can never extend the canonical session TTL.
+  select * into v_session
+    from public.couranr_create_consumer_guest_session(
+      p_guest_token_hash,
+      v_ttl
+    );
+
+  update public.couranr_consumer_guest_sessions
+     set expires_at=least(expires_at,v_access.expires_at)
+   where id=v_session.id
   returning * into v_session;
 
   update public.couranr_consumer_canary_access
