@@ -626,11 +626,11 @@ async function main() {
        */
       let sqlRefused = false;
       try {
-        psql(`select public.couranr_decide_activation('${bizId}', '${owner.id}', true, null)`);
+        psql(`select public.couranr_decide_activation_guarded('${bizId}', '${owner.id}', true, null)`);
       } catch (e) {
         sqlRefused = /CR403|not_couranr_operations|operations/i.test(String(e.stderr || e.message));
       }
-      check("G3", "couranr_decide_activation refuses the merchant independently of the route",
+      check("G3", "couranr_decide_activation_guarded refuses the merchant independently of the route",
         sqlRefused);
       check("G4", "and STILL nothing moved",
         stateOf(bizId) === "pending_couranr_review", stateOf(bizId));
