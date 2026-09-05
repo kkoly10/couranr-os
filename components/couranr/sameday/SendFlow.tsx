@@ -125,6 +125,7 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
   const [availability, setAvailability] = React.useState<AvailabilityVerdict | null>(null);
 
   const [item, setItem] = React.useState("");
+  const [packageCount, setPackageCount] = React.useState("");
   /* The three structured inputs the canonical quote requires (SUR-001 /
      PRC-005): an honest weight statement — exact pounds OR a governed band,
      never both, never an invention — and the shipment-safety declaration. */
@@ -281,6 +282,18 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
   /** The form action a material suggestion offers, or null for context-only. */
   function suggestionAction(p: IntakeProposal): (() => void) | null {
     const v = p.value;
+    if (
+      p.key === "package_count" &&
+      typeof v === "number" &&
+      Number.isInteger(v) &&
+      v > 0 &&
+      v <= 9999
+    ) {
+      return () => {
+        setPackageCount(String(v));
+        invalidateQuote();
+      };
+    }
     if (p.key === "weight_lb_exact" && typeof v === "number" && Number.isFinite(v) && v > 0) {
       return () => {
         setWeightMode("exact");
@@ -324,6 +337,9 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
         contact: { name: contact.name, mobile: contact.mobile, email: contact.email },
         shipment: {
           description: item,
+          packageCount:
+            packageCount.trim() === "" ? null : Number(packageCount.trim()),
+          orderReference: reference.trim() || null,
           weightLb: weightMode === "exact" && weightLb.trim() !== "" ? Number(weightLb) : null,
           weightBand: weightMode === "exact" ? null : weightMode,
           restrictedClass,
@@ -731,6 +747,29 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
             ) : null}
           </div>
 
+          <div className="cr-send-field">
+            <label className="cr-send-field__label" htmlFor="send-package-count">
+              How many packages?
+            </label>
+            <p className="cr-send-field__hint">
+              Optional if you genuinely do not know. The driver sees this expectation and does not re-enter it.
+            </p>
+            <input
+              id="send-package-count"
+              className="cr-input"
+              type="number"
+              min="1"
+              max="9999"
+              step="1"
+              inputMode="numeric"
+              value={packageCount}
+              onChange={(e) => {
+                setPackageCount(e.target.value);
+                invalidateQuote();
+              }}
+            />
+          </div>
+
           {/* The structured inputs the canonical quote requires (SUR-001):
               an honest weight statement and the shipment-safety declaration.
               Band labels come from WEIGHT_BAND_LABELS so the 25 lb boundary
@@ -911,6 +950,8 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
                 [intent === "send" ? "From" : "Pick up from", pickup.value],
                 ["To", destination.value],
                 ["Item", item],
+                ["Packages", packageCount.trim() || "Not specified"],
+                ...(reference.trim() ? [["Pickup reference", reference] as const] : []),
                 ...(intent === "pickup" || mode === "live"
                   ? [[
                       "Ready",
@@ -928,7 +969,13 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
               <div key={k} className="cr-send-summary__row">
                 <dt>{k}</dt>
                 <dd>{v || "—"}</dd>
-                <button type="button" className="cr-send-edit" onClick={() => setPhase(k === "Item" || k === "Ready" ? "item" : k === "When" ? "timing" : "trip")}>
+                <button type="button" className="cr-send-edit" onClick={() => setPhase(
+                  k === "Item" || k === "Packages" || k === "Pickup reference" || k === "Ready"
+                    ? "item"
+                    : k === "When"
+                      ? "timing"
+                      : "trip"
+                )}>
                   Edit
                 </button>
               </div>
