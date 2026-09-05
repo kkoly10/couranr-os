@@ -27,7 +27,7 @@ import type {
   LedgerReconciliation,
   OperationsFinanceOverview,
   OperationsPaymentRow,
-} from "@/lib/couranr/finance/ledger";
+} from "@/lib/couranr/finance/types";
 
 export function OperationsPaymentsDashboard() {
   const [value, setValue] = React.useState<OperationsFinanceOverview | null>(null);
