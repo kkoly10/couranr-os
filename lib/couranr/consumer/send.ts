@@ -404,6 +404,8 @@ export function validateConsumerSendBody(raw: unknown): ConsumerSendBodyResult {
 export type ConsumerEstimate = {
   requestId: string;
   quoteStatus: string;
+  /** Independent PRF-002 CAS token for expected-pickup edits. */
+  pickupManifestVersion: number;
   /** Integer cents when the quote is automatic; null for review/invalid. */
   totalCents: number | null;
   lineItems: unknown[];
@@ -415,7 +417,7 @@ export type ConsumerEstimate = {
 
 /** Columns every scoped consumer read selects. Never `select("*")`. */
 const OWN_REQUEST_COLUMNS =
-  "id,version,request_state,quote_status,current_quote_version_id," +
+  "id,version,request_state,quote_status,current_quote_version_id,pickup_manifest_version," +
   "delivery_subtotal_cents,quote_line_items,review_reasons,consumer_contact_snapshot";
 
 /**
@@ -469,6 +471,7 @@ function estimateFromRow(row: Record<string, any>): Promise<ConsumerEstimate> {
   return quoteWindowExpiresAt(quoteVersionId, quoteStatus).then((expiresAt) => ({
     requestId: String(row.id),
     quoteStatus,
+    pickupManifestVersion: Number(row.pickup_manifest_version ?? 0),
     totalCents:
       quoteStatus === "estimated" && row.delivery_subtotal_cents !== null
         ? Number(row.delivery_subtotal_cents)
