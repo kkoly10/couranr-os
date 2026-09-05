@@ -7,6 +7,7 @@ import {
 } from "@/lib/couranr/payments/commands";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
 import { advanceAutomaticFulfillment } from "@/lib/couranr/automation/engine";
+import { getDeliveryRequest, isCommandFailure } from "@/lib/couranr/requests/commands";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +44,17 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   const actor = await resolveRequestActor(req, businessAccountId);
   if (isActorDenied(actor)) return routeFailure(actor.code, actor.error);
 
-  const ob = await getObligationForRequest({ requestId: params.id, businessAccountId });
+  const loaded = await getDeliveryRequest({
+    actor: actor.actor,
+    businessAccountId,
+    requestId: params.id,
+  });
+  if (isCommandFailure(loaded)) return failureResponse(loaded);
+
+  const ob = await getObligationForRequest({
+    requestId: params.id,
+    businessAccountId: loaded.value.request.business_account_id ?? null,
+  });
   if (isPaymentFailure(ob)) return failureResponse(ob);
   if (!ob.value.obligation) return routeFailure("not_found", "There is nothing to pay for here.");
 
