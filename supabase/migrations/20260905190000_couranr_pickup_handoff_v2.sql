@@ -606,6 +606,7 @@ begin
   if new.source='hosted_request' then
     if old.request_state='awaiting_merchant_confirmation'
        and new.request_state is distinct from old.request_state
+       and new.request_state not in ('cancelled','declined','closed')
     then
       if new.pickup_manifest is null or v_manifest_source <> 'merchant_confirmed' then
         raise exception 'pickup_manifest_required' using errcode='CR409';
@@ -613,6 +614,7 @@ begin
     end if;
   elsif old.request_state='draft'
         and new.request_state is distinct from old.request_state
+        and new.request_state not in ('cancelled','declined','closed')
   then
     if new.pickup_manifest is null then
       raise exception 'pickup_manifest_required' using errcode='CR409';
