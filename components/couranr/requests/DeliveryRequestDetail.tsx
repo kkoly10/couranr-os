@@ -536,6 +536,7 @@ export function DeliveryRequestDetail({
         <MerchantPaymentPanel
           request={request}
           businessAccountId={viewerBusinessAccountId}
+          canManage={viewerMayWriteDelivery}
         />
       ) : null}
 
@@ -545,6 +546,7 @@ export function DeliveryRequestDetail({
           request={request}
           fulfillment={fulfillment}
           businessAccountId={viewerBusinessAccountId}
+          canManage={viewerMayWriteDelivery}
           onChanged={() => {
             void reloadFulfillment(viewerBusinessAccountId);
             void fetchDeliveryRequest({
