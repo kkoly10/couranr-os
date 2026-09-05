@@ -56,11 +56,11 @@ Still rendering `ScreenPlaceholder` (14): `OPS-006` · `OPS-009` · `OPS-010` ·
 | Page routes | 99 |
 | …canonical, under `app/(couranr)` | 49 |
 | …legacy | 50 |
-| API routes | 169 |
-| …canonical, under `app/api/couranr` | 100 |
+| API routes | 173 |
+| …canonical, under `app/api/couranr` | 104 |
 | …legacy | 69 |
-| Forward migrations | 85 |
-| Paired rollbacks | 85 |
+| Forward migrations | 86 |
+| Paired rollbacks | 86 |
 | Canonical screens | 68 |
 | …Core | 64 |
 | …MVP-complete | 4 |
