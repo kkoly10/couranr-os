@@ -108,7 +108,7 @@ const SCREENS: CanonicalScreen[] = [
   { id: "OPS-006", name: "Couranr Ghost Operations", group: "operations", routes: ["/operations/ghost"], tier: "core", phase: "9", viewport: "desktop-primary", status: "placeholder_only" },
   { id: "OPS-007", name: "Merchant management", group: "operations", routes: ["/operations/merchants"], tier: "core", phase: "4–9", viewport: "desktop-primary", status: "partial" },
   { id: "OPS-008", name: "Vehicle management", group: "operations", routes: ["/operations/vehicles"], tier: "core", phase: "7", viewport: "desktop-primary", status: "functional_unverified" },
-  { id: "OPS-009", name: "Payments and reconciliation", group: "operations", routes: ["/operations/payments"], tier: "core", phase: "6", viewport: "desktop-primary", status: "placeholder_only" },
+  { id: "OPS-009", name: "Payments and reconciliation", group: "operations", routes: ["/operations/payments"], tier: "core", phase: "6", viewport: "desktop-primary", status: "partial" },
   { id: "OPS-010", name: "Payment authorization review", group: "operations", routes: ["/operations/payments?tab=authorizations"], tier: "core", phase: "6", viewport: "desktop-primary", status: "placeholder_only" },
   { id: "OPS-011", name: "Refund management", group: "operations", routes: ["/operations/refunds"], tier: "core", phase: "6–7", viewport: "desktop-primary", status: "placeholder_only" },
   { id: "OPS-012", name: "Incidents and claims", group: "operations", routes: ["/operations/incidents"], tier: "core", phase: "7", viewport: "desktop-primary", status: "placeholder_only" },
