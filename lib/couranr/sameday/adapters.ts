@@ -100,6 +100,8 @@ export type QuoteInput = {
   contact?: { name?: string; mobile?: string; email?: string };
   shipment?: {
     description?: string | null;
+    packageCount?: number | null;
+    orderReference?: string | null;
     weightLb?: number | null;
     weightBand?: string | null;
     restrictedClass?: string;
