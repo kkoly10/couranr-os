@@ -606,6 +606,29 @@ export type HostedValidationInput = {
   signatureRequired: boolean;
 };
 
+/**
+ * Customer safety evidence may become MORE conservative during merchant
+ * validation, never less. A specific customer declaration can be confirmed or
+ * escalated to unknown; it cannot be erased to none or rewritten to a
+ * different specific class.
+ */
+export function hostedRestrictedClassTransitionAllowed(
+  customerDeclaration: RestrictedClassDeclaration | null | undefined,
+  merchantDeclaration: RestrictedClassDeclaration
+): boolean {
+  if (
+    !customerDeclaration ||
+    customerDeclaration === "none" ||
+    customerDeclaration === "unknown"
+  ) {
+    return true;
+  }
+  return (
+    merchantDeclaration === customerDeclaration ||
+    merchantDeclaration === "unknown"
+  );
+}
+
 export function validateMerchantHostedConfirmation(raw: unknown):
   | { ok: true; value: HostedValidationInput }
   | { ok: false; reason: string } {
@@ -747,12 +770,11 @@ export async function validateHostedRequestByMerchant(params: {
   )
     ? ((intake as any).customer_restricted_class as RestrictedClassDeclaration)
     : "unknown";
-  const customerDeclaredSpecificRestriction =
-    customerRestrictedClass !== "none" && customerRestrictedClass !== "unknown";
   if (
-    customerDeclaredSpecificRestriction &&
-    params.input.restrictedClass !== customerRestrictedClass &&
-    params.input.restrictedClass !== "unknown"
+    !hostedRestrictedClassTransitionAllowed(
+      customerRestrictedClass,
+      params.input.restrictedClass
+    )
   ) {
     return fail({
       operation: op,
