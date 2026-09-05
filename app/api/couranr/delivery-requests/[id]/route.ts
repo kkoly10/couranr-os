@@ -4,7 +4,11 @@ import { getDeliveryRequest, isCommandFailure } from "@/lib/couranr/requests/com
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
 import { toDeliveryRequestView } from "@/lib/couranr/requests/view";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { getHostedMerchantContext, isHostedFailure } from "@/lib/couranr/hosted/commands";
+import {
+  getHostedMerchantContext,
+  getHostedOperationsContext,
+  isHostedFailure,
+} from "@/lib/couranr/hosted/commands";
 
 export const dynamic = "force-dynamic";
 
@@ -62,16 +66,19 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
   }
 
   let hostedContext: Record<string, unknown> | null = null;
-  if (
-    result.value.request.source === "hosted_request" &&
-    businessAccountId !== null
-  ) {
-    const hosted = await getHostedMerchantContext({
-      requestId: params.id,
-      hostBusinessAccountId: businessAccountId,
-    });
-    if (isHostedFailure(hosted)) return failureResponse(hosted);
-    hostedContext = hosted.value as Record<string, unknown> | null;
+  if (result.value.request.source === "hosted_request") {
+    if (businessAccountId !== null) {
+      const hosted = await getHostedMerchantContext({
+        requestId: params.id,
+        hostBusinessAccountId: businessAccountId,
+      });
+      if (isHostedFailure(hosted)) return failureResponse(hosted);
+      hostedContext = hosted.value as Record<string, unknown> | null;
+    } else if (actor.actor.kind === "operations") {
+      const hosted = await getHostedOperationsContext({ requestId: params.id });
+      if (isHostedFailure(hosted)) return failureResponse(hosted);
+      hostedContext = hosted.value as Record<string, unknown> | null;
+    }
   }
 
   return NextResponse.json({
