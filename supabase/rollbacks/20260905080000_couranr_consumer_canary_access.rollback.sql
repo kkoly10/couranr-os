@@ -13,6 +13,8 @@ end
 $guard$;
 
 drop function if exists public.couranr_revoke_consumer_canary_access(uuid);
+drop function if exists public.couranr_claim_consumer_canary_estimate(uuid);
+drop function if exists public.couranr_claim_consumer_canary_place_search(uuid);
 drop function if exists public.couranr_create_consumer_canary_guest_session(text,text,integer);
 drop function if exists public.couranr_resolve_consumer_canary_cookie(text);
 drop function if exists public.couranr_redeem_consumer_canary_access(text,text);
