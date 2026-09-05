@@ -62,7 +62,24 @@ function fakeFetch(routes: Record<string, RouteHandler>) {
     const key = Object.keys(routes)
       .filter((k) => url.startsWith(k))
       .sort((a, b) => b.length - a.length)[0];
-    const r = key ? routes[key](init, url) : { status: 404, body: { error: "no route" } };
+    const r = key
+      ? routes[key](init, url)
+      : url.startsWith("/api/couranr/consumer/pickup-manifest")
+        ? {
+            body: {
+              pickupManifest: {
+                manifestVersion: 1,
+                manifest: {
+                  description: "a birthday cake",
+                  packageCount: null,
+                  orderReference: null,
+                  handlingNotes: null,
+                  source: "consumer_statement",
+                },
+              },
+            },
+          }
+        : { status: 404, body: { error: "no route" } };
     return new Response(JSON.stringify(r.body), {
       status: r.status ?? 200,
       headers: { "content-type": "application/json" },
@@ -103,6 +120,7 @@ const ESTIMATE = "/api/couranr/consumer/estimate";
 const SUBMIT = "/api/couranr/consumer/submit";
 const REQUEST = "/api/couranr/consumer/request";
 const PAY = "/api/couranr/consumer/pay";
+const PICKUP_MANIFEST = "/api/couranr/consumer/pickup-manifest";
 const RECONCILE = "/api/couranr/consumer/reconcile-payment";
 const INTERPRET = "/api/couranr/consumer/interpret";
 
@@ -411,6 +429,16 @@ describe("quote maps quoteStatus, reads the nested `estimate` key", () => {
     const sent = JSON.parse(String(f.of(ESTIMATE)[0].init?.body));
     expect(sent.contact.phone).toBe("+15715550100");
     expect(sent.timing).toEqual({ intent: "asap" });
+
+    const manifestCalls = f.of(PICKUP_MANIFEST);
+    expect(manifestCalls).toHaveLength(1);
+    expect(JSON.parse(String(manifestCalls[0].init?.body))).toEqual({
+      expectedManifestVersion: 0,
+      description: "a birthday cake",
+      packageCount: null,
+      orderReference: null,
+      handlingNotes: null,
+    });
   });
 
   it("'manual_review_required' -> the existing manual-review presentation", async () => {
