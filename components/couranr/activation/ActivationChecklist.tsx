@@ -212,6 +212,7 @@ export function ActivationChecklist({
    * than showing none: it reads as their consent being asked for.
    */
   const mayAct = mayRequest && !isLive;
+  const contactMayAct = mayRequest;
   const contactMet = view.requirements.find((r) => r.id === "contact")?.met === true;
   const contactVerificationPending =
     !contactMet && Boolean(view.contactVerificationRequestedAt);
@@ -317,11 +318,13 @@ export function ActivationChecklist({
             )}
             {contactVerificationPending && view.contactVerificationRequestedAt ? (
               <Alert tone="info" title="Verification requested">
-                Couranr Operations will verify this number manually before your workspace can go
-                live. Requested {new Date(view.contactVerificationRequestedAt).toLocaleDateString()}.
+                {isLive
+                  ? "Couranr Operations will verify the updated number. Your workspace remains live while this contact review is pending."
+                  : "Couranr Operations will verify this number manually before your workspace can go live."}{" "}
+                Requested {new Date(view.contactVerificationRequestedAt).toLocaleDateString()}.
               </Alert>
             ) : null}
-            {!contactMet && mayAct ? (
+            {!contactMet && contactMayAct ? (
               <Cluster gap={2}>
                 {!contactVerificationPending && view.operationsContactPhone ? (
                   <Button
