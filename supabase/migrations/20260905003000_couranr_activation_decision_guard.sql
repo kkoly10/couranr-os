@@ -18,8 +18,7 @@ create function public.couranr_decide_activation_guarded(
   p_business_account_id uuid,
   p_actor_user_id       uuid,
   p_grant               boolean,
-  p_blocked_reason_code text,
-  p_required_acks       jsonb
+  p_blocked_reason_code text
 )
 returns public.couranr_workspace_activations
 language plpgsql
@@ -31,6 +30,16 @@ declare
   v_row          public.couranr_workspace_activations;
   v_kind         text;
   v_version      text;
+  -- The live-grant gate owns the current acknowledgement versions itself.
+  -- A service-role caller cannot weaken the gate by passing an empty or stale
+  -- requirements object. Changing a governed document therefore requires the
+  -- TypeScript policy version and this database authority to change together.
+  v_required_acks constant jsonb := '{
+    "delivery_terms":"couranr-delivery-terms-2026-07",
+    "prohibited_items":"couranr-prohibited-items-2026-07",
+    "merchant_responsibility":"couranr-merchant-responsibility-2026-07",
+    "return_acceptance":"couranr-return-acceptance-2026-07"
+  }'::jsonb;
 begin
   select role into v_profile_role
     from public.profiles
@@ -38,10 +47,6 @@ begin
 
   if v_profile_role is distinct from 'admin' then
     raise exception 'operations_access_required' using errcode = 'CR403';
-  end if;
-
-  if p_required_acks is null or jsonb_typeof(p_required_acks) <> 'object' then
-    raise exception 'required_acknowledgements_missing' using errcode = 'CR400';
   end if;
 
   select * into v_row
@@ -63,7 +68,7 @@ begin
     -- Re-check every CURRENT server-governed document version at the instant
     -- Operations grants. A policy update after the merchant requested review
     -- therefore makes grant fail closed until the new version is accepted.
-    for v_kind, v_version in select * from jsonb_each_text(p_required_acks)
+    for v_kind, v_version in select * from jsonb_each_text(v_required_acks)
     loop
       perform 1
         from public.couranr_activation_acknowledgements
@@ -125,9 +130,9 @@ begin
 end
 $fn$;
 
-revoke all on function public.couranr_decide_activation_guarded(uuid,uuid,boolean,text,jsonb)
+revoke all on function public.couranr_decide_activation_guarded(uuid,uuid,boolean,text)
   from public, anon, authenticated, service_role;
-grant execute on function public.couranr_decide_activation_guarded(uuid,uuid,boolean,text,jsonb)
+grant execute on function public.couranr_decide_activation_guarded(uuid,uuid,boolean,text)
   to service_role;
 
 commit;
