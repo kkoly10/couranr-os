@@ -391,7 +391,7 @@ export function createLiveSameDayAdapters(
   return {
     async searchAddress(query: string): Promise<AddressSuggestion[]> {
       const q = query.trim();
-      if (q.length < 2) return [];
+      if (q.length < 3) return [];
       const r = await guestCall(`${API.places}?query=${encodeURIComponent(q)}`, {
         method: "GET",
       });
