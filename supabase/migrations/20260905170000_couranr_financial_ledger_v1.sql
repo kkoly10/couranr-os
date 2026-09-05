@@ -590,7 +590,14 @@ recent as (
   select coalesce(jsonb_agg(row_to_json(x) order by x.occurred_at desc),'[]'::jsonb) items
   from (
     select t.id,t.source_kind,t.request_id,t.obligation_id,t.currency,t.occurred_at,
-           coalesce(sum(e.amount_cents) filter(where e.side='debit'),0)::integer amount_cents
+           coalesce(sum(e.amount_cents) filter (
+             where (t.source_kind='capture'
+                    and e.account_code='stripe_clearing' and e.side='debit')
+                or (t.source_kind='refund'
+                    and e.account_code='stripe_clearing' and e.side='credit')
+                or (t.source_kind='cancellation_receivable'
+                    and e.account_code='accounts_receivable' and e.side='debit')
+           ),0)::integer amount_cents
     from private.couranr_ledger_transactions t
     join private.couranr_ledger_entries e on e.transaction_id=t.id
     group by t.id
