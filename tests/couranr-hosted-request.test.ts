@@ -283,6 +283,9 @@ describe("hosted adversarial closure", () => {
     expect(DISPATCH_COMMANDS).toContain(
       "return { ok: true, value: { businessAccountId: null, requestId } };"
     );
+    expect(HOSTED_COMMANDS).toContain("export type HostedOperationsContext");
+    expect(HOSTED_COMMANDS).toContain("hostBusinessAccountId");
+    expect(HOSTED_COMMANDS).toContain("hostBusinessName");
 
     for (const route of [
       MERCHANT_PICKUP_ROUTE,
