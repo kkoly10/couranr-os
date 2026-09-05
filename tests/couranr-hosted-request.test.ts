@@ -278,12 +278,10 @@ describe("hosted abuse and provider-cost boundaries", () => {
     expect(ERRORS).toContain('case "CR429"');
   });
 
-  it("prunes only expired unsubmitted session rows", () => {
-    expect(HOSTED_RATE_SQL).toContain("h.request_id is null");
-    expect(HOSTED_RATE_SQL).toContain("h.expires_at < now()-interval '1 day'");
-    expect(HOSTED_RATE_SQL).not.toContain(
-      "delete from public.couranr_delivery_requests"
-    );
+  it("keeps the rate-limit forward migration additive", () => {
+    expect(HOSTED_RATE_SQL).not.toMatch(/\bdelete\s+from\b/i);
+    expect(HOSTED_RATE_SQL).not.toMatch(/\bdrop\s+(table|column)\b/i);
+    expect(HOSTED_RATE_SQL).not.toMatch(/\btruncate\b/i);
   });
 });
 
