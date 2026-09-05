@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getOperationsFinanceOverview } from "@/lib/couranr/finance/ledger";
 import { isActorDenied, resolveRequestActor } from "@/lib/couranr/requests/actor";
-import { routeFailure } from "@/lib/couranr/requests/respond";
+import { routeFailure, routeInternalFailure } from "@/lib/couranr/requests/respond";
 
 export const dynamic = "force-dynamic";
 
@@ -12,10 +12,11 @@ export async function GET(req: NextRequest) {
 
   const result = await getOperationsFinanceOverview();
   if (!result.ok) {
-    return NextResponse.json(
-      { error: "Could not load payment reconciliation.", code: "internal" },
-      { status: 500 },
-    );
+    return routeInternalFailure({
+      operation: "operations.payments.overview",
+      detail: result,
+      message: "Could not load payment reconciliation.",
+    });
   }
   return NextResponse.json(result.value);
 }
