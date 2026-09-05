@@ -28,6 +28,7 @@ import {
   type WeightBand,
 } from "@/lib/couranr/shipment/facts";
 import type { ReadinessState } from "@/lib/couranr/requests/states";
+import { issueTrackingLink, isTrackingFailure } from "@/lib/couranr/tracking/commands";
 
 assertServerOnly("lib/couranr/hosted/commands.ts");
 
@@ -431,6 +432,8 @@ export type HostedPublicRequestView = {
   merchantValidated: boolean;
   paymentPending: boolean;
   terminal: boolean;
+  /** Returned only once when the confirmed request gets its first live tracking link. */
+  trackingToken?: string;
 };
 
 export async function readHostedRequest(
@@ -469,18 +472,51 @@ export async function readHostedRequest(
   }
 
   const state = String((data as any).request_state);
-  return {
-    ok: true,
-    value: {
-      submitted: true,
-      requestState: state,
-      quoteStatus: String((data as any).quote_status),
-      merchantValidated: state !== "awaiting_merchant_confirmation",
-      paymentPending:
-        state === "awaiting_quote_acceptance" || state === "quote_revision_required",
-      terminal: ["declined", "cancelled", "closed"].includes(state),
-    },
+  const value: HostedPublicRequestView = {
+    submitted: true,
+    requestState: state,
+    quoteStatus: String((data as any).quote_status),
+    merchantValidated: state !== "awaiting_merchant_confirmation",
+    paymentPending:
+      state === "awaiting_quote_acceptance" || state === "quote_revision_required",
+    terminal: ["declined", "cancelled", "closed"].includes(state),
   };
+
+  /*
+   * The hosted session is the customer's authorization to THIS one request,
+   * exactly like the /send guest session. Once confirmed, mint one tracking
+   * credential if no live one exists. This makes the short-lived hosted intake
+   * hand off to the 30-day, one-delivery tracking surface instead of stranding
+   * the customer after the 24-hour intake session expires.
+   */
+  if (state === "confirmed") {
+    const { count, error: tokenError } = (await supabaseAdmin
+      .from("couranr_delivery_access_tokens")
+      .select("id", { count: "exact", head: true })
+      .eq("request_id", String((data as any).id))
+      .is("revoked_at", null)
+      .gt("expires_at", new Date().toISOString())) as {
+        count: number | null;
+        error: any;
+      };
+    if (tokenError) {
+      return fail({ operation: op, code: "internal", detail: tokenError.message });
+    }
+    if ((count ?? 0) === 0) {
+      const issued = await issueTrackingLink({ requestId: String((data as any).id) });
+      if (isTrackingFailure(issued)) {
+        return fail({
+          operation: op,
+          code: issued.code,
+          detail: { correlationId: issued.correlationId },
+          message: issued.message,
+        });
+      }
+      value.trackingToken = issued.value.token;
+    }
+  }
+
+  return { ok: true, value };
 }
 
 /* ------------------------------------------------------ merchant context */
