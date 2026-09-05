@@ -21,7 +21,8 @@ describe("MER-003 Operations activation authority", () => {
   });
 
   it("re-checks current policy versions and non-consent prerequisites at grant time", () => {
-    expect(MIGRATION).toContain("jsonb_each_text(p_required_acks)");
+    expect(MIGRATION).toContain("v_required_acks constant jsonb");
+    expect(MIGRATION).toContain("jsonb_each_text(v_required_acks)");
     expect(MIGRATION).toMatch(/ack_kind = v_kind\s+and ack_version = v_version/i);
     expect(MIGRATION).toContain("v_row.contact_verified_at is null");
     expect(MIGRATION).toContain("v_row.test_delivery_request_id is null");
@@ -58,12 +59,18 @@ describe("MER-003 Operations activation authority", () => {
     );
   });
 
-  it("passes server-governed current acknowledgement versions to the guarded command", () => {
+  it("does not let the service layer choose the grant prerequisites", () => {
     const at = COMMANDS.indexOf("export async function decideActivation");
     expect(at).toBeGreaterThan(-1);
     const body = COMMANDS.slice(at);
     expect(body).toContain('"couranr_decide_activation_guarded"');
-    expect(body).toMatch(/p_required_acks:\s*ACKNOWLEDGEMENT_VERSIONS/);
-    expect(body).not.toMatch(/p_required_acks:\s*params/);
+    expect(body).not.toContain("p_required_acks");
+  });
+
+  it("keeps database-owned acknowledgement versions aligned with governed TypeScript", async () => {
+    const { ACKNOWLEDGEMENT_VERSIONS } = await import("@/lib/couranr/activation/states");
+    for (const [kind, version] of Object.entries(ACKNOWLEDGEMENT_VERSIONS)) {
+      expect(MIGRATION).toContain(`"${kind}":"${version}"`);
+    }
   });
 });
