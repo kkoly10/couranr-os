@@ -137,6 +137,7 @@ const GOOD_QUOTE_INPUT = {
 const ESTIMATED = {
   requestId: "req-1",
   quoteStatus: "estimated",
+  pickupManifestVersion: 0,
   totalCents: 1049,
   lineItems: [],
   reviewReasons: [],
@@ -452,6 +453,19 @@ describe("quote maps quoteStatus, reads the nested `estimate` key", () => {
       orderReference: null,
       handlingNotes: null,
     });
+  });
+
+  it("uses the estimate's current pickup-manifest version after a reload/re-estimate", async () => {
+    const f = fakeFetch({
+      [S]: SESSION_OK,
+      [ESTIMATE]: () => ({
+        body: { estimate: { ...ESTIMATED, pickupManifestVersion: 7 } },
+      }),
+    });
+    const q = await live({ fetchImpl: f.impl, storage: null }).quote(GOOD_QUOTE_INPUT);
+    expect(q.state).toBe("live-available");
+    const body = JSON.parse(String(f.of(PICKUP_MANIFEST)[0].init?.body));
+    expect(body.expectedManifestVersion).toBe(7);
   });
 
   it("'manual_review_required' -> the existing manual-review presentation", async () => {
