@@ -157,6 +157,12 @@ begin
     raise exception using errcode='CR400', message='ledger_entries_invalid';
   end if;
 
+  -- Concurrent duplicate webhook/recovery calls must converge on one posting,
+  -- not race into the UNIQUE(source_kind,source_id) constraint.
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended(p_source_kind || ':' || p_source_id, 0)
+  );
+
   with legs as (
     select
       e->>'account' account_code,
@@ -170,6 +176,7 @@ begin
     coalesce(sum(amount_cents) filter (where side='credit'),0),
     count(*) filter (
       where account_code is null
+         or side is null
          or side not in ('debit','credit')
          or amount_cents is null
          or amount_cents <= 0
