@@ -533,13 +533,41 @@ async function main() {
 
     console.log("\nThe two non-consent steps");
     {
-      await ownerPage.getByRole("button", { name: "Confirm contact" }).click();
-      await ownerPage.getByText("Verified").first().waitFor({ state: "visible", timeout: 30_000 });
-      const verified = sql(
-        `select (contact_verified_at is not null)::text
+      await ownerPage.getByRole("button", { name: "Ask Couranr to verify" }).click();
+      await ownerPage.getByText("Verification requested").first()
+        .waitFor({ state: "visible", timeout: 30_000 });
+
+      const requested = sql(
+        `select (contact_verification_requested_at is not null)::text || ',' ||
+                (contact_verified_at is null)::text
            from public.couranr_workspace_activations where business_account_id='${bizId}'`
       );
-      check("C1", "confirming the contact writes the timestamp", verified === "true", verified);
+      check("C1", "the merchant requests verification but cannot verify themselves",
+        requested === "true,true", requested);
+
+      const merchantVerify = await api(owner.email, "/api/couranr/me/activation?businessAccountId=" + bizId, {
+        method: "POST",
+        body: JSON.stringify({ action: "verify_contact" }),
+      });
+      check("C1a", "the retired merchant self-verification action is refused",
+        merchantVerify.status === 400, `status=${merchantVerify.status}`);
+
+      const opsVerify = await api(admin.email, "/api/couranr/operations/activation", {
+        method: "POST",
+        body: JSON.stringify({ businessAccountId: bizId, action: "verify_contact" }),
+      });
+      check("C1b", "Couranr Operations may verify a requested contact",
+        opsVerify.status === 200, `status=${opsVerify.status}`);
+
+      await ownerPage.reload({ waitUntil: "domcontentloaded" });
+      await ownerPage.getByText("Verified").first().waitFor({ state: "visible", timeout: 30_000 });
+      const verified = sql(
+        `select (contact_verified_at is not null)::text || ',' ||
+                (contact_verified_by = '${admin.id}')::text
+           from public.couranr_workspace_activations where business_account_id='${bizId}'`
+      );
+      check("C1c", "verification records the Operations actor",
+        verified === "true,true", verified);
 
       // The step that was UNREACHABLE in the first version of this screen.
       const useBtn = ownerPage.getByRole("button", { name: "Use this delivery" });
@@ -707,7 +735,7 @@ async function main() {
       check("I4", "live says deliveries ARE dispatched",
         /workspace is live/i.test(body) && /dispatched/i.test(body));
       check("I5", "and every action control is gone",
-        !body.includes("Request activation") && !body.includes("Confirm contact"));
+        !body.includes("Request activation") && !body.includes("Ask Couranr to verify"));
 
       await ownerPage.screenshot({ path: path.join(SHOTS, "MER-003-live.png"), fullPage: true });
 

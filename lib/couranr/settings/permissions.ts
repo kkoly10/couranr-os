@@ -72,8 +72,8 @@ export const SETTINGS_CAPABILITIES = [
   /** See the MER-003 activation checklist and how far it has got. */
   "activation.read",
   /**
-   * Accept the activation acknowledgements, confirm the operations contact,
-   * and ask Couranr to review the workspace.
+   * Accept the activation acknowledgements, ask Couranr Operations to verify
+   * the operations contact, and ask Couranr to review the workspace.
    *
    * Narrow — owner and manager — because every act behind it BINDS THE
    * BUSINESS: the acknowledgements are recorded consent to Couranr's delivery

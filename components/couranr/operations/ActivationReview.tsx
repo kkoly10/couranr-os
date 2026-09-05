@@ -54,6 +54,8 @@ type QueueEntry = {
   businessName: string;
   state: string;
   requestedAt: string | null;
+  contactVerificationRequestedAt: string | null;
+  contactVerifiedAt: string | null;
   blockedReason: string | null;
   reviewedAt: string | null;
 };
@@ -72,7 +74,7 @@ function badgeTone(state: string): "neutral" | "info" | "success" | "warning" {
 }
 
 export function ActivationReview() {
-  const [stateFilter, setStateFilter] = React.useState<string>("pending_couranr_review");
+  const [stateFilter, setStateFilter] = React.useState<string>("contact_verification");
   const [entries, setEntries] = React.useState<QueueEntry[] | null>(null);
   const [listError, setListError] = React.useState<ApiFailure | null>(null);
 
@@ -131,6 +133,26 @@ export function ActivationReview() {
     };
   }, [selected, reloadKey]);
 
+  async function verifyContact() {
+    if (!selected) return;
+    setBusy("verify_contact");
+    setActionError(null);
+    const r = await call<{ activation: ActivationView }>(
+      "/api/couranr/operations/activation",
+      {
+        method: "POST",
+        body: { businessAccountId: selected, action: "verify_contact" },
+      }
+    );
+    setBusy(null);
+    if (isApiFailure(r)) {
+      setActionError(withReference(r));
+      return;
+    }
+    setDetail(r.value.activation);
+    setReloadKey((k) => k + 1);
+  }
+
   async function decide(grant: boolean) {
     if (!selected) return;
     setBusy(grant ? "grant" : "block");
@@ -176,7 +198,7 @@ export function ActivationReview() {
       <Card>
         <CardHeader
           title="Activation review"
-          description="Workspaces waiting on a Couranr decision. Nothing here is automatic — a workspace goes live only when an operator grants it."
+          description="Contact verification and activation work. Nothing here is automatic — a workspace goes live only when an operator grants it."
         />
         <Field label="Showing" required>
           {(p) => (
@@ -188,6 +210,7 @@ export function ActivationReview() {
                 setStateFilter(e.target.value);
               }}
             >
+              <option value="contact_verification">Contact verification requested</option>
               {ACTIVATION_STATES.map((s) => (
                 <option key={s} value={s}>
                   {ACTIVATION_STATE_LABELS[s]}
@@ -220,9 +243,13 @@ export function ActivationReview() {
                 <Text size="sm">
                   <strong>{e.businessName}</strong>
                 </Text>
-                {e.requestedAt ? (
+                {stateFilter === "contact_verification" && e.contactVerificationRequestedAt ? (
                   <Text size="xs" muted>
-                    Requested {new Date(e.requestedAt).toLocaleDateString()}
+                    Contact requested {new Date(e.contactVerificationRequestedAt).toLocaleDateString()}
+                  </Text>
+                ) : e.requestedAt ? (
+                  <Text size="xs" muted>
+                    Activation requested {new Date(e.requestedAt).toLocaleDateString()}
                   </Text>
                 ) : null}
                 <Button
@@ -306,31 +333,72 @@ export function ActivationReview() {
 
             {actionError ? <ErrorState title="That could not be done" body={actionError} /> : null}
 
+            <Card>
+              <CardHeader
+                title="Operations contact"
+                description="Call or otherwise verify the business phone before marking this step complete."
+                actions={
+                  <Badge tone={detail.contactVerifiedAt ? "success" : detail.contactVerificationRequestedAt ? "info" : "neutral"}>
+                    {detail.contactVerifiedAt
+                      ? "Verified"
+                      : detail.contactVerificationRequestedAt
+                        ? "Verification requested"
+                        : "Not requested"}
+                  </Badge>
+                }
+              />
+              <Stack gap={2}>
+                <Text size="sm">
+                  <strong>{detail.operationsContactPhone || "No phone on file"}</strong>
+                </Text>
+                {detail.contactVerificationRequestedAt ? (
+                  <Text size="xs" muted>
+                    Requested {new Date(detail.contactVerificationRequestedAt).toLocaleString()}.
+                  </Text>
+                ) : null}
+                {!detail.contactVerifiedAt && detail.contactVerificationRequestedAt ? (
+                  <div>
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      loading={busy === "verify_contact"}
+                      disabled={Boolean(busy) || !detail.operationsContactPhone}
+                      onClick={verifyContact}
+                    >
+                      Mark contact verified
+                    </Button>
+                  </div>
+                ) : null}
+                {!detail.contactVerifiedAt && !detail.contactVerificationRequestedAt ? (
+                  <Alert tone="info" title="Merchant has not requested verification">
+                    Do not mark a contact verified until the business requests this step.
+                  </Alert>
+                ) : null}
+              </Stack>
+            </Card>
+
             {detail.state === "live" ? (
               <Alert tone="success" title="This workspace is live">
                 Deliveries from this merchant are dispatched.
               </Alert>
-            ) : (
+            ) : detail.state === "pending_couranr_review" ? (
               <Stack gap={3}>
-                {!detail.canRequest && detail.state !== "pending_couranr_review" ? (
-                  <Alert tone="info" title="This merchant has not asked yet">
-                    They have not completed the checklist, so there is nothing
-                    to decide. Granting now would activate a workspace whose
-                    terms were never accepted.
-                  </Alert>
-                ) : null}
+                <Alert tone="info" title="Activation decision required">
+                  The merchant completed the checklist and asked Couranr to review this workspace.
+                  Review the evidence above before granting or blocking.
+                </Alert>
                 <Cluster gap={3}>
                   <Button
                     variant="primary"
                     loading={busy === "grant"}
-                    disabled={Boolean(busy) || detail.state !== "pending_couranr_review"}
+                    disabled={Boolean(busy)}
                     onClick={() => decide(true)}
                   >
                     Grant activation
                   </Button>
                   <Button
                     loading={busy === "block"}
-                    disabled={Boolean(busy) || detail.state !== "pending_couranr_review"}
+                    disabled={Boolean(busy)}
                     onClick={() => decide(false)}
                   >
                     Block with a reason
@@ -356,15 +424,15 @@ export function ActivationReview() {
                     </Select>
                   )}
                 </Field>
-                {/*
-                  The operator sees the exact sentence the MERCHANT will read.
-                  Choosing a reason without knowing what it says to them is how
-                  a curt internal code becomes a merchant's only explanation.
-                */}
                 <Alert tone="info" title="The merchant will read">
                   {BLOCK_REASONS[reasonCode] ?? ""}
                 </Alert>
               </Stack>
+            ) : (
+              <Alert tone="info" title="Not ready for an activation decision">
+                This workspace is still completing activation. Verify requested contact details
+                and wait for the merchant to finish the checklist and request review.
+              </Alert>
             )}
           </Stack>
         </Card>
