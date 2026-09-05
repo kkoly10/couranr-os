@@ -92,7 +92,7 @@ const SCREENS: CanonicalScreen[] = [
   { id: "MER-016", name: "Billing settings", group: "merchant", routes: ["/app/business/settings/billing"], tier: "core", phase: "6", viewport: "desktop-first", status: "partial" },
   { id: "DRV-001", name: "Driver dashboard", group: "driver", routes: ["/driver"], tier: "core", phase: "7", viewport: "mobile-primary", status: "functional_unverified" },
   { id: "DRV-002", name: "Assigned delivery detail", group: "driver", routes: ["/driver/deliveries/[id]"], tier: "core", phase: "7–8", viewport: "mobile-primary", status: "functional_verified" },
-  { id: "DRV-003", name: "Pickup PIN and proof", group: "driver", routes: ["/driver/deliveries/[id]?step=pickup-proof"], tier: "core", phase: "7", viewport: "mobile-primary", status: "functional_verified" },
+  { id: "DRV-003", name: "Pickup verification and proof", group: "driver", routes: ["/driver/deliveries/[id]?step=pickup-proof"], tier: "core", phase: "7", viewport: "mobile-primary", status: "functional_verified" },
   { id: "DRV-004", name: "Package discrepancy", group: "driver", routes: ["/driver/deliveries/[id]?step=discrepancy"], tier: "core", phase: "7", viewport: "mobile-primary", status: "functional_unverified" },
   { id: "DRV-005", name: "Driving Mode", group: "driver", routes: ["/driver/deliveries/[id]?mode=driving"], tier: "core", phase: "7–9", viewport: "mobile-primary", status: "functional_unverified" },
   { id: "DRV-006", name: "Drop-off proof", group: "driver", routes: ["/driver/deliveries/[id]?step=delivery-proof"], tier: "core", phase: "7", viewport: "mobile-primary", status: "functional_verified" },
