@@ -683,6 +683,89 @@ export async function validateHostedRequestByMerchant(params: {
     });
   }
 
+  /*
+   * PROVIDER-COST PREFLIGHT.
+   *
+   * Google Place Details and Mapbox are paid calls. The SQL function below is
+   * still the final authority under a row lock, but putting all cheap refusal
+   * checks BEFORE deriveCanonicalRouteAndQuote means a viewer/billing member,
+   * stale tab, duplicate validation, or already-quoted request cannot spend
+   * Couranr's provider budget just to be rejected afterwards.
+   */
+  const { data: membership, error: membershipError } = await supabaseAdmin
+    .from("business_members")
+    .select("role,status")
+    .eq("business_account_id", params.hostBusinessAccountId)
+    .eq("user_id", params.actorUserId)
+    .maybeSingle();
+
+  if (membershipError) {
+    return fail({
+      operation: op,
+      code: "internal",
+      detail: membershipError.message,
+    });
+  }
+  if (
+    !membership ||
+    (membership as any).status !== "active" ||
+    !["owner", "manager", "dispatcher"].includes(String((membership as any).role ?? ""))
+  ) {
+    return fail({
+      operation: op,
+      code: "not_permitted",
+      detail: { reason: "role_may_not_validate_hosted_request" },
+      message: "Your role can view this request but cannot validate it.",
+    });
+  }
+
+  const requestRow = request as any;
+  if (
+    Number(requestRow.version) !== params.expectedVersion ||
+    requestRow.request_state !== "awaiting_merchant_confirmation" ||
+    requestRow.current_quote_version_id !== null ||
+    requestRow.quote_status !== "not_quoted"
+  ) {
+    return fail({
+      operation: op,
+      code: "conflict",
+      detail: { reason: "version_or_state_conflict" },
+      message: "This request changed before validation. Refresh and try again.",
+    });
+  }
+
+  /*
+   * CUSTOMER SAFETY EVIDENCE IS MONOTONIC.
+   *
+   * A customer who explicitly declared a governed restricted class created
+   * immutable intake evidence. Merchant validation may confirm that same class
+   * or choose "unknown" to escalate it for Couranr review; it may not silently
+   * erase or rewrite that declaration to "none" or to a different class.
+   */
+  const customerRestrictedClass = isRestrictedClassDeclaration(
+    (intake as any).customer_restricted_class
+  )
+    ? ((intake as any).customer_restricted_class as RestrictedClassDeclaration)
+    : "unknown";
+  const customerDeclaredSpecificRestriction =
+    customerRestrictedClass !== "none" && customerRestrictedClass !== "unknown";
+  if (
+    customerDeclaredSpecificRestriction &&
+    params.input.restrictedClass !== customerRestrictedClass &&
+    params.input.restrictedClass !== "unknown"
+  ) {
+    return fail({
+      operation: op,
+      code: "invalid_input",
+      detail: {
+        reason: "customer_restricted_class_cannot_be_downgraded",
+        customerRestrictedClass,
+      },
+      message:
+        "The customer reported a restricted item. Keep that declaration or choose Unknown for Couranr review.",
+    });
+  }
+
   let routed: Awaited<ReturnType<typeof deriveCanonicalRouteAndQuote>>;
   try {
     routed = await deriveCanonicalRouteAndQuote({
