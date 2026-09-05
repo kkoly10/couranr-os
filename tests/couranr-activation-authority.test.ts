@@ -8,6 +8,10 @@ const MIGRATION = readFileSync(
   "utf8"
 );
 const COMMANDS = readFileSync(path.join(ROOT, "lib/couranr/activation/commands.ts"), "utf8");
+const RETIRE = readFileSync(
+  path.join(ROOT, "supabase/migrations/20260905003100_couranr_retire_legacy_activation_decision.sql"),
+  "utf8"
+);
 
 describe("MER-003 Operations activation authority", () => {
   it("makes live/block a review outcome rather than a generic state setter", () => {
@@ -45,6 +49,12 @@ describe("MER-003 Operations activation authority", () => {
     );
     expect(MIGRATION).toMatch(
       /grant execute on function public\.couranr_decide_activation_guarded\([^)]+\)\s+to service_role/i
+    );
+  });
+
+  it("retires the legacy unguarded service-role entrypoint after cutover", () => {
+    expect(RETIRE).toMatch(
+      /revoke execute on function public\.couranr_decide_activation\(uuid,uuid,boolean,text\)\s+from service_role/i
     );
   });
 
