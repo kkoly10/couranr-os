@@ -25,6 +25,13 @@ export async function POST(req: NextRequest) {
     return routeFailure("not_found");
   }
 
+  // A one-time code is a credential. Do not let a cross-site form consume it
+  // and bind the canary cookie into an unrelated browser session.
+  const requestOrigin = new URL(req.url).origin;
+  if (req.headers.get("origin") !== requestOrigin) {
+    return routeFailure("not_found");
+  }
+
   let form: FormData;
   try {
     form = await req.formData();
