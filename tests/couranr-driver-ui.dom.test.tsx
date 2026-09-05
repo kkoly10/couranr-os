@@ -1040,6 +1040,7 @@ describe("Pickup Handoff V2 keeps sender facts read-only", () => {
  * ====================================================================== */
 
 const ISSUED_CODE = "472915";
+const HANDOFF_DELIVERY_ID = "11111111-1111-4111-8111-111111111111";
 
 /** Every place a browser could keep a credential past this render. */
 function storageLeaks(secret: string): string[] {
@@ -1074,7 +1075,7 @@ describe("a handoff code is shown once and kept nowhere", () => {
     );
     const user = userEvent.setup();
     render(
-      <HandoffCodePanel deliveryId="del-fixture-1" kind="merchant_pickup" surface="merchant" />
+      <HandoffCodePanel deliveryId={HANDOFF_DELIVERY_ID} kind="merchant_pickup" surface="merchant" />
     );
     await user.click(screen.getByRole("button", { name: /show pickup qr & code/i }));
     // Proof the code really was issued and displayed. Asserting "no storage
