@@ -348,7 +348,9 @@ describe("hosted adversarial closure", () => {
       MERCHANT_RECIPIENT_ROUTE,
       MERCHANT_PROOF_ROUTE,
     ]) {
+      expect(route).toContain("resolveUserId");
       expect(route).toContain("resolveMerchantBusinessForDelivery");
+      expect(route).toContain('routeFailure("not_found", "Delivery not found.")');
       expect(route).not.toContain('.select("id,business_account_id")');
     }
     expect(MERCHANT_PICKUP_ROUTE).toContain(
