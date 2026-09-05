@@ -40,6 +40,7 @@ const RPC = {
   createIntake: "couranr_create_hosted_request_intake",
   redeemIntake: "couranr_redeem_hosted_request_intake",
   createRequest: "couranr_create_hosted_delivery_request",
+  claimPlaceSearch: "couranr_claim_hosted_place_search",
   validateRequest: "couranr_validate_hosted_delivery_request",
   beginPreparation: "couranr_begin_hosted_delivery_preparation",
   markReady: "couranr_mark_hosted_delivery_ready",
@@ -393,6 +394,31 @@ export function validateHostedSubmitBody(raw: unknown): HostedBodyResult {
       },
     },
   };
+}
+
+/* ------------------------------------------------------ public throttles */
+
+/**
+ * Per-intake Places throttle. This runs before the shared global paid-provider
+ * budget, so one hosted browser cannot spend the whole daily Google allowance.
+ */
+export async function claimHostedPlaceSearch(
+  session: HostedSession
+): Promise<HostedResult<{ allowed: true }>> {
+  const op = "claimHostedPlaceSearch";
+  const r = await callRpc<boolean>(op, RPC.claimPlaceSearch, {
+    p_intake_id: session.id,
+  });
+  if (isHostedFailure(r)) return r;
+  if (r.value !== true) {
+    return fail({
+      operation: op,
+      code: "rate_limited",
+      detail: { reason: "hosted_places_hourly_limit" },
+      message: "Too many address searches. Wait a little and try again.",
+    });
+  }
+  return { ok: true, value: { allowed: true } };
 }
 
 /* ---------------------------------------------------------- public write */
