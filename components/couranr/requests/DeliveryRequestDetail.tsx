@@ -231,7 +231,7 @@ export function DeliveryRequestDetail({
         setRequest(r.value.request);
         setEvents(r.value.events ?? []);
         setIntake(r.value.intake ?? null);
-        setHostedContext(null);
+        setHostedContext(r.value.hostedContext ?? null);
         setIsOperations(true);
         setViewerBusinessAccountId(null);
         void reloadFulfillment(null);
@@ -318,7 +318,7 @@ export function DeliveryRequestDetail({
         setRequest(r.value.request);
         setEvents(r.value.events ?? []);
         setIntake(r.value.intake ?? null);
-        setHostedContext(null);
+        setHostedContext(r.value.hostedContext ?? null);
       }
     });
   };
@@ -392,6 +392,55 @@ export function DeliveryRequestDetail({
             });
           }}
         />
+      ) : null}
+
+      {request.source === "hosted_request" &&
+      hostedContext &&
+      (isOperations || request.requestState !== "awaiting_merchant_confirmation") ? (
+        <Card>
+          <CardHeader
+            title="Original customer request"
+            description="Customer-entered intake evidence. The canonical address, payer, weight and safety facts below are the merchant-validated delivery record."
+          />
+          <Grid columns={4}>
+            <Detail label="Order reference" value={hostedContext.orderReference ?? "Not provided"} />
+            <Detail
+              label="Requested payer"
+              value={
+                hostedContext.requestedPayerType === "merchant"
+                  ? "Business"
+                  : hostedContext.requestedPayerType === "customer"
+                    ? "Customer"
+                    : "Not provided"
+              }
+            />
+            <Detail
+              label="Customer weight"
+              value={
+                hostedContext.customerWeightLb !== null &&
+                hostedContext.customerWeightLb !== undefined
+                  ? `${hostedContext.customerWeightLb} lb`
+                  : hostedContext.customerWeightBand ?? "Not provided"
+              }
+            />
+            <Detail
+              label="Customer safety statement"
+              value={hostedContext.customerRestrictedClass ?? "Not provided"}
+            />
+          </Grid>
+          {hostedContext.destinationLabel ? (
+            <div>
+              <Text size="xs" muted>Customer-selected destination</Text>
+              <Text size="sm">{hostedContext.destinationLabel}</Text>
+            </div>
+          ) : null}
+          {hostedContext.shipmentDescription ? (
+            <div>
+              <Text size="xs" muted>Customer described</Text>
+              <Text size="sm">{hostedContext.shipmentDescription}</Text>
+            </div>
+          ) : null}
+        </Card>
       ) : null}
 
       <Grid columns={2}>
