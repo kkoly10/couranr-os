@@ -74,6 +74,8 @@ describe("P6-004 immutable balanced ledger", () => {
     expect(migration).toContain("v_debits <> v_credits");
     expect(migration).toContain("ledger_source_conflict");
     expect(migration).toContain("unique(source_kind,source_id)");
+    expect(migration).toContain("pg_advisory_xact_lock");
+    expect(migration).toContain("hashtextextended(p_source_kind || ':' || p_source_id, 0)");
   });
 
   it("records governed cancellation receivables without pretending they were collected", () => {
@@ -90,6 +92,10 @@ describe("P6-004 immutable balanced ledger", () => {
     expect(migration).toContain("missingRefunds");
     expect(migration).toContain("missingReceivables");
     expect(migration).toContain("unbalancedTransactions");
+    // Recent activity must show the external movement, not the sum of every
+    // debit leg (which would overstate a discounted capture by its credit).
+    expect(migration).toContain("t.source_kind='capture'");
+    expect(migration).toContain("e.account_code='stripe_clearing' and e.side='debit'");
     expect(migration).not.toContain("stripe.com");
     expect(migration).not.toContain("PaymentIntent");
   });
