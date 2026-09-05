@@ -150,6 +150,10 @@ describe("merchant-hosted request public input", () => {
         weightBand: "0_25_lb",
         restrictedClass: "none",
         signatureRequired: false,
+        pickupDescription: "One boxed lamp",
+        pickupPackageCount: 1,
+        pickupOrderReference: "ORDER-7",
+        pickupHandlingNotes: null,
       }).ok
     ).toBe(true);
     expect(
@@ -158,6 +162,10 @@ describe("merchant-hosted request public input", () => {
         weightBand: "0_25_lb",
         restrictedClass: "alcohol",
         signatureRequired: false,
+        pickupDescription: "One sealed case",
+        pickupPackageCount: 1,
+        pickupOrderReference: null,
+        pickupHandlingNotes: null,
       }).ok
     ).toBe(true);
 
