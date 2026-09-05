@@ -416,6 +416,12 @@ export function DeliveryRequestDetail({
             description="Customer-entered intake evidence. The canonical address, payer, weight and safety facts below are the merchant-validated delivery record."
           />
           <Grid columns={4}>
+            {isOperations ? (
+              <Detail
+                label="Host business"
+                value={hostedContext.hostBusinessName ?? hostedContext.hostBusinessAccountId ?? "Unavailable"}
+              />
+            ) : null}
             <Detail label="Order reference" value={hostedContext.orderReference ?? "Not provided"} />
             <Detail
               label="Requested payer"
