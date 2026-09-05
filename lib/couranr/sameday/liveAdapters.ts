@@ -38,6 +38,7 @@ import type {
   IntakeReading,
   PaymentOutcome,
   PaymentReconciliation,
+  PickupCredentialReading,
   ReadinessOutcome,
   QuoteInput,
   QuoteReading,
@@ -62,6 +63,7 @@ const API = {
   refresh: "/api/couranr/consumer/refresh-quote",
   interpret: "/api/couranr/consumer/interpret",
   pickupManifest: "/api/couranr/consumer/pickup-manifest",
+  pickupCode: "/api/couranr/consumer/pickup-code",
 } as const;
 
 /** The two review reasons that are about the TRIP rather than the shipment. */
@@ -644,6 +646,40 @@ export function createLiveSameDayAdapters(
         return { ok: false, note: "Couranr could not confirm pickup readiness." };
       }
       return { ok: true, state: value.state };
+    },
+
+    async issuePickupCredential(): Promise<PickupCredentialReading> {
+      const r = await guestCall(API.pickupCode, { method: "POST" });
+      if (!r) return { ok: false, note: NOTES.serviceDown };
+      if (!r.ok) {
+        return {
+          ok: false,
+          note: noteFromFailure(r.body, "The pickup code is not available yet."),
+        };
+      }
+      const value = (r.body as {
+        pickupCredential?: {
+          deliveryId?: unknown;
+          code?: unknown;
+          expiresAt?: unknown;
+          warning?: unknown;
+        };
+      } | null)?.pickupCredential;
+      if (
+        !value ||
+        typeof value.deliveryId !== "string" ||
+        typeof value.code !== "string" ||
+        !/^\d{6}$/.test(value.code)
+      ) {
+        return { ok: false, note: "Couranr could not confirm the pickup code." };
+      }
+      return {
+        ok: true,
+        deliveryId: value.deliveryId,
+        code: value.code,
+        expiresAt: typeof value.expiresAt === "string" ? value.expiresAt : undefined,
+        warning: typeof value.warning === "string" ? value.warning : undefined,
+      };
     },
 
     async readRequest(): Promise<ConsumerRequestReading | null> {
