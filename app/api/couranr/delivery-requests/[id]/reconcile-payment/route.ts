@@ -8,6 +8,7 @@ import {
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
 import { advanceAutomaticFulfillment } from "@/lib/couranr/automation/engine";
 import { getDeliveryRequest, isCommandFailure } from "@/lib/couranr/requests/commands";
+import { canActOnDeliveryRequest } from "@/lib/couranr/requests/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -50,6 +51,17 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     requestId: params.id,
   });
   if (isCommandFailure(loaded)) return failureResponse(loaded);
+
+  // Reconciliation can update payment/request state and then run automatic
+  // fulfillment. Read-only merchant roles must not be able to trigger that
+  // state/provider work merely because they can inspect the request.
+  const permission = canActOnDeliveryRequest(actor.actor, "submit", businessAccountId);
+  if (!permission.allowed) {
+    return routeFailure(
+      "not_permitted",
+      "Your role can view this request but cannot reconcile its payment."
+    );
+  }
 
   const ob = await getObligationForRequest({
     requestId: params.id,
