@@ -5,9 +5,9 @@
 -- the stored operations phone verified. Changing the phone invalidates the
 -- evidence automatically.
 --
--- Additive cutover. The legacy merchant verification function remains in the
--- catalog for rollback compatibility, but its service-role EXECUTE privilege
--- is revoked in this migration.
+-- Additive cutover. The legacy merchant verification function remains
+-- executable until the application deployment is READY; the following
+-- retirement migration removes that authority only after cutover.
 
 begin;
 
@@ -273,9 +273,5 @@ grant execute on function public.couranr_verify_activation_contact_by_operations
 
 revoke all on function private.couranr_invalidate_activation_contact_on_workspace_update()
   from public, anon, authenticated, service_role;
-
--- The old merchant self-attestation is no longer an authority path.
-revoke execute on function public.couranr_verify_activation_contact(uuid,uuid)
-  from service_role;
 
 commit;
