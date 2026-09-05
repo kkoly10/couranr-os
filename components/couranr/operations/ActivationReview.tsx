@@ -46,7 +46,7 @@ import type { ActivationView } from "@/components/couranr/activation/ActivationC
  *
  * Blocking REQUIRES a reason, and the reason is a CODE from a closed list —
  * the merchant reads a sentence derived from it, never an operator's note.
- * `couranr_decide_activation` refuses a blank reason in SQL too.
+ * `couranr_decide_activation_guarded` enforces the review state, prerequisites and closed reason list in SQL too.
  */
 
 type QueueEntry = {
