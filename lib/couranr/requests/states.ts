@@ -63,9 +63,11 @@ export type PayerType = (typeof PAYER_TYPES)[number];
  */
 export const REQUEST_COMMANDS = [
   "create_delivery_request_draft",
+  "create_hosted_delivery_request",
   "calculate_delivery_request_estimate",
   "create_quote_version",
   "submit_delivery_request",
+  "validate_hosted_delivery_request",
   "begin_delivery_request_review",
   "accept_delivery_request_as_quoted",
   "requote_delivery_request",
@@ -136,8 +138,8 @@ export function targetStates(to: CommandTarget): readonly RequestState[] {
 }
 
 /**
- * `closed` and `awaiting_merchant_confirmation` are canonical states that no
- * command here can reach. They are declared above because the database
+ * `closed` is a canonical state that no command here can reach. Hosted request
+ * creation now owns `awaiting_merchant_confirmation` explicitly. They are declared above because the database
  * enforces the full vocabulary; leaving them unreachable is deliberate.
  * `cancelled` gained its governed writer in the batch 3 final closure pass —
  * couranr_cancel_delivery_request, Operations-only, reached through the
@@ -147,6 +149,11 @@ export const COMMAND_RULES: Readonly<Record<RequestCommand, CommandRule>> = {
   create_delivery_request_draft: {
     from: [],
     to: "draft",
+    capability: "create",
+  },
+  create_hosted_delivery_request: {
+    from: [],
+    to: "awaiting_merchant_confirmation",
     capability: "create",
   },
   calculate_delivery_request_estimate: {
@@ -172,6 +179,11 @@ export const COMMAND_RULES: Readonly<Record<RequestCommand, CommandRule>> = {
   },
   submit_delivery_request: {
     from: ["draft"],
+    to: "pending_couranr_review",
+    capability: "submit",
+  },
+  validate_hosted_delivery_request: {
+    from: ["awaiting_merchant_confirmation"],
     to: "pending_couranr_review",
     capability: "submit",
   },
