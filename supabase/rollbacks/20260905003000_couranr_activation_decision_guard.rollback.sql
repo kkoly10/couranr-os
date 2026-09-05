@@ -8,6 +8,6 @@ begin;
 set local statement_timeout = '120s';
 set local lock_timeout = '10s';
 
-drop function public.couranr_decide_activation_guarded(uuid,uuid,boolean,text,jsonb);
+drop function public.couranr_decide_activation_guarded(uuid,uuid,boolean,text);
 
 commit;
