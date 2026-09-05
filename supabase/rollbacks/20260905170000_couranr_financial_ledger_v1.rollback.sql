@@ -31,8 +31,8 @@ drop function if exists private.couranr_post_ledger_transaction(
   text,text,uuid,uuid,uuid,text,timestamptz,jsonb,jsonb
 );
 
-drop table if exists private.couranr_ledger_entries;
-drop table if exists private.couranr_ledger_transactions;
-drop table if exists private.couranr_ledger_accounts;
+drop table if exists private.couranr_ledger_entries restrict;
+drop table if exists private.couranr_ledger_transactions restrict;
+drop table if exists private.couranr_ledger_accounts restrict;
 
 commit;
