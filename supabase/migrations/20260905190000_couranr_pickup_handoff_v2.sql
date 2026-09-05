@@ -572,20 +572,12 @@ grant execute on function public.couranr_issue_guest_pickup_code_cas(uuid,intege
 alter table public.couranr_delivery_requests
   add column if not exists pickup_manifest_policy_version text;
 
-do $
-begin
-  if not exists (
-    select 1 from pg_constraint where conname='couranr_dr_pickup_manifest_policy_chk'
-  ) then
-    alter table public.couranr_delivery_requests
-      add constraint couranr_dr_pickup_manifest_policy_chk
-      check (
-        pickup_manifest_policy_version is null
-        or pickup_manifest_policy_version='pickup-handoff-v2'
-      );
-  end if;
-end
-$;
+alter table public.couranr_delivery_requests
+  add constraint couranr_dr_pickup_manifest_policy_chk
+  check (
+    pickup_manifest_policy_version is null
+    or pickup_manifest_policy_version='pickup-handoff-v2'
+  );
 
 comment on column public.couranr_delivery_requests.pickup_manifest_policy_version is
   'Null only for requests that predate Pickup Handoff V2. New request rows are stamped pickup-handoff-v2 by trigger and cannot advance without the governed pickup manifest.';
