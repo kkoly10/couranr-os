@@ -6,6 +6,7 @@ import {
   getActivation,
   isActivationFailure,
   listActivationsForOperations,
+  verifyContactForOperations,
 } from "@/lib/couranr/activation/commands";
 import { ACTIVATION_STATES } from "@/lib/couranr/activation/states";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
@@ -57,12 +58,21 @@ export async function GET(req: NextRequest) {
   // An unrecognised state would silently return the whole table, so it is
   // refused rather than ignored.
   const state = req.nextUrl.searchParams.get("state") ?? "pending_couranr_review";
-  if (state !== "all" && !(ACTIVATION_STATES as readonly string[]).includes(state)) {
+  const isContactQueue = state === "contact_verification";
+  if (
+    state !== "all" &&
+    !isContactQueue &&
+    !(ACTIVATION_STATES as readonly string[]).includes(state)
+  ) {
     return routeFailure("invalid_input", "That is not an activation state.");
   }
 
   const list = await listActivationsForOperations(
-    state === "all" ? {} : { state }
+    isContactQueue
+      ? { contactVerificationPending: true }
+      : state === "all"
+        ? {}
+        : { state }
   );
   if (isActivationFailure(list)) return failureResponse(list);
   return NextResponse.json({ entries: list.value.entries });
@@ -85,16 +95,22 @@ export async function POST(req: NextRequest) {
   }
 
   const action = String(body?.action ?? "");
-  if (action !== "grant" && action !== "block") {
+  if (action !== "grant" && action !== "block" && action !== "verify_contact") {
     return routeFailure("invalid_input", "That is not an action Couranr recognises.");
   }
 
-  const result = await decideActivation({
-    operationsUserId: resolved.userId,
-    businessAccountId,
-    grant: action === "grant",
-    blockedReasonCode: String(body?.reasonCode ?? ""),
-  });
+  const result =
+    action === "verify_contact"
+      ? await verifyContactForOperations({
+          operationsUserId: resolved.userId,
+          businessAccountId,
+        })
+      : await decideActivation({
+          operationsUserId: resolved.userId,
+          businessAccountId,
+          grant: action === "grant",
+          blockedReasonCode: String(body?.reasonCode ?? ""),
+        });
   if (isActivationFailure(result)) return failureResponse(result);
 
   const fresh = await getActivation({ businessAccountId });
