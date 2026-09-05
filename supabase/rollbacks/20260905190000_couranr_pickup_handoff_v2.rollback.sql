@@ -50,6 +50,12 @@ begin
 end
 $$;
 
+drop trigger if exists couranr_pickup_manifest_v2_advance_trg
+  on public.couranr_delivery_requests;
+drop trigger if exists couranr_pickup_manifest_v2_insert_trg
+  on public.couranr_delivery_requests;
+drop function if exists private.couranr_require_pickup_manifest_v2();
+
 drop trigger if exists couranr_freeze_pickup_manifest_trg on public.couranr_deliveries;
 
 drop function if exists public.couranr_complete_pickup_v2(uuid,integer,uuid,numeric,numeric,numeric);
@@ -70,6 +76,10 @@ alter table public.couranr_handoff_codes
 alter table public.couranr_handoff_codes
   alter column issued_by set not null;
 
+alter table public.couranr_delivery_requests
+  drop constraint if exists couranr_dr_pickup_manifest_policy_chk;
+alter table public.couranr_delivery_requests
+  drop column if exists pickup_manifest_policy_version;
 alter table public.couranr_delivery_requests
   drop constraint if exists couranr_dr_pickup_manifest_version_chk;
 alter table public.couranr_delivery_requests
