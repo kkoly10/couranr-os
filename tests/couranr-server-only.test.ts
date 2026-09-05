@@ -119,11 +119,11 @@ describe("server-only modules are unreachable from client code", () => {
       // INT-002. Composes Consumer Smart Intake over the shared intake
       // commands (service-role) and reads the kill switch. A bundle reaching
       // it would ship the write path for a guest's intake evidence.
-      "lib/couranr/consumer/intake.ts",
       // Production Same Day canary authority: hash-only access redemption,
       // HttpOnly-cookie validation and one-session issuance. It owns the
       // service-role canary RPCs and must never enter a browser bundle.
       "lib/couranr/consumer/canary.ts",
+      "lib/couranr/consumer/intake.ts",
       // Batch 3 §D. Holds the service-role client, the guest-session hashing
       // and every consumer command wrapper. A bundle reaching it would ship
       // the code that turns an anonymous URL header into authority.
@@ -523,7 +523,10 @@ describe("canonical server routes do not import the browser client", () => {
           /redeemConsumerCanaryAccess\(/
         );
         expect(src, `${name} must keep the raw code out of the URL`).not.toMatch(
-          /searchParams|get\(["']token["']\)/
+          /(?:searchParams|nextUrl\.searchParams)[\s\S]{0,80}get\(["']token["']\)/
+        );
+        expect(src, `${name} must read the credential from FormData`).toMatch(
+          /form\.get\(["']token["']\)/
         );
         continue;
       }
