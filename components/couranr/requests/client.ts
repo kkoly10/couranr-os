@@ -174,6 +174,21 @@ export type IntakeSessionView = {
   revisions: Array<Record<string, any>>;
 };
 
+export type HostedIntakeView = {
+  requestId: string;
+  hostBusinessAccountId: string;
+  orderReference: string;
+  dropoffPlaceId: string;
+  dropoffDisplayText: string;
+  shipmentDescription: string;
+  requestedPayerType: "merchant" | "customer";
+  intakeState: "awaiting_merchant_confirmation" | "validated" | "declined";
+  declineReason: string | null;
+  createdAt: string;
+  validatedAt: string | null;
+  declinedAt: string | null;
+};
+
 export function startIntake(input: {
   businessAccountId: string;
   description: string;
@@ -246,10 +261,62 @@ export function fetchDeliveryRequest(input: { id: string; businessAccountId?: st
   const qs = input.businessAccountId
     ? `?businessAccountId=${encodeURIComponent(input.businessAccountId)}`
     : "";
-  return call<{ request: DeliveryRequestView; events: any[]; intake?: IntakeSessionView | null }>(
-    `/api/couranr/delivery-requests/${input.id}${qs}`
+  return call<{
+    request: DeliveryRequestView;
+    events: any[];
+    intake?: IntakeSessionView | null;
+    hosted?: HostedIntakeView | null;
+  }>(`/api/couranr/delivery-requests/${input.id}${qs}`);
+}
+
+export function validateHostedRequestFromBrowser(input: {
+  id: string;
+  businessAccountId: string;
+  expectedVersion: number;
+  validation: {
+    pickupPlaceId: string;
+    dropoffPlaceId: string;
+    payerType: "merchant" | "customer";
+    weightLb: number | null;
+    weightBand: string | null;
+    restrictedClass: string;
+    signatureRequired: boolean;
+  };
+}) {
+  return call<{ request: DeliveryRequestView }>(
+    `/api/couranr/delivery-requests/${input.id}/hosted-validation`,
+    {
+      method: "POST",
+      body: {
+        action: "validate",
+        businessAccountId: input.businessAccountId,
+        expectedVersion: input.expectedVersion,
+        validation: input.validation,
+      },
+    }
   );
 }
+
+export function declineHostedRequestFromBrowser(input: {
+  id: string;
+  businessAccountId: string;
+  expectedVersion: number;
+  reason: "order_not_found" | "details_do_not_match" | "merchant_cannot_fulfill";
+}) {
+  return call<{ request: DeliveryRequestView }>(
+    `/api/couranr/delivery-requests/${input.id}/hosted-validation`,
+    {
+      method: "POST",
+      body: {
+        action: "decline",
+        businessAccountId: input.businessAccountId,
+        expectedVersion: input.expectedVersion,
+        reason: input.reason,
+      },
+    }
+  );
+}
+
 
 export type BusinessAccountOption = {
   businessAccountId: string;
