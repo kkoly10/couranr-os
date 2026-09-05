@@ -51,7 +51,16 @@ export function OperationsPaymentsDashboard() {
   }, [load]);
 
   if (!value && !failure) {
-    return <LoadingState label="Loading payments and ledger" />;
+    return (
+      <LoadingState label="Loading payments and ledger">
+        <Card>
+          <CardHeader
+            title="Payments and reconciliation"
+            description="Loading canonical payment and ledger evidence."
+          />
+        </Card>
+      </LoadingState>
+    );
   }
   if (failure?.status === 401 || failure?.status === 403) {
     return <PermissionDeniedState />;
@@ -221,4 +230,15 @@ function PaymentRow({ payment }: { payment: OperationsPaymentRow }) {
 
 function shortId(id: string) {
   return id ? `${id.slice(0, 8)}…` : "—";
+}
+
+function sourceLabel(kind: LedgerReconciliation["recentTransactions"][number]["source_kind"]) {
+  switch (kind) {
+    case "capture":
+      return "Capture";
+    case "refund":
+      return "Refund";
+    case "cancellation_receivable":
+      return "Cancellation receivable";
+  }
 }
