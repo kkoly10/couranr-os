@@ -33,6 +33,14 @@ import {
   hashTrackingToken,
   TRACKING_TOKEN_TTL_DAYS,
 } from "@/lib/couranr/tracking/tokens";
+import {
+  isPickupManifestFailure,
+  setHostedCustomerPickupManifest,
+} from "@/lib/couranr/pickup/manifest";
+import {
+  normalizePickupManifestInput,
+  type PickupManifestInput,
+} from "@/lib/couranr/pickup/types";
 
 assertServerOnly("lib/couranr/hosted/commands.ts");
 
@@ -291,6 +299,7 @@ export type HostedSubmitBody = {
   recipient: { name: string; phone: string | null; email: string | null };
   shipment: {
     description: string | null;
+    packageCount: number | null;
     weightLb: number | null;
     weightBand: WeightBand | null;
     restrictedClass: RestrictedClassDeclaration;
@@ -342,6 +351,19 @@ export function validateHostedSubmitBody(raw: unknown): HostedBodyResult {
       ? (body.shipment as Record<string, unknown>)
       : {};
 
+  let packageCount: number | null = null;
+  if (
+    shipmentRaw.packageCount !== undefined &&
+    shipmentRaw.packageCount !== null &&
+    shipmentRaw.packageCount !== ""
+  ) {
+    const parsed = Number(shipmentRaw.packageCount);
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > 9999) {
+      return { ok: false, reason: "package_count_invalid" };
+    }
+    packageCount = parsed;
+  }
+
   let weightLb: number | null = null;
   if (
     shipmentRaw.weightLb !== undefined &&
@@ -392,6 +414,7 @@ export function validateHostedSubmitBody(raw: unknown): HostedBodyResult {
       recipient: { name, phone, email },
       shipment: {
         description: str(shipmentRaw.description, 2000),
+        packageCount,
         weightLb,
         weightBand,
         restrictedClass,
@@ -450,6 +473,31 @@ export async function submitHostedRequest(params: {
   });
   if (isHostedFailure(r)) return r;
   const row = one<any>(r.value);
+  const requestId = row?.id ? String(row.id) : params.session.requestId;
+  if (!requestId) {
+    return fail({ operation: op, code: "internal", detail: { reason: "request_id_missing" } });
+  }
+
+  const description = params.body.shipment.description?.trim() ?? "";
+  const savedManifest = await setHostedCustomerPickupManifest({
+    intakeId: params.session.id,
+    expectedManifestVersion: 0,
+    manifest: {
+      description,
+      packageCount: params.body.shipment.packageCount,
+      orderReference: params.body.orderReference,
+      handlingNotes: null,
+    },
+  });
+  if (isPickupManifestFailure(savedManifest)) {
+    return {
+      ok: false,
+      code: savedManifest.code,
+      correlationId: savedManifest.correlationId,
+      message: savedManifest.message,
+    };
+  }
+
   return {
     ok: true,
     value: { requestState: String(row?.request_state ?? "awaiting_merchant_confirmation") },
@@ -547,6 +595,8 @@ export type HostedMerchantContext = {
   requestedPayerType: "merchant" | "customer" | null;
   destinationLabel: string | null;
   shipmentDescription: string | null;
+  customerPackageCount: number | null;
+  pickupManifestVersion: number;
   customerWeightLb: number | null;
   customerWeightBand: WeightBand | null;
   customerRestrictedClass: RestrictedClassDeclaration | null;
@@ -558,24 +608,37 @@ export async function getHostedMerchantContext(params: {
   hostBusinessAccountId: string;
 }): Promise<HostedResult<HostedMerchantContext | null>> {
   const op = "getHostedMerchantContext";
-  const { data, error } = await supabaseAdmin
-    .from("couranr_hosted_request_intakes")
-    .select(
-      "order_reference,requested_payer_type,destination_label,shipment_description,customer_weight_lb,customer_weight_band,customer_restricted_class,signature_requested"
-    )
-    .eq("request_id", params.requestId)
-    .eq("host_business_account_id", params.hostBusinessAccountId)
-    .maybeSingle();
+  const [{ data, error }, { data: request, error: requestError }] = await Promise.all([
+    supabaseAdmin
+      .from("couranr_hosted_request_intakes")
+      .select(
+        "order_reference,requested_payer_type,destination_label,shipment_description,customer_weight_lb,customer_weight_band,customer_restricted_class,signature_requested"
+      )
+      .eq("request_id", params.requestId)
+      .eq("host_business_account_id", params.hostBusinessAccountId)
+      .maybeSingle(),
+    supabaseAdmin
+      .from("couranr_delivery_requests")
+      .select("pickup_manifest,pickup_manifest_version")
+      .eq("id", params.requestId)
+      .maybeSingle(),
+  ]);
 
-  if (error) {
+  if (error || requestError) {
+    const err = error ?? requestError;
     return fail({
       operation: op,
-      code: classifyDatabaseError(error),
-      detail: error.message,
+      code: classifyDatabaseError(err),
+      detail: err?.message,
     });
   }
-  if (!data) return { ok: true, value: null };
+  if (!data || !request) return { ok: true, value: null };
   const row = data as any;
+  const requestRow = request as any;
+  const pickupManifest =
+    requestRow.pickup_manifest && typeof requestRow.pickup_manifest === "object"
+      ? requestRow.pickup_manifest
+      : {};
   return {
     ok: true,
     value: {
@@ -586,6 +649,12 @@ export async function getHostedMerchantContext(params: {
           : null,
       destinationLabel: row.destination_label ? String(row.destination_label) : null,
       shipmentDescription: row.shipment_description ? String(row.shipment_description) : null,
+      customerPackageCount:
+        typeof pickupManifest.packageCount === "number" &&
+        Number.isInteger(pickupManifest.packageCount)
+          ? pickupManifest.packageCount
+          : null,
+      pickupManifestVersion: Number(requestRow.pickup_manifest_version ?? 0),
       customerWeightLb:
         row.customer_weight_lb === null || row.customer_weight_lb === undefined
           ? null
@@ -618,23 +687,36 @@ export async function getHostedOperationsContext(params: {
   requestId: string;
 }): Promise<HostedResult<HostedOperationsContext | null>> {
   const op = "getHostedOperationsContext";
-  const { data, error } = await supabaseAdmin
-    .from("couranr_hosted_request_intakes")
-    .select(
-      "host_business_account_id,order_reference,requested_payer_type,destination_label,shipment_description,customer_weight_lb,customer_weight_band,customer_restricted_class,signature_requested"
-    )
-    .eq("request_id", params.requestId)
-    .maybeSingle();
+  const [{ data, error }, { data: request, error: requestError }] = await Promise.all([
+    supabaseAdmin
+      .from("couranr_hosted_request_intakes")
+      .select(
+        "host_business_account_id,order_reference,requested_payer_type,destination_label,shipment_description,customer_weight_lb,customer_weight_band,customer_restricted_class,signature_requested"
+      )
+      .eq("request_id", params.requestId)
+      .maybeSingle(),
+    supabaseAdmin
+      .from("couranr_delivery_requests")
+      .select("pickup_manifest,pickup_manifest_version")
+      .eq("id", params.requestId)
+      .maybeSingle(),
+  ]);
 
-  if (error) {
+  if (error || requestError) {
+    const err = error ?? requestError;
     return fail({
       operation: op,
-      code: classifyDatabaseError(error),
-      detail: error.message,
+      code: classifyDatabaseError(err),
+      detail: err?.message,
     });
   }
-  if (!data) return { ok: true, value: null };
+  if (!data || !request) return { ok: true, value: null };
   const row = data as any;
+  const requestRow = request as any;
+  const pickupManifest =
+    requestRow.pickup_manifest && typeof requestRow.pickup_manifest === "object"
+      ? requestRow.pickup_manifest
+      : {};
   const hostBusinessAccountId = String(row.host_business_account_id ?? "");
   if (!hostBusinessAccountId) {
     return fail({
@@ -669,6 +751,12 @@ export async function getHostedOperationsContext(params: {
           : null,
       destinationLabel: row.destination_label ? String(row.destination_label) : null,
       shipmentDescription: row.shipment_description ? String(row.shipment_description) : null,
+      customerPackageCount:
+        typeof pickupManifest.packageCount === "number" &&
+        Number.isInteger(pickupManifest.packageCount)
+          ? pickupManifest.packageCount
+          : null,
+      pickupManifestVersion: Number(requestRow.pickup_manifest_version ?? 0),
       customerWeightLb:
         row.customer_weight_lb === null || row.customer_weight_lb === undefined
           ? null
@@ -690,6 +778,7 @@ export type HostedValidationInput = {
   weightBand: WeightBand | null;
   restrictedClass: RestrictedClassDeclaration;
   signatureRequired: boolean;
+  pickupManifest: PickupManifestInput;
 };
 
 /**
@@ -742,6 +831,14 @@ export function validateMerchantHostedConfirmation(raw: unknown):
   if (!isRestrictedClassDeclaration(body.restrictedClass)) {
     return { ok: false, reason: "restricted_class_invalid" };
   }
+  const pickupManifest = normalizePickupManifestInput({
+    description: body.pickupDescription,
+    packageCount: body.pickupPackageCount,
+    orderReference: body.pickupOrderReference,
+    handlingNotes: body.pickupHandlingNotes,
+  });
+  if (!pickupManifest.ok) return { ok: false, reason: "pickup_manifest_invalid" };
+
   return {
     ok: true,
     value: {
@@ -750,6 +847,7 @@ export function validateMerchantHostedConfirmation(raw: unknown):
       weightBand,
       restrictedClass: body.restrictedClass,
       signatureRequired: body.signatureRequired === true,
+      pickupManifest: pickupManifest.value,
     },
   };
 }
