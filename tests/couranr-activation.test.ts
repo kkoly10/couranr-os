@@ -158,10 +158,12 @@ describe("the route's capability and the SQL's role list are the same gate", () 
    * them. So the SQL's role tuples are parsed out of the migration and
    * compared against the matrix.
    */
-  const sql = readFileSync(
-    path.join(ROOT, "supabase/migrations/20260806160757_couranr_workspace_activation.sql"),
-    "utf8"
-  );
+  const sql = [
+    "supabase/migrations/20260806160757_couranr_workspace_activation.sql",
+    "supabase/migrations/20260905023000_couranr_activation_contact_verification.sql",
+  ]
+    .map((file) => readFileSync(path.join(ROOT, file), "utf8"))
+    .join("\n");
 
   /** The roles named in the guard immediately following a function's header. */
   function rolesGuarding(fn: string): string[] {
@@ -178,7 +180,7 @@ describe("the route's capability and the SQL's role list are the same gate", () 
 
   const CASES: [string, SettingsCapability][] = [
     ["couranr_accept_activation_ack", "activation.request"],
-    ["couranr_verify_activation_contact", "activation.request"],
+    ["couranr_request_activation_contact_verification", "activation.request"],
     ["couranr_request_activation", "activation.request"],
     ["couranr_record_test_delivery", "activation.record_test_delivery"],
   ];
