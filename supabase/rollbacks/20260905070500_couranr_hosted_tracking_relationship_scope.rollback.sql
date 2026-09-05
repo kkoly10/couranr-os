@@ -3,6 +3,8 @@
 
 begin;
 
+drop function if exists public.couranr_issue_hosted_tracking_if_absent(uuid,text,integer);
+
 create or replace function public.couranr_issue_delivery_access_token(
   p_request_id uuid,
   p_token_hash text,
