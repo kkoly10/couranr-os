@@ -22,7 +22,7 @@ export async function POST(req:NextRequest) {
     return routeFailure("invalid_input","A current pickup-details version is required.");
   }
   const manifest=normalizePickupManifestInput(body);
-  if(!manifest.ok) return routeFailure("invalid_input",manifest.message);
+  if(manifest.ok === false) return routeFailure("invalid_input",manifest.message);
   const result=await setConsumerPickupManifest({
     guestSessionId:session.value.id,expectedManifestVersion,manifest:manifest.value,
   });
