@@ -10,6 +10,7 @@ const ROOT = path.resolve(__dirname, "..");
 const read = (p: string) => readFileSync(path.join(ROOT, p), "utf8");
 
 const CONSUMER_ROUTES = [
+  "app/api/couranr/consumer/canary/activate/route.ts",
   "app/api/couranr/consumer/session/route.ts",
   "app/api/couranr/consumer/places/route.ts",
   "app/api/couranr/consumer/estimate/route.ts",
@@ -28,6 +29,11 @@ const SQL = read(
 const ROLLBACK = read(
   "supabase/rollbacks/20260905080000_couranr_consumer_canary_access.rollback.sql"
 );
+const PLACES_ROUTE = read("app/api/couranr/consumer/places/route.ts");
+const ESTIMATE_ROUTE = read("app/api/couranr/consumer/estimate/route.ts");
+const REFRESH_ROUTE = read("app/api/couranr/consumer/refresh-quote/route.ts");
+const SEND_FLOW = read("components/couranr/sameday/SendFlow.tsx");
+const LIVE_ADAPTERS = read("lib/couranr/sameday/liveAdapters.ts");
 
 describe("Consumer Same Day server kill switch", () => {
   it("does not arm production with only the ordinary live key", () => {
@@ -141,6 +147,41 @@ describe("production canary containment", () => {
     expect(SQL).toContain("couranr_create_consumer_canary_guest_session");
     expect(SQL).toContain("pg_advisory_xact_lock(hashtext('couranr-consumer-send-canary'))");
     expect(SQL).toContain("consumer_canary_already_active");
+  });
+
+  it("caps production paid-provider entrypoints per canary before provider work", () => {
+    expect(SQL).toContain("c_places_per_hour constant integer:=12");
+    expect(SQL).toContain("c_estimates_per_hour constant integer:=6");
+    expect(SQL).toContain("couranr_claim_consumer_canary_place_search");
+    expect(SQL).toContain("couranr_claim_consumer_canary_estimate");
+
+    const placeClaim = PLACES_ROUTE.indexOf("claimConsumerCanaryPlaceSearch");
+    const google = PLACES_ROUTE.indexOf("autocompleteConsumerPlaces(query)");
+    expect(placeClaim).toBeGreaterThanOrEqual(0);
+    expect(google).toBeGreaterThanOrEqual(0);
+    expect(placeClaim).toBeLessThan(google);
+
+    const estimateClaim = ESTIMATE_ROUTE.indexOf("claimConsumerCanaryEstimate");
+    const estimate = ESTIMATE_ROUTE.indexOf("estimateConsumerSend");
+    expect(estimateClaim).toBeGreaterThanOrEqual(0);
+    expect(estimate).toBeGreaterThanOrEqual(0);
+    // Use the call inside POST, not the import.
+    expect(ESTIMATE_ROUTE.indexOf("await claimConsumerCanaryEstimate")).toBeLessThan(
+      ESTIMATE_ROUTE.indexOf("await estimateConsumerSend")
+    );
+
+    expect(REFRESH_ROUTE.indexOf("await claimConsumerCanaryEstimate")).toBeLessThan(
+      REFRESH_ROUTE.indexOf("await refreshConsumerSendQuote")
+    );
+  });
+
+  it("debounces autocomplete and requires three characters before any request", () => {
+    expect(SEND_FLOW).toContain("addressSearchSeq");
+    expect(SEND_FLOW).toContain("setTimeout(resolve, 350)");
+    expect(SEND_FLOW).toContain("value.trim().length < 3");
+    expect(SEND_FLOW).toContain("seq !== addressSearchSeq.current");
+    expect(LIVE_ADAPTERS).toContain("if (q.length < 3) return []");
+    expect(PLACES_ROUTE).toContain("query.trim().length < 3");
   });
 
   it("keeps canary storage service-role-only", () => {
