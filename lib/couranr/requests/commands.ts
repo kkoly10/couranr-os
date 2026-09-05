@@ -1275,12 +1275,64 @@ export async function getDeliveryRequest(params: {
   requestId: string;
 }): Promise<CommandResult<{ request: DeliveryRequestRow; events: DeliveryRequestRow[] }>> {
   const op = "getDeliveryRequest";
-  const loaded = await loadRequest(op, params.requestId, params.businessAccountId);
-  if (isCommandFailure(loaded)) return loaded;
-  const row = loaded.value;
 
-  const permission = canActOnDeliveryRequest(params.actor, "read", row.business_account_id ?? null);
-  if (!permission.allowed) return denied(op, permission.reason);
+  /*
+   * Business reads have TWO legitimate relationships:
+   *   1. requester ownership (ordinary merchant request, BA lives on request)
+   *   2. hosted validation (consumer-owned request, BA stays NULL forever)
+   *
+   * The second relationship is proven by couranr_hosted_request_intakes. We
+   * never stuff the host BA into business_account_id and never let a caller
+   * simply ask for an unscoped consumer row.
+   */
+  let row: DeliveryRequestRow;
+  if (params.businessAccountId === null) {
+    const loaded = await loadRequest(op, params.requestId, null);
+    if (isCommandFailure(loaded)) return loaded;
+    row = loaded.value;
+
+    const permission = canActOnDeliveryRequest(params.actor, "read", row.business_account_id ?? null);
+    if (!permission.allowed) return denied(op, permission.reason);
+  } else {
+    const permission = canActOnDeliveryRequest(params.actor, "read", params.businessAccountId);
+    if (!permission.allowed) return denied(op, permission.reason);
+
+    const direct = await loadRequest(op, params.requestId, params.businessAccountId);
+    if (!isCommandFailure(direct)) {
+      row = direct.value;
+    } else {
+      if (direct.code !== "not_found") return direct;
+
+      const { data: hosted, error: hostedError } = await supabaseAdmin
+        .from("couranr_hosted_request_intakes")
+        .select("request_id")
+        .eq("request_id", params.requestId)
+        .eq("host_business_account_id", params.businessAccountId)
+        .maybeSingle();
+      if (hostedError) {
+        return fail({ operation: op, code: "internal", detail: hostedError.message });
+      }
+      if (!hosted) {
+        return fail({ operation: op, code: "not_found", detail: { reason: "request_not_found" } });
+      }
+
+      const { data: hostedRow, error: hostedRowError } = await supabaseAdmin
+        .from(TABLE)
+        .select(REQUEST_COLUMNS)
+        .eq("id", params.requestId)
+        .eq("requester_kind", "consumer")
+        .is("business_account_id", null)
+        .eq("source", "hosted_request")
+        .maybeSingle();
+      if (hostedRowError) {
+        return fail({ operation: op, code: "internal", detail: hostedRowError.message });
+      }
+      if (!hostedRow) {
+        return fail({ operation: op, code: "not_found", detail: { reason: "hosted_request_not_found" } });
+      }
+      row = hostedRow as DeliveryRequestRow;
+    }
+  }
 
   /*
    * EVENT PROJECTION — the merchant-visible one.
@@ -1390,22 +1442,65 @@ export async function listDeliveryRequests(params: {
   const permission = canActOnDeliveryRequest(params.actor, "read", params.businessAccountId);
   if (!permission.allowed) return denied(op, permission.reason);
 
-  const { data, error } = await supabaseAdmin
-    .from(TABLE)
-    .select(REQUEST_COLUMNS)
-    .eq("business_account_id", params.businessAccountId)
-    .order("created_at", { ascending: false })
-    .limit(Math.min(Math.max(params.limit ?? 50, 1), 200));
+  const limit = Math.min(Math.max(params.limit ?? 50, 1), 200);
+  const [{ data: direct, error: directError }, { data: hostedLinks, error: hostedError }] =
+    await Promise.all([
+      supabaseAdmin
+        .from(TABLE)
+        .select(REQUEST_COLUMNS)
+        .eq("business_account_id", params.businessAccountId)
+        .order("created_at", { ascending: false })
+        .limit(limit),
+      supabaseAdmin
+        .from("couranr_hosted_request_intakes")
+        .select("request_id")
+        .eq("host_business_account_id", params.businessAccountId)
+        .order("created_at", { ascending: false })
+        .limit(limit),
+    ]);
 
-  if (error) {
+  if (directError || hostedError) {
     return fail({
       operation: op,
       code: "internal",
-      detail: error.message,
+      detail: directError?.message ?? hostedError?.message,
       message: "Your deliveries could not be loaded.",
     });
   }
-  return { ok: true, value: data ?? [] };
+
+  const hostedIds = (hostedLinks ?? []).map((x: any) => String(x.request_id));
+  let hostedRows: DeliveryRequestRow[] = [];
+  if (hostedIds.length > 0) {
+    const { data, error } = await supabaseAdmin
+      .from(TABLE)
+      .select(REQUEST_COLUMNS)
+      .in("id", hostedIds)
+      .eq("requester_kind", "consumer")
+      .is("business_account_id", null)
+      .eq("source", "hosted_request");
+    if (error) {
+      return fail({
+        operation: op,
+        code: "internal",
+        detail: error.message,
+        message: "Your deliveries could not be loaded.",
+      });
+    }
+    hostedRows = (data ?? []) as DeliveryRequestRow[];
+  }
+
+  const byId = new Map<string, DeliveryRequestRow>();
+  for (const row of [...((direct ?? []) as DeliveryRequestRow[]), ...hostedRows]) {
+    byId.set(String(row.id), row);
+  }
+  const rows = [...byId.values()]
+    .sort(
+      (a, b) =>
+        new Date(String(b.created_at)).getTime() - new Date(String(a.created_at)).getTime()
+    )
+    .slice(0, limit);
+
+  return { ok: true, value: rows };
 }
 
 /* ------------------------------------------------------------ internals -- */
