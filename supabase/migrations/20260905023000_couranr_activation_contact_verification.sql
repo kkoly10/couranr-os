@@ -198,10 +198,11 @@ begin
   returning * into v_row;
 
   insert into public.couranr_activation_events
-    (business_account_id, actor_user_id, actor_type, command, from_state, to_state)
+    (business_account_id, actor_user_id, actor_type, command, from_state, to_state, metadata)
   values
     (p_business_account_id, p_actor_user_id, 'operations',
-     'verify_contact', v_from, v_row.activation_state);
+     'verify_contact', v_from, v_row.activation_state,
+     jsonb_build_object('method', 'manual_operations'));
 
   return v_row;
 end
