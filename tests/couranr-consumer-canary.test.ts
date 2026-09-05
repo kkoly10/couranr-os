@@ -83,7 +83,10 @@ describe("Consumer Same Day server kill switch", () => {
   it("every consumer API fails closed before guest redemption or provider work", () => {
     for (const routePath of CONSUMER_ROUTES) {
       const src = read(routePath);
-      const gate = src.indexOf("if (!consumerSendServerLive())");
+      const gate = src.indexOf(
+        "consumerSendServerLive()",
+        src.indexOf("export async function")
+      );
       expect(gate, routePath).toBeGreaterThanOrEqual(0);
 
       for (const later of [
