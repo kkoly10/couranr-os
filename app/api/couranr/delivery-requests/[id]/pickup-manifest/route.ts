@@ -23,7 +23,7 @@ export async function POST(req:NextRequest,props:{params:Promise<{id:string}>}) 
     return routeFailure("invalid_input","A current pickup-details version is required.");
   }
   const manifest=normalizePickupManifestInput(body);
-  if(!manifest.ok) return routeFailure("invalid_input",manifest.message);
+  if(manifest.ok === false) return routeFailure("invalid_input",manifest.message);
 
   const actor=await resolveRequestActor(req,businessAccountId);
   if(isActorDenied(actor)) return routeFailure(actor.code,actor.error);
