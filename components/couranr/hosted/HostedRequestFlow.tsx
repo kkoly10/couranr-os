@@ -241,7 +241,7 @@ export function HostedRequestFlow({
   if (submitted) {
     const copy = statusCopy(requestView, merchantName);
     return (
-      <div className="cr-send-flow">
+      <div className="cr-send-panel">
         <Card>
           <CardHeader
             title="Delivery request received"
@@ -272,7 +272,7 @@ export function HostedRequestFlow({
   }
 
   return (
-    <div className="cr-send-flow">
+    <div className="cr-send-panel">
       <Stack gap={6}>
         <div>
           <Text size="sm" muted>Delivery request for</Text>
