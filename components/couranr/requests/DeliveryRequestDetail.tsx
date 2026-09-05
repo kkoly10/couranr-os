@@ -19,6 +19,7 @@ import {
   PermissionDeniedState,
 } from "@/components/couranr/states";
 import { QuoteSummary } from "./QuoteSummary";
+import { HostedRequestValidationPanel } from "./HostedRequestValidationPanel";
 import { MerchantPaymentPanel } from "@/components/couranr/payments/MerchantPaymentPanel";
 import { MerchantReadinessPanel } from "@/components/couranr/fulfillment/MerchantReadinessPanel";
 import { MerchantProofPanel } from "@/components/couranr/dispatch/MerchantProofPanel";
@@ -30,6 +31,7 @@ import {
   fetchDeliveryRequest,
   fetchMyBusinessAccounts,
   type IntakeSessionView,
+  type HostedIntakeView,
   isApiFailure,
   type ApiFailure,
 } from "./client";
@@ -157,6 +159,7 @@ export function DeliveryRequestDetail({
   const [request, setRequest] = React.useState<DeliveryRequestView | null>(null);
   const [events, setEvents] = React.useState<any[]>([]);
   const [intake, setIntake] = React.useState<IntakeSessionView | null>(null);
+  const [hosted, setHosted] = React.useState<HostedIntakeView | null>(null);
   const [failure, setFailure] = React.useState<ApiFailure | null>(null);
   const [loading, setLoading] = React.useState(true);
   /**
@@ -229,6 +232,7 @@ export function DeliveryRequestDetail({
         setRequest(r.value.request);
         setEvents(r.value.events ?? []);
         setIntake(r.value.intake ?? null);
+        setHosted(r.value.hosted ?? null);
         setIsOperations(true);
         setViewerBusinessAccountId(null);
         void reloadFulfillment(null);
@@ -260,6 +264,7 @@ export function DeliveryRequestDetail({
           setRequest(r.value.request);
           setEvents(r.value.events ?? []);
           setIntake(r.value.intake ?? null);
+          setHosted(r.value.hosted ?? null);
           setIsOperations(false);
           setViewerBusinessAccountId(businessAccountId);
           void reloadFulfillment(businessAccountId);
@@ -314,9 +319,32 @@ export function DeliveryRequestDetail({
         setRequest(r.value.request);
         setEvents(r.value.events ?? []);
         setIntake(r.value.intake ?? null);
+        setHosted(r.value.hosted ?? null);
       }
     });
   };
+
+  const refreshBusiness = () => {
+    if (!viewerBusinessAccountId) return;
+    void reloadFulfillment(viewerBusinessAccountId);
+    void fetchDeliveryRequest({
+      id,
+      businessAccountId: viewerBusinessAccountId,
+    }).then((r) => {
+      if (!isApiFailure(r)) {
+        setRequest(r.value.request);
+        setEvents(r.value.events ?? []);
+        setIntake(r.value.intake ?? null);
+        setHosted(r.value.hosted ?? null);
+      }
+    });
+  };
+
+  const hostedAwaitingValidation =
+    !isOperations &&
+    request.source === "hosted_request" &&
+    request.requestState === "awaiting_merchant_confirmation" &&
+    hosted?.intakeState === "awaiting_merchant_confirmation";
 
   return (
     <Stack gap={6}>
@@ -368,6 +396,16 @@ export function DeliveryRequestDetail({
       </Card>
       ) : null}
 
+      {hostedAwaitingValidation && hosted && viewerBusinessAccountId ? (
+        <HostedRequestValidationPanel
+          request={request}
+          hosted={hosted}
+          businessAccountId={viewerBusinessAccountId}
+          onChanged={refreshBusiness}
+        />
+      ) : null}
+
+      {!hostedAwaitingValidation ? (
       <Grid columns={2}>
         <Card>
           <CardHeader title="Pickup" />
@@ -405,8 +443,9 @@ export function DeliveryRequestDetail({
           <Detail label="Service level" value={request.serviceLevel} />
         </Grid>
       </Card>
+      ) : null}
 
-      <QuoteSummary request={request} />
+      {!hostedAwaitingValidation ? <QuoteSummary request={request} /> : null}
 
 
 
@@ -438,7 +477,7 @@ export function DeliveryRequestDetail({
 
       {/* MER-007 payment. Operations reviews; it does not pay. A fully credited
           pilot request deliberately suppresses card authorization. */}
-      {!isOperations && !fulfillment?.promotionalCredit ? (
+      {!isOperations && !hostedAwaitingValidation && !fulfillment?.promotionalCredit ? (
         <MerchantPaymentPanel
           request={request}
           businessAccountId={viewerBusinessAccountId}
@@ -446,20 +485,12 @@ export function DeliveryRequestDetail({
       ) : null}
 
       {/* MER-007 readiness, and the scheduled result once Couranr captures. */}
-      {!isOperations ? (
+      {!isOperations && !hostedAwaitingValidation ? (
         <MerchantReadinessPanel
           request={request}
           fulfillment={fulfillment}
           businessAccountId={viewerBusinessAccountId}
-          onChanged={() => {
-            void reloadFulfillment(viewerBusinessAccountId);
-            void fetchDeliveryRequest({
-              id,
-              businessAccountId: viewerBusinessAccountId ?? undefined,
-            }).then((r) => {
-              if (!isApiFailure(r)) setRequest(r.value.request);
-            });
-          }}
+          onChanged={refreshBusiness}
         />
       ) : null}
 
