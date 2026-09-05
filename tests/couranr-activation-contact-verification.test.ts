@@ -45,6 +45,7 @@ describe("MER-003 operations-verified contact", () => {
     expect(body).toMatch(/from public\.couranr_merchant_workspaces[\s\S]*for share/i);
     expect(body).toMatch(/contact_verified_at\s*=\s*now\(\)/i);
     expect(body).toMatch(/contact_verified_by\s*=\s*p_actor_user_id/i);
+    expect(body).toContain("'manual_operations'");
     expect(OPS_ROUTE).toContain('action !== "verify_contact"');
     expect(OPS_ROUTE).toContain("verifyContactForOperations");
   });
