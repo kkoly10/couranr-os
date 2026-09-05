@@ -94,8 +94,7 @@ declare
   v_host_business_id uuid;
   v_ttl integer:=least(greatest(coalesce(p_ttl_days,30),1),30);
 begin
-  if p_token_hash is null or p_token_hash !~ '^[0-9a-f]{64}
- then
+  if p_token_hash is null or p_token_hash !~ '^[0-9a-f]{64}$' then
     raise exception 'token_hash_must_be_sha256_hex' using errcode='CR422';
   end if;
 
