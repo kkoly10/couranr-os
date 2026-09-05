@@ -10,7 +10,7 @@ import {
 import { normalizePickupManifestInput } from "@/lib/couranr/pickup/types";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
 
-export const dynamic="force-dynamic";
+export const dynamic = "force-dynamic";
 
 export async function POST(req:NextRequest) {
   const session=await redeemGuestSessionToken(req);
