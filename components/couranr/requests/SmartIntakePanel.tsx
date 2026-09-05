@@ -232,7 +232,7 @@ export function SmartIntakePanel(props: {
           <Textarea
             {...p}
             rows={2}
-            maxLength={4000}
+            maxLength={1000}
             value={description}
             onChange={(e) => {
               setDescription(e.target.value);
