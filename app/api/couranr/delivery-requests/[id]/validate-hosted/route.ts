@@ -8,6 +8,7 @@ import {
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
 import { toDeliveryRequestView } from "@/lib/couranr/requests/view";
 import { advanceAutomaticFulfillment } from "@/lib/couranr/automation/engine";
+import { canActOnDeliveryRequest } from "@/lib/couranr/requests/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +41,13 @@ export async function POST(
   if (isActorDenied(actor)) return routeFailure(actor.code, actor.error);
   if (actor.actor.kind !== "member") {
     return routeFailure("not_permitted", "Only the host business can validate this request.");
+  }
+  const permission = canActOnDeliveryRequest(actor.actor, "submit", businessAccountId);
+  if (!permission.allowed) {
+    return routeFailure(
+      "not_permitted",
+      "Your role can view this request but cannot validate it."
+    );
   }
 
   const validated = validateMerchantHostedConfirmation(body);
