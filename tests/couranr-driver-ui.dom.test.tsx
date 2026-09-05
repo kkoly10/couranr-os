@@ -180,7 +180,14 @@ function assignedView(over: Partial<AssignedFixture> = {}): AssignedFixture {
     dropoff: address({ line1: DROPOFF_LINE1, city: "Fredericksburg" }),
     merchant: { name: "Bright Cleaners", phone: MERCHANT_PHONE },
     recipient: { name: RECIPIENT_NAME, phone: RECIPIENT_PHONE },
-    shipment: { packageCount: 3, declaredWeightLb: 20, additionalStops: 0 },
+    shipment: {
+      description: "Three boxed garments",
+      packageCount: 3,
+      orderReference: "ORD-381",
+      handlingNotes: "Keep dry",
+      declaredWeightLb: 20,
+      additionalStops: 0,
+    },
     proof: { method: "photo_or_pin", signatureRequired: false },
     vehicleRequirement: { vehicleClass: "cargo_van", maxPayloadLb: 100 },
     assignment: {
@@ -940,7 +947,14 @@ describe("an empty package count is absent, not zero", () => {
       ok({
         status: "active",
         assigned: assignedView({
-          shipment: { packageCount: null, declaredWeightLb: null, additionalStops: null },
+          shipment: {
+            description: null,
+            packageCount: null,
+            orderReference: null,
+            handlingNotes: null,
+            declaredWeightLb: null,
+            additionalStops: null,
+          },
         }),
       } as DriverAssignmentResponse)
     );
@@ -953,7 +967,14 @@ describe("an empty package count is absent, not zero", () => {
       ok({
         status: "active",
         assigned: assignedView({
-          shipment: { packageCount: 0, declaredWeightLb: 0, additionalStops: 0 },
+          shipment: {
+            description: "Historical pickup",
+            packageCount: 0,
+            orderReference: null,
+            handlingNotes: null,
+            declaredWeightLb: 0,
+            additionalStops: 0,
+          },
         }),
       } as DriverAssignmentResponse)
     );
@@ -1332,7 +1353,14 @@ describe("no driver form asks for a face or an identity document", () => {
           fulfillmentState: "at_pickup",
           // The large-shipment branch adds a fourth photo and three more
           // fields; render the maximal form so nothing escapes the check.
-          shipment: { packageCount: 12, declaredWeightLb: 400, additionalStops: 0 },
+          shipment: {
+            description: "Twelve boxed fixtures",
+            packageCount: 12,
+            orderReference: "LOAD-12",
+            handlingNotes: "Keep upright",
+            declaredWeightLb: 400,
+            additionalStops: 0,
+          },
           vehicleRequirement: { vehicleClass: "box_truck", maxPayloadLb: 2000 },
         })}
         location={usableLocation()}
