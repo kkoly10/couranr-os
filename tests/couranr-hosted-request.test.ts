@@ -95,6 +95,14 @@ describe("merchant-hosted request public input", () => {
         signatureRequired: false,
       }).ok
     ).toBe(true);
+    expect(
+      validateMerchantHostedConfirmation({
+        payerType: "customer",
+        weightBand: "0_25_lb",
+        restrictedClass: "alcohol",
+        signatureRequired: false,
+      }).ok
+    ).toBe(true);
 
     for (const bad of [
       { payerType: "customer", weightBand: "0_25_lb", restrictedClass: "invented" },
