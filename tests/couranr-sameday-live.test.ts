@@ -391,6 +391,19 @@ describe("buildEstimateBody: honest statement or a local refusal", () => {
     }
   });
 
+  it("refuses an overlong pickup description locally before any provider call", async () => {
+    const input = {
+      ...GOOD_QUOTE_INPUT,
+      shipment: { ...GOOD_QUOTE_INPUT.shipment, description: "x".repeat(1001) },
+    };
+    expect(buildEstimateBody(input).ok).toBe(false);
+
+    const f = fakeFetch({ [S]: SESSION_OK, [ESTIMATE]: () => ({ body: { estimate: ESTIMATED } }) });
+    const q = await live({ fetchImpl: f.impl, storage: null }).quote(input);
+    expect(q.state).toBe("unavailable");
+    expect(f.calls).toHaveLength(0);
+  });
+
   it("refuses locally without contact — the FIRST estimate freezes the snapshot", () => {
     const r = buildEstimateBody({ ...GOOD_QUOTE_INPUT, contact: { name: "Ada" } });
     expect(r.ok).toBe(false);
