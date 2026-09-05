@@ -352,6 +352,13 @@ export function validateHostedSubmitBody(raw: unknown): HostedBodyResult {
       ? (body.shipment as Record<string, unknown>)
       : {};
 
+  const shipmentDescription =
+    typeof shipmentRaw.description === "string" ? shipmentRaw.description.trim() : "";
+  if (!shipmentDescription) return { ok: false, reason: "shipment_description_required" };
+  if (shipmentDescription.length > 1000) {
+    return { ok: false, reason: "shipment_description_too_long" };
+  }
+
   let packageCount: number | null = null;
   if (
     shipmentRaw.packageCount !== undefined &&
@@ -414,7 +421,7 @@ export function validateHostedSubmitBody(raw: unknown): HostedBodyResult {
       destinationLabel,
       recipient: { name, phone, email },
       shipment: {
-        description: str(shipmentRaw.description, 2000),
+        description: shipmentDescription,
         packageCount,
         weightLb,
         weightBand,
