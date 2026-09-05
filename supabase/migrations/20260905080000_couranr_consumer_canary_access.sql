@@ -64,8 +64,210 @@ declare
   v_row public.couranr_consumer_canary_access;
   v_ttl integer:=least(greatest(coalesce(p_ttl_minutes,120),5),1440);
 begin
-  if p_token_hash is null or p_token_hash !~ '^[0-9a-f]{64}$' then
+  if p_token_hash is null or p_token_hash !~ '^[0-9a-f]{64}
+    token_hash,label,expires_at
+  ) values (
+    p_token_hash,
+    nullif(left(btrim(coalesce(p_label,'')),120),''),
+    now()+make_interval(mins=>v_ttl)
+  )
+  returning * into v_row;
+
+  return v_row;
+end
+$fn$;
+
+create or replace function public.couranr_redeem_consumer_canary_access(
+  p_token_hash text,
+  p_cookie_hash text
+)
+returns public.couranr_consumer_canary_access
+language plpgsql
+security invoker
+set search_path=''
+as $fn$
+declare
+  v_row public.couranr_consumer_canary_access;
+begin
+  if p_token_hash is null or p_token_hash !~ '^[0-9a-f]{64}$'
+     or p_cookie_hash is null or p_cookie_hash !~ '^[0-9a-f]{64}$' then
+    raise exception 'canary_access_not_available' using errcode='CR404';
+  end if;
+
+  select * into v_row
+    from public.couranr_consumer_canary_access
+   where token_hash=p_token_hash
+   for update;
+
+  if not found
+     or v_row.revoked_at is not null
+     or v_row.expires_at<=now()
+     or v_row.redeemed_at is not null then
+    raise exception 'canary_access_not_available' using errcode='CR404';
+  end if;
+
+  update public.couranr_consumer_canary_access
+     set cookie_hash=p_cookie_hash,
+         redeemed_at=now()
+   where id=v_row.id
+  returning * into v_row;
+
+  return v_row;
+end
+$fn$;
+
+create or replace function public.couranr_resolve_consumer_canary_cookie(
+  p_cookie_hash text
+)
+returns public.couranr_consumer_canary_access
+language plpgsql
+security invoker
+set search_path=''
+as $fn$
+declare
+  v_row public.couranr_consumer_canary_access;
+begin
+  if p_cookie_hash is null or p_cookie_hash !~ '^[0-9a-f]{64}$' then
+    raise exception 'canary_access_not_available' using errcode='CR404';
+  end if;
+
+  select * into v_row
+    from public.couranr_consumer_canary_access
+   where cookie_hash=p_cookie_hash;
+
+  if not found
+     or v_row.redeemed_at is null
+     or v_row.revoked_at is not null
+     or v_row.expires_at<=now() then
+    raise exception 'canary_access_not_available' using errcode='CR404';
+  end if;
+
+  return v_row;
+end
+$fn$;
+
+create or replace function public.couranr_create_consumer_canary_guest_session(
+  p_cookie_hash text,
+  p_guest_token_hash text,
+  p_ttl_minutes integer
+)
+returns public.couranr_consumer_guest_sessions
+language plpgsql
+security invoker
+set search_path=''
+as $fn$
+declare
+  v_access public.couranr_consumer_canary_access;
+  v_session public.couranr_consumer_guest_sessions;
+  v_ttl integer:=least(greatest(coalesce(p_ttl_minutes,1440),5),4320);
+begin
+  if p_cookie_hash is null or p_cookie_hash !~ '^[0-9a-f]{64}$'
+     or p_guest_token_hash is null or p_guest_token_hash !~ '^[0-9a-f]{64}$' then
+    raise exception 'canary_access_not_available' using errcode='CR404';
+  end if;
+
+  select * into v_access
+    from public.couranr_consumer_canary_access
+   where cookie_hash=p_cookie_hash
+   for update;
+
+  if not found
+     or v_access.redeemed_at is null
+     or v_access.revoked_at is not null
+     or v_access.expires_at<=now() then
+    raise exception 'canary_access_not_available' using errcode='CR404';
+  end if;
+
+  if v_access.guest_session_id is not null then
+    raise exception 'canary_guest_session_already_created' using errcode='CR409';
+  end if;
+
+  insert into public.couranr_consumer_guest_sessions(token_hash,expires_at)
+  values (
+    p_guest_token_hash,
+    least(
+      now()+make_interval(mins=>v_ttl),
+      v_access.expires_at
+    )
+  )
+  returning * into v_session;
+
+  update public.couranr_consumer_canary_access
+     set guest_session_id=v_session.id,
+         session_created_at=now()
+   where id=v_access.id;
+
+  return v_session;
+end
+$fn$;
+
+create or replace function public.couranr_revoke_consumer_canary_access(
+  p_id uuid
+)
+returns boolean
+language plpgsql
+security invoker
+set search_path=''
+as $fn$
+declare
+  v_session_id uuid;
+begin
+  update public.couranr_consumer_canary_access
+     set revoked_at=coalesce(revoked_at,now())
+   where id=p_id
+   returning guest_session_id into v_session_id;
+
+  if not found then
+    return false;
+  end if;
+
+  if v_session_id is not null then
+    update public.couranr_consumer_guest_sessions
+       set revoked_at=coalesce(revoked_at,now())
+     where id=v_session_id;
+  end if;
+
+  return true;
+end
+$fn$;
+
+revoke all on function public.couranr_issue_consumer_canary_access(text,integer,text)
+  from public,anon,authenticated,service_role;
+revoke all on function public.couranr_redeem_consumer_canary_access(text,text)
+  from public,anon,authenticated,service_role;
+revoke all on function public.couranr_resolve_consumer_canary_cookie(text)
+  from public,anon,authenticated,service_role;
+revoke all on function public.couranr_create_consumer_canary_guest_session(text,text,integer)
+  from public,anon,authenticated,service_role;
+revoke all on function public.couranr_revoke_consumer_canary_access(uuid)
+  from public,anon,authenticated,service_role;
+
+grant execute on function public.couranr_issue_consumer_canary_access(text,integer,text)
+  to service_role;
+grant execute on function public.couranr_redeem_consumer_canary_access(text,text)
+  to service_role;
+grant execute on function public.couranr_resolve_consumer_canary_cookie(text)
+  to service_role;
+grant execute on function public.couranr_create_consumer_canary_guest_session(text,text,integer)
+  to service_role;
+grant execute on function public.couranr_revoke_consumer_canary_access(uuid)
+  to service_role;
+
+commit;
+ then
     raise exception 'canary_token_invalid' using errcode='CR422';
+  end if;
+
+  -- One production canary at a time. The lock closes the concurrent issuance
+  -- race; an active redeemed row is still a live canary until revoked/expired.
+  perform pg_advisory_xact_lock(hashtext('couranr-consumer-send-canary'));
+  if exists (
+    select 1
+      from public.couranr_consumer_canary_access
+     where revoked_at is null
+       and expires_at>now()
+  ) then
+    raise exception 'consumer_canary_already_active' using errcode='CR409';
   end if;
 
   insert into public.couranr_consumer_canary_access(
