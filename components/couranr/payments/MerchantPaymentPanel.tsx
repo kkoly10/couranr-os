@@ -41,9 +41,11 @@ const STATE_BADGE: Record<string, { tone: "neutral" | "info" | "success" | "warn
 export function MerchantPaymentPanel({
   request,
   businessAccountId,
+  canManage = true,
 }: {
   request: DeliveryRequestView;
   businessAccountId: string | null;
+  canManage?: boolean;
 }) {
   const [payment, setPayment] = React.useState<PaymentView | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -175,6 +177,12 @@ export function MerchantPaymentPanel({
           <Text strong>{formatCents(request.quote.deliverySubtotalCents)}</Text>
         </div>
 
+        {!canManage ? (
+          <Alert tone="info" title="Payment controls are read only">
+            An owner, manager, or dispatcher must authorize business-paid delivery or create a customer payment link.
+          </Alert>
+        ) : null}
+
         {error ? <ErrorState title="This could not be started" body={error} /> : null}
 
         {state === "authorized" ? (
@@ -184,7 +192,7 @@ export function MerchantPaymentPanel({
           </Alert>
         ) : null}
 
-        {!merchantPays ? (
+        {canManage && !merchantPays ? (
           <Stack gap={3}>
             <Alert tone="info" title="Customer payment">
               Create a secure payment link and send it to your customer. Couranr schedules the
@@ -234,7 +242,7 @@ export function MerchantPaymentPanel({
               </Button>
             )}
           </Stack>
-        ) : state === "authorized" ? null : clientSecret ? (
+        ) : !canManage ? null : state === "authorized" ? null : clientSecret ? (
           /*
             The SAME component the customer link uses. Only the reconcile
             endpoint differs — this one is authenticated and scoped to the
