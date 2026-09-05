@@ -521,7 +521,7 @@ export function NewDeliveryFlow({
           />
           <Grid columns={2}>
             <div>
-              <strong>${pickupDescription.trim() || "Not recorded"}</strong>
+              <strong>{pickupDescription.trim() || "Not recorded"}</strong>
               <div>{pickupPackageCount.trim() ? `${pickupPackageCount} package(s)` : "Package count not specified"}</div>
             </div>
             <div>
