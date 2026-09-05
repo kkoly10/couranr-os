@@ -118,7 +118,7 @@ export function bizQuoteReady(
   const action = input.customerPays
     ? [
         paragraph(
-          "This delivery is set to customer-paid. Couranr will send your customer a secure link to review and pay — you don't need to do anything now.",
+          "This delivery is set to customer-paid. Open the delivery in Couranr, create a secure payment link, and send it to your customer to review and pay.",
         ),
         button({ label: "Review the request", href: input.approveUrl }),
       ]
