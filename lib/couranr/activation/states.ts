@@ -134,7 +134,7 @@ export function activationRequirements(facts: ActivationFacts): ActivationRequir
     met: Boolean(facts.contactVerifiedAt),
     detail: facts.contactVerifiedAt
       ? "Verified."
-      : "Confirm the phone number Couranr Operations should reach during a delivery.",
+      : "Ask Couranr Operations to verify the phone number used during a delivery.",
   });
 
   out.push({
