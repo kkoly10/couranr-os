@@ -5,6 +5,7 @@ import { Alert, Badge, Button, Card, CardHeader, Grid, Stack, Text } from "@/com
 import { CheckboxRow, Field, Select } from "@/components/couranr/forms";
 import { ErrorState } from "@/components/couranr/states";
 import type { DeliveryRequestView } from "@/lib/couranr/requests/view";
+import type { RestrictedClassDeclaration } from "@/lib/couranr/shipment/facts";
 import {
   isApiFailure,
   validateHostedRequestFromBrowser,
@@ -29,6 +30,32 @@ const WEIGHT_LABELS: Record<string, string> = {
   unknown: "Unknown — Couranr review",
 };
 
+const RESTRICTED_CLASS_OPTIONS: ReadonlyArray<readonly [RestrictedClassDeclaration, string]> = [
+  ["alcohol", "Alcohol"],
+  ["tobacco", "Tobacco"],
+  ["vaping_nicotine", "Vape or nicotine products"],
+  ["cannabis_thc", "Cannabis or THC products"],
+  ["firearms", "Firearms"],
+  ["ammunition", "Ammunition"],
+  ["prescription_medication", "Prescription medication"],
+  ["controlled_substances", "Controlled substances"],
+  ["fuel", "Fuel"],
+  ["compressed_gas", "Compressed gas"],
+  ["corrosive_hazmat", "Corrosive materials"],
+  ["toxic_hazmat", "Toxic materials"],
+  ["infectious_material", "Infectious material"],
+  ["regulated_dangerous_goods", "Regulated dangerous goods"],
+  ["fireworks", "Fireworks"],
+  ["explosives", "Explosives"],
+  ["illegal_goods", "Illegal goods"],
+  ["stolen_goods", "Stolen goods"],
+  ["cash", "Cash"],
+  ["negotiable_instruments", "Checks or other negotiable instruments"],
+  ["biological_specimens", "Biological specimens"],
+  ["live_animals", "Live animals"],
+  ["people", "People"],
+];
+
 export function HostedRequestValidationPanel({
   request,
   context,
@@ -46,8 +73,13 @@ export function HostedRequestValidationPanel({
   const [weightBand, setWeightBand] = React.useState(
     context?.customerWeightBand ?? request.weightBand ?? "unknown"
   );
-  const [restrictedClass, setRestrictedClass] = React.useState(
-    context?.customerRestrictedClass === "none" ? "none" : "unknown"
+  const [restrictedClass, setRestrictedClass] = React.useState<RestrictedClassDeclaration>(
+    context?.customerRestrictedClass &&
+      (context.customerRestrictedClass === "none" ||
+        context.customerRestrictedClass === "unknown" ||
+        RESTRICTED_CLASS_OPTIONS.some(([value]) => value === context.customerRestrictedClass))
+      ? (context.customerRestrictedClass as RestrictedClassDeclaration)
+      : "unknown"
   );
   const [signatureRequired, setSignatureRequired] = React.useState(
     context?.signatureRequested ?? request.signatureRequired
@@ -186,10 +218,15 @@ export function HostedRequestValidationPanel({
               {...p}
               value={restrictedClass}
               disabled={busy}
-              onChange={(e) => setRestrictedClass(e.target.value)}
+              onChange={(e) => setRestrictedClass(e.target.value as RestrictedClassDeclaration)}
             >
               <option value="none">Verified: none of the prohibited classes are present</option>
               <option value="unknown">Not verified — send to Couranr review</option>
+              <optgroup label="A prohibited class is present">
+                {RESTRICTED_CLASS_OPTIONS.map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
+              </optgroup>
             </Select>
           )}
         </Field>
