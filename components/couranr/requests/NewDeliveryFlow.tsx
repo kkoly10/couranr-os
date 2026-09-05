@@ -307,6 +307,8 @@ export function NewDeliveryFlow({
     const pickupErrors: FieldErrors = {};
     if (pickupDescription.trim() === "") {
       pickupErrors.pickupDescription = "Tell the driver what to look for.";
+    } else if (pickupDescription.trim().length > 1000) {
+      pickupErrors.pickupDescription = "Keep the pickup description to 1,000 characters or fewer.";
     }
     if (
       pickupCount !== null &&
