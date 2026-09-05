@@ -125,6 +125,11 @@ describe("production canary containment", () => {
     expect(route).toContain('form.get("token")');
     expect(route).not.toContain("searchParams.get");
     expect(route).not.toContain("nextUrl.searchParams");
+    expect(route).toContain('req.headers.get("origin")');
+    expect(route).toContain("new URL(req.url).origin");
+    expect(route.indexOf('req.headers.get("origin")')).toBeLessThan(
+      route.indexOf("await req.formData()")
+    );
     expect(route).toContain("httpOnly: true");
     expect(route).toContain("secure: true");
     expect(route).toContain('sameSite: "strict"');
@@ -138,6 +143,26 @@ describe("production canary containment", () => {
     expect(page).toContain("robots: { index: false, follow: false }");
     expect(page).toContain('type="password"');
     expect(page).toContain('method="post"');
+  });
+
+  it("keeps the forward migration as one non-duplicated SQL program", () => {
+    expect((SQL.match(/^begin;$/gm) ?? [])).toHaveLength(1);
+    expect((SQL.match(/^commit;$/gm) ?? [])).toHaveLength(1);
+    for (const fn of [
+      "couranr_issue_consumer_canary_access",
+      "couranr_redeem_consumer_canary_access",
+      "couranr_resolve_consumer_canary_cookie",
+      "couranr_create_consumer_canary_guest_session",
+      "couranr_claim_consumer_canary_place_search",
+      "couranr_claim_consumer_canary_estimate",
+      "couranr_revoke_consumer_canary_access",
+    ]) {
+      expect(
+        (SQL.match(new RegExp(`create or replace function public\\\\.${fn}\\\\(`, "g")) ?? [])
+          .length,
+        fn
+      ).toBe(1);
+    }
   });
 
   it("stores only hashes and permits one guest session per canary access", () => {
