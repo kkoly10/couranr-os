@@ -48,6 +48,7 @@ describe("HOSTED_REQUEST_ROUTE_EXISTS tells the truth about the filesystem", () 
    */
   it("matches whether a /request/[merchantSlug] route is actually in the tree", () => {
     const candidates = [
+      "app/(couranr)/(public)/(consumer-public)/request/[merchantSlug]/page.tsx",
       "app/(couranr)/(public)/request/[merchantSlug]/page.tsx",
       "app/(couranr)/request/[merchantSlug]/page.tsx",
       "app/request/[merchantSlug]/page.tsx",
