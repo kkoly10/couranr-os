@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { redeemGuestSessionToken, isConsumerFailure } from "@/lib/couranr/consumer/send";
 import { interpretConsumerDescription } from "@/lib/couranr/consumer/intake";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
+import { consumerSendServerLive } from "@/lib/couranr/sameday/serverGate";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,8 @@ export const dynamic = "force-dynamic";
  * `unavailable` with zero provider calls and zero writes.
  */
 export async function POST(req: NextRequest) {
+  if (!consumerSendServerLive()) return routeFailure("not_found");
+
   const session = await redeemGuestSessionToken(req);
   if (isConsumerFailure(session)) return routeFailure("not_found");
 

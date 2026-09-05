@@ -46,8 +46,9 @@ const stripped = (src: string) =>
 /* ------------------------------------------------- the route inventory --- */
 
 describe("consumer route inventory", () => {
-  it("holds exactly the ten contracted routes", () => {
+  it("holds the ten delivery routes plus the explicit canary bootstrap", () => {
     expect(ROUTE_FILES.map(rel)).toEqual([
+      "app/api/couranr/consumer/canary/activate/route.ts",
       "app/api/couranr/consumer/estimate/route.ts",
       "app/api/couranr/consumer/interpret/route.ts",
       "app/api/couranr/consumer/pay/route.ts",
@@ -102,6 +103,15 @@ describe("consumer route inventory", () => {
         ]) {
           expect(rx.test(code), `${rel(file)} reads forbidden readiness payload data`).toBe(false);
         }
+      } else if (rel(file) === "app/api/couranr/consumer/canary/activate/route.ts") {
+        // Release-control bootstrap, not a delivery command. Its entire body
+        // vocabulary is the one-time opaque canary credential. Keeping this
+        // exception exact prevents a new consumer route from gaining arbitrary
+        // form-body authority.
+        expect((code.match(/req\.formData\(\)/g) || []).length).toBe(1);
+        expect(code).toContain('form.get("token")');
+        expect(code).toContain("redeemConsumerCanaryAccess");
+        expect(code).not.toMatch(/searchParams|get\(["'](?:amount|state|target|policy|route|price|total)/i);
       } else {
         expect(/req\.json\(\)|req\.text\(\)|req\.formData\(\)/.test(code)).toBe(false);
       }
@@ -111,11 +121,21 @@ describe("consumer route inventory", () => {
       }
     });
 
-    it(`${rel(file)} is guest-gated or mints the session`, () => {
-      expect(
-        /redeemGuestSessionToken/.test(src) || /createGuestSession/.test(src),
-        `${rel(file)} has no gate`
-      ).toBe(true);
+    it(`${rel(file)} has its exact funnel authorization boundary`, () => {
+      const name = rel(file);
+      if (name === "app/api/couranr/consumer/canary/activate/route.ts") {
+        expect(src).toMatch(/consumerSendServerLive\(\)/);
+        expect(src).toMatch(/consumerSendProductionEnvironment\(\)/);
+        expect(src).toMatch(/redeemConsumerCanaryAccess\(/);
+        return;
+      }
+      if (name === "app/api/couranr/consumer/session/route.ts") {
+        expect(src).toMatch(/consumerSendServerLive\(\)/);
+        expect(src).toMatch(/createConsumerCanaryGuestSession\(/);
+        expect(src).toMatch(/createGuestSession\(/);
+        return;
+      }
+      expect(src, `${name} has no guest-token gate`).toMatch(/redeemGuestSessionToken/);
     });
   }
 });

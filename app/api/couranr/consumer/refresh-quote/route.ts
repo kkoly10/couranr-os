@@ -5,6 +5,11 @@ import {
   isConsumerFailure,
 } from "@/lib/couranr/consumer/send";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
+import {
+  consumerSendProductionEnvironment,
+  consumerSendServerLive,
+} from "@/lib/couranr/sameday/serverGate";
+import { claimConsumerCanaryEstimate } from "@/lib/couranr/consumer/canary";
 
 export const dynamic = "force-dynamic";
 
@@ -21,8 +26,20 @@ export const dynamic = "force-dynamic";
  * authorization or inside Couranr review is never re-priced from here.
  */
 export async function POST(req: NextRequest) {
+  if (!consumerSendServerLive()) return routeFailure("not_found");
+
   const session = await redeemGuestSessionToken(req);
   if (isConsumerFailure(session)) return routeFailure("not_found");
+
+  if (
+    consumerSendProductionEnvironment() &&
+    !(await claimConsumerCanaryEstimate(String(session.value.id)))
+  ) {
+    return routeFailure(
+      "rate_limited",
+      "Quote refresh limit reached for this production pilot."
+    );
+  }
 
   const r = await refreshConsumerSendQuote({ session: session.value });
   if (isConsumerFailure(r)) return failureResponse(r);

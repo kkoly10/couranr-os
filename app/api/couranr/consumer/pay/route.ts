@@ -5,6 +5,7 @@ import {
   payConsumerSend,
 } from "@/lib/couranr/consumer/send";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
+import { consumerSendServerLive } from "@/lib/couranr/sameday/serverGate";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,8 @@ export const dynamic = "force-dynamic";
  * legitimately crosses to the browser.
  */
 export async function POST(req: NextRequest) {
+  if (!consumerSendServerLive()) return routeFailure("not_found");
+
   const session = await redeemGuestSessionToken(req);
   if (isConsumerFailure(session)) return routeFailure("not_found");
 

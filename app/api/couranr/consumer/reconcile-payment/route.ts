@@ -5,6 +5,7 @@ import {
   reconcileConsumerPayment,
 } from "@/lib/couranr/consumer/send";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
+import { consumerSendServerLive } from "@/lib/couranr/sameday/serverGate";
 import { advanceAutomaticFulfillment } from "@/lib/couranr/automation/engine";
 
 export const dynamic = "force-dynamic";
@@ -16,6 +17,8 @@ export const dynamic = "force-dynamic";
  * intent and applies the verified state. The body is never read.
  */
 export async function POST(req: NextRequest) {
+  if (!consumerSendServerLive()) return routeFailure("not_found");
+
   const session = await redeemGuestSessionToken(req);
   if (isConsumerFailure(session)) return routeFailure("not_found");
 

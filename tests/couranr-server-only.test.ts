@@ -119,6 +119,10 @@ describe("server-only modules are unreachable from client code", () => {
       // INT-002. Composes Consumer Smart Intake over the shared intake
       // commands (service-role) and reads the kill switch. A bundle reaching
       // it would ship the write path for a guest's intake evidence.
+      // Production Same Day canary authority: hash-only access redemption,
+      // HttpOnly-cookie validation and one-session issuance. It owns the
+      // service-role canary RPCs and must never enter a browser bundle.
+      "lib/couranr/consumer/canary.ts",
       "lib/couranr/consumer/intake.ts",
       // Batch 3 §D. Holds the service-role client, the guest-session hashing
       // and every consumer command wrapper. A bundle reaching it would ship
@@ -269,6 +273,7 @@ describe("canonical server routes do not import the browser client", () => {
    */
   it("covers every canonical route", () => {
     expect(canonical.map(rel).sort()).toEqual([
+      "app/api/couranr/consumer/canary/activate/route.ts",
       "app/api/couranr/consumer/estimate/route.ts",
       "app/api/couranr/consumer/interpret/route.ts",
       "app/api/couranr/consumer/pay/route.ts",
@@ -504,9 +509,40 @@ describe("canonical server routes do not import the browser client", () => {
        * authorization for every other consumer route, which this test forces
        * to redeem it). Hold it to its own contract instead of an auth check.
        */
+      if (name === "app/api/couranr/consumer/canary/activate/route.ts") {
+        // One-time production bootstrap: the posted opaque canary token is the
+        // credential. The route is also closed unless BOTH production live
+        // switches are armed.
+        expect(src, `${name} must check the server live gate`).toMatch(
+          /consumerSendServerLive\(\)/
+        );
+        expect(src, `${name} must require production`).toMatch(
+          /consumerSendProductionEnvironment\(\)/
+        );
+        expect(src, `${name} must redeem the canary credential`).toMatch(
+          /redeemConsumerCanaryAccess\(/
+        );
+        expect(src, `${name} must keep the raw code out of the URL`).not.toMatch(
+          /(?:searchParams|nextUrl\.searchParams)[\s\S]{0,80}get\(["']token["']\)/
+        );
+        expect(src, `${name} must read the credential from FormData`).toMatch(
+          /form\.get\(["']token["']\)/
+        );
+        continue;
+      }
       if (name === "app/api/couranr/consumer/session/route.ts") {
-        expect(src, `${name} must mint through createGuestSession`).toMatch(/createGuestSession\(/);
-        expect(src, `${name} must document its unauthenticated design`).toMatch(/UNAUTHENTICATED BY DESIGN/);
+        // Session issuance itself is independently kill-switched. In
+        // production it requires the canary HttpOnly cookie; only nonproduction
+        // live environments may use the ordinary guest-session issuer.
+        expect(src, `${name} must check the server live gate`).toMatch(
+          /consumerSendServerLive\(\)/
+        );
+        expect(src, `${name} must require canary session issuance in production`).toMatch(
+          /createConsumerCanaryGuestSession\(/
+        );
+        expect(src, `${name} keeps the nonproduction live test path`).toMatch(
+          /createGuestSession\(/
+        );
         continue;
       }
       if (name === "app/api/couranr/hosted/[merchantSlug]/session/route.ts") {

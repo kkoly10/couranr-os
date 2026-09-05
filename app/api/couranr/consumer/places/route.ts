@@ -5,6 +5,11 @@ import {
   isConsumerFailure,
 } from "@/lib/couranr/consumer/send";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
+import {
+  consumerSendProductionEnvironment,
+  consumerSendServerLive,
+} from "@/lib/couranr/sameday/serverGate";
+import { claimConsumerCanaryPlaceSearch } from "@/lib/couranr/consumer/canary";
 
 export const dynamic = "force-dynamic";
 
@@ -17,10 +22,27 @@ export const dynamic = "force-dynamic";
  * Place Details inside the estimate pipeline.
  */
 export async function GET(req: NextRequest) {
+  if (!consumerSendServerLive()) return routeFailure("not_found");
+
   const session = await redeemGuestSessionToken(req);
   if (isConsumerFailure(session)) return routeFailure("not_found");
 
-  const r = await autocompleteConsumerPlaces(req.nextUrl.searchParams.get("query"));
+  const query = req.nextUrl.searchParams.get("query");
+  if (!query || query.trim().length < 3) {
+    return NextResponse.json({ suggestions: [] });
+  }
+
+  if (
+    consumerSendProductionEnvironment() &&
+    !(await claimConsumerCanaryPlaceSearch(String(session.value.id)))
+  ) {
+    return routeFailure(
+      "rate_limited",
+      "Address search limit reached for this production pilot."
+    );
+  }
+
+  const r = await autocompleteConsumerPlaces(query);
   if (isConsumerFailure(r)) return failureResponse(r);
   return NextResponse.json({ suggestions: r.value.suggestions });
 }

@@ -156,6 +156,7 @@ describe("classifyDatabaseError", () => {
 describe("canonical routes cannot leak a database detail", () => {
   it("covers every canonical route", () => {
     expect(ROUTES.map(rel).sort()).toEqual([
+      "app/api/couranr/consumer/canary/activate/route.ts",
       "app/api/couranr/consumer/estimate/route.ts",
       "app/api/couranr/consumer/interpret/route.ts",
       "app/api/couranr/consumer/pay/route.ts",
@@ -270,8 +271,14 @@ describe("canonical routes cannot leak a database detail", () => {
       const jsonCalls = src.match(/NextResponse\.json\(/g) || [];
       const errorBodies = src.match(/NextResponse\.json\(\s*\{\s*error:/g) || [];
       expect(errorBodies, `${rel(file)} hand-rolls an error body`).toHaveLength(0);
-      // Every route returns at least one success body.
-      expect(jsonCalls.length).toBeGreaterThan(0);
+      // Most routes return a JSON success body. The canary bootstrap is the
+      // one exact exception: success and refusal both redirect without ever
+      // constructing a data-bearing response body.
+      if (rel(file) === "app/api/couranr/consumer/canary/activate/route.ts") {
+        expect(src).toMatch(/NextResponse\.redirect\(/);
+      } else {
+        expect(jsonCalls.length).toBeGreaterThan(0);
+      }
     });
 
     it(`${rel(file)} forwards no driver field`, () => {
