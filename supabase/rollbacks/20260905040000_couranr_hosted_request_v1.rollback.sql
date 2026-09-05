@@ -41,7 +41,7 @@ drop function if exists public.couranr_resolve_hosted_request_merchant(text);
 drop trigger if exists couranr_hri_identity_immutable_trg
   on public.couranr_hosted_request_intakes;
 drop function if exists private.couranr_hosted_intake_identity_immutable();
-drop table public.couranr_hosted_request_intakes;
+drop table public.couranr_hosted_request_intakes restrict;
 
 -- Restore the exact pre-hosted review ordering.
 create or replace function public.couranr_try_auto_accept_standard_request(
