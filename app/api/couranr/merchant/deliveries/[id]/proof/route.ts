@@ -5,8 +5,12 @@ import {
   resolveRequestActor,
   resolveUserId,
 } from "@/lib/couranr/requests/actor";
-import { failureResponse, routeFailure, routeInternalFailure } from "@/lib/couranr/requests/respond";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
+import {
+  isDispatchFailure,
+  resolveMerchantBusinessForDelivery,
+} from "@/lib/couranr/dispatch/commands";
+import { canActOnDeliveryRequest } from "@/lib/couranr/requests/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -22,8 +26,9 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
  * returns a URL, because for this audience one does not exist.
  *
  * `listProofMetadata` is scoped by delivery id alone, so the whole
- * authorization is the resolution above it: the delivery's own business account
- * decides who may ask.
+ * authorization is the resolution above it. Direct merchant deliveries use
+ * delivery.business_account_id; hosted Consumer deliveries resolve the durable
+ * hosted-intake relationship without fabricating merchant tenancy.
  */
 export async function GET(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -32,25 +37,24 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
 
   if (!UUID_RE.test(params.id)) return routeFailure("not_found", "Delivery not found.");
 
-  const { data: delivery, error: deliveryFailed } = (await supabaseAdmin
-    .from("couranr_deliveries")
-    .select("id,business_account_id")
-    .eq("id", params.id)
-    .maybeSingle()) as { data: any; error: any };
-  if (deliveryFailed) return routeInternalFailure({ operation: "merchantProof:delivery" });
-  if (!delivery) return routeFailure("not_found", "Delivery not found.");
-
-  const businessAccountId = String(delivery.business_account_id ?? "");
-  if (!UUID_RE.test(businessAccountId)) {
-    return routeInternalFailure({ operation: "merchantProof:scope" });
-  }
+  const scope = await resolveMerchantBusinessForDelivery(params.id);
+  if (isDispatchFailure(scope)) return failureResponse(scope);
+  const businessAccountId = scope.value.businessAccountId;
 
   const actor = await resolveRequestActor(req, businessAccountId);
   if (isActorDenied(actor)) return routeFailure(actor.code, actor.error);
-  if (
-    actor.actor.kind === "member" &&
-    (actor.actor.membership === null || actor.actor.membership.status !== "active")
-  ) {
+
+  const permission = canActOnDeliveryRequest(
+    actor.actor,
+    "read",
+    businessAccountId
+  );
+  if (!permission.allowed) {
+    // A signed-in user outside this business gets the same answer as for a
+    // missing delivery. Active members may read proof metadata.
+    if (actor.actor.kind === "member" && !actor.actor.membership) {
+      return routeFailure("not_found", "Delivery not found.");
+    }
     return routeFailure("not_permitted", "You do not have access to this delivery.");
   }
 

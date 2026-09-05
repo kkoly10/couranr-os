@@ -28,6 +28,11 @@ import {
   type WeightBand,
 } from "@/lib/couranr/shipment/facts";
 import type { ReadinessState } from "@/lib/couranr/requests/states";
+import {
+  generateTrackingToken,
+  hashTrackingToken,
+  TRACKING_TOKEN_TTL_DAYS,
+} from "@/lib/couranr/tracking/tokens";
 
 assertServerOnly("lib/couranr/hosted/commands.ts");
 
@@ -39,6 +44,8 @@ const RPC = {
   createIntake: "couranr_create_hosted_request_intake",
   redeemIntake: "couranr_redeem_hosted_request_intake",
   createRequest: "couranr_create_hosted_delivery_request",
+  claimPlaceSearch: "couranr_claim_hosted_place_search",
+  issueTrackingIfAbsent: "couranr_issue_hosted_tracking_if_absent",
   validateRequest: "couranr_validate_hosted_delivery_request",
   beginPreparation: "couranr_begin_hosted_delivery_preparation",
   markReady: "couranr_mark_hosted_delivery_ready",
@@ -394,6 +401,31 @@ export function validateHostedSubmitBody(raw: unknown): HostedBodyResult {
   };
 }
 
+/* ------------------------------------------------------ public throttles */
+
+/**
+ * Per-intake Places throttle. This runs before the shared global paid-provider
+ * budget, so one hosted browser cannot spend the whole daily Google allowance.
+ */
+export async function claimHostedPlaceSearch(
+  session: HostedSession
+): Promise<HostedResult<{ allowed: true }>> {
+  const op = "claimHostedPlaceSearch";
+  const r = await callRpc<boolean>(op, RPC.claimPlaceSearch, {
+    p_intake_id: session.id,
+  });
+  if (isHostedFailure(r)) return r;
+  if (r.value !== true) {
+    return fail({
+      operation: op,
+      code: "rate_limited",
+      detail: { reason: "hosted_places_hourly_limit" },
+      message: "Too many address searches. Wait a little and try again.",
+    });
+  }
+  return { ok: true, value: { allowed: true } };
+}
+
 /* ---------------------------------------------------------- public write */
 
 export async function submitHostedRequest(params: {
@@ -431,6 +463,8 @@ export type HostedPublicRequestView = {
   merchantValidated: boolean;
   paymentPending: boolean;
   terminal: boolean;
+  /** Returned only once when the confirmed request gets its first live tracking link. */
+  trackingToken?: string;
 };
 
 export async function readHostedRequest(
@@ -469,18 +503,41 @@ export async function readHostedRequest(
   }
 
   const state = String((data as any).request_state);
-  return {
-    ok: true,
-    value: {
-      submitted: true,
-      requestState: state,
-      quoteStatus: String((data as any).quote_status),
-      merchantValidated: state !== "awaiting_merchant_confirmation",
-      paymentPending:
-        state === "awaiting_quote_acceptance" || state === "quote_revision_required",
-      terminal: ["declined", "cancelled", "closed"].includes(state),
-    },
+  const value: HostedPublicRequestView = {
+    submitted: true,
+    requestState: state,
+    quoteStatus: String((data as any).quote_status),
+    merchantValidated: state !== "awaiting_merchant_confirmation",
+    paymentPending:
+      state === "awaiting_quote_acceptance" || state === "quote_revision_required",
+    terminal: ["declined", "cancelled", "closed"].includes(state),
   };
+
+  /*
+   * The hosted session is the customer's authorization to THIS one request,
+   * exactly like the /send guest session. Once confirmed, mint one tracking
+   * credential if no live one exists. This makes the short-lived hosted intake
+   * hand off to the 30-day, one-delivery tracking surface instead of stranding
+   * the customer after the 24-hour intake session expires.
+   */
+  if (state === "confirmed") {
+    const rawTrackingToken = generateTrackingToken();
+    const issued = await callRpc<boolean>(op, RPC.issueTrackingIfAbsent, {
+      p_request_id: String((data as any).id),
+      p_token_hash: hashTrackingToken(rawTrackingToken),
+      p_ttl_days: TRACKING_TOKEN_TTL_DAYS,
+    });
+    if (isHostedFailure(issued)) return issued;
+
+    // TRUE means this call won the database-serialized issuance race. FALSE
+    // means another tab/session already owns a live token and this candidate
+    // raw value is discarded without ever becoming a credential.
+    if (issued.value === true) {
+      value.trackingToken = rawTrackingToken;
+    }
+  }
+
+  return { ok: true, value };
 }
 
 /* ------------------------------------------------------ merchant context */
@@ -552,14 +609,19 @@ export async function getHostedMerchantContext(params: {
  * The request_id is UNIQUE in the intake table, so this cannot blend evidence
  * from two merchants or two customer sessions.
  */
+export type HostedOperationsContext = HostedMerchantContext & {
+  hostBusinessAccountId: string;
+  hostBusinessName: string | null;
+};
+
 export async function getHostedOperationsContext(params: {
   requestId: string;
-}): Promise<HostedResult<HostedMerchantContext | null>> {
+}): Promise<HostedResult<HostedOperationsContext | null>> {
   const op = "getHostedOperationsContext";
   const { data, error } = await supabaseAdmin
     .from("couranr_hosted_request_intakes")
     .select(
-      "order_reference,requested_payer_type,destination_label,shipment_description,customer_weight_lb,customer_weight_band,customer_restricted_class,signature_requested"
+      "host_business_account_id,order_reference,requested_payer_type,destination_label,shipment_description,customer_weight_lb,customer_weight_band,customer_restricted_class,signature_requested"
     )
     .eq("request_id", params.requestId)
     .maybeSingle();
@@ -573,9 +635,33 @@ export async function getHostedOperationsContext(params: {
   }
   if (!data) return { ok: true, value: null };
   const row = data as any;
+  const hostBusinessAccountId = String(row.host_business_account_id ?? "");
+  if (!hostBusinessAccountId) {
+    return fail({
+      operation: op,
+      code: "internal",
+      detail: { reason: "host_business_account_missing" },
+    });
+  }
+  const { data: hostAccount, error: hostAccountError } = await supabaseAdmin
+    .from("business_accounts")
+    .select("name")
+    .eq("id", hostBusinessAccountId)
+    .maybeSingle();
+  if (hostAccountError) {
+    return fail({
+      operation: op,
+      code: "internal",
+      detail: hostAccountError.message,
+    });
+  }
   return {
     ok: true,
     value: {
+      hostBusinessAccountId,
+      hostBusinessName: (hostAccount as any)?.name
+        ? String((hostAccount as any).name)
+        : null,
       orderReference: row.order_reference ? String(row.order_reference) : null,
       requestedPayerType:
         row.requested_payer_type === "merchant" || row.requested_payer_type === "customer"
@@ -605,6 +691,29 @@ export type HostedValidationInput = {
   restrictedClass: RestrictedClassDeclaration;
   signatureRequired: boolean;
 };
+
+/**
+ * Customer safety evidence may become MORE conservative during merchant
+ * validation, never less. A specific customer declaration can be confirmed or
+ * escalated to unknown; it cannot be erased to none or rewritten to a
+ * different specific class.
+ */
+export function hostedRestrictedClassTransitionAllowed(
+  customerDeclaration: RestrictedClassDeclaration | null | undefined,
+  merchantDeclaration: RestrictedClassDeclaration
+): boolean {
+  if (
+    !customerDeclaration ||
+    customerDeclaration === "none" ||
+    customerDeclaration === "unknown"
+  ) {
+    return true;
+  }
+  return (
+    merchantDeclaration === customerDeclaration ||
+    merchantDeclaration === "unknown"
+  );
+}
 
 export function validateMerchantHostedConfirmation(raw: unknown):
   | { ok: true; value: HostedValidationInput }
@@ -680,6 +789,88 @@ export async function validateHostedRequestByMerchant(params: {
           ? classifyDatabaseError(requestError ?? intakeError)
           : "not_found",
       detail: requestError?.message ?? intakeError?.message,
+    });
+  }
+
+  /*
+   * PROVIDER-COST PREFLIGHT.
+   *
+   * Google Place Details and Mapbox are paid calls. The SQL function below is
+   * still the final authority under a row lock, but putting all cheap refusal
+   * checks BEFORE deriveCanonicalRouteAndQuote means a viewer/billing member,
+   * stale tab, duplicate validation, or already-quoted request cannot spend
+   * Couranr's provider budget just to be rejected afterwards.
+   */
+  const { data: membership, error: membershipError } = await supabaseAdmin
+    .from("business_members")
+    .select("role,status")
+    .eq("business_account_id", params.hostBusinessAccountId)
+    .eq("user_id", params.actorUserId)
+    .maybeSingle();
+
+  if (membershipError) {
+    return fail({
+      operation: op,
+      code: "internal",
+      detail: membershipError.message,
+    });
+  }
+  if (
+    !membership ||
+    (membership as any).status !== "active" ||
+    !["owner", "manager", "dispatcher"].includes(String((membership as any).role ?? ""))
+  ) {
+    return fail({
+      operation: op,
+      code: "not_permitted",
+      detail: { reason: "role_may_not_validate_hosted_request" },
+      message: "Your role can view this request but cannot validate it.",
+    });
+  }
+
+  const requestRow = request as any;
+  if (
+    Number(requestRow.version) !== params.expectedVersion ||
+    requestRow.request_state !== "awaiting_merchant_confirmation" ||
+    requestRow.current_quote_version_id !== null ||
+    requestRow.quote_status !== "not_quoted"
+  ) {
+    return fail({
+      operation: op,
+      code: "conflict",
+      detail: { reason: "version_or_state_conflict" },
+      message: "This request changed before validation. Refresh and try again.",
+    });
+  }
+
+  /*
+   * CUSTOMER SAFETY EVIDENCE IS MONOTONIC.
+   *
+   * A customer who explicitly declared a governed restricted class created
+   * immutable intake evidence. Merchant validation may confirm that same class
+   * or choose "unknown" to escalate it for Couranr review; it may not silently
+   * erase or rewrite that declaration to "none" or to a different class.
+   */
+  const customerRestrictedClass = isRestrictedClassDeclaration(
+    (intake as any).customer_restricted_class
+  )
+    ? ((intake as any).customer_restricted_class as RestrictedClassDeclaration)
+    : "unknown";
+  if (
+    !hostedRestrictedClassTransitionAllowed(
+      customerRestrictedClass,
+      params.input.restrictedClass
+    )
+  ) {
+    return fail({
+      operation: op,
+      code: "invalid_input",
+      detail: {
+        reason: "customer_restricted_class_cannot_be_downgraded",
+        customerRestrictedClass,
+      },
+      message:
+        "The customer reported a restricted item. Keep that declaration or choose Unknown for Couranr review.",
     });
   }
 

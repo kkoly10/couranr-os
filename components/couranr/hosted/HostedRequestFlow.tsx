@@ -13,12 +13,17 @@ type RequestView = {
   merchantValidated: boolean;
   paymentPending: boolean;
   terminal: boolean;
+  trackingToken?: string;
 };
 
 const HEADER = "x-couranr-hosted-request";
 
 function storageKey(slug: string) {
   return `couranr-hosted-request:${slug}`;
+}
+
+function trackingStorageKey(slug: string) {
+  return `couranr-hosted-tracking:${slug}`;
 }
 
 function statusCopy(view: RequestView | null, merchantName: string) {
@@ -67,6 +72,7 @@ export function HostedRequestFlow({
   const [token, setToken] = React.useState<string | null>(null);
   const [requestView, setRequestView] = React.useState<RequestView | null>(null);
   const [submitted, setSubmitted] = React.useState(false);
+  const [previousTrackingToken, setPreviousTrackingToken] = React.useState<string | null>(null);
 
   const [orderReference, setOrderReference] = React.useState("");
   const [destinationQuery, setDestinationQuery] = React.useState("");
@@ -123,13 +129,43 @@ export function HostedRequestFlow({
     }
     const payload = await response.json().catch(() => null);
     if (!response.ok || !payload) return;
+
+    if (typeof payload.trackingToken === "string" && payload.trackingToken) {
+      // Tracking is a 30-day bearer credential designed for the customer to
+      // retain/share. Persist it separately from the 24-hour intake session so
+      // a later status refresh cannot make the one-time raw token disappear.
+      window.localStorage.setItem(
+        trackingStorageKey(merchantSlug),
+        payload.trackingToken
+      );
+      setPreviousTrackingToken(payload.trackingToken);
+    } else {
+      const persistedTracking = window.localStorage.getItem(
+        trackingStorageKey(merchantSlug)
+      );
+      if (persistedTracking) payload.trackingToken = persistedTracking;
+    }
+
     setRequestView(payload as RequestView);
     if (payload.submitted) setSubmitted(true);
   }, [apiBase, merchantSlug]);
 
   React.useEffect(() => {
     const existing = window.sessionStorage.getItem(storageKey(merchantSlug));
-    if (!existing) return;
+    const persistedTracking = window.localStorage.getItem(
+      trackingStorageKey(merchantSlug)
+    );
+
+    if (!existing) {
+      // A tracking link outlives the 24-hour intake session, but it must NOT
+      // turn every future visit to this merchant into the old order. Preserve
+      // it only as an optional "track previous delivery" action while leaving
+      // the new-request form available.
+      if (persistedTracking) setPreviousTrackingToken(persistedTracking);
+      return;
+    }
+
+    if (persistedTracking) setPreviousTrackingToken(persistedTracking);
     setToken(existing);
     void readStatus(existing);
   }, [merchantSlug, readStatus]);
@@ -256,6 +292,19 @@ export function HostedRequestFlow({
               Couranr is handling delivery only. Any merchandise purchase, refund or order
               change remains between you and {merchantName}.
             </Text>
+            {requestView?.trackingToken ? (
+              <Button
+                variant="primary"
+                type="button"
+                onClick={() => {
+                  window.location.assign(
+                    `/track/${encodeURIComponent(requestView.trackingToken ?? "")}`
+                  );
+                }}
+              >
+                Track delivery
+              </Button>
+            ) : null}
             <Button
               variant="ghost"
               onClick={() => {
@@ -282,6 +331,25 @@ export function HostedRequestFlow({
             The business validates the request before any delivery payment can begin.
           </Text>
         </div>
+
+        {previousTrackingToken ? (
+          <Alert tone="info" title="Have an earlier delivery with this business?">
+            <Cluster gap={2}>
+              <Text size="sm">You can track it without blocking a new request.</Text>
+              <Button
+                variant="secondary"
+                type="button"
+                onClick={() => {
+                  window.location.assign(
+                    `/track/${encodeURIComponent(previousTrackingToken)}`
+                  );
+                }}
+              >
+                Track previous delivery
+              </Button>
+            </Cluster>
+          </Alert>
+        ) : null}
 
         {error ? <Alert tone="danger" title="Check these details">{error}</Alert> : null}
 

@@ -181,6 +181,87 @@ function groupRequests(rows: RequestRow[]) {
   return groups;
 }
 
+/**
+ * Delivery history owned by this merchant relationship.
+ *
+ * Direct merchant requests carry business_account_id. Hosted customer requests
+ * intentionally do not; their host relationship lives in the immutable intake.
+ * Resolve that relation first, then read only those request ids. This keeps the
+ * customer book useful for hosted orders without rewriting Consumer tenancy.
+ */
+async function loadCustomerRequestsForBusiness(
+  businessAccountId: string
+): Promise<CustomersResult<RequestRow[]>> {
+  const op = "loadCustomerRequestsForBusiness";
+  const projection =
+    "id,recipient_name,recipient_phone,recipient_email,dropoff_address,request_state,payer_type,created_at";
+
+  const [direct, hostedIntakes] = await Promise.all([
+    supabaseAdmin
+      .from("couranr_delivery_requests")
+      .select(projection)
+      .eq("business_account_id", businessAccountId)
+      .order("created_at", { ascending: false })
+      .limit(500),
+    supabaseAdmin
+      .from("couranr_hosted_request_intakes")
+      .select("request_id")
+      .eq("host_business_account_id", businessAccountId)
+      .not("request_id", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(500),
+  ]);
+
+  if (direct.error || !Array.isArray(direct.data)) {
+    return fail({
+      operation: op,
+      code: "internal",
+      detail: { lookup: "direct delivery requests", error: direct.error },
+    });
+  }
+  if (hostedIntakes.error || !Array.isArray(hostedIntakes.data)) {
+    return fail({
+      operation: op,
+      code: "internal",
+      detail: { lookup: "hosted request relationships", error: hostedIntakes.error },
+    });
+  }
+
+  const hostedIds = (hostedIntakes.data as any[])
+    .map((row) => String(row.request_id ?? ""))
+    .filter(Boolean);
+
+  let hostedRows: any[] = [];
+  if (hostedIds.length > 0) {
+    const hosted = await supabaseAdmin
+      .from("couranr_delivery_requests")
+      .select(projection)
+      .in("id", hostedIds)
+      .eq("source", "hosted_request")
+      .eq("requester_kind", "consumer")
+      .is("business_account_id", null)
+      .order("created_at", { ascending: false })
+      .limit(500);
+    if (hosted.error || !Array.isArray(hosted.data)) {
+      return fail({
+        operation: op,
+        code: "internal",
+        detail: { lookup: "hosted delivery requests", error: hosted.error },
+      });
+    }
+    hostedRows = hosted.data as any[];
+  }
+
+  const byId = new Map<string, RequestRow>();
+  for (const row of [...(direct.data as any[]), ...hostedRows]) {
+    byId.set(String(row.id), row as RequestRow);
+  }
+  const rows = [...byId.values()]
+    .sort((a, b) => (a.created_at < b.created_at ? 1 : -1))
+    .slice(0, 500);
+  return { ok: true, value: rows };
+}
+
 export async function listCustomers(params: {
   actor: ActorMembership;
   businessAccountId: string;
@@ -192,23 +273,10 @@ export async function listCustomers(params: {
   const denied = requireCapability(op, params.actor, "customers.read");
   if (denied) return denied;
 
-  // Never `select("*")`: an allow-list is what stops a future column from
-  // publishing itself to a merchant screen.
-  const requests = await supabaseAdmin
-    .from("couranr_delivery_requests")
-    .select(
-      "id,recipient_name,recipient_phone,recipient_email,dropoff_address,request_state,payer_type,created_at"
-    )
-    .eq("business_account_id", params.businessAccountId)
-    .order("created_at", { ascending: false })
-    .limit(500);
-
-  if (requests.error) {
-    return fail({ operation: op, code: "internal", detail: { lookup: "couranr_delivery_requests", error: requests.error } });
-  }
-  if (!Array.isArray(requests.data)) {
-    return fail({ operation: op, code: "internal", detail: { reason: "no error and no rows array" } });
-  }
+  // Never `select("*")`: the shared loader uses an explicit projection and
+  // merges direct tenancy with the separately authorized hosted relationship.
+  const requests = await loadCustomerRequestsForBusiness(params.businessAccountId);
+  if (isCustomersFailure(requests)) return requests;
 
   const stored = await supabaseAdmin
     .from("merchant_customers")
@@ -223,7 +291,7 @@ export async function listCustomers(params: {
     return fail({ operation: op, code: "internal", detail: { reason: "no error and no rows array" } });
   }
 
-  const groups = groupRequests(requests.data as RequestRow[]);
+  const groups = groupRequests(requests.value);
   const entries = new Map<string, CustomerListEntry>();
 
   // Stored records first, so a record with no deliveries still appears.
@@ -341,18 +409,8 @@ export async function getCustomer(params: {
   const denied = requireCapability(op, params.actor, "customers.read");
   if (denied) return denied;
 
-  const requests = await supabaseAdmin
-    .from("couranr_delivery_requests")
-    .select(
-      "id,recipient_name,recipient_phone,recipient_email,dropoff_address,request_state,payer_type,created_at"
-    )
-    .eq("business_account_id", params.businessAccountId)
-    .order("created_at", { ascending: false })
-    .limit(500);
-
-  if (requests.error || !Array.isArray(requests.data)) {
-    return fail({ operation: op, code: "internal", detail: { lookup: "couranr_delivery_requests" } });
-  }
+  const requests = await loadCustomerRequestsForBusiness(params.businessAccountId);
+  if (isCustomersFailure(requests)) return requests;
 
   const stored = await supabaseAdmin
     .from("merchant_customers")
@@ -363,7 +421,7 @@ export async function getCustomer(params: {
     return fail({ operation: op, code: "internal", detail: { lookup: "merchant_customers" } });
   }
 
-  const groups = groupRequests(requests.data as RequestRow[]);
+  const groups = groupRequests(requests.value);
 
   // The caller holds an OPAQUE key. Resolve it by hashing each candidate this
   // business actually owns and comparing — so a key from another tenant simply

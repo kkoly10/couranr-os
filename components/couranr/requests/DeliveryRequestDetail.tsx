@@ -174,6 +174,8 @@ export function DeliveryRequestDetail({
   const [isOperations, setIsOperations] = React.useState(false);
   /** Which business this viewer read the request as; null for Operations. */
   const [viewerBusinessAccountId, setViewerBusinessAccountId] = React.useState<string | null>(null);
+  /** UX-only role hint. Server routes independently enforce every capability. */
+  const [viewerBusinessRole, setViewerBusinessRole] = React.useState<string | null>(null);
   /**
    * Payment, plan and delivery for this request, from the one endpoint that
    * serves both surfaces — so the merchant and Operations cannot be shown
@@ -234,6 +236,7 @@ export function DeliveryRequestDetail({
         setHostedContext(r.value.hostedContext ?? null);
         setIsOperations(true);
         setViewerBusinessAccountId(null);
+        setViewerBusinessRole(null);
         void reloadFulfillment(null);
         setLoading(false);
         return;
@@ -256,6 +259,9 @@ export function DeliveryRequestDetail({
       }
 
       for (const businessAccountId of ids) {
+        const account = accounts.value.businessAccounts.find(
+          (candidate) => candidate.businessAccountId === businessAccountId
+        );
         const r = await fetchDeliveryRequest({ id, businessAccountId });
         if (cancelled) return;
         if (!isApiFailure(r)) {
@@ -266,6 +272,7 @@ export function DeliveryRequestDetail({
           setHostedContext(r.value.hostedContext ?? null);
           setIsOperations(false);
           setViewerBusinessAccountId(businessAccountId);
+          setViewerBusinessRole(account?.role ?? null);
           void reloadFulfillment(businessAccountId);
           setLoading(false);
           return;
@@ -323,6 +330,11 @@ export function DeliveryRequestDetail({
     });
   };
 
+  const viewerMayWriteDelivery =
+    viewerBusinessRole === "owner" ||
+    viewerBusinessRole === "manager" ||
+    viewerBusinessRole === "dispatcher";
+
   return (
     <Stack gap={6}>
       {isOperations ? (
@@ -378,6 +390,7 @@ export function DeliveryRequestDetail({
           request={request}
           context={hostedContext}
           businessAccountId={viewerBusinessAccountId}
+          canValidate={viewerMayWriteDelivery}
           onChanged={() => {
             void reloadFulfillment(viewerBusinessAccountId);
             void fetchDeliveryRequest({
@@ -403,6 +416,12 @@ export function DeliveryRequestDetail({
             description="Customer-entered intake evidence. The canonical address, payer, weight and safety facts below are the merchant-validated delivery record."
           />
           <Grid columns={4}>
+            {isOperations ? (
+              <Detail
+                label="Host business"
+                value={hostedContext.hostBusinessName ?? hostedContext.hostBusinessAccountId ?? "Unavailable"}
+              />
+            ) : null}
             <Detail label="Order reference" value={hostedContext.orderReference ?? "Not provided"} />
             <Detail
               label="Requested payer"
@@ -517,6 +536,7 @@ export function DeliveryRequestDetail({
         <MerchantPaymentPanel
           request={request}
           businessAccountId={viewerBusinessAccountId}
+          canManage={viewerMayWriteDelivery}
         />
       ) : null}
 
@@ -526,6 +546,7 @@ export function DeliveryRequestDetail({
           request={request}
           fulfillment={fulfillment}
           businessAccountId={viewerBusinessAccountId}
+          canManage={viewerMayWriteDelivery}
           onChanged={() => {
             void reloadFulfillment(viewerBusinessAccountId);
             void fetchDeliveryRequest({
@@ -591,16 +612,20 @@ export function DeliveryRequestDetail({
       {!isOperations && fulfillment?.delivery ? (
         <>
           <DeliveryExecutionTimeline current={fulfillment.delivery.fulfillmentState} />
-          <HandoffCodePanel
-            deliveryId={fulfillment.delivery.id}
-            kind="merchant_pickup"
-            surface="merchant"
-          />
-          <HandoffCodePanel
-            deliveryId={fulfillment.delivery.id}
-            kind="recipient_dropoff"
-            surface="merchant"
-          />
+          {viewerMayWriteDelivery ? (
+            <>
+              <HandoffCodePanel
+                deliveryId={fulfillment.delivery.id}
+                kind="merchant_pickup"
+                surface="merchant"
+              />
+              <HandoffCodePanel
+                deliveryId={fulfillment.delivery.id}
+                kind="recipient_dropoff"
+                surface="merchant"
+              />
+            </>
+          ) : null}
           <MerchantProofPanel deliveryId={fulfillment.delivery.id} />
         </>
       ) : null}

@@ -58,6 +58,18 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   });
   if (isCommandFailure(loaded)) return failureResponse(loaded);
 
+  /*
+   * Do not mutate merchant-paid requests while handling the CUSTOMER handoff.
+   * In particular, do not create a merchant obligation and only then discover
+   * that no customer link should exist.
+   */
+  if (loaded.value.request.payer_type !== "customer") {
+    return routeFailure(
+      "conflict",
+      "This delivery is paid by the business, not the customer."
+    );
+  }
+
   const requestBusinessAccountId = loaded.value.request.business_account_id ?? null;
   let ob = await getObligationForRequest({
     requestId: params.id,

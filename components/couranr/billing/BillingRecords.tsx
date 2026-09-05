@@ -204,16 +204,17 @@ export function BillingRecords() {
           */}
           {view.paymentMethod === "none_on_file" ? (
             <Alert tone="info" title="No stored payment method">
-              Couranr does not store a payment method yet. You confirm payment
-              on each delivery when you authorize it, and nothing is charged
-              until Couranr confirms the delivery.
+              Couranr does not store a payment method yet. For business-paid
+              deliveries, an authorized business user confirms payment on that
+              delivery. Customer-paid deliveries use the customer&apos;s own secure
+              payment link. Nothing is charged until Couranr confirms service.
             </Alert>
           ) : null}
 
           <Card>
             <CardHeader
               title="Delivery charges"
-              description="What Couranr charged you for delivery. The price of what you sold is yours and never appears here."
+              description="Delivery charges Couranr processed for this business, with the payer identified on every row. The price of what you sold is yours and never appears here."
               actions={
                 <Text size="sm">
                   <strong>{formatCents(view.totalChargedCents)}</strong>{" "}
@@ -242,7 +243,7 @@ export function BillingRecords() {
             {view.records.length === 0 ? (
               <EmptyState
                 title="Nothing has been charged yet"
-                body="Delivery charges appear here once you authorize a delivery."
+                body="Delivery charges appear here once the selected payer authorizes a delivery."
                 action={{ label: "Create a delivery", href: "/app/business/deliveries/new" }}
               />
             ) : (
@@ -311,8 +312,8 @@ export function BillingRecords() {
             >
               {CHARGE_RECORD_DESCRIPTIONS.failed}{" "}
               {view.records.some((r) => r.state === "failed")
-                ? "Open the delivery above to authorize it again."
-                : "The affected deliveries are older than the charges listed above. Open them from your deliveries list to authorize again."}
+                ? "Open the delivery above to restore the required payer authorization."
+                : "The affected deliveries are older than the charges listed above. Open them from your deliveries list to restore the required payer authorization."}
             </Alert>
           ) : null}
 

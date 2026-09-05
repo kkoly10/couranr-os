@@ -8,9 +8,12 @@ import {
 import {
   failureResponse,
   routeFailure,
-  routeInternalFailure,
 } from "@/lib/couranr/requests/respond";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import {
+  isDispatchFailure,
+  resolveMerchantBusinessForDelivery,
+} from "@/lib/couranr/dispatch/commands";
+import { canActOnDeliveryRequest } from "@/lib/couranr/requests/permissions";
 
 export const dynamic = "force-dynamic";
 
@@ -22,9 +25,10 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
  *
  * TWO RESOLUTIONS, DELIBERATELY. The Bearer token is validated first so no
  * unauthenticated caller can use this route to learn whether a delivery id is
- * real; only then is the delivery read, and only then is the actor resolved
- * AGAINST that delivery's business account. A merchant cannot send the scope
- * they want to be judged by — the delivery decides it.
+ * real; only then is merchant authority derived from the delivery. Direct
+ * merchant deliveries use delivery.business_account_id; hosted Consumer
+ * deliveries use the durable hosted-intake relationship. A merchant cannot
+ * send the scope they want to be judged by — the delivery decides it.
  *
  * There is no "regenerate" flag. The SQL command supersedes every live
  * generation of this kind and mints the next one, so issuing and regenerating
@@ -40,29 +44,29 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
 
   if (!UUID_RE.test(params.id)) return routeFailure("not_found", "Delivery not found.");
 
-  const { data: delivery, error: deliveryFailed } = (await supabaseAdmin
-    .from("couranr_deliveries")
-    .select("id,business_account_id")
-    .eq("id", params.id)
-    .maybeSingle()) as { data: any; error: any };
-  if (deliveryFailed) return routeInternalFailure({ operation: "merchantPickupCode:delivery" });
-  if (!delivery) return routeFailure("not_found", "Delivery not found.");
-
-  const businessAccountId = String(delivery.business_account_id ?? "");
-  if (!UUID_RE.test(businessAccountId)) {
-    return routeInternalFailure({ operation: "merchantPickupCode:scope" });
-  }
+  const scope = await resolveMerchantBusinessForDelivery(params.id);
+  if (isDispatchFailure(scope)) return failureResponse(scope);
+  const businessAccountId = scope.value.businessAccountId;
 
   const actor = await resolveRequestActor(req, businessAccountId);
   if (isActorDenied(actor)) return routeFailure(actor.code, actor.error);
-  // A member of some OTHER business resolves with a null membership, and a
-  // membership that is merely invited or disabled is not access either — the
-  // permission module treats only `active` as a member who may act.
-  if (
-    actor.actor.kind === "member" &&
-    (actor.actor.membership === null || actor.actor.membership.status !== "active")
-  ) {
-    return routeFailure("not_permitted", "You do not have access to this delivery.");
+
+  const permission = canActOnDeliveryRequest(
+    actor.actor,
+    "submit",
+    businessAccountId
+  );
+  if (!permission.allowed) {
+    // Do not turn a valid delivery UUID into a cross-tenant existence oracle.
+    // A real member with a read-only role gets the useful 403; someone outside
+    // the host business gets the same 404 as for a missing delivery.
+    if (actor.actor.kind === "member" && !actor.actor.membership) {
+      return routeFailure("not_found", "Delivery not found.");
+    }
+    return routeFailure(
+      "not_permitted",
+      "Your role can view this delivery but cannot issue handoff codes."
+    );
   }
 
   const r = await issueHandoffCode({

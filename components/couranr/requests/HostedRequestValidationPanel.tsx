@@ -60,11 +60,13 @@ export function HostedRequestValidationPanel({
   request,
   context,
   businessAccountId,
+  canValidate,
   onChanged,
 }: {
   request: DeliveryRequestView;
   context: Context | null;
   businessAccountId: string | null;
+  canValidate: boolean;
   onChanged: () => void;
 }) {
   const [payerType, setPayerType] = React.useState<"merchant" | "customer">(
@@ -93,6 +95,21 @@ export function HostedRequestValidationPanel({
     request.requestState !== "awaiting_merchant_confirmation"
   ) {
     return null;
+  }
+
+  if (!canValidate) {
+    return (
+      <Card>
+        <CardHeader
+          title="Customer request waiting for validation"
+          description="An owner, manager, or dispatcher must validate the customer-entered order before Couranr can create a payable quote."
+          actions={<Badge tone="neutral">Read only</Badge>}
+        />
+        <Alert tone="info" title="No payment has been requested">
+          Your role can view this request, but it cannot validate shipment facts or choose the delivery payer.
+        </Alert>
+      </Card>
+    );
   }
 
   async function validate() {

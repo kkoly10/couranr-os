@@ -259,6 +259,9 @@ export function fetchDeliveryRequest(input: { id: string; businessAccountId?: st
       customerWeightBand: string | null;
       customerRestrictedClass: string | null;
       signatureRequested: boolean;
+      /** Present only on the Operations cross-request read. */
+      hostBusinessAccountId?: string;
+      hostBusinessName?: string | null;
     } | null;
   }>(`/api/couranr/delivery-requests/${input.id}${qs}`);
 }

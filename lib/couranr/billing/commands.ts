@@ -62,6 +62,33 @@ const RECORD_PAGE = 100;
  */
 const TOTAL_SCAN_CAP = 5000;
 
+async function hostedRequestIdsForBusiness(
+  businessAccountId: string
+): Promise<BillingResult<string[]>> {
+  const op = "hostedRequestIdsForBusiness";
+  const { data, error } = await supabaseAdmin
+    .from("couranr_hosted_request_intakes")
+    .select("request_id")
+    .eq("host_business_account_id", businessAccountId)
+    .not("request_id", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(TOTAL_SCAN_CAP);
+
+  if (error || !Array.isArray(data)) {
+    return fail({
+      operation: op,
+      code: "internal",
+      detail: { lookup: "couranr_hosted_request_intakes", error },
+    });
+  }
+  return {
+    ok: true,
+    value: (data as any[])
+      .map((row) => String(row.request_id ?? ""))
+      .filter(Boolean),
+  };
+}
+
 /**
  * Every charge Couranr has raised against this business.
  *
@@ -75,7 +102,11 @@ export async function listBillingRecords(params: {
 }): Promise<BillingResult<BillingView>> {
   const op = "listBillingRecords";
 
-  const { data, error, count } = await supabaseAdmin
+  const hostedIdsResult = await hostedRequestIdsForBusiness(params.businessAccountId);
+  if (isBillingFailure(hostedIdsResult)) return hostedIdsResult;
+  const hostedRequestIds = hostedIdsResult.value;
+
+  const direct = await supabaseAdmin
     .from("couranr_payment_obligations")
     .select(
       "id,request_id,amount_cents,captured_amount_cents,currency,payment_state,payer_type," +
@@ -86,24 +117,53 @@ export async function listBillingRecords(params: {
     .order("created_at", { ascending: false })
     .limit(RECORD_PAGE);
 
-  if (error || !Array.isArray(data)) {
-    // Fail closed. An empty list would read as "you have never been charged",
-    // which on a billing screen is a specific and alarming falsehood.
+  if (direct.error || !Array.isArray(direct.data)) {
     return fail({
       operation: op,
       code: "internal",
-      detail: { lookup: "couranr_payment_obligations", error },
+      detail: { lookup: "direct couranr_payment_obligations", error: direct.error },
     });
   }
 
-  // Recipient names come from the requests, in ONE query rather than per row.
+  let hostedData: any[] = [];
+  let hostedCount = 0;
+  if (hostedRequestIds.length > 0) {
+    const hosted = await supabaseAdmin
+      .from("couranr_payment_obligations")
+      .select(
+        "id,request_id,amount_cents,captured_amount_cents,currency,payment_state,payer_type," +
+          "created_at,authorized_at,captured_at,failed_at,cancelled_at",
+        { count: "exact" }
+      )
+      .is("business_account_id", null)
+      .in("request_id", hostedRequestIds)
+      .order("created_at", { ascending: false })
+      .limit(RECORD_PAGE);
+    if (hosted.error || !Array.isArray(hosted.data)) {
+      return fail({
+        operation: op,
+        code: "internal",
+        detail: { lookup: "hosted couranr_payment_obligations", error: hosted.error },
+      });
+    }
+    hostedData = hosted.data as any[];
+    hostedCount = hosted.count ?? hostedData.length;
+  }
+
+  const data = [...(direct.data as any[]), ...hostedData]
+    .sort((a, b) => (String(a.created_at) < String(b.created_at) ? 1 : -1))
+    .slice(0, RECORD_PAGE);
+  const count = (direct.count ?? direct.data.length) + hostedCount;
+
+  // Recipient names come only from the already-authorized request ids: direct
+  // obligations scoped to this business or hosted obligations whose request id
+  // came from this business's durable intake relationship.
   const requestIds = Array.from(new Set(data.map((r: any) => String(r.request_id))));
   const names: Record<string, string | null> = {};
   if (requestIds.length > 0) {
     const reqs = await supabaseAdmin
       .from("couranr_delivery_requests")
-      .select("id,recipient_name,business_account_id")
-      .eq("business_account_id", params.businessAccountId)
+      .select("id,recipient_name")
       .in("id", requestIds);
 
     if (reqs.error || !Array.isArray(reqs.data)) {
@@ -150,24 +210,51 @@ export async function listBillingRecords(params: {
    * both places on purpose, so changing the query alone cannot start counting
    * authorizations as money taken.
    */
-  const totals = await supabaseAdmin
+  const directTotals = await supabaseAdmin
     .from("couranr_payment_obligations")
     .select("payment_state,amount_cents,captured_amount_cents", { count: "exact" })
     .eq("business_account_id", params.businessAccountId)
     .eq("payment_state", "captured")
     .limit(TOTAL_SCAN_CAP);
 
-  if (totals.error || !Array.isArray(totals.data)) {
-    // Fail closed rather than fall back to the page's sum. A wrong total is
-    // worse than no page at all.
+  if (directTotals.error || !Array.isArray(directTotals.data)) {
     return fail({
       operation: op,
       code: "internal",
-      detail: { lookup: "couranr_payment_obligations totals", error: totals.error },
+      detail: { lookup: "direct couranr_payment_obligations totals", error: directTotals.error },
     });
   }
 
-  const capturedCount = totals.count ?? totals.data.length;
+  let hostedTotalsData: any[] = [];
+  let hostedCapturedCount = 0;
+  if (hostedRequestIds.length > 0) {
+    const hostedTotals = await supabaseAdmin
+      .from("couranr_payment_obligations")
+      .select("payment_state,amount_cents,captured_amount_cents", { count: "exact" })
+      .is("business_account_id", null)
+      .in("request_id", hostedRequestIds)
+      .eq("payment_state", "captured")
+      .limit(TOTAL_SCAN_CAP);
+    if (hostedTotals.error || !Array.isArray(hostedTotals.data)) {
+      return fail({
+        operation: op,
+        code: "internal",
+        detail: {
+          lookup: "hosted couranr_payment_obligations totals",
+          error: hostedTotals.error,
+        },
+      });
+    }
+    hostedTotalsData = hostedTotals.data as any[];
+    hostedCapturedCount = hostedTotals.count ?? hostedTotalsData.length;
+  }
+
+  const capturedCount =
+    (directTotals.count ?? directTotals.data.length) + hostedCapturedCount;
+  const totalRows = [
+    ...(directTotals.data as any[]),
+    ...hostedTotalsData,
+  ].slice(0, TOTAL_SCAN_CAP);
 
   /*
    * Failed authorizations, counted over EVERY row. `head: true` fetches no
@@ -176,18 +263,42 @@ export async function listBillingRecords(params: {
    * authorization stops a delivery being dispatched, so a merchant whose
    * failure fell off the page would never be told what is blocking them.
    */
-  const failed = await supabaseAdmin
+  const directFailed = await supabaseAdmin
     .from("couranr_payment_obligations")
     .select("id", { count: "exact", head: true })
     .eq("business_account_id", params.businessAccountId)
     .eq("payment_state", "failed");
 
-  if (failed.error) {
+  if (directFailed.error) {
     return fail({
       operation: op,
       code: "internal",
-      detail: { lookup: "couranr_payment_obligations failed count", error: failed.error },
+      detail: {
+        lookup: "direct couranr_payment_obligations failed count",
+        error: directFailed.error,
+      },
     });
+  }
+
+  let hostedFailedCount = 0;
+  if (hostedRequestIds.length > 0) {
+    const hostedFailed = await supabaseAdmin
+      .from("couranr_payment_obligations")
+      .select("id", { count: "exact", head: true })
+      .is("business_account_id", null)
+      .in("request_id", hostedRequestIds)
+      .eq("payment_state", "failed");
+    if (hostedFailed.error) {
+      return fail({
+        operation: op,
+        code: "internal",
+        detail: {
+          lookup: "hosted couranr_payment_obligations failed count",
+          error: hostedFailed.error,
+        },
+      });
+    }
+    hostedFailedCount = hostedFailed.count ?? 0;
   }
 
   return {
@@ -197,7 +308,7 @@ export async function listBillingRecords(params: {
       paymentMethod: paymentMethodState(),
       records,
       totalChargedCents: totalChargedCents(
-        (totals.data as any[]).map((row) => ({
+        totalRows.map((row) => ({
           state: chargeRecordState(row.payment_state),
           amountCents: Number(row.amount_cents),
           capturedAmountCents:
@@ -207,7 +318,7 @@ export async function listBillingRecords(params: {
         }))
       ),
       recordCount: count ?? records.length,
-      failedCount: failed.count ?? 0,
+      failedCount: (directFailed.count ?? 0) + hostedFailedCount,
       totalIsComplete: capturedCount <= TOTAL_SCAN_CAP,
       gaps: BILLING_GAPS,
     },

@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   findForbiddenHostedKey,
+  hostedRestrictedClassTransitionAllowed,
   isHostedBodyFailure,
   validateHostedSubmitBody,
   validateMerchantHostedConfirmation,
@@ -16,6 +17,62 @@ const HOSTED_SQL = readFileSync(
 );
 const MAPBOX_SQL = readFileSync(
   path.join(ROOT, "supabase/migrations/20260905030000_couranr_mapbox_quote_mint_authority_fix.sql"),
+  "utf8"
+);
+const HOSTED_CLOSURE_SQL = readFileSync(
+  path.join(ROOT, "supabase/migrations/20260905065000_couranr_hosted_adversarial_closure.sql"),
+  "utf8"
+);
+const HOSTED_CHAT_SQL = readFileSync(
+  path.join(ROOT, "supabase/migrations/20260905065500_couranr_hosted_delivery_chat_scope.sql"),
+  "utf8"
+);
+const HOSTED_HELP_SQL = readFileSync(
+  path.join(ROOT, "supabase/migrations/20260905070000_couranr_hosted_delivery_help_scope.sql"),
+  "utf8"
+);
+const HOSTED_TRACKING_SQL = readFileSync(
+  path.join(ROOT, "supabase/migrations/20260905070500_couranr_hosted_tracking_relationship_scope.sql"),
+  "utf8"
+);
+const HOSTED_RATE_SQL = readFileSync(
+  path.join(ROOT, "supabase/migrations/20260905071000_couranr_hosted_request_rate_limits.sql"),
+  "utf8"
+);
+const HOSTED_PLACES_ROUTE = readFileSync(
+  path.join(ROOT, "app/api/couranr/hosted/[merchantSlug]/places/route.ts"),
+  "utf8"
+);
+const ERRORS = readFileSync(
+  path.join(ROOT, "lib/couranr/errors.ts"),
+  "utf8"
+);
+const HOSTED_COMMANDS = readFileSync(
+  path.join(ROOT, "lib/couranr/hosted/commands.ts"),
+  "utf8"
+);
+const AUTHORIZE_PAYMENT_ROUTE = readFileSync(
+  path.join(ROOT, "app/api/couranr/delivery-requests/[id]/authorize-payment/route.ts"),
+  "utf8"
+);
+const PAYMENT_LINK_ROUTE = readFileSync(
+  path.join(ROOT, "app/api/couranr/delivery-requests/[id]/payment-link/route.ts"),
+  "utf8"
+);
+const DISPATCH_COMMANDS = readFileSync(
+  path.join(ROOT, "lib/couranr/dispatch/commands.ts"),
+  "utf8"
+);
+const MERCHANT_PICKUP_ROUTE = readFileSync(
+  path.join(ROOT, "app/api/couranr/merchant/deliveries/[id]/pickup-code/route.ts"),
+  "utf8"
+);
+const MERCHANT_RECIPIENT_ROUTE = readFileSync(
+  path.join(ROOT, "app/api/couranr/merchant/deliveries/[id]/recipient-code/route.ts"),
+  "utf8"
+);
+const MERCHANT_PROOF_ROUTE = readFileSync(
+  path.join(ROOT, "app/api/couranr/merchant/deliveries/[id]/proof/route.ts"),
   "utf8"
 );
 const HOSTED_ROUTE = path.join(
@@ -112,6 +169,17 @@ describe("merchant-hosted request public input", () => {
       expect(validateMerchantHostedConfirmation(bad).ok).toBe(false);
     }
   });
+  it("never lets merchant validation downgrade specific customer safety evidence", () => {
+    expect(hostedRestrictedClassTransitionAllowed("alcohol", "alcohol")).toBe(true);
+    expect(hostedRestrictedClassTransitionAllowed("alcohol", "unknown")).toBe(true);
+    expect(hostedRestrictedClassTransitionAllowed("alcohol", "none")).toBe(false);
+    expect(hostedRestrictedClassTransitionAllowed("alcohol", "firearms")).toBe(false);
+
+    // A non-specific customer declaration can still be truthfully validated by
+    // the merchant in either direction.
+    expect(hostedRestrictedClassTransitionAllowed("unknown", "none")).toBe(true);
+    expect(hostedRestrictedClassTransitionAllowed("none", "alcohol")).toBe(true);
+  });
 });
 
 describe("hosted request authority is separate from requester ownership", () => {
@@ -177,6 +245,183 @@ describe("hosted request authority is separate from requester ownership", () => 
     const readiness = HOSTED_SQL.slice(start);
     expect(readiness).toContain("p_actor_user_id,'merchant',p_command");
     expect(readiness).toContain("hostBusinessAccountId");
+  });
+});
+
+describe("hosted abuse and provider-cost boundaries", () => {
+  it("rate-limits public session creation per merchant host", () => {
+    expect(HOSTED_RATE_SQL).toContain(
+      "c_sessions_per_host_hour constant integer:=60"
+    );
+    expect(HOSTED_RATE_SQL).toContain("pg_advisory_xact_lock");
+    expect(HOSTED_RATE_SQL).toContain("created_at > now()-interval '1 hour'");
+    expect(HOSTED_RATE_SQL).toContain("'hosted_request_rate_limited'");
+    expect(HOSTED_RATE_SQL).toContain("errcode='CR429'");
+  });
+
+  it("rate-limits paid address search per opaque intake before the Google seam", () => {
+    expect(HOSTED_RATE_SQL).toContain(
+      "c_places_per_intake_hour constant integer:=12"
+    );
+    expect(HOSTED_RATE_SQL).toContain(
+      "c_places_per_host_hour constant integer:=60"
+    );
+    expect(HOSTED_RATE_SQL).toContain("couranr-hosted-places:");
+    expect(HOSTED_RATE_SQL).toContain("sum(h.places_request_count)");
+    expect(HOSTED_RATE_SQL).toContain("for update");
+    expect(HOSTED_RATE_SQL).toContain("places_request_count");
+    const claim = HOSTED_PLACES_ROUTE.indexOf("claimHostedPlaceSearch");
+    const google = HOSTED_PLACES_ROUTE.indexOf("autocompleteConsumerPlaces(normalized)");
+    expect(claim).toBeGreaterThanOrEqual(0);
+    expect(google).toBeGreaterThanOrEqual(0);
+    expect(claim).toBeLessThan(google);
+  });
+
+  it("maps the database throttle to a sanitized HTTP 429", () => {
+    expect(ERRORS).toContain('| "rate_limited"');
+    expect(ERRORS).toContain("rate_limited: 429");
+    expect(ERRORS).toContain('case "CR429"');
+  });
+
+  it("keeps the rate-limit forward migration additive", () => {
+    expect(HOSTED_RATE_SQL).not.toMatch(/\bdelete\s+from\b/i);
+    expect(HOSTED_RATE_SQL).not.toMatch(/\bdrop\s+(table|column)\b/i);
+    expect(HOSTED_RATE_SQL).not.toMatch(/\btruncate\b/i);
+  });
+});
+
+describe("hosted adversarial closure", () => {
+  it("rejects role/state conflicts before any paid validation provider call", () => {
+    const start = HOSTED_COMMANDS.indexOf("export async function validateHostedRequestByMerchant");
+    const end = HOSTED_COMMANDS.indexOf("/* ------------------------------------------------------- host readiness", start);
+    const validation = HOSTED_COMMANDS.slice(start, end);
+    const roleCheck = validation.indexOf('"business_members"');
+    const stateCheck = validation.indexOf('requestRow.request_state !== "awaiting_merchant_confirmation"');
+    const providerCall = validation.indexOf("routed = await deriveCanonicalRouteAndQuote");
+
+    expect(roleCheck).toBeGreaterThanOrEqual(0);
+    expect(stateCheck).toBeGreaterThanOrEqual(0);
+    expect(providerCall).toBeGreaterThanOrEqual(0);
+    expect(roleCheck).toBeLessThan(providerCall);
+    expect(stateCheck).toBeLessThan(providerCall);
+    expect(validation).toContain('"owner", "manager", "dispatcher"');
+  });
+
+  it("backs the customer safety rule with a database trigger", () => {
+    expect(HOSTED_CLOSURE_SQL).toContain(
+      "couranr_preserve_hosted_customer_safety_evidence"
+    );
+    expect(HOSTED_CLOSURE_SQL).toContain(
+      "v_customer_class not in ('none','unknown')"
+    );
+    expect(HOSTED_CLOSURE_SQL).toContain(
+      "new.restricted_class not in (v_customer_class,'unknown')"
+    );
+    expect(HOSTED_CLOSURE_SQL).toContain(
+      "'hosted_customer_safety_evidence_conflict'"
+    );
+  });
+
+  it("separates merchant and customer payer entrypoints before side effects", () => {
+    const merchantPayerGuard = AUTHORIZE_PAYMENT_ROUTE.indexOf(
+      'loaded.value.request.payer_type !== "merchant"'
+    );
+    const merchantObligation = AUTHORIZE_PAYMENT_ROUTE.indexOf(
+      "const obligation = await ensurePaymentObligation"
+    );
+    expect(merchantPayerGuard).toBeGreaterThanOrEqual(0);
+    expect(merchantPayerGuard).toBeLessThan(merchantObligation);
+
+    const customerPayerGuard = PAYMENT_LINK_ROUTE.indexOf(
+      'loaded.value.request.payer_type !== "customer"'
+    );
+    const linkObligation = PAYMENT_LINK_ROUTE.indexOf(
+      "let ob = await getObligationForRequest"
+    );
+    expect(customerPayerGuard).toBeGreaterThanOrEqual(0);
+    expect(customerPayerGuard).toBeLessThan(linkObligation);
+  });
+
+  it("carries hosted merchant scope into assignment messaging without changing Consumer tenancy", () => {
+    expect(HOSTED_CHAT_SQL).toContain("couranr_hosted_request_intakes");
+    expect(HOSTED_CHAT_SQL).toContain("h.host_business_account_id");
+    expect(HOSTED_CHAT_SQL).toContain("r.source='hosted_request'");
+    expect(HOSTED_CHAT_SQL).toContain("r.requester_kind='consumer'");
+    expect(HOSTED_CHAT_SQL).toContain("r.business_account_id is null");
+    expect(HOSTED_CHAT_SQL).toContain("if v_business_account_id is null then");
+    expect(HOSTED_CHAT_SQL).toContain("return null;");
+    expect(HOSTED_CHAT_SQL).toContain("couranr_join_assignment_delivery_chat");
+  });
+
+  it("carries hosted relationship scope into Delivery Help without forging tenancy", () => {
+    expect(HOSTED_HELP_SQL).toContain("couranr_hosted_request_intakes");
+    expect(HOSTED_HELP_SQL).toContain("h.host_business_account_id");
+    expect(HOSTED_HELP_SQL).toContain("r.source='hosted_request'");
+    expect(HOSTED_HELP_SQL).toContain("r.requester_kind='consumer'");
+    expect(HOSTED_HELP_SQL).toContain("r.business_account_id is null");
+    expect(HOSTED_HELP_SQL).toContain("couranr_help_access_tokens");
+    // Direct Consumer Same Day still has no merchant relationship; this narrow
+    // fix must not invent one merely to satisfy the legacy non-null help schema.
+    expect(HOSTED_HELP_SQL).toContain("if v_business is null then");
+    expect(HOSTED_HELP_SQL).toContain("'delivery_not_found'");
+  });
+
+  it("hands a confirmed hosted customer to a one-delivery tracking credential", () => {
+    const start = HOSTED_COMMANDS.indexOf("export async function readHostedRequest");
+    const end = HOSTED_COMMANDS.indexOf("/* ------------------------------------------------------ merchant context", start);
+    const read = HOSTED_COMMANDS.slice(start, end);
+    expect(read).toContain('state === "confirmed"');
+    expect(read).toContain("RPC.issueTrackingIfAbsent");
+    expect(read).toContain("generateTrackingToken");
+    expect(read).toContain("hashTrackingToken");
+    expect(read).toContain("value.trackingToken");
+
+    // The token itself may carry the host relationship for sanitized sender
+    // display, while the Consumer-owned request remains NULL-tenancy. Hosted
+    // status reads use a database-serialized issue-if-absent command so two
+    // concurrent tabs cannot revoke each other's freshly issued credential.
+    expect(HOSTED_TRACKING_SQL).toContain("couranr_hosted_request_intakes");
+    expect(HOSTED_TRACKING_SQL).toContain("h.host_business_account_id");
+    expect(HOSTED_TRACKING_SQL).toContain("v_req.business_account_id");
+    expect(HOSTED_TRACKING_SQL).toContain("v_relationship_business_id");
+    expect(HOSTED_TRACKING_SQL).toContain("couranr_issue_hosted_tracking_if_absent");
+    expect(HOSTED_TRACKING_SQL).toContain("pg_advisory_xact_lock");
+    expect(HOSTED_TRACKING_SQL).toContain("return false;");
+    expect(HOSTED_TRACKING_SQL).not.toContain(
+      "update public.couranr_delivery_requests"
+    );
+  });
+
+  it("keeps hosted merchant authority after Consumer-owned delivery creation", () => {
+    expect(DISPATCH_COMMANDS).toContain("resolveMerchantBusinessForDelivery");
+    expect(DISPATCH_COMMANDS).toContain('"couranr_hosted_request_intakes"');
+    expect(DISPATCH_COMMANDS).toContain("merchantScope.value.businessAccountId");
+    expect(DISPATCH_COMMANDS).toContain(
+      "return { ok: true, value: { businessAccountId: null, requestId } };"
+    );
+    expect(HOSTED_COMMANDS).toContain("export type HostedOperationsContext");
+    expect(HOSTED_COMMANDS).toContain("hostBusinessAccountId");
+    expect(HOSTED_COMMANDS).toContain("hostBusinessName");
+
+    for (const route of [
+      MERCHANT_PICKUP_ROUTE,
+      MERCHANT_RECIPIENT_ROUTE,
+      MERCHANT_PROOF_ROUTE,
+    ]) {
+      expect(route).toContain("resolveUserId");
+      expect(route).toContain("resolveMerchantBusinessForDelivery");
+      expect(route).toContain('routeFailure("not_found", "Delivery not found.")');
+      expect(route).not.toContain('.select("id,business_account_id")');
+    }
+    expect(MERCHANT_PICKUP_ROUTE).toContain(
+      'canActOnDeliveryRequest(\n    actor.actor,\n    "submit"'
+    );
+    expect(MERCHANT_RECIPIENT_ROUTE).toContain(
+      'canActOnDeliveryRequest(\n    actor.actor,\n    "submit"'
+    );
+    expect(MERCHANT_PROOF_ROUTE).toContain(
+      'canActOnDeliveryRequest(\n    actor.actor,\n    "read"'
+    );
   });
 });
 

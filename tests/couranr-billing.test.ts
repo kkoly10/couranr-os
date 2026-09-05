@@ -210,10 +210,21 @@ describe("the total is NOT a property of the listed page", () => {
   });
 
   it("a failed totals query fails closed rather than falling back to the page", () => {
-    // Falling back would produce a wrong number that looks right, which is the
-    // one outcome a billing screen must never have.
-    expect(src).toMatch(/totals\.error/);
-    expect(src).toMatch(/totals\.error \|\| !Array\.isArray\(totals\.data\)/);
+    // Hosted billing now has two independently-authorized slices: direct
+    // merchant obligations and NULL-tenancy hosted obligations whose request ids
+    // come from this business's immutable hosted-intake relationship. Either
+    // totals query failing must fail the whole screen; neither may fall back to
+    // the 100-row visible page.
+    expect(src).toMatch(/directTotals\.error \|\| !Array\.isArray\(directTotals\.data\)/);
+    expect(src).toMatch(/hostedTotals\.error \|\| !Array\.isArray\(hostedTotals\.data\)/);
+    expect(src).not.toMatch(/totalChargedCents\(\s*records\s*\)/);
+  });
+
+  it("hosted customer-paid obligations are included only through the host relationship", () => {
+    expect(src).toMatch(/couranr_hosted_request_intakes/);
+    expect(src).toMatch(/host_business_account_id/);
+    expect(src).toMatch(/\.is\("business_account_id",\s*null\)/);
+    expect(src).toMatch(/\.in\("request_id",\s*hostedRequestIds\)/);
   });
 });
 
