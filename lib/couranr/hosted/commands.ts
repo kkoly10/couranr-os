@@ -28,7 +28,11 @@ import {
   type WeightBand,
 } from "@/lib/couranr/shipment/facts";
 import type { ReadinessState } from "@/lib/couranr/requests/states";
-import { issueTrackingLink, isTrackingFailure } from "@/lib/couranr/tracking/commands";
+import {
+  generateTrackingToken,
+  hashTrackingToken,
+  TRACKING_TOKEN_TTL_DAYS,
+} from "@/lib/couranr/tracking/tokens";
 
 assertServerOnly("lib/couranr/hosted/commands.ts");
 
@@ -41,6 +45,7 @@ const RPC = {
   redeemIntake: "couranr_redeem_hosted_request_intake",
   createRequest: "couranr_create_hosted_delivery_request",
   claimPlaceSearch: "couranr_claim_hosted_place_search",
+  issueTrackingIfAbsent: "couranr_issue_hosted_tracking_if_absent",
   validateRequest: "couranr_validate_hosted_delivery_request",
   beginPreparation: "couranr_begin_hosted_delivery_preparation",
   markReady: "couranr_mark_hosted_delivery_ready",
@@ -516,29 +521,19 @@ export async function readHostedRequest(
    * the customer after the 24-hour intake session expires.
    */
   if (state === "confirmed") {
-    const { count, error: tokenError } = (await supabaseAdmin
-      .from("couranr_delivery_access_tokens")
-      .select("id", { count: "exact", head: true })
-      .eq("request_id", String((data as any).id))
-      .is("revoked_at", null)
-      .gt("expires_at", new Date().toISOString())) as {
-        count: number | null;
-        error: any;
-      };
-    if (tokenError) {
-      return fail({ operation: op, code: "internal", detail: tokenError.message });
-    }
-    if ((count ?? 0) === 0) {
-      const issued = await issueTrackingLink({ requestId: String((data as any).id) });
-      if (isTrackingFailure(issued)) {
-        return fail({
-          operation: op,
-          code: issued.code,
-          detail: { correlationId: issued.correlationId },
-          message: issued.message,
-        });
-      }
-      value.trackingToken = issued.value.token;
+    const rawTrackingToken = generateTrackingToken();
+    const issued = await callRpc<boolean>(op, RPC.issueTrackingIfAbsent, {
+      p_request_id: String((data as any).id),
+      p_token_hash: hashTrackingToken(rawTrackingToken),
+      p_ttl_days: TRACKING_TOKEN_TTL_DAYS,
+    });
+    if (isHostedFailure(issued)) return issued;
+
+    // TRUE means this call won the database-serialized issuance race. FALSE
+    // means another tab/session already owns a live token and this candidate
+    // raw value is discarded without ever becoming a credential.
+    if (issued.value === true) {
+      value.trackingToken = rawTrackingToken;
     }
   }
 
