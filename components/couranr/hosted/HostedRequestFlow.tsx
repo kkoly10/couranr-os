@@ -72,6 +72,7 @@ export function HostedRequestFlow({
   const [token, setToken] = React.useState<string | null>(null);
   const [requestView, setRequestView] = React.useState<RequestView | null>(null);
   const [submitted, setSubmitted] = React.useState(false);
+  const [previousTrackingToken, setPreviousTrackingToken] = React.useState<string | null>(null);
 
   const [orderReference, setOrderReference] = React.useState("");
   const [destinationQuery, setDestinationQuery] = React.useState("");
@@ -137,6 +138,7 @@ export function HostedRequestFlow({
         trackingStorageKey(merchantSlug),
         payload.trackingToken
       );
+      setPreviousTrackingToken(payload.trackingToken);
     } else {
       const persistedTracking = window.localStorage.getItem(
         trackingStorageKey(merchantSlug)
@@ -155,25 +157,15 @@ export function HostedRequestFlow({
     );
 
     if (!existing) {
-      // The intake session intentionally expires much sooner than tracking.
-      // If the customer already received the tracking credential, do not dump
-      // them back into a fresh request form merely because that intake session
-      // ended.
-      if (persistedTracking) {
-        setSubmitted(true);
-        setRequestView({
-          submitted: true,
-          requestState: "confirmed",
-          quoteStatus: null,
-          merchantValidated: true,
-          paymentPending: false,
-          terminal: false,
-          trackingToken: persistedTracking,
-        });
-      }
+      // A tracking link outlives the 24-hour intake session, but it must NOT
+      // turn every future visit to this merchant into the old order. Preserve
+      // it only as an optional "track previous delivery" action while leaving
+      // the new-request form available.
+      if (persistedTracking) setPreviousTrackingToken(persistedTracking);
       return;
     }
 
+    if (persistedTracking) setPreviousTrackingToken(persistedTracking);
     setToken(existing);
     void readStatus(existing);
   }, [merchantSlug, readStatus]);
@@ -339,6 +331,25 @@ export function HostedRequestFlow({
             The business validates the request before any delivery payment can begin.
           </Text>
         </div>
+
+        {previousTrackingToken ? (
+          <Alert tone="info" title="Have an earlier delivery with this business?">
+            <Cluster gap={2}>
+              <Text size="sm">You can track it without blocking a new request.</Text>
+              <Button
+                variant="secondary"
+                type="button"
+                onClick={() => {
+                  window.location.assign(
+                    `/track/${encodeURIComponent(previousTrackingToken)}`
+                  );
+                }}
+              >
+                Track previous delivery
+              </Button>
+            </Cluster>
+          </Alert>
+        ) : null}
 
         {error ? <Alert tone="danger" title="Check these details">{error}</Alert> : null}
 
