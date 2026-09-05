@@ -31,6 +31,10 @@ const HOSTED_HELP_SQL = readFileSync(
   path.join(ROOT, "supabase/migrations/20260905070000_couranr_hosted_delivery_help_scope.sql"),
   "utf8"
 );
+const HOSTED_TRACKING_SQL = readFileSync(
+  path.join(ROOT, "supabase/migrations/20260905070500_couranr_hosted_tracking_relationship_scope.sql"),
+  "utf8"
+);
 const HOSTED_COMMANDS = readFileSync(
   path.join(ROOT, "lib/couranr/hosted/commands.ts"),
   "utf8"
@@ -316,6 +320,16 @@ describe("hosted adversarial closure", () => {
     expect(read).toContain('"couranr_delivery_access_tokens"');
     expect(read).toContain("issueTrackingLink");
     expect(read).toContain("value.trackingToken");
+
+    // The token itself may carry the host relationship for sanitized sender
+    // display, while the Consumer-owned request remains NULL-tenancy.
+    expect(HOSTED_TRACKING_SQL).toContain("couranr_hosted_request_intakes");
+    expect(HOSTED_TRACKING_SQL).toContain("h.host_business_account_id");
+    expect(HOSTED_TRACKING_SQL).toContain("v_req.business_account_id");
+    expect(HOSTED_TRACKING_SQL).toContain("v_relationship_business_id");
+    expect(HOSTED_TRACKING_SQL).not.toContain(
+      "update public.couranr_delivery_requests"
+    );
   });
 
   it("keeps hosted merchant authority after Consumer-owned delivery creation", () => {
