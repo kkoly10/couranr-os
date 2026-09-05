@@ -275,7 +275,6 @@ export function validateHostedRequestFromBrowser(input: {
   expectedVersion: number;
   validation: {
     pickupPlaceId: string;
-    dropoffPlaceId: string;
     payerType: "merchant" | "customer";
     weightLb: number | null;
     weightBand: string | null;
