@@ -16,7 +16,7 @@ import { Field, Input, Select, Textarea } from "@/components/couranr/forms";
 import type { PublicHostedMerchant, HostedGuestStatus } from "@/lib/couranr/hosted/commands";
 import { GUEST_HEADER } from "@/lib/couranr/sameday/liveAdapters";
 
-type Suggestion = { id: string; label: string; detail?: string };
+type Suggestion = { placeId: string; text: string };
 type Phase = "form" | "submitted";
 
 const WEIGHT_BANDS = [
@@ -217,8 +217,8 @@ export function HostedRequestFlow({ merchant }: { merchant: PublicHostedMerchant
   }
 
   function chooseAddress(s: Suggestion) {
-    setDestinationPlaceId(s.id);
-    setDestinationQuery(s.detail ? `${s.label}, ${s.detail}` : s.label);
+    setDestinationPlaceId(s.placeId);
+    setDestinationQuery(s.text);
     setSuggestions([]);
     setError(null);
   }
@@ -466,13 +466,12 @@ export function HostedRequestFlow({ merchant }: { merchant: PublicHostedMerchant
               <div className="cr-send-suggestions" role="listbox" aria-label="Address suggestions">
                 {suggestions.map((s) => (
                   <button
-                    key={s.id}
+                    key={s.placeId}
                     type="button"
                     className="cr-send-suggestion"
                     onClick={() => chooseAddress(s)}
                   >
-                    <span className="cr-send-suggestion__label">{s.label}</span>
-                    {s.detail ? <span>{s.detail}</span> : null}
+                    <span className="cr-send-suggestion__label">{s.text}</span>
                   </button>
                 ))}
               </div>
