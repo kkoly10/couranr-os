@@ -165,6 +165,11 @@ describe("server-only modules are unreachable from client code", () => {
       // release for holds, CAN-001 retention refunds for captured money.
       "lib/couranr/fulfillment/cancellation.ts",
       "lib/couranr/fulfillment/commands.ts",
+      // PUB-004 hosted request authority: service-role reads, hash-only hosted
+      // session credential handling, merchant validation and provider-backed
+      // canonical quote composition. Browser components reach it only through
+      // canonical API routes.
+      "lib/couranr/hosted/commands.ts",
       // Holds the Anthropic API key inside the client it constructs, and the
       // system prompt that governs what a model is told about merchant text.
       "lib/couranr/intake/anthropicProvider.ts",
@@ -286,6 +291,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/delivery-requests/[id]/reconcile-payment/route.ts",
       "app/api/couranr/delivery-requests/[id]/route.ts",
       "app/api/couranr/delivery-requests/[id]/submit/route.ts",
+      "app/api/couranr/delivery-requests/[id]/validate-hosted/route.ts",
       "app/api/couranr/delivery-requests/route.ts",
       "app/api/couranr/driver/assignment/route.ts",
       "app/api/couranr/driver/availability/route.ts",
@@ -306,6 +312,10 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/driver/proof/[proofId]/url/route.ts",
       "app/api/couranr/driver/proof/finalize/route.ts",
       "app/api/couranr/help/[token]/route.ts",
+      "app/api/couranr/hosted/[merchantSlug]/places/route.ts",
+      "app/api/couranr/hosted/[merchantSlug]/request/route.ts",
+      "app/api/couranr/hosted/[merchantSlug]/session/route.ts",
+      "app/api/couranr/hosted/[merchantSlug]/submit/route.ts",
       "app/api/couranr/intake/[id]/route.ts",
       "app/api/couranr/intake/route.ts",
       "app/api/couranr/internal/automation/tick/route.ts",
@@ -433,6 +443,23 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/consumer/submit/route.ts",
       { shape: /redeemGuestSessionToken\(/, redeem: /redeemGuestSessionToken\(/ },
     ],
+    /*
+     * Merchant-hosted customer routes use a distinct opaque header credential.
+     * The session endpoint below mints it; every subsequent hosted public route
+     * redeems it against BOTH the token hash and the merchant slug snapshot.
+     */
+    [
+      "app/api/couranr/hosted/[merchantSlug]/places/route.ts",
+      { shape: /redeemHostedSessionToken\(/, redeem: /redeemHostedSessionToken\(/ },
+    ],
+    [
+      "app/api/couranr/hosted/[merchantSlug]/request/route.ts",
+      { shape: /redeemHostedSessionToken\(/, redeem: /redeemHostedSessionToken\(/ },
+    ],
+    [
+      "app/api/couranr/hosted/[merchantSlug]/submit/route.ts",
+      { shape: /redeemHostedSessionToken\(/, redeem: /redeemHostedSessionToken\(/ },
+    ],
     [
       "app/api/couranr/pay/[token]/reconcile/route.ts",
       { shape: /isWellFormedToken\(/, redeem: /redeemPaymentLink\(/ },
@@ -480,6 +507,13 @@ describe("canonical server routes do not import the browser client", () => {
       if (name === "app/api/couranr/consumer/session/route.ts") {
         expect(src, `${name} must mint through createGuestSession`).toMatch(/createGuestSession\(/);
         expect(src, `${name} must document its unauthenticated design`).toMatch(/UNAUTHENTICATED BY DESIGN/);
+        continue;
+      }
+      if (name === "app/api/couranr/hosted/[merchantSlug]/session/route.ts") {
+        expect(src, `${name} must mint through createHostedSession`).toMatch(/createHostedSession\(/);
+        expect(src, `${name} must document the public bootstrap authorization boundary`).toMatch(
+          /Public bootstrap by design/
+        );
         continue;
       }
       const tokenRule = TOKEN_AUTHORIZED.get(name);
