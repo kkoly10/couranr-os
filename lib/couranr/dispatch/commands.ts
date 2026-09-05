@@ -598,7 +598,7 @@ export async function getDispatchPanel(params: {
 
 async function merchantBusinessScopeForDeliveryRow(
   delivery: Record<string, any>
-): Promise<DispatchResult<{ businessAccountId: string; requestId: string }>> {
+): Promise<DispatchResult<{ businessAccountId: string | null; requestId: string }>> {
   const op = "merchantBusinessScopeForDelivery";
   const requestId = String(delivery?.request_id ?? "");
   const directBusinessAccountId =
@@ -624,18 +624,26 @@ async function merchantBusinessScopeForDeliveryRow(
   if (requestError) {
     return fail({ operation: op, code: "internal", detail: requestError.message });
   }
+  if (!request) {
+    return fail({
+      operation: op,
+      code: "not_found",
+      detail: { reason: "request_not_found", requestId },
+      message: "Delivery not found.",
+    });
+  }
+
+  /*
+   * Direct Consumer Same Day deliveries legitimately have no merchant at all.
+   * Preserve that shape for the DRIVER projection; only hosted Consumer
+   * deliveries are required to resolve a host business below.
+   */
   if (
-    !request ||
     request.source !== "hosted_request" ||
     request.requester_kind !== "consumer" ||
     request.business_account_id !== null
   ) {
-    return fail({
-      operation: op,
-      code: "not_found",
-      detail: { reason: "merchant_delivery_scope_not_found", requestId },
-      message: "Delivery not found.",
-    });
+    return { ok: true, value: { businessAccountId: null, requestId } };
   }
 
   const { data: intake, error: intakeError } = (await supabaseAdmin
@@ -681,7 +689,23 @@ export async function resolveMerchantBusinessForDelivery(
   if (!delivery) {
     return fail({ operation: op, code: "not_found", message: "Delivery not found." });
   }
-  return merchantBusinessScopeForDeliveryRow(delivery);
+  const scope = await merchantBusinessScopeForDeliveryRow(delivery);
+  if (isDispatchFailure(scope)) return scope;
+  if (!scope.value.businessAccountId) {
+    return fail({
+      operation: op,
+      code: "not_found",
+      detail: { reason: "delivery_has_no_merchant_scope", requestId: scope.value.requestId },
+      message: "Delivery not found.",
+    });
+  }
+  return {
+    ok: true,
+    value: {
+      businessAccountId: scope.value.businessAccountId,
+      requestId: scope.value.requestId,
+    },
+  };
 }
 
 /* ---------------------------------------------------- driver reading --- */
@@ -747,16 +771,26 @@ export async function getAssignedDeliveryForDriver(params: {
   const merchantScope = await merchantBusinessScopeForDeliveryRow(delivery);
   if (isDispatchFailure(merchantScope)) return merchantScope;
 
-  const { data: workspace } = (await supabaseAdmin
-    .from("couranr_merchant_workspaces")
-    .select("contact_phone,business_account_id")
-    .eq("business_account_id", merchantScope.value.businessAccountId)
-    .maybeSingle()) as { data: any; error: any };
-  const { data: account } = (await supabaseAdmin
-    .from("business_accounts")
-    .select("name")
-    .eq("id", merchantScope.value.businessAccountId)
-    .maybeSingle()) as { data: any; error: any };
+  let merchant: { name: string | null; phone: string | null } = {
+    name: null,
+    phone: null,
+  };
+  if (merchantScope.value.businessAccountId) {
+    const { data: workspace } = (await supabaseAdmin
+      .from("couranr_merchant_workspaces")
+      .select("contact_phone,business_account_id")
+      .eq("business_account_id", merchantScope.value.businessAccountId)
+      .maybeSingle()) as { data: any; error: any };
+    const { data: account } = (await supabaseAdmin
+      .from("business_accounts")
+      .select("name")
+      .eq("id", merchantScope.value.businessAccountId)
+      .maybeSingle()) as { data: any; error: any };
+    merchant = {
+      name: account?.name ?? null,
+      phone: workspace?.contact_phone ?? null,
+    };
+  }
 
   return {
     ok: true,
@@ -765,7 +799,7 @@ export async function getAssignedDeliveryForDriver(params: {
         delivery,
         assignment,
         vehicle: vehicle ?? null,
-        merchant: { name: account?.name ?? null, phone: workspace?.contact_phone ?? null },
+        merchant,
       }),
     },
   };
