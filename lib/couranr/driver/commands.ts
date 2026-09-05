@@ -263,32 +263,15 @@ export async function arriveAtDropoff(p: WithLocation): Promise<DriverResult<Del
 }
 
 export async function completePickup(
-  p: WithLocation & {
-    observedPackageCount: number;
-    staffFirstName: string;
-    confirmedVehicleId: string;
-    dimensions?: Record<string, unknown> | null;
-    loadingParticipants?: string | null;
-    loadingEquipment?: string | null;
-    existingDamage?: string | null;
-    driverAcknowledged?: boolean | null;
-  }
+  p: WithLocation
 ): Promise<DriverResult<DeliveryStateView>> {
-  const r = await callRpc("completePickup", "couranr_complete_pickup", {
+  const r = await callRpc("completePickup", "couranr_complete_pickup_v2", {
     p_delivery_id: p.deliveryId,
     p_expected_version: p.expectedVersion,
     p_actor_user_id: p.userId,
-    p_observed_package_count: p.observedPackageCount,
-    p_staff_first_name: p.staffFirstName,
-    p_confirmed_vehicle_id: p.confirmedVehicleId,
     p_latitude: p.latitude,
     p_longitude: p.longitude,
     p_accuracy_m: p.accuracyM ?? null,
-    p_dimensions: p.dimensions ?? null,
-    p_loading_participants: p.loadingParticipants ?? null,
-    p_loading_equipment: p.loadingEquipment ?? null,
-    p_existing_damage: p.existingDamage ?? null,
-    p_driver_acknowledged: p.driverAcknowledged ?? null,
   });
   return r.ok ? { ok: true, value: stateView(r.value) } : r;
 }
