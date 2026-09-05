@@ -280,6 +280,9 @@ describe("hosted adversarial closure", () => {
     expect(DISPATCH_COMMANDS).toContain("resolveMerchantBusinessForDelivery");
     expect(DISPATCH_COMMANDS).toContain('"couranr_hosted_request_intakes"');
     expect(DISPATCH_COMMANDS).toContain("merchantScope.value.businessAccountId");
+    expect(DISPATCH_COMMANDS).toContain(
+      "return { ok: true, value: { businessAccountId: null, requestId } };"
+    );
 
     for (const route of [
       MERCHANT_PICKUP_ROUTE,
