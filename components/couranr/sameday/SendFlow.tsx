@@ -169,6 +169,12 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
   /* Final closure §5: a resumed request is ALREADY SUBMITTED — the payment
      button must go straight to /pay and never POST /submit again. */
   const [resumePay, setResumePay] = React.useState(false);
+  /*
+   * Cost + race control for Google autocomplete. Typing "123 Main Street"
+   * must not become one paid request per keystroke, and an older slow response
+   * must never overwrite suggestions for newer text.
+   */
+  const addressSearchSeq = React.useRef(0);
 
   /* An edit that would change a quote marks the existing one STALE rather than
      leaving a number on screen that no longer describes the trip. */
@@ -194,9 +200,17 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
     /* Typing clears the selected place identity — free text is never one. */
     set((s) => ({ ...s, value, status: value ? "typing" : "blank", results: [], placeId: undefined }));
     invalidateQuote();
-    if (value.trim().length < 2) return;
+    const seq = ++addressSearchSeq.current;
+    if (value.trim().length < 3) return;
+
+    // Trailing debounce: ordinary typing produces one paid lookup after the
+    // pause rather than one request for every character.
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    if (seq !== addressSearchSeq.current) return;
+
     set((s) => ({ ...s, status: "loading" }));
     const results = await adapters.searchAddress(value);
+    if (seq !== addressSearchSeq.current) return;
     set((s) => ({ ...s, status: results.length ? "results" : "empty", results }));
   }
 
