@@ -157,11 +157,8 @@ describe("production canary containment", () => {
       "couranr_claim_consumer_canary_estimate",
       "couranr_revoke_consumer_canary_access",
     ]) {
-      expect(
-        (SQL.match(new RegExp(`create or replace function public\\\\.${fn}\\\\(`, "g")) ?? [])
-          .length,
-        fn
-      ).toBe(1);
+      const signature = `create or replace function public.${fn}(`;
+      expect(SQL.split(signature).length - 1, fn).toBe(1);
     }
   });
 
@@ -216,17 +213,19 @@ describe("production canary containment", () => {
   });
 
   it("keeps canary storage service-role-only", () => {
-    expect(SQL).toContain("alter table public.couranr_consumer_canary_access enable row level security");
-    expect(SQL).toContain(
+    const compactSql = SQL.replace(/\\s+/g, " ");
+    expect(compactSql).toContain(
+      "alter table public.couranr_consumer_canary_access enable row level security"
+    );
+    expect(compactSql).toContain(
       "revoke all on public.couranr_consumer_canary_access from public,anon,authenticated,service_role"
     );
-    expect(SQL).toContain(
+    expect(compactSql).toContain(
       "grant select,insert,update on public.couranr_consumer_canary_access to service_role"
     );
-    expect(SQL).toContain(
-      "grant execute on function public.couranr_redeem_consumer_canary_access(text,text)"
+    expect(compactSql).toContain(
+      "grant execute on function public.couranr_redeem_consumer_canary_access(text,text) to service_role;"
     );
-    expect(SQL).toContain("to service_role;");
   });
 
   it("rollback refuses to destroy real canary evidence", () => {
