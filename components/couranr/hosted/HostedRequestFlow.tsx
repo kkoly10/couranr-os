@@ -13,6 +13,7 @@ type RequestView = {
   merchantValidated: boolean;
   paymentPending: boolean;
   terminal: boolean;
+  trackingToken?: string;
 };
 
 const HEADER = "x-couranr-hosted-request";
@@ -256,6 +257,19 @@ export function HostedRequestFlow({
               Couranr is handling delivery only. Any merchandise purchase, refund or order
               change remains between you and {merchantName}.
             </Text>
+            {requestView?.trackingToken ? (
+              <Button
+                variant="primary"
+                type="button"
+                onClick={() => {
+                  window.location.assign(
+                    `/track/${encodeURIComponent(requestView.trackingToken ?? "")}`
+                  );
+                }}
+              >
+                Track delivery
+              </Button>
+            ) : null}
             <Button
               variant="ghost"
               onClick={() => {
