@@ -552,14 +552,19 @@ export async function getHostedMerchantContext(params: {
  * The request_id is UNIQUE in the intake table, so this cannot blend evidence
  * from two merchants or two customer sessions.
  */
+export type HostedOperationsContext = HostedMerchantContext & {
+  hostBusinessAccountId: string;
+  hostBusinessName: string | null;
+};
+
 export async function getHostedOperationsContext(params: {
   requestId: string;
-}): Promise<HostedResult<HostedMerchantContext | null>> {
+}): Promise<HostedResult<HostedOperationsContext | null>> {
   const op = "getHostedOperationsContext";
   const { data, error } = await supabaseAdmin
     .from("couranr_hosted_request_intakes")
     .select(
-      "order_reference,requested_payer_type,destination_label,shipment_description,customer_weight_lb,customer_weight_band,customer_restricted_class,signature_requested"
+      "host_business_account_id,order_reference,requested_payer_type,destination_label,shipment_description,customer_weight_lb,customer_weight_band,customer_restricted_class,signature_requested"
     )
     .eq("request_id", params.requestId)
     .maybeSingle();
@@ -573,9 +578,33 @@ export async function getHostedOperationsContext(params: {
   }
   if (!data) return { ok: true, value: null };
   const row = data as any;
+  const hostBusinessAccountId = String(row.host_business_account_id ?? "");
+  if (!hostBusinessAccountId) {
+    return fail({
+      operation: op,
+      code: "internal",
+      detail: { reason: "host_business_account_missing" },
+    });
+  }
+  const { data: hostAccount, error: hostAccountError } = await supabaseAdmin
+    .from("business_accounts")
+    .select("name")
+    .eq("id", hostBusinessAccountId)
+    .maybeSingle();
+  if (hostAccountError) {
+    return fail({
+      operation: op,
+      code: "internal",
+      detail: hostAccountError.message,
+    });
+  }
   return {
     ok: true,
     value: {
+      hostBusinessAccountId,
+      hostBusinessName: (hostAccount as any)?.name
+        ? String((hostAccount as any).name)
+        : null,
       orderReference: row.order_reference ? String(row.order_reference) : null,
       requestedPayerType:
         row.requested_payer_type === "merchant" || row.requested_payer_type === "customer"
