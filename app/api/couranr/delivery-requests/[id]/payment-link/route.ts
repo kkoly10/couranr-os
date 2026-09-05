@@ -57,7 +57,10 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   });
   if (isCommandFailure(loaded)) return failureResponse(loaded);
 
-  const ob = await getObligationForRequest({ requestId: params.id, businessAccountId });
+  const ob = await getObligationForRequest({
+    requestId: params.id,
+    businessAccountId: loaded.value.request.business_account_id ?? null,
+  });
   if (isPaymentFailure(ob)) return failureResponse(ob);
 
   const obligation = ob.value.obligation;
