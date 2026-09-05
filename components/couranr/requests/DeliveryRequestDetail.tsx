@@ -21,6 +21,7 @@ import {
 import { QuoteSummary } from "./QuoteSummary";
 import { MerchantPaymentPanel } from "@/components/couranr/payments/MerchantPaymentPanel";
 import { MerchantReadinessPanel } from "@/components/couranr/fulfillment/MerchantReadinessPanel";
+import { HostedRequestValidationPanel } from "./HostedRequestValidationPanel";
 import { MerchantProofPanel } from "@/components/couranr/dispatch/MerchantProofPanel";
 import { HandoffCodePanel } from "@/components/couranr/dispatch/HandoffCodePanel";
 import { DeliveryExecutionTimeline } from "@/components/couranr/dispatch/DeliveryExecutionTimeline";
@@ -75,8 +76,8 @@ const OUTCOME_COPY: Record<string, { tone: "info" | "success" | "warning" | "dan
   },
   awaiting_quote_acceptance: {
     tone: "warning",
-    title: "Couranr confirmed the quote — waiting for the recipient to approve it",
-    body: "This delivery is paid by the recipient, so Couranr is waiting for them to approve the price before anything is scheduled.",
+    title: "Couranr accepted the delivery — waiting for payer approval",
+    body: "The delivery quote still needs approval from its selected payer before anything can be scheduled.",
   },
   quote_revision_required: {
     tone: "warning",
@@ -157,6 +158,7 @@ export function DeliveryRequestDetail({
   const [request, setRequest] = React.useState<DeliveryRequestView | null>(null);
   const [events, setEvents] = React.useState<any[]>([]);
   const [intake, setIntake] = React.useState<IntakeSessionView | null>(null);
+  const [hostedContext, setHostedContext] = React.useState<any | null>(null);
   const [failure, setFailure] = React.useState<ApiFailure | null>(null);
   const [loading, setLoading] = React.useState(true);
   /**
@@ -229,6 +231,7 @@ export function DeliveryRequestDetail({
         setRequest(r.value.request);
         setEvents(r.value.events ?? []);
         setIntake(r.value.intake ?? null);
+        setHostedContext(r.value.hostedContext ?? null);
         setIsOperations(true);
         setViewerBusinessAccountId(null);
         void reloadFulfillment(null);
@@ -260,6 +263,7 @@ export function DeliveryRequestDetail({
           setRequest(r.value.request);
           setEvents(r.value.events ?? []);
           setIntake(r.value.intake ?? null);
+          setHostedContext(r.value.hostedContext ?? null);
           setIsOperations(false);
           setViewerBusinessAccountId(businessAccountId);
           void reloadFulfillment(businessAccountId);
@@ -314,6 +318,7 @@ export function DeliveryRequestDetail({
         setRequest(r.value.request);
         setEvents(r.value.events ?? []);
         setIntake(r.value.intake ?? null);
+        setHostedContext(r.value.hostedContext ?? null);
       }
     });
   };
@@ -366,6 +371,76 @@ export function DeliveryRequestDetail({
           <Detail label="Service area" value={serviceAreaCopy(request.serviceAreaReviewState)} />
         </Grid>
       </Card>
+      ) : null}
+
+      {!isOperations ? (
+        <HostedRequestValidationPanel
+          request={request}
+          context={hostedContext}
+          businessAccountId={viewerBusinessAccountId}
+          onChanged={() => {
+            void reloadFulfillment(viewerBusinessAccountId);
+            void fetchDeliveryRequest({
+              id,
+              businessAccountId: viewerBusinessAccountId ?? undefined,
+            }).then((r) => {
+              if (!isApiFailure(r)) {
+                setRequest(r.value.request);
+                setEvents(r.value.events ?? []);
+                setHostedContext(r.value.hostedContext ?? null);
+              }
+            });
+          }}
+        />
+      ) : null}
+
+      {request.source === "hosted_request" &&
+      hostedContext &&
+      (isOperations || request.requestState !== "awaiting_merchant_confirmation") ? (
+        <Card>
+          <CardHeader
+            title="Original customer request"
+            description="Customer-entered intake evidence. The canonical address, payer, weight and safety facts below are the merchant-validated delivery record."
+          />
+          <Grid columns={4}>
+            <Detail label="Order reference" value={hostedContext.orderReference ?? "Not provided"} />
+            <Detail
+              label="Requested payer"
+              value={
+                hostedContext.requestedPayerType === "merchant"
+                  ? "Business"
+                  : hostedContext.requestedPayerType === "customer"
+                    ? "Customer"
+                    : "Not provided"
+              }
+            />
+            <Detail
+              label="Customer weight"
+              value={
+                hostedContext.customerWeightLb !== null &&
+                hostedContext.customerWeightLb !== undefined
+                  ? `${hostedContext.customerWeightLb} lb`
+                  : hostedContext.customerWeightBand ?? "Not provided"
+              }
+            />
+            <Detail
+              label="Customer safety statement"
+              value={hostedContext.customerRestrictedClass ?? "Not provided"}
+            />
+          </Grid>
+          {hostedContext.destinationLabel ? (
+            <div>
+              <Text size="xs" muted>Customer-selected destination</Text>
+              <Text size="sm">{hostedContext.destinationLabel}</Text>
+            </div>
+          ) : null}
+          {hostedContext.shipmentDescription ? (
+            <div>
+              <Text size="xs" muted>Customer described</Text>
+              <Text size="sm">{hostedContext.shipmentDescription}</Text>
+            </div>
+          ) : null}
+        </Card>
       ) : null}
 
       <Grid columns={2}>
@@ -457,7 +532,10 @@ export function DeliveryRequestDetail({
               id,
               businessAccountId: viewerBusinessAccountId ?? undefined,
             }).then((r) => {
-              if (!isApiFailure(r)) setRequest(r.value.request);
+              if (!isApiFailure(r)) {
+                setRequest(r.value.request);
+                setHostedContext(r.value.hostedContext ?? null);
+              }
             });
           }}
         />

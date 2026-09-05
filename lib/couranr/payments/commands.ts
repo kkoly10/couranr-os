@@ -131,7 +131,13 @@ export type ObligationRow = Record<string, any>;
 export async function ensurePaymentObligation(params: {
   actor: RequestActor;
   requestId: string;
+  /** Business the signed-in merchant acts for (permission scope). */
   businessAccountId: string;
+  /**
+   * Canonical request tenancy. Normally the same business id; explicitly NULL
+   * for Consumer-owned hosted requests. Undefined preserves the old path.
+   */
+  requestBusinessAccountId?: string | null;
   idempotencyKey: string;
 }): Promise<PaymentResult<{ obligation: ObligationRow }>> {
   const op = "ensurePaymentObligation";
@@ -148,9 +154,14 @@ export async function ensurePaymentObligation(params: {
     });
   }
 
+  const requestBusinessAccountId =
+    params.requestBusinessAccountId === undefined
+      ? params.businessAccountId
+      : params.requestBusinessAccountId;
+
   const r = await callRpc<ObligationRow>(op, RPC.createObligation, {
     p_request_id: params.requestId,
-    p_business_account_id: params.businessAccountId,
+    p_business_account_id: requestBusinessAccountId,
     p_idempotency_key: params.idempotencyKey,
   });
   if (isPaymentFailure(r)) return r;

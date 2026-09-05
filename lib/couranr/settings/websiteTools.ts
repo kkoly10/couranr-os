@@ -17,16 +17,12 @@ export const WEBSITE_TOOL_STATUSES = ["draft", "published", "disabled"] as const
 export type WebsiteToolStatus = (typeof WEBSITE_TOOL_STATUSES)[number];
 
 /**
- * Whether the hosted-request route exists yet.
+ * Whether the hosted-request route exists.
  *
- * It does NOT: `/request/[merchantSlug]` is PUB-004's contract and no such
- * route is in the tree. This constant is the single place that fact is
- * recorded, so when PUB-004 ships, one edit flips every piece of copy that
- * currently says the link is not live — and until then nothing can claim a
- * merchant's link works. `tests/couranr-website-tools.test.ts` asserts the
- * constant agrees with the filesystem, so it cannot rot into a lie.
+ * PUB-004 now serves `/request/[merchantSlug]`. The filesystem-truth test
+ * keeps this constant from drifting in either direction.
  */
-export const HOSTED_REQUEST_ROUTE_EXISTS = false;
+export const HOSTED_REQUEST_ROUTE_EXISTS = true;
 
 /** The canonical hosted-request path for a slug. */
 export function hostedRequestPath(slug: string): string {

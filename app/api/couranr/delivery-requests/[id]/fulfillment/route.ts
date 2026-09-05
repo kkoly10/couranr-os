@@ -48,7 +48,12 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
   });
   if (isCommandFailure(loaded)) return failureResponse(loaded);
 
-  const ob = await getObligationForRequest({ requestId: params.id, businessAccountId });
+  const requestBusinessAccountId = loaded.value.request.business_account_id ?? null;
+
+  const ob = await getObligationForRequest({
+    requestId: params.id,
+    businessAccountId: requestBusinessAccountId,
+  });
   if (isPaymentFailure(ob)) return failureResponse(ob);
 
   // Review item 6: the screen's refund controls are decided by the newest
@@ -80,7 +85,10 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
   const plan = await getServicePlan({ requestId: params.id });
   if (isFulfillmentFailure(plan)) return failureResponse(plan);
 
-  const delivery = await getCanonicalDelivery({ requestId: params.id, businessAccountId });
+  const delivery = await getCanonicalDelivery({
+    requestId: params.id,
+    businessAccountId: requestBusinessAccountId,
+  });
   if (isFulfillmentFailure(delivery)) return failureResponse(delivery);
 
   const assignment = delivery.value.delivery

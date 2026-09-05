@@ -162,6 +162,36 @@ describe("delivery-request state machine", () => {
     });
   });
 
+  describe("hosted request lifecycle", () => {
+    it("creates directly into merchant confirmation", () => {
+      for (const state of REQUEST_STATES) {
+        expect(resolveTransition("create_hosted_delivery_request", state).allowed, state).toBe(false);
+      }
+      expect(COMMAND_RULES.create_hosted_delivery_request.to).toBe(
+        "awaiting_merchant_confirmation"
+      );
+    });
+
+    it("merchant validation is the only modeled transition out of merchant confirmation", () => {
+      const d = resolveTransition(
+        "validate_hosted_delivery_request",
+        "awaiting_merchant_confirmation"
+      );
+      expect(d.allowed).toBe(true);
+      if (!d.allowed) return;
+      expect(d.nextState).toBe("pending_couranr_review");
+
+      for (const state of REQUEST_STATES.filter(
+        (value) => value !== "awaiting_merchant_confirmation"
+      )) {
+        expect(
+          resolveTransition("validate_hosted_delivery_request", state).allowed,
+          state
+        ).toBe(false);
+      }
+    });
+  });
+
   describe("calculate_delivery_request_estimate", () => {
     it("runs on a draft and leaves the state alone", () => {
       const d = resolveTransition("calculate_delivery_request_estimate", "draft");
@@ -363,6 +393,7 @@ describe("delivery-request state machine", () => {
 
     expect([...reachable].sort()).toEqual(
       [
+        "awaiting_merchant_confirmation",
         "awaiting_quote_acceptance",
         "cancelled",
         "confirmed",
@@ -373,12 +404,9 @@ describe("delivery-request state machine", () => {
       ].sort()
     );
 
-    // `cancelled` gained its governed writer in the final closure pass
-    // (couranr_cancel_delivery_request, run inside cancellation recovery so
-    // the money settles first). The rest stay unreachable.
-    for (const s of ["closed", "awaiting_merchant_confirmation"] as RequestState[]) {
-      expect(reachable.has(s), `${s} became reachable`).toBe(false);
-    }
+    // `cancelled` gained its governed writer in the final closure pass and
+    // hosted request creation now explicitly owns merchant confirmation.
+    expect(reachable.has("closed")).toBe(false);
   });
 
   /**

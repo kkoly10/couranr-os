@@ -146,8 +146,13 @@ export async function setReadiness(params: {
     p_request_id: params.requestId,
     p_business_account_id: params.businessAccountId,
     p_expected_version: params.expectedVersion,
+    // Both Operations and a signed-in merchant are real audit actors.
+    // The old merchant path passed NULL, contradicting the database's
+    // actor-present invariant for actor_type='merchant'.
     p_actor_user_id:
-      params.actor && params.actor.kind === "operations" ? params.actor.userId : null,
+      params.actor.kind === "operations" || params.actor.kind === "member"
+        ? params.actor.userId
+        : null,
   });
   if (isFulfillmentFailure(r)) return r;
   return { ok: true, value: { request: r.value } };

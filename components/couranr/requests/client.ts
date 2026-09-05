@@ -246,8 +246,39 @@ export function fetchDeliveryRequest(input: { id: string; businessAccountId?: st
   const qs = input.businessAccountId
     ? `?businessAccountId=${encodeURIComponent(input.businessAccountId)}`
     : "";
-  return call<{ request: DeliveryRequestView; events: any[]; intake?: IntakeSessionView | null }>(
-    `/api/couranr/delivery-requests/${input.id}${qs}`
+  return call<{
+    request: DeliveryRequestView;
+    events: any[];
+    intake?: IntakeSessionView | null;
+    hostedContext?: {
+      orderReference: string | null;
+      requestedPayerType: "merchant" | "customer" | null;
+      destinationLabel: string | null;
+      shipmentDescription: string | null;
+      customerWeightLb: number | null;
+      customerWeightBand: string | null;
+      customerRestrictedClass: string | null;
+      signatureRequested: boolean;
+    } | null;
+  }>(`/api/couranr/delivery-requests/${input.id}${qs}`);
+}
+
+export function validateHostedRequestFromBrowser(input: {
+  id: string;
+  businessAccountId: string;
+  expectedVersion: number;
+  payerType: "merchant" | "customer";
+  weightLb: number | null;
+  weightBand: string | null;
+  restrictedClass: string;
+  signatureRequired: boolean;
+}) {
+  return call<{ request: DeliveryRequestView }>(
+    `/api/couranr/delivery-requests/${input.id}/validate-hosted`,
+    {
+      method: "POST",
+      body: input,
+    }
   );
 }
 

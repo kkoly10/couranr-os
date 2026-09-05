@@ -5,6 +5,11 @@ import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
 import { READINESS_STATES, type ReadinessState } from "@/lib/couranr/requests/states";
 import { toDeliveryRequestView } from "@/lib/couranr/requests/view";
 import { advanceAutomaticFulfillment } from "@/lib/couranr/automation/engine";
+import { getDeliveryRequest, isCommandFailure } from "@/lib/couranr/requests/commands";
+import {
+  isHostedFailure,
+  setHostedMerchantReadiness,
+} from "@/lib/couranr/hosted/commands";
 
 export const dynamic = "force-dynamic";
 
@@ -47,17 +52,46 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   const actor = await resolveRequestActor(req, businessAccountId);
   if (isActorDenied(actor)) return routeFailure(actor.code, actor.error);
 
-  const result = await setReadiness({
+  const loaded = await getDeliveryRequest({
     actor: actor.actor,
-    requestId: params.id,
     businessAccountId,
-    expectedVersion,
-    to: readiness as ReadinessState,
+    requestId: params.id,
   });
-  if (isFulfillmentFailure(result)) return failureResponse(result);
+  if (isCommandFailure(loaded)) return failureResponse(loaded);
+
+  const isHosted =
+    loaded.value.request.source === "hosted_request" &&
+    loaded.value.request.requester_kind === "consumer" &&
+    loaded.value.request.business_account_id === null;
+
+  let nextRequest: Record<string, any>;
+  if (isHosted) {
+    if (actor.actor.kind !== "member") {
+      return routeFailure("not_permitted", "Only the host business can update readiness.");
+    }
+    const hosted = await setHostedMerchantReadiness({
+      requestId: params.id,
+      hostBusinessAccountId: businessAccountId,
+      expectedVersion,
+      actorUserId: actor.actor.userId,
+      to: readiness as ReadinessState,
+    });
+    if (isHostedFailure(hosted)) return failureResponse(hosted);
+    nextRequest = hosted.value.request;
+  } else {
+    const result = await setReadiness({
+      actor: actor.actor,
+      requestId: params.id,
+      businessAccountId,
+      expectedVersion,
+      to: readiness as ReadinessState,
+    });
+    if (isFulfillmentFailure(result)) return failureResponse(result);
+    nextRequest = result.value.request;
+  }
 
   if (readiness === "ready") {
     await advanceAutomaticFulfillment(params.id);
   }
-  return NextResponse.json({ request: toDeliveryRequestView(result.value.request) });
+  return NextResponse.json({ request: toDeliveryRequestView(nextRequest) });
 }

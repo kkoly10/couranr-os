@@ -27,7 +27,6 @@ import { fetchWebsiteTools, saveWebsiteTools, type WebsiteToolsView } from "./cl
 import { memberMay } from "@/lib/couranr/settings/permissions";
 import {
   DEFAULT_EMBED,
-  HOSTED_REQUEST_ROUTE_EXISTS,
   embedSnippet,
   hostedRequestUrl,
   validateEmbed,
@@ -39,12 +38,10 @@ import {
  *
  * Registry-required states: DRAFT, PUBLISHED, INVALID EMBED SETTINGS, DISABLED.
  *
- * The honesty problem this screen has to solve: `/request/[merchantSlug]` does
- * not exist yet — it is PUB-004's contract — so the link a merchant copies
- * here does not resolve. Rather than hide the tools until then, every surface
- * that shows the URL carries an explicit "not live yet" state derived from
- * HOSTED_REQUEST_ROUTE_EXISTS, which a test pins to the filesystem. A merchant
- * can design and publish their button; they are never told it works.
+ * PUB-004 now serves `/request/[merchantSlug]`. Publishing is still a
+ * merchant-controlled setting; the public route independently requires a live
+ * workspace, so a draft/disabled or not-yet-activated business is never
+ * converted into a public intake by browser copy alone.
  *
  * The registry constraint (`:407`): "Do not turn Couranr into the merchant's
  * product checkout." The embed is an anchor to a request form, never an
@@ -268,19 +265,6 @@ export function WebsiteTools() {
 
   return (
     <Stack gap={6}>
-      {/*
-        The standing truth about this whole screen. Shown regardless of publish
-        status, because a merchant who published yesterday still needs to know
-        the link does not resolve yet.
-      */}
-      {!HOSTED_REQUEST_ROUTE_EXISTS ? (
-        <Alert tone="info" title="Your link goes live when hosted requests launch">
-          You can design and publish your button now. Couranr has not launched
-          the customer request page yet, so the link will not open for your
-          customers until it does. Couranr will tell you when that happens.
-        </Alert>
-      ) : null}
-
       {accounts.length > 1 ? (
         <Card>
           <CardHeader title="Business account" />
@@ -316,15 +300,19 @@ export function WebsiteTools() {
           actions={
             <Badge tone={STATUS_TONE[status] ?? "neutral"}>
               {STATUS_LABEL[status] ?? status}
-              {status === "published" && !HOSTED_REQUEST_ROUTE_EXISTS
-                ? " — pending launch"
-                : ""}
             </Badge>
           }
         />
         {view.slug ? (
           <Stack gap={3}>
-            <Field label="Link" hint="Share this with your customers once it is live.">
+            <Field
+              label="Link"
+              hint={
+                status === "published"
+                  ? "Share this with your customers. Couranr still requires your business to be live before the public form resolves."
+                  : "Publish these website tools before sharing the link with customers."
+              }
+            >
               {(p) => <Input {...p} value={url} readOnly />}
             </Field>
             <Cluster gap={2}>

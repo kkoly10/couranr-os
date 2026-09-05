@@ -6,6 +6,7 @@ import {
   isPaymentFailure,
 } from "@/lib/couranr/payments/commands";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
+import { getDeliveryRequest, isCommandFailure } from "@/lib/couranr/requests/commands";
 
 export const dynamic = "force-dynamic";
 
@@ -43,10 +44,21 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   const actor = await resolveRequestActor(req, businessAccountId);
   if (isActorDenied(actor)) return routeFailure(actor.code, actor.error);
 
+  // First authorize the request through either direct merchant tenancy or the
+  // hosted relationship. Only then may a Consumer-owned hosted request use
+  // NULL commercial tenancy below.
+  const loaded = await getDeliveryRequest({
+    actor: actor.actor,
+    businessAccountId,
+    requestId: params.id,
+  });
+  if (isCommandFailure(loaded)) return failureResponse(loaded);
+
   const obligation = await ensurePaymentObligation({
     actor: actor.actor,
     requestId: params.id,
     businessAccountId,
+    requestBusinessAccountId: loaded.value.request.business_account_id ?? null,
     // One key per request. A second click reaches the same idempotent create.
     idempotencyKey: `authorize:${params.id}`,
   });

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isActorDenied, resolveRequestActor } from "@/lib/couranr/requests/actor";
 import { getDeliveryRequest, isCommandFailure } from "@/lib/couranr/requests/commands";
 import {
+  ensurePaymentObligation,
   getObligationForRequest,
   isPaymentFailure,
   issuePaymentLink,
@@ -57,8 +58,34 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   });
   if (isCommandFailure(loaded)) return failureResponse(loaded);
 
-  const ob = await getObligationForRequest({ requestId: params.id, businessAccountId });
+  const requestBusinessAccountId = loaded.value.request.business_account_id ?? null;
+  let ob = await getObligationForRequest({
+    requestId: params.id,
+    businessAccountId: requestBusinessAccountId,
+  });
   if (isPaymentFailure(ob)) return failureResponse(ob);
+
+  /*
+   * Customer-paid hosted requests deliberately have NO obligation before the
+   * host merchant validates them. Creating a link is the first payer handoff:
+   * create the canonical obligation now, from the immutable quote, but do NOT
+   * create a Stripe PaymentIntent here. /pay/[token] owns that provider step.
+   *
+   * This remains safe for every flow because the SQL refuses non-payable
+   * request states and a missing/invalid quote. In particular,
+   * awaiting_merchant_confirmation cannot reach this point.
+   */
+  if (!ob.value.obligation) {
+    const prepared = await ensurePaymentObligation({
+      actor: actor.actor,
+      requestId: params.id,
+      businessAccountId,
+      requestBusinessAccountId,
+      idempotencyKey: `payment-link:${params.id}`,
+    });
+    if (isPaymentFailure(prepared)) return failureResponse(prepared);
+    ob = { ok: true, value: { obligation: prepared.value.obligation } };
+  }
 
   const obligation = ob.value.obligation;
   if (!obligation) {

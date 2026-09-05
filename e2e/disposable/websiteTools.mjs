@@ -19,9 +19,9 @@
  * ---------------------------------------------------------------------------
  *
  *  1. The `/auth/v1` issuer is `gateway.mjs`'s reimplementation, not GoTrue.
- *  2. That the link RESOLVES. It cannot: `/request/[merchantSlug]` is PUB-004
- *     and does not exist. That is the screen's whole "not live yet" state, and
- *     it is asserted as copy rather than as a working URL.
+ *  2. It does not exercise customer submission, paid address lookup, routing,
+ *     pricing or Stripe. This harness proves only the Website Tools states and
+ *     the public hosted route's published + live-workspace gate.
  *
  * Run:  node e2e/disposable/websiteTools.mjs
  */
@@ -187,6 +187,23 @@ async function main() {
     addMember(bizId, owner.id, "owner");
     addMember(bizId, viewer.id, "viewer");
 
+    // PUB-004's resolver requires BOTH a published Website Tools row and a
+    // LIVE merchant workspace. The fixture makes activation true independently
+    // of Website Tools so W3/P2/P5 isolate publication as the variable.
+    sql(
+      `insert into public.couranr_merchant_workspaces
+         (business_account_id,created_by,idempotency_key,business_category,
+          pickup_address,contact_phone,payer_default,policies_version,policies_accepted_at)
+       values ('${bizId}','${owner.id}','wt-ws-${crypto.randomUUID()}','general_local_business',
+         '{"googlePlaceId":"wt-pickup","formattedAddress":"1 Main St, Stafford, VA 22554","line1":"1 Main St","line2":null,"city":"Stafford","region":"VA","postalCode":"22554","countryCode":"US","latitude":38.42,"longitude":-77.41,"addressSource":"google_places_new","instructions":null}'::jsonb,
+         '540-555-0100','merchant','v1',now())`
+    );
+    sql(
+      `insert into public.couranr_workspace_activations
+         (business_account_id,activation_state,reviewed_at,reviewed_by)
+       values ('${bizId}','live',now(),'${owner.id}')`
+    );
+
     const otherBiz = sql(
       `insert into public.business_accounts (name, slug, status)
        values ('[WT] other business', 'wt-other-shop', 'active') returning id`
@@ -272,8 +289,11 @@ async function main() {
       sql(`select count(*) from public.couranr_website_tool_configs
             where business_account_id='${bizId}'`) === "0");
 
-    check("W3", "the screen says the link is not live yet (PUB-004 is unshipped)",
-      (await page.innerText("body")).includes("goes live when hosted requests launch"));
+    {
+      const hosted = await fetch(expectedUrl, { redirect: "manual" });
+      check("W3", "a DRAFT Website Tools config does not publish the hosted route",
+        hosted.status === 404, `status=${hosted.status}`);
+    }
 
     // THE DECODE. The browser rasterizes its own rendered SVG; Node decodes it.
     const qrPixels = await page.evaluate(async () => {
@@ -370,8 +390,16 @@ async function main() {
       }
       check("P1", "publishing wrote the row with the merchant's design",
         row === "published|#22aa55|300", row);
-      check("P2", "the badge says published AND pending launch",
-        (await page.innerText("body")).includes("pending launch"));
+      check("P2", "the badge says Published without stale pending-launch copy",
+        (await page.getByText("Published", { exact: true }).count()) > 0 &&
+        !(await page.innerText("body")).includes("pending launch"));
+      {
+        const hosted = await fetch(expectedUrl, { redirect: "manual" });
+        const body = await hosted.text();
+        check("P2b", "PUBLISHED + LIVE makes the real hosted request route resolve",
+          hosted.status === 200 && body.includes("[WT] disposable business"),
+          `status=${hosted.status}`);
+      }
       const updatedBy = sql(
         `select updated_by from public.couranr_website_tool_configs where business_account_id='${bizId}'`
       );
@@ -391,6 +419,9 @@ async function main() {
         await new Promise((r) => setTimeout(r, 500));
       }
       check("P4", "disabling wrote the disabled state", row === "disabled", row);
+      const hosted = await fetch(expectedUrl, { redirect: "manual" });
+      check("P5", "DISABLED closes the public hosted route again",
+        hosted.status === 404, `status=${hosted.status}`);
       await page.screenshot({ path: path.join(SHOTS, "MER-013-disabled.png"), fullPage: true });
     }
 
