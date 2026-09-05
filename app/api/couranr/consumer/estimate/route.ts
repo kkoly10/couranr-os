@@ -5,7 +5,11 @@ import {
   isConsumerFailure,
 } from "@/lib/couranr/consumer/send";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
-import { consumerSendServerLive } from "@/lib/couranr/sameday/serverGate";
+import {
+  consumerSendProductionEnvironment,
+  consumerSendServerLive,
+} from "@/lib/couranr/sameday/serverGate";
+import { claimConsumerCanaryEstimate } from "@/lib/couranr/consumer/canary";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +36,16 @@ export async function POST(req: NextRequest) {
     body = await req.json();
   } catch {
     return routeFailure("invalid_input", "Send the delivery details as JSON.");
+  }
+
+  if (
+    consumerSendProductionEnvironment() &&
+    !(await claimConsumerCanaryEstimate(String(session.value.id)))
+  ) {
+    return routeFailure(
+      "rate_limited",
+      "Quote refresh limit reached for this production pilot."
+    );
   }
 
   const r = await estimateConsumerSend({ session: session.value, body });
