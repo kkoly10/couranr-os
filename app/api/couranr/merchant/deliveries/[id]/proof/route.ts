@@ -50,10 +50,12 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
     businessAccountId
   );
   if (!permission.allowed) {
-    return routeFailure(
-      "not_permitted",
-      "You do not have access to this delivery."
-    );
+    // A signed-in user outside this business gets the same answer as for a
+    // missing delivery. Active members may read proof metadata.
+    if (actor.actor.kind === "member" && !actor.actor.membership) {
+      return routeFailure("not_found", "Delivery not found.");
+    }
+    return routeFailure("not_permitted", "You do not have access to this delivery.");
   }
 
   const proof = await listProofMetadata(params.id);
