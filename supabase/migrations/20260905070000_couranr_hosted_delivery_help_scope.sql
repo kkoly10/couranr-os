@@ -56,7 +56,7 @@ begin
   )
   values(
     p_delivery_id,v_business,p_token_hash,
-    now()+make_interval(days=>greatest(1,least(coalesce(p_ttl_days,14),30)))
+    now()+make_interval(days=>greatest(1,p_ttl_days))
   )
   returning id into v_id;
 
