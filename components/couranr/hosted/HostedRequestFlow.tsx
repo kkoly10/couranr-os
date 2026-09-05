@@ -273,7 +273,7 @@ export function HostedRequestFlow({
 
   return (
     <div className="cr-send-flow">
-      <Stack gap={5}>
+      <Stack gap={6}>
         <div>
           <Text size="sm" muted>Delivery request for</Text>
           <h1>Have {merchantName} send your order with Couranr</h1>
@@ -424,7 +424,7 @@ export function HostedRequestFlow({
           </Stack>
         </Card>
 
-        <Button variant="primary" size="lg" loading={busy} disabled={busy} onClick={() => void submit()}>
+        <Button variant="primary" loading={busy} disabled={busy} onClick={() => void submit()}>
           Send request to {merchantName}
         </Button>
 
