@@ -54,6 +54,18 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   });
   if (isCommandFailure(loaded)) return failureResponse(loaded);
 
+  /*
+   * PAYER BOUNDARY. This route is the merchant's Payment Element path. A
+   * customer-paid request must never create/retrieve a PaymentIntent here just
+   * because the host merchant can administer the delivery.
+   */
+  if (loaded.value.request.payer_type !== "merchant") {
+    return routeFailure(
+      "conflict",
+      "This delivery is paid by the customer. Send the customer a secure payment link instead."
+    );
+  }
+
   const obligation = await ensurePaymentObligation({
     actor: actor.actor,
     requestId: params.id,
@@ -64,6 +76,9 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   });
   // Through the one audited path, like every other canonical failure.
   if (isPaymentFailure(obligation)) return failureResponse(obligation);
+  if (obligation.value.obligation.payer_type !== "merchant") {
+    return routeFailure("conflict", "This payment is not owned by the business.");
+  }
 
   const intent = await ensurePaymentIntent({ obligation: obligation.value.obligation });
   if (isPaymentFailure(intent)) return failureResponse(intent);
