@@ -28,7 +28,7 @@ alter table public.couranr_activation_events
   ));
 
 alter table public.couranr_workspace_activations
-  drop constraint if exists couranr_wa_contact_verified_pair_chk,
+  drop constraint if exists couranr_wa_contact_verified_actor_chk,
   drop constraint if exists couranr_wa_contact_request_pair_chk,
   drop column if exists contact_verified_by,
   drop column if exists contact_verification_requested_by,
