@@ -35,6 +35,18 @@ const HOSTED_TRACKING_SQL = readFileSync(
   path.join(ROOT, "supabase/migrations/20260905070500_couranr_hosted_tracking_relationship_scope.sql"),
   "utf8"
 );
+const HOSTED_RATE_SQL = readFileSync(
+  path.join(ROOT, "supabase/migrations/20260905071000_couranr_hosted_request_rate_limits.sql"),
+  "utf8"
+);
+const HOSTED_PLACES_ROUTE = readFileSync(
+  path.join(ROOT, "app/api/couranr/hosted/[merchantSlug]/places/route.ts"),
+  "utf8"
+);
+const ERRORS = readFileSync(
+  path.join(ROOT, "lib/couranr/errors.ts"),
+  "utf8"
+);
 const HOSTED_COMMANDS = readFileSync(
   path.join(ROOT, "lib/couranr/hosted/commands.ts"),
   "utf8"
@@ -233,6 +245,45 @@ describe("hosted request authority is separate from requester ownership", () => 
     const readiness = HOSTED_SQL.slice(start);
     expect(readiness).toContain("p_actor_user_id,'merchant',p_command");
     expect(readiness).toContain("hostBusinessAccountId");
+  });
+});
+
+describe("hosted abuse and provider-cost boundaries", () => {
+  it("rate-limits public session creation per merchant host", () => {
+    expect(HOSTED_RATE_SQL).toContain(
+      "c_sessions_per_host_hour constant integer:=60"
+    );
+    expect(HOSTED_RATE_SQL).toContain("pg_advisory_xact_lock");
+    expect(HOSTED_RATE_SQL).toContain("created_at > now()-interval '1 hour'");
+    expect(HOSTED_RATE_SQL).toContain("'hosted_request_rate_limited'");
+    expect(HOSTED_RATE_SQL).toContain("errcode='CR429'");
+  });
+
+  it("rate-limits paid address search per opaque intake before the Google seam", () => {
+    expect(HOSTED_RATE_SQL).toContain(
+      "c_places_per_intake_hour constant integer:=12"
+    );
+    expect(HOSTED_RATE_SQL).toContain("for update");
+    expect(HOSTED_RATE_SQL).toContain("places_request_count");
+    const claim = HOSTED_PLACES_ROUTE.indexOf("claimHostedPlaceSearch");
+    const google = HOSTED_PLACES_ROUTE.indexOf("autocompleteConsumerPlaces(normalized)");
+    expect(claim).toBeGreaterThanOrEqual(0);
+    expect(google).toBeGreaterThanOrEqual(0);
+    expect(claim).toBeLessThan(google);
+  });
+
+  it("maps the database throttle to a sanitized HTTP 429", () => {
+    expect(ERRORS).toContain('| "rate_limited"');
+    expect(ERRORS).toContain("rate_limited: 429");
+    expect(ERRORS).toContain('case "CR429"');
+  });
+
+  it("prunes only expired unsubmitted session rows", () => {
+    expect(HOSTED_RATE_SQL).toContain("h.request_id is null");
+    expect(HOSTED_RATE_SQL).toContain("h.expires_at < now()-interval '1 day'");
+    expect(HOSTED_RATE_SQL).not.toContain(
+      "delete from public.couranr_delivery_requests"
+    );
   });
 });
 
