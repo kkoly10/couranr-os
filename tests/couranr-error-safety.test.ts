@@ -161,7 +161,7 @@ describe("canonical routes cannot leak a database detail", () => {
       "app/api/couranr/consumer/pay/route.ts",
       "app/api/couranr/consumer/pickup-code/route.ts",
       "app/api/couranr/consumer/pickup-manifest/route.ts",
-      "app/api/couranr/consumer/places/route.ts"
+      "app/api/couranr/consumer/places/route.ts",
       "app/api/couranr/consumer/readiness/route.ts",
       "app/api/couranr/consumer/reconcile-payment/route.ts",
       "app/api/couranr/consumer/refresh-quote/route.ts",
@@ -177,7 +177,7 @@ describe("canonical routes cannot leak a database detail", () => {
       "app/api/couranr/delivery-requests/[id]/fulfillment/route.ts",
       "app/api/couranr/delivery-requests/[id]/payment-link/route.ts",
       "app/api/couranr/delivery-requests/[id]/pickup-manifest/route.ts",
-      "app/api/couranr/delivery-requests/[id]/readiness/route.ts"
+      "app/api/couranr/delivery-requests/[id]/readiness/route.ts",
       "app/api/couranr/delivery-requests/[id]/reconcile-payment/route.ts",
       "app/api/couranr/delivery-requests/[id]/route.ts",
       "app/api/couranr/delivery-requests/[id]/submit/route.ts",
@@ -241,7 +241,7 @@ describe("canonical routes cannot leak a database detail", () => {
       "app/api/couranr/operations/delivery-requests/[id]/decline/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/estimate/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/pickup-manifest/route.ts",
-      "app/api/couranr/operations/delivery-requests/[id]/promotional-credit-delivery/route.ts"
+      "app/api/couranr/operations/delivery-requests/[id]/promotional-credit-delivery/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/reconcile-capture/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/reconcile-refund/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/refund/route.ts",
