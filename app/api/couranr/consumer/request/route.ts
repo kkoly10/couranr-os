@@ -5,6 +5,7 @@ import {
   isConsumerFailure,
 } from "@/lib/couranr/consumer/send";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
+import { consumerSendServerLive } from "@/lib/couranr/sameday/serverGate";
 
 export const dynamic = "force-dynamic";
 
@@ -17,6 +18,8 @@ export const dynamic = "force-dynamic";
  * appears in this response exactly once; it is never recoverable afterwards.
  */
 export async function GET(req: NextRequest) {
+  if (!consumerSendServerLive()) return routeFailure("not_found");
+
   const session = await redeemGuestSessionToken(req);
   if (isConsumerFailure(session)) return routeFailure("not_found");
 
