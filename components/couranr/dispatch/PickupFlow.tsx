@@ -236,7 +236,7 @@ export function PickupFlow({
   }
 
   return (
-    <Stack gap={5}>
+    <Stack gap={6}>
       <ExpectedPickup assigned={assigned} large={large} />
 
       <Card>
