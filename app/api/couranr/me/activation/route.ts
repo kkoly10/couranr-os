@@ -8,7 +8,7 @@ import {
   isActivationFailure,
   recordTestDelivery,
   requestActivation,
-  verifyContact,
+  requestContactVerification,
 } from "@/lib/couranr/activation/commands";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
 
@@ -20,8 +20,8 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
  * MER-003 — the merchant's own activation checklist.
  *
  * Reading it is available to any active member (`activation.read`); the acts
- * that BIND the business — accepting terms, confirming the operations contact,
- * asking Couranr to go live — need `activation.request`, which is owner and
+ * that BIND the business — accepting terms, asking Couranr to verify the
+ * operations contact, asking Couranr to go live — need `activation.request`, which is owner and
  * manager only. The database independently refuses a caller who is not an
  * active member at all, so a route that forgot this check would still not let
  * a stranger sign anything; this check is what keeps a read-only VIEWER from
@@ -103,8 +103,8 @@ export async function POST(req: NextRequest) {
       kind: String(body?.kind ?? ""),
     });
     if (isActivationFailure(r)) return failureResponse(r);
-  } else if (action === "verify_contact") {
-    const r = await verifyContact({ actor, businessAccountId });
+  } else if (action === "request_contact_verification") {
+    const r = await requestContactVerification({ actor, businessAccountId });
     if (isActivationFailure(r)) return failureResponse(r);
   } else if (action === "record_test_delivery") {
     const requestId = String(body?.requestId ?? "");
