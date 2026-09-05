@@ -19,6 +19,15 @@ begin
   if exists (select 1 from public.couranr_hosted_request_intakes) then
     raise exception 'Hosted Request V1 has durable intake evidence; repair forward instead of dropping it';
   end if;
+  -- The couranr_dre_command_chk re-add below narrows couranr_delivery_request_events
+  -- back to the pre-hosted vocabulary. If any event row already carries a hosted
+  -- command, that ALTER would abort with check_violation (23514). Refuse here so
+  -- the failure is an explicit "roll forward" rather than a raw constraint error,
+  -- guarding the SAME table the CHECK constrains (not only the intakes table).
+  if exists (select 1 from public.couranr_delivery_request_events
+             where command in ('create_hosted_delivery_request','validate_hosted_delivery_request')) then
+    raise exception 'Hosted Request V1 has durable delivery-request-event evidence; repair forward instead of dropping it';
+  end if;
 end
 $guard$;
 

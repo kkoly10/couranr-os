@@ -194,6 +194,10 @@ function sectionIntegrity() {
   check("INT-2", "message idempotency is scoped per conversation AND author",
     one(`select count(*) from pg_indexes
           where indexname = 'couranr_cvm_idempotency_uniq'`), "1");
+  check("INT-2b", "... and is NULLS NOT DISTINCT so null-author Operations rows dedupe",
+    one(`select ix.indnullsnotdistinct::text from pg_index ix
+          join pg_class i on i.oid = ix.indexrelid
+          where i.relname = 'couranr_cvm_idempotency_uniq'`), "true");
   check("INT-3", "one live customer participant per token",
     one(`select count(*) from pg_indexes where indexname = 'couranr_cvp_live_token_uniq'`), "1");
   check("INT-4", "conversation kind is trigger-immutable",

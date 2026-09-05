@@ -49,6 +49,8 @@
     "typecheck:canonical": "tsc --noEmit -p tsconfig.canonical.json",
     "typecheck:couranr-foundation": "tsc -p tsconfig.couranr-foundation.json",
     "test:payment-recovery": "node e2e/disposable/paymentRecovery.mjs",
+    "test:credit-settlement": "node e2e/disposable/creditSettlement.mjs",
+    "test:rollback-guards": "node e2e/disposable/rollbackGuards.mjs",
     "test:consumer-send": "node e2e/disposable/consumerSend.mjs",
     "test:release": "node e2e/disposable/releaseAuthorization.mjs",
     "test:release:route": "node e2e/disposable/releaseRoute.mjs",
