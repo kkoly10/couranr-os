@@ -1,11 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { Alert, Badge, Button, Card, CardHeader, Stack, Text } from "@/components/couranr/primitives";
+import { Alert, Badge, Button, Card, CardHeader, Cluster, Stack, Text } from "@/components/couranr/primitives";
 import { ErrorState } from "@/components/couranr/states";
 import { formatCents, type DeliveryRequestView } from "@/lib/couranr/requests/view";
 import { CouranrPaymentElement } from "./CouranrPaymentElement";
 import { call, isApiFailure } from "@/components/couranr/requests/client";
+import { Input } from "@/components/couranr/forms";
 
 /**
  * MER-007 — payment state, and the merchant's authorization action.
@@ -48,6 +49,11 @@ export function MerchantPaymentPanel({
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [clientSecret, setClientSecret] = React.useState<string | null>(null);
+  const [customerLink, setCustomerLink] = React.useState<{
+    url: string;
+    expiresAt: string;
+  } | null>(null);
+  const [linkCopied, setLinkCopied] = React.useState(false);
 
   // Only these states have anything to pay for.
   const payable =
@@ -97,6 +103,55 @@ export function MerchantPaymentPanel({
     return isApiFailure(r) ? { paymentState: null } : r.value;
   }
 
+  /**
+   * Customer-paid flow.
+   *
+   * The token is returned by the server ONCE and is intentionally not
+   * recoverable later. We keep the resulting URL only in this component's
+   * memory; generating another link supersedes the previous token.
+   */
+  async function createCustomerPaymentLink() {
+    if (!businessAccountId) return;
+    setBusy(true);
+    setError(null);
+    setLinkCopied(false);
+
+    const r = await call<{ token: string; expiresAt: string }>(
+      `/api/couranr/delivery-requests/${request.id}/payment-link`,
+      { method: "POST", body: { businessAccountId } }
+    );
+
+    setBusy(false);
+    if (isApiFailure(r)) {
+      setError(r.error ?? "A payment link could not be created.");
+      return;
+    }
+
+    const token = String(r.value.token ?? "");
+    if (!token) {
+      setError("A payment link could not be created.");
+      return;
+    }
+
+    const origin = typeof window === "undefined" ? "" : window.location.origin;
+    const url = origin
+      ? new URL(`/pay/${encodeURIComponent(token)}`, origin).toString()
+      : `/pay/${encodeURIComponent(token)}`;
+
+    setCustomerLink({ url, expiresAt: String(r.value.expiresAt ?? "") });
+  }
+
+  async function copyCustomerPaymentLink() {
+    if (!customerLink) return;
+    setLinkCopied(false);
+    try {
+      await navigator.clipboard.writeText(customerLink.url);
+      setLinkCopied(true);
+    } catch {
+      setError("Copy failed. Select the payment link and copy it manually.");
+    }
+  }
+
   const state = payment?.paymentState ?? "not_started";
   const badge = STATE_BADGE[state] ?? STATE_BADGE.not_started;
 
@@ -130,10 +185,55 @@ export function MerchantPaymentPanel({
         ) : null}
 
         {!merchantPays ? (
-          <Alert tone="info" title="Waiting for the recipient">
-            Couranr sends the recipient a secure payment link. This delivery is scheduled once
-            they authorize the amount.
-          </Alert>
+          <Stack gap={3}>
+            <Alert tone="info" title="Customer payment">
+              Create a secure payment link and send it to your customer. Couranr schedules the
+              delivery only after the customer authorizes the delivery amount.
+            </Alert>
+
+            {customerLink ? (
+              <Stack gap={2}>
+                <Input
+                  aria-label="Customer payment link"
+                  value={customerLink.url}
+                  readOnly
+                  onFocus={(e) => e.currentTarget.select()}
+                />
+                <Cluster gap={2}>
+                  <Button variant="primary" type="button" onClick={copyCustomerPaymentLink}>
+                    Copy payment link
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    type="button"
+                    loading={busy}
+                    onClick={createCustomerPaymentLink}
+                  >
+                    Replace link
+                  </Button>
+                </Cluster>
+                {linkCopied ? (
+                  <Alert tone="success" title="Payment link copied">
+                    Send it directly to your customer. Couranr never puts merchandise charges on
+                    this payment page.
+                  </Alert>
+                ) : null}
+                <Text size="xs" muted>
+                  For security, Couranr does not show this raw link again after you leave this
+                  page. Replacing it immediately disables the previous link.
+                </Text>
+              </Stack>
+            ) : (
+              <Button
+                variant="primary"
+                type="button"
+                loading={busy}
+                onClick={createCustomerPaymentLink}
+              >
+                Create secure payment link
+              </Button>
+            )}
+          </Stack>
         ) : state === "authorized" ? null : clientSecret ? (
           /*
             The SAME component the customer link uses. Only the reconcile
