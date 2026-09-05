@@ -544,6 +544,60 @@ export async function getHostedMerchantContext(params: {
   };
 }
 
+/**
+ * Operations twin of the host-scoped context read.
+ *
+ * It is deliberately a different function: merchant callers must name and
+ * prove the host business, while Operations has cross-request review authority.
+ * The request_id is UNIQUE in the intake table, so this cannot blend evidence
+ * from two merchants or two customer sessions.
+ */
+export async function getHostedOperationsContext(params: {
+  requestId: string;
+}): Promise<HostedResult<HostedMerchantContext | null>> {
+  const op = "getHostedOperationsContext";
+  const { data, error } = await supabaseAdmin
+    .from("couranr_hosted_request_intakes")
+    .select(
+      "order_reference,requested_payer_type,destination_label,shipment_description,customer_weight_lb,customer_weight_band,customer_restricted_class,signature_requested"
+    )
+    .eq("request_id", params.requestId)
+    .maybeSingle();
+
+  if (error) {
+    return fail({
+      operation: op,
+      code: classifyDatabaseError(error),
+      detail: error.message,
+    });
+  }
+  if (!data) return { ok: true, value: null };
+  const row = data as any;
+  return {
+    ok: true,
+    value: {
+      orderReference: row.order_reference ? String(row.order_reference) : null,
+      requestedPayerType:
+        row.requested_payer_type === "merchant" || row.requested_payer_type === "customer"
+          ? row.requested_payer_type
+          : null,
+      destinationLabel: row.destination_label ? String(row.destination_label) : null,
+      shipmentDescription: row.shipment_description ? String(row.shipment_description) : null,
+      customerWeightLb:
+        row.customer_weight_lb === null || row.customer_weight_lb === undefined
+          ? null
+          : Number(row.customer_weight_lb),
+      customerWeightBand: isWeightBand(row.customer_weight_band)
+        ? row.customer_weight_band
+        : null,
+      customerRestrictedClass: isRestrictedClassDeclaration(row.customer_restricted_class)
+        ? row.customer_restricted_class
+        : null,
+      signatureRequested: row.signature_requested === true,
+    },
+  };
+}
+
 export type HostedValidationInput = {
   payerType: "merchant" | "customer";
   weightLb: number | null;
