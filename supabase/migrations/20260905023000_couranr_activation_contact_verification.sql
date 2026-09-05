@@ -24,8 +24,8 @@ alter table public.couranr_workspace_activations
     (contact_verification_requested_at is null) =
     (contact_verification_requested_by is null)
   ),
-  add constraint couranr_wa_contact_verified_pair_chk check (
-    (contact_verified_at is null) = (contact_verified_by is null)
+  add constraint couranr_wa_contact_verified_actor_chk check (
+    contact_verified_by is null or contact_verified_at is not null
   );
 
 alter table public.couranr_activation_events
@@ -80,11 +80,11 @@ begin
   v_row := public.couranr_lock_activation(p_business_account_id);
   v_from := v_row.activation_state;
 
-  if v_row.activation_state = 'live' then
-    raise exception 'workspace_already_live' using errcode = 'CR409';
-  end if;
   if v_row.contact_verified_at is not null then
-    raise exception 'contact_already_verified' using errcode = 'CR409';
+    return v_row;
+  end if;
+  if v_row.contact_verification_requested_at is not null then
+    return v_row;
   end if;
 
   update public.couranr_workspace_activations
@@ -157,6 +157,9 @@ begin
     raise exception 'activation_not_found' using errcode = 'CR404';
   end if;
 
+  if v_row.contact_verified_at is not null then
+    return v_row;
+  end if;
   if v_row.contact_verification_requested_at is null then
     raise exception 'contact_verification_not_requested' using errcode = 'CR409';
   end if;
