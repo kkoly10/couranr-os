@@ -242,6 +242,60 @@ export function confirmIntakeFactFromBrowser(input: {
   );
 }
 
+export type PickupManifestClientView = {
+  manifest: {
+    description: string;
+    packageCount: number | null;
+    orderReference: string | null;
+    handlingNotes: string | null;
+    source: string;
+  };
+  manifestVersion: number;
+};
+
+export type PickupManifestClientInput = {
+  description: string;
+  packageCount: number | null;
+  orderReference: string | null;
+  handlingNotes: string | null;
+};
+
+export function saveBusinessPickupManifest(input: {
+  id: string;
+  businessAccountId: string;
+  expectedManifestVersion: number;
+  manifest: PickupManifestClientInput;
+}) {
+  return call<{ pickupManifest: PickupManifestClientView }>(
+    `/api/couranr/delivery-requests/${input.id}/pickup-manifest`,
+    {
+      method: "POST",
+      body: {
+        businessAccountId: input.businessAccountId,
+        expectedManifestVersion: input.expectedManifestVersion,
+        ...input.manifest,
+      },
+    },
+  );
+}
+
+export function saveOperationsPickupManifest(input: {
+  id: string;
+  expectedManifestVersion: number;
+  manifest: PickupManifestClientInput;
+}) {
+  return call<{ pickupManifest: PickupManifestClientView }>(
+    `/api/couranr/operations/delivery-requests/${input.id}/pickup-manifest`,
+    {
+      method: "POST",
+      body: {
+        expectedManifestVersion: input.expectedManifestVersion,
+        ...input.manifest,
+      },
+    },
+  );
+}
+
 export function fetchDeliveryRequest(input: { id: string; businessAccountId?: string }) {
   const qs = input.businessAccountId
     ? `?businessAccountId=${encodeURIComponent(input.businessAccountId)}`
