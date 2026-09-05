@@ -46,11 +46,13 @@ const stripped = (src: string) =>
 /* ------------------------------------------------- the route inventory --- */
 
 describe("consumer route inventory", () => {
-  it("holds exactly the ten contracted routes", () => {
+  it("holds exactly the twelve contracted routes", () => {
     expect(ROUTE_FILES.map(rel)).toEqual([
       "app/api/couranr/consumer/estimate/route.ts",
       "app/api/couranr/consumer/interpret/route.ts",
       "app/api/couranr/consumer/pay/route.ts",
+      "app/api/couranr/consumer/pickup-code/route.ts",
+      "app/api/couranr/consumer/pickup-manifest/route.ts",
       "app/api/couranr/consumer/places/route.ts",
       "app/api/couranr/consumer/readiness/route.ts",
       "app/api/couranr/consumer/reconcile-payment/route.ts",
@@ -89,6 +91,19 @@ describe("consumer route inventory", () => {
         expect((code.match(/req\.json\(\)/g) || []).length).toBe(1);
         expect(code).toMatch(/interpretConsumerDescription\(\{ session: session\.value, body \}\)/);
         expect(/\bbody\s*\.\s*[a-zA-Z]/.test(code)).toBe(false);
+      } else if (rel(file) === "app/api/couranr/consumer/pickup-manifest/route.ts") {
+        // PRF-002: expected pickup has its own narrow, non-commercial body.
+        // The guest session supplies request identity; the browser may state
+        // only the physical pickup facts plus the manifest CAS token.
+        expect((code.match(/req\.json\(\)/g) || []).length).toBe(1);
+        expect(code).toContain("normalizePickupManifestInput(body)");
+        expect(code).toContain("setConsumerPickupManifest");
+        for (const rx of [
+          /body\??\.\s*(amount|total|price|subtotal|cents)/i,
+          /body\??\.\s*(requestId|businessAccountId|target|policy|route|state|status)/i,
+        ]) {
+          expect(rx.test(code), `${rel(file)} reads forbidden pickup-manifest data`).toBe(false);
+        }
       } else if (rel(file) === "app/api/couranr/consumer/readiness/route.ts") {
         // FND-006: this route has one intentionally tiny body vocabulary:
         // { readiness: "ready" | "not_ready" }. It cannot name a request or
