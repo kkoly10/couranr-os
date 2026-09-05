@@ -63,7 +63,6 @@ export async function POST(
       expectedVersion,
       rawInput: {
         pickupPlaceId: validation.pickupPlaceId,
-        dropoffPlaceId: validation.dropoffPlaceId,
         payerType: validation.payerType,
         weightLb: validation.weightLb,
         weightBand: validation.weightBand,
