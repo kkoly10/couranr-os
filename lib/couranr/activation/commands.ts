@@ -235,7 +235,8 @@ export async function listActivationsForOperations(params: {
   if (params.contactVerificationPending) {
     query = query
       .not("contact_verification_requested_at", "is", null)
-      .is("contact_verified_at", null);
+      .is("contact_verified_at", null)
+      .order("contact_verification_requested_at", { ascending: true, nullsFirst: false });
   }
 
   const { data, error } = await query;
