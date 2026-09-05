@@ -198,7 +198,7 @@ export function ActivationReview() {
       <Card>
         <CardHeader
           title="Activation review"
-          description="Workspaces waiting on a Couranr decision. Nothing here is automatic — a workspace goes live only when an operator grants it."
+          description="Contact verification and activation work. Nothing here is automatic — a workspace goes live only when an operator grants it."
         />
         <Field label="Showing" required>
           {(p) => (
@@ -381,27 +381,24 @@ export function ActivationReview() {
               <Alert tone="success" title="This workspace is live">
                 Deliveries from this merchant are dispatched.
               </Alert>
-            ) : (
+            ) : detail.state === "pending_couranr_review" ? (
               <Stack gap={3}>
-                {!detail.canRequest && detail.state !== "pending_couranr_review" ? (
-                  <Alert tone="info" title="This merchant has not asked yet">
-                    They have not completed the checklist, so there is nothing
-                    to decide. Granting now would activate a workspace whose
-                    terms were never accepted.
-                  </Alert>
-                ) : null}
+                <Alert tone="info" title="Activation decision required">
+                  The merchant completed the checklist and asked Couranr to review this workspace.
+                  Review the evidence above before granting or blocking.
+                </Alert>
                 <Cluster gap={3}>
                   <Button
                     variant="primary"
                     loading={busy === "grant"}
-                    disabled={Boolean(busy) || detail.state !== "pending_couranr_review"}
+                    disabled={Boolean(busy)}
                     onClick={() => decide(true)}
                   >
                     Grant activation
                   </Button>
                   <Button
                     loading={busy === "block"}
-                    disabled={Boolean(busy) || detail.state !== "pending_couranr_review"}
+                    disabled={Boolean(busy)}
                     onClick={() => decide(false)}
                   >
                     Block with a reason
@@ -427,15 +424,15 @@ export function ActivationReview() {
                     </Select>
                   )}
                 </Field>
-                {/*
-                  The operator sees the exact sentence the MERCHANT will read.
-                  Choosing a reason without knowing what it says to them is how
-                  a curt internal code becomes a merchant's only explanation.
-                */}
                 <Alert tone="info" title="The merchant will read">
                   {BLOCK_REASONS[reasonCode] ?? ""}
                 </Alert>
               </Stack>
+            ) : (
+              <Alert tone="info" title="Not ready for an activation decision">
+                This workspace is still completing activation. Verify requested contact details
+                and wait for the merchant to finish the checklist and request review.
+              </Alert>
             )}
           </Stack>
         </Card>
