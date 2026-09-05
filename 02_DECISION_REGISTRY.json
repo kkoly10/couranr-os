@@ -1637,6 +1637,9 @@
       "acceptance_criteria": [
         "No proof flow requests a face or ID-document photo.",
         "Leave-at-door requires recorded permission and authorization."
+      ],
+      "amended_by": [
+        "PRF-002"
       ]
     },
     {
@@ -4803,6 +4806,118 @@
         "resolution": "Mapbox Directions v5 driving-traffic is now the canonical route provider; scheduled instants use depart_at.",
         "remediation_commit": "Mapbox routing cutover"
       }
+    },
+    {
+      "id": "PRF-002",
+      "category": "proof requirements",
+      "amends": "PRF-001",
+      "decision": "Pickup Handoff V2 replaces the old routine pickup checklist. The sender declares the expected pickup before dispatch; Couranr freezes it into the delivery; the assigned driver confirms physical custody with the sender-held pickup credential, one pickup photo, timestamp/location, and an explicit match confirmation. The driver does not re-enter expected package count, merchant/staff identity, or assigned vehicle on the happy path.",
+      "value": {
+        "expected_pickup": {
+          "source": "sender or merchant validation before dispatch",
+          "required_for_new_flows": [
+            "short physical description"
+          ],
+          "optional_when_unknown_or_not_applicable": [
+            "package count",
+            "order or pickup reference",
+            "handling note"
+          ],
+          "freeze_boundary": "copied into the immutable delivery shipment snapshot before assignment",
+          "browser_may_not_supply": [
+            "price",
+            "mileage",
+            "final vehicle",
+            "lifecycle state",
+            "proof policy"
+          ]
+        },
+        "pickup_happy_path": [
+          "sender-held pickup credential: Couranr QR with six-digit fallback",
+          "one finalized pickup shipment photo",
+          "server timestamp and usable location",
+          "explicit driver confirmation that the physical pickup matches the frozen expected pickup"
+        ],
+        "credential": {
+          "holder": "person physically handing custody to the driver",
+          "driver_receives_in_advance": false,
+          "qr_payload": "delivery identity plus the same ephemeral six-digit pickup credential; no PII, tracking token, price or state",
+          "six_digit_fallback": true,
+          "wrong_delivery_qr": "rejected locally before verification so it cannot burn another delivery's attempts"
+        },
+        "driver_does_not_reenter": [
+          "expected package count",
+          "merchant or staff first name",
+          "assigned vehicle"
+        ],
+        "large_or_unusual_also_requires": [
+          "securement photo"
+        ],
+        "exception_path": {
+          "trigger": "Something is different",
+          "effect": "open pickup discrepancy and pause completion for Operations review",
+          "expected_vs_observed": "sender expectation remains immutable evidence; driver observation never overwrites it",
+          "extra_condition_or_damage_evidence": "collected only on the exception path when relevant"
+        },
+        "historical_deliveries": "remain readable and completable without a pickup manifest; no historical row is backfilled or rewritten",
+        "forbidden": [
+          "face photos",
+          "ID-document photos"
+        ]
+      },
+      "status": "decided",
+      "decided_by": "owner",
+      "decided_at_utc": "2026-09-05T19:20:00Z",
+      "authority_file": "docs/couranr-mvp/PRODUCT_SPEC.md",
+      "authority_section": "§11 Delivery lifecycle, proof, exceptions, and returns — amended by this later atomic decision under the authority manifest precedence rule",
+      "affected_routes": [
+        "/app/business/deliveries/new",
+        "/send",
+        "/request/[merchantSlug]",
+        "/driver/deliveries/[id]"
+      ],
+      "affected_screen_ids": [
+        "MER-005",
+        "MER-006",
+        "PUB-004",
+        "DRV-003",
+        "DRV-004"
+      ],
+      "affected_database_objects": [
+        "public.couranr_delivery_requests",
+        "public.couranr_deliveries",
+        "public.couranr_handoff_codes",
+        "public.couranr_handoff_records",
+        "public.couranr_delivery_proofs"
+      ],
+      "affected_code_paths": [
+        "components/couranr/requests/NewDeliveryFlow.tsx",
+        "components/couranr/sameday/SendFlow.tsx",
+        "components/couranr/hosted/HostedRequestValidationPanel.tsx",
+        "components/couranr/dispatch/PickupFlow.tsx",
+        "lib/couranr/dispatch/projection.ts",
+        "supabase/migrations/20260905190000_couranr_pickup_handoff_v2.sql"
+      ],
+      "acceptance_criteria": [
+        "A normal pickup can complete without driver-entered package count, staff name, vehicle confirmation, condition photo, loading participants, loading equipment, damage prose, or acknowledgement.",
+        "A normal pickup cannot complete without an accepted sender pickup credential, finalized pickup shipment photo, usable location, active assignment, correct state/version, and no open pickup discrepancy.",
+        "A server-derived large or unusual load additionally requires a finalized securement photo.",
+        "The sender's expected pickup is frozen into a new delivery before assignment and is never overwritten by a driver's match confirmation.",
+        "A wrong-delivery QR is rejected before the pickup verification endpoint is called.",
+        "Consumer Same Day can issue a sender-held pickup credential for its own bound delivery without creating a fake business account.",
+        "No pickup credential is sent to the driver in advance."
+      ],
+      "conflict_with_current_code": {
+        "code_value": {
+          "routine_pickup": "PIN + package count + shipment photo + condition photo + staff name + vehicle confirmation; large load adds multiple free-text fields and acknowledgement",
+          "consumer_sender_credential": "absent"
+        },
+        "code_location": "components/couranr/dispatch/PickupFlow.tsx; public.couranr_complete_pickup; merchant-only pickup-code issuance",
+        "resolution": "Pickup Handoff V2 keeps custody/security evidence and removes duplicated browser data entry; consumer sender issuance is guest-scoped and auditable.",
+        "remediation_commit": "PR #59"
+      },
+      "implementation_phase": "Pickup Handoff V2",
+      "note": "PRODUCT_SPEC.md §11 remains byte-verbatim provenance from the historical Master Package and is intentionally not edited; AUTHORITY_MANIFEST.json states that later atomic decisions in the root decision registry override the narrative doctrine where they amend it."
     }
   ]
 }

@@ -38,6 +38,7 @@ import type {
   IntakeReading,
   PaymentOutcome,
   PaymentReconciliation,
+  PickupCredentialReading,
   ReadinessOutcome,
   QuoteInput,
   QuoteReading,
@@ -61,6 +62,8 @@ const API = {
   readiness: "/api/couranr/consumer/readiness",
   refresh: "/api/couranr/consumer/refresh-quote",
   interpret: "/api/couranr/consumer/interpret",
+  pickupManifest: "/api/couranr/consumer/pickup-manifest",
+  pickupCode: "/api/couranr/consumer/pickup-code",
 } as const;
 
 /** The two review reasons that are about the TRIP rather than the shipment. */
@@ -71,6 +74,8 @@ const NOTES = {
   bothAddresses: "Enter both a pickup and a destination.",
   chooseSuggestions: "Choose both addresses from the suggestions.",
   weightRequired: "Enter the weight, or choose the honest range.",
+  descriptionRequired: "Tell Couranr what the driver should look for at pickup.",
+  packageCountInvalid: "Package count must be a whole number from 1 to 9,999, or left blank.",
   contactRequired: "Add your mobile number or email on the review step, then check the price.",
   review: "Couranr will review this delivery and confirm the price with you.",
   cannotCarry: "Couranr can’t deliver this item.",
@@ -213,6 +218,18 @@ export function buildEstimateBody(input: QuoteInput): EstimateBodyResult {
     typeof ship?.description === "string" && ship.description.trim() !== ""
       ? ship.description.trim()
       : null;
+  if (!description) return { ok: false, note: NOTES.descriptionRequired };
+
+  const packageCount =
+    ship?.packageCount === null || ship?.packageCount === undefined
+      ? null
+      : Number(ship.packageCount);
+  if (
+    packageCount !== null &&
+    (!Number.isInteger(packageCount) || packageCount < 1 || packageCount > 9999)
+  ) {
+    return { ok: false, note: NOTES.packageCountInvalid };
+  }
 
   return {
     ok: true,
@@ -317,6 +334,8 @@ export function createLiveSameDayAdapters(
     quoteStatus: string;
     reviewReasons: unknown[];
   } | null = null;
+  /** Independent from the commercial request version. */
+  let pickupManifestVersion = 0;
 
   function readStoredGuest(): GuestRecord | null {
     try {
@@ -464,8 +483,38 @@ export function createLiveSameDayAdapters(
       if (!est || typeof est !== "object") {
         return { state: "unavailable", note: NOTES.cannotPrice };
       }
+      const requestId = typeof est.requestId === "string" ? est.requestId : null;
+      if (!requestId) return { state: "unavailable", note: NOTES.cannotPrice };
+
+      // Expected-pickup identity is committed only after the canonical estimate
+      // has created/bound this guest's request. This RPC is free; all local
+      // manifest validation happened before the route/price provider call.
+      const manifest = await guestCall(API.pickupManifest, {
+        method: "POST",
+        body: {
+          expectedManifestVersion: pickupManifestVersion,
+          description: input.shipment?.description ?? "",
+          packageCount: input.shipment?.packageCount ?? null,
+          orderReference: input.shipment?.orderReference ?? null,
+          handlingNotes: null,
+        },
+      });
+      if (!manifest || !manifest.ok) {
+        return {
+          state: "unavailable",
+          note: noteFromFailure(manifest?.body, "Couranr could not save the pickup details."),
+        };
+      }
+      const manifestView = (manifest.body as {
+        pickupManifest?: { manifestVersion?: unknown };
+      } | null)?.pickupManifest;
+      if (!manifestView || !Number.isInteger(Number(manifestView.manifestVersion))) {
+        return { state: "unavailable", note: "Couranr could not confirm the pickup details." };
+      }
+      pickupManifestVersion = Number(manifestView.manifestVersion);
+
       lastEstimate = {
-        requestId: typeof est.requestId === "string" ? est.requestId : null,
+        requestId,
         quoteStatus: typeof est.quoteStatus === "string" ? est.quoteStatus : "",
         reviewReasons: Array.isArray(est.reviewReasons) ? est.reviewReasons : [],
       };
@@ -597,6 +646,40 @@ export function createLiveSameDayAdapters(
         return { ok: false, note: "Couranr could not confirm pickup readiness." };
       }
       return { ok: true, state: value.state };
+    },
+
+    async issuePickupCredential(): Promise<PickupCredentialReading> {
+      const r = await guestCall(API.pickupCode, { method: "POST" });
+      if (!r) return { ok: false, note: NOTES.serviceDown };
+      if (!r.ok) {
+        return {
+          ok: false,
+          note: noteFromFailure(r.body, "The pickup code is not available yet."),
+        };
+      }
+      const value = (r.body as {
+        pickupCredential?: {
+          deliveryId?: unknown;
+          code?: unknown;
+          expiresAt?: unknown;
+          warning?: unknown;
+        };
+      } | null)?.pickupCredential;
+      if (
+        !value ||
+        typeof value.deliveryId !== "string" ||
+        typeof value.code !== "string" ||
+        !/^\d{6}$/.test(value.code)
+      ) {
+        return { ok: false, note: "Couranr could not confirm the pickup code." };
+      }
+      return {
+        ok: true,
+        deliveryId: value.deliveryId,
+        code: value.code,
+        expiresAt: typeof value.expiresAt === "string" ? value.expiresAt : undefined,
+        warning: typeof value.warning === "string" ? value.warning : undefined,
+      };
     },
 
     async readRequest(): Promise<ConsumerRequestReading | null> {

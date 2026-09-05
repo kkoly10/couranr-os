@@ -14,6 +14,7 @@ import {
 import type { AdapterMode } from "@/lib/couranr/sameday/adapterMode";
 import { GUEST_STORAGE_KEY } from "@/lib/couranr/sameday/liveAdapters";
 import { WEIGHT_BAND_LABELS } from "@/lib/couranr/shipment/weightBandLabels";
+import { PickupCredentialDisplay } from "@/components/couranr/dispatch/PickupCredentialDisplay";
 import { CouranrPaymentElement } from "@/components/couranr/payments/CouranrPaymentElement";
 import { formatCents } from "@/lib/couranr/requests/view";
 
@@ -125,6 +126,7 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
   const [availability, setAvailability] = React.useState<AvailabilityVerdict | null>(null);
 
   const [item, setItem] = React.useState("");
+  const [packageCount, setPackageCount] = React.useState("");
   /* The three structured inputs the canonical quote requires (SUR-001 /
      PRC-005): an honest weight statement — exact pounds OR a governed band,
      never both, never an invention — and the shipment-safety declaration. */
@@ -166,6 +168,13 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
   const [authorizedPending, setAuthorizedPending] = React.useState(false);
   /* True when the server says the request is confirmed (resume path). */
   const [confirmed, setConfirmed] = React.useState(false);
+  const [pickupCredential, setPickupCredential] = React.useState<{
+    deliveryId: string;
+    code: string;
+    warning?: string;
+  } | null>(null);
+  const [pickupCredentialBusy, setPickupCredentialBusy] = React.useState(false);
+  const [pickupCredentialNote, setPickupCredentialNote] = React.useState<string | null>(null);
   /* Final closure §5: a resumed request is ALREADY SUBMITTED — the payment
      button must go straight to /pay and never POST /submit again. */
   const [resumePay, setResumePay] = React.useState(false);
@@ -281,6 +290,18 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
   /** The form action a material suggestion offers, or null for context-only. */
   function suggestionAction(p: IntakeProposal): (() => void) | null {
     const v = p.value;
+    if (
+      p.key === "package_count" &&
+      typeof v === "number" &&
+      Number.isInteger(v) &&
+      v > 0 &&
+      v <= 9999
+    ) {
+      return () => {
+        setPackageCount(String(v));
+        invalidateQuote();
+      };
+    }
     if (p.key === "weight_lb_exact" && typeof v === "number" && Number.isFinite(v) && v > 0) {
       return () => {
         setWeightMode("exact");
@@ -324,6 +345,9 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
         contact: { name: contact.name, mobile: contact.mobile, email: contact.email },
         shipment: {
           description: item,
+          packageCount:
+            packageCount.trim() === "" ? null : Number(packageCount.trim()),
+          orderReference: reference.trim() || null,
           weightLb: weightMode === "exact" && weightLb.trim() !== "" ? Number(weightLb) : null,
           weightBand: weightMode === "exact" ? null : weightMode,
           restrictedClass,
@@ -356,6 +380,23 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
 
     setQuote(reading);
     return reading;
+  }
+
+  async function showPickupCredential() {
+    if (!adapters.issuePickupCredential || pickupCredentialBusy) return;
+    setPickupCredentialBusy(true);
+    setPickupCredentialNote(null);
+    const issued = await adapters.issuePickupCredential();
+    setPickupCredentialBusy(false);
+    if (!issued.ok || !issued.deliveryId || !issued.code) {
+      setPickupCredentialNote(issued.note ?? "The pickup code is not available yet.");
+      return;
+    }
+    setPickupCredential({
+      deliveryId: issued.deliveryId,
+      code: issued.code,
+      warning: issued.warning,
+    });
   }
 
   /* Live mode: the request GET is the only voice on whether a tracking link
@@ -621,6 +662,35 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
             <a href={`/track/${trackingToken}`}>Track this delivery</a>
           </p>
         ) : null}
+
+        {mode === "live" && confirmed && adapters.issuePickupCredential ? (
+          <div className="cr-send-panel" data-couranr-sender-pickup-code="true">
+            <h2>Your pickup verification</h2>
+            <p className="cr-send-field__hint">
+              Keep this with the person handing the item to the Couranr driver. Do not send it to the driver in advance.
+            </p>
+            {pickupCredential ? (
+              <PickupCredentialDisplay
+                deliveryId={pickupCredential.deliveryId}
+                code={pickupCredential.code}
+                warning={pickupCredential.warning}
+              />
+            ) : (
+              <button
+                type="button"
+                className="cr-button cr-button--secondary"
+                disabled={pickupCredentialBusy}
+                onClick={() => void showPickupCredential()}
+              >
+                {pickupCredentialBusy ? "Preparing…" : "Show pickup QR & code"}
+              </button>
+            )}
+            {pickupCredentialNote ? (
+              <p className="cr-send-note" role="status">{pickupCredentialNote}</p>
+            ) : null}
+          </div>
+        ) : null}
+
         {mode === "live" ? null : (
           <p className="cr-send-note">Preview only. No delivery was requested.</p>
         )}
@@ -729,6 +799,29 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
                 })}
               </ul>
             ) : null}
+          </div>
+
+          <div className="cr-send-field">
+            <label className="cr-send-field__label" htmlFor="send-package-count">
+              How many packages?
+            </label>
+            <p className="cr-send-field__hint">
+              Optional if you genuinely do not know. The driver sees this expectation and does not re-enter it.
+            </p>
+            <input
+              id="send-package-count"
+              className="cr-input"
+              type="number"
+              min="1"
+              max="9999"
+              step="1"
+              inputMode="numeric"
+              value={packageCount}
+              onChange={(e) => {
+                setPackageCount(e.target.value);
+                invalidateQuote();
+              }}
+            />
           </div>
 
           {/* The structured inputs the canonical quote requires (SUR-001):
@@ -911,6 +1004,8 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
                 [intent === "send" ? "From" : "Pick up from", pickup.value],
                 ["To", destination.value],
                 ["Item", item],
+                ["Packages", packageCount.trim() || "Not specified"],
+                ...(reference.trim() ? [["Pickup reference", reference] as const] : []),
                 ...(intent === "pickup" || mode === "live"
                   ? [[
                       "Ready",
@@ -928,7 +1023,13 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
               <div key={k} className="cr-send-summary__row">
                 <dt>{k}</dt>
                 <dd>{v || "—"}</dd>
-                <button type="button" className="cr-send-edit" onClick={() => setPhase(k === "Item" || k === "Ready" ? "item" : k === "When" ? "timing" : "trip")}>
+                <button type="button" className="cr-send-edit" onClick={() => setPhase(
+                  k === "Item" || k === "Packages" || k === "Pickup reference" || k === "Ready"
+                    ? "item"
+                    : k === "When"
+                      ? "timing"
+                      : "trip"
+                )}>
                   Edit
                 </button>
               </div>
