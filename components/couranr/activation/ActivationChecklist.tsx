@@ -52,6 +52,8 @@ export type ActivationView = {
   state: string;
   blockedReason: string | null;
   contactVerifiedAt: string | null;
+  contactVerificationRequestedAt: string | null;
+  operationsContactPhone: string | null;
   testDeliveryRequestId: string | null;
   requestedAt: string | null;
   acknowledgements: Record<string, string>;
@@ -211,6 +213,8 @@ export function ActivationChecklist({
    */
   const mayAct = mayRequest && !isLive;
   const contactMet = view.requirements.find((r) => r.id === "contact")?.met === true;
+  const contactVerificationPending =
+    !contactMet && Boolean(view.contactVerificationRequestedAt);
   const testMet = view.requirements.find((r) => r.id === "test_delivery")?.met === true;
 
   return (
@@ -291,30 +295,49 @@ export function ActivationChecklist({
 
           <Stack gap={1}>
             <Cluster gap={2}>
-              <Badge tone={contactMet ? "success" : "neutral"}>
-                {contactMet ? "Verified" : "To do"}
+              <Badge tone={contactMet ? "success" : contactVerificationPending ? "info" : "neutral"}>
+                {contactMet ? "Verified" : contactVerificationPending ? "With Couranr" : "To do"}
               </Badge>
               <Text size="sm">
                 <strong>Operations contact</strong>
               </Text>
             </Cluster>
             <Text size="sm" muted>
-              Confirm the phone number Couranr Operations should reach during a
-              delivery. It comes from your settings.
+              Couranr Operations verifies the phone number used during active
+              deliveries. A merchant cannot mark this step verified themselves.
             </Text>
+            {view.operationsContactPhone ? (
+              <Text size="sm">
+                Number on file: <strong>{view.operationsContactPhone}</strong>
+              </Text>
+            ) : (
+              <Alert tone="warning" title="Add an operations phone">
+                Add the number Couranr should use during a delivery, then request verification.
+              </Alert>
+            )}
+            {contactVerificationPending && view.contactVerificationRequestedAt ? (
+              <Alert tone="info" title="Verification requested">
+                Couranr Operations will verify this number manually before your workspace can go
+                live. Requested {new Date(view.contactVerificationRequestedAt).toLocaleDateString()}.
+              </Alert>
+            ) : null}
             {!contactMet && mayAct ? (
               <Cluster gap={2}>
-                <Button
-                  size="sm"
-                  variant="primary"
-                  loading={busy === "contact"}
-                  disabled={Boolean(busy)}
-                  onClick={() => run("contact", { action: "verify_contact" })}
-                >
-                  Confirm contact
-                </Button>
+                {!contactVerificationPending && view.operationsContactPhone ? (
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    loading={busy === "contact"}
+                    disabled={Boolean(busy)}
+                    onClick={() =>
+                      run("contact", { action: "request_contact_verification" })
+                    }
+                  >
+                    Ask Couranr to verify
+                  </Button>
+                ) : null}
                 <Link href="/app/business/settings" className={buttonClassName({ size: "sm" })}>
-                  Change it in settings
+                  {view.operationsContactPhone ? "Change number" : "Add number"}
                 </Link>
               </Cluster>
             ) : null}
