@@ -25,16 +25,22 @@ const operationsActor: RequestActor = { kind: "operations", userId: USER };
 // Partial-mock the actor module so the REAL requireBusinessCapability / isActorDenied
 // run against a controlled resolveRequestActor. (Mocking the whole module would
 // stub out the very gate under test.)
-const resolveRequestActor = vi.fn<[], Promise<ActorResolution>>();
+// vi.hoisted so the spy functions exist before the (hoisted) vi.mock factories run.
+const hoisted = vi.hoisted(() => ({
+  resolveRequestActor: vi.fn(),
+  claimPaidApiCall: vi.fn(async () => ({ allowed: false as const, reason: "test_budget_off" })),
+}));
+const resolveRequestActor = hoisted.resolveRequestActor;
+const claimPaidApiCall = hoisted.claimPaidApiCall;
+
 vi.mock("@/lib/couranr/requests/actor", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/couranr/requests/actor")>();
-  return { ...actual, resolveRequestActor: (...args: any[]) => resolveRequestActor(...args) };
+  return { ...actual, resolveRequestActor: hoisted.resolveRequestActor };
 });
 
 // Spy the paid Google budget claim so we can prove a refused caller never reaches spend.
-const claimPaidApiCall = vi.fn(async () => ({ allowed: false as const, reason: "test_budget_off" }));
 vi.mock("@/lib/couranr/providers/paidApiGuard", () => ({
-  claimPaidApiCall: (...a: any[]) => claimPaidApiCall(...a),
+  claimPaidApiCall: hoisted.claimPaidApiCall,
 }));
 
 const asResolution = (actor: RequestActor): ActorResolution => ({ ok: true, actor, userId: USER });
