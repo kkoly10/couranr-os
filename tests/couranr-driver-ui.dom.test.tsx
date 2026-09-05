@@ -959,7 +959,7 @@ describe("Pickup Handoff V2 keeps sender facts read-only", () => {
 
     await waitFor(() => expect(screen.getByText("Recorded")).toBeTruthy());
     await user.click(screen.getByText(/enter six-digit code instead/i));
-    const code = screen.getByLabelText(/^pickup code$/i);
+    const code = screen.getByLabelText(/pickup code/i);
     await user.type(code, "472915");
     await user.click(screen.getByRole("button", { name: /verify code/i }));
     await waitFor(() => expect(screen.getByText(/sender verified/i)).toBeTruthy());
