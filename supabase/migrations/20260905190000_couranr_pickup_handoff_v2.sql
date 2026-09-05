@@ -96,8 +96,7 @@ begin
     'packageCount', p_package_count,
     'orderReference', v_reference,
     'handlingNotes', v_handling,
-    'source', p_source,
-    'recordedAt', now()
+    'source', p_source
   ));
 end
 $fn$;
@@ -129,17 +128,30 @@ begin
     raise exception 'pickup_manifest_required' using errcode='CR422';
   end if;
 
+  select * into v_row
+    from public.couranr_delivery_requests
+   where id=p_request_id
+   for update;
+  if not found then
+    raise exception 'request_not_found' using errcode='CR404';
+  end if;
+
+  -- Exact replay is idempotent even when its expected generation is stale.
+  -- This makes network retries converge without letting a stale DIFFERENT
+  -- manifest overwrite the current sender statement.
+  if v_row.pickup_manifest is not distinct from p_manifest then
+    return v_row;
+  end if;
+  if v_row.pickup_manifest_version <> p_expected_manifest_version then
+    raise exception 'pickup_manifest_version_conflict' using errcode='CR409';
+  end if;
+
   update public.couranr_delivery_requests
      set pickup_manifest=p_manifest,
          pickup_manifest_version=pickup_manifest_version+1,
          updated_at=now()
    where id=p_request_id
-     and pickup_manifest_version=p_expected_manifest_version
   returning * into v_row;
-
-  if not found then
-    raise exception 'pickup_manifest_version_conflict' using errcode='CR409';
-  end if;
   return v_row;
 end
 $fn$;
