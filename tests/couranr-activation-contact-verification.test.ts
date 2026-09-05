@@ -42,6 +42,7 @@ describe("MER-003 operations-verified contact", () => {
     expect(body).toMatch(/select role into v_profile_role[\s\S]*profiles/i);
     expect(body).toContain("operations_access_required");
     expect(body).toContain("contact_verification_not_requested");
+    expect(body).toMatch(/from public\.couranr_merchant_workspaces[\s\S]*for share/i);
     expect(body).toMatch(/contact_verified_at\s*=\s*now\(\)/i);
     expect(body).toMatch(/contact_verified_by\s*=\s*p_actor_user_id/i);
     expect(OPS_ROUTE).toContain('action !== "verify_contact"');
@@ -53,7 +54,7 @@ describe("MER-003 operations-verified contact", () => {
     expect(at).toBeGreaterThan(-1);
     const body = SQL.slice(at);
     expect(body).toMatch(/v_actor_role not in \('owner', 'manager'\)/i);
-    expect(body).toMatch(/from public\.couranr_merchant_workspaces[\s\S]*contact_phone/i);
+    expect(body).toMatch(/from public\.couranr_merchant_workspaces[\s\S]*for share/i);
     expect(body).toContain("operations_contact_required");
     expect(body).toMatch(/contact_verification_requested_at\s*=\s*coalesce/i);
   });
