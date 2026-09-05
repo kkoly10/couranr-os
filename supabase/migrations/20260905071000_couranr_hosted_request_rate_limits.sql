@@ -84,7 +84,9 @@ language plpgsql security invoker set search_path=''
 as $fn$
 declare
   v_row public.couranr_hosted_request_intakes;
+  v_host_count integer;
   c_places_per_intake_hour constant integer:=12;
+  c_places_per_host_hour constant integer:=60;
 begin
   select * into v_row
     from public.couranr_hosted_request_intakes
@@ -93,6 +95,23 @@ begin
 
   if not found or v_row.expires_at<=now() then
     raise exception 'hosted_request_not_found' using errcode='CR404';
+  end if;
+
+  -- One merchant link must not be able to drain the entire global daily
+  -- Google budget by minting many intakes. Serialize and cap aggregate paid
+  -- autocomplete claims across this host as well as per intake.
+  perform pg_advisory_xact_lock(
+    hashtext('couranr-hosted-places:'||v_row.host_business_account_id::text)
+  );
+
+  select coalesce(sum(h.places_request_count),0)::integer
+    into v_host_count
+    from public.couranr_hosted_request_intakes h
+   where h.host_business_account_id=v_row.host_business_account_id
+     and h.places_window_started_at>now()-interval '1 hour';
+
+  if v_host_count >= c_places_per_host_hour then
+    return false;
   end if;
 
   if v_row.places_window_started_at is null
