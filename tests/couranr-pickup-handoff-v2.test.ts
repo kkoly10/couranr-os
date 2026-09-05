@@ -114,6 +114,7 @@ describe("Pickup Handoff V2 authority fences", () => {
     );
     const sql = migration.slice(start, end);
     expect(sql).toContain("code_state='consumed'");
+    expect(sql).toContain("select max(latest.generation)");
     expect(sql).toContain("proof_type='shipment_photo'");
     expect(sql).toContain("pickup_discrepancy_open");
     expect(sql).toContain("proof_type='securement_photo'");
