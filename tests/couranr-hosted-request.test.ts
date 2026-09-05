@@ -143,6 +143,25 @@ describe("merchant-hosted request public input", () => {
     }
   });
 
+  it("requires a concise physical pickup description without silently truncating it", () => {
+    expect(
+      validateHostedSubmitBody(
+        customerBody({ shipment: { description: "", weightBand: "0_25_lb", restrictedClass: "none" } })
+      ).ok
+    ).toBe(false);
+    const long = validateHostedSubmitBody(
+      customerBody({
+        shipment: {
+          description: "x".repeat(1001),
+          weightBand: "0_25_lb",
+          restrictedClass: "none",
+        },
+      })
+    );
+    expect(long.ok).toBe(false);
+    if (isHostedBodyFailure(long)) expect(long.reason).toBe("shipment_description_too_long");
+  });
+
   it("merchant validation requires final payer, weight knowledge and safety declaration", () => {
     expect(
       validateMerchantHostedConfirmation({
