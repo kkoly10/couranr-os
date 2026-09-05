@@ -136,7 +136,9 @@ describe("hosted request authority is separate from requester ownership", () => 
     expect(submitFunction).not.toContain("couranr_create_payment_obligation");
     expect(submitFunction).not.toContain("payment_intent");
     expect(submitFunction).toContain("'paymentAllowed',false");
+    expect(submitFunction).toContain("'create_hosted_delivery_request'");
     expect(submitFunction).toContain("'awaiting_merchant_confirmation'");
+    expect(submitFunction).not.toContain("'create_delivery_request_draft'");
   });
 
   it("merchant validation is CAS-bound and mints through the canonical immutable quote appender", () => {
@@ -153,7 +155,9 @@ describe("hosted request authority is separate from requester ownership", () => 
     expect(validation).toContain("current_quote_version_id is not null");
     expect(validation).toContain("private.couranr_append_routed_quote_version(");
     expect(validation).toContain("'merchantValidated',true");
+    expect(validation).toContain("'validate_hosted_delivery_request'");
     expect(validation).toContain("'pending_couranr_review'");
+    expect(validation).not.toContain("'merchant','submit_delivery_request'");
   });
 
   it("makes Consumer review ordering source-aware without changing Same Day CAP-001", () => {
