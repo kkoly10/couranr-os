@@ -57,6 +57,12 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     businessAccountId
   );
   if (!permission.allowed) {
+    // Do not turn a valid delivery UUID into a cross-tenant existence oracle.
+    // A real member with a read-only role gets the useful 403; someone outside
+    // the host business gets the same 404 as for a missing delivery.
+    if (actor.actor.kind === "member" && !actor.actor.membership) {
+      return routeFailure("not_found", "Delivery not found.");
+    }
     return routeFailure(
       "not_permitted",
       "Your role can view this delivery but cannot issue handoff codes."
