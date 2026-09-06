@@ -129,24 +129,11 @@ describe("stage mapping", () => {
     expect(STAGE_TONES[stageForFulfillmentState("at_dropoff") as TrackingStage]).not.toBe("success");
   });
 
-  /**
-   * The executable record of a KNOWN GAP.
-   *
-   * `02_DECISION_REGISTRY.json` STA-002 declares fourteen fulfillment values
-   * including `return_required`, `returning` and `returned`. The shipped
-   * vocabulary has ten and none of those, because returns and refunds (P6-004,
-   * P7-005) have not started. So the `return` stage is declared and currently
-   * unreachable, and this test says so out loud.
-   *
-   * WHEN THIS TEST FAILS, returns have shipped — update the ledger and delete it.
-   */
-  it("cannot reach the `return` stage from any state the database can hold today", () => {
-    const reachable = new Set(
-      FULFILLMENT_STATES.map((s) => stageForFulfillmentState(s)).filter(Boolean)
-    );
-    for (const unreachable of UNREACHABLE_STAGES) {
-      expect(reachable.has(unreachable), `${unreachable} is now reachable`).toBe(false);
-    }
+  it("maps the governed return lifecycle to one customer-facing return stage", () => {
+    expect(UNREACHABLE_STAGES).toEqual([]);
+    expect(stageForFulfillmentState("return_required")).toBe("return");
+    expect(stageForFulfillmentState("returning")).toBe("return");
+    expect(stageForFulfillmentState("returned")).toBe("return");
   });
 
   it("derives a pre-delivery stage from the request", () => {

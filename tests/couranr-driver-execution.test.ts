@@ -74,6 +74,9 @@ describe("the fulfillment chain", () => {
     expect(nextDriverCommand("at_pickup", "signature")).toBe("complete_pickup");
     expect(nextDriverCommand("picked_up", "signature")).toBe("start_route_to_dropoff");
     expect(nextDriverCommand("in_transit", "signature")).toBe("arrive_at_dropoff");
+    expect(nextDriverCommand("return_required", "signature")).toBe("start_return");
+    expect(nextDriverCommand("returning", "signature")).toBe("complete_return");
+    expect(nextDriverCommand("returned", "signature")).toBeNull();
     expect(nextDriverCommand("delivered", "signature")).toBeNull();
     expect(nextDriverCommand("scheduled", "signature")).toBeNull();
     expect(nextDriverCommand("cancelled", "signature")).toBeNull();
@@ -123,6 +126,9 @@ describe("the fulfillment chain", () => {
     expect(proofStageAllowedFrom("dropoff", "at_pickup")).toBe(false);
     expect(proofStageAllowedFrom("pickup_discrepancy", "at_pickup")).toBe(true);
     expect(proofStageAllowedFrom("pickup_discrepancy", "in_transit")).toBe(false);
+    expect(proofStageAllowedFrom("return", "returning")).toBe(true);
+    expect(proofStageAllowedFrom("return", "return_required")).toBe(false);
+    expect(proofStageAllowedFrom("return", "returned")).toBe(false);
   });
 });
 
@@ -318,7 +324,10 @@ describe("handoff codes", () => {
     const base = { deliveryId: "11111111-2222-4333-8444-555555555555", generation: 1, code: "424242" };
     const pickup = handoffCodeDigest({ ...base, kind: "merchant_pickup" });
     const recipient = handoffCodeDigest({ ...base, kind: "recipient_dropoff" });
+    const returned = handoffCodeDigest({ ...base, kind: "merchant_return" });
     expect(pickup).not.toBe(recipient);
+    expect(pickup).not.toBe(returned);
+    expect(recipient).not.toBe(returned);
     expect(verifyHandoffCode({ ...base, kind: "recipient_dropoff", storedDigest: pickup })).toBe(
       false
     );
@@ -448,12 +457,12 @@ describe("driver-facing copy and derived requirements", () => {
     }
   });
 
-  it("gives every state a label and a tone, and only delivered is success", () => {
+  it("gives every state a label and a tone, with only completed custody outcomes as success", () => {
     for (const s of FULFILLMENT_STATES) {
       expect(FULFILLMENT_TONES[s], `${s} has no tone`).toBeDefined();
     }
     const success = FULFILLMENT_STATES.filter((s) => FULFILLMENT_TONES[s] === "success");
-    expect(success).toEqual(["delivered"]);
+    expect(success).toEqual(["delivered", "returned"]);
     // A waypoint is not an achievement.
     expect(FULFILLMENT_TONES.at_pickup).not.toBe("success");
     expect(FULFILLMENT_TONES.at_dropoff).not.toBe("success");
