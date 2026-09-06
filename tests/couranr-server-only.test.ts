@@ -190,6 +190,9 @@ describe("server-only modules are unreachable from client code", () => {
       "lib/couranr/payments/commands.ts",
       "lib/couranr/payments/stripe.ts",
       "lib/couranr/payments/tokens.ts",
+      // Pickup-manifest writes hold the service-role client and enforce the
+      // sender/merchant/Operations authority boundary before a delivery freezes.
+      "lib/couranr/pickup/manifest.ts",
       // Holds the service-role client and every preset write. A preset shapes
       // what every future delivery is prefilled with, so a browser reaching
       // this would let anyone rewrite the defaults for a whole business.
@@ -272,6 +275,8 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/consumer/estimate/route.ts",
       "app/api/couranr/consumer/interpret/route.ts",
       "app/api/couranr/consumer/pay/route.ts",
+      "app/api/couranr/consumer/pickup-code/route.ts",
+      "app/api/couranr/consumer/pickup-manifest/route.ts",
       "app/api/couranr/consumer/places/route.ts",
       "app/api/couranr/consumer/readiness/route.ts",
       "app/api/couranr/consumer/reconcile-payment/route.ts",
@@ -287,6 +292,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/delivery-requests/[id]/estimate/route.ts",
       "app/api/couranr/delivery-requests/[id]/fulfillment/route.ts",
       "app/api/couranr/delivery-requests/[id]/payment-link/route.ts",
+      "app/api/couranr/delivery-requests/[id]/pickup-manifest/route.ts",
       "app/api/couranr/delivery-requests/[id]/readiness/route.ts",
       "app/api/couranr/delivery-requests/[id]/reconcile-payment/route.ts",
       "app/api/couranr/delivery-requests/[id]/route.ts",
@@ -350,6 +356,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/operations/delivery-requests/[id]/capture/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/decline/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/estimate/route.ts",
+      "app/api/couranr/operations/delivery-requests/[id]/pickup-manifest/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/promotional-credit-delivery/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/reconcile-capture/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/reconcile-refund/route.ts",
@@ -413,6 +420,14 @@ describe("canonical server routes do not import the browser client", () => {
     ],
     [
       "app/api/couranr/consumer/pay/route.ts",
+      { shape: /redeemGuestSessionToken\(/, redeem: /redeemGuestSessionToken\(/ },
+    ],
+    [
+      "app/api/couranr/consumer/pickup-code/route.ts",
+      { shape: /redeemGuestSessionToken\(/, redeem: /redeemGuestSessionToken\(/ },
+    ],
+    [
+      "app/api/couranr/consumer/pickup-manifest/route.ts",
       { shape: /redeemGuestSessionToken\(/, redeem: /redeemGuestSessionToken\(/ },
     ],
     [

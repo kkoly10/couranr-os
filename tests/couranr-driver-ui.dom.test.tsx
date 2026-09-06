@@ -180,7 +180,14 @@ function assignedView(over: Partial<AssignedFixture> = {}): AssignedFixture {
     dropoff: address({ line1: DROPOFF_LINE1, city: "Fredericksburg" }),
     merchant: { name: "Bright Cleaners", phone: MERCHANT_PHONE },
     recipient: { name: RECIPIENT_NAME, phone: RECIPIENT_PHONE },
-    shipment: { packageCount: 3, declaredWeightLb: 20, additionalStops: 0 },
+    shipment: {
+      description: "Three boxed garments",
+      packageCount: 3,
+      orderReference: "ORD-381",
+      handlingNotes: "Keep dry",
+      declaredWeightLb: 20,
+      additionalStops: 0,
+    },
     proof: { method: "photo_or_pin", signatureRequired: false },
     vehicleRequirement: { vehicleClass: "cargo_van", maxPayloadLb: 100 },
     assignment: {
@@ -821,7 +828,7 @@ describe("no mutation without a usable location fix", () => {
     expect(fix.longitude).not.toBe(0);
   });
 
-  it("blocks the pickup completion and both of its photos", async () => {
+  it("blocks pickup confirmation and its one routine photo until location is usable", async () => {
     const user = userEvent.setup();
     render(
       <PickupFlow
@@ -831,14 +838,13 @@ describe("no mutation without a usable location fix", () => {
       />
     );
 
-    const complete = screen.getByRole("button", { name: /^complete pickup$/i });
-    expect((complete as HTMLButtonElement).disabled).toBe(true);
-    await user.click(complete);
+    const confirm = screen.getByRole("button", { name: /^confirm pickup$/i });
+    expect((confirm as HTMLButtonElement).disabled).toBe(true);
+    await user.click(confirm);
     expect(completePickup).not.toHaveBeenCalled();
 
-    for (const label of [/photo of the shipment/i, /photo of its condition/i]) {
-      expect((screen.getByLabelText(label) as HTMLInputElement).disabled).toBe(true);
-    }
+    expect((screen.getByLabelText(/photo of the pickup/i) as HTMLInputElement).disabled).toBe(true);
+    expect(screen.queryByLabelText(/condition/i)).toBeNull();
     expect(requestProofUpload).not.toHaveBeenCalled();
   });
 
@@ -892,26 +898,11 @@ describe("no mutation without a usable location fix", () => {
 });
 
 /* =========================================================================
- * 8 — an ABSENT package count does not become 0, and 0 stays representable
+ * 8 — expected pickup is sender authority; the driver does not re-enter it
  * ====================================================================== */
 
-describe("an empty package count is absent, not zero", () => {
-  it("parses absence and zero as different answers", () => {
-    expect(parsePackageCount("")).toBeNull();
-    expect(parsePackageCount("   ")).toBeNull();
-    expect(parsePackageCount("abc")).toBeNull();
-    expect(parsePackageCount("-1")).toBeNull();
-    expect(parsePackageCount("2.5")).toBeNull();
-    // The coercion this replaces, spelled out so the difference IS the test.
-    expect(Number("")).toBe(0);
-
-    expect(parsePackageCount("0")).toBe(0);
-    expect(parsePackageCount("3")).toBe(3);
-    expect(parsePackageCount(" 12 ")).toBe(12);
-  });
-
-  it("blocks the pickup on an empty field and unblocks on an explicit 0", async () => {
-    const user = userEvent.setup();
+describe("Pickup Handoff V2 keeps sender facts read-only", () => {
+  it("shows the frozen pickup identity and no routine package/staff/vehicle inputs", () => {
     render(
       <PickupFlow
         assigned={assignedView({ fulfillmentState: "at_pickup" })}
@@ -920,27 +911,101 @@ describe("an empty package count is absent, not zero", () => {
       />
     );
 
-    const blocker = "Enter how many packages you are collecting.";
-    expect(screen.getByText(blocker)).toBeTruthy();
+    expect(screen.getByText("Three boxed garments")).toBeTruthy();
+    expect(screen.getByText("3 packages")).toBeTruthy();
+    expect(screen.getByText("Ref ORD-381")).toBeTruthy();
+    expect(screen.getByText("Keep dry")).toBeTruthy();
 
-    const field = screen.getByLabelText(/packages you are collecting/i) as HTMLInputElement;
-    await user.type(field, "0");
-    // Zero is a real observation — a discrepancy the merchant needs to see,
-    // not a validation error.
-    await waitFor(() => expect(screen.queryByText(blocker)).toBeNull());
-    expect(field.value).toBe("0");
-
-    await user.clear(field);
-    await waitFor(() => expect(screen.getByText(blocker)).toBeTruthy());
-    expect(completePickup).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText(/packages you are collecting/i)).toBeNull();
+    expect(screen.queryByLabelText(/person handing/i)).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: /loading this shipment into/i })).toBeNull();
+    expect(screen.queryByLabelText(/condition/i)).toBeNull();
   });
 
-  it("renders an absent declared count as 'Not recorded' and a declared 0 as 0", async () => {
+  it("completes the happy path with credential + one recorded pickup photo + location only", async () => {
+    fetchMyProof.mockResolvedValue(
+      ok({
+        proof: [
+          {
+            proofId: "pickup-proof-1",
+            proofStage: "pickup",
+            proofType: "shipment_photo",
+            finalizedAt: "2026-09-05T18:00:00Z",
+            hasMedia: true,
+          },
+        ],
+      })
+    );
+    verifyPickupCode.mockResolvedValue(ok({ outcome: "accepted" }));
+    completePickup.mockResolvedValue(
+      ok({
+        delivery: {
+          deliveryId: "del-fixture-1",
+          fulfillmentState: "picked_up",
+          version: 5,
+        },
+      })
+    );
+
+    const user = userEvent.setup();
+    const onCompleted = vi.fn();
+    render(
+      <PickupFlow
+        assigned={assignedView({ fulfillmentState: "at_pickup" })}
+        location={usableLocation()}
+        onCompleted={onCompleted}
+      />
+    );
+
+    await waitFor(() => expect(screen.getByText("Recorded")).toBeTruthy());
+    await user.click(screen.getByText(/enter six-digit code instead/i));
+    const code = screen.getByLabelText(/pickup code/i);
+    await user.type(code, "472915");
+    await user.click(screen.getByRole("button", { name: /verify code/i }));
+    await waitFor(() => expect(screen.getByText(/sender verified/i)).toBeTruthy());
+
+    const confirm = screen.getByRole("button", { name: /^confirm pickup$/i });
+    await waitFor(() => expect((confirm as HTMLButtonElement).disabled).toBe(false));
+    await user.click(confirm);
+
+    await waitFor(() => expect(completePickup).toHaveBeenCalledTimes(1));
+    expect(completePickup.mock.calls[0]).toEqual([
+      "del-fixture-1",
+      {
+        expectedVersion: 4,
+        latitude: USABLE_FIX.latitude,
+        longitude: USABLE_FIX.longitude,
+        accuracyM: USABLE_FIX.accuracyM,
+      },
+    ]);
+    const sent = JSON.stringify(completePickup.mock.calls[0][1]);
+    for (const forbidden of [
+      "observedPackageCount",
+      "staffFirstName",
+      "confirmedVehicleId",
+      "loadingParticipants",
+      "loadingEquipment",
+      "existingDamage",
+      "driverAcknowledged",
+    ]) {
+      expect(sent).not.toContain(forbidden);
+    }
+    expect(onCompleted).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders an absent declared count as 'Not recorded' and a historical 0 as 0", async () => {
     fetchMyAssignment.mockResolvedValue(
       ok({
         status: "active",
         assigned: assignedView({
-          shipment: { packageCount: null, declaredWeightLb: null, additionalStops: null },
+          shipment: {
+            description: null,
+            packageCount: null,
+            orderReference: null,
+            handlingNotes: null,
+            declaredWeightLb: null,
+            additionalStops: null,
+          },
         }),
       } as DriverAssignmentResponse)
     );
@@ -953,7 +1018,14 @@ describe("an empty package count is absent, not zero", () => {
       ok({
         status: "active",
         assigned: assignedView({
-          shipment: { packageCount: 0, declaredWeightLb: 0, additionalStops: 0 },
+          shipment: {
+            description: "Historical pickup",
+            packageCount: 0,
+            orderReference: null,
+            handlingNotes: null,
+            declaredWeightLb: 0,
+            additionalStops: 0,
+          },
         }),
       } as DriverAssignmentResponse)
     );
@@ -968,6 +1040,7 @@ describe("an empty package count is absent, not zero", () => {
  * ====================================================================== */
 
 const ISSUED_CODE = "472915";
+const HANDOFF_DELIVERY_ID = "11111111-1111-4111-8111-111111111111";
 
 /** Every place a browser could keep a credential past this render. */
 function storageLeaks(secret: string): string[] {
@@ -1002,12 +1075,12 @@ describe("a handoff code is shown once and kept nowhere", () => {
     );
     const user = userEvent.setup();
     render(
-      <HandoffCodePanel deliveryId="del-fixture-1" kind="merchant_pickup" surface="merchant" />
+      <HandoffCodePanel deliveryId={HANDOFF_DELIVERY_ID} kind="merchant_pickup" surface="merchant" />
     );
-    await user.click(screen.getByRole("button", { name: /issue pickup code/i }));
+    await user.click(screen.getByRole("button", { name: /show pickup qr & code/i }));
     // Proof the code really was issued and displayed. Asserting "no storage
     // holds it" against a panel that never produced one proves nothing.
-    await screen.findByText(ISSUED_CODE);
+    await screen.findByLabelText(/pickup code 4 7 2 9 1 5/i);
     return user;
   }
 
@@ -1015,7 +1088,7 @@ describe("a handoff code is shown once and kept nowhere", () => {
     const setItem = vi.spyOn(Storage.prototype, "setItem");
     await issue();
 
-    expect(bodyText()).toContain(ISSUED_CODE);
+    expect(bodyText()).toContain("472 915");
     expect(storageLeaks(ISSUED_CODE)).toEqual([]);
     for (const call of setItem.mock.calls) {
       expect(String(call[0] ?? "")).not.toContain(ISSUED_CODE);
@@ -1330,16 +1403,23 @@ describe("no driver form asks for a face or an identity document", () => {
       <PickupFlow
         assigned={assignedView({
           fulfillmentState: "at_pickup",
-          // The large-shipment branch adds a fourth photo and three more
-          // fields; render the maximal form so nothing escapes the check.
-          shipment: { packageCount: 12, declaredWeightLb: 400, additionalStops: 0 },
+          // V2's maximal happy path adds only the securement photo.
+          // Render it so identity-document checks cover that branch too.
+          shipment: {
+            description: "Twelve boxed fixtures",
+            packageCount: 12,
+            orderReference: "LOAD-12",
+            handlingNotes: "Keep upright",
+            declaredWeightLb: 400,
+            additionalStops: 0,
+          },
           vehicleRequirement: { vehicleClass: "box_truck", maxPayloadLb: 2000 },
         })}
         location={usableLocation()}
         onCompleted={vi.fn()}
       />
     );
-    expect(screen.getByText(/large or unusual shipment/i)).toBeTruthy();
+    expect(screen.getByText(/large or unusual load/i)).toBeTruthy();
     expect(identityRequests(bodyText())).toEqual([]);
   });
 
@@ -1736,29 +1816,31 @@ describe("the pickup form reflects proof the server already holds", () => {
         proof: [
           { proofId: "p-1", proofStage: "pickup", proofType: "shipment_photo",
             finalizedAt: "2026-08-03T17:00:00Z", hasMedia: true },
-          { proofId: "p-2", proofStage: "pickup", proofType: "condition_photo",
-            finalizedAt: "2026-08-03T17:01:00Z", hasMedia: true },
         ],
       })
     );
     const { container } = await renderPickup();
     await waitFor(() =>
-      expect(container.textContent ?? "").not.toMatch(/record a photo of the shipment/i)
+      expect(container.textContent ?? "").not.toMatch(/take one photo showing everything you are collecting/i)
     );
-    expect(container.textContent ?? "").not.toMatch(/record a photo of the shipment's condition/i);
+    expect(container.textContent ?? "").not.toMatch(/condition photo|shipment's condition/i);
   });
 
-  it("POSITIVE CONTROL: with nothing recorded it still asks for both", async () => {
+  it("POSITIVE CONTROL: with nothing recorded it still asks for the one routine pickup photo", async () => {
     fetchMyProof.mockResolvedValue(ok({ proof: [] }));
     const { container } = await renderPickup();
-    await waitFor(() => expect(container.textContent ?? "").toMatch(/record a photo of the shipment/i));
-    expect(container.textContent ?? "").toMatch(/record a photo of the shipment's condition/i);
+    await waitFor(() =>
+      expect(container.textContent ?? "").toMatch(/take one photo showing everything you are collecting/i)
+    );
+    expect(container.textContent ?? "").not.toMatch(/condition photo|shipment's condition/i);
   });
 
   it("a FAILED read leaves the requirement unmet rather than claiming proof exists", async () => {
     fetchMyProof.mockResolvedValue(fail(500));
     const { container } = await renderPickup();
-    await waitFor(() => expect(container.textContent ?? "").toMatch(/record a photo of the shipment/i));
+    await waitFor(() =>
+      expect(container.textContent ?? "").toMatch(/take one photo showing everything you are collecting/i)
+    );
   });
 
   it("ignores proof from another stage", async () => {
@@ -1772,7 +1854,9 @@ describe("the pickup form reflects proof the server already holds", () => {
       })
     );
     const { container } = await renderPickup();
-    await waitFor(() => expect(container.textContent ?? "").toMatch(/record a photo of the shipment/i));
+    await waitFor(() =>
+      expect(container.textContent ?? "").toMatch(/take one photo showing everything you are collecting/i)
+    );
   });
 
   it("the driver proof route is scoped to the caller's own ACTIVE assignment", () => {

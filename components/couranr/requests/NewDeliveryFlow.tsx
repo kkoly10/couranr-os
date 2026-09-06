@@ -30,6 +30,8 @@ import {
   estimateOperationsDeliveryRequest,
   fetchMyBusinessAccounts,
   fetchOperationsBusinesses,
+  saveBusinessPickupManifest,
+  saveOperationsPickupManifest,
   newIdempotencyKey,
   submitDeliveryRequestFromBrowser,
   submitOperationsDeliveryRequest,
@@ -132,6 +134,12 @@ export function NewDeliveryFlow({
   const [recipientName, setRecipientName] = React.useState("");
   const [recipientPhone, setRecipientPhone] = React.useState("");
   const [recipientEmail, setRecipientEmail] = React.useState("");
+  // Expected pickup: sender facts Couranr freezes for the assigned driver.
+  const [pickupDescription, setPickupDescription] = React.useState("");
+  const [pickupPackageCount, setPickupPackageCount] = React.useState("");
+  const [pickupReference, setPickupReference] = React.useState("");
+  const [pickupHandlingNotes, setPickupHandlingNotes] = React.useState("");
+  const [pickupManifestVersion, setPickupManifestVersion] = React.useState(0);
   const [weightLb, setWeightLb] = React.useState("");
   /**
    * SUR-001 band cutover. "exact" shows the pounds input; a band value says
@@ -264,6 +272,15 @@ export function NewDeliveryFlow({
           setWeightMode("exact");
           setWeightLb(String(f.value));
         }
+      } else if (
+        f.fact_key === "package_count" &&
+        typeof f.value === "number" &&
+        Number.isInteger(f.value) &&
+        f.value > 0 &&
+        trusted &&
+        pickupPackageCount === ""
+      ) {
+        setPickupPackageCount(String(f.value));
       } else if (f.fact_key === "weight_band" && typeof f.value === "string" && trusted) {
         setWeightMode(f.value);
       } else if (f.fact_key === "service_level" && typeof f.value === "string" && trusted) {
@@ -284,6 +301,27 @@ export function NewDeliveryFlow({
     e.preventDefault();
     setFailure(null);
     setFieldErrors({});
+
+    const pickupCount =
+      pickupPackageCount.trim() === "" ? null : Number(pickupPackageCount.trim());
+    const pickupErrors: FieldErrors = {};
+    if (pickupDescription.trim() === "") {
+      pickupErrors.pickupDescription = "Tell the driver what to look for.";
+    } else if (pickupDescription.trim().length > 1000) {
+      pickupErrors.pickupDescription = "Keep the pickup description to 1,000 characters or fewer.";
+    }
+    if (
+      pickupCount !== null &&
+      (!Number.isInteger(pickupCount) || pickupCount < 1 || pickupCount > 9999)
+    ) {
+      pickupErrors.pickupPackageCount = "Enter 1–9,999 packages, or leave it blank if unknown.";
+    }
+    if (Object.keys(pickupErrors).length > 0) {
+      // Cheap refusal BEFORE route/price provider work.
+      setFieldErrors(pickupErrors);
+      return;
+    }
+
     setBusy(true);
 
     const payload = {
@@ -336,12 +374,40 @@ export function NewDeliveryFlow({
             intakeSessionId,
           });
 
-    setBusy(false);
     if (isApiFailure(result)) {
+      setBusy(false);
       setFailure(result);
       setFieldErrors(fieldErrorsFrom(result.details));
       return;
     }
+
+    // The estimate owns money; this separate write owns expected pickup.
+    // Its independent CAS version means adding driver identity cannot stale or
+    // silently rewrite the quote the merchant just received.
+    const manifestInput = {
+      description: pickupDescription.trim(),
+      packageCount: pickupCount,
+      orderReference: pickupReference.trim() || null,
+      handlingNotes: pickupHandlingNotes.trim() || null,
+    };
+    const savedManifest = isOperations
+      ? await saveOperationsPickupManifest({
+          id: result.value.request.id,
+          expectedManifestVersion: pickupManifestVersion,
+          manifest: manifestInput,
+        })
+      : await saveBusinessPickupManifest({
+          id: result.value.request.id,
+          businessAccountId,
+          expectedManifestVersion: pickupManifestVersion,
+          manifest: manifestInput,
+        });
+    setBusy(false);
+    if (isApiFailure(savedManifest)) {
+      setFailure(savedManifest);
+      return;
+    }
+    setPickupManifestVersion(savedManifest.value.pickupManifest.manifestVersion);
     setRequest(result.value.request);
     // A fresh estimate is a fresh number. An approval given for the previous
     // price must not carry over silently onto this one, so the tick is cleared
@@ -449,6 +515,23 @@ export function NewDeliveryFlow({
         ) : null}
 
         <QuoteSummary request={request} />
+
+        <Card>
+          <CardHeader
+            title="What the driver will expect"
+            description="Couranr freezes this pickup summary into the delivery. The driver confirms the physical handoff instead of retyping it."
+          />
+          <Grid columns={2}>
+            <div>
+              <strong>{pickupDescription.trim() || "Not recorded"}</strong>
+              <div>{pickupPackageCount.trim() ? `${pickupPackageCount} package(s)` : "Package count not specified"}</div>
+            </div>
+            <div>
+              <div>{pickupReference.trim() ? `Reference ${pickupReference}` : "No pickup reference"}</div>
+              <div>{pickupHandlingNotes.trim() || "No special handling note"}</div>
+            </div>
+          </Grid>
+        </Card>
 
         <Card>
           <CardHeader
@@ -603,8 +686,76 @@ export function NewDeliveryFlow({
               businessAccountId={businessAccountId}
               sessionId={intakeSessionId}
               onIntakeChange={onIntakeChange}
+              onDescriptionChange={setPickupDescription}
             />
           ) : null}
+          {isOperations ? (
+            <Field
+              label="What should the driver look for?"
+              required
+              error={fieldErrors.pickupDescription}
+              hint="A short physical description, for example “2 boxed monitors”."
+            >
+              {(p) => (
+                <Textarea
+                  {...p}
+                  rows={2}
+                  maxLength={1000}
+                  value={pickupDescription}
+                  onChange={(e) => setPickupDescription(e.target.value)}
+                />
+              )}
+            </Field>
+          ) : fieldErrors.pickupDescription ? (
+            <Alert tone="warning" title="Tell the driver what to look for">
+              Use the “What are you delivering?” box above.
+            </Alert>
+          ) : null}
+
+          <Grid columns={2}>
+            <Field
+              label="Package count"
+              error={fieldErrors.pickupPackageCount}
+              hint="Optional when genuinely unknown. The driver will not retype it."
+            >
+              {(p) => (
+                <Input
+                  {...p}
+                  type="number"
+                  min={1}
+                  max={9999}
+                  inputMode="numeric"
+                  value={pickupPackageCount}
+                  onChange={(e) => setPickupPackageCount(e.target.value)}
+                />
+              )}
+            </Field>
+            <Field label="Order / pickup reference" hint="Optional. What staff or the driver can use to identify the order.">
+              {(p) => (
+                <Input
+                  {...p}
+                  maxLength={120}
+                  value={pickupReference}
+                  onChange={(e) => setPickupReference(e.target.value)}
+                />
+              )}
+            </Field>
+          </Grid>
+          <Field
+            label="Handling note for the driver"
+            hint="Optional. Keep upright, fragile packaging, use rear loading door, etc."
+          >
+            {(p) => (
+              <Textarea
+                {...p}
+                rows={2}
+                maxLength={500}
+                value={pickupHandlingNotes}
+                onChange={(e) => setPickupHandlingNotes(e.target.value)}
+              />
+            )}
+          </Field>
+
           <Grid columns={2}>
             <Field
               label="Weight"

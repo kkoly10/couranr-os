@@ -36,6 +36,11 @@ import {
 } from "@/lib/couranr/payments/commands";
 import { issueTrackingLink, isTrackingFailure } from "@/lib/couranr/tracking/commands";
 import { recordConsumerIntakeEvidenceAfterEstimate } from "./intake";
+import {
+  CODE_SHOWN_ONCE_WARNING,
+  generateHandoffCode,
+  handoffCodeDigest,
+} from "@/lib/couranr/driver/codes";
 
 assertServerOnly("lib/couranr/consumer/send.ts");
 
@@ -79,6 +84,7 @@ export const RPC = {
   submit: "couranr_submit_consumer_delivery_request",
   setReadiness: "couranr_set_consumer_pickup_readiness",
   createObligation: "couranr_create_payment_obligation",
+  issueGuestPickupCode: "couranr_issue_guest_pickup_code_cas",
 } as const;
 
 /** Sessions live 24 hours; the SQL clamps to [5 min, 3 days] regardless. */
@@ -398,6 +404,8 @@ export function validateConsumerSendBody(raw: unknown): ConsumerSendBodyResult {
 export type ConsumerEstimate = {
   requestId: string;
   quoteStatus: string;
+  /** Independent PRF-002 CAS token for expected-pickup edits. */
+  pickupManifestVersion: number;
   /** Integer cents when the quote is automatic; null for review/invalid. */
   totalCents: number | null;
   lineItems: unknown[];
@@ -409,7 +417,8 @@ export type ConsumerEstimate = {
 
 /** Columns every scoped consumer read selects. Never `select("*")`. */
 const OWN_REQUEST_COLUMNS =
-  "id,version,request_state,quote_status,current_quote_version_id," +
+  "id,version,request_state,quote_status,current_quote_version_id,pickup_manifest_version," +
+  "pickup_manifest,pickup_manifest_policy_version," +
   "delivery_subtotal_cents,quote_line_items,review_reasons,consumer_contact_snapshot";
 
 /**
@@ -463,6 +472,7 @@ function estimateFromRow(row: Record<string, any>): Promise<ConsumerEstimate> {
   return quoteWindowExpiresAt(quoteVersionId, quoteStatus).then((expiresAt) => ({
     requestId: String(row.id),
     quoteStatus,
+    pickupManifestVersion: Number(row.pickup_manifest_version ?? 0),
     totalCents:
       quoteStatus === "estimated" && row.delivery_subtotal_cents !== null
         ? Number(row.delivery_subtotal_cents)
@@ -817,6 +827,25 @@ export async function submitConsumerSend(params: {
   const loaded = await loadOwnRequest(op, params.session);
   if (isConsumerFailure(loaded)) return loaded;
 
+  const pickupManifest =
+    loaded.value.pickup_manifest &&
+    typeof loaded.value.pickup_manifest === "object" &&
+    !Array.isArray(loaded.value.pickup_manifest)
+      ? loaded.value.pickup_manifest
+      : null;
+  if (
+    loaded.value.pickup_manifest_policy_version !== "pickup-handoff-v2" ||
+    !pickupManifest ||
+    pickupManifest.source !== "consumer_statement"
+  ) {
+    return fail({
+      operation: op,
+      code: "invalid_input",
+      detail: { reason: "pickup_manifest_required" },
+      message: "Confirm what the driver should expect at pickup before submitting this delivery.",
+    });
+  }
+
   // Field-level pre-check with an actionable message. The SQL refuses the
   // same condition again (CR422 consumer_contact_required) as the backstop —
   // the snapshot is frozen at creation, so a contactless draft needs a fresh
@@ -918,6 +947,129 @@ export async function getConsumerSendView(params: {
   }
 
   return { ok: true, value: view };
+}
+
+/* ------------------------------------------- sender pickup credential --- */
+
+export type ConsumerPickupCredential = {
+  deliveryId: string;
+  code: string;
+  generation: number;
+  expiresAt: string;
+  warning: string;
+};
+
+/**
+ * Sender-held credential for this guest session's one delivery.
+ *
+ * It is never sent to the assigned driver. The raw six digits exist only in
+ * this response and in whatever the sender displays/reads at physical handoff.
+ */
+export async function issueConsumerPickupCredential(params: {
+  session: GuestSession;
+}): Promise<ConsumerResult<ConsumerPickupCredential>> {
+  const op = "issueConsumerPickupCredential";
+  if (!params.session.requestId) {
+    return fail({
+      operation: op,
+      code: "conflict",
+      detail: { reason: "session_not_bound" },
+      message: "Couranr has not created this delivery yet.",
+    });
+  }
+
+  const { data: delivery, error: deliveryError } = (await supabaseAdmin
+    .from("couranr_deliveries")
+    .select("id,request_id,fulfillment_state")
+    .eq("request_id", params.session.requestId)
+    .maybeSingle()) as { data: any; error: any };
+  if (deliveryError) {
+    return fail({ operation: op, code: "internal", detail: deliveryError.message });
+  }
+  if (!delivery?.id) {
+    return fail({
+      operation: op,
+      code: "conflict",
+      detail: { reason: "delivery_not_created" },
+      message: "The pickup code will be available after Couranr schedules the delivery.",
+    });
+  }
+
+  const MAX_GENERATION_ATTEMPTS = 4;
+  for (let attempt = 0; attempt < MAX_GENERATION_ATTEMPTS; attempt += 1) {
+    const { data: current, error: generationError } = (await supabaseAdmin
+      .from("couranr_handoff_codes")
+      .select("generation")
+      .eq("delivery_id", String(delivery.id))
+      .eq("code_kind", "merchant_pickup")
+      .order("generation", { ascending: false })
+      .limit(1)) as { data: any; error: any };
+    if (generationError) {
+      return fail({ operation: op, code: "internal", detail: generationError.message });
+    }
+
+    const generation = Number(current?.[0]?.generation ?? 0) + 1;
+    const code = generateHandoffCode();
+    let digest: string;
+    try {
+      digest = handoffCodeDigest({
+        kind: "merchant_pickup",
+        deliveryId: String(delivery.id),
+        generation,
+        code,
+      });
+    } catch {
+      return fail({
+        operation: op,
+        code: "internal",
+        detail: { reason: "handoff_secret_unavailable" },
+      });
+    }
+
+    const { data, error } = (await supabaseAdmin.rpc(RPC.issueGuestPickupCode, {
+      p_delivery_id: String(delivery.id),
+      p_expected_generation: generation,
+      p_code_digest: digest,
+      p_guest_session_id: params.session.id,
+      p_ttl_minutes: 1440,
+    })) as { data: any; error: any };
+
+    if (error) {
+      if (error.code === "CR409" && error.message === "handoff_generation_conflict") {
+        continue;
+      }
+      return fail({
+        operation: op,
+        code: classifyDatabaseError(error),
+        detail: { code: error.code, message: error.message },
+      });
+    }
+    if (!data || Number(data.generation) !== generation) {
+      return fail({
+        operation: op,
+        code: "internal",
+        detail: { reason: "handoff_generation_mismatch" },
+      });
+    }
+
+    return {
+      ok: true,
+      value: {
+        deliveryId: String(delivery.id),
+        code,
+        generation,
+        expiresAt: String(data.expires_at),
+        warning: CODE_SHOWN_ONCE_WARNING,
+      },
+    };
+  }
+
+  return fail({
+    operation: op,
+    code: "conflict",
+    detail: { reason: "handoff_generation_contention" },
+    message: "The pickup code changed at the same time. Try again.",
+  });
 }
 
 /* --------------------------------------------------------------- paying --- */

@@ -100,6 +100,8 @@ export type QuoteInput = {
   contact?: { name?: string; mobile?: string; email?: string };
   shipment?: {
     description?: string | null;
+    packageCount?: number | null;
+    orderReference?: string | null;
     weightLb?: number | null;
     weightBand?: string | null;
     restrictedClass?: string;
@@ -119,6 +121,15 @@ export type ReadinessOutcome = {
 };
 
 /** The guest's own-request projection, verbatim from the consumer request GET. */
+export type PickupCredentialReading = {
+  ok: boolean;
+  deliveryId?: string;
+  code?: string;
+  expiresAt?: string;
+  warning?: string;
+  note?: string;
+};
+
 export type ConsumerRequestReading = {
   state: string;
   quoteStatus: string;
@@ -140,6 +151,7 @@ export type SameDayAdapters = {
   reconcilePayment?(): Promise<PaymentReconciliation>;
   /** Live-only: persists the explicit guest declaration on shared readiness_state. */
   setPickupReadiness?(readiness: "ready" | "not_ready"): Promise<ReadinessOutcome>;
+  issuePickupCredential?(): Promise<PickupCredentialReading>;
   readRequest?(): Promise<ConsumerRequestReading | null>;
   /* ADDITIVE, live-only (final closure §5): re-price the session's OWN bound
      request from its STORED canonical facts — the resume path's honest answer

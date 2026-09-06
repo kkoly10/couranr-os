@@ -58,8 +58,11 @@ export type AssignedDeliveryProjection = {
   recipient: { name: string; phone: string };
 
   shipment: {
-    /** Not captured by the request model yet; null rather than a fake zero. */
+    /** Frozen sender expectation copied into the delivery before assignment. */
+    description: string | null;
     packageCount: number | null;
+    orderReference: string | null;
+    handlingNotes: string | null;
     declaredWeightLb: number | null;
     additionalStops: number | null;
   };
@@ -110,6 +113,11 @@ export function buildAssignedDeliveryProjection(input: {
 }): AssignedDeliveryProjection {
   const d = input.delivery ?? {};
   const req = d.vehicle_requirement ?? {};
+  const shipment = d.shipment && typeof d.shipment === "object" ? d.shipment : {};
+  const manifest =
+    shipment.pickupManifest && typeof shipment.pickupManifest === "object"
+      ? shipment.pickupManifest
+      : {};
 
   return {
     deliveryId: String(d.id ?? ""),
@@ -138,9 +146,16 @@ export function buildAssignedDeliveryProjection(input: {
     },
 
     shipment: {
-      packageCount: num(d.shipment, "packageCount"),
-      declaredWeightLb: num(d.shipment, "weightLb"),
-      additionalStops: num(d.shipment, "additionalStops"),
+      description:
+        str(manifest, "description") || null,
+      packageCount:
+        num(manifest, "packageCount") ?? num(shipment, "packageCount"),
+      orderReference:
+        str(manifest, "orderReference") || null,
+      handlingNotes:
+        str(manifest, "handlingNotes") || null,
+      declaredWeightLb: num(shipment, "weightLb"),
+      additionalStops: num(shipment, "additionalStops"),
     },
 
     proof: {

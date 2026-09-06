@@ -84,8 +84,10 @@ export function SmartIntakePanel(props: {
    */
   sessionId?: string | null;
   onIntakeChange: (state: { sessionId: string | null; facts: IntakeFactRow[] }) => void;
+  /** The merchant's own words become the driver-facing expected-pickup summary. */
+  onDescriptionChange?: (description: string) => void;
 }) {
-  const { businessAccountId, onIntakeChange } = props;
+  const { businessAccountId, onIntakeChange, onDescriptionChange } = props;
   const rememberedSessionId = props.sessionId ?? null;
   const [description, setDescription] = React.useState("");
   const [intake, setIntake] = React.useState<IntakeSessionView | null>(null);
@@ -127,9 +129,11 @@ export function SmartIntakePanel(props: {
       if (current.trim().length > 0) return current;
       const revisions = loaded.revisions ?? [];
       const latest = revisions[revisions.length - 1];
-      return typeof latest?.raw_description === "string" ? latest.raw_description : current;
+      const next = typeof latest?.raw_description === "string" ? latest.raw_description : current;
+      if (next !== current) onDescriptionChange?.(next);
+      return next;
     });
-  }, []);
+  }, [onDescriptionChange]);
 
   async function refresh(sessionId: string) {
     const loaded = await fetchIntake({ sessionId, businessAccountId });
@@ -228,9 +232,12 @@ export function SmartIntakePanel(props: {
           <Textarea
             {...p}
             rows={2}
-            maxLength={4000}
+            maxLength={1000}
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            onChange={(e) => {
+              setDescription(e.target.value);
+              onDescriptionChange?.(e.target.value);
+            }}
           />
         )}
       </Field>

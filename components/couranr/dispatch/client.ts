@@ -178,7 +178,10 @@ export type AssignedDeliveryView = {
   merchant: { name: string; phone: string };
   recipient: { name: string; phone: string };
   shipment: {
+    description: string | null;
     packageCount: number | null;
+    orderReference: string | null;
+    handlingNotes: string | null;
     declaredWeightLb: number | null;
     additionalStops: number | null;
   };
@@ -269,17 +272,7 @@ export function arriveAtDropoff(deliveryId: string, expectedVersion: number, at:
 
 export function completePickup(
   deliveryId: string,
-  body: {
-    expectedVersion: number;
-    observedPackageCount: number;
-    staffFirstName: string;
-    confirmedVehicleId: string;
-    dimensions?: Record<string, unknown> | null;
-    loadingParticipants?: string | null;
-    loadingEquipment?: string | null;
-    existingDamage?: string | null;
-    driverAcknowledged?: boolean | null;
-  } & Located
+  body: { expectedVersion: number } & Located
 ) {
   return call<{ delivery: DeliveryStateView }>(
     `/api/couranr/driver/deliveries/${deliveryId}/complete-pickup`,

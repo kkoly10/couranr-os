@@ -105,6 +105,7 @@ describe("Consumer Smart Intake on the item step", () => {
     const textarea = await toItemStep();
     const weight = screen.getByLabelText("Weight") as HTMLSelectElement;
     const restricted = screen.getByLabelText("Restricted items") as HTMLSelectElement;
+    const packages = screen.getByLabelText("How many packages?") as HTMLInputElement;
     expect(weight.value).toBe("exact");
     expect(restricted.value).toBe("unknown");
 
@@ -129,10 +130,16 @@ describe("Consumer Smart Intake on the item step", () => {
     expect(screen.queryByText(/merchant/)).toBeNull();
     expect(weight.value).toBe("exact");
     expect(restricted.value).toBe("unknown");
-    // Context-only suggestions offer no action; material ones offer one each.
-    expect(screen.queryByRole("button", { name: /Use this: Packages: 2/ })).toBeNull();
+    expect(packages.value).toBe("");
+    // PRF-002 makes package count a material expected-pickup fact. Like weight
+    // and safety, the suggestion is inert until the guest explicitly chooses it.
     const useButtons = screen.getAllByRole("button", { name: /^Use this/ });
-    expect(useButtons).toHaveLength(2);
+    expect(useButtons).toHaveLength(3);
+
+    await userEvent.click(screen.getByRole("button", { name: /Use this: Packages: 2/ }));
+    expect(packages.value).toBe("2");
+    expect(weight.value).toBe("exact");
+    expect(restricted.value).toBe("unknown");
 
     // The guest's explicit choice is the confirmation.
     await userEvent.click(screen.getByRole("button", { name: /Use this: Weight:/ }));
