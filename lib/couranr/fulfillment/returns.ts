@@ -213,6 +213,8 @@ export async function openIncident(p: {
 export type IncidentCommand =
   | "start_incident_review"
   | "request_incident_evidence"
+  | "add_incident_note"
+  | "escalate_incident"
   | "resolve_incident"
   | "close_incident";
 
