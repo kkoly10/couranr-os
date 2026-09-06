@@ -257,7 +257,9 @@ export async function listOfflineProofs(deliveryId?: string): Promise<OfflinePro
 
 async function decrypt(row: StoredOfflineProof): Promise<ArrayBuffer> {
   const key = await encryptionKey();
-  return crypto.subtle.decrypt({ name: "AES-GCM", iv: row.iv }, key, row.ciphertext);
+  const iv = new Uint8Array(row.iv.byteLength);
+  iv.set(row.iv);
+  return crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, row.ciphertext);
 }
 
 export function classifyProofSyncFailure(status: number, code?: string): ProofSyncOutcome {
