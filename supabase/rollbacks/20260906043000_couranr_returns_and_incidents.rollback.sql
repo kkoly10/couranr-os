@@ -39,9 +39,9 @@ drop function if exists public.couranr_require_return(uuid,integer,uuid,text,tex
 drop function if exists public.couranr_transition_delivery_incident(uuid,integer,uuid,text,text);
 drop function if exists public.couranr_open_delivery_incident(uuid,uuid,text,text,text);
 
-drop table if exists public.couranr_delivery_incident_events;
-drop table if exists public.couranr_delivery_incidents;
-drop table if exists public.couranr_delivery_returns;
+drop table if exists public.couranr_delivery_incident_events restrict;
+drop table if exists public.couranr_delivery_incidents restrict;
+drop table if exists public.couranr_delivery_returns restrict;
 
 alter table public.couranr_pickup_discrepancies
   drop constraint if exists couranr_pd_reported_location_chk,

@@ -462,7 +462,7 @@ describe("driver-facing copy and derived requirements", () => {
       expect(FULFILLMENT_TONES[s], `${s} has no tone`).toBeDefined();
     }
     const success = FULFILLMENT_STATES.filter((s) => FULFILLMENT_TONES[s] === "success");
-    expect(success).toEqual(["delivered", "returned"]);
+    expect(new Set(success)).toEqual(new Set(["delivered", "returned"]));
     // A waypoint is not an achievement.
     expect(FULFILLMENT_TONES.at_pickup).not.toBe("success");
     expect(FULFILLMENT_TONES.at_dropoff).not.toBe("success");
@@ -747,7 +747,7 @@ describe("the driver API surface", () => {
   it("every new route is dynamic, so an operational read is never cached", () => {
     for (const name of NEW_ROUTES) {
       expect(SRC.get(name)!, `${name} is not force-dynamic`).toMatch(
-        /export const dynamic = "force-dynamic"/
+        /export const dynamic\s*=\s*"force-dynamic"/
       );
     }
   });
@@ -811,7 +811,9 @@ describe("the driver API surface", () => {
     const at = SQL.lastIndexOf("create or replace function public.couranr_verify_handoff_code");
     expect(at, "the verify function definition was not found").toBeGreaterThan(-1);
     const fn = SQL.slice(at);
-    const body = fn.slice(0, fn.indexOf("end $fn$;") + 9);
+    const end = fn.indexOf("$fn$;");
+    expect(end, "the verify function terminator was not found").toBeGreaterThan(-1);
+    const body = fn.slice(0, end + 5);
     expect(body).toMatch(/p_actor_user_id/);
     expect(body).toMatch(/couranr_driver_assignment_for/);
   });
