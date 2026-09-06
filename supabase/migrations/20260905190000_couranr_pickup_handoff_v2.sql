@@ -25,6 +25,9 @@ alter table public.couranr_delivery_requests
 alter table public.couranr_delivery_requests
   add column if not exists pickup_manifest_version integer not null default 0;
 
+alter table public.couranr_delivery_requests
+  add column if not exists pickup_manifest_policy_version text;
+
 do $$
 begin
   if not exists (
@@ -41,6 +44,16 @@ begin
       add constraint couranr_dr_pickup_manifest_version_chk
       check (pickup_manifest_version >= 0);
   end if;
+  if not exists (
+    select 1 from pg_constraint where conname='couranr_dr_pickup_manifest_policy_chk'
+  ) then
+    alter table public.couranr_delivery_requests
+      add constraint couranr_dr_pickup_manifest_policy_chk
+      check (
+        pickup_manifest_policy_version is null
+        or pickup_manifest_policy_version='pickup-handoff-v2'
+      );
+  end if;
 end
 $$;
 
@@ -48,6 +61,8 @@ comment on column public.couranr_delivery_requests.pickup_manifest is
   'Sender-declared expected pickup identity. Server-built only; copied into the delivery shipment snapshot before assignment.';
 comment on column public.couranr_delivery_requests.pickup_manifest_version is
   'Independent CAS generation for pickup-manifest edits. Does not mutate commercial request/quote version.';
+comment on column public.couranr_delivery_requests.pickup_manifest_policy_version is
+  'Null means this request has not opted into Pickup Handoff V2. A governed V2 manifest write stamps pickup-handoff-v2; state-transition guards then enforce that authority.';
 
 create or replace function private.couranr_build_pickup_manifest(
   p_description text,
@@ -137,9 +152,16 @@ begin
   end if;
 
   -- Exact replay is idempotent even when its expected generation is stale.
-  -- This makes network retries converge without letting a stale DIFFERENT
-  -- manifest overwrite the current sender statement.
+  -- A replay through the V2 writer still opts a legacy/unmarked draft into the
+  -- new authority contract without inventing a new manifest generation.
   if v_row.pickup_manifest is not distinct from p_manifest then
+    if v_row.pickup_manifest_policy_version is distinct from 'pickup-handoff-v2' then
+      update public.couranr_delivery_requests
+         set pickup_manifest_policy_version='pickup-handoff-v2',
+             updated_at=now()
+       where id=p_request_id
+      returning * into v_row;
+    end if;
     return v_row;
   end if;
   if v_row.pickup_manifest_version <> p_expected_manifest_version then
@@ -149,6 +171,7 @@ begin
   update public.couranr_delivery_requests
      set pickup_manifest=p_manifest,
          pickup_manifest_version=pickup_manifest_version+1,
+         pickup_manifest_policy_version='pickup-handoff-v2',
          updated_at=now()
    where id=p_request_id
   returning * into v_row;
@@ -557,31 +580,19 @@ grant execute on function public.couranr_issue_guest_pickup_code_cas(uuid,intege
 /* ------------------------------------------- request cutover guard -------- */
 
 /*
- * Do not make the pickup manifest a browser convention.
+ * Migration-first, zero-downtime cutover.
  *
- * Existing requests are grandfathered without rewriting them: this nullable
- * marker is stamped only by a BEFORE INSERT trigger installed by this
- * migration. Every request created after the cutover must therefore carry the
- * PRF-002 pickup authority before it can leave its pre-submission state.
+ * Merely applying this migration MUST NOT change the behavior of an older app
+ * instance that is still serving traffic. Therefore request INSERTs are not
+ * stamped. The V2 manifest writer is the opt-in boundary: once the new app
+ * writes/affirms a governed manifest it stamps pickup_manifest_policy_version,
+ * and this trigger refuses any later state advance that would violate the
+ * frozen sender authority.
  *
- * Hosted requests are intentionally allowed to be INSERTed directly into
- * awaiting_merchant_confirmation with only the customer's statement; they
- * cannot leave that state until the host merchant has replaced it with a
- * merchant_confirmed manifest.
+ * Hosted requests may carry the customer's statement while awaiting merchant
+ * confirmation, but cannot advance under V2 until the host has replaced it
+ * with merchant_confirmed.
  */
-alter table public.couranr_delivery_requests
-  add column if not exists pickup_manifest_policy_version text;
-
-alter table public.couranr_delivery_requests
-  add constraint couranr_dr_pickup_manifest_policy_chk
-  check (
-    pickup_manifest_policy_version is null
-    or pickup_manifest_policy_version='pickup-handoff-v2'
-  );
-
-comment on column public.couranr_delivery_requests.pickup_manifest_policy_version is
-  'Null only for requests that predate Pickup Handoff V2. New request rows are stamped pickup-handoff-v2 by trigger and cannot advance without the governed pickup manifest.';
-
 create or replace function private.couranr_require_pickup_manifest_v2()
 returns trigger
 language plpgsql
@@ -591,12 +602,6 @@ as $fn$
 declare
   v_manifest_source text;
 begin
-  if tg_op='INSERT' then
-    -- The migration does not backfill or rewrite any pre-existing request.
-    new.pickup_manifest_policy_version := 'pickup-handoff-v2';
-    return new;
-  end if;
-
   if new.pickup_manifest_policy_version is distinct from 'pickup-handoff-v2' then
     return new;
   end if;
@@ -621,11 +626,15 @@ begin
     end if;
 
     if new.requester_kind='consumer' then
-      if v_manifest_source <> 'consumer_statement' then
+      if new.source <> 'consumer_send' or v_manifest_source <> 'consumer_statement' then
         raise exception 'pickup_manifest_authority_invalid' using errcode='CR409';
       end if;
     elsif new.requester_kind='business' then
-      if v_manifest_source not in ('merchant_statement','operations_statement') then
+      if new.source='operations' then
+        if v_manifest_source <> 'operations_statement' then
+          raise exception 'pickup_manifest_authority_invalid' using errcode='CR409';
+        end if;
+      elsif v_manifest_source <> 'merchant_statement' then
         raise exception 'pickup_manifest_authority_invalid' using errcode='CR409';
       end if;
     else
@@ -641,12 +650,6 @@ revoke all on function private.couranr_require_pickup_manifest_v2()
   from public,anon,authenticated;
 grant execute on function private.couranr_require_pickup_manifest_v2()
   to service_role;
-
-drop trigger if exists couranr_pickup_manifest_v2_insert_trg
-  on public.couranr_delivery_requests;
-create trigger couranr_pickup_manifest_v2_insert_trg
-before insert on public.couranr_delivery_requests
-for each row execute function private.couranr_require_pickup_manifest_v2();
 
 drop trigger if exists couranr_pickup_manifest_v2_advance_trg
   on public.couranr_delivery_requests;
