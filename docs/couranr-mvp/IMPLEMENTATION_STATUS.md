@@ -95,7 +95,7 @@ Still rendering `ScreenPlaceholder` (12): `OPS-006` · `OPS-011` · `OPS-012` ·
 | Item | Blocker or deferment |
 |---|---|
 | `P5-001` | NATURAL-LANGUAGE AI IS NOT PILOT-LIVE: the Anthropic adapter exists and is unit-tested against the SDK contract, but the live smoke has not been executed (no ANTHROPIC_API_KEY in the verification environment) and the production environment is not configured. The platform degrades to manual structured intake by design; the fake provider is structurally unavailable in production. |
-| `P6-004` | Ledger code is implemented but production cutover/external provider reconciliation are deliberately outstanding; no paid provider call is authorized by this row. |
+| `P6-004` | Internal ledger migration/cutover is complete; authenticated UI verification and live external Stripe reconciliation remain outstanding. No paid provider call is authorized by this row. |
 | `P7-005` | Waiting-fee assessment requires an owner decision on the charging mechanism (no payer reauthorization path exists); recorded as evidence only |
 | `P12-002` | Blocked behind P12-001 and explicit founder approval for the real paid canary. |
 
@@ -109,7 +109,6 @@ each is in the ledger row itself — `test_evidence`, `browser_verified` and
 |---|---|---|
 | `08f59f8d0cc062c36252a7295f86513618187965` | 1 screen | MER-004 |
 | `0d57ba736000e8ecb9d28c87a4e78a683599a316` | 1 work item | P3-002 |
-| `0f502a3c2b7742bddb8c6a09a8d67bc4350bf1ed` | 1 work item | P6-004 |
 | `14fa99fbcf8103d33bb7267a8f4729421bccd400` | 1 work item | P6-001 |
 | `1b3a1c90c88a554f1ac1ff1e6a6d06a97d602150` | 3 screens | CUS-006, CUS-008, PUB-006 |
 | `2848a8f33bde8362bd3c9fcfb9266781fcecb77a` | 2 screens | PUB-012, PUB-013 |
@@ -130,8 +129,8 @@ each is in the ledger row itself — `test_evidence`, `browser_verified` and
 | `cd697e48889389b5365562d4e7f3c82413c10ea9` | 2 screens | MER-008, MER-009 |
 | `d0271ade57785985a4d38bd5328ee0605a24465b` | 1 work item | P6-002 |
 | `dd2388a7fa89c41bc5c6cf4c8411ffd4d0e4a5f0` | 2 screens | DRV-009, DRV-010 |
-| `e8ba09bba67dfd77bebed59edd783d438be6bfc8` | 2 screens | OPS-009, OPS-010 |
 | `ea8bd06483229f16a2c6df9a30b41b7872324090` | 5 work items | P10-001, P10-002, P11-001, P12-001, P12-002 |
 | `ec4a2af8f7c1de0bee4e3c021b50c875acdd6633` | 4 work items, 5 screens | P10-003, P10-004, P10-005, P10-006, PUB-001, PUB-008, PUB-009, PUB-010, PUB-011 |
+| `f204c2a48356dc2dba34cc2daa7baf27e1d8bfe6` | 1 work item, 2 screens | P6-004, OPS-009, OPS-010 |
 | `f4bff8d0d29fa8be2e9ea1a37bcfa5fd1520005c` | 2 screens | MER-010, MER-011 |
 | `f949f5b05db039649a968390a08ab1ae28213f6d` | 1 screen | OPS-001 |
