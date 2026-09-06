@@ -5,6 +5,7 @@ import {
   Alert,
   Badge,
   Button,
+  buttonClassName,
   Card,
   CardHeader,
   Cluster,
@@ -112,7 +113,7 @@ export function OfflineProofSyncPanel({ deliveryId }: { deliveryId: string }) {
           <Text size="sm" muted>
             Couranr never stores your sign-in token, signed upload URL, upload token, or server object path in this queue.
           </Text>
-          <a className="cr-link" href={`/driver/deliveries/${deliveryId}`}>Back to delivery</a>
+          <a className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/driver/deliveries/${deliveryId}`}>Back to delivery</a>
         </Stack>
       </Card>
 

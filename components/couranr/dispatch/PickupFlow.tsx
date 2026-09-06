@@ -6,6 +6,7 @@ import {
   Alert,
   Badge,
   Button,
+  buttonClassName,
   Card,
   CardHeader,
   Cluster,
@@ -393,7 +394,7 @@ export function PickupFlow({
       {shipmentPhoto.status === "queued" || securementPhoto.status === "queued" ? (
         <Alert tone="warning" title="Proof is waiting to sync">
           Couranr cannot confirm custody until the queued proof is server-verified.{" "}
-          <a className="cr-link" href={`/driver/deliveries/${deliveryId}?panel=offline-sync`}>
+          <a className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/driver/deliveries/${deliveryId}?panel=offline-sync`}>
             Open offline proof sync
           </a>
         </Alert>

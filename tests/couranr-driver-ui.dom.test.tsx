@@ -1752,9 +1752,17 @@ describe("the proof upload sends the server's own ticket", () => {
     const [body] = finalizeProofUpload.mock.calls[0];
     expect(body.uploadId).toBe(UPLOAD_ID);
     expect(String(body.uploadId)).not.toBe("undefined");
-    // The location travels as evidence, and is never defaulted to 0/0.
-    expect(body.latitude).toBe(38.42);
-    expect(body.longitude).toBe(-77.41);
+
+    // V2 binds capture-time location in the immutable prepare envelope. Retry
+    // and finalization do not get to substitute a later position.
+    const [, prepared] = requestProofUpload.mock.calls[0];
+    expect(prepared.latitude).toBe(38.42);
+    expect(prepared.longitude).toBe(-77.41);
+    expect(prepared.accuracyM).toBe(8);
+    expect(prepared.clientEvidenceId).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(prepared.evidenceSha256).toMatch(/^[0-9a-f]{64}$/);
+    expect(body.latitude).toBeUndefined();
+    expect(body.longitude).toBeUndefined();
   });
 
   it("refuses to PUT anywhere when the ticket has no signed URL", async () => {

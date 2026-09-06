@@ -5,6 +5,7 @@ import {
   Alert,
   Badge,
   Button,
+  buttonClassName,
   Card,
   CardHeader,
   Cluster,
@@ -688,7 +689,7 @@ function SignatureCapture({ deliveryId, version, location, recordedProof, onDone
       {signature.status === "queued" ? (
         <Alert tone="warning" title="Proof is waiting to sync">
           Couranr cannot complete this delivery until the signature is server-verified.{" "}
-          <a className="cr-link" href={`/driver/deliveries/${deliveryId}?panel=offline-sync`}>
+          <a className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/driver/deliveries/${deliveryId}?panel=offline-sync`}>
             Open offline proof sync
           </a>
         </Alert>
@@ -832,7 +833,7 @@ function LeaveAtDoor({ deliveryId, version, location, recordedProof, onDone }: F
       {photo.status === "queued" ? (
         <Alert tone="warning" title="Proof is waiting to sync">
           Couranr cannot complete this delivery until the photo is server-verified.{" "}
-          <a className="cr-link" href={`/driver/deliveries/${deliveryId}?panel=offline-sync`}>
+          <a className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/driver/deliveries/${deliveryId}?panel=offline-sync`}>
             Open offline proof sync
           </a>
         </Alert>
