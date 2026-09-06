@@ -44,6 +44,7 @@ import {
 import { locationBody, useLocationCapture, type LocationState } from "./useLocationCapture";
 import { DrivingMode } from "./DrivingMode";
 import { DropoffProof } from "./DropoffProof";
+import { DeliveryIssueReport } from "./DeliveryIssueReport";
 import { ReturnFlow } from "./ReturnFlow";
 import { LocationBlock, PickupFlow, readDeliveryVersion } from "./PickupFlow";
 
@@ -322,6 +323,13 @@ function ActiveAssignment({
         onArrive={() =>
           arrive(state === "en_route_to_pickup" ? "arrive_at_pickup" : "arrive_at_dropoff")
         }
+        onReportIssue={
+          state === "in_transit"
+            ? () => {
+                window.location.href = `/driver/deliveries/${assigned.deliveryId}#report-issue`;
+              }
+            : undefined
+        }
       />
     );
   }
@@ -362,6 +370,14 @@ function ActiveAssignment({
           Couranr Operations required a return. The pickup address below is now the return
           destination. Keep custody until the sender confirms the return.
         </Alert>
+      ) : null}
+
+      {state === "picked_up" || state === "in_transit" || state === "at_dropoff" ? (
+        <DeliveryIssueReport
+          deliveryId={assigned.deliveryId}
+          location={location}
+          onReported={() => void reload()}
+        />
       ) : null}
 
       <Grid columns={2}>

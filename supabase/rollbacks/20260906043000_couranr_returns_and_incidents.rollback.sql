@@ -9,7 +9,12 @@ set local lock_timeout='10s';
 
 do $guard$
 begin
-  if exists (select 1 from public.couranr_delivery_returns limit 1)
+  if exists (
+       select 1 from public.couranr_pickup_discrepancies
+        where reported_latitude is not null or reported_longitude is not null
+        limit 1
+     )
+     or exists (select 1 from public.couranr_delivery_returns limit 1)
      or exists (select 1 from public.couranr_delivery_incidents limit 1)
      or exists (select 1 from public.couranr_delivery_incident_events limit 1)
      or exists (select 1 from public.couranr_handoff_codes where code_kind='merchant_return' limit 1)
@@ -25,6 +30,9 @@ begin
 end
 $guard$;
 
+drop function if exists public.couranr_report_dropoff_exception_v2(
+  uuid,uuid,text,text,numeric,numeric,numeric
+);
 drop function if exists public.couranr_complete_return(uuid,integer,uuid);
 drop function if exists public.couranr_start_return(uuid,integer,uuid);
 drop function if exists public.couranr_require_return(uuid,integer,uuid,text,text);
@@ -34,6 +42,12 @@ drop function if exists public.couranr_open_delivery_incident(uuid,uuid,text,tex
 drop table if exists public.couranr_delivery_incident_events;
 drop table if exists public.couranr_delivery_incidents;
 drop table if exists public.couranr_delivery_returns;
+
+alter table public.couranr_pickup_discrepancies
+  drop constraint if exists couranr_pd_reported_location_chk,
+  drop column if exists reported_latitude,
+  drop column if exists reported_longitude,
+  drop column if exists reported_accuracy_m;
 
 alter table public.couranr_deliveries drop constraint if exists couranr_dlv_fulfillment_chk;
 alter table public.couranr_deliveries add constraint couranr_dlv_fulfillment_chk check (

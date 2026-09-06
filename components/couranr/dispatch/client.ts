@@ -319,7 +319,12 @@ export function completeLeaveAtDoor(
   );
 }
 
-export function reportDiscrepancy(deliveryId: string, body: { reason: string; notes?: string }) {
+export function reportDiscrepancy(
+  deliveryId: string,
+  body:
+    | { reason: string; notes?: string; stage?: "pickup" }
+    | ({ reason: string; notes?: string; stage: "dropoff" } & Located)
+) {
   return call<{ discrepancy: { discrepancyId: string; state: string; version: number } }>(
     `/api/couranr/driver/deliveries/${deliveryId}/discrepancy`,
     { method: "POST", body }

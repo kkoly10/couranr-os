@@ -462,12 +462,18 @@ export async function reportDropoffException(p: {
   deliveryId: string;
   reason: string;
   notes?: string | null;
+  latitude: number;
+  longitude: number;
+  accuracyM?: number | null;
 }): Promise<DriverResult<{ discrepancyId: string; state: string; version: number }>> {
-  const r = await callRpc("reportDropoffException", "couranr_report_dropoff_exception", {
+  const r = await callRpc("reportDropoffException", "couranr_report_dropoff_exception_v2", {
     p_delivery_id: p.deliveryId,
     p_actor_user_id: p.userId,
     p_reason: p.reason,
     p_notes: p.notes ?? null,
+    p_latitude: p.latitude,
+    p_longitude: p.longitude,
+    p_accuracy_m: p.accuracyM ?? null,
   });
   if (!r.ok) return r;
   return {

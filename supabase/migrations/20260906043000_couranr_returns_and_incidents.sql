@@ -83,6 +83,97 @@ alter table public.couranr_pickup_discrepancies
     'other'
   ));
 
+/*
+ * Post-pickup exceptions can become the origin of a NEW REF-003 return route.
+ * Capture the driver's stop location with the report so a later quote cannot
+ * silently use wherever the browser happens to be at retry/review time.
+ * Existing pickup exceptions stay valid because the fields are nullable.
+ */
+alter table public.couranr_pickup_discrepancies
+  add column if not exists reported_latitude numeric(9,6),
+  add column if not exists reported_longitude numeric(9,6),
+  add column if not exists reported_accuracy_m numeric(8,2);
+
+alter table public.couranr_pickup_discrepancies
+  drop constraint if exists couranr_pd_reported_location_chk;
+alter table public.couranr_pickup_discrepancies
+  add constraint couranr_pd_reported_location_chk check (
+    (reported_latitude is null and reported_longitude is null and reported_accuracy_m is null)
+    or (
+      reported_latitude between -90 and 90
+      and reported_longitude between -180 and 180
+      and (reported_accuracy_m is null or reported_accuracy_m >= 0)
+    )
+  );
+
+/*
+ * V2 is additive so an old bundle can still report through the old four-arg
+ * function during rolling deploy. New bundles use this command and bind the
+ * location at the same transaction as the immutable report.
+ */
+create or replace function public.couranr_report_dropoff_exception_v2(
+  p_delivery_id uuid,
+  p_actor_user_id uuid,
+  p_reason text,
+  p_notes text,
+  p_latitude numeric,
+  p_longitude numeric,
+  p_accuracy_m numeric
+)
+returns public.couranr_pickup_discrepancies
+language plpgsql security invoker set search_path=''
+as $fn$
+declare
+  v_asg public.couranr_delivery_assignments;
+  v_dlv public.couranr_deliveries;
+  v_row public.couranr_pickup_discrepancies;
+  v_lat numeric(9,6);
+  v_lng numeric(9,6);
+  v_acc numeric(8,2);
+begin
+  if p_latitude is null or p_longitude is null
+     or p_latitude < -90 or p_latitude > 90
+     or p_longitude < -180 or p_longitude > 180
+     or (p_accuracy_m is not null and p_accuracy_m < 0) then
+    raise exception 'invalid_evidence_location' using errcode='CR422';
+  end if;
+  v_lat:=round(p_latitude,6);
+  v_lng:=round(p_longitude,6);
+  v_acc:=case when p_accuracy_m is null then null else round(p_accuracy_m,2) end;
+
+  v_asg:=public.couranr_driver_assignment_for(p_delivery_id,p_actor_user_id);
+  select * into v_dlv from public.couranr_deliveries where id=p_delivery_id for update;
+  if v_dlv.fulfillment_state not in ('picked_up','in_transit','at_dropoff') then
+    raise exception 'delivery_not_in_expected_state' using errcode='CR409';
+  end if;
+
+  select * into v_row from public.couranr_pickup_discrepancies
+   where delivery_id=p_delivery_id and discrepancy_state='open';
+  if found then return v_row; end if;
+
+  insert into public.couranr_pickup_discrepancies(
+    delivery_id,assignment_id,reason,notes,discrepancy_state,stage,
+    reported_by_driver_id,reported_at,
+    reported_latitude,reported_longitude,reported_accuracy_m
+  ) values (
+    p_delivery_id,v_asg.id,p_reason,p_notes,'open','dropoff',
+    v_asg.driver_id,now(),v_lat,v_lng,v_acc
+  ) returning * into v_row;
+
+  insert into public.couranr_delivery_events(
+    delivery_id,actor_user_id,actor_type,command,from_state,to_state,metadata
+  ) values (
+    p_delivery_id,p_actor_user_id,'driver','report_dropoff_exception',
+    v_dlv.fulfillment_state,v_dlv.fulfillment_state,
+    jsonb_build_object(
+      'discrepancyId',v_row.id,'reason',p_reason,'stage','dropoff',
+      'reportedLatitude',v_lat,'reportedLongitude',v_lng,'reportedAccuracyM',v_acc
+    )
+  );
+  return v_row;
+end
+$fn$;
+
 /* ------------------------------------------- return + incident evidence */
 
 create table if not exists public.couranr_delivery_returns (
@@ -974,11 +1065,24 @@ begin
     raise exception 'return_assignment_changed' using errcode='CR409';
   end if;
 
-  v_pricing:=case when p_reason='couranr_caused' then 'couranr_covered'
-                  when v_dlv.fulfillment_state='at_dropoff' then 'pending_route_quote'
-                  else 'pending_current_location' end;
+  v_origin:=case
+    when v_dlv.fulfillment_state='at_dropoff' then v_dlv.dropoff_address
+    when v_disc.reported_latitude is not null and v_disc.reported_longitude is not null then
+      jsonb_build_object(
+        'kind','captured_coordinates',
+        'latitude',v_disc.reported_latitude,
+        'longitude',v_disc.reported_longitude,
+        'accuracyM',v_disc.reported_accuracy_m,
+        'capturedAt',v_disc.reported_at
+      )
+    else null
+  end;
+  v_pricing:=case
+    when p_reason='couranr_caused' then 'couranr_covered'
+    when v_origin is not null then 'pending_route_quote'
+    else 'pending_current_location'
+  end;
   v_payer:=case when p_reason='couranr_caused' then 'couranr' else 'payer' end;
-  v_origin:=case when v_dlv.fulfillment_state='at_dropoff' then v_dlv.dropoff_address else null end;
 
   insert into public.couranr_delivery_returns(
     request_id,delivery_id,assignment_id,source_discrepancy_id,
@@ -1266,6 +1370,13 @@ revoke all on function public.couranr_report_proof_sync_failure(uuid,uuid,uuid,t
   from public,anon,authenticated,service_role;
 grant execute on function public.couranr_report_proof_sync_failure(uuid,uuid,uuid,text,text,text,integer)
   to service_role;
+
+revoke all on function public.couranr_report_dropoff_exception_v2(
+  uuid,uuid,text,text,numeric,numeric,numeric
+) from public,anon,authenticated,service_role;
+grant execute on function public.couranr_report_dropoff_exception_v2(
+  uuid,uuid,text,text,numeric,numeric,numeric
+) to service_role;
 
 revoke all on function public.couranr_open_delivery_incident(uuid,uuid,text,text,text)
   from public,anon,authenticated,service_role;
