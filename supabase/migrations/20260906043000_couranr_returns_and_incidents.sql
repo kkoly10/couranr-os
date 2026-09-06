@@ -342,7 +342,7 @@ begin
   select * into v_dlv from public.couranr_deliveries where id=p_delivery_id;
 
   if p_code_kind='merchant_return'
-     and v_dlv.fulfillment_state not in ('return_required','returning') then
+     and v_dlv.fulfillment_state<>'returning' then
     raise exception 'return_not_active' using errcode='CR409';
   end if;
 
@@ -1098,9 +1098,30 @@ declare
   v_code public.couranr_handoff_codes;
   v_proof public.couranr_delivery_proofs;
 begin
-  v_asg:=public.couranr_driver_assignment_for(p_delivery_id,p_actor_user_id);
+  /*
+   * Lost-response replay must work after the active assignment has already
+   * been closed. First prove the caller owns the completed return assignment;
+   * only the live path uses couranr_driver_assignment_for.
+   */
   select * into v_dlv from public.couranr_deliveries where id=p_delivery_id for update;
-  if v_dlv.fulfillment_state='returned' then return v_dlv; end if;
+  if not found then raise exception 'delivery_not_found' using errcode='CR404'; end if;
+  if v_dlv.fulfillment_state='returned' then
+    select a.* into v_asg
+      from public.couranr_delivery_assignments a
+      join public.couranr_drivers dr on dr.id=a.driver_id
+      join public.couranr_delivery_returns r on r.assignment_id=a.id
+     where a.delivery_id=p_delivery_id
+       and dr.user_id=p_actor_user_id
+       and a.assignment_state='completed'
+       and a.end_reason='returned'
+       and r.return_state='returned'
+     order by a.ended_at desc
+     limit 1;
+    if not found then raise exception 'not_your_delivery' using errcode='CR404'; end if;
+    return v_dlv;
+  end if;
+
+  v_asg:=public.couranr_driver_assignment_for(p_delivery_id,p_actor_user_id);
   if v_dlv.fulfillment_state<>'returning' then
     raise exception 'delivery_not_in_expected_state' using errcode='CR409';
   end if;
