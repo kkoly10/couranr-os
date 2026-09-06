@@ -424,7 +424,9 @@ function SignatureCapture({ deliveryId, version, location, recordedProof, onDone
     signature.status === "reading" ||
     signature.status === "authorizing" ||
     signature.status === "uploading" ||
-    signature.status === "finalizing";
+    signature.status === "finalizing" ||
+    signature.status === "queued" ||
+    signature.finalized;
 
   function context(): CanvasRenderingContext2D | null {
     const canvas = canvasRef.current;
@@ -541,7 +543,11 @@ function SignatureCapture({ deliveryId, version, location, recordedProof, onDone
   }
 
   const blockers: string[] = [];
-  if (!hasInk && !signature.finalized) blockers.push("Ask the recipient to sign in the box.");
+  if (signature.status === "queued") {
+    blockers.push("Wait for the saved signature to sync with Couranr.");
+  } else if (!hasInk && !signature.finalized) {
+    blockers.push("Ask the recipient to sign in the box.");
+  }
   if (signerFirstName.trim() === "") blockers.push("Enter the signer's first name.");
   if (!location.usable) blockers.push(location.message);
   if (version === null) blockers.push(VERSION_BLOCKER);
@@ -647,6 +653,8 @@ function SignatureCapture({ deliveryId, version, location, recordedProof, onDone
                 object back makes it so. */}
             {signature.finalized ? (
               <Badge tone="success">Signature recorded</Badge>
+            ) : signature.status === "queued" ? (
+              <Badge tone="warning">Signature saved — waiting to sync</Badge>
             ) : hasInk ? (
               <Badge tone="warning">Signed — not recorded yet</Badge>
             ) : (
@@ -746,7 +754,13 @@ function LeaveAtDoor({ deliveryId, version, location, recordedProof, onDone }: F
   });
 
   const blockers: string[] = [];
-  if (!photo.finalized) blockers.push("Record a photo of where you left the shipment.");
+  if (!photo.finalized) {
+    blockers.push(
+      photo.status === "queued"
+        ? "Wait for the saved drop-off photo to sync with Couranr."
+        : "Record a photo of where you left the shipment."
+    );
+  }
   if (!safeLocation) blockers.push("Confirm the spot you are leaving it in is safe.");
   if (!weatherSuitable) blockers.push("Confirm the weather will not damage it there.");
   if (!location.usable) blockers.push(location.message);
@@ -959,7 +973,9 @@ function PhotoField({
     upload.status === "reading" ||
     upload.status === "authorizing" ||
     upload.status === "uploading" ||
-    upload.status === "finalizing";
+    upload.status === "finalizing" ||
+    upload.status === "queued" ||
+    upload.finalized;
 
   function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files && e.target.files[0];
@@ -990,6 +1006,8 @@ function PhotoField({
           <Cluster gap={2}>
             {upload.finalized ? (
               <Badge tone="success">Recorded</Badge>
+            ) : upload.status === "queued" ? (
+              <Badge tone="warning">Saved — waiting to sync</Badge>
             ) : selectedName ? (
               <Badge tone="warning">Selected — not recorded yet</Badge>
             ) : (

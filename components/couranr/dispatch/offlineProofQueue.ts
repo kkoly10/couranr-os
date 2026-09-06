@@ -29,6 +29,7 @@ export const OFFLINE_PROOF_PERSISTED_FIELDS = [
   "attempts",
   "lastAttemptAt",
   "lastErrorCode",
+  "terminalReason",
   "alertReported",
 ] as const;
 
@@ -49,6 +50,12 @@ export type OfflineProofEnvelope = {
 
 export type OfflineProofQueueState = "pending" | "retrying" | "terminal";
 
+export type ProofSyncTerminalReason =
+  | "local_evidence_corrupt"
+  | "assignment_or_stage_changed"
+  | "server_rejected"
+  | "retry_limit";
+
 type StoredOfflineProof = {
   id: string;
   envelope: OfflineProofEnvelope;
@@ -58,6 +65,8 @@ type StoredOfflineProof = {
   attempts: number;
   lastAttemptAt: string | null;
   lastErrorCode: string | null;
+  /** Optional for backward compatibility with queue rows written by PR #61. */
+  terminalReason?: ProofSyncTerminalReason | null;
   alertReported: boolean;
 };
 
@@ -69,11 +78,7 @@ export type ProofSyncOutcome =
   | {
       kind: "terminal";
       code: string;
-      reason:
-        | "local_evidence_corrupt"
-        | "assignment_or_stage_changed"
-        | "server_rejected"
-        | "retry_limit";
+      reason: ProofSyncTerminalReason;
     };
 
 const CHANGE_EVENT = "couranr:offline-proof-queue-changed";
@@ -89,9 +94,9 @@ export function onOfflineProofQueueChanged(listener: () => void) {
 }
 
 /**
- * The durable queue is a browser capability, not a network state. If IndexedDB
- * or SubtleCrypto is unavailable Couranr can still perform a normal online
- * proof upload, but it must never claim crash-safe/offline persistence.
+ * Proof upload starts only when Couranr can first make the evidence durable.
+ * A browser without IndexedDB or SubtleCrypto cannot satisfy the crash-safety
+ * contract, so callers must fail closed before any upload grant is requested.
  */
 export function offlineProofQueueSupported(): boolean {
   return typeof indexedDB !== "undefined" && Boolean(globalThis.crypto?.subtle);
@@ -249,6 +254,7 @@ export async function saveOfflineProof(
     attempts: initial.attempts ?? 0,
     lastAttemptAt: null,
     lastErrorCode: initial.lastErrorCode ?? null,
+    terminalReason: null,
     alertReported: false,
   });
 }
@@ -264,11 +270,41 @@ export async function listOfflineProofs(deliveryId?: string): Promise<OfflinePro
     .map(({ ciphertext: _c, iv: _i, ...safe }) => safe);
 }
 
+export async function findOfflineProof(
+  deliveryId: string,
+  stage: string,
+  proofType: string,
+  discrepancyId: string | null = null
+): Promise<OfflineProofSummary | null> {
+  const rows = await listOfflineProofs(deliveryId);
+  return rows.find((row) =>
+    row.envelope.stage === stage &&
+    row.envelope.proofType === proofType &&
+    row.envelope.discrepancyId === discrepancyId
+  ) ?? null;
+}
+
 async function decrypt(row: StoredOfflineProof): Promise<ArrayBuffer> {
   const key = await encryptionKey();
   const iv = new Uint8Array(row.iv.byteLength);
   iv.set(row.iv);
   return crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, row.ciphertext);
+}
+
+export function proofSyncTerminalReason(
+  lastErrorCode: string | null,
+  storedReason?: ProofSyncTerminalReason | null
+): ProofSyncTerminalReason {
+  if (storedReason) return storedReason;
+  if (lastErrorCode === "local_evidence_corrupt") return "local_evidence_corrupt";
+  if (lastErrorCode === "retry_limit") return "retry_limit";
+  if (
+    lastErrorCode?.startsWith("http_4") ||
+    lastErrorCode === "evidence_identity_conflict"
+  ) {
+    return "assignment_or_stage_changed";
+  }
+  return "server_rejected";
 }
 
 export function classifyProofSyncFailure(status: number, code?: string): ProofSyncOutcome {
@@ -351,15 +387,7 @@ async function ensureTerminalAlert(row: StoredOfflineProof): Promise<StoredOffli
     clientEvidenceId: row.envelope.id,
     stage: row.envelope.stage,
     proofType: row.envelope.proofType,
-    reason:
-      row.lastErrorCode === "local_evidence_corrupt"
-        ? "local_evidence_corrupt"
-        : row.lastErrorCode === "retry_limit"
-          ? "retry_limit"
-          : row.lastErrorCode?.startsWith("http_4") ||
-              row.lastErrorCode === "evidence_identity_conflict"
-            ? "assignment_or_stage_changed"
-            : "server_rejected",
+    reason: proofSyncTerminalReason(row.lastErrorCode, row.terminalReason),
     attempts: Math.max(1, row.attempts),
   });
   if (isDispatchApiFailure(result)) return row;
@@ -368,7 +396,7 @@ async function ensureTerminalAlert(row: StoredOfflineProof): Promise<StoredOffli
   return next;
 }
 
-export async function syncOfflineProof(
+async function syncOfflineProofOnce(
   id: string,
   onStage?: (stage: "authorizing" | "uploading" | "finalizing") => void
 ): Promise<ProofSyncOutcome> {
@@ -380,11 +408,7 @@ export async function syncOfflineProof(
     return {
       kind: "terminal",
       code: row.lastErrorCode ?? "terminal",
-      reason: row.lastErrorCode === "local_evidence_corrupt"
-        ? "local_evidence_corrupt"
-        : row.lastErrorCode === "retry_limit"
-          ? "retry_limit"
-          : "server_rejected",
+      reason: proofSyncTerminalReason(row.lastErrorCode, row.terminalReason),
     };
   }
 
@@ -396,13 +420,23 @@ export async function syncOfflineProof(
   try {
     bytes = await decrypt(row);
     if ((await sha256(bytes)) !== row.envelope.sha256 || bytes.byteLength !== row.envelope.byteSize) {
-      row = { ...row, state: "terminal", lastErrorCode: "local_evidence_corrupt" };
+      row = {
+        ...row,
+        state: "terminal",
+        lastErrorCode: "local_evidence_corrupt",
+        terminalReason: "local_evidence_corrupt",
+      };
       await putStored(row);
       await ensureTerminalAlert(row);
       return { kind: "terminal", code: "local_evidence_corrupt", reason: "local_evidence_corrupt" };
     }
   } catch {
-    row = { ...row, state: "terminal", lastErrorCode: "local_evidence_corrupt" };
+    row = {
+      ...row,
+      state: "terminal",
+      lastErrorCode: "local_evidence_corrupt",
+      terminalReason: "local_evidence_corrupt",
+    };
     await putStored(row);
     await ensureTerminalAlert(row);
     return { kind: "terminal", code: "local_evidence_corrupt", reason: "local_evidence_corrupt" };
@@ -415,18 +449,48 @@ export async function syncOfflineProof(
   }
 
   if (outcome.kind === "retryable" && attempts < MAX_OFFLINE_SYNC_ATTEMPTS) {
-    await putStored({ ...row, state: "pending", lastErrorCode: outcome.code });
+    await putStored({
+      ...row,
+      state: "pending",
+      lastErrorCode: outcome.code,
+      terminalReason: null,
+    });
     return outcome;
   }
 
   const terminalCode =
     outcome.kind === "retryable" ? "retry_limit" : outcome.code;
-  const terminal = { ...row, state: "terminal" as const, lastErrorCode: terminalCode };
+  const terminalReason: ProofSyncTerminalReason =
+    outcome.kind === "retryable" ? "retry_limit" : outcome.reason;
+  const terminal = {
+    ...row,
+    state: "terminal" as const,
+    lastErrorCode: terminalCode,
+    terminalReason,
+  };
   await putStored(terminal);
   await ensureTerminalAlert(terminal);
   return outcome.kind === "retryable"
     ? { kind: "terminal", code: "retry_limit", reason: "retry_limit" }
     : outcome;
+}
+
+const syncInFlight = new Map<string, Promise<ProofSyncOutcome>>();
+
+export async function syncOfflineProof(
+  id: string,
+  onStage?: (stage: "authorizing" | "uploading" | "finalizing") => void
+): Promise<ProofSyncOutcome> {
+  const existing = syncInFlight.get(id);
+  if (existing) return existing;
+
+  const running = syncOfflineProofOnce(id, onStage);
+  syncInFlight.set(id, running);
+  try {
+    return await running;
+  } finally {
+    if (syncInFlight.get(id) === running) syncInFlight.delete(id);
+  }
 }
 
 export async function syncPendingOfflineProofs(deliveryId?: string): Promise<ProofSyncOutcome[]> {

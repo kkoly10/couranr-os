@@ -141,9 +141,19 @@ export function PickupFlow({
   const blockers: string[] = [];
   if (pinOutcome !== "accepted") blockers.push("Verify the pickup with the sender.");
   if (!location.usable) blockers.push(location.message);
-  if (!shipmentPhoto.finalized) blockers.push("Take one photo showing everything you are collecting.");
+  if (!shipmentPhoto.finalized) {
+    blockers.push(
+      shipmentPhoto.status === "queued"
+        ? "Wait for the saved pickup photo to sync with Couranr."
+        : "Take one photo showing everything you are collecting."
+    );
+  }
   if (large && !securementPhoto.finalized) {
-    blockers.push("Take a photo showing the large load secured.");
+    blockers.push(
+      securementPhoto.status === "queued"
+        ? "Wait for the saved securement photo to sync with Couranr."
+        : "Take a photo showing the large load secured."
+    );
   }
   if (version === null) {
     blockers.push("Reload this delivery so Couranr can confirm its current version.");
@@ -532,7 +542,9 @@ function PhotoField({
     upload.status === "reading" ||
     upload.status === "authorizing" ||
     upload.status === "uploading" ||
-    upload.status === "finalizing";
+    upload.status === "finalizing" ||
+    upload.status === "queued" ||
+    upload.finalized;
 
   function onPick(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -558,6 +570,8 @@ function PhotoField({
           <Cluster gap={2}>
             {upload.finalized ? (
               <Badge tone="success">Recorded</Badge>
+            ) : upload.status === "queued" ? (
+              <Badge tone="warning">Saved — waiting to sync</Badge>
             ) : selectedName ? (
               <Badge tone="warning">Recording…</Badge>
             ) : (

@@ -2,8 +2,8 @@
 
 import * as React from "react";
 import {
-  attemptProofBytes,
   buildOfflineProofEnvelope,
+  findOfflineProof,
   offlineProofQueueSupported,
   saveOfflineProof,
   syncOfflineProof,
@@ -11,13 +11,6 @@ import {
 } from "./offlineProofQueue";
 import type { LocationState } from "./useLocationCapture";
 
-/**
- * One proof capture with an offline-safe evidence identity.
- *
- * A file is never proof until the server verifies it. When connectivity fails,
- * the exact bytes are encrypted into IndexedDB with a non-extractable device
- * key. The queue stores no auth token, signed URL, upload token or server path.
- */
 export type ProofUploadStatus =
   | "idle"
   | "reading"
@@ -39,6 +32,11 @@ export type ProofUploadState = {
   reset: () => void;
 };
 
+const QUEUED_MESSAGE =
+  "The proof is encrypted on this device and will retry when the connection returns.";
+const TERMINAL_MESSAGE =
+  "The proof is encrypted on this device and Couranr Operations needs to review the sync.";
+
 export function useProofUpload(params: {
   deliveryId: string;
   stage: string;
@@ -54,7 +52,13 @@ export function useProofUpload(params: {
   const [error, setError] = React.useState<string | null>(null);
   const [byteSize, setByteSize] = React.useState<number | null>(null);
 
+  const uploadInFlight = React.useRef(false);
+  const durableEvidenceId = React.useRef<string | null>(null);
+  const finalizedProofId = React.useRef<string | null>(null);
+  const recoveryStarted = React.useRef(false);
+
   const reset = React.useCallback(() => {
+    if (uploadInFlight.current || durableEvidenceId.current || finalizedProofId.current) return;
     setStatus("idle");
     setProofId(null);
     setQueueId(null);
@@ -65,28 +69,101 @@ export function useProofUpload(params: {
   const recorded = params.recordedProofId ?? null;
   React.useEffect(() => {
     if (!recorded) return;
+    finalizedProofId.current = recorded;
+    durableEvidenceId.current = null;
     setStatus((s) => (s === "idle" || s === "queued" ? "finalized" : s));
     setProofId((p) => p ?? recorded);
     setQueueId(null);
   }, [recorded]);
 
   const adoptVerified = React.useCallback((proof: { proofId: string; byteSize?: number | null }) => {
+    finalizedProofId.current = proof.proofId;
+    durableEvidenceId.current = null;
     setByteSize(proof.byteSize ?? null);
     setProofId(proof.proofId);
     setQueueId(null);
     setError(null);
     setStatus("finalized");
     params.onFinalized?.(proof.proofId);
-  }, [params]);
+  }, [params.onFinalized]);
+
+  /*
+   * RELOAD RECOVERY: rediscover the durable evidence slot and reconcile the
+   * exact encrypted bytes instead of asking the driver to capture again.
+   */
+  React.useEffect(() => {
+    if (recorded || recoveryStarted.current || !offlineProofQueueSupported()) return;
+    recoveryStarted.current = true;
+    let live = true;
+
+    void (async () => {
+      let queued;
+      try {
+        queued = await findOfflineProof(
+          params.deliveryId,
+          params.stage,
+          params.proofType,
+          params.discrepancyId ?? null
+        );
+      } catch {
+        if (!live) return;
+        setStatus("failed");
+        setError("This browser could not open Couranr's encrypted proof store.");
+        return;
+      }
+      if (!live || !queued) return;
+
+      durableEvidenceId.current = queued.id;
+      setQueueId(queued.id);
+      setByteSize(queued.envelope.byteSize);
+      setStatus("queued");
+      setError(queued.state === "terminal" ? TERMINAL_MESSAGE : QUEUED_MESSAGE);
+
+      if (typeof navigator === "undefined" || !navigator.onLine) return;
+      try {
+        const outcome = await syncOfflineProof(queued.id, (next) => {
+          if (live) setStatus(next);
+        });
+        if (!live) return;
+        if (outcome.kind === "verified") {
+          adoptVerified(outcome.proof);
+          return;
+        }
+        setStatus("queued");
+        setError(outcome.kind === "terminal" ? TERMINAL_MESSAGE : QUEUED_MESSAGE);
+      } catch {
+        if (!live) return;
+        setStatus("queued");
+        setError(QUEUED_MESSAGE);
+      }
+    })();
+
+    return () => {
+      live = false;
+    };
+  }, [
+    recorded,
+    params.deliveryId,
+    params.stage,
+    params.proofType,
+    params.discrepancyId,
+    adoptVerified,
+  ]);
 
   React.useEffect(() => {
     if (status !== "queued" || !queueId) return;
     const retry = async () => {
       if (!navigator.onLine) return;
-      const outcome = await syncOfflineProof(queueId);
-      if (outcome.kind === "verified") adoptVerified(outcome.proof);
-      else if (outcome.kind === "terminal") {
-        setError("Couranr Operations needs to review this proof sync.");
+      try {
+        const outcome = await syncOfflineProof(queueId, (next) => setStatus(next));
+        if (outcome.kind === "verified") adoptVerified(outcome.proof);
+        else {
+          setStatus("queued");
+          setError(outcome.kind === "terminal" ? TERMINAL_MESSAGE : QUEUED_MESSAGE);
+        }
+      } catch {
+        setStatus("queued");
+        setError(QUEUED_MESSAGE);
       }
     };
     window.addEventListener("online", retry);
@@ -94,6 +171,8 @@ export function useProofUpload(params: {
   }, [status, queueId, adoptVerified]);
 
   const upload = React.useCallback(async (file: File) => {
+    if (uploadInFlight.current || durableEvidenceId.current || finalizedProofId.current) return;
+
     setError(null);
     setProofId(null);
     setQueueId(null);
@@ -105,86 +184,80 @@ export function useProofUpload(params: {
       return;
     }
 
-    let bytes: ArrayBuffer;
-    try { bytes = await file.arrayBuffer(); }
-    catch {
+    // No durable store means no first network attempt.
+    if (!offlineProofQueueSupported()) {
       setStatus("failed");
-      setError("That file could not be read. Take the photo again.");
-      return;
-    }
-    if (bytes.byteLength <= 0) {
-      setStatus("failed");
-      setError("That file is empty. Take the photo again.");
+      setError(
+        "This browser cannot safely store delivery proof before upload. Use a current browser with site storage enabled, then try again."
+      );
       return;
     }
 
-    let envelope: OfflineProofEnvelope;
+    uploadInFlight.current = true;
     try {
-      envelope = await buildOfflineProofEnvelope({
-        deliveryId: params.deliveryId,
-        stage: params.stage,
-        proofType: params.proofType,
-        mimeType: file.type,
-        bytes,
-        capturedAt: new Date().toISOString(),
-        latitude: params.location.fix.latitude,
-        longitude: params.location.fix.longitude,
-        accuracyM: params.location.fix.accuracyM ?? null,
-        discrepancyId: params.discrepancyId ?? null,
-      });
-    } catch {
-      setStatus("failed");
-      setError("This browser could not prepare the proof safely.");
-      return;
-    }
+      let bytes: ArrayBuffer;
+      try {
+        bytes = await file.arrayBuffer();
+      } catch {
+        setStatus("failed");
+        setError("That file could not be read. Take the photo again.");
+        return;
+      }
+      if (bytes.byteLength <= 0) {
+        setStatus("failed");
+        setError("That file is empty. Take the photo again.");
+        return;
+      }
 
-    /*
-     * CRASH WINDOW RULE. On browsers that support the offline queue, persist
-     * the immutable evidence BEFORE asking Couranr for an upload grant. A tab
-     * close after PUT/finalize but before the response is therefore recoverable:
-     * the stable evidence UUID remains on-device, and the next sync converges
-     * against the server instead of creating new physical evidence.
-     *
-     * Unsupported browsers retain the ordinary online path, but they are never
-     * told that failed proof is safely queued offline.
-     */
-    if (offlineProofQueueSupported()) {
+      let envelope: OfflineProofEnvelope;
+      try {
+        envelope = await buildOfflineProofEnvelope({
+          deliveryId: params.deliveryId,
+          stage: params.stage,
+          proofType: params.proofType,
+          mimeType: file.type,
+          bytes,
+          capturedAt: new Date().toISOString(),
+          latitude: params.location.fix.latitude,
+          longitude: params.location.fix.longitude,
+          accuracyM: params.location.fix.accuracyM ?? null,
+          discrepancyId: params.discrepancyId ?? null,
+        });
+      } catch {
+        setStatus("failed");
+        setError("This browser could not prepare the proof safely.");
+        return;
+      }
+
       try {
         await saveOfflineProof(envelope, bytes);
       } catch {
         setStatus("failed");
         setError(
-          "This browser could not open Couranr's encrypted proof store. The photo was not sent. Free device storage or use a supported browser, then try again."
+          "This browser could not open Couranr's encrypted proof store. The proof was not sent. Free device storage or enable site storage, then try again."
         );
         return;
       }
 
-      const outcome = await syncOfflineProof(envelope.id, (next) => setStatus(next));
-      if (outcome.kind === "verified") {
-        adoptVerified(outcome.proof);
-        return;
-      }
-
+      durableEvidenceId.current = envelope.id;
       setQueueId(envelope.id);
-      setStatus("queued");
-      setError(
-        outcome.kind === "terminal"
-          ? "The proof is encrypted on this device and Couranr Operations needs to review the sync."
-          : "The proof is encrypted on this device and will retry when the connection returns."
-      );
-      return;
-    }
+      setByteSize(envelope.byteSize);
 
-    const outcome = await attemptProofBytes(envelope, bytes, (next) => setStatus(next));
-    if (outcome.kind === "verified") {
-      adoptVerified(outcome.proof);
-      return;
+      try {
+        const outcome = await syncOfflineProof(envelope.id, (next) => setStatus(next));
+        if (outcome.kind === "verified") {
+          adoptVerified(outcome.proof);
+          return;
+        }
+        setStatus("queued");
+        setError(outcome.kind === "terminal" ? TERMINAL_MESSAGE : QUEUED_MESSAGE);
+      } catch {
+        setStatus("queued");
+        setError(QUEUED_MESSAGE);
+      }
+    } finally {
+      uploadInFlight.current = false;
     }
-
-    setStatus("failed");
-    setError(
-      "This browser cannot keep failed proof safely offline. The delivery was not advanced. Reconnect or use a supported browser, then try again."
-    );
   }, [params, adoptVerified]);
 
   return {

@@ -5,6 +5,7 @@ import {
   MAX_OFFLINE_SYNC_ATTEMPTS,
   OFFLINE_PROOF_PERSISTED_FIELDS,
   classifyProofSyncFailure,
+  proofSyncTerminalReason,
   sameOfflineEnvelope,
   type OfflineProofEnvelope,
 } from "@/components/couranr/dispatch/offlineProofQueue";
@@ -35,7 +36,7 @@ function envelope(over:Partial<OfflineProofEnvelope>={}):OfflineProofEnvelope {
 describe("P7-004 offline proof queue",()=>{
   it("persists only the encrypted evidence envelope and retry metadata",()=>{
     expect(OFFLINE_PROOF_PERSISTED_FIELDS).toEqual([
-      "id","envelope","ciphertext","iv","state","attempts","lastAttemptAt","lastErrorCode","alertReported",
+      "id","envelope","ciphertext","iv","state","attempts","lastAttemptAt","lastErrorCode","terminalReason","alertReported",
     ]);
     for(const secret of ["accessToken","authorization","signedUrl","uploadToken","objectPath","recipient","address","phone"]){
       expect((OFFLINE_PROOF_PERSISTED_FIELDS as readonly string[])).not.toContain(secret);
@@ -63,6 +64,18 @@ describe("P7-004 offline proof queue",()=>{
     expect(classifyProofSyncFailure(422,"invalid_input")).toEqual({
       kind:"terminal",code:"invalid_input",reason:"server_rejected"
     });
+  });
+
+  it("preserves the terminal Operations reason instead of reconstructing it from an API code",()=>{
+    expect(proofSyncTerminalReason("conflict","assignment_or_stage_changed"))
+      .toBe("assignment_or_stage_changed");
+    expect(proofSyncTerminalReason("retry_limit",null)).toBe("retry_limit");
+    expect(proofSyncTerminalReason("local_evidence_corrupt",undefined))
+      .toBe("local_evidence_corrupt");
+
+    const queue=read("components/couranr/dispatch/offlineProofQueue.ts");
+    expect(queue).toContain("terminalReason: ProofSyncTerminalReason");
+    expect(queue).toContain("reason: proofSyncTerminalReason(row.lastErrorCode, row.terminalReason)");
   });
 });
 
@@ -119,23 +132,52 @@ describe("P7-004 server reconciliation",()=>{
     expect(hook).toContain('setStatus("queued")');
   });
 
-  it("durably queues supported-browser evidence before the first V2 network attempt",()=>{
+  it("durably queues evidence before the first V2 network attempt",()=>{
     const hook=read("components/couranr/dispatch/useProofUpload.ts");
-    const supported=hook.indexOf("if (offlineProofQueueSupported())");
-    const save=hook.indexOf("await saveOfflineProof(envelope, bytes)",supported);
+    const capabilityGuard=hook.indexOf("if (!offlineProofQueueSupported())");
+    const save=hook.indexOf("await saveOfflineProof(envelope, bytes)",capabilityGuard);
     const sync=hook.indexOf("await syncOfflineProof(envelope.id",save);
-    expect(supported).toBeGreaterThan(-1);
-    expect(save).toBeGreaterThan(supported);
+    expect(capabilityGuard).toBeGreaterThan(-1);
+    expect(save).toBeGreaterThan(capabilityGuard);
     expect(sync).toBeGreaterThan(save);
-    expect(hook.slice(supported,sync)).not.toContain("attemptProofBytes(");
+    expect(hook.slice(save,sync)).not.toContain("attemptProofBytes(");
   });
 
-  it("never claims offline durability when IndexedDB or SubtleCrypto is unavailable",()=>{
+  it("fails closed before network when IndexedDB or SubtleCrypto is unavailable",()=>{
     const queue=read("components/couranr/dispatch/offlineProofQueue.ts");
     expect(queue).toContain('typeof indexedDB !== "undefined"');
     expect(queue).toContain("globalThis.crypto?.subtle");
     const hook=read("components/couranr/dispatch/useProofUpload.ts");
-    expect(hook).toContain("cannot keep failed proof safely offline");
+    expect(hook).toContain("No durable store means no first network attempt");
+    expect(hook).not.toContain("attemptProofBytes");
+    expect(hook).toContain("cannot safely store delivery proof before upload");
+  });
+
+  it("re-adopts queued evidence on mount instead of asking for a new physical capture",()=>{
+    const hook=read("components/couranr/dispatch/useProofUpload.ts");
+    const find=hook.indexOf("await findOfflineProof(");
+    const reuse=hook.indexOf("durableEvidenceId.current = queued.id",find);
+    const sync=hook.indexOf("await syncOfflineProof(queued.id",reuse);
+    expect(find).toBeGreaterThan(-1);
+    expect(reuse).toBeGreaterThan(find);
+    expect(sync).toBeGreaterThan(reuse);
+  });
+
+  it("collapses concurrent retries for one evidence id",()=>{
+    const queue=read("components/couranr/dispatch/offlineProofQueue.ts");
+    expect(queue).toContain("const syncInFlight = new Map<string, Promise<ProofSyncOutcome>>()");
+    expect(queue).toContain("const existing = syncInFlight.get(id)");
+    expect(queue).toContain("if (existing) return existing");
+  });
+
+  it("does not invite a second capture while durable evidence is queued",()=>{
+    const pickup=read("components/couranr/dispatch/PickupFlow.tsx");
+    const dropoff=read("components/couranr/dispatch/DropoffProof.tsx");
+    expect(pickup).toContain('shipmentPhoto.status === "queued"');
+    expect(pickup).toContain("Wait for the saved pickup photo to sync with Couranr.");
+    expect(dropoff).toContain('signature.status === "queued"');
+    expect(dropoff).toContain("Wait for the saved signature to sync with Couranr.");
+    expect(dropoff).toContain("Saved — waiting to sync");
   });
 
   it("DRV-007 is a real route variant, not a placeholder",()=>{

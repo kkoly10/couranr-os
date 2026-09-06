@@ -1710,23 +1710,27 @@ describe("the proof upload sends the server's own ticket", () => {
       return { ok: true, status: 200 } as Response;
     }) as never;
 
-    const { useProofUpload } = await import("@/components/couranr/dispatch/useProofUpload");
-    const location = {
-      status: "ready", fix: { latitude: 38.42, longitude: -77.41, accuracyM: 8 },
-      message: "Location captured.", usable: true, request: vi.fn(),
-    } as LocationState;
-
-    let hook: any;
-    function Probe() {
-      hook = useProofUpload({
-        deliveryId: "del-fixture-1", stage: "pickup", proofType: "shipment_photo", location,
-      });
-      return <span>{hook.status}</span>;
-    }
-    render(<Probe />);
-
-    const file = new File([new Uint8Array([1, 2, 3])], "s.png", { type: "image/png" });
-    await hook.upload(file);
+    /*
+     * This section tests the wire ticket itself, not browser durability. The
+     * hook now correctly refuses to upload in jsdom because jsdom has no real
+     * IndexedDB; exercise the lower-level network routine directly here.
+     */
+    const { attemptProofBytes } = await import("@/components/couranr/dispatch/offlineProofQueue");
+    const bytes = new Uint8Array([1, 2, 3]).buffer;
+    await attemptProofBytes({
+      id: "11111111-1111-4111-8111-111111111111",
+      deliveryId: "del-fixture-1",
+      stage: "pickup",
+      proofType: "shipment_photo",
+      mimeType: "image/png",
+      byteSize: 3,
+      sha256: "a".repeat(64),
+      capturedAt: "2026-08-03T17:06:00.000Z",
+      latitude: 38.42,
+      longitude: -77.41,
+      accuracyM: 8,
+      discrepancyId: null,
+    }, bytes);
     global.fetch = realFetch;
     return calls;
   }
