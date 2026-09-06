@@ -101,7 +101,7 @@ export function OfflineProofSyncPanel({ deliveryId }: { deliveryId: string }) {
   }
 
   return (
-    <Stack gap={5}>
+    <Stack gap={6}>
       <Card>
         <CardHeader
           title="Offline proof sync"
