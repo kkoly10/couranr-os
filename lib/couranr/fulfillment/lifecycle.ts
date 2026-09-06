@@ -15,6 +15,8 @@ import type { RequestState } from "@/lib/couranr/requests/states";
 export const LIFECYCLE_STAGES = [
   /** Submitted, waiting for a Couranr reviewer to pick it up. */
   "pending_review",
+  /** Driver proof could not reconcile after safe offline retry. */
+  "proof_sync_attention",
   /** The machine-owned path opened an explicit exception for Operations. */
   "automation_exception",
   /** Reviewed and priced; the payer has not put a hold on the money yet. */
@@ -85,6 +87,8 @@ export type LifecycleInput = {
   servicePlanConfirmed: boolean;
   /** Who owns the confirmed plan. Automatic plans are not Operations chores. */
   servicePlanSource?: "operations" | "automatic" | string | null;
+  /** A terminal encrypted-proof sync failure is explicit Operations work. */
+  proofSyncFailureOpen?: boolean;
   /** One explicit machine-owned exception means Operations really does have work. */
   automationExceptionOpen?: boolean;
   automationExceptionStage?: string | null;
@@ -102,6 +106,10 @@ export type LifecycleInput = {
  * - Only then does the request state decide.
  */
 export function lifecycleStage(input: LifecycleInput): LifecycleStage {
+  // Proof evidence that could not be server-verified is safety/custody work
+  // and outranks the ordinary lifecycle until Operations can resolve it.
+  if (input.proofSyncFailureOpen) return "proof_sync_attention";
+
   // An open exception is the one reason normal automation becomes Operations
   // work. It outranks the ordinary schedule projection, including a canonical
   // delivery that exists but could not be assigned.
@@ -166,23 +174,25 @@ export function lifecycleStage(input: LifecycleInput): LifecycleStage {
 /** Queue ordering. Lower sorts first — the oldest blocked work at the top. */
 export const LIFECYCLE_STAGE_ORDER: Readonly<Record<LifecycleStage, number>> = {
   pending_review: 0,
-  automation_exception: 1,
-  ready_for_planning: 2,
-  service_plan_confirmed: 3,
-  capture_pending: 4,
-  payment_reauthorization_required: 5,
-  captured_not_scheduled: 6,
-  merchant_preparing: 7,
-  awaiting_payment_authorization: 8,
-  automatic_scheduled: 9,
-  captured_scheduled: 10,
-  driver_assigned: 11,
+  proof_sync_attention: 1,
+  automation_exception: 2,
+  ready_for_planning: 3,
+  service_plan_confirmed: 4,
+  capture_pending: 5,
+  payment_reauthorization_required: 6,
+  captured_not_scheduled: 7,
+  merchant_preparing: 8,
+  awaiting_payment_authorization: 9,
+  automatic_scheduled: 10,
+  captured_scheduled: 11,
+  driver_assigned: 12,
   // Always last: nothing here is queue work.
-  not_actionable: 12,
+  not_actionable: 13,
 };
 
 export const LIFECYCLE_STAGE_LABELS: Readonly<Record<LifecycleStage, string>> = {
   pending_review: "Pending Couranr review",
+  proof_sync_attention: "Proof sync needs attention",
   automation_exception: "Automation needs Operations",
   awaiting_payment_authorization: "Awaiting payment authorization",
   merchant_preparing: "Merchant preparing",
@@ -200,6 +210,8 @@ export const LIFECYCLE_STAGE_LABELS: Readonly<Record<LifecycleStage, string>> = 
 /** What Operations is waiting on, in the queue's own voice. */
 export const LIFECYCLE_STAGE_DESCRIPTIONS: Readonly<Record<LifecycleStage, string>> = {
   pending_review: "Open each request to confirm, requote or decline it.",
+  proof_sync_attention:
+    "Driver evidence is encrypted on-device or could not be reconciled. Do not settle or close custody until proof is verified.",
   automation_exception:
     "Automatic fulfillment stopped safely. Open the delivery to resolve the recorded exception.",
   awaiting_payment_authorization:
@@ -248,6 +260,7 @@ export const LIFECYCLE_STAGE_TONE: Readonly<
   Record<LifecycleStage, "neutral" | "info" | "success" | "warning" | "danger">
 > = {
   pending_review: "info",
+  proof_sync_attention: "danger",
   automation_exception: "warning",
   awaiting_payment_authorization: "neutral",
   merchant_preparing: "neutral",

@@ -1,5 +1,6 @@
 import { PageHeader } from "@/components/couranr/shell/parts";
 import { AssignedDeliveryDetail } from "@/components/couranr/dispatch/AssignedDeliveryDetail";
+import { OfflineProofSyncPanel } from "@/components/couranr/dispatch/OfflineProofSyncPanel";
 
 export const metadata = { title: "Assigned delivery — Couranr" };
 
@@ -19,21 +20,29 @@ export const metadata = { title: "Assigned delivery — Couranr" };
 export default async function Page(
   props: {
     params: Promise<{ id: string }>;
-    searchParams?: Promise<{ mode?: string }>;
+    searchParams?: Promise<{ mode?: string; panel?: string }>;
   }
 ) {
   const searchParams = await props.searchParams;
   const params = await props.params;
   const drivingMode = searchParams?.mode === "driving";
+  const offlineSync = searchParams?.panel === "offline-sync";
   return (
     <>
       {!drivingMode ? (
         <PageHeader
-          title="Assigned delivery"
-          breadcrumbs={[{ label: "Dashboard", href: "/driver" }, { label: "Assigned delivery" }]}
+          title={offlineSync ? "Offline proof sync" : "Assigned delivery"}
+          breadcrumbs={[
+            { label: "Dashboard", href: "/driver" },
+            { label: offlineSync ? "Offline proof sync" : "Assigned delivery" },
+          ]}
         />
       ) : null}
-      <AssignedDeliveryDetail deliveryId={params.id} drivingMode={drivingMode} />
+      {offlineSync ? (
+        <OfflineProofSyncPanel deliveryId={params.id} />
+      ) : (
+        <AssignedDeliveryDetail deliveryId={params.id} drivingMode={drivingMode} />
+      )}
     </>
   );
 }

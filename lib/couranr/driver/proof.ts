@@ -47,6 +47,10 @@ export type ProofUploadTicket = {
   expiresInSeconds: number;
 };
 
+export type ProofUploadPreparation =
+  | { status: "upload"; upload: ProofUploadTicket }
+  | { status: "verified"; proof: FinalizedProof };
+
 /**
  * §4 — initiation.
  *
@@ -162,6 +166,147 @@ export async function createProofUpload(p: {
 }
 
 /**
+ * V2 preparation: a stable client evidence UUID makes retry reconciliation
+ * possible without making the client authoritative. SQL binds the immutable
+ * envelope to the current assignment; this wrapper owns storage paths and
+ * signed URLs exactly as the legacy path does.
+ */
+export async function prepareProofUploadV2(p: {
+  userId: string;
+  deliveryId: string;
+  proofStage: ProofStage;
+  proofType: string;
+  expectedMime: string;
+  expectedBytes: number;
+  clientEvidenceId: string;
+  evidenceSha256: string;
+  capturedAt: string;
+  latitude: number;
+  longitude: number;
+  accuracyM?: number | null;
+  discrepancyId?: string | null;
+  freshAfterCorruptObject?: boolean;
+}): Promise<DriverResult<ProofUploadPreparation>> {
+  const operation = "prepareProofUploadV2";
+  if (!isAllowedProofMime(p.expectedMime) || !Number.isInteger(p.expectedBytes) || p.expectedBytes <= 0 || p.expectedBytes > MAX_PROOF_BYTES) {
+    return driverFail({ operation, code: "invalid_input", detail: { reason: "invalid_file" }, message: "That image cannot be queued." });
+  }
+
+  const pathSeed = randomUUID();
+  let objectPath: string;
+  try {
+    objectPath = buildProofObjectPath({ deliveryId: p.deliveryId, proofId: pathSeed, mimeType: p.expectedMime });
+  } catch {
+    return driverFail({ operation, code: "invalid_input", detail: { reason: "path_build_failed" } });
+  }
+
+  const { data, error } = (await supabaseAdmin.rpc("couranr_prepare_proof_upload_v2", {
+    p_delivery_id: p.deliveryId,
+    p_actor_user_id: p.userId,
+    p_proof_stage: p.proofStage,
+    p_proof_type: p.proofType,
+    p_storage_bucket: PROOF_BUCKET,
+    p_object_path: objectPath,
+    p_expected_mime: p.expectedMime,
+    p_expected_bytes: p.expectedBytes,
+    p_upload_nonce: generateUploadNonce(),
+    p_ttl_minutes: 15,
+    p_client_evidence_id: p.clientEvidenceId,
+    p_evidence_sha256: p.evidenceSha256,
+    p_captured_at: p.capturedAt,
+    p_latitude: p.latitude,
+    p_longitude: p.longitude,
+    p_accuracy_m: p.accuracyM ?? null,
+    p_discrepancy_id: p.discrepancyId ?? null,
+  })) as { data: any; error: any };
+
+  if (error) {
+    const raw = typeof error?.message === "string" ? error.message : "";
+    return driverFail({
+      operation,
+      code: raw === "not_your_delivery" ? "not_permitted" : raw.includes("invalid_") ? "invalid_input" : "conflict",
+      detail: { code: error?.code, message: raw },
+      reason: raw || undefined,
+      message: raw === "not_your_delivery" ? "That delivery is not assigned to you." : "Couranr could not reconcile that proof.",
+    });
+  }
+
+  if (data?.status === "verified") {
+    return {
+      ok: true,
+      value: {
+        status: "verified",
+        proof: {
+          proofId: String(data.proofId),
+          proofStage: String(data.proofStage),
+          proofType: String(data.proofType),
+          finalizedAt: String(data.finalizedAt),
+          byteSize: data.byteSize == null ? null : Number(data.byteSize),
+        },
+      },
+    };
+  }
+
+  if (data?.status !== "upload" || !data?.uploadId || !data?.objectPath) {
+    return driverFail({ operation, code: "internal", detail: { reason: "bad_prepare_shape" } });
+  }
+
+  /*
+   * A previous PUT can succeed while the browser loses the response. Before
+   * minting another destination, inspect the SAME server-owned object path. If
+   * the exact object is already there, finalize it and converge immediately.
+   */
+  const stored = await readStoredObject(String(data.objectPath));
+  if (stored && stored.size === Number(data.expectedBytes) && stored.mime === String(data.expectedMime)) {
+    const finalized = await finalizeProofUpload({
+      userId: p.userId,
+      uploadId: String(data.uploadId),
+    });
+    if (isDriverFailure(finalized)) return finalized;
+    return { ok: true, value: { status: "verified", proof: finalized.value } };
+  }
+
+  if (stored) {
+    // Non-empty but wrong storage is never overwritten in place. Expire that
+    // authorization and prepare one new random target for the same evidence.
+    if (p.freshAfterCorruptObject) {
+      return driverFail({ operation, code: "conflict", detail: { reason: "repeated_storage_mismatch" } });
+    }
+    const { error: abandonError } = await supabaseAdmin.rpc("couranr_abandon_proof_upload_v2", {
+      p_upload_id: String(data.uploadId),
+      p_actor_user_id: p.userId,
+      p_client_evidence_id: p.clientEvidenceId,
+    });
+    if (abandonError) {
+      return driverFail({ operation, code: "conflict", detail: { reason: "abandon_failed", message: abandonError.message } });
+    }
+    return prepareProofUploadV2({ ...p, freshAfterCorruptObject: true });
+  }
+
+  const { data: signed, error: sErr } = await supabaseAdmin.storage
+    .from(PROOF_BUCKET)
+    .createSignedUploadUrl(String(data.objectPath));
+  if (sErr || !signed) {
+    return driverFail({ operation, code: "internal", detail: { reason: "signed_upload_failed" } });
+  }
+
+  return {
+    ok: true,
+    value: {
+      status: "upload",
+      upload: {
+        uploadId: String(data.uploadId),
+        signedUrl: signed.signedUrl,
+        token: signed.token,
+        expectedBytes: Number(data.expectedBytes),
+        expectedMime: String(data.expectedMime),
+        expiresInSeconds: 15 * 60,
+      },
+    },
+  };
+}
+
+/**
  * What storage actually holds at a path, read by the server.
  *
  * `list` with a search term is used rather than `download`, because the
@@ -214,7 +359,7 @@ export async function finalizeProofUpload(p: {
 
   const { data: auth, error: aErr } = (await supabaseAdmin
     .from("couranr_proof_uploads")
-    .select("id,delivery_id,storage_bucket,object_path,expected_mime,expected_bytes,upload_state,expires_at")
+    .select("id,delivery_id,storage_bucket,object_path,expected_mime,expected_bytes,upload_state,expires_at,client_evidence_id")
     .eq("id", p.uploadId)
     .maybeSingle()) as { data: any; error: any };
 
@@ -264,19 +409,31 @@ export async function finalizeProofUpload(p: {
     });
   }
 
-  const { data, error } = (await supabaseAdmin.rpc("couranr_finalize_proof_upload", {
-    p_upload_id: p.uploadId,
-    p_actor_user_id: p.userId,
-    // Facts the SERVER read, never anything the browser sent.
-    p_actual_path: auth.object_path,
-    p_actual_bytes: stored.size,
-    p_actual_mime: stored.mime,
-    p_latitude: p.latitude ?? null,
-    p_longitude: p.longitude ?? null,
-    p_accuracy_m: p.accuracyM ?? null,
-    p_discrepancy_id: p.discrepancyId ?? null,
-    p_metadata: p.metadata ?? null,
-  })) as { data: any; error: any };
+  const rpcName = auth.client_evidence_id
+    ? "couranr_finalize_proof_upload_v2"
+    : "couranr_finalize_proof_upload";
+  const rpcArgs = auth.client_evidence_id
+    ? {
+        p_upload_id: p.uploadId,
+        p_actor_user_id: p.userId,
+        p_actual_path: auth.object_path,
+        p_actual_bytes: stored.size,
+        p_actual_mime: stored.mime,
+      }
+    : {
+        p_upload_id: p.uploadId,
+        p_actor_user_id: p.userId,
+        // Legacy bundles still bind their location at finalization.
+        p_actual_path: auth.object_path,
+        p_actual_bytes: stored.size,
+        p_actual_mime: stored.mime,
+        p_latitude: p.latitude ?? null,
+        p_longitude: p.longitude ?? null,
+        p_accuracy_m: p.accuracyM ?? null,
+        p_discrepancy_id: p.discrepancyId ?? null,
+        p_metadata: p.metadata ?? null,
+      };
+  const { data, error } = (await supabaseAdmin.rpc(rpcName, rpcArgs)) as { data: any; error: any };
 
   if (error) {
     const raw = typeof error?.message === "string" ? error.message : "";
@@ -296,6 +453,53 @@ export async function finalizeProofUpload(p: {
       proofType: String(data.proof_type),
       finalizedAt: String(data.finalized_at),
       byteSize: data.byte_size == null ? null : Number(data.byte_size),
+    },
+  };
+}
+
+export type ProofSyncFailureView = {
+  id: string;
+  reason: string;
+  attempts: number;
+  state: string;
+  lastReportedAt: string;
+};
+
+export async function reportProofSyncFailure(p: {
+  userId: string;
+  deliveryId: string;
+  clientEvidenceId: string;
+  proofStage: string;
+  proofType: string;
+  reason: string;
+  attempts: number;
+}): Promise<DriverResult<ProofSyncFailureView>> {
+  const { data, error } = (await supabaseAdmin.rpc("couranr_report_proof_sync_failure", {
+    p_delivery_id: p.deliveryId,
+    p_actor_user_id: p.userId,
+    p_client_evidence_id: p.clientEvidenceId,
+    p_proof_stage: p.proofStage,
+    p_proof_type: p.proofType,
+    p_reason: p.reason,
+    p_attempts: p.attempts,
+  })) as { data: any; error: any };
+  if (error || !data) {
+    const raw = typeof error?.message === "string" ? error.message : "";
+    return driverFail({
+      operation: "reportProofSyncFailure",
+      code: raw === "not_your_delivery" ? "not_permitted" : raw.includes("invalid_") ? "invalid_input" : "conflict",
+      detail: { code: error?.code, message: raw },
+      reason: raw || undefined,
+    });
+  }
+  return {
+    ok: true,
+    value: {
+      id: String(data.id),
+      reason: String(data.reason),
+      attempts: Number(data.attempts),
+      state: String(data.failure_state),
+      lastReportedAt: String(data.last_reported_at),
     },
   };
 }

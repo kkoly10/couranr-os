@@ -53,6 +53,7 @@ export function OperationsDeliveryWorkbench({
     promotionalCreditApplied: Boolean(fulfillment?.promotionalCredit),
     servicePlanConfirmed: Boolean(fulfillment?.servicePlan),
     servicePlanSource: fulfillment?.servicePlan?.planSource ?? null,
+    proofSyncFailureOpen: Boolean(fulfillment?.proofSyncFailure),
     automationExceptionOpen: Boolean(fulfillment?.automationException),
     automationExceptionStage: fulfillment?.automationException?.stage ?? null,
     canonicalDeliveryExists: Boolean(fulfillment?.delivery),
@@ -163,7 +164,14 @@ function CurrentAction({
     const stage = fulfillment?.automationException?.stage ?? null;
     return (
       <Stack gap={4}>
-        <AutomaticFulfillmentPanel fulfillment={fulfillment} />
+        {fulfillment?.proofSyncFailure ? (
+          <Alert tone="danger" title="Proof sync needs attention">
+            Driver {fulfillment.proofSyncFailure.proofStage} evidence could not be server-verified after
+            {` ${fulfillment.proofSyncFailure.attempts} `}attempts. Do not settle or close custody until the proof is verified.
+          </Alert>
+        ) : null}
+
+                <AutomaticFulfillmentPanel fulfillment={fulfillment} />
         {stage === "planning" ? (
           <OperationsPlanPanel
             request={request}

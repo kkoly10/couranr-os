@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
       promotionalCreditApplied: Boolean(row.promotionalCredit),
       servicePlanConfirmed: row.servicePlan !== null,
       servicePlanSource: row.servicePlan?.plan_source ?? null,
+      proofSyncFailureOpen: Boolean(row.proofSyncFailure),
       automationExceptionOpen: Boolean(row.automationException),
       automationExceptionStage: row.automationException?.exception_stage ?? null,
       canonicalDeliveryExists: row.delivery !== null,
@@ -75,6 +76,15 @@ export async function GET(req: NextRequest) {
             dispatchNotBefore: row.servicePlan.dispatch_not_before ?? null,
             dispatchDeadline: row.servicePlan.dispatch_deadline ?? null,
             expectedServiceEnd: row.servicePlan.expected_service_end ?? null,
+          }
+        : null,
+      proofSyncFailure: row.proofSyncFailure
+        ? {
+            proofStage: row.proofSyncFailure.proof_stage,
+            proofType: row.proofSyncFailure.proof_type,
+            reason: row.proofSyncFailure.reason,
+            attempts: row.proofSyncFailure.attempts,
+            lastReportedAt: row.proofSyncFailure.last_reported_at,
           }
         : null,
       automationException: row.automationException

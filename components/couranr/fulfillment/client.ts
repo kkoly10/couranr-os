@@ -93,6 +93,15 @@ export type FulfillmentView = {
       version: number;
     } | null;
   } | null;
+  proofSyncFailure: {
+    id: string;
+    proofStage: string;
+    proofType: string;
+    reason: string;
+    attempts: number;
+    firstReportedAt: string;
+    lastReportedAt: string;
+  } | null;
   automationException: {
     id: string;
     stage: "review" | "planning" | "dispatch" | "commercial";

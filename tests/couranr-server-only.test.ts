@@ -312,6 +312,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/driver/deliveries/[id]/complete-signature/route.ts",
       "app/api/couranr/driver/deliveries/[id]/discrepancy/route.ts",
       "app/api/couranr/driver/deliveries/[id]/proof-upload/route.ts",
+      "app/api/couranr/driver/deliveries/[id]/proof-sync-failure/route.ts",
       "app/api/couranr/driver/deliveries/[id]/proof/route.ts",
       "app/api/couranr/driver/deliveries/[id]/start-dropoff-route/route.ts",
       "app/api/couranr/driver/deliveries/[id]/start-pickup-route/route.ts",

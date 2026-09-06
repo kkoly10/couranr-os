@@ -1,44 +1,38 @@
 "use client";
 
 import * as React from "react";
-import { isApiFailure, withReference } from "@/components/couranr/requests/client";
-import { finalizeProofUpload, requestProofUpload } from "./client";
+import {
+  attemptProofBytes,
+  buildOfflineProofEnvelope,
+  saveOfflineProof,
+  syncOfflineProof,
+  type OfflineProofEnvelope,
+} from "./offlineProofQueue";
 import type { LocationState } from "./useLocationCapture";
 
 /**
- * The three-step proof upload, as one hook.
+ * One proof capture with an offline-safe evidence identity.
  *
- *   1. read the chosen file into MEMORY
- *   2. ask the server for an authorization + signed destination
- *   3. PUT the bytes, then finalize against what the server reads back
- *
- * STEP 1 IS NOT AN OPTIMIZATION. A disk-backed `File` from an `<input>` is
- * silently stripped in the browser harness — the page gets HTTP 200 and the
- * stored object is EMPTY. Holding an ArrayBuffer means the same code path
- * works under test and in production, and the exact-byte-count check at
- * finalization catches any truncation either way.
- *
- * `finalized` is the ONLY state that means the proof exists. A selected file
- * is not proof; an uploaded file is not proof. The server reads the object's
- * real size and type back from storage and refuses on any mismatch, so this
- * hook never reports success from a client-side fact.
+ * A file is never proof until the server verifies it. When connectivity fails,
+ * the exact bytes are encrypted into IndexedDB with a non-extractable device
+ * key. The queue stores no auth token, signed URL, upload token or server path.
  */
-
 export type ProofUploadStatus =
   | "idle"
   | "reading"
   | "authorizing"
   | "uploading"
   | "finalizing"
+  | "queued"
   | "finalized"
   | "failed";
 
 export type ProofUploadState = {
   status: ProofUploadStatus;
   proofId: string | null;
+  queueId: string | null;
   error: string | null;
   byteSize: number | null;
-  /** True only once a canonical proof record exists on the server. */
   finalized: boolean;
   upload: (file: File) => Promise<void>;
   reset: () => void;
@@ -51,135 +45,133 @@ export function useProofUpload(params: {
   location: LocationState;
   discrepancyId?: string | null;
   onFinalized?: (proofId: string) => void;
-  /**
-   * A proof of this type the SERVER already holds, from a previous session.
-   *
-   * Requirements used to live only in this hook's state, so a reload at a
-   * loading dock told the driver to photograph a shipment Couranr had already
-   * recorded. Seeding from the server makes the form reflect what is actually
-   * stored. It is only ever a proof id the server itself returned — the hook
-   * never treats a client-side fact as proof.
-   */
   recordedProofId?: string | null;
 }): ProofUploadState {
   const [status, setStatus] = React.useState<ProofUploadStatus>("idle");
   const [proofId, setProofId] = React.useState<string | null>(null);
+  const [queueId, setQueueId] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [byteSize, setByteSize] = React.useState<number | null>(null);
+  const queuedEnvelope = React.useRef<OfflineProofEnvelope | null>(null);
 
   const reset = React.useCallback(() => {
     setStatus("idle");
     setProofId(null);
+    setQueueId(null);
     setError(null);
     setByteSize(null);
+    queuedEnvelope.current = null;
   }, []);
 
-  /*
-   * Adopt a server-held proof once it arrives, and never overwrite work done in
-   * THIS session: a driver who is mid-upload must not have their state replaced
-   * by a slower background read. Only an idle hook is seeded.
-   */
   const recorded = params.recordedProofId ?? null;
   React.useEffect(() => {
     if (!recorded) return;
-    setStatus((s) => (s === "idle" ? "finalized" : s));
+    setStatus((s) => (s === "idle" || s === "queued" ? "finalized" : s));
     setProofId((p) => p ?? recorded);
+    setQueueId(null);
   }, [recorded]);
 
-  const upload = React.useCallback(
-    async (file: File) => {
-      setError(null);
-      setProofId(null);
-      setStatus("reading");
+  const adoptVerified = React.useCallback((proof: { proofId: string; byteSize?: number | null }) => {
+    setByteSize(proof.byteSize ?? null);
+    setProofId(proof.proofId);
+    setQueueId(null);
+    setError(null);
+    setStatus("finalized");
+    queuedEnvelope.current = null;
+    params.onFinalized?.(proof.proofId);
+  }, [params]);
 
-      // Into memory FIRST. Everything after this point works on bytes we hold.
-      let bytes: ArrayBuffer;
-      try {
-        bytes = await file.arrayBuffer();
-      } catch {
-        setStatus("failed");
-        setError("That file could not be read. Take the photo again.");
-        return;
+  React.useEffect(() => {
+    if (status !== "queued" || !queueId) return;
+    const retry = async () => {
+      if (!navigator.onLine) return;
+      const outcome = await syncOfflineProof(queueId);
+      if (outcome.kind === "verified") adoptVerified(outcome.proof);
+      else if (outcome.kind === "terminal") {
+        setError("Couranr Operations needs to review this proof sync.");
       }
-      const expectedBytes = bytes.byteLength;
-      if (expectedBytes <= 0) {
-        setStatus("failed");
-        setError("That file is empty. Take the photo again.");
-        return;
-      }
+    };
+    window.addEventListener("online", retry);
+    return () => window.removeEventListener("online", retry);
+  }, [status, queueId, adoptVerified]);
 
-      setStatus("authorizing");
-      const ticket = await requestProofUpload(params.deliveryId, {
+  const upload = React.useCallback(async (file: File) => {
+    setError(null);
+    setProofId(null);
+    setQueueId(null);
+    setStatus("reading");
+
+    if (!params.location.fix || !params.location.usable) {
+      setStatus("failed");
+      setError(params.location.message);
+      return;
+    }
+
+    let bytes: ArrayBuffer;
+    try { bytes = await file.arrayBuffer(); }
+    catch {
+      setStatus("failed");
+      setError("That file could not be read. Take the photo again.");
+      return;
+    }
+    if (bytes.byteLength <= 0) {
+      setStatus("failed");
+      setError("That file is empty. Take the photo again.");
+      return;
+    }
+
+    let envelope: OfflineProofEnvelope;
+    try {
+      envelope = await buildOfflineProofEnvelope({
+        deliveryId: params.deliveryId,
         stage: params.stage,
         proofType: params.proofType,
-        expectedMime: file.type,
-        expectedBytes,
-      });
-      if (isApiFailure(ticket)) {
-        setStatus("failed");
-        setError(withReference(ticket));
-        return;
-      }
-
-      // `{ upload: … }` — the route's nested key, like every other driver route.
-      const grant = ticket.value.upload;
-      if (!grant?.signedUrl || !grant?.uploadId) {
-        // Reading the wrong key used to leave this undefined, and
-        // `fetch(undefined)` resolves against the PAGE url — Next answered with
-        // an HTML page and a 200, so the upload "succeeded" having stored
-        // nothing. Refuse explicitly rather than PUT to wherever that lands.
-        setStatus("failed");
-        setError("Couranr could not start that upload. Try again.");
-        return;
-      }
-
-      setStatus("uploading");
-      try {
-        // A raw body, not FormData: multipart with a disk-backed part is the
-        // shape that loses its bytes under the harness relay.
-        const put = await fetch(grant.signedUrl, {
-          method: "PUT",
-          headers: { "content-type": file.type },
-          body: bytes,
-        });
-        if (!put.ok) {
-          setStatus("failed");
-          setError("The upload did not complete. Try again.");
-          return;
-        }
-      } catch {
-        setStatus("failed");
-        setError("The upload did not complete. Try again.");
-        return;
-      }
-
-      setStatus("finalizing");
-      const fin = await finalizeProofUpload({
-        uploadId: grant.uploadId,
-        latitude: params.location.fix?.latitude ?? null,
-        longitude: params.location.fix?.longitude ?? null,
-        accuracyM: params.location.fix?.accuracyM ?? null,
+        mimeType: file.type,
+        bytes,
+        capturedAt: new Date().toISOString(),
+        latitude: params.location.fix.latitude,
+        longitude: params.location.fix.longitude,
+        accuracyM: params.location.fix.accuracyM ?? null,
         discrepancyId: params.discrepancyId ?? null,
       });
-      if (isApiFailure(fin)) {
-        // The server compared what it read from storage against what it
-        // authorized. A truncated object lands here, not in `finalized`.
-        setStatus("failed");
-        setError(withReference(fin));
-        return;
-      }
+    } catch {
+      setStatus("failed");
+      setError("This browser could not prepare the proof safely.");
+      return;
+    }
 
-      setByteSize(fin.value.proof.byteSize ?? null);
-      setProofId(fin.value.proof.proofId);
-      setStatus("finalized");
-      params.onFinalized?.(fin.value.proof.proofId);
-    },
-    [params]
-  );
+    const outcome = await attemptProofBytes(envelope, bytes, (next) => setStatus(next));
+    if (outcome.kind === "verified") {
+      adoptVerified(outcome.proof);
+      return;
+    }
+
+    try {
+      await saveOfflineProof(envelope, bytes, {
+        state: outcome.kind === "terminal" ? "terminal" : "pending",
+        attempts: outcome.kind === "terminal" ? 1 : 0,
+        lastErrorCode: outcome.code,
+      });
+    } catch {
+      setStatus("failed");
+      setError("Couranr could not safely save this proof on your device. Keep the page open and try again when you have a connection.");
+      return;
+    }
+
+    queuedEnvelope.current = envelope;
+    setQueueId(envelope.id);
+    setStatus("queued");
+    setError(
+      outcome.kind === "terminal"
+        ? "The proof is encrypted on this device and Couranr Operations needs to review the sync."
+        : "The proof is encrypted on this device and will retry when the connection returns."
+    );
+  }, [params, adoptVerified]);
 
   return {
     status,
     proofId,
+    queueId,
     error,
     byteSize,
     finalized: status === "finalized" && proofId !== null,

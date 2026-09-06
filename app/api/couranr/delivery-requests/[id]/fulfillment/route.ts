@@ -4,6 +4,7 @@ import {
   getActiveAssignmentForDelivery,
   getCanonicalDelivery,
   getOpenAutomationException,
+  getOpenProofSyncFailure,
   getPromotionalCredit,
   getServicePlan,
   isFulfillmentFailure,
@@ -98,6 +99,12 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
 
   const automationException = await getOpenAutomationException({ requestId: params.id });
   if (isFulfillmentFailure(automationException)) return failureResponse(automationException);
+
+  const proofSyncFailure =
+    actor.actor.kind === "operations"
+      ? await getOpenProofSyncFailure({ requestId: params.id })
+      : { ok: true as const, value: { failure: null } };
+  if (isFulfillmentFailure(proofSyncFailure)) return failureResponse(proofSyncFailure);
 
   return NextResponse.json({
     readinessState: loaded.value.request.readiness_state,
@@ -200,6 +207,17 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
                 version: assignment.value.assignment.version,
               }
             : null,
+        }
+      : null,
+    proofSyncFailure: proofSyncFailure.value.failure
+      ? {
+          id: proofSyncFailure.value.failure.id,
+          proofStage: proofSyncFailure.value.failure.proof_stage,
+          proofType: proofSyncFailure.value.failure.proof_type,
+          reason: proofSyncFailure.value.failure.reason,
+          attempts: proofSyncFailure.value.failure.attempts,
+          firstReportedAt: proofSyncFailure.value.failure.first_reported_at,
+          lastReportedAt: proofSyncFailure.value.failure.last_reported_at,
         }
       : null,
     automationException: automationException.value.exception

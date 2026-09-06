@@ -1,6 +1,10 @@
 "use client";
 
-import { call, type ApiResult } from "@/components/couranr/requests/client";
+import {
+  call,
+  isApiFailure,
+  type ApiResult,
+} from "@/components/couranr/requests/client";
 
 /**
  * Browser calls for managed dispatch.
@@ -383,14 +387,6 @@ export function issueOperationsRecipientCode(deliveryId: string) {
 }
 
 /** Metadata only. There is no `url` and no `path` field, by construction. */
-export type ProofMetadataView = {
-  proofId: string;
-  proofStage: string;
-  proofType: string;
-  finalizedAt: string;
-  hasMedia: boolean;
-};
-
 export function fetchMerchantProof(deliveryId: string) {
   return call<{ proof: ProofMetadataView[] }>(
     `/api/couranr/merchant/deliveries/${deliveryId}/proof`
@@ -438,14 +434,29 @@ export function resolveDiscrepancySafeToContinue(
 
 /* ------------------------------------------------------------- proof I/O -- */
 
-export type ProofUploadTicketView = {
-  uploadId: string;
-  signedUrl: string;
-  token: string;
-  expectedBytes: number;
-  expectedMime: string;
-  expiresInSeconds: number;
+export type ProofMetadataView = {
+  proofId: string;
+  proofStage: string;
+  proofType: string;
+  finalizedAt: string;
+  hasMedia?: boolean;
+  byteSize?: number | null;
 };
+
+export type ProofUploadTicketView =
+  | {
+      status?: "upload";
+      uploadId: string;
+      signedUrl: string;
+      token: string;
+      expectedBytes: number;
+      expectedMime: string;
+      expiresInSeconds: number;
+    }
+  | {
+      status: "verified";
+      proof: ProofMetadataView;
+    };
 
 /**
  * NESTED under `upload`, because every driver route nests under a named key and
@@ -461,7 +472,19 @@ export type ProofUploadTicketView = {
  */
 export function requestProofUpload(
   deliveryId: string,
-  body: { stage: string; proofType: string; expectedMime: string; expectedBytes: number }
+  body: {
+    stage: string;
+    proofType: string;
+    expectedMime: string;
+    expectedBytes: number;
+    clientEvidenceId?: string;
+    evidenceSha256?: string;
+    capturedAt?: string;
+    latitude?: number;
+    longitude?: number;
+    accuracyM?: number | null;
+    discrepancyId?: string | null;
+  }
 ) {
   return call<{ upload: ProofUploadTicketView }>(
     `/api/couranr/driver/deliveries/${deliveryId}/proof-upload`,
@@ -476,10 +499,29 @@ export function finalizeProofUpload(body: {
   accuracyM?: number | null;
   discrepancyId?: string | null;
 }) {
-  return call<{ proof: { proofId: string; proofStage: string; proofType: string; finalizedAt: string; byteSize: number | null } }>(
+  return call<{ proof: ProofMetadataView }>(
     "/api/couranr/driver/proof/finalize",
     { method: "POST", body }
   );
 }
+
+export function reportProofSyncFailure(
+  deliveryId: string,
+  body: {
+    clientEvidenceId: string;
+    stage: string;
+    proofType: string;
+    reason: "local_evidence_corrupt" | "assignment_or_stage_changed" | "server_rejected" | "retry_limit";
+    attempts: number;
+  }
+) {
+  return call<{ proofSyncFailure: { id: string; state: string; reason: string; attempts: number } }>(
+    `/api/couranr/driver/deliveries/${deliveryId}/proof-sync-failure`,
+    { method: "POST", body }
+  );
+}
+
+/** Explicit alias so the offline queue does not import the whole request client. */
+export const isDispatchApiFailure = isApiFailure;
 
 export type { ApiResult };

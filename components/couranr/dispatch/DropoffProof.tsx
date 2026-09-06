@@ -661,6 +661,24 @@ function SignatureCapture({ deliveryId, version, location, onDone }: FormProps) 
 
       <LocationBlock location={location} />
 
+      {signature.status === "queued" ? (
+        <Alert tone="warning" title="Proof is waiting to sync">
+          Couranr cannot complete this delivery until the signature is server-verified.{" "}
+          <a className="cr-link" href={`/driver/deliveries/${deliveryId}?panel=offline-sync`}>
+            Open offline proof sync
+          </a>
+        </Alert>
+      ) : null}
+
+      {photo.status === "queued" ? (
+        <Alert tone="warning" title="Proof is waiting to sync">
+          Couranr cannot complete this delivery until the photo is server-verified.{" "}
+          <a className="cr-link" href={`/driver/deliveries/${deliveryId}?panel=offline-sync`}>
+            Open offline proof sync
+          </a>
+        </Alert>
+      ) : null}
+
       <CompleteStep
         title="Complete delivery"
         label="Complete delivery"

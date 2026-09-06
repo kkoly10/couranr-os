@@ -389,6 +389,15 @@ export function PickupFlow({
         onReported={() => setDiscrepancyReported(true)}
       />
 
+      {shipmentPhoto.status === "queued" || securementPhoto.status === "queued" ? (
+        <Alert tone="warning" title="Proof is waiting to sync">
+          Couranr cannot confirm custody until the queued proof is server-verified.{" "}
+          <a className="cr-link" href={`/driver/deliveries/${deliveryId}?panel=offline-sync`}>
+            Open offline proof sync
+          </a>
+        </Alert>
+      ) : null}
+
       <Card>
         <CardHeader
           title="Confirm custody"
@@ -556,6 +565,11 @@ function PhotoField({
           </Cluster>
           {blocked ? <Text size="xs" muted>{blockedReason}</Text> : null}
           {busy ? <Text size="xs" muted>Saving this photo with Couranr…</Text> : null}
+          {upload.status === "queued" ? (
+            <Alert tone="warning" title="Saved for offline sync">
+              {upload.error ?? "This proof is encrypted on this device until Couranr verifies it."}
+            </Alert>
+          ) : null}
           {upload.status === "failed" ? (
             <Alert tone="danger" title="That photo was not recorded">
               {upload.error ?? "Take the photo again."}
