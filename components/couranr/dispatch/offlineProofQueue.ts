@@ -88,6 +88,15 @@ export function onOfflineProofQueueChanged(listener: () => void) {
   return () => window.removeEventListener(CHANGE_EVENT, listener);
 }
 
+/**
+ * The durable queue is a browser capability, not a network state. If IndexedDB
+ * or SubtleCrypto is unavailable Couranr can still perform a normal online
+ * proof upload, but it must never claim crash-safe/offline persistence.
+ */
+export function offlineProofQueueSupported(): boolean {
+  return typeof indexedDB !== "undefined" && Boolean(globalThis.crypto?.subtle);
+}
+
 function request<T = unknown>(req: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     req.onsuccess = () => resolve(req.result);
@@ -359,7 +368,10 @@ async function ensureTerminalAlert(row: StoredOfflineProof): Promise<StoredOffli
   return next;
 }
 
-export async function syncOfflineProof(id: string): Promise<ProofSyncOutcome> {
+export async function syncOfflineProof(
+  id: string,
+  onStage?: (stage: "authorizing" | "uploading" | "finalizing") => void
+): Promise<ProofSyncOutcome> {
   let row = await getStored(id);
   if (!row) return { kind: "terminal", code: "queue_item_missing", reason: "server_rejected" };
 
@@ -396,7 +408,7 @@ export async function syncOfflineProof(id: string): Promise<ProofSyncOutcome> {
     return { kind: "terminal", code: "local_evidence_corrupt", reason: "local_evidence_corrupt" };
   }
 
-  const outcome = await attemptProofBytes(row.envelope, bytes);
+  const outcome = await attemptProofBytes(row.envelope, bytes, onStage);
   if (outcome.kind === "verified") {
     await deleteStored(id);
     return outcome;

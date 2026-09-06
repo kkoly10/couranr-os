@@ -96,7 +96,7 @@ const SCREENS: CanonicalScreen[] = [
   { id: "DRV-004", name: "Package discrepancy", group: "driver", routes: ["/driver/deliveries/[id]?step=discrepancy"], tier: "core", phase: "7", viewport: "mobile-primary", status: "functional_unverified" },
   { id: "DRV-005", name: "Driving Mode", group: "driver", routes: ["/driver/deliveries/[id]?mode=driving"], tier: "core", phase: "7–9", viewport: "mobile-primary", status: "functional_unverified" },
   { id: "DRV-006", name: "Drop-off proof", group: "driver", routes: ["/driver/deliveries/[id]?step=delivery-proof"], tier: "core", phase: "7", viewport: "mobile-primary", status: "functional_verified" },
-  { id: "DRV-007", name: "Offline proof sync", group: "driver", routes: ["/driver/deliveries/[id]?panel=offline-sync"], tier: "core", phase: "7", viewport: "mobile-primary", status: "missing" },
+  { id: "DRV-007", name: "Offline proof sync", group: "driver", routes: ["/driver/deliveries/[id]?panel=offline-sync"], tier: "core", phase: "7", viewport: "mobile-primary", status: "functional_unverified" },
   { id: "DRV-008", name: "Driver messages", group: "driver", routes: ["/driver/messages"], tier: "core", phase: "8–9", viewport: "mobile-primary", status: "partial" },
   { id: "DRV-009", name: "Driver availability", group: "driver", routes: ["/driver/availability"], tier: "core", phase: "7", viewport: "mobile-primary", status: "functional_unverified" },
   { id: "DRV-010", name: "Vehicle profile", group: "driver", routes: ["/driver/vehicle"], tier: "core", phase: "7", viewport: "mobile-primary", status: "partial" },

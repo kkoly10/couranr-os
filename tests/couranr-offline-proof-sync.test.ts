@@ -119,6 +119,25 @@ describe("P7-004 server reconciliation",()=>{
     expect(hook).toContain('setStatus("queued")');
   });
 
+  it("durably queues supported-browser evidence before the first V2 network attempt",()=>{
+    const hook=read("components/couranr/dispatch/useProofUpload.ts");
+    const supported=hook.indexOf("if (offlineProofQueueSupported())");
+    const save=hook.indexOf("await saveOfflineProof(envelope, bytes)",supported);
+    const sync=hook.indexOf("await syncOfflineProof(envelope.id",save);
+    expect(supported).toBeGreaterThan(-1);
+    expect(save).toBeGreaterThan(supported);
+    expect(sync).toBeGreaterThan(save);
+    expect(hook.slice(supported,sync)).not.toContain("attemptProofBytes(");
+  });
+
+  it("never claims offline durability when IndexedDB or SubtleCrypto is unavailable",()=>{
+    const queue=read("components/couranr/dispatch/offlineProofQueue.ts");
+    expect(queue).toContain('typeof indexedDB !== "undefined"');
+    expect(queue).toContain("globalThis.crypto?.subtle");
+    const hook=read("components/couranr/dispatch/useProofUpload.ts");
+    expect(hook).toContain("cannot keep failed proof safely offline");
+  });
+
   it("DRV-007 is a real route variant, not a placeholder",()=>{
     const page=read("app/(couranr)/driver/deliveries/[id]/page.tsx");
     expect(page).toContain('searchParams?.panel === "offline-sync"');

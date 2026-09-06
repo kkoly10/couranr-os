@@ -417,7 +417,7 @@ Every screen appears exactly once. “Current” is the Phase 8 branch’s measu
 | `DRV-004` | Package discrepancy | `functional_unverified` | `B07` | Executable browser path, evidence and Operations outcome states. |
 | `DRV-005` | Driving Mode | `functional_unverified` | `B07` | Real alert suppression, offline/rerouting/safety/arrived states. |
 | `DRV-006` | Drop-off proof | `functional_verified` | `B07/B08` | Failed attempt/return/offline pending and visual parity. |
-| `DRV-007` | Offline proof sync | `missing` | `B07` | IDB queue, retry/reconcile/terminal alert; no finalization before verification. |
+| `DRV-007` | Offline proof sync | `functional_unverified` | `B07` | Built: encrypted IDB queue, retry/reconcile/terminal alert and no finalization before server verification. Remaining: real-browser offline/reload/corrupt recovery evidence + production cutover. |
 | `DRV-008` | Driver messages | `partial` | `B09/B10` | Delivery-chat issuance, tenure writers, driving suppression, AI draft/human states. |
 | `DRV-009` | Driver availability | `placeholder_only` | `B07` | Online/busy/offline/compliance and active vehicle. |
 | `DRV-010` | Vehicle profile | `placeholder_only` | `B07` | Capabilities/equipment/evidence/compliance/availability. |

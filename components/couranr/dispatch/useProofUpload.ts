@@ -4,6 +4,7 @@ import * as React from "react";
 import {
   attemptProofBytes,
   buildOfflineProofEnvelope,
+  offlineProofQueueSupported,
   saveOfflineProof,
   syncOfflineProof,
   type OfflineProofEnvelope,
@@ -52,7 +53,6 @@ export function useProofUpload(params: {
   const [queueId, setQueueId] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [byteSize, setByteSize] = React.useState<number | null>(null);
-  const queuedEnvelope = React.useRef<OfflineProofEnvelope | null>(null);
 
   const reset = React.useCallback(() => {
     setStatus("idle");
@@ -60,7 +60,6 @@ export function useProofUpload(params: {
     setQueueId(null);
     setError(null);
     setByteSize(null);
-    queuedEnvelope.current = null;
   }, []);
 
   const recorded = params.recordedProofId ?? null;
@@ -77,7 +76,6 @@ export function useProofUpload(params: {
     setQueueId(null);
     setError(null);
     setStatus("finalized");
-    queuedEnvelope.current = null;
     params.onFinalized?.(proof.proofId);
   }, [params]);
 
@@ -140,39 +138,53 @@ export function useProofUpload(params: {
       return;
     }
 
+    /*
+     * CRASH WINDOW RULE. On browsers that support the offline queue, persist
+     * the immutable evidence BEFORE asking Couranr for an upload grant. A tab
+     * close after PUT/finalize but before the response is therefore recoverable:
+     * the stable evidence UUID remains on-device, and the next sync converges
+     * against the server instead of creating new physical evidence.
+     *
+     * Unsupported browsers retain the ordinary online path, but they are never
+     * told that failed proof is safely queued offline.
+     */
+    if (offlineProofQueueSupported()) {
+      try {
+        await saveOfflineProof(envelope, bytes);
+      } catch {
+        setStatus("failed");
+        setError(
+          "This browser could not open Couranr's encrypted proof store. The photo was not sent. Free device storage or use a supported browser, then try again."
+        );
+        return;
+      }
+
+      const outcome = await syncOfflineProof(envelope.id, (next) => setStatus(next));
+      if (outcome.kind === "verified") {
+        adoptVerified(outcome.proof);
+        return;
+      }
+
+      setQueueId(envelope.id);
+      setStatus("queued");
+      setError(
+        outcome.kind === "terminal"
+          ? "The proof is encrypted on this device and Couranr Operations needs to review the sync."
+          : "The proof is encrypted on this device and will retry when the connection returns."
+      );
+      return;
+    }
+
     const outcome = await attemptProofBytes(envelope, bytes, (next) => setStatus(next));
     if (outcome.kind === "verified") {
       adoptVerified(outcome.proof);
       return;
     }
 
-    try {
-      await saveOfflineProof(envelope, bytes, {
-        state: outcome.kind === "terminal" ? "terminal" : "pending",
-        attempts: outcome.kind === "terminal" ? 1 : 0,
-        lastErrorCode: outcome.code,
-      });
-    } catch {
-      setStatus("failed");
-      setError("Couranr could not safely save this proof on your device. Keep the page open and try again when you have a connection.");
-      return;
-    }
-
-    queuedEnvelope.current = envelope;
-    setQueueId(envelope.id);
-    setStatus("queued");
+    setStatus("failed");
     setError(
-      outcome.kind === "terminal"
-        ? "The proof is encrypted on this device and Couranr Operations needs to review the sync."
-        : "The proof is encrypted on this device and will retry when the connection returns."
+      "This browser cannot keep failed proof safely offline. The delivery was not advanced. Reconnect or use a supported browser, then try again."
     );
-
-    // A terminal response proves we currently have connectivity. Report the
-    // Operations attention immediately rather than waiting for a future online
-    // event. The queue item remains encrypted until server verification.
-    if (outcome.kind === "terminal") {
-      await syncOfflineProof(envelope.id);
-    }
   }, [params, adoptVerified]);
 
   return {
