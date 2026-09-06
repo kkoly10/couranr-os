@@ -207,7 +207,7 @@ export const DRIVER_COMMAND_LABELS: Record<DriverCommand, string> = {
  * here: suppressing the interface while someone is standing still at a loading
  * dock hides the controls they came to use.
  */
-export const DRIVING_STATES: readonly FulfillmentState[] = ["en_route_to_pickup", "in_transit", "returning"];
+export const DRIVING_STATES: readonly FulfillmentState[] = ["en_route_to_pickup", "in_transit"];
 
 export function isDrivingState(state: FulfillmentState): boolean {
   return DRIVING_STATES.includes(state);
