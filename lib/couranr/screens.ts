@@ -111,7 +111,7 @@ const SCREENS: CanonicalScreen[] = [
   { id: "OPS-009", name: "Payments and reconciliation", group: "operations", routes: ["/operations/payments"], tier: "core", phase: "6", viewport: "desktop-primary", status: "partial" },
   { id: "OPS-010", name: "Payment authorization review", group: "operations", routes: ["/operations/payments?tab=authorizations"], tier: "core", phase: "6", viewport: "desktop-primary", status: "partial" },
   { id: "OPS-011", name: "Refund management", group: "operations", routes: ["/operations/refunds"], tier: "core", phase: "6–7", viewport: "desktop-primary", status: "placeholder_only" },
-  { id: "OPS-012", name: "Incidents and claims", group: "operations", routes: ["/operations/incidents"], tier: "core", phase: "7", viewport: "desktop-primary", status: "placeholder_only" },
+  { id: "OPS-012", name: "Incidents and claims", group: "operations", routes: ["/operations/incidents"], tier: "core", phase: "7", viewport: "desktop-primary", status: "functional_unverified" },
   { id: "OPS-013", name: "Operations analytics", group: "operations", routes: ["/operations/analytics"], tier: "core", phase: "10", viewport: "desktop-primary", status: "placeholder_only" },
   { id: "OPS-014", name: "Unmet demand analytics", group: "operations", routes: ["/operations/analytics?tab=unmet-demand"], tier: "mvp-complete", phase: "10", viewport: "desktop-primary", status: "placeholder_only" },
   { id: "OPS-015", name: "Operations settings", group: "operations", routes: ["/operations/settings"], tier: "core", phase: "3, 8–9", viewport: "desktop-primary", status: "placeholder_only" },
