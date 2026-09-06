@@ -11,7 +11,7 @@ import {
   Stack,
   Text,
 } from "@/components/couranr/primitives";
-import { Field, Input, Textarea } from "@/components/couranr/forms";
+import { Field, Input, Select, Textarea } from "@/components/couranr/forms";
 import { CardSkeleton, ErrorState, LoadingState } from "@/components/couranr/states";
 import { isApiFailure, withReference } from "@/components/couranr/requests/client";
 import { fetchDispatchPanel } from "./client";
@@ -27,6 +27,8 @@ import {
 import {
   fetchMerchantProof,
   fetchOperationsProofUrl,
+  fetchReturnCustody,
+  requireReturnFromBrowser,
   resolveDiscrepancySafeToContinue,
   unassignBeforePickup,
   type ProofMetadataView,
@@ -191,6 +193,17 @@ export function OperationsExecutionPanel({
         }}
       />
 
+      <ReturnCustodyDecision
+        deliveryId={deliveryId}
+        state={state}
+        deliveryVersion={deliveryVersion}
+        discrepancy={effectiveDiscrepancy ?? null}
+        onChanged={() => {
+          setPanelGeneration((g) => g + 1);
+          onChanged?.();
+        }}
+      />
+
       {/*
         Both codes are issued from here because Operations covers for a merchant
         who cannot — a recipient who never received their code, a driver at a
@@ -200,6 +213,9 @@ export function OperationsExecutionPanel({
       */}
       <HandoffCodePanel deliveryId={deliveryId} kind="merchant_pickup" surface="operations" />
       <HandoffCodePanel deliveryId={deliveryId} kind="recipient_dropoff" surface="operations" />
+      {state === "return_required" || state === "returning" ? (
+        <HandoffCodePanel deliveryId={deliveryId} kind="merchant_return" surface="operations" />
+      ) : null}
 
       <UnassignBeforePickup
         deliveryId={deliveryId}
@@ -316,6 +332,213 @@ function WaitingEvidence({
         display.
       </Text>
     </Stack>
+  );
+}
+
+
+/* ------------------------------------------------------- return custody -- */
+
+const RETURN_REASON_OPTIONS = [
+  ["recipient_unavailable", "Recipient unavailable"],
+  ["address_or_access_problem", "Address or access problem"],
+  ["weather_or_safety", "Weather or conditions are unsafe"],
+  ["damage_or_condition", "Damage or condition concern"],
+  ["customer_request", "Customer requested return"],
+  ["merchant_request", "Sender requested return"],
+  ["couranr_caused", "Couranr caused the corrective return — payer owes $0"],
+  ["other", "Other governed return reason"],
+] as const;
+
+function ReturnCustodyDecision({
+  deliveryId,
+  state,
+  deliveryVersion,
+  discrepancy,
+  onChanged,
+}: {
+  deliveryId: string;
+  state: FulfillmentState | null;
+  deliveryVersion: number;
+  discrepancy: OpenPickupDiscrepancy | null;
+  onChanged?: () => void;
+}) {
+  const [existing, setExisting] = React.useState<{
+    return_state: "required" | "returning" | "returned";
+    reason: string;
+    pricing_status: "couranr_covered" | "pending_route_quote" | "pending_current_location";
+    payer_responsibility: "couranr" | "payer";
+    payer_owes_cents: number | null;
+  } | null>(null);
+  const [reason, setReason] = React.useState("");
+  const [note, setNote] = React.useState("");
+  const [confirming, setConfirming] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let live = true;
+    void fetchReturnCustody(deliveryId).then((r) => {
+      if (!live || isApiFailure(r)) return;
+      setExisting(r.value.return);
+    });
+    return () => { live = false; };
+  }, [deliveryId]);
+
+  React.useEffect(() => {
+    if (reason || discrepancy?.stage !== "dropoff") return;
+    const suggested =
+      discrepancy.reason === "recipient_unavailable" ||
+      discrepancy.reason === "address_or_access_problem" ||
+      discrepancy.reason === "weather_or_safety"
+        ? discrepancy.reason
+        : discrepancy.reason === "visible_damage" || discrepancy.reason === "unsafe_packaging"
+          ? "damage_or_condition"
+          : "other";
+    setReason(suggested);
+  }, [discrepancy, reason]);
+
+  if (existing) {
+    return (
+      <Card>
+        <CardHeader
+          title="Return custody"
+          description="This return is a separate physical custody path."
+          actions={
+            <Badge tone={existing.return_state === "returned" ? "success" : "warning"}>
+              {existing.return_state === "required"
+                ? "Return required"
+                : existing.return_state === "returning"
+                  ? "Returning"
+                  : "Returned"}
+            </Badge>
+          }
+        />
+        <Stack gap={2}>
+          <Text size="sm">
+            Reason: {RETURN_REASON_OPTIONS.find(([value]) => value === existing.reason)?.[1] ??
+              existing.reason.replace(/_/g, " ")}
+          </Text>
+          {existing.pricing_status === "couranr_covered" ? (
+            <Alert tone="info" title="Couranr-covered corrective return">
+              REF-003 pins the payer amount to $0 for a Couranr-caused return.
+            </Alert>
+          ) : (
+            <Alert tone="warning" title="Return price is not assessed yet">
+              REF-003 requires a new Pricing V2 physical route. Couranr has not called a route
+              provider or charged the payer from this custody decision. The retired 70% / $14.99
+              formula is not used.
+            </Alert>
+          )}
+        </Stack>
+      </Card>
+    );
+  }
+
+  const custodyState =
+    state === "picked_up" || state === "in_transit" || state === "at_dropoff";
+  const hasDropoffEvidence = discrepancy?.stage === "dropoff";
+  if (!custodyState || !hasDropoffEvidence) return null;
+
+  async function submit() {
+    if (busy || !reason || deliveryVersion < 1) return;
+    setBusy(true);
+    setError(null);
+    const r = await requireReturnFromBrowser(deliveryId, {
+      expectedVersion: deliveryVersion,
+      reason,
+      note: note.trim() || undefined,
+    });
+    setBusy(false);
+    if (isApiFailure(r)) {
+      setError(withReference(r));
+      return;
+    }
+    setExisting(r.value.return);
+    setConfirming(false);
+    onChanged?.();
+  }
+
+  return (
+    <Card>
+      <CardHeader
+        title="Return custody"
+        description="Use this only when the shipment must physically go back to the original sender."
+        actions={<Badge tone="warning">Operations decision</Badge>}
+      />
+      <Stack gap={4}>
+        <Alert tone="warning" title="This keeps driver custody active">
+          Requiring a return does not close the assignment and does not move money. The driver
+          remains responsible for the shipment until the sender return code and one condition
+          photo are server-verified.
+        </Alert>
+
+        <Field label="Why is a physical return required?" required>
+          {(a) => (
+            <Select {...a} value={reason} onChange={(e) => setReason(e.target.value)}>
+              <option value="">Choose a reason</option>
+              {RETURN_REASON_OPTIONS.map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </Select>
+          )}
+        </Field>
+
+        <Field
+          label="Operations note"
+          hint="Optional internal context. Do not paste payment credentials or private card data."
+        >
+          {(a) => (
+            <Textarea
+              {...a}
+              value={note}
+              maxLength={2000}
+              rows={3}
+              onChange={(e) => setNote(e.target.value)}
+            />
+          )}
+        </Field>
+
+        {reason === "couranr_caused" ? (
+          <Alert tone="info" title="Payer owes $0 for the return">
+            The database derives this from the governed reason. No amount is sent from this screen.
+          </Alert>
+        ) : (
+          <Alert tone="info" title="Pricing remains separate">
+            This creates custody and an incident only. A non-Couranr return still needs its new
+            Pricing V2 route; this action does not call Mapbox or charge anyone.
+          </Alert>
+        )}
+
+        {error ? <Alert tone="danger" title="Return was not required">{error}</Alert> : null}
+
+        {confirming ? (
+          <Stack gap={3}>
+            <Alert tone="warning" title="Require this physical return?">
+              The driver will be routed back to the original pickup address and cannot close the
+              delivery as delivered. Continue only after reviewing the driver&rsquo;s recorded issue.
+            </Alert>
+            <Cluster gap={3}>
+              <Button
+                variant="destructive"
+                disabled={!reason}
+                loading={busy}
+                loadingLabel="Requiring return…"
+                onClick={() => void submit()}
+              >
+                Require return to sender
+              </Button>
+              <Button variant="ghost" disabled={busy} onClick={() => setConfirming(false)}>
+                Keep current custody state
+              </Button>
+            </Cluster>
+          </Stack>
+        ) : (
+          <Button variant="secondary" disabled={!reason} onClick={() => setConfirming(true)}>
+            Review return decision
+          </Button>
+        )}
+      </Stack>
+    </Card>
   );
 }
 
