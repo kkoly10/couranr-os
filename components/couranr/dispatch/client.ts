@@ -343,6 +343,27 @@ export function verifyRecipientCode(deliveryId: string, code: string) {
   });
 }
 
+export function verifyReturnCode(deliveryId: string, code: string) {
+  return call<PinAttempt>(`/api/couranr/driver/deliveries/${deliveryId}/verify-return-code`, {
+    method: "POST",
+    body: { code },
+  });
+}
+
+export function startReturnFromBrowser(deliveryId: string, expectedVersion: number) {
+  return call<{ delivery: DeliveryStateView }>(
+    `/api/couranr/driver/deliveries/${deliveryId}/start-return`,
+    { method: "POST", body: { expectedVersion } }
+  );
+}
+
+export function completeReturnFromBrowser(deliveryId: string, expectedVersion: number) {
+  return call<{ delivery: DeliveryStateView }>(
+    `/api/couranr/driver/deliveries/${deliveryId}/complete-return`,
+    { method: "POST", body: { expectedVersion } }
+  );
+}
+
 export type DeliveryStateView = {
   deliveryId: string;
   fulfillmentState: string;
@@ -352,7 +373,7 @@ export type DeliveryStateView = {
 /** The raw code exists in THIS response and nowhere else, ever. */
 export type IssuedHandoffCodeView = {
   code: string;
-  kind: "merchant_pickup" | "recipient_dropoff";
+  kind: "merchant_pickup" | "recipient_dropoff" | "merchant_return";
   generation: number;
   expiresAt: string;
   warning: string;
@@ -386,6 +407,20 @@ export function issueOperationsRecipientCode(deliveryId: string) {
   );
 }
 
+export function issueMerchantReturnCode(deliveryId: string) {
+  return call<{ handoffCode: IssuedHandoffCodeView }>(
+    `/api/couranr/merchant/deliveries/${deliveryId}/return-code`,
+    { method: "POST", body: {} }
+  );
+}
+
+export function issueOperationsReturnCode(deliveryId: string) {
+  return call<{ handoffCode: IssuedHandoffCodeView }>(
+    `/api/couranr/operations/deliveries/${deliveryId}/return-code`,
+    { method: "POST", body: {} }
+  );
+}
+
 /** Metadata only. There is no `url` and no `path` field, by construction. */
 export function fetchMerchantProof(deliveryId: string) {
   return call<{ proof: ProofMetadataView[] }>(
@@ -401,7 +436,11 @@ export function fetchMerchantProof(deliveryId: string) {
  * the merchant gets; opening an image is a separate, separately-scoped route.
  */
 export function fetchMyProof(deliveryId: string) {
-  return call<{ proof: ProofMetadataView[]; pickupCredentialVerified: boolean }>(
+  return call<{
+    proof: ProofMetadataView[];
+    pickupCredentialVerified: boolean;
+    returnCredentialVerified: boolean;
+  }>(
     `/api/couranr/driver/deliveries/${deliveryId}/proof`
   );
 }
