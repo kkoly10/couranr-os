@@ -221,7 +221,7 @@ create table if not exists public.couranr_delivery_incident_events (
   created_at timestamptz not null default now(),
   constraint couranr_die_command_chk check (command in (
     'open_incident','start_incident_review','request_incident_evidence',
-    'resolve_incident','close_incident','return_required'
+    'add_incident_note','escalate_incident','resolve_incident','close_incident','return_required'
   )),
   constraint couranr_die_state_chk check (
     to_state in ('reported','under_review','awaiting_evidence','resolved','closed')
@@ -856,10 +856,15 @@ begin
   v_to:=case p_command
     when 'start_incident_review' then 'under_review'
     when 'request_incident_evidence' then 'awaiting_evidence'
+    when 'add_incident_note' then v_row.incident_state
+    when 'escalate_incident' then v_row.incident_state
     when 'resolve_incident' then 'resolved'
     when 'close_incident' then 'closed'
     else null end;
   if v_to is null then raise exception 'incident_command_invalid' using errcode='CR400'; end if;
+  if p_command='add_incident_note' and nullif(btrim(coalesce(p_note,'')),'') is null then
+    raise exception 'incident_note_required' using errcode='CR400';
+  end if;
 
   if p_command='start_incident_review' and v_from not in ('reported','awaiting_evidence') then
     raise exception 'incident_transition_invalid' using errcode='CR409';
@@ -873,6 +878,7 @@ begin
 
   update public.couranr_delivery_incidents
      set incident_state=v_to,
+         severity=case when p_command='escalate_incident' then 'urgent' else severity end,
          resolved_at=case when v_to in ('resolved','closed') then coalesce(resolved_at,now()) else resolved_at end,
          closed_at=case when v_to='closed' then now() else closed_at end,
          version=version+1,updated_at=now()
