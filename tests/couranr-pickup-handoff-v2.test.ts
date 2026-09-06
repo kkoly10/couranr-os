@@ -85,23 +85,32 @@ describe("Pickup Handoff V2 authority fences", () => {
     );
   });
 
-  it("enforces the pickup manifest at the server request-state boundary", () => {
+  it("enforces the pickup manifest without breaking migration-first rollout", () => {
     expect(migration).toContain("pickup_manifest_policy_version");
-    expect(migration).toContain("couranr_pickup_manifest_v2_insert_trg");
     expect(migration).toContain("couranr_pickup_manifest_v2_advance_trg");
+    expect(migration).not.toContain("couranr_pickup_manifest_v2_insert_trg");
     expect(migration).toContain("pickup_manifest_required");
     expect(migration).toContain("pickup_manifest_authority_invalid");
     expect(migration).toContain("merchant_confirmed");
     expect(migration).toContain("new.request_state not in ('cancelled','declined','closed')");
 
-    // Existing requests are grandfathered: the marker is stamped only on new
-    // INSERTs. There is deliberately no UPDATE/backfill of old request rows.
+    // Applying the migration alone leaves old-app request creation untouched.
+    // Only the V2 manifest writer opts a row into the new contract.
     expect(migration).toContain(
+      "pickup_manifest_policy_version='pickup-handoff-v2'"
+    );
+    expect(migration).not.toContain(
       "new.pickup_manifest_policy_version := 'pickup-handoff-v2'"
     );
-    expect(migration).not.toMatch(
-      /update\s+public\.couranr_delivery_requests[\s\S]{0,180}pickup_manifest_policy_version/i
-    );
+  });
+
+  it("makes the new app refuse submission until its pickup authority is present", () => {
+    const business = read("lib/couranr/requests/commands.ts");
+    const consumer = read("lib/couranr/consumer/send.ts");
+    expect(business).toContain('pickup_manifest_policy_version !== "pickup-handoff-v2"');
+    expect(business).toContain('pickupManifest.source !== expectedPickupSource');
+    expect(consumer).toContain('pickup_manifest_policy_version !== "pickup-handoff-v2"');
+    expect(consumer).toContain('pickupManifest.source !== "consumer_statement"');
   });
 
   it("requires objective custody evidence and no routine driver restatement", () => {
