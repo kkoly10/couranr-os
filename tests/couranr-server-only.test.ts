@@ -160,6 +160,9 @@ describe("server-only modules are unreachable from client code", () => {
       // Builds canonical proof object paths and holds the bucket name. Paths
       // are the part of a private object that leaks furthest.
       "lib/couranr/driver/proofPaths.ts",
+      // P6-004. Cross-tenant financial reconciliation uses service_role and
+      // reads the private ledger through the one public service-role RPC.
+      "lib/couranr/finance/ledger.ts",
       // Holds the service-role client and the Stripe secret key.
       // Batch 3 §C. Composes cancellation with the governed money recovery —
       // release for holds, CAN-001 retention refunds for captured money.
@@ -369,6 +372,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/operations/discrepancies/[id]/safe-to-continue/route.ts",
       "app/api/couranr/operations/drivers/route.ts",
       "app/api/couranr/operations/inbox/route.ts",
+      "app/api/couranr/operations/payments/overview/route.ts",
       "app/api/couranr/operations/proof/[proofId]/url/route.ts",
       "app/api/couranr/operations/queue/route.ts",
       "app/api/couranr/operations/vehicles/[id]/route.ts",
