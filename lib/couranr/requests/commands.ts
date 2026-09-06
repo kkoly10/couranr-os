@@ -157,7 +157,13 @@ const REQUEST_COLUMN_LIST = [
   "normalized_request_payload",
 ];
 
-const REQUEST_COLUMNS = REQUEST_COLUMN_LIST.join(",");
+const REQUEST_COLUMNS = [
+  ...REQUEST_COLUMN_LIST,
+  // Internal-only PRF-002 authority. Deliberately excluded from
+  // REQUEST_VIEW_COLUMNS so public request projections do not grow.
+  "pickup_manifest",
+  "pickup_manifest_policy_version",
+].join(",");
 
 /**
  * Exactly the columns `toDeliveryRequestView` reads, and nothing else.
@@ -949,6 +955,31 @@ export async function submitDeliveryRequest(params: {
       code: "wrong_state",
       detail: { from: row.request_state },
       message: "This delivery request has already been submitted.",
+    });
+  }
+
+  // The new application never relies on the migration trigger alone. A draft
+  // created by an older instance during a rolling deploy has no V2 marker and
+  // must first pass through the governed manifest writer before this build can
+  // submit it. This keeps migration-first deployment compatible while making
+  // PRF-002 mandatory for every request advanced by the new app.
+  const pickupManifest =
+    row.pickup_manifest && typeof row.pickup_manifest === "object" && !Array.isArray(row.pickup_manifest)
+      ? row.pickup_manifest
+      : null;
+  const expectedPickupSource = operationsAssisted
+    ? "operations_statement"
+    : "merchant_statement";
+  if (
+    row.pickup_manifest_policy_version !== "pickup-handoff-v2" ||
+    !pickupManifest ||
+    pickupManifest.source !== expectedPickupSource
+  ) {
+    return fail({
+      operation: op,
+      code: "invalid_input",
+      detail: { reason: "pickup_manifest_required" },
+      message: "Confirm what the driver should expect at pickup before submitting this delivery.",
     });
   }
 
