@@ -418,6 +418,7 @@ export type ConsumerEstimate = {
 /** Columns every scoped consumer read selects. Never `select("*")`. */
 const OWN_REQUEST_COLUMNS =
   "id,version,request_state,quote_status,current_quote_version_id,pickup_manifest_version," +
+  "pickup_manifest,pickup_manifest_policy_version," +
   "delivery_subtotal_cents,quote_line_items,review_reasons,consumer_contact_snapshot";
 
 /**
@@ -825,6 +826,25 @@ export async function submitConsumerSend(params: {
   const op = "submitConsumerSend";
   const loaded = await loadOwnRequest(op, params.session);
   if (isConsumerFailure(loaded)) return loaded;
+
+  const pickupManifest =
+    loaded.value.pickup_manifest &&
+    typeof loaded.value.pickup_manifest === "object" &&
+    !Array.isArray(loaded.value.pickup_manifest)
+      ? loaded.value.pickup_manifest
+      : null;
+  if (
+    loaded.value.pickup_manifest_policy_version !== "pickup-handoff-v2" ||
+    !pickupManifest ||
+    pickupManifest.source !== "consumer_statement"
+  ) {
+    return fail({
+      operation: op,
+      code: "invalid_input",
+      detail: { reason: "pickup_manifest_required" },
+      message: "Confirm what the driver should expect at pickup before submitting this delivery.",
+    });
+  }
 
   // Field-level pre-check with an actionable message. The SQL refuses the
   // same condition again (CR422 consumer_contact_required) as the backstop —
