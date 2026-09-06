@@ -471,6 +471,36 @@ export function resolveDiscrepancySafeToContinue(
   );
 }
 
+export type ReturnCustodyView = {
+  id: string;
+  delivery_id: string;
+  return_state: "required" | "returning" | "returned";
+  reason: string;
+  pricing_status: "couranr_covered" | "pending_route_quote" | "pending_current_location";
+  payer_responsibility: "couranr" | "payer";
+  payer_owes_cents: number | null;
+  required_at: string;
+  started_at: string | null;
+  returned_at: string | null;
+  version: number;
+};
+
+export function fetchReturnCustody(deliveryId: string) {
+  return call<{ return: ReturnCustodyView | null }>(
+    `/api/couranr/operations/deliveries/${deliveryId}/return`
+  );
+}
+
+export function requireReturnFromBrowser(
+  deliveryId: string,
+  body: { expectedVersion: number; reason: string; note?: string }
+) {
+  return call<{ return: ReturnCustodyView }>(
+    `/api/couranr/operations/deliveries/${deliveryId}/return`,
+    { method: "POST", body }
+  );
+}
+
 /* ------------------------------------------------------------- proof I/O -- */
 
 export type ProofMetadataView = {
