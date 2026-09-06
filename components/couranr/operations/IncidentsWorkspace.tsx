@@ -14,7 +14,7 @@ import {
   Text,
 } from "@/components/couranr/primitives";
 import { Field, Input, Select, Textarea } from "@/components/couranr/forms";
-import { ErrorState, LoadingState } from "@/components/couranr/states";
+import { CardSkeleton, ErrorState, LoadingState } from "@/components/couranr/states";
 import { call, isApiFailure, withReference } from "@/components/couranr/requests/client";
 
 type IncidentState="reported"|"under_review"|"awaiting_evidence"|"resolved"|"closed";
@@ -107,7 +107,13 @@ export function IncidentsWorkspace(){
     return <ErrorState title="Couranr could not load incidents" body={loadError}
       action={{label:"Try again",onClick:()=>setGeneration((g)=>g+1)}}/>;
   }
-  if(rows===null) return <LoadingState label="Loading incidents"/>;
+  if(rows===null) {
+    return (
+      <LoadingState label="Loading incidents">
+        <CardSkeleton lines={4} />
+      </LoadingState>
+    );
+  }
 
   return (
     <Stack gap={6}>

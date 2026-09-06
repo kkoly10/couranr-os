@@ -687,7 +687,7 @@ function timelineStates(current: FulfillmentState): FulfillmentState[] {
     return MAINLINE.filter((s) => s !== "delivered").concat(current);
   }
   if (RETURN_STATES.includes(current)) {
-    return MAINLINE.filter((s) => s !== "delivered").concat(RETURN_STATES);
+    return [...MAINLINE.filter((s) => s !== "delivered"), ...RETURN_STATES];
   }
   return MAINLINE.slice();
 }
