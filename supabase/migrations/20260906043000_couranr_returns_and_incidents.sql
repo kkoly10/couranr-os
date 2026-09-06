@@ -288,6 +288,9 @@ begin
     if v_dlv.fulfillment_state not in ('return_required','returning') then
       raise exception 'return_not_active' using errcode='CR409';
     end if;
+  elsif p_code_kind in ('merchant_pickup','recipient_dropoff')
+        and v_dlv.fulfillment_state in ('return_required','returning','returned') then
+    raise exception 'return_active' using errcode='CR409';
   elsif v_dlv.fulfillment_state in (
     'delivered','cancelled','could_not_deliver','returned'
   ) then
@@ -344,6 +347,10 @@ begin
   if p_code_kind='merchant_return'
      and v_dlv.fulfillment_state<>'returning' then
     raise exception 'return_not_active' using errcode='CR409';
+  end if;
+  if p_code_kind in ('merchant_pickup','recipient_dropoff')
+     and v_dlv.fulfillment_state in ('return_required','returning','returned') then
+    raise exception 'return_active' using errcode='CR409';
   end if;
 
   select * into v_row from public.couranr_handoff_codes
