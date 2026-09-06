@@ -83,7 +83,7 @@ export function MerchantTrackingPanel({
     <Card>
       <CardHeader
         title="Recipient tracking"
-        description="Share a secure delivery-specific link. It does not expose the driver\'s phone number."
+        description="Share a secure delivery-specific link. It does not expose the driver's phone number."
         actions={<Badge tone="info">Secure link</Badge>}
       />
       <Stack gap={3}>
