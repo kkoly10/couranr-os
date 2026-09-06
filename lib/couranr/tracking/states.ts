@@ -45,18 +45,11 @@ export const TRACKING_STAGES = [
 export type TrackingStage = (typeof TRACKING_STAGES)[number];
 
 /**
- * `return` IS DECLARED AND CURRENTLY UNREACHABLE.
- *
- * `02_DECISION_REGISTRY.json` STA-002 declares a fourteen-value fulfillment
- * vocabulary including `return_required`, `returning` and `returned`. The
- * shipped `FULFILLMENT_STATES` has ten values and none of those three, and no
- * command produces them — the returns and refunds work (P6-004, P7-005) has
- * not started. The stage exists here so the mapping is complete the day those
- * states land, and `tests/couranr-tracking.test.ts` asserts that no value in
- * today's stored vocabulary maps to it. That test is the honest record of the
- * gap: if it ever starts failing, returns have shipped and the ledger is stale.
+ * Return is now reachable through the governed P7-005 custody path.
+ * The customer still sees one coarse "return" stage while Operations retains
+ * the detailed required/returning/returned lifecycle.
  */
-export const UNREACHABLE_STAGES: readonly TrackingStage[] = ["return"];
+export const UNREACHABLE_STAGES: readonly TrackingStage[] = [];
 
 export const STAGE_LABELS: Record<TrackingStage, string> = {
   preparing: "Preparing your delivery",
@@ -140,7 +133,7 @@ export const STAGE_TONES: Record<TrackingStage, StageTone> = {
 /**
  * Stored fulfillment state -> customer stage.
  *
- * Exhaustive over today's ten-value `FULFILLMENT_STATES`. An unknown value
+ * Exhaustive over the governed fulfillment vocabulary, including return custody. An unknown value
  * returns `null` rather than guessing, and the caller falls back to the
  * request-derived stage — fail-closed, because a stage invented from an
  * unrecognised state is a sentence told to a customer that nothing verified.
@@ -153,6 +146,9 @@ const FULFILLMENT_TO_STAGE: Record<string, TrackingStage> = {
   picked_up: "picked_up",
   in_transit: "in_transit",
   at_dropoff: "at_dropoff",
+  return_required: "return",
+  returning: "return",
+  returned: "return",
   delivered: "delivered",
   could_not_deliver: "could_not_deliver",
   cancelled: "cancelled",
