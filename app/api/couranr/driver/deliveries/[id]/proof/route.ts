@@ -77,8 +77,20 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
     .maybeSingle()) as { data: any; error: any };
   if (pickupCodeError) return routeInternalFailure({ operation: "driverProofList:pickupCode" });
 
+  const { data: returnCode, error: returnCodeError } = (await supabaseAdmin
+    .from("couranr_handoff_codes")
+    .select("code_state")
+    .eq("delivery_id", params.id)
+    .eq("code_kind", "merchant_return")
+    .eq("code_state", "consumed")
+    .order("generation", { ascending: false })
+    .limit(1)
+    .maybeSingle()) as { data: any; error: any };
+  if (returnCodeError) return routeInternalFailure({ operation: "driverProofList:returnCode" });
+
   return NextResponse.json({
     proof: proof.value,
     pickupCredentialVerified: Boolean(pickupCode),
+    returnCredentialVerified: Boolean(returnCode),
   });
 }

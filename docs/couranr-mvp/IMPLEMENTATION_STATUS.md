@@ -11,7 +11,7 @@ ledgers own per-item state; this is their sum.
 The 721-line hand-written version of this file is preserved whole at
 [`autonomous-evidence/status-archive/IMPLEMENTATION_STATUS-2026-08-06.md`](./autonomous-evidence/status-archive/IMPLEMENTATION_STATUS-2026-08-06.md).
 It restated per-row evidence the ledgers already carried, and the restatement is
-what went stale: it counted 39 migrations while 87 were on disk.
+what went stale: it counted 39 migrations while 96 were on disk.
 
 ## Where truth lives
 
@@ -43,11 +43,11 @@ proves every generated view matches its source.
 |---|---|
 | `functional_verified` | 31 |
 | `partial` | 13 |
-| `placeholder_only` | 12 |
-| `functional_unverified` | 9 |
+| `placeholder_only` | 11 |
+| `functional_unverified` | 10 |
 | `missing` | 3 |
 
-Still rendering `ScreenPlaceholder` (12): `OPS-006` · `OPS-011` · `OPS-012` · `OPS-013` · `OPS-014` · `OPS-015` · `OPS-016` · `OPS-017` · `OPS-018` · `OPS-019` · `OPS-020` · `OPS-021`.
+Still rendering `ScreenPlaceholder` (11): `OPS-006` · `OPS-011` · `OPS-013` · `OPS-014` · `OPS-015` · `OPS-016` · `OPS-017` · `OPS-018` · `OPS-019` · `OPS-020` · `OPS-021`.
 
 ## Measured repository state
 
@@ -56,11 +56,11 @@ Still rendering `ScreenPlaceholder` (12): `OPS-006` · `OPS-011` · `OPS-012` ·
 | Page routes | 99 |
 | …canonical, under `app/(couranr)` | 49 |
 | …legacy | 50 |
-| API routes | 175 |
-| …canonical, under `app/api/couranr` | 106 |
-| …legacy | 69 |
-| Forward migrations | 88 |
-| Paired rollbacks | 88 |
+| API routes | 186 |
+| …canonical, under `app/api/couranr` | 116 |
+| …legacy | 70 |
+| Forward migrations | 96 |
+| Paired rollbacks | 96 |
 | Canonical screens | 68 |
 | …Core | 64 |
 | …MVP-complete | 4 |
@@ -113,11 +113,11 @@ each is in the ledger row itself — `test_evidence`, `browser_verified` and
 | `1b3a1c90c88a554f1ac1ff1e6a6d06a97d602150` | 3 screens | CUS-006, CUS-008, PUB-006 |
 | `2848a8f33bde8362bd3c9fcfb9266781fcecb77a` | 2 screens | PUB-012, PUB-013 |
 | `32893e21401a6f056821c4caaa7858460c7356b8` | 1 screen | MER-001 |
-| `401b3eea5cd96bb09d224f3b113ba6091bba807d` | 18 work items, 30 screens | P0-001, P0-002, P1-001, P1-002, P1-003, P1-004, P2-002, P4-001, P5-002, P7-001, P7-002, P7-003, P8-003, P9-001, P9-002, P9-003, P9-004, P10-007, CUS-002, CUS-004, CUS-005, CUS-007, DRV-002, DRV-003, DRV-004, DRV-005, DRV-006, MER-002, MER-006, MER-007, OPS-002, OPS-004, OPS-006, OPS-008, OPS-011, OPS-012, OPS-013, OPS-014, OPS-015, OPS-016, OPS-017, OPS-018, OPS-019, OPS-020, OPS-021, PUB-002, PUB-003, PUB-005 |
+| `401b3eea5cd96bb09d224f3b113ba6091bba807d` | 18 work items, 29 screens | P0-001, P0-002, P1-001, P1-002, P1-003, P1-004, P2-002, P4-001, P5-002, P7-001, P7-002, P7-003, P8-003, P9-001, P9-002, P9-003, P9-004, P10-007, CUS-002, CUS-004, CUS-005, CUS-007, DRV-002, DRV-003, DRV-004, DRV-005, DRV-006, MER-002, MER-006, MER-007, OPS-002, OPS-004, OPS-006, OPS-008, OPS-011, OPS-013, OPS-014, OPS-015, OPS-016, OPS-017, OPS-018, OPS-019, OPS-020, OPS-021, PUB-002, PUB-003, PUB-005 |
 | `484826a18423eba050aabd6db7daf1287837a793` | 1 work item | P7-005 |
 | `50f576e991dd249849d93206fc9e7cda330e71b7` | 1 screen | MER-005 |
 | `5723b3a22773f15d8d1b3e1d36bdf77b8341a6de` | 1 screen | DRV-001 |
-| `daa01c0cfabc65e61f7e7f4380edc8cdcfb3582d` | 1 work item, 1 screen | P7-004, DRV-007 |
+| `652d23cde7e0b701263a5105c46ead9759ebbeda` | 1 screen | OPS-012 |
 | `6d97bc132efdb7ed165dae11189077b2ea34d6f9` | 1 work item | P3-001 |
 | `795ae0d42131ac76abf7402f0686e139cece4ea5` | 2 work items | P2-003, P6-003 |
 | `807c8ed6316cf420dbffa171f5a65b1692dd6830` | 3 screens | MER-003, MER-016, OPS-007 |
@@ -129,6 +129,7 @@ each is in the ledger row itself — `test_evidence`, `browser_verified` and
 | `c9e0fe573da29177fa72979911a7e60bf3beb0df` | 2 screens | MER-014, MER-015 |
 | `cd697e48889389b5365562d4e7f3c82413c10ea9` | 2 screens | MER-008, MER-009 |
 | `d0271ade57785985a4d38bd5328ee0605a24465b` | 1 work item | P6-002 |
+| `daa01c0cfabc65e61f7e7f4380edc8cdcfb3582d` | 1 work item, 1 screen | P7-004, DRV-007 |
 | `dd2388a7fa89c41bc5c6cf4c8411ffd4d0e4a5f0` | 2 screens | DRV-009, DRV-010 |
 | `ea8bd06483229f16a2c6df9a30b41b7872324090` | 5 work items | P10-001, P10-002, P11-001, P12-001, P12-002 |
 | `ec4a2af8f7c1de0bee4e3c021b50c875acdd6633` | 4 work items, 5 screens | P10-003, P10-004, P10-005, P10-006, PUB-001, PUB-008, PUB-009, PUB-010, PUB-011 |

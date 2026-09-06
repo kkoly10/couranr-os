@@ -319,7 +319,12 @@ export function completeLeaveAtDoor(
   );
 }
 
-export function reportDiscrepancy(deliveryId: string, body: { reason: string; notes?: string }) {
+export function reportDiscrepancy(
+  deliveryId: string,
+  body:
+    | { reason: string; notes?: string; stage?: "pickup" }
+    | ({ reason: string; notes?: string; stage: "dropoff" } & Located)
+) {
   return call<{ discrepancy: { discrepancyId: string; state: string; version: number } }>(
     `/api/couranr/driver/deliveries/${deliveryId}/discrepancy`,
     { method: "POST", body }
@@ -343,6 +348,27 @@ export function verifyRecipientCode(deliveryId: string, code: string) {
   });
 }
 
+export function verifyReturnCode(deliveryId: string, code: string) {
+  return call<PinAttempt>(`/api/couranr/driver/deliveries/${deliveryId}/verify-return-code`, {
+    method: "POST",
+    body: { code },
+  });
+}
+
+export function startReturnFromBrowser(deliveryId: string, expectedVersion: number) {
+  return call<{ delivery: DeliveryStateView }>(
+    `/api/couranr/driver/deliveries/${deliveryId}/start-return`,
+    { method: "POST", body: { expectedVersion } }
+  );
+}
+
+export function completeReturnFromBrowser(deliveryId: string, expectedVersion: number) {
+  return call<{ delivery: DeliveryStateView }>(
+    `/api/couranr/driver/deliveries/${deliveryId}/complete-return`,
+    { method: "POST", body: { expectedVersion } }
+  );
+}
+
 export type DeliveryStateView = {
   deliveryId: string;
   fulfillmentState: string;
@@ -352,7 +378,7 @@ export type DeliveryStateView = {
 /** The raw code exists in THIS response and nowhere else, ever. */
 export type IssuedHandoffCodeView = {
   code: string;
-  kind: "merchant_pickup" | "recipient_dropoff";
+  kind: "merchant_pickup" | "recipient_dropoff" | "merchant_return";
   generation: number;
   expiresAt: string;
   warning: string;
@@ -386,6 +412,20 @@ export function issueOperationsRecipientCode(deliveryId: string) {
   );
 }
 
+export function issueMerchantReturnCode(deliveryId: string) {
+  return call<{ handoffCode: IssuedHandoffCodeView }>(
+    `/api/couranr/merchant/deliveries/${deliveryId}/return-code`,
+    { method: "POST", body: {} }
+  );
+}
+
+export function issueOperationsReturnCode(deliveryId: string) {
+  return call<{ handoffCode: IssuedHandoffCodeView }>(
+    `/api/couranr/operations/deliveries/${deliveryId}/return-code`,
+    { method: "POST", body: {} }
+  );
+}
+
 /** Metadata only. There is no `url` and no `path` field, by construction. */
 export function fetchMerchantProof(deliveryId: string) {
   return call<{ proof: ProofMetadataView[] }>(
@@ -401,7 +441,11 @@ export function fetchMerchantProof(deliveryId: string) {
  * the merchant gets; opening an image is a separate, separately-scoped route.
  */
 export function fetchMyProof(deliveryId: string) {
-  return call<{ proof: ProofMetadataView[]; pickupCredentialVerified: boolean }>(
+  return call<{
+    proof: ProofMetadataView[];
+    pickupCredentialVerified: boolean;
+    returnCredentialVerified: boolean;
+  }>(
     `/api/couranr/driver/deliveries/${deliveryId}/proof`
   );
 }
@@ -428,6 +472,36 @@ export function resolveDiscrepancySafeToContinue(
 ) {
   return call<{ discrepancy: { discrepancyId: string; state: string } }>(
     `/api/couranr/operations/discrepancies/${discrepancyId}/safe-to-continue`,
+    { method: "POST", body }
+  );
+}
+
+export type ReturnCustodyView = {
+  id: string;
+  delivery_id: string;
+  return_state: "required" | "returning" | "returned";
+  reason: string;
+  pricing_status: "couranr_covered" | "pending_route_quote" | "pending_current_location";
+  payer_responsibility: "couranr" | "payer";
+  payer_owes_cents: number | null;
+  required_at: string;
+  started_at: string | null;
+  returned_at: string | null;
+  version: number;
+};
+
+export function fetchReturnCustody(deliveryId: string) {
+  return call<{ return: ReturnCustodyView | null }>(
+    `/api/couranr/operations/deliveries/${deliveryId}/return`
+  );
+}
+
+export function requireReturnFromBrowser(
+  deliveryId: string,
+  body: { expectedVersion: number; reason: string; note?: string }
+) {
+  return call<{ return: ReturnCustodyView }>(
+    `/api/couranr/operations/deliveries/${deliveryId}/return`,
     { method: "POST", body }
   );
 }

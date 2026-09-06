@@ -613,18 +613,27 @@ export function DeliveryRequestDetail({
         <>
           <DeliveryExecutionTimeline current={fulfillment.delivery.fulfillmentState} />
           {viewerMayWriteDelivery ? (
-            <>
+            fulfillment.delivery.fulfillmentState === "return_required" ||
+            fulfillment.delivery.fulfillmentState === "returning" ? (
               <HandoffCodePanel
                 deliveryId={fulfillment.delivery.id}
-                kind="merchant_pickup"
+                kind="merchant_return"
                 surface="merchant"
               />
-              <HandoffCodePanel
-                deliveryId={fulfillment.delivery.id}
-                kind="recipient_dropoff"
-                surface="merchant"
-              />
-            </>
+            ) : (
+              <>
+                <HandoffCodePanel
+                  deliveryId={fulfillment.delivery.id}
+                  kind="merchant_pickup"
+                  surface="merchant"
+                />
+                <HandoffCodePanel
+                  deliveryId={fulfillment.delivery.id}
+                  kind="recipient_dropoff"
+                  surface="merchant"
+                />
+              </>
+            )
           ) : null}
           <MerchantProofPanel deliveryId={fulfillment.delivery.id} />
         </>

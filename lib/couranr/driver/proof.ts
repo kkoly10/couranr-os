@@ -35,6 +35,7 @@ const PROOF_TYPES_BY_STAGE: Record<ProofStage, readonly string[]> = {
   pickup: ["shipment_photo", "condition_photo", "securement_photo"],
   pickup_discrepancy: ["discrepancy_evidence"],
   dropoff: ["delivery_photo", "signature"],
+  return: ["return_condition_photo"],
 };
 
 export type ProofUploadTicket = {

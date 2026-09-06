@@ -1,17 +1,16 @@
-import { ScreenPlaceholder } from "@/components/couranr/shell/parts";
 import { PageHeader } from "@/components/couranr/shell/parts";
+import { IncidentsWorkspace } from "@/components/couranr/operations/IncidentsWorkspace";
 
-export const metadata = { title: "Incidents and claims — Couranr" };
+export const metadata={title:"Incidents and claims — Couranr"};
 
-export default function Page() {
+export default function Page(){
   return (
     <>
-      <PageHeader title="Incidents and claims" />
-      <ScreenPlaceholder
-        screenId="OPS-012"
-        name="Incidents and claims"
-        purpose="Investigate damage, missing, wrong item, unsafe handling, delivery failure, and evidence."
+      <PageHeader
+        title="Incidents and claims"
+        breadcrumbs={[{label:"Operations",href:"/operations"},{label:"Incidents and claims"}]}
       />
+      <IncidentsWorkspace/>
     </>
   );
 }
