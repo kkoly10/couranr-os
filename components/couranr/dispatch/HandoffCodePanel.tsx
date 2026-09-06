@@ -19,6 +19,8 @@ import {
   issueMerchantRecipientCode,
   issueOperationsPickupCode,
   issueOperationsRecipientCode,
+  issueMerchantReturnCode,
+  issueOperationsReturnCode,
   type ApiResult,
   type IssuedHandoffCodeView,
 } from "./client";
@@ -44,7 +46,7 @@ import {
  * showing it would invite "we're on code 4" as a status a person acts on.
  */
 
-export type HandoffCodeKind = "merchant_pickup" | "recipient_dropoff";
+export type HandoffCodeKind = "merchant_pickup" | "recipient_dropoff" | "merchant_return";
 export type HandoffCodeSurface = "merchant" | "operations";
 
 /** Only the three fields this panel shows. The generation is dropped at the boundary. */
@@ -64,6 +66,7 @@ type Copy = {
   issueLabel: string;
   reissueLabel: string;
   accent: string;
+  shownOnceFollowup: string;
 };
 
 const COPY: Record<HandoffCodeKind, Copy> = {
@@ -75,6 +78,7 @@ const COPY: Record<HandoffCodeKind, Copy> = {
     issueLabel: "Show pickup QR & code",
     reissueLabel: "Create a new pickup code",
     accent: "var(--couranr-route-blue)",
+    shownOnceFollowup: "The driver should get it from you at pickup, not in advance.",
   },
   recipient_dropoff: {
     title: "Recipient code",
@@ -84,6 +88,17 @@ const COPY: Record<HandoffCodeKind, Copy> = {
     issueLabel: "Issue recipient code",
     reissueLabel: "Issue a new recipient code",
     accent: "var(--couranr-gold)",
+    shownOnceFollowup: "The recipient should receive it through the delivery handoff, not from the driver.",
+  },
+  merchant_return: {
+    title: "Return code",
+    lead: "Sender return code — use this only when Couranr has required a return.",
+    handTo: "Give this to the driver only when the shipment is physically back with you.",
+    audience: "For the return",
+    issueLabel: "Issue return code",
+    reissueLabel: "Issue a new return code",
+    accent: "var(--couranr-gold)",
+    shownOnceFollowup: "The driver should get it from the sender only when the shipment is physically returned.",
   },
 };
 
@@ -100,9 +115,13 @@ function issuerFor(
 ): (deliveryId: string) => Promise<ApiResult<{ handoffCode: IssuedHandoffCodeView }>> {
   switch (surface) {
     case "merchant":
-      return kind === "merchant_pickup" ? issueMerchantPickupCode : issueMerchantRecipientCode;
+      if (kind === "merchant_pickup") return issueMerchantPickupCode;
+      if (kind === "recipient_dropoff") return issueMerchantRecipientCode;
+      return issueMerchantReturnCode;
     case "operations":
-      return kind === "merchant_pickup" ? issueOperationsPickupCode : issueOperationsRecipientCode;
+      if (kind === "merchant_pickup") return issueOperationsPickupCode;
+      if (kind === "recipient_dropoff") return issueOperationsRecipientCode;
+      return issueOperationsReturnCode;
   }
 }
 
@@ -248,7 +267,7 @@ export function HandoffCodePanel({
             )}
 
             <Alert tone="warning" title="Shown once">
-              {shown.warning} The driver should get it from you at pickup, not in advance.
+              {shown.warning} {copy.shownOnceFollowup}
             </Alert>
 
             {replaced ? (
