@@ -120,7 +120,13 @@ async function encryptionKey(): Promise<CryptoKey> {
   const readTx = d.transaction(KEY_STORE, "readonly");
   const existing = await request(readTx.objectStore(KEY_STORE).get(DEVICE_KEY_ID));
   await transactionDone(readTx);
-  if (existing instanceof CryptoKey) return existing;
+  if (
+    existing &&
+    typeof existing === "object" &&
+    (typeof CryptoKey === "undefined" || existing instanceof CryptoKey)
+  ) {
+    return existing as CryptoKey;
+  }
 
   /*
    * Non-extractable. The key can be structured-cloned by IndexedDB but cannot

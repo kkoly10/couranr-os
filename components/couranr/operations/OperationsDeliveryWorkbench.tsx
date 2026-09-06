@@ -160,18 +160,29 @@ function CurrentAction({
     return <AutomaticFulfillmentPanel fulfillment={fulfillment} />;
   }
 
+  if (work.lifecycleStage === "proof_sync_attention") {
+    return (
+      <Card>
+        <CardHeader
+          title="Proof sync needs attention"
+          description="Custody evidence has not been server-verified. Money/state actions stay withheld until the proof converges."
+          actions={<Badge tone="danger">Proof blocked</Badge>}
+        />
+        <Alert tone="danger" title="Driver evidence needs recovery">
+          {fulfillment?.proofSyncFailure
+            ? `${fulfillment.proofSyncFailure.proofStage.replace(/_/g, " ")} · ${fulfillment.proofSyncFailure.proofType.replace(/_/g, " ")} · ${fulfillment.proofSyncFailure.attempts} attempts`
+            : "Couranr recorded a proof-sync failure for this delivery."}
+          {" "}Do not settle or close custody until Couranr verifies the required proof.
+        </Alert>
+      </Card>
+    );
+  }
+
   if (work.lifecycleStage === "automation_exception") {
     const stage = fulfillment?.automationException?.stage ?? null;
     return (
       <Stack gap={4}>
-        {fulfillment?.proofSyncFailure ? (
-          <Alert tone="danger" title="Proof sync needs attention">
-            Driver {fulfillment.proofSyncFailure.proofStage} evidence could not be server-verified after
-            {` ${fulfillment.proofSyncFailure.attempts} `}attempts. Do not settle or close custody until the proof is verified.
-          </Alert>
-        ) : null}
-
-                <AutomaticFulfillmentPanel fulfillment={fulfillment} />
+        <AutomaticFulfillmentPanel fulfillment={fulfillment} />
         {stage === "planning" ? (
           <OperationsPlanPanel
             request={request}

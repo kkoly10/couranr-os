@@ -390,6 +390,13 @@ export type QueueEntry = {
     dispatchDeadline: string | null;
     expectedServiceEnd: string | null;
   } | null;
+  proofSyncFailure: {
+    proofStage: string;
+    proofType: string;
+    reason: string;
+    attempts: number;
+    lastReportedAt: string;
+  } | null;
   automationException: {
     stage: "review" | "planning" | "dispatch" | "commercial";
     reason: string;

@@ -8,10 +8,10 @@ import {
   Card,
   CardHeader,
   Cluster,
-  EmptyState,
   Stack,
   Text,
 } from "@/components/couranr/primitives";
+import { EmptyState } from "@/components/couranr/states";
 import {
   listOfflineProofs,
   onOfflineProofQueueChanged,

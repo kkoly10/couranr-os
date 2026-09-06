@@ -401,7 +401,7 @@ export function fetchMerchantProof(deliveryId: string) {
  * the merchant gets; opening an image is a separate, separately-scoped route.
  */
 export function fetchMyProof(deliveryId: string) {
-  return call<{ proof: ProofMetadataView[] }>(
+  return call<{ proof: ProofMetadataView[]; pickupCredentialVerified: boolean }>(
     `/api/couranr/driver/deliveries/${deliveryId}/proof`
   );
 }

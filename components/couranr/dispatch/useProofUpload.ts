@@ -166,6 +166,13 @@ export function useProofUpload(params: {
         ? "The proof is encrypted on this device and Couranr Operations needs to review the sync."
         : "The proof is encrypted on this device and will retry when the connection returns."
     );
+
+    // A terminal response proves we currently have connectivity. Report the
+    // Operations attention immediately rather than waiting for a future online
+    // event. The queue item remains encrypted until server verification.
+    if (outcome.kind === "terminal") {
+      await syncOfflineProof(envelope.id);
+    }
   }, [params, adoptVerified]);
 
   return {

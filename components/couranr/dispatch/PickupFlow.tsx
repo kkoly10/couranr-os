@@ -109,6 +109,7 @@ export function PickupFlow({
         }
       }
       setRecorded(byType);
+      if (result.value.pickupCredentialVerified) setPinOutcome("accepted");
     });
     return () => {
       live = false;

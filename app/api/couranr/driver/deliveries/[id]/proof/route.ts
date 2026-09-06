@@ -65,5 +65,20 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
   // whole defect this route exists to close, and returning [] here would
   // reintroduce it one layer down.
   if (isDriverFailure(proof)) return failureResponse(proof);
-  return NextResponse.json({ proof: proof.value });
+
+  const { data: pickupCode, error: pickupCodeError } = (await supabaseAdmin
+    .from("couranr_handoff_codes")
+    .select("code_state")
+    .eq("delivery_id", params.id)
+    .eq("code_kind", "merchant_pickup")
+    .eq("code_state", "consumed")
+    .order("generation", { ascending: false })
+    .limit(1)
+    .maybeSingle()) as { data: any; error: any };
+  if (pickupCodeError) return routeInternalFailure({ operation: "driverProofList:pickupCode" });
+
+  return NextResponse.json({
+    proof: proof.value,
+    pickupCredentialVerified: Boolean(pickupCode),
+  });
 }
