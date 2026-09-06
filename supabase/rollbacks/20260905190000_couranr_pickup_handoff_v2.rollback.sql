@@ -52,8 +52,6 @@ $$;
 
 drop trigger if exists couranr_pickup_manifest_v2_advance_trg
   on public.couranr_delivery_requests;
-drop trigger if exists couranr_pickup_manifest_v2_insert_trg
-  on public.couranr_delivery_requests;
 drop function if exists private.couranr_require_pickup_manifest_v2();
 
 drop trigger if exists couranr_freeze_pickup_manifest_trg on public.couranr_deliveries;
