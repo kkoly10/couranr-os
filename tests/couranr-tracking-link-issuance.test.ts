@@ -85,16 +85,18 @@ describe("merchant tracking-link issuance", () => {
   });
 
   it("does not claim Couranr sends SMS or email", () => {
-    const lower = PANEL.toLowerCase();
+    const renderedCode = PANEL.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
+    const lower = renderedCode.toLowerCase();
     expect(lower).not.toContain("we text");
     expect(lower).not.toContain("we email");
     expect(lower).not.toContain("sms");
-    expect(PANEL).toContain("customer channel you already use");
+    expect(renderedCode).toContain("customer channel you already use");
   });
 
-  it("keeps replacement semantics visible to the merchant", () => {
+  it("keeps replacement semantics visible and derives expiry from the server response", () => {
     expect(PANEL).toContain("Replace link");
     expect(PANEL).toContain("disables");
-    expect(PANEL).toContain("30 days");
+    expect(PANEL).toContain("expiryCopy(link.expiresAt)");
+    expect(PANEL).not.toContain("expire after 30 days");
   });
 });

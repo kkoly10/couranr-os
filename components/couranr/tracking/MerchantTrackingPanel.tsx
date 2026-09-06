@@ -125,7 +125,7 @@ export function MerchantTrackingPanel({
             ) : null}
             <Text size="xs" muted>
               Couranr does not store or show this raw link again. Replacing it immediately disables
-              the previous link. Tracking links expire after 30 days.
+              the previous link. {expiryCopy(link.expiresAt)}
             </Text>
           </Stack>
         ) : canManage ? (
@@ -148,4 +148,10 @@ export function MerchantTrackingPanel({
       </Stack>
     </Card>
   );
+}
+
+function expiryCopy(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "The server controls when this link expires.";
+  return `This link expires ${date.toLocaleDateString()}.`;
 }
