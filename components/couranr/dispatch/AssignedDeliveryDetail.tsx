@@ -35,6 +35,7 @@ import {
   fetchMyAssignment,
   startRouteToDropoff,
   startRouteToPickup,
+  startReturnFromBrowser,
   type AssignedDeliveryView,
   type DeliveryAddressView,
   type DriverAssignmentResponse,
@@ -43,6 +44,7 @@ import {
 import { locationBody, useLocationCapture, type LocationState } from "./useLocationCapture";
 import { DrivingMode } from "./DrivingMode";
 import { DropoffProof } from "./DropoffProof";
+import { ReturnFlow } from "./ReturnFlow";
 import { LocationBlock, PickupFlow, readDeliveryVersion } from "./PickupFlow";
 
 /**
@@ -255,14 +257,18 @@ function ActiveAssignment({
       ? knownVersion.version
       : readDeliveryVersion(assigned);
 
-  async function run(which: "start_route_to_pickup" | "start_route_to_dropoff") {
+  async function run(
+    which: "start_route_to_pickup" | "start_route_to_dropoff" | "start_return"
+  ) {
     if (version === null) return;
     setBusy(true);
     setActionError(null);
     const r =
       which === "start_route_to_pickup"
         ? await startRouteToPickup(assigned.deliveryId, version)
-        : await startRouteToDropoff(assigned.deliveryId, version);
+        : which === "start_route_to_dropoff"
+          ? await startRouteToDropoff(assigned.deliveryId, version)
+          : await startReturnFromBrowser(assigned.deliveryId, version);
     setBusy(false);
     if (isApiFailure(r)) {
       setActionError(withReference(r));
@@ -351,9 +357,23 @@ function ActiveAssignment({
         a driver opens when they have stopped.
       */}
 
+      {state === "return_required" || state === "returning" ? (
+        <Alert tone="warning" title="Return to the original sender">
+          Couranr Operations required a return. The pickup address below is now the return
+          destination. Keep custody until the sender confirms the return.
+        </Alert>
+      ) : null}
+
       <Grid columns={2}>
         <Card>
-          <CardHeader title="Pickup" description="Collect from the business." />
+          <CardHeader
+            title="Pickup"
+            description={
+              state === "return_required" || state === "returning"
+                ? "Return destination — back to the original sender."
+                : "Collect from the business."
+            }
+          />
           <Stack gap={3}>
             <AddressLines address={assigned.pickup} />
             <Contact label="Merchant contact" name={assigned.merchant.name} phone={assigned.merchant.phone} />
@@ -479,7 +499,9 @@ function NextAction({
   location: LocationState;
   busy: boolean;
   actionError: string | null;
-  onStart: (c: "start_route_to_pickup" | "start_route_to_dropoff") => Promise<void>;
+  onStart: (
+    c: "start_route_to_pickup" | "start_route_to_dropoff" | "start_return"
+  ) => Promise<void>;
   onArrive: (c: "arrive_at_pickup" | "arrive_at_dropoff") => Promise<void>;
   reload: () => Promise<void>;
 }) {
@@ -526,7 +548,8 @@ function NextAction({
       );
 
     case "start_route_to_pickup":
-    case "start_route_to_dropoff": {
+    case "start_route_to_dropoff":
+    case "start_return": {
       const blockers = versionBlocker ? [versionBlocker] : [];
       return (
         <ActionCard blockers={blockers} error={actionError}>
@@ -565,6 +588,16 @@ function NextAction({
         </Stack>
       );
     }
+
+    case "complete_return":
+      return (
+        <ReturnFlow
+          key={assigned.deliveryId}
+          assigned={assigned}
+          version={version}
+          location={location}
+        />
+      );
 
     case "complete_direct_handoff_delivery":
     case "complete_signature_delivery":
@@ -636,13 +669,25 @@ function ActionCard({
  * `delivered`, so they are not listed alongside it — showing both would imply a
  * delivery had two outcomes.
  */
+const RETURN_STATES: readonly FulfillmentState[] = [
+  "return_required",
+  "returning",
+  "returned",
+];
+
 const MAINLINE: FulfillmentState[] = FULFILLMENT_STATES.filter(
-  (s) => s !== "could_not_deliver" && s !== "cancelled"
+  (s) =>
+    s !== "could_not_deliver" &&
+    s !== "cancelled" &&
+    !RETURN_STATES.includes(s)
 ).sort((a, b) => FULFILLMENT_ORDER[a] - FULFILLMENT_ORDER[b]);
 
 function timelineStates(current: FulfillmentState): FulfillmentState[] {
   if (current === "could_not_deliver" || current === "cancelled") {
     return MAINLINE.filter((s) => s !== "delivered").concat(current);
+  }
+  if (RETURN_STATES.includes(current)) {
+    return MAINLINE.filter((s) => s !== "delivered").concat(RETURN_STATES);
   }
   return MAINLINE.slice();
 }
