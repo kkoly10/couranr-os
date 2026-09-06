@@ -22,6 +22,9 @@ export const FULFILLMENT_STATES = [
   "picked_up",
   "in_transit",
   "at_dropoff",
+  "return_required",
+  "returning",
+  "returned",
   "delivered",
   "could_not_deliver",
   "cancelled",
@@ -43,6 +46,8 @@ export const DRIVER_COMMANDS = [
   "complete_direct_handoff_delivery",
   "complete_signature_delivery",
   "complete_leave_at_door_delivery",
+  "start_return",
+  "complete_return",
 ] as const;
 
 export type DriverCommand = (typeof DRIVER_COMMANDS)[number];
@@ -62,6 +67,8 @@ export const DRIVER_TRANSITIONS: Record<DriverCommand, { from: FulfillmentState;
   complete_direct_handoff_delivery: { from: "at_dropoff", to: "delivered" },
   complete_signature_delivery: { from: "at_dropoff", to: "delivered" },
   complete_leave_at_door_delivery: { from: "at_dropoff", to: "delivered" },
+  start_return: { from: "return_required", to: "returning" },
+  complete_return: { from: "returning", to: "returned" },
 };
 
 /** The immutable proof method, as stored on the delivery at capture time. */
@@ -98,6 +105,9 @@ export const FULFILLMENT_LABELS: Record<FulfillmentState, string> = {
   picked_up: "Picked up",
   in_transit: "In transit",
   at_dropoff: "At drop-off",
+  return_required: "Return required",
+  returning: "Returning to sender",
+  returned: "Returned to sender",
   delivered: "Delivered",
   could_not_deliver: "Could not deliver",
   cancelled: "Cancelled",
@@ -121,6 +131,9 @@ export const FULFILLMENT_TONES: Record<FulfillmentState, StateTone> = {
   picked_up: "info",
   in_transit: "info",
   at_dropoff: "info",
+  return_required: "warning",
+  returning: "warning",
+  returned: "success",
   delivered: "success",
   could_not_deliver: "danger",
   cancelled: "warning",
@@ -135,6 +148,9 @@ export const FULFILLMENT_ORDER: Record<FulfillmentState, number> = {
   picked_up: 4,
   in_transit: 5,
   at_dropoff: 6,
+  return_required: 7,
+  returning: 8,
+  returned: 9,
   delivered: 7,
   could_not_deliver: 7,
   cancelled: 7,
@@ -182,6 +198,8 @@ export const DRIVER_COMMAND_LABELS: Record<DriverCommand, string> = {
   complete_direct_handoff_delivery: "Complete handoff",
   complete_signature_delivery: "Capture signature",
   complete_leave_at_door_delivery: "Complete leave at door",
+  start_return: "Start return to sender",
+  complete_return: "Confirm return to sender",
 };
 
 /**
@@ -189,7 +207,7 @@ export const DRIVER_COMMAND_LABELS: Record<DriverCommand, string> = {
  * here: suppressing the interface while someone is standing still at a loading
  * dock hides the controls they came to use.
  */
-export const DRIVING_STATES: readonly FulfillmentState[] = ["en_route_to_pickup", "in_transit"];
+export const DRIVING_STATES: readonly FulfillmentState[] = ["en_route_to_pickup", "in_transit", "returning"];
 
 export function isDrivingState(state: FulfillmentState): boolean {
   return DRIVING_STATES.includes(state);
@@ -208,12 +226,13 @@ export function canUnassignBeforePickup(state: FulfillmentState): boolean {
  * Finalization checks this too. A photo uploaded while `at_pickup` cannot
  * finalize as drop-off evidence just because the driver got there later.
  */
-export const PROOF_STAGES = ["pickup", "dropoff", "pickup_discrepancy"] as const;
+export const PROOF_STAGES = ["pickup", "dropoff", "pickup_discrepancy", "return"] as const;
 export type ProofStage = (typeof PROOF_STAGES)[number];
 
 export function proofStageAllowedFrom(stage: ProofStage, state: FulfillmentState): boolean {
   if (stage === "pickup" || stage === "pickup_discrepancy") return state === "at_pickup";
-  return state === "at_dropoff";
+  if (stage === "dropoff") return state === "at_dropoff";
+  return state === "returning";
 }
 
 /** Closed outcome vocabulary for a PIN attempt. Never an exception. */
@@ -274,11 +293,13 @@ export function isDiscrepancyReason(v: unknown): v is DiscrepancyReason {
 export const DROPOFF_EXCEPTION_EXTRA_REASONS = [
   "recipient_unavailable",
   "address_or_access_problem",
+  "weather_or_safety",
 ] as const;
 
 export const DROPOFF_EXCEPTION_REASON_LABELS: Record<string, string> = {
   recipient_unavailable: "The recipient is not available",
   address_or_access_problem: "The address or access is a problem",
+  weather_or_safety: "Weather or conditions are not safe",
 };
 
 /**
