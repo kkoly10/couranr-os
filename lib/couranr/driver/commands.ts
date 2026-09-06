@@ -90,6 +90,11 @@ const DRIVER_REASONS = new Set([
   "assignment_changed",
   "assignment_version_changed",
   "proof_stage_not_valid_here",
+  "return_not_active",
+  "return_record_not_ready",
+  "return_assignment_changed",
+  "return_code_not_accepted",
+  "return_condition_photo_required",
   "object_path_mismatch",
   "object_empty",
   "object_size_mismatch",
@@ -133,6 +138,11 @@ const REASON_MESSAGES: Record<string, string> = {
   assignment_changed: "This delivery was reassigned. Reload before continuing.",
   assignment_version_changed: "This delivery was reassigned. Reload before continuing.",
   proof_stage_not_valid_here: "That proof does not belong at this step.",
+  return_not_active: "Couranr has not opened the return handoff yet.",
+  return_record_not_ready: "That return is not ready for this step. Reload before continuing.",
+  return_assignment_changed: "This return belongs to a different assignment. Reload before continuing.",
+  return_code_not_accepted: "Ask the sender for the return code and check it first.",
+  return_condition_photo_required: "Take one condition photo of what you are returning.",
   object_path_mismatch: "The uploaded file did not match what Couranr expected.",
   object_empty: "The upload did not arrive. Try again.",
   object_size_mismatch: "The upload arrived incomplete. Try again.",
@@ -258,6 +268,34 @@ export async function arriveAtDropoff(p: WithLocation): Promise<DriverResult<Del
     p_latitude: p.latitude,
     p_longitude: p.longitude,
     p_accuracy_m: p.accuracyM ?? null,
+  });
+  return r.ok ? { ok: true, value: stateView(r.value) } : r;
+}
+
+/**
+ * Return custody is a separate named path. Starting it changes no money and
+ * asks no routing provider; Operations has already required the return from
+ * server-side evidence.
+ */
+export async function startReturn(p: Base): Promise<DriverResult<DeliveryStateView>> {
+  const r = await callRpc("startReturn", "couranr_start_return", {
+    p_delivery_id: p.deliveryId,
+    p_expected_version: p.expectedVersion,
+    p_actor_user_id: p.userId,
+  });
+  return r.ok ? { ok: true, value: stateView(r.value) } : r;
+}
+
+/**
+ * Completion trusts two server-verified facts only: the latest sender return
+ * credential is consumed and the return condition photo is finalized. Neither
+ * PIN nor proof identity travels in this completion body.
+ */
+export async function completeReturn(p: Base): Promise<DriverResult<DeliveryStateView>> {
+  const r = await callRpc("completeReturn", "couranr_complete_return", {
+    p_delivery_id: p.deliveryId,
+    p_expected_version: p.expectedVersion,
+    p_actor_user_id: p.userId,
   });
   return r.ok ? { ok: true, value: stateView(r.value) } : r;
 }
@@ -708,6 +746,14 @@ export function verifyRecipientPin(p: {
   code: string;
 }): Promise<DriverResult<{ outcome: PinOutcome }>> {
   return verifyHandoffCode({ ...p, kind: "recipient_dropoff" });
+}
+
+export function verifyReturnPin(p: {
+  userId: string;
+  deliveryId: string;
+  code: string;
+}): Promise<DriverResult<{ outcome: PinOutcome }>> {
+  return verifyHandoffCode({ ...p, kind: "merchant_return" });
 }
 
 export { fail as driverFail };
