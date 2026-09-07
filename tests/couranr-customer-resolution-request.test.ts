@@ -34,6 +34,9 @@ describe("CUS-002 cancellation and return request", () => {
       expect(policy.canSubmit).toBe(true);
       expect(policy.policySummary).toContain("$8");
       expect(policy.policySummary).toContain("Couranr-caused cancellation is $0");
+      expect(policy.policySummary).toContain("Weather before pickup");
+      expect(policy.policySummary).toContain("no cancellation fee");
+      expect(policy.policySummary).toContain("verified reason");
     }
   });
 

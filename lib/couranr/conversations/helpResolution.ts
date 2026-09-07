@@ -77,7 +77,7 @@ export function resolutionPolicyForFulfillmentState(
       title: "Request cancellation review",
       stageLabel: "Before driver arrival",
       policySummary:
-        "For a customer-request cancellation after Couranr confirmation and before driver arrival, CAN-001 retains $8 from the delivery-service charge. A Couranr-caused cancellation is $0. This does not mean you personally owe $8; this link does not expose payer identity.",
+        "For a customer-request cancellation after Couranr confirmation and before driver arrival, CAN-001 retains $8 from the delivery-service charge. A Couranr-caused cancellation is $0. Weather before pickup is handled separately: if Couranr pauses or cancels for weather, the authorization is released or the delivery-service charge is refunded with no cancellation fee. Operations applies the rule that matches the verified reason. This does not mean you personally owe $8; this link does not expose payer identity.",
       submitLabel: "Send cancellation request",
       policyReference: "CAN-001 + REF-003",
     };
