@@ -9,6 +9,16 @@ import {
 
 assertServerOnly("lib/couranr/conversations/helpStatus.ts");
 
+function unavailable(operation: string, detail: unknown): HelpLifecycleStatus {
+  logServerFailure({
+    correlationId: newCorrelationId(),
+    operation,
+    code: "internal",
+    detail,
+  });
+  return { available: false };
+}
+
 /**
  * Read the return/refund projection for ONE Delivery Help credential.
  *
