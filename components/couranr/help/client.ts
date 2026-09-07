@@ -1,6 +1,7 @@
 "use client";
 
 import type { CustomerTopic } from "@/lib/couranr/conversations/states";
+import type { HelpLifecycleStatus } from "@/lib/couranr/conversations/helpStatus";
 
 /**
  * Browser data access for Delivery Help.
@@ -32,6 +33,7 @@ export type HelpView = {
   supportTargetMinutes: number;
   operatingHoursApplied: boolean;
   supportPhone: null;
+  returnStatus: HelpLifecycleStatus;
 };
 
 export type HelpLoad =
@@ -62,6 +64,9 @@ export async function fetchHelp(token: string): Promise<HelpLoad> {
   try {
     const payload = await res.json();
     if (!Array.isArray(payload?.messages)) return { failed: true };
+    if (!payload?.returnStatus || typeof payload.returnStatus.available !== "boolean") {
+      return { failed: true };
+    }
     return { resolved: true, view: payload as HelpView };
   } catch {
     return { failed: true };
