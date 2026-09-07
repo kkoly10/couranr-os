@@ -1,7 +1,7 @@
 "use client";
 
 import type { CustomerTopic } from "@/lib/couranr/conversations/states";
-import type { HelpLifecycleStatus } from "@/lib/couranr/conversations/helpStatus";
+import type { HelpLifecycleStatus } from "@/lib/couranr/conversations/helpStatusStates";
 
 /**
  * Browser data access for Delivery Help.

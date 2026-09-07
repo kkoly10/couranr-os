@@ -133,6 +133,7 @@ describe("server-only modules are unreachable from client code", () => {
       // bundle reaching it would ship the code that turns a URL into authority,
       // and invite a client-side "verify this token" that skips the database.
       "lib/couranr/conversations/help.ts",
+      "lib/couranr/conversations/helpStatus.ts",
       // Holds the service-role client and every dispatch command. The driver
       // projection is built here, so a bundle reaching this module would put
       // the unsanitized delivery row within reach of a browser.

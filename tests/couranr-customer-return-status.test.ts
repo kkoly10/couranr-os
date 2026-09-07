@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   mapHelpRefundState,
   mapHelpReturnState,
-} from "@/lib/couranr/conversations/helpStatus";
+} from "@/lib/couranr/conversations/helpStatusStates";
 
 const ROOT = path.resolve(__dirname, "..");
 const STATUS = fs.readFileSync(
