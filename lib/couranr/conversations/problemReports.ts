@@ -149,7 +149,17 @@ export async function prepareCustomerProblemEvidence(p:{
     p_expected_mime:p.expectedMime,p_expected_bytes:p.expectedBytes,
     p_evidence_sha256:p.evidenceSha256,
   });
-  if(error)return dbFail("problemEvidence.prepare",error);
+  if(error){
+    if(error?.code==="CR400"&&error?.message==="problem_evidence_limit_reached"){
+      return publicFailure({
+        operation:"problemEvidence.prepare",
+        code:"invalid_input",
+        detail:{code:error.code,message:error.message},
+        message:"This report already has five photos.",
+      });
+    }
+    return dbFail("problemEvidence.prepare",error);
+  }
   const row=rowOf(data);
   if(!row?.id||!row?.object_path){
     return publicFailure({operation:"problemEvidence.prepare",code:"internal",detail:"bad_shape"});
