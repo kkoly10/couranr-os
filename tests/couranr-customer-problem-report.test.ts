@@ -85,6 +85,24 @@ describe("CUS-004 customer delivery-problem report contract",()=>{
     expect(MIGRATION).toContain("customer-problem/v1/");
   });
 
+  it("converges a lost successful storage PUT and rotates known mismatched bytes",()=>{
+    const inspect=SERVER.indexOf("const stored=await readStoredObject");
+    const exact=SERVER.indexOf("stored.size===Number(row.expected_bytes)",inspect);
+    const finalize=SERVER.indexOf("finalizeCustomerProblemEvidence",exact);
+    const refresh=SERVER.indexOf('"couranr_refresh_customer_problem_evidence"',finalize);
+    const sign=SERVER.indexOf(".createSignedUploadUrl",refresh);
+    expect(inspect).toBeGreaterThan(-1);
+    expect(exact).toBeGreaterThan(inspect);
+    expect(finalize).toBeGreaterThan(exact);
+    expect(refresh).toBeGreaterThan(finalize);
+    expect(sign).toBeGreaterThan(refresh);
+    expect(MIGRATION).toContain("couranr_refresh_customer_problem_evidence");
+    expect(MIGRATION).toContain("storage_mismatch_refresh");
+    expect(ROLLBACK).toContain(
+      "drop function if exists public.couranr_refresh_customer_problem_evidence"
+    );
+  });
+
   it("never persists signed URLs and rollback refuses to destroy evidence",()=>{
     expect(MIGRATION).not.toContain("signed_url");
     expect(ROLLBACK).toContain("rollback_refused: customer problem-report evidence exists");
