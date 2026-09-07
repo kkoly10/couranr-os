@@ -109,6 +109,32 @@ function buildProblemPath(p:{
   return `customer-problem/v1/${p.deliveryId}/${p.reportId}/${p.clientEvidenceId}/${randomBytes(16).toString("hex")}.${ext}`;
 }
 
+async function cleanupExpiredCustomerProblemEvidence(p:{
+  tokenId:string;reportId:string;
+}):Promise<ProblemResult<true>>{
+  const {data,error}=await supabaseAdmin.rpc(
+    "couranr_collect_expired_customer_problem_evidence",
+    {p_token_id:p.tokenId,p_report_id:p.reportId}
+  );
+  if(error)return dbFail("problemEvidence.collectExpired",error);
+
+  const paths=(Array.isArray(data)?data:[])
+    .map((row:any)=>String(row?.out_object_path??""))
+    .filter(Boolean);
+  if(paths.length){
+    const {error:removeError}=await supabaseAdmin.storage.from(BUCKET).remove(paths);
+    if(removeError){
+      return publicFailure({
+        operation:"problemEvidence.removeExpired",
+        code:"internal",
+        detail:{message:removeError.message,count:paths.length},
+        message:"Couranr could not safely reset an expired photo upload. Try again.",
+      });
+    }
+  }
+  return {ok:true,value:true};
+}
+
 export type ProblemEvidenceGrant=
   |{status:"upload";evidenceId:string;signedUrl:string;expectedBytes:number;expectedMime:string}
   |{status:"verified";evidenceId:string};
@@ -133,6 +159,11 @@ export async function prepareCustomerProblemEvidence(p:{
     return publicFailure({operation:"problemEvidence.prepare",code:"invalid_input",detail:"identity"});
   }
 
+  const cleaned=await cleanupExpiredCustomerProblemEvidence({
+    tokenId:p.tokenId,reportId:p.reportId,
+  });
+  if(isProblemFailure(cleaned))return cleaned;
+
   let objectPath:string;
   try{
     objectPath=buildProblemPath({
@@ -156,6 +187,14 @@ export async function prepareCustomerProblemEvidence(p:{
         code:"invalid_input",
         detail:{code:error.code,message:error.message},
         message:"This report already has five photos.",
+      });
+    }
+    if(error?.code==="CR409"&&error?.message==="problem_evidence_grant_still_active"){
+      return publicFailure({
+        operation:"problemEvidence.prepare",
+        code:"conflict",
+        detail:{code:error.code,message:error.message},
+        message:"That photo upload could not be verified yet. Choose the photo again or try later.",
       });
     }
     return dbFail("problemEvidence.prepare",error);
@@ -188,19 +227,21 @@ export async function prepareCustomerProblemEvidence(p:{
     return {ok:true,value:{status:"verified",evidenceId:finalized.value.evidenceId}};
   }
   if(stored){
-    const {data:refreshed,error:refreshError}=await supabaseAdmin.rpc(
-      "couranr_refresh_customer_problem_evidence",
-      {
-        p_token_id:p.tokenId,
-        p_evidence_id:String(row.id),
-        p_object_path:objectPath,
-      }
-    );
-    if(refreshError)return dbFail("problemEvidence.refresh",refreshError);
-    row=rowOf(refreshed);
-    if(!row?.id||!row?.object_path){
-      return publicFailure({operation:"problemEvidence.refresh",code:"internal",detail:"bad_shape"});
-    }
+    // A non-matching object stays quarantined under the still-live provider
+    // grant. Do NOT rotate its path while that old signed URL can still write.
+    // The 125-minute DB envelope outlives Supabase's two-hour upload URL; a
+    // future prepare cleans it only after both authorizations are dead.
+    return publicFailure({
+      operation:"problemEvidence.prepare",
+      code:"conflict",
+      detail:{
+        reason:"storage_mismatch",
+        size:stored.size,
+        mime:stored.mime,
+        evidenceId:String(row.id),
+      },
+      message:"That photo upload could not be verified. Choose the photo again.",
+    });
   }
 
   const {data:signed,error:signError}=await supabaseAdmin.storage
@@ -238,11 +279,35 @@ export async function finalizeCustomerProblemEvidence(p:{
 }):Promise<ProblemResult<{evidenceId:string}>>{
   const {data:auth,error:aErr}=await supabaseAdmin
     .from("couranr_customer_problem_evidence")
-    .select("id,object_path,expected_bytes,expected_mime,upload_state")
+    .select("id,object_path,expected_bytes,expected_mime,upload_state,expires_at")
     .eq("id",p.evidenceId).maybeSingle();
   if(aErr)return dbFail("problemEvidence.authRead",aErr);
   if(!auth)return publicFailure({operation:"problemEvidence.finalize",code:"not_found",detail:"missing"});
   if(auth.upload_state==="verified")return {ok:true,value:{evidenceId:String(auth.id)}};
+
+  if(new Date(String(auth.expires_at)).getTime()<=Date.now()){
+    const {error:abandonError}=await supabaseAdmin.rpc(
+      "couranr_abandon_customer_problem_evidence",
+      {p_token_id:p.tokenId,p_evidence_id:p.evidenceId}
+    );
+    if(abandonError)return dbFail("problemEvidence.abandonExpired",abandonError);
+
+    const {error:removeError}=await supabaseAdmin.storage
+      .from(BUCKET).remove([String(auth.object_path)]);
+    if(removeError){
+      return publicFailure({
+        operation:"problemEvidence.removeExpired",
+        code:"internal",
+        detail:{message:removeError.message,evidenceId:p.evidenceId},
+      });
+    }
+    return publicFailure({
+      operation:"problemEvidence.finalize",
+      code:"conflict",
+      detail:"grant_expired",
+      message:"That photo upload expired. Try the photo again.",
+    });
+  }
 
   const stored=await readStoredObject(String(auth.object_path));
   if(!stored){
@@ -272,6 +337,11 @@ export async function finalizeCustomerProblemEvidence(p:{
 export async function submitCustomerProblemReport(p:{
   tokenId:string;reportId:string;idempotencyKey:string;
 }):Promise<ProblemResult<ProblemReportView>>{
+  const cleaned=await cleanupExpiredCustomerProblemEvidence({
+    tokenId:p.tokenId,reportId:p.reportId,
+  });
+  if(isProblemFailure(cleaned))return cleaned;
+
   const {data,error}=await supabaseAdmin.rpc("couranr_submit_customer_problem_report",{
     p_token_id:p.tokenId,p_report_id:p.reportId,p_idempotency_key:p.idempotencyKey,
   });

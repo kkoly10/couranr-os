@@ -511,6 +511,10 @@ function DeliveryProblemPanel({
   const [error,setError]=React.useState<string|null>(null);
   const [success,setSuccess]=React.useState<string|null>(null);
   const [submitKey,setSubmitKey]=React.useState(()=>newIdempotencyKey());
+  // Hidden retry state: once submit starts, the exact report id + key must be
+  // replayed until Couranr confirms the outcome. Creating a fresh draft while
+  // the first submit outcome is unknown can never be safe.
+  const pendingSubmit=React.useRef<{reportId:string;idempotencyKey:string}|null>(null);
 
   React.useEffect(()=>{
     if(!draft)return;
@@ -549,13 +553,39 @@ function DeliveryProblemPanel({
     }
     setBusy(true);setError(null);setSuccess(null);
     try{
+      // If a previous submit request may have reached Couranr, resolve that
+      // exact request first. Never call saveProblemDraft while its outcome is
+      // unknown: the committed report may already be "reported".
+      if(pendingSubmit.current){
+        const replay=await submitProblemReport({
+          token,
+          reportId:pendingSubmit.current.reportId,
+          idempotencyKey:pendingSubmit.current.idempotencyKey,
+        });
+        if(replay.sent===false)throw new Error(replay.reason);
+        pendingSubmit.current=null;
+        setSubmitKey(newIdempotencyKey());
+        setPhotos([]);
+        setSuccess("Couranr has your delivery report.");
+        await onChanged();
+        return;
+      }
+
       const saved=await saveProblemDraft({token,problemType,details});
       if(saved.sent===false)throw new Error(saved.reason);
       await uploadPhotos(saved.report.id);
+
+      const request={
+        reportId:saved.report.id,
+        idempotencyKey:submitKey,
+      };
+      pendingSubmit.current=request;
       const submitted=await submitProblemReport({
-        token,reportId:saved.report.id,idempotencyKey:submitKey,
+        token,reportId:request.reportId,idempotencyKey:request.idempotencyKey,
       });
       if(submitted.sent===false)throw new Error(submitted.reason);
+
+      pendingSubmit.current=null;
       setSubmitKey(newIdempotencyKey());
       setPhotos([]);
       setSuccess("Couranr has your delivery report.");

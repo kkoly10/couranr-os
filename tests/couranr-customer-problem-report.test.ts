@@ -37,13 +37,20 @@ describe("CUS-004 customer delivery-problem report contract",()=>{
     expect(MIGRATION).toContain("r.delivery_id=v_delivery");
   });
 
-  it("makes submit replay-safe before current-state eligibility",()=>{
+  it("makes submit replay-safe in SQL and keeps the exact report id in the browser",()=>{
     const replay=MIGRATION.indexOf("LOST-RESPONSE RULE");
     const state=MIGRATION.indexOf("if v_row.report_state<>'draft'");
     const update=MIGRATION.indexOf("set report_state='reported'");
     expect(replay).toBeGreaterThan(-1);
     expect(state).toBeGreaterThan(replay);
     expect(update).toBeGreaterThan(state);
+
+    const pending=PAGE.indexOf("if(pendingSubmit.current)");
+    const save=PAGE.indexOf("const saved=await saveProblemDraft",pending);
+    expect(pending).toBeGreaterThan(-1);
+    expect(save).toBeGreaterThan(pending);
+    expect(PAGE).toContain("pendingSubmit.current=request");
+    expect(PAGE).toContain("reportId:pendingSubmit.current.reportId");
   });
 
   it("serializes concurrent first-draft creation on the canonical delivery row",()=>{
@@ -53,11 +60,13 @@ describe("CUS-004 customer delivery-problem report contract",()=>{
     expect(draftLookup).toBeGreaterThan(lock);
   });
 
-  it("expires stale pending upload grants instead of permanently wedging a draft",()=>{
-    expect(MIGRATION).toContain("expires_at timestamptz not null");
+  it("aligns database upload-grant lifetime with the provider and has an object cleanup path",()=>{
+    expect(MIGRATION).toContain("interval '125 minutes'");
+    expect(MIGRATION).toContain("couranr_collect_expired_customer_problem_evidence");
     expect(MIGRATION).toContain("upload_state='abandoned'");
-    expect(MIGRATION).toContain("expires_at<=v_now");
-    expect(MIGRATION).toContain("expires_at>v_now");
+    expect(SERVER).toContain("cleanupExpiredCustomerProblemEvidence");
+    expect(SERVER).toContain(".from(BUCKET).remove(paths)");
+    expect(SERVER).toContain("cleanupExpiredCustomerProblemEvidence({");
   });
 
   it("uses a safe evidence-cap refusal instead of a retry-later rate-limit message",()=>{
@@ -85,21 +94,31 @@ describe("CUS-004 customer delivery-problem report contract",()=>{
     expect(MIGRATION).toContain("customer-problem/v1/");
   });
 
-  it("converges a lost successful storage PUT and rotates known mismatched bytes",()=>{
+  it("converges a lost successful storage PUT and never rotates a still-live mismatched path",()=>{
     const inspect=SERVER.indexOf("const stored=await readStoredObject");
     const exact=SERVER.indexOf("stored.size===Number(row.expected_bytes)",inspect);
     const finalize=SERVER.indexOf("finalizeCustomerProblemEvidence",exact);
-    const refresh=SERVER.indexOf('"couranr_refresh_customer_problem_evidence"',finalize);
-    const sign=SERVER.indexOf(".createSignedUploadUrl",refresh);
+    const mismatch=SERVER.indexOf("A non-matching object stays quarantined",finalize);
+    const sign=SERVER.indexOf(".createSignedUploadUrl",mismatch);
     expect(inspect).toBeGreaterThan(-1);
     expect(exact).toBeGreaterThan(inspect);
     expect(finalize).toBeGreaterThan(exact);
-    expect(refresh).toBeGreaterThan(finalize);
-    expect(sign).toBeGreaterThan(refresh);
-    expect(MIGRATION).toContain("couranr_refresh_customer_problem_evidence");
-    expect(MIGRATION).toContain("storage_mismatch_refresh");
+    expect(mismatch).toBeGreaterThan(finalize);
+    expect(sign).toBeGreaterThan(mismatch);
+    expect(SERVER).not.toContain("couranr_refresh_customer_problem_evidence");
+    expect(MIGRATION).not.toContain("couranr_refresh_customer_problem_evidence");
     expect(ROLLBACK).toContain(
-      "drop function if exists public.couranr_refresh_customer_problem_evidence"
+      "drop function if exists public.couranr_collect_expired_customer_problem_evidence"
+    );
+  });
+
+  it("rejects expired finalization and persists abandonment before storage cleanup",()=>{
+    expect(MIGRATION).toContain("problem_evidence_grant_expired");
+    expect(SERVER).toContain('select("id,object_path,expected_bytes,expected_mime,upload_state,expires_at")');
+    expect(SERVER).toContain('"couranr_abandon_customer_problem_evidence"');
+    expect(SERVER).toContain('.remove([String(auth.object_path)])');
+    expect(ROLLBACK).toContain(
+      "drop function if exists public.couranr_abandon_customer_problem_evidence"
     );
   });
 

@@ -547,9 +547,9 @@ begin
     raise exception 'problem_evidence_not_open' using errcode='CR409';
   end if;
   if v_row.expires_at<=now() then
-    update public.couranr_customer_problem_evidence
-       set upload_state='abandoned'
-     where id=v_row.id;
+    -- The server wrapper persists abandonment and removes the object before
+    -- returning an expired-grant refusal. A race that expires here still fails
+    -- closed; the next prepare/submit cleanup converges it.
     raise exception 'problem_evidence_grant_expired' using errcode='CR409';
   end if;
 
@@ -662,13 +662,17 @@ begin
     raise exception 'problem_details_required' using errcode='CR400';
   end if;
 
-  update public.couranr_customer_problem_evidence
-     set upload_state='abandoned'
-   where report_id=v_row.id and upload_state='pending' and expires_at<=v_now;
-
+  -- The server wrapper cleans expired paths before this command. Never
+  -- silently convert a pending row here because doing so would lose the object
+  -- path before Storage cleanup. A race that expires between cleanup and this
+  -- lock simply asks the caller to retry.
   select count(*) into v_pending
   from public.couranr_customer_problem_evidence
-  where report_id=v_row.id and upload_state='pending' and expires_at>v_now;
+  where report_id=v_row.id
+    and (
+      upload_state='pending'
+      or (upload_state='abandoned' and expires_at>v_now)
+    );
   if v_pending>0 then
     raise exception 'problem_evidence_upload_pending' using errcode='CR412';
   end if;
