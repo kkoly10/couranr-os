@@ -259,7 +259,8 @@ export async function saveProblemDraft(p:{
   const out=await problemPost<{report:ProblemReportView}>(p.token,{
     command:"save_draft",problemType:p.problemType,details:p.details,
   });
-  return out.sent?{sent:true,report:out.value.report}:out;
+  if(out.sent===false)return out;
+  return {sent:true,report:out.value.report};
 }
 
 export async function submitProblemReport(p:{
@@ -268,7 +269,8 @@ export async function submitProblemReport(p:{
   const out=await problemPost<{report:ProblemReportView}>(p.token,{
     command:"submit_report",reportId:p.reportId,idempotencyKey:p.idempotencyKey,
   });
-  return out.sent?{sent:true,report:out.value.report}:out;
+  if(out.sent===false)return out;
+  return {sent:true,report:out.value.report};
 }
 
 function problemHex(bytes:ArrayBuffer){
@@ -310,7 +312,8 @@ export async function uploadCustomerProblemPhoto(p:{
   const fin=await problemPost<{evidence:{evidenceId:string}}>(p.token,{
     command:"finalize_evidence",evidenceId:grant.evidenceId,
   });
-  return fin.sent?{sent:true,evidenceId:fin.value.evidence.evidenceId}:fin;
+  if(fin.sent===false)return fin;
+  return {sent:true,evidenceId:fin.value.evidence.evidenceId};
 }
 
 /** A per-message key, stable across retries of the same composed message. */
