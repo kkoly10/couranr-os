@@ -22,7 +22,12 @@ import {
   newIdempotencyKey,
   sendHelpMessage,
   submitResolutionRequest,
+  saveProblemDraft,
+  submitProblemReport,
+  uploadCustomerProblemPhoto,
   type HelpView,
+  type ProblemReportView,
+  type ProblemType,
 } from "./client";
 import type {
   HelpLifecycleStatus,
@@ -130,7 +135,11 @@ export function DeliveryHelpPage({ token }: { token: string }) {
   React.useEffect(() => {
     if (state.phase !== "ready" || typeof window === "undefined") return;
     const target = window.location.hash.replace(/^#/, "");
-    if (target !== "return-status" && target !== "cancellation-return") return;
+    if (
+      target !== "return-status" &&
+      target !== "cancellation-return" &&
+      target !== "delivery-problem"
+    ) return;
     window.requestAnimationFrame(() => {
       document.getElementById(target)?.scrollIntoView({ block: "start" });
     });
@@ -249,6 +258,12 @@ export function DeliveryHelpPage({ token }: { token: string }) {
       />
 
       <ReturnRefundStatusPanel status={view.returnStatus} />
+
+      <DeliveryProblemPanel
+        token={token}
+        reports={view.problemReports}
+        onChanged={() => load(false)}
+      />
 
       <Divider />
 
@@ -459,6 +474,208 @@ function StatusTime({ label, value }: { label: string; value: string | null }) {
   );
 }
 
+
+
+const PROBLEM_LABELS:Record<ProblemType,string>={
+  damaged:"Damaged or in different condition",
+  missing:"Something is missing",
+  wrong_item:"Wrong item",
+  undelivered:"Not delivered",
+};
+const PROBLEM_STATE_LABELS:Record<ProblemReportView["state"],string>={
+  draft:"Draft",
+  reported:"Reported",
+  awaiting_evidence:"Awaiting evidence",
+  under_review:"Under review",
+  resolved:"Resolved",
+};
+type SelectedProblemPhoto={id:string;file:File};
+
+function DeliveryProblemPanel({
+  token,reports,onChanged,
+}:{
+  token:string;
+  reports:ProblemReportView[]|null;
+  onChanged:()=>Promise<void>|void;
+}){
+  const active=reports?.find((r)=>r.state!=="resolved")??null;
+  const draft=active?.state==="draft"?active:null;
+  const [problemType,setProblemType]=React.useState<ProblemType>(draft?.problemType??"damaged");
+  const [details,setDetails]=React.useState(draft?.details??"");
+  const [photos,setPhotos]=React.useState<SelectedProblemPhoto[]>([]);
+  const [busy,setBusy]=React.useState(false);
+  const [error,setError]=React.useState<string|null>(null);
+  const [success,setSuccess]=React.useState<string|null>(null);
+  const [submitKey,setSubmitKey]=React.useState(()=>newIdempotencyKey());
+
+  React.useEffect(()=>{
+    if(!draft)return;
+    setProblemType(draft.problemType);
+    setDetails(draft.details);
+  },[draft?.id,draft?.problemType,draft?.details]);
+
+  function choosePhotos(list:FileList|null){
+    setError(null);
+    const files=Array.from(list??[]);
+    if(files.length>5){
+      setError("Choose up to five photos.");
+      return;
+    }
+    setPhotos(files.map((file)=>({id:crypto.randomUUID(),file})));
+  }
+
+  async function uploadPhotos(reportId:string){
+    for(const photo of photos){
+      const outcome=await uploadCustomerProblemPhoto({
+        token,reportId,clientEvidenceId:photo.id,file:photo.file,
+      });
+      if(outcome.sent===false)throw new Error(outcome.reason);
+    }
+  }
+
+  async function submit(){
+    if(busy)return;
+    if(!details.trim()){
+      setError("Add a short description of what happened.");
+      return;
+    }
+    setBusy(true);setError(null);setSuccess(null);
+    try{
+      const saved=await saveProblemDraft({token,problemType,details});
+      if(saved.sent===false)throw new Error(saved.reason);
+      await uploadPhotos(saved.report.id);
+      const submitted=await submitProblemReport({
+        token,reportId:saved.report.id,idempotencyKey:submitKey,
+      });
+      if(submitted.sent===false)throw new Error(submitted.reason);
+      setSubmitKey(newIdempotencyKey());
+      setPhotos([]);
+      setSuccess("Couranr has your delivery report.");
+      await onChanged();
+    }catch(e:any){
+      setError(e?.message||"We could not submit that report. Try again.");
+    }finally{setBusy(false);}
+  }
+
+  async function addRequestedEvidence(){
+    if(!active||active.state!=="awaiting_evidence"||photos.length===0||busy)return;
+    setBusy(true);setError(null);setSuccess(null);
+    try{
+      await uploadPhotos(active.id);
+      setPhotos([]);
+      setSuccess("The additional evidence was attached.");
+      await onChanged();
+    }catch(e:any){
+      setError(e?.message||"We could not attach that evidence. Try again.");
+    }finally{setBusy(false);}
+  }
+
+  if(reports===null){
+    return (
+      <Card id="delivery-problem">
+        <CardHeader title="Report a delivery problem"/>
+        <Alert tone="warning" title="Problem reports are temporarily unavailable">
+          You can still send Couranr a Delivery Help message below.
+        </Alert>
+      </Card>
+    );
+  }
+
+  if(active&&active.state!=="draft"){
+    return (
+      <Card id="delivery-problem">
+        <CardHeader
+          title="Delivery problem report"
+          description={PROBLEM_LABELS[active.problemType]}
+          actions={<Badge tone="warning">{PROBLEM_STATE_LABELS[active.state]}</Badge>}
+        />
+        <Stack gap={3}>
+          <Text>{active.details}</Text>
+          <Text size="sm" muted>
+            {active.evidenceCount} {active.evidenceCount===1?"photo":"photos"} attached.
+          </Text>
+          {active.state==="reported"?(
+            <Alert tone="info" title="Reported">
+              Couranr has the report and will review the delivery issue.
+            </Alert>
+          ):null}
+          {active.state==="under_review"?(
+            <Alert tone="info" title="Under review">
+              Couranr Operations is reviewing the delivery evidence.
+            </Alert>
+          ):null}
+          {active.state==="awaiting_evidence"?(
+            <Stack gap={3}>
+              <Alert tone="warning" title="Couranr needs more evidence">
+                Add useful photos here. Do not photograph faces, IDs or payment information.
+              </Alert>
+              <Field label="Add photos" hint="JPEG, PNG, WebP or HEIC. Up to five photos total.">
+                {(a)=><input {...a} type="file" multiple
+                  accept="image/jpeg,image/png,image/webp,image/heic"
+                  onChange={(e)=>choosePhotos(e.currentTarget.files)}/>}
+              </Field>
+              <Button type="button" disabled={busy||photos.length===0}
+                onClick={()=>void addRequestedEvidence()}>
+                {busy?"Uploading…":"Attach evidence"}
+              </Button>
+            </Stack>
+          ):null}
+          {success?<Alert tone="success" title="Attached">{success}</Alert>:null}
+          {error?<Alert tone="danger" title="Not attached">{error}</Alert>:null}
+          <Text size="sm" muted>
+            This report does not automatically change the delivery, create a refund, or decide
+            responsibility. The business remains responsible for the merchandise and merchandise refunds.
+          </Text>
+        </Stack>
+      </Card>
+    );
+  }
+
+  return (
+    <Card id="delivery-problem">
+      <CardHeader
+        title="Report a delivery problem"
+        description="Tell Couranr what happened and attach useful evidence."
+        actions={draft?<Badge tone="neutral">Draft saved</Badge>:undefined}
+      />
+      <Stack gap={4}>
+        <Field label="What went wrong?" required>
+          {(a)=>(
+            <Select {...a} value={problemType}
+              onChange={(e)=>setProblemType(e.target.value as ProblemType)}>
+              {Object.entries(PROBLEM_LABELS).map(([value,label])=>(
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        <Field label="Add details" required hint="Describe what you expected and what happened.">
+          {(a)=><Textarea {...a} rows={4} maxLength={4000} value={details}
+            onChange={(e)=>setDetails(e.target.value)}/>}
+        </Field>
+        <Field label="Add photos" hint="Optional. JPEG, PNG, WebP or HEIC. Up to five photos.">
+          {(a)=><input {...a} type="file" multiple
+            accept="image/jpeg,image/png,image/webp,image/heic"
+            onChange={(e)=>choosePhotos(e.currentTarget.files)}/>}
+        </Field>
+        {photos.length?(
+          <Text size="sm" muted>
+            {photos.length} {photos.length===1?"photo":"photos"} ready to attach.
+          </Text>
+        ):null}
+        <Alert tone="info" title="What this report does">
+          Couranr reviews the delivery issue. It does not automatically refund merchandise or decide
+          compensation. The business remains responsible for the merchandise and merchandise refunds.
+        </Alert>
+        {success?<Alert tone="success" title="Report submitted">{success}</Alert>:null}
+        {error?<Alert tone="danger" title="Report not submitted">{error}</Alert>:null}
+        <Button type="button" disabled={busy||!details.trim()} onClick={()=>void submit()}>
+          {busy?"Submitting…":"Submit delivery report"}
+        </Button>
+      </Stack>
+    </Card>
+  );
+}
 
 function CancellationReturnRequestPanel({
   token,

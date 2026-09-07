@@ -40,6 +40,21 @@ export type HelpView = {
   supportPhone: null;
   returnStatus: HelpLifecycleStatus;
   resolutionPolicy: HelpResolutionPolicy;
+  problemReports: ProblemReportView[] | null;
+};
+
+export type ProblemType="damaged"|"missing"|"wrong_item"|"undelivered";
+export type ProblemState="draft"|"reported"|"awaiting_evidence"|"under_review"|"resolved";
+export type ProblemReportView={
+  id:string;
+  problemType:ProblemType;
+  details:string;
+  state:ProblemState;
+  evidenceCount:number;
+  submittedAt:string|null;
+  resolvedAt:string|null;
+  version:number;
+  createdAt:string;
 };
 
 export type HelpLoad =
@@ -77,6 +92,9 @@ export async function fetchHelp(token: string): Promise<HelpLoad> {
       !payload?.resolutionPolicy ||
       typeof payload.resolutionPolicy.available !== "boolean"
     ) {
+      return { failed: true };
+    }
+    if (!(payload?.problemReports === null || Array.isArray(payload?.problemReports))) {
       return { failed: true };
     }
     return { resolved: true, view: payload as HelpView };
@@ -205,6 +223,94 @@ export async function sendHelpMessage(params: {
     /* fall through to the generic refusal */
   }
   return { sent: false, reason: "We could not send that right now. Try again in a moment." };
+}
+
+
+type ProblemActionOutcome<T>={sent:true;value:T}|{sent:false;reason:string};
+
+async function problemJson<T>(res:Response):Promise<ProblemActionOutcome<T>>{
+  if(res.ok){
+    try{return {sent:true,value:await res.json() as T};}
+    catch{return {sent:false,reason:"Couranr could not confirm that action. Try again."};}
+  }
+  try{
+    const body=await res.json();
+    if(typeof body?.error==="string"&&[400,409,429].includes(res.status)){
+      return {sent:false,reason:body.error};
+    }
+  }catch{/* sanitized fallback */}
+  return {sent:false,reason:"Couranr could not save that delivery report right now. Try again."};
+}
+
+async function problemPost<T>(token:string,body:Record<string,unknown>){
+  let res:Response;
+  try{
+    res=await fetch(`/api/couranr/help/${encodeURIComponent(token)}/problem-report`,{
+      method:"POST",headers:{"content-type":"application/json"},cache:"no-store",
+      body:JSON.stringify(body),
+    });
+  }catch{return {sent:false,reason:"Check your connection and try again."} as const;}
+  return problemJson<T>(res);
+}
+
+export async function saveProblemDraft(p:{
+  token:string;problemType:ProblemType;details:string;
+}):Promise<{sent:true;report:ProblemReportView}|{sent:false;reason:string}>{
+  const out=await problemPost<{report:ProblemReportView}>(p.token,{
+    command:"save_draft",problemType:p.problemType,details:p.details,
+  });
+  return out.sent?{sent:true,report:out.value.report}:out;
+}
+
+export async function submitProblemReport(p:{
+  token:string;reportId:string;idempotencyKey:string;
+}):Promise<{sent:true;report:ProblemReportView}|{sent:false;reason:string}>{
+  const out=await problemPost<{report:ProblemReportView}>(p.token,{
+    command:"submit_report",reportId:p.reportId,idempotencyKey:p.idempotencyKey,
+  });
+  return out.sent?{sent:true,report:out.value.report}:out;
+}
+
+function problemHex(bytes:ArrayBuffer){
+  return Array.from(new Uint8Array(bytes),(b)=>b.toString(16).padStart(2,"0")).join("");
+}
+
+export async function uploadCustomerProblemPhoto(p:{
+  token:string;reportId:string;clientEvidenceId:string;file:File;
+}):Promise<{sent:true;evidenceId:string}|{sent:false;reason:string}>{
+  if(!globalThis.crypto?.subtle){
+    return {sent:false,reason:"This browser cannot securely prepare that photo. Try a current browser."};
+  }
+  let bytes:ArrayBuffer;
+  try{bytes=await p.file.arrayBuffer();}
+  catch{return {sent:false,reason:"That photo could not be read. Choose it again."};}
+  if(bytes.byteLength<1)return {sent:false,reason:"That photo is empty."};
+  const sha256=problemHex(await crypto.subtle.digest("SHA-256",bytes));
+
+  const prep=await problemPost<{upload:
+    |{status:"verified";evidenceId:string}
+    |{status:"upload";evidenceId:string;signedUrl:string;expectedBytes:number;expectedMime:string}
+  }>(p.token,{
+    command:"prepare_evidence",reportId:p.reportId,
+    clientEvidenceId:p.clientEvidenceId,expectedMime:p.file.type,
+    expectedBytes:bytes.byteLength,evidenceSha256:sha256,
+  });
+  if(prep.sent===false)return prep;
+  const grant=prep.value.upload;
+  if(grant.status==="verified")return {sent:true,evidenceId:grant.evidenceId};
+
+  let put:Response;
+  try{
+    put=await fetch(grant.signedUrl,{
+      method:"PUT",headers:{"content-type":p.file.type},body:bytes,
+    });
+  }catch{return {sent:false,reason:"The photo upload lost its connection. Try again."};}
+  if(!put.ok)return {sent:false,reason:"The photo did not upload. Try again."};
+
+  const fin=await problemPost<{evidence:{evidenceId:string}}>(p.token,{
+    command:"finalize_evidence",evidenceId:grant.evidenceId,
+  });
+  return fin.sent?{sent:true,evidenceId:fin.value.evidence.evidenceId}:fin;
 }
 
 /** A per-message key, stable across retries of the same composed message. */
