@@ -132,6 +132,19 @@ describe("CUS-002 cancellation and return request", () => {
     }
   });
 
+  it("does not reject the current stage in TypeScript before the atomic command can resolve a replay", () => {
+    const submitStart = SERVER.indexOf("export async function submitHelpResolutionRequest");
+    const submitBody = SERVER.slice(submitStart);
+    const rpcAt = submitBody.indexOf('"couranr_help_post_resolution_request"');
+
+    expect(rpcAt).toBeGreaterThan(-1);
+    expect(submitBody.slice(0, rpcAt)).not.toContain("help.resolution.not_open");
+    expect(submitBody.slice(0, rpcAt)).not.toContain("!policy.canSubmit");
+    expect(submitBody).toContain(
+      "A previous request with this idempotency key may already have committed"
+    );
+  });
+
   it("resolves idempotent replays before lifecycle eligibility and locks the delivery before a new write", () => {
     const firstReplay = ATOMIC_MIGRATION.indexOf("-- LOST-RESPONSE RULE");
     const rowLock = ATOMIC_MIGRATION.indexOf("for update;");
