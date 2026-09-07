@@ -62,9 +62,10 @@ describe("CUS-004 customer delivery-problem report contract",()=>{
 
   it("serializes concurrent first-draft creation on the canonical delivery row",()=>{
     const lock=MIGRATION.indexOf("for update of d;");
-    const draftLookup=MIGRATION.indexOf("where delivery_id=v_delivery and report_state='draft'");
+    const openLookup=MIGRATION.indexOf("where delivery_id=v_delivery and report_state<>'resolved'");
     expect(lock).toBeGreaterThan(-1);
-    expect(draftLookup).toBeGreaterThan(lock);
+    expect(openLookup).toBeGreaterThan(lock);
+    expect(MIGRATION).toContain("raise exception 'problem_report_open' using errcode='CR409'");
   });
 
   it("aligns database upload-grant lifetime with the provider and has an object cleanup path",()=>{
@@ -96,7 +97,8 @@ describe("CUS-004 customer delivery-problem report contract",()=>{
     expect(SERVER).toContain("randomBytes(16).toString");
     expect(SERVER).toContain(".createSignedUploadUrl");
     expect(SERVER).toContain("readStoredObject");
-    expect(SERVER).toContain("stored.size!==Number(auth.expected_bytes)");
+    expect(SERVER).toContain("stored.size!==authExpectedBytes");
+    expect(SERVER).toContain("stored.mime!==authExpectedMime");
     expect(MIGRATION).toContain("storage_bucket='delivery-photos'");
     expect(MIGRATION).toContain("customer-problem/v1/");
   });
@@ -132,9 +134,10 @@ describe("CUS-004 customer delivery-problem report contract",()=>{
 
   it("rejects expired finalization and persists abandonment before storage cleanup",()=>{
     expect(MIGRATION).toContain("problem_evidence_grant_expired");
-    expect(SERVER).toContain('select("id,object_path,expected_bytes,expected_mime,upload_state,expires_at")');
+    expect(SERVER).toContain('"couranr_customer_problem_evidence_authorization"');
+    expect(SERVER).toContain("authExpiresAt");
     expect(SERVER).toContain('"couranr_abandon_customer_problem_evidence"');
-    expect(SERVER).toContain('.remove([String(auth.object_path)])');
+    expect(SERVER).toContain(".remove([authPath])");
     expect(ROLLBACK).toContain(
       "drop function if exists public.couranr_abandon_customer_problem_evidence"
     );
