@@ -22,6 +22,13 @@ const PAGE = fs.readFileSync(
   path.join(ROOT, "components/couranr/help/DeliveryHelpPage.tsx"),
   "utf8"
 );
+const ATOMIC_MIGRATION = fs.readFileSync(
+  path.join(
+    ROOT,
+    "supabase/migrations/20260907220000_couranr_help_resolution_atomicity.sql"
+  ),
+  "utf8"
+);
 
 describe("CUS-002 cancellation and return request", () => {
   it("maps pre-arrival delivery states to the locked CAN-001 $8 policy", () => {
@@ -108,9 +115,10 @@ describe("CUS-002 cancellation and return request", () => {
     }
   });
 
-  it("re-reads the current delivery state at submission and only appends a help message", () => {
-    expect(SERVER).toContain("await readHelpResolutionPolicy(params.deliveryId)");
-    expect(SERVER).toContain("await postHelpMessage({");
+  it("re-reads a server snapshot and delegates the only durable write to the atomic resolution command", () => {
+    expect(SERVER).toContain("await readHelpResolutionSnapshot(params.deliveryId)");
+    expect(SERVER).toContain('"couranr_help_post_resolution_request"');
+    expect(SERVER).not.toContain("await postHelpMessage({");
     for (const forbidden of [
       "cancelDeliveryWithRecovery",
       "requireReturn(",
@@ -122,6 +130,31 @@ describe("CUS-002 cancellation and return request", () => {
     ]) {
       expect(SERVER, forbidden).not.toContain(forbidden);
     }
+  });
+
+  it("resolves idempotent replays before lifecycle eligibility and locks the delivery before a new write", () => {
+    const firstReplay = ATOMIC_MIGRATION.indexOf("-- LOST-RESPONSE RULE");
+    const rowLock = ATOMIC_MIGRATION.indexOf("for update;");
+    const replayAfterLock = ATOMIC_MIGRATION.indexOf(
+      "-- Re-check idempotency AFTER acquiring the row lock"
+    );
+    const stateCas = ATOMIC_MIGRATION.indexOf(
+      "v_state <> p_expected_fulfillment_state"
+    );
+    const messageInsert = ATOMIC_MIGRATION.indexOf(
+      "insert into public.couranr_conversation_messages"
+    );
+
+    expect(firstReplay).toBeGreaterThan(-1);
+    expect(rowLock).toBeGreaterThan(firstReplay);
+    expect(replayAfterLock).toBeGreaterThan(rowLock);
+    expect(stateCas).toBeGreaterThan(replayAfterLock);
+    expect(messageInsert).toBeGreaterThan(stateCas);
+
+    expect(ATOMIC_MIGRATION).toContain("'help_resolution_requested'");
+    expect(ATOMIC_MIGRATION).toContain("'request_kind', p_request_kind");
+    expect(ATOMIC_MIGRATION).toContain("'fulfillment_state', v_state");
+    expect(ATOMIC_MIGRATION).not.toContain("update public.couranr_deliveries");
   });
 
   it("does not read or return payer identity, captured amount or return-route detail", () => {
