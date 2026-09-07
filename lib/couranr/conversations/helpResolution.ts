@@ -1,13 +1,12 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { assertServerOnly } from "@/lib/couranr/serverOnly";
 import {
+  classifyDatabaseError,
   logServerFailure,
   newCorrelationId,
   type PublicErrorCode,
 } from "@/lib/couranr/errors";
 import {
-  isHelpFailure,
-  postHelpMessage,
   type HelpFailure,
   type HelpResult,
 } from "./help";
@@ -39,16 +38,6 @@ function fail(params: {
   const out: HelpFailure = { ok: false, code: params.code, correlationId };
   if (params.message) out.message = params.message;
   return out;
-}
-
-function unavailable(operation: string, detail: unknown): HelpResolutionPolicy {
-  logServerFailure({
-    correlationId: newCorrelationId(),
-    operation,
-    code: "internal",
-    detail,
-  });
-  return { available: false };
 }
 
 /**
@@ -180,9 +169,16 @@ export function resolutionPolicyForFulfillmentState(
   return null;
 }
 
-export async function readHelpResolutionPolicy(
+type OpenHelpResolutionPolicy = Extract<HelpResolutionPolicy, { available: true }>;
+
+type HelpResolutionSnapshot = {
+  fulfillmentState: string;
+  policy: OpenHelpResolutionPolicy;
+};
+
+async function readHelpResolutionSnapshot(
   deliveryId: string
-): Promise<HelpResolutionPolicy> {
+): Promise<HelpResolutionSnapshot | null> {
   const { data, error } = await supabaseAdmin
     .from("couranr_deliveries")
     .select("fulfillment_state")
@@ -190,16 +186,37 @@ export async function readHelpResolutionPolicy(
     .maybeSingle();
 
   if (error || !data) {
-    return unavailable("help.resolution.read", error ?? { reason: "delivery_missing" });
+    logServerFailure({
+      correlationId: newCorrelationId(),
+      operation: "help.resolution.read",
+      code: "internal",
+      detail: error ?? { reason: "delivery_missing" },
+    });
+    return null;
   }
 
   const policy = resolutionPolicyForFulfillmentState(data.fulfillment_state);
-  if (!policy) {
-    return unavailable("help.resolution.vocabulary", {
-      fulfillmentState: data.fulfillment_state,
+  if (!policy?.available) {
+    logServerFailure({
+      correlationId: newCorrelationId(),
+      operation: "help.resolution.vocabulary",
+      code: "internal",
+      detail: { fulfillmentState: data.fulfillment_state },
     });
+    return null;
   }
-  return policy;
+
+  return {
+    fulfillmentState: String(data.fulfillment_state),
+    policy,
+  };
+}
+
+export async function readHelpResolutionPolicy(
+  deliveryId: string
+): Promise<HelpResolutionPolicy> {
+  const snapshot = await readHelpResolutionSnapshot(deliveryId);
+  return snapshot?.policy ?? { available: false };
 }
 
 function topicForReason(reason: HelpResolutionReason): CustomerTopic {
@@ -249,8 +266,8 @@ export async function submitHelpResolutionRequest(params: {
     });
   }
 
-  const policy = await readHelpResolutionPolicy(params.deliveryId);
-  if (!policy.available) {
+  const snapshot = await readHelpResolutionSnapshot(params.deliveryId);
+  if (!snapshot) {
     return fail({
       code: "internal",
       operation: "help.resolution.policy_unavailable",
@@ -258,16 +275,12 @@ export async function submitHelpResolutionRequest(params: {
       message: "Couranr could not load the current cancellation or return policy.",
     });
   }
-  if (!policy.canSubmit || policy.requestKind === "none") {
-    return fail({
-      code: "conflict",
-      operation: "help.resolution.not_open",
-      detail: { stage: policy.stage },
-      message:
-        "A new cancellation or return request is not available at this stage. Use Delivery Help if the recorded outcome needs review.",
-    });
-  }
 
+  const { policy, fulfillmentState } = snapshot;
+  // Do not reject a blocked CURRENT stage before the atomic command runs.
+  // A previous request with this idempotency key may already have committed
+  // before the delivery advanced. The SQL command resolves that replay first;
+  // only a genuinely NEW request is tested against current-stage eligibility.
   const reasonLabel = HELP_RESOLUTION_REASON_LABELS[params.reason];
   const body = [
     policy.title,
@@ -280,19 +293,52 @@ export async function submitHelpResolutionRequest(params: {
     .filter(Boolean)
     .join("\n");
 
-  const sent = await postHelpMessage({
-    tokenId: params.tokenId,
-    body,
-    topic: topicForReason(params.reason),
-    idempotencyKey: params.idempotencyKey,
-  });
-  if (isHelpFailure(sent)) return sent;
+  const { data, error } = await supabaseAdmin.rpc(
+    "couranr_help_post_resolution_request",
+    {
+      p_token_id: params.tokenId,
+      p_delivery_id: params.deliveryId,
+      p_expected_fulfillment_state: fulfillmentState,
+      p_request_kind: policy.requestKind,
+      p_body: body,
+      p_topic: topicForReason(params.reason),
+      p_idempotency_key: params.idempotencyKey,
+    }
+  );
+
+  if (error) {
+    const code = classifyDatabaseError(error);
+    return fail({
+      code,
+      operation: "help.resolution.submit_atomic",
+      detail: error,
+      message:
+        code === "version_conflict"
+          ? "This delivery changed while the request was being sent. Refresh Delivery Help and review the current option."
+          : undefined,
+    });
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  const requestKind = row?.out_request_kind;
+  if (
+    !row?.out_message_id ||
+    (requestKind !== "cancellation_review" &&
+      requestKind !== "operations_review" &&
+      requestKind !== "return_review")
+  ) {
+    return fail({
+      code: "internal",
+      operation: "help.resolution.submit_atomic_shape",
+      detail: { hasRow: Boolean(row) },
+    });
+  }
 
   return {
     ok: true,
     value: {
-      messageId: sent.value.messageId,
-      requestKind: policy.requestKind,
+      messageId: String(row.out_message_id),
+      requestKind,
     },
   };
 }
