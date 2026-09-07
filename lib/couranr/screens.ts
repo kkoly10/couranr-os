@@ -122,7 +122,7 @@ const SCREENS: CanonicalScreen[] = [
   { id: "OPS-020", name: "Activity and audit log", group: "operations", routes: ["/operations/settings?tab=audit"], tier: "core", phase: "2–9", viewport: "desktop-primary", status: "placeholder_only" },
   { id: "OPS-021", name: "Ask Couranr lead inbox", group: "operations", routes: ["/operations/ghost?tab=leads"], tier: "mvp-complete", phase: "9–10", viewport: "desktop-primary", status: "placeholder_only" },
   { id: "CUS-001", name: "Address-change request", group: "customer", routes: ["/help/[token]#address-change"], tier: "core", phase: "7–8", viewport: "mobile-first", status: "functional_verified" },
-  { id: "CUS-002", name: "Cancellation and return request", group: "customer", routes: ["/help/[token]#cancellation-return"], tier: "core", phase: "7–8", viewport: "mobile-first", status: "missing" },
+  { id: "CUS-002", name: "Cancellation and return request", group: "customer", routes: ["/help/[token]#cancellation-return"], tier: "core", phase: "7–8", viewport: "mobile-first", status: "partial" },
   { id: "CUS-003", name: "Recipient unavailable resolution", group: "customer", routes: ["/help/[token]#recipient-unavailable"], tier: "core", phase: "7–8", viewport: "mobile-first", status: "functional_verified" },
   { id: "CUS-004", name: "Delivery problem report", group: "customer", routes: ["/help/[token]#delivery-problem"], tier: "core", phase: "7–8", viewport: "mobile-first", status: "missing" },
   { id: "CUS-005", name: "Revised quote approval", group: "customer", routes: ["/pay/[token]?mode=requote"], tier: "core", phase: "6–7", viewport: "mobile-first", status: "functional_unverified" },

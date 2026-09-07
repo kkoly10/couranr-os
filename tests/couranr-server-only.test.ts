@@ -133,6 +133,7 @@ describe("server-only modules are unreachable from client code", () => {
       // bundle reaching it would ship the code that turns a URL into authority,
       // and invite a client-side "verify this token" that skips the database.
       "lib/couranr/conversations/help.ts",
+      "lib/couranr/conversations/helpResolution.ts",
       "lib/couranr/conversations/helpStatus.ts",
       // Holds the service-role client and every dispatch command. The driver
       // projection is built here, so a bundle reaching this module would put
@@ -327,6 +328,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/driver/profile/route.ts",
       "app/api/couranr/driver/proof/[proofId]/url/route.ts",
       "app/api/couranr/driver/proof/finalize/route.ts",
+      "app/api/couranr/help/[token]/resolution-request/route.ts",
       "app/api/couranr/help/[token]/route.ts",
       "app/api/couranr/hosted/[merchantSlug]/places/route.ts",
       "app/api/couranr/hosted/[merchantSlug]/request/route.ts",
@@ -518,6 +520,12 @@ describe("canonical server routes do not import the browser client", () => {
       // checked in the route before any database work, exactly as the tracking
       // route does, so junk URLs cannot be used to probe timing.
       "app/api/couranr/help/[token]/route.ts",
+      { shape: /isWellFormedHelpToken\(/, redeem: /redeemHelpToken\(/ },
+    ],
+    [
+      // CUS-002 is the same one-delivery Delivery Help credential, not a new
+      // public authorization class. It may only append a reviewed help message.
+      "app/api/couranr/help/[token]/resolution-request/route.ts",
       { shape: /isWellFormedHelpToken\(/, redeem: /redeemHelpToken\(/ },
     ],
   ]);
