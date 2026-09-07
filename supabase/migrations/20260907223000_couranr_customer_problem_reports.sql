@@ -413,8 +413,7 @@ begin
     raise exception 'help_link_not_available' using errcode='CR404';
   end if;
 
-  select e,r.id,e.client_evidence_id
-    into v_row,v_report_id,v_client_evidence_id
+  select e.* into v_row
   from public.couranr_customer_problem_evidence e
   join public.couranr_customer_problem_reports r on r.id=e.report_id
   where e.id=p_evidence_id
@@ -425,6 +424,9 @@ begin
   if v_row.id is null then
     raise exception 'problem_evidence_not_found' using errcode='CR404';
   end if;
+  v_report_id:=v_row.report_id;
+  v_client_evidence_id:=v_row.client_evidence_id;
+
   if v_row.upload_state<>'pending' then
     raise exception 'problem_evidence_not_open' using errcode='CR409';
   end if;
