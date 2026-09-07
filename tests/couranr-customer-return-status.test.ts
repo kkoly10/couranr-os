@@ -53,6 +53,13 @@ describe("CUS-007 return and refund status", () => {
     expect(getBody).not.toContain("req.json()");
   });
 
+  it("scopes refund status to the delivery's own captured obligation", () => {
+    expect(STATUS).toContain('.eq("request_id", requestId)');
+    expect(STATUS).toContain('.eq("obligation_id", obligationId)');
+    expect(STATUS).toContain('.eq("id", obligationId)');
+    expect(STATUS).toContain('help.status.obligation_missing');
+  });
+
   it("selects status only and never reads financial secrets or return-route detail", () => {
     const code = STATUS.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
     for (const forbidden of [

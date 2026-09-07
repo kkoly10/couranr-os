@@ -51,18 +51,23 @@ export async function readHelpLifecycleStatus(
     ? String(delivery.data.payment_obligation_id)
     : null;
 
+  const refundQuery = obligationId
+    ? supabaseAdmin
+        .from("couranr_payment_refunds")
+        .select("attempt_state,updated_at")
+        .eq("request_id", requestId)
+        .eq("obligation_id", obligationId)
+        .order("created_at", { ascending: false })
+        .limit(1)
+    : Promise.resolve({ data: [], error: null } as any);
+
   const [returnQ, refundQ, obligationQ] = await Promise.all([
     supabaseAdmin
       .from("couranr_delivery_returns")
       .select("return_state,required_at,started_at,returned_at,updated_at")
       .eq("delivery_id", deliveryId)
       .maybeSingle(),
-    supabaseAdmin
-      .from("couranr_payment_refunds")
-      .select("attempt_state,updated_at")
-      .eq("request_id", requestId)
-      .order("created_at", { ascending: false })
-      .limit(1),
+    refundQuery,
     obligationId
       ? supabaseAdmin
           .from("couranr_payment_obligations")
@@ -79,6 +84,10 @@ export async function readHelpLifecycleStatus(
       refundError: refundQ.error,
       obligationError: obligationQ.error,
     });
+  }
+
+  if (obligationId && !obligationQ.data) {
+    return unavailable("help.status.obligation_missing", { requestId, obligationId });
   }
 
   const returnState = mapHelpReturnState({
