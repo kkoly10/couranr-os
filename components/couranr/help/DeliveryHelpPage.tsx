@@ -112,16 +112,19 @@ export function DeliveryHelpPage({ token }: { token: string }) {
   const idempotencyKey = React.useRef<string>("");
   if (idempotencyKey.current === "") idempotencyKey.current = newIdempotencyKey();
 
-  const load = React.useCallback(async () => {
-    setState({ phase: "loading" });
-    const result = await fetchHelp(token);
-    if ("failed" in result) setState({ phase: "failed" });
-    else if (!result.resolved) setState({ phase: "refused" });
-    else setState({ phase: "ready", view: result.view });
-  }, [token]);
+  const load = React.useCallback(
+    async (showLoading = true) => {
+      if (showLoading) setState({ phase: "loading" });
+      const result = await fetchHelp(token);
+      if ("failed" in result) setState({ phase: "failed" });
+      else if (!result.resolved) setState({ phase: "refused" });
+      else setState({ phase: "ready", view: result.view });
+    },
+    [token]
+  );
 
   React.useEffect(() => {
-    void load();
+    void load(true);
   }, [load]);
 
   React.useEffect(() => {
@@ -166,7 +169,7 @@ export function DeliveryHelpPage({ token }: { token: string }) {
     idempotencyKey.current = newIdempotencyKey();
     setBody("");
     setJustSent(true);
-    await load();
+    await load(false);
   }
 
   if (state.phase === "loading") {
@@ -242,7 +245,7 @@ export function DeliveryHelpPage({ token }: { token: string }) {
       <CancellationReturnRequestPanel
         token={token}
         policy={view.resolutionPolicy}
-        onSent={load}
+        onSent={() => load(false)}
       />
 
       <ReturnRefundStatusPanel status={view.returnStatus} />
