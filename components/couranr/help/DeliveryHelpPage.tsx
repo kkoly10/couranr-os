@@ -547,7 +547,10 @@ function DeliveryProblemPanel({
 
   async function submit(){
     if(busy)return;
-    if(!details.trim()){
+    // Once a submit outcome is unknown, current form edits are irrelevant:
+    // first resolve the exact in-flight report id + key. Only a brand-new
+    // submission validates the current draft fields.
+    if(!pendingSubmit.current&&!details.trim()){
       setError("Add a short description of what happened.");
       return;
     }
