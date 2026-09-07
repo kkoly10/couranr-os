@@ -413,7 +413,7 @@ begin
     raise exception 'help_link_not_available' using errcode='CR404';
   end if;
 
-  select e.*,r.id,e.client_evidence_id
+  select e,r.id,e.client_evidence_id
     into v_row,v_report_id,v_client_evidence_id
   from public.couranr_customer_problem_evidence e
   join public.couranr_customer_problem_reports r on r.id=e.report_id
