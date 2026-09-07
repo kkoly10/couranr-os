@@ -20,6 +20,7 @@ import {
 } from "@/components/couranr/states";
 import { QuoteSummary } from "./QuoteSummary";
 import { MerchantPaymentPanel } from "@/components/couranr/payments/MerchantPaymentPanel";
+import { MerchantTrackingPanel } from "@/components/couranr/tracking/MerchantTrackingPanel";
 import { MerchantReadinessPanel } from "@/components/couranr/fulfillment/MerchantReadinessPanel";
 import { HostedRequestValidationPanel } from "./HostedRequestValidationPanel";
 import { MerchantProofPanel } from "@/components/couranr/dispatch/MerchantProofPanel";
@@ -535,6 +536,21 @@ export function DeliveryRequestDetail({
       {!isOperations && !fulfillment?.promotionalCredit ? (
         <MerchantPaymentPanel
           request={request}
+          businessAccountId={viewerBusinessAccountId}
+          canManage={viewerMayWriteDelivery}
+        />
+      ) : null}
+
+      {/*
+        PUB-006 issuance for ordinary merchant-owned deliveries. Hosted Consumer
+        requests already own their token through the guest session; mounting this
+        there would let a merchant replace the customer\'s live token.
+      */}
+      {!isOperations &&
+      request.requestState === "confirmed" &&
+      request.source !== "hosted_request" ? (
+        <MerchantTrackingPanel
+          requestId={request.id}
           businessAccountId={viewerBusinessAccountId}
           canManage={viewerMayWriteDelivery}
         />
