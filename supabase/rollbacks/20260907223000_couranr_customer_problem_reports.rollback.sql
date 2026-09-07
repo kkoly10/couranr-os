@@ -22,8 +22,8 @@ drop function if exists public.couranr_prepare_customer_problem_evidence(uuid,uu
 drop function if exists public.couranr_save_customer_problem_draft(uuid,text,text);
 drop function if exists public.couranr_customer_problem_report_view(uuid);
 
-drop table if exists public.couranr_customer_problem_report_events;
-drop table if exists public.couranr_customer_problem_evidence;
-drop table if exists public.couranr_customer_problem_reports;
+drop table if exists public.couranr_customer_problem_report_events restrict;
+drop table if exists public.couranr_customer_problem_evidence restrict;
+drop table if exists public.couranr_customer_problem_reports restrict;
 
 commit;
