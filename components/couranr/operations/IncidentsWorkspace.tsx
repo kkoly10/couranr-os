@@ -265,11 +265,12 @@ function CustomerProblemReportCard({
 
     // Open synchronously from the click so mobile/desktop popup blockers do not
     // discard the viewer while we wait for the short-lived signed URL.
-    const viewer=window.open("about:blank","_blank","noopener,noreferrer");
+    const viewer=window.open("about:blank","_blank");
     if(!viewer){
       setError("Your browser blocked the evidence window. Allow pop-ups for Couranr and try again.");
       return;
     }
+    viewer.opener=null;
 
     setOpening(evidenceId);setError(null);
     const r=await loadCustomerProblemEvidenceUrl(report.id,evidenceId);
