@@ -498,8 +498,12 @@ function DeliveryProblemPanel({
   reports:ProblemReportView[]|null;
   onChanged:()=>Promise<void>|void;
 }){
-  const active=reports?.find((r)=>r.state!=="resolved")??null;
+  // The server returns newest first. Keep the latest resolved report visible
+  // rather than silently replacing its required "Resolved" case status with a
+  // blank new-report form.
+  const active=reports?.[0]??null;
   const draft=active?.state==="draft"?active:null;
+  const remainingPhotoSlots=Math.max(0,5-(active?.evidenceCount??0));
   const [problemType,setProblemType]=React.useState<ProblemType>(draft?.problemType??"damaged");
   const [details,setDetails]=React.useState(draft?.details??"");
   const [photos,setPhotos]=React.useState<SelectedProblemPhoto[]>([]);
@@ -517,8 +521,12 @@ function DeliveryProblemPanel({
   function choosePhotos(list:FileList|null){
     setError(null);
     const files=Array.from(list??[]);
-    if(files.length>5){
-      setError("Choose up to five photos.");
+    if(files.length>remainingPhotoSlots){
+      setError(
+        remainingPhotoSlots===0
+          ?"This report already has five photos."
+          :`Choose up to ${remainingPhotoSlots} more ${remainingPhotoSlots===1?"photo":"photos"}.`
+      );
       return;
     }
     setPhotos(files.map((file)=>({id:crypto.randomUUID(),file})));
@@ -587,7 +595,11 @@ function DeliveryProblemPanel({
         <CardHeader
           title="Delivery problem report"
           description={PROBLEM_LABELS[active.problemType]}
-          actions={<Badge tone="warning">{PROBLEM_STATE_LABELS[active.state]}</Badge>}
+          actions={
+            <Badge tone={active.state==="resolved"?"success":"warning"}>
+              {PROBLEM_STATE_LABELS[active.state]}
+            </Badge>
+          }
         />
         <Stack gap={3}>
           <Text>{active.details}</Text>
@@ -604,17 +616,28 @@ function DeliveryProblemPanel({
               Couranr Operations is reviewing the delivery evidence.
             </Alert>
           ):null}
+          {active.state==="resolved"?(
+            <Alert tone="success" title="Resolved">
+              Couranr Operations has completed review of this delivery report.
+            </Alert>
+          ):null}
           {active.state==="awaiting_evidence"?(
             <Stack gap={3}>
               <Alert tone="warning" title="Couranr needs more evidence">
                 Add useful photos here. Do not photograph faces, IDs or payment information.
               </Alert>
-              <Field label="Add photos" hint="JPEG, PNG, WebP or HEIC. Up to five photos total.">
+              <Field
+                label="Add photos"
+                hint={remainingPhotoSlots>0
+                  ?`JPEG, PNG, WebP or HEIC. Up to ${remainingPhotoSlots} more.`
+                  :"Five photos are already attached."}
+              >
                 {(a)=><input {...a} type="file" multiple
+                  disabled={remainingPhotoSlots===0}
                   accept="image/jpeg,image/png,image/webp,image/heic"
                   onChange={(e)=>choosePhotos(e.currentTarget.files)}/>}
               </Field>
-              <Button type="button" disabled={busy||photos.length===0}
+              <Button type="button" disabled={busy||photos.length===0||remainingPhotoSlots===0}
                 onClick={()=>void addRequestedEvidence()}>
                 {busy?"Uploading…":"Attach evidence"}
               </Button>
@@ -653,8 +676,14 @@ function DeliveryProblemPanel({
           {(a)=><Textarea {...a} rows={4} maxLength={4000} value={details}
             onChange={(e)=>setDetails(e.target.value)}/>}
         </Field>
-        <Field label="Add photos" hint="Optional. JPEG, PNG, WebP or HEIC. Up to five photos.">
+        <Field
+          label="Add photos"
+          hint={remainingPhotoSlots>0
+            ?`Optional. JPEG, PNG, WebP or HEIC. Up to ${remainingPhotoSlots}.`
+            :"Five photos are already attached."}
+        >
           {(a)=><input {...a} type="file" multiple
+            disabled={remainingPhotoSlots===0}
             accept="image/jpeg,image/png,image/webp,image/heic"
             onChange={(e)=>choosePhotos(e.currentTarget.files)}/>}
         </Field>
