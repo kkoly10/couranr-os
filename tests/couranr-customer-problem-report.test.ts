@@ -46,11 +46,33 @@ describe("CUS-004 customer delivery-problem report contract",()=>{
     expect(update).toBeGreaterThan(state);
   });
 
+  it("serializes concurrent first-draft creation on the canonical delivery row",()=>{
+    const lock=MIGRATION.indexOf("for update of d;");
+    const draftLookup=MIGRATION.indexOf("where delivery_id=v_delivery and report_state='draft'");
+    expect(lock).toBeGreaterThan(-1);
+    expect(draftLookup).toBeGreaterThan(lock);
+  });
+
   it("expires stale pending upload grants instead of permanently wedging a draft",()=>{
     expect(MIGRATION).toContain("expires_at timestamptz not null");
     expect(MIGRATION).toContain("upload_state='abandoned'");
     expect(MIGRATION).toContain("expires_at<=v_now");
     expect(MIGRATION).toContain("expires_at>v_now");
+  });
+
+  it("uses a safe evidence-cap refusal instead of a retry-later rate-limit message",()=>{
+    expect(MIGRATION).toContain("problem_evidence_limit_reached' using errcode='CR400'");
+    expect(SERVER).toContain('"This report already has five photos."');
+    expect(PAGE).toContain("remainingPhotoSlots");
+  });
+
+  it("moves support ownership to the customer when Operations requests evidence and back after upload",()=>{
+    expect(MIGRATION).toContain("waiting_on='customer'");
+    expect(MIGRATION).toContain("awaiting_reply_kind=null");
+    expect(MIGRATION).toContain("first_couranr_response_at=coalesce");
+    expect(MIGRATION).toContain("if v_report.report_state='awaiting_evidence'");
+    expect(MIGRATION).toContain("waiting_on='couranr'");
+    expect(MIGRATION).toContain("awaiting_reply_kind='customer'");
   });
 
   it("uses the existing private bucket with opaque server-owned paths and storage revalidation",()=>{
@@ -84,6 +106,13 @@ describe("CUS-004 customer delivery-problem report contract",()=>{
     expect(CLIENT).toContain("uploadCustomerProblemPhoto");
   });
 
+  it("keeps the canonical resolved case status visible after review completes",()=>{
+    expect(PAGE).toContain("const active=reports?.[0]??null");
+    expect(PAGE).toContain('active.state==="resolved"');
+    expect(PAGE).toContain('title="Resolved"');
+    expect(PAGE).toContain('active.state==="resolved"?"success":"warning"');
+  });
+
   it("distinguishes report-subsystem failure from an empty report list",()=>{
     expect(HELP_ROUTE).toContain("problemReports: isProblemFailure(problemReportsResult)");
     expect(HELP_ROUTE).toContain("? null");
@@ -97,6 +126,14 @@ describe("CUS-004 customer delivery-problem report contract",()=>{
     expect(OPS).toContain("Resolve report");
     expect(OPS).toContain("View photo");
     expect(CLIENT).not.toContain("/operations/problem-reports");
+  });
+
+  it("opens the Operations evidence window from the click before awaiting the signed URL",()=>{
+    const openAt=OPS.indexOf('window.open("about:blank"');
+    const awaitAt=OPS.indexOf("await loadCustomerProblemEvidenceUrl",openAt);
+    expect(openAt).toBeGreaterThan(-1);
+    expect(awaitAt).toBeGreaterThan(openAt);
+    expect(OPS).toContain("viewer.location.replace");
   });
 
   it("does not import money, return, custody or delivery-state mutation into CUS-004",()=>{
