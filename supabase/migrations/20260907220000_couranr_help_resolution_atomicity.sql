@@ -54,6 +54,7 @@ declare
   v_id     uuid;
   v_kind   text;
   v_state  text;
+  v_now    timestamptz := now();
 begin
   if p_idempotency_key is null or btrim(p_idempotency_key) = '' then
     raise exception 'idempotency_key_required' using errcode = 'CR400';
@@ -198,13 +199,26 @@ begin
        'fulfillment_state', v_state
      ));
 
+  -- Preserve HRS-002 exactly. Resolution requests are Delivery Help messages
+  -- and therefore consume the same 15 OPERATING minutes as the generic
+  -- customer path; a Sunday request must not become overdue Sunday morning.
   update public.couranr_conversations c
-     set received_at         = coalesce(c.received_at, now()),
-         response_due_at     = coalesce(c.response_due_at, now() + interval '15 minutes'),
+     set received_at         = coalesce(c.received_at, v_now),
+         response_due_at     = coalesce(
+                                 c.response_due_at,
+                                 public.couranr_add_operating_minutes(v_now, 15)
+                               ),
+         next_operating_period_at = coalesce(
+                                 c.next_operating_period_at,
+                                 case
+                                   when public.couranr_is_within_operating_hours(v_now) then null
+                                   else public.couranr_next_operating_period_start(v_now)
+                                 end
+                               ),
          waiting_on          = 'couranr',
          awaiting_reply_kind = coalesce(c.awaiting_reply_kind, 'customer'),
          status              = case when c.status in ('resolved', 'closed') then 'open' else c.status end,
-         updated_at          = now()
+         updated_at          = v_now
    where c.id = v_part.conversation_id;
 
   return query select v_id, p_request_kind;
