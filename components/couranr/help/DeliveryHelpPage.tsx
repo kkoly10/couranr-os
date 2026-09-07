@@ -21,6 +21,7 @@ import {
   fetchHelp,
   newIdempotencyKey,
   sendHelpMessage,
+  submitResolutionRequest,
   type HelpView,
 } from "./client";
 import type {
@@ -28,6 +29,12 @@ import type {
   HelpRefundState,
   HelpReturnState,
 } from "@/lib/couranr/conversations/helpStatusStates";
+import {
+  HELP_RESOLUTION_REASONS,
+  HELP_RESOLUTION_REASON_LABELS,
+  type HelpResolutionPolicy,
+  type HelpResolutionReason,
+} from "@/lib/couranr/conversations/helpResolutionTypes";
 
 /**
  * PUB-007 — Delivery Help.
@@ -119,9 +126,10 @@ export function DeliveryHelpPage({ token }: { token: string }) {
 
   React.useEffect(() => {
     if (state.phase !== "ready" || typeof window === "undefined") return;
-    if (window.location.hash !== "#return-status") return;
+    const target = window.location.hash.replace(/^#/, "");
+    if (target !== "return-status" && target !== "cancellation-return") return;
     window.requestAnimationFrame(() => {
-      document.getElementById("return-status")?.scrollIntoView({ block: "start" });
+      document.getElementById(target)?.scrollIntoView({ block: "start" });
     });
   }, [state.phase]);
 
@@ -230,6 +238,12 @@ export function DeliveryHelpPage({ token }: { token: string }) {
           your delivery.
         </Text>
       </Card>
+
+      <CancellationReturnRequestPanel
+        token={token}
+        policy={view.resolutionPolicy}
+        onSent={load}
+      />
 
       <ReturnRefundStatusPanel status={view.returnStatus} />
 
@@ -439,5 +453,147 @@ function StatusTime({ label, value }: { label: string; value: string | null }) {
     <Text size="sm" muted>
       {label} · {new Date(value).toLocaleString()}
     </Text>
+  );
+}
+
+
+function CancellationReturnRequestPanel({
+  token,
+  policy,
+  onSent,
+}: {
+  token: string;
+  policy: HelpResolutionPolicy;
+  onSent: () => Promise<void>;
+}) {
+  const [reason, setReason] = React.useState<HelpResolutionReason>("customer_request");
+  const [note, setNote] = React.useState("");
+  const [sending, setSending] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [sent, setSent] = React.useState(false);
+  const key = React.useRef("");
+  if (key.current === "") key.current = newIdempotencyKey();
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!policy.available || !policy.canSubmit || sending) return;
+    setSending(true);
+    setError(null);
+    setSent(false);
+
+    const result = await submitResolutionRequest({
+      token,
+      reason,
+      note,
+      idempotencyKey: key.current,
+    });
+    setSending(false);
+
+    if (result.sent === false) {
+      setError(result.reason);
+      return;
+    }
+
+    key.current = newIdempotencyKey();
+    setNote("");
+    setSent(true);
+    await onSent();
+  }
+
+  return (
+    <div id="cancellation-return">
+      <Card>
+        <CardHeader
+          title="Cancellation or return request"
+          description="Couranr Operations reviews this request. The form itself never changes custody, money or delivery state."
+        />
+
+        {!policy.available ? (
+          <Alert tone="warning" title="Policy temporarily unavailable">
+            Couranr could not load the current cancellation or return policy. You can still use the
+            message form below.
+          </Alert>
+        ) : (
+          <Stack gap={4}>
+            <Stack gap={2}>
+              <Badge tone={policy.canSubmit ? "info" : "neutral"}>{policy.stageLabel}</Badge>
+              <Heading level={3}>{policy.title}</Heading>
+              <Text>{policy.policySummary}</Text>
+              <Text muted size="sm">
+                Policy reference: {policy.policyReference}. The amount shown here is delivery-service
+                policy, not a statement that you personally are the payer.
+              </Text>
+            </Stack>
+
+            {policy.canSubmit && policy.submitLabel ? (
+              <form onSubmit={submit}>
+                <Stack gap={3}>
+                  <Field label="Why do you need Couranr to review this?" required>
+                    {(p) => (
+                      <Select
+                        {...p}
+                        value={reason}
+                        onChange={(e) =>
+                          setReason(e.target.value as HelpResolutionReason)
+                        }
+                      >
+                        {HELP_RESOLUTION_REASONS.map((r) => (
+                          <option key={r} value={r}>
+                            {HELP_RESOLUTION_REASON_LABELS[r]}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
+                  </Field>
+
+                  <Field label="Additional details (optional)">
+                    {(p) => (
+                      <Textarea
+                        {...p}
+                        value={note}
+                        maxLength={1200}
+                        rows={4}
+                        onChange={(e) => {
+                          setNote(e.target.value);
+                          setSent(false);
+                        }}
+                        placeholder="Add only what Couranr needs to review the delivery."
+                      />
+                    )}
+                  </Field>
+
+                  <Text muted size="sm">
+                    Submitting sends a structured review request into Delivery Help. It does not
+                    cancel the delivery, start a return, approve a fee, issue a refund, change the
+                    payer or authorize a new charge.
+                  </Text>
+
+                  {error ? (
+                    <Alert tone="danger" title="Request not sent">
+                      {error}
+                    </Alert>
+                  ) : null}
+                  {sent ? (
+                    <Alert tone="success" title="Request sent for review">
+                      Couranr has the request. The delivery has not changed unless Couranr confirms
+                      an approved action separately.
+                    </Alert>
+                  ) : null}
+
+                  <Button type="submit" disabled={sending}>
+                    {sending ? "Sending…" : policy.submitLabel}
+                  </Button>
+                </Stack>
+              </form>
+            ) : (
+              <Text muted size="sm">
+                A new cancellation or return request is not opened from this stage. Use the message
+                form below if the recorded outcome needs Couranr review.
+              </Text>
+            )}
+          </Stack>
+        )}
+      </Card>
+    </div>
   );
 }

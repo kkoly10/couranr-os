@@ -2,6 +2,10 @@
 
 import type { CustomerTopic } from "@/lib/couranr/conversations/states";
 import type { HelpLifecycleStatus } from "@/lib/couranr/conversations/helpStatusStates";
+import type {
+  HelpResolutionPolicy,
+  HelpResolutionReason,
+} from "@/lib/couranr/conversations/helpResolutionTypes";
 
 /**
  * Browser data access for Delivery Help.
@@ -11,10 +15,11 @@ import type { HelpLifecycleStatus } from "@/lib/couranr/conversations/helpStatus
  * Couranr account, so the token in the URL is the whole authorization — carried
  * in the path exactly as the tracking link is.
  *
- * Unlike the tracking client, this one DOES have a mutating call. That is the
- * single write a help token authorizes: appending a message to one thread. It
- * cannot change an address, a price, a payer, a cancellation, a refund, a
- * return, proof or state, and there is no route here that could.
+ * Unlike the tracking client, this one DOES have a mutating authority:
+ * appending a message to one thread. CUS-002 adds a second presentation path
+ * to that SAME write — a structured review request that still becomes a help
+ * message. Neither path can change an address, price, payer, cancellation,
+ * refund, return, proof, custody or lifecycle state.
  */
 
 export type HelpMessage = {
@@ -34,6 +39,7 @@ export type HelpView = {
   operatingHoursApplied: boolean;
   supportPhone: null;
   returnStatus: HelpLifecycleStatus;
+  resolutionPolicy: HelpResolutionPolicy;
 };
 
 export type HelpLoad =
@@ -67,10 +73,82 @@ export async function fetchHelp(token: string): Promise<HelpLoad> {
     if (!payload?.returnStatus || typeof payload.returnStatus.available !== "boolean") {
       return { failed: true };
     }
+    if (
+      !payload?.resolutionPolicy ||
+      typeof payload.resolutionPolicy.available !== "boolean"
+    ) {
+      return { failed: true };
+    }
     return { resolved: true, view: payload as HelpView };
   } catch {
     return { failed: true };
   }
+}
+
+export type ResolutionRequestOutcome =
+  | { sent: true; messageId: string; requestKind: string }
+  | { sent: false; reason: string };
+
+export async function submitResolutionRequest(params: {
+  token: string;
+  reason: HelpResolutionReason;
+  note: string;
+  idempotencyKey: string;
+}): Promise<ResolutionRequestOutcome> {
+  let res: Response;
+  try {
+    res = await fetch(
+      `/api/couranr/help/${encodeURIComponent(params.token)}/resolution-request`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({
+          reason: params.reason,
+          note: params.note,
+          idempotencyKey: params.idempotencyKey,
+        }),
+      }
+    );
+  } catch {
+    return {
+      sent: false,
+      reason: "We could not send that request. Check your connection and try again.",
+    };
+  }
+
+  if (res.ok) {
+    try {
+      const payload = await res.json();
+      if (typeof payload?.messageId !== "string") throw new Error("missing message id");
+      return {
+        sent: true,
+        messageId: payload.messageId,
+        requestKind: String(payload?.requestKind ?? ""),
+      };
+    } catch {
+      return {
+        sent: false,
+        reason: "We could not confirm that request was sent. Try again.",
+      };
+    }
+  }
+
+  try {
+    const payload = await res.json();
+    if (
+      (res.status === 400 || res.status === 409) &&
+      typeof payload?.error === "string"
+    ) {
+      return { sent: false, reason: payload.error };
+    }
+  } catch {
+    /* fall through */
+  }
+  return {
+    sent: false,
+    reason: "We could not send that request right now. Try again in a moment.",
+  };
 }
 
 export type SendOutcome =
