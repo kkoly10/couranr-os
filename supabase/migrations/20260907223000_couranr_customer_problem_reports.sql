@@ -51,6 +51,13 @@ create unique index if not exists couranr_cpr_one_draft_per_delivery_uniq
   on public.couranr_customer_problem_reports(delivery_id)
   where report_state='draft';
 
+-- One customer case can be active for a delivery at a time. Without this
+-- invariant a valid Help token could submit report after report while an older
+-- case is still under review, bypassing the per-report evidence cap.
+create unique index if not exists couranr_cpr_one_open_per_delivery_uniq
+  on public.couranr_customer_problem_reports(delivery_id)
+  where report_state<>'resolved';
+
 create unique index if not exists couranr_cpr_submit_key_uniq
   on public.couranr_customer_problem_reports(delivery_id,submit_idempotency_key)
   where submit_idempotency_key is not null;
@@ -230,8 +237,14 @@ begin
 
   select * into v_row
   from public.couranr_customer_problem_reports
-  where delivery_id=v_delivery and report_state='draft'
+  where delivery_id=v_delivery and report_state<>'resolved'
+  order by created_at desc
+  limit 1
   for update;
+
+  if v_row.id is not null and v_row.report_state<>'draft' then
+    raise exception 'problem_report_open' using errcode='CR409';
+  end if;
 
   if v_row.id is null then
     insert into public.couranr_customer_problem_reports(

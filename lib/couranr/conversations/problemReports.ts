@@ -87,7 +87,17 @@ export async function saveCustomerProblemDraft(p:{
   const {data,error}=await supabaseAdmin.rpc("couranr_save_customer_problem_draft",{
     p_token_id:p.tokenId,p_problem_type:p.problemType,p_details:p.details,
   });
-  if(error)return dbFail("problemReport.saveDraft",error);
+  if(error){
+    if(error?.code==="CR409"&&error?.message==="problem_report_open"){
+      return publicFailure({
+        operation:"problemReport.saveDraft",
+        code:"conflict",
+        detail:{code:error.code,message:error.message},
+        message:"A delivery problem report is already open. Reload to see its status.",
+      });
+    }
+    return dbFail("problemReport.saveDraft",error);
+  }
   const row=rowOf(data);
   if(!row)return publicFailure({operation:"problemReport.saveDraft",code:"internal",detail:"empty"});
   const {count}=await supabaseAdmin

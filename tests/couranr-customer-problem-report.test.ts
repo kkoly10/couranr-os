@@ -53,6 +53,13 @@ describe("CUS-004 customer delivery-problem report contract",()=>{
     expect(PAGE).toContain("reportId:pendingSubmit.current.reportId");
   });
 
+  it("allows only one unresolved customer report per delivery",()=>{
+    expect(MIGRATION).toContain("couranr_cpr_one_open_per_delivery_uniq");
+    expect(MIGRATION).toContain("where report_state<>'resolved'");
+    expect(MIGRATION).toContain("raise exception 'problem_report_open' using errcode='CR409'");
+    expect(SERVER).toContain('"A delivery problem report is already open. Reload to see its status."');
+  });
+
   it("serializes concurrent first-draft creation on the canonical delivery row",()=>{
     const lock=MIGRATION.indexOf("for update of d;");
     const draftLookup=MIGRATION.indexOf("where delivery_id=v_delivery and report_state='draft'");
