@@ -78,7 +78,7 @@ describe("CUS-007 return and refund status", () => {
 
   it("does not let a return-status read failure disable Delivery Help messaging", () => {
     expect(STATUS).toContain('return { available: false }');
-    expect(ROUTE).toContain("const [thread, returnStatus] = await Promise.all");
+    expect(ROUTE).toMatch(/const \[thread,\s*returnStatus(?:,\s*\w+)*\] = await Promise\.all/);
     expect(ROUTE).toContain("if (isHelpFailure(thread)) return refuse()");
     expect(ROUTE).not.toContain("isHelpFailure(returnStatus)");
   });
