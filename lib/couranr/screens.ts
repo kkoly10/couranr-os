@@ -66,7 +66,7 @@ const SCREENS: CanonicalScreen[] = [
   { id: "PUB-003", name: "Business sign up", group: "public", routes: ["/sign-up"], tier: "core", phase: "4", viewport: "responsive", status: "functional_verified" },
   { id: "PUB-004", name: "Delivery estimate and hosted request", group: "public", routes: ["/send", "/estimate", "/request/[merchantSlug]"], tier: "core", phase: "5–6", viewport: "mobile-first", status: "partial" },
   { id: "PUB-005", name: "Secure delivery payment", group: "public", routes: ["/pay/[token]"], tier: "core", phase: "6", viewport: "mobile-first", status: "functional_verified" },
-  { id: "PUB-006", name: "Secure live tracking", group: "public", routes: ["/track/[token]"], tier: "core", phase: "7–8", viewport: "mobile-first", status: "partial" },
+  { id: "PUB-006", name: "Secure live tracking", group: "public", routes: ["/track/[token]"], tier: "core", phase: "7–8", viewport: "mobile-first", status: "functional_unverified" },
   { id: "PUB-007", name: "Delivery Help", group: "public", routes: ["/help/[token]"], tier: "core", phase: "8", viewport: "mobile-first", status: "functional_verified" },
   { id: "PUB-008", name: "Pricing page", group: "public", routes: ["/pricing"], tier: "core", phase: "10", viewport: "responsive", status: "functional_verified" },
   { id: "PUB-009", name: "Businesses page", group: "public", routes: ["/businesses"], tier: "core", phase: "10", viewport: "responsive", status: "functional_verified" },
@@ -127,7 +127,7 @@ const SCREENS: CanonicalScreen[] = [
   { id: "CUS-004", name: "Delivery problem report", group: "customer", routes: ["/help/[token]#delivery-problem"], tier: "core", phase: "7–8", viewport: "mobile-first", status: "missing" },
   { id: "CUS-005", name: "Revised quote approval", group: "customer", routes: ["/pay/[token]?mode=requote"], tier: "core", phase: "6–7", viewport: "mobile-first", status: "functional_unverified" },
   { id: "CUS-006", name: "Proof-of-delivery viewer", group: "customer", routes: ["/track/[token]#proof"], tier: "core", phase: "7", viewport: "mobile-first", status: "functional_verified" },
-  { id: "CUS-007", name: "Return and refund status", group: "customer", routes: ["/help/[token]#return-status"], tier: "core", phase: "6–8", viewport: "mobile-first", status: "missing" },
+  { id: "CUS-007", name: "Return and refund status", group: "customer", routes: ["/help/[token]#return-status"], tier: "core", phase: "6–8", viewport: "mobile-first", status: "partial" },
   { id: "CUS-008", name: "Delivery preferences and access instructions", group: "customer", routes: ["/track/[token]#access"], tier: "core", phase: "7–8", viewport: "mobile-first", status: "partial" },
 ];
 

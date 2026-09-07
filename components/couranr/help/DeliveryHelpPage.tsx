@@ -17,7 +17,17 @@ import { Field, Select, Textarea } from "@/components/couranr/forms";
 import { CardSkeleton, ErrorState } from "@/components/couranr/states";
 import { CouranrLogo } from "@/components/brand/CouranrLogo";
 import type { CustomerTopic } from "@/lib/couranr/conversations/states";
-import { fetchHelp, newIdempotencyKey, sendHelpMessage, type HelpView } from "./client";
+import {
+  fetchHelp,
+  newIdempotencyKey,
+  sendHelpMessage,
+  type HelpView,
+} from "./client";
+import type {
+  HelpLifecycleStatus,
+  HelpRefundState,
+  HelpReturnState,
+} from "@/lib/couranr/conversations/helpStatusStates";
 
 /**
  * PUB-007 — Delivery Help.
@@ -106,6 +116,14 @@ export function DeliveryHelpPage({ token }: { token: string }) {
   React.useEffect(() => {
     void load();
   }, [load]);
+
+  React.useEffect(() => {
+    if (state.phase !== "ready" || typeof window === "undefined") return;
+    if (window.location.hash !== "#return-status") return;
+    window.requestAnimationFrame(() => {
+      document.getElementById("return-status")?.scrollIntoView({ block: "start" });
+    });
+  }, [state.phase]);
 
   // Preselect from the fragment, so CUS-001 and CUS-003 open on their topic.
   React.useEffect(() => {
@@ -213,6 +231,8 @@ export function DeliveryHelpPage({ token }: { token: string }) {
         </Text>
       </Card>
 
+      <ReturnRefundStatusPanel status={view.returnStatus} />
+
       <Divider />
 
       <Stack gap={3}>
@@ -309,5 +329,115 @@ export function DeliveryHelpPage({ token }: { token: string }) {
         </Stack>
       </form>
     </Stack>
+  );
+}
+
+
+const RETURN_COPY: Record<HelpReturnState, { label: string; tone: "neutral" | "info" | "warning"; body: string }> = {
+  none: {
+    label: "No return open",
+    tone: "neutral",
+    body: "No physical return is currently recorded for this delivery.",
+  },
+  required: {
+    label: "Return required",
+    tone: "warning",
+    body: "Couranr has recorded that this delivery must be returned. The return trip has not started yet.",
+  },
+  returning: {
+    label: "Returning",
+    tone: "info",
+    body: "The delivery is on its governed return route.",
+  },
+  returned: {
+    label: "Returned",
+    tone: "neutral",
+    body: "Couranr has recorded the return handoff as complete.",
+  },
+};
+
+const REFUND_COPY: Record<
+  HelpRefundState,
+  { label: string; tone: "neutral" | "info" | "success" | "warning"; body: string }
+> = {
+  none: {
+    label: "No refund decision",
+    tone: "neutral",
+    body: "No Couranr delivery-service refund decision is currently recorded.",
+  },
+  pending: {
+    label: "Refund pending",
+    tone: "info",
+    body: "A Couranr delivery-service refund is in progress. This page will update when Couranr records the provider result.",
+  },
+  refunded: {
+    label: "Refunded",
+    tone: "success",
+    body: "Couranr records the delivery-service refund as completed.",
+  },
+  not_due: {
+    label: "No refund due",
+    tone: "neutral",
+    body: "Couranr records that no delivery-service refund is due for this resolution.",
+  },
+  needs_review: {
+    label: "Refund needs review",
+    tone: "warning",
+    body: "Refund processing needs Couranr review. You can use the message form on this page if you need help.",
+  },
+};
+
+function ReturnRefundStatusPanel({ status }: { status: HelpLifecycleStatus }) {
+  return (
+    <div id="return-status">
+      <Card>
+        <CardHeader
+          title="Return & delivery refund"
+          description="Status for this delivery only."
+        />
+        {!status.available ? (
+          <Alert tone="warning" title="Status temporarily unavailable">
+            Couranr could not load the return or refund status just now. Delivery Help is still available below.
+          </Alert>
+        ) : (
+          <Stack gap={4}>
+            <Stack gap={2}>
+              <Badge tone={RETURN_COPY[status.returnState].tone}>
+                {RETURN_COPY[status.returnState].label}
+              </Badge>
+              <Text>{RETURN_COPY[status.returnState].body}</Text>
+              <StatusTime label="Return required" value={status.returnRequiredAt} />
+              <StatusTime label="Return started" value={status.returnStartedAt} />
+              <StatusTime label="Return completed" value={status.returnedAt} />
+            </Stack>
+
+            <Divider />
+
+            <Stack gap={2}>
+              <Badge tone={REFUND_COPY[status.refundState].tone}>
+                {REFUND_COPY[status.refundState].label}
+              </Badge>
+              <Text>{REFUND_COPY[status.refundState].body}</Text>
+              <StatusTime label="Refund status updated" value={status.refundUpdatedAt} />
+            </Stack>
+          </Stack>
+        )}
+
+        <Text muted size="sm">
+          This page covers Couranr delivery-service status only. Product refunds, replacements,
+          merchandise value, and merchandise-return decisions are handled by the business that sold
+          the item. Payment amounts and payment-method details are not shown on a Delivery Help link.
+        </Text>
+      </Card>
+    </div>
+  );
+}
+
+function StatusTime({ label, value }: { label: string; value: string | null }) {
+  if (!value) return null;
+  return (
+    <Text size="sm" muted>
+      {label} · {new Date(value).toLocaleString()}
+    </Text>
   );
 }
