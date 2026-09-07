@@ -262,11 +262,24 @@ function CustomerProblemReportCard({
 
   async function openEvidence(evidenceId:string){
     if(opening)return;
+
+    // Open synchronously from the click so mobile/desktop popup blockers do not
+    // discard the viewer while we wait for the short-lived signed URL.
+    const viewer=window.open("about:blank","_blank","noopener,noreferrer");
+    if(!viewer){
+      setError("Your browser blocked the evidence window. Allow pop-ups for Couranr and try again.");
+      return;
+    }
+
     setOpening(evidenceId);setError(null);
     const r=await loadCustomerProblemEvidenceUrl(report.id,evidenceId);
     setOpening(null);
-    if(isApiFailure(r)){setError(withReference(r));return;}
-    window.open(r.value.url,"_blank","noopener,noreferrer");
+    if(isApiFailure(r)){
+      viewer.close();
+      setError(withReference(r));
+      return;
+    }
+    viewer.location.replace(r.value.url);
   }
 
   return (
