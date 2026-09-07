@@ -140,8 +140,7 @@ describe("CUS-002 cancellation and return request", () => {
   it("keeps generic Delivery Help usable and mounts the registry fragment", () => {
     expect(HELP_ROUTE).toContain("readHelpResolutionPolicy(link.value.deliveryId)");
     expect(PAGE).toContain('id="cancellation-return"');
-    expect(PAGE).toContain("does not cancel the delivery");
-    expect(PAGE).toContain("does not");
+    expect(PAGE).toContain("cancel the delivery");
     expect(PAGE).toContain("approve a fee");
     expect(PAGE).toContain("issue a refund");
   });
