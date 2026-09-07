@@ -522,6 +522,12 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/help/[token]/route.ts",
       { shape: /isWellFormedHelpToken\(/, redeem: /redeemHelpToken\(/ },
     ],
+    [
+      // CUS-002 is the same one-delivery Delivery Help credential, not a new
+      // public authorization class. It may only append a reviewed help message.
+      "app/api/couranr/help/[token]/resolution-request/route.ts",
+      { shape: /isWellFormedHelpToken\(/, redeem: /redeemHelpToken\(/ },
+    ],
   ]);
   const SIGNATURE_AUTHORIZED = new Set(["app/api/couranr/stripe/webhook/route.ts"]);
   const CRON_AUTHORIZED = new Set(["app/api/couranr/internal/automation/tick/route.ts"]);
