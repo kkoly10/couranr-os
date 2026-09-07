@@ -29,7 +29,8 @@ export async function POST(req:NextRequest,ctx:{params:Promise<{token:string}>})
 
   if(body?.command==="save_draft"){
     const problemType=body?.problemType as CustomerProblemType;
-    const details=typeof body?.details==="string"?body.details:"";
+    const rawDetails=body?.["details"];
+    const details=typeof rawDetails==="string"?rawDetails:"";
     if(!(CUSTOMER_PROBLEM_TYPES as readonly unknown[]).includes(problemType)){
       return routeFailure("invalid_input","Choose what went wrong.");
     }
