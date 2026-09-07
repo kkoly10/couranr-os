@@ -198,11 +198,15 @@ begin
     raise exception 'problem_details_invalid' using errcode='CR400';
   end if;
 
-  select h.delivery_id,d.request_id
+  -- Serialize first-draft creation on the canonical delivery row. Without
+  -- this lock, two concurrent first saves can both observe "no draft" and the
+  -- loser reaches the partial unique index as an opaque database error.
+  select d.id,d.request_id
     into v_delivery,v_request
-  from public.couranr_help_access_tokens h
-  join public.couranr_deliveries d on d.id=h.delivery_id
-  where h.id=p_token_id and h.revoked_at is null and h.expires_at>now();
+  from public.couranr_deliveries d
+  join public.couranr_help_access_tokens h on h.delivery_id=d.id
+  where h.id=p_token_id and h.revoked_at is null and h.expires_at>now()
+  for update of d;
 
   if v_delivery is null then
     raise exception 'help_link_not_available' using errcode='CR404';
@@ -350,7 +354,7 @@ begin
 
   -- Technical storage/abuse guard, not a claim/compensation policy.
   if v_count>=5 then
-    raise exception 'problem_evidence_limit_reached' using errcode='CR429';
+    raise exception 'problem_evidence_limit_reached' using errcode='CR400';
   end if;
 
   v_prefix:='customer-problem/v1/'||v_delivery::text||'/'||
@@ -450,6 +454,21 @@ begin
     v_report.report_state,v_report.report_state,
     jsonb_build_object('evidenceId',v_row.id)
   );
+
+  -- If Operations explicitly asked for evidence, a verified customer upload
+  -- hands the support turn back to Couranr. This changes conversation
+  -- ownership only; it does not invent a second response SLA or change report,
+  -- delivery, custody or money state.
+  if v_report.report_state='awaiting_evidence' then
+    update public.couranr_conversations c
+       set waiting_on='couranr',
+           awaiting_reply_kind='customer',
+           updated_at=now()
+      from public.couranr_conversation_participants p
+     where p.id=v_report.participant_id
+       and c.id=p.conversation_id;
+  end if;
+
   return v_row;
 end
 $fn$;
@@ -595,6 +614,7 @@ declare
   v_row public.couranr_customer_problem_reports;
   v_from text;
   v_to text;
+  v_now timestamptz:=now();
 begin
   select role into v_role from public.profiles where id=p_actor_user_id;
   if v_role is distinct from 'admin' then
@@ -637,9 +657,9 @@ begin
 
   update public.couranr_customer_problem_reports
      set report_state=v_to,
-         resolved_at=case when v_to='resolved' then now() else resolved_at end,
+         resolved_at=case when v_to='resolved' then v_now else resolved_at end,
          version=version+1,
-         updated_at=now()
+         updated_at=v_now
    where id=v_row.id and version=p_expected_version
   returning * into v_row;
 
@@ -658,6 +678,27 @@ begin
     end,
     v_from,v_to,'{}'::jsonb
   );
+
+  if p_command='request_evidence' then
+    -- "waiting_on" names the party who OWES the next response. The customer
+    -- can see awaiting_evidence on CUS-004, so this human Operations action is
+    -- a real response and the turn now belongs to the customer. Mirror the
+    -- established conversation response bookkeeping rather than leaving an
+    -- answered case ageing in the Operations overdue queue.
+    update public.couranr_conversations c
+       set first_couranr_response_at=coalesce(c.first_couranr_response_at,v_now),
+           due_state=case
+             when c.first_couranr_response_at is null then 'on_time'
+             else c.due_state
+           end,
+           waiting_on='customer',
+           awaiting_reply_kind=null,
+           updated_at=v_now
+      from public.couranr_conversation_participants p
+     where p.id=v_row.participant_id
+       and c.id=p.conversation_id;
+  end if;
+
   return v_row;
 end
 $fn$;
