@@ -170,6 +170,20 @@ describe("CUS-002 cancellation and return request", () => {
     expect(ATOMIC_MIGRATION).not.toContain("update public.couranr_deliveries");
   });
 
+  it("keeps CUS-002 review messages on the HRS-002 operating-hours response clock", () => {
+    expect(ATOMIC_MIGRATION).toContain(
+      "public.couranr_add_operating_minutes(v_now, 15)"
+    );
+    expect(ATOMIC_MIGRATION).toContain("next_operating_period_at = coalesce(");
+    expect(ATOMIC_MIGRATION).toContain(
+      "public.couranr_is_within_operating_hours(v_now)"
+    );
+    expect(ATOMIC_MIGRATION).toContain(
+      "public.couranr_next_operating_period_start(v_now)"
+    );
+    expect(ATOMIC_MIGRATION).not.toContain("now() + interval '15 minutes'");
+  });
+
   it("does not read or return payer identity, captured amount or return-route detail", () => {
     const executable = SERVER.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
     for (const forbidden of [
