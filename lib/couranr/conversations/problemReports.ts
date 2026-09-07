@@ -287,15 +287,25 @@ async function readStoredObject(objectPath:string):Promise<{size:number;mime:str
 export async function finalizeCustomerProblemEvidence(p:{
   tokenId:string;evidenceId:string;
 }):Promise<ProblemResult<{evidenceId:string}>>{
-  const {data:auth,error:aErr}=await supabaseAdmin
-    .from("couranr_customer_problem_evidence")
-    .select("id,object_path,expected_bytes,expected_mime,upload_state,expires_at")
-    .eq("id",p.evidenceId).maybeSingle();
+  // Resolve the evidence envelope THROUGH the token-scoped database
+  // projection. A guessed evidence UUID must not make service_role read another
+  // delivery's private object path before the Help token is proven to own it.
+  const {data:authData,error:aErr}=await supabaseAdmin.rpc(
+    "couranr_customer_problem_evidence_authorization",
+    {p_token_id:p.tokenId,p_evidence_id:p.evidenceId}
+  );
   if(aErr)return dbFail("problemEvidence.authRead",aErr);
+  const auth=rowOf(authData);
   if(!auth)return publicFailure({operation:"problemEvidence.finalize",code:"not_found",detail:"missing"});
-  if(auth.upload_state==="verified")return {ok:true,value:{evidenceId:String(auth.id)}};
+  const authId=String(auth.out_id);
+  const authPath=String(auth.out_object_path);
+  const authExpectedBytes=Number(auth.out_expected_bytes);
+  const authExpectedMime=String(auth.out_expected_mime);
+  const authState=String(auth.out_upload_state);
+  const authExpiresAt=String(auth.out_expires_at);
+  if(authState==="verified")return {ok:true,value:{evidenceId:authId}};
 
-  if(new Date(String(auth.expires_at)).getTime()<=Date.now()){
+  if(new Date(authExpiresAt).getTime()<=Date.now()){
     const {error:abandonError}=await supabaseAdmin.rpc(
       "couranr_abandon_customer_problem_evidence",
       {p_token_id:p.tokenId,p_evidence_id:p.evidenceId}
@@ -303,7 +313,7 @@ export async function finalizeCustomerProblemEvidence(p:{
     if(abandonError)return dbFail("problemEvidence.abandonExpired",abandonError);
 
     const {error:removeError}=await supabaseAdmin.storage
-      .from(BUCKET).remove([String(auth.object_path)]);
+      .from(BUCKET).remove([authPath]);
     if(removeError){
       return publicFailure({
         operation:"problemEvidence.removeExpired",
@@ -319,14 +329,14 @@ export async function finalizeCustomerProblemEvidence(p:{
     });
   }
 
-  const stored=await readStoredObject(String(auth.object_path));
+  const stored=await readStoredObject(authPath);
   if(!stored){
     return publicFailure({
       operation:"problemEvidence.finalize",code:"conflict",detail:"object_missing",
       message:"The photo upload did not arrive. Try again.",
     });
   }
-  if(stored.size!==Number(auth.expected_bytes)||stored.mime!==String(auth.expected_mime)){
+  if(stored.size!==authExpectedBytes||stored.mime!==authExpectedMime){
     return publicFailure({
       operation:"problemEvidence.finalize",code:"conflict",
       detail:{reason:"storage_mismatch",size:stored.size,mime:stored.mime},
@@ -336,7 +346,7 @@ export async function finalizeCustomerProblemEvidence(p:{
 
   const {data,error}=await supabaseAdmin.rpc("couranr_finalize_customer_problem_evidence",{
     p_token_id:p.tokenId,p_evidence_id:p.evidenceId,
-    p_actual_path:String(auth.object_path),p_actual_bytes:stored.size,p_actual_mime:stored.mime,
+    p_actual_path:authPath,p_actual_bytes:stored.size,p_actual_mime:stored.mime,
   });
   if(error)return dbFail("problemEvidence.finalize",error);
   const row=rowOf(data);

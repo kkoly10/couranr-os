@@ -17,6 +17,7 @@ $$;
 drop function if exists public.couranr_transition_customer_problem_report(uuid,integer,uuid,text);
 drop function if exists public.couranr_submit_customer_problem_report(uuid,uuid,text);
 drop function if exists public.couranr_finalize_customer_problem_evidence(uuid,uuid,text,integer,text);
+drop function if exists public.couranr_customer_problem_evidence_authorization(uuid,uuid);
 drop function if exists public.couranr_abandon_customer_problem_evidence(uuid,uuid);
 drop function if exists public.couranr_collect_expired_customer_problem_evidence(uuid,uuid);
 drop function if exists public.couranr_prepare_customer_problem_evidence(uuid,uuid,uuid,text,text,integer,text);

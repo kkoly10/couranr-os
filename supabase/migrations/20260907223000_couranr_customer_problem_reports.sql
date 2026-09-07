@@ -519,6 +519,43 @@ grant execute on function public.couranr_abandon_customer_problem_evidence(
   uuid,uuid
 ) to service_role;
 
+create or replace function public.couranr_customer_problem_evidence_authorization(
+  p_token_id uuid,
+  p_evidence_id uuid
+) returns table (
+  out_id uuid,
+  out_object_path text,
+  out_expected_bytes integer,
+  out_expected_mime text,
+  out_upload_state text,
+  out_expires_at timestamptz
+)
+language sql stable security definer set search_path=''
+as $fn$
+  select
+    e.id,
+    e.object_path,
+    e.expected_bytes,
+    e.expected_mime,
+    e.upload_state,
+    e.expires_at
+  from public.couranr_customer_problem_evidence e
+  join public.couranr_customer_problem_reports r on r.id=e.report_id
+  join public.couranr_help_access_tokens h
+    on h.id=p_token_id
+   and h.delivery_id=r.delivery_id
+   and h.revoked_at is null
+   and h.expires_at>now()
+  where e.id=p_evidence_id;
+$fn$;
+
+revoke all on function public.couranr_customer_problem_evidence_authorization(
+  uuid,uuid
+) from public,anon,authenticated,service_role;
+grant execute on function public.couranr_customer_problem_evidence_authorization(
+  uuid,uuid
+) to service_role;
+
 create or replace function public.couranr_finalize_customer_problem_evidence(
   p_token_id uuid,
   p_evidence_id uuid,

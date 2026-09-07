@@ -119,6 +119,17 @@ describe("CUS-004 customer delivery-problem report contract",()=>{
     );
   });
 
+  it("scopes the finalization envelope to the redeemed Help token before reading a private object path",()=>{
+    expect(MIGRATION).toContain("couranr_customer_problem_evidence_authorization");
+    expect(MIGRATION).toContain("h.delivery_id=r.delivery_id");
+    expect(SERVER).toContain('"couranr_customer_problem_evidence_authorization"');
+    const finalizeStart=SERVER.indexOf("export async function finalizeCustomerProblemEvidence");
+    const finalizeEnd=SERVER.indexOf("export async function submitCustomerProblemReport",finalizeStart);
+    const finalizeBody=SERVER.slice(finalizeStart,finalizeEnd);
+    expect(finalizeBody).not.toContain('.from("couranr_customer_problem_evidence")');
+    expect(finalizeBody).toContain("authPath");
+  });
+
   it("rejects expired finalization and persists abandonment before storage cleanup",()=>{
     expect(MIGRATION).toContain("problem_evidence_grant_expired");
     expect(SERVER).toContain('select("id,object_path,expected_bytes,expected_mime,upload_state,expires_at")');
