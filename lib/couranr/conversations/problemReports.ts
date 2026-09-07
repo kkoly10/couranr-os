@@ -160,13 +160,49 @@ export async function prepareCustomerProblemEvidence(p:{
     }
     return dbFail("problemEvidence.prepare",error);
   }
-  const row=rowOf(data);
+  let row=rowOf(data);
   if(!row?.id||!row?.object_path){
     return publicFailure({operation:"problemEvidence.prepare",code:"internal",detail:"bad_shape"});
   }
   if(row.upload_state==="verified"){
     return {ok:true,value:{status:"verified",evidenceId:String(row.id)}};
   }
+
+  /*
+   * LOST STORAGE RESPONSE: the PUT may already have committed even though the
+   * browser never received its response. Inspect the SAME server-owned path
+   * before minting another grant. Exact bytes converge to finalization; known
+   * mismatched bytes rotate to a new opaque path rather than overwriting
+   * ambiguous evidence in place.
+   */
+  const stored=await readStoredObject(String(row.object_path));
+  if(
+    stored &&
+    stored.size===Number(row.expected_bytes) &&
+    stored.mime===String(row.expected_mime)
+  ){
+    const finalized=await finalizeCustomerProblemEvidence({
+      tokenId:p.tokenId,evidenceId:String(row.id),
+    });
+    if(isProblemFailure(finalized))return finalized;
+    return {ok:true,value:{status:"verified",evidenceId:finalized.value.evidenceId}};
+  }
+  if(stored){
+    const {data:refreshed,error:refreshError}=await supabaseAdmin.rpc(
+      "couranr_refresh_customer_problem_evidence",
+      {
+        p_token_id:p.tokenId,
+        p_evidence_id:String(row.id),
+        p_object_path:objectPath,
+      }
+    );
+    if(refreshError)return dbFail("problemEvidence.refresh",refreshError);
+    row=rowOf(refreshed);
+    if(!row?.id||!row?.object_path){
+      return publicFailure({operation:"problemEvidence.refresh",code:"internal",detail:"bad_shape"});
+    }
+  }
+
   const {data:signed,error:signError}=await supabaseAdmin.storage
     .from(BUCKET).createSignedUploadUrl(String(row.object_path));
   if(signError||!signed?.signedUrl){
