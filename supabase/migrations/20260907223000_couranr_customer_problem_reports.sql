@@ -77,7 +77,10 @@ create table if not exists public.couranr_customer_problem_evidence (
   evidence_sha256 text not null,
   upload_state text not null default 'pending',
   finalized_at timestamptz,
-  expires_at timestamptz not null default (now() + interval '15 minutes'),
+  -- Supabase signed upload URLs are provider-valid for two hours. Keep the
+  -- database authorization five minutes LONGER so a provider-valid URL is
+  -- never accepted after our row says it expired.
+  expires_at timestamptz not null default (now() + interval '125 minutes'),
   created_at timestamptz not null default now(),
   constraint couranr_cpe_client_uniq unique(report_id,client_evidence_id),
   constraint couranr_cpe_path_uniq unique(object_path),
@@ -323,33 +326,41 @@ begin
        or v_existing.evidence_sha256 is distinct from p_evidence_sha256 then
       raise exception 'problem_evidence_identity_conflict' using errcode='CR409';
     end if;
-    if v_existing.upload_state='pending' and v_existing.expires_at<=now() then
-      -- No verified evidence exists yet. Refresh only the short-lived upload
-      -- authorization so a reload can recover instead of leaving a permanent
-      -- pending row that blocks submission.
+
+    if v_existing.upload_state='verified' then
+      return v_existing;
+    end if;
+
+    if v_existing.expires_at<=now() then
+      -- The server wrapper cleans the expired object's old storage path BEFORE
+      -- calling this refresh. Reuse the logical client evidence identity but
+      -- rotate its server-owned destination only after the provider URL is
+      -- certainly dead.
       update public.couranr_customer_problem_evidence
          set object_path=p_object_path,
              upload_state='pending',
              finalized_at=null,
-             expires_at=now()+interval '15 minutes'
+             expires_at=now()+interval '125 minutes'
        where id=v_existing.id
       returning * into v_existing;
+      return v_existing;
     end if;
+
+    if v_existing.upload_state='abandoned' then
+      -- The old provider URL is still alive and still consumes one of the
+      -- five technical grant slots until its two-hour lifetime ends.
+      raise exception 'problem_evidence_grant_still_active' using errcode='CR409';
+    end if;
+
     return v_existing;
   end if;
-
-  update public.couranr_customer_problem_evidence
-     set upload_state='abandoned'
-   where report_id=p_report_id
-     and upload_state='pending'
-     and expires_at<=now();
 
   select count(*) into v_count
   from public.couranr_customer_problem_evidence
   where report_id=p_report_id
     and (
       upload_state='verified'
-      or (upload_state='pending' and expires_at>now())
+      or (upload_state in ('pending','abandoned') and expires_at>now())
     );
 
   -- Technical storage/abuse guard, not a claim/compensation policy.
@@ -391,19 +402,69 @@ grant execute on function public.couranr_prepare_customer_problem_evidence(
   uuid,uuid,uuid,text,text,integer,text
 ) to service_role;
 
-create or replace function public.couranr_refresh_customer_problem_evidence(
+create or replace function public.couranr_collect_expired_customer_problem_evidence(
   p_token_id uuid,
-  p_evidence_id uuid,
-  p_object_path text
+  p_report_id uuid
+) returns table (
+  out_id uuid,
+  out_object_path text
+)
+language plpgsql security definer set search_path=''
+as $fn$
+declare
+  v_delivery uuid;
+  v_report public.couranr_customer_problem_reports;
+begin
+  select h.delivery_id into v_delivery
+  from public.couranr_help_access_tokens h
+  where h.id=p_token_id and h.revoked_at is null and h.expires_at>now();
+
+  if v_delivery is null then
+    raise exception 'help_link_not_available' using errcode='CR404';
+  end if;
+
+  select * into v_report
+  from public.couranr_customer_problem_reports
+  where id=p_report_id and delivery_id=v_delivery
+  for update;
+
+  if v_report.id is null then
+    raise exception 'problem_report_not_found' using errcode='CR404';
+  end if;
+
+  update public.couranr_customer_problem_evidence
+     set upload_state='abandoned'
+   where report_id=p_report_id
+     and upload_state='pending'
+     and expires_at<=now();
+
+  -- These paths are safe to delete: our 125-minute envelope outlives the
+  -- provider's two-hour signed-upload URL, so no valid upload grant remains.
+  return query
+  select e.id,e.object_path
+  from public.couranr_customer_problem_evidence e
+  where e.report_id=p_report_id
+    and e.upload_state='abandoned'
+    and e.expires_at<=now();
+end
+$fn$;
+
+revoke all on function public.couranr_collect_expired_customer_problem_evidence(
+  uuid,uuid
+) from public,anon,authenticated,service_role;
+grant execute on function public.couranr_collect_expired_customer_problem_evidence(
+  uuid,uuid
+) to service_role;
+
+create or replace function public.couranr_abandon_customer_problem_evidence(
+  p_token_id uuid,
+  p_evidence_id uuid
 ) returns public.couranr_customer_problem_evidence
 language plpgsql security definer set search_path=''
 as $fn$
 declare
   v_delivery uuid;
-  v_report_id uuid;
-  v_client_evidence_id uuid;
   v_row public.couranr_customer_problem_evidence;
-  v_prefix text;
 begin
   select h.delivery_id into v_delivery
   from public.couranr_help_access_tokens h
@@ -416,56 +477,33 @@ begin
   select e.* into v_row
   from public.couranr_customer_problem_evidence e
   join public.couranr_customer_problem_reports r on r.id=e.report_id
-  where e.id=p_evidence_id
-    and r.delivery_id=v_delivery
-    and r.report_state in ('draft','awaiting_evidence')
+  where e.id=p_evidence_id and r.delivery_id=v_delivery
   for update of e;
 
   if v_row.id is null then
     raise exception 'problem_evidence_not_found' using errcode='CR404';
   end if;
-  v_report_id:=v_row.report_id;
-  v_client_evidence_id:=v_row.client_evidence_id;
-
-  if v_row.upload_state<>'pending' then
-    raise exception 'problem_evidence_not_open' using errcode='CR409';
+  if v_row.upload_state='verified' then
+    raise exception 'problem_evidence_already_verified' using errcode='CR409';
+  end if;
+  if v_row.upload_state='abandoned' then
+    return v_row;
   end if;
 
-  v_prefix:='customer-problem/v1/'||v_delivery::text||'/'||
-            v_report_id::text||'/'||v_client_evidence_id::text||'/';
-  if p_object_path is null
-     or left(p_object_path,length(v_prefix))<>v_prefix
-     or p_object_path !~ '^customer-problem/v1/[0-9a-f-]{36}/[0-9a-f-]{36}/[0-9a-f-]{36}/[0-9a-f]{32}\.(jpg|png|webp|heic)$' then
-    raise exception 'problem_evidence_path_invalid' using errcode='CR422';
-  end if;
-
-  -- Server-only recovery for a path whose stored bytes are known to disagree
-  -- with the immutable expected envelope. Rotate to a fresh opaque object
-  -- rather than overwriting ambiguous evidence in place.
   update public.couranr_customer_problem_evidence
-     set object_path=p_object_path,
-         expires_at=now()+interval '15 minutes'
+     set upload_state='abandoned'
    where id=v_row.id
   returning * into v_row;
-
-  insert into public.couranr_customer_problem_report_events(
-    report_id,actor_kind,actor_user_id,command,from_state,to_state,metadata
-  )
-  select
-    r.id,'customer',null,'photo_prepared',r.report_state,r.report_state,
-    jsonb_build_object('evidenceId',v_row.id,'reason','storage_mismatch_refresh')
-  from public.couranr_customer_problem_reports r
-  where r.id=v_row.report_id;
 
   return v_row;
 end
 $fn$;
 
-revoke all on function public.couranr_refresh_customer_problem_evidence(
-  uuid,uuid,text
+revoke all on function public.couranr_abandon_customer_problem_evidence(
+  uuid,uuid
 ) from public,anon,authenticated,service_role;
-grant execute on function public.couranr_refresh_customer_problem_evidence(
-  uuid,uuid,text
+grant execute on function public.couranr_abandon_customer_problem_evidence(
+  uuid,uuid
 ) to service_role;
 
 create or replace function public.couranr_finalize_customer_problem_evidence(
@@ -507,6 +545,12 @@ begin
   end if;
   if v_row.upload_state<>'pending' then
     raise exception 'problem_evidence_not_open' using errcode='CR409';
+  end if;
+  if v_row.expires_at<=now() then
+    update public.couranr_customer_problem_evidence
+       set upload_state='abandoned'
+     where id=v_row.id;
+    raise exception 'problem_evidence_grant_expired' using errcode='CR409';
   end if;
 
   if p_actual_path is distinct from v_row.object_path
