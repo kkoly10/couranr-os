@@ -277,16 +277,10 @@ export async function submitHelpResolutionRequest(params: {
   }
 
   const { policy, fulfillmentState } = snapshot;
-  if (!policy.canSubmit || policy.requestKind === "none") {
-    return fail({
-      code: "conflict",
-      operation: "help.resolution.not_open",
-      detail: { stage: policy.stage },
-      message:
-        "A new cancellation or return request is not available at this stage. Use Delivery Help if the recorded outcome needs review.",
-    });
-  }
-
+  // Do not reject a blocked CURRENT stage before the atomic command runs.
+  // A previous request with this idempotency key may already have committed
+  // before the delivery advanced. The SQL command resolves that replay first;
+  // only a genuinely NEW request is tested against current-stage eligibility.
   const reasonLabel = HELP_RESOLUTION_REASON_LABELS[params.reason];
   const body = [
     policy.title,
