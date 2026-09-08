@@ -11,7 +11,7 @@ ledgers own per-item state; this is their sum.
 The 721-line hand-written version of this file is preserved whole at
 [`autonomous-evidence/status-archive/IMPLEMENTATION_STATUS-2026-08-06.md`](./autonomous-evidence/status-archive/IMPLEMENTATION_STATUS-2026-08-06.md).
 It restated per-row evidence the ledgers already carried, and the restatement is
-what went stale: it counted 39 migrations while 101 were on disk.
+what went stale: it counted 39 migrations while 102 were on disk.
 
 ## Where truth lives
 
@@ -58,8 +58,8 @@ Still rendering `ScreenPlaceholder` (11): `OPS-006` · `OPS-011` · `OPS-013` ·
 | API routes | 191 |
 | …canonical, under `app/api/couranr` | 121 |
 | …legacy | 70 |
-| Forward migrations | 101 |
-| Paired rollbacks | 101 |
+| Forward migrations | 102 |
+| Paired rollbacks | 102 |
 | Canonical screens | 68 |
 | …Core | 64 |
 | …MVP-complete | 4 |
@@ -110,14 +110,13 @@ each is in the ledger row itself — `test_evidence`, `browser_verified` and
 | `0d57ba736000e8ecb9d28c87a4e78a683599a316` | 1 work item | P3-002 |
 | `14fa99fbcf8103d33bb7267a8f4729421bccd400` | 1 work item | P6-001 |
 | `1b3a1c90c88a554f1ac1ff1e6a6d06a97d602150` | 2 screens | CUS-006, CUS-008 |
+| `277982f2548e9b804c466121437c696b4ba52af4` | 1 screen | CUS-002 |
 | `2848a8f33bde8362bd3c9fcfb9266781fcecb77a` | 2 screens | PUB-012, PUB-013 |
 | `32893e21401a6f056821c4caaa7858460c7356b8` | 1 screen | MER-001 |
-| `277982f2548e9b804c466121437c696b4ba52af4` | 1 screen | CUS-002 |
 | `401b3eea5cd96bb09d224f3b113ba6091bba807d` | 18 work items, 26 screens | P0-001, P0-002, P1-001, P1-002, P1-003, P1-004, P2-002, P4-001, P5-002, P7-001, P7-002, P7-003, P8-003, P9-001, P9-002, P9-003, P9-004, P10-007, CUS-005, DRV-002, DRV-003, DRV-004, DRV-005, DRV-006, MER-002, MER-006, MER-007, OPS-002, OPS-004, OPS-006, OPS-008, OPS-011, OPS-013, OPS-014, OPS-015, OPS-016, OPS-017, OPS-018, OPS-019, OPS-020, OPS-021, PUB-002, PUB-003, PUB-005 |
 | `50f576e991dd249849d93206fc9e7cda330e71b7` | 1 screen | MER-005 |
 | `5723b3a22773f15d8d1b3e1d36bdf77b8341a6de` | 1 screen | DRV-001 |
 | `6d97bc132efdb7ed165dae11189077b2ea34d6f9` | 1 work item | P3-001 |
-| `433070ac49cf2f5e3f38bb9b2d0aeae9f1383274` | 1 work item, 2 screens | P7-005, CUS-004, OPS-012 |
 | `795ae0d42131ac76abf7402f0686e139cece4ea5` | 2 work items | P2-003, P6-003 |
 | `807c8ed6316cf420dbffa171f5a65b1692dd6830` | 3 screens | MER-003, MER-016, OPS-007 |
 | `91515ca5ca26e813bcc14b77b2e72dd475202ea8` | 2 work items, 4 screens | P8-002, P8-004, CUS-001, CUS-003, OPS-005, PUB-007 |
@@ -125,6 +124,7 @@ each is in the ledger row itself — `test_evidence`, `browser_verified` and
 | `a8ce376cf303e3b62b889dc7831a3e81dd5522ad` | 1 work item | P5-001 |
 | `b5831406e8a1b623bf706562010fbc16d0ab0e71` | 1 screen | CUS-007 |
 | `c2cac8b9ffeaaf7e9a6a528a9eac5d057a2801f9` | 1 work item | P2-001 |
+| `c7b9c462f5db9f689dd1a4ecbdb674da578254d5` | 1 work item, 2 screens | P7-005, CUS-004, OPS-012 |
 | `c90ec4025fad951cc6a26eea208a687cc18c8cef` | 1 work item, 1 screen | P4-002, OPS-003 |
 | `c9e0fe573da29177fa72979911a7e60bf3beb0df` | 2 screens | MER-014, MER-015 |
 | `cd697e48889389b5365562d4e7f3c82413c10ea9` | 2 screens | MER-008, MER-009 |
