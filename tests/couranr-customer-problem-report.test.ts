@@ -166,7 +166,7 @@ describe("CUS-004 customer delivery-problem report contract",()=>{
     expect(SERVER).toContain("cleanupExpiredOperationsProblemEvidence");
     expect(SERVER).toContain("problemEvidence.operations.cleanupStorage");
     expect(OPS_ROUTE).toContain('body?.command!=="cleanup_expired_evidence"');
-    expect(OPS_UI).toContain("Clean expired uploads");
+    expect(OPS).toContain("Clean expired uploads");
     expect(HARDENING_ROLLBACK).toContain(
       "drop function if exists public.couranr_collect_expired_customer_problem_evidence_for_operations"
     );
@@ -180,8 +180,8 @@ describe("CUS-004 customer delivery-problem report contract",()=>{
     expect(SERVER).toContain(
       "This report already has five photos. Review the existing evidence instead of requesting more."
     );
-    expect(OPS_UI).toContain('disabled={evidenceAtCap}');
-    expect(OPS_UI).toContain('evidenceAtCap?"Evidence limit reached":"Request evidence"');
+    expect(OPS).toContain('disabled={evidenceAtCap}');
+    expect(OPS).toContain('evidenceAtCap?"Evidence limit reached":"Request evidence"');
   });
 
   it("never persists signed URLs and rollback refuses to destroy evidence",()=>{
