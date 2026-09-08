@@ -1,4 +1,4 @@
--- Paired rollback for 20260908180000_couranr_reference_generator_uniformity.sql.
+-- Paired rollback for 20260908181854_couranr_reference_generator_uniformity.sql.
 --
 -- Reverting restores a generator whose seventh symbol draws from 16 of 32
 -- symbols, halving the keyspace. That is a defect, not a design, so this
