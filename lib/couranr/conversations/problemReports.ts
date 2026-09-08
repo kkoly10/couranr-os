@@ -221,8 +221,8 @@ export async function prepareCustomerProblemEvidence(p:{
    * LOST STORAGE RESPONSE: the PUT may already have committed even though the
    * browser never received its response. Inspect the SAME server-owned path
    * before minting another grant. Exact bytes converge to finalization; known
-   * mismatched bytes rotate to a new opaque path rather than overwriting
-   * ambiguous evidence in place.
+   * mismatched bytes stay quarantined while their provider grant is live and
+   * are only replaced through a fresh server-owned path after that grant dies.
    */
   const stored=await readStoredObject(String(row.object_path));
   if(
@@ -263,7 +263,18 @@ export async function prepareCustomerProblemEvidence(p:{
   );
   if(renewError)return dbFail("problemEvidence.renewGrant",renewError);
   row=rowOf(renewed);
-  if(!row?.id||!row?.object_path||row.upload_state!=="pending"){
+  if(!row?.id||!row?.object_path){
+    return publicFailure({
+      operation:"problemEvidence.renewGrant",code:"internal",detail:"bad_shape",
+    });
+  }
+  // Concurrent finalization is success, not a conflict. Another request may
+  // have verified the same stable evidence identity between our Storage
+  // inspection and the grant-renewal lock.
+  if(row.upload_state==="verified"){
+    return {ok:true,value:{status:"verified",evidenceId:String(row.id)}};
+  }
+  if(row.upload_state!=="pending"){
     return publicFailure({
       operation:"problemEvidence.renewGrant",code:"conflict",detail:"not_pending",
       message:"That photo upload is no longer available. Try again.",
