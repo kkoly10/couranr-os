@@ -412,14 +412,40 @@ export async function listOperationsProblemReports(
 ):Promise<ProblemResult<OperationsProblemReport[]>>{
   const denied=requireOperations(actor,"problemReport.operations.list");
   if(denied)return denied;
-  const {data,error}=await supabaseAdmin
+  // Unresolved (actionable) reports must never be displaced by resolved history
+  // merely because of a global row cap. Two bounded queries — every unresolved
+  // review state in full, then only a bounded window of resolved history — keep
+  // every open case reachable while bounding ONLY resolved growth. This is a
+  // fixed number of round trips (not N+1), deterministically ordered.
+  const REPORT_COLS=
+    "id,request_id,delivery_id,problem_type,details,report_state,submitted_at,resolved_at,version,created_at";
+  // reported/under_review/awaiting_evidence are the open review states; resolved
+  // is terminal; draft is never listed to Operations.
+  const UNRESOLVED_STATES=["reported","under_review","awaiting_evidence"];
+  const RESOLVED_HISTORY_CAP=200;
+  // Platform safety ceiling on the actionable set — far above any realistic
+  // count of simultaneously-open support cases. The unbounded-growth risk is
+  // resolved history, which is what the cap above bounds; a launch that ever
+  // approached this many OPEN cases would need real pagination, out of MVP scope.
+  const UNRESOLVED_SAFETY_CAP=1000;
+  const unresolved=await supabaseAdmin
     .from("couranr_customer_problem_reports")
-    .select("id,request_id,delivery_id,problem_type,details,report_state,submitted_at,resolved_at,version,created_at")
-    .neq("report_state","draft")
+    .select(REPORT_COLS)
+    .in("report_state",UNRESOLVED_STATES)
     .order("created_at",{ascending:false})
-    .limit(200);
-  if(error)return dbFail("problemReport.operations.list",error);
-  const ids=(data??[]).map((r:any)=>String(r.id));
+    .order("id",{ascending:false})
+    .limit(UNRESOLVED_SAFETY_CAP);
+  if(unresolved.error)return dbFail("problemReport.operations.list",unresolved.error);
+  const resolvedHistory=await supabaseAdmin
+    .from("couranr_customer_problem_reports")
+    .select(REPORT_COLS)
+    .eq("report_state","resolved")
+    .order("created_at",{ascending:false})
+    .order("id",{ascending:false})
+    .limit(RESOLVED_HISTORY_CAP);
+  if(resolvedHistory.error)return dbFail("problemReport.operations.list",resolvedHistory.error);
+  const data=[...(unresolved.data??[]),...(resolvedHistory.data??[])];
+  const ids=data.map((r:any)=>String(r.id));
   let evidence:any[]=[];
   if(ids.length){
     const e=await supabaseAdmin
