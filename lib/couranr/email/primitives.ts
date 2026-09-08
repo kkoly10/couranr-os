@@ -28,7 +28,18 @@ export function formatMoney({ amountCents, currency }: Money): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-  return currency === "USD" ? `$${s}` : `${s} ${esc(currency)}`;
+  /* Case-INSENSITIVE, and this is the site that matters most: formatMoney backs
+     `lineItemsTable`, so it renders money in ALL thirteen templates, not just
+     the merchant ones. Production stores the currency LOWERCASE — verified by
+     query, couranr_quote_versions and couranr_payment_obligations both hold
+     'usd' — so the exact "USD" comparison fell through to the generic branch
+     and every line item and total read "13.99 usd" instead of "$13.99".
+     sampleData.ts hardcoded uppercase "USD", which is why no test caught it. */
+  /* Guarded. The case-insensitivity fix introduced a throw of its own: under
+     "strict": false a caller can hand this a null currency and .toUpperCase()
+     dies inside a render that must not. */
+  const code = typeof currency === "string" ? currency.toUpperCase() : "";
+  return code === "USD" ? `$${s}` : `${s} ${esc(code)}`.trimEnd();
 }
 
 const TONE: Record<EmailTone, { fg: string; bg: string }> = {

@@ -387,8 +387,13 @@ if (CONTROL) {
       (t) => t.replace("PUB-008,", "PUB-808,")],
     ["a rewritten status in the generated runtime screen list", "lib/couranr/screens.ts",
       (t) => t.replace('status: "placeholder_only"', 'status: "functional_verified"')],
+    /* The count is DERIVED from the filesystem, so the plant may not name it.
+       This read `| PNGs at repo root | 91 |` and silently stopped planting the
+       day the owner added eight photographs — the gate went "control FAILED,
+       tested nothing", which is the control working, but only because someone
+       had already written that arm. Decrement whatever number is there. */
     ["a rewritten census count in the generated mock map", "docs/couranr-mvp/MOCK_TO_SCREEN_MAP.md",
-      (t) => t.replace("| PNGs at repo root | 91 |", "| PNGs at repo root | 90 |")],
+      (t) => t.replace(/\| PNGs at repo root \| (\d+) \|/, (_, n) => `| PNGs at repo root | ${Number(n) - 1} |`)],
     ["a re-owned asset in the generated provenance map", "docs/couranr-mvp/ui-reference/CANONICAL_SCREEN_SOURCE_MAP.tsv",
       (t) => t.replace("PUB-006\t0013FABA", "PUB-007\t0013FABA")],
     ["a hand-edited count in the generated status summary", "docs/couranr-mvp/IMPLEMENTATION_STATUS.md",

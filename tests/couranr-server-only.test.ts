@@ -162,6 +162,16 @@ describe("server-only modules are unreachable from client code", () => {
       // Builds canonical proof object paths and holds the bucket name. Paths
       // are the part of a private object that leaks furthest.
       "lib/couranr/driver/proofPaths.ts",
+      // The one minter of a merchant send address. Holds the service-role
+      // client and reads auth.users through the admin API, so it sees every
+      // member's email — exactly the projection a browser bundle must never
+      // carry. Alphabetically before send.ts, which it imports.
+      "lib/couranr/email/recipients.ts",
+      // Holds RESEND_API_KEY and puts it in an Authorization header. The
+      // templates beside it are pure renderers and stay client-safe; only the
+      // sender touches the credential, which is why the send lives in its own
+      // module rather than in the barrel the templates export through.
+      "lib/couranr/email/send.ts",
       // P6-004. Cross-tenant financial reconciliation uses service_role and
       // reads the private ledger through the one public service-role RPC.
       "lib/couranr/finance/ledger.ts",
