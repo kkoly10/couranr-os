@@ -81,6 +81,23 @@ describe("listOperationsProblemReports — unresolved never displaced by the cap
     expect(reportQueries.some((c) => c.eqReportState === "resolved" && c.limit === 200)).toBe(true);
   });
 
+  it("dedupes a report caught mid-transition in BOTH result sets, keeping the actionable copy", async () => {
+    // A report that flips under_review -> resolved between the two awaited
+    // queries appears in the unresolved set AND the resolved set. It must render
+    // exactly once, as the unresolved (actionable) copy, not twice with two
+    // contradictory states colliding React keys.
+    h.unresolved = [report("racing", "under_review", "2026-09-08T10:00:00Z")];
+    h.resolved = [report("racing", "resolved", "2026-09-08T10:00:00Z")];
+
+    const r = await listOperationsProblemReports(OPS);
+    expect(r.ok).toBe(true);
+    const rows = (r as any).value;
+    const ids = rows.map((x: any) => x.id);
+    expect(ids.filter((id: string) => id === "racing").length).toBe(1);
+    // First (unresolved) occurrence wins: the surviving copy is the actionable state.
+    expect(rows.find((x: any) => x.id === "racing").state).toBe("under_review");
+  });
+
   it("refuses a non-operations actor", async () => {
     const r = await listOperationsProblemReports({ kind: "member", userId: "u", membership: null } as any);
     expect(r.ok).toBe(false);

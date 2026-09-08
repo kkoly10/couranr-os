@@ -444,7 +444,18 @@ export async function listOperationsProblemReports(
     .order("id",{ascending:false})
     .limit(RESOLVED_HISTORY_CAP);
   if(resolvedHistory.error)return dbFail("problemReport.operations.list",resolvedHistory.error);
-  const data=[...(unresolved.data??[]),...(resolvedHistory.data??[])];
+  // A report can transition unresolved -> resolved in the window between these
+  // two awaited queries, so the same id can land in BOTH result sets. Dedupe by
+  // id keeping the FIRST (unresolved, actionable) occurrence: without this the
+  // Operations list would render one case twice — colliding React keys and
+  // showing the same report in two contradictory states.
+  const seen=new Set<string>();
+  const data=[...(unresolved.data??[]),...(resolvedHistory.data??[])].filter((r:any)=>{
+    const id=String(r.id);
+    if(seen.has(id))return false;
+    seen.add(id);
+    return true;
+  });
   const ids=data.map((r:any)=>String(r.id));
   let evidence:any[]=[];
   if(ids.length){
