@@ -42,6 +42,7 @@ export type ScreenViewport =
 export type ScreenStatus =
   | "functional_unverified"
   | "functional_verified"
+  | "missing"
   | "partial"
   | "placeholder_only";
 

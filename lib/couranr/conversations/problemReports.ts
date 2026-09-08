@@ -254,6 +254,22 @@ export async function prepareCustomerProblemEvidence(p:{
     });
   }
 
+  // A retry may happen near the previous DB expiry. Renew the database
+  // authorization immediately before EVERY fresh provider grant so the
+  // 125-minute DB envelope always outlives Supabase's two-hour upload URL.
+  const {data:renewed,error:renewError}=await supabaseAdmin.rpc(
+    "couranr_renew_customer_problem_evidence_grant",
+    {p_token_id:p.tokenId,p_evidence_id:String(row.id)}
+  );
+  if(renewError)return dbFail("problemEvidence.renewGrant",renewError);
+  row=rowOf(renewed);
+  if(!row?.id||!row?.object_path||row.upload_state!=="pending"){
+    return publicFailure({
+      operation:"problemEvidence.renewGrant",code:"conflict",detail:"not_pending",
+      message:"That photo upload is no longer available. Try again.",
+    });
+  }
+
   const {data:signed,error:signError}=await supabaseAdmin.storage
     .from(BUCKET).createSignedUploadUrl(String(row.object_path));
   if(signError||!signed?.signedUrl){
@@ -418,6 +434,36 @@ export async function listOperationsProblemReports(
   };
 }
 
+export async function cleanupExpiredOperationsProblemEvidence(
+  actor:RequestActor
+):Promise<ProblemResult<{removed:number}>>{
+  const denied=requireOperations(actor,"problemEvidence.operations.cleanup");
+  if(denied)return denied;
+  const userId=(actor as Extract<RequestActor,{kind:"operations"}>).userId;
+  const {data,error}=await supabaseAdmin.rpc(
+    "couranr_collect_expired_customer_problem_evidence_for_operations",
+    {p_actor_user_id:userId,p_limit:100}
+  );
+  if(error)return dbFail("problemEvidence.operations.cleanupCollect",error);
+  const paths=(Array.isArray(data)?data:[])
+    .map((row:any)=>String(row?.out_object_path??""))
+    .filter(Boolean);
+  if(paths.length){
+    const {error:removeError}=await supabaseAdmin.storage.from(BUCKET).remove(paths);
+    if(removeError){
+      // DB rows remain expired+abandoned, so the next Operations cleanup safely
+      // retries the same paths instead of losing deletion evidence.
+      return publicFailure({
+        operation:"problemEvidence.operations.cleanupStorage",
+        code:"internal",
+        detail:{message:removeError.message,count:paths.length},
+        message:"Expired photo cleanup did not finish. Try again.",
+      });
+    }
+  }
+  return {ok:true,value:{removed:paths.length}};
+}
+
 export type ProblemReportOperationsCommand="start_review"|"request_evidence"|"resolve_report";
 
 export async function transitionOperationsProblemReport(p:{
@@ -431,7 +477,17 @@ export async function transitionOperationsProblemReport(p:{
     p_report_id:p.reportId,p_expected_version:p.expectedVersion,
     p_actor_user_id:userId,p_command:p.command,
   });
-  if(error)return dbFail("problemReport.operations.transition",error);
+  if(error){
+    if(error?.code==="CR409"&&error?.message==="problem_evidence_limit_reached"){
+      return publicFailure({
+        operation:"problemReport.operations.transition",
+        code:"conflict",
+        detail:{code:error.code,message:error.message},
+        message:"This report already has five photos. Review the existing evidence instead of requesting more.",
+      });
+    }
+    return dbFail("problemReport.operations.transition",error);
+  }
   const row=rowOf(data);
   if(!row)return publicFailure({operation:"problemReport.operations.transition",code:"internal",detail:"empty"});
   const {count}=await supabaseAdmin

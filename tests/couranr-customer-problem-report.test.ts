@@ -7,6 +7,9 @@ const read=(p:string)=>fs.readFileSync(path.join(ROOT,p),"utf8");
 
 const MIGRATION=read("supabase/migrations/20260907223000_couranr_customer_problem_reports.sql");
 const ROLLBACK=read("supabase/rollbacks/20260907223000_couranr_customer_problem_reports.rollback.sql");
+const HARDENING=read("supabase/migrations/20260908142000_couranr_customer_problem_report_hardening.sql");
+const HARDENING_ROLLBACK=read("supabase/rollbacks/20260908142000_couranr_customer_problem_report_hardening.rollback.sql");
+const OPS_ROUTE=read("app/api/couranr/operations/problem-reports/route.ts");
 const SERVER=read("lib/couranr/conversations/problemReports.ts");
 const PAGE=read("components/couranr/help/DeliveryHelpPage.tsx");
 const CLIENT=read("components/couranr/help/client.ts");
@@ -141,6 +144,44 @@ describe("CUS-004 customer delivery-problem report contract",()=>{
     expect(ROLLBACK).toContain(
       "drop function if exists public.couranr_abandon_customer_problem_evidence"
     );
+  });
+
+  it("renews the DB envelope before every freshly minted provider upload URL",()=>{
+    expect(HARDENING).toContain("couranr_renew_customer_problem_evidence_grant");
+    expect(HARDENING).toContain("interval '125 minutes'");
+    const renew=SERVER.indexOf('"couranr_renew_customer_problem_evidence_grant"');
+    const sign=SERVER.indexOf(".createSignedUploadUrl",renew);
+    expect(renew).toBeGreaterThan(-1);
+    expect(sign).toBeGreaterThan(renew);
+    expect(HARDENING_ROLLBACK).toContain(
+      "drop function if exists public.couranr_renew_customer_problem_evidence_grant"
+    );
+  });
+
+  it("gives Operations an explicit retryable orphan cleanup path without a cron",()=>{
+    expect(HARDENING).toContain(
+      "couranr_collect_expired_customer_problem_evidence_for_operations"
+    );
+    expect(HARDENING).toContain("for update skip locked");
+    expect(SERVER).toContain("cleanupExpiredOperationsProblemEvidence");
+    expect(SERVER).toContain("problemEvidence.operations.cleanupStorage");
+    expect(OPS_ROUTE).toContain('body?.command!=="cleanup_expired_evidence"');
+    expect(OPS_UI).toContain("Clean expired uploads");
+    expect(HARDENING_ROLLBACK).toContain(
+      "drop function if exists public.couranr_collect_expired_customer_problem_evidence_for_operations"
+    );
+  });
+
+  it("refuses an Operations evidence request when all five technical evidence slots are consumed",()=>{
+    expect(HARDENING).toContain("v_evidence_slots>=5");
+    expect(HARDENING).toContain(
+      "raise exception 'problem_evidence_limit_reached' using errcode='CR409'"
+    );
+    expect(SERVER).toContain(
+      "This report already has five photos. Review the existing evidence instead of requesting more."
+    );
+    expect(OPS_UI).toContain('disabled={evidenceAtCap}');
+    expect(OPS_UI).toContain('evidenceAtCap?"Evidence limit reached":"Request evidence"');
   });
 
   it("never persists signed URLs and rollback refuses to destroy evidence",()=>{

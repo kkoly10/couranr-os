@@ -175,6 +175,11 @@ const CUSTOMER_PROBLEM_STATE_LABELS:Record<CustomerProblemState,string>={
 function loadCustomerProblemReports(){
   return call<{reports:CustomerProblemReport[]}>("/api/couranr/operations/problem-reports");
 }
+function cleanupExpiredCustomerProblemEvidence(){
+  return call<{removed:number}>("/api/couranr/operations/problem-reports",{
+    method:"POST",body:{command:"cleanup_expired_evidence"},
+  });
+}
 function actOnCustomerProblemReport(
   id:string,body:{expectedVersion:number;command:CustomerProblemCommand}
 ){
@@ -192,6 +197,8 @@ function CustomerProblemReports(){
   const [reports,setReports]=React.useState<CustomerProblemReport[]|null>(null);
   const [error,setError]=React.useState<string|null>(null);
   const [generation,setGeneration]=React.useState(0);
+  const [cleaning,setCleaning]=React.useState(false);
+  const [cleanupNote,setCleanupNote]=React.useState<string|null>(null);
 
   React.useEffect(()=>{
     let live=true;
@@ -217,12 +224,32 @@ function CustomerProblemReports(){
     );
   }
 
+  async function cleanExpiredUploads(){
+    if(cleaning)return;
+    setCleaning(true);setCleanupNote(null);
+    const r=await cleanupExpiredCustomerProblemEvidence();
+    setCleaning(false);
+    if(isApiFailure(r)){setError(withReference(r));return;}
+    setError(null);
+    setCleanupNote(
+      r.value.removed===0
+        ?"No expired customer photo uploads needed cleanup."
+        :`Removed ${r.value.removed} expired customer photo upload${r.value.removed===1?"":"s"}.`
+    );
+  }
+
   return (
     <Card>
       <CardHeader
         title="Customer delivery reports"
         description="Customer-authored delivery evidence. Review state here does not move money, custody or delivery state."
+        actions={
+          <Button variant="ghost" loading={cleaning} onClick={()=>void cleanExpiredUploads()}>
+            Clean expired uploads
+          </Button>
+        }
       />
+      {cleanupNote?<Alert tone="info" title="Private evidence cleanup">{cleanupNote}</Alert>:null}
       {reports.length===0?(
         <Text size="sm" muted>No customer delivery-problem reports have been submitted.</Text>
       ):(
@@ -248,6 +275,7 @@ function CustomerProblemReportCard({
   const [busy,setBusy]=React.useState<CustomerProblemCommand|null>(null);
   const [error,setError]=React.useState<string|null>(null);
   const [opening,setOpening]=React.useState<string|null>(null);
+  const evidenceAtCap=report.evidenceCount>=5;
 
   async function run(command:CustomerProblemCommand){
     if(busy)return;
@@ -324,8 +352,9 @@ function CustomerProblemReportCard({
             ):null}
             {(report.state==="reported"||report.state==="under_review")?(
               <Button variant="secondary" loading={busy==="request_evidence"}
+                disabled={evidenceAtCap}
                 onClick={()=>void run("request_evidence")}>
-                Request evidence
+                {evidenceAtCap?"Evidence limit reached":"Request evidence"}
               </Button>
             ):null}
             <Button variant="primary" loading={busy==="resolve_report"}
