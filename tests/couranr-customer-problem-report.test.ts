@@ -11,6 +11,8 @@ const HARDENING=read("supabase/migrations/20260908142000_couranr_customer_proble
 const HARDENING_ROLLBACK=read("supabase/rollbacks/20260908142000_couranr_customer_problem_report_hardening.rollback.sql");
 const CLEANUP_ACK=read("supabase/migrations/20260908143800_couranr_customer_problem_cleanup_ack.sql");
 const CLEANUP_ACK_ROLLBACK=read("supabase/rollbacks/20260908143800_couranr_customer_problem_cleanup_ack.rollback.sql");
+const CLEANUP_ROTATION=read("supabase/migrations/20260908145000_couranr_customer_problem_cleanup_rotation.sql");
+const CLEANUP_ROTATION_ROLLBACK=read("supabase/rollbacks/20260908145000_couranr_customer_problem_cleanup_rotation.rollback.sql");
 const OPS_ROUTE=read("app/api/couranr/operations/problem-reports/route.ts");
 const SERVER=read("lib/couranr/conversations/problemReports.ts");
 const PAGE=read("components/couranr/help/DeliveryHelpPage.tsx");
@@ -197,6 +199,17 @@ describe("CUS-004 customer delivery-problem report contract",()=>{
       "drop function if exists public.couranr_ack_problem_evidence_cleanup_ops"
     );
     expect(CLEANUP_ACK_ROLLBACK).toContain("drop column if exists storage_cleaned_at");
+  });
+
+  it("clears the successful-cleanup ACK when an expired logical evidence row rotates to a new path",()=>{
+    expect(CLEANUP_ROTATION).toContain("storage_cleaned_at=null");
+    const rotate=CLEANUP_ROTATION.indexOf("set object_path=p_object_path");
+    const reset=CLEANUP_ROTATION.indexOf("storage_cleaned_at=null",rotate);
+    const newExpiry=CLEANUP_ROTATION.indexOf("expires_at=now()+interval '125 minutes'",reset);
+    expect(rotate).toBeGreaterThan(-1);
+    expect(reset).toBeGreaterThan(rotate);
+    expect(newExpiry).toBeGreaterThan(reset);
+    expect(CLEANUP_ROTATION_ROLLBACK).not.toContain("storage_cleaned_at=null");
   });
 
   it("refuses an Operations evidence request when all five technical evidence slots are consumed",()=>{
