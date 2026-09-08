@@ -1,12 +1,9 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "git": {
-    "deploymentEnabled": {
-      "*": false,
-      "main": true
-    }
+    "deploymentEnabled": false
   },
-  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- ':!*.md' ':!docs/*'",
+  "ignoreCommand": "exit 0",
   "crons": [
     {
       "path": "/api/couranr/internal/automation/tick",
