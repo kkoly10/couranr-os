@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import {
+  LEGACY_ORDER_NUMBER_PATTERN,
   REFERENCE_ALPHABET,
   REFERENCE_PATTERN,
   REFERENCE_SYMBOL_COUNT,
   isDeliveryReference,
+  isLegacyOrderNumber,
   normalizeDeliveryReference,
 } from "@/lib/couranr/references";
 
@@ -179,5 +181,50 @@ describe("the format resists the failure modes it was chosen against", () => {
     // source (say 0..9 digits) would skew the distribution.
     expect(MIGRATION).toContain("::bit(8)::integer");
     expect(MIGRATION).toContain("(byte % 32) + 1");
+  });
+});
+
+describe("the legacy CR- order number cannot be mistaken for a reference", () => {
+  /**
+   * public.orders.order_number holds 42 real rows, ALL of the shape CR-{6
+   * digits}, from the superseded courier system. Before the guard existed this
+   * was measured against the real function:
+   *
+   *     normalizeDeliveryReference("CR-000042")  ->  "CR-CR00-0042"
+   *
+   * A number someone is reading off a real receipt was being reshaped into a
+   * different valid-looking reference, so the lookup missed and they were told
+   * it did not exist.
+   */
+  it.each(["CR-000042", "CR-000041", "CR-000001", "cr-000042", "CR000042", " CR-000042 "])(
+    "refuses %s outright instead of reshaping it",
+    (legacy) => {
+      expect(normalizeDeliveryReference(legacy)).toBeNull();
+      expect(isLegacyOrderNumber(legacy)).toBe(true);
+    }
+  );
+
+  it("recognises the legacy shape so a lookup can say what it actually is", () => {
+    // "not found" is wrong and unhelpful when the person is holding a real
+    // receipt from the previous system.
+    expect(isLegacyOrderNumber("CR-000042")).toBe(true);
+    expect(isLegacyOrderNumber("CR-4K7M-2P90")).toBe(false);
+    expect(isLegacyOrderNumber("DOC8938395270")).toBe(false);
+    expect(isLegacyOrderNumber(null)).toBe(false);
+  });
+
+  it("never catches a canonical reference, which always carries two hyphens", () => {
+    expect(LEGACY_ORDER_NUMBER_PATTERN.test("CR-4K7M-2P90")).toBe(false);
+    expect(normalizeDeliveryReference("CR-4K7M-2P90")).toBe("CR-4K7M-2P90");
+    // The residual one-in-1.1-million case: a generated body that happens to be
+    // CR + six digits. Its canonical form still resolves; only the bare body
+    // would be turned away, which is the safe direction to fail.
+    expect(normalizeDeliveryReference("CR-CR00-0042")).toBe("CR-CR00-0042");
+  });
+
+  it("leaves the legacy DOC codes alone — they cannot collide", () => {
+    // doc_requests.request_code is DOC + 10 digits; no CR prefix, wrong length.
+    expect(normalizeDeliveryReference("DOC8938395270")).toBeNull();
+    expect(isLegacyOrderNumber("DOC8938395270")).toBe(false);
   });
 });

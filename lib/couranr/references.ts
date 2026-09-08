@@ -47,6 +47,46 @@ export function isDeliveryReference(value: unknown): value is string {
 }
 
 /**
+ * The LEGACY order number, which also begins `CR-`.
+ *
+ * public.orders.order_number holds 42 real rows and every one of them is
+ * `CR-` followed by six digits — CR-000042, CR-000041, … — a sequential
+ * counter from the superseded courier system. Those numbers are on receipts
+ * real people still hold.
+ *
+ * This matters because the two formats are NOT distinguishable once separators
+ * are stripped. Measured before this guard existed:
+ *
+ *     normalizeDeliveryReference("CR-000042")  ->  "CR-CR00-0042"
+ *
+ * `CR000042` is eight characters and every one of C, R, 0, 4 and 2 is in the
+ * Crockford alphabet, so a legacy order number was being read as a bare
+ * eight-symbol body and silently reshaped into a different, valid-looking
+ * reference. The lookup would then miss, and the person on the phone would be
+ * told a number they are reading off a real receipt does not exist.
+ *
+ * The pattern is tested against the input BEFORE separators are stripped, so a
+ * canonical reference — which always carries two hyphens — can never match it.
+ * That leaves exactly one residual case: a generated body that happens to be
+ * `CR` followed by six digits, at odds of about one in 1.1 million. Its
+ * canonical two-hyphen form is still accepted; only someone typing that one
+ * body bare would be turned away.
+ */
+export const LEGACY_ORDER_NUMBER_PATTERN = /^CR-?[0-9]{6}$/;
+
+/**
+ * True for an order number from the retired courier system.
+ *
+ * Exported so a lookup surface can say "that is an order number from the
+ * previous system" instead of the flatly unhelpful "not found" — the person
+ * holding it is not making a mistake.
+ */
+export function isLegacyOrderNumber(input: unknown): boolean {
+  if (typeof input !== "string") return false;
+  return LEGACY_ORDER_NUMBER_PATTERN.test(input.trim().toUpperCase().replace(/\s/g, ""));
+}
+
+/**
  * Turn whatever a human gave us into the canonical reference, or null.
  *
  * Accepts, and returns `CR-4K7M-2P90` for every one of them:
@@ -69,6 +109,12 @@ export function isDeliveryReference(value: unknown): value is string {
  */
 export function normalizeDeliveryReference(input: unknown): string | null {
   if (typeof input !== "string") return null;
+
+  /* A legacy order number is refused OUTRIGHT rather than reshaped. Checked
+     first, and against the input before separators are stripped, so that a
+     canonical reference (always two hyphens) can never be caught by it. See
+     LEGACY_ORDER_NUMBER_PATTERN for the measured failure this prevents. */
+  if (isLegacyOrderNumber(input)) return null;
 
   let s = input.toUpperCase();
 
