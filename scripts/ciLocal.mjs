@@ -180,6 +180,7 @@ const STAGES = [
     ["test:messaging", "authenticated messaging"],
     ["test:auth-gateway", "auth gateway"],
     ["test:cus-fragments", "customer help fragments"],
+    ["test:consumer-place-ratelimit", "consumer Places per-session rate limit — cap, window rollover, uniform CR404, service_role-only authority"],
   ].map(([script, why]) => ({
     tier: 3,
     name: script,
@@ -203,6 +204,7 @@ const STAGES = [
         "test:foundation-backfill",
         "test:foundation-rollbacks",
         "test:business-routing",
+        "test:consumer-place-ratelimit",
       ]);
       if (!postgresOnly.has(script) && !postgrestPresent()) {
         return "postgrest binary is missing — run `npm run provision:postgrest` first";

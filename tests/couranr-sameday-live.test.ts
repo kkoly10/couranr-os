@@ -4,10 +4,9 @@
  *
  * What this suite holds:
  *
- *  1. TWO-KEY ARMING. `live` resolves only when COURANR_CONSUMER_SEND is
- *     exactly "live", and production additionally requires
- *     COURANR_CONSUMER_SEND_PRODUCTION="live". One key in production is a
- *     recorded misconfiguration that still resolves `disabled`.
+ *  1. LIVE BY DEFAULT. `live` is the mode for every real environment,
+ *     production included, with no env flag; `fixture` is test-only plus an
+ *     explicit non-production opt-in. There is no disabled product path.
  *  2. NESTED-KEY READS. Every consumer payload is read from its named key
  *     (`guestSession`, `suggestions`, `estimate`, `request`, `payment`); a
  *     flat body is a failure, never a silent success — the exact bug class
@@ -18,8 +17,8 @@
  *     message. The UI's `mobile` field maps to the API/DB key `phone`.
  *  4. DEGRADATION. sessionStorage that THROWS degrades to memory-only; the
  *     session is still minted exactly once.
- *  5. THE GUARD: fixture and disabled behaviors are unchanged, and the
- *     shipped adapter objects gained nothing live.
+ *  5. THE GUARD: the fixture behavior is unchanged, production is live, and
+ *     the fixture adapter object gained nothing live.
  */
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
@@ -149,78 +148,37 @@ function live(deps?: Parameters<typeof createLiveSameDayAdapters>[0]) {
   return createLiveSameDayAdapters(deps);
 }
 
-/* ------------------------------------------------- 1. two-key arming ----- */
+/* ------------------------------------ 1. live-by-default arming ---------- */
 
-describe("two-key production arming", () => {
-  it("one key arms every NON-production environment", () => {
+describe("adapter mode: live is the default, fixtures test-only", () => {
+  it("production resolves live with NO env flag; getSameDayAdapters returns the live set", () => {
     for (const env of [
-      { nodeEnv: "development", consumerSendFlag: "live" },
-      { nodeEnv: "test", consumerSendFlag: "live" },
-      { nodeEnv: "production", vercelEnv: "preview", consumerSendFlag: "live" },
-      { consumerSendFlag: "live" },
+      { nodeEnv: "production" },
+      { vercelEnv: "production" },
+      { nodeEnv: "development", vercelEnv: "production" },
     ]) {
       const r = resolveAdapterMode(env);
       expect(r.mode, JSON.stringify(env)).toBe("live");
-      expect(r.reason).toBe("live_enabled");
       expect(r.misconfigured).toBe(false);
     }
-  });
-
-  it("production with ONE key stays disabled and records the misconfiguration", () => {
-    for (const env of [
-      { nodeEnv: "production", consumerSendFlag: "live" },
-      { vercelEnv: "production", consumerSendFlag: "live" },
-      { nodeEnv: "development", vercelEnv: "production", consumerSendFlag: "live" },
-    ]) {
-      const r = resolveAdapterMode(env);
-      expect(r.mode, JSON.stringify(env)).toBe("disabled");
-      expect(r.reason).toBe("production_live_refused");
-      expect(r.misconfigured).toBe(true);
-    }
-  });
-
-  it("production with BOTH keys resolves live", () => {
-    for (const env of [
-      { nodeEnv: "production", consumerSendFlag: "live", consumerSendProductionFlag: "live" },
-      { vercelEnv: "production", consumerSendFlag: "live", consumerSendProductionFlag: "live" },
-    ]) {
-      const r = resolveAdapterMode(env);
-      expect(r.mode, JSON.stringify(env)).toBe("live");
-      expect(r.reason).toBe("production_live_enabled");
-      expect(r.misconfigured).toBe(false);
-    }
-  });
-
-  it("the production key ALONE arms nothing", () => {
-    const r = resolveAdapterMode({ nodeEnv: "production", consumerSendProductionFlag: "live" });
-    expect(r.mode).toBe("disabled");
-    expect(r.reason).toBe("production");
-    expect(
-      resolveAdapterMode({ nodeEnv: "development", consumerSendProductionFlag: "live" }).mode
-    ).toBe("fixture");
-  });
-
-  it("only the exact string 'live' arms — truthiness does not", () => {
-    for (const flag of ["1", "true", "yes", "on", "LIVE", "Live"]) {
-      expect(
-        resolveAdapterMode({ nodeEnv: "development", consumerSendFlag: flag }).mode,
-        `flag=${flag}`
-      ).toBe("fixture");
-    }
-    expect(
-      resolveAdapterMode({
-        nodeEnv: "production",
-        consumerSendFlag: "live",
-        consumerSendProductionFlag: "1",
-      }).mode
-    ).toBe("disabled");
-  });
-
-  it("getSameDayAdapters returns the live set, with the live-only methods", () => {
-    const a = getSameDayAdapters({ nodeEnv: "development", consumerSendFlag: "live" });
+    const a = getSameDayAdapters({ nodeEnv: "production" });
     expect(a.mode).toBe("live");
     expect(typeof a.reconcilePayment).toBe("function");
     expect(typeof a.readRequest).toBe("function");
+  });
+
+  it("test mode is fixtures; a non-production opt-in is fixtures; dev with no opt-in is live", () => {
+    expect(resolveAdapterMode({ nodeEnv: "test" }).mode).toBe("fixture");
+    expect(resolveAdapterMode({ nodeEnv: "development", fixtureFlag: "1" }).mode).toBe("fixture");
+    expect(resolveAdapterMode({ vercelEnv: "preview", fixtureFlag: "1" }).mode).toBe("fixture");
+    expect(resolveAdapterMode({ nodeEnv: "development" }).mode).toBe("live");
+  });
+
+  it("production refuses a fixture override — live, with a recorded misconfiguration", () => {
+    const r = resolveAdapterMode({ nodeEnv: "production", fixtureFlag: "1" });
+    expect(r.mode).toBe("live");
+    expect(r.reason).toBe("production_fixtures_refused");
+    expect(r.misconfigured).toBe(true);
   });
 });
 
@@ -278,7 +236,7 @@ describe("guest session: mint once, nested read, storage degradation", () => {
       [PLACES]: () => ({ body: { suggestions: [{ placeId: "p", text: "t" }] } }),
     });
     const a = live({ fetchImpl: f.impl, storage: memoryStorage() });
-    expect(await a.searchAddress("main")).toEqual([]);
+    expect(await a.searchAddress("main")).toEqual({ status: "error" });
     // No gated call ever left without a session.
     expect(f.of(PLACES).length).toBe(0);
     const q = await a.quote(GOOD_QUOTE_INPUT);
@@ -292,7 +250,8 @@ describe("guest session: mint once, nested read, storage degradation", () => {
       [ESTIMATE]: () => ({ body: { estimate: ESTIMATED } }),
     });
     const a = live({ fetchImpl: f.impl, storage: throwingStorage() });
-    expect((await a.searchAddress("main")).length).toBe(1);
+    const s = await a.searchAddress("main");
+    expect(s.status === "ok" && s.suggestions.length).toBe(1);
     expect((await a.quote(GOOD_QUOTE_INPUT)).state).toBe("live-available");
     expect(f.of(S).length).toBe(1);
   });
@@ -315,26 +274,41 @@ describe("searchAddress reads the nested `suggestions` key", () => {
       }),
     });
     const out = await live({ fetchImpl: f.impl, storage: null }).searchAddress("main");
-    expect(out).toEqual([
-      { id: "p1", label: "Main Street Bakery", detail: "112 Main Street" },
-      { id: "p2", label: "140 Main Street, Stafford, VA", detail: "" },
-    ]);
+    expect(out).toEqual({
+      status: "ok",
+      suggestions: [
+        { id: "p1", label: "Main Street Bakery", detail: "112 Main Street" },
+        { id: "p2", label: "140 Main Street, Stafford, VA", detail: "" },
+      ],
+    });
     expect(f.of(PLACES)[0].url).toContain("query=main");
   });
 
-  it("a flat body or a failure yields no suggestions", async () => {
+  it("a provider failure is distinct from a genuine empty result", async () => {
+    // A flat/malformed body is a service failure -> error, not a silent empty.
     const flat = fakeFetch({
       [S]: SESSION_OK,
       [PLACES]: () => ({ body: [{ placeId: "p1", text: "x" }] }),
     });
-    expect(await live({ fetchImpl: flat.impl, storage: null }).searchAddress("main")).toEqual([]);
+    expect(await live({ fetchImpl: flat.impl, storage: null }).searchAddress("main")).toEqual({ status: "error" });
+    // A 500 is an error.
     const down = fakeFetch({ [S]: SESSION_OK, [PLACES]: () => ({ status: 500, body: { error: "x" } }) });
-    expect(await live({ fetchImpl: down.impl, storage: null }).searchAddress("main")).toEqual([]);
+    expect(await live({ fetchImpl: down.impl, storage: null }).searchAddress("main")).toEqual({ status: "error" });
+    // The route's `degraded` flag (provider outage / budget stop) is an error
+    // even though the list is empty and the status is 200.
+    const degraded = fakeFetch({ [S]: SESSION_OK, [PLACES]: () => ({ body: { suggestions: [], degraded: true } }) });
+    expect(await live({ fetchImpl: degraded.impl, storage: null }).searchAddress("main")).toEqual({ status: "error" });
+    // A 429 is its own rate-limited outcome.
+    const limited = fakeFetch({ [S]: SESSION_OK, [PLACES]: () => ({ status: 429, body: { error: "slow down" } }) });
+    expect(await live({ fetchImpl: limited.impl, storage: null }).searchAddress("main")).toEqual({ status: "rate-limited" });
+    // A genuine 200 empty list is ok, not an error.
+    const empty = fakeFetch({ [S]: SESSION_OK, [PLACES]: () => ({ body: { suggestions: [] } }) });
+    expect(await live({ fetchImpl: empty.impl, storage: null }).searchAddress("main")).toEqual({ status: "ok", suggestions: [] });
   });
 
-  it("does not call the network for a sub-2-character query", async () => {
+  it("does not call the network for a sub-3-character query", async () => {
     const f = fakeFetch({ [S]: SESSION_OK, [PLACES]: () => ({ body: { suggestions: [] } }) });
-    expect(await live({ fetchImpl: f.impl, storage: null }).searchAddress(" a ")).toEqual([]);
+    expect(await live({ fetchImpl: f.impl, storage: null }).searchAddress(" ab ")).toEqual({ status: "ok", suggestions: [] });
     expect(f.calls.length).toBe(0);
   });
 });
@@ -846,20 +820,16 @@ describe("the seam agrees with the server actor's contract", () => {
   });
 });
 
-/* ------------------------------- 10. fixture/disabled stay untouched ----- */
+/* ------------------------------- 10. fixture stays untouched ------------- */
 
-describe("GUARD: fixture and disabled behaviors are unchanged by the live seam", () => {
+describe("GUARD: the fixture path is unchanged, and production is live", () => {
   const PROD = { nodeEnv: "production" as const };
 
-  it("production without the keys still refuses everything", async () => {
+  it("production resolves the live set (no disabled product path)", () => {
     const a = getSameDayAdapters(PROD);
-    expect(a.mode).toBe("disabled");
-    expect(await a.searchAddress("main")).toEqual([]);
-    expect((await a.checkAvailability("a", "b")).state).toBe("unavailable");
-    expect((await a.readIntake("a cake")).state).toBe("unavailable");
-    expect((await a.quote({ pickup: "a", destination: "b", timing: "asap" })).state).toBe("unavailable");
-    expect((await a.submitRequest()).state).toBe("unavailable");
-    expect((await a.authorizePayment()).state).toBe("not-available");
+    expect(a.mode).toBe("live");
+    expect(typeof a.reconcilePayment).toBe("function");
+    expect(typeof a.readRequest).toBe("function");
   });
 
   it("the fixture path still answers exactly what it shipped answering", async () => {
@@ -870,23 +840,21 @@ describe("GUARD: fixture and disabled behaviors are unchanged by the live seam",
     expect(q.state === "fixture-available" && q.totalCents).toBe(BASE_PRICE_CENTS);
     expect((await a.submitRequest()).state).toBe("received-preview");
     expect((await a.authorizePayment()).state).toBe("authorized-fixture");
+    const s = await a.searchAddress("main");
+    expect(s.status === "ok" && s.suggestions.length).toBeGreaterThan(0);
   });
 
-  it("neither shipped mode gained a live-only method or a network call", () => {
-    for (const env of [PROD, { nodeEnv: "test" as const }]) {
-      const a = getSameDayAdapters(env);
-      expect(a.reconcilePayment, a.mode).toBeUndefined();
-      expect(a.readRequest, a.mode).toBeUndefined();
-    }
+  it("the fixture set gained no live-only method, and its block talks to no server", () => {
+    const a = getSameDayAdapters({ nodeEnv: "test" as const });
+    expect(a.reconcilePayment).toBeUndefined();
+    expect(a.readRequest).toBeUndefined();
     const src = readFileSync(path.join(ROOT, "lib/couranr/sameday/adapters.ts"), "utf8");
-    const disabled = src.slice(src.indexOf("const DISABLED"), src.indexOf("const FIXTURE_PLACES"));
-    const fixture = src.slice(src.indexOf("const FIXTURE_PLACES"), src.indexOf("export function getSameDayAdapters"));
-    for (const [name, block] of [["DISABLED", disabled], ["FIXTURE", fixture]] as const) {
-      expect(block, `${name} constructs a live state`).not.toContain("live-available");
-      expect(block, `${name} constructs a live state`).not.toContain("authorization-required");
-      expect(block, `${name} constructs a live state`).not.toContain("not-payable");
-      expect(block, `${name} talks to a server`).not.toContain("fetch(");
-    }
+    // The disabled product path is removed, not left dormant.
+    expect(src).not.toContain("const DISABLED");
+    const fixture = src.slice(src.indexOf("const FIXTURE"), src.indexOf("export function getSameDayAdapters"));
+    expect(fixture, "FIXTURE constructs a live state").not.toContain("live-available");
+    expect(fixture, "FIXTURE constructs a live state").not.toContain("authorization-required");
+    expect(fixture, "FIXTURE talks to a server").not.toContain("fetch(");
   });
 });
 
