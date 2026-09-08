@@ -171,6 +171,8 @@ const STAGES = [
     ["test:deploy-cutover", "zero-downtime arity cutover proven through PostgREST — old shape mints predeploy, PGRST202 postdeploy, never PGRST203"],
     ["test:hosted-deploy-cutover", "hosted timing arity cutover proven through PostgREST — old 13/26-key shapes serve predeploy, PGRST202 postdeploy, never PGRST203; scheduled instant agreed by Node and PostgreSQL"],
     ["test:payment-recovery", "batch 3 §A/§B — authorization evidence, stale-hold release, governed refunds"],
+    ["test:credit-settlement", "credit settlement XOR fix — confirm_service_plan called on a credit fixture with a coexisting obligation, plus positive control"],
+    ["test:rollback-guards", "credit/index migration round-trips and the activation-contact refuse-on-evidence rollback guard"],
     ["test:driver-execution", "batch 3 §C driver/proof adversarial matrix — exceptions, undeliverable closure, cancel, PIN discipline, proof-gated completion"],
     ["test:consumer-send", "batch 3 §D consumer guest sessions, sibling commands, tenancy isolation, price parity, QVL"],
     ["test:smart-intake", "P5-001 Smart Intake stale-race/idempotency/provenance/tenancy execution matrix"],
@@ -198,6 +200,8 @@ const STAGES = [
       // recycled without warning and the binary does not survive it.
       const postgresOnly = new Set([
         "test:payment-recovery",
+        "test:credit-settlement",
+        "test:rollback-guards",
         "test:driver-execution",
         "test:consumer-send",
         "test:pricing-v2",

@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { assertServerOnly } from "@/lib/couranr/serverOnly";
 import type { PublicErrorCode } from "@/lib/couranr/errors";
 import type { MemberRole, MemberStatus, Membership, RequestActor } from "./permissions";
+import { canActOnDeliveryRequest, type RequestCapability } from "./permissions";
 
 assertServerOnly("lib/couranr/requests/actor.ts");
 
@@ -43,6 +44,32 @@ export type ActorResolution =
  */
 export function isActorDenied(r: { ok: boolean }): r is ActorDenied {
   return r.ok === false;
+}
+
+/**
+ * Business-scoped membership/capability gate. Returns an `ActorDenied` to reject,
+ * or `null` to allow.
+ *
+ * This is the correct gate for a business route, replacing the DEAD
+ * `actor.kind === "anonymous"` check: `resolveRequestActor` NEVER returns
+ * `kind: "anonymous"` for a token-bearing caller — a signed-in non-member
+ * resolves to `{ kind: "member", membership: null }` — so an anonymous check
+ * admits any authenticated user. `canActOnDeliveryRequest` rejects
+ * null-membership, wrong-business, inactive status, and (for write capabilities)
+ * non-write roles.
+ */
+export function requireBusinessCapability(
+  actor: RequestActor,
+  capability: RequestCapability,
+  businessAccountId: string | null
+): ActorDenied | null {
+  const decision = canActOnDeliveryRequest(actor, capability, businessAccountId);
+  if (decision.allowed) return null;
+  return {
+    ok: false,
+    code: "not_permitted",
+    error: "You do not have access to this business.",
+  };
 }
 
 function bearerToken(req: NextRequest): string | null {

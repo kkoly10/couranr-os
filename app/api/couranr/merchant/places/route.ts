@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isActorDenied, resolveRequestActor } from "@/lib/couranr/requests/actor";
+import { isActorDenied, requireBusinessCapability, resolveRequestActor } from "@/lib/couranr/requests/actor";
 import { routeFailure, routeInternalFailure } from "@/lib/couranr/requests/respond";
 import { claimPaidApiCall } from "@/lib/couranr/providers/paidApiGuard";
 import {
@@ -20,8 +20,15 @@ async function authorize(req: NextRequest, businessAccountId: string) {
   if (isActorDenied(resolved)) {
     return { response: routeFailure(resolved.code, resolved.error) } as const;
   }
-  if (resolved.actor.kind === "anonymous") {
-    return { response: routeFailure("not_permitted", "Sign in to continue.") } as const;
+  // Must be a member of THIS business with delivery-creation authority. The
+  // address lookup exists only to draft a delivery (DRP-001 create roles:
+  // owner/manager/dispatcher), and it spends against a shared paid Google
+  // budget, so a non-member — or a viewer/billing member — must be refused
+  // here, BEFORE any claimPaidApiCall / Google fetch. `create` is intentional:
+  // Operations uses its own routes and does not call merchant/places.
+  const denied = requireBusinessCapability(resolved.actor, "create", businessAccountId);
+  if (denied) {
+    return { response: routeFailure(denied.code, denied.error) } as const;
   }
   return { actor: resolved.actor } as const;
 }

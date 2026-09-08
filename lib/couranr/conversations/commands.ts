@@ -855,9 +855,13 @@ export async function sendOperationsMessage(
     });
   }
 
-  // Namespace the browser key by real Operations actor. The table's durable
-  // UNIQUE remains (conversation,idempotency_key), but an Operations retry can
-  // never collide with a merchant/driver key in the same thread.
+  // Namespace the browser key by real Operations actor, so an Operations retry
+  // can never collide with a merchant/driver key in the same thread. The durable
+  // backstop is the unique index couranr_cvm_idempotency_uniq on
+  // (conversation_id, author_participant_id, idempotency_key). Operations rows
+  // carry author_participant_id = NULL, so the index MUST be NULLS NOT DISTINCT
+  // (migration 20260905081000) for two concurrent identical sends to collide;
+  // participant-authored rows carry a non-null participant and are unaffected.
   const key = `ops:${params.userId}:${rawKey}`;
 
   const existing = await supabaseAdmin

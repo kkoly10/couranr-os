@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { isActorDenied, resolveRequestActor } from "@/lib/couranr/requests/actor";
+import { isActorDenied, requireBusinessCapability, resolveRequestActor } from "@/lib/couranr/requests/actor";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
 import {
   addIntakeRevision,
@@ -25,6 +25,11 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
   }
   const actor = await resolveRequestActor(req, businessAccountId);
   if (isActorDenied(actor)) return routeFailure(actor.code, actor.error);
+  // Read the intake session — any active member of this business may read it.
+  // This GET previously had NO membership check, so any authenticated user
+  // could read a session belonging to any business by id.
+  const deniedRead = requireBusinessCapability(actor.actor, "read", businessAccountId);
+  if (deniedRead) return routeFailure(deniedRead.code, deniedRead.error);
 
   const loaded = await loadIntakeSession({ sessionId: params.id, businessAccountId });
   if (isIntakeFailure(loaded)) return failureResponse(loaded);
@@ -56,10 +61,11 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   }
   const actor = await resolveRequestActor(req, businessAccountId);
   if (isActorDenied(actor)) return routeFailure(actor.code, actor.error);
-  if (actor.actor.kind === "anonymous") {
-    return routeFailure("not_permitted", "Sign in to continue.");
-  }
-  const actorUserId = actor.actor.userId;
+  // Acting on the intake session (describe/confirm/interpret) is part of
+  // delivery creation — require a member of this business with create authority.
+  const denied = requireBusinessCapability(actor.actor, "create", businessAccountId);
+  if (denied) return routeFailure(denied.code, denied.error);
+  const actorUserId = actor.userId;
   const action = String(body?.action ?? "");
 
   if (action === "describe") {

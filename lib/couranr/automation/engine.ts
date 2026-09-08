@@ -161,6 +161,25 @@ async function releaseReservation(reservationId: string, reason: string) {
 }
 
 
+/*
+ * Post-revalidation backoff, in minutes. Every early return AFTER the paid
+ * computeCanonicalMapboxRoute call (and after clearRouteRecheck nulls
+ * next_route_recheck_at) MUST schedule a recheck, or the cheap :234 backoff gate
+ * never fires and the paid provider is re-called on every 5-minute cron tick —
+ * a single undispatchable plan then drains the shared daily Mapbox budget and
+ * fails all customer quoting with cost_guard.
+ *
+ * TRANSIENT (15 min): reservation blips, waiting-for-driver, and CAS races that
+ * resolve on their own or are bounded by the plan's dispatch_deadline. STUCK
+ * (60 min): a genuinely undispatchable plan (reserve outcome 'exception') and
+ * money-reconciliation exceptions (settlement/capture) that need Operations —
+ * a longer cadence there avoids both budget waste and hammering the payment
+ * provider. (Follow-up: reuse a fresh stored revalidation so the driver
+ * re-check can run every tick without a paid call, removing the latency cost.)
+ */
+const DISPATCH_RECHECK_TRANSIENT_MINUTES = 15;
+const DISPATCH_RECHECK_STUCK_MINUTES = 60;
+
 async function scheduleRouteRecheck(
   servicePlanId: string,
   reason: string,
@@ -226,7 +245,10 @@ async function clearRecoverableDispatchException(requestId: string) {
   }
 }
 
-async function dispatchOne(plan: Record<string, any>): Promise<AutoResult> {
+// Exported for the budget-drain regression test (tests/couranr-automatic-dispatch-backoff.test.ts):
+// every post-revalidation early return must schedule a recheck so the paid
+// provider is not re-called on the next 5-minute tick.
+export async function dispatchOne(plan: Record<string, any>): Promise<AutoResult> {
   const requestId = String(plan.request_id);
 
   // Cheap database backoff BEFORE any paid provider call. The cron may wake
@@ -406,14 +428,28 @@ async function dispatchOne(plan: Record<string, any>): Promise<AutoResult> {
     { p_request_id: requestId, p_now: new Date().toISOString() }
   );
   if (isRpcFailure(reserved)) {
+    await scheduleRouteRecheck(
+      String(plan.id),
+      "candidate_reservation_failed",
+      DISPATCH_RECHECK_TRANSIENT_MINUTES
+    );
     return { ok: false, requestId, outcome: "candidate_reservation_failed", reason: reserved.message };
   }
 
   if (reserved.value?.outcome !== "reserved") {
+    const outcome = String(reserved.value?.outcome ?? "waiting");
+    // A genuinely undispatchable plan (no driver before the deadline, or an open
+    // dispatch exception) backs off longer; a plain wait for a driver retries
+    // sooner. Either way the paid provider is not re-called before the recheck.
+    await scheduleRouteRecheck(
+      String(plan.id),
+      "dispatch_" + String(reserved.value?.reason ?? outcome),
+      outcome === "exception" ? DISPATCH_RECHECK_STUCK_MINUTES : DISPATCH_RECHECK_TRANSIENT_MINUTES
+    );
     return {
       ok: true,
       requestId,
-      outcome: String(reserved.value?.outcome ?? "waiting"),
+      outcome,
       reason: reserved.value?.reason ? String(reserved.value.reason) : undefined,
     };
   }
@@ -425,6 +461,7 @@ async function dispatchOne(plan: Record<string, any>): Promise<AutoResult> {
     const created = await createDeliveryFromPromotionalCreditForAutomation({ requestId });
     if (isFulfillmentFailure(created)) {
       await releaseReservation(reservationId, "credit_delivery_conversion_failed");
+      await scheduleRouteRecheck(String(plan.id), "commercial_settlement_failed", DISPATCH_RECHECK_STUCK_MINUTES);
       await openDispatchException(plan, "commercial_settlement_failed", {
         mode: "promotional_credit",
         code: created.code,
@@ -441,6 +478,11 @@ async function dispatchOne(plan: Record<string, any>): Promise<AutoResult> {
     const captured = await capturePaymentForAutomation({ requestId });
     if (isFulfillmentFailure(captured)) {
       await releaseReservation(reservationId, "payment_capture_requires_reconciliation");
+      await scheduleRouteRecheck(
+        String(plan.id),
+        "payment_capture_requires_reconciliation",
+        DISPATCH_RECHECK_STUCK_MINUTES
+      );
       await openDispatchException(plan, "payment_capture_requires_reconciliation", {
         code: captured.code,
         providerOutcomeUnknown: captured.code === "internal",
@@ -457,6 +499,7 @@ async function dispatchOne(plan: Record<string, any>): Promise<AutoResult> {
 
   if (!deliveryId) {
     await releaseReservation(reservationId, "canonical_delivery_missing");
+    await scheduleRouteRecheck(String(plan.id), "canonical_delivery_missing", DISPATCH_RECHECK_TRANSIENT_MINUTES);
     await openDispatchException(plan, "canonical_delivery_missing", {});
     return {
       ok: false,
@@ -474,6 +517,7 @@ async function dispatchOne(plan: Record<string, any>): Promise<AutoResult> {
 
   if (deliveryError || !delivery) {
     await releaseReservation(reservationId, "canonical_delivery_reload_failed");
+    await scheduleRouteRecheck(String(plan.id), "canonical_delivery_reload_failed", DISPATCH_RECHECK_TRANSIENT_MINUTES);
     await openDispatchException(plan, "canonical_delivery_missing", {
       message: deliveryError?.message ?? null,
     });
@@ -493,6 +537,7 @@ async function dispatchOne(plan: Record<string, any>): Promise<AutoResult> {
       return { ok: true, requestId, outcome: "assigned", deliveryId };
     }
     await releaseReservation(reservationId, "delivery_not_scheduled");
+    await scheduleRouteRecheck(String(plan.id), "assignment_commit_failed", DISPATCH_RECHECK_TRANSIENT_MINUTES);
     await openDispatchException(plan, "assignment_commit_failed", {
       fulfillmentState: delivery.fulfillment_state,
     }, deliveryId);
@@ -518,6 +563,7 @@ async function dispatchOne(plan: Record<string, any>): Promise<AutoResult> {
 
   if (isRpcFailure(assigned)) {
     await releaseReservation(reservationId, "assignment_commit_failed");
+    await scheduleRouteRecheck(String(plan.id), "assignment_commit_failed", DISPATCH_RECHECK_TRANSIENT_MINUTES);
     await openDispatchException(plan, "assignment_commit_failed", {
       message: assigned.message,
     }, deliveryId);
