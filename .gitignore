@@ -62,3 +62,8 @@ e2e/screenshots/smart-intake/dev-server.log
 .email-preview/
 /public/_email-preview.html
 /public/_email/
+
+# Supabase CLI scratch. Written by the CLI on any invocation; it is machine
+# state, not repository content. It reached a commit once via `git add -A
+# supabase` while renaming a migration — the reason this entry exists.
+supabase/.temp/
