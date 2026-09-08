@@ -169,6 +169,7 @@ const STAGES = [
     ["test:pricing-v2", "Pricing V2 traffic evidence, policy cutover and historical-quote immutability"],
     ["test:weight-timing", "SUR-001 weight band + TMZ-001 requested timing execution matrix"],
     ["test:deploy-cutover", "zero-downtime arity cutover proven through PostgREST — old shape mints predeploy, PGRST202 postdeploy, never PGRST203"],
+    ["test:hosted-deploy-cutover", "hosted timing arity cutover proven through PostgREST — old 13/26-key shapes serve predeploy, PGRST202 postdeploy, never PGRST203; scheduled instant agreed by Node and PostgreSQL"],
     ["test:payment-recovery", "batch 3 §A/§B — authorization evidence, stale-hold release, governed refunds"],
     ["test:driver-execution", "batch 3 §C driver/proof adversarial matrix — exceptions, undeliverable closure, cancel, PIN discipline, proof-gated completion"],
     ["test:consumer-send", "batch 3 §D consumer guest sessions, sibling commands, tenancy isolation, price parity, QVL"],
