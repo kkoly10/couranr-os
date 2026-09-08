@@ -18,6 +18,7 @@ import { ReviewOutcomeActions } from "@/components/couranr/requests/ReviewOutcom
 import { OperationsPlanPanel } from "@/components/couranr/fulfillment/OperationsPlanPanel";
 import { AutomaticFulfillmentPanel } from "@/components/couranr/fulfillment/AutomaticFulfillmentPanel";
 import { OperationsPaymentRecoveryPanel } from "@/components/couranr/fulfillment/OperationsPaymentRecoveryPanel";
+import { OperationsPilotCreditPanel } from "@/components/couranr/fulfillment/OperationsPilotCreditPanel";
 import { OperationsAssignmentPanel } from "@/components/couranr/dispatch/OperationsAssignmentPanel";
 import { OperationsExecutionPanel } from "@/components/couranr/dispatch/OperationsExecutionPanel";
 import type { FulfillmentView } from "@/components/couranr/fulfillment/client";
@@ -258,6 +259,12 @@ function CurrentAction({
             />
           </Card>
         )}
+
+        <OperationsPilotCreditPanel
+          request={request}
+          fulfillment={fulfillment}
+          onChanged={onLifecycleChanged}
+        />
 
         <OperationsPaymentRecoveryPanel
           request={request}

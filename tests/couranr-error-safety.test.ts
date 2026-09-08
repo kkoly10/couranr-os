@@ -250,6 +250,7 @@ describe("canonical routes cannot leak a database detail", () => {
       "app/api/couranr/operations/delivery-requests/[id]/decline/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/estimate/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/pickup-manifest/route.ts",
+      "app/api/couranr/operations/delivery-requests/[id]/promotional-credit/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/promotional-credit-delivery/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/reconcile-capture/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/reconcile-refund/route.ts",
