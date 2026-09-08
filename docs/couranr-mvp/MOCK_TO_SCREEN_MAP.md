@@ -294,10 +294,15 @@ is recorded on each asset rather than left to be inferred from their absence.
 | `E326BCFA-7F9C-4A83-A57D-29B6246AA768.png` | Florist and gifts | `07-florist-gifts.png` |
 | `EC465687-35A1-4563-909F-ECC6B9A2F39E.png` | Dry cleaning | `08-dry-cleaning.png` |
 
-The four proof artifacts and the service-corridor map delivered in the same
-batch are NOT root PNGs — they were installed straight to
-`public/images/marketing/2026-09/` — so they are registered as photography in
-`VISUAL_AUTHORITY_REGISTRY.json` and correctly absent from this census.
+Seven more frames arrived in the same batch and are NOT root PNGs: the four
+proof artifacts, the service-corridor map, and the two category frames that
+completed the ten-category set on the same day (`books-cards-hobby`,
+`furniture-home-goods`). They were installed straight to
+`public/images/marketing/2026-09/`, so they are registered as photography in
+`VISUAL_AUTHORITY_REGISTRY.json` and are correctly absent from this census.
+The ten-frame category set is therefore split across both records — eight
+here and two there — which is a consequence of how each file arrived rather
+than a classification. `VISUAL_AUTHORITY_REGISTRY.json` holds all ten.
 
 ## Brand sheet
 

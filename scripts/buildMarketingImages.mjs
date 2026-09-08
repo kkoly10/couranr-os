@@ -122,6 +122,35 @@ const ASSETS = [
     focal: { x: 0.45, y: 0.38 },
     derivatives: CATEGORY_DERIVATIVES,
   },
+  /* ── the last two categories, supplied 2026-09-08 ───────────────────────
+     The eight above left `books_cards_collectibles_hobby` and
+     `furniture_and_home_goods` without a frame, which is what held the grid
+     back — a ten-card grid with two cards missing their photograph is worse
+     than no grid. Same 1448x1086 native as the rest of the batch. */
+  {
+    batch: "2026-09",
+    slug: "books-cards-hobby",
+    src: "14-books-cards-hobby.png",
+    /* The square drops a quarter of the width, and this frame spends that
+       width on four different goods — card rack, book table, collectibles
+       cabinet, plush shelf. Held just right of the bookseller so the square
+       keeps the cards on the left AND reaches the cabinet, rather than
+       centring her and cutting the category down to one noun. */
+    focal: { x: 0.44, y: 0.36 },
+    derivatives: CATEGORY_DERIVATIVES,
+  },
+  {
+    batch: "2026-09",
+    slug: "furniture-home-goods",
+    src: "15-furniture-home-goods.png",
+    /* She stands well left of centre and the sofa runs to the middle. Anything
+       below x=0.375 clamps against the left edge and stops tracking the
+       subject at all, so this is pulled right of her to keep the lamp and the
+       styled shelving in frame — the part that reads as "home goods" rather
+       than "a sofa". */
+    focal: { x: 0.42, y: 0.34 },
+    derivatives: CATEGORY_DERIVATIVES,
+  },
   /* The four proof artifacts. Small chips in a four-across row inside the
      timeline panel, so these are the only derivatives on the page whose job is
      to be READ at ~150px — each frame is cropped about the phone screen or the

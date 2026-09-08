@@ -732,11 +732,13 @@ function build() {
          `scripts/buildMarketingImages.mjs` cuts with — recorded here rather
          than restated, so the two cannot silently disagree.
 
-         The category eight carry `allowed_surfaces: ["PUB-001"]` and a
-         placement note: they are OWNER-ACCEPTED for that grid, and the grid
-         that renders them is not built as of this commit. That is deliberately
-         NOT `approved-reserve` — a reserve is accepted and DELIBERATELY unused
-         (see couranr-mkt-2026-08-benefit-office above), which these are not. */
+         All fifteen are PLACED. The category eight carried a `placement_note`
+         for one commit saying the grid that renders them was not built yet —
+         true when written, false the moment the owner supplied the last two
+         frames and section 9 became §27's image-based category system. The
+         notes are removed rather than left to age; a stale placement claim in
+         the visual authority is exactly the kind of thing this registry exists
+         to prevent. */
       {
         asset_id: "couranr-mkt-2026-09-print-signage",
         local_path: "public/images/marketing/2026-09/w/mkt-2026-09-print-signage-card-800.webp",
@@ -752,7 +754,6 @@ function build() {
         focal_point_note:
           "Operator right of centre with the print roll filling the lower left. Held on her face so the 1:1 thumb does not become an abstract of the paper.",
         preferred_aspect: "4:3",
-        placement_note: "Accepted for PUB-001's category grid; that grid is not built as of 2026-09-08, so nothing imports this asset yet.",
         status: "approved",
       },
       {
@@ -768,7 +769,6 @@ function build() {
         desktop_focal_point: "41% 38%",
         mobile_focal_point: "41% 38%",
         preferred_aspect: "4:3",
-        placement_note: "Accepted for PUB-001's category grid; that grid is not built as of 2026-09-08, so nothing imports this asset yet.",
         status: "approved",
       },
       {
@@ -784,7 +784,6 @@ function build() {
         desktop_focal_point: "53% 36%",
         mobile_focal_point: "53% 36%",
         preferred_aspect: "4:3",
-        placement_note: "Accepted for PUB-001's category grid; that grid is not built as of 2026-09-08, so nothing imports this asset yet.",
         status: "approved",
       },
       {
@@ -802,7 +801,6 @@ function build() {
         focal_point_note:
           "Between his face and the box in his hands; centring on either alone loses the other from the square thumb.",
         preferred_aspect: "4:3",
-        placement_note: "Accepted for PUB-001's category grid; that grid is not built as of 2026-09-08, so nothing imports this asset yet. Auto parts is one of two categories the 2026-08 set could not illustrate at all.",
         status: "approved",
       },
       {
@@ -818,7 +816,6 @@ function build() {
         desktop_focal_point: "55% 42%",
         mobile_focal_point: "55% 42%",
         preferred_aspect: "4:3",
-        placement_note: "Accepted for PUB-001's category grid; that grid is not built as of 2026-09-08, so nothing imports this asset yet.",
         status: "approved",
       },
       {
@@ -836,7 +833,6 @@ function build() {
         focal_point_note:
           "Distinct from couranr-mkt-2026-08-bakery, which shows an oven and is bound to PUB-009. This frame shows catering, which the accepted set does not.",
         preferred_aspect: "4:3",
-        placement_note: "Accepted for PUB-001's category grid; that grid is not built as of 2026-09-08, so nothing imports this asset yet.",
         status: "approved",
       },
       {
@@ -852,7 +848,6 @@ function build() {
         desktop_focal_point: "45% 38%",
         mobile_focal_point: "45% 38%",
         preferred_aspect: "4:3",
-        placement_note: "Accepted for PUB-001's category grid; that grid is not built as of 2026-09-08, so nothing imports this asset yet.",
         status: "approved",
       },
       {
@@ -870,7 +865,44 @@ function build() {
         focal_point_note:
           "Held right of his face so the garment he is holding stays inside the square thumb; he is well left of centre and a face-centred crop drops it entirely.",
         preferred_aspect: "4:3",
-        placement_note: "Accepted for PUB-001's category grid; that grid is not built as of 2026-09-08, so nothing imports this asset yet.",
+        status: "approved",
+      },
+      /* The last two categories, supplied 2026-09-08. These two are NOT repo-root
+         PNGs — they were installed straight to public/images/marketing/2026-09/,
+         the same way the proof set was — so they carry no `assets` entry in
+         VISUAL_REGISTRY.json's root census and correctly do not appear there. */
+      {
+        asset_id: "couranr-mkt-2026-09-books-cards-hobby",
+        local_path: "public/images/marketing/2026-09/w/mkt-2026-09-books-cards-hobby-card-800.webp",
+        derived_from: "public/images/marketing/2026-09/14-books-cards-hobby.png",
+        source: "owner-supplied-2026-09-08",
+        source_reference: "Delivered by the owner on 2026-09-08 for the PUB-001 category grid; one of the two frames the batch was missing.",
+        license_record: "Owner-supplied. No third-party stock source or external stock licence recorded.",
+        subject: "Bookseller sorting new stock between a greetings-card rack and a collectibles cabinet",
+        alt: "A bookseller sorts new stock on a table between a greetings-card rack and a collectibles cabinet.",
+        allowed_surfaces: ["PUB-001"],
+        desktop_focal_point: "44% 36%",
+        mobile_focal_point: "44% 36%",
+        focal_point_note:
+          "The square crop drops a quarter of the width and this frame spends that width on all four of the category's nouns — card rack, books, collectibles cabinet, hobby shelf. Held just right of the bookseller so the square keeps the cards AND reaches the cabinet; centring her would cut the category down to one noun. Inspected at 320 square after generation.",
+        preferred_aspect: "4:3",
+        status: "approved",
+      },
+      {
+        asset_id: "couranr-mkt-2026-09-furniture-home-goods",
+        local_path: "public/images/marketing/2026-09/w/mkt-2026-09-furniture-home-goods-card-800.webp",
+        derived_from: "public/images/marketing/2026-09/15-furniture-home-goods.png",
+        source: "owner-supplied-2026-09-08",
+        source_reference: "Delivered by the owner on 2026-09-08 for the PUB-001 category grid; one of the two frames the batch was missing.",
+        license_record: "Owner-supplied. No third-party stock source or external stock licence recorded.",
+        subject: "Home-goods shop worker setting a cushion on a sofa in a styled showroom",
+        alt: "A home-goods shop worker sets a cushion on a sofa in a styled showroom.",
+        allowed_surfaces: ["PUB-001"],
+        desktop_focal_point: "42% 34%",
+        mobile_focal_point: "42% 34%",
+        focal_point_note:
+          "She stands well left of centre and the sofa runs to the middle. Anything below x=0.375 clamps against the left edge and stops tracking the subject at all, so this is pulled right of her to keep the lamp and the styled shelving in frame — the part that reads as \"home goods\" rather than \"a sofa\". Inspected at 320 square after generation.",
+        preferred_aspect: "4:3",
         status: "approved",
       },
       /* ── the four proof artifacts, RENDERED on PUB-001 ────────────────────

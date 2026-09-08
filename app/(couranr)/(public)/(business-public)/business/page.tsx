@@ -51,6 +51,7 @@ import {
 } from "@/lib/couranr/dispatch/states";
 import {
   CATEGORY_BREADTH_PHOTOS,
+  CATEGORY_SYSTEM_PHOTOS,
   OUTCOME_PRIMARY_PHOTO,
   OUTCOME_SUPPORTING_PHOTO,
   intrinsic,
@@ -947,7 +948,7 @@ export default function Page() {
         aria-labelledby="s9-h"
         data-couranr-section="categories"
         data-composition="structured-information-block"
-        data-image-led="false"
+        data-image-led="true"
         data-grid-dominant="true"
         data-product-proof="false"
       >
@@ -959,23 +960,89 @@ export default function Page() {
           ones when you sign up. Your category tunes what Couranr suggests — it
           never limits what you can send or what it costs.
         </Text>
-        <ul className="cr-mkt-categories" aria-label="Supported business categories">
-          {BUSINESS_CATEGORIES.map((c) => (
-            <li
-              key={c}
-              className={
-                c === GENERAL_CATEGORY
-                  ? "cr-mkt-categories__item cr-mkt-categories__item--general"
-                  : "cr-mkt-categories__item"
-              }
-            >
-              {CATEGORY_LABELS[c]}
-            </li>
-          ))}
+        {/* OWNER INSTRUCTION 2026-09-08 — the image-based category system.
+            §27 Section 9 offers this section two devices: "selective category
+            grid OR image-based category system". It has been the first since it
+            was built, because there was no photography; the owner supplied the
+            tenth and last category frame on 2026-09-08, so it is now the
+            second. That is why §27.0 row 9 moves `image-led` false → true — see
+            r9 in COURANR_VISUAL_SYSTEM_V2_2.md. `grid-dominant` stays true: it
+            is still a grid, and §19's cap of 2 is not approached.
+
+            STILL NOT INTERACTIVE, and that is preserved rather than overlooked.
+            These were plain <li> text items — no link, no button, no tabindex,
+            no click handler — because a category is chosen at sign-up, not on
+            the marketing page, and a card that looks pressable but is not is
+            worse than a card that looks like what it is. Adding a photograph
+            changes what the item LOOKS like and nothing about what it DOES.
+
+            ART DIRECTION, NOT A RESIZE, below 640px. The desktop card is a 4:3
+            photograph above its label; the mobile card is a horizontal media
+            row with a 1:1 crop at 128px on the left. A shrunk 4:3 in a 128px
+            box puts the subject at roughly 96px tall, where a trade is no
+            longer readable. Same device, and same reason, as the mosaic in
+            section 3 and the portrait hero.
+
+            `width`/`height` ON THE SOURCE AS WELL AS THE IMG. The img's
+            attributes describe the WIDE fallback, so without them the browser
+            reserves a 4:3 box below 640px and reflows to the 1:1 the source
+            actually is. That is the exact defect the mosaic measured at 232px
+            of shift across four frames; there are ten here. */}
+        <ul className="cr-mkt-catgrid" aria-label="Supported business categories">
+          {BUSINESS_CATEGORIES.filter((c) => c !== GENERAL_CATEGORY).map((c) => {
+            const photo = CATEGORY_SYSTEM_PHOTOS[c];
+            const box = intrinsic(photo);
+            const squareBox = intrinsic(photo, "square");
+            return (
+              <li key={c} className="cr-mkt-catgrid__item">
+                <picture>
+                  <source
+                    media="(max-width: 639px)"
+                    type="image/webp"
+                    srcSet={srcSetFor(photo, "square")}
+                    sizes="128px"
+                    width={squareBox.width}
+                    height={squareBox.height}
+                  />
+                  <img
+                    className="cr-mkt-catgrid__photo"
+                    src={largestSrc(photo)}
+                    srcSet={srcSetFor(photo, "wide")}
+                    /* MEASURED, not guessed. The section's container caps at
+                       1136px, so the 3-column card is 371px from 1220px up and
+                       31vw between 900 and 1220; the 2-column card is 47vw. The
+                       first draft declared a flat 300px against a box that
+                       renders 371px — the same under-fetch the proof photos
+                       had, where the browser is told to plan for less than it
+                       will paint and upscales the result. */
+                    sizes="(min-width: 1220px) 372px, (min-width: 900px) 31vw, (min-width: 640px) 47vw, 128px"
+                    width={box.width}
+                    height={box.height}
+                    alt={photo.alt}
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </picture>
+                <span className="cr-mkt-catgrid__label">{CATEGORY_LABELS[c]}</span>
+              </li>
+            );
+          })}
+          {/* The fallback stays INSIDE the list, spanning every column. The
+              list is "the eleven categories" and the general one is the
+              eleventh — registry.ts calls it "a real category rather than a
+              blank" — so lifting it out of the <ul> would tell a screen reader
+              there are ten. It carries no photograph on purpose: a frame that
+              stood for "any business at all" is the one scene that cannot be
+              honestly photographed. */}
+          <li className="cr-mkt-catgrid__item cr-mkt-catgrid__item--general">
+            <span className="cr-mkt-catgrid__eyebrow">Don&rsquo;t see your business?</span>
+            <span className="cr-mkt-catgrid__label">{CATEGORY_LABELS[GENERAL_CATEGORY]}</span>
+            <span className="cr-mkt-catgrid__note">
+              A first-class choice, not a waiting room.
+            </span>
+          </li>
         </ul>
         <Text muted size="sm">
-          Not on the list? <strong>{CATEGORY_LABELS[GENERAL_CATEGORY]}</strong> is a
-          first-class choice, not a waiting room.{" "}
           <Link href="/businesses">See supported business types →</Link>
         </Text>
       </section>

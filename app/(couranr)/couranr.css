@@ -2928,6 +2928,12 @@
    A wrapped chip set, not an eleven-cell card grid: the claim is breadth, and
    eleven equal-weight cards make each category look like a product tier. This
    is the ONE grid-dominant section the page is allowed. */
+/* PUB-009's text-only category grid. STILL LIVE — `/businesses` renders it,
+   which is why it survives PUB-001 moving to an image-based system: r8 records
+   that PUB-009's §27.1 table does NOT move, so that page is still a
+   `grid-dominant`, not-`image-led` section and still needs these rules. Deleting
+   them as "the old category grid" would have unstyled a second public page with
+   nothing failing. */
 .cr-mkt-categories {
   list-style: none;
   margin: 0;
@@ -2956,6 +2962,125 @@
 
 @media (min-width: 640px) { .cr-mkt-categories { grid-template-columns: repeat(2, 1fr); } }
 @media (min-width: 900px) { .cr-mkt-categories { grid-template-columns: repeat(3, 1fr); } }
+
+/* ── PUB-001 section 9, the image-based category system ───────────────────
+   §27 Section 9 sanctions either "selective category grid" or "image-based
+   category system". This is the second, adopted on owner instruction
+   2026-09-08 once the tenth category photograph landed. It is a SECOND device
+   beside `.cr-mkt-categories` above, not a replacement for it: PUB-009 still
+   renders the text-only grid and r8 records that its §27.1 table does not
+   move.
+
+   TWO LAYOUTS, one grid. At 640px and up the card is vertical — 4:3
+   photograph, then label. Below it the card is a horizontal media row with a
+   1:1 crop at 128px, which is the shape that survives a 375px viewport: ten
+   stacked 4:3 cards is roughly 2,600px of scroll for a list the reader wants
+   to skim. */
+.cr-mkt-catgrid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--couranr-space-3);
+  grid-template-columns: 1fr;
+  /* The section is centred (`cr-mkt-section--centred`), and centred text
+     inside a media card puts the label away from its own photograph. */
+  text-align: left;
+}
+.cr-mkt-catgrid__item {
+  display: grid;
+  /* MOBILE: image column then text column, both rows of one card. */
+  grid-template-columns: 128px 1fr;
+  /* `stretch`, NOT `center`. With `center` the image cell collapses to the
+     image's own content height and the card measured 98px tall with a 128x96
+     picture — the 4:3 ratio leaking into a slot that is supposed to be square.
+     Stretching gives `height: 100%` a real row to resolve against. */
+  align-items: stretch;
+  gap: var(--couranr-space-4);
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-md);
+  background: var(--couranr-surface);
+  overflow: hidden;
+}
+.cr-mkt-catgrid__photo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* MOBILE is the 1:1 crop, so the box is square and 128px wide — a 128px
+     card, which is the size at which a trade is still readable. The
+     `aspect-ratio` is what makes the row square rather than letting the
+     image's own ratio set it. */
+  aspect-ratio: 1 / 1;
+  /* The photographs are cropped about a focal point by
+     scripts/buildMarketingImages.mjs, so `cover` here is finishing a crop that
+     was already art-directed, not choosing one. */
+  object-fit: cover;
+  object-position: center;
+  background: var(--couranr-surface-sunken);
+}
+.cr-mkt-catgrid__label {
+  align-self: center;
+  padding-block: var(--couranr-space-3);
+  padding-inline-end: var(--couranr-space-4);
+  font-size: var(--couranr-text-sm);
+  font-weight: var(--couranr-weight-medium);
+  line-height: var(--couranr-leading-tight);
+  color: var(--couranr-text);
+  /* Four of the ten labels are four words long. Without this they break to
+     three lines in a 2-column card at 768 and the row heights stop matching. */
+  text-wrap: balance;
+}
+
+/* The general fallback spans every column and carries no photograph.
+   registry.ts calls it "a real category rather than a blank", so it is marked
+   as a choice rather than styled as the leftover at the end of the list. */
+.cr-mkt-catgrid__item--general {
+  grid-column: 1 / -1;
+  grid-template-columns: 1fr;
+  gap: var(--couranr-space-1);
+  padding: var(--couranr-space-4);
+  border-color: var(--couranr-gold);
+  background: var(--couranr-surface-sunken);
+}
+.cr-mkt-catgrid__eyebrow {
+  font-size: var(--couranr-text-xs);
+  font-weight: var(--couranr-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--couranr-text-muted);
+}
+.cr-mkt-catgrid__item--general .cr-mkt-catgrid__label {
+  padding-inline-end: 0;
+  font-size: var(--couranr-text-base);
+}
+.cr-mkt-catgrid__note {
+  font-size: var(--couranr-text-sm);
+  line-height: var(--couranr-leading-normal);
+  color: var(--couranr-text-muted);
+}
+
+@media (min-width: 640px) {
+  .cr-mkt-catgrid { grid-template-columns: repeat(2, 1fr); }
+  /* VERTICAL from here up: photograph on its own row, label beneath. */
+  .cr-mkt-catgrid__item {
+    grid-template-columns: 1fr;
+    align-items: start;
+    gap: 0;
+    /* The label sits in the remaining space, so equal-height cards keep their
+       photographs on one baseline whatever the label wraps to. */
+    align-content: start;
+  }
+  .cr-mkt-catgrid__photo { aspect-ratio: 4 / 3; height: auto; }
+  .cr-mkt-catgrid__label { align-self: start; padding: var(--couranr-space-4); }
+  .cr-mkt-catgrid__item--general {
+    /* It keeps its own padding and must not inherit the label's. */
+    gap: var(--couranr-space-1);
+  }
+}
+
+@media (min-width: 900px) {
+  .cr-mkt-catgrid { grid-template-columns: repeat(3, 1fr); }
+}
 
 /* Gate A / D-3 — the coverage assurances beside the corridor map. */
 .cr-mkt-assurances {

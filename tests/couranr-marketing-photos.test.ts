@@ -1,12 +1,14 @@
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { BUSINESS_CATEGORIES, GENERAL_CATEGORY } from "@/lib/couranr/categories/registry";
 import {
   BUSINESSES_STRIP_PHOTOS,
   CATEGORY_BREADTH_PHOTOS,
   CONFIRMATION_PHOTO,
   OUTCOME_PRIMARY_PHOTO,
   OUTCOME_SUPPORTING_PHOTO,
+  CATEGORY_SYSTEM_PHOTOS,
   PROOF_ARTIFACT_PHOTOS,
   RESERVE_PHOTO_IDS,
   SERVICE_CORRIDOR_MAP,
@@ -303,7 +305,7 @@ describe("the 2026-09 product-surface set", () => {
    class the word ban was written for. A photograph of a boutique that said
    "delivery" would claim a delivery that did not happen, and it would say so
    in the attribute a screen-reader user hears. */
-describe("the 2026-09 category frames, registered but not yet rendered", () => {
+describe("the 2026-09 category frames, in the registry", () => {
   const CATEGORY_IDS = [
     "couranr-mkt-2026-09-print-signage",
     "couranr-mkt-2026-09-event-rentals",
@@ -313,6 +315,8 @@ describe("the 2026-09 category frames, registered but not yet rendered", () => {
     "couranr-mkt-2026-09-bakery-catering",
     "couranr-mkt-2026-09-florist-gifts",
     "couranr-mkt-2026-09-dry-cleaning-counter",
+    "couranr-mkt-2026-09-books-cards-hobby",
+    "couranr-mkt-2026-09-furniture-home-goods",
   ];
 
   const batch09 = REGISTRY.photography.filter((p) =>
@@ -320,12 +324,15 @@ describe("the 2026-09 category frames, registered but not yet rendered", () => {
   );
   const byId = new Map(batch09.map((p) => [String(p.asset_id), p]));
 
-  it("registers all thirteen 2026-09 assets — the eight plus the five placed ones", () => {
-    // Asserted as a number so an asset added without provenance fails rather
-    // than appearing. It moves only when the owner accepts more.
-    expect(batch09).toHaveLength(13);
+  it("registers all fifteen 2026-09 assets", () => {
+    /* Asserted as a number so an asset added without provenance fails rather
+       than appearing. It moves only when the owner accepts more — it went 13 →
+       15 on 2026-09-08 when the last two category frames arrived. */
+    expect(batch09).toHaveLength(15);
     for (const id of [
       ...CATEGORY_IDS,
+      "couranr-mkt-2026-09-books-cards-hobby",
+      "couranr-mkt-2026-09-furniture-home-goods",
       ...PROOF_ARTIFACT_PHOTOS.map((p) => p.id),
       SERVICE_CORRIDOR_MAP.id,
     ]) {
@@ -398,5 +405,165 @@ describe("the 2026-09 category frames, registered but not yet rendered", () => {
       (p) => !decorative.has(String(p.asset_id)) && !String(p.alt ?? "").trim(),
     );
     expect(unexplained.map((p) => p.asset_id)).toEqual([]);
+  });
+});
+
+/* ── PUB-001 section 9's image-based category system ───────────────────────
+   Ten photographs, one per real business category, adopted on owner
+   instruction 2026-09-08. §27 Section 9 always sanctioned this device; what
+   arrived was the photography.
+
+   The pairing is the thing worth guarding. A card showing a bakery under the
+   label "Furniture and home goods" is the defect this section can actually
+   have, and no assertion about counts would catch it. */
+describe("the category system", () => {
+  const CATS = Object.keys(CATEGORY_SYSTEM_PHOTOS) as Array<
+    keyof typeof CATEGORY_SYSTEM_PHOTOS
+  >;
+
+  it("covers every real category exactly once, and not the fallback", () => {
+    /* Exhaustiveness is a TYPE guarantee — the map is
+       Record<Exclude<BusinessCategory, typeof GENERAL_CATEGORY>, MarketingPhoto>
+       and lib/couranr/** compiles strict — so a missing category fails
+       typecheck:canonical, not here. What this adds is the other direction and
+       the fallback's absence, neither of which the type says. */
+    expect(CATS).toHaveLength(BUSINESS_CATEGORIES.length - 1);
+    expect(CATS).not.toContain(GENERAL_CATEGORY);
+    for (const c of BUSINESS_CATEGORIES) {
+      if (c === GENERAL_CATEGORY) continue;
+      expect(CATS, `${c} has no photograph`).toContain(c);
+    }
+    expect(new Set(CATS.map((c) => CATEGORY_SYSTEM_PHOTOS[c].id)).size).toBe(10);
+  });
+
+  it("keeps GENERAL_CATEGORY's literal type, which the exhaustive map needs", () => {
+    /* THIS IS THE ONE THAT WAS WRONG. The map is typed
+       Record<Exclude<BusinessCategory, typeof GENERAL_CATEGORY>, MarketingPhoto>
+       and the constant was declared `: BusinessCategory` — the WHOLE union — so
+       Exclude evaluated to `never`, `Record<never, T>` accepts any object, and
+       the compile-time exhaustiveness this file advertises enforced nothing at
+       all. It was caught by `tsc` complaining about `never` in this very file,
+       not by any assertion.
+
+       A widening is invisible at runtime, so this reads the source. `satisfies`
+       still proves membership in the union; `as const` keeps the literal.
+       Re-verified by mutation: dropping a category from the map, and adding an
+       eleventh to the registry, both now fail `typecheck:canonical`. */
+    const src = readFileSync(path.join(ROOT, "lib/couranr/categories/registry.ts"), "utf8");
+    expect(src).toContain('export const GENERAL_CATEGORY = "general_local_business" as const satisfies BusinessCategory');
+    expect(src, "a plain annotation re-widens it and the map stops checking")
+      .not.toMatch(/export const GENERAL_CATEGORY\s*:\s*BusinessCategory\s*=/);
+  });
+
+  it("pairs each photograph with the category it actually shows", () => {
+    /* The failure this catches is a bakery under "Furniture and home goods".
+       Each entry names the noun the frame must depict, checked against the
+       asset id and the alt — the two places the subject is written down. */
+    const SHOWS: Record<string, RegExp> = {
+      dry_cleaning_laundry_tailoring: /dry.?clean/i,
+      printing_signage_promotional: /print/i,
+      boutique_clothing_shoes_accessories: /boutique/i,
+      florists_gifts_specialty_retail: /florist/i,
+      repair_and_electronics: /repair/i,
+      auto_parts_and_accessories: /auto.?parts/i,
+      furniture_and_home_goods: /furniture|home.?goods/i,
+      event_rentals_and_supplies: /event.?rental/i,
+      bakeries_prepared_food_catering: /baker|catering/i,
+      books_cards_collectibles_hobby: /book/i,
+    };
+    for (const c of CATS) {
+      const p = CATEGORY_SYSTEM_PHOTOS[c];
+      const want = SHOWS[c];
+      expect(want, `${c} has no expected subject`).toBeDefined();
+      expect(p.id, `${c} is paired with ${p.id}`).toMatch(want);
+      expect(p.alt, `${c}: "${p.alt}"`).toMatch(want);
+    }
+  });
+
+  it("keeps the STRICT evidence boundary — these are category illustration", () => {
+    // Not the narrowed rule the proof artifacts got. A shop photograph that
+    // said "delivery" would claim a delivery that did not happen.
+    const banned = /\b(couranr|driver|courier|delivered|delivery|parcel|package|our customer|client)\b/i;
+    const offenders = CATS.map((c) => CATEGORY_SYSTEM_PHOTOS[c])
+      .filter((p) => banned.test(p.alt))
+      .map((p) => `${p.id}: "${p.alt}"`);
+    expect(offenders).toEqual([]);
+  });
+
+  it("describes each frame — these are NOT decorative", () => {
+    /* The proof chips are decorative because their label states the fact. Here
+       the label names a CATEGORY and the photograph shows a specific trade at
+       work, which the label does not carry — so W3C WAI's adjacent-text test
+       comes out the other way and each frame needs a real description. */
+    for (const c of CATS) {
+      const p = CATEGORY_SYSTEM_PHOTOS[c];
+      expect(p.alt.length, `${p.id} alt is too short to describe anything`).toBeGreaterThan(25);
+      expect(p.alt.trim().endsWith("."), `${p.id} alt is not a sentence`).toBe(true);
+      expect(p.alt, p.id).not.toMatch(/^(image|photo|picture) of/i);
+    }
+  });
+
+  it("serves BOTH crops, and every candidate exists on disk", () => {
+    /* This is the assertion that caught the real one. The narrow crop builds
+       as `thumb` in this batch, and srcSetFor's square slot had no per-asset
+       shape override, so it asked for `-square-160.webp` — a file that does
+       not exist. A missing srcSet candidate fails SILENTLY: the browser picks
+       another width, so it shows only as a blurry card at exactly the widths
+       that select the small crop. */
+    const missing: string[] = [];
+    for (const c of CATS) {
+      const p = CATEGORY_SYSTEM_PHOTOS[c];
+      const urls = [
+        largestSrc(p),
+        ...srcSetFor(p, "wide").split(", ").map((e) => e.split(" ")[0]),
+        ...srcSetFor(p, "square").split(", ").map((e) => e.split(" ")[0]),
+      ];
+      for (const u of urls) if (!existsSync(path.join(ROOT, "public", u))) missing.push(`${c}: ${u}`);
+    }
+    expect(missing).toEqual([]);
+  });
+
+  it("reserves BOTH boxes, so the art-directed swap costs no layout shift", () => {
+    // The mosaic measured 232px of shift across four frames when only the img
+    // carried dimensions. There are ten frames here.
+    for (const c of CATS) {
+      const p = CATEGORY_SYSTEM_PHOTOS[c];
+      for (const shape of ["wide", "square"] as const) {
+        const box = intrinsic(p, shape);
+        expect(box.width, `${p.id} ${shape}`).toBeGreaterThan(0);
+        expect(box.height, `${p.id} ${shape}`).toBeGreaterThan(0);
+      }
+      expect(intrinsic(p, "square").width).toBe(intrinsic(p, "square").height);
+    }
+  });
+
+  it("registers all ten, and renders each only where the registry allows", () => {
+    const reg = new Map(REGISTRY.photography.map((p) => [String(p.asset_id), p]));
+    for (const c of CATS) {
+      const p = CATEGORY_SYSTEM_PHOTOS[c];
+      const rec = reg.get(p.id);
+      expect(rec, `${p.id} is rendered but not registered`).toBeDefined();
+      expect(rec!.allowed_surfaces, p.id).toContain("PUB-001");
+      expect(rec!.alt, `${p.id} alt drifted from the registry`).toBe(p.alt);
+    }
+  });
+
+  it("renders as a list of eleven non-interactive items", () => {
+    /* "Preserve keyboard/focus/click behavior" resolved to: there is none, and
+       adding some would be the regression. A category is chosen at sign-up.
+       A card that looks pressable and is not is worse than a plain card. */
+    const page = readFileSync(
+      path.join(ROOT, "app/(couranr)/(public)/(business-public)/business/page.tsx"),
+      "utf8",
+    );
+    const grid = page.slice(page.indexOf('className="cr-mkt-catgrid"'));
+    const section = grid.slice(0, grid.indexOf("</ul>"));
+    for (const interactive of ["<a ", "<Link", "<button", "onClick", "tabIndex", "role="]) {
+      expect(section, `the category grid must not become ${interactive}`).not.toContain(interactive);
+    }
+    // The fallback is the eleventh ITEM, inside the list — lifting it out would
+    // tell a screen reader there are ten categories.
+    expect(section).toContain("cr-mkt-catgrid__item--general");
+    expect(section).toContain("CATEGORY_LABELS[GENERAL_CATEGORY]");
   });
 });
