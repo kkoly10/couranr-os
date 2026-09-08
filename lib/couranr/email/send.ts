@@ -84,8 +84,13 @@ const SEND_TIMEOUT_MS = 3000;
  * Deliberately permissive: this is a shape check to catch an empty string, a
  * name that never got substituted, or a template placeholder — NOT an attempt
  * to validate deliverability, which only the provider can do.
+ *
+ * EXPORTED so `recipients.ts` validates with this exact function rather than a
+ * second regex of its own. Two independently-written address checks is how a
+ * resolver comes to accept a shape the sender then refuses — the drift the
+ * one-minter rule exists to prevent.
  */
-function looksLikeAnAddress(value: string): boolean {
+export function looksLikeAnAddress(value: string): boolean {
   const trimmed = value.trim();
   if (trimmed.length === 0 || trimmed.length > 320) return false;
   if (/\s/.test(trimmed)) return false;
