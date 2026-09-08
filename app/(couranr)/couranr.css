@@ -3979,17 +3979,40 @@
 
 /* ── PUB-002 /sign-in ────────────────────────────────────────────────────── */
 
+/* THE SPLIT IS THE PAGE, not a card on it.
+
+   The canonical artboard for this screen
+   (E3473C54-A4FF-41AD-BFF8-191C4F0F28AF.png, 1448x1086, `visual_authority:
+   canonical` in VISUAL_AUTHORITY_REGISTRY.json) is a full-bleed two-column
+   composition that runs to all four edges: navy story on the left, form on the
+   right, nothing of a page behind them. What shipped instead was a 74rem card
+   with a fixed 40rem floor, centred in the shell's content column, under a
+   marketing header. Measured at 1440x900 before this change: the split ran
+   97 -> 737 and stopped 163px above the fold, so the screen read as a small
+   panel floating on cream.
+
+   Two changes get it back to the artboard, and the second is what lets the
+   first stay this simple:
+
+   1. A VIEWPORT floor instead of a content floor. `svh` follows `vh` for
+      mobile, where `vh` counts the collapsible URL bar and would push the
+      fold off-screen; the `vh` declaration is the fallback for anything that
+      does not know `svh` and must stay first.
+
+   2. NO PUBLIC CHROME above it. `(auth-public)/layout.tsx` renders the
+      `<main>` landmark and nothing else — no topbar to subtract, no
+      `.cr-container` to escape with `margin-inline: calc(50% - 50vw)`, and no
+      `.cr-shell__content` pad to cancel. `100vh` is the whole page here.
+
+   The border, radius and shadow went with the card. A 1px border on a
+   full-bleed element paints a hairline down the viewport edges and a corner
+   radius has nothing to round against. */
 .cr-auth-split {
   display: grid;
-  width: 100%;
-  max-width: 74rem;
-  min-height: 40rem;
-  margin-inline: auto;
+  min-height: 100vh;
+  min-height: 100svh;
   overflow: hidden;
-  border: 1px solid var(--couranr-border);
-  border-radius: var(--couranr-radius-lg);
   background: var(--couranr-surface);
-  box-shadow: var(--couranr-shadow-md);
 }
 
 .cr-auth-story {
@@ -4016,10 +4039,31 @@
     linear-gradient(90deg, rgb(13 21 37 / 0.72), rgb(13 21 37 / 0.16));
 }
 
+/* `margin-block-start: auto` rather than `align-self: end`, because the panel
+   is a COLUMN now (it has the wordmark above this) and `align-self` addresses
+   the cross axis — in a column that is the horizontal one, which would have
+   right-aligned the copy instead of dropping it to the foot. An auto start
+   margin pushes it down whatever else the panel holds. */
 .cr-auth-story__content {
-  align-self: end;
+  margin-block-start: auto;
   width: 100%;
   padding: clamp(var(--couranr-space-8), 5vw, var(--couranr-space-12));
+}
+
+/* The reverse mark on the navy panel — the artboard's placement, and the only
+   mark shown at this width. Matches `__content`'s inline padding so the two
+   share an edge; no bottom padding, since the photograph below it is the
+   point. */
+.cr-auth-story__mark {
+  /* `align-self` and not the default stretch. As a column flex item this link
+     would otherwise fill the panel's full width — measured 778px at 1440 —
+     giving the photograph a 778x90 invisible hit area that navigates to `/`
+     when someone clicks the top of the image. Shrink-to-fit keeps the target
+     the size of the mark. `flex-start` rather than `start` because Safari
+     shipped the physical keyword years before the logical one. */
+  align-self: flex-start;
+  padding: clamp(var(--couranr-space-8), 5vw, var(--couranr-space-12));
+  padding-block-end: 0;
 }
 
 .cr-auth-story__eyebrow,
@@ -4091,6 +4135,13 @@
   width: min(100%, 29rem);
 }
 
+/* Below 900px the story panel is hidden and this is the only mark on the
+   screen; above it the navy panel carries the reverse one. It sits inside
+   `__inner` rather than being pinned to the panel's top corner so that hiding
+   it cannot change how the form is centred — `.cr-auth-panel` keeps exactly
+   one grid child at every width. */
+.cr-auth-panel__mark { justify-self: start; }
+
 .cr-auth-panel__intro { display: grid; gap: var(--couranr-space-2); }
 .cr-auth-panel__eyebrow { color: var(--couranr-text-muted); }
 
@@ -4124,15 +4175,11 @@
 
 @media (min-width: 900px) {
   .cr-auth-split { grid-template-columns: minmax(0, 1.08fr) minmax(25rem, 0.92fr); }
-  .cr-auth-story { display: flex; }
+  .cr-auth-story { display: flex; flex-direction: column; }
+  .cr-auth-panel__mark { display: none; }
 }
 
 @media (max-width: 639px) {
-  .cr-auth-split {
-    min-height: auto;
-    border-radius: var(--couranr-radius-md);
-    box-shadow: var(--couranr-shadow-sm);
-  }
   .cr-auth-panel { padding: var(--couranr-space-6) var(--couranr-space-5); }
   .cr-auth-panel__inner { gap: var(--couranr-space-6); }
 }
