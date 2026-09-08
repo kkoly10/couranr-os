@@ -66,14 +66,23 @@ describe("merchant-portal pilot credit authority", () => {
     expect(MIGRATION).not.toMatch(/set[\s\S]{0,120}source=/);
   });
 
-  it("refuses coexistence with committed real payment state", () => {
-    for (const state of [
-      "authorized",
-      "capture_pending",
-      "captured",
-      "refunded",
-      "partially_refunded",
-    ]) expect(MIGRATION).toContain("'" + state + "'");
+  it("requires the Stripe lane to be fully cancelled before applying credit", () => {
+    expect(MIGRATION).toContain("payment_state <> 'cancelled'");
+    expect(MIGRATION).toContain("raise exception 'payment_path_already_started'");
+    expect(PANEL).toContain("const livePaymentExists = Boolean(fulfillment?.payment)");
+    expect(PANEL).toContain("!livePaymentExists");
+  });
+
+  it("blocks the reverse race: no payment obligation can become live after credit", () => {
+    expect(MIGRATION).toContain("couranr_guard_promotional_credit_payment_exclusivity");
+    expect(MIGRATION).toContain("couranr_po_promotional_credit_exclusivity");
+    expect(MIGRATION).toContain("new.payment_state <> 'cancelled'");
+    expect(MIGRATION).toContain("c.status='applied'");
+    expect(MIGRATION).toContain("raise exception 'promotional_credit_already_applied'");
+    expect(ROLLBACK).toContain("drop trigger if exists couranr_po_promotional_credit_exclusivity");
+    expect(ROLLBACK).toContain(
+      "drop function if exists private.couranr_guard_promotional_credit_payment_exclusivity() restrict"
+    );
   });
 
   it("nudges the existing automatic path after credit instead of inventing another fulfillment path", () => {

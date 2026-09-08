@@ -90,8 +90,12 @@ begin
    where request_id=v_req.id and payment_state <> 'cancelled'
    order by created_at desc
    limit 1;
-  if found and v_ob.payment_state in ('authorized','capture_pending','captured','refunded','partially_refunded') then
-    raise exception 'payment_already_committed' using errcode='CR409';
+  -- A pilot credit is an ALTERNATIVE commercial authority, never a second
+  -- authority layered over a live Stripe lane. Even not_started/requires_action
+  -- can still become a provider hold from a stale payer tab, so Operations must
+  -- resolve/cancel that lane before Couranr funding is applied.
+  if found then
+    raise exception 'payment_path_already_started' using errcode='CR409';
   end if;
 
   select * into v_credit
@@ -152,5 +156,37 @@ revoke all on function public.couranr_apply_promotional_credit(
 grant execute on function public.couranr_apply_promotional_credit(
   uuid,integer,uuid,text,text,text,text
 ) to service_role;
+
+-- Reverse-direction invariant. Applying a credit already refuses every live
+-- payment obligation above. This trigger closes the race from the other side:
+-- once an applied credit exists, no stale merchant/customer tab, webhook or
+-- retry may create/reanimate a non-cancelled Stripe obligation for the request.
+create or replace function private.couranr_guard_promotional_credit_payment_exclusivity()
+returns trigger
+language plpgsql
+set search_path=''
+as $fn$
+begin
+  if new.payment_state <> 'cancelled'
+     and exists (
+       select 1
+       from public.couranr_promotional_credits c
+       where c.request_id=new.request_id
+         and c.status='applied'
+     ) then
+    raise exception 'promotional_credit_already_applied' using errcode='CR409';
+  end if;
+  return new;
+end
+$fn$;
+
+revoke all on function private.couranr_guard_promotional_credit_payment_exclusivity()
+  from public,anon,authenticated,service_role;
+
+drop trigger if exists couranr_po_promotional_credit_exclusivity
+  on public.couranr_payment_obligations;
+create trigger couranr_po_promotional_credit_exclusivity
+before insert or update on public.couranr_payment_obligations
+for each row execute function private.couranr_guard_promotional_credit_payment_exclusivity();
 
 commit;

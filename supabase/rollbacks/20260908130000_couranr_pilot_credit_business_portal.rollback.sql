@@ -19,6 +19,10 @@ begin
   end if;
 end $$;
 
+drop trigger if exists couranr_po_promotional_credit_exclusivity
+  on public.couranr_payment_obligations;
+drop function if exists private.couranr_guard_promotional_credit_payment_exclusivity() restrict;
+
 create or replace function public.couranr_apply_promotional_credit(
   p_request_id uuid,
   p_expected_version integer,

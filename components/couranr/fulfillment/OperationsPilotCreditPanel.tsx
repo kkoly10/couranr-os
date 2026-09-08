@@ -43,14 +43,12 @@ export function OperationsPilotCreditPanel({
       : "general-delivery"
   );
 
-  const paymentState = fulfillment?.payment?.paymentState ?? null;
-  const paymentCommitted = new Set([
-    "authorized",
-    "capture_pending",
-    "captured",
-    "partially_refunded",
-    "refunded",
-  ]).has(paymentState ?? "");
+  // The fulfillment projection omits cancelled obligations. Any payment row
+  // visible here therefore means the Stripe lane is still live, even when it
+  // is only not_started/requires_action/failed. Credit and Stripe are mutually
+  // exclusive settlement authorities, so Operations must resolve that lane
+  // before this action appears.
+  const livePaymentExists = Boolean(fulfillment?.payment);
 
   const eligible =
     request.requesterKind === "business" &&
@@ -63,7 +61,7 @@ export function OperationsPilotCreditPanel({
     request.quote.status === "estimated" &&
     request.quote.deliverySubtotalCents !== null &&
     !fulfillment?.promotionalCredit &&
-    !paymentCommitted &&
+    !livePaymentExists &&
     !fulfillment?.delivery;
 
   if (!eligible) return null;
