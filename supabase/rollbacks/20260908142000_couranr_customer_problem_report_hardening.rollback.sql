@@ -3,7 +3,7 @@ begin;
 -- Safe functional rollback of the CUS-004 post-cutover hardening. No report,
 -- evidence or event rows are deleted.
 
-drop function if exists public.couranr_collect_expired_customer_problem_evidence_for_operations(
+drop function if exists public.couranr_collect_expired_problem_evidence_ops(
   uuid,integer
 );
 drop function if exists public.couranr_renew_customer_problem_evidence_grant(
