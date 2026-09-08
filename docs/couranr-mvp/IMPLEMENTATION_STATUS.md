@@ -107,11 +107,11 @@ each is in the ledger row itself — `test_evidence`, `browser_verified` and
 
 | SHA | covers | rows |
 |---|---|---|
+| `017584387ce14ced6253d1bd3f392d6653651fdd` | 1 screen | PUB-004 |
 | `08f59f8d0cc062c36252a7295f86513618187965` | 1 screen | MER-004 |
 | `0d57ba736000e8ecb9d28c87a4e78a683599a316` | 1 work item | P3-002 |
 | `14fa99fbcf8103d33bb7267a8f4729421bccd400` | 1 work item | P6-001 |
 | `1b3a1c90c88a554f1ac1ff1e6a6d06a97d602150` | 2 screens | CUS-006, CUS-008 |
-| `2384896d46ba3e9075c5b6b5a456ed962e7f95ff` | 1 screen | PUB-004 |
 | `277982f2548e9b804c466121437c696b4ba52af4` | 1 work item, 1 screen | P7-005, CUS-002 |
 | `2848a8f33bde8362bd3c9fcfb9266781fcecb77a` | 2 screens | PUB-012, PUB-013 |
 | `32893e21401a6f056821c4caaa7858460c7356b8` | 1 screen | MER-001 |
