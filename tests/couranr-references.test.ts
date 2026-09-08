@@ -13,7 +13,7 @@ import {
 
 const ROOT = path.resolve(__dirname, "..");
 const MIGRATION = readFileSync(
-  path.join(ROOT, "supabase/migrations/20260908120000_couranr_delivery_reference.sql"),
+  path.join(ROOT, "supabase/migrations/20260908161237_couranr_delivery_reference.sql"),
   "utf8"
 );
 
@@ -160,7 +160,7 @@ describe("the TypeScript and the migration cannot drift apart", () => {
 
   it("has a paired rollback that refuses to drop a reference already in the wild", () => {
     const rollback = readFileSync(
-      path.join(ROOT, "supabase/rollbacks/20260908120000_couranr_delivery_reference.rollback.sql"),
+      path.join(ROOT, "supabase/rollbacks/20260908161237_couranr_delivery_reference.rollback.sql"),
       "utf8"
     );
     expect(rollback).toContain("refusing to remove couranr_delivery_requests.reference");

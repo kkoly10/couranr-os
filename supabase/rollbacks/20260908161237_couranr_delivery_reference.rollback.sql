@@ -1,4 +1,4 @@
--- Paired rollback for 20260908120000_couranr_delivery_reference.sql.
+-- Paired rollback for 20260908161237_couranr_delivery_reference.sql.
 --
 -- A delivery reference is printed on customer email, quoted to support and
 -- shown to merchants and Operations. Once one has been sent to a person it is

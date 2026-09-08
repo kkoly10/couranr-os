@@ -3,7 +3,7 @@
  *
  * Pure string handling with no imports, so it is safe in a client component, a
  * server command, an email template and a test alike. Generation lives in SQL
- * (`couranr_generate_delivery_reference`, migration 20260908120000) because
+ * (`couranr_generate_delivery_reference`, migration 20260908161237) because
  * FOUR functions insert into couranr_delivery_requests and a fifth added later
  * would otherwise ship blank references silently — a BEFORE INSERT trigger is
  * the only placement a new caller cannot bypass.
