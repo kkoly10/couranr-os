@@ -180,6 +180,7 @@ const STAGES = [
     ["test:messaging", "authenticated messaging"],
     ["test:auth-gateway", "auth gateway"],
     ["test:cus-fragments", "customer help fragments"],
+    ["test:cus-problem-bookkeeping", "CUS-004 resolve_report Delivery Help conversation bookkeeping — the transition command called on real reports"],
   ].map(([script, why]) => ({
     tier: 3,
     name: script,
@@ -194,6 +195,7 @@ const STAGES = [
       // recycled without warning and the binary does not survive it.
       const postgresOnly = new Set([
         "test:payment-recovery",
+        "test:cus-problem-bookkeeping",
         "test:driver-execution",
         "test:consumer-send",
         "test:pricing-v2",
