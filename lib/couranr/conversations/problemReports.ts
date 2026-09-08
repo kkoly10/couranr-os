@@ -441,7 +441,7 @@ export async function cleanupExpiredOperationsProblemEvidence(
   if(denied)return denied;
   const userId=(actor as Extract<RequestActor,{kind:"operations"}>).userId;
   const {data,error}=await supabaseAdmin.rpc(
-    "couranr_collect_expired_customer_problem_evidence_for_operations",
+    "couranr_collect_expired_problem_evidence_ops",
     {p_actor_user_id:userId,p_limit:100}
   );
   if(error)return dbFail("problemEvidence.operations.cleanupCollect",error);
