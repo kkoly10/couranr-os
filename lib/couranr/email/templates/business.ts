@@ -317,7 +317,8 @@ function fmt(amountCents: number, currency: string): string {
      query: couranr_quote_versions and couranr_payment_obligations both hold
      'usd' — so an exact "USD" comparison fell through to the generic branch and
      rendered every merchant money line as "13.99 usd" instead of "$13.99". */
-  return currency.toUpperCase() === "USD" ? `$${v}` : `${v} ${currency.toUpperCase()}`;
+  const code = typeof currency === "string" ? currency.toUpperCase() : "";
+  return code === "USD" ? `$${v}` : `${v} ${code}`.trimEnd();
 }
 
 function escapeInline(s: string): string {

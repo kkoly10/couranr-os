@@ -90,7 +90,14 @@ const SEND_TIMEOUT_MS = 3000;
  * resolver comes to accept a shape the sender then refuses — the drift the
  * one-minter rule exists to prevent.
  */
-export function looksLikeAnAddress(value: string): boolean {
+export function looksLikeAnAddress(value: unknown): boolean {
+  /* TOTAL, deliberately. The parameter was typed `string` and called `.trim()`
+     straight away, outside any try/catch — so `{ to: row.recipient_email }` on a
+     row where that nullable column is NULL threw a TypeError and broke this
+     module's own headline contract that it never throws. `"strict": false` plus
+     row types of Record<string, any> means the type annotation stopped nothing.
+     A shape check that throws on a bad shape is not a shape check. */
+  if (typeof value !== "string") return false;
   const trimmed = value.trim();
   if (trimmed.length === 0 || trimmed.length > 320) return false;
   if (/\s/.test(trimmed)) return false;

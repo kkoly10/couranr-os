@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   htmlToPlainText,
+  looksLikeAnAddress,
   sendRenderedEmail,
 } from "@/lib/couranr/email/send";
 import { defaultEmailConfig } from "@/lib/couranr/email/theme";
@@ -297,5 +298,55 @@ describe("htmlToPlainText", () => {
     expect(text).toContain("Your quote is ready");
     expect(text).toContain("Review it & approve.");
     expect(text).not.toContain("<");
+  });
+});
+
+describe("the never-throws contract holds for inputs the types do not stop", () => {
+  /**
+   * `"strict": false` plus row types of Record<string, any> means the `to`
+   * annotation stops nothing. The original looksLikeAnAddress called .trim()
+   * with no typeof guard, OUTSIDE any try/catch, so `{ to: row.recipient_email }`
+   * on a NULL column threw a TypeError — breaking send.ts's own headline. These
+   * assert a RESULT, never a throw.
+   */
+  it.each([
+    ["null", null],
+    ["undefined", undefined],
+    ["a number", 42],
+    ["an object", { audience: "merchant", address: "a@b.com" }],
+    ["an array", ["a@b.com"]],
+  ])("refuses %s instead of throwing", async (_label, bad) => {
+    const calls: any[] = [];
+    const result = await sendRenderedEmail(rendered(), {
+      to: bad as any,
+      fetchImpl: okFetch(calls),
+    });
+    expect(result).toMatchObject({ sent: false, reason: "invalid_recipient" });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("the shape check itself is total", () => {
+    for (const bad of [null, undefined, 42, {}, []]) {
+      expect(() => looksLikeAnAddress(bad as any)).not.toThrow();
+      expect(looksLikeAnAddress(bad as any)).toBe(false);
+    }
+  });
+
+  it("time-boxes the request — the signal is actually passed", async () => {
+    // Nothing asserted the timeout existed; a grep for signal/Abort across all
+    // three email test files returned nothing before this.
+    const calls: any[] = [];
+    await sendRenderedEmail(rendered(), { to: "m@example.com", fetchImpl: okFetch(calls) });
+    expect(calls[0].init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("an aborted request is provider_unreachable, not a throw", async () => {
+    const fetchImpl = (async () => {
+      const err: any = new Error("The operation was aborted due to timeout");
+      err.name = "TimeoutError";
+      throw err;
+    }) as any;
+    const result = await sendRenderedEmail(rendered(), { to: "m@example.com", fetchImpl });
+    expect(result).toMatchObject({ sent: false, reason: "provider_unreachable" });
   });
 });
