@@ -11,7 +11,7 @@ ledgers own per-item state; this is their sum.
 The 721-line hand-written version of this file is preserved whole at
 [`autonomous-evidence/status-archive/IMPLEMENTATION_STATUS-2026-08-06.md`](./autonomous-evidence/status-archive/IMPLEMENTATION_STATUS-2026-08-06.md).
 It restated per-row evidence the ledgers already carried, and the restatement is
-what went stale: it counted 39 migrations while 99 were on disk.
+what went stale: it counted 39 migrations while 103 were on disk.
 
 ## Where truth lives
 
@@ -59,8 +59,8 @@ Still rendering `ScreenPlaceholder` (11): `OPS-006` · `OPS-011` · `OPS-013` ·
 | API routes | 188 |
 | …canonical, under `app/api/couranr` | 118 |
 | …legacy | 70 |
-| Forward migrations | 99 |
-| Paired rollbacks | 99 |
+| Forward migrations | 103 |
+| Paired rollbacks | 103 |
 | Canonical screens | 68 |
 | …Core | 64 |
 | …MVP-complete | 4 |
@@ -122,7 +122,8 @@ each is in the ledger row itself — `test_evidence`, `browser_verified` and
 | `807c8ed6316cf420dbffa171f5a65b1692dd6830` | 3 screens | MER-003, MER-016, OPS-007 |
 | `91515ca5ca26e813bcc14b77b2e72dd475202ea8` | 2 work items, 4 screens | P8-002, P8-004, CUS-001, CUS-003, OPS-005, PUB-007 |
 | `9230b820404c3e8562cd4bae9b57a3cc797dd2a9` | 1 screen | OPS-012 |
-| `98b19ae72729e6098a575b2ef63b3041348009b9` | 2 screens | MER-013, PUB-004 |
+| `98b19ae72729e6098a575b2ef63b3041348009b9` | 1 screen | MER-013 |
+| `a84968d713bd54b3af390adf8c9c2419895e01a0` | 1 screen | PUB-004 |
 | `a8ce376cf303e3b62b889dc7831a3e81dd5522ad` | 1 work item | P5-001 |
 | `b5831406e8a1b623bf706562010fbc16d0ab0e71` | 1 screen | CUS-007 |
 | `c2cac8b9ffeaaf7e9a6a528a9eac5d057a2801f9` | 1 work item | P2-001 |

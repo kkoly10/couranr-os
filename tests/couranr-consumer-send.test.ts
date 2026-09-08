@@ -302,6 +302,45 @@ describe("validateConsumerSendBody", () => {
     expect(validateConsumerSendBody({ ...valid, pickupPlaceId: "" }).ok).toBe(false);
     expect(validateConsumerSendBody({ ...valid, dropoffPlaceId: undefined }).ok).toBe(false);
   });
+
+  it("TMZ-001: timing defaults to ASAP; a scheduled pickup carries parseable Eastern local words", () => {
+    const asap = validateConsumerSendBody(valid);
+    expect(asap.ok).toBe(true);
+    if (asap.ok) expect(asap.value.timing).toEqual({ intent: "asap", requestedPickupLocal: null });
+
+    const sched = validateConsumerSendBody({
+      ...valid,
+      timing: { intent: "scheduled", requestedPickupLocal: "2027-03-10T10:30" },
+    });
+    expect(sched.ok).toBe(true);
+    if (sched.ok) {
+      expect(sched.value.timing).toEqual({ intent: "scheduled", requestedPickupLocal: "2027-03-10T10:30" });
+    }
+    // ASAP never carries a time, even if one is sent.
+    const asapWithTime = validateConsumerSendBody({
+      ...valid,
+      timing: { intent: "asap", requestedPickupLocal: "2027-03-10T10:30" },
+    });
+    expect(asapWithTime.ok).toBe(true);
+    if (asapWithTime.ok) expect(asapWithTime.value.timing.requestedPickupLocal).toBeNull();
+  });
+
+  it("refuses an unknown intent, and a scheduled pickup without valid local words", () => {
+    const r1 = validateConsumerSendBody({ ...valid, timing: { intent: "whenever" } });
+    expect(r1.ok).toBe(false);
+    if (isConsumerSendBodyFailure(r1)) expect(r1.reason).toBe("timing_intent_invalid");
+    for (const bad of [undefined, "", "soon", "2027-03-10T10:30Z", "2027-02-30T10:00"]) {
+      const r = validateConsumerSendBody({ ...valid, timing: { intent: "scheduled", requestedPickupLocal: bad } });
+      expect(r.ok, `local=${String(bad)}`).toBe(false);
+      if (isConsumerSendBodyFailure(r)) expect(r.reason).toBe("requested_time_invalid");
+    }
+  });
+
+  it("the consumer lib no longer hardcodes an ASAP intent anywhere on the estimate or refresh path", () => {
+    expect(stripped(LIB)).not.toMatch(/timingIntent:\s*"asap"/);
+    // Refresh re-prices the STORED statement, as the business refresh does.
+    expect(LIB).toMatch(/row\.timing_intent === "scheduled" \? "scheduled" : "asap"/);
+  });
 });
 
 /* -------------------------------------------------------- SQL posture ---- */

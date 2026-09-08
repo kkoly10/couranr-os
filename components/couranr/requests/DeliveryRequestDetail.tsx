@@ -447,6 +447,17 @@ export function DeliveryRequestDetail({
               label="Customer safety statement"
               value={hostedContext.customerRestrictedClass ?? "Not provided"}
             />
+            <Detail
+              label="Customer requested timing"
+              value={
+                hostedContext.customerTimingIntent === "scheduled" &&
+                hostedContext.customerRequestedPickupLocal
+                  ? `Scheduled: ${String(hostedContext.customerRequestedPickupLocal).replace("T", " ")} (Eastern)`
+                  : hostedContext.customerTimingIntent === "asap"
+                    ? "As soon as possible"
+                    : "Not provided"
+              }
+            />
           </Grid>
           {hostedContext.destinationLabel ? (
             <div>

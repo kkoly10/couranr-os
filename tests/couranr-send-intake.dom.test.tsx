@@ -36,16 +36,27 @@ import { WEIGHT_BAND_LABELS } from "@/lib/couranr/shipment/weightBandLabels";
 
 const INTERPRET = "/api/couranr/consumer/interpret";
 const SESSION = "/api/couranr/consumer/session";
+const PLACES = "/api/couranr/consumer/places";
 const GUEST_TOKEN = "guest-dom-intake-token";
 
 type Call = { path: string; method: string; headers: Record<string, string>; body: unknown };
 function installFetch(handlers: Record<string, (c: Call) => { status?: number; body: unknown }>) {
   const calls: Call[] = [];
+  // Reaching the item step now requires two SELECTED canonical addresses, so
+  // the trip step drives the Places autocomplete. Default PLACES/SESSION stubs
+  // let every intake test pass through the trip gate; a test may override them.
+  const merged: Record<string, (c: Call) => { status?: number; body: unknown }> = {
+    [PLACES]: () => ({ body: { suggestions: [{ placeId: "pl-intake-1", text: "123 Test Street, Town, VA" }] } }),
+    [SESSION]: () => ({
+      body: { guestSession: { token: GUEST_TOKEN, expiresAt: new Date(Date.now() + 3600_000).toISOString() } },
+    }),
+    ...handlers,
+  };
   globalThis.fetch = vi.fn(async (input: any, init?: any) => {
     const url: string = typeof input === "string" ? input : String(input?.url ?? input);
     const call: Call = { path: url.split("?")[0], method: init?.method ?? "GET", headers: init?.headers ?? {}, body: init?.body };
     calls.push(call);
-    const h = handlers[call.path];
+    const h = merged[call.path];
     if (!h) return { ok: false, status: 404, json: async () => ({ error: "unhandled" }) };
     const r = h(call);
     const status = r.status ?? 200;
@@ -61,9 +72,19 @@ function intakeBody(proposals: unknown[], question: string | null = null) {
   return { body: { intake: { status: "interpreted", revision: 1, proposals, clarification: question ? { question } : null } } };
 }
 
+/** Type into a canonical address field and choose its (single) suggestion. */
+async function selectAddress(inputId: string, typed: string) {
+  const input = document.getElementById(inputId) as HTMLInputElement;
+  await userEvent.type(input, typed);
+  const option = await screen.findByRole("option", { name: /123 Test Street/ });
+  await userEvent.click(option);
+}
+
 async function toItemStep() {
-  render(<SendFlow mode="live" productionStop="stop" />);
-  // Trip step first; Continue to the item step.
+  render(<SendFlow mode="live" />);
+  // The trip step gate: both addresses must be SELECTED before Continue.
+  await selectAddress("send-pickup", "123 Test Street");
+  await selectAddress("send-destination", "123 Test Street");
   await userEvent.click(screen.getByRole("button", { name: "Continue" }));
   return screen.getByLabelText(SEND_COPY.item_question) as HTMLTextAreaElement;
 }
@@ -196,6 +217,11 @@ describe("Consumer Smart Intake on the item step", () => {
     const pending: Array<(v: { status?: number; body: unknown }) => void> = [];
     globalThis.fetch = vi.fn(async (input: any, init?: any) => {
       const url: string = typeof input === "string" ? input : String(input?.url ?? input);
+      // The address gate must resolve immediately; only the interpret reads
+      // are held pending so their ordering can be controlled.
+      if (url.startsWith(PLACES)) {
+        return { ok: true, status: 200, json: async () => ({ suggestions: [{ placeId: "pl-race", text: "123 Test Street, Town, VA" }] }) };
+      }
       if (!url.startsWith(INTERPRET)) return { ok: false, status: 404, json: async () => ({}) };
       const r = await new Promise<{ status?: number; body: unknown }>((resolve) => pending.push(resolve));
       return { ok: true, status: 200, json: async () => r.body };
