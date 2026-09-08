@@ -61,7 +61,7 @@ grant execute on function public.couranr_renew_customer_problem_evidence_grant(
 ) to service_role;
 
 
-create or replace function public.couranr_collect_expired_customer_problem_evidence_for_operations(
+create or replace function public.couranr_collect_expired_problem_evidence_ops(
   p_actor_user_id uuid,
   p_limit integer default 100
 ) returns table (
@@ -109,10 +109,10 @@ begin
 end
 $fn$;
 
-revoke all on function public.couranr_collect_expired_customer_problem_evidence_for_operations(
+revoke all on function public.couranr_collect_expired_problem_evidence_ops(
   uuid,integer
 ) from public,anon,authenticated,service_role;
-grant execute on function public.couranr_collect_expired_customer_problem_evidence_for_operations(
+grant execute on function public.couranr_collect_expired_problem_evidence_ops(
   uuid,integer
 ) to service_role;
 
@@ -242,7 +242,7 @@ grant execute on function public.couranr_transition_customer_problem_report(
 comment on function public.couranr_renew_customer_problem_evidence_grant(uuid,uuid) is
   'CUS-004 provider-grant lifetime alignment. Renews a token-scoped pending DB '
   'envelope to 125 minutes immediately before a fresh two-hour Storage upload URL.';
-comment on function public.couranr_collect_expired_customer_problem_evidence_for_operations(uuid,integer) is
+comment on function public.couranr_collect_expired_problem_evidence_ops(uuid,integer) is
   'Operations-authorized orphan cleanup selector. Marks expired pending evidence '
   'abandoned and returns paths for retryable private Storage deletion.';
 
