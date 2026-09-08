@@ -35,6 +35,7 @@
     "test:cus-fragments": "node e2e/disposable/customerHelpFragments.mjs",
     "test:consumer-place-ratelimit": "node e2e/disposable/consumerPlaceRateLimit.mjs",
     "test:consumer-scheduled-timing": "node e2e/disposable/consumerScheduledTiming.mjs",
+    "test:hosted-scheduled-timing": "node e2e/disposable/hostedScheduledTiming.mjs",
     "test:messaging": "node e2e/disposable/authenticatedMessaging.mjs",
     "test:auth-gateway": "node e2e/disposable/authGateway.mjs",
     "test:acceptance": "node e2e/disposable/acceptanceMatrix.mjs",
