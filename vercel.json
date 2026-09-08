@@ -1,9 +1,12 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "git": {
-    "deploymentEnabled": false
+    "deploymentEnabled": {
+      "fix/pilot-credit-e2e": false,
+      "main": true
+    }
   },
-  "ignoreCommand": "exit 0",
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- ':!*.md' ':!docs/*'",
   "crons": [
     {
       "path": "/api/couranr/internal/automation/tick",
