@@ -149,9 +149,10 @@ export const SEND_COPY = {
   timing_asap: "As soon as possible",
   timing_today: "Today",
   timing_schedule: "Schedule it",
-  /* Live V1 is ASAP only; Couranr confirms the exact timing after the
-     request. Scheduled consumer timing is deferred, so live mode never
-     renders a choice the backend would ignore. */
+  /* Shown for the ASAP choice. Scheduled timing is live on /send and on the
+     merchant-hosted flow (TMZ-001), so `timing_schedule` renders a real
+     choice; `timing_today` stays in the registry-locked set unrendered —
+     ASAP before the cutoff IS today under HRS-001, not a separate intent. */
   timing_live_note: "Couranr picks up as soon as possible and confirms the exact timing with you after your request.",
   review_heading: "Here’s your delivery",
   contact_heading: "Where should we send updates?",
