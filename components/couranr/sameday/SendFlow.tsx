@@ -4,15 +4,17 @@ import * as React from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { SEND_COPY } from "@/lib/couranr/public/masterSameDayCopy";
 import {
-  getSameDayAdapters,
-  type AddressSuggestion,
-  type AvailabilityVerdict,
+  getSameDayAdaptersForMode,
   type IntakeProposal,
   type IntakeReading,
   type QuoteReading,
 } from "@/lib/couranr/sameday/adapters";
 import type { AdapterMode } from "@/lib/couranr/sameday/adapterMode";
 import { GUEST_STORAGE_KEY } from "@/lib/couranr/sameday/liveAdapters";
+import {
+  ConsumerAddressField,
+  type ConsumerAddressValue,
+} from "@/components/couranr/sameday/ConsumerAddressField";
 import { WEIGHT_BAND_LABELS } from "@/lib/couranr/shipment/weightBandLabels";
 import { PickupCredentialDisplay } from "@/components/couranr/dispatch/PickupCredentialDisplay";
 import { CouranrPaymentElement } from "@/components/couranr/payments/CouranrPaymentElement";
@@ -21,11 +23,17 @@ import { formatCents } from "@/lib/couranr/requests/view";
 /**
  * PUB-004's `/send` flow — presentation and state only.
  *
- * WHAT IT NEVER DOES: create a request, search a real address, check a real
- * service area, run real Smart Intake, price a real delivery, or take a
- * payment. Every one of those is an adapter call, and in production every
- * adapter refuses. The `mode` prop is resolved SERVER-side; this component
- * cannot turn fixtures on and reads nothing from the URL that could.
+ * Every capability behind it is an adapter call: address search, Smart Intake,
+ * the estimate, submit, and payment. In `live` mode (the default for every
+ * real environment) those reach the consumer API; in `fixture` mode (tests and
+ * explicit local/preview demos) they answer from deterministic data. The
+ * `mode` prop is resolved SERVER-side; this component cannot turn fixtures on
+ * and reads nothing from the URL that could.
+ *
+ * THE BROWSER NEVER AUTHORS canonical facts. It sends selected Place IDs and a
+ * structured shipment statement; the server derives route, market, price,
+ * serviceability and every request/payment state. This flow displays the
+ * server's numbers and never computes or overrides one.
  *
  * `?intent=` IS read from the URL, and only `send` or `pickup` are accepted —
  * anything else falls back to the intent choice. An invalid intent must not
@@ -51,19 +59,7 @@ function parseIntent(raw: string | null): Intent | null {
   return raw === "send" || raw === "pickup" ? raw : null;
 }
 
-type AddressState = {
-  value: string;
-  status: "blank" | "focused" | "typing" | "loading" | "results" | "selected" | "empty" | "error";
-  results: AddressSuggestion[];
-  /**
-   * ADDITIVE, live mode: the Google Place ID of the SELECTED suggestion. The
-   * canonical estimate takes place identities, never free text — typing after
-   * a selection clears it, so a stale identity can never describe a new trip.
-   */
-  placeId?: string;
-};
-
-const emptyAddress: AddressState = { value: "", status: "blank", results: [] };
+const emptyAddress: ConsumerAddressValue = { value: "", placeId: null };
 
 /**
  * The shipment-safety declaration options — SAME closed vocabulary and SAME
@@ -98,32 +94,23 @@ const RESTRICTED_CLASS_OPTIONS: ReadonlyArray<readonly [string, string]> = [
   ["people", "people"],
 ];
 
-export function SendFlow({ mode, productionStop }: { mode: AdapterMode; productionStop: string }) {
+export function SendFlow({ mode }: { mode: AdapterMode }) {
   const router = useRouter();
   const params = useSearchParams();
-  const adapters = React.useMemo(
-    /* The mode comes from the server. Passing it back in means the client
-       resolver agrees with the server's decision instead of re-deriving it
-       from an environment the browser cannot see. `live` mirrors the same
-       trick: the server armed it (two-key arming in adapterMode.ts), so the
-       client hands the resolver an input that resolves the same answer. */
-    () =>
-      getSameDayAdapters(
-        mode === "fixture"
-          ? { nodeEnv: "test" }
-          : mode === "live"
-            ? { nodeEnv: "development", consumerSendFlag: "live" }
-            : { nodeEnv: "production" },
-      ),
-    [mode],
+  /* The mode is resolved on the server and passed down; the client builds
+     exactly that adapter set instead of re-deriving from an environment the
+     browser cannot see. */
+  const adapters = React.useMemo(() => getSameDayAdaptersForMode(mode), [mode]);
+  const searchAddress = React.useCallback(
+    (query: string) => adapters.searchAddress(query),
+    [adapters],
   );
 
   const [intent, setIntent] = React.useState<Intent | null>(() => parseIntent(params.get("intent")));
   const [phase, setPhase] = React.useState<Phase>("trip");
 
-  const [pickup, setPickup] = React.useState<AddressState>(emptyAddress);
-  const [destination, setDestination] = React.useState<AddressState>(emptyAddress);
-  const [availability, setAvailability] = React.useState<AvailabilityVerdict | null>(null);
+  const [pickup, setPickup] = React.useState<ConsumerAddressValue>(emptyAddress);
+  const [destination, setDestination] = React.useState<ConsumerAddressValue>(emptyAddress);
 
   const [item, setItem] = React.useState("");
   const [packageCount, setPackageCount] = React.useState("");
@@ -144,14 +131,13 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
   const [acknowledged, setAcknowledged] = React.useState(false);
 
   const [payment, setPayment] = React.useState<
-    | "not-available"
     | "preparing"
     | "form-shell"
     | "processing"
     | "authorized-fixture"
     | "authorization-required"
     | "failed"
-  >(mode === "disabled" ? "not-available" : "form-shell");
+  >("form-shell");
   const [received, setReceived] = React.useState(false);
 
   /* Live mode only. The clientSecret and the amount are the SERVER's — the
@@ -196,37 +182,17 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
     router.replace(`?intent=${next}`, { scroll: false });
   }
 
-  async function searchInto(
-    set: React.Dispatch<React.SetStateAction<AddressState>>,
-    value: string,
-  ) {
-    /* Typing clears the selected place identity — free text is never one. */
-    set((s) => ({ ...s, value, status: value ? "typing" : "blank", results: [], placeId: undefined }));
-    invalidateQuote();
-    if (value.trim().length < 2) return;
-    set((s) => ({ ...s, status: "loading" }));
-    const results = await adapters.searchAddress(value);
-    set((s) => ({ ...s, status: results.length ? "results" : "empty", results }));
-  }
-
-  function selectSuggestion(
-    set: React.Dispatch<React.SetStateAction<AddressState>>,
-    s: AddressSuggestion,
-  ) {
-    set({
-      value: s.detail ? `${s.label}, ${s.detail}` : s.label,
-      status: "selected",
-      results: [],
-      placeId: s.id,
-    });
-    invalidateQuote();
-  }
-
-  async function checkAvailability() {
-    setAvailability(null);
-    const verdict = await adapters.checkAvailability(pickup.value, destination.value);
-    setAvailability(verdict);
-  }
+  /* Editing an address clears its selected identity and stales any standing
+     quote — the trip it priced no longer matches the text. The field component
+     owns the debounce, stale-response guard and error/empty distinction. */
+  const onAddressChange = React.useCallback(
+    (set: React.Dispatch<React.SetStateAction<ConsumerAddressValue>>) =>
+      (next: ConsumerAddressValue) => {
+        set(next);
+        invalidateQuote();
+      },
+    [invalidateQuote],
+  );
 
   /* INT-002: STRUCTURED suggestions from Consumer Smart Intake. A material
      suggestion (weight, band, restricted class) changes the form ONLY through
@@ -557,9 +523,11 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
     }
 
     if (outcome.state !== "received-preview") {
-      /* The production path stops HERE. A disabled adapter cannot return
-         success, so this branch is what a real visitor reaches. */
-      setPayment("not-available");
+      /* Fixture mode only (live returned above). The fixture submit always
+         succeeds, so this is a defensive fallback rather than a reachable
+         product path. */
+      setLiveNote("note" in outcome ? outcome.note : null);
+      setPayment("failed");
       return;
     }
     const auth = await adapters.authorizePayment();
@@ -571,48 +539,23 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
     setReceived(true);
   }
 
-  const addressField = (
-    label: string,
-    hint: string | null,
-    state: AddressState,
-    set: React.Dispatch<React.SetStateAction<AddressState>>,
-    id: string,
-  ) => (
-    <div className="cr-send-field" data-couranr-address={id} data-state={state.status}>
-      <label className="cr-send-field__label" htmlFor={id}>
-        {label}
-      </label>
-      {hint ? <p className="cr-send-field__hint">{hint}</p> : null}
-      <input
-        id={id}
-        className="cr-input"
-        type="text"
-        autoComplete="off"
-        value={state.value}
-        onFocus={() => set((s) => (s.status === "blank" ? { ...s, status: "focused" } : s))}
-        onChange={(e) => void searchInto(set, e.target.value)}
-      />
-      {state.status === "loading" ? <p className="cr-send-field__note">Searching…</p> : null}
-      {state.status === "empty" ? <p className="cr-send-field__note">No matches.</p> : null}
-      {state.status === "error" ? (
-        <p className="cr-field__error" role="alert">
-          Address lookup is unavailable.
-        </p>
-      ) : null}
-      {state.status === "results" ? (
-        <ul className="cr-send-suggestions">
-          {state.results.map((s) => (
-            <li key={s.id}>
-              <button type="button" className="cr-send-suggestion" onClick={() => selectSuggestion(set, s)}>
-                <span className="cr-send-suggestion__label">{s.label}</span>
-                <span className="cr-send-suggestion__detail">{s.detail}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </div>
-  );
+  /* Both canonical addresses must be SELECTED from suggestions before the
+     funnel can move toward a quote — free text is never a canonical identity,
+     and the server fails closed on it anyway. */
+  const addressesSelected = Boolean(pickup.placeId && destination.placeId);
+
+  /* Contact is required before the FIRST estimate: the estimate creates the
+     draft and freezes the contact snapshot, and a contactless draft can never
+     be submitted. So the price is requested explicitly, only once a way to
+     reach the sender exists. */
+  const hasContact = contact.mobile.trim() !== "" || contact.email.trim() !== "";
+  const quoteState = quote?.state;
+  const quotePriced = quoteState === "live-available" || quoteState === "fixture-available";
+  const quoteReview = quoteState === "manual-review";
+  /* The only states from which the sender may move toward payment/submission:
+     a real price to pay, or an explicit manual-review path. Calculating,
+     stale, unavailable or not-yet-requested all block. */
+  const quoteProceedable = quotePriced || quoteReview;
 
   if (!intent) {
     return (
@@ -719,27 +662,44 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
 
       {phase === "trip" ? (
         <div className="cr-send-panel">
-          {addressField(
-            intent === "send" ? SEND_COPY.trip_send_origin : SEND_COPY.trip_pickup_origin,
-            intent === "pickup" ? SEND_COPY.trip_pickup_hint : null,
-            pickup,
-            setPickup,
-            "send-pickup",
-          )}
-          {addressField(SEND_COPY.trip_destination, null, destination, setDestination, "send-destination")}
+          <ConsumerAddressField
+            id="send-pickup"
+            label={intent === "send" ? SEND_COPY.trip_send_origin : SEND_COPY.trip_pickup_origin}
+            hint={intent === "pickup" ? SEND_COPY.trip_pickup_hint : null}
+            value={pickup}
+            onChange={onAddressChange(setPickup)}
+            search={searchAddress}
+          />
+          <ConsumerAddressField
+            id="send-destination"
+            label={SEND_COPY.trip_destination}
+            hint={null}
+            value={destination}
+            onChange={onAddressChange(setDestination)}
+            search={searchAddress}
+          />
 
-          <button type="button" className="cr-button cr-button--secondary" onClick={() => void checkAvailability()}>
-            Check this trip
-          </button>
-          {availability ? (
-            <p className="cr-send-note" data-couranr-availability={availability.state}>
-              {availability.state === "eligible"
-                ? "Couranr covers this trip."
-                : availability.note}
-            </p>
-          ) : null}
+          {/* TRUTHFUL PRE-QUOTE STATE. Couranr does not claim to cover the trip
+              before the server resolves the selected addresses, routes them
+              with Mapbox and derives the quote — that canonical availability
+              decision is made WITH the price. This only confirms both
+              canonical addresses are chosen. */}
+          <p
+            className="cr-send-note"
+            data-couranr-availability={addressesSelected ? "selected" : "incomplete"}
+            role="status"
+          >
+            {addressesSelected
+              ? "Addresses selected. Couranr will confirm availability with your price."
+              : "Choose both addresses from the suggestions to continue."}
+          </p>
 
-          <button type="button" className="cr-button cr-button--primary" onClick={() => setPhase("item")}>
+          <button
+            type="button"
+            className="cr-button cr-button--primary"
+            disabled={!addressesSelected}
+            onClick={() => setPhase("item")}
+          >
             Continue
           </button>
         </div>
@@ -982,13 +942,16 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
             <button type="button" className="cr-button cr-button--ghost" onClick={() => setPhase("item")}>
               Back
             </button>
+            {/* No estimate is fired here. The quote requires contact (which is
+                collected on the review step), so firing now would post a
+                known-invalid estimate and retry later — the sender requests the
+                price explicitly on the review step, once every required input
+                exists. */}
             <button
               type="button"
               className="cr-button cr-button--primary"
-              onClick={() => {
-                setPhase("review");
-                void computeQuote();
-              }}
+              disabled={timing === null}
+              onClick={() => setPhase("review")}
             >
               Continue
             </button>
@@ -1037,18 +1000,6 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
             ))}
           </dl>
 
-          <p className="cr-send-note" data-couranr-quote={quote?.state ?? "none"}>
-            {!quote ? null : null}
-            {quote?.state === "calculating" ? "Calculating…" : null}
-            {quote?.state === "stale" ? "You changed the trip — check the price again." : null}
-            {quote?.state === "manual-review" ? quote.note : null}
-            {quote?.state === "unavailable" ? quote.note : null}
-            {quote?.state === "fixture-available" ? quote.note : null}
-            {/* The live price is the SERVER's number, echoed. Nothing here
-                computed it and nothing here can change it. */}
-            {quote?.state === "live-available" ? `Total: ${formatCents(quote.totalCents)}` : null}
-          </p>
-
           <div className="cr-send-field">
             <p className="cr-send-field__label">{SEND_COPY.contact_heading}</p>
             {(
@@ -1064,20 +1015,13 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
                   className="cr-input"
                   type={type}
                   value={contact[k]}
-                  onChange={(e) => setContact((c) => ({ ...c, [k]: e.target.value }))}
-                  onBlur={() => {
-                    /* Live mode: the FIRST estimate needs contact (it freezes
-                       the draft's contact snapshot), so the price is fetched
-                       once the visitor provides a way to reach them. A quote
-                       already standing is left alone — contact never moves a
-                       price. */
-                    if (
-                      mode === "live" &&
-                      quote?.state !== "live-available" &&
-                      quote?.state !== "calculating"
-                    ) {
-                      void computeQuote();
-                    }
+                  onChange={(e) => {
+                    setContact((c) => ({ ...c, [k]: e.target.value }));
+                    /* Contact never moves a price, but changing it after a
+                       standing quote means that quote described a different
+                       statement — stale it so the sender re-checks the price
+                       rather than paying against an old estimate. */
+                    invalidateQuote();
                   }}
                 />
               </label>
@@ -1085,6 +1029,38 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
             {/* No password and no account creation. Customer accounts are
                 optional at MVP and this flow creates none. */}
           </div>
+
+          {/* The estimate is requested EXPLICITLY, and only once contact exists
+              — the first estimate freezes the draft's contact snapshot, so a
+              contactless draft could never be submitted. Firing before contact
+              would post a known-invalid estimate; this button waits for it. The
+              server owns the price; this only asks for it. */}
+          <button
+            type="button"
+            className="cr-button cr-button--secondary"
+            data-couranr-quote-request="true"
+            disabled={!hasContact || quoteState === "calculating"}
+            onClick={() => void computeQuote()}
+          >
+            {quotePriced || quoteReview ? "Check the price again" : "Check the price"}
+          </button>
+          {!hasContact ? (
+            <p className="cr-send-field__hint">
+              Add your mobile number or email above, then check the price.
+            </p>
+          ) : null}
+
+          <p className="cr-send-note" data-couranr-quote={quote?.state ?? "none"}>
+            {quote?.state === "calculating" ? "Calculating…" : null}
+            {quote?.state === "stale" ? "You changed the trip — check the price again." : null}
+            {/* Manual review is NOT a payable state — it says so plainly. */}
+            {quote?.state === "manual-review" ? quote.note : null}
+            {quote?.state === "unavailable" ? quote.note : null}
+            {quote?.state === "fixture-available" ? quote.note : null}
+            {/* The live price is the SERVER's number, echoed. Nothing here
+                computed it and nothing here can change it. */}
+            {quote?.state === "live-available" ? `Total: ${formatCents(quote.totalCents)}` : null}
+          </p>
 
           <label className="cr-send-choice">
             <input type="checkbox" checked={acknowledged} onChange={(e) => setAcknowledged(e.target.checked)} />
@@ -1095,13 +1071,17 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
             <button type="button" className="cr-button cr-button--ghost" onClick={() => setPhase("timing")}>
               Back
             </button>
+            {/* Progression is gated on the quote's CANONICAL state: a real price
+                to pay, or an explicit manual-review path. Calculating, stale,
+                unavailable or not-yet-requested all block — the browser never
+                proceeds as if payment is ready when it is not. */}
             <button
               type="button"
               className="cr-button cr-button--primary"
-              disabled={!acknowledged}
+              disabled={!acknowledged || !quoteProceedable}
               onClick={() => setPhase("payment")}
             >
-              Continue
+              {quoteReview ? "Continue to Couranr review" : "Continue to payment"}
             </button>
           </div>
         </div>
@@ -1111,26 +1091,19 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
         <div className="cr-send-panel" data-couranr-payment={payment}>
           <h2 className="cr-type-marketing-section">Payment</h2>
 
-          {payment === "not-available" ? (
-            <>
-              {/* The production path. MKT-005's exact stop, and no control that
-                  could take it further. */}
-              <p className="cr-send-stop" role="status">
-                {productionStop}
-              </p>
-              <p className="cr-send-note">Couranr will open Same Day ordering when it is ready.</p>
-            </>
-          ) : null}
-
           {payment === "form-shell" ? (
             <>
-              {mode === "live" ? (
-                quote?.state === "live-available" ? (
-                  <p className="cr-send-note">Total: {formatCents(quote.totalCents)}</p>
-                ) : null
-              ) : (
-                <p className="cr-send-note">A payment form appears here when Same Day ordering opens.</p>
-              )}
+              {/* An automatic price: the SERVER's number, echoed, ready to pay. */}
+              {quote?.state === "live-available" || quote?.state === "fixture-available" ? (
+                <p className="cr-send-note">Total: {formatCents(quote.totalCents)}</p>
+              ) : null}
+              {/* Manual review: a clearly non-payable state. Couranr reviews the
+                  trip and confirms the price; nothing is charged now. */}
+              {quoteReview ? (
+                <p className="cr-send-note" role="status">
+                  Couranr will review this trip and confirm the price with you. Nothing is charged now.
+                </p>
+              ) : null}
               {/* The resume/refresh note: "Couranr updated the price" or
                   "The price was refreshed" — the server's reason the total
                   on screen may differ from the one the visitor last saw. */}
@@ -1144,7 +1117,11 @@ export function SendFlow({ mode, productionStop }: { mode: AdapterMode; producti
                 className="cr-button cr-button--primary"
                 onClick={() => void (resumePay ? continuePayment() : submit())}
               >
-                {resumePay ? "Continue to payment" : "Request this delivery"}
+                {resumePay
+                  ? "Continue to payment"
+                  : quoteReview
+                    ? "Submit for Couranr review"
+                    : "Request this delivery"}
               </button>
             </>
           ) : null}

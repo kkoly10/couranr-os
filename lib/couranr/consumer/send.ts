@@ -85,6 +85,7 @@ export const RPC = {
   setReadiness: "couranr_set_consumer_pickup_readiness",
   createObligation: "couranr_create_payment_obligation",
   issueGuestPickupCode: "couranr_issue_guest_pickup_code_cas",
+  claimPlaceSearch: "couranr_claim_consumer_place_search",
 } as const;
 
 /** Sessions live 24 hours; the SQL clamps to [5 min, 3 days] regardless. */
@@ -1160,6 +1161,32 @@ export async function reconcileConsumerPayment(params: {
   };
 }
 
+/* ------------------------------------------------ places search throttle -- */
+
+/**
+ * Per-guest-session Places throttle. Runs in the route BEFORE the global paid-
+ * provider budget and BEFORE any Google call, so one minted session cannot
+ * farm the daily quota. `false` from the RPC is a rate limit (a sanitized 429);
+ * an unknown/expired session raises CR404, collapsed to the funnel's uniform
+ * `not_found` by the caller's gate. The global budget stays the final ceiling.
+ */
+export async function claimConsumerPlaceSearch(
+  session: GuestSession
+): Promise<ConsumerResult<{ allowed: true }>> {
+  const op = "claimConsumerPlaceSearch";
+  const r = await callRpc<boolean>(op, RPC.claimPlaceSearch, { p_session_id: session.id });
+  if (isConsumerFailure(r)) return r;
+  if (r.value !== true) {
+    return fail({
+      operation: op,
+      code: "rate_limited",
+      detail: { reason: "consumer_places_hourly_limit" },
+      message: "Too many address searches. Wait a little and try again.",
+    });
+  }
+  return { ok: true, value: { allowed: true } };
+}
+
 /* --------------------------------------------------- places autocomplete -- */
 
 const PLACES_AUTOCOMPLETE_URL = "https://places.googleapis.com/v1/places:autocomplete";
@@ -1171,28 +1198,29 @@ export type PlaceSuggestion = { placeId: string; text: string };
  * suggestions and hands back a Place ID; the ID is verified again by Place
  * Details inside the estimate pipeline, so nothing here is authority.
  *
- * Degrades to an EMPTY list on provider trouble (logged under a correlation
- * id) — an autocomplete outage must not 500 the typing experience, and an
- * empty list cannot mint anything.
+ * Never 500s the typing experience: on provider trouble it returns an EMPTY
+ * list with `degraded: true` so the UI can honestly say "Address lookup is
+ * unavailable" — distinct from a genuine no-result (`degraded: false`). A short
+ * query is a no-op, not a failure. An empty list can mint nothing either way.
  */
 export async function autocompleteConsumerPlaces(
   rawQuery: unknown,
   fetchImpl: typeof fetch = fetch
-): Promise<ConsumerResult<{ suggestions: PlaceSuggestion[] }>> {
+): Promise<ConsumerResult<{ suggestions: PlaceSuggestion[]; degraded: boolean }>> {
   const op = "autocompleteConsumerPlaces";
   const query = typeof rawQuery === "string" ? rawQuery.trim() : "";
   if (query.length < 3 || query.length > 120) {
-    return { ok: true, value: { suggestions: [] } };
+    return { ok: true, value: { suggestions: [], degraded: false } };
   }
   const apiKey = process.env.GOOGLE_MAPS_SERVER_API_KEY;
   if (!apiKey) {
     fail({ operation: op, code: "internal", detail: { reason: "places not configured" } });
-    return { ok: true, value: { suggestions: [] } };
+    return { ok: true, value: { suggestions: [], degraded: true } };
   }
 
   const spend = await claimPaidApiCall("google_places_autocomplete", fetchImpl);
   if (!spend.allowed) {
-    return { ok: true, value: { suggestions: [] } };
+    return { ok: true, value: { suggestions: [], degraded: true } };
   }
 
   let payload: any;
@@ -1211,12 +1239,12 @@ export async function autocompleteConsumerPlaces(
     });
     if (!response.ok) {
       fail({ operation: op, code: "internal", detail: { status: response.status } });
-      return { ok: true, value: { suggestions: [] } };
+      return { ok: true, value: { suggestions: [], degraded: true } };
     }
     payload = await response.json();
   } catch (error) {
     fail({ operation: op, code: "internal", detail: error });
-    return { ok: true, value: { suggestions: [] } };
+    return { ok: true, value: { suggestions: [], degraded: true } };
   }
 
   const raw = Array.isArray(payload?.suggestions) ? payload.suggestions : [];
@@ -1228,5 +1256,5 @@ export async function autocompleteConsumerPlaces(
       suggestions.push({ placeId, text });
     }
   }
-  return { ok: true, value: { suggestions } };
+  return { ok: true, value: { suggestions, degraded: false } };
 }

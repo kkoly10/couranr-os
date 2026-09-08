@@ -31,6 +31,7 @@
  *   why `quote` refuses to run before contact exists.
  */
 import type {
+  AddressSearchResult,
   AddressSuggestion,
   AvailabilityVerdict,
   ConsumerRequestReading,
@@ -411,16 +412,27 @@ export function createLiveSameDayAdapters(
   }
 
   return {
-    async searchAddress(query: string): Promise<AddressSuggestion[]> {
+    async searchAddress(query: string): Promise<AddressSearchResult> {
       const q = query.trim();
-      if (q.length < 2) return [];
+      // Min-3 mirrors the server autocomplete's own gate; below it there is no
+      // provider call and nothing to distinguish, so it is a clean empty.
+      if (q.length < 3) return { status: "ok", suggestions: [] };
       const r = await guestCall(`${API.places}?query=${encodeURIComponent(q)}`, {
         method: "GET",
       });
-      if (!r || !r.ok) return [];
+      // A dead network or a failed session mint is a SERVICE failure, not "no
+      // matches" — the UI must be able to say so.
+      if (!r) return { status: "error" };
+      // The per-guest throttle refused: a distinct outcome with a wait remedy.
+      if (r.status === 429) return { status: "rate-limited" };
+      if (!r.ok) return { status: "error" };
+      const body = r.body as { suggestions?: unknown; degraded?: unknown } | null;
+      // The route flags a provider outage/budget stop as `degraded`: an empty
+      // list that is a FAILURE, not a genuine no-result.
+      if (body?.degraded === true) return { status: "error" };
       // NESTED key: `suggestions`.
-      const raw = (r.body as { suggestions?: unknown } | null)?.suggestions;
-      if (!Array.isArray(raw)) return [];
+      const raw = body?.suggestions;
+      if (!Array.isArray(raw)) return { status: "error" };
       const out: AddressSuggestion[] = [];
       for (const item of raw as Array<Record<string, unknown>>) {
         const placeId = typeof item?.placeId === "string" ? item.placeId : "";
@@ -431,7 +443,7 @@ export function createLiveSameDayAdapters(
         const label = mainText || text;
         if (placeId && label) out.push({ id: placeId, label, detail: secondaryText });
       }
-      return out;
+      return { status: "ok", suggestions: out };
     },
 
     async checkAvailability(pickup: string, destination: string): Promise<AvailabilityVerdict> {

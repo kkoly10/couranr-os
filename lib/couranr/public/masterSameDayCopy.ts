@@ -156,7 +156,6 @@ export const SEND_COPY = {
   review_heading: "Here’s your delivery",
   contact_heading: "Where should we send updates?",
   acknowledgement: "I confirm this item is eligible for delivery and I have authority to send or collect it.",
-  production_stop: "Same Day ordering isn’t live yet.",
   received_heading: "We have your request.",
   received_support: "Couranr is confirming your delivery.",
 } as const;
