@@ -158,6 +158,16 @@ describe("CUS-004 customer delivery-problem report contract",()=>{
     );
   });
 
+  it("treats a concurrent verification during grant renewal as successful convergence",()=>{
+    const renew=SERVER.indexOf('"couranr_renew_customer_problem_evidence_grant"');
+    const verified=SERVER.indexOf('if(row.upload_state==="verified")',renew);
+    const sign=SERVER.indexOf(".createSignedUploadUrl",verified);
+    expect(renew).toBeGreaterThan(-1);
+    expect(verified).toBeGreaterThan(renew);
+    expect(sign).toBeGreaterThan(verified);
+    expect(SERVER.slice(verified,sign)).toContain('status:"verified"');
+  });
+
   it("gives Operations an explicit retryable orphan cleanup path without a cron",()=>{
     expect(HARDENING).toContain(
       "couranr_collect_expired_problem_evidence_ops"
