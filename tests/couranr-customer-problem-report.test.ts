@@ -160,7 +160,7 @@ describe("CUS-004 customer delivery-problem report contract",()=>{
 
   it("gives Operations an explicit retryable orphan cleanup path without a cron",()=>{
     expect(HARDENING).toContain(
-      "couranr_collect_expired_customer_problem_evidence_for_operations"
+      "couranr_collect_expired_problem_evidence_ops"
     );
     expect(HARDENING).toContain("for update skip locked");
     expect(SERVER).toContain("cleanupExpiredOperationsProblemEvidence");
@@ -168,7 +168,7 @@ describe("CUS-004 customer delivery-problem report contract",()=>{
     expect(OPS_ROUTE).toContain('body?.command!=="cleanup_expired_evidence"');
     expect(OPS).toContain("Clean expired uploads");
     expect(HARDENING_ROLLBACK).toContain(
-      "drop function if exists public.couranr_collect_expired_customer_problem_evidence_for_operations"
+      "drop function if exists public.couranr_collect_expired_problem_evidence_ops"
     );
   });
 
