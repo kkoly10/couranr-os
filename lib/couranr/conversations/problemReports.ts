@@ -456,23 +456,38 @@ export async function cleanupExpiredOperationsProblemEvidence(
     {p_actor_user_id:userId,p_limit:100}
   );
   if(error)return dbFail("problemEvidence.operations.cleanupCollect",error);
-  const paths=(Array.isArray(data)?data:[])
-    .map((row:any)=>String(row?.out_object_path??""))
-    .filter(Boolean);
-  if(paths.length){
-    const {error:removeError}=await supabaseAdmin.storage.from(BUCKET).remove(paths);
-    if(removeError){
-      // DB rows remain expired+abandoned, so the next Operations cleanup safely
-      // retries the same paths instead of losing deletion evidence.
-      return publicFailure({
-        operation:"problemEvidence.operations.cleanupStorage",
-        code:"internal",
-        detail:{message:removeError.message,count:paths.length},
-        message:"Expired photo cleanup did not finish. Try again.",
-      });
-    }
+  const rows=(Array.isArray(data)?data:[])
+    .map((row:any)=>({
+      id:String(row?.out_id??""),
+      path:String(row?.out_object_path??""),
+    }))
+    .filter((row)=>row.id&&row.path);
+  if(!rows.length)return {ok:true,value:{removed:0}};
+
+  const paths=rows.map((row)=>row.path);
+  const {error:removeError}=await supabaseAdmin.storage.from(BUCKET).remove(paths);
+  if(removeError){
+    // No ACK occurs, so these expired abandoned rows remain eligible for the
+    // next Operations cleanup attempt.
+    return publicFailure({
+      operation:"problemEvidence.operations.cleanupStorage",
+      code:"internal",
+      detail:{message:removeError.message,count:paths.length},
+      message:"Expired photo cleanup did not finish. Try again.",
+    });
   }
-  return {ok:true,value:{removed:paths.length}};
+
+  const {data:acked,error:ackError}=await supabaseAdmin.rpc(
+    "couranr_ack_problem_evidence_cleanup_ops",
+    {p_actor_user_id:userId,p_evidence_ids:rows.map((row)=>row.id)}
+  );
+  if(ackError){
+    // Storage deletion succeeded but DB acknowledgement did not. The next
+    // cleanup may retry deletion; successful cleanup is designed to be
+    // idempotent rather than silently dropping the tombstone.
+    return dbFail("problemEvidence.operations.cleanupAck",ackError);
+  }
+  return {ok:true,value:{removed:Number(acked??0)}};
 }
 
 export type ProblemReportOperationsCommand="start_review"|"request_evidence"|"resolve_report";

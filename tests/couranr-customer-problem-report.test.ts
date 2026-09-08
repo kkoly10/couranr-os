@@ -9,6 +9,8 @@ const MIGRATION=read("supabase/migrations/20260907223000_couranr_customer_proble
 const ROLLBACK=read("supabase/rollbacks/20260907223000_couranr_customer_problem_reports.rollback.sql");
 const HARDENING=read("supabase/migrations/20260908142000_couranr_customer_problem_report_hardening.sql");
 const HARDENING_ROLLBACK=read("supabase/rollbacks/20260908142000_couranr_customer_problem_report_hardening.rollback.sql");
+const CLEANUP_ACK=read("supabase/migrations/20260908143800_couranr_customer_problem_cleanup_ack.sql");
+const CLEANUP_ACK_ROLLBACK=read("supabase/rollbacks/20260908143800_couranr_customer_problem_cleanup_ack.rollback.sql");
 const OPS_ROUTE=read("app/api/couranr/operations/problem-reports/route.ts");
 const SERVER=read("lib/couranr/conversations/problemReports.ts");
 const PAGE=read("components/couranr/help/DeliveryHelpPage.tsx");
@@ -180,6 +182,21 @@ describe("CUS-004 customer delivery-problem report contract",()=>{
     expect(HARDENING_ROLLBACK).toContain(
       "drop function if exists public.couranr_collect_expired_problem_evidence_ops"
     );
+  });
+
+  it("retires successful cleanup tombstones so bounded batches can advance",()=>{
+    expect(CLEANUP_ACK).toContain("storage_cleaned_at timestamptz");
+    expect(CLEANUP_ACK).toContain("and e.storage_cleaned_at is null");
+    expect(CLEANUP_ACK).toContain("couranr_ack_problem_evidence_cleanup_ops");
+    const remove=SERVER.indexOf(".from(BUCKET).remove(paths)");
+    const ack=SERVER.indexOf('"couranr_ack_problem_evidence_cleanup_ops"',remove);
+    expect(remove).toBeGreaterThan(-1);
+    expect(ack).toBeGreaterThan(remove);
+    expect(SERVER.slice(remove,ack)).toContain("if(removeError)");
+    expect(CLEANUP_ACK_ROLLBACK).toContain(
+      "drop function if exists public.couranr_ack_problem_evidence_cleanup_ops"
+    );
+    expect(CLEANUP_ACK_ROLLBACK).toContain("drop column if exists storage_cleaned_at");
   });
 
   it("refuses an Operations evidence request when all five technical evidence slots are consumed",()=>{
