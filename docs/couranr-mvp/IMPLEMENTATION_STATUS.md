@@ -117,7 +117,7 @@ each is in the ledger row itself — `test_evidence`, `browser_verified` and
 | `50f576e991dd249849d93206fc9e7cda330e71b7` | 1 screen | MER-005 |
 | `5723b3a22773f15d8d1b3e1d36bdf77b8341a6de` | 1 screen | DRV-001 |
 | `6d97bc132efdb7ed165dae11189077b2ea34d6f9` | 1 work item | P3-001 |
-| `7f4ba45bfa42c9e18796ec3d13e40ae8b094280e` | 1 work item, 2 screens | P7-005, CUS-004, OPS-012 |
+| `433070ac49cf2f5e3f38bb9b2d0aeae9f1383274` | 1 work item, 2 screens | P7-005, CUS-004, OPS-012 |
 | `795ae0d42131ac76abf7402f0686e139cece4ea5` | 2 work items | P2-003, P6-003 |
 | `807c8ed6316cf420dbffa171f5a65b1692dd6830` | 3 screens | MER-003, MER-016, OPS-007 |
 | `91515ca5ca26e813bcc14b77b2e72dd475202ea8` | 2 work items, 4 screens | P8-002, P8-004, CUS-001, CUS-003, OPS-005, PUB-007 |
