@@ -1,3 +1,17 @@
+-- FILENAME NOTE. This file was committed as 20260908180000 and renamed to the
+-- version production ACTUALLY stamped, 20260908181854 — the same correction
+-- 5b132925 made for the delivery-reference migration beside it, which was not
+-- carried across to this one. apply_migration through the Supabase MCP assigns
+-- its own timestamp and never reads the filename prefix, so the two drift by
+-- default.
+--
+-- The mismatch is not cosmetic: joining the ledger on the FILENAME version
+-- reports this migration as unapplied when it has been applied since 18:18 UTC
+-- on 2026-09-08. That misreading caused a needless re-application on the same
+-- day, which stamped a second row (20260908233804) for the same migration name.
+-- The duplicate was deleted; the ledger holds one row, 20260908181854. Join the
+-- ledger on NAME, never on the filename's prefix.
+
 -- Fix a HALVED keyspace in the delivery-reference generator.
 --
 -- THE DEFECT, measured on production before this change. Sampling 4,000 draws
