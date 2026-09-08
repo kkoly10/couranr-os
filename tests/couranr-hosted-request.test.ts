@@ -575,11 +575,11 @@ describe("hosted merchant confirmation — TMZ-001 timing", () => {
   it("refuses an unknown intent and a scheduled adjustment without parseable words, by name", () => {
     const bad = validateMerchantHostedConfirmation({ ...base, timingIntent: "whenever" });
     expect(bad.ok).toBe(false);
-    if (!bad.ok) expect(bad.reason).toBe("timing_intent_invalid");
+    if (bad.ok === false) expect(bad.reason).toBe("timing_intent_invalid");
     for (const local of [undefined, "", "noon", "2027-03-10T10:30Z"]) {
       const r = validateMerchantHostedConfirmation({ ...base, timingIntent: "scheduled", requestedPickupLocal: local });
       expect(r.ok, `local=${String(local)}`).toBe(false);
-      if (!r.ok) expect(r.reason).toBe("requested_time_invalid");
+      if (r.ok === false) expect(r.reason).toBe("requested_time_invalid");
     }
   });
 });
