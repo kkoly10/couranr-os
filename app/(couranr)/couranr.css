@@ -1641,8 +1641,11 @@
 /* `.cr-mkt-slot` was the dashed "Photography pending" placeholder. Its only
    user was PUB-001 `category-breadth`, which the 2026-08-28 accepted set
    closed, so the rules are gone rather than left to read as a live device.
-   `product-proof` keeps its own separate pending tile
-   (`.cr-mkt-proof__artifact-slot`); that region is frozen for this batch. */
+   `.cr-mkt-proof__artifact-slot` was the SECOND such placeholder — the literal
+   words "image pending" in `product-proof` — and it outlived this note by a
+   batch. The 2026-09-08 proof photographs closed it, so it is gone too and
+   `.cr-mkt-proof__artifact-photo` renders in its place. No pending tile
+   remains on PUB-001. */
 
 /* ── the accepted 2026-08-28 category-breadth mosaic ─────────────────────── */
 
@@ -2817,16 +2820,29 @@
   font-size: var(--couranr-text-xs);
   color: var(--couranr-text-muted);
 }
-/* Visibly unfinished, like the section-3 slot — a placeholder that looks
-   designed is a placeholder that ships. */
-.cr-mkt-proof__artifact-slot {
-  margin-top: var(--couranr-space-2);
-  padding: var(--couranr-space-3);
-  border: 1px dashed var(--couranr-border-strong);
+/* The artifact photograph. Replaced `.cr-mkt-proof__artifact-slot`, the dashed
+   "image pending" placeholder, on owner instruction 2026-09-08 — the rule goes
+   with the element rather than being left behind, because a class that outlives
+   its markup is how `.cr-mkt-eyebrow` reached four screens with no mock.
+
+   ORDER-FIRST so the picture sits above the label without reordering the DOM:
+   the label must precede the detail for a screen reader, and the photograph is
+   decorative-adjacent, so it is placed visually rather than structurally.
+
+   `aspect-ratio` with `object-fit: cover` rather than a fixed height: the box is
+   reserved before the image decodes, which is what keeps the four-across row
+   from reflowing, and the intrinsic width/height on the element itself is the
+   belt to this braces. */
+.cr-mkt-proof__artifact-photo {
+  order: -1;
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
   border-radius: var(--couranr-radius-sm);
-  text-align: center;
-  font-size: var(--couranr-text-xs);
-  color: var(--couranr-text-muted);
+  margin-bottom: var(--couranr-space-2);
+  background: var(--couranr-surface-sunken);
 }
 
 /* ═════════════════════════════════════════════════════════════════════════

@@ -24,6 +24,12 @@
 
 export const MARKETING_PHOTO_DIR = "/images/marketing/2026-08/w";
 
+/** The 2026-09 batch, installed on owner instruction 2026-09-08. */
+export const MARKETING_PHOTO_DIR_2026_09 = "/images/marketing/2026-09/w";
+
+const DEFAULT_BATCH = "2026-08";
+const dirFor = (batch = DEFAULT_BATCH) => `/images/marketing/${batch}/w`;
+
 export type MarketingPhoto = {
   /** Matches the `asset_id` the visual-authority registry records. */
   id: string;
@@ -34,22 +40,31 @@ export type MarketingPhoto = {
   wide: { widths: number[]; ratio: [number, number] };
   /** Present only where a narrow viewport needs a different crop, not a resize. */
   square?: { widths: number[] };
+  /** Defaults to 2026-08, so every asset accepted on 2026-08-28 is unchanged. */
+  batch?: string;
+  /** The derivative shape name, where it is not the default `wide`. */
+  shape?: string;
 };
 
-function src(slug: string, shape: string, width: number): string {
-  return `${MARKETING_PHOTO_DIR}/mkt-2026-08-${slug}-${shape}-${width}.webp`;
+function src(slug: string, shape: string, width: number, batch = DEFAULT_BATCH): string {
+  return `${dirFor(batch)}/mkt-${batch}-${slug}-${shape}-${width}.webp`;
 }
+
+/** The shape name a photo's `wide` widths actually build under. */
+const wideShape = (p: MarketingPhoto) => p.shape ?? "wide";
 
 /** `srcSet` for one shape of one asset, widest last. */
 export function srcSetFor(photo: MarketingPhoto, shape: "wide" | "square"): string {
   const widths = shape === "wide" ? photo.wide.widths : (photo.square?.widths ?? []);
-  return widths.map((w) => `${src(photo.slug, shape, w)} ${w}w`).join(", ");
+  const name = shape === "wide" ? wideShape(photo) : shape;
+  return widths.map((w) => `${src(photo.slug, name, w, photo.batch)} ${w}w`).join(", ");
 }
 
 /** The largest derivative, which is what a `src` fallback should point at. */
 export function largestSrc(photo: MarketingPhoto, shape: "wide" | "square" = "wide"): string {
   const widths = shape === "wide" ? photo.wide.widths : (photo.square?.widths ?? []);
-  return src(photo.slug, shape, widths[widths.length - 1]);
+  const name = shape === "wide" ? wideShape(photo) : shape;
+  return src(photo.slug, name, widths[widths.length - 1], photo.batch);
 }
 
 /** Rendered `width`/`height` for a shape, so the box is reserved before load. */
@@ -190,3 +205,98 @@ export const RESERVE_PHOTO_IDS = [
   "couranr-mkt-2026-08-parent-child-kitchen",
   "couranr-mkt-2026-08-older-customer-vase",
 ] as const;
+
+
+/* ── the 2026-09 proof-artifact set ────────────────────────────────────────
+   OWNER INSTRUCTION 2026-09-08. Four frames for section 8's proof artifacts,
+   which until now rendered a literal "image pending" placeholder in one of
+   four slots.
+
+   ALL FOUR ARE DECORATIVE — `alt=""` — and that is a decision, not an
+   oversight. They were first written with descriptive alt text under the
+   narrowed evidence boundary the owner approved, and reviewing the rendered
+   markup is what changed it: the list these sit in is labelled "What Couranr
+   records as proof", so "A courier enters a four-digit code on a phone while a
+   resident waits at an open front door" tells a screen-reader user the scene IS
+   a Couranr delivery. That is a stronger claim than the photograph makes to a
+   sighted reader, which inverts what alt text is for.
+
+   It is also the ordinary rule rather than a special case. Each frame sits
+   beside its own label and detail — Recipient PIN / Four digits, verified at
+   the door — which carry the whole product fact in text. W3C WAI's decorative-
+   images tutorial gives exactly this shape: an image "already sufficiently
+   described by the adjacent text" takes a null alt, because repeating it makes
+   a screen reader announce redundant detail. The photographs add visual
+   interest, not information, so nothing is lost by silencing them and the
+   claim goes with it.
+   https://www.w3.org/WAI/tutorials/images/decorative/
+
+   The narrowed boundary still stands for anything that DOES carry a string;
+   what changed is that these four carry none. `subject` in
+   VISUAL_AUTHORITY_REGISTRY.json still records what each photograph shows, for
+   a human reading the registry — that is provenance, not page copy.
+
+   Still generated assets, still not evidence. */
+export const PROOF_ARTIFACT_PHOTOS: MarketingPhoto[] = [
+  {
+    id: "couranr-mkt-2026-09-proof-pin",
+    slug: "proof-pin",
+    batch: "2026-09",
+    shape: "proof",
+    /* Decorative: the label beside it carries the fact. See the header. */
+    alt: "",
+    wide: { widths: [200, 400], ratio: [4, 3] },
+  },
+  {
+    id: "couranr-mkt-2026-09-proof-photo",
+    slug: "proof-photo",
+    batch: "2026-09",
+    shape: "proof",
+    /* Decorative: the label beside it carries the fact. See the header. */
+    alt: "",
+    wide: { widths: [200, 400], ratio: [4, 3] },
+  },
+  {
+    id: "couranr-mkt-2026-09-proof-location",
+    slug: "proof-location",
+    batch: "2026-09",
+    shape: "proof",
+    /* Decorative: the label beside it carries the fact. See the header. */
+    alt: "",
+    wide: { widths: [200, 400], ratio: [4, 3] },
+  },
+  {
+    id: "couranr-mkt-2026-09-proof-signature",
+    slug: "proof-signature",
+    batch: "2026-09",
+    shape: "proof",
+    /* Decorative: the label beside it carries the fact. See the header. */
+    alt: "",
+    wide: { widths: [200, 400], ratio: [4, 3] },
+  },
+];
+
+/* ── the 2026-09 service corridor ──────────────────────────────────────────
+   OWNER INSTRUCTION 2026-09-08: replaces `ServiceCorridorMap`, the schematic
+   SVG, whose header refused a rendered basemap on the ground that "a map that
+   invents terrain is worse than a schematic that admits it is one" and that
+   §27 Section 10 forbids inventing an undefined boundary.
+
+   The owner has ruled that reasoning stale and the map decorative. Two things
+   make that safe rather than merely instructed:
+
+     - the four markets are ALREADY in text directly beneath, through
+       MARKETS_PUBLIC_COPY, so nothing readable lives only in pixels;
+     - the map is marked decorative, so the corridor band it draws is not
+       offered to a reader as a coverage boundary. The sentence beneath is what
+       states coverage, and it ends "and surrounding areas". */
+export const SERVICE_CORRIDOR_MAP: MarketingPhoto = {
+  id: "couranr-mkt-2026-09-service-corridor",
+  slug: "service-corridor",
+  batch: "2026-09",
+  shape: "map",
+  /* DECORATIVE. Rendered with alt="" — see the section for why: every fact it
+     depicts is stated in text beside it. */
+  alt: "",
+  wide: { widths: [360, 720], ratio: [1198, 1313] },
+};

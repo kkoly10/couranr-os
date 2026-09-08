@@ -3,7 +3,6 @@ import type { Metadata } from "next";
 import { Badge, Heading, Text } from "@/components/couranr/primitives";
 import { CouranrLogo } from "@/components/brand/CouranrLogo";
 import { AskCouranrLauncher } from "@/components/couranr/marketing/AskCouranr";
-import { ServiceCorridorMap } from "@/components/couranr/marketing/ServiceCorridorMap";
 import {
   IconBolt,
   IconBox,
@@ -57,6 +56,8 @@ import {
   intrinsic,
   largestSrc,
   srcSetFor,
+  PROOF_ARTIFACT_PHOTOS,
+  SERVICE_CORRIDOR_MAP,
 } from "@/lib/couranr/public/marketingPhotos";
 
 /**
@@ -189,15 +190,24 @@ const PROOF_TIMELINE = [
  * fabricated specifics on the public surface. What a proof TYPE is remains a
  * fact about the product; what a particular delivery did is not.
  *
- * `photo: true` marks the one artifact whose mock rendition carries an actual
- * photograph. It renders as a labelled tile until the imagery in
- * PUB-001_PHOTOGRAPHY_BRIEF.md exists.
+ * `photo` used to be the boolean `true` on the single artifact whose MOCK
+ * rendition carried a photograph, with the other three rendering nothing and
+ * that one rendering the words "image pending". The imagery
+ * PUB-001_PHOTOGRAPHY_BRIEF.md called for arrived on 2026-09-08, so the field
+ * is now the MarketingPhoto itself and all four carry one.
  */
+/* Gate A / D-2. Each artifact now carries its photograph, which until owner
+   instruction 2026-09-08 was a literal "image pending" placeholder in one of
+   the four slots and nothing in the other three.
+
+   The LABEL still carries the meaning. The photographs illustrate the product
+   surface; they are not evidence, and PROOF_ARTIFACT_PHOTOS' own header records
+   the narrowed boundary the owner approved. Order matches the list above it. */
 const PROOF_ARTIFACTS = [
-  { label: "Recipient PIN", detail: "Four digits, verified at the door" },
-  { label: "Delivery photo", detail: "Captured at drop-off", photo: true },
-  { label: "Location", detail: "Recorded where it was left" },
-  { label: "Signature", detail: "When the delivery calls for one" },
+  { label: "Recipient PIN", detail: "Four digits, verified at the door", photo: PROOF_ARTIFACT_PHOTOS[0] },
+  { label: "Delivery photo", detail: "Captured at drop-off", photo: PROOF_ARTIFACT_PHOTOS[1] },
+  { label: "Location", detail: "Recorded where it was left", photo: PROOF_ARTIFACT_PHOTOS[2] },
+  { label: "Signature", detail: "When the delivery calls for one", photo: PROOF_ARTIFACT_PHOTOS[3] },
 ];
 
 /**
@@ -863,13 +873,38 @@ export default function Page() {
           <ul className="cr-mkt-proof__artifacts" aria-label="What Couranr records as proof">
             {PROOF_ARTIFACTS.map((a) => (
               <li key={a.label} className="cr-mkt-proof__artifact">
+                {/* Above the label, not beside it: at four across the chip is
+                    ~150px and a side-by-side would leave the text two words
+                    wide. `width`/`height` are the intrinsic box so the row
+                    reserves its height before the image decodes — the same CLS
+                    lesson the mosaic records, where a missing dimension cost
+                    232px of shift across four frames.
+
+                    alt="" — DECORATIVE, and deliberately so. The label and
+                    detail beside it carry the whole fact, so W3C WAI's
+                    decorative-images rule applies: an image already described
+                    by its adjacent text takes a null alt rather than repeating
+                    it. It also removes a claim these photographs should not
+                    make. This list is labelled "What Couranr records as proof",
+                    so a described scene ("a courier enters a four-digit
+                    code…") would tell a screen-reader user the frame IS a
+                    Couranr delivery — a stronger claim than a sighted reader
+                    takes from the same picture. The alt is empty on the
+                    MarketingPhoto record too, so it cannot be reintroduced
+                    here without the registry and its test disagreeing. */}
+                <img
+                  className="cr-mkt-proof__artifact-photo"
+                  src={largestSrc(a.photo)}
+                  srcSet={srcSetFor(a.photo, "wide")}
+                  sizes="(min-width: 900px) 260px, 45vw"
+                  width={intrinsic(a.photo).width}
+                  height={intrinsic(a.photo).height}
+                  alt={a.photo.alt}
+                  loading="lazy"
+                  decoding="async"
+                />
                 <span className="cr-mkt-proof__artifact-label">{a.label}</span>
                 <span className="cr-mkt-proof__artifact-detail">{a.detail}</span>
-                {a.photo ? (
-                  <span className="cr-mkt-proof__artifact-slot" aria-hidden="true">
-                    image pending
-                  </span>
-                ) : null}
               </li>
             ))}
           </ul>
@@ -1078,7 +1113,29 @@ export default function Page() {
           </h2>
           <div className="cr-mkt-coverage">
             <div className="cr-mkt-coverage__visual">
-              <ServiceCorridorMap className="cr-mkt-map" />
+              {/* OWNER INSTRUCTION 2026-09-08 — replaces ServiceCorridorMap, the
+                  schematic SVG that refused a rendered basemap. The owner ruled
+                  that reasoning stale and the map decorative.
+
+                  DECORATIVE, and that is load-bearing rather than a shrug:
+                  alt="" because every fact the image depicts is already in text
+                  directly beneath it through MARKETS_PUBLIC_COPY, which names
+                  all four markets and ends "and surrounding areas". The blue
+                  band is therefore not offered to a reader as a coverage
+                  boundary — the sentence is what states coverage, which keeps
+                  §27 Section 10's "do not invent boundaries" satisfied in
+                  substance while the picture changes. */}
+              <img
+                className="cr-mkt-map"
+                src={largestSrc(SERVICE_CORRIDOR_MAP)}
+                srcSet={srcSetFor(SERVICE_CORRIDOR_MAP, "wide")}
+                sizes="(min-width: 900px) 340px, 70vw"
+                width={intrinsic(SERVICE_CORRIDOR_MAP).width}
+                height={intrinsic(SERVICE_CORRIDOR_MAP).height}
+                alt=""
+                loading="lazy"
+                decoding="async"
+              />
             </div>
             {/* THREE lines, not the artboard's four. "Loading assistance
                 available" is dropped: grepping the Decision Registry and
