@@ -47,6 +47,14 @@ const HOSTED_TIMING_FENCE_SQL = readFileSync(
   path.join(ROOT, "supabase/migrations/20260908230000_couranr_hosted_legacy_arity_fence.sql"),
   "utf8"
 );
+const HOSTED_TIMING_GUARD_SQL = readFileSync(
+  path.join(ROOT, "supabase/migrations/20260908220500_couranr_hosted_legacy_validate_guard.sql"),
+  "utf8"
+);
+const HOSTED_FENCE_ROLLBACK_SQL = readFileSync(
+  path.join(ROOT, "supabase/rollbacks/20260908230000_couranr_hosted_legacy_arity_fence.rollback.sql"),
+  "utf8"
+);
 const HOSTED_TIMING_ROLLBACK_SQL = readFileSync(
   path.join(ROOT, "supabase/rollbacks/20260908220000_couranr_hosted_scheduled_timing.rollback.sql"),
   "utf8"
@@ -675,8 +683,27 @@ describe("hosted scheduled-timing migration (20260908220000) and its POSTDEPLOY 
     expect(HOSTED_TIMING_FENCE_SQL.match(/drop function/g)?.length).toBe(2);
   });
 
-  it("the forward rollback hard-refuses over evidence and restores the v1 bodies verbatim", () => {
+  it("the deploy-gap guard (20260908220500) re-defines ONLY the legacy 26-arg validate, fails closed on a scheduled row, and is a no-op after the fence", () => {
+    expect(HOSTED_TIMING_GUARD_SQL).toContain("create or replace function public.couranr_validate_hosted_delivery_request(");
+    expect(HOSTED_TIMING_GUARD_SQL).not.toContain("p_timing_intent text");
+    expect(HOSTED_TIMING_GUARD_SQL).not.toContain("couranr_create_hosted_delivery_request(");
+    expect(HOSTED_TIMING_GUARD_SQL).toContain("if v_req.timing_intent='scheduled' then");
+    expect(HOSTED_TIMING_GUARD_SQL).toContain("raise exception 'hosted_scheduled_timing_requires_current_application' using errcode='CR409'");
+    // The guard sits AFTER the row is loaded and BEFORE the asap overwrite.
+    const raiseAt = HOSTED_TIMING_GUARD_SQL.indexOf("raise exception 'hosted_scheduled_timing_requires_current_application'");
+    expect(HOSTED_TIMING_GUARD_SQL.indexOf("version_or_state_conflict")).toBeLessThan(raiseAt);
+    // ... and before the legacy body's asap overwrite (the header comment also names it; search from the raise).
+    expect(raiseAt).toBeLessThan(HOSTED_TIMING_GUARD_SQL.indexOf("timing_intent='asap',", raiseAt));
+    // Never resurrects a retired legacy shape.
+    expect(HOSTED_TIMING_GUARD_SQL).toContain("is null then\n    raise notice 'legacy 26-argument hosted validate is absent (fence applied); no-op';");
+    expect(HOSTED_TIMING_GUARD_SQL).not.toMatch(/drop function/i);
+    // The fence rollback restores the GUARDED legacy body, not the unguarded v1 one.
+    expect(HOSTED_FENCE_ROLLBACK_SQL).toContain("hosted_scheduled_timing_requires_current_application");
+  });
+
+  it("the forward rollback hard-refuses over evidence, is RE-RUNNABLE, and restores the v1 bodies verbatim", () => {
     expect(HOSTED_TIMING_ROLLBACK_SQL).toContain("hosted scheduled-timing evidence exists");
+    expect(HOSTED_TIMING_ROLLBACK_SQL).toContain("exception when undefined_column then");
     // Verbatim restoration: the v1 create body's distinctive lines are present unchanged.
     expect(HOSTED_TIMING_ROLLBACK_SQL).toContain("'asap','America/New_York',");
     expect(HOSTED_TIMING_ROLLBACK_SQL).toContain("timing_intent='asap',");

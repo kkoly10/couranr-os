@@ -256,6 +256,10 @@ async function main() {
     const newPre = await rpc(CREATE, newCreateBody(newPreIntake, { intent: "scheduled", local: LOCAL, instant: INSTANT }));
     check("HCUT-12", "PREDEPLOY: the NEW create shape resolves to the STRICT arity in the same window — no PGRST203 either way",
       `${newPre.status}|${timingOf(newPre.json)}`, `200|scheduled|${LOCAL}|instant`);
+    const oldOnScheduled = await rpc(VALIDATE, oldValidateBody(newPre.json?.id, newPre.json?.version, destinationOf(newPreIntake)));
+    check("HCUT-12b", "PREDEPLOY: the OLD validate shape on a SCHEDULED row is REFUSED (deploy-gap guard, 20260908220500) — never rewritten to asap",
+      `${oldOnScheduled.status}|${oldOnScheduled.json?.code}|${oldOnScheduled.json?.message}`,
+      "400|CR409|hosted_scheduled_timing_requires_current_application");
     const newPreVal = await rpc(VALIDATE, newValidateBody(newPre.json?.id, newPre.json?.version, destinationOf(newPreIntake),
       { intent: "scheduled", local: LOCAL, instant: INSTANT }));
     check("HCUT-13", "... and the NEW validate shape too",

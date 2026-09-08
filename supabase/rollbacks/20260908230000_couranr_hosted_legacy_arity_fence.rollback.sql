@@ -1,9 +1,11 @@
 -- =====================================================================
 -- ROLLBACK — hosted legacy arity fence (20260908230000)
 --
--- Restores the pre-timing 13/26-argument hosted create/validate commands,
--- bodies VERBATIM from 20260905040000 (extracted, not retyped), plus their
--- service_role-only grants. After this rollback both arities are live again —
+-- Restores the pre-timing 13/26-argument hosted create/validate commands:
+-- create VERBATIM from 20260905040000 (extracted, not retyped); validate as
+-- 20260908220500 left it — the v1 body plus the DEPLOY-GAP fail-closed guard
+-- (a scheduled row is refused with CR409 rather than rewritten to asap) —
+-- plus their service_role-only grants. After this rollback both arities are live again —
 -- the PREDEPLOY compatibility state — so the pre-batch application can be
 -- redeployed.
 --
@@ -239,6 +241,16 @@ begin
      or v_req.current_quote_version_id is not null
      or v_req.quote_status<>'not_quoted' then
     raise exception 'version_or_state_conflict' using errcode='CR409';
+  end if;
+  /* DEPLOY-GAP FAIL-CLOSED (20260908220500). This legacy arity carries no
+     timing parameters and its UPDATE writes timing_intent='asap'. A scheduled
+     statement can only have been stored by the current application through
+     the strict 29-argument arity; confirming it here would silently rewrite it
+     to asap with a stale local time and instant, against a route computed for
+     the wrong departure. Refuse instead — never a fabricated ASAP. Rows the
+     old application itself created are always asap, so it never fires there. */
+  if v_req.timing_intent='scheduled' then
+    raise exception 'hosted_scheduled_timing_requires_current_application' using errcode='CR409';
   end if;
 
   if p_payer_type not in ('merchant','customer') then

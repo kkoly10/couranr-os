@@ -32,6 +32,9 @@
  *         still creates an ASAP request exactly as production does today;
  *         re-applying the fence closes the window again
  *   HT-14 the forward rollback HARD-REFUSES while scheduled evidence exists
+ *   HT-15 on a fresh database (no evidence) the forward rollback runs, runs AGAIN
+ *         (re-runnable: the evidence guard tolerates absent columns), restores
+ *         the v1 arities, and the forward migration + fence re-apply cleanly
  *
  * Postgres only — no PostgREST. The PostgREST resolution proof for the same
  * arities is e2e/disposable/hostedDeployCutover.mjs.
@@ -46,6 +49,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const FENCE = path.join(ROOT, "supabase/migrations/20260908230000_couranr_hosted_legacy_arity_fence.sql");
 const FENCE_RB = path.join(ROOT, "supabase/rollbacks/20260908230000_couranr_hosted_legacy_arity_fence.rollback.sql");
 const FORWARD_RB = path.join(ROOT, "supabase/rollbacks/20260908220000_couranr_hosted_scheduled_timing.rollback.sql");
+const FORWARD = path.join(ROOT, "supabase/migrations/20260908220000_couranr_hosted_scheduled_timing.sql");
+const GUARD = path.join(ROOT, "supabase/migrations/20260908220500_couranr_hosted_legacy_validate_guard.sql");
 
 let pass = 0, fail = 0;
 const one = (q) => psql(q).trim();
@@ -337,6 +342,12 @@ function main() {
   const i13s = newIntake();
   const r13s = one(create(i13s, { intent: "scheduled", local: LOCAL, instantSql: instantOf(LOCAL) }));
   eq("HT-13e", "PREDEPLOY: the NEW shape resolves to the strict arity in the same window", timingOf(r13s).split("|").slice(0, 2).join("|"), `scheduled|${LOCAL}`);
+  /* The deploy-gap guard (20260908220500): a still-serving OLD application must
+     not be able to rewrite a scheduled statement to asap through the legacy
+     26-argument validate. It is refused, and the row is untouched. */
+  eq("HT-13h", "PREDEPLOY: the OLD validate shape on a SCHEDULED row is refused — never a fabricated ASAP",
+     `${raises(oldValidate(r13s, Number(col(r13s, "version")), destinationOf(i13s)))}|${timingOf(r13s).split("|").slice(0, 2).join("|")}|${col(r13s, "quote_status")}`,
+     `CR409|hosted_scheduled_timing_requires_current_application|scheduled|${LOCAL}|not_quoted`);
   applyFile(FENCE);
   eq("HT-13f", "re-applying the fence closes the window: strict arities only", `${arities(CREATE_FN)}/${arities(VALIDATE_FN)}`, "17/29");
   eq("HT-13g", "the fence is re-runnable", applyFileExpectingFailure(FENCE), "NO_ERROR");
@@ -347,6 +358,25 @@ function main() {
   eq("HT-14b", "... and left the strict arities and evidence columns in place",
      `${arities(CREATE_FN)}/${arities(VALIDATE_FN)}|${one(`select count(*) from information_schema.columns where table_schema='public' and table_name='couranr_hosted_request_intakes' and column_name in ('customer_timing_intent','customer_requested_pickup_local')`)}`,
      "17/29|2");
+
+  /* ── HT-15: full rollback round trip on a FRESH database (no evidence) ──
+     A second up() re-initialises the disposable cluster with every migration
+     applied and no hosted rows, which is the only state the forward rollback
+     is allowed to run in. Nothing is deleted from the evidence-bearing DB. */
+  up({ quiet: true });
+  eq("HT-15a", "with no evidence the forward rollback runs: strict arities gone, v1 arities restored, columns dropped",
+     `${applyFileExpectingFailure(FORWARD_RB)}|${arities(CREATE_FN)}/${arities(VALIDATE_FN)}|${one(`select count(*) from information_schema.columns where table_schema='public' and table_name='couranr_hosted_request_intakes' and column_name in ('customer_timing_intent','customer_requested_pickup_local')`)}`,
+     "NO_ERROR|13/26|0");
+  eq("HT-15b", "the forward rollback is RE-RUNNABLE: a second run with the columns already gone is a clean no-op",
+     `${applyFileExpectingFailure(FORWARD_RB)}|${arities(CREATE_FN)}/${arities(VALIDATE_FN)}`, "NO_ERROR|13/26");
+  eq("HT-15c", "the restored v1 validate is the unguarded original (the evidence guard proved no scheduled row exists)",
+     one(`select (pg_get_functiondef('public.couranr_validate_hosted_delivery_request(uuid,uuid,integer,uuid,text,numeric,text,text,boolean,jsonb,jsonb,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,jsonb)'::regprocedure) like '%hosted_scheduled_timing_requires_current_application%')::text`),
+     "false");
+  eq("HT-15d", "the forward migration re-applies on top of the restored v1 (PREDEPLOY again), and the guard migration re-guards the legacy validate",
+     `${applyFileExpectingFailure(FORWARD)}|${applyFileExpectingFailure(GUARD)}|${arities(CREATE_FN)}/${arities(VALIDATE_FN)}|${one(`select (pg_get_functiondef('public.couranr_validate_hosted_delivery_request(uuid,uuid,integer,uuid,text,numeric,text,text,boolean,jsonb,jsonb,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,jsonb)'::regprocedure) like '%hosted_scheduled_timing_requires_current_application%')::text`)}`,
+     "NO_ERROR|NO_ERROR|13,17/26,29|true");
+  eq("HT-15e", "the fence closes the window again, and the guard migration is a clean no-op once the legacy arity is gone",
+     `${applyFileExpectingFailure(FENCE)}|${applyFileExpectingFailure(GUARD)}|${arities(CREATE_FN)}/${arities(VALIDATE_FN)}`, "NO_ERROR|NO_ERROR|17/29");
 
   console.log(`\n  hosted scheduled timing: ${pass} passed, ${fail} failed\n`);
   if (fail > 0) process.exitCode = 1;

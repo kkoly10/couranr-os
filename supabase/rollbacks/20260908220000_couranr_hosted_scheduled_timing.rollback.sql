@@ -42,6 +42,10 @@ begin
     raise exception 'hosted scheduled-timing evidence exists (% intakes, % scheduled requests); repair forward instead of dropping it',
       v_intakes, v_requests;
   end if;
+exception when undefined_column then
+  -- Already rolled back (or never applied): the evidence columns are absent,
+  -- so there is nothing to guard and the idempotent DDL below is a no-op.
+  null;
 end
 $evidence$;
 

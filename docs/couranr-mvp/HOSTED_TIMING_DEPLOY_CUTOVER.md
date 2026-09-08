@@ -1,11 +1,12 @@
 # Hosted scheduled timing — zero-downtime production cutover runbook
 
-**Status: PREDEPLOY migration applied to production; POSTDEPLOY fence NOT
-applied.** `20260908220000_couranr_hosted_scheduled_timing.sql` is safe to hold
-in production indefinitely: the deployed application keeps calling the
-retained 13/26-argument hosted commands and behaves exactly as before. The
-fence `20260908230000_couranr_hosted_legacy_arity_fence.sql` must be applied
-**only after** the application SHA carrying this branch is serving.
+**Status: both PREDEPLOY migrations applied to production; POSTDEPLOY fence
+NOT applied.** `20260908220000_couranr_hosted_scheduled_timing.sql` and its
+companion `20260908220500_couranr_hosted_legacy_validate_guard.sql` are safe
+to hold in production indefinitely: the deployed application keeps calling
+the retained 13/26-argument hosted commands and behaves exactly as before.
+The fence `20260908230000_couranr_hosted_legacy_arity_fence.sql` must be
+applied **only after** the application SHA carrying this branch is serving.
 
 Executable proof of every claim here:
 
@@ -13,7 +14,7 @@ Executable proof of every claim here:
   the gap (17 checks).
 - `npm run test:hosted-scheduled-timing` — the SQL layer: both strict arities
   CALLED with scheduled timing, the fence predeploy/postdeploy states, the
-  rollback guard (42 checks).
+  deploy-gap guard, the rollback guard and the full rollback round trip.
 
 ## Why a cutover is needed
 
@@ -28,7 +29,7 @@ Same reasoning, same shape as `SMART_INTAKE_DEPLOY_CUTOVER.md`.
 | | old arity (create 13 / validate 26 args) | strict arity (17 / 29 args, **no defaults**) |
 |---|---|---|
 | exists | today in production; RETAINED UNCHANGED by `20260908220000` | created by `20260908220000` |
-| behavior | exactly today's production behavior: hosted requests are ASAP | customer states `asap` or `scheduled` + Eastern local words; two-sided TMZ-001 assertion; customer words frozen on the intake; merchant confirms or adjusts |
+| behavior | exactly today's production behavior: hosted requests are ASAP. One addition from `20260908220500`: the legacy validate REFUSES a scheduled row (`CR409 hosted_scheduled_timing_requires_current_application`) instead of rewriting it to asap — it never fires on the old application's own (asap) rows | customer states `asap` or `scheduled` + Eastern local words; two-sided TMZ-001 assertion; customer words frozen on the intake; merchant confirms or adjusts |
 | callers | the currently deployed application | the application SHA on `feat/hosted-scheduled-timing` |
 | retired by | `20260908230000_couranr_hosted_legacy_arity_fence.sql` (POSTDEPLOY) | — |
 
@@ -42,7 +43,8 @@ only to the strict one. No `PGRST203`, no `42725`.
 
 ### PREDEPLOY — apply, production keeps working
 
-1. Apply `20260908220000_couranr_hosted_scheduled_timing.sql`.
+1. Apply `20260908220000_couranr_hosted_scheduled_timing.sql`, then
+   `20260908220500_couranr_hosted_legacy_validate_guard.sql`.
 2. Verify with a catalog query: `couranr_create_hosted_delivery_request` has
    arities `13,17`, `couranr_validate_hosted_delivery_request` has `26,29`,
    `couranr_hosted_request_intakes` has `customer_timing_intent` and
@@ -64,7 +66,8 @@ only to the strict one. No `PGRST203`, no `42725`.
 
 - **Application rollback after the fence:** apply
   `supabase/rollbacks/20260908230000_couranr_hosted_legacy_arity_fence.rollback.sql`
-  first (restores the old arities verbatim), then redeploy the old SHA.
+  first (restores the old create verbatim and the old validate WITH the
+  deploy-gap guard), then redeploy the old SHA.
 - **Full rollback:** roll the application back first, then apply
   `supabase/rollbacks/20260908220000_couranr_hosted_scheduled_timing.rollback.sql`.
   It HARD-REFUSES while any hosted intake carries a customer timing statement
