@@ -24,7 +24,9 @@ const req = (q = "main street") =>
 
 const okSession = { ok: true, value: { id: "sess-1", requestId: null, expiresAt: "" } };
 
-afterEach(() => vi.clearAllMocks());
+afterEach(() => {
+  vi.clearAllMocks();
+});
 
 describe("consumer Places route — rate limit before the paid provider", () => {
   it("a rate-limited session gets 429 and NO provider call is made", async () => {

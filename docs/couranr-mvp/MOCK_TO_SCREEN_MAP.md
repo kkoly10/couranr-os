@@ -6,7 +6,7 @@
 derived at render time; `npm run check:governance` regenerates this document
 in memory and fails on a byte of difference.
 
-The 91 PNGs at the repo root are the approved design mocks. Nothing in the
+The 99 PNGs at the repo root are the approved design mocks. Nothing in the
 codebase referenced them, and thirteen of the 62 `canonical-mvp-images/**` paths
 the screen registry cites exist on disk — so most canonical screens built so far
 were built from the registry's *prose* (route, purpose, states) rather than from
@@ -23,10 +23,10 @@ renamed, or deleted, and none will be.
 
 | | count |
 |---|---|
-| PNGs at repo root | 91 |
+| PNGs at repo root | 99 |
 | …that map to one of the 68 registry screens | 69 |
-| …that depict a screen **not** in the registry, or are photography | 22 |
-| …unaccounted for | **0** |
+| …that depict a screen **not** in the registry, or are photography | 30 |
+| …unaccounted for | **8** |
 | Registry screens with at least one mock | 50 of 68 |
 | Registry screens with **no** mock | 18 |
 | …of which "no mock" is correct by design | 6 (PUB-008…013) |
