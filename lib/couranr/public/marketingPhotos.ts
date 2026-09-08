@@ -22,7 +22,16 @@
  * points. Registration is in `scripts/visualAuthorityRegistry.mjs`.
  */
 
+import type { BusinessCategory } from "@/lib/couranr/categories/registry";
+import { GENERAL_CATEGORY } from "@/lib/couranr/categories/registry";
+
 export const MARKETING_PHOTO_DIR = "/images/marketing/2026-08/w";
+
+/** The 2026-09 batch, installed on owner instruction 2026-09-08. */
+export const MARKETING_PHOTO_DIR_2026_09 = "/images/marketing/2026-09/w";
+
+const DEFAULT_BATCH = "2026-08";
+const dirFor = (batch = DEFAULT_BATCH) => `/images/marketing/${batch}/w`;
 
 export type MarketingPhoto = {
   /** Matches the `asset_id` the visual-authority registry records. */
@@ -34,22 +43,44 @@ export type MarketingPhoto = {
   wide: { widths: number[]; ratio: [number, number] };
   /** Present only where a narrow viewport needs a different crop, not a resize. */
   square?: { widths: number[] };
+  /** Defaults to 2026-08, so every asset accepted on 2026-08-28 is unchanged. */
+  batch?: string;
+  /** The derivative shape name, where it is not the default `wide`. */
+  shape?: string;
+  /**
+   * The SQUARE slot's derivative shape name, where it is not `square`.
+   *
+   * Both slots need their own override and only the wide one had it, which was
+   * a live 404 rather than an omission: the 2026-09 batch builds its narrow
+   * crop as `thumb`, so `srcSetFor(photo, "square")` asked the browser for
+   * `mkt-2026-09-auto-parts-square-160.webp` — a file that does not exist. A
+   * missing `srcSet` candidate fails silently, because the browser just picks
+   * another width, so it would have shown up only as a blurry card at exactly
+   * the widths that select the small crop.
+   */
+  squareShape?: string;
 };
 
-function src(slug: string, shape: string, width: number): string {
-  return `${MARKETING_PHOTO_DIR}/mkt-2026-08-${slug}-${shape}-${width}.webp`;
+function src(slug: string, shape: string, width: number, batch = DEFAULT_BATCH): string {
+  return `${dirFor(batch)}/mkt-${batch}-${slug}-${shape}-${width}.webp`;
 }
+
+/** The shape name each slot's widths actually build under. */
+const wideShape = (p: MarketingPhoto) => p.shape ?? "wide";
+const squareShape = (p: MarketingPhoto) => p.squareShape ?? "square";
 
 /** `srcSet` for one shape of one asset, widest last. */
 export function srcSetFor(photo: MarketingPhoto, shape: "wide" | "square"): string {
   const widths = shape === "wide" ? photo.wide.widths : (photo.square?.widths ?? []);
-  return widths.map((w) => `${src(photo.slug, shape, w)} ${w}w`).join(", ");
+  const name = shape === "wide" ? wideShape(photo) : squareShape(photo);
+  return widths.map((w) => `${src(photo.slug, name, w, photo.batch)} ${w}w`).join(", ");
 }
 
 /** The largest derivative, which is what a `src` fallback should point at. */
 export function largestSrc(photo: MarketingPhoto, shape: "wide" | "square" = "wide"): string {
   const widths = shape === "wide" ? photo.wide.widths : (photo.square?.widths ?? []);
-  return src(photo.slug, shape, widths[widths.length - 1]);
+  const name = shape === "wide" ? wideShape(photo) : squareShape(photo);
+  return src(photo.slug, name, widths[widths.length - 1], photo.batch);
 }
 
 /** Rendered `width`/`height` for a shape, so the box is reserved before load. */
@@ -190,3 +221,238 @@ export const RESERVE_PHOTO_IDS = [
   "couranr-mkt-2026-08-parent-child-kitchen",
   "couranr-mkt-2026-08-older-customer-vase",
 ] as const;
+
+
+/* ── the 2026-09 proof-artifact set ────────────────────────────────────────
+   OWNER INSTRUCTION 2026-09-08. Four frames for section 8's proof artifacts,
+   which until now rendered a literal "image pending" placeholder in one of
+   four slots.
+
+   ALL FOUR ARE DECORATIVE — `alt=""` — and that is a decision, not an
+   oversight. They were first written with descriptive alt text under the
+   narrowed evidence boundary the owner approved, and reviewing the rendered
+   markup is what changed it: the list these sit in is labelled "What Couranr
+   records as proof", so "A courier enters a four-digit code on a phone while a
+   resident waits at an open front door" tells a screen-reader user the scene IS
+   a Couranr delivery. That is a stronger claim than the photograph makes to a
+   sighted reader, which inverts what alt text is for.
+
+   It is also the ordinary rule rather than a special case. Each frame sits
+   beside its own label and detail — Recipient PIN / Four digits, verified at
+   the door — which carry the whole product fact in text. W3C WAI's decorative-
+   images tutorial gives exactly this shape: an image "already sufficiently
+   described by the adjacent text" takes a null alt, because repeating it makes
+   a screen reader announce redundant detail. The photographs add visual
+   interest, not information, so nothing is lost by silencing them and the
+   claim goes with it.
+   https://www.w3.org/WAI/tutorials/images/decorative/
+
+   The narrowed boundary still stands for anything that DOES carry a string;
+   what changed is that these four carry none. `subject` in
+   VISUAL_AUTHORITY_REGISTRY.json still records what each photograph shows, for
+   a human reading the registry — that is provenance, not page copy.
+
+   Still generated assets, still not evidence. */
+export const PROOF_ARTIFACT_PHOTOS: MarketingPhoto[] = [
+  {
+    id: "couranr-mkt-2026-09-proof-pin",
+    slug: "proof-pin",
+    batch: "2026-09",
+    shape: "proof",
+    /* Decorative: the label beside it carries the fact. See the header. */
+    alt: "",
+    wide: { widths: [200, 400], ratio: [4, 3] },
+  },
+  {
+    id: "couranr-mkt-2026-09-proof-photo",
+    slug: "proof-photo",
+    batch: "2026-09",
+    shape: "proof",
+    /* Decorative: the label beside it carries the fact. See the header. */
+    alt: "",
+    wide: { widths: [200, 400], ratio: [4, 3] },
+  },
+  {
+    id: "couranr-mkt-2026-09-proof-location",
+    slug: "proof-location",
+    batch: "2026-09",
+    shape: "proof",
+    /* Decorative: the label beside it carries the fact. See the header. */
+    alt: "",
+    wide: { widths: [200, 400], ratio: [4, 3] },
+  },
+  {
+    id: "couranr-mkt-2026-09-proof-signature",
+    slug: "proof-signature",
+    batch: "2026-09",
+    shape: "proof",
+    /* Decorative: the label beside it carries the fact. See the header. */
+    alt: "",
+    wide: { widths: [200, 400], ratio: [4, 3] },
+  },
+];
+
+/* ── the 2026-09 service corridor ──────────────────────────────────────────
+   OWNER INSTRUCTION 2026-09-08: replaces `ServiceCorridorMap`, the schematic
+   SVG, whose header refused a rendered basemap on the ground that "a map that
+   invents terrain is worse than a schematic that admits it is one" and that
+   §27 Section 10 forbids inventing an undefined boundary.
+
+   The owner has ruled that reasoning stale and the map decorative. Two things
+   make that safe rather than merely instructed:
+
+     - the four markets are ALREADY in text directly beneath, through
+       MARKETS_PUBLIC_COPY, so nothing readable lives only in pixels;
+     - the map is marked decorative, so the corridor band it draws is not
+       offered to a reader as a coverage boundary. The sentence beneath is what
+       states coverage, and it ends "and surrounding areas". */
+export const SERVICE_CORRIDOR_MAP: MarketingPhoto = {
+  id: "couranr-mkt-2026-09-service-corridor",
+  slug: "service-corridor",
+  batch: "2026-09",
+  shape: "map",
+  /* DECORATIVE. Rendered with alt="" — see the section for why: every fact it
+     depicts is stated in text beside it. */
+  alt: "",
+  wide: { widths: [360, 720], ratio: [1198, 1313] },
+};
+
+/* ── the 2026-09 category system ───────────────────────────────────────────
+   OWNER INSTRUCTION 2026-09-08. Ten frames, one per real business category,
+   for PUB-001 section 9.
+
+   WHY THIS IS A RECORD KEYED BY CATEGORY AND NOT AN ARRAY. The section renders
+   one card per member of BUSINESS_CATEGORIES, which is the registry's order and
+   the database's `couranr_mw_category_chk` constraint. An array would let the
+   photographs drift out of step with that order silently — card 7 showing a
+   bakery under the label "Furniture and home goods" is a defect no test of
+   lengths would catch. Keying by the category id makes the pairing the data
+   rather than a coincidence of index.
+
+   `lib/couranr/**` compiles under tsconfig.canonical.json with `strict: true`,
+   so `Record<Exclude<BusinessCategory, typeof GENERAL_CATEGORY>, …>` is
+   EXHAUSTIVE: an eleventh real category added to the registry without a
+   photograph fails `npm run typecheck:canonical`. That is a stronger guarantee
+   than a test, and it is why the type is written the long way instead of as a
+   partial map.
+
+   GENERAL_CATEGORY is deliberately absent. It is the fallback — "not on the
+   list" — and Master Package §5 makes it a first-class choice rather than a
+   category with a look. Photographing it would mean inventing a scene that
+   stands for "any business at all", which is the one thing no photograph can
+   honestly show. The section renders it as a full-width card with no image.
+
+   THE EVIDENCE BOUNDARY IS THE STRICT ONE. These are category illustrations,
+   exactly the class OWNER_VISUAL_DECISION_2026-08-28.md's word ban was written
+   for, so none of these alt strings may say delivery, courier, driver, parcel
+   or Couranr. The narrowed boundary the owner approved on 2026-09-08 applies to
+   the PRODUCT-SURFACE frames (the proof artifacts), not to these.
+
+   Unlike the proof chips, these alts are NOT empty. Each card's own label names
+   the category, but the photograph shows a different thing — a specific trade
+   at work — and that is information the label does not carry. W3C WAI's test is
+   whether the adjacent text already describes the image; here it does not. */
+export const CATEGORY_SYSTEM_PHOTOS: Readonly<
+  Record<Exclude<BusinessCategory, typeof GENERAL_CATEGORY>, MarketingPhoto>
+> = {
+  dry_cleaning_laundry_tailoring: {
+    id: "couranr-mkt-2026-09-dry-cleaning-counter",
+    slug: "dry-cleaning-counter",
+    batch: "2026-09",
+    shape: "card",
+    alt: "A dry-cleaning worker checks a suit in a garment bag on the finished rack.",
+    wide: { widths: [400, 800], ratio: [4, 3] },
+    square: { widths: [160, 320] },
+    squareShape: "thumb",
+  },
+  printing_signage_promotional: {
+    id: "couranr-mkt-2026-09-print-signage",
+    slug: "print-signage",
+    batch: "2026-09",
+    shape: "card",
+    alt: "A print-shop worker guides a wide landscape print off a large-format printer.",
+    wide: { widths: [400, 800], ratio: [4, 3] },
+    square: { widths: [160, 320] },
+    squareShape: "thumb",
+  },
+  boutique_clothing_shoes_accessories: {
+    id: "couranr-mkt-2026-09-boutique-apparel",
+    slug: "boutique-apparel",
+    batch: "2026-09",
+    shape: "card",
+    alt: "A boutique owner arranges jackets on a rail beside a display of shoes and handbags.",
+    wide: { widths: [400, 800], ratio: [4, 3] },
+    square: { widths: [160, 320] },
+    squareShape: "thumb",
+  },
+  florists_gifts_specialty_retail: {
+    id: "couranr-mkt-2026-09-florist-gifts",
+    slug: "florist-gifts",
+    batch: "2026-09",
+    shape: "card",
+    alt: "A florist ties a mixed bouquet at a work table beside wrapped gift boxes.",
+    wide: { widths: [400, 800], ratio: [4, 3] },
+    square: { widths: [160, 320] },
+    squareShape: "thumb",
+  },
+  repair_and_electronics: {
+    id: "couranr-mkt-2026-09-repair-electronics",
+    slug: "repair-electronics",
+    batch: "2026-09",
+    shape: "card",
+    alt: "A repair technician works inside an opened laptop with a screwdriver at a bench.",
+    wide: { widths: [400, 800], ratio: [4, 3] },
+    square: { widths: [160, 320] },
+    squareShape: "thumb",
+  },
+  auto_parts_and_accessories: {
+    id: "couranr-mkt-2026-09-auto-parts",
+    slug: "auto-parts",
+    batch: "2026-09",
+    shape: "card",
+    alt: "A shopper compares a boxed air filter at the shelf in an auto-parts store.",
+    wide: { widths: [400, 800], ratio: [4, 3] },
+    square: { widths: [160, 320] },
+    squareShape: "thumb",
+  },
+  furniture_and_home_goods: {
+    id: "couranr-mkt-2026-09-furniture-home-goods",
+    slug: "furniture-home-goods",
+    batch: "2026-09",
+    shape: "card",
+    alt: "A home-goods shop worker sets a cushion on a sofa in a styled showroom.",
+    wide: { widths: [400, 800], ratio: [4, 3] },
+    square: { widths: [160, 320] },
+    squareShape: "thumb",
+  },
+  event_rentals_and_supplies: {
+    id: "couranr-mkt-2026-09-event-rentals",
+    slug: "event-rentals",
+    batch: "2026-09",
+    shape: "card",
+    alt: "An event-rental worker checks stacked chairs against a clipboard in a supply warehouse.",
+    wide: { widths: [400, 800], ratio: [4, 3] },
+    square: { widths: [160, 320] },
+    squareShape: "thumb",
+  },
+  bakeries_prepared_food_catering: {
+    id: "couranr-mkt-2026-09-bakery-catering",
+    slug: "bakery-catering",
+    batch: "2026-09",
+    shape: "card",
+    alt: "A baker arranges catering trays and pastries across a bakery counter.",
+    wide: { widths: [400, 800], ratio: [4, 3] },
+    square: { widths: [160, 320] },
+    squareShape: "thumb",
+  },
+  books_cards_collectibles_hobby: {
+    id: "couranr-mkt-2026-09-books-cards-hobby",
+    slug: "books-cards-hobby",
+    batch: "2026-09",
+    shape: "card",
+    alt: "A bookseller sorts new stock on a table between a greetings-card rack and a collectibles cabinet.",
+    wide: { widths: [400, 800], ratio: [4, 3] },
+    square: { widths: [160, 320] },
+    squareShape: "thumb",
+  },
+};
