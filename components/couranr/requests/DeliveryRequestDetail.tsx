@@ -20,6 +20,7 @@ import {
 } from "@/components/couranr/states";
 import { QuoteSummary } from "./QuoteSummary";
 import { MerchantPaymentPanel } from "@/components/couranr/payments/MerchantPaymentPanel";
+import { MerchantTrackingPanel } from "@/components/couranr/tracking/MerchantTrackingPanel";
 import { MerchantReadinessPanel } from "@/components/couranr/fulfillment/MerchantReadinessPanel";
 import { HostedRequestValidationPanel } from "./HostedRequestValidationPanel";
 import { MerchantProofPanel } from "@/components/couranr/dispatch/MerchantProofPanel";
@@ -446,6 +447,17 @@ export function DeliveryRequestDetail({
               label="Customer safety statement"
               value={hostedContext.customerRestrictedClass ?? "Not provided"}
             />
+            <Detail
+              label="Customer requested timing"
+              value={
+                hostedContext.customerTimingIntent === "scheduled" &&
+                hostedContext.customerRequestedPickupLocal
+                  ? `Scheduled: ${String(hostedContext.customerRequestedPickupLocal).replace("T", " ")} (Eastern)`
+                  : hostedContext.customerTimingIntent === "asap"
+                    ? "As soon as possible"
+                    : "Not provided"
+              }
+            />
           </Grid>
           {hostedContext.destinationLabel ? (
             <div>
@@ -540,6 +552,21 @@ export function DeliveryRequestDetail({
         />
       ) : null}
 
+      {/*
+        PUB-006 issuance for ordinary merchant-owned deliveries. Hosted Consumer
+        requests already own their token through the guest session; mounting this
+        there would let a merchant replace the customer\'s live token.
+      */}
+      {!isOperations &&
+      request.requestState === "confirmed" &&
+      request.source !== "hosted_request" ? (
+        <MerchantTrackingPanel
+          requestId={request.id}
+          businessAccountId={viewerBusinessAccountId}
+          canManage={viewerMayWriteDelivery}
+        />
+      ) : null}
+
       {/* MER-007 readiness, and the scheduled result once Couranr captures. */}
       {!isOperations ? (
         <MerchantReadinessPanel
@@ -613,18 +640,27 @@ export function DeliveryRequestDetail({
         <>
           <DeliveryExecutionTimeline current={fulfillment.delivery.fulfillmentState} />
           {viewerMayWriteDelivery ? (
-            <>
+            fulfillment.delivery.fulfillmentState === "return_required" ||
+            fulfillment.delivery.fulfillmentState === "returning" ? (
               <HandoffCodePanel
                 deliveryId={fulfillment.delivery.id}
-                kind="merchant_pickup"
+                kind="merchant_return"
                 surface="merchant"
               />
-              <HandoffCodePanel
-                deliveryId={fulfillment.delivery.id}
-                kind="recipient_dropoff"
-                surface="merchant"
-              />
-            </>
+            ) : (
+              <>
+                <HandoffCodePanel
+                  deliveryId={fulfillment.delivery.id}
+                  kind="merchant_pickup"
+                  surface="merchant"
+                />
+                <HandoffCodePanel
+                  deliveryId={fulfillment.delivery.id}
+                  kind="recipient_dropoff"
+                  surface="merchant"
+                />
+              </>
+            )
           ) : null}
           <MerchantProofPanel deliveryId={fulfillment.delivery.id} />
         </>

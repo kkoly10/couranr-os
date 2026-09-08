@@ -5,6 +5,7 @@ import {
   Alert,
   Badge,
   Button,
+  buttonClassName,
   Card,
   CardHeader,
   Cluster,
@@ -31,6 +32,7 @@ import {
   completeDirectHandoff,
   completeLeaveAtDoor,
   completeSignature,
+  fetchMyProof,
   verifyRecipientCode,
   type AssignedDeliveryView,
   type CompletionResult,
@@ -80,6 +82,7 @@ type FormProps = {
   deliveryId: string;
   version: number | null;
   location: LocationState;
+  recordedProof: Record<string, string>;
   onDone: (receipt: DriverCompletionReceipt | null) => void;
 };
 
@@ -94,6 +97,22 @@ export function DropoffProof({
 }) {
   const [receipt, setReceipt] = React.useState<DriverCompletionReceipt | null>(null);
   const [completed, setCompleted] = React.useState(false);
+  const [recordedProof, setRecordedProof] = React.useState<Record<string, string>>({});
+
+  React.useEffect(() => {
+    let live = true;
+    void fetchMyProof(assigned.deliveryId).then((result) => {
+      if (!live || isApiFailure(result)) return;
+      const byType: Record<string, string> = {};
+      for (const proof of result.value.proof ?? []) {
+        if (proof.proofStage === "dropoff" && !byType[proof.proofType]) {
+          byType[proof.proofType] = proof.proofId;
+        }
+      }
+      setRecordedProof(byType);
+    });
+    return () => { live = false; };
+  }, [assigned.deliveryId]);
 
   const state = isFulfillmentState(assigned.fulfillmentState) ? assigned.fulfillmentState : null;
   const method = isProofMethod(assigned.proof.method) ? assigned.proof.method : null;
@@ -144,6 +163,7 @@ export function DropoffProof({
     deliveryId: assigned.deliveryId,
     version,
     location,
+    recordedProof,
     onDone: finish,
   };
 
@@ -363,7 +383,7 @@ const SIGNATURE_PAPER = "#ffffff";
  * `signature_required` until that proof exists — so the same request cannot
  * both assert the evidence and claim the delivery is done.
  */
-function SignatureCapture({ deliveryId, version, location, onDone }: FormProps) {
+function SignatureCapture({ deliveryId, version, location, recordedProof, onDone }: FormProps) {
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
   const drawing = React.useRef(false);
   const [hasInk, setHasInk] = React.useState(false);
@@ -392,14 +412,21 @@ function SignatureCapture({ deliveryId, version, location, onDone }: FormProps) 
     onFinalized: (proofId) => {
       finalizedRef.current = proofId;
     },
+    recordedProofId: recordedProof.signature ?? null,
   });
+
+  React.useEffect(() => {
+    if (signature.proofId) finalizedRef.current = signature.proofId;
+  }, [signature.proofId]);
 
   const busy =
     submitting ||
     signature.status === "reading" ||
     signature.status === "authorizing" ||
     signature.status === "uploading" ||
-    signature.status === "finalizing";
+    signature.status === "finalizing" ||
+    signature.status === "queued" ||
+    signature.finalized;
 
   function context(): CanvasRenderingContext2D | null {
     const canvas = canvasRef.current;
@@ -516,7 +543,11 @@ function SignatureCapture({ deliveryId, version, location, onDone }: FormProps) 
   }
 
   const blockers: string[] = [];
-  if (!hasInk) blockers.push("Ask the recipient to sign in the box.");
+  if (signature.status === "queued") {
+    blockers.push("Wait for the saved signature to sync with Couranr.");
+  } else if (!hasInk && !signature.finalized) {
+    blockers.push("Ask the recipient to sign in the box.");
+  }
   if (signerFirstName.trim() === "") blockers.push("Enter the signer's first name.");
   if (!location.usable) blockers.push(location.message);
   if (version === null) blockers.push(VERSION_BLOCKER);
@@ -622,6 +653,8 @@ function SignatureCapture({ deliveryId, version, location, onDone }: FormProps) 
                 object back makes it so. */}
             {signature.finalized ? (
               <Badge tone="success">Signature recorded</Badge>
+            ) : signature.status === "queued" ? (
+              <Badge tone="warning">Signature saved — waiting to sync</Badge>
             ) : hasInk ? (
               <Badge tone="warning">Signed — not recorded yet</Badge>
             ) : (
@@ -661,6 +694,15 @@ function SignatureCapture({ deliveryId, version, location, onDone }: FormProps) 
 
       <LocationBlock location={location} />
 
+      {signature.status === "queued" ? (
+        <Alert tone="warning" title="Proof is waiting to sync">
+          Couranr cannot complete this delivery until the signature is server-verified.{" "}
+          <a className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/driver/deliveries/${deliveryId}?panel=offline-sync`}>
+            Open offline proof sync
+          </a>
+        </Alert>
+      ) : null}
+
       <CompleteStep
         title="Complete delivery"
         label="Complete delivery"
@@ -697,7 +739,7 @@ function canvasBlob(canvas: HTMLCanvasElement): Promise<Blob | null> {
  * granting the permission and cannot change it — the two confirmations below
  * are judgements about THIS doorstep, not consent to the method.
  */
-function LeaveAtDoor({ deliveryId, version, location, onDone }: FormProps) {
+function LeaveAtDoor({ deliveryId, version, location, recordedProof, onDone }: FormProps) {
   const [safeLocation, setSafeLocation] = React.useState(false);
   const [weatherSuitable, setWeatherSuitable] = React.useState(false);
   const [submitting, setSubmitting] = React.useState(false);
@@ -708,10 +750,17 @@ function LeaveAtDoor({ deliveryId, version, location, onDone }: FormProps) {
     stage: "dropoff",
     proofType: "delivery_photo",
     location,
+    recordedProofId: recordedProof.delivery_photo ?? null,
   });
 
   const blockers: string[] = [];
-  if (!photo.finalized) blockers.push("Record a photo of where you left the shipment.");
+  if (!photo.finalized) {
+    blockers.push(
+      photo.status === "queued"
+        ? "Wait for the saved drop-off photo to sync with Couranr."
+        : "Record a photo of where you left the shipment."
+    );
+  }
   if (!safeLocation) blockers.push("Confirm the spot you are leaving it in is safe.");
   if (!weatherSuitable) blockers.push("Confirm the weather will not damage it there.");
   if (!location.usable) blockers.push(location.message);
@@ -794,6 +843,15 @@ function LeaveAtDoor({ deliveryId, version, location, onDone }: FormProps) {
       </Card>
 
       <LocationBlock location={location} />
+
+      {photo.status === "queued" ? (
+        <Alert tone="warning" title="Proof is waiting to sync">
+          Couranr cannot complete this delivery until the photo is server-verified.{" "}
+          <a className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/driver/deliveries/${deliveryId}?panel=offline-sync`}>
+            Open offline proof sync
+          </a>
+        </Alert>
+      ) : null}
 
       <CompleteStep
         title="Complete delivery"
@@ -915,7 +973,9 @@ function PhotoField({
     upload.status === "reading" ||
     upload.status === "authorizing" ||
     upload.status === "uploading" ||
-    upload.status === "finalizing";
+    upload.status === "finalizing" ||
+    upload.status === "queued" ||
+    upload.finalized;
 
   function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files && e.target.files[0];
@@ -946,6 +1006,8 @@ function PhotoField({
           <Cluster gap={2}>
             {upload.finalized ? (
               <Badge tone="success">Recorded</Badge>
+            ) : upload.status === "queued" ? (
+              <Badge tone="warning">Saved — waiting to sync</Badge>
             ) : selectedName ? (
               <Badge tone="warning">Selected — not recorded yet</Badge>
             ) : (

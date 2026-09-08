@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isDriverFailure } from "@/lib/couranr/driver/commands";
-import { createProofUpload } from "@/lib/couranr/driver/proof";
+import { createProofUpload, prepareProofUploadV2 } from "@/lib/couranr/driver/proof";
 import { PROOF_STAGES, type ProofStage } from "@/lib/couranr/driver/states";
 import { isActorDenied, resolveUserId } from "@/lib/couranr/requests/actor";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
@@ -60,14 +60,79 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     return routeFailure("invalid_input", "The file is empty.");
   }
 
-  const r = await createProofUpload({
+  /*
+   * Rolling-deploy compatibility: an old browser bundle has no evidence UUID
+   * and continues down the legacy path. New bundles opt into V2 and bind the
+   * immutable capture envelope before any upload URL is minted.
+   */
+  const clientEvidenceId =
+    typeof body?.clientEvidenceId === "string" ? body.clientEvidenceId.trim() : "";
+  if (!clientEvidenceId) {
+    const r = await createProofUpload({
+      userId: auth.userId,
+      deliveryId: params.id,
+      proofStage: stage as ProofStage,
+      proofType,
+      expectedMime,
+      expectedBytes,
+    });
+    if (isDriverFailure(r)) return failureResponse(r);
+    return NextResponse.json({ upload: r.value });
+  }
+
+  if (!UUID_RE.test(clientEvidenceId)) {
+    return routeFailure("invalid_input", "That offline proof identity is not valid.");
+  }
+  const evidenceSha256 =
+    typeof body?.evidenceSha256 === "string" ? body.evidenceSha256.trim().toLowerCase() : "";
+  if (!/^[0-9a-f]{64}$/.test(evidenceSha256)) {
+    return routeFailure("invalid_input", "That offline proof digest is not valid.");
+  }
+  const capturedAt = typeof body?.capturedAt === "string" ? body.capturedAt.trim() : "";
+  if (!capturedAt || Number.isNaN(Date.parse(capturedAt))) {
+    return routeFailure("invalid_input", "That proof capture time is not valid.");
+  }
+
+  const latitude = Number(body?.latitude);
+  const longitude = Number(body?.longitude);
+  if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+      !Number.isFinite(longitude) || longitude < -180 || longitude > 180) {
+    return routeFailure("invalid_input", "Couranr needs the capture location for offline proof.");
+  }
+  const accuracyM =
+    body?.accuracyM === null || body?.accuracyM === undefined ? null : Number(body.accuracyM);
+  if (accuracyM !== null && (!Number.isFinite(accuracyM) || accuracyM < 0)) {
+    return routeFailure("invalid_input", "That location accuracy is not valid.");
+  }
+  const discrepancyId =
+    body?.discrepancyId === null || body?.discrepancyId === undefined
+      ? null
+      : String(body.discrepancyId);
+  if (discrepancyId !== null && !UUID_RE.test(discrepancyId)) {
+    return routeFailure("invalid_input", "That discrepancy is not valid.");
+  }
+
+  const r = await prepareProofUploadV2({
     userId: auth.userId,
     deliveryId: params.id,
     proofStage: stage as ProofStage,
     proofType,
     expectedMime,
     expectedBytes,
+    clientEvidenceId,
+    evidenceSha256,
+    capturedAt,
+    latitude,
+    longitude,
+    accuracyM,
+    discrepancyId,
   });
   if (isDriverFailure(r)) return failureResponse(r);
-  return NextResponse.json({ upload: r.value });
+
+  return NextResponse.json({
+    upload:
+      r.value.status === "verified"
+        ? { status: "verified", proof: r.value.proof }
+        : { status: "upload", ...r.value.upload },
+  });
 }

@@ -73,6 +73,30 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     return routeFailure("invalid_input", `Keep the notes under ${MAX_NOTES} characters.`);
   }
 
+  const latitude = typeof body?.latitude === "number" ? body.latitude : Number.NaN;
+  const longitude = typeof body?.longitude === "number" ? body.longitude : Number.NaN;
+  const accuracyM =
+    body?.accuracyM === null || body?.accuracyM === undefined
+      ? null
+      : typeof body.accuracyM === "number"
+        ? body.accuracyM
+        : Number.NaN;
+  if (
+    stage === "dropoff" &&
+    (!Number.isFinite(latitude) ||
+      latitude < -90 ||
+      latitude > 90 ||
+      !Number.isFinite(longitude) ||
+      longitude < -180 ||
+      longitude > 180 ||
+      (accuracyM !== null && (!Number.isFinite(accuracyM) || accuracyM < 0)))
+  ) {
+    return routeFailure(
+      "invalid_input",
+      "Couranr needs the location where you stopped to report this delivery issue."
+    );
+  }
+
   const r =
     stage === "dropoff"
       ? await reportDropoffException({
@@ -80,6 +104,9 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
           deliveryId: params.id,
           reason,
           notes: notes.length > 0 ? notes : null,
+          latitude,
+          longitude,
+          accuracyM,
         })
       : await reportPickupDiscrepancy({
           userId: auth.userId,

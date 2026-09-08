@@ -1,6 +1,10 @@
 "use client";
 
-import { call, type ApiResult } from "@/components/couranr/requests/client";
+import {
+  call,
+  isApiFailure,
+  type ApiResult,
+} from "@/components/couranr/requests/client";
 
 /**
  * Browser calls for managed dispatch.
@@ -178,7 +182,10 @@ export type AssignedDeliveryView = {
   merchant: { name: string; phone: string };
   recipient: { name: string; phone: string };
   shipment: {
+    description: string | null;
     packageCount: number | null;
+    orderReference: string | null;
+    handlingNotes: string | null;
     declaredWeightLb: number | null;
     additionalStops: number | null;
   };
@@ -269,17 +276,7 @@ export function arriveAtDropoff(deliveryId: string, expectedVersion: number, at:
 
 export function completePickup(
   deliveryId: string,
-  body: {
-    expectedVersion: number;
-    observedPackageCount: number;
-    staffFirstName: string;
-    confirmedVehicleId: string;
-    dimensions?: Record<string, unknown> | null;
-    loadingParticipants?: string | null;
-    loadingEquipment?: string | null;
-    existingDamage?: string | null;
-    driverAcknowledged?: boolean | null;
-  } & Located
+  body: { expectedVersion: number } & Located
 ) {
   return call<{ delivery: DeliveryStateView }>(
     `/api/couranr/driver/deliveries/${deliveryId}/complete-pickup`,
@@ -322,7 +319,12 @@ export function completeLeaveAtDoor(
   );
 }
 
-export function reportDiscrepancy(deliveryId: string, body: { reason: string; notes?: string }) {
+export function reportDiscrepancy(
+  deliveryId: string,
+  body:
+    | { reason: string; notes?: string; stage?: "pickup" }
+    | ({ reason: string; notes?: string; stage: "dropoff" } & Located)
+) {
   return call<{ discrepancy: { discrepancyId: string; state: string; version: number } }>(
     `/api/couranr/driver/deliveries/${deliveryId}/discrepancy`,
     { method: "POST", body }
@@ -346,6 +348,27 @@ export function verifyRecipientCode(deliveryId: string, code: string) {
   });
 }
 
+export function verifyReturnCode(deliveryId: string, code: string) {
+  return call<PinAttempt>(`/api/couranr/driver/deliveries/${deliveryId}/verify-return-code`, {
+    method: "POST",
+    body: { code },
+  });
+}
+
+export function startReturnFromBrowser(deliveryId: string, expectedVersion: number) {
+  return call<{ delivery: DeliveryStateView }>(
+    `/api/couranr/driver/deliveries/${deliveryId}/start-return`,
+    { method: "POST", body: { expectedVersion } }
+  );
+}
+
+export function completeReturnFromBrowser(deliveryId: string, expectedVersion: number) {
+  return call<{ delivery: DeliveryStateView }>(
+    `/api/couranr/driver/deliveries/${deliveryId}/complete-return`,
+    { method: "POST", body: { expectedVersion } }
+  );
+}
+
 export type DeliveryStateView = {
   deliveryId: string;
   fulfillmentState: string;
@@ -355,7 +378,7 @@ export type DeliveryStateView = {
 /** The raw code exists in THIS response and nowhere else, ever. */
 export type IssuedHandoffCodeView = {
   code: string;
-  kind: "merchant_pickup" | "recipient_dropoff";
+  kind: "merchant_pickup" | "recipient_dropoff" | "merchant_return";
   generation: number;
   expiresAt: string;
   warning: string;
@@ -389,15 +412,21 @@ export function issueOperationsRecipientCode(deliveryId: string) {
   );
 }
 
-/** Metadata only. There is no `url` and no `path` field, by construction. */
-export type ProofMetadataView = {
-  proofId: string;
-  proofStage: string;
-  proofType: string;
-  finalizedAt: string;
-  hasMedia: boolean;
-};
+export function issueMerchantReturnCode(deliveryId: string) {
+  return call<{ handoffCode: IssuedHandoffCodeView }>(
+    `/api/couranr/merchant/deliveries/${deliveryId}/return-code`,
+    { method: "POST", body: {} }
+  );
+}
 
+export function issueOperationsReturnCode(deliveryId: string) {
+  return call<{ handoffCode: IssuedHandoffCodeView }>(
+    `/api/couranr/operations/deliveries/${deliveryId}/return-code`,
+    { method: "POST", body: {} }
+  );
+}
+
+/** Metadata only. There is no `url` and no `path` field, by construction. */
 export function fetchMerchantProof(deliveryId: string) {
   return call<{ proof: ProofMetadataView[] }>(
     `/api/couranr/merchant/deliveries/${deliveryId}/proof`
@@ -412,7 +441,11 @@ export function fetchMerchantProof(deliveryId: string) {
  * the merchant gets; opening an image is a separate, separately-scoped route.
  */
 export function fetchMyProof(deliveryId: string) {
-  return call<{ proof: ProofMetadataView[] }>(
+  return call<{
+    proof: ProofMetadataView[];
+    pickupCredentialVerified: boolean;
+    returnCredentialVerified: boolean;
+  }>(
     `/api/couranr/driver/deliveries/${deliveryId}/proof`
   );
 }
@@ -443,16 +476,61 @@ export function resolveDiscrepancySafeToContinue(
   );
 }
 
+export type ReturnCustodyView = {
+  id: string;
+  delivery_id: string;
+  return_state: "required" | "returning" | "returned";
+  reason: string;
+  pricing_status: "couranr_covered" | "pending_route_quote" | "pending_current_location";
+  payer_responsibility: "couranr" | "payer";
+  payer_owes_cents: number | null;
+  required_at: string;
+  started_at: string | null;
+  returned_at: string | null;
+  version: number;
+};
+
+export function fetchReturnCustody(deliveryId: string) {
+  return call<{ return: ReturnCustodyView | null }>(
+    `/api/couranr/operations/deliveries/${deliveryId}/return`
+  );
+}
+
+export function requireReturnFromBrowser(
+  deliveryId: string,
+  body: { expectedVersion: number; reason: string; note?: string }
+) {
+  return call<{ return: ReturnCustodyView }>(
+    `/api/couranr/operations/deliveries/${deliveryId}/return`,
+    { method: "POST", body }
+  );
+}
+
 /* ------------------------------------------------------------- proof I/O -- */
 
-export type ProofUploadTicketView = {
-  uploadId: string;
-  signedUrl: string;
-  token: string;
-  expectedBytes: number;
-  expectedMime: string;
-  expiresInSeconds: number;
+export type ProofMetadataView = {
+  proofId: string;
+  proofStage: string;
+  proofType: string;
+  finalizedAt: string;
+  hasMedia?: boolean;
+  byteSize?: number | null;
 };
+
+export type ProofUploadTicketView =
+  | {
+      status?: "upload";
+      uploadId: string;
+      signedUrl: string;
+      token: string;
+      expectedBytes: number;
+      expectedMime: string;
+      expiresInSeconds: number;
+    }
+  | {
+      status: "verified";
+      proof: ProofMetadataView;
+    };
 
 /**
  * NESTED under `upload`, because every driver route nests under a named key and
@@ -468,7 +546,19 @@ export type ProofUploadTicketView = {
  */
 export function requestProofUpload(
   deliveryId: string,
-  body: { stage: string; proofType: string; expectedMime: string; expectedBytes: number }
+  body: {
+    stage: string;
+    proofType: string;
+    expectedMime: string;
+    expectedBytes: number;
+    clientEvidenceId?: string;
+    evidenceSha256?: string;
+    capturedAt?: string;
+    latitude?: number;
+    longitude?: number;
+    accuracyM?: number | null;
+    discrepancyId?: string | null;
+  }
 ) {
   return call<{ upload: ProofUploadTicketView }>(
     `/api/couranr/driver/deliveries/${deliveryId}/proof-upload`,
@@ -483,10 +573,29 @@ export function finalizeProofUpload(body: {
   accuracyM?: number | null;
   discrepancyId?: string | null;
 }) {
-  return call<{ proof: { proofId: string; proofStage: string; proofType: string; finalizedAt: string; byteSize: number | null } }>(
+  return call<{ proof: ProofMetadataView }>(
     "/api/couranr/driver/proof/finalize",
     { method: "POST", body }
   );
 }
+
+export function reportProofSyncFailure(
+  deliveryId: string,
+  body: {
+    clientEvidenceId: string;
+    stage: string;
+    proofType: string;
+    reason: "local_evidence_corrupt" | "assignment_or_stage_changed" | "server_rejected" | "retry_limit";
+    attempts: number;
+  }
+) {
+  return call<{ proofSyncFailure: { id: string; state: string; reason: string; attempts: number } }>(
+    `/api/couranr/driver/deliveries/${deliveryId}/proof-sync-failure`,
+    { method: "POST", body }
+  );
+}
+
+/** Explicit alias so the offline queue does not import the whole request client. */
+export const isDispatchApiFailure = isApiFailure;
 
 export type { ApiResult };

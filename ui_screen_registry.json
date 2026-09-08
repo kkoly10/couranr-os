@@ -114,17 +114,23 @@
       "viewport": "Mobile-first responsive",
       "canonical_path": "canonical-mvp-images/public/PUB-004_delivery-estimate-and-hosted-request.png",
       "image": "a_modern_delivery_checkout_interface.png",
-      "purpose": "Capture a delivery estimate or a merchant-branded customer request without requiring an account.",
-      "actions": "Enter order reference, destination, recipient, package, timing, payer preference; submit to merchant validation when merchant-hosted.",
+      "purpose": "Capture a direct-consumer or merchant-hosted delivery request, including the sender's expected pickup identity, without requiring an account.",
+      "actions": "Enter pickup/destination, recipient/contact, item description, package count when known, timing/payer details; submit; merchant validates hosted pickup expectations before pricing.",
       "states": "Draft; address validation; merchant confirmation pending; quote unavailable; review required; submitted.",
       "source": "Spec §§6–7, 16",
-      "constraints": "The merchant must validate customer-initiated merchandise details before payment. Do not include product checkout or merchandise payment.",
+      "constraints": "Hosted merchandise details and expected pickup must be validated by the host merchant before payment. Direct Consumer expected pickup belongs to the guest's own request. Do not include product checkout or merchandise payment.",
       "amendments": [
         {
           "date": "2026-08-30",
           "authority": "LEG-004 (root decision registry)",
           "change": "Route family gains `/send` as the preferred direct-consumer entry; `/estimate` is retained as a compatibility route.",
           "reason": "PUB-004 stays ONE canonical screen family with route/mode variants rather than gaining a new screen id, because the estimate, the consumer send flow and the merchant-hosted request are the same capability entered three ways."
+        },
+        {
+          "date": "2026-09-05",
+          "authority": "PRF-002 (root decision registry)",
+          "change": "Pickup Handoff V2: sender declares expected pickup; Couranr freezes it; the driver confirms physical custody with sender credential, one pickup photo and location instead of re-entering order facts.",
+          "reason": "Reduce pickup dwell and duplicated browser assertions while preserving objective custody, discrepancy and large-load evidence."
         }
       ]
     },
@@ -388,11 +394,19 @@
       "viewport": "Desktop-first responsive",
       "canonical_path": "canonical-mvp-images/merchant/MER-005_create-delivery-with-smart-intake.png",
       "image": "create_delivery_dashboard.png",
-      "purpose": "Turn merchant text, pasted orders, presets, or manual entry into an editable structured delivery draft.",
-      "actions": "Describe/paste; apply preset; confirm extracted fields; answer one clarification; choose payer and timing; continue to review.",
+      "purpose": "Turn merchant text, pasted orders, presets, or manual entry into an editable structured delivery draft and a concise expected-pickup manifest for the assigned driver.",
+      "actions": "Describe/paste; apply preset; confirm extracted fields; confirm package count/reference/handling when known; choose payer and timing; continue to review.",
       "states": "Blank; parsing; high/medium/low confidence; clarification; review trigger; AI unavailable/manual fallback.",
       "source": "Spec §6, AI spec §Smart Intake",
-      "constraints": "AI never prices, confirms, selects final vehicle, or invents critical fields."
+      "constraints": "AI never prices, confirms, selects final vehicle, or invents critical fields. New deliveries require a sender-authored physical pickup description; package count may remain unknown.",
+      "amendments": [
+        {
+          "date": "2026-09-05",
+          "authority": "PRF-002 (root decision registry)",
+          "change": "Pickup Handoff V2: sender declares expected pickup; Couranr freezes it; the driver confirms physical custody with sender credential, one pickup photo and location instead of re-entering order facts.",
+          "reason": "Reduce pickup dwell and duplicated browser assertions while preserving objective custody, discrepancy and large-load evidence."
+        }
+      ]
     },
     {
       "id": "MER-006",
@@ -407,11 +421,19 @@
       "viewport": "Desktop-first responsive",
       "canonical_path": "canonical-mvp-images/merchant/MER-006_delivery-review-and-quote.png",
       "image": "review_delivery_and_quote_dashboard.png",
-      "purpose": "Review normalized delivery details, deterministic quote, payer, policy flags, and customer-payment link before submission.",
+      "purpose": "Review normalized delivery details, expected pickup, deterministic quote, payer, policy flags, and customer-payment handoff before submission.",
       "actions": "Edit details; accept quote; choose merchant/customer payer; authorize or send payment link; submit for Couranr review.",
       "states": "Quote valid; review required; payment pending; authorized; requote required; validation error.",
       "source": "Spec §§4, 7, 10",
-      "constraints": "Use locked pricing. No product sale amount. No silent price change."
+      "constraints": "Use locked pricing. No product sale amount. No silent price change. Expected pickup is frozen separately from commercial quote/version authority.",
+      "amendments": [
+        {
+          "date": "2026-09-05",
+          "authority": "PRF-002 (root decision registry)",
+          "change": "Pickup Handoff V2: sender declares expected pickup; Couranr freezes it; the driver confirms physical custody with sender credential, one pickup photo and location instead of re-entering order facts.",
+          "reason": "Reduce pickup dwell and duplicated browser assertions while preserving objective custody, discrepancy and large-load evidence."
+        }
+      ]
     },
     {
       "id": "MER-007",
@@ -644,7 +666,7 @@
     {
       "id": "DRV-003",
       "surface": "Driver",
-      "name": "Pickup PIN and proof",
+      "name": "Pickup verification and proof",
       "routes": [
         "/driver/deliveries/[id]?step=pickup-proof"
       ],
@@ -654,11 +676,19 @@
       "viewport": "Mobile primary",
       "canonical_path": "canonical-mvp-images/driver/DRV-003_pickup-pin-and-proof.png",
       "image": "pickup_proof_app_screen_mockup.png",
-      "purpose": "Verify merchant handoff, package count, condition, and actual vehicle before custody.",
-      "actions": "Enter pickup PIN; capture shipment/condition photos; confirm count; record staff identity.",
-      "states": "Pending; invalid PIN; discrepancy; offline saved; verified.",
-      "source": "Spec §11",
-      "constraints": "Large/unusual shipment asks dimensions, securement, loading participants/equipment, and existing damage."
+      "purpose": "Show the frozen expected pickup, verify the sender-held pickup credential, record one pickup photo/location, and confirm custody without re-entering order facts.",
+      "actions": "Scan pickup QR or enter six-digit fallback; take pickup photo; capture securement photo only for server-derived large/unusual loads; report discrepancy; confirm pickup.",
+      "states": "Pending verification; QR fallback; invalid/expired/locked code; photo pending/recorded; discrepancy; verified.",
+      "source": "PRF-002; Spec §11 amended by root decision registry",
+      "constraints": "Only assigned work. Driver does not re-enter expected package count, staff identity, assigned vehicle, or routine condition/loading prose. Large/unusual adds securement photo; mismatch opens DRV-004.",
+      "amendments": [
+        {
+          "date": "2026-09-05",
+          "authority": "PRF-002 (root decision registry)",
+          "change": "Pickup Handoff V2: sender declares expected pickup; Couranr freezes it; the driver confirms physical custody with sender credential, one pickup photo and location instead of re-entering order facts.",
+          "reason": "Reduce pickup dwell and duplicated browser assertions while preserving objective custody, discrepancy and large-load evidence."
+        }
+      ]
     },
     {
       "id": "DRV-004",
@@ -673,11 +703,19 @@
       "viewport": "Mobile primary",
       "canonical_path": "canonical-mvp-images/driver/DRV-004_package-discrepancy.png",
       "image": "package_discrepancy_report_ui.png",
-      "purpose": "Pause pickup and collect evidence when the package differs materially from the request.",
-      "actions": "Choose reason; capture photos; add notes; submit to Operations; message support.",
+      "purpose": "Pause pickup and preserve expected-versus-observed evidence when the physical pickup differs materially from Couranr's frozen sender expectation.",
+      "actions": "Choose reason; capture exception evidence when relevant; add notes; submit to Operations; message support.",
       "states": "Draft; awaiting Couranr review; requote; safe to continue; cancelled.",
       "source": "Spec §§6, 11",
-      "constraints": "Driver cannot approve price, vehicle change, or unsafe continuation."
+      "constraints": "Driver observation never overwrites sender expectation and cannot approve price, vehicle change, or unsafe continuation.",
+      "amendments": [
+        {
+          "date": "2026-09-05",
+          "authority": "PRF-002 (root decision registry)",
+          "change": "Pickup Handoff V2: sender declares expected pickup; Couranr freezes it; the driver confirms physical custody with sender credential, one pickup photo and location instead of re-entering order facts.",
+          "reason": "Reduce pickup dwell and duplicated browser assertions while preserving objective custody, discrepancy and large-load evidence."
+        }
+      ]
     },
     {
       "id": "DRV-005",

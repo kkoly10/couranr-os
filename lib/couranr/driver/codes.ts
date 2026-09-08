@@ -7,9 +7,9 @@ assertServerOnly("lib/couranr/driver/codes.ts");
 export { HANDOFF_SECRET_ENV };
 
 /**
- * Handoff codes: the merchant's pickup PIN and the recipient's drop-off PIN.
+ * Handoff codes: sender pickup, recipient drop-off, and sender return PIN.
  *
- * TWO CREDENTIALS, NEVER ONE. Different people hold them, so they get separate
+ * SEPARATE CREDENTIALS, NEVER ONE. Different handoff moments/holders get separate
  * records, generations, attempt counters, lock states and — critically —
  * separate HMAC domains. Compromising one must not weaken the other, and a
  * digest computed for a pickup code must never verify as a drop-off code even
@@ -35,7 +35,7 @@ export { HANDOFF_SECRET_ENV };
  * logged, never put in analytics, and never returned again after issuance.
  */
 
-export const CODE_KINDS = ["merchant_pickup", "recipient_dropoff"] as const;
+export const CODE_KINDS = ["merchant_pickup", "recipient_dropoff", "merchant_return"] as const;
 export type CodeKind = (typeof CODE_KINDS)[number];
 
 /** Six digits, because a person reads it aloud. The lockout carries the safety. */
@@ -55,6 +55,7 @@ export const CODE_DIGITS = 6;
 const DOMAIN: Record<CodeKind, string> = {
   merchant_pickup: "pickup:v1",
   recipient_dropoff: "recipient:v1",
+  merchant_return: "return:v1",
 };
 
 /**

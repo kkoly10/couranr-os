@@ -2,10 +2,12 @@
 
 import * as React from "react";
 import { Alert, Badge, Button, Card, CardHeader, Grid, Stack, Text } from "@/components/couranr/primitives";
-import { CheckboxRow, Field, Select } from "@/components/couranr/forms";
+import { CheckboxRow, Field, Input, Select, Textarea } from "@/components/couranr/forms";
 import { ErrorState } from "@/components/couranr/states";
 import type { DeliveryRequestView } from "@/lib/couranr/requests/view";
 import type { RestrictedClassDeclaration } from "@/lib/couranr/shipment/facts";
+import { parseOperatingLocal } from "@/lib/couranr/timing/policy";
+import { SAME_DAY_CUTOFF_COPY } from "@/lib/couranr/public/governed";
 import {
   isApiFailure,
   validateHostedRequestFromBrowser,
@@ -17,11 +19,25 @@ type Context = {
   requestedPayerType: "merchant" | "customer" | null;
   destinationLabel: string | null;
   shipmentDescription: string | null;
+  customerPackageCount: number | null;
+  pickupManifestVersion: number;
   customerWeightLb: number | null;
   customerWeightBand: string | null;
   customerRestrictedClass: string | null;
   signatureRequested: boolean;
+  /** TMZ-001: what the customer asked for, frozen on the intake. */
+  customerTimingIntent: "asap" | "scheduled" | null;
+  customerRequestedPickupLocal: string | null;
 };
+
+type TimingIntent = "asap" | "scheduled";
+
+/** The customer's statement as words: never a promise, never a zone guess. */
+function requestedTimingLabel(intent: TimingIntent | null, local: string | null): string {
+  if (intent === "scheduled" && local) return `Scheduled: ${local.replace("T", " ")} (Eastern)`;
+  if (intent === "asap") return "As soon as possible";
+  return "Not provided";
+}
 
 const WEIGHT_LABELS: Record<string, string> = {
   "0_25_lb": "25 lb or less",
@@ -86,6 +102,24 @@ export function HostedRequestValidationPanel({
   const [signatureRequired, setSignatureRequired] = React.useState(
     context?.signatureRequested ?? request.signatureRequired
   );
+  const [pickupDescription, setPickupDescription] = React.useState(
+    context?.shipmentDescription ?? ""
+  );
+  const [pickupPackageCount, setPickupPackageCount] = React.useState(
+    context?.customerPackageCount != null ? String(context.customerPackageCount) : ""
+  );
+  const [pickupOrderReference, setPickupOrderReference] = React.useState(
+    context?.orderReference ?? ""
+  );
+  const [pickupHandlingNotes, setPickupHandlingNotes] = React.useState("");
+  // TMZ-001: initialised from the CUSTOMER's statement (intake evidence first,
+  // then the request row), so an untouched validation confirms it unchanged.
+  const [timingIntent, setTimingIntent] = React.useState<TimingIntent>(
+    context?.customerTimingIntent ?? (request.timingIntent === "scheduled" ? "scheduled" : "asap")
+  );
+  const [requestedPickupLocal, setRequestedPickupLocal] = React.useState(
+    context?.customerRequestedPickupLocal ?? request.requestedPickupLocal ?? ""
+  );
   const [confirmed, setConfirmed] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -112,8 +146,15 @@ export function HostedRequestValidationPanel({
     );
   }
 
+  const scheduledIncomplete =
+    timingIntent === "scheduled" && parseOperatingLocal(requestedPickupLocal.trim()) === null;
+
   async function validate() {
     if (!businessAccountId || !confirmed) return;
+    if (scheduledIncomplete) {
+      setError("Enter the requested pickup date and time (Eastern) to schedule this delivery.");
+      return;
+    }
     setBusy(true);
     setError(null);
     const result = await validateHostedRequestFromBrowser({
@@ -125,6 +166,13 @@ export function HostedRequestValidationPanel({
       weightBand,
       restrictedClass,
       signatureRequired,
+      pickupDescription,
+      pickupPackageCount:
+        pickupPackageCount.trim() === "" ? null : Number(pickupPackageCount),
+      pickupOrderReference: pickupOrderReference.trim() || null,
+      pickupHandlingNotes: pickupHandlingNotes.trim() || null,
+      timingIntent,
+      requestedPickupLocal: timingIntent === "scheduled" ? requestedPickupLocal.trim() : null,
     });
     setBusy(false);
     if (isApiFailure(result)) {
@@ -175,15 +223,74 @@ export function HostedRequestValidationPanel({
                   : WEIGHT_LABELS[context.customerWeightBand ?? ""] ?? "Not provided"}
               </Text>
             </div>
+            <div>
+              <Text size="xs" muted>Customer requested timing</Text>
+              <Text data-couranr-customer-timing="true">
+                {requestedTimingLabel(context.customerTimingIntent, context.customerRequestedPickupLocal)}
+              </Text>
+            </div>
           </Grid>
         ) : null}
 
-        {context?.shipmentDescription ? (
-          <div>
-            <Text size="xs" muted>Customer described</Text>
-            <Text>{context.shipmentDescription}</Text>
-          </div>
-        ) : null}
+        <Card>
+          <CardHeader
+            title="What the driver should expect"
+            description="Confirm the physical pickup here. Couranr freezes this into the delivery so the driver does not re-enter it."
+          />
+          <Stack gap={3}>
+            <Field
+              label="Pickup description"
+              required
+              hint="Short physical description, for example “2 boxed flower arrangements”."
+            >
+              {(p) => (
+                <Textarea
+                  {...p}
+                  rows={2}
+                  maxLength={1000}
+                  value={pickupDescription}
+                  onChange={(e) => setPickupDescription(e.target.value)}
+                />
+              )}
+            </Field>
+            <Grid columns={2}>
+              <Field label="Package count" hint="Leave blank only if the count is genuinely unknown.">
+                {(p) => (
+                  <Input
+                    {...p}
+                    type="number"
+                    min={1}
+                    max={9999}
+                    inputMode="numeric"
+                    value={pickupPackageCount}
+                    onChange={(e) => setPickupPackageCount(e.target.value)}
+                  />
+                )}
+              </Field>
+              <Field label="Order / pickup reference">
+                {(p) => (
+                  <Input
+                    {...p}
+                    maxLength={120}
+                    value={pickupOrderReference}
+                    onChange={(e) => setPickupOrderReference(e.target.value)}
+                  />
+                )}
+              </Field>
+            </Grid>
+            <Field label="Handling note for the driver" hint="Optional. For example: keep upright or use the rear loading door.">
+              {(p) => (
+                <Textarea
+                  {...p}
+                  rows={2}
+                  maxLength={500}
+                  value={pickupHandlingNotes}
+                  onChange={(e) => setPickupHandlingNotes(e.target.value)}
+                />
+              )}
+            </Field>
+          </Stack>
+        </Card>
 
         <Grid columns={2}>
           <Field
@@ -225,6 +332,47 @@ export function HostedRequestValidationPanel({
           </Field>
         </Grid>
 
+        <Grid columns={2}>
+          <Field
+            label="Pickup timing"
+            required
+            hint={`Times are Eastern (America/New_York). Same-day requests close at ${SAME_DAY_CUTOFF_COPY}. Confirm the customer's requested timing or adjust it; the quote is priced against what you confirm.`}
+          >
+            {(p) => (
+              <Select
+                {...p}
+                value={timingIntent}
+                disabled={busy}
+                onChange={(e) => setTimingIntent(e.target.value as TimingIntent)}
+              >
+                <option value="asap">As soon as possible</option>
+                <option value="scheduled">Schedule a time</option>
+              </Select>
+            )}
+          </Field>
+          {timingIntent === "scheduled" ? (
+            <Field
+              label="Requested pickup time"
+              required
+              error={
+                requestedPickupLocal.trim() && scheduledIncomplete
+                  ? "Enter a date and time Couranr can read."
+                  : undefined
+              }
+            >
+              {(p) => (
+                <Input
+                  {...p}
+                  type="datetime-local"
+                  value={requestedPickupLocal}
+                  disabled={busy}
+                  onChange={(e) => setRequestedPickupLocal(e.target.value)}
+                />
+              )}
+            </Field>
+          ) : null}
+        </Grid>
+
         <Field
           label="Restricted-item check"
           required
@@ -260,7 +408,7 @@ export function HostedRequestValidationPanel({
           checked={confirmed}
           disabled={busy}
           onChange={(e) => setConfirmed(e.target.checked)}
-          label="I verified these customer-entered delivery details against the order."
+          label="I verified the pickup description, count, safety details, and payer against the order."
           hint="Couranr will verify the selected addresses, calculate the canonical Mapbox route, run shipment policy and mint the immutable quote only after this confirmation."
         />
 
@@ -269,7 +417,7 @@ export function HostedRequestValidationPanel({
         <Button
           variant="primary"
           loading={busy}
-          disabled={busy || !confirmed || !businessAccountId}
+          disabled={busy || !confirmed || !businessAccountId || scheduledIncomplete}
           onClick={() => void validate()}
         >
           Validate request & create Couranr quote

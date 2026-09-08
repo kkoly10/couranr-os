@@ -16,6 +16,7 @@ import {
   custReturnNotice,
   allAuthEmails,
   type RenderedEmail,
+  formatMoney,
 } from "@/lib/couranr/email";
 import { buildSamples } from "@/lib/couranr/email/sampleData";
 
@@ -138,5 +139,33 @@ describe("Couranr email — Supabase auth templates", () => {
   it("keeps other Supabase variables literal (not HTML-escaped)", () => {
     expect(auth.find((a) => a.key === "reauthentication")!.html).toContain("{{ .Token }}");
     expect(auth.find((a) => a.key === "change_email")!.html).toContain("{{ .NewEmail }}");
+  });
+});
+
+describe("money renders as currency, not as a raw ISO code", () => {
+  /**
+   * Production stores the currency LOWERCASE — verified by query against
+   * couranr_quote_versions and couranr_payment_obligations, both 'usd'. Two
+   * independent formatters compared against the literal "USD":
+   * primitives.ts formatMoney (which backs lineItemsTable, so it reaches ALL
+   * thirteen templates) and business.ts fmt. Both fell through to the generic
+   * branch, so every money line read "13.99 usd" instead of "$13.99".
+   *
+   * It stayed invisible because sampleData hardcoded uppercase "USD" — a
+   * fixture vouching for a shape the database never produces.
+   */
+  it("formats lowercase usd as a dollar amount", () => {
+    expect(formatMoney({ amountCents: 1399, currency: "usd" })).toBe("$13.99");
+    expect(formatMoney({ amountCents: 1399, currency: "USD" })).toBe("$13.99");
+  });
+
+  it("no rendered email shows a bare lowercase currency code", () => {
+    for (const email of [...businessEmails, ...customerEmails]) {
+      expect(email.html, email.subject).not.toMatch(/\d\s+usd\b/);
+    }
+  });
+
+  it("still labels a genuinely foreign currency rather than faking a dollar sign", () => {
+    expect(formatMoney({ amountCents: 1399, currency: "cad" })).toBe("13.99 CAD");
   });
 });

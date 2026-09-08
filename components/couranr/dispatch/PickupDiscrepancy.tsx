@@ -87,7 +87,9 @@ export function PickupDiscrepancy({
     evidence.status === "reading" ||
     evidence.status === "authorizing" ||
     evidence.status === "uploading" ||
-    evidence.status === "finalizing";
+    evidence.status === "finalizing" ||
+    evidence.status === "queued" ||
+    evidence.finalized;
 
   async function submit() {
     if (reason === "" || submitting) return;
@@ -195,6 +197,8 @@ export function PickupDiscrepancy({
                     object back makes it proof. */}
                 {evidence.finalized ? (
                   <Badge tone="success">Recorded</Badge>
+                ) : evidence.status === "queued" ? (
+                  <Badge tone="warning">Saved — waiting to sync</Badge>
                 ) : selectedName ? (
                   <Badge tone="warning">Selected — not recorded yet</Badge>
                 ) : (

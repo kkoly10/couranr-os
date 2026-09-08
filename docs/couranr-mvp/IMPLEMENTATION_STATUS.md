@@ -11,7 +11,7 @@ ledgers own per-item state; this is their sum.
 The 721-line hand-written version of this file is preserved whole at
 [`autonomous-evidence/status-archive/IMPLEMENTATION_STATUS-2026-08-06.md`](./autonomous-evidence/status-archive/IMPLEMENTATION_STATUS-2026-08-06.md).
 It restated per-row evidence the ledgers already carried, and the restatement is
-what went stale: it counted 39 migrations while 94 were on disk.
+what went stale: it counted 39 migrations while 105 were on disk.
 
 ## Where truth lives
 
@@ -42,12 +42,12 @@ proves every generated view matches its source.
 | Status | Count |
 |---|---|
 | `functional_verified` | 31 |
-| `placeholder_only` | 14 |
-| `partial` | 11 |
-| `functional_unverified` | 8 |
-| `missing` | 4 |
+| `partial` | 14 |
+| `functional_unverified` | 11 |
+| `placeholder_only` | 11 |
+| `missing` | 1 |
 
-Still rendering `ScreenPlaceholder` (14): `OPS-006` · `OPS-009` · `OPS-010` · `OPS-011` · `OPS-012` · `OPS-013` · `OPS-014` · `OPS-015` · `OPS-016` · `OPS-017` · `OPS-018` · `OPS-019` · `OPS-020` · `OPS-021`.
+Still rendering `ScreenPlaceholder` (11): `OPS-006` · `OPS-011` · `OPS-013` · `OPS-014` · `OPS-015` · `OPS-016` · `OPS-017` · `OPS-018` · `OPS-019` · `OPS-020` · `OPS-021`.
 
 ## Measured repository state
 
@@ -56,11 +56,11 @@ Still rendering `ScreenPlaceholder` (14): `OPS-006` · `OPS-009` · `OPS-010` ·
 | Page routes | 99 |
 | …canonical, under `app/(couranr)` | 49 |
 | …legacy | 50 |
-| API routes | 172 |
-| …canonical, under `app/api/couranr` | 102 |
+| API routes | 188 |
+| …canonical, under `app/api/couranr` | 118 |
 | …legacy | 70 |
-| Forward migrations | 94 |
-| Paired rollbacks | 94 |
+| Forward migrations | 105 |
+| Paired rollbacks | 105 |
 | Canonical screens | 68 |
 | …Core | 64 |
 | …MVP-complete | 4 |
@@ -95,8 +95,9 @@ Still rendering `ScreenPlaceholder` (14): `OPS-006` · `OPS-009` · `OPS-010` ·
 | Item | Blocker or deferment |
 |---|---|
 | `P5-001` | NATURAL-LANGUAGE AI IS NOT PILOT-LIVE: the Anthropic adapter exists and is unit-tested against the SDK contract, but the live smoke has not been executed (no ANTHROPIC_API_KEY in the verification environment) and the production environment is not configured. The platform degrades to manual structured intake by design; the fake provider is structurally unavailable in production. |
-| `P6-004` | Live Stripe refund round trip not executed in any environment; V0 supports one refund chain per obligation (full or single governed partial) |
-| `P7-005` | Waiting-fee assessment requires an owner decision on the charging mechanism (no payer reauthorization path exists); recorded as evidence only |
+| `P6-004` | Internal ledger migration/cutover is complete; authenticated UI verification and live external Stripe reconciliation remain outstanding. No paid provider call is authorized by this row. |
+| `P7-005` | Waiting-fee assessment requires an owner decision on the charging mechanism (no payer reauthorization path exists); recorded as evidence only. |
+| `P12-002` | Blocked behind P12-001 and explicit founder approval for the real paid canary. |
 
 ## Verification SHAs
 
@@ -109,25 +110,32 @@ each is in the ledger row itself — `test_evidence`, `browser_verified` and
 | `08f59f8d0cc062c36252a7295f86513618187965` | 1 screen | MER-004 |
 | `0d57ba736000e8ecb9d28c87a4e78a683599a316` | 1 work item | P3-002 |
 | `14fa99fbcf8103d33bb7267a8f4729421bccd400` | 1 work item | P6-001 |
-| `1b3a1c90c88a554f1ac1ff1e6a6d06a97d602150` | 3 screens | CUS-006, CUS-008, PUB-006 |
+| `1b3a1c90c88a554f1ac1ff1e6a6d06a97d602150` | 2 screens | CUS-006, CUS-008 |
+| `277982f2548e9b804c466121437c696b4ba52af4` | 1 work item, 1 screen | P7-005, CUS-002 |
 | `2848a8f33bde8362bd3c9fcfb9266781fcecb77a` | 2 screens | PUB-012, PUB-013 |
 | `32893e21401a6f056821c4caaa7858460c7356b8` | 1 screen | MER-001 |
-| `401b3eea5cd96bb09d224f3b113ba6091bba807d` | 24 work items, 33 screens | P0-001, P0-002, P1-001, P1-002, P1-003, P1-004, P2-002, P4-001, P5-002, P7-001, P7-002, P7-003, P7-004, P8-003, P9-001, P9-002, P9-003, P9-004, P10-001, P10-002, P11-001, P12-001, P12-002, P10-007, CUS-002, CUS-004, CUS-005, CUS-007, DRV-002, DRV-003, DRV-004, DRV-005, DRV-006, DRV-007, MER-002, MER-006, MER-007, OPS-002, OPS-004, OPS-006, OPS-008, OPS-009, OPS-010, OPS-011, OPS-012, OPS-013, OPS-014, OPS-015, OPS-016, OPS-017, OPS-018, OPS-019, OPS-020, OPS-021, PUB-002, PUB-003, PUB-005 |
-| `484826a18423eba050aabd6db7daf1287837a793` | 2 work items | P6-004, P7-005 |
+| `401b3eea5cd96bb09d224f3b113ba6091bba807d` | 18 work items, 27 screens | P0-001, P0-002, P1-001, P1-002, P1-003, P1-004, P2-002, P4-001, P5-002, P7-001, P7-002, P7-003, P8-003, P9-001, P9-002, P9-003, P9-004, P10-007, CUS-004, CUS-005, DRV-002, DRV-003, DRV-004, DRV-005, DRV-006, MER-002, MER-006, MER-007, OPS-002, OPS-004, OPS-006, OPS-008, OPS-011, OPS-013, OPS-014, OPS-015, OPS-016, OPS-017, OPS-018, OPS-019, OPS-020, OPS-021, PUB-002, PUB-003, PUB-005 |
 | `50f576e991dd249849d93206fc9e7cda330e71b7` | 1 screen | MER-005 |
 | `5723b3a22773f15d8d1b3e1d36bdf77b8341a6de` | 1 screen | DRV-001 |
 | `6d97bc132efdb7ed165dae11189077b2ea34d6f9` | 1 work item | P3-001 |
 | `795ae0d42131ac76abf7402f0686e139cece4ea5` | 2 work items | P2-003, P6-003 |
 | `807c8ed6316cf420dbffa171f5a65b1692dd6830` | 3 screens | MER-003, MER-016, OPS-007 |
-| `91515ca5ca26e813bcc14b77b2e72dd475202ea8` | 3 work items, 6 screens | P8-001, P8-002, P8-004, CUS-001, CUS-003, DRV-008, MER-012, OPS-005, PUB-007 |
-| `98b19ae72729e6098a575b2ef63b3041348009b9` | 2 screens | MER-013, PUB-004 |
+| `91515ca5ca26e813bcc14b77b2e72dd475202ea8` | 2 work items, 4 screens | P8-002, P8-004, CUS-001, CUS-003, OPS-005, PUB-007 |
+| `9230b820404c3e8562cd4bae9b57a3cc797dd2a9` | 1 screen | OPS-012 |
+| `98b19ae72729e6098a575b2ef63b3041348009b9` | 1 screen | MER-013 |
+| `a84968d713bd54b3af390adf8c9c2419895e01a0` | 1 screen | PUB-004 |
 | `a8ce376cf303e3b62b889dc7831a3e81dd5522ad` | 1 work item | P5-001 |
+| `b5831406e8a1b623bf706562010fbc16d0ab0e71` | 1 screen | CUS-007 |
 | `c2cac8b9ffeaaf7e9a6a528a9eac5d057a2801f9` | 1 work item | P2-001 |
 | `c90ec4025fad951cc6a26eea208a687cc18c8cef` | 1 work item, 1 screen | P4-002, OPS-003 |
 | `c9e0fe573da29177fa72979911a7e60bf3beb0df` | 2 screens | MER-014, MER-015 |
 | `cd697e48889389b5365562d4e7f3c82413c10ea9` | 2 screens | MER-008, MER-009 |
 | `d0271ade57785985a4d38bd5328ee0605a24465b` | 1 work item | P6-002 |
+| `d580a94fbac8ce645205ba8930ad1b8bfee632cc` | 1 work item, 3 screens | P8-001, DRV-008, MER-012, PUB-006 |
+| `daa01c0cfabc65e61f7e7f4380edc8cdcfb3582d` | 1 work item, 1 screen | P7-004, DRV-007 |
 | `dd2388a7fa89c41bc5c6cf4c8411ffd4d0e4a5f0` | 2 screens | DRV-009, DRV-010 |
+| `ea8bd06483229f16a2c6df9a30b41b7872324090` | 5 work items | P10-001, P10-002, P11-001, P12-001, P12-002 |
 | `ec4a2af8f7c1de0bee4e3c021b50c875acdd6633` | 4 work items, 5 screens | P10-003, P10-004, P10-005, P10-006, PUB-001, PUB-008, PUB-009, PUB-010, PUB-011 |
+| `f204c2a48356dc2dba34cc2daa7baf27e1d8bfe6` | 1 work item, 2 screens | P6-004, OPS-009, OPS-010 |
 | `f4bff8d0d29fa8be2e9ea1a37bcfa5fd1520005c` | 2 screens | MER-010, MER-011 |
 | `f949f5b05db039649a968390a08ab1ae28213f6d` | 1 screen | OPS-001 |

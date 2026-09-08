@@ -10,6 +10,15 @@ import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
 
 export const dynamic = "force-dynamic";
 
+/** Reason → sentence. Timing gets its own words; everything else stays generic. */
+function hostedSubmitMessage(reason: string): string {
+  if (reason === "requested_time_invalid") {
+    return "Enter the requested pickup date and time (Eastern) to schedule this delivery.";
+  }
+  if (reason === "timing_intent_invalid") return "Choose a pickup timing Couranr offers.";
+  return "Some delivery-request details need attention.";
+}
+
 /**
  * Customer submit is intentionally UNQUOTED. No Place Details, Mapbox,
  * Pricing V2 or Stripe call is made here. The host merchant must validate
@@ -32,7 +41,7 @@ export async function POST(
 
   const body = validateHostedSubmitBody(raw);
   if (isHostedBodyFailure(body)) {
-    return routeFailure("invalid_input", "Some delivery-request details need attention.");
+    return routeFailure("invalid_input", hostedSubmitMessage(body.reason));
   }
 
   const result = await submitHostedRequest({ session: session.value, body: body.value });

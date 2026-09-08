@@ -83,6 +83,7 @@ describe("OPS-002 lifecycle stage derivation", () => {
         servicePlanConfirmed: true,
         servicePlanSource: "automatic",
       }),
+      at({ proofSyncFailureOpen: true }),
       at({ automationExceptionOpen: true, automationExceptionStage: "planning" }),
       at({ canonicalDeliveryExists: true, assignmentActive: true }),
       at({ requestState: "declined" }),
@@ -241,6 +242,7 @@ describe("OPS-002 stage metadata", () => {
     expect(QUEUE_STAGES).not.toContain("automatic_scheduled");
     expect(QUEUE_STAGES).not.toContain("driver_assigned");
     expect(QUEUE_STAGES).not.toContain("not_actionable");
+    expect(QUEUE_STAGES).toContain("proof_sync_attention");
     expect(QUEUE_STAGES).toContain("automation_exception");
     expect(QUEUE_STAGES).toContain("ready_for_planning");
   });

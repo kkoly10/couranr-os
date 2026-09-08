@@ -39,6 +39,34 @@ const HOSTED_RATE_SQL = readFileSync(
   path.join(ROOT, "supabase/migrations/20260905071000_couranr_hosted_request_rate_limits.sql"),
   "utf8"
 );
+const HOSTED_TIMING_SQL = readFileSync(
+  path.join(ROOT, "supabase/migrations/20260908220000_couranr_hosted_scheduled_timing.sql"),
+  "utf8"
+);
+const HOSTED_TIMING_FENCE_SQL = readFileSync(
+  path.join(ROOT, "supabase/migrations/20260908230000_couranr_hosted_legacy_arity_fence.sql"),
+  "utf8"
+);
+const HOSTED_TIMING_GUARD_SQL = readFileSync(
+  path.join(ROOT, "supabase/migrations/20260908220500_couranr_hosted_legacy_validate_guard.sql"),
+  "utf8"
+);
+const HOSTED_FENCE_ROLLBACK_SQL = readFileSync(
+  path.join(ROOT, "supabase/rollbacks/20260908230000_couranr_hosted_legacy_arity_fence.rollback.sql"),
+  "utf8"
+);
+const HOSTED_TIMING_ROLLBACK_SQL = readFileSync(
+  path.join(ROOT, "supabase/rollbacks/20260908220000_couranr_hosted_scheduled_timing.rollback.sql"),
+  "utf8"
+);
+const HOSTED_SUBMIT_ROUTE = readFileSync(
+  path.join(ROOT, "app/api/couranr/hosted/[merchantSlug]/submit/route.ts"),
+  "utf8"
+);
+const VALIDATE_HOSTED_ROUTE = readFileSync(
+  path.join(ROOT, "app/api/couranr/delivery-requests/[id]/validate-hosted/route.ts"),
+  "utf8"
+);
 const HOSTED_PLACES_ROUTE = readFileSync(
   path.join(ROOT, "app/api/couranr/hosted/[merchantSlug]/places/route.ts"),
   "utf8"
@@ -143,6 +171,25 @@ describe("merchant-hosted request public input", () => {
     }
   });
 
+  it("requires a concise physical pickup description without silently truncating it", () => {
+    expect(
+      validateHostedSubmitBody(
+        customerBody({ shipment: { description: "", weightBand: "0_25_lb", restrictedClass: "none" } })
+      ).ok
+    ).toBe(false);
+    const long = validateHostedSubmitBody(
+      customerBody({
+        shipment: {
+          description: "x".repeat(1001),
+          weightBand: "0_25_lb",
+          restrictedClass: "none",
+        },
+      })
+    );
+    expect(long.ok).toBe(false);
+    if (isHostedBodyFailure(long)) expect(long.reason).toBe("shipment_description_too_long");
+  });
+
   it("merchant validation requires final payer, weight knowledge and safety declaration", () => {
     expect(
       validateMerchantHostedConfirmation({
@@ -150,6 +197,10 @@ describe("merchant-hosted request public input", () => {
         weightBand: "0_25_lb",
         restrictedClass: "none",
         signatureRequired: false,
+        pickupDescription: "One boxed lamp",
+        pickupPackageCount: 1,
+        pickupOrderReference: "ORDER-7",
+        pickupHandlingNotes: null,
       }).ok
     ).toBe(true);
     expect(
@@ -158,6 +209,10 @@ describe("merchant-hosted request public input", () => {
         weightBand: "0_25_lb",
         restrictedClass: "alcohol",
         signatureRequired: false,
+        pickupDescription: "One sealed case",
+        pickupPackageCount: 1,
+        pickupOrderReference: null,
+        pickupHandlingNotes: null,
       }).ok
     ).toBe(true);
 
@@ -436,5 +491,222 @@ describe("routing and website-tool cutover", () => {
   it("marks the website-tools route live only because the route exists in this build", () => {
     expect(HOSTED_REQUEST_ROUTE_EXISTS).toBe(true);
     expect(readFileSync(HOSTED_ROUTE, "utf8")).toContain("<HostedRequestFlow");
+  });
+});
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * TMZ-001 parity for the hosted flow. The customer states a timing intent and,
+ * when scheduled, local America/New_York words; the merchant confirms (or
+ * adjusts) it; the quote is minted against the confirmed timing. Same closed
+ * vocabulary, same parser, same reasons as /send and the business normalizer.
+ * The SQL side is EXECUTED by e2e/disposable/hostedScheduledTiming.mjs; these
+ * are the TypeScript contract and the text guards on the migration files.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+const HOSTED_COMMANDS_CODE = HOSTED_COMMANDS.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
+
+describe("hosted customer body — TMZ-001 timing", () => {
+  it("defaults to ASAP when the body carries no timing (the pre-timing browser shape still validates)", () => {
+    const r = validateHostedSubmitBody(customerBody());
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.timing).toEqual({ intent: "asap", requestedPickupLocal: null });
+  });
+
+  it("accepts a scheduled pickup stated as local words", () => {
+    const r = validateHostedSubmitBody(
+      customerBody({ timing: { intent: "scheduled", requestedPickupLocal: "2027-03-10T10:30" } })
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.timing).toEqual({ intent: "scheduled", requestedPickupLocal: "2027-03-10T10:30" });
+  });
+
+  it("ASAP drops any supplied time — the words are meaningful only when scheduled", () => {
+    const r = validateHostedSubmitBody(
+      customerBody({ timing: { intent: "asap", requestedPickupLocal: "2027-03-10T10:30" } })
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.timing).toEqual({ intent: "asap", requestedPickupLocal: null });
+  });
+
+  it("refuses an intent outside the closed vocabulary with a NAMED reason", () => {
+    const r = validateHostedSubmitBody(customerBody({ timing: { intent: "tomorrow" } }));
+    expect(r.ok).toBe(false);
+    if (isHostedBodyFailure(r)) expect(r.reason).toBe("timing_intent_invalid");
+  });
+
+  it("refuses a scheduled pickup without parseable local words — no zone suffix, no impossible date", () => {
+    for (const bad of [undefined, "", "soon", "2027-03-10T10:30Z", "2027-03-10T10:30-05:00", "2027-02-30T10:00", "2027-03-10 10:30"]) {
+      const r = validateHostedSubmitBody(
+        customerBody({ timing: { intent: "scheduled", requestedPickupLocal: bad } })
+      );
+      expect(r.ok, `local=${String(bad)}`).toBe(false);
+      if (isHostedBodyFailure(r)) expect(r.reason).toBe("requested_time_invalid");
+    }
+  });
+
+  it("a browser-supplied instant, zone or review reasons is a forbidden field, even nested under timing", () => {
+    for (const key of ["requestedDepartureAt", "operatingTimezone", "timingReviewReasons", "timing_policy_version"]) {
+      const r = validateHostedSubmitBody(
+        customerBody({ timing: { intent: "scheduled", requestedPickupLocal: "2027-03-10T10:30", [key]: "x" } })
+      );
+      expect(r.ok, key).toBe(false);
+      if (isHostedBodyFailure(r)) expect(r.reason).toBe("forbidden_field");
+    }
+  });
+});
+
+describe("hosted merchant confirmation — TMZ-001 timing", () => {
+  const base = {
+    payerType: "customer",
+    weightBand: "0_25_lb",
+    restrictedClass: "none",
+    signatureRequired: false,
+    pickupDescription: "One boxed lamp",
+    pickupPackageCount: 1,
+    pickupOrderReference: null,
+    pickupHandlingNotes: null,
+  };
+
+  it("omitted timing means CONFIRM THE CUSTOMER'S STORED STATEMENT (null), never ASAP by default", () => {
+    const r = validateMerchantHostedConfirmation(base);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value.timing).toBeNull();
+  });
+
+  it("the merchant may confirm or adjust with the business flow's own validation", () => {
+    const asap = validateMerchantHostedConfirmation({ ...base, timingIntent: "asap", requestedPickupLocal: "2027-03-10T10:30" });
+    expect(asap.ok && asap.value.timing).toEqual({ intent: "asap", requestedPickupLocal: null });
+    const sched = validateMerchantHostedConfirmation({ ...base, timingIntent: "scheduled", requestedPickupLocal: " 2027-03-10T11:00 " });
+    expect(sched.ok && sched.value.timing).toEqual({ intent: "scheduled", requestedPickupLocal: "2027-03-10T11:00" });
+  });
+
+  it("refuses an unknown intent and a scheduled adjustment without parseable words, by name", () => {
+    const bad = validateMerchantHostedConfirmation({ ...base, timingIntent: "whenever" });
+    expect(bad.ok).toBe(false);
+    if (bad.ok === false) expect(bad.reason).toBe("timing_intent_invalid");
+    for (const local of [undefined, "", "noon", "2027-03-10T10:30Z"]) {
+      const r = validateMerchantHostedConfirmation({ ...base, timingIntent: "scheduled", requestedPickupLocal: local });
+      expect(r.ok, `local=${String(local)}`).toBe(false);
+      if (r.ok === false) expect(r.reason).toBe("requested_time_invalid");
+    }
+  });
+});
+
+describe("hosted command layer — no fabricated ASAP survives", () => {
+  it("the hosted commands no longer hardcode an ASAP intent anywhere", () => {
+    expect(HOSTED_COMMANDS_CODE).not.toMatch(/timingIntent:\s*"asap"/);
+    expect(HOSTED_COMMANDS_CODE).not.toMatch(/requestedPickupLocal:\s*null,\s*\n\s*\}\)/);
+  });
+
+  it("submit evaluates the customer's words server-side and sends the four timing args; validation sends them all too", () => {
+    const submit = HOSTED_COMMANDS.slice(
+      HOSTED_COMMANDS.indexOf("export async function submitHostedRequest"),
+      HOSTED_COMMANDS.indexOf("export type HostedTimingView")
+    );
+    expect(submit).toContain("evaluateRequestTiming(");
+    expect(submit).toContain("...timingArgs(timing)");
+    const validation = HOSTED_COMMANDS.slice(
+      HOSTED_COMMANDS.indexOf("export async function validateHostedRequestByMerchant"),
+      HOSTED_COMMANDS.indexOf("/* ------------------------------------------------------- host readiness")
+    );
+    expect(validation).toContain("...timingArgs(routed.timing)");
+    expect(validation).not.toContain("p_timing_review_reasons: timingArgs(routed.timing).p_timing_review_reasons");
+    // The stored statement is the default; the merchant's adjustment wins only when stated.
+    expect(validation).toContain("const timing = params.input.timing ?? storedTiming;");
+    expect(validation).toContain('requestRow.timing_intent === "scheduled" ? "scheduled" : "asap"');
+    // The provider-cost preflight ordering still holds: state check before the paid call.
+    expect(validation.indexOf("version_or_state_conflict")).toBeLessThan(validation.indexOf("routed = await deriveCanonicalRouteAndQuote"));
+  });
+
+  it("the customer status view and both context reads expose the timing", () => {
+    expect(HOSTED_COMMANDS).toContain("timing: hostedTimingFromRow(data as Record<string, any>)");
+    expect(HOSTED_COMMANDS.match(/customer_timing_intent,customer_requested_pickup_local"/g)?.length).toBe(2);
+    expect(HOSTED_COMMANDS.match(/\.\.\.customerTimingFromIntake\(row\)/g)?.length).toBe(2);
+  });
+
+  it("both routes name the timing failure instead of a generic sentence", () => {
+    expect(HOSTED_SUBMIT_ROUTE).toContain('reason === "requested_time_invalid"');
+    expect(VALIDATE_HOSTED_ROUTE).toContain('reason === "requested_time_invalid"');
+  });
+});
+
+describe("hosted scheduled-timing migration (20260908220000) and its POSTDEPLOY fence", () => {
+  const strictCreate = HOSTED_TIMING_SQL.slice(
+    HOSTED_TIMING_SQL.indexOf("create or replace function public.couranr_create_hosted_delivery_request("),
+    HOSTED_TIMING_SQL.indexOf("create or replace function public.couranr_validate_hosted_delivery_request(")
+  );
+  const strictValidate = HOSTED_TIMING_SQL.slice(
+    HOSTED_TIMING_SQL.indexOf("create or replace function public.couranr_validate_hosted_delivery_request(")
+  );
+
+  it("both strict arities take the four timing parameters and call the SHARED two-sided assertion", () => {
+    for (const [name, body] of [["create", strictCreate], ["validate", strictValidate]] as const) {
+      expect(body, name).toContain("p_timing_intent text");
+      expect(body, name).toContain("p_requested_pickup_local text");
+      expect(body, name).toContain("p_requested_departure_at timestamptz");
+      expect(body, name).toContain("p_timing_review_reasons jsonb");
+      expect(body, name).toContain("perform private.couranr_assert_requested_timing(");
+      expect(body, name).toContain("raise exception 'timing_intent_invalid' using errcode='CR422'");
+      expect(body, name).not.toContain("'asap','America/New_York'");
+      expect(body, name).not.toContain("timing_intent='asap'");
+    }
+    // The validate write of the timing happens BEFORE the quote snapshot is taken.
+    expect(strictValidate.indexOf("timing_intent=p_timing_intent")).toBeLessThan(
+      strictValidate.indexOf("private.couranr_append_routed_quote_version(")
+    );
+  });
+
+  it("freezes the customer's own words on the intake and extends the immutability trigger", () => {
+    expect(HOSTED_TIMING_SQL).toContain("add column if not exists customer_timing_intent text");
+    expect(HOSTED_TIMING_SQL).toContain("add column if not exists customer_requested_pickup_local text");
+    expect(HOSTED_TIMING_SQL).toContain("or new.customer_timing_intent is distinct from old.customer_timing_intent");
+    expect(HOSTED_TIMING_SQL).toContain("or new.customer_requested_pickup_local is distinct from old.customer_requested_pickup_local");
+    expect(strictCreate).toContain("customer_timing_intent=p_timing_intent");
+    expect(strictCreate).toContain("customer_requested_pickup_local=p_requested_pickup_local");
+  });
+
+  it("retains the old arities (PREDEPLOY-safe) and closes both new arities to browser roles AND to the default service_role grant", () => {
+    expect(HOSTED_TIMING_SQL).not.toMatch(/drop function/i);
+    const newCreate = "public.couranr_create_hosted_delivery_request(uuid,text,text,text,text,text,text,text,numeric,text,text,boolean,text,text,text,timestamptz,jsonb)";
+    const newValidate = "public.couranr_validate_hosted_delivery_request(uuid,uuid,integer,uuid,text,numeric,text,text,boolean,jsonb,jsonb,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,text,text,timestamptz,jsonb)";
+    for (const sig of [newCreate, newValidate]) {
+      expect(HOSTED_TIMING_SQL).toContain(`revoke all on function ${sig}\n  from public,anon,authenticated,service_role;`);
+      expect(HOSTED_TIMING_SQL).toContain(`grant execute on function ${sig} to service_role;`);
+    }
+  });
+
+  it("the fence is POSTDEPLOY-only, guards on the strict arities, and drops exactly the two old shapes", () => {
+    expect(HOSTED_TIMING_FENCE_SQL).toContain("POSTDEPLOY ONLY");
+    expect(HOSTED_TIMING_FENCE_SQL).toContain("hosted_legacy_arity_fence_requires_strict_commands");
+    expect(HOSTED_TIMING_FENCE_SQL).toContain("drop function if exists public.couranr_create_hosted_delivery_request(\n  uuid,text,text,text,text,text,text,text,numeric,text,text,boolean,text\n);");
+    expect(HOSTED_TIMING_FENCE_SQL).toContain("drop function if exists public.couranr_validate_hosted_delivery_request(\n  uuid,uuid,integer,uuid,text,numeric,text,text,boolean,jsonb,jsonb,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,jsonb\n);");
+    expect(HOSTED_TIMING_FENCE_SQL.match(/drop function/g)?.length).toBe(2);
+  });
+
+  it("the deploy-gap guard (20260908220500) re-defines ONLY the legacy 26-arg validate, fails closed on a scheduled row, and is a no-op after the fence", () => {
+    expect(HOSTED_TIMING_GUARD_SQL).toContain("create or replace function public.couranr_validate_hosted_delivery_request(");
+    expect(HOSTED_TIMING_GUARD_SQL).not.toContain("p_timing_intent text");
+    expect(HOSTED_TIMING_GUARD_SQL).not.toContain("couranr_create_hosted_delivery_request(");
+    expect(HOSTED_TIMING_GUARD_SQL).toContain("if v_req.timing_intent='scheduled' then");
+    expect(HOSTED_TIMING_GUARD_SQL).toContain("raise exception 'hosted_scheduled_timing_requires_current_application' using errcode='CR409'");
+    // The guard sits AFTER the row is loaded and BEFORE the asap overwrite.
+    const raiseAt = HOSTED_TIMING_GUARD_SQL.indexOf("raise exception 'hosted_scheduled_timing_requires_current_application'");
+    expect(HOSTED_TIMING_GUARD_SQL.indexOf("version_or_state_conflict")).toBeLessThan(raiseAt);
+    // ... and before the legacy body's asap overwrite (the header comment also names it; search from the raise).
+    expect(raiseAt).toBeLessThan(HOSTED_TIMING_GUARD_SQL.indexOf("timing_intent='asap',", raiseAt));
+    // Never resurrects a retired legacy shape.
+    expect(HOSTED_TIMING_GUARD_SQL).toContain("is null then\n    raise notice 'legacy 26-argument hosted validate is absent (fence applied); no-op';");
+    expect(HOSTED_TIMING_GUARD_SQL).not.toMatch(/drop function/i);
+    // The fence rollback restores the GUARDED legacy body, not the unguarded v1 one.
+    expect(HOSTED_FENCE_ROLLBACK_SQL).toContain("hosted_scheduled_timing_requires_current_application");
+  });
+
+  it("the forward rollback hard-refuses over evidence, is RE-RUNNABLE, and restores the v1 bodies verbatim", () => {
+    expect(HOSTED_TIMING_ROLLBACK_SQL).toContain("hosted scheduled-timing evidence exists");
+    expect(HOSTED_TIMING_ROLLBACK_SQL).toContain("exception when undefined_column then");
+    // Verbatim restoration: the v1 create body's distinctive lines are present unchanged.
+    expect(HOSTED_TIMING_ROLLBACK_SQL).toContain("'asap','America/New_York',");
+    expect(HOSTED_TIMING_ROLLBACK_SQL).toContain("timing_intent='asap',");
+    expect(HOSTED_TIMING_ROLLBACK_SQL).not.toMatch(/\bcascade\b/i);
   });
 });

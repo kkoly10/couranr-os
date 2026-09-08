@@ -828,6 +828,23 @@ export async function getOpenAutomationException(params: {
   return { ok: true, value: { exception: data ?? null } };
 }
 
+export async function getOpenProofSyncFailure(params: {
+  requestId: string;
+}): Promise<FulfillmentResult<{ failure: Record<string, any> | null }>> {
+  const { data, error } = (await supabaseAdmin
+    .from("couranr_proof_sync_failures")
+    .select("id,request_id,delivery_id,proof_stage,proof_type,reason,attempts,first_reported_at,last_reported_at")
+    .eq("request_id", params.requestId)
+    .eq("failure_state", "open")
+    .order("last_reported_at", { ascending: false })
+    .limit(1)
+    .maybeSingle()) as { data: any; error: any };
+  if (error) {
+    return fail({ operation: "getOpenProofSyncFailure", code: "internal", detail: error.message });
+  }
+  return { ok: true, value: { failure: data ?? null } };
+}
+
 /** Active assignment truth for the canonical delivery, never a UI constant. */
 export async function getActiveAssignmentForDelivery(params: {
   deliveryId: string;
@@ -867,6 +884,8 @@ export async function getActiveAssignmentForDelivery(params: {
 export type LifecycleQueueEntry = {
   /** The live assignment for this entry's delivery, when there is one. */
   assignment?: Record<string, any> | null;
+  /** A terminal driver proof-sync failure requiring Operations attention. */
+  proofSyncFailure?: Record<string, any> | null;
   /** One explicit machine-owned exception, if Operations actually has work. */
   automationException?: Record<string, any> | null;
   request: Record<string, any>;
@@ -957,7 +976,7 @@ export async function listOperationsLifecycle(params: {
     return { rows: results.flatMap((r: any) => r.data ?? []), error: null };
   }
 
-  const [obs, credits, plans, deliveries, exceptions] = await Promise.all([
+  const [obs, credits, plans, deliveries, exceptions, proofFailures] = await Promise.all([
     joinAll(
       "couranr_payment_obligations",
       "id,request_id,payment_state,payer_type,amount_cents,currency",
@@ -985,9 +1004,14 @@ export async function listOperationsLifecycle(params: {
       "id,request_id,service_plan_id,delivery_id,exception_stage,reason,detail,exception_state,attempts,first_seen_at,last_seen_at",
       (q) => q.eq("exception_state", "open")
     ),
+    joinAll(
+      "couranr_proof_sync_failures",
+      "id,request_id,delivery_id,proof_stage,proof_type,reason,attempts,first_reported_at,last_reported_at,failure_state",
+      (q) => q.eq("failure_state", "open")
+    ),
   ]);
 
-  for (const r of [obs, credits, plans, deliveries, exceptions]) {
+  for (const r of [obs, credits, plans, deliveries, exceptions, proofFailures]) {
     if (r.error) {
       return fail({
         operation: op,
@@ -1008,6 +1032,7 @@ export async function listOperationsLifecycle(params: {
   const planMap = byRequest(plans.rows);
   const deliveryMap = byRequest(deliveries.rows);
   const exceptionMap = byRequest(exceptions.rows);
+  const proofFailureMap = byRequest(proofFailures.rows);
 
   const deliveryIds = deliveries.rows.map((d: any) => String(d.id));
   const assignmentByDelivery = new Map<string, any>();
@@ -1055,6 +1080,7 @@ export async function listOperationsLifecycle(params: {
           assignment: delivery
             ? assignmentByDelivery.get(String(delivery.id)) ?? null
             : null,
+          proofSyncFailure: proofFailureMap.get(String(request.id)) ?? null,
           automationException: exceptionMap.get(String(request.id)) ?? null,
         };
       }),

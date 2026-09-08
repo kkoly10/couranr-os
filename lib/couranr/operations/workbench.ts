@@ -62,6 +62,9 @@ export function operationsWorkbenchState(
     case "pending_review":
       return { phase: "review", lifecycleStage: stage };
 
+    case "proof_sync_attention":
+      return { phase: "execute", lifecycleStage: stage };
+
     case "automation_exception":
       switch (input.automationExceptionStage) {
         case "review":

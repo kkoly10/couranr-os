@@ -370,6 +370,33 @@ describe("the confirmation trail after an estimate", () => {
     expect(policy).toMatchObject({ p_business_account_id: null, p_guest_session_id: GUEST.id, p_run_id: null });
   });
 
+  it("TMZ-001: a scheduled statement confirms the SAME timing the estimate priced — never a fabricated ASAP", async () => {
+    h.db.consumerSession = { id: SESSION_ID, current_revision: 1, request_id: null };
+    h.db.session = { id: SESSION_ID, guest_session_id: GUEST.id, business_account_id: null, current_revision: 1, interpretation_status: "interpreted" };
+    h.db.facts = [];
+    await recordConsumerIntakeEvidenceAfterEstimate({
+      session: GUEST,
+      requestId: "req-1",
+      env: LIVE,
+      statement: { ...statement, timingIntent: "scheduled", requestedPickupLocal: "2027-03-10T10:30" },
+    });
+    const confirms = calls("couranr_confirm_intake_fact").map((c: any[]) => c[1]);
+    const byKey = Object.fromEntries(confirms.map((c: any) => [c.p_fact_key, c.p_value]));
+    expect(JSON.stringify(byKey.timing_intent)).toContain("scheduled");
+    expect(JSON.stringify(byKey.requested_pickup_local)).toContain("2027-03-10T10:30");
+  });
+
+  it("a statement with no timing defaults to ASAP and confirms no pickup time", async () => {
+    h.db.consumerSession = { id: SESSION_ID, current_revision: 1, request_id: null };
+    h.db.session = { id: SESSION_ID, guest_session_id: GUEST.id, business_account_id: null, current_revision: 1, interpretation_status: "interpreted" };
+    h.db.facts = [];
+    await recordConsumerIntakeEvidenceAfterEstimate({ session: GUEST, requestId: "req-1", statement, env: LIVE });
+    const confirms = calls("couranr_confirm_intake_fact").map((c: any[]) => c[1]);
+    const byKey = Object.fromEntries(confirms.map((c: any) => [c.p_fact_key, c.p_value]));
+    expect(JSON.stringify(byKey.timing_intent)).toContain("asap");
+    expect(byKey.requested_pickup_local).toBeUndefined();
+  });
+
   it("a thrown failure inside the hook is logged and swallowed — the estimate is never blocked", async () => {
     h.db.consumerSession = { id: SESSION_ID, current_revision: 1, request_id: null };
     h.rpc.mockImplementation(async () => {

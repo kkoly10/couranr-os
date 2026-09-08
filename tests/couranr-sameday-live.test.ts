@@ -4,10 +4,9 @@
  *
  * What this suite holds:
  *
- *  1. TWO-KEY ARMING. `live` resolves only when COURANR_CONSUMER_SEND is
- *     exactly "live", and production additionally requires
- *     COURANR_CONSUMER_SEND_PRODUCTION="live". One key in production is a
- *     recorded misconfiguration that still resolves `disabled`.
+ *  1. LIVE BY DEFAULT. `live` is the mode for every real environment,
+ *     production included, with no env flag; `fixture` is test-only plus an
+ *     explicit non-production opt-in. There is no disabled product path.
  *  2. NESTED-KEY READS. Every consumer payload is read from its named key
  *     (`guestSession`, `suggestions`, `estimate`, `request`, `payment`); a
  *     flat body is a failure, never a silent success — the exact bug class
@@ -18,8 +17,8 @@
  *     message. The UI's `mobile` field maps to the API/DB key `phone`.
  *  4. DEGRADATION. sessionStorage that THROWS degrades to memory-only; the
  *     session is still minted exactly once.
- *  5. THE GUARD: fixture and disabled behaviors are unchanged, and the
- *     shipped adapter objects gained nothing live.
+ *  5. THE GUARD: the fixture behavior is unchanged, production is live, and
+ *     the fixture adapter object gained nothing live.
  */
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
@@ -35,6 +34,8 @@ import {
   createLiveSameDayAdapters,
   isRouteReviewReason,
   quoteReadingFromEstimate,
+  reviewNoteFor,
+  timingFromEstimate,
   type MinimalStorage,
 } from "@/lib/couranr/sameday/liveAdapters";
 import {
@@ -62,7 +63,24 @@ function fakeFetch(routes: Record<string, RouteHandler>) {
     const key = Object.keys(routes)
       .filter((k) => url.startsWith(k))
       .sort((a, b) => b.length - a.length)[0];
-    const r = key ? routes[key](init, url) : { status: 404, body: { error: "no route" } };
+    const r = key
+      ? routes[key](init, url)
+      : url.startsWith("/api/couranr/consumer/pickup-manifest")
+        ? {
+            body: {
+              pickupManifest: {
+                manifestVersion: 1,
+                manifest: {
+                  description: "a birthday cake",
+                  packageCount: null,
+                  orderReference: null,
+                  handlingNotes: null,
+                  source: "consumer_statement",
+                },
+              },
+            },
+          }
+        : { status: 404, body: { error: "no route" } };
     return new Response(JSON.stringify(r.body), {
       status: r.status ?? 200,
       headers: { "content-type": "application/json" },
@@ -103,13 +121,14 @@ const ESTIMATE = "/api/couranr/consumer/estimate";
 const SUBMIT = "/api/couranr/consumer/submit";
 const REQUEST = "/api/couranr/consumer/request";
 const PAY = "/api/couranr/consumer/pay";
+const PICKUP_MANIFEST = "/api/couranr/consumer/pickup-manifest";
 const RECONCILE = "/api/couranr/consumer/reconcile-payment";
 const INTERPRET = "/api/couranr/consumer/interpret";
 
 const GOOD_QUOTE_INPUT = {
   pickup: "A",
   destination: "B",
-  timing: "asap",
+  timingIntent: "asap" as const,
   pickupPlaceId: "place-a",
   dropoffPlaceId: "place-b",
   contact: { name: "Ada", mobile: "+15715550100", email: "" },
@@ -119,6 +138,7 @@ const GOOD_QUOTE_INPUT = {
 const ESTIMATED = {
   requestId: "req-1",
   quoteStatus: "estimated",
+  pickupManifestVersion: 0,
   totalCents: 1049,
   lineItems: [],
   reviewReasons: [],
@@ -130,78 +150,37 @@ function live(deps?: Parameters<typeof createLiveSameDayAdapters>[0]) {
   return createLiveSameDayAdapters(deps);
 }
 
-/* ------------------------------------------------- 1. two-key arming ----- */
+/* ------------------------------------ 1. live-by-default arming ---------- */
 
-describe("two-key production arming", () => {
-  it("one key arms every NON-production environment", () => {
+describe("adapter mode: live is the default, fixtures test-only", () => {
+  it("production resolves live with NO env flag; getSameDayAdapters returns the live set", () => {
     for (const env of [
-      { nodeEnv: "development", consumerSendFlag: "live" },
-      { nodeEnv: "test", consumerSendFlag: "live" },
-      { nodeEnv: "production", vercelEnv: "preview", consumerSendFlag: "live" },
-      { consumerSendFlag: "live" },
+      { nodeEnv: "production" },
+      { vercelEnv: "production" },
+      { nodeEnv: "development", vercelEnv: "production" },
     ]) {
       const r = resolveAdapterMode(env);
       expect(r.mode, JSON.stringify(env)).toBe("live");
-      expect(r.reason).toBe("live_enabled");
       expect(r.misconfigured).toBe(false);
     }
-  });
-
-  it("production with ONE key stays disabled and records the misconfiguration", () => {
-    for (const env of [
-      { nodeEnv: "production", consumerSendFlag: "live" },
-      { vercelEnv: "production", consumerSendFlag: "live" },
-      { nodeEnv: "development", vercelEnv: "production", consumerSendFlag: "live" },
-    ]) {
-      const r = resolveAdapterMode(env);
-      expect(r.mode, JSON.stringify(env)).toBe("disabled");
-      expect(r.reason).toBe("production_live_refused");
-      expect(r.misconfigured).toBe(true);
-    }
-  });
-
-  it("production with BOTH keys resolves live", () => {
-    for (const env of [
-      { nodeEnv: "production", consumerSendFlag: "live", consumerSendProductionFlag: "live" },
-      { vercelEnv: "production", consumerSendFlag: "live", consumerSendProductionFlag: "live" },
-    ]) {
-      const r = resolveAdapterMode(env);
-      expect(r.mode, JSON.stringify(env)).toBe("live");
-      expect(r.reason).toBe("production_live_enabled");
-      expect(r.misconfigured).toBe(false);
-    }
-  });
-
-  it("the production key ALONE arms nothing", () => {
-    const r = resolveAdapterMode({ nodeEnv: "production", consumerSendProductionFlag: "live" });
-    expect(r.mode).toBe("disabled");
-    expect(r.reason).toBe("production");
-    expect(
-      resolveAdapterMode({ nodeEnv: "development", consumerSendProductionFlag: "live" }).mode
-    ).toBe("fixture");
-  });
-
-  it("only the exact string 'live' arms — truthiness does not", () => {
-    for (const flag of ["1", "true", "yes", "on", "LIVE", "Live"]) {
-      expect(
-        resolveAdapterMode({ nodeEnv: "development", consumerSendFlag: flag }).mode,
-        `flag=${flag}`
-      ).toBe("fixture");
-    }
-    expect(
-      resolveAdapterMode({
-        nodeEnv: "production",
-        consumerSendFlag: "live",
-        consumerSendProductionFlag: "1",
-      }).mode
-    ).toBe("disabled");
-  });
-
-  it("getSameDayAdapters returns the live set, with the live-only methods", () => {
-    const a = getSameDayAdapters({ nodeEnv: "development", consumerSendFlag: "live" });
+    const a = getSameDayAdapters({ nodeEnv: "production" });
     expect(a.mode).toBe("live");
     expect(typeof a.reconcilePayment).toBe("function");
     expect(typeof a.readRequest).toBe("function");
+  });
+
+  it("test mode is fixtures; a non-production opt-in is fixtures; dev with no opt-in is live", () => {
+    expect(resolveAdapterMode({ nodeEnv: "test" }).mode).toBe("fixture");
+    expect(resolveAdapterMode({ nodeEnv: "development", fixtureFlag: "1" }).mode).toBe("fixture");
+    expect(resolveAdapterMode({ vercelEnv: "preview", fixtureFlag: "1" }).mode).toBe("fixture");
+    expect(resolveAdapterMode({ nodeEnv: "development" }).mode).toBe("live");
+  });
+
+  it("production refuses a fixture override — live, with a recorded misconfiguration", () => {
+    const r = resolveAdapterMode({ nodeEnv: "production", fixtureFlag: "1" });
+    expect(r.mode).toBe("live");
+    expect(r.reason).toBe("production_fixtures_refused");
+    expect(r.misconfigured).toBe(true);
   });
 });
 
@@ -259,7 +238,7 @@ describe("guest session: mint once, nested read, storage degradation", () => {
       [PLACES]: () => ({ body: { suggestions: [{ placeId: "p", text: "t" }] } }),
     });
     const a = live({ fetchImpl: f.impl, storage: memoryStorage() });
-    expect(await a.searchAddress("main")).toEqual([]);
+    expect(await a.searchAddress("main")).toEqual({ status: "error" });
     // No gated call ever left without a session.
     expect(f.of(PLACES).length).toBe(0);
     const q = await a.quote(GOOD_QUOTE_INPUT);
@@ -273,7 +252,8 @@ describe("guest session: mint once, nested read, storage degradation", () => {
       [ESTIMATE]: () => ({ body: { estimate: ESTIMATED } }),
     });
     const a = live({ fetchImpl: f.impl, storage: throwingStorage() });
-    expect((await a.searchAddress("main")).length).toBe(1);
+    const s = await a.searchAddress("main");
+    expect(s.status === "ok" && s.suggestions.length).toBe(1);
     expect((await a.quote(GOOD_QUOTE_INPUT)).state).toBe("live-available");
     expect(f.of(S).length).toBe(1);
   });
@@ -296,26 +276,41 @@ describe("searchAddress reads the nested `suggestions` key", () => {
       }),
     });
     const out = await live({ fetchImpl: f.impl, storage: null }).searchAddress("main");
-    expect(out).toEqual([
-      { id: "p1", label: "Main Street Bakery", detail: "112 Main Street" },
-      { id: "p2", label: "140 Main Street, Stafford, VA", detail: "" },
-    ]);
+    expect(out).toEqual({
+      status: "ok",
+      suggestions: [
+        { id: "p1", label: "Main Street Bakery", detail: "112 Main Street" },
+        { id: "p2", label: "140 Main Street, Stafford, VA", detail: "" },
+      ],
+    });
     expect(f.of(PLACES)[0].url).toContain("query=main");
   });
 
-  it("a flat body or a failure yields no suggestions", async () => {
+  it("a provider failure is distinct from a genuine empty result", async () => {
+    // A flat/malformed body is a service failure -> error, not a silent empty.
     const flat = fakeFetch({
       [S]: SESSION_OK,
       [PLACES]: () => ({ body: [{ placeId: "p1", text: "x" }] }),
     });
-    expect(await live({ fetchImpl: flat.impl, storage: null }).searchAddress("main")).toEqual([]);
+    expect(await live({ fetchImpl: flat.impl, storage: null }).searchAddress("main")).toEqual({ status: "error" });
+    // A 500 is an error.
     const down = fakeFetch({ [S]: SESSION_OK, [PLACES]: () => ({ status: 500, body: { error: "x" } }) });
-    expect(await live({ fetchImpl: down.impl, storage: null }).searchAddress("main")).toEqual([]);
+    expect(await live({ fetchImpl: down.impl, storage: null }).searchAddress("main")).toEqual({ status: "error" });
+    // The route's `degraded` flag (provider outage / budget stop) is an error
+    // even though the list is empty and the status is 200.
+    const degraded = fakeFetch({ [S]: SESSION_OK, [PLACES]: () => ({ body: { suggestions: [], degraded: true } }) });
+    expect(await live({ fetchImpl: degraded.impl, storage: null }).searchAddress("main")).toEqual({ status: "error" });
+    // A 429 is its own rate-limited outcome.
+    const limited = fakeFetch({ [S]: SESSION_OK, [PLACES]: () => ({ status: 429, body: { error: "slow down" } }) });
+    expect(await live({ fetchImpl: limited.impl, storage: null }).searchAddress("main")).toEqual({ status: "rate-limited" });
+    // A genuine 200 empty list is ok, not an error.
+    const empty = fakeFetch({ [S]: SESSION_OK, [PLACES]: () => ({ body: { suggestions: [] } }) });
+    expect(await live({ fetchImpl: empty.impl, storage: null }).searchAddress("main")).toEqual({ status: "ok", suggestions: [] });
   });
 
-  it("does not call the network for a sub-2-character query", async () => {
+  it("does not call the network for a sub-3-character query", async () => {
     const f = fakeFetch({ [S]: SESSION_OK, [PLACES]: () => ({ body: { suggestions: [] } }) });
-    expect(await live({ fetchImpl: f.impl, storage: null }).searchAddress(" a ")).toEqual([]);
+    expect(await live({ fetchImpl: f.impl, storage: null }).searchAddress(" ab ")).toEqual({ status: "ok", suggestions: [] });
     expect(f.calls.length).toBe(0);
   });
 });
@@ -373,6 +368,19 @@ describe("buildEstimateBody: honest statement or a local refusal", () => {
     }
   });
 
+  it("refuses an overlong pickup description locally before any provider call", async () => {
+    const input = {
+      ...GOOD_QUOTE_INPUT,
+      shipment: { ...GOOD_QUOTE_INPUT.shipment, description: "x".repeat(1001) },
+    };
+    expect(buildEstimateBody(input).ok).toBe(false);
+
+    const f = fakeFetch({ [S]: SESSION_OK, [ESTIMATE]: () => ({ body: { estimate: ESTIMATED } }) });
+    const q = await live({ fetchImpl: f.impl, storage: null }).quote(input);
+    expect(q.state).toBe("unavailable");
+    expect(f.calls).toHaveLength(0);
+  });
+
   it("refuses locally without contact — the FIRST estimate freezes the snapshot", () => {
     const r = buildEstimateBody({ ...GOOD_QUOTE_INPUT, contact: { name: "Ada" } });
     expect(r.ok).toBe(false);
@@ -387,10 +395,37 @@ describe("buildEstimateBody: honest statement or a local refusal", () => {
     if (r.ok) expect((r.body.shipment as Record<string, unknown>).restrictedClass).toBe("unknown");
   });
 
-  it("timing is the funnel's fixed ASAP intent", () => {
-    const r = buildEstimateBody({ ...GOOD_QUOTE_INPUT, timing: "schedule" });
-    expect(r.ok).toBe(true);
-    if (r.ok) expect(r.body.timing).toEqual({ intent: "asap" });
+  it("timing carries the sender's intent: ASAP, or the scheduled Eastern local words", () => {
+    const asap = buildEstimateBody(GOOD_QUOTE_INPUT);
+    expect(asap.ok).toBe(true);
+    if (asap.ok) expect(asap.body.timing).toEqual({ intent: "asap", requestedPickupLocal: null });
+
+    const scheduled = buildEstimateBody({
+      ...GOOD_QUOTE_INPUT,
+      timingIntent: "scheduled",
+      requestedPickupLocal: "2027-03-10T10:30",
+    });
+    expect(scheduled.ok).toBe(true);
+    if (scheduled.ok) {
+      expect(scheduled.body.timing).toEqual({ intent: "scheduled", requestedPickupLocal: "2027-03-10T10:30" });
+      // Only the sender's words travel: no zone suffix, no instant, no offset.
+      expect(JSON.stringify(scheduled.body)).not.toMatch(/requestedDepartureAt|America\/New_York|Z"/);
+    }
+  });
+
+  it("a scheduled pickup without valid local words is a LOCAL refusal — no network call", async () => {
+    for (const bad of [undefined, "", "tomorrow", "2027-03-10T10:30Z", "2027-02-30T10:00"]) {
+      const r = buildEstimateBody({ ...GOOD_QUOTE_INPUT, timingIntent: "scheduled", requestedPickupLocal: bad });
+      expect(r.ok, `local=${String(bad)}`).toBe(false);
+    }
+    const f = fakeFetch({ [S]: SESSION_OK, [ESTIMATE]: () => ({ body: { estimate: ESTIMATED } }) });
+    const q = await live({ fetchImpl: f.impl, storage: null }).quote({
+      ...GOOD_QUOTE_INPUT,
+      timingIntent: "scheduled",
+      requestedPickupLocal: "",
+    });
+    expect(q.state).toBe("unavailable");
+    expect(f.calls).toHaveLength(0);
   });
 });
 
@@ -410,7 +445,30 @@ describe("quote maps quoteStatus, reads the nested `estimate` key", () => {
     // And the request that left carried the mapped body.
     const sent = JSON.parse(String(f.of(ESTIMATE)[0].init?.body));
     expect(sent.contact.phone).toBe("+15715550100");
-    expect(sent.timing).toEqual({ intent: "asap" });
+    expect(sent.timing).toEqual({ intent: "asap", requestedPickupLocal: null });
+
+    const manifestCalls = f.of(PICKUP_MANIFEST);
+    expect(manifestCalls).toHaveLength(1);
+    expect(JSON.parse(String(manifestCalls[0].init?.body))).toEqual({
+      expectedManifestVersion: 0,
+      description: "a birthday cake",
+      packageCount: null,
+      orderReference: null,
+      handlingNotes: null,
+    });
+  });
+
+  it("uses the estimate's current pickup-manifest version after a reload/re-estimate", async () => {
+    const f = fakeFetch({
+      [S]: SESSION_OK,
+      [ESTIMATE]: () => ({
+        body: { estimate: { ...ESTIMATED, pickupManifestVersion: 7 } },
+      }),
+    });
+    const q = await live({ fetchImpl: f.impl, storage: null }).quote(GOOD_QUOTE_INPUT);
+    expect(q.state).toBe("live-available");
+    const body = JSON.parse(String(f.of(PICKUP_MANIFEST)[0].init?.body));
+    expect(body.expectedManifestVersion).toBe(7);
   });
 
   it("'manual_review_required' -> the existing manual-review presentation", async () => {
@@ -791,47 +849,41 @@ describe("the seam agrees with the server actor's contract", () => {
   });
 });
 
-/* ------------------------------- 10. fixture/disabled stay untouched ----- */
+/* ------------------------------- 10. fixture stays untouched ------------- */
 
-describe("GUARD: fixture and disabled behaviors are unchanged by the live seam", () => {
+describe("GUARD: the fixture path is unchanged, and production is live", () => {
   const PROD = { nodeEnv: "production" as const };
 
-  it("production without the keys still refuses everything", async () => {
+  it("production resolves the live set (no disabled product path)", () => {
     const a = getSameDayAdapters(PROD);
-    expect(a.mode).toBe("disabled");
-    expect(await a.searchAddress("main")).toEqual([]);
-    expect((await a.checkAvailability("a", "b")).state).toBe("unavailable");
-    expect((await a.readIntake("a cake")).state).toBe("unavailable");
-    expect((await a.quote({ pickup: "a", destination: "b", timing: "asap" })).state).toBe("unavailable");
-    expect((await a.submitRequest()).state).toBe("unavailable");
-    expect((await a.authorizePayment()).state).toBe("not-available");
+    expect(a.mode).toBe("live");
+    expect(typeof a.reconcilePayment).toBe("function");
+    expect(typeof a.readRequest).toBe("function");
   });
 
   it("the fixture path still answers exactly what it shipped answering", async () => {
     const a = getSameDayAdapters({ nodeEnv: "test" });
     expect(a.mode).toBe("fixture");
-    const q = await a.quote({ pickup: "a", destination: "b", timing: "asap" });
+    const q = await a.quote({ pickup: "a", destination: "b", timingIntent: "asap" });
     expect(q.state).toBe("fixture-available");
     expect(q.state === "fixture-available" && q.totalCents).toBe(BASE_PRICE_CENTS);
     expect((await a.submitRequest()).state).toBe("received-preview");
     expect((await a.authorizePayment()).state).toBe("authorized-fixture");
+    const s = await a.searchAddress("main");
+    expect(s.status === "ok" && s.suggestions.length).toBeGreaterThan(0);
   });
 
-  it("neither shipped mode gained a live-only method or a network call", () => {
-    for (const env of [PROD, { nodeEnv: "test" as const }]) {
-      const a = getSameDayAdapters(env);
-      expect(a.reconcilePayment, a.mode).toBeUndefined();
-      expect(a.readRequest, a.mode).toBeUndefined();
-    }
+  it("the fixture set gained no live-only method, and its block talks to no server", () => {
+    const a = getSameDayAdapters({ nodeEnv: "test" as const });
+    expect(a.reconcilePayment).toBeUndefined();
+    expect(a.readRequest).toBeUndefined();
     const src = readFileSync(path.join(ROOT, "lib/couranr/sameday/adapters.ts"), "utf8");
-    const disabled = src.slice(src.indexOf("const DISABLED"), src.indexOf("const FIXTURE_PLACES"));
-    const fixture = src.slice(src.indexOf("const FIXTURE_PLACES"), src.indexOf("export function getSameDayAdapters"));
-    for (const [name, block] of [["DISABLED", disabled], ["FIXTURE", fixture]] as const) {
-      expect(block, `${name} constructs a live state`).not.toContain("live-available");
-      expect(block, `${name} constructs a live state`).not.toContain("authorization-required");
-      expect(block, `${name} constructs a live state`).not.toContain("not-payable");
-      expect(block, `${name} talks to a server`).not.toContain("fetch(");
-    }
+    // The disabled product path is removed, not left dormant.
+    expect(src).not.toContain("const DISABLED");
+    const fixture = src.slice(src.indexOf("const FIXTURE"), src.indexOf("export function getSameDayAdapters"));
+    expect(fixture, "FIXTURE constructs a live state").not.toContain("live-available");
+    expect(fixture, "FIXTURE constructs a live state").not.toContain("authorization-required");
+    expect(fixture, "FIXTURE talks to a server").not.toContain("fetch(");
   });
 });
 
@@ -878,27 +930,66 @@ describe("SendFlow's structured inputs stay in parity with the governed vocabula
   });
 });
 
-/* -------------------------- live timing truth (review item 5) ------------ */
+/* ------------------- consumer timing parity (TMZ-001) --------------------- */
 
-describe("live consumer timing is ASAP only (review item 5)", () => {
+describe("consumer timing: ASAP or scheduled, Eastern, server-evaluated — business parity", () => {
   const sendFlow = readFileSync("components/couranr/sameday/SendFlow.tsx", "utf8");
 
-  it("live mode renders no timing choice the backend ignores", () => {
-    // The choices list is mode-gated: live gets exactly the ASAP entry, and
-    // the today/schedule radios exist only outside live mode (fixture keeps
-    // them for visual preservation of the shipped design).
-    expect(sendFlow).toMatch(
-      /mode === "live"\s*\?\s*\(\[\["asap", SEND_COPY\.timing_asap\]\] as const\)/
-    );
-    expect(sendFlow).toMatch(/SEND_COPY\.timing_live_note/);
+  it("renders BOTH governed intents and a datetime input for a scheduled pickup, in every mode", () => {
+    expect(sendFlow).toMatch(/\["asap", SEND_COPY\.timing_asap\]/);
+    expect(sendFlow).toMatch(/\["scheduled", SEND_COPY\.timing_schedule\]/);
+    expect(sendFlow).toMatch(/type="datetime-local"/);
+    // 'today' is not a DB intent: ASAP before the cutoff IS today (HRS-001).
+    expect(sendFlow).not.toMatch(/timing_today/);
+    // The old live-only ASAP gate is gone.
+    expect(sendFlow).not.toMatch(/mode === "live"\s*\?\s*\(\[\["asap"/);
   });
 
-  it("the wire stays ASAP regardless — the fixed intent is not a UI courtesy", () => {
-    // Companion to "timing is the funnel's fixed ASAP intent" above: the live
-    // adapter's estimate body pins timing server-honestly whatever the UI
-    // shows.
+  it("the cutoff hint reads HRS-001's governed value, never a restated literal", () => {
+    expect(sendFlow).toMatch(/SAME_DAY_CUTOFF_COPY/);
+    expect(sendFlow).not.toMatch(/4:00 PM/);
+  });
+
+  it("the wire carries the sender's intent and local words only — no zone, no instant", () => {
     const adapters = readFileSync("lib/couranr/sameday/liveAdapters.ts", "utf8");
-    expect(adapters).toMatch(/timing:\s*\{\s*intent:\s*"asap"\s*\}/);
+    expect(adapters).toMatch(/intent:\s*timingIntent/);
+    expect(adapters).toMatch(/requestedPickupLocal:\s*timingIntent === "scheduled" \? requestedPickupLocal : null/);
+    expect(adapters).not.toMatch(/requestedDepartureAt:/);
+  });
+});
+
+describe("timing-aware quote readings", () => {
+  it("echoes the server's scheduled timing on a priced quote", () => {
+    const q = quoteReadingFromEstimate({
+      ...ESTIMATED,
+      timing: { intent: "scheduled", requestedPickupLocal: "2027-03-10T10:30" },
+    });
+    expect(q.state).toBe("live-available");
+    if (q.state === "live-available") {
+      expect(q.timing).toEqual({ intent: "scheduled", requestedPickupLocal: "2027-03-10T10:30" });
+    }
+  });
+
+  it("names the TIMING reason for a review — overnight vs a time Couranr must confirm", () => {
+    expect(reviewNoteFor(["overnight_requires_couranr_confirmation"])).toMatch(/outside standard hours/);
+    expect(reviewNoteFor(["timing_needs_review"])).toMatch(/confirm this pickup time/);
+    expect(reviewNoteFor(["weight_unresolved"])).toMatch(/review this delivery/);
+    const q = quoteReadingFromEstimate({
+      ...ESTIMATED,
+      quoteStatus: "manual_review_required",
+      totalCents: null,
+      reviewReasons: ["overnight_requires_couranr_confirmation"],
+    });
+    expect(q.state === "manual-review" && q.note).toMatch(/outside standard hours/);
+  });
+
+  it("a malformed timing echo is dropped, never invented", () => {
+    expect(timingFromEstimate({ intent: "whenever" })).toBeNull();
+    expect(timingFromEstimate(null)).toBeNull();
+    expect(timingFromEstimate({ intent: "asap", requestedPickupLocal: 5 })).toEqual({
+      intent: "asap",
+      requestedPickupLocal: null,
+    });
   });
 });
 

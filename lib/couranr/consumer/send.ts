@@ -29,6 +29,7 @@ import {
   type RestrictedClassDeclaration,
   type WeightBand,
 } from "@/lib/couranr/shipment/facts";
+import { TIMING_INTENTS, parseOperatingLocal, type TimingIntent } from "@/lib/couranr/timing/policy";
 import {
   ensurePaymentIntent,
   isPaymentFailure,
@@ -36,6 +37,11 @@ import {
 } from "@/lib/couranr/payments/commands";
 import { issueTrackingLink, isTrackingFailure } from "@/lib/couranr/tracking/commands";
 import { recordConsumerIntakeEvidenceAfterEstimate } from "./intake";
+import {
+  CODE_SHOWN_ONCE_WARNING,
+  generateHandoffCode,
+  handoffCodeDigest,
+} from "@/lib/couranr/driver/codes";
 
 assertServerOnly("lib/couranr/consumer/send.ts");
 
@@ -79,6 +85,8 @@ export const RPC = {
   submit: "couranr_submit_consumer_delivery_request",
   setReadiness: "couranr_set_consumer_pickup_readiness",
   createObligation: "couranr_create_payment_obligation",
+  issueGuestPickupCode: "couranr_issue_guest_pickup_code_cas",
+  claimPlaceSearch: "couranr_claim_consumer_place_search",
 } as const;
 
 /** Sessions live 24 hours; the SQL clamps to [5 min, 3 days] regardless. */
@@ -298,6 +306,13 @@ export type ConsumerSendBody = {
     signatureRequired: boolean;
     overnightRequested: boolean;
   };
+  /**
+   * TMZ-001 requested timing — the SAME two-intent vocabulary and local
+   * wall-clock shape the business normalizer accepts. Only the sender's
+   * America/New_York words travel; the server derives the canonical instant
+   * and the database re-derives it (two-sided).
+   */
+  timing: { intent: TimingIntent; requestedPickupLocal: string | null };
 };
 
 // Deliberately permissive: only rejects text that cannot be an address.
@@ -374,6 +389,26 @@ export function validateConsumerSendBody(raw: unknown): ConsumerSendBodyResult {
     restrictedClass = rc;
   }
 
+  // TMZ-001 requested timing. ASAP unless the sender scheduled a time; a
+  // scheduled request must carry parseable `YYYY-MM-DDTHH:MM` local words. No
+  // zone suffix is accepted — the zone is Couranr's operating decision.
+  const timingRaw =
+    r.timing !== null && typeof r.timing === "object" && !Array.isArray(r.timing)
+      ? (r.timing as Record<string, unknown>)
+      : {};
+  const timingIntent = (str(timingRaw.intent) ?? "asap") as TimingIntent;
+  if (!(TIMING_INTENTS as readonly string[]).includes(timingIntent)) {
+    return { ok: false, reason: "timing_intent_invalid" };
+  }
+  let requestedPickupLocal: string | null = null;
+  if (timingIntent === "scheduled") {
+    const rawLocal = str(timingRaw.requestedPickupLocal);
+    if (!rawLocal || !parseOperatingLocal(rawLocal)) {
+      return { ok: false, reason: "requested_time_invalid" };
+    }
+    requestedPickupLocal = rawLocal;
+  }
+
   const description = str(shipRaw.description);
   return {
     ok: true,
@@ -389,6 +424,7 @@ export function validateConsumerSendBody(raw: unknown): ConsumerSendBodyResult {
         signatureRequired: shipRaw.signatureRequired === true,
         overnightRequested: shipRaw.overnightRequested === true,
       },
+      timing: { intent: timingIntent, requestedPickupLocal },
     },
   };
 }
@@ -398,6 +434,8 @@ export function validateConsumerSendBody(raw: unknown): ConsumerSendBodyResult {
 export type ConsumerEstimate = {
   requestId: string;
   quoteStatus: string;
+  /** Independent PRF-002 CAS token for expected-pickup edits. */
+  pickupManifestVersion: number;
   /** Integer cents when the quote is automatic; null for review/invalid. */
   totalCents: number | null;
   lineItems: unknown[];
@@ -405,12 +443,25 @@ export type ConsumerEstimate = {
   quoteVersionId: string | null;
   /** QVL-001: when the 15-minute approval window closes; null when unpriced. */
   expiresAt: string | null;
+  /**
+   * TMZ-001 timing as the SERVER understood it: the sender's local words
+   * preserved verbatim, the canonical America/New_York instant (null for ASAP
+   * or an unresolved DST edge), and the timing review reasons.
+   */
+  timing: {
+    intent: TimingIntent;
+    requestedPickupLocal: string | null;
+    requestedDepartureAt: string | null;
+    reviewReasons: unknown[];
+  };
 };
 
 /** Columns every scoped consumer read selects. Never `select("*")`. */
 const OWN_REQUEST_COLUMNS =
-  "id,version,request_state,quote_status,current_quote_version_id," +
-  "delivery_subtotal_cents,quote_line_items,review_reasons,consumer_contact_snapshot";
+  "id,version,request_state,quote_status,current_quote_version_id,pickup_manifest_version," +
+  "pickup_manifest,pickup_manifest_policy_version," +
+  "delivery_subtotal_cents,quote_line_items,review_reasons,consumer_contact_snapshot," +
+  "timing_intent,requested_pickup_local,requested_departure_at,timing_review_reasons";
 
 /**
  * Load the session's own request — and ONLY it. `service_role` bypasses RLS,
@@ -463,6 +514,7 @@ function estimateFromRow(row: Record<string, any>): Promise<ConsumerEstimate> {
   return quoteWindowExpiresAt(quoteVersionId, quoteStatus).then((expiresAt) => ({
     requestId: String(row.id),
     quoteStatus,
+    pickupManifestVersion: Number(row.pickup_manifest_version ?? 0),
     totalCents:
       quoteStatus === "estimated" && row.delivery_subtotal_cents !== null
         ? Number(row.delivery_subtotal_cents)
@@ -471,6 +523,13 @@ function estimateFromRow(row: Record<string, any>): Promise<ConsumerEstimate> {
     reviewReasons: Array.isArray(row.review_reasons) ? row.review_reasons : [],
     quoteVersionId,
     expiresAt,
+    timing: {
+      intent: row.timing_intent === "scheduled" ? "scheduled" : "asap",
+      requestedPickupLocal:
+        typeof row.requested_pickup_local === "string" ? row.requested_pickup_local : null,
+      requestedDepartureAt: row.requested_departure_at ? String(row.requested_departure_at) : null,
+      reviewReasons: Array.isArray(row.timing_review_reasons) ? row.timing_review_reasons : [],
+    },
   }));
 }
 
@@ -509,8 +568,10 @@ export async function estimateConsumerSend(params: {
       serviceLevel: "standard",
       signatureRequired: body.shipment.signatureRequired,
       overnightRequested: body.shipment.overnightRequested,
-      timingIntent: "asap",
-      requestedPickupLocal: null,
+      // TMZ-001: the sender's statement; the doctrine (cutoff, business days,
+      // overnight window, DST edges) is evaluated inside, server-side.
+      timingIntent: body.timing.intent,
+      requestedPickupLocal: body.timing.requestedPickupLocal,
     });
   } catch (error) {
     if (isCanonicalAddressResolutionError(error)) {
@@ -541,8 +602,8 @@ export async function estimateConsumerSend(params: {
       weightBand: body.shipment.weightBand,
       restrictedClass: body.shipment.restrictedClass,
       serviceLevel: "standard",
-      timingIntent: "asap",
-      requestedPickupLocal: null,
+      timingIntent: body.timing.intent,
+      requestedPickupLocal: body.timing.requestedPickupLocal,
     }),
     { textSignals }
   );
@@ -627,6 +688,9 @@ export async function estimateConsumerSend(params: {
       weightLb: body.shipment.weightLb,
       weightBand: body.shipment.weightBand,
       restrictedClass: body.shipment.restrictedClass,
+      // The SAME timing the estimate priced, so the confirmed facts stay honest.
+      timingIntent: body.timing.intent,
+      requestedPickupLocal: body.timing.requestedPickupLocal,
     },
   });
 
@@ -697,6 +761,14 @@ export async function refreshConsumerSendQuote(params: {
   const restrictedClass = String(row.restricted_class ?? "unknown");
   const signatureRequired = Boolean(row.signature_required);
   const additionalStops = Number(row.additional_stops ?? 0);
+  // TMZ-001: re-price against the request's STORED timing statement, exactly
+  // as the business refresh does — never a fabricated ASAP. A scheduled time
+  // that has since passed re-evaluates honestly (review); nothing moves it.
+  const storedTimingIntent: TimingIntent = row.timing_intent === "scheduled" ? "scheduled" : "asap";
+  const storedRequestedPickupLocal: string | null =
+    storedTimingIntent === "scheduled" && typeof row.requested_pickup_local === "string"
+      ? row.requested_pickup_local
+      : null;
 
   let routed: Awaited<ReturnType<typeof deriveCanonicalRouteAndQuote>>;
   try {
@@ -709,8 +781,8 @@ export async function refreshConsumerSendQuote(params: {
       serviceLevel: "standard",
       signatureRequired,
       overnightRequested,
-      timingIntent: "asap",
-      requestedPickupLocal: null,
+      timingIntent: storedTimingIntent,
+      requestedPickupLocal: storedRequestedPickupLocal,
     });
   } catch (refreshError) {
     if (isCanonicalAddressResolutionError(refreshError)) {
@@ -733,8 +805,8 @@ export async function refreshConsumerSendQuote(params: {
       weightBand,
       restrictedClass,
       serviceLevel: "standard",
-      timingIntent: "asap",
-      requestedPickupLocal: null,
+      timingIntent: storedTimingIntent,
+      requestedPickupLocal: storedRequestedPickupLocal,
     } as Parameters<typeof factsFromDraft>[0]),
     { textSignals }
   );
@@ -816,6 +888,25 @@ export async function submitConsumerSend(params: {
   const op = "submitConsumerSend";
   const loaded = await loadOwnRequest(op, params.session);
   if (isConsumerFailure(loaded)) return loaded;
+
+  const pickupManifest =
+    loaded.value.pickup_manifest &&
+    typeof loaded.value.pickup_manifest === "object" &&
+    !Array.isArray(loaded.value.pickup_manifest)
+      ? loaded.value.pickup_manifest
+      : null;
+  if (
+    loaded.value.pickup_manifest_policy_version !== "pickup-handoff-v2" ||
+    !pickupManifest ||
+    pickupManifest.source !== "consumer_statement"
+  ) {
+    return fail({
+      operation: op,
+      code: "invalid_input",
+      detail: { reason: "pickup_manifest_required" },
+      message: "Confirm what the driver should expect at pickup before submitting this delivery.",
+    });
+  }
 
   // Field-level pre-check with an actionable message. The SQL refuses the
   // same condition again (CR422 consumer_contact_required) as the backstop —
@@ -920,6 +1011,129 @@ export async function getConsumerSendView(params: {
   return { ok: true, value: view };
 }
 
+/* ------------------------------------------- sender pickup credential --- */
+
+export type ConsumerPickupCredential = {
+  deliveryId: string;
+  code: string;
+  generation: number;
+  expiresAt: string;
+  warning: string;
+};
+
+/**
+ * Sender-held credential for this guest session's one delivery.
+ *
+ * It is never sent to the assigned driver. The raw six digits exist only in
+ * this response and in whatever the sender displays/reads at physical handoff.
+ */
+export async function issueConsumerPickupCredential(params: {
+  session: GuestSession;
+}): Promise<ConsumerResult<ConsumerPickupCredential>> {
+  const op = "issueConsumerPickupCredential";
+  if (!params.session.requestId) {
+    return fail({
+      operation: op,
+      code: "conflict",
+      detail: { reason: "session_not_bound" },
+      message: "Couranr has not created this delivery yet.",
+    });
+  }
+
+  const { data: delivery, error: deliveryError } = (await supabaseAdmin
+    .from("couranr_deliveries")
+    .select("id,request_id,fulfillment_state")
+    .eq("request_id", params.session.requestId)
+    .maybeSingle()) as { data: any; error: any };
+  if (deliveryError) {
+    return fail({ operation: op, code: "internal", detail: deliveryError.message });
+  }
+  if (!delivery?.id) {
+    return fail({
+      operation: op,
+      code: "conflict",
+      detail: { reason: "delivery_not_created" },
+      message: "The pickup code will be available after Couranr schedules the delivery.",
+    });
+  }
+
+  const MAX_GENERATION_ATTEMPTS = 4;
+  for (let attempt = 0; attempt < MAX_GENERATION_ATTEMPTS; attempt += 1) {
+    const { data: current, error: generationError } = (await supabaseAdmin
+      .from("couranr_handoff_codes")
+      .select("generation")
+      .eq("delivery_id", String(delivery.id))
+      .eq("code_kind", "merchant_pickup")
+      .order("generation", { ascending: false })
+      .limit(1)) as { data: any; error: any };
+    if (generationError) {
+      return fail({ operation: op, code: "internal", detail: generationError.message });
+    }
+
+    const generation = Number(current?.[0]?.generation ?? 0) + 1;
+    const code = generateHandoffCode();
+    let digest: string;
+    try {
+      digest = handoffCodeDigest({
+        kind: "merchant_pickup",
+        deliveryId: String(delivery.id),
+        generation,
+        code,
+      });
+    } catch {
+      return fail({
+        operation: op,
+        code: "internal",
+        detail: { reason: "handoff_secret_unavailable" },
+      });
+    }
+
+    const { data, error } = (await supabaseAdmin.rpc(RPC.issueGuestPickupCode, {
+      p_delivery_id: String(delivery.id),
+      p_expected_generation: generation,
+      p_code_digest: digest,
+      p_guest_session_id: params.session.id,
+      p_ttl_minutes: 1440,
+    })) as { data: any; error: any };
+
+    if (error) {
+      if (error.code === "CR409" && error.message === "handoff_generation_conflict") {
+        continue;
+      }
+      return fail({
+        operation: op,
+        code: classifyDatabaseError(error),
+        detail: { code: error.code, message: error.message },
+      });
+    }
+    if (!data || Number(data.generation) !== generation) {
+      return fail({
+        operation: op,
+        code: "internal",
+        detail: { reason: "handoff_generation_mismatch" },
+      });
+    }
+
+    return {
+      ok: true,
+      value: {
+        deliveryId: String(delivery.id),
+        code,
+        generation,
+        expiresAt: String(data.expires_at),
+        warning: CODE_SHOWN_ONCE_WARNING,
+      },
+    };
+  }
+
+  return fail({
+    operation: op,
+    code: "conflict",
+    detail: { reason: "handoff_generation_contention" },
+    message: "The pickup code changed at the same time. Try again.",
+  });
+}
+
 /* --------------------------------------------------------------- paying --- */
 
 /**
@@ -1008,6 +1222,32 @@ export async function reconcileConsumerPayment(params: {
   };
 }
 
+/* ------------------------------------------------ places search throttle -- */
+
+/**
+ * Per-guest-session Places throttle. Runs in the route BEFORE the global paid-
+ * provider budget and BEFORE any Google call, so one minted session cannot
+ * farm the daily quota. `false` from the RPC is a rate limit (a sanitized 429);
+ * an unknown/expired session raises CR404, collapsed to the funnel's uniform
+ * `not_found` by the caller's gate. The global budget stays the final ceiling.
+ */
+export async function claimConsumerPlaceSearch(
+  session: GuestSession
+): Promise<ConsumerResult<{ allowed: true }>> {
+  const op = "claimConsumerPlaceSearch";
+  const r = await callRpc<boolean>(op, RPC.claimPlaceSearch, { p_session_id: session.id });
+  if (isConsumerFailure(r)) return r;
+  if (r.value !== true) {
+    return fail({
+      operation: op,
+      code: "rate_limited",
+      detail: { reason: "consumer_places_hourly_limit" },
+      message: "Too many address searches. Wait a little and try again.",
+    });
+  }
+  return { ok: true, value: { allowed: true } };
+}
+
 /* --------------------------------------------------- places autocomplete -- */
 
 const PLACES_AUTOCOMPLETE_URL = "https://places.googleapis.com/v1/places:autocomplete";
@@ -1019,28 +1259,29 @@ export type PlaceSuggestion = { placeId: string; text: string };
  * suggestions and hands back a Place ID; the ID is verified again by Place
  * Details inside the estimate pipeline, so nothing here is authority.
  *
- * Degrades to an EMPTY list on provider trouble (logged under a correlation
- * id) — an autocomplete outage must not 500 the typing experience, and an
- * empty list cannot mint anything.
+ * Never 500s the typing experience: on provider trouble it returns an EMPTY
+ * list with `degraded: true` so the UI can honestly say "Address lookup is
+ * unavailable" — distinct from a genuine no-result (`degraded: false`). A short
+ * query is a no-op, not a failure. An empty list can mint nothing either way.
  */
 export async function autocompleteConsumerPlaces(
   rawQuery: unknown,
   fetchImpl: typeof fetch = fetch
-): Promise<ConsumerResult<{ suggestions: PlaceSuggestion[] }>> {
+): Promise<ConsumerResult<{ suggestions: PlaceSuggestion[]; degraded: boolean }>> {
   const op = "autocompleteConsumerPlaces";
   const query = typeof rawQuery === "string" ? rawQuery.trim() : "";
   if (query.length < 3 || query.length > 120) {
-    return { ok: true, value: { suggestions: [] } };
+    return { ok: true, value: { suggestions: [], degraded: false } };
   }
   const apiKey = process.env.GOOGLE_MAPS_SERVER_API_KEY;
   if (!apiKey) {
     fail({ operation: op, code: "internal", detail: { reason: "places not configured" } });
-    return { ok: true, value: { suggestions: [] } };
+    return { ok: true, value: { suggestions: [], degraded: true } };
   }
 
   const spend = await claimPaidApiCall("google_places_autocomplete", fetchImpl);
   if (!spend.allowed) {
-    return { ok: true, value: { suggestions: [] } };
+    return { ok: true, value: { suggestions: [], degraded: true } };
   }
 
   let payload: any;
@@ -1059,12 +1300,12 @@ export async function autocompleteConsumerPlaces(
     });
     if (!response.ok) {
       fail({ operation: op, code: "internal", detail: { status: response.status } });
-      return { ok: true, value: { suggestions: [] } };
+      return { ok: true, value: { suggestions: [], degraded: true } };
     }
     payload = await response.json();
   } catch (error) {
     fail({ operation: op, code: "internal", detail: error });
-    return { ok: true, value: { suggestions: [] } };
+    return { ok: true, value: { suggestions: [], degraded: true } };
   }
 
   const raw = Array.isArray(payload?.suggestions) ? payload.suggestions : [];
@@ -1076,5 +1317,5 @@ export async function autocompleteConsumerPlaces(
       suggestions.push({ placeId, text });
     }
   }
-  return { ok: true, value: { suggestions } };
+  return { ok: true, value: { suggestions, degraded: false } };
 }

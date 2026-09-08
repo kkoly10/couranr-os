@@ -13,6 +13,8 @@ import {
   SUPPORT_TARGET_MINUTES,
   isCustomerTopic,
 } from "@/lib/couranr/conversations/states";
+import { readHelpLifecycleStatus } from "@/lib/couranr/conversations/helpStatus";
+import { readHelpResolutionPolicy } from "@/lib/couranr/conversations/helpResolution";
 
 export const dynamic = "force-dynamic";
 
@@ -47,7 +49,11 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: str
   const link = await redeemHelpToken((await ctx.params).token);
   if (isHelpFailure(link)) return refuse();
 
-  const thread = await readHelpThread(link.value.tokenId);
+  const [thread, returnStatus, resolutionPolicy] = await Promise.all([
+    readHelpThread(link.value.tokenId),
+    readHelpLifecycleStatus(link.value.deliveryId),
+    readHelpResolutionPolicy(link.value.deliveryId),
+  ]);
   if (isHelpFailure(thread)) return refuse();
 
   return NextResponse.json({
@@ -66,6 +72,12 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: str
     operatingTimezone: COURANR_TIMEZONE,
     // "No public support phone at MVP." Stated so no surface invents one.
     supportPhone: null,
+    // CUS-007. Read-only, one-delivery projection. Status failures do not block
+    // Delivery Help itself; the UI can still let the recipient message Couranr.
+    returnStatus,
+    // CUS-002. Server-derived stage/policy only. This projection contains no
+    // payer identity, payment amount, browser-chosen target state or mutation.
+    resolutionPolicy,
   });
 }
 

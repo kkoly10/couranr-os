@@ -1,41 +1,38 @@
 /**
- * The ONE place that decides whether Same Day runs on fixtures.
+ * The ONE place that decides whether Same Day runs on the real consumer
+ * backend (`live`) or on deterministic in-memory fixtures (`fixture`).
  *
- * `/send` is a complete frontend with no backend behind it: no address search,
- * no availability check, no Smart Intake, no quote, no Stripe, no persistence.
- * Every one of those is a typed adapter, and every adapter asks THIS module
- * whether it is allowed to answer. No page and no component decides for itself,
- * because a scattered `if (fixture)` is how a fixture reaches production one
- * branch at a time.
+ * LIVE IS THE DEFAULT for every real environment. The consumer stack exists —
+ * guest sessions, the `/api/couranr/consumer/*` routes, canonical Google
+ * address resolution, Mapbox routing, shared Pricing V2, shipment policy,
+ * request persistence, the Stripe payment obligation flow, tracking and pickup
+ * credentials — so `/send` is a normal product capability, not an env-flag
+ * preview. Production does NOT depend on any `COURANR_CONSUMER_SEND*` switch.
  *
- * PRODUCTION IS ALWAYS DISABLED, and the resolution order makes that
- * unconditional rather than a default someone can override. A visitor cannot
- * turn fixtures on: not with a query parameter, a hash, localStorage,
- * sessionStorage, a cookie or a public URL flag. Nothing here reads any of
- * them — the inputs are server/build-time environment values only, which is
- * what makes the guarantee structural rather than a promise.
+ * `fixture` is TEST-ONLY plus an explicit local/preview opt-in. Automated
+ * tests always get fixtures (deterministic, no provider spend); outside
+ * production a developer can opt in with `COURANR_SAMEDAY_FIXTURES`. Asking for
+ * fixtures in production is a configuration error, surfaced as one — it still
+ * resolves `live` (the real product), never a fake-data screen.
  *
- * FAIL CLOSED. A production build that ASKS for fixtures gets `disabled` and a
- * recorded misconfiguration, never fixtures. The safe direction is refusing to
- * pretend.
+ * The guarantee is STRUCTURAL: the inputs are server/build-time environment
+ * values only. A visitor cannot force fixtures — not with a query parameter, a
+ * hash, storage, a cookie or a public URL flag; nothing here reads any of them.
  */
 
-export type AdapterMode = "fixture" | "disabled" | "live";
+export type AdapterMode = "fixture" | "live";
 
 export type AdapterModeResolution = {
   mode: AdapterMode;
   /** Why, in one word, for tests and for an operator reading a log. */
   reason:
     | "production"
-    | "production_override_refused"
+    | "preview"
     | "development"
     | "test"
-    | "preview_enabled"
-    | "preview_not_enabled"
-    | "unknown_environment"
-    | "live_enabled"
-    | "production_live_enabled"
-    | "production_live_refused";
+    | "fixtures_opt_in"
+    | "production_fixtures_refused"
+    | "default";
   /** True when configuration asked for something this environment refuses. */
   misconfigured: boolean;
 };
@@ -46,21 +43,12 @@ export type AdapterEnv = {
   nodeEnv?: string;
   /** Vercel's environment: "production" | "preview" | "development". */
   vercelEnv?: string;
-  /** The explicit opt-in. Honoured on preview ONLY. */
+  /**
+   * The explicit fixture opt-in, `COURANR_SAMEDAY_FIXTURES`. Honoured OUTSIDE
+   * production only; in production it is a recorded misconfiguration that still
+   * resolves `live`.
+   */
   fixtureFlag?: string;
-  /**
-   * TWO-KEY LIVE ARMING (batch 3 §D). Key one: `COURANR_CONSUMER_SEND` must be
-   * EXACTLY the string "live" — not "1", not "true"; a switch this consequential
-   * is armed by naming the thing, never by truthiness.
-   */
-  consumerSendFlag?: string;
-  /**
-   * Key two: `COURANR_CONSUMER_SEND_PRODUCTION`, also exactly "live". Required
-   * IN ADDITION to key one before a production environment resolves `live`.
-   * MKT-005's production stop stays the default: one key in production is a
-   * recorded misconfiguration that still resolves `disabled`.
-   */
-  consumerSendProductionFlag?: string;
 };
 
 export function readAdapterEnv(): AdapterEnv {
@@ -68,8 +56,6 @@ export function readAdapterEnv(): AdapterEnv {
     nodeEnv: process.env.NODE_ENV,
     vercelEnv: process.env.VERCEL_ENV,
     fixtureFlag: process.env.COURANR_SAMEDAY_FIXTURES,
-    consumerSendFlag: process.env.COURANR_CONSUMER_SEND,
-    consumerSendProductionFlag: process.env.COURANR_CONSUMER_SEND_PRODUCTION,
   };
 }
 
@@ -78,72 +64,43 @@ const truthy = (v?: string) => ["1", "true", "yes", "on"].includes(String(v ?? "
 /**
  * Resolves the mode from environment alone.
  *
- * Production is checked FIRST and returns before any opt-in is consulted, so
- * there is no ordering in which a flag reaches a production decision.
+ * `VERCEL_ENV` WINS WHEN PRESENT. Next sets `NODE_ENV=production` for every
+ * production build, previews included, so a preview deployment is
+ * `NODE_ENV=production, VERCEL_ENV=preview`; trusting NODE_ENV alone would
+ * misclassify every preview as production. A real Vercel production deployment
+ * sets `VERCEL_ENV=production`; a non-Vercel build has none and falls back to
+ * NODE_ENV.
  */
 export function resolveAdapterMode(env: AdapterEnv = readAdapterEnv()): AdapterModeResolution {
   const node = String(env.nodeEnv ?? "").toLowerCase();
   const vercel = String(env.vercelEnv ?? "").toLowerCase();
-
-  /* `VERCEL_ENV` WINS WHEN PRESENT, and getting this backwards made the preview
-     branch below unreachable.
-     Vercel's docs describe VERCEL_ENV as "the environment the app is running
-     on, such as production, preview, or development" — and Next sets
-     NODE_ENV=production for EVERY production build, previews included. So a
-     preview deployment is `NODE_ENV=production, VERCEL_ENV=preview`. Treating
-     NODE_ENV alone as authoritative classified every preview as production:
-     fixtures could never be enabled there, and a correctly configured preview
-     was reported as `production_override_refused` — a real misconfiguration
-     warning for a configuration that was right.
-     Found by trying to drive the fixture flow in a browser. The unit test
-     missed it because it asserted the no-flag preview case, where `disabled`
-     is correct either way.
-     Safety is unchanged in both directions: a real Vercel production
-     deployment sets VERCEL_ENV=production, and a non-Vercel production build
-     has no VERCEL_ENV and falls back to NODE_ENV. */
   const isProduction = vercel ? vercel === "production" : node === "production";
 
-  /* TWO-KEY LIVE ARMING, checked before every other branch so that a
-     deliberately armed environment cannot be re-classified as fixtures.
-     `live` wires `/send` to the real consumer API — a real request, a real
-     price, a real payment — so it is the one mode that must NEVER be an
-     accident:
-       - key one alone arms every NON-production environment;
-       - production requires BOTH keys, and one key there is a recorded
-         misconfiguration that still resolves `disabled` (MKT-005's stop is
-         the behaviour, the flag is the report — same shape as the fixture
-         refusal below);
-       - both values must be exactly "live". Truthiness does not arm. */
-  if (env.consumerSendFlag === "live") {
-    if (!isProduction) {
-      return { mode: "live", reason: "live_enabled", misconfigured: false };
-    }
-    return env.consumerSendProductionFlag === "live"
-      ? { mode: "live", reason: "production_live_enabled", misconfigured: false }
-      : { mode: "disabled", reason: "production_live_refused", misconfigured: true };
-  }
-
-  if (isProduction) {
-    /* Asking for fixtures in production is a CONFIGURATION ERROR, surfaced as
-       one. It still resolves disabled — the refusal is the behaviour, the flag
-       is the report. */
-    return truthy(env.fixtureFlag)
-      ? { mode: "disabled", reason: "production_override_refused", misconfigured: true }
-      : { mode: "disabled", reason: "production", misconfigured: false };
-  }
-
+  // Automated tests always run deterministic fixtures — no provider spend, no
+  // clock, no network.
   if (node === "test") return { mode: "fixture", reason: "test", misconfigured: false };
 
-  if (vercel === "preview") {
-    return truthy(env.fixtureFlag)
-      ? { mode: "fixture", reason: "preview_enabled", misconfigured: false }
-      : { mode: "disabled", reason: "preview_not_enabled", misconfigured: false };
+  // Explicit fixture opt-in, honoured OUTSIDE production only. Asking for
+  // fixtures in production is a configuration error surfaced as one; it still
+  // resolves `live` (the real product), never a fabricated preview.
+  if (truthy(env.fixtureFlag)) {
+    return isProduction
+      ? { mode: "live", reason: "production_fixtures_refused", misconfigured: true }
+      : { mode: "fixture", reason: "fixtures_opt_in", misconfigured: false };
   }
 
-  if (node === "development") return { mode: "fixture", reason: "development", misconfigured: false };
-
-  /* An environment this module does not recognise gets the safe answer. */
-  return { mode: "disabled", reason: "unknown_environment", misconfigured: false };
+  // LIVE IS THE DEFAULT for every real environment — production, preview,
+  // development, and anything unrecognised. The consumer backend exists and is
+  // guarded server-side (guest tokens, paid-provider budgets, canonical
+  // pricing/routing/state authority); the funnel is a normal capability.
+  const reason: AdapterModeResolution["reason"] = isProduction
+    ? "production"
+    : vercel === "preview"
+      ? "preview"
+      : node === "development"
+        ? "development"
+        : "default";
+  return { mode: "live", reason, misconfigured: false };
 }
 
 export function adapterMode(env?: AdapterEnv): AdapterMode {

@@ -17,7 +17,24 @@ import { Field, Select, Textarea } from "@/components/couranr/forms";
 import { CardSkeleton, ErrorState } from "@/components/couranr/states";
 import { CouranrLogo } from "@/components/brand/CouranrLogo";
 import type { CustomerTopic } from "@/lib/couranr/conversations/states";
-import { fetchHelp, newIdempotencyKey, sendHelpMessage, type HelpView } from "./client";
+import {
+  fetchHelp,
+  newIdempotencyKey,
+  sendHelpMessage,
+  submitResolutionRequest,
+  type HelpView,
+} from "./client";
+import type {
+  HelpLifecycleStatus,
+  HelpRefundState,
+  HelpReturnState,
+} from "@/lib/couranr/conversations/helpStatusStates";
+import {
+  HELP_RESOLUTION_REASONS,
+  HELP_RESOLUTION_REASON_LABELS,
+  type HelpResolutionPolicy,
+  type HelpResolutionReason,
+} from "@/lib/couranr/conversations/helpResolutionTypes";
 
 /**
  * PUB-007 — Delivery Help.
@@ -95,17 +112,29 @@ export function DeliveryHelpPage({ token }: { token: string }) {
   const idempotencyKey = React.useRef<string>("");
   if (idempotencyKey.current === "") idempotencyKey.current = newIdempotencyKey();
 
-  const load = React.useCallback(async () => {
-    setState({ phase: "loading" });
-    const result = await fetchHelp(token);
-    if ("failed" in result) setState({ phase: "failed" });
-    else if (!result.resolved) setState({ phase: "refused" });
-    else setState({ phase: "ready", view: result.view });
-  }, [token]);
+  const load = React.useCallback(
+    async (showLoading = true) => {
+      if (showLoading) setState({ phase: "loading" });
+      const result = await fetchHelp(token);
+      if ("failed" in result) setState({ phase: "failed" });
+      else if (!result.resolved) setState({ phase: "refused" });
+      else setState({ phase: "ready", view: result.view });
+    },
+    [token]
+  );
 
   React.useEffect(() => {
-    void load();
+    void load(true);
   }, [load]);
+
+  React.useEffect(() => {
+    if (state.phase !== "ready" || typeof window === "undefined") return;
+    const target = window.location.hash.replace(/^#/, "");
+    if (target !== "return-status" && target !== "cancellation-return") return;
+    window.requestAnimationFrame(() => {
+      document.getElementById(target)?.scrollIntoView({ block: "start" });
+    });
+  }, [state.phase]);
 
   // Preselect from the fragment, so CUS-001 and CUS-003 open on their topic.
   React.useEffect(() => {
@@ -140,7 +169,7 @@ export function DeliveryHelpPage({ token }: { token: string }) {
     idempotencyKey.current = newIdempotencyKey();
     setBody("");
     setJustSent(true);
-    await load();
+    await load(false);
   }
 
   if (state.phase === "loading") {
@@ -212,6 +241,14 @@ export function DeliveryHelpPage({ token }: { token: string }) {
           your delivery.
         </Text>
       </Card>
+
+      <CancellationReturnRequestPanel
+        token={token}
+        policy={view.resolutionPolicy}
+        onSent={() => load(false)}
+      />
+
+      <ReturnRefundStatusPanel status={view.returnStatus} />
 
       <Divider />
 
@@ -309,5 +346,257 @@ export function DeliveryHelpPage({ token }: { token: string }) {
         </Stack>
       </form>
     </Stack>
+  );
+}
+
+
+const RETURN_COPY: Record<HelpReturnState, { label: string; tone: "neutral" | "info" | "warning"; body: string }> = {
+  none: {
+    label: "No return open",
+    tone: "neutral",
+    body: "No physical return is currently recorded for this delivery.",
+  },
+  required: {
+    label: "Return required",
+    tone: "warning",
+    body: "Couranr has recorded that this delivery must be returned. The return trip has not started yet.",
+  },
+  returning: {
+    label: "Returning",
+    tone: "info",
+    body: "The delivery is on its governed return route.",
+  },
+  returned: {
+    label: "Returned",
+    tone: "neutral",
+    body: "Couranr has recorded the return handoff as complete.",
+  },
+};
+
+const REFUND_COPY: Record<
+  HelpRefundState,
+  { label: string; tone: "neutral" | "info" | "success" | "warning"; body: string }
+> = {
+  none: {
+    label: "No refund decision",
+    tone: "neutral",
+    body: "No Couranr delivery-service refund decision is currently recorded.",
+  },
+  pending: {
+    label: "Refund pending",
+    tone: "info",
+    body: "A Couranr delivery-service refund is in progress. This page will update when Couranr records the provider result.",
+  },
+  refunded: {
+    label: "Refunded",
+    tone: "success",
+    body: "Couranr records the delivery-service refund as completed.",
+  },
+  not_due: {
+    label: "No refund due",
+    tone: "neutral",
+    body: "Couranr records that no delivery-service refund is due for this resolution.",
+  },
+  needs_review: {
+    label: "Refund needs review",
+    tone: "warning",
+    body: "Refund processing needs Couranr review. You can use the message form on this page if you need help.",
+  },
+};
+
+function ReturnRefundStatusPanel({ status }: { status: HelpLifecycleStatus }) {
+  return (
+    <div id="return-status">
+      <Card>
+        <CardHeader
+          title="Return & delivery refund"
+          description="Status for this delivery only."
+        />
+        {!status.available ? (
+          <Alert tone="warning" title="Status temporarily unavailable">
+            Couranr could not load the return or refund status just now. Delivery Help is still available below.
+          </Alert>
+        ) : (
+          <Stack gap={4}>
+            <Stack gap={2}>
+              <Badge tone={RETURN_COPY[status.returnState].tone}>
+                {RETURN_COPY[status.returnState].label}
+              </Badge>
+              <Text>{RETURN_COPY[status.returnState].body}</Text>
+              <StatusTime label="Return required" value={status.returnRequiredAt} />
+              <StatusTime label="Return started" value={status.returnStartedAt} />
+              <StatusTime label="Return completed" value={status.returnedAt} />
+            </Stack>
+
+            <Divider />
+
+            <Stack gap={2}>
+              <Badge tone={REFUND_COPY[status.refundState].tone}>
+                {REFUND_COPY[status.refundState].label}
+              </Badge>
+              <Text>{REFUND_COPY[status.refundState].body}</Text>
+              <StatusTime label="Refund status updated" value={status.refundUpdatedAt} />
+            </Stack>
+          </Stack>
+        )}
+
+        <Text muted size="sm">
+          This page covers Couranr delivery-service status only. Product refunds, replacements,
+          merchandise value, and merchandise-return decisions are handled by the business that sold
+          the item. Payment amounts and payment-method details are not shown on a Delivery Help link.
+        </Text>
+      </Card>
+    </div>
+  );
+}
+
+function StatusTime({ label, value }: { label: string; value: string | null }) {
+  if (!value) return null;
+  return (
+    <Text size="sm" muted>
+      {label} · {new Date(value).toLocaleString()}
+    </Text>
+  );
+}
+
+
+function CancellationReturnRequestPanel({
+  token,
+  policy,
+  onSent,
+}: {
+  token: string;
+  policy: HelpResolutionPolicy;
+  onSent: () => Promise<void>;
+}) {
+  const [reason, setReason] = React.useState<HelpResolutionReason>("customer_request");
+  const [note, setNote] = React.useState("");
+  const [sending, setSending] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [sent, setSent] = React.useState(false);
+  const key = React.useRef("");
+  if (key.current === "") key.current = newIdempotencyKey();
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!policy.available || !policy.canSubmit || sending) return;
+    setSending(true);
+    setError(null);
+    setSent(false);
+
+    const result = await submitResolutionRequest({
+      token,
+      reason,
+      note,
+      idempotencyKey: key.current,
+    });
+    setSending(false);
+
+    if (result.sent === false) {
+      setError(result.reason);
+      return;
+    }
+
+    key.current = newIdempotencyKey();
+    setNote("");
+    setSent(true);
+    await onSent();
+  }
+
+  return (
+    <div id="cancellation-return">
+      <Card>
+        <CardHeader
+          title="Cancellation or return request"
+          description="Couranr Operations reviews this request. The form itself never changes custody, money or delivery state."
+        />
+
+        {!policy.available ? (
+          <Alert tone="warning" title="Policy temporarily unavailable">
+            Couranr could not load the current cancellation or return policy. You can still use the
+            message form below.
+          </Alert>
+        ) : (
+          <Stack gap={4}>
+            <Stack gap={2}>
+              <Badge tone={policy.canSubmit ? "info" : "neutral"}>{policy.stageLabel}</Badge>
+              <Heading level={3}>{policy.title}</Heading>
+              <Text>{policy.policySummary}</Text>
+              <Text muted size="sm">
+                Policy reference: {policy.policyReference}. The amount shown here is delivery-service
+                policy, not a statement that you personally are the payer.
+              </Text>
+            </Stack>
+
+            {policy.canSubmit && policy.submitLabel ? (
+              <form onSubmit={submit}>
+                <Stack gap={3}>
+                  <Field label="Why do you need Couranr to review this?" required>
+                    {(p) => (
+                      <Select
+                        {...p}
+                        value={reason}
+                        onChange={(e) =>
+                          setReason(e.target.value as HelpResolutionReason)
+                        }
+                      >
+                        {HELP_RESOLUTION_REASONS.map((r) => (
+                          <option key={r} value={r}>
+                            {HELP_RESOLUTION_REASON_LABELS[r]}
+                          </option>
+                        ))}
+                      </Select>
+                    )}
+                  </Field>
+
+                  <Field label="Additional details (optional)">
+                    {(p) => (
+                      <Textarea
+                        {...p}
+                        value={note}
+                        maxLength={1200}
+                        rows={4}
+                        onChange={(e) => {
+                          setNote(e.target.value);
+                          setSent(false);
+                        }}
+                        placeholder="Add only what Couranr needs to review the delivery."
+                      />
+                    )}
+                  </Field>
+
+                  <Text muted size="sm">
+                    Submitting sends a structured review request into Delivery Help. It does not
+                    cancel the delivery, start a return, approve a fee, issue a refund, change the
+                    payer or authorize a new charge.
+                  </Text>
+
+                  {error ? (
+                    <Alert tone="danger" title="Request not sent">
+                      {error}
+                    </Alert>
+                  ) : null}
+                  {sent ? (
+                    <Alert tone="success" title="Request sent for review">
+                      Couranr has the request. The delivery has not changed unless Couranr confirms
+                      an approved action separately.
+                    </Alert>
+                  ) : null}
+
+                  <Button type="submit" disabled={sending}>
+                    {sending ? "Sending…" : policy.submitLabel}
+                  </Button>
+                </Stack>
+              </form>
+            ) : (
+              <Text muted size="sm">
+                A new cancellation or return request is not opened from this stage. Use the message
+                form below if the recorded outcome needs Couranr review.
+              </Text>
+            )}
+          </Stack>
+        )}
+      </Card>
+    </div>
   );
 }

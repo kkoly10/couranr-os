@@ -1,4 +1,4 @@
-import { ScreenPlaceholder } from "@/components/couranr/shell/parts";
+import { OperationsPaymentsDashboard } from "@/components/couranr/finance/OperationsPaymentsDashboard";
 import { PageHeader } from "@/components/couranr/shell/parts";
 
 export const metadata = { title: "Payments and reconciliation — Couranr" };
@@ -6,12 +6,11 @@ export const metadata = { title: "Payments and reconciliation — Couranr" };
 export default function Page() {
   return (
     <>
-      <PageHeader title="Payments and reconciliation" />
-      <ScreenPlaceholder
-        screenId="OPS-009"
-        name="Payments and reconciliation"
-        purpose="Monitor authorizations, captures, refunds, Stripe reconciliation, settlements, ledger balance, and alerts."
+      <PageHeader
+        title="Payments and reconciliation"
+        description="Authorizations, captures, refunds, governed receivables, and the immutable Couranr ledger."
       />
+      <OperationsPaymentsDashboard />
     </>
   );
 }

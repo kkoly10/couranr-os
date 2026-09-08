@@ -1641,8 +1641,11 @@
 /* `.cr-mkt-slot` was the dashed "Photography pending" placeholder. Its only
    user was PUB-001 `category-breadth`, which the 2026-08-28 accepted set
    closed, so the rules are gone rather than left to read as a live device.
-   `product-proof` keeps its own separate pending tile
-   (`.cr-mkt-proof__artifact-slot`); that region is frozen for this batch. */
+   `.cr-mkt-proof__artifact-slot` was the SECOND such placeholder — the literal
+   words "image pending" in `product-proof` — and it outlived this note by a
+   batch. The 2026-09-08 proof photographs closed it, so it is gone too and
+   `.cr-mkt-proof__artifact-photo` renders in its place. No pending tile
+   remains on PUB-001. */
 
 /* ── the accepted 2026-08-28 category-breadth mosaic ─────────────────────── */
 
@@ -2817,16 +2820,29 @@
   font-size: var(--couranr-text-xs);
   color: var(--couranr-text-muted);
 }
-/* Visibly unfinished, like the section-3 slot — a placeholder that looks
-   designed is a placeholder that ships. */
-.cr-mkt-proof__artifact-slot {
-  margin-top: var(--couranr-space-2);
-  padding: var(--couranr-space-3);
-  border: 1px dashed var(--couranr-border-strong);
+/* The artifact photograph. Replaced `.cr-mkt-proof__artifact-slot`, the dashed
+   "image pending" placeholder, on owner instruction 2026-09-08 — the rule goes
+   with the element rather than being left behind, because a class that outlives
+   its markup is how `.cr-mkt-eyebrow` reached four screens with no mock.
+
+   ORDER-FIRST so the picture sits above the label without reordering the DOM:
+   the label must precede the detail for a screen reader, and the photograph is
+   decorative-adjacent, so it is placed visually rather than structurally.
+
+   `aspect-ratio` with `object-fit: cover` rather than a fixed height: the box is
+   reserved before the image decodes, which is what keeps the four-across row
+   from reflowing, and the intrinsic width/height on the element itself is the
+   belt to this braces. */
+.cr-mkt-proof__artifact-photo {
+  order: -1;
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
   border-radius: var(--couranr-radius-sm);
-  text-align: center;
-  font-size: var(--couranr-text-xs);
-  color: var(--couranr-text-muted);
+  margin-bottom: var(--couranr-space-2);
+  background: var(--couranr-surface-sunken);
 }
 
 /* ═════════════════════════════════════════════════════════════════════════
@@ -2912,6 +2928,12 @@
    A wrapped chip set, not an eleven-cell card grid: the claim is breadth, and
    eleven equal-weight cards make each category look like a product tier. This
    is the ONE grid-dominant section the page is allowed. */
+/* PUB-009's text-only category grid. STILL LIVE — `/businesses` renders it,
+   which is why it survives PUB-001 moving to an image-based system: r8 records
+   that PUB-009's §27.1 table does NOT move, so that page is still a
+   `grid-dominant`, not-`image-led` section and still needs these rules. Deleting
+   them as "the old category grid" would have unstyled a second public page with
+   nothing failing. */
 .cr-mkt-categories {
   list-style: none;
   margin: 0;
@@ -2940,6 +2962,125 @@
 
 @media (min-width: 640px) { .cr-mkt-categories { grid-template-columns: repeat(2, 1fr); } }
 @media (min-width: 900px) { .cr-mkt-categories { grid-template-columns: repeat(3, 1fr); } }
+
+/* ── PUB-001 section 9, the image-based category system ───────────────────
+   §27 Section 9 sanctions either "selective category grid" or "image-based
+   category system". This is the second, adopted on owner instruction
+   2026-09-08 once the tenth category photograph landed. It is a SECOND device
+   beside `.cr-mkt-categories` above, not a replacement for it: PUB-009 still
+   renders the text-only grid and r8 records that its §27.1 table does not
+   move.
+
+   TWO LAYOUTS, one grid. At 640px and up the card is vertical — 4:3
+   photograph, then label. Below it the card is a horizontal media row with a
+   1:1 crop at 128px, which is the shape that survives a 375px viewport: ten
+   stacked 4:3 cards is roughly 2,600px of scroll for a list the reader wants
+   to skim. */
+.cr-mkt-catgrid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--couranr-space-3);
+  grid-template-columns: 1fr;
+  /* The section is centred (`cr-mkt-section--centred`), and centred text
+     inside a media card puts the label away from its own photograph. */
+  text-align: left;
+}
+.cr-mkt-catgrid__item {
+  display: grid;
+  /* MOBILE: image column then text column, both rows of one card. */
+  grid-template-columns: 128px 1fr;
+  /* `stretch`, NOT `center`. With `center` the image cell collapses to the
+     image's own content height and the card measured 98px tall with a 128x96
+     picture — the 4:3 ratio leaking into a slot that is supposed to be square.
+     Stretching gives `height: 100%` a real row to resolve against. */
+  align-items: stretch;
+  gap: var(--couranr-space-4);
+  border: 1px solid var(--couranr-border);
+  border-radius: var(--couranr-radius-md);
+  background: var(--couranr-surface);
+  overflow: hidden;
+}
+.cr-mkt-catgrid__photo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* MOBILE is the 1:1 crop, so the box is square and 128px wide — a 128px
+     card, which is the size at which a trade is still readable. The
+     `aspect-ratio` is what makes the row square rather than letting the
+     image's own ratio set it. */
+  aspect-ratio: 1 / 1;
+  /* The photographs are cropped about a focal point by
+     scripts/buildMarketingImages.mjs, so `cover` here is finishing a crop that
+     was already art-directed, not choosing one. */
+  object-fit: cover;
+  object-position: center;
+  background: var(--couranr-surface-sunken);
+}
+.cr-mkt-catgrid__label {
+  align-self: center;
+  padding-block: var(--couranr-space-3);
+  padding-inline-end: var(--couranr-space-4);
+  font-size: var(--couranr-text-sm);
+  font-weight: var(--couranr-weight-medium);
+  line-height: var(--couranr-leading-tight);
+  color: var(--couranr-text);
+  /* Four of the ten labels are four words long. Without this they break to
+     three lines in a 2-column card at 768 and the row heights stop matching. */
+  text-wrap: balance;
+}
+
+/* The general fallback spans every column and carries no photograph.
+   registry.ts calls it "a real category rather than a blank", so it is marked
+   as a choice rather than styled as the leftover at the end of the list. */
+.cr-mkt-catgrid__item--general {
+  grid-column: 1 / -1;
+  grid-template-columns: 1fr;
+  gap: var(--couranr-space-1);
+  padding: var(--couranr-space-4);
+  border-color: var(--couranr-gold);
+  background: var(--couranr-surface-sunken);
+}
+.cr-mkt-catgrid__eyebrow {
+  font-size: var(--couranr-text-xs);
+  font-weight: var(--couranr-weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--couranr-text-muted);
+}
+.cr-mkt-catgrid__item--general .cr-mkt-catgrid__label {
+  padding-inline-end: 0;
+  font-size: var(--couranr-text-base);
+}
+.cr-mkt-catgrid__note {
+  font-size: var(--couranr-text-sm);
+  line-height: var(--couranr-leading-normal);
+  color: var(--couranr-text-muted);
+}
+
+@media (min-width: 640px) {
+  .cr-mkt-catgrid { grid-template-columns: repeat(2, 1fr); }
+  /* VERTICAL from here up: photograph on its own row, label beneath. */
+  .cr-mkt-catgrid__item {
+    grid-template-columns: 1fr;
+    align-items: start;
+    gap: 0;
+    /* The label sits in the remaining space, so equal-height cards keep their
+       photographs on one baseline whatever the label wraps to. */
+    align-content: start;
+  }
+  .cr-mkt-catgrid__photo { aspect-ratio: 4 / 3; height: auto; }
+  .cr-mkt-catgrid__label { align-self: start; padding: var(--couranr-space-4); }
+  .cr-mkt-catgrid__item--general {
+    /* It keeps its own padding and must not inherit the label's. */
+    gap: var(--couranr-space-1);
+  }
+}
+
+@media (min-width: 900px) {
+  .cr-mkt-catgrid { grid-template-columns: repeat(3, 1fr); }
+}
 
 /* Gate A / D-3 — the coverage assurances beside the corridor map. */
 .cr-mkt-assurances {
@@ -3979,17 +4120,40 @@
 
 /* ── PUB-002 /sign-in ────────────────────────────────────────────────────── */
 
+/* THE SPLIT IS THE PAGE, not a card on it.
+
+   The canonical artboard for this screen
+   (E3473C54-A4FF-41AD-BFF8-191C4F0F28AF.png, 1448x1086, `visual_authority:
+   canonical` in VISUAL_AUTHORITY_REGISTRY.json) is a full-bleed two-column
+   composition that runs to all four edges: navy story on the left, form on the
+   right, nothing of a page behind them. What shipped instead was a 74rem card
+   with a fixed 40rem floor, centred in the shell's content column, under a
+   marketing header. Measured at 1440x900 before this change: the split ran
+   97 -> 737 and stopped 163px above the fold, so the screen read as a small
+   panel floating on cream.
+
+   Two changes get it back to the artboard, and the second is what lets the
+   first stay this simple:
+
+   1. A VIEWPORT floor instead of a content floor. `svh` follows `vh` for
+      mobile, where `vh` counts the collapsible URL bar and would push the
+      fold off-screen; the `vh` declaration is the fallback for anything that
+      does not know `svh` and must stay first.
+
+   2. NO PUBLIC CHROME above it. `(auth-public)/layout.tsx` renders the
+      `<main>` landmark and nothing else — no topbar to subtract, no
+      `.cr-container` to escape with `margin-inline: calc(50% - 50vw)`, and no
+      `.cr-shell__content` pad to cancel. `100vh` is the whole page here.
+
+   The border, radius and shadow went with the card. A 1px border on a
+   full-bleed element paints a hairline down the viewport edges and a corner
+   radius has nothing to round against. */
 .cr-auth-split {
   display: grid;
-  width: 100%;
-  max-width: 74rem;
-  min-height: 40rem;
-  margin-inline: auto;
+  min-height: 100vh;
+  min-height: 100svh;
   overflow: hidden;
-  border: 1px solid var(--couranr-border);
-  border-radius: var(--couranr-radius-lg);
   background: var(--couranr-surface);
-  box-shadow: var(--couranr-shadow-md);
 }
 
 .cr-auth-story {
@@ -4016,10 +4180,31 @@
     linear-gradient(90deg, rgb(13 21 37 / 0.72), rgb(13 21 37 / 0.16));
 }
 
+/* `margin-block-start: auto` rather than `align-self: end`, because the panel
+   is a COLUMN now (it has the wordmark above this) and `align-self` addresses
+   the cross axis — in a column that is the horizontal one, which would have
+   right-aligned the copy instead of dropping it to the foot. An auto start
+   margin pushes it down whatever else the panel holds. */
 .cr-auth-story__content {
-  align-self: end;
+  margin-block-start: auto;
   width: 100%;
   padding: clamp(var(--couranr-space-8), 5vw, var(--couranr-space-12));
+}
+
+/* The reverse mark on the navy panel — the artboard's placement, and the only
+   mark shown at this width. Matches `__content`'s inline padding so the two
+   share an edge; no bottom padding, since the photograph below it is the
+   point. */
+.cr-auth-story__mark {
+  /* `align-self` and not the default stretch. As a column flex item this link
+     would otherwise fill the panel's full width — measured 778px at 1440 —
+     giving the photograph a 778x90 invisible hit area that navigates to `/`
+     when someone clicks the top of the image. Shrink-to-fit keeps the target
+     the size of the mark. `flex-start` rather than `start` because Safari
+     shipped the physical keyword years before the logical one. */
+  align-self: flex-start;
+  padding: clamp(var(--couranr-space-8), 5vw, var(--couranr-space-12));
+  padding-block-end: 0;
 }
 
 .cr-auth-story__eyebrow,
@@ -4091,6 +4276,13 @@
   width: min(100%, 29rem);
 }
 
+/* Below 900px the story panel is hidden and this is the only mark on the
+   screen; above it the navy panel carries the reverse one. It sits inside
+   `__inner` rather than being pinned to the panel's top corner so that hiding
+   it cannot change how the form is centred — `.cr-auth-panel` keeps exactly
+   one grid child at every width. */
+.cr-auth-panel__mark { justify-self: start; }
+
 .cr-auth-panel__intro { display: grid; gap: var(--couranr-space-2); }
 .cr-auth-panel__eyebrow { color: var(--couranr-text-muted); }
 
@@ -4124,15 +4316,11 @@
 
 @media (min-width: 900px) {
   .cr-auth-split { grid-template-columns: minmax(0, 1.08fr) minmax(25rem, 0.92fr); }
-  .cr-auth-story { display: flex; }
+  .cr-auth-story { display: flex; flex-direction: column; }
+  .cr-auth-panel__mark { display: none; }
 }
 
 @media (max-width: 639px) {
-  .cr-auth-split {
-    min-height: auto;
-    border-radius: var(--couranr-radius-md);
-    box-shadow: var(--couranr-shadow-sm);
-  }
   .cr-auth-panel { padding: var(--couranr-space-6) var(--couranr-space-5); }
   .cr-auth-panel__inner { gap: var(--couranr-space-6); }
 }

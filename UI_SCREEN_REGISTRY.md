@@ -99,7 +99,7 @@
 |---|---|---|---|---|---|---|
 | DRV-001 | Driver dashboard | `/driver` | Core | 7 | Mobile primary | `canonical-mvp-images/driver/DRV-001_driver-dashboard.png` |
 | DRV-002 | Assigned delivery detail | `/driver/deliveries/[id]` | Core | 7–8 | Mobile primary | `canonical-mvp-images/driver/DRV-002_assigned-delivery-detail.png` |
-| DRV-003 | Pickup PIN and proof | `/driver/deliveries/[id]?step=pickup-proof` | Core | 7 | Mobile primary | `canonical-mvp-images/driver/DRV-003_pickup-pin-and-proof.png` |
+| DRV-003 | Pickup verification and proof | `/driver/deliveries/[id]?step=pickup-proof` | Core | 7 | Mobile primary | `canonical-mvp-images/driver/DRV-003_pickup-pin-and-proof.png` |
 | DRV-004 | Package discrepancy | `/driver/deliveries/[id]?step=discrepancy` | Core | 7 | Mobile primary | `canonical-mvp-images/driver/DRV-004_package-discrepancy.png` |
 | DRV-005 | Driving Mode | `/driver/deliveries/[id]?mode=driving` | Core | 7–9 | Mobile primary | `canonical-mvp-images/driver/DRV-005_driving-mode.png` |
 | DRV-006 | Drop-off proof | `/driver/deliveries/[id]?step=delivery-proof` | Core | 7 | Mobile primary | `canonical-mvp-images/driver/DRV-006_drop-off-proof.png` |
@@ -188,11 +188,11 @@
 
 - **Route/state:** `/send, /estimate and /request/[merchantSlug]`
 - **Tier / phase:** Core / Phase 5–6
-- **Purpose:** Capture a delivery estimate or a merchant-branded customer request without requiring an account.
-- **Allowed actions:** Enter order reference, destination, recipient, package, timing, payer preference; submit to merchant validation when merchant-hosted.
+- **Purpose:** Capture a direct-consumer or merchant-hosted delivery request, including the sender's expected pickup identity, without requiring an account.
+- **Allowed actions:** Enter pickup/destination, recipient/contact, item description, package count when known, timing/payer details; submit; merchant validates hosted pickup expectations before pricing.
 - **Required states:** Draft; address validation; merchant confirmation pending; quote unavailable; review required; submitted.
 - **Authoritative source:** Spec §§6–7, 16
-- **Mandatory correction/constraint:** The merchant must validate customer-initiated merchandise details before payment. Do not include product checkout or merchandise payment.
+- **Mandatory correction/constraint:** Hosted merchandise details and expected pickup must be validated by the host merchant before payment. Direct Consumer expected pickup belongs to the guest's own request. Do not include product checkout or merchandise payment.
 - **Canonical visual:** `canonical-mvp-images/public/PUB-004_delivery-estimate-and-hosted-request.png`
 
 #### PUB-005 — Secure delivery payment
@@ -344,22 +344,22 @@
 
 - **Route/state:** `/app/business/deliveries/new`
 - **Tier / phase:** Core / Phase 5
-- **Purpose:** Turn merchant text, pasted orders, presets, or manual entry into an editable structured delivery draft.
-- **Allowed actions:** Describe/paste; apply preset; confirm extracted fields; answer one clarification; choose payer and timing; continue to review.
+- **Purpose:** Turn merchant text, pasted orders, presets, or manual entry into an editable structured delivery draft and a concise expected-pickup manifest for the assigned driver.
+- **Allowed actions:** Describe/paste; apply preset; confirm extracted fields; confirm package count/reference/handling when known; choose payer and timing; continue to review.
 - **Required states:** Blank; parsing; high/medium/low confidence; clarification; review trigger; AI unavailable/manual fallback.
 - **Authoritative source:** Spec §6, AI spec §Smart Intake
-- **Mandatory correction/constraint:** AI never prices, confirms, selects final vehicle, or invents critical fields.
+- **Mandatory correction/constraint:** AI never prices, confirms, selects final vehicle, or invents critical fields. New deliveries require a sender-authored physical pickup description; package count may remain unknown.
 - **Canonical visual:** `canonical-mvp-images/merchant/MER-005_create-delivery-with-smart-intake.png`
 
 #### MER-006 — Delivery review and quote
 
 - **Route/state:** `/app/business/deliveries/new?step=review`
 - **Tier / phase:** Core / Phase 6
-- **Purpose:** Review normalized delivery details, deterministic quote, payer, policy flags, and customer-payment link before submission.
+- **Purpose:** Review normalized delivery details, expected pickup, deterministic quote, payer, policy flags, and customer-payment handoff before submission.
 - **Allowed actions:** Edit details; accept quote; choose merchant/customer payer; authorize or send payment link; submit for Couranr review.
 - **Required states:** Quote valid; review required; payment pending; authorized; requote required; validation error.
 - **Authoritative source:** Spec §§4, 7, 10
-- **Mandatory correction/constraint:** Use locked pricing. No product sale amount. No silent price change.
+- **Mandatory correction/constraint:** Use locked pricing. No product sale amount. No silent price change. Expected pickup is frozen separately from commercial quote/version authority.
 - **Canonical visual:** `canonical-mvp-images/merchant/MER-006_delivery-review-and-quote.png`
 
 #### MER-007 — Delivery detail
@@ -496,26 +496,26 @@
 - **Mandatory correction/constraint:** Only assigned driver can access. Show minimum necessary recipient and merchant data.
 - **Canonical visual:** `canonical-mvp-images/driver/DRV-002_assigned-delivery-detail.png`
 
-#### DRV-003 — Pickup PIN and proof
+#### DRV-003 — Pickup verification and proof
 
 - **Route/state:** `/driver/deliveries/[id]?step=pickup-proof`
 - **Tier / phase:** Core / Phase 7
-- **Purpose:** Verify merchant handoff, package count, condition, and actual vehicle before custody.
-- **Allowed actions:** Enter pickup PIN; capture shipment/condition photos; confirm count; record staff identity.
-- **Required states:** Pending; invalid PIN; discrepancy; offline saved; verified.
-- **Authoritative source:** Spec §11
-- **Mandatory correction/constraint:** Large/unusual shipment asks dimensions, securement, loading participants/equipment, and existing damage.
+- **Purpose:** Show the frozen expected pickup, verify the sender-held pickup credential, record one pickup photo/location, and confirm custody without re-entering order facts.
+- **Allowed actions:** Scan pickup QR or enter six-digit fallback; take pickup photo; capture securement photo only for server-derived large/unusual loads; report discrepancy; confirm pickup.
+- **Required states:** Pending verification; QR fallback; invalid/expired/locked code; photo pending/recorded; discrepancy; verified.
+- **Authoritative source:** PRF-002; Spec §11 amended by root decision registry
+- **Mandatory correction/constraint:** Only assigned work. Driver does not re-enter expected package count, staff identity, assigned vehicle, or routine condition/loading prose. Large/unusual adds securement photo; mismatch opens DRV-004.
 - **Canonical visual:** `canonical-mvp-images/driver/DRV-003_pickup-pin-and-proof.png`
 
 #### DRV-004 — Package discrepancy
 
 - **Route/state:** `/driver/deliveries/[id]?step=discrepancy`
 - **Tier / phase:** Core / Phase 7
-- **Purpose:** Pause pickup and collect evidence when the package differs materially from the request.
-- **Allowed actions:** Choose reason; capture photos; add notes; submit to Operations; message support.
+- **Purpose:** Pause pickup and preserve expected-versus-observed evidence when the physical pickup differs materially from Couranr's frozen sender expectation.
+- **Allowed actions:** Choose reason; capture exception evidence when relevant; add notes; submit to Operations; message support.
 - **Required states:** Draft; awaiting Couranr review; requote; safe to continue; cancelled.
 - **Authoritative source:** Spec §§6, 11
-- **Mandatory correction/constraint:** Driver cannot approve price, vehicle change, or unsafe continuation.
+- **Mandatory correction/constraint:** Driver observation never overwrites sender expectation and cannot approve price, vehicle change, or unsafe continuation.
 - **Canonical visual:** `canonical-mvp-images/driver/DRV-004_package-discrepancy.png`
 
 #### DRV-005 — Driving Mode

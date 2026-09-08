@@ -133,6 +133,8 @@ describe("server-only modules are unreachable from client code", () => {
       // bundle reaching it would ship the code that turns a URL into authority,
       // and invite a client-side "verify this token" that skips the database.
       "lib/couranr/conversations/help.ts",
+      "lib/couranr/conversations/helpResolution.ts",
+      "lib/couranr/conversations/helpStatus.ts",
       // Holds the service-role client and every dispatch command. The driver
       // projection is built here, so a bundle reaching this module would put
       // the unsanitized delivery row within reach of a browser.
@@ -160,11 +162,25 @@ describe("server-only modules are unreachable from client code", () => {
       // Builds canonical proof object paths and holds the bucket name. Paths
       // are the part of a private object that leaks furthest.
       "lib/couranr/driver/proofPaths.ts",
+      // The one minter of a merchant send address. Holds the service-role
+      // client and reads auth.users through the admin API, so it sees every
+      // member's email — exactly the projection a browser bundle must never
+      // carry. Alphabetically before send.ts, which it imports.
+      "lib/couranr/email/recipients.ts",
+      // Holds RESEND_API_KEY and puts it in an Authorization header. The
+      // templates beside it are pure renderers and stay client-safe; only the
+      // sender touches the credential, which is why the send lives in its own
+      // module rather than in the barrel the templates export through.
+      "lib/couranr/email/send.ts",
+      // P6-004. Cross-tenant financial reconciliation uses service_role and
+      // reads the private ledger through the one public service-role RPC.
+      "lib/couranr/finance/ledger.ts",
       // Holds the service-role client and the Stripe secret key.
       // Batch 3 §C. Composes cancellation with the governed money recovery —
       // release for holds, CAN-001 retention refunds for captured money.
       "lib/couranr/fulfillment/cancellation.ts",
       "lib/couranr/fulfillment/commands.ts",
+      "lib/couranr/fulfillment/returns.ts",
       // PUB-004 hosted request authority: service-role reads, hash-only hosted
       // session credential handling, merchant validation and provider-backed
       // canonical quote composition. Browser components reach it only through
@@ -190,6 +206,9 @@ describe("server-only modules are unreachable from client code", () => {
       "lib/couranr/payments/commands.ts",
       "lib/couranr/payments/stripe.ts",
       "lib/couranr/payments/tokens.ts",
+      // Pickup-manifest writes hold the service-role client and enforce the
+      // sender/merchant/Operations authority boundary before a delivery freezes.
+      "lib/couranr/pickup/manifest.ts",
       // Holds the service-role client and every preset write. A preset shapes
       // what every future delivery is prefilled with, so a browser reaching
       // this would let anyone rewrite the defaults for a whole business.
@@ -272,6 +291,8 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/consumer/estimate/route.ts",
       "app/api/couranr/consumer/interpret/route.ts",
       "app/api/couranr/consumer/pay/route.ts",
+      "app/api/couranr/consumer/pickup-code/route.ts",
+      "app/api/couranr/consumer/pickup-manifest/route.ts",
       "app/api/couranr/consumer/places/route.ts",
       "app/api/couranr/consumer/readiness/route.ts",
       "app/api/couranr/consumer/reconcile-payment/route.ts",
@@ -287,10 +308,12 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/delivery-requests/[id]/estimate/route.ts",
       "app/api/couranr/delivery-requests/[id]/fulfillment/route.ts",
       "app/api/couranr/delivery-requests/[id]/payment-link/route.ts",
+      "app/api/couranr/delivery-requests/[id]/pickup-manifest/route.ts",
       "app/api/couranr/delivery-requests/[id]/readiness/route.ts",
       "app/api/couranr/delivery-requests/[id]/reconcile-payment/route.ts",
       "app/api/couranr/delivery-requests/[id]/route.ts",
       "app/api/couranr/delivery-requests/[id]/submit/route.ts",
+      "app/api/couranr/delivery-requests/[id]/tracking-link/route.ts",
       "app/api/couranr/delivery-requests/[id]/validate-hosted/route.ts",
       "app/api/couranr/delivery-requests/route.ts",
       "app/api/couranr/driver/assignment/route.ts",
@@ -300,17 +323,22 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/driver/deliveries/[id]/complete-direct-handoff/route.ts",
       "app/api/couranr/driver/deliveries/[id]/complete-leave-at-door/route.ts",
       "app/api/couranr/driver/deliveries/[id]/complete-pickup/route.ts",
+      "app/api/couranr/driver/deliveries/[id]/complete-return/route.ts",
       "app/api/couranr/driver/deliveries/[id]/complete-signature/route.ts",
       "app/api/couranr/driver/deliveries/[id]/discrepancy/route.ts",
+      "app/api/couranr/driver/deliveries/[id]/proof-sync-failure/route.ts",
       "app/api/couranr/driver/deliveries/[id]/proof-upload/route.ts",
       "app/api/couranr/driver/deliveries/[id]/proof/route.ts",
       "app/api/couranr/driver/deliveries/[id]/start-dropoff-route/route.ts",
       "app/api/couranr/driver/deliveries/[id]/start-pickup-route/route.ts",
+      "app/api/couranr/driver/deliveries/[id]/start-return/route.ts",
       "app/api/couranr/driver/deliveries/[id]/verify-pickup-code/route.ts",
       "app/api/couranr/driver/deliveries/[id]/verify-recipient-code/route.ts",
+      "app/api/couranr/driver/deliveries/[id]/verify-return-code/route.ts",
       "app/api/couranr/driver/profile/route.ts",
       "app/api/couranr/driver/proof/[proofId]/url/route.ts",
       "app/api/couranr/driver/proof/finalize/route.ts",
+      "app/api/couranr/help/[token]/resolution-request/route.ts",
       "app/api/couranr/help/[token]/route.ts",
       "app/api/couranr/hosted/[merchantSlug]/places/route.ts",
       "app/api/couranr/hosted/[merchantSlug]/request/route.ts",
@@ -332,6 +360,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/merchant/deliveries/[id]/pickup-code/route.ts",
       "app/api/couranr/merchant/deliveries/[id]/proof/route.ts",
       "app/api/couranr/merchant/deliveries/[id]/recipient-code/route.ts",
+      "app/api/couranr/merchant/deliveries/[id]/return-code/route.ts",
       "app/api/couranr/merchant/places/route.ts",
       "app/api/couranr/merchant/presets/route.ts",
       "app/api/couranr/merchant/website-tools/route.ts",
@@ -343,6 +372,8 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/operations/deliveries/[id]/help-link/route.ts",
       "app/api/couranr/operations/deliveries/[id]/pickup-code/route.ts",
       "app/api/couranr/operations/deliveries/[id]/recipient-code/route.ts",
+      "app/api/couranr/operations/deliveries/[id]/return-code/route.ts",
+      "app/api/couranr/operations/deliveries/[id]/return/route.ts",
       "app/api/couranr/operations/deliveries/[id]/unassign/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/accept-as-quoted/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/begin-review/route.ts",
@@ -350,6 +381,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/operations/delivery-requests/[id]/capture/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/decline/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/estimate/route.ts",
+      "app/api/couranr/operations/delivery-requests/[id]/pickup-manifest/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/promotional-credit-delivery/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/reconcile-capture/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/reconcile-refund/route.ts",
@@ -362,6 +394,9 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/operations/discrepancies/[id]/safe-to-continue/route.ts",
       "app/api/couranr/operations/drivers/route.ts",
       "app/api/couranr/operations/inbox/route.ts",
+      "app/api/couranr/operations/incidents/[id]/route.ts",
+      "app/api/couranr/operations/incidents/route.ts",
+      "app/api/couranr/operations/payments/overview/route.ts",
       "app/api/couranr/operations/proof/[proofId]/url/route.ts",
       "app/api/couranr/operations/queue/route.ts",
       "app/api/couranr/operations/vehicles/[id]/route.ts",
@@ -413,6 +448,14 @@ describe("canonical server routes do not import the browser client", () => {
     ],
     [
       "app/api/couranr/consumer/pay/route.ts",
+      { shape: /redeemGuestSessionToken\(/, redeem: /redeemGuestSessionToken\(/ },
+    ],
+    [
+      "app/api/couranr/consumer/pickup-code/route.ts",
+      { shape: /redeemGuestSessionToken\(/, redeem: /redeemGuestSessionToken\(/ },
+    ],
+    [
+      "app/api/couranr/consumer/pickup-manifest/route.ts",
       { shape: /redeemGuestSessionToken\(/, redeem: /redeemGuestSessionToken\(/ },
     ],
     [
@@ -487,6 +530,12 @@ describe("canonical server routes do not import the browser client", () => {
       // checked in the route before any database work, exactly as the tracking
       // route does, so junk URLs cannot be used to probe timing.
       "app/api/couranr/help/[token]/route.ts",
+      { shape: /isWellFormedHelpToken\(/, redeem: /redeemHelpToken\(/ },
+    ],
+    [
+      // CUS-002 is the same one-delivery Delivery Help credential, not a new
+      // public authorization class. It may only append a reviewed help message.
+      "app/api/couranr/help/[token]/resolution-request/route.ts",
       { shape: /isWellFormedHelpToken\(/, redeem: /redeemHelpToken\(/ },
     ],
   ]);

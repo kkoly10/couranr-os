@@ -13,11 +13,14 @@ import {
   VisuallyHidden,
 } from "@/components/couranr/primitives";
 import { isApiFailure, withReference } from "@/components/couranr/requests/client";
+import { PickupCredentialDisplay } from "./PickupCredentialDisplay";
 import {
   issueMerchantPickupCode,
   issueMerchantRecipientCode,
   issueOperationsPickupCode,
   issueOperationsRecipientCode,
+  issueMerchantReturnCode,
+  issueOperationsReturnCode,
   type ApiResult,
   type IssuedHandoffCodeView,
 } from "./client";
@@ -43,7 +46,7 @@ import {
  * showing it would invite "we're on code 4" as a status a person acts on.
  */
 
-export type HandoffCodeKind = "merchant_pickup" | "recipient_dropoff";
+export type HandoffCodeKind = "merchant_pickup" | "recipient_dropoff" | "merchant_return";
 export type HandoffCodeSurface = "merchant" | "operations";
 
 /** Only the three fields this panel shows. The generation is dropped at the boundary. */
@@ -63,17 +66,19 @@ type Copy = {
   issueLabel: string;
   reissueLabel: string;
   accent: string;
+  shownOnceFollowup: string;
 };
 
 const COPY: Record<HandoffCodeKind, Copy> = {
   merchant_pickup: {
-    title: "Pickup code",
-    lead: "Pickup code — give this to the driver at collection.",
-    handTo: "Give this to the driver at collection.",
-    audience: "For the driver",
-    issueLabel: "Issue pickup code",
-    reissueLabel: "Issue a new pickup code",
+    title: "Pickup verification",
+    lead: "Show this QR or six-digit fallback to the driver at collection.",
+    handTo: "Present this to the driver at collection.",
+    audience: "For pickup",
+    issueLabel: "Show pickup QR & code",
+    reissueLabel: "Create a new pickup code",
     accent: "var(--couranr-route-blue)",
+    shownOnceFollowup: "The driver should get it from you at pickup, not in advance.",
   },
   recipient_dropoff: {
     title: "Recipient code",
@@ -83,6 +88,17 @@ const COPY: Record<HandoffCodeKind, Copy> = {
     issueLabel: "Issue recipient code",
     reissueLabel: "Issue a new recipient code",
     accent: "var(--couranr-gold)",
+    shownOnceFollowup: "The recipient should receive it through the delivery handoff, not from the driver.",
+  },
+  merchant_return: {
+    title: "Return code",
+    lead: "Sender return code — use this only when Couranr has required a return.",
+    handTo: "Give this to the driver only when the shipment is physically back with you.",
+    audience: "For the return",
+    issueLabel: "Issue return code",
+    reissueLabel: "Issue a new return code",
+    accent: "var(--couranr-gold)",
+    shownOnceFollowup: "The driver should get it from the sender only when the shipment is physically returned.",
   },
 };
 
@@ -99,9 +115,13 @@ function issuerFor(
 ): (deliveryId: string) => Promise<ApiResult<{ handoffCode: IssuedHandoffCodeView }>> {
   switch (surface) {
     case "merchant":
-      return kind === "merchant_pickup" ? issueMerchantPickupCode : issueMerchantRecipientCode;
+      if (kind === "merchant_pickup") return issueMerchantPickupCode;
+      if (kind === "recipient_dropoff") return issueMerchantRecipientCode;
+      return issueMerchantReturnCode;
     case "operations":
-      return kind === "merchant_pickup" ? issueOperationsPickupCode : issueOperationsRecipientCode;
+      if (kind === "merchant_pickup") return issueOperationsPickupCode;
+      if (kind === "recipient_dropoff") return issueOperationsRecipientCode;
+      return issueOperationsReturnCode;
   }
 }
 
@@ -213,39 +233,41 @@ export function HandoffCodePanel({
 
         {shown ? (
           <Stack gap={3}>
-            <div
-              style={{
-                borderLeft: `4px solid ${copy.accent}`,
-                background: "var(--couranr-surface-sunken)",
-                borderRadius: "var(--couranr-radius-md)",
-                padding: "var(--couranr-space-4)",
-              }}
-            >
-              {/* Repeated beside the digits, not only in the header: the code is
-                  what gets read aloud, and who it belongs to must travel with it. */}
-              <Text size="xs" muted>
-                {copy.handTo}
-              </Text>
+            {kind === "merchant_pickup" ? (
+              <PickupCredentialDisplay
+                deliveryId={deliveryId}
+                code={shown.code}
+              />
+            ) : (
               <div
-                aria-hidden="true"
                 style={{
-                  fontFamily: "var(--couranr-font-mono)",
-                  fontSize: "var(--couranr-text-3xl)",
-                  fontWeight: 700,
-                  letterSpacing: "0.3em",
-                  lineHeight: "var(--couranr-leading-tight)",
-                  marginTop: "var(--couranr-space-2)",
-                  wordBreak: "break-all",
+                  borderLeft: `4px solid ${copy.accent}`,
+                  background: "var(--couranr-surface-sunken)",
+                  borderRadius: "var(--couranr-radius-md)",
+                  padding: "var(--couranr-space-4)",
                 }}
               >
-                {shown.code}
+                <Text size="xs" muted>{copy.handTo}</Text>
+                <div
+                  aria-hidden="true"
+                  style={{
+                    fontFamily: "var(--couranr-font-mono)",
+                    fontSize: "var(--couranr-text-3xl)",
+                    fontWeight: 700,
+                    letterSpacing: "0.3em",
+                    lineHeight: "var(--couranr-leading-tight)",
+                    marginTop: "var(--couranr-space-2)",
+                    wordBreak: "break-all",
+                  }}
+                >
+                  {shown.code}
+                </div>
+                <VisuallyHidden>{`${copy.title}: ${shown.code.split("").join(" ")}`}</VisuallyHidden>
               </div>
-              {/* Read out digit by digit; "472915" is otherwise announced as a number. */}
-              <VisuallyHidden>{`${copy.title}: ${shown.code.split("").join(" ")}`}</VisuallyHidden>
-            </div>
+            )}
 
             <Alert tone="warning" title="Shown once">
-              {shown.warning}
+              {shown.warning} {copy.shownOnceFollowup}
             </Alert>
 
             {replaced ? (
