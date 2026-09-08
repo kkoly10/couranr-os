@@ -33,6 +33,7 @@
     "provision:postgrest": "node scripts/provisionPostgrest.mjs",
     "test:deploy-safety": "node e2e/disposable/deploymentSafety.mjs",
     "test:cus-fragments": "node e2e/disposable/customerHelpFragments.mjs",
+    "test:cus-problem-bookkeeping": "node e2e/disposable/customerProblemBookkeeping.mjs",
     "test:messaging": "node e2e/disposable/authenticatedMessaging.mjs",
     "test:auth-gateway": "node e2e/disposable/authGateway.mjs",
     "test:acceptance": "node e2e/disposable/acceptanceMatrix.mjs",

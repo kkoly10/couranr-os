@@ -135,6 +135,9 @@ describe("server-only modules are unreachable from client code", () => {
       "lib/couranr/conversations/help.ts",
       "lib/couranr/conversations/helpResolution.ts",
       "lib/couranr/conversations/helpStatus.ts",
+      // CUS-004. Holds service-role report/evidence reads, server-owned private
+      // storage paths, signed upload/read URLs and Operations review commands.
+      "lib/couranr/conversations/problemReports.ts",
       // Holds the service-role client and every dispatch command. The driver
       // projection is built here, so a bundle reaching this module would put
       // the unsanitized delivery row within reach of a browser.
@@ -328,6 +331,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/driver/profile/route.ts",
       "app/api/couranr/driver/proof/[proofId]/url/route.ts",
       "app/api/couranr/driver/proof/finalize/route.ts",
+      "app/api/couranr/help/[token]/problem-report/route.ts",
       "app/api/couranr/help/[token]/resolution-request/route.ts",
       "app/api/couranr/help/[token]/route.ts",
       "app/api/couranr/hosted/[merchantSlug]/places/route.ts",
@@ -387,6 +391,8 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/operations/incidents/[id]/route.ts",
       "app/api/couranr/operations/incidents/route.ts",
       "app/api/couranr/operations/payments/overview/route.ts",
+      "app/api/couranr/operations/problem-reports/[id]/route.ts",
+      "app/api/couranr/operations/problem-reports/route.ts",
       "app/api/couranr/operations/proof/[proofId]/url/route.ts",
       "app/api/couranr/operations/queue/route.ts",
       "app/api/couranr/operations/vehicles/[id]/route.ts",
@@ -520,6 +526,12 @@ describe("canonical server routes do not import the browser client", () => {
       // checked in the route before any database work, exactly as the tracking
       // route does, so junk URLs cannot be used to probe timing.
       "app/api/couranr/help/[token]/route.ts",
+      { shape: /isWellFormedHelpToken\(/, redeem: /redeemHelpToken\(/ },
+    ],
+    [
+      // CUS-004 uses the same one-delivery Delivery Help credential. It may
+      // author only the scoped problem-report/evidence substrate.
+      "app/api/couranr/help/[token]/problem-report/route.ts",
       { shape: /isWellFormedHelpToken\(/, redeem: /redeemHelpToken\(/ },
     ],
     [

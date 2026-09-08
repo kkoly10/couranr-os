@@ -44,6 +44,13 @@ const VIEWPORT = {
 
 /** Ledger statuses that mean the screen is BUILT, not stubbed. */
 export const IMPLEMENTED_STATUSES = ["functional_verified", "functional_unverified"];
+export const SCREEN_STATUS_VALUES = [
+  "functional_unverified",
+  "functional_verified",
+  "missing",
+  "partial",
+  "placeholder_only",
+];
 
 /** Minimal RFC4180 reader — the ledger's prose cells contain commas. */
 function readLedger() {
@@ -86,7 +93,14 @@ export function renderScreensModule(src) {
     );
   }
 
-  const statuses = [...new Set([...ledger.values()])].sort();
+  const unknownStatuses=[...new Set([...ledger.values()])]
+    .filter((status)=>!SCREEN_STATUS_VALUES.includes(status));
+  if(unknownStatuses.length){
+    throw new Error(
+      `${SCREEN_LEDGER} contains unsupported implementation status(es): ${unknownStatuses.join(", ")}`
+    );
+  }
+  const statuses = SCREEN_STATUS_VALUES;
   const rows = src.screens.map((s) => {
     const group = GROUP[s.surface];
     const tier = TIER[s.tier];

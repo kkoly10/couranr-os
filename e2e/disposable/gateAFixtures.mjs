@@ -427,7 +427,7 @@ export async function seedCanonicalQuotedRequest(t, opts) {
     p_route_duration_seconds: 600,
     p_route_static_duration_seconds: 600,
     p_route_traffic_delay_seconds: 0,
-    p_distance_source: "google_routes_v2",
+    p_distance_source: o.distanceSource || "google_routes_v2",
     p_serviceability_outcome: "available_for_request",
     p_route_review_reason: null,
     p_quote_status: "estimated",
