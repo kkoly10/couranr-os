@@ -74,6 +74,12 @@ export interface SendOptions {
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
 const IDEMPOTENCY_KEY_MAX = 256;
 
+/* Three seconds. Long enough that a healthy provider never trips it — Resend's
+   own p99 is well inside it — and short enough that 25 sequential sends in one
+   cron invocation cost at most 75s of the platform's function budget in the
+   worst case rather than hanging until the function is killed. */
+const SEND_TIMEOUT_MS = 3000;
+
 /**
  * Deliberately permissive: this is a shape check to catch an empty string, a
  * name that never got substituted, or a template placeholder — NOT an attempt
@@ -233,6 +239,17 @@ export async function sendRenderedEmail(
       method: "POST",
       headers,
       body,
+      /* TIME-BOXED, because this call sits in two places that cannot tolerate an
+         open-ended wait. The automation tick walks up to 25 plans SEQUENTIALLY
+         inside one serverless invocation, so an unbounded send anywhere in that
+         loop starves every plan behind it and risks the whole invocation being
+         killed mid-loop; and on the interactive path an operator is holding a
+         click. `fetch` has no default timeout — without this a hung provider
+         connection blocks until the platform kills the function, which is the
+         one failure mode that takes work down WITH it rather than degrading.
+         An abort lands in the catch below and returns `provider_unreachable`,
+         which is already the honest answer: we do not know whether it sent. */
+      signal: AbortSignal.timeout(SEND_TIMEOUT_MS),
     });
   } catch (err) {
     const correlationId = newCorrelationId();

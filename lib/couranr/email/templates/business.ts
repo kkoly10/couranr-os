@@ -313,7 +313,11 @@ function fmt(amountCents: number, currency: string): string {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
-  return currency === "USD" ? `$${v}` : `${v} ${currency}`;
+  /* Case-INSENSITIVE. Production stores the currency lowercase — verified by
+     query: couranr_quote_versions and couranr_payment_obligations both hold
+     'usd' — so an exact "USD" comparison fell through to the generic branch and
+     rendered every merchant money line as "13.99 usd" instead of "$13.99". */
+  return currency.toUpperCase() === "USD" ? `$${v}` : `${v} ${currency.toUpperCase()}`;
 }
 
 function escapeInline(s: string): string {
