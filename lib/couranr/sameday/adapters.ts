@@ -11,6 +11,7 @@
  * chooses.
  */
 import { BASE_PRICE_CENTS } from "@/lib/couranr/pricing";
+import type { TimingIntent } from "@/lib/couranr/timing/policy";
 import { resolveAdapterMode, type AdapterEnv, type AdapterMode } from "./adapterMode";
 import { createLiveSameDayAdapters } from "./liveAdapters";
 
@@ -62,6 +63,9 @@ export type QuoteReading =
       quoteVersionId: string | null;
       requestId: string;
       expiresAt: string | null;
+      /* ADDITIVE: the server's echo of the timing it priced — the sender's own
+         words, never a browser-picked zone or instant. */
+      timing?: { intent: TimingIntent; requestedPickupLocal: string | null };
     }
   | { state: "manual-review"; note: string }
   | { state: "unavailable"; note: string };
@@ -96,7 +100,10 @@ export type PaymentOutcome =
 export type QuoteInput = {
   pickup: string;
   destination: string;
-  timing: string;
+  /** TMZ-001: ASAP, or a scheduled pickup at an Eastern wall-clock time. */
+  timingIntent: TimingIntent;
+  /** `YYYY-MM-DDTHH:MM` local words when scheduled; the SERVER owns the instant. */
+  requestedPickupLocal?: string | null;
   pickupPlaceId?: string | null;
   dropoffPlaceId?: string | null;
   /** UI field names. The adapter maps `mobile` -> the API/DB key `phone`. */
@@ -208,7 +215,7 @@ const FIXTURE: Omit<SameDayAdapters, "mode"> = {
     if (!input.pickup || !input.destination) {
       return { state: "unavailable", note: "A quote needs both addresses." };
     }
-    if (input.timing === "schedule") {
+    if (input.timingIntent === "scheduled") {
       return { state: "manual-review", note: "Couranr will confirm scheduled trips before pricing." };
     }
     /* A fixture amount, reachable ONLY in fixture mode and never a production

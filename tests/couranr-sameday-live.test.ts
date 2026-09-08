@@ -34,6 +34,8 @@ import {
   createLiveSameDayAdapters,
   isRouteReviewReason,
   quoteReadingFromEstimate,
+  reviewNoteFor,
+  timingFromEstimate,
   type MinimalStorage,
 } from "@/lib/couranr/sameday/liveAdapters";
 import {
@@ -126,7 +128,7 @@ const INTERPRET = "/api/couranr/consumer/interpret";
 const GOOD_QUOTE_INPUT = {
   pickup: "A",
   destination: "B",
-  timing: "asap",
+  timingIntent: "asap" as const,
   pickupPlaceId: "place-a",
   dropoffPlaceId: "place-b",
   contact: { name: "Ada", mobile: "+15715550100", email: "" },
@@ -393,10 +395,37 @@ describe("buildEstimateBody: honest statement or a local refusal", () => {
     if (r.ok) expect((r.body.shipment as Record<string, unknown>).restrictedClass).toBe("unknown");
   });
 
-  it("timing is the funnel's fixed ASAP intent", () => {
-    const r = buildEstimateBody({ ...GOOD_QUOTE_INPUT, timing: "schedule" });
-    expect(r.ok).toBe(true);
-    if (r.ok) expect(r.body.timing).toEqual({ intent: "asap" });
+  it("timing carries the sender's intent: ASAP, or the scheduled Eastern local words", () => {
+    const asap = buildEstimateBody(GOOD_QUOTE_INPUT);
+    expect(asap.ok).toBe(true);
+    if (asap.ok) expect(asap.body.timing).toEqual({ intent: "asap", requestedPickupLocal: null });
+
+    const scheduled = buildEstimateBody({
+      ...GOOD_QUOTE_INPUT,
+      timingIntent: "scheduled",
+      requestedPickupLocal: "2027-03-10T10:30",
+    });
+    expect(scheduled.ok).toBe(true);
+    if (scheduled.ok) {
+      expect(scheduled.body.timing).toEqual({ intent: "scheduled", requestedPickupLocal: "2027-03-10T10:30" });
+      // Only the sender's words travel: no zone suffix, no instant, no offset.
+      expect(JSON.stringify(scheduled.body)).not.toMatch(/requestedDepartureAt|America\/New_York|Z"/);
+    }
+  });
+
+  it("a scheduled pickup without valid local words is a LOCAL refusal — no network call", async () => {
+    for (const bad of [undefined, "", "tomorrow", "2027-03-10T10:30Z", "2027-02-30T10:00"]) {
+      const r = buildEstimateBody({ ...GOOD_QUOTE_INPUT, timingIntent: "scheduled", requestedPickupLocal: bad });
+      expect(r.ok, `local=${String(bad)}`).toBe(false);
+    }
+    const f = fakeFetch({ [S]: SESSION_OK, [ESTIMATE]: () => ({ body: { estimate: ESTIMATED } }) });
+    const q = await live({ fetchImpl: f.impl, storage: null }).quote({
+      ...GOOD_QUOTE_INPUT,
+      timingIntent: "scheduled",
+      requestedPickupLocal: "",
+    });
+    expect(q.state).toBe("unavailable");
+    expect(f.calls).toHaveLength(0);
   });
 });
 
@@ -416,7 +445,7 @@ describe("quote maps quoteStatus, reads the nested `estimate` key", () => {
     // And the request that left carried the mapped body.
     const sent = JSON.parse(String(f.of(ESTIMATE)[0].init?.body));
     expect(sent.contact.phone).toBe("+15715550100");
-    expect(sent.timing).toEqual({ intent: "asap" });
+    expect(sent.timing).toEqual({ intent: "asap", requestedPickupLocal: null });
 
     const manifestCalls = f.of(PICKUP_MANIFEST);
     expect(manifestCalls).toHaveLength(1);
@@ -835,7 +864,7 @@ describe("GUARD: the fixture path is unchanged, and production is live", () => {
   it("the fixture path still answers exactly what it shipped answering", async () => {
     const a = getSameDayAdapters({ nodeEnv: "test" });
     expect(a.mode).toBe("fixture");
-    const q = await a.quote({ pickup: "a", destination: "b", timing: "asap" });
+    const q = await a.quote({ pickup: "a", destination: "b", timingIntent: "asap" });
     expect(q.state).toBe("fixture-available");
     expect(q.state === "fixture-available" && q.totalCents).toBe(BASE_PRICE_CENTS);
     expect((await a.submitRequest()).state).toBe("received-preview");
@@ -901,27 +930,66 @@ describe("SendFlow's structured inputs stay in parity with the governed vocabula
   });
 });
 
-/* -------------------------- live timing truth (review item 5) ------------ */
+/* ------------------- consumer timing parity (TMZ-001) --------------------- */
 
-describe("live consumer timing is ASAP only (review item 5)", () => {
+describe("consumer timing: ASAP or scheduled, Eastern, server-evaluated — business parity", () => {
   const sendFlow = readFileSync("components/couranr/sameday/SendFlow.tsx", "utf8");
 
-  it("live mode renders no timing choice the backend ignores", () => {
-    // The choices list is mode-gated: live gets exactly the ASAP entry, and
-    // the today/schedule radios exist only outside live mode (fixture keeps
-    // them for visual preservation of the shipped design).
-    expect(sendFlow).toMatch(
-      /mode === "live"\s*\?\s*\(\[\["asap", SEND_COPY\.timing_asap\]\] as const\)/
-    );
-    expect(sendFlow).toMatch(/SEND_COPY\.timing_live_note/);
+  it("renders BOTH governed intents and a datetime input for a scheduled pickup, in every mode", () => {
+    expect(sendFlow).toMatch(/\["asap", SEND_COPY\.timing_asap\]/);
+    expect(sendFlow).toMatch(/\["scheduled", SEND_COPY\.timing_schedule\]/);
+    expect(sendFlow).toMatch(/type="datetime-local"/);
+    // 'today' is not a DB intent: ASAP before the cutoff IS today (HRS-001).
+    expect(sendFlow).not.toMatch(/timing_today/);
+    // The old live-only ASAP gate is gone.
+    expect(sendFlow).not.toMatch(/mode === "live"\s*\?\s*\(\[\["asap"/);
   });
 
-  it("the wire stays ASAP regardless — the fixed intent is not a UI courtesy", () => {
-    // Companion to "timing is the funnel's fixed ASAP intent" above: the live
-    // adapter's estimate body pins timing server-honestly whatever the UI
-    // shows.
+  it("the cutoff hint reads HRS-001's governed value, never a restated literal", () => {
+    expect(sendFlow).toMatch(/SAME_DAY_CUTOFF_COPY/);
+    expect(sendFlow).not.toMatch(/4:00 PM/);
+  });
+
+  it("the wire carries the sender's intent and local words only — no zone, no instant", () => {
     const adapters = readFileSync("lib/couranr/sameday/liveAdapters.ts", "utf8");
-    expect(adapters).toMatch(/timing:\s*\{\s*intent:\s*"asap"\s*\}/);
+    expect(adapters).toMatch(/intent:\s*timingIntent/);
+    expect(adapters).toMatch(/requestedPickupLocal:\s*timingIntent === "scheduled" \? requestedPickupLocal : null/);
+    expect(adapters).not.toMatch(/requestedDepartureAt:/);
+  });
+});
+
+describe("timing-aware quote readings", () => {
+  it("echoes the server's scheduled timing on a priced quote", () => {
+    const q = quoteReadingFromEstimate({
+      ...ESTIMATED,
+      timing: { intent: "scheduled", requestedPickupLocal: "2027-03-10T10:30" },
+    });
+    expect(q.state).toBe("live-available");
+    if (q.state === "live-available") {
+      expect(q.timing).toEqual({ intent: "scheduled", requestedPickupLocal: "2027-03-10T10:30" });
+    }
+  });
+
+  it("names the TIMING reason for a review — overnight vs a time Couranr must confirm", () => {
+    expect(reviewNoteFor(["overnight_requires_couranr_confirmation"])).toMatch(/outside standard hours/);
+    expect(reviewNoteFor(["timing_needs_review"])).toMatch(/confirm this pickup time/);
+    expect(reviewNoteFor(["weight_unresolved"])).toMatch(/review this delivery/);
+    const q = quoteReadingFromEstimate({
+      ...ESTIMATED,
+      quoteStatus: "manual_review_required",
+      totalCents: null,
+      reviewReasons: ["overnight_requires_couranr_confirmation"],
+    });
+    expect(q.state === "manual-review" && q.note).toMatch(/outside standard hours/);
+  });
+
+  it("a malformed timing echo is dropped, never invented", () => {
+    expect(timingFromEstimate({ intent: "whenever" })).toBeNull();
+    expect(timingFromEstimate(null)).toBeNull();
+    expect(timingFromEstimate({ intent: "asap", requestedPickupLocal: 5 })).toEqual({
+      intent: "asap",
+      requestedPickupLocal: null,
+    });
   });
 });
 

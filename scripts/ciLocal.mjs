@@ -181,6 +181,7 @@ const STAGES = [
     ["test:auth-gateway", "auth gateway"],
     ["test:cus-fragments", "customer help fragments"],
     ["test:consumer-place-ratelimit", "consumer Places per-session rate limit — cap, window rollover, uniform CR404, service_role-only authority"],
+    ["test:consumer-scheduled-timing", "consumer scheduled timing (TMZ-001 parity) — two-sided instant, mismatch/incomplete refusals, DST-gap claim, ASAP"],
   ].map(([script, why]) => ({
     tier: 3,
     name: script,
@@ -205,6 +206,7 @@ const STAGES = [
         "test:foundation-rollbacks",
         "test:business-routing",
         "test:consumer-place-ratelimit",
+        "test:consumer-scheduled-timing",
       ]);
       if (!postgresOnly.has(script) && !postgrestPresent()) {
         return "postgrest binary is missing — run `npm run provision:postgrest` first";

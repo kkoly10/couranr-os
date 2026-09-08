@@ -154,7 +154,7 @@ describe("6. live is the default set; fixture success is reachable only in a san
   it("test mode resolves the fixture set; quote/submit/payment/search succeed there", async () => {
     const a = getSameDayAdapters({ nodeEnv: "test" });
     expect(a.mode).toBe("fixture");
-    const q = await a.quote({ pickup: "a", destination: "b", timing: "asap" });
+    const q = await a.quote({ pickup: "a", destination: "b", timingIntent: "asap" });
     expect(q.state).toBe("fixture-available");
     expect(q.state === "fixture-available" && q.totalCents).toBe(BASE_PRICE_CENTS);
     expect((await a.submitRequest()).state).toBe("received-preview");
@@ -169,7 +169,7 @@ describe("6. live is the default set; fixture success is reachable only in a san
      that outlives a policy change. */
   it("the fixture example quotes the engine's base fare, not a copy of it", async () => {
     const a = getSameDayAdaptersForMode("fixture");
-    const q = await a.quote({ pickup: "a", destination: "b", timing: "asap" });
+    const q = await a.quote({ pickup: "a", destination: "b", timingIntent: "asap" });
     expect(q.state === "fixture-available" && q.totalCents).toBe(BASE_PRICE_CENTS);
     const src = readFileSync(path.join(ROOT, "lib/couranr/sameday/adapters.ts"), "utf8");
     expect(src).toContain("totalCents: BASE_PRICE_CENTS");

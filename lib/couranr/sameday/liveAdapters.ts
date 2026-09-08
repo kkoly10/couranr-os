@@ -46,6 +46,7 @@ import type {
   SameDayAdapters,
   SubmitOutcome,
 } from "./adapters";
+import { parseOperatingLocal, type TimingIntent } from "@/lib/couranr/timing/policy";
 
 /* ------------------------------------------------------------ constants -- */
 
@@ -79,7 +80,11 @@ const NOTES = {
   descriptionTooLong: "Keep the pickup description to 1,000 characters or fewer.",
   packageCountInvalid: "Package count must be a whole number from 1 to 9,999, or left blank.",
   contactRequired: "Add your mobile number or email on the review step, then check the price.",
+  scheduledTimeRequired: "Choose the date and time for your scheduled pickup.",
   review: "Couranr will review this delivery and confirm the price with you.",
+  // Timing-specific review reasons name WHY, so the sender is not left guessing.
+  overnightReview: "Couranr must confirm a pickup outside standard hours before it can be priced.",
+  timingReview: "Couranr will confirm this pickup time with you before it can be priced.",
   cannotCarry: "Couranr can’t deliver this item.",
   cannotPrice: "Couranr could not price this delivery right now.",
   notPayable: "Payment isn’t open for this delivery yet.",
@@ -216,6 +221,16 @@ export function buildEstimateBody(input: QuoteInput): EstimateBodyResult {
     return { ok: false, note: NOTES.contactRequired };
   }
 
+  // TMZ-001: a scheduled pickup needs the sender's local wall-clock words in
+  // the `YYYY-MM-DDTHH:MM` shape. Checked locally and for free; the SERVER
+  // derives the canonical America/New_York instant and the database re-derives
+  // it — nothing here picks a zone or an instant.
+  const timingIntent: TimingIntent = input.timingIntent === "scheduled" ? "scheduled" : "asap";
+  const requestedPickupLocal = (input.requestedPickupLocal ?? "").trim();
+  if (timingIntent === "scheduled" && !parseOperatingLocal(requestedPickupLocal)) {
+    return { ok: false, note: NOTES.scheduledTimeRequired };
+  }
+
   const description =
     typeof ship?.description === "string" && ship.description.trim() !== ""
       ? ship.description.trim()
@@ -252,8 +267,13 @@ export function buildEstimateBody(input: QuoteInput): EstimateBodyResult {
         signatureRequired: ship?.signatureRequired === true,
         overnightRequested: ship?.overnightRequested === true,
       },
-      // V0 consumer funnel: ASAP only. The server fixes it regardless.
-      timing: { intent: "asap" },
+      // The sender's timing statement — ASAP, or the local Eastern words for
+      // a scheduled pickup. The server evaluates the doctrine and owns the
+      // instant; the browser never sends a zone or a timestamp.
+      timing: {
+        intent: timingIntent,
+        requestedPickupLocal: timingIntent === "scheduled" ? requestedPickupLocal : null,
+      },
     },
   };
 }
@@ -267,7 +287,37 @@ type EstimateLike = {
   reviewReasons?: unknown;
   quoteVersionId?: unknown;
   expiresAt?: unknown;
+  timing?: unknown;
 };
+
+/** The server's timing echo, kept only where every field has its shape. */
+export function timingFromEstimate(
+  raw: unknown
+): { intent: TimingIntent; requestedPickupLocal: string | null } | null {
+  const t = raw as { intent?: unknown; requestedPickupLocal?: unknown } | null;
+  if (!t || typeof t !== "object") return null;
+  const intent: TimingIntent | null =
+    t.intent === "scheduled" ? "scheduled" : t.intent === "asap" ? "asap" : null;
+  if (!intent) return null;
+  return {
+    intent,
+    requestedPickupLocal:
+      typeof t.requestedPickupLocal === "string" ? t.requestedPickupLocal : null,
+  };
+}
+
+/**
+ * The review note for a manual_review_required estimate. When the reason is
+ * TIMING (the overnight window, or a time Couranr must confirm) the note says
+ * so — vocabulary from lib/couranr/routing/canonicalRoute.ts — else the generic
+ * review posture.
+ */
+export function reviewNoteFor(reviewReasons: unknown): string {
+  const reasons = Array.isArray(reviewReasons) ? reviewReasons : [];
+  if (reasons.includes("overnight_requires_couranr_confirmation")) return NOTES.overnightReview;
+  if (reasons.includes("timing_needs_review")) return NOTES.timingReview;
+  return NOTES.review;
+}
 
 /**
  * quoteStatus -> QuoteReading. `estimated` is the only payable answer;
@@ -278,16 +328,18 @@ export function quoteReadingFromEstimate(est: EstimateLike): QuoteReading {
   const quoteStatus = typeof est.quoteStatus === "string" ? est.quoteStatus : "";
   const requestId = typeof est.requestId === "string" ? est.requestId : "";
   if (quoteStatus === "estimated" && typeof est.totalCents === "number" && requestId) {
+    const timing = timingFromEstimate(est.timing);
     return {
       state: "live-available",
       totalCents: est.totalCents,
       quoteVersionId: typeof est.quoteVersionId === "string" ? est.quoteVersionId : null,
       requestId,
       expiresAt: typeof est.expiresAt === "string" ? est.expiresAt : null,
+      ...(timing ? { timing } : {}),
     };
   }
   if (quoteStatus === "manual_review_required") {
-    return { state: "manual-review", note: NOTES.review };
+    return { state: "manual-review", note: reviewNoteFor(est.reviewReasons) };
   }
   if (quoteStatus === "invalid") {
     return { state: "unavailable", note: NOTES.cannotCarry };

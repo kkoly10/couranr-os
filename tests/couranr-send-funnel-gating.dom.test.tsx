@@ -1,6 +1,6 @@
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 /**
@@ -37,6 +37,7 @@ vi.mock("@stripe/react-stripe-js", () => ({
 import { SendFlow } from "@/components/couranr/sameday/SendFlow";
 import { GUEST_STORAGE_KEY } from "@/lib/couranr/sameday/liveAdapters";
 import { SEND_COPY } from "@/lib/couranr/public/masterSameDayCopy";
+import { SAME_DAY_CUTOFF_COPY } from "@/lib/couranr/public/governed";
 
 const API = "/api/couranr/consumer";
 const PLACES = `${API}/places`;
@@ -204,5 +205,43 @@ describe("consumer /send funnel gating", () => {
     await userEvent.click(screen.getByLabelText(SEND_COPY.acknowledgement));
     // The action is a review submission, not a payment.
     await waitFor(() => expect(btn("Continue to Couranr review").disabled).toBe(false));
+  });
+
+  it("a scheduled pickup needs valid Eastern local words to continue, and the estimate carries them (TMZ-001)", async () => {
+    const f = installFetch({ [ESTIMATE]: () => ESTIMATED(1234) });
+    render(<SendFlow mode="live" />);
+    await userEvent.click(btn(/Send something I have/));
+    await selectAddress("send-pickup");
+    await selectAddress("send-destination");
+    await userEvent.click(btn("Continue")); // -> item
+    await userEvent.type(screen.getByLabelText(SEND_COPY.item_question), "a cake");
+    await userEvent.type(screen.getByLabelText("Weight (lb)"), "8");
+    await userEvent.selectOptions(screen.getByLabelText("Restricted items"), "none");
+    await userEvent.click(screen.getByLabelText(/ready to hand over/i));
+    await userEvent.click(btn("Continue")); // -> timing
+
+    // Both governed intents are offered; choose a scheduled pickup.
+    expect(screen.getByLabelText(SEND_COPY.timing_asap)).toBeTruthy();
+    await userEvent.click(screen.getByLabelText(SEND_COPY.timing_schedule));
+    // No time yet: blocked. The governed cutoff copy is on screen.
+    expect(btn("Continue").disabled).toBe(true);
+    expect(screen.getByText(new RegExp(SAME_DAY_CUTOFF_COPY.replace(/[.:]/g, "\\$&")))).toBeTruthy();
+    const when = screen.getByLabelText("Requested pickup time") as HTMLInputElement;
+    // Garbage cannot advance; valid local words can.
+    fireEvent.change(when, { target: { value: "tomorrow" } });
+    expect(btn("Continue").disabled).toBe(true);
+    fireEvent.change(when, { target: { value: "2027-03-10T10:30" } });
+    await waitFor(() => expect(btn("Continue").disabled).toBe(false));
+    await userEvent.click(btn("Continue")); // -> review
+    expect(screen.getByText(/Schedule it: 2027-03-10 10:30 \(Eastern\)/)).toBeTruthy();
+
+    await userEvent.type(screen.getByLabelText("Mobile"), "+15715550100");
+    await userEvent.click(btn(/Check the price/));
+    await waitFor(() => expect(f.of(ESTIMATE)).toHaveLength(1));
+    const sent = JSON.parse(String(f.of(ESTIMATE)[0].body));
+    expect(sent.timing).toEqual({ intent: "scheduled", requestedPickupLocal: "2027-03-10T10:30" });
+    // Only the sender's words left the browser: no zone, no instant.
+    expect(JSON.stringify(sent)).not.toMatch(/requestedDepartureAt|America\/New_York/);
+    await screen.findByText("Total: $12.34");
   });
 });

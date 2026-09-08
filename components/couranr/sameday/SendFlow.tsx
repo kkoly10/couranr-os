@@ -16,6 +16,8 @@ import {
   type ConsumerAddressValue,
 } from "@/components/couranr/sameday/ConsumerAddressField";
 import { WEIGHT_BAND_LABELS } from "@/lib/couranr/shipment/weightBandLabels";
+import { parseOperatingLocal } from "@/lib/couranr/timing/policy";
+import { SAME_DAY_CUTOFF_COPY } from "@/lib/couranr/public/governed";
 import { PickupCredentialDisplay } from "@/components/couranr/dispatch/PickupCredentialDisplay";
 import { CouranrPaymentElement } from "@/components/couranr/payments/CouranrPaymentElement";
 import { formatCents } from "@/lib/couranr/requests/view";
@@ -124,7 +126,11 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
   const [readiness, setReadiness] = React.useState<"yes" | "no" | null>(null);
   const [reference, setReference] = React.useState("");
 
-  const [timing, setTiming] = React.useState<"asap" | "today" | "schedule" | null>(null);
+  /* TMZ-001 requested timing — the SAME two intents the business flow offers.
+     Evaluated server-side in America/New_York; the browser holds only the
+     sender's local wall-clock words and never picks a zone or an instant. */
+  const [timingIntent, setTimingIntent] = React.useState<"asap" | "scheduled" | null>(null);
+  const [requestedPickupLocal, setRequestedPickupLocal] = React.useState("");
 
   const [quote, setQuote] = React.useState<QuoteReading | { state: "calculating" } | { state: "stale" } | null>(null);
   const [contact, setContact] = React.useState({ name: "", mobile: "", email: "" });
@@ -303,7 +309,8 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
     const reading = await adapters.quote({
         pickup: pickup.value,
         destination: destination.value,
-        timing: timing ?? "asap",
+        timingIntent: timingIntent ?? "asap",
+        requestedPickupLocal: timingIntent === "scheduled" ? requestedPickupLocal : null,
         /* Live-only structured inputs; fixtures ignore every one of them. The
            adapter maps the UI's `mobile` to the API/DB key `phone`. */
         pickupPlaceId: pickup.placeId ?? null,
@@ -906,27 +913,22 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
         <div className="cr-send-panel">
           <fieldset className="cr-send-field">
             <legend className="cr-send-field__label">{SEND_COPY.timing_question}</legend>
-            {/* LIVE mode is ASAP ONLY (review item 5): the backend prices and
-                dispatches every consumer request as ASAP, so rendering a
-                choice it ignores would be a control that lies. Consumer
-                scheduled timing is DEFERRED, not hidden behind a dead radio.
-                Fixture/preview keeps the three choices for visual
-                preservation of the shipped design. */}
-            {(mode === "live"
-              ? ([["asap", SEND_COPY.timing_asap]] as const)
-              : ([
-                  ["asap", SEND_COPY.timing_asap],
-                  ["today", SEND_COPY.timing_today],
-                  ["schedule", SEND_COPY.timing_schedule],
-                ] as const)
-            ).map(([v, label]) => (
+            {/* TMZ-001: the SAME two intents the business flow offers — ASAP or
+                a scheduled Eastern wall-clock time — in BOTH modes. The server
+                evaluates the doctrine (same-day cutoff, business days, the
+                overnight window, DST edges) and owns the canonical instant;
+                nothing here computes one. */}
+            {([
+              ["asap", SEND_COPY.timing_asap],
+              ["scheduled", SEND_COPY.timing_schedule],
+            ] as const).map(([v, label]) => (
               <label key={v} className="cr-send-choice">
                 <input
                   type="radio"
                   name="timing"
-                  checked={timing === v}
+                  checked={timingIntent === v}
                   onChange={() => {
-                    setTiming(v);
+                    setTimingIntent(v);
                     invalidateQuote();
                   }}
                 />
@@ -934,9 +936,30 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
               </label>
             ))}
           </fieldset>
-          <p className="cr-send-note">
-            {mode === "live" ? SEND_COPY.timing_live_note : "Couranr confirms timing before anything is scheduled."}
-          </p>
+          {timingIntent === "scheduled" ? (
+            <div className="cr-send-field">
+              <label className="cr-send-field__label" htmlFor="send-pickup-time">
+                Requested pickup time
+              </label>
+              {/* The cutoff is HRS-001's governed value, read from governed.ts —
+                  never a literal restated here. */}
+              <p className="cr-send-field__hint">
+                Times are Eastern (America/New_York). Same-day requests close at {SAME_DAY_CUTOFF_COPY}.
+                Couranr confirms the exact pickup time with you before scheduling.
+              </p>
+              <input
+                id="send-pickup-time"
+                className="cr-input"
+                type="datetime-local"
+                value={requestedPickupLocal}
+                onChange={(e) => {
+                  setRequestedPickupLocal(e.target.value);
+                  invalidateQuote();
+                }}
+              />
+            </div>
+          ) : null}
+          {timingIntent === "asap" ? <p className="cr-send-note">{SEND_COPY.timing_live_note}</p> : null}
 
           <div className="cr-send-actions">
             <button type="button" className="cr-button cr-button--ghost" onClick={() => setPhase("item")}>
@@ -946,11 +969,15 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
                 collected on the review step), so firing now would post a
                 known-invalid estimate and retry later — the sender requests the
                 price explicitly on the review step, once every required input
-                exists. */}
+                exists. A scheduled pickup must carry parseable local words
+                before the step can advance. */}
             <button
               type="button"
               className="cr-button cr-button--primary"
-              disabled={timing === null}
+              disabled={
+                timingIntent === null ||
+                (timingIntent === "scheduled" && !parseOperatingLocal(requestedPickupLocal.trim()))
+              }
               onClick={() => setPhase("review")}
             >
               Continue
@@ -980,7 +1007,14 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
                         : SEND_COPY.readiness_no,
                     ] as const]
                   : []),
-                ["When", timing ?? ""],
+                [
+                  "When",
+                  timingIntent === "scheduled"
+                    ? `${SEND_COPY.timing_schedule}: ${requestedPickupLocal.replace("T", " ")} (Eastern)`
+                    : timingIntent === "asap"
+                      ? SEND_COPY.timing_asap
+                      : "",
+                ],
                 ["Contact", contact.name],
               ] as const
             ).map(([k, v]) => (
