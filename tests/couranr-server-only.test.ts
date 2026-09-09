@@ -383,6 +383,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/operations/delivery-requests/[id]/estimate/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/pickup-manifest/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/promotional-credit-delivery/route.ts",
+      "app/api/couranr/operations/delivery-requests/[id]/promotional-credit/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/reconcile-capture/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/reconcile-refund/route.ts",
       "app/api/couranr/operations/delivery-requests/[id]/refund/route.ts",

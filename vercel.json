@@ -3,6 +3,7 @@
   "git": {
     "deploymentEnabled": {
       "*": false,
+      "fix/pilot-credit-e2e": false,
       "main": true
     }
   },

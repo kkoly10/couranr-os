@@ -44,6 +44,7 @@ export const RPC = {
   failCapture: "couranr_fail_payment_capture",
   createDelivery: "couranr_create_delivery_from_capture",
   createDeliveryFromCredit: "couranr_create_delivery_from_promotional_credit",
+  applyPromotionalCredit: "couranr_apply_promotional_credit",
   resolveTerminal: "couranr_resolve_terminal_capture_failure",
 } as const;
 
@@ -705,6 +706,67 @@ export async function applyVerifiedCaptureOutcome(params: {
     id: params.obligationId,
     payment_state: "captured",
   });
+}
+
+/* ----------------------------------------------- promotional credit ----- */
+
+/**
+ * Apply Couranr funding to the exact current immutable quote.
+ *
+ * Operations only. No amount or target state is accepted here: SQL reads the
+ * current quote and writes the full credit plus PRC-003 audit metadata.
+ */
+export async function applyPromotionalCredit(params: {
+  actor: RequestActor;
+  requestId: string;
+  businessAccountId: string | null;
+  expectedVersion: number;
+  reason: string;
+  campaign: string;
+  market: string;
+  category: string;
+}): Promise<FulfillmentResult<{ credit: Record<string, any> }>> {
+  const op = "applyPromotionalCredit";
+  const permission = canActOnDeliveryRequest(params.actor, "review", params.businessAccountId);
+  if (!permission.allowed || params.actor.kind !== "operations") {
+    return fail({
+      operation: op,
+      code: "not_permitted",
+      detail: { reason: "not_operations" },
+      message: "Only Couranr Operations can apply a Couranr promotional credit.",
+    });
+  }
+
+  const clean = {
+    reason: params.reason.trim(),
+    campaign: params.campaign.trim(),
+    market: params.market.trim(),
+    category: params.category.trim(),
+  };
+  if (
+    !clean.reason || !clean.campaign || !clean.market || !clean.category ||
+    clean.reason.length > 160 || clean.campaign.length > 120 ||
+    clean.market.length > 120 || clean.category.length > 120
+  ) {
+    return fail({
+      operation: op,
+      code: "invalid_input",
+      detail: { reason: "promotional_credit_metadata_invalid" },
+      message: "Complete the promotional-credit audit fields before applying it.",
+    });
+  }
+
+  const r = await callRpc<Record<string, any>>(op, RPC.applyPromotionalCredit, {
+    p_request_id: params.requestId,
+    p_expected_version: params.expectedVersion,
+    p_actor_user_id: params.actor.userId,
+    p_reason: clean.reason,
+    p_campaign: clean.campaign,
+    p_market: clean.market,
+    p_category: clean.category,
+  });
+  if (isFulfillmentFailure(r)) return r;
+  return { ok: true, value: { credit: r.value } };
 }
 
 /* ----------------------------------------------------------- reads ----- */
