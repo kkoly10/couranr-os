@@ -94,8 +94,35 @@ const DB = "couranr_disposable";
 const sh = (cmd, args, opts = {}) =>
   execFileSync(cmd, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], ...opts });
 
-/** Runs as the postgres OS user, which owns the data directory. */
-const asPostgres = (command) => sh("su", ["postgres", "-c", command]);
+/**
+ * Runs the cluster commands as whichever identity actually owns the data
+ * directory.
+ *
+ * ON LINUX CI this is the `postgres` OS user reached through `su`, exactly as
+ * before: the harness runs as root there, `initdb` refuses to run as root, and
+ * the data directory is chowned to `postgres`.
+ *
+ * ON A DEVELOPER MACHINE neither holds. macOS has no `postgres` OS user and the
+ * shell is not root, so `chown postgres:postgres` fails with "illegal group
+ * name" and `su postgres` has nobody to become. There the current user owns the
+ * directory and runs the commands directly.
+ *
+ * The DATABASE role is `postgres` either way — `initdb -U postgres` creates it
+ * regardless of which OS user ran initdb — so `dbUrl()` and every psql call
+ * below are unchanged, and so is the Linux path.
+ */
+const HAS_POSTGRES_OS_USER = (() => {
+  try {
+    execFileSync("id", ["-u", "postgres"], { stdio: ["ignore", "ignore", "ignore"] });
+    return process.getuid?.() === 0;
+  } catch {
+    return false;
+  }
+})();
+const asPostgres = (command) =>
+  HAS_POSTGRES_OS_USER
+    ? sh("su", ["postgres", "-c", command])
+    : sh("sh", ["-c", command]);
 
 export const dbUrl = (db = DB) => `postgresql://postgres@127.0.0.1:${PORT}/${db}?sslmode=disable`;
 
@@ -143,7 +170,8 @@ export function up({ quiet = false, beforeMigration = null } = {}) {
   down({ quiet: true });
   mkdirSync(path.join(BASE, "data"), { recursive: true });
   mkdirSync(path.join(BASE, "log"), { recursive: true });
-  sh("chown", ["-R", "postgres:postgres", BASE]);
+  // Only meaningful where the postgres OS user exists and we are root to do it.
+  if (HAS_POSTGRES_OS_USER) sh("chown", ["-R", "postgres:postgres", BASE]);
 
   log("  initdb...");
   asPostgres(`${PGBIN}/initdb -D ${BASE}/data -U postgres --auth=trust -E UTF8 >${BASE}/log/initdb.log 2>&1`);

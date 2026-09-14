@@ -67,3 +67,7 @@ e2e/screenshots/smart-intake/dev-server.log
 # state, not repository content. It reached a commit once via `git add -A
 # supabase` while renaming a migration — the reason this entry exists.
 supabase/.temp/
+
+# Disposable-harness build output and its screenshots.
+.next-disposable-cus004/
+e2e/screenshots/
