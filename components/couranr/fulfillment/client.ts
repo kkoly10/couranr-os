@@ -164,6 +164,39 @@ export function captureFromBrowser(input: { id: string }) {
 }
 
 
+/**
+ * Apply a full Couranr promotional credit to the SERVER'S current quote.
+ * No amount, quote id, payer or state leaves the browser.
+ */
+export function applyPromotionalCreditFromBrowser(input: {
+  id: string;
+  reason: string;
+  campaign: string;
+  market: string;
+  category: string;
+}) {
+  return call<{ credit: {
+    id: string;
+    standardQuoteCents: number;
+    promotionalCreditCents: number;
+    reason: string;
+    campaign: string;
+    market: string;
+    category: string;
+  } }>(
+    `/api/couranr/operations/delivery-requests/${input.id}/promotional-credit`,
+    {
+      method: "POST",
+      body: {
+        reason: input.reason,
+        campaign: input.campaign,
+        market: input.market,
+        category: input.category,
+      },
+    }
+  );
+}
+
 /** Finalize a delivery whose exact quote is fully covered by a Couranr credit. */
 export function finalizePromotionalCreditDeliveryFromBrowser(input: { id: string }) {
   return call<{ deliveryId: string; fulfillmentState: string; settlement: string }>(
