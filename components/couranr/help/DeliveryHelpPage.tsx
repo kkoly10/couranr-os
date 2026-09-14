@@ -522,7 +522,17 @@ function DeliveryProblemPanel({
     setDetails(draft.details);
   },[draft?.id,draft?.problemType,draft?.details]);
 
-  function choosePhotos(list:FileList|null){
+  /* An over-limit selection REPLACES the previous one with nothing rather than
+     leaving it standing. The early `return` used to keep whatever was chosen
+     before: pick two valid photos, then pick six, and the error said the
+     selection was refused while the original two stayed in `photos` and stayed
+     eligible for "Attach evidence". The files the customer could see in the
+     input no longer matched the files that would upload.
+
+     The input is reset too. Clearing React state alone leaves the browser
+     showing "6 files selected", and re-choosing the SAME six fires no `change`
+     event, so the control would look loaded and do nothing. */
+  function choosePhotos(list:FileList|null,input?:HTMLInputElement|null){
     setError(null);
     const files=Array.from(list??[]);
     if(files.length>remainingPhotoSlots){
@@ -531,6 +541,8 @@ function DeliveryProblemPanel({
           ?"This report already has five photos."
           :`Choose up to ${remainingPhotoSlots} more ${remainingPhotoSlots===1?"photo":"photos"}.`
       );
+      setPhotos([]);
+      if(input)input.value="";
       return;
     }
     setPhotos(files.map((file)=>({id:crypto.randomUUID(),file})));
@@ -668,7 +680,7 @@ function DeliveryProblemPanel({
                 {(a)=><input {...a} type="file" multiple
                   disabled={remainingPhotoSlots===0}
                   accept="image/jpeg,image/png,image/webp,image/heic"
-                  onChange={(e)=>choosePhotos(e.currentTarget.files)}/>}
+                  onChange={(e)=>choosePhotos(e.currentTarget.files,e.currentTarget)}/>}
               </Field>
               <Button type="button" disabled={busy||photos.length===0||remainingPhotoSlots===0}
                 onClick={()=>void addRequestedEvidence()}>
@@ -718,7 +730,7 @@ function DeliveryProblemPanel({
           {(a)=><input {...a} type="file" multiple
             disabled={remainingPhotoSlots===0}
             accept="image/jpeg,image/png,image/webp,image/heic"
-            onChange={(e)=>choosePhotos(e.currentTarget.files)}/>}
+            onChange={(e)=>choosePhotos(e.currentTarget.files,e.currentTarget)}/>}
         </Field>
         {photos.length?(
           <Text size="sm" muted>

@@ -287,3 +287,95 @@ describe("CUS-004 customer delivery-problem report contract",()=>{
     ])expect(joined,forbidden).not.toContain(forbidden);
   });
 });
+
+/* ── the three review findings on the reconciled head ──────────────────────
+   All three were real in the code CI went green on, which is the point: a
+   green suite is not an absence of defects, it is an absence of assertions.
+   These are the assertions that were missing. */
+describe("CUS-004 review findings, 2026-09-14",()=>{
+  const GUARDS=read(
+    "supabase/migrations/20260914060000_couranr_customer_problem_turn_and_review_guards.sql"
+  );
+  const GUARDS_ROLLBACK=read(
+    "supabase/rollbacks/20260914060000_couranr_customer_problem_turn_and_review_guards.rollback.sql"
+  );
+  /* EXECUTABLE SQL ONLY. The first version of the P2 test below asserted against
+     the whole file and stayed green when the `raise` was deleted, because the
+     comment block above it also names problem_evidence_not_received. A guard
+     matched in prose is a test that cannot fail — the same house rule
+     check:migrations follows when it strips comments before matching. */
+  const CODE=GUARDS.replace(/\/\*[\s\S]*?\*\//g,"").replace(/^\s*--.*$/gm,"");
+
+  it("P1: an outstanding turn NEWER than this report's customer activity is left alone",()=>{
+    /* The bug: waiting_on and awaiting_reply_kind were assigned unconditionally,
+       so resolving a report cleared the turn belonging to an unrelated, newer
+       customer Help message. The fix compares the conversation's received_at —
+       which 20260804190000 stamps together with awaiting_reply_kind, so it IS
+       the outstanding turn's timestamp — against this report's newest customer
+       activity, and preserves both fields when the turn is newer. */
+    expect(CODE).toContain("v_customer_activity_at");
+    expect(CODE).toMatch(/waiting_on=case\s+when c\.received_at is not null\s+and c\.received_at>v_customer_activity_at then c\.waiting_on/);
+    expect(CODE).toMatch(/awaiting_reply_kind=case\s+when c\.received_at is not null\s+and c\.received_at>v_customer_activity_at then c\.awaiting_reply_kind/);
+  });
+
+  it("P1: customer activity is read BEFORE the Operations event is written",()=>{
+    /* Otherwise the Operations event this very call inserts would count as
+       customer activity and the comparison would always say "not newer". */
+    const activity=CODE.indexOf("into v_customer_activity_at");
+    const opsEvent=CODE.indexOf("insert into public.couranr_customer_problem_report_events");
+    expect(activity).toBeGreaterThan(0);
+    expect(opsEvent).toBeGreaterThan(0);
+    expect(activity).toBeLessThan(opsEvent);
+  });
+
+  it("P1: only customer-authored activity counts",()=>{
+    expect(CODE).toContain("ev.actor_kind='customer'");
+  });
+
+  it("P2: start_review out of awaiting_evidence needs evidence that ARRIVED",()=>{
+    /* Moving out of awaiting_evidence removes the customer's upload UI, so
+       doing it while the photos are still owed strands them. "Arrived" is
+       verified evidence finalized AFTER the latest request_evidence — existing
+       state, no new report state invented. */
+    /* The full RAISE, not the bare identifier: the name also appears in this
+       function's `comment on ... is '...'` literal, which is a string, not a
+       SQL comment, so the stripper leaves it and a bare substring match stayed
+       green when the raise itself was replaced with `null;`. */
+    expect(CODE).toContain("raise exception 'problem_evidence_not_received' using errcode='CR409'");
+    expect(CODE).toContain("ev.command='request_evidence'");
+    expect(CODE).toContain("e.upload_state='verified'");
+    expect(CODE).toMatch(/e\.finalized_at>v_requested_at/);
+    expect(CODE).toMatch(/if p_command='start_review' and v_from='awaiting_evidence' then/);
+  });
+
+  it("P2: start_review from 'reported' is NOT gated — nothing was requested there",()=>{
+    expect(CODE).toContain("p_command='start_review' and v_from not in ('reported','awaiting_evidence')");
+  });
+
+  it("P3: an over-limit selection clears the prior photos and resets the input",()=>{
+    /* The early return used to leave the previous selection standing and
+       eligible for submission, so the files shown in the control were not the
+       files that would upload. */
+    const fn=PAGE.slice(PAGE.indexOf("function choosePhotos"));
+    const body=fn.slice(0,fn.indexOf("\n  }")+4);
+    expect(body).toContain("setPhotos([])");
+    expect(body).toContain('input.value=""');
+    // Both file inputs must hand the element over, or the reset cannot happen.
+    expect(PAGE.match(/choosePhotos\(e\.currentTarget\.files,e\.currentTarget\)/g)?.length).toBe(2);
+    expect(PAGE).not.toMatch(/choosePhotos\(e\.currentTarget\.files\)/);
+  });
+
+  it("does not edit an APPLIED migration to make the fix",()=>{
+    /* 20260908160000 is live in production. The fix is a new forward migration;
+       the applied file must still describe exactly what ran. */
+    const applied=read("supabase/migrations/20260908160000_couranr_customer_problem_resolve_bookkeeping.sql");
+    expect(applied).not.toContain("v_customer_activity_at");
+    expect(applied).not.toContain("problem_evidence_not_received");
+  });
+
+  it("ships a paired rollback that restores the prior definition",()=>{
+    expect(GUARDS_ROLLBACK).toContain("create or replace function public.couranr_transition_customer_problem_report");
+    expect(GUARDS_ROLLBACK).not.toContain("v_customer_activity_at");
+    expect(GUARDS_ROLLBACK).not.toContain("problem_evidence_not_received");
+  });
+});
