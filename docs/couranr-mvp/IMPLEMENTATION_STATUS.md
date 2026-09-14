@@ -41,9 +41,9 @@ proves every generated view matches its source.
 
 | Status | Count |
 |---|---|
-| `functional_verified` | 31 |
+| `functional_verified` | 32 |
 | `partial` | 14 |
-| `functional_unverified` | 12 |
+| `functional_unverified` | 11 |
 | `placeholder_only` | 11 |
 
 Still rendering `ScreenPlaceholder` (11): `OPS-006` · `OPS-011` · `OPS-013` · `OPS-014` · `OPS-015` · `OPS-016` · `OPS-017` · `OPS-018` · `OPS-019` · `OPS-020` · `OPS-021`.

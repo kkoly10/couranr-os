@@ -70,7 +70,8 @@
     "governance:generate": "node scripts/governance/generate.mjs",
     "check:governance": "node scripts/governance/check.mjs",
     "governance:facts": "node scripts/governance/facts.mjs",
-    "couranr:integrity": "node scripts/couranrIntegrity.mjs"
+    "couranr:integrity": "node scripts/couranrIntegrity.mjs",
+    "test:cus004-browser": "node e2e/disposable/customerProblemReport.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.123.0",
@@ -97,6 +98,7 @@
     "eslint": "9.39.5",
     "eslint-config-next": "16.3.0",
     "jsdom": "^30.0.1",
+    "playwright": "^1.49.1",
     "typescript": "^5.4.5",
     "vitest": "^1.6.0"
   },
