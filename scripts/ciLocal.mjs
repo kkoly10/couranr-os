@@ -186,6 +186,7 @@ const STAGES = [
     ["test:consumer-place-ratelimit", "consumer Places per-session rate limit — cap, window rollover, uniform CR404, service_role-only authority"],
     ["test:consumer-scheduled-timing", "consumer scheduled timing (TMZ-001 parity) — two-sided instant, mismatch/incomplete refusals, DST-gap claim, ASAP"],
     ["test:hosted-scheduled-timing", "hosted scheduled timing (TMZ-001 parity) — customer statement frozen on the intake, merchant confirm/adjust, quote snapshot, arity fence predeploy/postdeploy, rollback guard"],
+    ["test:cus-problem-bookkeeping", "CUS-004 resolve_report Delivery Help conversation bookkeeping — the transition command called on real reports"],
   ].map(([script, why]) => ({
     tier: 3,
     name: script,
@@ -202,6 +203,7 @@ const STAGES = [
         "test:payment-recovery",
         "test:credit-settlement",
         "test:rollback-guards",
+        "test:cus-problem-bookkeeping",
         "test:driver-execution",
         "test:consumer-send",
         "test:pricing-v2",
