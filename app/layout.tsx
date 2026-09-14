@@ -1,6 +1,6 @@
 // app/layout.tsx
 import type { Metadata } from "next";
-import { Analytics } from "@vercel/analytics/next";
+import { CouranrAnalytics } from "@/components/analytics/CouranrAnalytics";
 import "./globals.css";
 
 /**
@@ -48,7 +48,7 @@ export default function RootLayout({
       <body className="appBody" suppressHydrationWarning>
         {/* Use div (not <main>) because page files already render <main className="page"> */}
         <div className="appMain">{children}</div>
-        <Analytics />
+        <CouranrAnalytics />
       </body>
     </html>
   );
