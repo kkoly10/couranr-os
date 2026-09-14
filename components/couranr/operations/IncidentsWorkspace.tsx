@@ -122,6 +122,7 @@ export function IncidentsWorkspace(){
         physical returns stay on their own governed commands.
       </Alert>
 
+      <CustomerProblemReports />
       <OpenIncident onOpened={()=>setGeneration((g)=>g+1)}/>
 
       {rows.length===0?(
@@ -143,6 +144,229 @@ export function IncidentsWorkspace(){
         </Stack>
       )}
     </Stack>
+  );
+}
+
+
+type CustomerProblemState="reported"|"awaiting_evidence"|"under_review"|"resolved";
+type CustomerProblemType="damaged"|"missing"|"wrong_item"|"undelivered";
+type CustomerProblemEvidence={id:string;finalizedAt:string};
+type CustomerProblemReport={
+  id:string;deliveryId:string;requestId:string;problemType:CustomerProblemType;
+  details:string;state:CustomerProblemState;evidenceCount:number;
+  submittedAt:string|null;resolvedAt:string|null;version:number;createdAt:string;
+  evidence:CustomerProblemEvidence[];
+};
+type CustomerProblemCommand="start_review"|"request_evidence"|"resolve_report";
+
+const CUSTOMER_PROBLEM_LABELS:Record<CustomerProblemType,string>={
+  damaged:"Damaged or different condition",
+  missing:"Missing item",
+  wrong_item:"Wrong item",
+  undelivered:"Not delivered",
+};
+const CUSTOMER_PROBLEM_STATE_LABELS:Record<CustomerProblemState,string>={
+  reported:"Reported",
+  awaiting_evidence:"Awaiting evidence",
+  under_review:"Under review",
+  resolved:"Resolved",
+};
+
+function loadCustomerProblemReports(){
+  return call<{reports:CustomerProblemReport[]}>("/api/couranr/operations/problem-reports");
+}
+function cleanupExpiredCustomerProblemEvidence(){
+  return call<{removed:number}>("/api/couranr/operations/problem-reports",{
+    method:"POST",body:{command:"cleanup_expired_evidence"},
+  });
+}
+function actOnCustomerProblemReport(
+  id:string,body:{expectedVersion:number;command:CustomerProblemCommand}
+){
+  return call<{report:CustomerProblemReport}>(`/api/couranr/operations/problem-reports/${id}`,{
+    method:"POST",body,
+  });
+}
+function loadCustomerProblemEvidenceUrl(reportId:string,evidenceId:string){
+  return call<{url:string;expiresInSeconds:number}>(
+    `/api/couranr/operations/problem-reports/${reportId}?evidenceId=${encodeURIComponent(evidenceId)}`
+  );
+}
+
+function CustomerProblemReports(){
+  const [reports,setReports]=React.useState<CustomerProblemReport[]|null>(null);
+  const [error,setError]=React.useState<string|null>(null);
+  const [generation,setGeneration]=React.useState(0);
+  const [cleaning,setCleaning]=React.useState(false);
+  const [cleanupNote,setCleanupNote]=React.useState<string|null>(null);
+
+  React.useEffect(()=>{
+    let live=true;
+    void (async()=>{
+      const r=await loadCustomerProblemReports();
+      if(!live)return;
+      if(isApiFailure(r)){setError(withReference(r));setReports(null);return;}
+      setError(null);
+      setReports(Array.isArray(r.value.reports)?r.value.reports:[]);
+    })();
+    return()=>{live=false;};
+  },[generation]);
+
+  if(error){
+    return <ErrorState title="Customer delivery reports could not load" body={error}
+      action={{label:"Try again",onClick:()=>setGeneration((g)=>g+1)}}/>;
+  }
+  if(reports===null){
+    return (
+      <LoadingState label="Loading customer delivery reports">
+        <CardSkeleton lines={3}/>
+      </LoadingState>
+    );
+  }
+
+  async function cleanExpiredUploads(){
+    if(cleaning)return;
+    setCleaning(true);setCleanupNote(null);
+    const r=await cleanupExpiredCustomerProblemEvidence();
+    setCleaning(false);
+    if(isApiFailure(r)){setError(withReference(r));return;}
+    setError(null);
+    setCleanupNote(
+      r.value.removed===0
+        ?"No expired customer photo uploads needed cleanup."
+        :`Removed ${r.value.removed} expired customer photo upload${r.value.removed===1?"":"s"}.`
+    );
+  }
+
+  return (
+    <Card>
+      <CardHeader
+        title="Customer delivery reports"
+        description="Customer-authored delivery evidence. Review state here does not move money, custody or delivery state."
+        actions={
+          <Button variant="ghost" loading={cleaning} onClick={()=>void cleanExpiredUploads()}>
+            Clean expired uploads
+          </Button>
+        }
+      />
+      {cleanupNote?<Alert tone="info" title="Private evidence cleanup">{cleanupNote}</Alert>:null}
+      {reports.length===0?(
+        <Text size="sm" muted>No customer delivery-problem reports have been submitted.</Text>
+      ):(
+        <Stack gap={4}>
+          {reports.map((report)=>(
+            <CustomerProblemReportCard
+              key={report.id}
+              report={report}
+              onChanged={(next)=>setReports((current)=>
+                current?.map((r)=>r.id===next.id?{...r,...next}:r)??current
+              )}
+            />
+          ))}
+        </Stack>
+      )}
+    </Card>
+  );
+}
+
+function CustomerProblemReportCard({
+  report,onChanged,
+}:{report:CustomerProblemReport;onChanged:(next:CustomerProblemReport)=>void}){
+  const [busy,setBusy]=React.useState<CustomerProblemCommand|null>(null);
+  const [error,setError]=React.useState<string|null>(null);
+  const [opening,setOpening]=React.useState<string|null>(null);
+  const evidenceAtCap=report.evidenceCount>=5;
+
+  async function run(command:CustomerProblemCommand){
+    if(busy)return;
+    setBusy(command);setError(null);
+    const r=await actOnCustomerProblemReport(report.id,{
+      expectedVersion:report.version,command,
+    });
+    setBusy(null);
+    if(isApiFailure(r)){setError(withReference(r));return;}
+    onChanged({...report,...r.value.report});
+  }
+
+  async function openEvidence(evidenceId:string){
+    if(opening)return;
+
+    // Open synchronously from the click so mobile/desktop popup blockers do not
+    // discard the viewer while we wait for the short-lived signed URL.
+    const viewer=window.open("about:blank","_blank");
+    if(!viewer){
+      setError("Your browser blocked the evidence window. Allow pop-ups for Couranr and try again.");
+      return;
+    }
+    viewer.opener=null;
+
+    setOpening(evidenceId);setError(null);
+    const r=await loadCustomerProblemEvidenceUrl(report.id,evidenceId);
+    setOpening(null);
+    if(isApiFailure(r)){
+      viewer.close();
+      setError(withReference(r));
+      return;
+    }
+    viewer.location.replace(r.value.url);
+  }
+
+  return (
+    <Card>
+      <CardHeader
+        title={CUSTOMER_PROBLEM_LABELS[report.problemType]}
+        description={`Submitted ${formatWhen(report.submittedAt??report.createdAt)}`}
+        actions={
+          <Badge tone={report.state==="resolved"?"success":"warning"}>
+            {CUSTOMER_PROBLEM_STATE_LABELS[report.state]}
+          </Badge>
+        }
+      />
+      <Stack gap={3}>
+        <Text>{report.details}</Text>
+        <Text size="sm">
+          Delivery: <Link href={`/operations/deliveries/${report.deliveryId}`}>
+            {shortId(report.deliveryId)}
+          </Link>
+        </Text>
+        <Cluster gap={2}>
+          {report.evidence.map((evidence,index)=>(
+            <Button key={evidence.id} variant="ghost"
+              loading={opening===evidence.id}
+              onClick={()=>void openEvidence(evidence.id)}>
+              View photo {index+1}
+            </Button>
+          ))}
+        </Cluster>
+        {report.evidence.length===0?(
+          <Text size="sm" muted>No customer photos attached.</Text>
+        ):null}
+        {error?<Alert tone="danger" title="Report action failed">{error}</Alert>:null}
+        {report.state!=="resolved"?(
+          <Cluster gap={2}>
+            {(report.state==="reported"||report.state==="awaiting_evidence")?(
+              <Button variant="secondary" loading={busy==="start_review"}
+                onClick={()=>void run("start_review")}>
+                Start review
+              </Button>
+            ):null}
+            {(report.state==="reported"||report.state==="under_review")?(
+              <Button variant="secondary" loading={busy==="request_evidence"}
+                disabled={evidenceAtCap}
+                onClick={()=>void run("request_evidence")}>
+                {evidenceAtCap?"Evidence limit reached":"Request evidence"}
+              </Button>
+            ):null}
+            <Button variant="primary" loading={busy==="resolve_report"}
+              onClick={()=>void run("resolve_report")}>
+              Resolve report
+            </Button>
+          </Cluster>
+        ):(
+          <Text size="sm" muted>Resolved. The report and its evidence remain in the record.</Text>
+        )}
+      </Stack>
+    </Card>
   );
 }
 

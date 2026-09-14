@@ -1,0 +1,583 @@
+import { randomBytes } from "node:crypto";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { assertServerOnly } from "@/lib/couranr/serverOnly";
+import {
+  classifyDatabaseError,
+  publicFailure,
+  type PublicFailure,
+} from "@/lib/couranr/errors";
+import type { RequestActor } from "@/lib/couranr/requests/permissions";
+
+assertServerOnly("lib/couranr/conversations/problemReports.ts");
+
+export const CUSTOMER_PROBLEM_TYPES=[
+  "damaged","missing","wrong_item","undelivered",
+] as const;
+export type CustomerProblemType=(typeof CUSTOMER_PROBLEM_TYPES)[number];
+export type CustomerProblemState=
+  |"draft"|"reported"|"awaiting_evidence"|"under_review"|"resolved";
+
+export const CUSTOMER_PROBLEM_MIME=[
+  "image/jpeg","image/png","image/webp","image/heic",
+] as const;
+export const MAX_CUSTOMER_PROBLEM_BYTES=10*1024*1024;
+export const MAX_CUSTOMER_PROBLEM_PHOTOS=5;
+const BUCKET="delivery-photos";
+const EXT:Record<string,string>={
+  "image/jpeg":"jpg","image/png":"png","image/webp":"webp","image/heic":"heic",
+};
+const UUID_RE=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export type ProblemReportView={
+  id:string;
+  problemType:CustomerProblemType;
+  details:string;
+  state:CustomerProblemState;
+  evidenceCount:number;
+  submittedAt:string|null;
+  resolvedAt:string|null;
+  version:number;
+  createdAt:string;
+};
+export type OperationsProblemEvidence={id:string;finalizedAt:string};
+export type OperationsProblemReport=ProblemReportView&{
+  deliveryId:string;
+  requestId:string;
+  evidence:OperationsProblemEvidence[];
+};
+export type ProblemResult<T>={ok:true;value:T}|PublicFailure;
+export function isProblemFailure(r:{ok:boolean}):r is PublicFailure{return r.ok===false;}
+
+function dbFail(operation:string,error:any,message?:string):PublicFailure{
+  return publicFailure({
+    operation,
+    code:classifyDatabaseError(error),
+    detail:{code:error?.code,message:error?.message},
+    message,
+  });
+}
+function rowOf(data:any){return Array.isArray(data)?data[0]:data;}
+function mapReport(row:any):ProblemReportView{
+  return {
+    id:String(row.out_id??row.id),
+    problemType:String(row.out_problem_type??row.problem_type) as CustomerProblemType,
+    details:String(row.out_details??row.details??""),
+    state:String(row.out_report_state??row.report_state) as CustomerProblemState,
+    evidenceCount:Number(row.out_evidence_count??row.evidence_count??0),
+    submittedAt:(row.out_submitted_at??row.submitted_at??null) as string|null,
+    resolvedAt:(row.out_resolved_at??row.resolved_at??null) as string|null,
+    version:Number(row.out_version??row.version),
+    createdAt:String(row.out_created_at??row.created_at),
+  };
+}
+
+export async function readCustomerProblemReports(
+  tokenId:string
+):Promise<ProblemResult<ProblemReportView[]>>{
+  const {data,error}=await supabaseAdmin.rpc("couranr_customer_problem_report_view",{
+    p_token_id:tokenId,
+  });
+  if(error)return dbFail("problemReport.read",error);
+  return {ok:true,value:(Array.isArray(data)?data:[]).map(mapReport)};
+}
+
+export async function saveCustomerProblemDraft(p:{
+  tokenId:string;problemType:CustomerProblemType;details:string;
+}):Promise<ProblemResult<ProblemReportView>>{
+  const {data,error}=await supabaseAdmin.rpc("couranr_save_customer_problem_draft",{
+    p_token_id:p.tokenId,p_problem_type:p.problemType,p_details:p.details,
+  });
+  if(error){
+    if(error?.code==="CR409"&&error?.message==="problem_report_open"){
+      return publicFailure({
+        operation:"problemReport.saveDraft",
+        code:"conflict",
+        detail:{code:error.code,message:error.message},
+        message:"A delivery problem report is already open. Reload to see its status.",
+      });
+    }
+    return dbFail("problemReport.saveDraft",error);
+  }
+  const row=rowOf(data);
+  if(!row)return publicFailure({operation:"problemReport.saveDraft",code:"internal",detail:"empty"});
+  const {count}=await supabaseAdmin
+    .from("couranr_customer_problem_evidence")
+    .select("id",{count:"exact",head:true})
+    .eq("report_id",String(row.id))
+    .eq("upload_state","verified");
+  return {ok:true,value:mapReport({...row,evidence_count:count??0})};
+}
+
+function buildProblemPath(p:{
+  deliveryId:string;reportId:string;clientEvidenceId:string;mime:string;
+}):string{
+  if(!UUID_RE.test(p.deliveryId)||!UUID_RE.test(p.reportId)||!UUID_RE.test(p.clientEvidenceId)){
+    throw new Error("problem_evidence_path_requires_uuid");
+  }
+  const ext=EXT[p.mime];
+  if(!ext)throw new Error("problem_evidence_mime_invalid");
+  return `customer-problem/v1/${p.deliveryId}/${p.reportId}/${p.clientEvidenceId}/${randomBytes(16).toString("hex")}.${ext}`;
+}
+
+async function cleanupExpiredCustomerProblemEvidence(p:{
+  tokenId:string;reportId:string;
+}):Promise<ProblemResult<true>>{
+  const {data,error}=await supabaseAdmin.rpc(
+    "couranr_collect_expired_customer_problem_evidence",
+    {p_token_id:p.tokenId,p_report_id:p.reportId}
+  );
+  if(error)return dbFail("problemEvidence.collectExpired",error);
+
+  const paths=(Array.isArray(data)?data:[])
+    .map((row:any)=>String(row?.out_object_path??""))
+    .filter(Boolean);
+  if(paths.length){
+    const {error:removeError}=await supabaseAdmin.storage.from(BUCKET).remove(paths);
+    if(removeError){
+      return publicFailure({
+        operation:"problemEvidence.removeExpired",
+        code:"internal",
+        detail:{message:removeError.message,count:paths.length},
+        message:"Couranr could not safely reset an expired photo upload. Try again.",
+      });
+    }
+  }
+  return {ok:true,value:true};
+}
+
+export type ProblemEvidenceGrant=
+  |{status:"upload";evidenceId:string;signedUrl:string;expectedBytes:number;expectedMime:string}
+  |{status:"verified";evidenceId:string};
+
+export async function prepareCustomerProblemEvidence(p:{
+  tokenId:string;deliveryId:string;reportId:string;clientEvidenceId:string;
+  expectedMime:string;expectedBytes:number;evidenceSha256:string;
+}):Promise<ProblemResult<ProblemEvidenceGrant>>{
+  if(!(CUSTOMER_PROBLEM_MIME as readonly string[]).includes(p.expectedMime)){
+    return publicFailure({
+      operation:"problemEvidence.prepare",code:"invalid_input",detail:"mime",
+      message:"That file type is not accepted.",
+    });
+  }
+  if(!Number.isInteger(p.expectedBytes)||p.expectedBytes<1||p.expectedBytes>MAX_CUSTOMER_PROBLEM_BYTES){
+    return publicFailure({
+      operation:"problemEvidence.prepare",code:"invalid_input",detail:"size",
+      message:"That photo is too large.",
+    });
+  }
+  if(!/^[0-9a-f]{64}$/.test(p.evidenceSha256)||!UUID_RE.test(p.clientEvidenceId)){
+    return publicFailure({operation:"problemEvidence.prepare",code:"invalid_input",detail:"identity"});
+  }
+
+  const cleaned=await cleanupExpiredCustomerProblemEvidence({
+    tokenId:p.tokenId,reportId:p.reportId,
+  });
+  if(isProblemFailure(cleaned))return cleaned;
+
+  let objectPath:string;
+  try{
+    objectPath=buildProblemPath({
+      deliveryId:p.deliveryId,reportId:p.reportId,
+      clientEvidenceId:p.clientEvidenceId,mime:p.expectedMime,
+    });
+  }catch(error){
+    return publicFailure({operation:"problemEvidence.prepare",code:"invalid_input",detail:error});
+  }
+
+  const {data,error}=await supabaseAdmin.rpc("couranr_prepare_customer_problem_evidence",{
+    p_token_id:p.tokenId,p_report_id:p.reportId,
+    p_client_evidence_id:p.clientEvidenceId,p_object_path:objectPath,
+    p_expected_mime:p.expectedMime,p_expected_bytes:p.expectedBytes,
+    p_evidence_sha256:p.evidenceSha256,
+  });
+  if(error){
+    if(error?.code==="CR400"&&error?.message==="problem_evidence_limit_reached"){
+      return publicFailure({
+        operation:"problemEvidence.prepare",
+        code:"invalid_input",
+        detail:{code:error.code,message:error.message},
+        message:"This report already has five photos.",
+      });
+    }
+    if(error?.code==="CR409"&&error?.message==="problem_evidence_grant_still_active"){
+      return publicFailure({
+        operation:"problemEvidence.prepare",
+        code:"conflict",
+        detail:{code:error.code,message:error.message},
+        message:"That photo upload could not be verified yet. Choose the photo again or try later.",
+      });
+    }
+    return dbFail("problemEvidence.prepare",error);
+  }
+  let row=rowOf(data);
+  if(!row?.id||!row?.object_path){
+    return publicFailure({operation:"problemEvidence.prepare",code:"internal",detail:"bad_shape"});
+  }
+  if(row.upload_state==="verified"){
+    return {ok:true,value:{status:"verified",evidenceId:String(row.id)}};
+  }
+
+  /*
+   * LOST STORAGE RESPONSE: the PUT may already have committed even though the
+   * browser never received its response. Inspect the SAME server-owned path
+   * before minting another grant. Exact bytes converge to finalization; known
+   * mismatched bytes stay quarantined while their provider grant is live and
+   * are only replaced through a fresh server-owned path after that grant dies.
+   */
+  const stored=await readStoredObject(String(row.object_path));
+  if(
+    stored &&
+    stored.size===Number(row.expected_bytes) &&
+    stored.mime===String(row.expected_mime)
+  ){
+    const finalized=await finalizeCustomerProblemEvidence({
+      tokenId:p.tokenId,evidenceId:String(row.id),
+    });
+    if(isProblemFailure(finalized))return finalized;
+    return {ok:true,value:{status:"verified",evidenceId:finalized.value.evidenceId}};
+  }
+  if(stored){
+    // A non-matching object stays quarantined under the still-live provider
+    // grant. Do NOT rotate its path while that old signed URL can still write.
+    // The 125-minute DB envelope outlives Supabase's two-hour upload URL; a
+    // future prepare cleans it only after both authorizations are dead.
+    return publicFailure({
+      operation:"problemEvidence.prepare",
+      code:"conflict",
+      detail:{
+        reason:"storage_mismatch",
+        size:stored.size,
+        mime:stored.mime,
+        evidenceId:String(row.id),
+      },
+      message:"That photo upload could not be verified. Choose the photo again.",
+    });
+  }
+
+  // A retry may happen near the previous DB expiry. Renew the database
+  // authorization immediately before EVERY fresh provider grant so the
+  // 125-minute DB envelope always outlives Supabase's two-hour upload URL.
+  const {data:renewed,error:renewError}=await supabaseAdmin.rpc(
+    "couranr_renew_customer_problem_evidence_grant",
+    {p_token_id:p.tokenId,p_evidence_id:String(row.id)}
+  );
+  if(renewError)return dbFail("problemEvidence.renewGrant",renewError);
+  row=rowOf(renewed);
+  if(!row?.id||!row?.object_path){
+    return publicFailure({
+      operation:"problemEvidence.renewGrant",code:"internal",detail:"bad_shape",
+    });
+  }
+  // Concurrent finalization is success, not a conflict. Another request may
+  // have verified the same stable evidence identity between our Storage
+  // inspection and the grant-renewal lock.
+  if(row.upload_state==="verified"){
+    return {ok:true,value:{status:"verified",evidenceId:String(row.id)}};
+  }
+  if(row.upload_state!=="pending"){
+    return publicFailure({
+      operation:"problemEvidence.renewGrant",code:"conflict",detail:"not_pending",
+      message:"That photo upload is no longer available. Try again.",
+    });
+  }
+
+  const {data:signed,error:signError}=await supabaseAdmin.storage
+    .from(BUCKET).createSignedUploadUrl(String(row.object_path));
+  if(signError||!signed?.signedUrl){
+    return publicFailure({
+      operation:"problemEvidence.sign",code:"internal",
+      detail:{message:signError?.message},
+    });
+  }
+  return {
+    ok:true,
+    value:{
+      status:"upload",evidenceId:String(row.id),signedUrl:signed.signedUrl,
+      expectedBytes:Number(row.expected_bytes),expectedMime:String(row.expected_mime),
+    },
+  };
+}
+
+async function readStoredObject(objectPath:string):Promise<{size:number;mime:string}|null>{
+  const slash=objectPath.lastIndexOf("/");
+  const dir=objectPath.slice(0,slash);
+  const name=objectPath.slice(slash+1);
+  const {data,error}=await supabaseAdmin.storage.from(BUCKET).list(dir,{search:name,limit:20});
+  if(error||!data)return null;
+  const found=(data as any[]).find((o:any)=>o.name===name);
+  if(!found)return null;
+  const size=Number(found?.metadata?.size);
+  const mime=String(found?.metadata?.mimetype??"");
+  return Number.isFinite(size)?{size,mime}:null;
+}
+
+export async function finalizeCustomerProblemEvidence(p:{
+  tokenId:string;evidenceId:string;
+}):Promise<ProblemResult<{evidenceId:string}>>{
+  // Resolve the evidence envelope THROUGH the token-scoped database
+  // projection. A guessed evidence UUID must not make service_role read another
+  // delivery's private object path before the Help token is proven to own it.
+  const {data:authData,error:aErr}=await supabaseAdmin.rpc(
+    "couranr_customer_problem_evidence_authorization",
+    {p_token_id:p.tokenId,p_evidence_id:p.evidenceId}
+  );
+  if(aErr)return dbFail("problemEvidence.authRead",aErr);
+  const auth=rowOf(authData);
+  if(!auth)return publicFailure({operation:"problemEvidence.finalize",code:"not_found",detail:"missing"});
+  const authId=String(auth.out_id);
+  const authPath=String(auth.out_object_path);
+  const authExpectedBytes=Number(auth.out_expected_bytes);
+  const authExpectedMime=String(auth.out_expected_mime);
+  const authState=String(auth.out_upload_state);
+  const authExpiresAt=String(auth.out_expires_at);
+  if(authState==="verified")return {ok:true,value:{evidenceId:authId}};
+
+  if(new Date(authExpiresAt).getTime()<=Date.now()){
+    const {error:abandonError}=await supabaseAdmin.rpc(
+      "couranr_abandon_customer_problem_evidence",
+      {p_token_id:p.tokenId,p_evidence_id:p.evidenceId}
+    );
+    if(abandonError)return dbFail("problemEvidence.abandonExpired",abandonError);
+
+    const {error:removeError}=await supabaseAdmin.storage
+      .from(BUCKET).remove([authPath]);
+    if(removeError){
+      return publicFailure({
+        operation:"problemEvidence.removeExpired",
+        code:"internal",
+        detail:{message:removeError.message,evidenceId:p.evidenceId},
+      });
+    }
+    return publicFailure({
+      operation:"problemEvidence.finalize",
+      code:"conflict",
+      detail:"grant_expired",
+      message:"That photo upload expired. Try the photo again.",
+    });
+  }
+
+  const stored=await readStoredObject(authPath);
+  if(!stored){
+    return publicFailure({
+      operation:"problemEvidence.finalize",code:"conflict",detail:"object_missing",
+      message:"The photo upload did not arrive. Try again.",
+    });
+  }
+  if(stored.size!==authExpectedBytes||stored.mime!==authExpectedMime){
+    return publicFailure({
+      operation:"problemEvidence.finalize",code:"conflict",
+      detail:{reason:"storage_mismatch",size:stored.size,mime:stored.mime},
+      message:"The photo upload arrived incomplete. Try again.",
+    });
+  }
+
+  const {data,error}=await supabaseAdmin.rpc("couranr_finalize_customer_problem_evidence",{
+    p_token_id:p.tokenId,p_evidence_id:p.evidenceId,
+    p_actual_path:authPath,p_actual_bytes:stored.size,p_actual_mime:stored.mime,
+  });
+  if(error)return dbFail("problemEvidence.finalize",error);
+  const row=rowOf(data);
+  if(!row?.id)return publicFailure({operation:"problemEvidence.finalize",code:"internal",detail:"empty"});
+  return {ok:true,value:{evidenceId:String(row.id)}};
+}
+
+export async function submitCustomerProblemReport(p:{
+  tokenId:string;reportId:string;idempotencyKey:string;
+}):Promise<ProblemResult<ProblemReportView>>{
+  const cleaned=await cleanupExpiredCustomerProblemEvidence({
+    tokenId:p.tokenId,reportId:p.reportId,
+  });
+  if(isProblemFailure(cleaned))return cleaned;
+
+  const {data,error}=await supabaseAdmin.rpc("couranr_submit_customer_problem_report",{
+    p_token_id:p.tokenId,p_report_id:p.reportId,p_idempotency_key:p.idempotencyKey,
+  });
+  if(error)return dbFail("problemReport.submit",error);
+  const row=rowOf(data);
+  if(!row)return publicFailure({operation:"problemReport.submit",code:"internal",detail:"empty"});
+  const {count}=await supabaseAdmin
+    .from("couranr_customer_problem_evidence")
+    .select("id",{count:"exact",head:true})
+    .eq("report_id",String(row.id)).eq("upload_state","verified");
+  return {ok:true,value:mapReport({...row,evidence_count:count??0})};
+}
+
+function requireOperations(actor:RequestActor,operation:string):PublicFailure|null{
+  if(actor.kind==="operations")return null;
+  return publicFailure({operation,code:"not_permitted",detail:"not_operations"});
+}
+
+export async function listOperationsProblemReports(
+  actor:RequestActor
+):Promise<ProblemResult<OperationsProblemReport[]>>{
+  const denied=requireOperations(actor,"problemReport.operations.list");
+  if(denied)return denied;
+  // Unresolved (actionable) reports must never be displaced by resolved history
+  // merely because of a global row cap. Two bounded queries — every unresolved
+  // review state in full, then only a bounded window of resolved history — keep
+  // every open case reachable while bounding ONLY resolved growth. This is a
+  // fixed number of round trips (not N+1), deterministically ordered.
+  const REPORT_COLS=
+    "id,request_id,delivery_id,problem_type,details,report_state,submitted_at,resolved_at,version,created_at";
+  // reported/under_review/awaiting_evidence are the open review states; resolved
+  // is terminal; draft is never listed to Operations.
+  const UNRESOLVED_STATES=["reported","under_review","awaiting_evidence"];
+  const RESOLVED_HISTORY_CAP=200;
+  // Platform safety ceiling on the actionable set — far above any realistic
+  // count of simultaneously-open support cases. The unbounded-growth risk is
+  // resolved history, which is what the cap above bounds; a launch that ever
+  // approached this many OPEN cases would need real pagination, out of MVP scope.
+  const UNRESOLVED_SAFETY_CAP=1000;
+  const unresolved=await supabaseAdmin
+    .from("couranr_customer_problem_reports")
+    .select(REPORT_COLS)
+    .in("report_state",UNRESOLVED_STATES)
+    .order("created_at",{ascending:false})
+    .order("id",{ascending:false})
+    .limit(UNRESOLVED_SAFETY_CAP);
+  if(unresolved.error)return dbFail("problemReport.operations.list",unresolved.error);
+  const resolvedHistory=await supabaseAdmin
+    .from("couranr_customer_problem_reports")
+    .select(REPORT_COLS)
+    .eq("report_state","resolved")
+    .order("created_at",{ascending:false})
+    .order("id",{ascending:false})
+    .limit(RESOLVED_HISTORY_CAP);
+  if(resolvedHistory.error)return dbFail("problemReport.operations.list",resolvedHistory.error);
+  // A report can transition unresolved -> resolved in the window between these
+  // two awaited queries, so the same id can land in BOTH result sets. Dedupe by
+  // id keeping the FIRST (unresolved, actionable) occurrence: without this the
+  // Operations list would render one case twice — colliding React keys and
+  // showing the same report in two contradictory states.
+  const seen=new Set<string>();
+  const data=[...(unresolved.data??[]),...(resolvedHistory.data??[])].filter((r:any)=>{
+    const id=String(r.id);
+    if(seen.has(id))return false;
+    seen.add(id);
+    return true;
+  });
+  const ids=data.map((r:any)=>String(r.id));
+  let evidence:any[]=[];
+  if(ids.length){
+    const e=await supabaseAdmin
+      .from("couranr_customer_problem_evidence")
+      .select("id,report_id,finalized_at")
+      .in("report_id",ids)
+      .eq("upload_state","verified")
+      .order("finalized_at",{ascending:true});
+    if(e.error)return dbFail("problemReport.operations.evidence",e.error);
+    evidence=e.data??[];
+  }
+  return {
+    ok:true,
+    value:(data??[]).map((r:any)=>({
+      ...mapReport({
+        ...r,evidence_count:evidence.filter((e:any)=>String(e.report_id)===String(r.id)).length,
+      }),
+      deliveryId:String(r.delivery_id),requestId:String(r.request_id),
+      evidence:evidence
+        .filter((e:any)=>String(e.report_id)===String(r.id))
+        .map((e:any)=>({id:String(e.id),finalizedAt:String(e.finalized_at)})),
+    })),
+  };
+}
+
+export async function cleanupExpiredOperationsProblemEvidence(
+  actor:RequestActor
+):Promise<ProblemResult<{removed:number}>>{
+  const denied=requireOperations(actor,"problemEvidence.operations.cleanup");
+  if(denied)return denied;
+  const userId=(actor as Extract<RequestActor,{kind:"operations"}>).userId;
+  const {data,error}=await supabaseAdmin.rpc(
+    "couranr_collect_expired_problem_evidence_ops",
+    {p_actor_user_id:userId,p_limit:100}
+  );
+  if(error)return dbFail("problemEvidence.operations.cleanupCollect",error);
+  const rows=(Array.isArray(data)?data:[])
+    .map((row:any)=>({
+      id:String(row?.out_id??""),
+      path:String(row?.out_object_path??""),
+    }))
+    .filter((row)=>row.id&&row.path);
+  if(!rows.length)return {ok:true,value:{removed:0}};
+
+  const paths=rows.map((row)=>row.path);
+  const {error:removeError}=await supabaseAdmin.storage.from(BUCKET).remove(paths);
+  if(removeError){
+    // No ACK occurs, so these expired abandoned rows remain eligible for the
+    // next Operations cleanup attempt.
+    return publicFailure({
+      operation:"problemEvidence.operations.cleanupStorage",
+      code:"internal",
+      detail:{message:removeError.message,count:paths.length},
+      message:"Expired photo cleanup did not finish. Try again.",
+    });
+  }
+
+  const {data:acked,error:ackError}=await supabaseAdmin.rpc(
+    "couranr_ack_problem_evidence_cleanup_ops",
+    {p_actor_user_id:userId,p_evidence_ids:rows.map((row)=>row.id)}
+  );
+  if(ackError){
+    // Storage deletion succeeded but DB acknowledgement did not. The next
+    // cleanup may retry deletion; successful cleanup is designed to be
+    // idempotent rather than silently dropping the tombstone.
+    return dbFail("problemEvidence.operations.cleanupAck",ackError);
+  }
+  return {ok:true,value:{removed:Number(acked??0)}};
+}
+
+export type ProblemReportOperationsCommand="start_review"|"request_evidence"|"resolve_report";
+
+export async function transitionOperationsProblemReport(p:{
+  actor:RequestActor;reportId:string;expectedVersion:number;
+  command:ProblemReportOperationsCommand;
+}):Promise<ProblemResult<ProblemReportView>>{
+  const denied=requireOperations(p.actor,"problemReport.operations.transition");
+  if(denied)return denied;
+  const userId=(p.actor as Extract<RequestActor,{kind:"operations"}>).userId;
+  const {data,error}=await supabaseAdmin.rpc("couranr_transition_customer_problem_report",{
+    p_report_id:p.reportId,p_expected_version:p.expectedVersion,
+    p_actor_user_id:userId,p_command:p.command,
+  });
+  if(error){
+    if(error?.code==="CR409"&&error?.message==="problem_evidence_limit_reached"){
+      return publicFailure({
+        operation:"problemReport.operations.transition",
+        code:"conflict",
+        detail:{code:error.code,message:error.message},
+        message:"This report already has five photos. Review the existing evidence instead of requesting more.",
+      });
+    }
+    return dbFail("problemReport.operations.transition",error);
+  }
+  const row=rowOf(data);
+  if(!row)return publicFailure({operation:"problemReport.operations.transition",code:"internal",detail:"empty"});
+  const {count}=await supabaseAdmin
+    .from("couranr_customer_problem_evidence")
+    .select("id",{count:"exact",head:true})
+    .eq("report_id",p.reportId).eq("upload_state","verified");
+  return {ok:true,value:mapReport({...row,evidence_count:count??0})};
+}
+
+export async function signedOperationsProblemEvidenceUrl(p:{
+  actor:RequestActor;reportId:string;evidenceId:string;
+}):Promise<ProblemResult<{url:string;expiresInSeconds:number}>>{
+  const denied=requireOperations(p.actor,"problemEvidence.operations.url");
+  if(denied)return denied;
+  const {data,error}=await supabaseAdmin
+    .from("couranr_customer_problem_evidence")
+    .select("id,report_id,storage_bucket,object_path,upload_state")
+    .eq("id",p.evidenceId).eq("report_id",p.reportId).maybeSingle();
+  if(error)return dbFail("problemEvidence.operations.read",error);
+  if(!data||data.upload_state!=="verified"){
+    return publicFailure({operation:"problemEvidence.operations.url",code:"not_found",detail:"missing"});
+  }
+  const ttl=900;
+  const {data:signed,error:sErr}=await supabaseAdmin.storage
+    .from(String(data.storage_bucket)).createSignedUrl(String(data.object_path),ttl);
+  if(sErr||!signed?.signedUrl){
+    return publicFailure({operation:"problemEvidence.operations.url",code:"internal",detail:sErr});
+  }
+  return {ok:true,value:{url:signed.signedUrl,expiresInSeconds:ttl}};
+}

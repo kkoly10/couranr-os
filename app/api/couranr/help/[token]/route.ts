@@ -15,6 +15,10 @@ import {
 } from "@/lib/couranr/conversations/states";
 import { readHelpLifecycleStatus } from "@/lib/couranr/conversations/helpStatus";
 import { readHelpResolutionPolicy } from "@/lib/couranr/conversations/helpResolution";
+import {
+  isProblemFailure,
+  readCustomerProblemReports,
+} from "@/lib/couranr/conversations/problemReports";
 
 export const dynamic = "force-dynamic";
 
@@ -49,10 +53,11 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: str
   const link = await redeemHelpToken((await ctx.params).token);
   if (isHelpFailure(link)) return refuse();
 
-  const [thread, returnStatus, resolutionPolicy] = await Promise.all([
+  const [thread, returnStatus, resolutionPolicy, problemReportsResult] = await Promise.all([
     readHelpThread(link.value.tokenId),
     readHelpLifecycleStatus(link.value.deliveryId),
     readHelpResolutionPolicy(link.value.deliveryId),
+    readCustomerProblemReports(link.value.tokenId),
   ]);
   if (isHelpFailure(thread)) return refuse();
 
@@ -78,6 +83,11 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: str
     // CUS-002. Server-derived stage/policy only. This projection contains no
     // payer identity, payment amount, browser-chosen target state or mutation.
     resolutionPolicy,
+    // CUS-004. A subsystem read failure is not rendered as "no reports".
+    // Delivery Help stays usable while the dedicated panel shows unavailable.
+    problemReports: isProblemFailure(problemReportsResult)
+      ? null
+      : problemReportsResult.value,
   });
 }
 

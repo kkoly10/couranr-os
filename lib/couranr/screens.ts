@@ -124,7 +124,7 @@ const SCREENS: CanonicalScreen[] = [
   { id: "CUS-001", name: "Address-change request", group: "customer", routes: ["/help/[token]#address-change"], tier: "core", phase: "7–8", viewport: "mobile-first", status: "functional_verified" },
   { id: "CUS-002", name: "Cancellation and return request", group: "customer", routes: ["/help/[token]#cancellation-return"], tier: "core", phase: "7–8", viewport: "mobile-first", status: "partial" },
   { id: "CUS-003", name: "Recipient unavailable resolution", group: "customer", routes: ["/help/[token]#recipient-unavailable"], tier: "core", phase: "7–8", viewport: "mobile-first", status: "functional_verified" },
-  { id: "CUS-004", name: "Delivery problem report", group: "customer", routes: ["/help/[token]#delivery-problem"], tier: "core", phase: "7–8", viewport: "mobile-first", status: "missing" },
+  { id: "CUS-004", name: "Delivery problem report", group: "customer", routes: ["/help/[token]#delivery-problem"], tier: "core", phase: "7–8", viewport: "mobile-first", status: "functional_unverified" },
   { id: "CUS-005", name: "Revised quote approval", group: "customer", routes: ["/pay/[token]?mode=requote"], tier: "core", phase: "6–7", viewport: "mobile-first", status: "functional_unverified" },
   { id: "CUS-006", name: "Proof-of-delivery viewer", group: "customer", routes: ["/track/[token]#proof"], tier: "core", phase: "7", viewport: "mobile-first", status: "functional_verified" },
   { id: "CUS-007", name: "Return and refund status", group: "customer", routes: ["/help/[token]#return-status"], tier: "core", phase: "6–8", viewport: "mobile-first", status: "partial" },
