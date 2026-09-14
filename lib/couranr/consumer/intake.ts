@@ -25,6 +25,7 @@
  * money path: `recordConsumerIntakeEvidenceAfterEstimate` logs and swallows.
  */
 import { assertServerOnly } from "@/lib/couranr/serverOnly";
+import type { TimingIntent } from "@/lib/couranr/timing/policy";
 import { logServerFailure, newCorrelationId, publicFailure } from "@/lib/couranr/errors";
 import {
   evaluateAndRecordIntakePolicy,
@@ -208,6 +209,13 @@ export type ConsumerFormStatement = {
   weightLb: number | null;
   weightBand: WeightBand | null;
   restrictedClass: RestrictedClassDeclaration;
+  /**
+   * TMZ-001: the sender's timing statement, so the confirmed intake facts
+   * record the SAME intent the estimate priced — never a fabricated ASAP for a
+   * scheduled request. Optional so callers that have no timing default to ASAP.
+   */
+  timingIntent?: TimingIntent;
+  requestedPickupLocal?: string | null;
 };
 
 /**
@@ -243,8 +251,11 @@ export async function recordConsumerIntakeEvidenceAfterEstimate(params: {
         weightBand: params.statement.weightBand,
         restrictedClass: params.statement.restrictedClass,
         serviceLevel: "standard",
-        timingIntent: "asap",
-        requestedPickupLocal: null,
+        timingIntent: params.statement.timingIntent === "scheduled" ? "scheduled" : "asap",
+        requestedPickupLocal:
+          params.statement.timingIntent === "scheduled"
+            ? (params.statement.requestedPickupLocal ?? null)
+            : null,
       },
     });
     if (isIntakeFailure(synced)) return;

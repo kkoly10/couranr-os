@@ -589,6 +589,45 @@ generated geography. `product-proof` is frozen and keeps its own pending tile.
 Two accepted photographs are recorded as `approved-reserve` with no allowed
 surface, which is a decision rather than an omission.
 
+
+### r9 — the category system takes §27's second option
+
+The owner supplied the last two category photographs on 2026-09-08, completing
+a set of ten — one for each real business category. This entry records the one
+cell it moves and the several things it does not.
+
+**§27.0 row 9, `categories`, moves `image-led` false → true.** This is not a new
+composition and did not need an owner decision: §27 Section 9 has always offered
+the section two devices — *"selective category grid **or** image-based category
+system"* — and the page rendered the first only because there was no
+photography for the second. Ten frames exist now, so it renders the second, and
+a photograph in every card is the section's device rather than a decoration
+beside it. The resulting-budgets line moves with it: image-led is **5**
+(sections 1, 3, 5, 9, 12) against a floor of 2.
+
+**`grid-dominant` stays `true` and `data-composition` stays
+`structured-information-block`.** It is still a grid of discrete items, so the
+flag still describes it, and §19's cap of 2 is not approached at 1. Keeping the
+composition also keeps the two adjacent-duplicate diagnostics at 9+10 and 10+11
+rather than silently changing a count this document asserts.
+
+**PUB-009's §27.1 table does not move, and neither does its markup.** `/businesses`
+renders the text-only `category-system` grid and is still `grid-dominant: true`,
+`image-led: false`. The two pages now use two different devices for the same
+eleven categories, which is deliberate: PUB-001 is the merchant-facing argument
+and PUB-009 is the reference list. The stylesheet keeps both class families for
+that reason.
+
+**The eleventh category gains no photograph.** `general_local_business` is the
+fallback, and Master Package §5 makes it a first-class choice rather than a
+category with a look. A frame standing for "any business at all" is the one
+scene that cannot honestly be photographed, so it renders as a full-width card
+with no image.
+
+**Nothing became interactive.** The items were plain `<li>` text and are plain
+`<li>` media cards — no link, no button, no `tabindex`, no handler. A category
+is chosen at sign-up, not here.
+
 ### r7 — the desktop type scale was visually rejected and is reduced
 
 The owner reviewed the DEPLOYED result of PR #30 and rejected it. Passing this
@@ -2420,7 +2459,7 @@ auditable.
 | 6 | `workflow` | Four-step workflow | connected workflow rail | `workflow-rail` | false | false | false |
 | 7 | `payer-choice` | *(none — drift ledger)* | artboard: "You decide who pays for delivery", two tinted payer cards | `structured-information-block` | false | false | false |
 | 8 | `product-proof` | Managed delivery and proof | product proof + supporting narrative | `product-proof` | false | false | **true** |
-| 9 | `categories` | Supported business categories | selective category grid *or* image-based category system | `structured-information-block` | false | **true** | false |
+| 9 | `categories` | Supported business categories | selective category grid *or* image-based category system | `structured-information-block` | **true** | **true** | false |
 | 10 | `delivery-options` | *(none — MKT-003)* | artboard: "Delivery options that fit your needs", four discrete options | `structured-information-block` | false | false | false |
 | 11 | `pricing` | Pricing and pilot economics | structured high-contrast information block | `structured-information-block` | false | false | false |
 | 12 | `service-area` | Service areas | map / route visual | `image-narrative` | true | false | false |
@@ -2435,7 +2474,7 @@ Resulting budgets, which are what §32.3 asserts:
   from a hard rule to a **drift diagnostic**. The test reports the count; it no
   longer fails on it. See r6 below.
 - `data-grid-dominant="true"`: **1** — section 9 (§19 cap is 2);
-- `data-image-led="true"`: **4** — sections 1, 3, 5, 12 (§27 floor is 2);
+- `data-image-led="true"`: **5** — sections 1, 3, 5, 9, 12 (§27 floor is 2);
 - `data-product-proof="true"`: **1** — section 8 (§27 floor is 1);
 - `workflow-rail`: exactly **1** — section 6.
 

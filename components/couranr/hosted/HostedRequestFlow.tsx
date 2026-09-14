@@ -3,9 +3,19 @@
 import * as React from "react";
 import { Alert, Badge, Button, Card, CardHeader, Cluster, Stack, Text } from "@/components/couranr/primitives";
 import { CheckboxRow, Field, Input, Select, Textarea } from "@/components/couranr/forms";
+import { SEND_COPY } from "@/lib/couranr/public/masterSameDayCopy";
+import { SAME_DAY_CUTOFF_COPY } from "@/lib/couranr/public/governed";
+import { parseOperatingLocal } from "@/lib/couranr/timing/policy";
 
 type Suggestion = { placeId: string; text: string };
 type WeightBand = "0_25_lb" | "over_25_to_50_lb" | "over_50_lb" | "unknown";
+type TimingIntent = "asap" | "scheduled";
+type TimingView = {
+  intent: TimingIntent;
+  requestedPickupLocal: string | null;
+  requestedDepartureAt: string | null;
+  reviewReasons: unknown[];
+};
 type RequestView = {
   submitted: boolean;
   requestState: string | null;
@@ -13,8 +23,22 @@ type RequestView = {
   merchantValidated: boolean;
   paymentPending: boolean;
   terminal: boolean;
+  timing?: TimingView | null;
   trackingToken?: string;
 };
+
+/**
+ * TMZ-001: the timing as words. The server's understanding is echoed back
+ * exactly — the local words the customer typed and nothing invented. Never a
+ * promise of a time; Couranr confirms it.
+ */
+function timingLabel(t: TimingView | null | undefined): string | null {
+  if (!t) return null;
+  if (t.intent === "scheduled" && t.requestedPickupLocal) {
+    return `${SEND_COPY.timing_schedule}: ${t.requestedPickupLocal.replace("T", " ")} (Eastern)`;
+  }
+  return SEND_COPY.timing_asap;
+}
 
 const HEADER = "x-couranr-hosted-request";
 
@@ -90,6 +114,8 @@ export function HostedRequestFlow({
   const [restrictedClass, setRestrictedClass] = React.useState<"none" | "unknown">("none");
   const [signatureRequired, setSignatureRequired] = React.useState(false);
   const [requestedPayer, setRequestedPayer] = React.useState<"merchant" | "customer">("customer");
+  const [timingIntent, setTimingIntent] = React.useState<TimingIntent>("asap");
+  const [requestedPickupLocal, setRequestedPickupLocal] = React.useState("");
 
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -220,6 +246,9 @@ export function HostedRequestFlow({
     setError(null);
   }
 
+  const scheduledIncomplete =
+    timingIntent === "scheduled" && parseOperatingLocal(requestedPickupLocal.trim()) === null;
+
   async function submit() {
     setError(null);
     if (!destinationPlaceId) {
@@ -232,6 +261,10 @@ export function HostedRequestFlow({
     }
     if (!description.trim()) {
       setError("Tell the business what needs to be delivered.");
+      return;
+    }
+    if (scheduledIncomplete) {
+      setError("Enter the requested pickup date and time.");
       return;
     }
 
@@ -264,6 +297,12 @@ export function HostedRequestFlow({
           restrictedClass,
           signatureRequired,
         },
+        // TMZ-001: only the intent and the customer's local words leave the
+        // browser. The instant and the zone are derived by Couranr.
+        timing: {
+          intent: timingIntent,
+          requestedPickupLocal: timingIntent === "scheduled" ? requestedPickupLocal.trim() : null,
+        },
       }),
     });
     const payload = await response.json().catch(() => null);
@@ -290,6 +329,17 @@ export function HostedRequestFlow({
             <Alert tone={copy.tone} title={copy.title}>
               {copy.body}
             </Alert>
+            {timingLabel(requestView?.timing) ? (
+              <div data-couranr-hosted-timing="true">
+                <Text size="xs" muted>Requested pickup</Text>
+                <Text>{timingLabel(requestView?.timing)}</Text>
+                {(requestView?.timing?.reviewReasons?.length ?? 0) > 0 ? (
+                  <Text size="sm" muted>
+                    Couranr will confirm this pickup time with you before the delivery is priced.
+                  </Text>
+                ) : null}
+              </div>
+            ) : null}
             <Text size="sm" muted>
               Couranr is handling delivery only. Any merchandise purchase, refund or order
               change remains between you and {merchantName}.
@@ -494,6 +544,51 @@ export function HostedRequestFlow({
         </Card>
 
         <Card>
+          <CardHeader
+            title={SEND_COPY.timing_question}
+            description={`${merchantName} confirms the pickup time when it validates your request.`}
+          />
+          <Stack gap={3}>
+            <Field label="Pickup timing" required>
+              {(p) => (
+                <Select
+                  {...p}
+                  value={timingIntent}
+                  onChange={(e) => setTimingIntent(e.target.value as TimingIntent)}
+                >
+                  <option value="asap">{SEND_COPY.timing_asap}</option>
+                  <option value="scheduled">{SEND_COPY.timing_schedule}</option>
+                </Select>
+              )}
+            </Field>
+            {timingIntent === "scheduled" ? (
+              <Field
+                id="hosted-pickup-time"
+                label="Requested pickup time"
+                required
+                hint={`Times are Eastern (America/New_York). Same-day requests close at ${SAME_DAY_CUTOFF_COPY}.`}
+                error={
+                  requestedPickupLocal.trim() && scheduledIncomplete
+                    ? "Enter a date and time Couranr can read."
+                    : undefined
+                }
+              >
+                {(p) => (
+                  <Input
+                    {...p}
+                    type="datetime-local"
+                    value={requestedPickupLocal}
+                    onChange={(e) => setRequestedPickupLocal(e.target.value)}
+                  />
+                )}
+              </Field>
+            ) : (
+              <Text size="sm" muted>{SEND_COPY.timing_live_note}</Text>
+            )}
+          </Stack>
+        </Card>
+
+        <Card>
           <CardHeader title="Who should pay Couranr for delivery?" />
           <Stack gap={3}>
             <Field label="Requested payer" required hint="The business confirms the final payer when it validates your request.">
@@ -511,7 +606,12 @@ export function HostedRequestFlow({
           </Stack>
         </Card>
 
-        <Button variant="primary" loading={busy} disabled={busy} onClick={() => void submit()}>
+        <Button
+          variant="primary"
+          loading={busy}
+          disabled={busy || scheduledIncomplete}
+          onClick={() => void submit()}
+        >
           Send request to {merchantName}
         </Button>
 

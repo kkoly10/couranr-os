@@ -427,7 +427,19 @@ export async function seedCanonicalQuotedRequest(t, opts) {
     p_route_duration_seconds: 600,
     p_route_static_duration_seconds: 600,
     p_route_traffic_delay_seconds: 0,
-    p_distance_source: o.distanceSource || "google_routes_v2",
+    // The Mapbox cutover (20260904175646 / 20260905030000) made the quote mint
+    // refuse any distance_source other than 'mapbox_directions_v5'
+    // (mapbox_route_authority_required, CR422). The default follows that
+    // authority so the shared mint fixture stays legal; a suite that needs a
+    // different source states it explicitly via `distanceSource`.
+    //
+    // CUS-004 CONFLICT, resolved to main 2026-09-14. Both branches independently
+    // added the `o.distanceSource ||` override; CUS-004 kept the pre-cutover
+    // `google_routes_v2` default because it was cut before the cutover landed.
+    // Main's line is a strict superset — same override, corrected default — so
+    // taking it loses nothing from CUS-004 and keeps the fixture legal against
+    // the live mint.
+    p_distance_source: o.distanceSource || "mapbox_directions_v5",
     p_serviceability_outcome: "available_for_request",
     p_route_review_reason: null,
     p_quote_status: "estimated",

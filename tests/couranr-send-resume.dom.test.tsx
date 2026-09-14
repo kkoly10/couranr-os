@@ -144,7 +144,7 @@ describe("SendFlow live resume — awaiting the payer's authorization", () => {
       [SESSION]: () => ({ body: { guestSession: { token: "MUST-NOT-MINT", expiresAt: "" } } }),
     });
 
-    render(<SendFlow mode="live" productionStop="Same Day ordering is not open yet." />);
+    render(<SendFlow mode="live" />);
 
     // The resume landed on the payment step with the server's stored total.
     const cta = await screen.findByRole("button", { name: "Continue to payment" });
@@ -186,7 +186,7 @@ describe("SendFlow live resume — awaiting the payer's authorization", () => {
       [SUBMIT]: () => ({ body: { request: { state: "awaiting_quote_acceptance" } } }),
     });
 
-    render(<SendFlow mode="live" productionStop="stop" />);
+    render(<SendFlow mode="live" />);
 
     const cta = await screen.findByRole("button", { name: "Continue to payment" });
     expect(screen.getByRole("status").textContent).toMatch(/Couranr updated the price/);
@@ -226,7 +226,7 @@ describe("SendFlow live resume — awaiting the payer's authorization", () => {
       [SESSION]: () => ({ body: { guestSession: { token: "MUST-NOT-MINT", expiresAt: "" } } }),
     });
 
-    render(<SendFlow mode="live" productionStop="stop" />);
+    render(<SendFlow mode="live" />);
 
     await userEvent.click(await screen.findByRole("button", { name: "Continue to payment" }));
 
@@ -265,7 +265,7 @@ describe("SendFlow live resume — awaiting the payer's authorization", () => {
       }),
     });
 
-    render(<SendFlow mode="live" productionStop="stop" />);
+    render(<SendFlow mode="live" />);
     await userEvent.click(await screen.findByRole("button", { name: "Continue to payment" }));
 
     const alert = await screen.findByRole("alert");
@@ -278,7 +278,7 @@ describe("SendFlow live resume — awaiting the payer's authorization", () => {
 
   it("a first visit with no stored session makes no network call at all on load", async () => {
     const f = installFetch({});
-    render(<SendFlow mode="live" productionStop="stop" />);
+    render(<SendFlow mode="live" />);
     // The intent choice renders; nothing resumed, nothing minted.
     expect(await screen.findByText("What do you need?")).toBeTruthy();
     await new Promise((r) => setTimeout(r, 20));

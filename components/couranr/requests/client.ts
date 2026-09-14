@@ -313,6 +313,9 @@ export function fetchDeliveryRequest(input: { id: string; businessAccountId?: st
       customerWeightBand: string | null;
       customerRestrictedClass: string | null;
       signatureRequested: boolean;
+      /** TMZ-001: what the customer asked for, frozen on the intake. */
+      customerTimingIntent: "asap" | "scheduled" | null;
+      customerRequestedPickupLocal: string | null;
       /** Present only on the Operations cross-request read. */
       hostBusinessAccountId?: string;
       hostBusinessName?: string | null;
@@ -333,6 +336,9 @@ export function validateHostedRequestFromBrowser(input: {
   pickupPackageCount: number | null;
   pickupOrderReference: string | null;
   pickupHandlingNotes: string | null;
+  /** TMZ-001: the timing the merchant confirms the quote against. */
+  timingIntent: "asap" | "scheduled";
+  requestedPickupLocal: string | null;
 }) {
   return call<{ request: DeliveryRequestView }>(
     `/api/couranr/delivery-requests/${input.id}/validate-hosted`,

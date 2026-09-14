@@ -38,8 +38,12 @@ import { fileURLToPath } from "node:url";
 import sharp from "sharp";
 
 const repo = join(dirname(fileURLToPath(import.meta.url)), "..");
-const SRC_DIR = "public/images/marketing/2026-08";
-const OUT_DIR = "public/images/marketing/2026-08/w";
+/* Batch-aware. Every asset without an explicit `batch` is 2026-08, so the
+   accepted set installed on 2026-08-28 keeps its exact paths and filenames and
+   its derivatives are byte-identical. The 2026-09 category batch is additive. */
+const DEFAULT_BATCH = "2026-08";
+const srcDir = (batch = DEFAULT_BATCH) => `public/images/marketing/${batch}`;
+const outDir = (batch = DEFAULT_BATCH) => `public/images/marketing/${batch}/w`;
 
 /**
  * Focal points are copied from the package's `ASSET_PROVENANCE.json`, which is
@@ -47,7 +51,161 @@ const OUT_DIR = "public/images/marketing/2026-08/w";
  * derivative in this table was inspected after generation and the ones that
  * clipped a hand or a face were re-cut, with the deviation noted here.
  */
+const CATEGORY_DERIVATIVES = [
+  /* Desktop/tablet card. 4:3 into a 4:3 source — a resize, not a crop, so no
+     part of any frame is discarded at these widths. */
+  { shape: "card", aspect: 4 / 3, widths: [400, 800] },
+  /* Mobile media-card thumbnail. The compact row puts a ~130px-wide image
+     beside the text, where a shrunk 4:3 makes the subject unreadable. A 1:1
+     crop about the focal point holds the subject at the same apparent size in
+     a narrower box — the same art-direction reason the mosaic carries squares. */
+  { shape: "thumb", aspect: 1, widths: [160, 320] },
+];
+
 const ASSETS = [
+  /* ── the 2026-09 category batch ───────────────────────────────────────────
+     Eight frames supplied by the owner on 2026-09-08, all 1448x1086 (4:3),
+     the same native aspect as the 2026-08 set. They fill the two categories
+     the accepted set could not serve at all — auto parts and event rentals —
+     and give bakeries a frame that shows catering, which the 2026-08 bakery
+     (allowed_surfaces PUB-009) does not. */
+  {
+    batch: "2026-09",
+    slug: "print-signage",
+    src: "01-print-signage.png",
+    /* Operator right of centre, print roll filling the lower left. Held on her
+       face so the 1:1 thumb does not become an abstract of the paper. */
+    focal: { x: 0.46, y: 0.34 },
+    derivatives: CATEGORY_DERIVATIVES,
+  },
+  {
+    batch: "2026-09",
+    slug: "event-rentals",
+    src: "02-event-rentals.png",
+    focal: { x: 0.41, y: 0.38 },
+    derivatives: CATEGORY_DERIVATIVES,
+  },
+  {
+    batch: "2026-09",
+    slug: "boutique-apparel",
+    src: "03-boutique-apparel.png",
+    focal: { x: 0.53, y: 0.36 },
+    derivatives: CATEGORY_DERIVATIVES,
+  },
+  {
+    batch: "2026-09",
+    slug: "auto-parts",
+    src: "04-auto-parts.png",
+    /* Between his face and the box in his hands; centring on either alone
+       loses the other from the square. */
+    focal: { x: 0.50, y: 0.33 },
+    derivatives: CATEGORY_DERIVATIVES,
+  },
+  {
+    batch: "2026-09",
+    slug: "repair-electronics",
+    src: "05-repair-electronics.png",
+    focal: { x: 0.55, y: 0.42 },
+    derivatives: CATEGORY_DERIVATIVES,
+  },
+  {
+    batch: "2026-09",
+    slug: "bakery-catering",
+    src: "06-bakery-catering.png",
+    focal: { x: 0.47, y: 0.40 },
+    derivatives: CATEGORY_DERIVATIVES,
+  },
+  {
+    batch: "2026-09",
+    slug: "florist-gifts",
+    src: "07-florist-gifts.png",
+    focal: { x: 0.45, y: 0.38 },
+    derivatives: CATEGORY_DERIVATIVES,
+  },
+  /* ── the last two categories, supplied 2026-09-08 ───────────────────────
+     The eight above left `books_cards_collectibles_hobby` and
+     `furniture_and_home_goods` without a frame, which is what held the grid
+     back — a ten-card grid with two cards missing their photograph is worse
+     than no grid. Same 1448x1086 native as the rest of the batch. */
+  {
+    batch: "2026-09",
+    slug: "books-cards-hobby",
+    src: "14-books-cards-hobby.png",
+    /* The square drops a quarter of the width, and this frame spends that
+       width on four different goods — card rack, book table, collectibles
+       cabinet, plush shelf. Held just right of the bookseller so the square
+       keeps the cards on the left AND reaches the cabinet, rather than
+       centring her and cutting the category down to one noun. */
+    focal: { x: 0.44, y: 0.36 },
+    derivatives: CATEGORY_DERIVATIVES,
+  },
+  {
+    batch: "2026-09",
+    slug: "furniture-home-goods",
+    src: "15-furniture-home-goods.png",
+    /* She stands well left of centre and the sofa runs to the middle. Anything
+       below x=0.375 clamps against the left edge and stops tracking the
+       subject at all, so this is pulled right of her to keep the lamp and the
+       styled shelving in frame — the part that reads as "home goods" rather
+       than "a sofa". */
+    focal: { x: 0.42, y: 0.34 },
+    derivatives: CATEGORY_DERIVATIVES,
+  },
+  /* The four proof artifacts. Small chips in a four-across row inside the
+     timeline panel, so these are the only derivatives on the page whose job is
+     to be READ at ~150px — each frame is cropped about the phone screen or the
+     parcel, not about the person, because at that size a face is a smudge and
+     the artifact is the point. */
+  {
+    batch: "2026-09",
+    slug: "proof-pin",
+    src: "09-proof-pin.png",
+    /* The keypad, not the courier: the PIN screen is the artifact. */
+    focal: { x: 0.50, y: 0.52 },
+    derivatives: [{ shape: "proof", aspect: 4 / 3, widths: [200, 400] }],
+  },
+  {
+    batch: "2026-09",
+    slug: "proof-photo",
+    src: "10-proof-photo.png",
+    focal: { x: 0.50, y: 0.60 },
+    derivatives: [{ shape: "proof", aspect: 4 / 3, widths: [200, 400] }],
+  },
+  {
+    batch: "2026-09",
+    slug: "proof-location",
+    src: "11-proof-location.png",
+    /* The map on the screen, which sits left of centre and high. */
+    focal: { x: 0.45, y: 0.45 },
+    derivatives: [{ shape: "proof", aspect: 4 / 3, widths: [200, 400] }],
+  },
+  {
+    batch: "2026-09",
+    slug: "proof-signature",
+    src: "12-proof-signature.png",
+    focal: { x: 0.48, y: 0.52 },
+    derivatives: [{ shape: "proof", aspect: 4 / 3, widths: [200, 400] }],
+  },
+  /* The service corridor. NATIVE aspect (1198x1313, 0.912) so nothing is
+     cropped — the corridor runs top to bottom and any crop would cut a market
+     off one end. A resize, not a crop. */
+  {
+    batch: "2026-09",
+    slug: "service-corridor",
+    src: "13-service-corridor-map.png",
+    focal: { x: 0.5, y: 0.5 },
+    derivatives: [{ shape: "map", aspect: 1198 / 1313, widths: [360, 720] }],
+  },
+  {
+    batch: "2026-09",
+    slug: "dry-cleaning-counter",
+    src: "08-dry-cleaning.png",
+    /* Held right of his face so the garment he is holding stays in the square;
+       he is well left of centre and a face-centred crop drops it entirely. */
+    focal: { x: 0.47, y: 0.36 },
+    derivatives: CATEGORY_DERIVATIVES,
+  },
+
   {
     slug: "florist",
     src: "01-florist.png",
@@ -199,8 +357,8 @@ export function cropWindow(srcW, srcH, aspect, fx, fy) {
   return { left, top, width: w, height: h };
 }
 
-export function outName(slug, shape, width) {
-  return `mkt-2026-08-${slug}-${shape}-${width}.webp`;
+export function outName(slug, shape, width, batch = DEFAULT_BATCH) {
+  return `mkt-${batch}-${slug}-${shape}-${width}.webp`;
 }
 
 /** Every derivative this table implies, as `slug/shape/width` triples. */
@@ -216,21 +374,25 @@ export function expected() {
 
 async function main() {
   const check = process.argv.includes("--check");
-  mkdirSync(join(repo, OUT_DIR), { recursive: true });
+  for (const b of new Set(ASSETS.map((a) => a.batch ?? DEFAULT_BATCH))) {
+    mkdirSync(join(repo, outDir(b)), { recursive: true });
+  }
 
   const want = expected();
-  const wantNames = new Set(want.map((e) => outName(e.asset.slug, e.shape, e.width)));
+  const wantNames = new Set(
+    want.map((e) => outName(e.asset.slug, e.shape, e.width, e.asset.batch))
+  );
   const fail = [];
   let written = 0;
 
   for (const e of want) {
-    const srcPath = join(repo, SRC_DIR, e.asset.src);
+    const srcPath = join(repo, srcDir(e.asset.batch), e.asset.src);
     if (!existsSync(srcPath)) {
       fail.push(`${e.asset.src}: source is missing`);
       continue;
     }
-    const name = outName(e.asset.slug, e.shape, e.width);
-    const outPath = join(repo, OUT_DIR, name);
+    const name = outName(e.asset.slug, e.shape, e.width, e.asset.batch);
+    const outPath = join(repo, outDir(e.asset.batch), name);
 
     const meta = await sharp(srcPath).metadata();
     const fx = e.asset.focalOverride?.x ?? e.asset.focal.x;
@@ -261,10 +423,13 @@ async function main() {
   }
 
   // A derivative nobody serves is dead weight that still ships to the browser.
-  for (const f of readdirSync(join(repo, OUT_DIR))) {
-    if (f.endsWith(".webp") && !wantNames.has(f)) {
-      if (check) fail.push(`${f}: orphaned — no entry in the crop table`);
-      else unlinkSync(join(repo, OUT_DIR, f));
+  // Swept per batch, so a 2026-09 file is never judged against the 2026-08 table.
+  for (const b of new Set(ASSETS.map((a) => a.batch ?? DEFAULT_BATCH))) {
+    for (const f of readdirSync(join(repo, outDir(b)))) {
+      if (f.endsWith(".webp") && !wantNames.has(f)) {
+        if (check) fail.push(`${f}: orphaned — no entry in the crop table`);
+        else unlinkSync(join(repo, outDir(b), f));
+      }
     }
   }
 
@@ -276,7 +441,7 @@ async function main() {
   console.log(
     check
       ? `marketing images: ok — ${want.length} derivative(s) current`
-      : `marketing images: wrote ${written} derivative(s) to ${OUT_DIR}`,
+      : `marketing images: wrote ${written} derivative(s)`,
   );
 }
 

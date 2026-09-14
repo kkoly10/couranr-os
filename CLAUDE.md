@@ -16,6 +16,63 @@ A deliverable is **not done** until it has been verified against its requirement
 
 If any step surfaces a flaw, fix it and re-run the protocol before declaring done.
 
+### Check the QUESTION, not just the answer
+
+Step 4 says back every claim with a command you ran. That is necessary and it is
+not sufficient: a command you ran can still answer a question you did not mean to
+ask, and the output looks exactly as authoritative either way. Every incident
+below is from a single session on 2026-09-08, and in each one a command WAS run.
+
+1. **A negative result is a claim about your query first, and the data second.**
+   Before reporting that something is absent, prove the query can find a positive
+   — run it against a case you know exists. `select … where version in
+   ('20260908180000', …)` returned one row instead of two and was reported to the
+   owner as an unapplied migration. The migration had been applied for five
+   hours. The filename prefix is a LOCAL convention; `apply_migration` stamps its
+   own timestamp, so the version in the ledger is a different number and the join
+   found nothing. Joining on `name` — which this repo had already learned once,
+   in commit `5b132925`, for the migration sitting directly beside it — returns
+   the row immediately.
+
+2. **Never act on a diagnosis you have not independently confirmed, and never
+   write to production on one.** Following on from the above: the phantom gap was
+   "fixed" by re-applying the migration, which stamped a SECOND ledger row for
+   the same name. The SQL was idempotent so nothing broke, and that is luck, not
+   design. Confirm the diagnosis a second way before the remedy, especially when
+   the remedy touches the live database.
+
+3. **Sanity-check every measurement against a bound you know independently.** A
+   per-position symbol count over a 32-character alphabet returned **33**. That is
+   impossible, which is the only reason it was caught: the analysis query used
+   `replace(r,'CR-','')`, which also strips a mid-string `CR-` when a group ends
+   in "CR", shortening the string so `substr` returned an empty cell that counted
+   as a 33rd distinct value. The generator was fine; the ruler was bent. Ask what
+   the number CANNOT exceed before you believe it — this is the same failure that
+   produced the original halved-keyspace bug, where 2000/2000 distinct measured
+   uniqueness and was reported as uniformity.
+
+4. **Do not infer observable behaviour from configuration. Observe it.**
+   `vercel.json` carries `deploymentEnabled: {"*": false, "main": true}`, which was
+   read as "branch pushes trigger no build" and stated to the owner as fact, while
+   the owner had asked for no Vercel builds. That key gates PRODUCTION. **Every
+   push to a `claude/*` branch produces a Preview deployment** — the history for
+   2026-09-08 alone lists more than a dozen, one per pushed commit. A config file
+   records intent; only the history records what happened:
+
+   ```
+   gh api repos/kkoly10/couranr-os/deployments --paginate \
+     --jq '.[] | select(.environment=="Preview") | "\(.ref[0:9])  \(.created_at)"'
+   ```
+
+   Worth noting how the correction itself went, because it is the same lesson a
+   second time: the first draft of this very rule said "three branch pushes",
+   counted off the four rows that happened to be on screen. Paginating showed a
+   dozen. A count taken from an unpaginated first page is not a count.
+
+The shared root: a proxy was trusted in place of the thing itself — a filename
+for a ledger version, a config key for a deployment, a string transform for a
+position. When a claim matters, read the thing itself.
+
 ## Project status — read this before doing anything
 
 **NOT launch-ready. NO-GO for public launch, production customer onboarding, or real customer data** (as of 2026-07). This is *not* a greenfield pre-launch repo — the connected Supabase project holds real rows: 42 `orders`, 29 `deliveries`, 94 `addresses`, 28 `rentals`, 46 renter-license files. Treat the database as production data with production consequences.

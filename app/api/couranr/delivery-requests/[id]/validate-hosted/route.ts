@@ -12,6 +12,15 @@ import { canActOnDeliveryRequest } from "@/lib/couranr/requests/permissions";
 
 export const dynamic = "force-dynamic";
 
+/** Reason → sentence. Timing gets its own words; everything else stays generic. */
+function hostedValidationMessage(reason: string): string {
+  if (reason === "requested_time_invalid") {
+    return "Enter the requested pickup date and time (Eastern) to schedule this delivery.";
+  }
+  if (reason === "timing_intent_invalid") return "Choose a pickup timing Couranr offers.";
+  return "Confirm the payer, shipment weight and safety details.";
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export async function POST(
@@ -52,7 +61,7 @@ export async function POST(
 
   const validated = validateMerchantHostedConfirmation(body);
   if (validated.ok === false) {
-    return routeFailure("invalid_input", "Confirm the payer, shipment weight and safety details.");
+    return routeFailure("invalid_input", hostedValidationMessage(validated.reason));
   }
 
   const result = await validateHostedRequestByMerchant({

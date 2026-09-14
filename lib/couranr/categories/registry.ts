@@ -58,8 +58,17 @@ export type BusinessCategory = (typeof BUSINESS_CATEGORIES)[number];
  * entry of the initial registry and the acceptance list names "General
  * business" explicitly, so a merchant who does not see themselves in the list
  * has somewhere to go that is a real category rather than a blank.
+ *
+ * `as const satisfies BusinessCategory`, NOT `: BusinessCategory`. The
+ * annotation widened this to the whole union, which made
+ * `Exclude<BusinessCategory, typeof GENERAL_CATEGORY>` evaluate to `never` —
+ * and a `Record<never, T>` accepts anything, so a map built to be exhaustive
+ * over "every category except the fallback" silently enforced nothing.
+ * `satisfies` still proves the value is a member of the union; `as const`
+ * keeps the literal type that Exclude needs. See CATEGORY_SYSTEM_PHOTOS in
+ * lib/couranr/public/marketingPhotos.ts, which depends on it.
  */
-export const GENERAL_CATEGORY: BusinessCategory = "general_local_business";
+export const GENERAL_CATEGORY = "general_local_business" as const satisfies BusinessCategory;
 
 export const CATEGORY_LABELS: Readonly<Record<BusinessCategory, string>> = {
   dry_cleaning_laundry_tailoring: "Dry cleaning, laundry, tailoring",

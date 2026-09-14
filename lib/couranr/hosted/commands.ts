@@ -17,6 +17,12 @@ import {
   isCanonicalAddressResolutionError,
 } from "@/lib/couranr/routing/canonicalRoute";
 import { quoteArgs, routeArgs, timingArgs } from "@/lib/couranr/requests/commands";
+import {
+  evaluateRequestTiming,
+  parseOperatingLocal,
+  TIMING_INTENTS,
+  type TimingIntent,
+} from "@/lib/couranr/timing/policy";
 import { factsFromDraft } from "@/lib/couranr/shipment/draftFacts";
 import { evaluateShipmentPolicy } from "@/lib/couranr/shipment/policy";
 import { applyShipmentPolicyToQuote } from "@/lib/couranr/shipment/quoteStatus";
@@ -260,6 +266,12 @@ const FORBIDDEN_KEYS = [
   "trafficdelayseconds",
   "latitude",
   "longitude",
+  /* TMZ-001: the browser states an intent and local wall-clock words only.
+     The canonical instant, the zone and the review reasons are Couranr's. */
+  "requesteddepartureat",
+  "operatingtimezone",
+  "timingreviewreasons",
+  "timingpolicyversion",
 ] as const;
 
 function canonicalKey(key: string): string {
@@ -306,6 +318,12 @@ export type HostedSubmitBody = {
     restrictedClass: RestrictedClassDeclaration;
     signatureRequired: boolean;
   };
+  /**
+   * TMZ-001 requested timing as the CUSTOMER stated it: ASAP, or a scheduled
+   * pickup as local America/New_York wall-clock words (`YYYY-MM-DDTHH:MM`).
+   * Absent timing means ASAP, exactly like the business and /send bodies.
+   */
+  timing: { intent: TimingIntent; requestedPickupLocal: string | null };
 };
 
 export type HostedBodyResult =
@@ -412,6 +430,27 @@ export function validateHostedSubmitBody(raw: unknown): HostedBodyResult {
     restrictedClass = shipmentRaw.restrictedClass;
   }
 
+  // TMZ-001 requested timing. ASAP unless the customer scheduled a time; a
+  // scheduled request must carry parseable `YYYY-MM-DDTHH:MM` local words. No
+  // zone suffix is accepted — the zone is Couranr's operating decision. Same
+  // rule, same vocabulary, same parser as the business and /send bodies.
+  const timingRaw =
+    body.timing !== null && typeof body.timing === "object" && !Array.isArray(body.timing)
+      ? (body.timing as Record<string, unknown>)
+      : {};
+  const timingIntent = (str(timingRaw.intent, 40) ?? "asap") as TimingIntent;
+  if (!(TIMING_INTENTS as readonly string[]).includes(timingIntent)) {
+    return { ok: false, reason: "timing_intent_invalid" };
+  }
+  let requestedPickupLocal: string | null = null;
+  if (timingIntent === "scheduled") {
+    const rawLocal = str(timingRaw.requestedPickupLocal, 40);
+    if (!rawLocal || !parseOperatingLocal(rawLocal)) {
+      return { ok: false, reason: "requested_time_invalid" };
+    }
+    requestedPickupLocal = rawLocal;
+  }
+
   return {
     ok: true,
     value: {
@@ -428,6 +467,7 @@ export function validateHostedSubmitBody(raw: unknown): HostedBodyResult {
         restrictedClass,
         signatureRequired: shipmentRaw.signatureRequired === true,
       },
+      timing: { intent: timingIntent, requestedPickupLocal },
     },
   };
 }
@@ -464,6 +504,20 @@ export async function submitHostedRequest(params: {
   body: HostedSubmitBody;
 }): Promise<HostedResult<{ requestState: string }>> {
   const op = "submitHostedRequest";
+  /*
+   * TMZ-001, two-sided. The canonical instant and the timing review reasons
+   * are derived HERE from the customer's words under America/New_York — a pure
+   * computation, no provider call — and the SQL command re-derives the instant
+   * with PostgreSQL's own tzdata and refuses a mismatch. The browser never
+   * supplies an instant or a zone (FORBIDDEN_KEYS).
+   */
+  const timing = evaluateRequestTiming(
+    {
+      intent: params.body.timing.intent,
+      requestedPickupLocal: params.body.timing.requestedPickupLocal,
+    },
+    new Date()
+  );
   const r = await callRpc<any>(op, RPC.createRequest, {
     p_intake_id: params.session.id,
     p_order_reference: params.body.orderReference,
@@ -478,6 +532,7 @@ export async function submitHostedRequest(params: {
     p_customer_restricted_class: params.body.shipment.restrictedClass,
     p_signature_requested: params.body.shipment.signatureRequired,
     p_shipment_description: params.body.shipment.description,
+    ...timingArgs(timing),
   });
   if (isHostedFailure(r)) return r;
   const row = one<any>(r.value);
@@ -512,6 +567,32 @@ export async function submitHostedRequest(params: {
   };
 }
 
+/**
+ * TMZ-001 timing as the SERVER understood it: the local words preserved
+ * verbatim, the canonical America/New_York instant (null for ASAP or an
+ * unresolved DST edge) and the timing review reasons. Before merchant
+ * validation this is the customer's statement; afterwards it is the timing the
+ * merchant confirmed and the quote was minted against.
+ */
+export type HostedTimingView = {
+  intent: TimingIntent;
+  requestedPickupLocal: string | null;
+  requestedDepartureAt: string | null;
+  reviewReasons: unknown[];
+};
+
+export function hostedTimingFromRow(row: Record<string, any>): HostedTimingView {
+  return {
+    intent: row.timing_intent === "scheduled" ? "scheduled" : "asap",
+    requestedPickupLocal:
+      row.timing_intent === "scheduled" && typeof row.requested_pickup_local === "string"
+        ? row.requested_pickup_local
+        : null,
+    requestedDepartureAt: row.requested_departure_at ? String(row.requested_departure_at) : null,
+    reviewReasons: Array.isArray(row.timing_review_reasons) ? row.timing_review_reasons : [],
+  };
+}
+
 export type HostedPublicRequestView = {
   submitted: boolean;
   requestState: string | null;
@@ -519,6 +600,8 @@ export type HostedPublicRequestView = {
   merchantValidated: boolean;
   paymentPending: boolean;
   terminal: boolean;
+  /** Null until a request exists. */
+  timing: HostedTimingView | null;
   /** Returned only once when the confirmed request gets its first live tracking link. */
   trackingToken?: string;
 };
@@ -537,13 +620,16 @@ export async function readHostedRequest(
         merchantValidated: false,
         paymentPending: false,
         terminal: false,
+        timing: null,
       },
     };
   }
 
   const { data, error } = await supabaseAdmin
     .from("couranr_delivery_requests")
-    .select("id,request_state,quote_status,source,requester_kind,business_account_id")
+    .select(
+      "id,request_state,quote_status,source,requester_kind,business_account_id,timing_intent,requested_pickup_local,requested_departure_at,timing_review_reasons"
+    )
     .eq("id", session.requestId)
     .eq("source", "hosted_request")
     .eq("requester_kind", "consumer")
@@ -567,6 +653,7 @@ export async function readHostedRequest(
     paymentPending:
       state === "awaiting_quote_acceptance" || state === "quote_revision_required",
     terminal: ["declined", "cancelled", "closed"].includes(state),
+    timing: hostedTimingFromRow(data as Record<string, any>),
   };
 
   /*
@@ -609,7 +696,29 @@ export type HostedMerchantContext = {
   customerWeightBand: WeightBand | null;
   customerRestrictedClass: RestrictedClassDeclaration | null;
   signatureRequested: boolean;
+  /** TMZ-001: what the CUSTOMER asked for, frozen on the intake. */
+  customerTimingIntent: TimingIntent | null;
+  customerRequestedPickupLocal: string | null;
 };
+
+function customerTimingFromIntake(row: Record<string, any>): {
+  customerTimingIntent: TimingIntent | null;
+  customerRequestedPickupLocal: string | null;
+} {
+  const intent: TimingIntent | null =
+    row.customer_timing_intent === "scheduled"
+      ? "scheduled"
+      : row.customer_timing_intent === "asap"
+        ? "asap"
+        : null;
+  return {
+    customerTimingIntent: intent,
+    customerRequestedPickupLocal:
+      intent === "scheduled" && typeof row.customer_requested_pickup_local === "string"
+        ? row.customer_requested_pickup_local
+        : null,
+  };
+}
 
 export async function getHostedMerchantContext(params: {
   requestId: string;
@@ -620,7 +729,7 @@ export async function getHostedMerchantContext(params: {
     supabaseAdmin
       .from("couranr_hosted_request_intakes")
       .select(
-        "order_reference,requested_payer_type,destination_label,shipment_description,customer_weight_lb,customer_weight_band,customer_restricted_class,signature_requested"
+        "order_reference,requested_payer_type,destination_label,shipment_description,customer_weight_lb,customer_weight_band,customer_restricted_class,signature_requested,customer_timing_intent,customer_requested_pickup_local"
       )
       .eq("request_id", params.requestId)
       .eq("host_business_account_id", params.hostBusinessAccountId)
@@ -674,6 +783,7 @@ export async function getHostedMerchantContext(params: {
         ? row.customer_restricted_class
         : null,
       signatureRequested: row.signature_requested === true,
+      ...customerTimingFromIntake(row),
     },
   };
 }
@@ -699,7 +809,7 @@ export async function getHostedOperationsContext(params: {
     supabaseAdmin
       .from("couranr_hosted_request_intakes")
       .select(
-        "host_business_account_id,order_reference,requested_payer_type,destination_label,shipment_description,customer_weight_lb,customer_weight_band,customer_restricted_class,signature_requested"
+        "host_business_account_id,order_reference,requested_payer_type,destination_label,shipment_description,customer_weight_lb,customer_weight_band,customer_restricted_class,signature_requested,customer_timing_intent,customer_requested_pickup_local"
       )
       .eq("request_id", params.requestId)
       .maybeSingle(),
@@ -776,6 +886,7 @@ export async function getHostedOperationsContext(params: {
         ? row.customer_restricted_class
         : null,
       signatureRequested: row.signature_requested === true,
+      ...customerTimingFromIntake(row),
     },
   };
 }
@@ -787,6 +898,13 @@ export type HostedValidationInput = {
   restrictedClass: RestrictedClassDeclaration;
   signatureRequired: boolean;
   pickupManifest: PickupManifestInput;
+  /**
+   * TMZ-001: the timing the merchant confirms the quote against. `null` means
+   * "confirm the customer's stored statement unchanged" — never ASAP by
+   * default. A value is the merchant's adjustment, validated like the business
+   * flow's own timing input.
+   */
+  timing: { intent: TimingIntent; requestedPickupLocal: string | null } | null;
 };
 
 /**
@@ -847,6 +965,27 @@ export function validateMerchantHostedConfirmation(raw: unknown):
   });
   if (!pickupManifest.ok) return { ok: false, reason: "pickup_manifest_invalid" };
 
+  // TMZ-001. Omitted → confirm the customer's stored statement. Stated → the
+  // merchant's adjustment, under the same closed vocabulary and parser the
+  // business flow uses. The zone is Couranr's; no zone suffix is accepted.
+  let timing: HostedValidationInput["timing"] = null;
+  if (body.timingIntent !== undefined && body.timingIntent !== null && body.timingIntent !== "") {
+    const intent = typeof body.timingIntent === "string" ? body.timingIntent.trim() : "";
+    if (!(TIMING_INTENTS as readonly string[]).includes(intent)) {
+      return { ok: false, reason: "timing_intent_invalid" };
+    }
+    let requestedPickupLocal: string | null = null;
+    if (intent === "scheduled") {
+      const rawLocal =
+        typeof body.requestedPickupLocal === "string" ? body.requestedPickupLocal.trim() : "";
+      if (!rawLocal || !parseOperatingLocal(rawLocal)) {
+        return { ok: false, reason: "requested_time_invalid" };
+      }
+      requestedPickupLocal = rawLocal;
+    }
+    timing = { intent: intent as TimingIntent, requestedPickupLocal };
+  }
+
   return {
     ok: true,
     value: {
@@ -856,6 +995,7 @@ export function validateMerchantHostedConfirmation(raw: unknown):
       restrictedClass: body.restrictedClass,
       signatureRequired: body.signatureRequired === true,
       pickupManifest: pickupManifest.value,
+      timing,
     },
   };
 }
@@ -950,6 +1090,22 @@ export async function validateHostedRequestByMerchant(params: {
   }
 
   /*
+   * TMZ-001. The quote is minted against the timing the merchant confirms:
+   * the customer's STORED statement unless the merchant adjusted it. Never a
+   * fabricated ASAP — a scheduled request the merchant did not touch stays
+   * scheduled, and the customer's own words stay frozen on the intake.
+   */
+  const storedTiming: { intent: TimingIntent; requestedPickupLocal: string | null } = {
+    intent: requestRow.timing_intent === "scheduled" ? "scheduled" : "asap",
+    requestedPickupLocal:
+      requestRow.timing_intent === "scheduled" &&
+      typeof requestRow.requested_pickup_local === "string"
+        ? requestRow.requested_pickup_local
+        : null,
+  };
+  const timing = params.input.timing ?? storedTiming;
+
+  /*
    * CUSTOMER SAFETY EVIDENCE IS MONOTONIC.
    *
    * A customer who explicitly declared a governed restricted class created
@@ -1010,8 +1166,8 @@ export async function validateHostedRequestByMerchant(params: {
       serviceLevel: "standard",
       signatureRequired: params.input.signatureRequired,
       overnightRequested: false,
-      timingIntent: "asap",
-      requestedPickupLocal: null,
+      timingIntent: timing.intent,
+      requestedPickupLocal: timing.requestedPickupLocal,
     });
   } catch (error) {
     if (isCanonicalAddressResolutionError(error)) {
@@ -1033,8 +1189,8 @@ export async function validateHostedRequestByMerchant(params: {
     weightBand: params.input.weightBand,
     restrictedClass: params.input.restrictedClass,
     serviceLevel: "standard",
-    timingIntent: "asap",
-    requestedPickupLocal: null,
+    timingIntent: timing.intent,
+    requestedPickupLocal: timing.requestedPickupLocal,
   });
   const textSignals = scanRestrictedSignals(String((intake as any).shipment_description ?? ""));
   const policy = evaluateShipmentPolicy(facts, { textSignals });
@@ -1054,7 +1210,7 @@ export async function validateHostedRequestByMerchant(params: {
     p_dropoff_address: routed.dropoffAddress,
     ...routeArgs(routed.route),
     ...quoteArgs(quote),
-    p_timing_review_reasons: timingArgs(routed.timing).p_timing_review_reasons,
+    ...timingArgs(routed.timing),
   });
   if (isHostedFailure(r)) return r;
   return { ok: true, value: { request: one<any>(r.value) ?? r.value } };

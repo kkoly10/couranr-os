@@ -14,6 +14,7 @@ import {
 } from "@/components/couranr/primitives";
 import { CheckboxRow, Field, Input, Select, Textarea } from "@/components/couranr/forms";
 import { WEIGHT_BAND_LABELS } from "@/lib/couranr/shipment/weightBandLabels";
+import { SAME_DAY_CUTOFF_COPY } from "@/lib/couranr/public/governed";
 import {
   CardSkeleton,
   ConflictState,
@@ -846,7 +847,7 @@ export function NewDeliveryFlow({
               label="Pickup timing"
               required
               error={fieldErrors.timingIntent}
-              hint="Times are Eastern (America/New_York). Same-day requests close at 4:00 PM."
+              hint={`Times are Eastern (America/New_York). Same-day requests close at ${SAME_DAY_CUTOFF_COPY}.`}
             >
               {(p) => (
                 <Select

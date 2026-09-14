@@ -2034,6 +2034,275 @@
       "preferred_aspect": "3:2",
       "focal_point_note": "RESERVE. Same scene as couranr-mkt-2026-08-benefit-busy-parent, already bound into PUB-001 outcomes.",
       "status": "approved-reserve"
+    },
+    {
+      "asset_id": "couranr-mkt-2026-09-print-signage",
+      "local_path": "public/images/marketing/2026-09/w/mkt-2026-09-print-signage-card-800.webp",
+      "derived_from": "public/images/marketing/2026-09/01-print-signage.png",
+      "source": "owner-supplied-2026-09-08",
+      "source_reference": "Delivered by the owner at the repository root on 2026-09-08 for the PUB-001 category grid.",
+      "license_record": "Owner-supplied. No third-party stock source or external stock licence recorded.",
+      "subject": "Print-shop operator guiding a wide landscape print off a large-format printer",
+      "alt": "A print-shop worker guides a wide landscape print off a large-format printer.",
+      "allowed_surfaces": [
+        "PUB-001"
+      ],
+      "desktop_focal_point": "46% 34%",
+      "mobile_focal_point": "46% 34%",
+      "focal_point_note": "Operator right of centre with the print roll filling the lower left. Held on her face so the 1:1 thumb does not become an abstract of the paper.",
+      "preferred_aspect": "4:3",
+      "status": "approved"
+    },
+    {
+      "asset_id": "couranr-mkt-2026-09-event-rentals",
+      "local_path": "public/images/marketing/2026-09/w/mkt-2026-09-event-rentals-card-800.webp",
+      "derived_from": "public/images/marketing/2026-09/02-event-rentals.png",
+      "source": "owner-supplied-2026-09-08",
+      "source_reference": "Delivered by the owner at the repository root on 2026-09-08 for the PUB-001 category grid.",
+      "license_record": "Owner-supplied. No third-party stock source or external stock licence recorded.",
+      "subject": "Event-rental worker checking stacked chairs against a clipboard in a supply warehouse",
+      "alt": "An event-rental worker checks stacked chairs against a clipboard in a supply warehouse.",
+      "allowed_surfaces": [
+        "PUB-001"
+      ],
+      "desktop_focal_point": "41% 38%",
+      "mobile_focal_point": "41% 38%",
+      "preferred_aspect": "4:3",
+      "status": "approved"
+    },
+    {
+      "asset_id": "couranr-mkt-2026-09-boutique-apparel",
+      "local_path": "public/images/marketing/2026-09/w/mkt-2026-09-boutique-apparel-card-800.webp",
+      "derived_from": "public/images/marketing/2026-09/03-boutique-apparel.png",
+      "source": "owner-supplied-2026-09-08",
+      "source_reference": "Delivered by the owner at the repository root on 2026-09-08 for the PUB-001 category grid.",
+      "license_record": "Owner-supplied. No third-party stock source or external stock licence recorded.",
+      "subject": "Boutique owner arranging jackets on a rail beside a display of shoes and handbags",
+      "alt": "A boutique owner arranges jackets on a rail beside a display of shoes and handbags.",
+      "allowed_surfaces": [
+        "PUB-001"
+      ],
+      "desktop_focal_point": "53% 36%",
+      "mobile_focal_point": "53% 36%",
+      "preferred_aspect": "4:3",
+      "status": "approved"
+    },
+    {
+      "asset_id": "couranr-mkt-2026-09-auto-parts",
+      "local_path": "public/images/marketing/2026-09/w/mkt-2026-09-auto-parts-card-800.webp",
+      "derived_from": "public/images/marketing/2026-09/04-auto-parts.png",
+      "source": "owner-supplied-2026-09-08",
+      "source_reference": "Delivered by the owner at the repository root on 2026-09-08 for the PUB-001 category grid.",
+      "license_record": "Owner-supplied. No third-party stock source or external stock licence recorded.",
+      "subject": "Shopper comparing a boxed air filter at the shelf in an auto-parts store",
+      "alt": "A shopper compares a boxed air filter at the shelf in an auto-parts store.",
+      "allowed_surfaces": [
+        "PUB-001"
+      ],
+      "desktop_focal_point": "50% 33%",
+      "mobile_focal_point": "50% 33%",
+      "focal_point_note": "Between his face and the box in his hands; centring on either alone loses the other from the square thumb.",
+      "preferred_aspect": "4:3",
+      "status": "approved"
+    },
+    {
+      "asset_id": "couranr-mkt-2026-09-repair-electronics",
+      "local_path": "public/images/marketing/2026-09/w/mkt-2026-09-repair-electronics-card-800.webp",
+      "derived_from": "public/images/marketing/2026-09/05-repair-electronics.png",
+      "source": "owner-supplied-2026-09-08",
+      "source_reference": "Delivered by the owner at the repository root on 2026-09-08 for the PUB-001 category grid.",
+      "license_record": "Owner-supplied. No third-party stock source or external stock licence recorded.",
+      "subject": "Repair technician working inside an opened laptop at a bench",
+      "alt": "A repair technician works inside an opened laptop with a screwdriver at a bench.",
+      "allowed_surfaces": [
+        "PUB-001"
+      ],
+      "desktop_focal_point": "55% 42%",
+      "mobile_focal_point": "55% 42%",
+      "preferred_aspect": "4:3",
+      "status": "approved"
+    },
+    {
+      "asset_id": "couranr-mkt-2026-09-bakery-catering",
+      "local_path": "public/images/marketing/2026-09/w/mkt-2026-09-bakery-catering-card-800.webp",
+      "derived_from": "public/images/marketing/2026-09/06-bakery-catering.png",
+      "source": "owner-supplied-2026-09-08",
+      "source_reference": "Delivered by the owner at the repository root on 2026-09-08 for the PUB-001 category grid.",
+      "license_record": "Owner-supplied. No third-party stock source or external stock licence recorded.",
+      "subject": "Baker arranging catering trays and pastries across a bakery counter",
+      "alt": "A baker arranges catering trays and pastries across a bakery counter.",
+      "allowed_surfaces": [
+        "PUB-001"
+      ],
+      "desktop_focal_point": "47% 40%",
+      "mobile_focal_point": "47% 40%",
+      "focal_point_note": "Distinct from couranr-mkt-2026-08-bakery, which shows an oven and is bound to PUB-009. This frame shows catering, which the accepted set does not.",
+      "preferred_aspect": "4:3",
+      "status": "approved"
+    },
+    {
+      "asset_id": "couranr-mkt-2026-09-florist-gifts",
+      "local_path": "public/images/marketing/2026-09/w/mkt-2026-09-florist-gifts-card-800.webp",
+      "derived_from": "public/images/marketing/2026-09/07-florist-gifts.png",
+      "source": "owner-supplied-2026-09-08",
+      "source_reference": "Delivered by the owner at the repository root on 2026-09-08 for the PUB-001 category grid.",
+      "license_record": "Owner-supplied. No third-party stock source or external stock licence recorded.",
+      "subject": "Florist tying a mixed bouquet at a work table beside wrapped gift boxes",
+      "alt": "A florist ties a mixed bouquet at a work table beside wrapped gift boxes.",
+      "allowed_surfaces": [
+        "PUB-001"
+      ],
+      "desktop_focal_point": "45% 38%",
+      "mobile_focal_point": "45% 38%",
+      "preferred_aspect": "4:3",
+      "status": "approved"
+    },
+    {
+      "asset_id": "couranr-mkt-2026-09-dry-cleaning-counter",
+      "local_path": "public/images/marketing/2026-09/w/mkt-2026-09-dry-cleaning-counter-card-800.webp",
+      "derived_from": "public/images/marketing/2026-09/08-dry-cleaning.png",
+      "source": "owner-supplied-2026-09-08",
+      "source_reference": "Delivered by the owner at the repository root on 2026-09-08 for the PUB-001 category grid.",
+      "license_record": "Owner-supplied. No third-party stock source or external stock licence recorded.",
+      "subject": "Dry-cleaning worker checking a suit in a garment bag on the finished rack",
+      "alt": "A dry-cleaning worker checks a suit in a garment bag on the finished rack.",
+      "allowed_surfaces": [
+        "PUB-001"
+      ],
+      "desktop_focal_point": "47% 36%",
+      "mobile_focal_point": "47% 36%",
+      "focal_point_note": "Held right of his face so the garment he is holding stays inside the square thumb; he is well left of centre and a face-centred crop drops it entirely.",
+      "preferred_aspect": "4:3",
+      "status": "approved"
+    },
+    {
+      "asset_id": "couranr-mkt-2026-09-books-cards-hobby",
+      "local_path": "public/images/marketing/2026-09/w/mkt-2026-09-books-cards-hobby-card-800.webp",
+      "derived_from": "public/images/marketing/2026-09/14-books-cards-hobby.png",
+      "source": "owner-supplied-2026-09-08",
+      "source_reference": "Delivered by the owner on 2026-09-08 for the PUB-001 category grid; one of the two frames the batch was missing.",
+      "license_record": "Owner-supplied. No third-party stock source or external stock licence recorded.",
+      "subject": "Bookseller sorting new stock between a greetings-card rack and a collectibles cabinet",
+      "alt": "A bookseller sorts new stock on a table between a greetings-card rack and a collectibles cabinet.",
+      "allowed_surfaces": [
+        "PUB-001"
+      ],
+      "desktop_focal_point": "44% 36%",
+      "mobile_focal_point": "44% 36%",
+      "focal_point_note": "The square crop drops a quarter of the width and this frame spends that width on all four of the category's nouns — card rack, books, collectibles cabinet, hobby shelf. Held just right of the bookseller so the square keeps the cards AND reaches the cabinet; centring her would cut the category down to one noun. Inspected at 320 square after generation.",
+      "preferred_aspect": "4:3",
+      "status": "approved"
+    },
+    {
+      "asset_id": "couranr-mkt-2026-09-furniture-home-goods",
+      "local_path": "public/images/marketing/2026-09/w/mkt-2026-09-furniture-home-goods-card-800.webp",
+      "derived_from": "public/images/marketing/2026-09/15-furniture-home-goods.png",
+      "source": "owner-supplied-2026-09-08",
+      "source_reference": "Delivered by the owner on 2026-09-08 for the PUB-001 category grid; one of the two frames the batch was missing.",
+      "license_record": "Owner-supplied. No third-party stock source or external stock licence recorded.",
+      "subject": "Home-goods shop worker setting a cushion on a sofa in a styled showroom",
+      "alt": "A home-goods shop worker sets a cushion on a sofa in a styled showroom.",
+      "allowed_surfaces": [
+        "PUB-001"
+      ],
+      "desktop_focal_point": "42% 34%",
+      "mobile_focal_point": "42% 34%",
+      "focal_point_note": "She stands well left of centre and the sofa runs to the middle. Anything below x=0.375 clamps against the left edge and stops tracking the subject at all, so this is pulled right of her to keep the lamp and the styled shelving in frame — the part that reads as \"home goods\" rather than \"a sofa\". Inspected at 320 square after generation.",
+      "preferred_aspect": "4:3",
+      "status": "approved"
+    },
+    {
+      "asset_id": "couranr-mkt-2026-09-proof-pin",
+      "local_path": "public/images/marketing/2026-09/w/mkt-2026-09-proof-pin-proof-400.webp",
+      "derived_from": "public/images/marketing/2026-09/09-proof-pin.png",
+      "source": "owner-supplied-2026-09-08",
+      "source_reference": "Delivered by the owner at the repository root on 2026-09-08 for PUB-001's proof panel.",
+      "license_record": "Owner-supplied. No third-party stock source or external stock licence recorded.",
+      "subject": "A four-digit code being entered on a phone at an open front door",
+      "alt": "",
+      "alt_note": "alt=\"\" ON PURPOSE — decorative. The label and detail beside this frame on PUB-001 (\"Recipient PIN\" / \"Four digits, verified at the door\") carry the whole fact in text, so W3C WAI's decorative-images rule applies: an image already described by its adjacent text takes a null alt instead of repeating it. It also removes a claim. The list is headed \"What Couranr records as proof\", so a described scene would tell a screen-reader user this frame IS a Couranr delivery — a stronger claim than a sighted reader takes from the same picture. `subject` above still records what the photograph shows, which is provenance rather than page copy.",
+      "allowed_surfaces": [
+        "PUB-001"
+      ],
+      "desktop_focal_point": "50% 52%",
+      "mobile_focal_point": "50% 52%",
+      "focal_point_note": "The keypad, not the person: the PIN screen is the artifact. These four render at about 150px wide in a four-across row, where a face is a smudge and the artifact is what has to be legible.",
+      "preferred_aspect": "4:3",
+      "status": "approved"
+    },
+    {
+      "asset_id": "couranr-mkt-2026-09-proof-photo",
+      "local_path": "public/images/marketing/2026-09/w/mkt-2026-09-proof-photo-proof-400.webp",
+      "derived_from": "public/images/marketing/2026-09/10-proof-photo.png",
+      "source": "owner-supplied-2026-09-08",
+      "source_reference": "Delivered by the owner at the repository root on 2026-09-08 for PUB-001's proof panel.",
+      "license_record": "Owner-supplied. No third-party stock source or external stock licence recorded.",
+      "subject": "A sealed cardboard box left on a doormat at a front door",
+      "alt": "",
+      "alt_note": "alt=\"\" ON PURPOSE — decorative. The label and detail beside this frame on PUB-001 (\"Delivery photo\" / \"Captured at drop-off\") carry the whole fact in text, so W3C WAI's decorative-images rule applies: an image already described by its adjacent text takes a null alt instead of repeating it. It also removes a claim. The list is headed \"What Couranr records as proof\", so a described scene would tell a screen-reader user this frame IS a Couranr delivery — a stronger claim than a sighted reader takes from the same picture. `subject` above still records what the photograph shows, which is provenance rather than page copy.",
+      "allowed_surfaces": [
+        "PUB-001"
+      ],
+      "desktop_focal_point": "50% 60%",
+      "mobile_focal_point": "50% 60%",
+      "preferred_aspect": "4:3",
+      "status": "approved"
+    },
+    {
+      "asset_id": "couranr-mkt-2026-09-proof-location",
+      "local_path": "public/images/marketing/2026-09/w/mkt-2026-09-proof-location-proof-400.webp",
+      "derived_from": "public/images/marketing/2026-09/11-proof-location.png",
+      "source": "owner-supplied-2026-09-08",
+      "source_reference": "Delivered by the owner at the repository root on 2026-09-08 for PUB-001's proof panel.",
+      "license_record": "Owner-supplied. No third-party stock source or external stock licence recorded.",
+      "subject": "A phone showing a map pin, held in front of a box on a doormat",
+      "alt": "",
+      "alt_note": "alt=\"\" ON PURPOSE — decorative. The label and detail beside this frame on PUB-001 (\"Location\" / \"Recorded where it was left\") carry the whole fact in text, so W3C WAI's decorative-images rule applies: an image already described by its adjacent text takes a null alt instead of repeating it. It also removes a claim. The list is headed \"What Couranr records as proof\", so a described scene would tell a screen-reader user this frame IS a Couranr delivery — a stronger claim than a sighted reader takes from the same picture. `subject` above still records what the photograph shows, which is provenance rather than page copy.",
+      "allowed_surfaces": [
+        "PUB-001"
+      ],
+      "desktop_focal_point": "45% 45%",
+      "mobile_focal_point": "45% 45%",
+      "focal_point_note": "The map on the screen, which sits left of centre and high.",
+      "preferred_aspect": "4:3",
+      "status": "approved"
+    },
+    {
+      "asset_id": "couranr-mkt-2026-09-proof-signature",
+      "local_path": "public/images/marketing/2026-09/w/mkt-2026-09-proof-signature-proof-400.webp",
+      "derived_from": "public/images/marketing/2026-09/12-proof-signature.png",
+      "source": "owner-supplied-2026-09-08",
+      "source_reference": "Delivered by the owner at the repository root on 2026-09-08 for PUB-001's proof panel.",
+      "license_record": "Owner-supplied. No third-party stock source or external stock licence recorded.",
+      "subject": "A signature being drawn with a fingertip on a phone screen",
+      "alt": "",
+      "alt_note": "alt=\"\" ON PURPOSE — decorative. The label and detail beside this frame on PUB-001 (\"Signature\" / \"When the delivery calls for one\") carry the whole fact in text, so W3C WAI's decorative-images rule applies: an image already described by its adjacent text takes a null alt instead of repeating it. It also removes a claim. The list is headed \"What Couranr records as proof\", so a described scene would tell a screen-reader user this frame IS a Couranr delivery — a stronger claim than a sighted reader takes from the same picture. `subject` above still records what the photograph shows, which is provenance rather than page copy.",
+      "allowed_surfaces": [
+        "PUB-001"
+      ],
+      "desktop_focal_point": "48% 52%",
+      "mobile_focal_point": "48% 52%",
+      "preferred_aspect": "4:3",
+      "status": "approved"
+    },
+    {
+      "asset_id": "couranr-mkt-2026-09-service-corridor",
+      "local_path": "public/images/marketing/2026-09/w/mkt-2026-09-service-corridor-map-720.webp",
+      "derived_from": "public/images/marketing/2026-09/13-service-corridor-map.png",
+      "source": "owner-supplied-2026-09-08",
+      "source_reference": "Delivered by the owner at the repository root on 2026-09-08 to replace the hand-drawn ServiceCorridorMap component on PUB-001.",
+      "license_record": "Owner-supplied. No third-party stock source or external stock licence recorded. Depicts the launch corridor for illustration; it is not a survey or a navigational source.",
+      "subject": "An illustrated map of the launch corridor from Washington DC south through Virginia",
+      "alt": "",
+      "alt_note": "alt=\"\" ON PURPOSE. Every fact this map depicts — all four launch markets — is in text directly beneath it, rendered from MARKETS_PUBLIC_COPY. Describing it again would make a screen reader hear the corridor twice. This is the one asset in the registry whose empty alt is correct, so it is recorded rather than left to look like an omission.",
+      "allowed_surfaces": [
+        "PUB-001"
+      ],
+      "desktop_focal_point": "50% 50%",
+      "mobile_focal_point": "50% 50%",
+      "focal_point_note": "NATIVE aspect, 1198x1313 — a resize, not a crop. The corridor runs top to bottom and any crop cuts a market off one end, which is why no derivative reframes it and both focal values are centre.",
+      "preferred_aspect": "1198:1313",
+      "status": "approved"
     }
   ],
   "pending_photography": [

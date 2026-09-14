@@ -6,7 +6,7 @@
 derived at render time; `npm run check:governance` regenerates this document
 in memory and fails on a byte of difference.
 
-The 91 PNGs at the repo root are the approved design mocks. Nothing in the
+The 99 PNGs at the repo root are the approved design mocks. Nothing in the
 codebase referenced them, and thirteen of the 62 `canonical-mvp-images/**` paths
 the screen registry cites exist on disk — so most canonical screens built so far
 were built from the registry's *prose* (route, purpose, states) rather than from
@@ -23,9 +23,9 @@ renamed, or deleted, and none will be.
 
 | | count |
 |---|---|
-| PNGs at repo root | 91 |
+| PNGs at repo root | 99 |
 | …that map to one of the 68 registry screens | 69 |
-| …that depict a screen **not** in the registry, or are photography | 22 |
+| …that depict a screen **not** in the registry, or are photography | 30 |
 | …unaccounted for | **0** |
 | Registry screens with at least one mock | 50 of 68 |
 | Registry screens with **no** mock | 18 |
@@ -260,19 +260,49 @@ the same screen.
 ```
 
 > The filenames above are the on-disk UUIDs. Resolve any of them with
-> `ls <first-13-chars>*` — the leading 13 characters are unique across all 91
+> `ls <first-13-chars>*` — the leading 13 characters are unique across all 99
 > files. A round-trip check is in `scripts/checkMockMap.mjs`.
 
 ## Photography assets (not screens)
 
-Two root PNGs are photographs, not UI. Both depict the same brand scene — a
-merchant handing a Couranr-branded parcel to a Couranr driver — and both are
-PUB-001 hero candidates.
+Ten root PNGs are photographs, not UI, in two groups.
+
+The first two depict the same brand scene — a merchant handing a
+Couranr-branded parcel to a Couranr driver — and are the PUB-001 hero.
 
 | File | Size | Use |
 |---|---|---|
 | `0C5CBF3B-0280-4DBB-AAB2-ECDD0020A927.png` | 1672×941 | PUB-001 desktop hero (florist, matches the landing mock) |
 | `44B6E1FB-2987-4067-896A-28A7D33C5518.png` | 1122×1402 | PUB-001 portrait / mobile hero crop |
+
+The other eight are the owner's 2026-09-08 category upload for PUB-001's
+"Built for real local businesses" grid. Each is installed byte-identical under
+`public/images/marketing/2026-09/` and carries its provenance, licence record
+and alt text in `VISUAL_AUTHORITY_REGISTRY.json` as `couranr-mkt-2026-09-*`;
+the root copy is the census original and is what `check:mocks` counts. They are
+accepted for that grid and the grid that renders them is not built yet, which
+is recorded on each asset rather than left to be inferred from their absence.
+
+| File | Category | Installed as |
+|---|---|---|
+| `1CFA191A-F3E0-4CD5-A7D4-71B1290F78A4.png` | Print and signage | `01-print-signage.png` |
+| `2A82AD4B-8704-4A89-ADE3-3FE135D30FE9.png` | Event rentals | `02-event-rentals.png` |
+| `76F3C394-4AEE-4353-B415-40AC029E8D19.png` | Boutique apparel | `03-boutique-apparel.png` |
+| `BE0528C6-D999-433B-ADBE-C57E27E609BE.png` | Auto parts | `04-auto-parts.png` |
+| `D021481D-589B-452B-AFC2-05DD5A11D8CD.png` | Repair and electronics | `05-repair-electronics.png` |
+| `DC4096BF-03B0-4958-8638-4B419A214097.png` | Bakery catering | `06-bakery-catering.png` |
+| `E326BCFA-7F9C-4A83-A57D-29B6246AA768.png` | Florist and gifts | `07-florist-gifts.png` |
+| `EC465687-35A1-4563-909F-ECC6B9A2F39E.png` | Dry cleaning | `08-dry-cleaning.png` |
+
+Seven more frames arrived in the same batch and are NOT root PNGs: the four
+proof artifacts, the service-corridor map, and the two category frames that
+completed the ten-category set on the same day (`books-cards-hobby`,
+`furniture-home-goods`). They were installed straight to
+`public/images/marketing/2026-09/`, so they are registered as photography in
+`VISUAL_AUTHORITY_REGISTRY.json` and are correctly absent from this census.
+The ten-frame category set is therefore split across both records — eight
+here and two there — which is a consequence of how each file arrived rather
+than a classification. `VISUAL_AUTHORITY_REGISTRY.json` holds all ten.
 
 ## Brand sheet
 
@@ -309,7 +339,7 @@ plan **(excluded — contradicts PUB-001 constraints)** · `AC913246-AF03` merch
 notifications · `ACAACA6C-E833` driver earnings & payouts · `DD95F198-DB2D` API &
 integrations · `E7FD20C6-1022` merchant exceptions & resolutions ·
 `F29A17AA-702A` SLA & coverage map · `F2C4E383-F047` customer dashboard ·
-`FE00B26E-7137` driver documents & compliance · plus the two hero photographs.
+`FE00B26E-7137` driver documents & compliance · plus the ten photographs listed above.
 
 ## Registry screens with no mock
 

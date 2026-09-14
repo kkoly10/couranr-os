@@ -1,28 +1,32 @@
 /**
- * The six Same Day frontend adapters, and the disabled implementations that
- * are what production actually gets.
+ * The Same Day frontend adapters, and the two implementations behind them:
+ * `live` (the real consumer backend) and `fixture` (deterministic in-memory
+ * data for tests and explicit local/preview demos).
  *
- * V10 is FRONTEND ONLY. Each capability below has a real backend one day; none
- * of them has one today. Naming them as separate adapters rather than one
- * "isFixture" branch keeps the seam honest — when address search becomes real,
- * exactly one of these changes and nothing else on the page moves.
- *
- * Every adapter is asked for by `getSameDayAdapters()`, which asks
- * `resolveAdapterMode()`. A component never chooses.
- *
- * NOTHING HERE TALKS TO A SERVER. The fixture implementations are pure
- * functions over their inputs; the disabled implementations refuse. There is no
- * network call in this file, by design and not by omission. Since batch 3 §D a
- * third mode exists — `live`, built in `./liveAdapters.ts`, which is the ONE
- * place Same Day talks to the consumer API. This file only chooses it, and only
- * when `resolveAdapterMode` says the environment armed it (two-key arming; see
- * adapterMode.ts).
+ * `live` is the DEFAULT for every real environment — production included. It is
+ * built in `./liveAdapters.ts`, the ONE place Same Day talks to the consumer
+ * API. `fixture` is pure functions over their inputs and never touches a
+ * server. Which one a mount gets is decided by `resolveAdapterMode()` from
+ * server/build-time environment only (adapterMode.ts); a component never
+ * chooses.
  */
 import { BASE_PRICE_CENTS } from "@/lib/couranr/pricing";
+import type { TimingIntent } from "@/lib/couranr/timing/policy";
 import { resolveAdapterMode, type AdapterEnv, type AdapterMode } from "./adapterMode";
 import { createLiveSameDayAdapters } from "./liveAdapters";
 
 export type AddressSuggestion = { id: string; label: string; detail: string };
+
+/**
+ * The result of an address search. A provider/service FAILURE is distinct from
+ * a genuine empty result, so the UI can say "Address lookup is unavailable"
+ * rather than "No matches" — and `rate-limited` is its own outcome, since the
+ * remedy (wait) is specific.
+ */
+export type AddressSearchResult =
+  | { status: "ok"; suggestions: AddressSuggestion[] }
+  | { status: "rate-limited" }
+  | { status: "error" };
 
 export type AvailabilityVerdict =
   | { state: "eligible" }
@@ -59,6 +63,9 @@ export type QuoteReading =
       quoteVersionId: string | null;
       requestId: string;
       expiresAt: string | null;
+      /* ADDITIVE: the server's echo of the timing it priced — the sender's own
+         words, never a browser-picked zone or instant. */
+      timing?: { intent: TimingIntent; requestedPickupLocal: string | null };
     }
   | { state: "manual-review"; note: string }
   | { state: "unavailable"; note: string };
@@ -93,7 +100,10 @@ export type PaymentOutcome =
 export type QuoteInput = {
   pickup: string;
   destination: string;
-  timing: string;
+  /** TMZ-001: ASAP, or a scheduled pickup at an Eastern wall-clock time. */
+  timingIntent: TimingIntent;
+  /** `YYYY-MM-DDTHH:MM` local words when scheduled; the SERVER owns the instant. */
+  requestedPickupLocal?: string | null;
   pickupPlaceId?: string | null;
   dropoffPlaceId?: string | null;
   /** UI field names. The adapter maps `mobile` -> the API/DB key `phone`. */
@@ -140,7 +150,7 @@ export type ConsumerRequestReading = {
 
 export type SameDayAdapters = {
   mode: AdapterMode;
-  searchAddress(query: string): Promise<AddressSuggestion[]>;
+  searchAddress(query: string): Promise<AddressSearchResult>;
   checkAvailability(pickup: string, destination: string): Promise<AvailabilityVerdict>;
   readIntake(text: string): Promise<IntakeReading>;
   quote(input: QuoteInput): Promise<QuoteReading>;
@@ -160,38 +170,6 @@ export type SameDayAdapters = {
   refreshQuote?(): Promise<QuoteReading>;
 };
 
-/** The production stop, verbatim from MKT-005. */
-export const PRODUCTION_STOP_KEY = "production_stop" as const;
-
-/* ------------------------------------------------------------- disabled */
-
-/**
- * What production gets. Every capability refuses, and — the part that matters —
- * NONE of them can return a success shape. `submitRequest` cannot return
- * `received-preview`; `authorizePayment` cannot return `authorized-fixture`.
- * The types allow it; these implementations never construct it.
- */
-const DISABLED: Omit<SameDayAdapters, "mode"> = {
-  async searchAddress() {
-    return [];
-  },
-  async checkAvailability() {
-    return { state: "unavailable", note: "Same Day availability is not live yet." };
-  },
-  async readIntake() {
-    return { state: "unavailable" };
-  },
-  async quote() {
-    return { state: "unavailable", note: "Same Day pricing is not live yet." };
-  },
-  async submitRequest() {
-    return { state: "unavailable", note: "Same Day ordering is not live yet." };
-  },
-  async authorizePayment() {
-    return { state: "not-available", note: "Same Day payment is not live yet." };
-  },
-};
-
 /* -------------------------------------------------------------- fixture */
 
 /**
@@ -208,9 +186,13 @@ const FIXTURE_PLACES: AddressSuggestion[] = [
 const FIXTURE: Omit<SameDayAdapters, "mode"> = {
   async searchAddress(query) {
     const q = query.trim().toLowerCase();
-    if (q.length < 2) return [];
-    if (q.includes("nowhere")) return [];
-    return FIXTURE_PLACES.filter((p) => p.label.toLowerCase().includes(q) || q.length >= 3);
+    // Min-3 mirrors the live provider and the client debounce gate.
+    if (q.length < 3) return { status: "ok", suggestions: [] };
+    if (q.includes("nowhere")) return { status: "ok", suggestions: [] };
+    return {
+      status: "ok",
+      suggestions: FIXTURE_PLACES.filter((p) => p.label.toLowerCase().includes(q) || q.length >= 3),
+    };
   },
   async checkAvailability(pickup, destination) {
     if (!pickup || !destination) {
@@ -233,7 +215,7 @@ const FIXTURE: Omit<SameDayAdapters, "mode"> = {
     if (!input.pickup || !input.destination) {
       return { state: "unavailable", note: "A quote needs both addresses." };
     }
-    if (input.timing === "schedule") {
+    if (input.timingIntent === "scheduled") {
       return { state: "manual-review", note: "Couranr will confirm scheduled trips before pricing." };
     }
     /* A fixture amount, reachable ONLY in fixture mode and never a production
@@ -258,12 +240,21 @@ const FIXTURE: Omit<SameDayAdapters, "mode"> = {
 };
 
 export function getSameDayAdapters(env?: AdapterEnv): SameDayAdapters {
-  const { mode } = resolveAdapterMode(env);
+  return getSameDayAdaptersForMode(resolveAdapterMode(env).mode);
+}
+
+/**
+ * Construct the adapters for a mode already resolved on the server. `SendFlow`
+ * receives the server's `mode` as a prop and asks for exactly that set, so the
+ * client agrees with the server instead of re-deriving from an environment the
+ * browser cannot see.
+ */
+export function getSameDayAdaptersForMode(mode: AdapterMode): SameDayAdapters {
   if (mode === "live") {
     /* A fresh closure per call: the live adapters carry per-flow state (the
        guest session handle, the last estimate). `SendFlow` memoizes one set
        per mount, so this is one flow's state, never shared across visitors. */
     return { mode, ...createLiveSameDayAdapters() };
   }
-  return { mode, ...(mode === "fixture" ? FIXTURE : DISABLED) };
+  return { mode: "fixture", ...FIXTURE };
 }

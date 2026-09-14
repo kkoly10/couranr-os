@@ -22,7 +22,11 @@ import type {
   LineItem,
 } from "./types";
 
-const USD = "USD";
+/* LOWERCASE, because that is what production stores — couranr_quote_versions
+   and couranr_payment_obligations both hold 'usd'. It was "USD" here, so every
+   money assertion in the suite exercised a casing the database never produces
+   and the formatter's case bug stayed invisible. */
+const USD = "usd";
 const shop = { name: "Bloom & Co" };
 const reference = "CR-8F42QK";
 const recipient = "Jordan Rivera";

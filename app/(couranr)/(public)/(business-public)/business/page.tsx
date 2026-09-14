@@ -3,7 +3,6 @@ import type { Metadata } from "next";
 import { Badge, Heading, Text } from "@/components/couranr/primitives";
 import { CouranrLogo } from "@/components/brand/CouranrLogo";
 import { AskCouranrLauncher } from "@/components/couranr/marketing/AskCouranr";
-import { ServiceCorridorMap } from "@/components/couranr/marketing/ServiceCorridorMap";
 import {
   IconBolt,
   IconBox,
@@ -52,11 +51,14 @@ import {
 } from "@/lib/couranr/dispatch/states";
 import {
   CATEGORY_BREADTH_PHOTOS,
+  CATEGORY_SYSTEM_PHOTOS,
   OUTCOME_PRIMARY_PHOTO,
   OUTCOME_SUPPORTING_PHOTO,
   intrinsic,
   largestSrc,
   srcSetFor,
+  PROOF_ARTIFACT_PHOTOS,
+  SERVICE_CORRIDOR_MAP,
 } from "@/lib/couranr/public/marketingPhotos";
 
 /**
@@ -189,15 +191,24 @@ const PROOF_TIMELINE = [
  * fabricated specifics on the public surface. What a proof TYPE is remains a
  * fact about the product; what a particular delivery did is not.
  *
- * `photo: true` marks the one artifact whose mock rendition carries an actual
- * photograph. It renders as a labelled tile until the imagery in
- * PUB-001_PHOTOGRAPHY_BRIEF.md exists.
+ * `photo` used to be the boolean `true` on the single artifact whose MOCK
+ * rendition carried a photograph, with the other three rendering nothing and
+ * that one rendering the words "image pending". The imagery
+ * PUB-001_PHOTOGRAPHY_BRIEF.md called for arrived on 2026-09-08, so the field
+ * is now the MarketingPhoto itself and all four carry one.
  */
+/* Gate A / D-2. Each artifact now carries its photograph, which until owner
+   instruction 2026-09-08 was a literal "image pending" placeholder in one of
+   the four slots and nothing in the other three.
+
+   The LABEL still carries the meaning. The photographs illustrate the product
+   surface; they are not evidence, and PROOF_ARTIFACT_PHOTOS' own header records
+   the narrowed boundary the owner approved. Order matches the list above it. */
 const PROOF_ARTIFACTS = [
-  { label: "Recipient PIN", detail: "Four digits, verified at the door" },
-  { label: "Delivery photo", detail: "Captured at drop-off", photo: true },
-  { label: "Location", detail: "Recorded where it was left" },
-  { label: "Signature", detail: "When the delivery calls for one" },
+  { label: "Recipient PIN", detail: "Four digits, verified at the door", photo: PROOF_ARTIFACT_PHOTOS[0] },
+  { label: "Delivery photo", detail: "Captured at drop-off", photo: PROOF_ARTIFACT_PHOTOS[1] },
+  { label: "Location", detail: "Recorded where it was left", photo: PROOF_ARTIFACT_PHOTOS[2] },
+  { label: "Signature", detail: "When the delivery calls for one", photo: PROOF_ARTIFACT_PHOTOS[3] },
 ];
 
 /**
@@ -863,13 +874,38 @@ export default function Page() {
           <ul className="cr-mkt-proof__artifacts" aria-label="What Couranr records as proof">
             {PROOF_ARTIFACTS.map((a) => (
               <li key={a.label} className="cr-mkt-proof__artifact">
+                {/* Above the label, not beside it: at four across the chip is
+                    ~150px and a side-by-side would leave the text two words
+                    wide. `width`/`height` are the intrinsic box so the row
+                    reserves its height before the image decodes — the same CLS
+                    lesson the mosaic records, where a missing dimension cost
+                    232px of shift across four frames.
+
+                    alt="" — DECORATIVE, and deliberately so. The label and
+                    detail beside it carry the whole fact, so W3C WAI's
+                    decorative-images rule applies: an image already described
+                    by its adjacent text takes a null alt rather than repeating
+                    it. It also removes a claim these photographs should not
+                    make. This list is labelled "What Couranr records as proof",
+                    so a described scene ("a courier enters a four-digit
+                    code…") would tell a screen-reader user the frame IS a
+                    Couranr delivery — a stronger claim than a sighted reader
+                    takes from the same picture. The alt is empty on the
+                    MarketingPhoto record too, so it cannot be reintroduced
+                    here without the registry and its test disagreeing. */}
+                <img
+                  className="cr-mkt-proof__artifact-photo"
+                  src={largestSrc(a.photo)}
+                  srcSet={srcSetFor(a.photo, "wide")}
+                  sizes="(min-width: 900px) 260px, 45vw"
+                  width={intrinsic(a.photo).width}
+                  height={intrinsic(a.photo).height}
+                  alt={a.photo.alt}
+                  loading="lazy"
+                  decoding="async"
+                />
                 <span className="cr-mkt-proof__artifact-label">{a.label}</span>
                 <span className="cr-mkt-proof__artifact-detail">{a.detail}</span>
-                {a.photo ? (
-                  <span className="cr-mkt-proof__artifact-slot" aria-hidden="true">
-                    image pending
-                  </span>
-                ) : null}
               </li>
             ))}
           </ul>
@@ -912,7 +948,7 @@ export default function Page() {
         aria-labelledby="s9-h"
         data-couranr-section="categories"
         data-composition="structured-information-block"
-        data-image-led="false"
+        data-image-led="true"
         data-grid-dominant="true"
         data-product-proof="false"
       >
@@ -924,23 +960,89 @@ export default function Page() {
           ones when you sign up. Your category tunes what Couranr suggests — it
           never limits what you can send or what it costs.
         </Text>
-        <ul className="cr-mkt-categories" aria-label="Supported business categories">
-          {BUSINESS_CATEGORIES.map((c) => (
-            <li
-              key={c}
-              className={
-                c === GENERAL_CATEGORY
-                  ? "cr-mkt-categories__item cr-mkt-categories__item--general"
-                  : "cr-mkt-categories__item"
-              }
-            >
-              {CATEGORY_LABELS[c]}
-            </li>
-          ))}
+        {/* OWNER INSTRUCTION 2026-09-08 — the image-based category system.
+            §27 Section 9 offers this section two devices: "selective category
+            grid OR image-based category system". It has been the first since it
+            was built, because there was no photography; the owner supplied the
+            tenth and last category frame on 2026-09-08, so it is now the
+            second. That is why §27.0 row 9 moves `image-led` false → true — see
+            r9 in COURANR_VISUAL_SYSTEM_V2_2.md. `grid-dominant` stays true: it
+            is still a grid, and §19's cap of 2 is not approached.
+
+            STILL NOT INTERACTIVE, and that is preserved rather than overlooked.
+            These were plain <li> text items — no link, no button, no tabindex,
+            no click handler — because a category is chosen at sign-up, not on
+            the marketing page, and a card that looks pressable but is not is
+            worse than a card that looks like what it is. Adding a photograph
+            changes what the item LOOKS like and nothing about what it DOES.
+
+            ART DIRECTION, NOT A RESIZE, below 640px. The desktop card is a 4:3
+            photograph above its label; the mobile card is a horizontal media
+            row with a 1:1 crop at 128px on the left. A shrunk 4:3 in a 128px
+            box puts the subject at roughly 96px tall, where a trade is no
+            longer readable. Same device, and same reason, as the mosaic in
+            section 3 and the portrait hero.
+
+            `width`/`height` ON THE SOURCE AS WELL AS THE IMG. The img's
+            attributes describe the WIDE fallback, so without them the browser
+            reserves a 4:3 box below 640px and reflows to the 1:1 the source
+            actually is. That is the exact defect the mosaic measured at 232px
+            of shift across four frames; there are ten here. */}
+        <ul className="cr-mkt-catgrid" aria-label="Supported business categories">
+          {BUSINESS_CATEGORIES.filter((c) => c !== GENERAL_CATEGORY).map((c) => {
+            const photo = CATEGORY_SYSTEM_PHOTOS[c];
+            const box = intrinsic(photo);
+            const squareBox = intrinsic(photo, "square");
+            return (
+              <li key={c} className="cr-mkt-catgrid__item">
+                <picture>
+                  <source
+                    media="(max-width: 639px)"
+                    type="image/webp"
+                    srcSet={srcSetFor(photo, "square")}
+                    sizes="128px"
+                    width={squareBox.width}
+                    height={squareBox.height}
+                  />
+                  <img
+                    className="cr-mkt-catgrid__photo"
+                    src={largestSrc(photo)}
+                    srcSet={srcSetFor(photo, "wide")}
+                    /* MEASURED, not guessed. The section's container caps at
+                       1136px, so the 3-column card is 371px from 1220px up and
+                       31vw between 900 and 1220; the 2-column card is 47vw. The
+                       first draft declared a flat 300px against a box that
+                       renders 371px — the same under-fetch the proof photos
+                       had, where the browser is told to plan for less than it
+                       will paint and upscales the result. */
+                    sizes="(min-width: 1220px) 372px, (min-width: 900px) 31vw, (min-width: 640px) 47vw, 128px"
+                    width={box.width}
+                    height={box.height}
+                    alt={photo.alt}
+                    loading="lazy"
+                    decoding="async"
+                  />
+                </picture>
+                <span className="cr-mkt-catgrid__label">{CATEGORY_LABELS[c]}</span>
+              </li>
+            );
+          })}
+          {/* The fallback stays INSIDE the list, spanning every column. The
+              list is "the eleven categories" and the general one is the
+              eleventh — registry.ts calls it "a real category rather than a
+              blank" — so lifting it out of the <ul> would tell a screen reader
+              there are ten. It carries no photograph on purpose: a frame that
+              stood for "any business at all" is the one scene that cannot be
+              honestly photographed. */}
+          <li className="cr-mkt-catgrid__item cr-mkt-catgrid__item--general">
+            <span className="cr-mkt-catgrid__eyebrow">Don&rsquo;t see your business?</span>
+            <span className="cr-mkt-catgrid__label">{CATEGORY_LABELS[GENERAL_CATEGORY]}</span>
+            <span className="cr-mkt-catgrid__note">
+              A first-class choice, not a waiting room.
+            </span>
+          </li>
         </ul>
         <Text muted size="sm">
-          Not on the list? <strong>{CATEGORY_LABELS[GENERAL_CATEGORY]}</strong> is a
-          first-class choice, not a waiting room.{" "}
           <Link href="/businesses">See supported business types →</Link>
         </Text>
       </section>
@@ -1078,7 +1180,29 @@ export default function Page() {
           </h2>
           <div className="cr-mkt-coverage">
             <div className="cr-mkt-coverage__visual">
-              <ServiceCorridorMap className="cr-mkt-map" />
+              {/* OWNER INSTRUCTION 2026-09-08 — replaces ServiceCorridorMap, the
+                  schematic SVG that refused a rendered basemap. The owner ruled
+                  that reasoning stale and the map decorative.
+
+                  DECORATIVE, and that is load-bearing rather than a shrug:
+                  alt="" because every fact the image depicts is already in text
+                  directly beneath it through MARKETS_PUBLIC_COPY, which names
+                  all four markets and ends "and surrounding areas". The blue
+                  band is therefore not offered to a reader as a coverage
+                  boundary — the sentence is what states coverage, which keeps
+                  §27 Section 10's "do not invent boundaries" satisfied in
+                  substance while the picture changes. */}
+              <img
+                className="cr-mkt-map"
+                src={largestSrc(SERVICE_CORRIDOR_MAP)}
+                srcSet={srcSetFor(SERVICE_CORRIDOR_MAP, "wide")}
+                sizes="(min-width: 900px) 340px, 70vw"
+                width={intrinsic(SERVICE_CORRIDOR_MAP).width}
+                height={intrinsic(SERVICE_CORRIDOR_MAP).height}
+                alt=""
+                loading="lazy"
+                decoding="async"
+              />
             </div>
             {/* THREE lines, not the artboard's four. "Loading assistance
                 available" is dropped: grepping the Decision Registry and

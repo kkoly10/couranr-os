@@ -16,6 +16,7 @@ OPS-004	14B61228-795E-4BE9-9E23-F45DB9BB7A73.png	Requote & Promotional Credit	de
 DRV-008	15101AAC-958E-4712-9FA6-5DDB8E6422A4.png	Driver messages	mobile
 MER-004	1691E20B-A9D7-45E8-AA68-D180D99D6FBC.png	Deliveries list	desktop
 EXTRA:notifications-center	16F8151E-A68F-4C44-AFEB-DF0EC0A6DF0B.png	Notifications Center	customer-facing; not in registry
+BRAND:mkt-2026-09-print-signage	1CFA191A-F3E0-4CD5-A7D4-71B1290F78A4.png	Category photography — Print and signage	not a screen; installed as public/images/marketing/2026-09/print-signage.png
 OPS-019	1E706B14-7209-47E6-A7E7-6C70F1958AAC.png	Ghost Auto-Reply Controls	desktop
 EXTRA:merchant-automations	22880AE9-E81D-427E-B4F4-7F11D36193CA.png	Automations	not in registry
 PUB-001	22D9363D-248B-41C0-8C4F-2D38CB3BF3D3.png	Marketing homepage	mobile
@@ -24,6 +25,7 @@ DRV-003	253D4868-0724-4A5D-ADBC-583E80DFDA37.png	Pickup PIN and proof	mobile
 BRAND:logo-and-palette	258F4C57-12C2-493B-AC91-5DA3C6BA4F66.png	Logo, palette and typography sheet	DESIGN AUTHORITY - not a screen
 MER-013	288BA2E3-B6CF-40DC-8442-9CD55BD87BF5.png	Website tools	variant B
 CUS-004	2905409D-3BD4-47CA-AE53-093BB3B3E21D.png	Delivery Problem Report	desktop
+BRAND:mkt-2026-09-event-rentals	2A82AD4B-8704-4A89-ADE3-3FE135D30FE9.png	Category photography — Event rentals	not a screen; installed as public/images/marketing/2026-09/event-rentals.png
 MER-016	2EF4F6B4-803D-487A-846B-178DAEEE1957.png	Billing & Invoices	desktop
 OPS-017	35621D0A-5CD3-468F-8532-9C32C5F3CBCF.png	Policy & Pricing Registry	desktop
 DRV-001	3C8B6C70-5641-4041-97DC-FAF90344A1CC.png	Driver dashboard	mobile
@@ -48,6 +50,7 @@ OPS-002	71149E76-4674-441D-A490-D868FC2E0724.png	Operations queue	variant B - sh
 PUB-005	719032FB-C2D3-42C8-A460-537DDA7733EE.png	Complete your payment	variant B
 CUS-005	74EAB167-FDAE-477C-896A-A64B59BC8A1C.png	Revised Quote Approval	desktop
 MER-012	76A4F41E-4C1E-4A75-8860-AB0A0AEFDD86.png	Merchant messages and support	desktop
+BRAND:mkt-2026-09-boutique-apparel	76F3C394-4AEE-4353-B415-40AC029E8D19.png	Category photography — Boutique apparel	not a screen; installed as public/images/marketing/2026-09/boutique-apparel.png
 PUB-003	77CC8223-1475-4C8E-A51B-E189F88AA261.png	Create your business account	desktop
 CUS-003	7945BB0F-4051-4FB3-A900-DCF95F1BD7BE.png	Recipient Unavailable Resolution	desktop
 DRV-004	7C2BDE48-4216-43BA-8F10-10D8609855BF.png	Package Discrepancy	mobile
@@ -72,19 +75,24 @@ DRV-005	B2866999-DA54-447B-A056-B3B0D89AEFCE.png	Driving Mode	mobile
 OPS-006	B3F68382-797C-4AFB-B539-5A65C26F8853.png	Ghost Operations Workspace	desktop
 MER-005	B40D5F72-9A62-4737-B85D-9601DF0E7D2B.png	Smart Intake	variant B
 CUS-002	B9EA1FCA-CEF2-4577-900F-EB6315DA5018.png	Cancellation & Return Request	desktop
+BRAND:mkt-2026-09-auto-parts	BE0528C6-D999-433B-ADBE-C57E27E609BE.png	Category photography — Auto parts	not a screen; installed as public/images/marketing/2026-09/auto-parts.png
 MER-007	BFAD28C4-1596-43D8-A9DD-233A6254127D.png	Proof of delivery	variant C - merchant proof viewer
 MER-015	CFC37EF0-ECF0-41FE-A7B4-BA35FC9DFC89.png	Team & Permissions	variant B
+BRAND:mkt-2026-09-repair-electronics	D021481D-589B-452B-AFC2-05DD5A11D8CD.png	Category photography — Repair and electronics	not a screen; installed as public/images/marketing/2026-09/repair-electronics.png
 OPS-009	D0713863-D737-426F-AC13-EDB791475D2D.png	Payments & Reconciliation	desktop
 MER-001	D20A6432-D9BF-42C3-B65B-06954D771E37.png	Merchant dashboard	mobile
+BRAND:mkt-2026-09-bakery-catering	DC4096BF-03B0-4958-8638-4B419A214097.png	Category photography — Bakery catering	not a screen; installed as public/images/marketing/2026-09/bakery-catering.png
 MER-011	DCFBA4C8-D2C7-4E7F-99D6-91B824D7EB89.png	Preset Builder	variant B
 EXTRA:api-integrations	DD95F198-DB2D-4DF2-8CD1-FC1771863D23.png	API & Integrations	not in registry
 MER-002	E12C72B2-9DB9-427D-B47A-3021EBA56E85.png	Merchant onboarding & activation	desktop
 DRV-007	E1C020D4-EDA9-476A-A83B-542FB054F902.png	Offline Proof Sync	mobile
 OPS-020	E2947AC0-485C-4C1D-ADDB-F18B8148DBA0.png	Activity & Audit Log	desktop
+BRAND:mkt-2026-09-florist-gifts	E326BCFA-7F9C-4A83-A57D-29B6246AA768.png	Category photography — Florist and gifts	not a screen; installed as public/images/marketing/2026-09/florist-gifts.png
 PUB-002	E3473C54-A4FF-41AD-BFF8-191C4F0F28AF.png	Sign in	desktop
 MER-001	E7CE45F8-2C85-4256-93AC-48BCC7F95FD4.png	Merchant dashboard	desktop
 EXTRA:exceptions-resolutions	E7FD20C6-1022-4A1F-AFC7-EB858114C710.png	Exceptions & resolutions	not in registry
 CUS-001	EB2D3712-19D9-4611-A801-575DCA894C0F.png	Address Change Request	duplicate of 41
+BRAND:mkt-2026-09-dry-cleaning	EC465687-35A1-4563-909F-ECC6B9A2F39E.png	Category photography — Dry cleaning	not a screen; installed as public/images/marketing/2026-09/dry-cleaning.png
 EXTRA:sla-coverage-map	F29A17AA-702A-431E-8725-1AE75A248B03.png	SLA & Coverage Map	not in registry
 EXTRA:customer-deliveries-home	F2C4E383-F047-4C5F-89A3-3C0E1C76F53F.png	Customer deliveries home	not in registry
 MER-003	F6BD39AA-E03A-4B31-9A7C-2DB765889B42.png	Activation Checklist	desktop
