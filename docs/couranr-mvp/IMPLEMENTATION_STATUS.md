@@ -11,7 +11,7 @@ ledgers own per-item state; this is their sum.
 The 721-line hand-written version of this file is preserved whole at
 [`autonomous-evidence/status-archive/IMPLEMENTATION_STATUS-2026-08-06.md`](./autonomous-evidence/status-archive/IMPLEMENTATION_STATUS-2026-08-06.md).
 It restated per-row evidence the ledgers already carried, and the restatement is
-what went stale: it counted 39 migrations while 110 were on disk.
+what went stale: it counted 39 migrations while 112 were on disk.
 
 ## Where truth lives
 
@@ -41,9 +41,9 @@ proves every generated view matches its source.
 
 | Status | Count |
 |---|---|
-| `functional_verified` | 31 |
+| `functional_verified` | 32 |
 | `partial` | 14 |
-| `functional_unverified` | 12 |
+| `functional_unverified` | 11 |
 | `placeholder_only` | 11 |
 
 Still rendering `ScreenPlaceholder` (11): `OPS-006` · `OPS-011` · `OPS-013` · `OPS-014` · `OPS-015` · `OPS-016` · `OPS-017` · `OPS-018` · `OPS-019` · `OPS-020` · `OPS-021`.
@@ -55,11 +55,11 @@ Still rendering `ScreenPlaceholder` (11): `OPS-006` · `OPS-011` · `OPS-013` ·
 | Page routes | 99 |
 | …canonical, under `app/(couranr)` | 49 |
 | …legacy | 50 |
-| API routes | 191 |
-| …canonical, under `app/api/couranr` | 121 |
+| API routes | 192 |
+| …canonical, under `app/api/couranr` | 122 |
 | …legacy | 70 |
-| Forward migrations | 110 |
-| Paired rollbacks | 110 |
+| Forward migrations | 112 |
+| Paired rollbacks | 112 |
 | Canonical screens | 68 |
 | …Core | 64 |
 | …MVP-complete | 4 |
