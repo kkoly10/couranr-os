@@ -45,6 +45,7 @@ const ESTIMATE = `${API}/estimate`;
 const MANIFEST = `${API}/pickup-manifest`;
 const READINESS = `${API}/readiness`;
 const INTERPRET = `${API}/interpret`;
+const SUBMIT = `${API}/submit`;
 const GUEST_TOKEN = "guest-funnel-token";
 
 type Call = { path: string; method: string; body: unknown };
@@ -111,6 +112,7 @@ async function fillSenderAndRecipient() {
   await userEvent.type(screen.getByLabelText("Email"), "sender@example.test");
   await userEvent.type(screen.getByLabelText("Recipient name"), "Dana Reyes");
   await userEvent.type(screen.getByLabelText("Recipient email"), "dana@example.test");
+  await userEvent.type(screen.getByLabelText(/Recipient mobile/), "+15715550101");
 }
 
 async function driveToReviewStep() {
@@ -235,6 +237,76 @@ describe("consumer /send funnel gating", () => {
     await userEvent.click(screen.getByLabelText(SEND_COPY.electronic_consent));
     // The action is a review submission, not a payment.
     await waitFor(() => expect(btn("Continue to Couranr review").disabled).toBe(false));
+  });
+
+  it("sends the trust contract to the server, and the acceptance only at submit", async () => {
+    /* THE WIRING, end to end through the real component and the real adapter.
+       Everything else in this batch is proven one layer at a time: the
+       validators by unit test, the SQL by executed suite, the gates by the
+       assertions above. None of that proves the browser actually PUTS the
+       recipient and the declared value on the wire, or that the acknowledgement
+       reaches the submit — and a field the form collects but never sends is
+       invisible to every one of those layers. Proof upload in this repo was
+       dead for its entire life behind exactly that gap.
+
+       It also pins the ORDER, which is the part easiest to get backwards: the
+       estimate must NOT carry an accepted acknowledgement, because it prices a
+       draft and the sender has not been told the cost yet. */
+    const f = installFetch({
+      [ESTIMATE]: () => ESTIMATED(1234),
+      [SUBMIT]: () => ({ body: { request: { state: "awaiting_quote_acceptance" } } }),
+    });
+    await driveToReviewStep();
+    await fillSenderAndRecipient();
+    await userEvent.click(btn(/Check the price/));
+    await waitFor(() => expect(f.of(ESTIMATE)).toHaveLength(1));
+
+    const priced = JSON.parse(String(f.of(ESTIMATE)[0].body));
+    /* The UI field is `mobile`; the API and database key is `phone`. The
+       recipient goes through the SAME mapping as the sender — a second shape
+       here would be a second contract, and the server reads `phone`. */
+    expect(priced.recipient).toEqual({
+      name: "Dana Reyes",
+      phone: "+15715550101",
+      email: "dana@example.test",
+    });
+    // $20.00 entered on the item step, as integer CENTS on the wire — never a
+    // float, and never a dollar string the server would have to parse.
+    expect(priced.declaredValueCents).toBe(2_000);
+    expect(priced.contact.email).toBe("sender@example.test");
+    // Not yet accepted: the boxes are below the price and still unticked.
+    expect(priced.acceptance).toEqual({
+      shipmentCertification: false,
+      electronicTransactions: false,
+    });
+    // And the browser states NO level, NO policy version, NO consent moment.
+    expect(JSON.stringify(priced)).not.toMatch(
+      /protectionLevel|protectionPolicyVersion|AcceptedAt|AttestedAt|ConsentAt/
+    );
+
+    await screen.findByText("Total: $12.34");
+    await userEvent.click(screen.getByLabelText(SEND_COPY.acknowledgement));
+    await userEvent.click(screen.getByLabelText(SEND_COPY.electronic_consent));
+    await userEvent.click(btn("Continue to payment"));
+
+    /* No second estimate was minted by ticking a box. This matters for cost,
+       not tidiness: the estimate path makes provider calls the owner pays for,
+       and an acknowledgement is not a re-price. */
+    expect(f.of(ESTIMATE)).toHaveLength(1);
+
+    // "Continue to payment" only changes step. The tender is this button.
+    await userEvent.click(btn("Request this delivery"));
+    await waitFor(() => expect(f.of(SUBMIT)).toHaveLength(1));
+    const tendered = JSON.parse(String(f.of(SUBMIT)[0].body));
+    expect(tendered.acceptance).toEqual({
+      shipmentCertification: true,
+      electronicTransactions: true,
+    });
+    expect(tendered.declaredValueCents).toBe(2_000);
+    // The submit body carries the sender's statement and NOTHING commercial.
+    expect(JSON.stringify(tendered)).not.toMatch(
+      /totalCents|amount|price|requestId|state|protectionLevel|termsVersion/i
+    );
   });
 
   it("discloses what the declared value changes about handling, as it is typed", async () => {
