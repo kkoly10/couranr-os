@@ -545,6 +545,52 @@ try {
     values ('${D}', '${drvVocab.driverId}', '${VEH}', 'active', 'operations', '${usr}')
     returning id`);
 
+  /* ── §V: EVERY enforcement point, from the LIVE catalog ─────────────────
+     The generalized form of the defect this stage found. Two constraints
+     policed proof_type and the migration extended one; a value must satisfy
+     both, so Secure Pickup was unreachable and nothing noticed.
+
+     A static read of the migration cannot catch the next one, because the guard
+     that goes unextended is by definition the one nobody remembered was there.
+     So this asks the DATABASE: for each vocabulary this policy extends, find
+     EVERY check constraint that mentions the column and require all of them to
+     admit the new values. A third guard added by some future migration fails
+     here loudly instead of silently refusing every secure pickup. */
+  {
+    const guards = (col) => sql(
+      `select coalesce(string_agg(conrelid::regclass || '.' || conname, ',' order by conname), '')
+         from pg_constraint
+        where contype='c' and pg_get_constraintdef(oid) ~ '\\m${col}\\M'
+          and conrelid='public.couranr_delivery_proofs'::regclass`).split(",").filter(Boolean);
+
+    const admits = (name, value) => sql(
+      `select (pg_get_constraintdef(oid) like '%${value}%')::text
+         from pg_constraint where conname='${name.split(".").pop()}'`) === "true";
+
+    const typeGuards = guards("proof_type");
+    t("V1", "more than one constraint polices proof_type, as this stage learned",
+      typeGuards.length >= 2, `${typeGuards.length}: ${typeGuards.join(" + ")}`);
+
+    for (const pt of ["item_prepack_photo", "sealed_package_photo"]) {
+      const missing = typeGuards.filter((g) => !admits(g, pt));
+      t(`V2 ${pt}`, "is admitted by EVERY constraint that polices the column",
+        missing.length === 0, missing.length ? `not in ${missing.join(", ")}` : `all ${typeGuards.length}`);
+    }
+
+    /* The event verb has SEVEN vocabularies in this schema, one per event table.
+       Only the delivery-REQUEST one should carry it — a verb appearing in the
+       assignment or team vocabularies would mean the command writes somewhere it
+       does not belong. */
+    const verbTables = sql(
+      `select coalesce(string_agg(conrelid::regclass::text, ',' order by conrelid::regclass::text), '')
+         from pg_constraint
+        where contype='c' and pg_get_constraintdef(oid) like '%record_consumer_trust%'`)
+      .split(",").filter(Boolean);
+    t("V3", "the trust verb is in the delivery-request vocabulary and no other",
+      verbTables.length === 1 && verbTables[0] === "couranr_delivery_request_events",
+      verbTables.join(", ") || "none");
+  }
+
   /* ── §E: CUSTODY RESEQUENCING, executed ────────────────────────────────
      Above $30 the pickup credential stops meaning "a driver arrived" and starts
      meaning "the documented and sealed shipment is what I am tendering". That

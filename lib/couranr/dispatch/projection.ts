@@ -21,6 +21,8 @@
  *       necessary", and the registry requires minimum necessary.
  */
 
+import { requirementsFor } from "@/lib/couranr/consumer/protection";
+
 export type AssignedDeliveryProjection = {
   deliveryId: string;
   /**
@@ -70,6 +72,29 @@ export type AssignedDeliveryProjection = {
   proof: { method: string; signatureRequired: boolean };
   vehicleRequirement: { vehicleClass: string | null; maxPayloadLb: number | null };
 
+  /**
+   * What custody ceremony this shipment requires.
+   *
+   * THE LEVEL TRAVELS; THE DECLARED VALUE NEVER DOES. A driver needs to know
+   * that an item must be photographed before packing and sealed — they do not
+   * need to know it is worth $480, and telling them would turn the manifest
+   * into a shopping list. `declared_value_cents` and `declaredValueCents` are in
+   * PROJECTION_FORBIDDEN_SUBSTRINGS so that decision is enforced rather than
+   * merely intended.
+   *
+   * `level` is null for every ungoverned delivery — every business delivery and
+   * every consumer delivery predating this policy — and the flags are then all
+   * false, so the driver flow is byte-identical to what shipped.
+   */
+  protection: {
+    level: string | null;
+    requiresPrepackPhoto: boolean;
+    requiresSealedPackagePhoto: boolean;
+    requiresSecuritySeal: boolean;
+    credentialAfterDocumentation: boolean;
+    requiresSealCheckAtDropoff: boolean;
+  };
+
   assignment: {
     assignmentId: string;
     assignedAt: string;
@@ -110,6 +135,8 @@ export function buildAssignedDeliveryProjection(input: {
   assignment: Record<string, any>;
   vehicle: Record<string, any> | null;
   merchant: { name?: string | null; phone?: string | null } | null;
+  /** The governed protection level from the REQUEST, or null when ungoverned. */
+  protectionLevel?: string | null;
 }): AssignedDeliveryProjection {
   const d = input.delivery ?? {};
   const req = d.vehicle_requirement ?? {};
@@ -167,6 +194,32 @@ export function buildAssignedDeliveryProjection(input: {
       maxPayloadLb: num(req, "maxPayloadLb"),
     },
 
+    /* Derived through requirementsFor, the same table the /send disclosure and
+       the database trigger read. A second list here would be a second answer,
+       and the one a driver is shown is the one they will be held to. */
+    protection: (() => {
+      const level = input.protectionLevel;
+      if (level !== "secure_pickup" && level !== "protected_handoff" && level !== "standard") {
+        return {
+          level: null,
+          requiresPrepackPhoto: false,
+          requiresSealedPackagePhoto: false,
+          requiresSecuritySeal: false,
+          credentialAfterDocumentation: false,
+          requiresSealCheckAtDropoff: false,
+        };
+      }
+      const r = requirementsFor(level);
+      return {
+        level: r.level,
+        requiresPrepackPhoto: r.requiresPrepackPhoto,
+        requiresSealedPackagePhoto: r.requiresSealedPackagePhoto,
+        requiresSecuritySeal: r.requiresSecuritySeal,
+        credentialAfterDocumentation: r.credentialAfterDocumentation,
+        requiresSealCheckAtDropoff: r.requiresSealCheckAtDropoff,
+      };
+    })(),
+
     assignment: {
       assignmentId: String(input.assignment?.id ?? ""),
       assignedAt: String(input.assignment?.assigned_at ?? ""),
@@ -202,6 +255,7 @@ export const PROJECTION_ALLOWED_KEYS: readonly string[] = [
   "proof",
   "vehicleRequirement",
   "assignment",
+  "protection",
 ];
 
 /**
@@ -219,6 +273,11 @@ export const PROJECTION_FORBIDDEN_SUBSTRINGS: readonly string[] = [
   "internal_note",
   "obligationId",
   "capturedAmountCents",
+  /* The declared value is a THEFT INCENTIVE in a driver's hands and is never
+     needed to perform the custody ceremony — the LEVEL says what to do. The
+     projection carries the level and must never carry the amount. */
+  "declared_value_cents",
+  "declaredValueCents",
 ];
 
 /**

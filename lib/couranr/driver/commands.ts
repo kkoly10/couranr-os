@@ -737,6 +737,51 @@ async function verifyHandoffCode(p: {
   return { ok: true, value: { outcome } };
 }
 
+/**
+ * Records the tamper-evident seal a driver applied at a secure pickup.
+ *
+ * The identifier is a serial the driver reads off a physical label, so it is
+ * validated for SHAPE here and for MEANING by the SQL, which also refuses a
+ * seal on a delivery whose level does not require one and a photograph that
+ * belongs to another delivery. The driver's authority is resolved inside the
+ * command by couranr_driver_assignment_for — never from the request body.
+ */
+export async function recordDeliverySeal(p: {
+  userId: string;
+  deliveryId: string;
+  sealIdentifier: string;
+  sealedPackageProofId: string;
+}): Promise<DriverResult<{ sealId: string; sealIdentifier: string }>> {
+  const operation = "recordDeliverySeal";
+  const identifier = p.sealIdentifier.trim();
+  // Mirrors couranr_dss_identifier_shape_chk. Refused here so the driver is told
+  // what is wrong with what they typed rather than meeting a constraint name.
+  if (identifier.length < 4 || identifier.length > 64) {
+    return fail({
+      operation,
+      code: "invalid_input",
+      detail: { reason: "seal_identifier_shape" },
+      message: "Enter the seal number exactly as printed — between 4 and 64 characters.",
+    });
+  }
+
+  const r = await callRpc(operation, "couranr_record_delivery_seal", {
+    p_delivery_id: p.deliveryId,
+    p_actor_user_id: p.userId,
+    p_seal_identifier: identifier,
+    p_sealed_package_proof_id: p.sealedPackageProofId,
+  });
+  if (!r.ok) return r;
+
+  return {
+    ok: true,
+    value: {
+      sealId: String((r.value as any).id),
+      sealIdentifier: String((r.value as any).seal_identifier),
+    },
+  };
+}
+
 /** Separate typed entry points, so a caller cannot pass the wrong kind. */
 export function verifyPickupPin(p: {
   userId: string;

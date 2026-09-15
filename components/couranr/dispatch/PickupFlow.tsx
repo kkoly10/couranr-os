@@ -26,6 +26,7 @@ import {
 import {
   completePickup,
   fetchMyProof,
+  recordDeliverySeal,
   verifyPickupCode,
   type AssignedDeliveryView,
 } from "./client";
@@ -132,6 +133,41 @@ export function PickupFlow({
     recordedProofId: recorded.securement_photo ?? null,
   });
 
+  /* SECURE PICKUP (above $30.00). The hooks are built unconditionally because
+     hooks must be; whether they are REQUIRED is the protection level's call,
+     and for an ungoverned delivery every flag below is false and this flow is
+     byte-identical to what shipped. */
+  const protection = assigned.protection;
+  const secure = protection.requiresSecuritySeal;
+
+  const prepackPhoto = useProofUpload({
+    deliveryId,
+    stage: "pickup",
+    proofType: "item_prepack_photo",
+    location,
+    recordedProofId: recorded.item_prepack_photo ?? null,
+  });
+  const sealedPackagePhoto = useProofUpload({
+    deliveryId,
+    stage: "pickup",
+    proofType: "sealed_package_photo",
+    location,
+    recordedProofId: recorded.sealed_package_photo ?? null,
+  });
+
+  const [sealIdentifier, setSealIdentifier] = React.useState("");
+  const [sealRecorded, setSealRecorded] = React.useState<string | null>(null);
+  const [sealBusy, setSealBusy] = React.useState(false);
+  const [sealError, setSealError] = React.useState<string | null>(null);
+
+  /* The credential means "the documented and sealed shipment is what I am
+     tendering", so it can only be taken once there IS a documented, sealed
+     shipment. The database refuses the pickup otherwise
+     (pickup_credential_before_documentation); this keeps the driver from
+     reaching that refusal with the sender standing in front of them. */
+  const documentationComplete =
+    !secure || (prepackPhoto.finalized && sealedPackagePhoto.finalized && sealRecorded !== null);
+
   const large = requiresLargeShipmentProof({
     vehicleClass: assigned.vehicleRequirement.vehicleClass,
     declaredWeightLb: assigned.shipment.declaredWeightLb,
@@ -155,6 +191,23 @@ export function PickupFlow({
         : "Take a photo showing the large load secured."
     );
   }
+  if (secure && !prepackPhoto.finalized) {
+    blockers.push(
+      prepackPhoto.status === "queued"
+        ? "Wait for the saved item photo to sync with Couranr."
+        : "Photograph the item itself, before it goes into the package."
+    );
+  }
+  if (secure && !sealedPackagePhoto.finalized) {
+    blockers.push(
+      sealedPackagePhoto.status === "queued"
+        ? "Wait for the saved sealed-package photo to sync with Couranr."
+        : "Seal the package and photograph it with the seal visible."
+    );
+  }
+  if (secure && sealRecorded === null) {
+    blockers.push("Record the seal number printed on the tamper-evident label.");
+  }
   if (version === null) {
     blockers.push("Reload this delivery so Couranr can confirm its current version.");
   }
@@ -162,6 +215,22 @@ export function PickupFlow({
     blockers.push("Couranr Operations must review the pickup issue before you continue.");
   }
   const ready = blockers.length === 0;
+
+  async function recordSeal() {
+    // The seal is bound to the PHOTOGRAPH it is visible in, so a finalized
+    // proof id is a precondition, not a nicety — the SQL refuses without it.
+    const proofId = sealedPackagePhoto.finalized ? sealedPackagePhoto.proofId : null;
+    if (!proofId || sealBusy) return;
+    setSealBusy(true);
+    setSealError(null);
+    const result = await recordDeliverySeal(deliveryId, sealIdentifier, proofId);
+    setSealBusy(false);
+    if (isApiFailure(result)) {
+      setSealError(withReference(result));
+      return;
+    }
+    setSealRecorded(result.value.seal.sealIdentifier);
+  }
 
   async function verifyCode(code: string) {
     if (!/^\d{6}$/.test(code) || pinBusy) return;
@@ -252,6 +321,94 @@ export function PickupFlow({
     <Stack gap={6}>
       <ExpectedPickup assigned={assigned} large={large} />
 
+      {/* SECURE PICKUP, rendered BEFORE the verification card on purpose: the
+          order on screen is the order the custody sequence requires, and a
+          driver who works top to bottom does the right thing without reading a
+          warning. The database enforces the same order regardless. */}
+      {secure ? (
+        <Card>
+          <CardHeader
+            title="Secure pickup"
+            description="This shipment is documented and sealed before the sender confirms it."
+            actions={
+              <Badge tone={sealRecorded ? "success" : "neutral"}>
+                {sealRecorded ? "Sealed" : "Required"}
+              </Badge>
+            }
+          />
+          <Stack gap={3}>
+            <Alert tone="info" title="Do these in order">
+              Photograph the item, seal the package, photograph the seal, then record the seal
+              number. The sender confirms last.
+            </Alert>
+
+            <PhotoField
+              label="Photo of the item, before packing"
+              hint="Show the item itself. This is what proves WHAT was handed over."
+              upload={prepackPhoto}
+              blocked={!location.usable}
+              blockedReason={location.message}
+            />
+
+            <PhotoField
+              label="Photo of the sealed package"
+              hint="Fit the tamper-evident seal in the frame, with its number readable."
+              upload={sealedPackagePhoto}
+              blocked={!location.usable || !prepackPhoto.finalized}
+              blockedReason={
+                !location.usable
+                  ? location.message
+                  : "Photograph the item first — once it is sealed you cannot show what is inside."
+              }
+            />
+
+            {sealRecorded ? (
+              <Alert tone="success" title="Seal recorded">
+                Seal {sealRecorded} is recorded against the sealed-package photo.
+              </Alert>
+            ) : (
+              <>
+                <Field
+                  label="Seal number"
+                  hint="Exactly as printed on the tamper-evident label."
+                >
+                  {(a) => (
+                    <input
+                      {...a}
+                      className="cr-input"
+                      type="text"
+                      inputMode="text"
+                      autoComplete="off"
+                      value={sealIdentifier}
+                      disabled={sealBusy || !sealedPackagePhoto.finalized}
+                      onChange={(event) => setSealIdentifier(event.currentTarget.value)}
+                    />
+                  )}
+                </Field>
+                <Button
+                  onClick={() => void recordSeal()}
+                  disabled={
+                    sealBusy ||
+                    !sealedPackagePhoto.finalized ||
+                    sealIdentifier.trim().length < 4
+                  }
+                >
+                  {sealBusy ? "Recording…" : "Record seal"}
+                </Button>
+                {!sealedPackagePhoto.finalized ? (
+                  <Text size="xs" muted>
+                    Take the sealed-package photo first — the seal is recorded against it.
+                  </Text>
+                ) : null}
+                {sealError ? (
+                  <Alert tone="warning" title="Seal not recorded">{sealError}</Alert>
+                ) : null}
+              </>
+            )}
+          </Stack>
+        </Card>
+      ) : null}
+
       <Card>
         <CardHeader
           title="Verify pickup"
@@ -261,11 +418,18 @@ export function PickupFlow({
           }
         />
         <Stack gap={3}>
+          {pinOutcome !== "accepted" && !documentationComplete ? (
+            <Alert tone="info" title="Document the shipment first">
+              This delivery needs the item photographed, sealed and the seal number recorded
+              before you take the sender&rsquo;s code. Their code confirms the sealed shipment,
+              so it comes last.
+            </Alert>
+          ) : null}
           {pinOutcome === "accepted" ? (
             <Alert tone="success" title="Sender verified">
               Pickup verification accepted. You do not need to scan or enter it again.
             </Alert>
-          ) : (
+          ) : !documentationComplete ? null : (
             <>
               <Field
                 label="Scan pickup QR"

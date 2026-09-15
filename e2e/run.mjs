@@ -89,6 +89,10 @@ const PROJECTION_FORBIDDEN = [
   "internal_note",
   "obligationId",
   "capturedAmountCents",
+  // The declared value is a theft incentive in a driver's hands and is never
+  // needed to perform the custody ceremony — the LEVEL says what to do.
+  "declared_value_cents",
+  "declaredValueCents",
 ];
 const PROVIDER_ID_RE = /\b(pi|cus|seti|ch|sk|pk|whsec)_[A-Za-z0-9]{6,}/;
 function projectionLeaks(serialized) {

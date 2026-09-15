@@ -197,6 +197,7 @@ describe("canonical routes cannot leak a database detail", () => {
       "app/api/couranr/driver/deliveries/[id]/proof-sync-failure/route.ts",
       "app/api/couranr/driver/deliveries/[id]/proof-upload/route.ts",
       "app/api/couranr/driver/deliveries/[id]/proof/route.ts",
+      "app/api/couranr/driver/deliveries/[id]/record-seal/route.ts",
       "app/api/couranr/driver/deliveries/[id]/start-dropoff-route/route.ts",
       "app/api/couranr/driver/deliveries/[id]/start-pickup-route/route.ts",
       "app/api/couranr/driver/deliveries/[id]/start-return/route.ts",

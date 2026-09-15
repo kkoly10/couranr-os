@@ -191,6 +191,24 @@ export type AssignedDeliveryView = {
   };
   proof: { method: string; signatureRequired: boolean };
   vehicleRequirement: { vehicleClass: string | null; maxPayloadLb: number | null };
+  /**
+   * The custody ceremony this shipment requires. Mirrors the server projection
+   * in lib/couranr/dispatch/projection.ts — the two must agree, and
+   * tests/couranr-driver-ui.dom.test.tsx enforces that the fixture carries
+   * exactly the keys the projection allows, which is what keeps them in step.
+   *
+   * THE LEVEL IS HERE; THE DECLARED VALUE IS NOT, and never will be. A driver
+   * needs to know an item must be photographed before packing and sealed. They
+   * do not need to know it is worth $480.
+   */
+  protection: {
+    level: string | null;
+    requiresPrepackPhoto: boolean;
+    requiresSealedPackagePhoto: boolean;
+    requiresSecuritySeal: boolean;
+    credentialAfterDocumentation: boolean;
+    requiresSealCheckAtDropoff: boolean;
+  };
   assignment: {
     assignmentId: string;
     assignedAt: string;
@@ -339,6 +357,20 @@ export function verifyPickupCode(deliveryId: string, code: string) {
     method: "POST",
     body: { code },
   });
+}
+
+/** The seal a driver applied, bound to the photograph it is visible in. */
+export type RecordedSeal = { sealId: string; sealIdentifier: string };
+
+export function recordDeliverySeal(
+  deliveryId: string,
+  sealIdentifier: string,
+  sealedPackageProofId: string
+) {
+  return call<{ seal: RecordedSeal }>(
+    `/api/couranr/driver/deliveries/${deliveryId}/record-seal`,
+    { method: "POST", body: { sealIdentifier, sealedPackageProofId } }
+  );
 }
 
 export function verifyRecipientCode(deliveryId: string, code: string) {
