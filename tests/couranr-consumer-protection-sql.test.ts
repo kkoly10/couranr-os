@@ -186,6 +186,35 @@ describe("the constraints the migration claims to add", () => {
     expect(untested, "constraints with no executed attack").toEqual([]);
   });
 
+  it("extends EVERY constraint that polices proof_type, not just one", () => {
+    /* Two constraints guard this column — couranr_delivery_proofs_proof_type_check
+       (the table's original inline CHECK) and couranr_dp_type_chk (added later
+       with its own copy of the list). A proof_type must satisfy BOTH, so
+       extending one is extending none: item_prepack_photo and
+       sealed_package_photo could not be written at all, and the entire Secure
+       Pickup sequence was unreachable.
+
+       It survived review and an executed suite because the check that claimed to
+       prove it inserted an INCOMPLETE row and asserted on which error came back
+       — proving the order of two errors, not that the row could be written.
+
+       This test reads the constraint names out of the migration rather than
+       asserting a count, so a THIRD guard added later fails here loudly instead
+       of silently going unextended. */
+    const guards = [...MIGRATION.matchAll(/add constraint ([a-z0-9_]+) check \(\s*\n?\s*proof_type in/g)]
+      .map((m) => m[1])
+      .sort();
+    expect(guards).toEqual(["couranr_delivery_proofs_proof_type_check", "couranr_dp_type_chk"]);
+    for (const g of guards) {
+      const body = MIGRATION.slice(
+        MIGRATION.indexOf(`add constraint ${g} check`),
+        MIGRATION.indexOf(");", MIGRATION.indexOf(`add constraint ${g} check`))
+      );
+      expect(body, `${g} omits item_prepack_photo`).toContain("item_prepack_photo");
+      expect(body, `${g} omits sealed_package_photo`).toContain("sealed_package_photo");
+    }
+  });
+
   it("leaves the pre-existing phone-OR-email rule in place", () => {
     // Email-first is added BESIDE the old rule, never by relaxing it, so a
     // historical row keeps the rule it was written under.

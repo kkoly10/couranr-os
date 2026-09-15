@@ -306,10 +306,35 @@ alter table public.couranr_delivery_requests
 -- table. The distinction these two carry is the whole point of Secure Pickup:
 --   item_prepack_photo    WHAT ITEM WAS PRESENTED, before the package was sealed
 --   sealed_package_photo  WHAT SEALED PACKAGE Couranr took custody of
+--
+-- THERE ARE TWO CONSTRAINTS ON THIS COLUMN, and extending one is extending
+-- none. `couranr_delivery_proofs_proof_type_check` is the table's original
+-- inline CHECK; `couranr_dp_type_chk` was added later and polices the same
+-- column with its own copy of the list. A proof_type must satisfy BOTH, so
+-- until this migration extended only the first, item_prepack_photo and
+-- sealed_package_photo could never be inserted at all and the entire Secure
+-- Pickup sequence was unreachable.
+--
+-- It survived review and an executed adversarial suite because the check that
+-- claimed to prove it (A25) inserted an INCOMPLETE row and asserted on WHICH
+-- error came back: the NOT NULL on assignment_id fired first, which was read as
+-- "the proof_type got through". It proved the order of two errors, not that the
+-- row could be written. A25 now inserts a complete row and asserts it lands.
 alter table public.couranr_delivery_proofs
   drop constraint if exists couranr_delivery_proofs_proof_type_check;
 alter table public.couranr_delivery_proofs
   add constraint couranr_delivery_proofs_proof_type_check check (
+    proof_type in (
+      'shipment_photo','condition_photo','securement_photo','discrepancy_evidence',
+      'delivery_photo','signature','recipient_pin','return_condition_photo',
+      'item_prepack_photo','sealed_package_photo'
+    )
+  );
+
+alter table public.couranr_delivery_proofs
+  drop constraint if exists couranr_dp_type_chk;
+alter table public.couranr_delivery_proofs
+  add constraint couranr_dp_type_chk check (
     proof_type in (
       'shipment_photo','condition_photo','securement_photo','discrepancy_evidence',
       'delivery_photo','signature','recipient_pin','return_condition_photo',

@@ -49,11 +49,23 @@ drop index if exists public.couranr_dss_identifier_idx;
 drop index if exists public.couranr_dss_one_seal_per_delivery_uniq;
 drop table if exists public.couranr_delivery_security_seals restrict;
 
--- Restore the proof vocabulary to its pre-migration membership.
+-- Restore the proof vocabulary to its pre-migration membership. BOTH
+-- constraints, because both police this column and the forward migration
+-- extends both.
 alter table public.couranr_delivery_proofs
   drop constraint if exists couranr_delivery_proofs_proof_type_check;
 alter table public.couranr_delivery_proofs
   add constraint couranr_delivery_proofs_proof_type_check check (
+    proof_type in (
+      'shipment_photo','condition_photo','securement_photo','discrepancy_evidence',
+      'delivery_photo','signature','recipient_pin','return_condition_photo'
+    )
+  );
+
+alter table public.couranr_delivery_proofs
+  drop constraint if exists couranr_dp_type_chk;
+alter table public.couranr_delivery_proofs
+  add constraint couranr_dp_type_chk check (
     proof_type in (
       'shipment_photo','condition_photo','securement_photo','discrepancy_evidence',
       'delivery_photo','signature','recipient_pin','return_condition_photo'

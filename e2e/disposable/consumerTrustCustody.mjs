@@ -518,6 +518,184 @@ try {
     t("D13", "the statement leaves an audit event naming the derived level",
       ev === "record_consumer_trust/standard/2000", ev); }
 
+  const driverFor = (email) => {
+    const u = sql(`insert into auth.users (email) values ('${email}') returning id`);
+    return { userId: u, driverId: sql(
+      `insert into public.couranr_drivers (user_id, display_name, driver_state, active)
+       values ('${u}', 'TC driver', 'active', true) returning id`) };
+  };
+
+  /* Assignments reference a real dispatch vehicle. One is enough for every
+     fixture — none of these checks reads the vehicle. */
+  const VEH = sql(`insert into public.couranr_dispatch_vehicles
+      (name, vehicle_class, payload_capacity_lb)
+    values ('TC van', 'van', 2000) returning id`);
+
+  const drvA = driverFor("tc-driver-a@example.test");
+  const drvB = driverFor("tc-driver-b@example.test");
+
+  /* A25's own delivery/assignment. A DEDICATED driver on purpose: the authority
+     helper resolves a driver's single live assignment, so reusing drvA here
+     would make §E's "not your delivery" checks depend on which of two
+     assignments it happened to pick. */
+  const drvVocab = driverFor("tc-driver-vocab@example.test");
+  const VOCAB = { dlv: D };
+  VOCAB.asg = sql(`insert into public.couranr_delivery_assignments
+      (delivery_id, driver_id, vehicle_id, assignment_state, assignment_source, assigned_by)
+    values ('${D}', '${drvVocab.driverId}', '${VEH}', 'active', 'operations', '${usr}')
+    returning id`);
+
+  /* ── §E: CUSTODY RESEQUENCING, executed ────────────────────────────────
+     Above $30 the pickup credential stops meaning "a driver arrived" and starts
+     meaning "the documented and sealed shipment is what I am tendering". That
+     is only true when the credential is confirmed AFTER the documentation, so
+     ORDER is the substance here, not a detail.
+
+     FIXTURES ARE SEEDED, NOT HAND-BUILT. A delivery carries snapshots that a
+     pre-existing invariant trigger checks against its quote version, obligation,
+     plan and request — all four must agree — and couranr_dr_quote_projection_trg
+     refuses a direct write to the quote projection at all. Both guards are
+     correct and neither should be worked around, so each fixture is a real
+     chain from seedCanonicalDeliveryChain. The protection columns are then set
+     the same way the A-series sets them on R, which the append-only trigger
+     permits precisely because it is their FIRST value. */
+  const govern = (requestId, cents, level) => sql(
+    `update public.couranr_delivery_requests
+       set declared_value_cents=${cents}, protection_level='${level}',
+           protection_policy_version='${POL}'
+     where id='${requestId}'`);
+
+  const custodyChain = async (marker, cents, level) => {
+    const c = await seedCanonicalDeliveryChain(psqlTransport(psql), {
+      businessId: biz, actorUserId: usr, marker, recipientName: "TC recipient",
+    });
+    if (level !== null) govern(c.requestId, cents, level);
+    sql(`update public.couranr_deliveries
+           set fulfillment_state='at_pickup' where id='${c.deliveryId}'`);
+    return { req: c.requestId, dlv: c.deliveryId };
+  };
+
+  const assign = (f, drv) => {
+    f.asg = sql(`insert into public.couranr_delivery_assignments
+        (delivery_id, driver_id, vehicle_id, assignment_state,
+         assignment_source, assigned_by)
+      -- couranr_asg_source_actor_chk: an 'operations' assignment names who made
+      -- it; an 'automatic' one names the dispatch reservation instead.
+      values ('${f.dlv}', '${drv.driverId}', '${VEH}', 'active',
+              'operations', '${usr}') returning id`);
+    return f.asg;
+  };
+
+  const addProof = (f, type, drv, at = "now()") => sql(
+    `insert into public.couranr_delivery_proofs
+       (delivery_id, assignment_id, proof_stage, proof_type, actor_driver_id, finalized_at)
+     values ('${f.dlv}', '${f.asg}', 'pickup', '${type}', '${drv.driverId}', ${at})
+     returning id`);
+
+  const consumeCode = (f, gen, at) => sql(
+    `insert into public.couranr_handoff_codes
+       (delivery_id, code_kind, generation, code_digest, code_state, expires_at,
+        consumed_at, issued_by)
+     -- couranr_hc_issuer_xor_chk: exactly one issuer — a user OR a guest session.
+     values ('${f.dlv}', 'merchant_pickup', ${gen}, repeat('a',64), 'consumed',
+             now() + interval '1 hour', ${at}, '${usr}') returning id`);
+
+  const pickUp = (f) =>
+    `update public.couranr_deliveries set fulfillment_state='picked_up',
+       version=version+1, updated_at=now() where id='${f.dlv}'`;
+
+  const succeeds = (q, f) => {
+    try { sql(q); return { ok: sql(`select fulfillment_state from public.couranr_deliveries
+                                    where id='${f.dlv}'`) === "picked_up", got: "picked_up" }; }
+    catch (e) { const m = /ERROR:\s+([a-z_]+)/.exec(String(e.stderr || e.message));
+      return { ok: false, got: m ? m[1] : String(e.stderr || e.message).replace(/\s+/g," ").slice(0,90) }; }
+  };
+
+
+  /* ONE delivery walked through the whole sequence. Each refusal leaves the
+     state at at_pickup, so the next step adds exactly the thing the previous
+     one was missing — which is also the order a driver actually works in. */
+  const sec = await custodyChain("tc-custody-secure", 5000, "secure_pickup");
+  assign(sec, drvA);
+  // The credential taken on ARRIVAL, before anything is documented.
+  consumeCode(sec, 1, "now() - interval '10 minutes'");
+
+  { const r = mustRefuse(pickUp(sec), "item_prepack_photo_required");
+    t("E1", "a secure pickup without the ITEM photo cannot complete",
+      (r.got === "item_prepack_photo_required" || r.got === "raised:item_prepack_photo_required"), r.got); }
+
+  addProof(sec, "item_prepack_photo", drvA, "now() - interval '5 minutes'");
+  { const r = mustRefuse(pickUp(sec), "sealed_package_photo_required");
+    t("E2", "...nor without the SEALED PACKAGE photo",
+      (r.got === "sealed_package_photo_required" || r.got === "raised:sealed_package_photo_required"), r.got); }
+
+  const sealProof = addProof(sec, "sealed_package_photo", drvA, "now() - interval '4 minutes'");
+  { const r = mustRefuse(pickUp(sec), "security_seal_required");
+    t("E3", "...nor with both photos but NO seal recorded",
+      (r.got === "security_seal_required" || r.got === "raised:security_seal_required"), r.got); }
+
+  sql(`select public.couranr_record_delivery_seal('${sec.dlv}','${drvA.userId}','SEAL-E-0001','${sealProof}')`);
+  /* E4: THE ORDER. Every individual requirement is now satisfied — photos
+     taken, seal applied, credential consumed. The only defect left is that the
+     sender confirmed BEFORE the documentation existed, so their confirmation
+     cannot mean "this documented, sealed shipment". */
+  { const r = mustRefuse(pickUp(sec), "pickup_credential_before_documentation");
+    t("E4", "a credential taken BEFORE the documentation is refused",
+      (r.got === "pickup_credential_before_documentation" || r.got === "raised:pickup_credential_before_documentation"), r.got); }
+
+  // The sender re-confirms, now that there is something to confirm.
+  consumeCode(sec, 2, "now()");
+  { const r = succeeds(pickUp(sec), sec);
+    t("E5", "documented, sealed, THEN confirmed — the pickup completes", r.ok, r.got); }
+
+  { const r = mustRefuse(
+      `select public.couranr_record_delivery_seal('${sec.dlv}','${drvA.userId}','SEAL-E-0002','${sealProof}')`,
+      "couranr_dss_one_seal_per_delivery_uniq");
+    t("E10", "a SECOND seal on the same delivery is refused", r.ok, r.got); }
+
+  { const r = mustRefuse(
+      `select public.couranr_record_delivery_seal('${sec.dlv}','${drvB.userId}','SEAL-E-0003','${sealProof}')`,
+      "not_your_delivery");
+    t("E11", "a driver who does not hold the assignment cannot seal it",
+      (r.got === "not_your_delivery" || r.got === "raised:not_your_delivery"), r.got); }
+
+  /* A seal must cite a photograph of THIS delivery. A serial typed against
+     someone else's proof is a serial typed into a box. */
+  /* A DIFFERENT driver, because couranr_asg_one_active_per_driver allows a
+     driver exactly one live assignment — which is the same invariant that makes
+     couranr_driver_assignment_for able to resolve "their" delivery at all. */
+  { const other = await custodyChain("tc-custody-secure-2", 5000, "secure_pickup");
+    assign(other, drvB);
+    addProof(other, "sealed_package_photo", drvB);
+    // drvB holds `other`; `sealProof` is a photograph of `sec`. The seal must be
+    // refused for citing evidence from a delivery it does not belong to.
+    const r = mustRefuse(
+      `select public.couranr_record_delivery_seal('${other.dlv}','${drvB.userId}','SEAL-E-0004','${sealProof}')`,
+      "sealed_package_photo_required");
+    t("E9", "a seal cannot cite ANOTHER delivery's photograph",
+      (r.got === "sealed_package_photo_required" || r.got === "raised:sealed_package_photo_required"), r.got); }
+
+  /* E6/E7: the rule must reach ONLY governed secure deliveries. A rule that
+     also stopped every business pickup would be found in production, not here,
+     and "it fires only for secure" is the claim actually being made. */
+  { const f = await custodyChain("tc-custody-ungoverned", null, null);
+    const r = succeeds(pickUp(f), f);
+    t("E6", "an UNGOVERNED delivery is untouched by all of it", r.ok, r.got); }
+
+  { const f = await custodyChain("tc-custody-standard", 3000, "standard");
+    const r = succeeds(pickUp(f), f);
+    t("E7", "a $30.00 STANDARD delivery keeps the simple pickup", r.ok, r.got); }
+
+  { const f = await custodyChain("tc-custody-standard-2", 3000, "standard");
+    const d = driverFor("tc-driver-c@example.test");
+    assign(f, d);
+    const pr = addProof(f, "sealed_package_photo", d);
+    const r = mustRefuse(
+      `select public.couranr_record_delivery_seal('${f.dlv}','${d.userId}','SEAL-E-0005','${pr}')`,
+      "seal_not_required_for_delivery");
+    t("E8", "a seal on a STANDARD delivery is refused, not quietly stored",
+      (r.got === "seal_not_required_for_delivery" || r.got === "raised:seal_not_required_for_delivery"), r.got); }
+
   /* A recipient attestation on a row this policy does NOT govern would imply a
      workflow that never ran. */
   { const r = mustRefuse(`insert into public.couranr_delivery_requests
@@ -535,20 +713,38 @@ try {
 
   // The two new proof types must actually be storable, or Secure Pickup cannot
   // record what it is required to record.
-  /* The two new proof types must be ACCEPTED BY THE VOCABULARY. Building a
-     real assignment needs a whole driver/vehicle chain, which is
-     disproportionate for proving a CHECK admits two strings. So the insert is
-     made deliberately incomplete and the assertion is about WHICH rule refused
-     it: assignment_id (the missing fixture) proves proof_type got through; a
-     refusal naming proof_type would prove the vocabulary never took it. */
+  /* The two new proof types must be WRITABLE, not merely listed.
+     This check used to insert a deliberately INCOMPLETE row and assert on WHICH
+     rule refused it — reasoning that a refusal naming assignment_id proved the
+     proof_type had got through. It proved the ORDER OF TWO ERRORS and nothing
+     else, and it hid a real defect for a whole stage: TWO constraints police
+     this column, couranr_delivery_proofs_proof_type_check and
+     couranr_dp_type_chk, the migration extended only the first, and the NOT NULL
+     on assignment_id fired before the second could be reached. Every Secure
+     Pickup would have been impossible in production.
+
+     So the row is COMPLETE now and the assertion is that it lands. The driver
+     and vehicle chain that made this look disproportionate is built anyway for
+     the §E checks below. */
   for (const pt of ["item_prepack_photo", "sealed_package_photo"]) {
-    const r = mustRefuse(`insert into public.couranr_delivery_proofs
-        (delivery_id, proof_stage, proof_type, storage_bucket, storage_object_path,
-         byte_size, mime_type, evidence_sha256, client_evidence_id)
-      values ('${D}', 'pickup', '${pt}', 'delivery-photos', 'x/${pt}',
-        100, 'image/jpeg', repeat('a',64), gen_random_uuid())`, "assignment_id");
-    const vocabularyAccepted = !/proof_type/.test(r.got);
-    t("A25", `${pt} passes the proof-type vocabulary`, vocabularyAccepted, r.got.slice(0, 60));
+    let ok = false, detail = "";
+    try {
+      const id = sql(`insert into public.couranr_delivery_proofs
+          (delivery_id, assignment_id, proof_stage, proof_type, actor_driver_id,
+           storage_bucket, storage_object_path, byte_size, mime_type,
+           -- couranr_dp_v2_identity_shape_chk: client_evidence_id, evidence_sha256
+           -- and captured_at are all-or-nothing. A row carrying two of the three
+           -- is a half-recorded piece of offline evidence.
+           evidence_sha256, client_evidence_id, captured_at)
+        values ('${VOCAB.dlv}', '${VOCAB.asg}', 'pickup', '${pt}', '${drvVocab.driverId}',
+          'delivery-photos', 'x/${pt}', 100, 'image/jpeg', repeat('a',64),
+          gen_random_uuid(), now()) returning id`);
+      ok = id.length === 36; detail = id.slice(0, 8);
+    } catch (e) { const t2 = String(e.stderr || e.message);
+      const c = /constraint "([a-z0-9_]+)"/.exec(t2);
+      const m = /ERROR:\s+(.{0,60})/.exec(t2);
+      detail = c ? c[1] : (m ? m[1] : "refused"); }
+    t("A25", `${pt} can actually be WRITTEN, not just listed`, ok, detail);
   }
 
   /* ── the rollback's refuse-on-evidence behaviour ───────────────────────
