@@ -43,6 +43,9 @@ as $fn$
      and r.protection_policy_version is not null;
 $fn$;
 
+revoke all on function private.couranr_delivery_protection_level(uuid)
+  from public, anon, authenticated;
+
 comment on function private.couranr_delivery_protection_level is
   'The governed protection level for a delivery, or null when the delivery is '
   'ungoverned (every business delivery, and every consumer delivery predating '
@@ -195,6 +198,9 @@ comment on function private.couranr_enforce_consumer_custody_sequence is
   'is what I am tendering", which is only true when it is confirmed AFTER the '
   'documentation. Enforces both the contents and the ORDER at at_pickup -> '
   'picked_up. Ungoverned deliveries return immediately.';
+
+revoke all on function private.couranr_enforce_consumer_custody_sequence()
+  from public, anon, authenticated;
 
 drop trigger if exists couranr_deliveries_consumer_custody_sequence on public.couranr_deliveries;
 create trigger couranr_deliveries_consumer_custody_sequence

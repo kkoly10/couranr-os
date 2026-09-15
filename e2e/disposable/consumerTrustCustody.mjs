@@ -545,6 +545,51 @@ try {
     values ('${D}', '${drvVocab.driverId}', '${VEH}', 'active', 'operations', '${usr}')
     returning id`);
 
+  /* ── §P: who may CALL any of this ───────────────────────────────────────
+     `has_function_privilege`, not grantee rows: a privilege inherited through
+     PUBLIC does not appear as a row against anon, so reading
+     information_schema would report these as locked while they are open.
+
+     pg_default_acl in this project grants EXECUTE on every new function in
+     `public` to anon, authenticated AND service_role, so a migration that only
+     CREATES a function has published it. And `create or replace` resets grants,
+     so the revoke has to live beside every definition, not once at the start. */
+  {
+    const priv = (fn, role) =>
+      sql(`select has_function_privilege('${role}','${fn}','EXECUTE')::text`) === "true";
+
+    const sealed = [
+      "public.couranr_record_consumer_trust(uuid,integer,text,boolean,boolean)",
+      "public.couranr_record_delivery_seal(uuid,uuid,text,uuid)",
+      "private.couranr_delivery_protection_level(uuid)",
+      "private.couranr_freeze_consumer_consent_evidence()",
+      "private.couranr_enforce_consumer_custody_sequence()",
+      "private.couranr_derive_protection_level(integer)",
+    ];
+    const open = sealed.filter((f) =>
+      ["public", "anon", "authenticated"].some((r) => priv(f, r)));
+    t("P1", "no browser role can call anything this policy added",
+      open.length === 0, open.length ? open.join(", ") : `${sealed.length} functions sealed`);
+
+    // The server still can, or the whole flow is bricked — a revoke that locks
+    // out the caller is not security, it is an outage.
+    const commands = [
+      "public.couranr_record_consumer_trust(uuid,integer,text,boolean,boolean)",
+      "public.couranr_record_delivery_seal(uuid,uuid,text,uuid)",
+    ];
+    const blocked = commands.filter((f) => !priv(f, "service_role"));
+    t("P2", "and service_role still can", blocked.length === 0, blocked.join(", ") || "both");
+
+    /* The triggers fire with their functions revoked from PUBLIC because
+       EXECUTE is checked when a trigger is CREATED, not when it runs. E4 and
+       A29-A32 would go red if that were wrong, so this records the reason
+       rather than re-proving it. */
+    t("P3", "schema USAGE on private is denied to the browser roles",
+      sql(`select (has_schema_privilege('anon','private','USAGE') or
+                   has_schema_privilege('authenticated','private','USAGE'))::text`) === "false",
+      "anon/authenticated");
+  }
+
   /* ── §V: EVERY enforcement point, from the LIVE catalog ─────────────────
      The generalized form of the defect this stage found. Two constraints
      policed proof_type and the migration extended one; a value must satisfy

@@ -273,6 +273,16 @@ comment on function private.couranr_freeze_consumer_consent_evidence is
   'evidence being rewritten. Paired with couranr_dr_consumer_acceptance_chk, '
   'which requires the sender evidence to be PRESENT once submitted.';
 
+/* Revoked from PUBLIC, not merely from anon and authenticated: a grant to
+   PUBLIC is inherited by every role, so revoking the two named ones leaves the
+   privilege intact. Schema USAGE on `private` is denied to anon today and is
+   the only thing making this moot — which is precisely why the grant should not
+   be left standing behind it. A trigger still fires when its function is
+   revoked: EXECUTE is checked when the trigger is CREATED, not when it runs,
+   and the suite proves it. */
+revoke all on function private.couranr_freeze_consumer_consent_evidence()
+  from public, anon, authenticated;
+
 drop trigger if exists couranr_dr_freeze_consent_evidence on public.couranr_delivery_requests;
 create trigger couranr_dr_freeze_consent_evidence
   before update on public.couranr_delivery_requests
