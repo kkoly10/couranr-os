@@ -488,6 +488,28 @@ try {
     t("D12", "a REVOKED session cannot record a statement",
       r2.ok && r2.got === "guest_session_not_available", r2.got); }
 
+  /* THE CHAIN, asserted rather than incidental. D10 happens to perform this
+     transition on its way to proving something else; if the acceptance
+     constraint ever refused it again — the exact defect ed67b12b fixed — D10
+     would die in setup and report a confusing failure about rewriting a tendered
+     statement. This says what is actually being claimed: a draft that has
+     recorded its trust statement can be SUBMITTED, with the recipient's
+     attestation still absent because the recipient has no tracking link yet. */
+  { const { sid, rid } = newBinding();
+    sql(callTrust(sid, 15001, "'couranr-consumer-shipment-terms-2026-09'", "true", "true"));
+    let ok = false, detail = "";
+    try {
+      sql(`update public.couranr_delivery_requests
+             set request_state='awaiting_quote_acceptance', submitted_at=now(), version=version+1
+           where id='${rid}'`);
+      const row = sql(`select request_state||'/'||protection_level||'/'||
+                              (recipient_adult_attested_at is null)
+                       from public.couranr_delivery_requests where id='${rid}'`);
+      ok = row === "awaiting_quote_acceptance/protected_handoff/true"; detail = row;
+    } catch (e) { const m = /constraint "([a-z_]+)"/.exec(String(e.stderr || e.message));
+      detail = m ? `blocked by ${m[1]}` : String(e.stderr || e.message).replace(/\s+/g, " ").slice(0, 90); }
+    t("D14", "a trust-recorded draft SUBMITS, recipient attestation still absent", ok, detail); }
+
   { const { sid, rid } = newBinding();
     sql(callTrust(sid, 2000, "'couranr-consumer-shipment-terms-2026-09'", "true", "true"));
     const ev = sql(`select command||'/'||(metadata->>'protectionLevel')||'/'||(metadata->>'declaredValueCents')
