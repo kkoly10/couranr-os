@@ -565,6 +565,8 @@ try {
       "private.couranr_freeze_consumer_consent_evidence()",
       "private.couranr_enforce_consumer_custody_sequence()",
       "private.couranr_derive_protection_level(integer)",
+      "public.couranr_record_seal_condition(uuid,uuid,text)",
+      "private.couranr_enforce_consumer_dropoff_custody()",
     ];
     const open = sealed.filter((f) =>
       ["public", "anon", "authenticated"].some((r) => priv(f, r)));
@@ -576,6 +578,7 @@ try {
     const commands = [
       "public.couranr_record_consumer_trust(uuid,integer,text,boolean,boolean)",
       "public.couranr_record_delivery_seal(uuid,uuid,text,uuid)",
+      "public.couranr_record_seal_condition(uuid,uuid,text)",
     ];
     const blocked = commands.filter((f) => !priv(f, "service_role"));
     t("P2", "and service_role still can", blocked.length === 0, blocked.join(", ") || "both");
@@ -656,13 +659,20 @@ try {
            protection_policy_version='${POL}'
      where id='${requestId}'`);
 
-  const custodyChain = async (marker, cents, level) => {
+  /* `proofMethod` is set at SEED time, never by a later update: it is part of
+     the delivery's commercial snapshot, frozen by
+     delivery_commercial_snapshot_is_immutable. Trying to change it afterwards
+     is refused — which is itself why a protected handoff can never acquire
+     leave_at_door after the fact, and why F6 has to build one that way from
+     the start to reach the rule at all. */
+  const custodyChain = async (marker, cents, level, state = "at_pickup", proofMethod = undefined) => {
     const c = await seedCanonicalDeliveryChain(psqlTransport(psql), {
       businessId: biz, actorUserId: usr, marker, recipientName: "TC recipient",
+      ...(proofMethod ? { proofMethod } : {}),
     });
     if (level !== null) govern(c.requestId, cents, level);
     sql(`update public.couranr_deliveries
-           set fulfillment_state='at_pickup' where id='${c.deliveryId}'`);
+           set fulfillment_state='${state}' where id='${c.deliveryId}'`);
     return { req: c.requestId, dlv: c.deliveryId };
   };
 
@@ -695,9 +705,13 @@ try {
     `update public.couranr_deliveries set fulfillment_state='picked_up',
        version=version+1, updated_at=now() where id='${f.dlv}'`;
 
-  const succeeds = (q, f) => {
-    try { sql(q); return { ok: sql(`select fulfillment_state from public.couranr_deliveries
-                                    where id='${f.dlv}'`) === "picked_up", got: "picked_up" }; }
+  const succeeds = (q, f, want = "picked_up") => {
+    try { const got = sql(`select fulfillment_state from public.couranr_deliveries
+                           where id='${f.dlv}'`);
+          sql(q);
+          const after = sql(`select fulfillment_state from public.couranr_deliveries
+                             where id='${f.dlv}'`);
+          return { ok: after === want, got: after === want ? after : `${got} -> ${after}` }; }
     catch (e) { const m = /ERROR:\s+([a-z_]+)/.exec(String(e.stderr || e.message));
       return { ok: false, got: m ? m[1] : String(e.stderr || e.message).replace(/\s+/g," ").slice(0,90) }; }
   };
@@ -786,6 +800,108 @@ try {
       "seal_not_required_for_delivery");
     t("E8", "a seal on a STANDARD delivery is refused, not quietly stored",
       (r.got === "seal_not_required_for_delivery" || r.got === "raised:seal_not_required_for_delivery"), r.got); }
+
+  /* ── §F: the custody chain CLOSES at handoff ────────────────────────────
+     A tamper-evident seal nobody looks at is a sticker. Its whole value is the
+     comparison between what was applied and what arrived, and until this stage
+     couranr_delivery_security_seals.dropoff_condition existed with constraints
+     and NO WRITER — derived, surfaced to the driver, enforcing nothing. */
+  const deliver = (f) =>
+    `update public.couranr_deliveries set fulfillment_state='delivered',
+       version=version+1, updated_at=now() where id='${f.dlv}'`;
+
+  /* A sealed delivery parked at at_dropoff: the pickup ceremony already done,
+     the seal applied, now standing at the recipient's door. */
+  const sealedAtDropoff = async (marker, level, drv, proofMethod = null) => {
+    const f = await custodyChain(marker, level === "protected_handoff" ? 20000 : 5000,
+      level, "at_pickup", proofMethod);
+    assign(f, drv);
+    const sp = addProof(f, "sealed_package_photo", drv);
+    sql(`select public.couranr_record_delivery_seal('${f.dlv}','${drv.userId}','SEAL-${marker.slice(-6)}','${sp}')`);
+    sql(`update public.couranr_deliveries set fulfillment_state='at_dropoff' where id='${f.dlv}'`);
+    return f;
+  };
+
+  const drvD = driverFor("tc-driver-d@example.test");
+  const drvE = driverFor("tc-driver-e@example.test");
+  const condition = (f, drv, c) =>
+    `select public.couranr_record_seal_condition('${f.dlv}','${drv.userId}','${c}')`;
+
+  { const f = await sealedAtDropoff("tc-dropoff-unchecked", "secure_pickup", drvD);
+    const r = mustRefuse(deliver(f), "seal_condition_required_at_dropoff");
+    t("F1", "a sealed delivery cannot be DELIVERED without the seal being looked at",
+      (r.got === "seal_condition_required_at_dropoff" ||
+       r.got === "raised:seal_condition_required_at_dropoff"), r.got);
+
+    sql(condition(f, drvD, "intact"));
+    const done = succeeds(deliver(f), f, "delivered");
+    t("F2", "...and completes once the driver records what they saw", done.ok, done.got); }
+
+  /* HONESTY MUST BE THE CHEAP ANSWER. If a broken seal blocked completion, the
+     one person holding the parcel would have every reason to report it intact.
+     Both of these must complete. */
+  for (const [id, cond] of [["F3", "damaged"], ["F4", "missing"]]) {
+    sql(`update public.couranr_delivery_assignments set assignment_state='completed',
+           end_reason='completed', ended_at=now() where driver_id='${drvD.driverId}'`);
+    const f = await sealedAtDropoff(`tc-dropoff-${cond}`, "secure_pickup", drvD);
+    sql(condition(f, drvD, cond));
+    const done = succeeds(deliver(f), f, "delivered");
+    t(id, `a '${cond}' seal still completes the delivery — the record is the product`,
+      done.ok, done.got);
+  }
+
+  { sql(`update public.couranr_delivery_assignments set assignment_state='completed',
+           end_reason='completed', ended_at=now() where driver_id='${drvD.driverId}'`);
+    const f = await sealedAtDropoff("tc-dropoff-revise", "secure_pickup", drvD);
+    sql(condition(f, drvD, "damaged"));
+    /* A driver who could revise the condition could record 'damaged' at the
+       door, watch the reaction, and change it to 'intact'. One observation. */
+    const r = mustRefuse(condition(f, drvD, "intact"), "seal_condition_already_recorded");
+    t("F5", "the recorded condition cannot be revised after the reaction",
+      (r.got === "seal_condition_already_recorded" ||
+       r.got === "raised:seal_condition_already_recorded"), r.got); }
+
+  { sql(`update public.couranr_delivery_assignments set assignment_state='completed',
+           end_reason='completed', ended_at=now() where driver_id='${drvD.driverId}'`);
+    const f = await sealedAtDropoff("tc-dropoff-door", "protected_handoff", drvD, "leave_at_door");
+    sql(condition(f, drvD, "intact"));
+    const r = mustRefuse(deliver(f), "protected_handoff_forbids_leave_at_door");
+    t("F6", "a PROTECTED HANDOFF can never be left at a door",
+      (r.got === "protected_handoff_forbids_leave_at_door" ||
+       r.got === "raised:protected_handoff_forbids_leave_at_door"), r.got); }
+
+  // The rule must reach only governed secure deliveries.
+  { const f = await custodyChain("tc-dropoff-ungoverned", null, null, "at_dropoff");
+    const done = succeeds(deliver(f), f, "delivered");
+    t("F7", "an UNGOVERNED delivery still completes untouched", done.ok, done.got); }
+
+  { const f = await custodyChain("tc-dropoff-standard", 3000, "standard", "at_dropoff");
+    const done = succeeds(deliver(f), f, "delivered");
+    t("F8", "a $30.00 STANDARD delivery still completes untouched", done.ok, done.got); }
+
+  { sql(`update public.couranr_delivery_assignments set assignment_state='completed',
+           end_reason='completed', ended_at=now() where driver_id='${drvE.driverId}'`);
+    const f = await custodyChain("tc-dropoff-nostandard", 3000, "standard", "at_dropoff");
+    assign(f, drvE);
+    const r = mustRefuse(condition(f, drvE, "intact"), "seal_not_required_for_delivery");
+    t("F9", "a seal condition on a STANDARD delivery is refused, not stored",
+      (r.got === "seal_not_required_for_delivery" ||
+       r.got === "raised:seal_not_required_for_delivery"), r.got); }
+
+  { sql(`update public.couranr_delivery_assignments set assignment_state='completed',
+           end_reason='completed', ended_at=now() where driver_id='${drvD.driverId}'`);
+    const f = await sealedAtDropoff("tc-dropoff-stranger", "secure_pickup", drvD);
+    const r = mustRefuse(condition(f, drvE, "intact"), "not_your_delivery");
+    t("F10", "a driver who does not hold the assignment cannot record the seal",
+      (r.got === "not_your_delivery" || r.got === "raised:not_your_delivery"), r.got); }
+
+  { sql(`update public.couranr_delivery_assignments set assignment_state='completed',
+           end_reason='completed', ended_at=now() where driver_id='${drvE.driverId}'`);
+    const f = await custodyChain("tc-dropoff-noseal", 5000, "secure_pickup", "at_dropoff");
+    assign(f, drvE);
+    const r = mustRefuse(condition(f, drvE, "intact"), "security_seal_required");
+    t("F11", "a condition cannot be recorded when no seal was ever applied",
+      (r.got === "security_seal_required" || r.got === "raised:security_seal_required"), r.got); }
 
   /* A recipient attestation on a row this policy does NOT govern would imply a
      workflow that never ran. */
