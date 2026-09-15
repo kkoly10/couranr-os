@@ -191,6 +191,7 @@ describe("server-only modules are unreachable from client code", () => {
       "lib/couranr/hosted/commands.ts",
       // Holds the Anthropic API key inside the client it constructs, and the
       // system prompt that governs what a model is told about merchant text.
+      "lib/couranr/identity/recipientIdentity.ts",
       "lib/couranr/intake/anthropicProvider.ts",
       "lib/couranr/intake/commands.ts",
       "lib/couranr/intake/interpret.ts",

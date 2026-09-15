@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { resolveRecipientIdentity } from "@/lib/couranr/identity/recipientIdentity";
 import { assertServerOnly } from "@/lib/couranr/serverOnly";
 import {
   classifyDatabaseError,
@@ -269,7 +270,50 @@ export async function arriveAtDropoff(p: WithLocation): Promise<DriverResult<Del
     p_longitude: p.longitude,
     p_accuracy_m: p.accuracyM ?? null,
   });
-  return r.ok ? { ok: true, value: stateView(r.value) } : r;
+  if (!r.ok) return r;
+
+  /* A protected handoff needs its identity outcome ON RECORD before the parcel
+     can change hands, and arrival is the moment it becomes relevant. Recorded
+     here rather than behind a driver action because the answer is currently
+     deterministic — Stripe Identity is not activated — and asking a driver to
+     press a button for a provider that is off is asking them to perform a
+     check that did not happen.
+     
+     DELIBERATELY NOT FATAL. Arrival has already succeeded and the state has
+     already moved; failing the response now would tell a driver who is standing
+     at the door that they have not arrived. The drop-off trigger is the real
+     gate and refuses completion without the record
+     (recipient_identity_attempt_required), so the worst case is a refusal at
+     the point of handoff rather than a delivery that slips through. */
+  await recordIdentityOutcomeIfRequired(p.deliveryId);
+
+  return { ok: true, value: stateView(r.value) };
+}
+
+/**
+ * Records the recipient identity outcome when the delivery requires one.
+ *
+ * Swallows its own failures by design — see the caller. The SQL refuses with
+ * `identity_verification_not_required` for any delivery that is not a protected
+ * handoff, which is what makes calling this unconditionally safe: the database
+ * decides whether an identity record belongs on a delivery, not this function.
+ */
+async function recordIdentityOutcomeIfRequired(deliveryId: string): Promise<void> {
+  try {
+    const outcome = await resolveRecipientIdentity(deliveryId);
+    await supabaseAdmin.rpc("couranr_record_recipient_identity_verification", {
+      p_delivery_id: deliveryId,
+      p_state: outcome.state,
+      p_provider_reference: outcome.providerReference,
+      p_identity_verified: outcome.identityVerified,
+      p_adult_verified: outcome.adultVerified,
+      p_authorized_recipient_match: outcome.authorizedRecipientMatch,
+      p_policy_version: outcome.policyVersion,
+    });
+  } catch {
+    /* Nothing to report to the driver and nothing to retry here: the handoff
+       gate will refuse if this did not land, which is the loud failure. */
+  }
 }
 
 /**

@@ -621,6 +621,7 @@ try {
       "private.couranr_derive_protection_level(integer)",
       "public.couranr_record_seal_condition(uuid,uuid,text)",
       "private.couranr_enforce_consumer_dropoff_custody()",
+      "public.couranr_record_recipient_identity_verification(uuid,text,text,boolean,boolean,boolean,text)",
     ];
     const open = sealed.filter((f) =>
       ["public", "anon", "authenticated"].some((r) => priv(f, r)));
@@ -956,6 +957,111 @@ try {
     const r = mustRefuse(condition(f, drvE, "intact"), "security_seal_required");
     t("F11", "a condition cannot be recorded when no seal was ever applied",
       (r.got === "security_seal_required" || r.got === "raised:security_seal_required"), r.got); }
+
+  /* ── §G: RECIPIENT IDENTITY, and the fact that it is not active ─────────
+     Stripe Identity is not activated in V1 by the owner's instruction. The
+     point of these checks is that the ABSENCE is recorded as a fact rather than
+     left as a gap someone later reads as "it must have been fine": a protected
+     handoff that proceeded on the recipient code alone and one that passed an
+     identity check are different things, and a claim six months later has to be
+     able to tell them apart. */
+  const identity = (f, state, opts = {}) =>
+    "select public.couranr_record_recipient_identity_verification('" + f.dlv + "','" + state + "'," +
+    (opts.ref ? "'" + opts.ref + "'" : "null") + "," +
+    (opts.verified ? "true" : "false") + "," +
+    (opts.adult ? "true" : "false") + "," +
+    (opts.match ? "true" : "false") + ",'" + POL + "')";
+
+  const drvG = driverFor("tc-driver-g@example.test");
+  const endAssignments = (drv) => sql(
+    "update public.couranr_delivery_assignments set assignment_state='completed'," +
+    " end_reason='completed', ended_at=now() where driver_id='" + drv.driverId + "'" +
+    "   and assignment_state='active'");
+
+  const protectedAtDropoff = async (marker) => {
+    endAssignments(drvG);
+    const f = await sealedAtDropoff(marker, "protected_handoff", drvG);
+    sql(condition(f, drvG, "intact"));
+    return f;
+  };
+
+  { const f = await protectedAtDropoff("tc-id-none");
+    const r = mustRefuse(deliver(f), "recipient_identity_attempt_required");
+    t("G1", "a protected handoff cannot complete with NO identity attempt recorded",
+      (r.got === "recipient_identity_attempt_required" ||
+       r.got === "raised:recipient_identity_attempt_required"), r.got); }
+
+  /* THE V1 PATH. The provider is off; 'unavailable' is recorded and the handoff
+     proceeds on the recipient code and the driver. Requiring 'verified' here
+     would brick every protected handoff — the same shape as the acceptance
+     constraint that refused every consumer submit. */
+  { const f = await protectedAtDropoff("tc-id-unavailable");
+    sql(identity(f, "unavailable"));
+    const done = succeeds(deliver(f), f, "delivered");
+    t("G2", "'unavailable' is a recorded fact and the handoff proceeds", done.ok, done.got); }
+
+  for (const [id, state] of [["G3", "pending"], ["G4", "processing"]]) {
+    const f = await protectedAtDropoff("tc-id-" + state);
+    sql(identity(f, state, { ref: "vs_test_" + state }));
+    const r = mustRefuse(deliver(f), "recipient_identity_unresolved");
+    t(id, "a '" + state + "' verification is not an outcome and blocks the handoff",
+      (r.got === "recipient_identity_unresolved" ||
+       r.got === "raised:recipient_identity_unresolved"), r.got);
+  }
+
+  { const f = await protectedAtDropoff("tc-id-verified");
+    sql(identity(f, "verified", { ref: "vs_test_ok", verified: true, adult: true, match: true }));
+    const done = succeeds(deliver(f), f, "delivered");
+    t("G5", "'verified' completes, and stamps the moment it was verified", done.ok, done.got); }
+
+  /* 'failed' is an OUTCOME and it is a no. Handing a protected shipment to
+     someone who just failed an identity check defeats the only thing the level
+     exists for. Not a stranded parcel: could_not_deliver and the returns flow
+     are the path and they already exist. */
+  { const f = await protectedAtDropoff("tc-id-failed");
+    sql(identity(f, "failed"));
+    const r = mustRefuse(deliver(f), "recipient_identity_unresolved");
+    t("G6", "a FAILED identity check stops the handoff rather than completing it",
+      (r.got === "recipient_identity_unresolved" ||
+       r.got === "raised:recipient_identity_unresolved"), r.got); }
+
+  { const f = await protectedAtDropoff("tc-id-resolved");
+    sql(identity(f, "failed"));
+    /* A resolved outcome cannot be re-run to a different one. Otherwise a
+       failed check could be retried until it passed, which is not verification
+       — it is retrying until the answer is convenient. */
+    const r = mustRefuse(identity(f, "verified", { verified: true, adult: true, match: true }),
+      "identity_verification_already_resolved");
+    t("G7", "a resolved verification cannot be re-run to a different answer",
+      (r.got === "identity_verification_already_resolved" ||
+       r.got === "raised:identity_verification_already_resolved"), r.got);
+
+    // Re-recording the SAME state stays idempotent, so a webhook retry is safe.
+    let ok = false, detail = "";
+    try { sql(identity(f, "failed")); ok = true; }
+    catch (e) { detail = String(e.stderr || e.message).replace(/\s+/g, " ").slice(0, 80); }
+    t("G8", "...but re-recording the same outcome is idempotent", ok, detail); }
+
+  { /* An identity record on a delivery that never required one would sit in the
+       evidence bundle implying a check the sender never consented to. */
+    endAssignments(drvG);
+    const f = await sealedAtDropoff("tc-id-secure-only", "secure_pickup", drvG);
+    const r = mustRefuse(identity(f, "verified", { verified: true, adult: true, match: true }),
+      "identity_verification_not_required");
+    t("G9", "a SECURE PICKUP delivery cannot carry an identity record at all",
+      (r.got === "identity_verification_not_required" ||
+       r.got === "raised:identity_verification_not_required"), r.got); }
+
+  { const f = await protectedAtDropoff("tc-id-canceled");
+    sql(identity(f, "canceled"));
+    /* couranr_riv_one_live_per_delivery_uniq excludes canceled rows, so a
+       canceled session leaves the delivery with NO live verification. Reading
+       "the latest row" instead of "the live row" would treat an abandoned
+       attempt as the answer. */
+    const r = mustRefuse(deliver(f), "recipient_identity_attempt_required");
+    t("G10", "a CANCELED session leaves no live verification, and blocks",
+      (r.got === "recipient_identity_attempt_required" ||
+       r.got === "raised:recipient_identity_attempt_required"), r.got); }
 
   /* A recipient attestation on a row this policy does NOT govern would imply a
      workflow that never ran. */

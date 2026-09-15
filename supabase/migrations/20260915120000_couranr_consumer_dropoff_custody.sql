@@ -87,6 +87,7 @@ as $fn$
 declare
   v_level text;
   v_condition text;
+  v_identity text;
 begin
   if old.fulfillment_state <> 'at_dropoff' or new.fulfillment_state <> 'delivered' then
     return new;
@@ -111,6 +112,51 @@ begin
    where delivery_id = new.id;
   if v_condition is null then
     raise exception 'seal_condition_required_at_dropoff' using errcode='CR409';
+  end if;
+
+  /* PROTECTED HANDOFF: the identity attempt must have RESOLVED.
+     
+     What this requires is a TERMINAL verification row, not a verified one. That
+     distinction is the whole design and it is deliberate:
+     
+     Stripe Identity is not activated in V1 — the owner's instruction — so the
+     seam records 'unavailable' and the delivery proceeds on the recipient code
+     and the driver's handoff. Requiring 'verified' today would brick every
+     protected handoff, which is exactly how couranr_dr_consumer_acceptance_chk
+     bricked every consumer submit: a rule written for a capability that does
+     not exist yet refuses the only sequence that can actually occur.
+     
+     What it DOES refuse is completing a handoff while a verification is still
+     pending or processing — mid-flight is not an outcome, and a delivery that
+     completes during one would leave a row that never resolves and a claim with
+     no answer in it. When the provider is activated the row becomes 'verified'
+     and this same check tightens on its own, with the stricter
+     "must be verified" policy enforced in the application layer where the
+     activation flag is actually readable. */
+  if v_level = 'protected_handoff' then
+    /* The LIVE row, matching couranr_riv_one_live_per_delivery_uniq's own
+       definition of live. Reading "the latest by created_at" would happily pick
+       a canceled session and treat an abandoned attempt as the answer. */
+    select verification_state into v_identity
+      from public.couranr_recipient_identity_verifications
+     where delivery_id = new.id and verification_state <> 'canceled'
+     limit 1;
+    if v_identity is null then
+      raise exception 'recipient_identity_attempt_required' using errcode='CR409';
+    end if;
+
+    /* Only two outcomes hand the parcel over:
+         verified     the provider confirmed the recipient
+         unavailable  the provider was not active, recorded as such, and the
+                      handoff proceeds on the recipient code and the driver
+       Everything else stops here. 'pending' and 'processing' are not outcomes
+       at all. 'failed' is an outcome and it is a NO: completing a protected
+       handoff to someone who just failed an identity check would defeat the one
+       thing the level exists for. That is not a stranded parcel — could_not_deliver
+       and the returns flow are the path, and they already exist. */
+    if v_identity not in ('verified','unavailable') then
+      raise exception 'recipient_identity_unresolved' using errcode='CR409';
+    end if;
   end if;
 
   -- Note what is NOT here: 'damaged' and 'missing' both pass. The record is the
