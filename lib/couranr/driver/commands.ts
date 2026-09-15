@@ -782,6 +782,46 @@ export async function recordDeliverySeal(p: {
   };
 }
 
+/**
+ * Records the driver's observation of the seal at handoff.
+ *
+ * ONE OBSERVATION. The SQL refuses a second
+ * (seal_condition_already_recorded), because a condition that can be revised
+ * after seeing the reaction is not an observation. A damaged or missing seal
+ * does NOT block the delivery — if it did, the one person holding the parcel
+ * would have every reason to report it intact.
+ */
+export async function recordSealCondition(p: {
+  userId: string;
+  deliveryId: string;
+  condition: string;
+}): Promise<DriverResult<{ sealId: string; dropoffCondition: string }>> {
+  const operation = "recordSealCondition";
+  if (!["intact", "damaged", "missing"].includes(p.condition)) {
+    return fail({
+      operation,
+      code: "invalid_input",
+      detail: { reason: "seal_condition_invalid" },
+      message: "Record the seal as intact, damaged or missing.",
+    });
+  }
+
+  const r = await callRpc(operation, "couranr_record_seal_condition", {
+    p_delivery_id: p.deliveryId,
+    p_actor_user_id: p.userId,
+    p_condition: p.condition,
+  });
+  if (!r.ok) return r;
+
+  return {
+    ok: true,
+    value: {
+      sealId: String((r.value as any).id),
+      dropoffCondition: String((r.value as any).dropoff_condition),
+    },
+  };
+}
+
 /** Separate typed entry points, so a caller cannot pass the wrong kind. */
 export function verifyPickupPin(p: {
   userId: string;

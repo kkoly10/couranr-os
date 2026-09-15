@@ -373,6 +373,16 @@ export function recordDeliverySeal(
   );
 }
 
+/** The driver's one observation of the seal at handoff. */
+export type SealConditionRecord = { sealId: string; dropoffCondition: string };
+
+export function recordSealCondition(deliveryId: string, condition: string) {
+  return call<{ seal: SealConditionRecord }>(
+    `/api/couranr/driver/deliveries/${deliveryId}/seal-condition`,
+    { method: "POST", body: { condition } }
+  );
+}
+
 export function verifyRecipientCode(deliveryId: string, code: string) {
   return call<PinAttempt>(`/api/couranr/driver/deliveries/${deliveryId}/verify-recipient-code`, {
     method: "POST",

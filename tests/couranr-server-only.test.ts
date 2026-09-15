@@ -333,6 +333,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/driver/deliveries/[id]/proof-upload/route.ts",
       "app/api/couranr/driver/deliveries/[id]/proof/route.ts",
       "app/api/couranr/driver/deliveries/[id]/record-seal/route.ts",
+      "app/api/couranr/driver/deliveries/[id]/seal-condition/route.ts",
       "app/api/couranr/driver/deliveries/[id]/start-dropoff-route/route.ts",
       "app/api/couranr/driver/deliveries/[id]/start-pickup-route/route.ts",
       "app/api/couranr/driver/deliveries/[id]/start-return/route.ts",

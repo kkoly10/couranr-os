@@ -545,6 +545,60 @@ try {
     values ('${D}', '${drvVocab.driverId}', '${VEH}', 'active', 'operations', '${usr}')
     returning id`);
 
+  /* ── §W: the triggers sit on the ONLY paths into the guarded states ─────
+     Both custody triggers fire on ONE transition each — at_pickup -> picked_up
+     and at_dropoff -> delivered. That is only sufficient while those are the
+     only ways to reach those states. A new command writing 'picked_up' from
+     somewhere else would walk straight past the whole ceremony, and nothing
+     else in this suite would notice: every check above begins by putting a
+     delivery INTO at_pickup.
+
+     A trigger was the right shape precisely because of this — it catches
+     couranr_complete_pickup (v1) as well as v2, which an edit to v2 would have
+     missed. This census keeps that true. It cannot prove a new writer is safe;
+     it fails loudly enough that someone has to look. */
+  {
+    const writers = (state) => sql(
+      "select coalesce(string_agg(p.proname, ',' order by p.proname), '')" +
+      "  from pg_proc p join pg_namespace n on n.oid = p.pronamespace" +
+      " where n.nspname in ('public','private') and p.prokind = 'f'" +
+      "   and pg_get_functiondef(p.oid) ~ 'set[^;]*fulfillment_state\\s*=\\s*''" + state + "'''"
+    ).split(",").filter(Boolean);
+
+    /* couranr_start_route_to_dropoff appears under 'picked_up' because its
+       UPDATE reads that state in the WHERE clause; it WRITES in_transit. Listed
+       rather than quietly excluded, so the census is honest about what it
+       matches. */
+    const EXPECTED = {
+      picked_up: ["couranr_complete_pickup", "couranr_complete_pickup_v2",
+                  "couranr_start_route_to_dropoff"],
+      delivered: ["couranr_finish_delivered"],
+    };
+    for (const [state, expected] of Object.entries(EXPECTED)) {
+      const found = writers(state).sort();
+      const unexpected = found.filter((f) => !expected.includes(f));
+      t("W1 " + state, "no command writes this state outside the known set",
+        unexpected.length === 0,
+        unexpected.length ? "NEW WRITER: " + unexpected.join(", ") : found.join(", "));
+    }
+
+    /* And the guard each known writer names. couranr_complete_pickup v1 still
+       exists and is still a writer, so the custody sequence has to hold for it
+       too — which it does, because the trigger is on the transition rather than
+       inside v2. */
+    for (const [fn, want] of [
+      ["couranr_complete_pickup", "at_pickup"],
+      ["couranr_complete_pickup_v2", "at_pickup"],
+      ["couranr_finish_delivered", "at_dropoff"],
+    ]) {
+      const named = sql(
+        "select (pg_get_functiondef(p.oid) ~ 'fulfillment_state\\s*(<>|=)\\s*''" + want + "''')::text" +
+        "  from pg_proc p join pg_namespace n on n.oid = p.pronamespace" +
+        " where n.nspname = 'public' and p.proname = '" + fn + "' limit 1");
+      t("W2 " + fn, "still gates on '" + want + "', where the trigger waits", named === "true", named);
+    }
+  }
+
   /* ── §P: who may CALL any of this ───────────────────────────────────────
      `has_function_privilege`, not grantee rows: a privilege inherited through
      PUBLIC does not appear as a row against anon, so reading

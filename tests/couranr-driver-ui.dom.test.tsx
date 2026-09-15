@@ -47,6 +47,7 @@ const completeSignature = vi.fn();
 const completeLeaveAtDoor = vi.fn();
 const reportDiscrepancy = vi.fn();
 const recordDeliverySeal = vi.fn();
+const recordSealCondition = vi.fn();
 const verifyPickupCode = vi.fn();
 const verifyRecipientCode = vi.fn();
 const fetchMerchantProof = vi.fn();
@@ -84,6 +85,7 @@ vi.mock("@/components/couranr/dispatch/client", async (importOriginal) => {
     reportDiscrepancy: (...a: unknown[]) => reportDiscrepancy(...a),
     verifyPickupCode: (...a: unknown[]) => verifyPickupCode(...a),
     recordDeliverySeal: (...a: unknown[]) => recordDeliverySeal(...a),
+    recordSealCondition: (...a: unknown[]) => recordSealCondition(...a),
     verifyRecipientCode: (...a: unknown[]) => verifyRecipientCode(...a),
     fetchMerchantProof: (...a: unknown[]) => fetchMerchantProof(...a),
     fetchMyProof: (...a: unknown[]) => fetchMyProof(...a),
@@ -296,6 +298,7 @@ const ALL_DOUBLES = [
   completeLeaveAtDoor,
   reportDiscrepancy,
   recordDeliverySeal,
+  recordSealCondition,
   verifyPickupCode,
   verifyRecipientCode,
   fetchMerchantProof,
@@ -2019,5 +2022,90 @@ describe("secure pickup (above $30.00)", () => {
     expect(screen.queryByText(/Document the shipment first/i)).toBeNull();
     // The code is offered immediately, exactly as it always has been.
     expect(screen.getByText(/enter six-digit code instead/i)).toBeTruthy();
+  });
+});
+
+
+/* =========================================================================
+ * SEAL CHECK AT HANDOFF — the custody chain closes
+ * ====================================================================== */
+
+describe("checking the seal at handoff", () => {
+  const SEALED = {
+    level: "secure_pickup",
+    requiresPrepackPhoto: true,
+    requiresSealedPackagePhoto: true,
+    requiresSecuritySeal: true,
+    credentialAfterDocumentation: true,
+    requiresSealCheckAtDropoff: true,
+  };
+  const renderSealed = (protection: unknown = SEALED) =>
+    render(
+      <DropoffProof
+        assigned={
+          assignedView({
+            fulfillmentState: "at_dropoff",
+            proof: { method: "photo_or_pin", signatureRequired: false },
+            protection,
+          } as never)
+        }
+        location={usableLocation()}
+        onCompleted={vi.fn()}
+      />
+    );
+
+  it("asks for the seal BEFORE the handoff form, not after", async () => {
+    /* The comparison happens before the parcel changes hands. Offering the
+       handoff form first would let a driver complete the delivery and meet
+       seal_condition_required_at_dropoff with the recipient standing there. */
+    renderSealed();
+    await waitFor(() => expect(screen.getByText("Check the seal")).toBeTruthy());
+    expect(screen.queryByLabelText(/recipient code/i)).toBeNull();
+  });
+
+  it("records one answer and then opens the handoff", async () => {
+    recordSealCondition.mockResolvedValue(
+      ok({ seal: { sealId: "seal-1", dropoffCondition: "intact" } })
+    );
+    const user = userEvent.setup();
+    renderSealed();
+    await waitFor(() => expect(screen.getByText("Check the seal")).toBeTruthy());
+    await user.click(screen.getByRole("button", { name: /Intact/i }));
+
+    await waitFor(() => expect(recordSealCondition).toHaveBeenCalledTimes(1));
+    expect(recordSealCondition.mock.calls[0]).toEqual(["del-fixture-1", "intact"]);
+    // The handoff form is now reachable.
+    await waitFor(() => expect(screen.queryByText("Check the seal")).toBeNull());
+  });
+
+  it("does not punish honesty — a DAMAGED seal still opens the handoff", async () => {
+    /* If a broken seal blocked the delivery, the one person holding the parcel
+       would have every reason to report it intact. Recording the truth has to
+       be the cheapest path available. */
+    recordSealCondition.mockResolvedValue(
+      ok({ seal: { sealId: "seal-1", dropoffCondition: "damaged" } })
+    );
+    const user = userEvent.setup();
+    renderSealed();
+    await waitFor(() => expect(screen.getByText("Check the seal")).toBeTruthy());
+    await user.click(screen.getByRole("button", { name: /Damaged/i }));
+
+    await waitFor(() => expect(recordSealCondition).toHaveBeenCalledTimes(1));
+    expect(recordSealCondition.mock.calls[0][1]).toBe("damaged");
+    await waitFor(() => expect(screen.queryByText("Check the seal")).toBeNull());
+  });
+
+  it("keeps the seal check out of an UNGOVERNED drop-off entirely", async () => {
+    renderSealed({
+      level: null,
+      requiresPrepackPhoto: false,
+      requiresSealedPackagePhoto: false,
+      requiresSecuritySeal: false,
+      credentialAfterDocumentation: false,
+      requiresSealCheckAtDropoff: false,
+    });
+    await waitFor(() => expect(screen.getByText("Recipient code")).toBeTruthy());
+    expect(screen.queryByText("Check the seal")).toBeNull();
+    expect(recordSealCondition).not.toHaveBeenCalled();
   });
 });
