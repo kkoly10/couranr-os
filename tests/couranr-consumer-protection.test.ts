@@ -5,6 +5,7 @@ import {
   deriveProtection,
   declaredValueDollars,
   isGovernedByProtectionPolicy,
+  isProtectionDeclined,
   isProtectionLevel,
   PROTECTION_THRESHOLDS,
   requirementsFor,
@@ -19,7 +20,7 @@ import {
  */
 const level = (cents: number) => {
   const d = deriveProtection(cents);
-  return d.ok ? d.requirements.level : `declined:${d.reason}`;
+  return isProtectionDeclined(d) ? `declined:${d.reason}` : d.requirements.level;
 };
 
 describe("declared value → protection level", () => {
@@ -44,16 +45,16 @@ describe("declared value → protection level", () => {
        standard path with no prepack photo and no seal. */
     for (const bad of [null, undefined, "500", NaN, Infinity, -1, 12.5, {}, [], true]) {
       const d = deriveProtection(bad as never);
-      expect(d.ok, `${JSON.stringify(bad)} was accepted`).toBe(false);
-      if (!d.ok) expect(d.level).toBe("declined");
+      expect(isProtectionDeclined(d), `${JSON.stringify(bad)} was accepted`).toBe(true);
+      if (isProtectionDeclined(d)) expect(d.level).toBe("declined");
     }
   });
 
   it("is total: every legal cent value in range yields a level", () => {
     for (let c = 0; c <= CONSUMER_MAX_DECLARED_VALUE_CENTS; c += 137) {
       const d = deriveProtection(c);
-      expect(d.ok, `${c} produced no level`).toBe(true);
-      if (d.ok) expect(isProtectionLevel(d.requirements.level)).toBe(true);
+      expect(isProtectionDeclined(d), `${c} produced no level`).toBe(false);
+      if (!isProtectionDeclined(d)) expect(isProtectionLevel(d.requirements.level)).toBe(true);
     }
   });
 });
@@ -122,8 +123,10 @@ describe("what each level actually requires", () => {
 
   it("stamps the policy version on every derivation", () => {
     const d = deriveProtection(20_000);
-    expect(d.ok).toBe(true);
-    if (d.ok) expect(d.requirements.policyVersion).toBe(COURANR_PROTECTION_POLICY_VERSION);
+    expect(isProtectionDeclined(d)).toBe(false);
+    if (!isProtectionDeclined(d)) {
+      expect(d.requirements.policyVersion).toBe(COURANR_PROTECTION_POLICY_VERSION);
+    }
   });
 });
 

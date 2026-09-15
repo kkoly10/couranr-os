@@ -71,7 +71,8 @@
     "check:governance": "node scripts/governance/check.mjs",
     "governance:facts": "node scripts/governance/facts.mjs",
     "couranr:integrity": "node scripts/couranrIntegrity.mjs",
-    "test:cus004-browser": "node e2e/disposable/customerProblemReport.mjs"
+    "test:cus004-browser": "node e2e/disposable/customerProblemReport.mjs",
+    "test:consumer-trust-custody": "node e2e/disposable/consumerTrustCustody.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.123.0",

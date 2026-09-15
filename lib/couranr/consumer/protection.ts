@@ -103,6 +103,18 @@ export type ProtectionDecision =
   | { ok: false; reason: "declared_value_invalid" | "declared_value_above_maximum"; level: "declined" };
 
 /**
+ * `tsconfig` sets `"strict": false`; without `strictNullChecks` a bare
+ * `if (!d.ok)` does not narrow this union, so reading `d.reason` on the failure
+ * arm is a type error at the call site. An explicit predicate narrows it — the
+ * same reason `isConsumerSendBodyFailure` exists in consumer/send.ts.
+ */
+export function isProtectionDeclined(
+  d: ProtectionDecision
+): d is { ok: false; reason: "declared_value_invalid" | "declared_value_above_maximum"; level: "declined" } {
+  return d.ok === false;
+}
+
+/**
  * THE authority. Total over every input, including hostile ones.
  *
  * A non-integer, negative, NaN or non-number value is refused rather than

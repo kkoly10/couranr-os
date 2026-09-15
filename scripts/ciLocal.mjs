@@ -187,6 +187,7 @@ const STAGES = [
     ["test:consumer-scheduled-timing", "consumer scheduled timing (TMZ-001 parity) — two-sided instant, mismatch/incomplete refusals, DST-gap claim, ASAP"],
     ["test:hosted-scheduled-timing", "hosted scheduled timing (TMZ-001 parity) — customer statement frozen on the intake, merchant confirm/adjust, quote snapshot, arity fence predeploy/postdeploy, rollback guard"],
     ["test:cus-problem-bookkeeping", "CUS-004 resolve_report Delivery Help conversation bookkeeping — the transition command called on real reports"],
+    ["test:consumer-trust-custody", "Consumer Same Day V1 trust/custody constraints — $501, tampered protection level, seal and identity invariants, rollback refuse-on-evidence"],
   ].map(([script, why]) => ({
     tier: 3,
     name: script,
@@ -204,6 +205,7 @@ const STAGES = [
         "test:credit-settlement",
         "test:rollback-guards",
         "test:cus-problem-bookkeeping",
+        "test:consumer-trust-custody",
         "test:driver-execution",
         "test:consumer-send",
         "test:pricing-v2",
