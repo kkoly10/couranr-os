@@ -384,6 +384,118 @@ try {
       t("A36", "and the freeze engages the moment it leaves draft", r.ok, r.got); }
   }
 
+  /* ── §D: the COMMAND, executed ─────────────────────────────────────────
+     Every check above asserts what the SCHEMA refuses. None of them calls the
+     function a real /send submit actually goes through, and a migration that
+     applies is not a command that runs: this repo has already shipped a foreign
+     key pointing at the wrong table, invisible to 1230 green tests and a full
+     forward-and-back migration round trip, because nothing ever INSERTED. */
+  const draftFor = (scope) => sql(`insert into public.couranr_delivery_requests
+      (business_account_id, requester_kind, source, request_state,
+       consumer_contact_snapshot, recipient_name, recipient_email,
+       pickup_address, dropoff_address, version, created_by,
+       idempotency_key, idempotency_scope)
+    select null::uuid, 'consumer', source, 'draft',
+       '{"email":"s@example.test","name":"S"}'::jsonb, 'R Name', 'r@example.test',
+       pickup_address, dropoff_address, 1, created_by,
+       '${scope}-' || gen_random_uuid()::text, 'consumer:${scope}'
+    from public.couranr_delivery_requests where id='${R}' returning id`);
+
+  /* The command derives the request from the SESSION and the scope must match
+     'consumer:'||session.id, so the session is created first and the draft is
+     inserted under its id — the same binding a real guest flow produces. */
+  const sessionFor = (requestId) => sql(`insert into public.couranr_consumer_guest_sessions
+      (token_hash, request_id, expires_at)
+    values (md5(gen_random_uuid()::text) || md5(gen_random_uuid()::text),  -- 64 hex chars without pgcrypto
+            ${requestId ? `'${requestId}'` : "null"},
+            now() + interval '1 hour') returning id`);
+
+  const newBinding = () => {
+    const sid = sessionFor(null);
+    const rid = draftFor(sid);   // idempotency_scope = 'consumer:<session id>'
+    sql(`update public.couranr_consumer_guest_sessions set request_id='${rid}' where id='${sid}'`);
+    return { sid, rid };
+  };
+
+  const callTrust = (sid, cents, terms, a1, a2) =>
+    `select public.couranr_record_consumer_trust('${sid}'::uuid, ${cents}, ${terms}, ${a1}, ${a2})`;
+
+  { const { sid, rid } = newBinding();
+    let ok = false, detail = "";
+    try {
+      sql(callTrust(sid, 15001, "'couranr-consumer-shipment-terms-2026-09'", "true", "true"));
+      const row = sql(`select declared_value_cents||'/'||protection_level||'/'||
+                              (protection_policy_version is not null)||'/'||
+                              (sender_terms_accepted_at is not null)||'/'||
+                              (sender_electronic_consent_at is not null)||'/'||
+                              (sender_adult_attested_at is not null)||'/'||version
+                       from public.couranr_delivery_requests where id='${rid}'`);
+      // $150.01 -> protected_handoff, DERIVED: the command takes no level.
+      ok = row === "15001/protected_handoff/true/true/true/true/2"; detail = row;
+    } catch (e) { detail = String(e.stderr || e.message).replace(/\s+/g, " ").slice(0, 110); }
+    t("D1", "the command records the statement and DERIVES the level", ok, detail);
+
+    /* Re-running must not move the recorded moment. A sender who revises a
+       draft and re-accepts has not consented at a later time; a fresher
+       timestamp would be a more flattering record of the same event. */
+    const before = sql(`select sender_terms_accepted_at from public.couranr_delivery_requests where id='${rid}'`);
+    sql(callTrust(sid, 2000, "'couranr-consumer-shipment-terms-2026-09'", "true", "true"));
+    const after = sql(`select declared_value_cents||'/'||protection_level||'/'||sender_terms_accepted_at
+                       from public.couranr_delivery_requests where id='${rid}'`);
+    t("D2", "re-stating a draft updates the value but never moves the accepted moment",
+      after === `2000/standard/${before}`, after);
+  }
+
+  for (const [id, what, cents, a1, a2, expected] of [
+    ["D3", "a value over the $500 ceiling is refused", 50001, "true", "true", "declared_value_invalid"],
+    ["D4", "a negative value is refused", -1, "true", "true", "declared_value_invalid"],
+    ["D5", "a null value is refused, never treated as $0", "null", "true", "true", "declared_value_invalid"],
+    ["D6", "an unticked certification is refused", 2000, "false", "true", "shipment_certification_required"],
+    ["D7", "an unticked electronic consent is refused", 2000, "true", "false", "electronic_consent_required"],
+    ["D8", "a null acknowledgement is not a true one", 2000, "null", "true", "shipment_certification_required"],
+  ]) {
+    const { sid } = newBinding();
+    const r = mustRefuse(callTrust(sid, cents, "'couranr-consumer-shipment-terms-2026-09'", a1, a2), expected);
+    t(id, what, r.ok && r.got === expected, r.got);
+  }
+
+  { const { sid } = newBinding();
+    const r = mustRefuse(callTrust(sid, 2000, "null", "true", "true"), "terms_version_required");
+    t("D9", "consent with no document version is refused — a boolean is not evidence",
+      r.ok && r.got === "terms_version_required", r.got); }
+
+  { const { sid, rid } = newBinding();
+    sql(callTrust(sid, 2000, "'couranr-consumer-shipment-terms-2026-09'", "true", "true"));
+    sql(`update public.couranr_delivery_requests
+           set request_state='awaiting_quote_acceptance', submitted_at=now() where id='${rid}'`);
+    const r = mustRefuse(callTrust(sid, 49999, "'couranr-consumer-shipment-terms-2026-09'", "true", "true"),
+      "consumer_trust_already_tendered");
+    t("D10", "a TENDERED request cannot have its statement rewritten",
+      r.ok && r.got === "consumer_trust_already_tendered", r.got); }
+
+  { /* The authority boundary: a session that names no request, is expired, or
+       is revoked cannot reach any row. */
+    const orphan = sessionFor(null);
+    const r = mustRefuse(callTrust(orphan, 2000, "'couranr-consumer-shipment-terms-2026-09'", "true", "true"),
+      "guest_session_not_available");
+    t("D11", "a session bound to no request cannot record a statement",
+      r.ok && r.got === "guest_session_not_available", r.got);
+
+    const { sid } = newBinding();
+    sql(`update public.couranr_consumer_guest_sessions set revoked_at=now() where id='${sid}'`);
+    const r2 = mustRefuse(callTrust(sid, 2000, "'couranr-consumer-shipment-terms-2026-09'", "true", "true"),
+      "guest_session_not_available");
+    t("D12", "a REVOKED session cannot record a statement",
+      r2.ok && r2.got === "guest_session_not_available", r2.got); }
+
+  { const { sid, rid } = newBinding();
+    sql(callTrust(sid, 2000, "'couranr-consumer-shipment-terms-2026-09'", "true", "true"));
+    const ev = sql(`select command||'/'||(metadata->>'protectionLevel')||'/'||(metadata->>'declaredValueCents')
+                    from public.couranr_delivery_request_events
+                    where request_id='${rid}' and command='record_consumer_trust'`);
+    t("D13", "the statement leaves an audit event naming the derived level",
+      ev === "record_consumer_trust/standard/2000", ev); }
+
   /* A recipient attestation on a row this policy does NOT govern would imply a
      workflow that never ran. */
   { const r = mustRefuse(`insert into public.couranr_delivery_requests

@@ -97,6 +97,12 @@ export type PaymentOutcome =
  * live adapter refuses (with an instructive note, no network call) until the
  * ones the canonical estimate requires are present.
  */
+/** What the sender tenders, as booleans and integer cents — never timestamps. */
+export type ConsumerTenderStatement = {
+  declaredValueCents: number | null;
+  acceptance: { shipmentCertification: boolean; electronicTransactions: boolean };
+};
+
 export type QuoteInput = {
   pickup: string;
   destination: string;
@@ -164,7 +170,10 @@ export type SameDayAdapters = {
   checkAvailability(pickup: string, destination: string): Promise<AvailabilityVerdict>;
   readIntake(text: string): Promise<IntakeReading>;
   quote(input: QuoteInput): Promise<QuoteReading>;
-  submitRequest(): Promise<SubmitOutcome>;
+  /** The sender's statement at tender: declared value and both acknowledgements.
+   *  Optional in the TYPE so the fixture and disabled adapters stay
+   *  byte-identical; the LIVE adapter refuses a submit without it. */
+  submitRequest(statement?: ConsumerTenderStatement): Promise<SubmitOutcome>;
   authorizePayment(): Promise<PaymentOutcome>;
   /* ADDITIVE, live-only, both OPTIONAL so the fixture and disabled objects
      stay byte-identical to what shipped. A component must feature-check. */

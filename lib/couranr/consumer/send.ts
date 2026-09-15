@@ -78,6 +78,9 @@ assertServerOnly("lib/couranr/consumer/send.ts");
 
 import {
   CONSUMER_EMAIL_RE,
+  CONSUMER_MAX_DECLARED_VALUE_CENTS,
+  CONSUMER_SENDER_TERMS_VERSION,
+  declaredValueDollars,
   deriveProtection,
   isProtectionDeclined,
 } from "@/lib/couranr/consumer/protection";
@@ -93,6 +96,7 @@ export const RPC = {
   createObligation: "couranr_create_payment_obligation",
   issueGuestPickupCode: "couranr_issue_guest_pickup_code_cas",
   claimPlaceSearch: "couranr_claim_consumer_place_search",
+  recordTrust: "couranr_record_consumer_trust",
 } as const;
 
 /** Sessions live 24 hours; the SQL clamps to [5 min, 3 days] regardless. */
@@ -1042,6 +1046,22 @@ export async function setConsumerPickupReadiness(params: {
 
 export async function submitConsumerSend(params: {
   session: GuestSession;
+  /**
+   * The sender's statement at the moment of tender: what they say the shipment
+   * is worth, and both acknowledgements.
+   *
+   * This route used to read no body at all, on the principle that the session
+   * names the request and the server holds every fact about it. That principle
+   * is about COMMERCIAL facts — a price, a state, a target, route evidence —
+   * and it is unchanged: `FORBIDDEN_CONSUMER_KEYS` still refuses every one of
+   * them, including the protection level and the consent timestamps, and the
+   * level here is derived rather than accepted.
+   *
+   * An acknowledgement is the one kind of fact the server cannot hold on the
+   * sender's behalf. It exists only because a person ticked a box, and it is
+   * made at submission rather than at pricing — so it has to travel here.
+   */
+  body?: unknown;
 }): Promise<ConsumerResult<{ state: string }>> {
   const op = "submitConsumerSend";
   const loaded = await loadOwnRequest(op, params.session);
@@ -1082,10 +1102,59 @@ export async function submitConsumerSend(params: {
     });
   }
 
+  /* Record the trust statement BEFORE submitting, in that order and not the
+     reverse. couranr_record_consumer_trust refuses anything but a draft, and
+     the submit is what takes the row out of draft — so recording first is the
+     only order that works, and it is also the order that means a request can
+     never be tendered without the evidence. Two version bumps, so the submit
+     below reads the version this write returned rather than the stale one. */
+  const raw = (params.body ?? {}) as Record<string, unknown>;
+
+  const accepted = requireAcceptance(raw.acceptance);
+  if (isAcceptanceFailure(accepted)) {
+    return fail({
+      operation: op,
+      code: "invalid_input",
+      detail: { reason: accepted.reason },
+      message:
+        accepted.reason === "shipment_certification_required"
+          ? "Confirm what you are shipping before submitting this delivery."
+          : "Agree to electronic records before submitting this delivery.",
+    });
+  }
+
+  const protection = deriveProtection(
+    typeof raw.declaredValueCents === "number" ? raw.declaredValueCents : Number.NaN
+  );
+  if (isProtectionDeclined(protection)) {
+    return fail({
+      operation: op,
+      code: "invalid_input",
+      detail: { reason: protection.reason },
+      message:
+        protection.reason === "declared_value_above_maximum"
+          ? `Couranr Same Day carries shipments declared up to ${declaredValueDollars(
+              CONSUMER_MAX_DECLARED_VALUE_CENTS
+            )}.`
+          : "Enter what this shipment is worth before submitting this delivery.",
+    });
+  }
+
+  const recorded = await callRpc<Record<string, any>>(op, RPC.recordTrust, {
+    p_guest_session_id: params.session.id,
+    p_declared_value_cents: raw.declaredValueCents,
+    // SERVER-STATED. A sender cannot claim to have accepted a version they were
+    // not shown, so this is never read from the body.
+    p_terms_version: CONSUMER_SENDER_TERMS_VERSION,
+    p_accept_shipment_certification: accepted.value.shipmentCertification,
+    p_accept_electronic_transactions: accepted.value.electronicTransactions,
+  });
+  if (isConsumerFailure(recorded)) return recorded;
+
   const r = await callRpc<Record<string, any>>(op, RPC.submit, {
     p_request_id: params.session.requestId,
     p_guest_session_id: params.session.id,
-    p_expected_version: Number(loaded.value.version),
+    p_expected_version: Number(recorded.value.version),
   });
   if (isConsumerFailure(r)) return r;
   return { ok: true, value: { state: String(r.value.request_state) } };

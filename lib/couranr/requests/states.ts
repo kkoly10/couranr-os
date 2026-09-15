@@ -83,15 +83,22 @@ export type RequestCommand = (typeof REQUEST_COMMANDS)[number];
 
 /**
  * Audit-event vocabulary is wider than the actor-invocable transition model.
- * These three names are written only by trusted server/database automation;
- * forcing them into COMMAND_RULES would falsely imply a browser/actor command
- * exists for planning or promotional settlement.
+ * These names are written only by trusted server/database automation; forcing
+ * them into COMMAND_RULES would falsely imply a browser/actor command exists
+ * for planning, promotional settlement, or recording a sender's statement.
+ *
+ * `record_consumer_trust` belongs HERE rather than in REQUEST_COMMANDS because
+ * it moves no state: it records the declared value, the derived protection
+ * level and the consent evidence onto a draft, and the submit that follows is
+ * the transition. A verb in the transition model would imply a state change
+ * that never happens.
  */
 export const REQUEST_EVENT_COMMANDS = [
   ...REQUEST_COMMANDS,
   "auto_accept_delivery_request",
   "auto_plan_delivery_request",
   "apply_promotional_credit",
+  "record_consumer_trust",
 ] as const;
 export type RequestEventCommand = (typeof REQUEST_EVENT_COMMANDS)[number];
 

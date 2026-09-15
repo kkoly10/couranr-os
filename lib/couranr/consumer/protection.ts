@@ -37,6 +37,18 @@
  */
 export const COURANR_PROTECTION_POLICY_VERSION = "couranr-consumer-protection-v1-2026-09-14";
 
+/**
+ * The version of the sender-facing shipment terms this flow collects against.
+ *
+ * SERVER-STATED, never accepted from a request body — the same rule
+ * ACKNOWLEDGEMENT_VERSIONS follows for merchant activation, and for the same
+ * reason: a sender cannot claim to have accepted a version they were not shown.
+ * When the document changes, this changes, and a previously-stored version stops
+ * matching — which is the entire point of versioning consent instead of storing
+ * a boolean.
+ */
+export const CONSUMER_SENDER_TERMS_VERSION = "couranr-consumer-shipment-terms-2026-09";
+
 /** The maximum TOTAL declared value of an entire shipment. Per shipment. */
 export const CONSUMER_MAX_DECLARED_VALUE_CENTS = 50_000;
 

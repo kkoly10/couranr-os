@@ -518,7 +518,13 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
   async function submit() {
     setPayment("processing");
     setLiveNote(null);
-    const outcome = await adapters.submitRequest();
+    const outcome = await adapters.submitRequest({
+      declaredValueCents: declaredCents,
+      acceptance: {
+        shipmentCertification: acknowledged,
+        electronicTransactions: electronicConsent,
+      },
+    });
 
     if (mode === "live") {
       if (outcome.state !== "received") {

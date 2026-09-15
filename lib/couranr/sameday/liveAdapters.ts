@@ -654,8 +654,29 @@ export function createLiveSameDayAdapters(
       return quoteReadingFromEstimate(est);
     },
 
-    async submitRequest(): Promise<SubmitOutcome> {
-      const r = await guestCall(API.submit, { method: "POST" });
+    async submitRequest(statement): Promise<SubmitOutcome> {
+      /* Refused LOCALLY and for free when the sender has not actually stated
+         it. The server refuses the same thing again — this is the gate that can
+         say so without a round trip, and without the generic failure a server
+         refusal would render as. */
+      if (!statement || statement.declaredValueCents === null) {
+        return { state: "unavailable", note: NOTES.declaredValueRequired };
+      }
+      if (!statement.acceptance.shipmentCertification) {
+        return { state: "unavailable", note: NOTES.certificationRequired };
+      }
+      if (!statement.acceptance.electronicTransactions) {
+        return { state: "unavailable", note: NOTES.electronicConsentRequired };
+      }
+      const r = await guestCall(API.submit, {
+        method: "POST",
+        // The body carries the sender's own representation and their two
+        // acknowledgements. No price, no state, no target, no level.
+        body: {
+          declaredValueCents: statement.declaredValueCents,
+          acceptance: statement.acceptance,
+        },
+      });
       if (!r) return { state: "unavailable", note: NOTES.serviceDown };
       if (!r.ok) {
         return {

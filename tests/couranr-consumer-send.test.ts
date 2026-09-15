@@ -104,6 +104,32 @@ describe("consumer route inventory", () => {
         ]) {
           expect(rx.test(code), `${rel(file)} reads forbidden pickup-manifest data`).toBe(false);
         }
+      } else if (rel(file) === "app/api/couranr/consumer/submit/route.ts") {
+        /* This route read NO body until the V1 trust contract. It now reads
+           exactly two things, and neither is a commercial fact: the sender's own
+           declared value, and their two acknowledgements.
+
+           The distinction the original rule was protecting is intact. The server
+           still holds every price, state and target; the protection LEVEL is
+           derived by the database from the declared value rather than accepted;
+           and FORBIDDEN_CONSUMER_KEYS refuses a body reaching for the level, the
+           policy version or the consent timestamps.
+
+           An acknowledgement is the one fact the server cannot hold on the
+           sender's behalf — it exists only because a person ticked a box, at
+           submission rather than at pricing. The route hands the raw object to
+           the lib and never dereferences it, the same shape as the estimate
+           route above. */
+        expect((code.match(/req\.json\(\)/g) || []).length).toBe(1);
+        expect(code).toMatch(/submitConsumerSend\(\{ session: session\.value, body \}\)/);
+        expect(/\bbody\s*\.\s*[a-zA-Z]/.test(code)).toBe(false);
+        for (const rx of [
+          /body\??\.\s*(amount|total|price|subtotal|cents)/i,
+          /body\??\.\s*(requestId|businessAccountId|target|policy|route|state|status)/i,
+          /protectionLevel|protection_level|termsAcceptedAt/i,
+        ]) {
+          expect(rx.test(code), `${rel(file)} reads a server-owned field`).toBe(false);
+        }
       } else if (rel(file) === "app/api/couranr/consumer/readiness/route.ts") {
         // FND-006: this route has one intentionally tiny body vocabulary:
         // { readiness: "ready" | "not_ready" }. It cannot name a request or

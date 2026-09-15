@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import {
   CONSUMER_MAX_DECLARED_VALUE_CENTS,
+  COURANR_PROTECTION_POLICY_VERSION,
   PROTECTION_THRESHOLDS,
 } from "@/lib/couranr/consumer/protection";
 
@@ -89,6 +90,68 @@ describe("the SQL re-derivation matches the TypeScript authority", () => {
     // The range CHECK is a separate statement from the derivation and must use
     // the same ceiling.
     expect(MIGRATION).toMatch(/declared_value_cents\s*<=\s*50000/);
+  });
+});
+
+describe("the trust-recording command agrees with the TypeScript authority", () => {
+  const COMMAND = readFileSync(
+    path.join(ROOT, "supabase/migrations/20260915100000_couranr_consumer_trust_command.sql"),
+    "utf8"
+  );
+
+  it("stamps the SAME policy version the module stamps", () => {
+    /* The version is a string literal in the SQL and a constant in TypeScript.
+       Two literals is two answers: the module would report a row as governed by
+       V1 while the database had written V2, and `isGovernedByProtectionPolicy`
+       would agree with both. Read it OUT of the SQL rather than asserting the
+       SQL contains a string this test also hardcodes — that passes if both are
+       wrong. */
+    const m = /protection_policy_version='([^']+)'/.exec(COMMAND);
+    expect(m, "the command does not stamp a policy version").toBeTruthy();
+    expect(m?.[1]).toBe(COURANR_PROTECTION_POLICY_VERSION);
+  });
+
+  it("never accepts a protection level as a parameter", () => {
+    /* The level is DERIVED. A parameter for it is a parameter something could
+       eventually be allowed to pass, and the whole authority rests on the client
+       being unable to choose its own custody ceremony. */
+    const sig = COMMAND.slice(
+      COMMAND.indexOf("create or replace function public.couranr_record_consumer_trust("),
+      COMMAND.indexOf(")\nreturns")
+    );
+    expect(sig).not.toMatch(/p_protection_level|p_policy_version/);
+    expect(COMMAND).toMatch(/private\.couranr_derive_protection_level\(p_declared_value_cents\)/);
+  });
+
+  it("refuses anything but a draft, so a tendered statement cannot be rewritten", () => {
+    expect(COMMAND).toMatch(/request_state<>'draft'/);
+    expect(COMMAND).toMatch(/consumer_trust_already_tendered/);
+  });
+
+  it("coalesces every consent timestamp rather than reassigning it", () => {
+    // A re-accept must keep the FIRST moment. A fresher timestamp would be a
+    // more flattering record of the same event.
+    for (const col of [
+      "sender_terms_accepted_at",
+      "sender_electronic_consent_at",
+      "sender_adult_attested_at",
+    ]) {
+      expect(COMMAND, `${col} is reassigned, not coalesced`).toContain(
+        `${col}=coalesce(${col},v_now)`
+      );
+    }
+  });
+
+  it("is granted to service_role only — no browser calls it directly", () => {
+    expect(COMMAND).toMatch(/revoke all on function public\.couranr_record_consumer_trust[\s\S]*?from public,anon,authenticated/);
+    expect(COMMAND).toMatch(/grant execute on function public\.couranr_record_consumer_trust[\s\S]*?to service_role/);
+  });
+
+  it("adds its event verb to the CLOSED command vocabulary", () => {
+    /* Found by calling the command: couranr_dre_command_chk fires only on
+       INSERT, so a missing verb is invisible to every static assertion. */
+    expect(COMMAND).toContain("'record_consumer_trust'");
+    expect(COMMAND).toMatch(/add constraint couranr_dre_command_chk/);
   });
 });
 

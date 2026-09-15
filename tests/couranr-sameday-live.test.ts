@@ -696,12 +696,12 @@ describe("submitRequest reads the nested `request` key", () => {
     });
     const a = live({ fetchImpl: f.impl, storage: null });
     await a.quote(GOOD_QUOTE_INPUT);
-    expect(await a.submitRequest()).toEqual({ state: "received", requestId: "req-1" });
+    expect(await a.submitRequest({ declaredValueCents: 2_000, acceptance: { shipmentCertification: true, electronicTransactions: true } })).toEqual({ state: "received", requestId: "req-1" });
   });
 
   it("a flat body or a refusal is unavailable, with the server's message", async () => {
     const flat = fakeFetch({ [S]: SESSION_OK, [SUBMIT]: () => ({ body: { state: "x" } }) });
-    expect((await live({ fetchImpl: flat.impl, storage: null }).submitRequest()).state).toBe(
+    expect((await live({ fetchImpl: flat.impl, storage: null }).submitRequest({ declaredValueCents: 2_000, acceptance: { shipmentCertification: true, electronicTransactions: true } })).state).toBe(
       "unavailable"
     );
     const refused = fakeFetch({
@@ -711,7 +711,7 @@ describe("submitRequest reads the nested `request` key", () => {
         body: { error: "Add a phone number or email so Couranr can reach you about this delivery." },
       }),
     });
-    const r = await live({ fetchImpl: refused.impl, storage: null }).submitRequest();
+    const r = await live({ fetchImpl: refused.impl, storage: null }).submitRequest({ declaredValueCents: 2_000, acceptance: { shipmentCertification: true, electronicTransactions: true } });
     expect(r.state).toBe("unavailable");
     if (r.state === "unavailable") expect(r.note).toContain("phone number or email");
   });
@@ -873,7 +873,7 @@ describe("GUARD: the fixture path is unchanged, and production is live", () => {
     const q = await a.quote({ pickup: "a", destination: "b", timingIntent: "asap" });
     expect(q.state).toBe("fixture-available");
     expect(q.state === "fixture-available" && q.totalCents).toBe(BASE_PRICE_CENTS);
-    expect((await a.submitRequest()).state).toBe("received-preview");
+    expect((await a.submitRequest({ declaredValueCents: 2_000, acceptance: { shipmentCertification: true, electronicTransactions: true } })).state).toBe("received-preview");
     expect((await a.authorizePayment()).state).toBe("authorized-fixture");
     const s = await a.searchAddress("main");
     expect(s.status === "ok" && s.suggestions.length).toBeGreaterThan(0);
