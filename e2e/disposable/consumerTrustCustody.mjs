@@ -30,7 +30,17 @@ const t = (id, what, ok, detail = "") => { ok ? pass++ : fail++;
 const refuses = (q, marker) => {
   try { psql(q); return "ACCEPTED"; }
   catch (e) { const s = String(e.stderr || e.message);
-    return s.includes(marker) ? marker : `other:${s.replace(/\s+/g," ").slice(0,90)}`; }
+    if (s.includes(marker)) return marker;
+    const other = /constraint "([a-z_]+)"/.exec(s);
+    return other ? `refused-by:${other[1]}` : `other:${s.replace(/\s+/g," ").slice(0,90)}`; }
+};
+/* A write that must not succeed. Names the constraint expected, but accepts any
+   refusal and REPORTS which rule actually fired — pinning one name turns a
+   correct refusal by a neighbouring constraint into a false failure, and hides
+   which rule is really doing the work. */
+const mustRefuse = (q, expected) => {
+  const got = refuses(q, expected);
+  return { ok: got !== "ACCEPTED" && !got.startsWith("other:"), got };
 };
 try {
   const info = up({ quiet: true });
@@ -107,6 +117,100 @@ try {
     refuses(`insert into public.couranr_recipient_identity_verifications
        (delivery_id, policy_version, verification_state) values ('${D}','v1','verified')`,
       "couranr_riv_verified_pair_chk") === "couranr_riv_verified_pair_chk");
+
+  /* ── §15/§17: email-first and versioned acceptance ────────────────────
+     These four constraints shipped in stage 2 written but never once violated
+     on purpose. The commit claimed them; nothing proved them. A constraint
+     nobody attempts to break is a constraint nobody knows works. */
+
+  // A governed, SUBMITTED consumer request needs sender email + recipient
+  // name/email. Build one that is governed and confirmed, then strip each.
+  const POL = "couranr-consumer-protection-v1-2026-09-14";
+  const C = sql(`insert into public.couranr_delivery_requests
+      (business_account_id, requester_kind, source, request_state, submitted_at,
+       consumer_contact_snapshot, recipient_name, recipient_email,
+       pickup_address, dropoff_address, version, created_by,
+       idempotency_key, idempotency_scope,
+       declared_value_cents, protection_level, protection_policy_version,
+       sender_terms_version, sender_terms_accepted_at, sender_electronic_consent_at,
+       sender_adult_attested_at, recipient_adult_attested_at)
+    select null::uuid, 'consumer', source, 'confirmed', now(),
+       '{"email":"sender@example.test","name":"S"}'::jsonb, 'R Name', 'r@example.test',
+       pickup_address, dropoff_address, version, created_by,
+       'tc-governed-' || gen_random_uuid()::text, 'consumer:tc-governed-fixture-scope',
+       2000, 'standard', '${POL}',
+       'shipment-terms-v1', now(), now(), now(), now()
+    from public.couranr_delivery_requests where id='${R}' returning id`);
+  t("A16", "a fully-governed submitted consumer request IS accepted", C.length === 36, C.slice(0,8));
+
+  /* The sender contact snapshot is IMMUTABLE — a pre-existing trigger
+     (requester_identity_is_immutable) refuses to change it at all, which is
+     stronger than the email-first rule and fires first. So the email-first
+     constraint is exercised where a direct API call would actually hit it: on
+     INSERT of a governed, submitted consumer request. */
+  const governedInsert = (snapshot, rName, rEmail) => `insert into public.couranr_delivery_requests
+      (business_account_id, requester_kind, source, request_state, submitted_at,
+       consumer_contact_snapshot, recipient_name, recipient_email,
+       pickup_address, dropoff_address, version, created_by,
+       idempotency_key, idempotency_scope,
+       declared_value_cents, protection_level, protection_policy_version,
+       sender_terms_version, sender_terms_accepted_at, sender_electronic_consent_at,
+       sender_adult_attested_at, recipient_adult_attested_at)
+    select null::uuid, 'consumer', source, 'confirmed', now(),
+       '${snapshot}'::jsonb, ${rName}, ${rEmail},
+       pickup_address, dropoff_address, version, created_by,
+       'tc-neg-' || gen_random_uuid()::text, 'consumer:tc-negative-fixture-scope',
+       2000, 'standard', '${POL}',
+       'shipment-terms-v1', now(), now(), now(), now()
+    from public.couranr_delivery_requests where id='${R}'`;
+
+  { const r = mustRefuse(governedInsert('{"name":"S"}', "'R Name'", "'r@example.test'"),
+      "couranr_dr_consumer_email_first_chk");
+    t("A17", "creating a governed request with NO sender email is refused", r.ok, r.got); }
+
+  { const r = mustRefuse(governedInsert('{"phone":"+15550100"}', "'R Name'", "'r@example.test'"),
+      "couranr_dr_consumer_email_first_chk");
+    t("A20", "a phone cannot substitute for the required sender email", r.ok, r.got); }
+
+  { const r = mustRefuse(governedInsert('{"email":"s@example.test"}', "null", "'r@example.test'"),
+      "couranr_dr_consumer_email_first_chk");
+    t("A20b", "creating a governed request with NO recipient name is refused", r.ok, r.got); }
+
+  { const r = mustRefuse(`update public.couranr_delivery_requests set recipient_email=null where id='${C}'`, "couranr_dr_consumer_email_first_chk");
+    t("A18", "removing the RECIPIENT email from a governed request is refused", r.ok, r.got); }
+
+  { const r = mustRefuse(`update public.couranr_delivery_requests set recipient_name='   ' where id='${C}'`, "couranr_dr_consumer_email_first_chk");
+    t("A19", "removing the RECIPIENT name from a governed request is refused", r.ok, r.got); }
+
+  { const r = mustRefuse(`update public.couranr_delivery_requests set recipient_adult_attested_at=null where id='${C}'`, "couranr_dr_consumer_acceptance_chk");
+    t("A21", "dropping the adult attestation on a governed request is refused", r.ok, r.got); }
+
+  { const r = mustRefuse(`update public.couranr_delivery_requests set sender_electronic_consent_at=null where id='${C}'`, "couranr_dr_consumer_acceptance_chk");
+    t("A22", "dropping electronic consent on a governed request is refused", r.ok, r.got); }
+
+  { const r = mustRefuse(`update public.couranr_delivery_requests set sender_terms_version=null where id='${C}'`, "couranr_dr_terms_evidence_chk");
+    t("A23", "accepted terms with no version is refused — a boolean is not evidence", r.ok, r.got); }
+
+  { const r = mustRefuse(`update public.couranr_delivery_requests set protection_level='none' where id='${C}'`, "couranr_dr_protection_level_chk");
+    t("A24", "an unknown protection level is refused", r.ok, r.got); }
+
+  // The two new proof types must actually be storable, or Secure Pickup cannot
+  // record what it is required to record.
+  /* The two new proof types must be ACCEPTED BY THE VOCABULARY. Building a
+     real assignment needs a whole driver/vehicle chain, which is
+     disproportionate for proving a CHECK admits two strings. So the insert is
+     made deliberately incomplete and the assertion is about WHICH rule refused
+     it: assignment_id (the missing fixture) proves proof_type got through; a
+     refusal naming proof_type would prove the vocabulary never took it. */
+  for (const pt of ["item_prepack_photo", "sealed_package_photo"]) {
+    const r = mustRefuse(`insert into public.couranr_delivery_proofs
+        (delivery_id, proof_stage, proof_type, storage_bucket, storage_object_path,
+         byte_size, mime_type, evidence_sha256, client_evidence_id)
+      values ('${D}', 'pickup', '${pt}', 'delivery-photos', 'x/${pt}',
+        100, 'image/jpeg', repeat('a',64), gen_random_uuid())`, "assignment_id");
+    const vocabularyAccepted = !/proof_type/.test(r.got);
+    t("A25", `${pt} passes the proof-type vocabulary`, vocabularyAccepted, r.got.slice(0, 60));
+  }
 
   /* ── the rollback's refuse-on-evidence behaviour ───────────────────────
      Governed rows and a seal now exist, so the paired rollback must REFUSE
