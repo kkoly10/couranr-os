@@ -108,6 +108,16 @@ export type QuoteInput = {
   dropoffPlaceId?: string | null;
   /** UI field names. The adapter maps `mobile` -> the API/DB key `phone`. */
   contact?: { name?: string; mobile?: string; email?: string };
+  /** The recipient. Name and email are required from V1; `mobile` maps to
+   *  `phone` the same way the sender's does. */
+  recipient?: { name?: string; mobile?: string; email?: string };
+  /** TOTAL declared shipment value in integer cents — a sender representation,
+   *  never an appraisal. The PROTECTION LEVEL is derived from it on the server
+   *  and re-derived by the database; the browser never states a level. */
+  declaredValueCents?: number | null;
+  /** The two acknowledgements, as booleans. The server stamps the moment and
+   *  the document version — a browser-supplied timestamp is not evidence. */
+  acceptance?: { shipmentCertification?: boolean; electronicTransactions?: boolean };
   shipment?: {
     description?: string | null;
     packageCount?: number | null;

@@ -48,6 +48,11 @@ import type {
 } from "./adapters";
 import { parseOperatingLocal, type TimingIntent } from "@/lib/couranr/timing/policy";
 
+import {
+  CONSUMER_EMAIL_RE,
+  deriveProtection,
+  isProtectionDeclined,
+} from "@/lib/couranr/consumer/protection";
 /* ------------------------------------------------------------ constants -- */
 
 export const GUEST_STORAGE_KEY = "couranr-send-guest";
@@ -79,7 +84,17 @@ const NOTES = {
   descriptionRequired: "Tell Couranr what the driver should look for at pickup.",
   descriptionTooLong: "Keep the pickup description to 1,000 characters or fewer.",
   packageCountInvalid: "Package count must be a whole number from 1 to 9,999, or left blank.",
-  contactRequired: "Add your mobile number or email on the review step, then check the price.",
+  contactRequired: "Add your email on the review step, then check the price.",
+  /* EMAIL-FIRST. A phone cannot substitute: email is the transactional channel
+     for the confirmation, the tracking link and any claim. */
+  senderEmailInvalid: "Check your email address — Couranr could not read it.",
+  recipientNameRequired: "Enter the name of the person receiving this delivery.",
+  recipientEmailRequired: "Enter the recipient's email so Couranr can send them the tracking link.",
+  recipientEmailInvalid: "Check the recipient's email address — Couranr could not read it.",
+  declaredValueRequired: "Enter what this shipment is worth, in whole dollars.",
+  declaredValueTooHigh: "Couranr Same Day carries shipments declared up to $500. Enter a lower value.",
+  certificationRequired: "Confirm what you are shipping before Couranr can price it.",
+  electronicConsentRequired: "Agree to electronic records before Couranr can price it.",
   scheduledTimeRequired: "Choose the date and time for your scheduled pickup.",
   review: "Couranr will review this delivery and confirm the price with you.",
   // Timing-specific review reasons name WHY, so the sender is not left guessing.
@@ -217,8 +232,49 @@ export function buildEstimateBody(input: QuoteInput): EstimateBodyResult {
   }
 
   const contact = consumerContactFromSend(input.contact);
-  if (!contact.phone && !contact.email) {
-    return { ok: false, note: NOTES.contactRequired };
+  // EMAIL-FIRST (V1). The old rule was phone OR email; the server now requires
+  // the email and the phone stays optional. These two gates must agree exactly
+  // — tests/couranr-consumer-send-contract.test.ts holds them together.
+  if (!contact.email) return { ok: false, note: NOTES.contactRequired };
+  if (!CONSUMER_EMAIL_RE.test(contact.email)) {
+    return { ok: false, note: NOTES.senderEmailInvalid };
+  }
+
+  const recipient = consumerContactFromSend(input.recipient);
+  if (!recipient.name) return { ok: false, note: NOTES.recipientNameRequired };
+  if (!recipient.email) return { ok: false, note: NOTES.recipientEmailRequired };
+  if (!CONSUMER_EMAIL_RE.test(recipient.email)) {
+    return { ok: false, note: NOTES.recipientEmailInvalid };
+  }
+
+  /* DECLARED VALUE, judged by the SAME authority the server and the database
+     use. Refusing here is free; refusing at the server costs a round trip and,
+     on this path, provider lookups the owner pays for. What is NOT done here is
+     deriving the level — that is the server's alone, and the browser never
+     sends one. */
+  const protection = deriveProtection(input.declaredValueCents);
+  if (isProtectionDeclined(protection)) {
+    return {
+      ok: false,
+      note:
+        protection.reason === "declared_value_above_maximum"
+          ? NOTES.declaredValueTooHigh
+          : NOTES.declaredValueRequired,
+    };
+  }
+  const declaredValueCents = input.declaredValueCents as number;
+
+  // Booleans, compared with ===. Truthiness is not consent: "1", "yes" and a
+  // forged timestamp all read as true and none of them is an acknowledgement.
+  const acceptance = {
+    shipmentCertification: input.acceptance?.shipmentCertification === true,
+    electronicTransactions: input.acceptance?.electronicTransactions === true,
+  };
+  if (!acceptance.shipmentCertification) {
+    return { ok: false, note: NOTES.certificationRequired };
+  }
+  if (!acceptance.electronicTransactions) {
+    return { ok: false, note: NOTES.electronicConsentRequired };
   }
 
   // TMZ-001: a scheduled pickup needs the sender's local wall-clock words in
@@ -255,6 +311,9 @@ export function buildEstimateBody(input: QuoteInput): EstimateBodyResult {
       pickupPlaceId,
       dropoffPlaceId,
       contact,
+      recipient,
+      declaredValueCents,
+      acceptance,
       shipment: {
         description,
         weightLb,

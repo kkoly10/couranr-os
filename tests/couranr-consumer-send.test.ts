@@ -232,10 +232,20 @@ describe("findForbiddenConsumerKey", () => {
 /* --------------------------------------------------- body validation ----- */
 
 describe("validateConsumerSendBody", () => {
+  /* The full contract body. Every assertion below spreads this and overrides
+     ONE thing, so a test about weight is not silently answered by the email
+     gate — the new trust fields are checked before the shipment fields, and an
+     under-specified fixture would make each of these tests report the first
+     missing field instead of its own subject. */
   const valid = {
     pickupPlaceId: "p1",
     dropoffPlaceId: "p2",
-    contact: { phone: "+15715550100" },
+    contact: { phone: "+15715550100", email: "sender@example.test" },
+    recipient: { name: "Dana Reyes", email: "recipient@example.test" },
+    // $20.00 — inside the standard band on purpose, so these pre-existing
+    // assertions keep testing what they were written to test.
+    declaredValueCents: 2_000,
+    acceptance: { shipmentCertification: true, electronicTransactions: true },
     shipment: { weightLb: 20, restrictedClass: "none" },
   };
 
@@ -341,6 +351,147 @@ describe("validateConsumerSendBody", () => {
     // Refresh re-prices the STORED statement, as the business refresh does.
     expect(LIB).toMatch(/row\.timing_intent === "scheduled" \? "scheduled" : "asap"/);
   });
+
+  /* ---------------------------------------- V1 trust contract (new) ------ */
+
+  /* Every refusal below is attempted ON PURPOSE. A validation reason nobody
+     violates deliberately is a reason nobody knows fires — stage 2 shipped four
+     CHECK constraints written and never once violated, and this is the same
+     failure one layer up. Each case overrides exactly ONE field of `valid`, so
+     the reason it asserts is the reason it caused. */
+  const reasonFor = (body: unknown): string => {
+    const r = validateConsumerSendBody(body);
+    expect(r.ok, `expected a refusal, got acceptance`).toBe(false);
+    return isConsumerSendBodyFailure(r) ? r.reason : "<accepted>";
+  };
+
+  it("EMAIL-FIRST: a sender phone cannot stand in for a sender email", () => {
+    const { email, ...noEmail } = valid.contact as Record<string, unknown>;
+    expect(reasonFor({ ...valid, contact: noEmail })).toBe("sender_email_required");
+    expect(reasonFor({ ...valid, contact: { phone: "+15715550100" } })).toBe(
+      "sender_email_required"
+    );
+    // A malformed one is refused as malformed, not as missing.
+    expect(reasonFor({ ...valid, contact: { ...valid.contact, email: "dana@" } })).toBe(
+      "contact_email_invalid"
+    );
+  });
+
+  it("requires a recipient identity — the field every consumer send lacked", () => {
+    expect(reasonFor({ ...valid, recipient: undefined })).toBe("recipient_name_required");
+    expect(reasonFor({ ...valid, recipient: { email: "r@example.test" } })).toBe(
+      "recipient_name_required"
+    );
+    expect(reasonFor({ ...valid, recipient: { name: "Dana Reyes" } })).toBe(
+      "recipient_email_required"
+    );
+    // A recipient phone does not satisfy the recipient email rule either.
+    expect(
+      reasonFor({ ...valid, recipient: { name: "Dana Reyes", phone: "+15715550101" } })
+    ).toBe("recipient_email_required");
+    expect(
+      reasonFor({ ...valid, recipient: { name: "Dana Reyes", email: "not-an-email" } })
+    ).toBe("recipient_email_invalid");
+  });
+
+  it("refuses an unreadable declared value rather than treating it as $0", () => {
+    /* The dangerous coercion: `Number(undefined)` is NaN and `Number(null)` is
+       0. If this validator coerced, a body that simply omitted the value would
+       be accepted as a $0.00 shipment and routed onto the standard path with no
+       prepack photo and no seal — while carrying a $500 item. */
+    for (const bad of [undefined, null, "2000", Number.NaN, 12.5, -1, {}, [], true]) {
+      expect(reasonFor({ ...valid, declaredValueCents: bad }), `${JSON.stringify(bad)}`).toBe(
+        "declared_value_invalid"
+      );
+    }
+  });
+
+  it("declines above the $500 ceiling with its own distinct reason", () => {
+    // Distinct from `declared_value_invalid` because the sender must be told
+    // the ceiling, not that their number was unreadable.
+    expect(reasonFor({ ...valid, declaredValueCents: 50_001 })).toBe(
+      "declared_value_above_maximum"
+    );
+    expect(validateConsumerSendBody({ ...valid, declaredValueCents: 50_000 }).ok).toBe(true);
+    expect(validateConsumerSendBody({ ...valid, declaredValueCents: 0 }).ok).toBe(true);
+  });
+
+  it("requires BOTH acknowledgements, and accepts only a literal true", () => {
+    expect(reasonFor({ ...valid, acceptance: undefined })).toBe(
+      "shipment_certification_required"
+    );
+    expect(
+      reasonFor({ ...valid, acceptance: { ...valid.acceptance, shipmentCertification: false } })
+    ).toBe("shipment_certification_required");
+    expect(
+      reasonFor({ ...valid, acceptance: { ...valid.acceptance, electronicTransactions: false } })
+    ).toBe("electronic_consent_required");
+    /* Truthiness is not consent. A client that sends a string — including a
+       timestamp that looks like evidence — has not acknowledged anything, and
+       `=== true` is what keeps "1", "yes" and a forged moment out. */
+    for (const truthy of ["true", 1, "2026-09-14T00:00:00Z", {}]) {
+      expect(
+        reasonFor({ ...valid, acceptance: { ...valid.acceptance, shipmentCertification: truthy } }),
+        `${JSON.stringify(truthy)} was accepted as consent`
+      ).toBe("shipment_certification_required");
+    }
+  });
+
+  it("refuses a body reaching for a SERVER-DERIVED protection field", () => {
+    /* The client states a value. It never states the level, the policy version,
+       or the moment it consented. These are refused outright rather than
+       ignored: ignoring is silent, and a later refactor that spread the body
+       into the RPC parameters would turn a silent ignore into a live hole. */
+    for (const key of [
+      "protectionLevel",
+      "protectionPolicyVersion",
+      "senderTermsVersion",
+      "senderTermsAcceptedAt",
+      "senderElectronicConsentAt",
+      "senderAdultAttestedAt",
+      "recipientAdultAttestedAt",
+    ]) {
+      expect(reasonFor({ ...valid, [key]: "x" }), `${key} was not refused`).toBe(
+        "forbidden_field"
+      );
+      // And nested, because a real payload nests.
+      expect(
+        reasonFor({ ...valid, shipment: { ...valid.shipment, [key]: "x" } }),
+        `nested ${key} was not refused`
+      ).toBe("forbidden_field");
+    }
+  });
+
+  it("does NOT forbid declaredValueCents — it is the one input the sender states", () => {
+    // The guard on the guard: if a future edit added `declaredvaluecents` to the
+    // list, every legitimate send would fail closed with `forbidden_field` and
+    // the tests above would still pass, because they all assert refusals.
+    expect(findForbiddenConsumerKey({ declaredValueCents: 2_000 })).toBeNull();
+    expect(validateConsumerSendBody(valid).ok).toBe(true);
+  });
+
+  it("carries the new fields through to the value, normalized and unchanged", () => {
+    const r = validateConsumerSendBody({
+      ...valid,
+      recipient: { name: "  Dana Reyes  ", email: "recipient@example.test", phone: null },
+      declaredValueCents: 15_001,
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.recipient.name).toBe("Dana Reyes");
+      expect(r.value.recipient.email).toBe("recipient@example.test");
+      expect(r.value.recipient.phone).toBeNull();
+      expect(r.value.contact.email).toBe("sender@example.test");
+      // Passed through EXACTLY. The level is derived from it on the server and
+      // re-derived by the database; the validator must not round or rescale it.
+      expect(r.value.declaredValueCents).toBe(15_001);
+      expect(r.value.acceptance).toEqual({
+        shipmentCertification: true,
+        electronicTransactions: true,
+      });
+    }
+  });
+
 });
 
 /* -------------------------------------------------------- SQL posture ---- */

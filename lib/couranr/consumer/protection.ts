@@ -178,6 +178,22 @@ export function isGovernedByProtectionPolicy(policyVersion: unknown): boolean {
   return typeof policyVersion === "string" && policyVersion.trim() !== "";
 }
 
+/**
+ * THE email rule, for BOTH sides of the /send seam.
+ *
+ * It lives here rather than in consumer/send.ts for a structural reason: send.ts
+ * imports `supabaseAdmin`, so a client component that imported the regex from
+ * there would drag the service-role module into the browser bundle. This module
+ * is dependency-free by design and safe from either side — which is why the
+ * shared authority belongs in it. (`tests/couranr-server-only.test.ts` caught
+ * exactly that import; the guard is not theoretical.)
+ *
+ * Email-first is part of the V1 trust contract, not merely a contact detail:
+ * email is the transactional channel for the confirmation, the tracking link
+ * and any later claim, so a phone number cannot substitute for it.
+ */
+export const CONSUMER_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 /** Exact dollars for customer-facing copy. Never rounds. */
 export function declaredValueDollars(cents: number): string {
   const sign = cents < 0 ? "-" : "";

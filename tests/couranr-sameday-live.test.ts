@@ -131,7 +131,13 @@ const GOOD_QUOTE_INPUT = {
   timingIntent: "asap" as const,
   pickupPlaceId: "place-a",
   dropoffPlaceId: "place-b",
-  contact: { name: "Ada", mobile: "+15715550100", email: "" },
+  /* V1 trust contract: email-first for the sender, a named recipient with an
+     email, a declared value and both acknowledgements. `email` was "" here
+     while phone-OR-email satisfied the old rule; it cannot be now. */
+  contact: { name: "Ada", mobile: "+15715550100", email: "ada@example.test" },
+  recipient: { name: "Grace", mobile: "+15715550101", email: "grace@example.test" },
+  declaredValueCents: 2_500,
+  acceptance: { shipmentCertification: true, electronicTransactions: true },
   shipment: { description: "a birthday cake", weightLb: 8, weightBand: null, restrictedClass: "none" },
 };
 

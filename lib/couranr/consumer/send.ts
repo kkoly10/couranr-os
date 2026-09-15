@@ -76,6 +76,12 @@ assertServerOnly("lib/couranr/consumer/send.ts");
  * evidence hook.
  */
 
+import {
+  CONSUMER_EMAIL_RE,
+  deriveProtection,
+  isProtectionDeclined,
+} from "@/lib/couranr/consumer/protection";
+
 export const RPC = {
   createSession: "couranr_create_consumer_guest_session",
   redeemSession: "couranr_redeem_consumer_guest_session",
@@ -202,6 +208,24 @@ export const FORBIDDEN_CONSUMER_KEYS = [
   "durationseconds",
   "trafficdelayseconds",
   "payertype",
+  /* Custody protection — DERIVED from declaredValueCents by the server and
+     re-derived by a CHECK constraint. `declaredValueCents` is deliberately NOT
+     here: it is the one protection input the sender legitimately states. The
+     OUTPUT never is. Nothing reads these keys today, so a body carrying one is
+     currently ignored rather than honored — which is precisely the weakness:
+     ignoring is silent, and the point of this list is that a payload reaching
+     for a server-owned field is refused outright, before any field of it is
+     accepted. */
+  "protectionlevel",
+  "protectionpolicyversion",
+  /* Consent EVIDENCE. The sender sends booleans; the server stamps the moment
+     and the document version. A client-supplied timestamp is not evidence of
+     anything — it is a claim about a moment only the server witnessed. */
+  "sendertermsversion",
+  "sendertermsacceptedat",
+  "senderelectronicconsentat",
+  "senderadultattestedat",
+  "recipientadultattestedat",
 ] as const;
 
 function canonicalKey(k: string): string {
@@ -298,6 +322,16 @@ export type ConsumerSendBody = {
   pickupPlaceId: string;
   dropoffPlaceId: string;
   contact: { name: string | null; phone: string | null; email: string | null };
+  /** The recipient, required from V1. Both RPCs have always accepted these;
+   *  the consumer path passed null, so every Consumer Same Day delivery was
+   *  created with no recipient identity at all. */
+  recipient: { name: string; email: string; phone: string | null };
+  /** TOTAL declared shipment value, integer cents. A sender representation,
+   *  never an appraisal. The level is DERIVED from it on the server. */
+  declaredValueCents: number;
+  /** The two acknowledgements. BOOLEANS, not timestamps: a client-supplied
+   *  moment is not evidence. The server stamps time and document version. */
+  acceptance: { shipmentCertification: boolean; electronicTransactions: boolean };
   shipment: {
     description: string | null;
     weightLb: number | null;
@@ -316,7 +350,8 @@ export type ConsumerSendBody = {
 };
 
 // Deliberately permissive: only rejects text that cannot be an address.
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// THE email rule, from the dependency-free authority both sides import.
+const EMAIL_RE = CONSUMER_EMAIL_RE;
 
 function str(v: unknown): string | null {
   if (typeof v !== "string") return null;
@@ -358,7 +393,60 @@ export function validateConsumerSendBody(raw: unknown): ConsumerSendBodyResult {
       : {};
   const email = str(contactRaw.email);
   if (email && !EMAIL_RE.test(email)) return { ok: false, reason: "contact_email_invalid" };
+  // EMAIL-FIRST. The sender email was optional while phone OR email satisfied
+  // the old rule. A phone cannot substitute: email is the transactional
+  // channel for the confirmation, the tracking link and any claim.
+  if (!email) return { ok: false, reason: "sender_email_required" };
   const contact = { name: str(contactRaw.name), phone: str(contactRaw.phone), email };
+
+  // The recipient. Name and email required; phone stays optional and cannot
+  // satisfy the email rule.
+  const recipRaw =
+    r.recipient !== null && typeof r.recipient === "object" && !Array.isArray(r.recipient)
+      ? (r.recipient as Record<string, unknown>)
+      : {};
+  const recipientName = str(recipRaw.name);
+  const recipientEmail = str(recipRaw.email);
+  if (!recipientName) return { ok: false, reason: "recipient_name_required" };
+  if (!recipientEmail) return { ok: false, reason: "recipient_email_required" };
+  if (!EMAIL_RE.test(recipientEmail)) return { ok: false, reason: "recipient_email_invalid" };
+  const recipient = {
+    name: recipientName.slice(0, 200),
+    email: recipientEmail,
+    phone: str(recipRaw.phone),
+  };
+
+  // DECLARED VALUE, validated through the SAME authority the server and the
+  // database use, so what the client may send and what the level is derived
+  // from can never become two different rules.
+  const declaredRaw = r.declaredValueCents;
+  const declaredValueCents = typeof declaredRaw === "number" ? declaredRaw : Number.NaN;
+  const protection = deriveProtection(declaredValueCents);
+  if (isProtectionDeclined(protection)) {
+    return {
+      ok: false,
+      reason:
+        protection.reason === "declared_value_above_maximum"
+          ? "declared_value_above_maximum"
+          : "declared_value_invalid",
+    };
+  }
+
+  // Both acknowledgements required. The server stamps the moment and version.
+  const acceptRaw =
+    r.acceptance !== null && typeof r.acceptance === "object" && !Array.isArray(r.acceptance)
+      ? (r.acceptance as Record<string, unknown>)
+      : {};
+  const acceptance = {
+    shipmentCertification: acceptRaw.shipmentCertification === true,
+    electronicTransactions: acceptRaw.electronicTransactions === true,
+  };
+  if (!acceptance.shipmentCertification) {
+    return { ok: false, reason: "shipment_certification_required" };
+  }
+  if (!acceptance.electronicTransactions) {
+    return { ok: false, reason: "electronic_consent_required" };
+  }
 
   const shipRaw =
     r.shipment !== null && typeof r.shipment === "object" && !Array.isArray(r.shipment)
@@ -416,6 +504,9 @@ export function validateConsumerSendBody(raw: unknown): ConsumerSendBodyResult {
       pickupPlaceId,
       dropoffPlaceId,
       contact,
+      recipient,
+      declaredValueCents,
+      acceptance,
       shipment: {
         description: description ? description.slice(0, 2000) : null,
         weightLb,
@@ -623,9 +714,11 @@ export async function estimateConsumerSend(params: {
 
   const sharedArgs = {
     p_shipment_description: body.shipment.description,
-    p_recipient_name: null as string | null,
-    p_recipient_phone: null as string | null,
-    p_recipient_email: null as string | null,
+    // These were `null` for the whole life of the consumer funnel, so every
+    // Consumer Same Day delivery was created with no recipient identity.
+    p_recipient_name: body.recipient.name,
+    p_recipient_phone: body.recipient.phone,
+    p_recipient_email: body.recipient.email,
     p_weight_lb: body.shipment.weightLb,
     p_weight_band: body.shipment.weightBand,
     p_restricted_class: body.shipment.restrictedClass,
@@ -817,6 +910,11 @@ export async function refreshConsumerSendQuote(params: {
     p_guest_session_id: params.session.id,
     p_expected_version: Number(row.version),
     // Shipment facts are already the stored truth; only the quote refreshes.
+    // The nulls below are SAFE ONLY because of this flag: the RPC writes
+    // recipient_name/phone/email inside `if p_update_shipment then`, and its
+    // else-branch touches only loaded_miles, the payload, timing review
+    // reasons and the version. Flip this to true without also passing the
+    // stored recipient and every quote refresh silently erases the recipient.
     p_update_shipment: false,
     p_shipment_description: description,
     p_recipient_name: null as string | null,
