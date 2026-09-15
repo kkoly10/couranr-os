@@ -264,18 +264,15 @@ export function buildEstimateBody(input: QuoteInput): EstimateBodyResult {
   }
   const declaredValueCents = input.declaredValueCents as number;
 
-  // Booleans, compared with ===. Truthiness is not consent: "1", "yes" and a
-  // forged timestamp all read as true and none of them is an acknowledgement.
+  /* Booleans, compared with ===. Truthiness is not consent. NOT required to
+     price: the estimate creates a draft, and asking the sender to accept terms
+     before Couranr has told them the cost is the wrong order. The /send review
+     step gates "Continue to payment" on both, which is the submit that takes
+     the request out of draft — the same line the database draws. */
   const acceptance = {
     shipmentCertification: input.acceptance?.shipmentCertification === true,
     electronicTransactions: input.acceptance?.electronicTransactions === true,
   };
-  if (!acceptance.shipmentCertification) {
-    return { ok: false, note: NOTES.certificationRequired };
-  }
-  if (!acceptance.electronicTransactions) {
-    return { ok: false, note: NOTES.electronicConsentRequired };
-  }
 
   // TMZ-001: a scheduled pickup needs the sender's local wall-clock words in
   // the `YYYY-MM-DDTHH:MM` shape. Checked locally and for free; the SERVER

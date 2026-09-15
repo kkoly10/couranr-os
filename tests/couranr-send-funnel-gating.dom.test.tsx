@@ -105,6 +105,14 @@ async function selectAddress(inputId: string) {
   await userEvent.click(await screen.findByRole("option", { name: /100 Main Street/ }));
 }
 
+/** Everything the estimate needs from the review step, V1 contract. */
+async function fillSenderAndRecipient() {
+  await userEvent.type(screen.getByLabelText("Mobile"), "+15715550100");
+  await userEvent.type(screen.getByLabelText("Email"), "sender@example.test");
+  await userEvent.type(screen.getByLabelText("Recipient name"), "Dana Reyes");
+  await userEvent.type(screen.getByLabelText("Recipient email"), "dana@example.test");
+}
+
 async function driveToReviewStep() {
   render(<SendFlow mode="live" />);
   await userEvent.click(btn(/Send something I have/));
@@ -115,6 +123,9 @@ async function driveToReviewStep() {
   await userEvent.type(screen.getByLabelText("Weight (lb)"), "8");
   await userEvent.selectOptions(screen.getByLabelText("Restricted items"), "none");
   await userEvent.click(screen.getByLabelText(/ready to hand over/i));
+  // V1: the item step will not advance without a readable declared value —
+  // the protection level is derived from it and the draft stores both.
+  await userEvent.type(screen.getByLabelText(SEND_COPY.declared_value_label), "20");
   await userEvent.click(btn("Continue")); // item -> timing
   await userEvent.click(screen.getByLabelText(SEND_COPY.timing_asap));
   await userEvent.click(btn("Continue")); // timing -> review
@@ -162,7 +173,15 @@ describe("consumer /send funnel gating", () => {
     expect(f.of(ESTIMATE)).toHaveLength(0);
     expect(btn(/Check the price/).disabled).toBe(true);
 
+    // A mobile alone no longer opens it: V1 is EMAIL-FIRST and the recipient is
+    // required, because the tracking link and any claim travel by email.
     await userEvent.type(screen.getByLabelText("Mobile"), "+15715550100");
+    expect(btn(/Check the price/).disabled).toBe(true);
+    await userEvent.type(screen.getByLabelText("Email"), "sender@example.test");
+    expect(btn(/Check the price/).disabled).toBe(true);
+    await userEvent.type(screen.getByLabelText("Recipient name"), "Dana Reyes");
+    expect(btn(/Check the price/).disabled).toBe(true);
+    await userEvent.type(screen.getByLabelText("Recipient email"), "dana@example.test");
     await waitFor(() => expect(btn(/Check the price/).disabled).toBe(false));
     await userEvent.click(btn(/Check the price/));
 
@@ -173,17 +192,27 @@ describe("consumer /send funnel gating", () => {
 
     // Payment progression needs the acknowledgement AND a proceedable quote.
     expect(btn("Continue to payment").disabled).toBe(true);
+    /* BOTH acknowledgements, and neither of them gated the price above — the
+       estimate creates a draft, and the database exempts a draft from
+       couranr_dr_consumer_acceptance_chk for the same reason. */
     await userEvent.click(screen.getByLabelText(SEND_COPY.acknowledgement));
+    expect(btn("Continue to payment").disabled).toBe(true);
+    await userEvent.click(screen.getByLabelText(SEND_COPY.electronic_consent));
     await waitFor(() => expect(btn("Continue to payment").disabled).toBe(false));
   });
 
   it("a stale quote (an input changed after pricing) blocks progression to payment", async () => {
     installFetch({ [ESTIMATE]: () => ESTIMATED(1234) });
     await driveToReviewStep();
-    await userEvent.type(screen.getByLabelText("Mobile"), "+15715550100");
+    await fillSenderAndRecipient();
     await userEvent.click(btn(/Check the price/));
     await screen.findByText("Total: $12.34");
+    /* BOTH acknowledgements, and neither of them gated the price above — the
+       estimate creates a draft, and the database exempts a draft from
+       couranr_dr_consumer_acceptance_chk for the same reason. */
     await userEvent.click(screen.getByLabelText(SEND_COPY.acknowledgement));
+    expect(btn("Continue to payment").disabled).toBe(true);
+    await userEvent.click(screen.getByLabelText(SEND_COPY.electronic_consent));
     await waitFor(() => expect(btn("Continue to payment").disabled).toBe(false));
 
     // Changing a quote input (contact here) stales the standing quote.
@@ -195,7 +224,7 @@ describe("consumer /send funnel gating", () => {
   it("a manual-review quote is a non-payable submit-for-review path, not a fake price", async () => {
     installFetch({ [ESTIMATE]: () => REVIEW() });
     await driveToReviewStep();
-    await userEvent.type(screen.getByLabelText("Mobile"), "+15715550100");
+    await fillSenderAndRecipient();
     await userEvent.click(btn(/Check the price/));
     await waitFor(() =>
       expect(document.querySelector('[data-couranr-quote="manual-review"]')).not.toBeNull(),
@@ -203,8 +232,67 @@ describe("consumer /send funnel gating", () => {
     // No fabricated total is shown.
     expect(screen.queryByText(/^Total:/)).toBeNull();
     await userEvent.click(screen.getByLabelText(SEND_COPY.acknowledgement));
+    await userEvent.click(screen.getByLabelText(SEND_COPY.electronic_consent));
     // The action is a review submission, not a payment.
     await waitFor(() => expect(btn("Continue to Couranr review").disabled).toBe(false));
+  });
+
+  it("discloses what the declared value changes about handling, as it is typed", async () => {
+    /* PROGRESSIVE DISCLOSURE. The sender is told what their declared value
+       changes about how the shipment is handled AT THE MOMENT THEY ENTER IT —
+       not after they have paid, and not in terms accepted sight unseen. The
+       level is derived by the same function the server and the database use, so
+       what the form promises and what the driver is instructed to do cannot
+       become two different answers.
+
+       The band edges are asserted at CENT precision because that is how the
+       owner decision is written: $30.01 begins secure pickup. */
+    installFetch({});
+    render(<SendFlow mode="live" />);
+    await userEvent.click(btn(/Send something I have/));
+    await selectAddress("send-pickup");
+    await selectAddress("send-destination");
+    await userEvent.click(btn("Continue"));
+    await userEvent.type(screen.getByLabelText(SEND_COPY.item_question), "a watch");
+    await userEvent.type(screen.getByLabelText("Weight (lb)"), "1");
+    await userEvent.selectOptions(screen.getByLabelText("Restricted items"), "none");
+    await userEvent.click(screen.getByLabelText(/ready to hand over/i));
+
+    const value = screen.getByLabelText(SEND_COPY.declared_value_label) as HTMLInputElement;
+    const level = () =>
+      document.querySelector("[data-couranr-protection]")?.getAttribute("data-couranr-protection");
+
+    // Nothing stated yet: no level, and the step will not advance. An unstated
+    // value is NOT a $0 shipment.
+    expect(level()).toBe("none");
+    expect(btn("Continue").disabled).toBe(true);
+
+    for (const [dollars, want, copy] of [
+      ["30.00", "standard", SEND_COPY.protection_standard],
+      ["30.01", "secure_pickup", SEND_COPY.protection_secure_pickup],
+      ["150.00", "secure_pickup", SEND_COPY.protection_secure_pickup],
+      ["150.01", "protected_handoff", SEND_COPY.protection_protected_handoff],
+      ["500.00", "protected_handoff", SEND_COPY.protection_protected_handoff],
+    ] as const) {
+      fireEvent.change(value, { target: { value: dollars } });
+      expect(level(), `$${dollars}`).toBe(want);
+      expect(screen.getByText(copy)).toBeTruthy();
+      expect(btn("Continue").disabled, `$${dollars} should advance`).toBe(false);
+    }
+
+    // Over the ceiling: refused, with the ceiling named, and the step blocked.
+    fireEvent.change(value, { target: { value: "500.01" } });
+    expect(level()).toBe("none");
+    expect(btn("Continue").disabled).toBe(true);
+    expect(screen.getByText(new RegExp(`${SEND_COPY.declared_value_max_note}\\s+\\$500\\.00`))).toBeTruthy();
+
+    // Unreadable input is refused too, rather than coerced to zero — coercion
+    // would route a $500 item onto the standard path with no seal.
+    for (const bad of ["abc", "-5", "20.005", "1e3"]) {
+      fireEvent.change(value, { target: { value: bad } });
+      expect(level(), bad).toBe("none");
+      expect(btn("Continue").disabled, bad).toBe(true);
+    }
   });
 
   it("a scheduled pickup needs valid Eastern local words to continue, and the estimate carries them (TMZ-001)", async () => {
@@ -218,6 +306,8 @@ describe("consumer /send funnel gating", () => {
     await userEvent.type(screen.getByLabelText("Weight (lb)"), "8");
     await userEvent.selectOptions(screen.getByLabelText("Restricted items"), "none");
     await userEvent.click(screen.getByLabelText(/ready to hand over/i));
+    // The item step will not advance without a readable declared value.
+    await userEvent.type(screen.getByLabelText(SEND_COPY.declared_value_label), "20");
     await userEvent.click(btn("Continue")); // -> timing
 
     // Both governed intents are offered; choose a scheduled pickup.
@@ -235,7 +325,7 @@ describe("consumer /send funnel gating", () => {
     await userEvent.click(btn("Continue")); // -> review
     expect(screen.getByText(/Schedule it: 2027-03-10 10:30 \(Eastern\)/)).toBeTruthy();
 
-    await userEvent.type(screen.getByLabelText("Mobile"), "+15715550100");
+    await fillSenderAndRecipient();
     await userEvent.click(btn(/Check the price/));
     await waitFor(() => expect(f.of(ESTIMATE)).toHaveLength(1));
     const sent = JSON.parse(String(f.of(ESTIMATE)[0].body));

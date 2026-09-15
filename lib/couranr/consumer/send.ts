@@ -373,6 +373,60 @@ export function isConsumerSendBodyFailure(
   return r.ok === false;
 }
 
+/**
+ * The submit-time gate. BOTH acknowledgements, each compared with `===`.
+ *
+ * Separate from `validateConsumerSendBody` because they answer different
+ * questions at different moments: that one asks "is this a complete enough
+ * statement to price?", this one asks "is the sender tendering it?". The
+ * database draws the same line — a draft is exempt from
+ * couranr_dr_consumer_acceptance_chk and a submitted row is not.
+ *
+ * Truthiness is deliberately not accepted. "1", "yes" and a client-supplied
+ * timestamp that looks like evidence are all truthy and none of them is an
+ * acknowledgement; the server stamps the moment and the document version.
+ */
+export type ConsumerAcceptance = {
+  shipmentCertification: boolean;
+  electronicTransactions: boolean;
+};
+
+export type ConsumerAcceptanceResult =
+  | { ok: true; value: ConsumerAcceptance }
+  | { ok: false; reason: string };
+
+/**
+ * `tsconfig` sets `"strict": false`; without `strictNullChecks` a bare
+ * `r.ok ? … : r.reason` does not narrow this union, so reading `.reason` is a
+ * type error at the call site. The same predicate pattern as
+ * `isConsumerSendBodyFailure` and `isProtectionDeclined`.
+ */
+export function isAcceptanceFailure(
+  r: ConsumerAcceptanceResult
+): r is { ok: false; reason: string } {
+  return r.ok === false;
+}
+
+export function requireAcceptance(
+  raw: unknown
+): ConsumerAcceptanceResult {
+  const r =
+    raw !== null && typeof raw === "object" && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {};
+  const value: ConsumerAcceptance = {
+    shipmentCertification: r.shipmentCertification === true,
+    electronicTransactions: r.electronicTransactions === true,
+  };
+  if (!value.shipmentCertification) {
+    return { ok: false, reason: "shipment_certification_required" };
+  }
+  if (!value.electronicTransactions) {
+    return { ok: false, reason: "electronic_consent_required" };
+  }
+  return { ok: true, value };
+}
+
 export function validateConsumerSendBody(raw: unknown): ConsumerSendBodyResult {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
     return { ok: false, reason: "not_an_object" };
@@ -432,7 +486,19 @@ export function validateConsumerSendBody(raw: unknown): ConsumerSendBodyResult {
     };
   }
 
-  // Both acknowledgements required. The server stamps the moment and version.
+  /* The acknowledgements are PARSED here and REQUIRED at submit, not here.
+     This body is validated by `estimateConsumerSend`, which creates or updates a
+     DRAFT — and a draft is a statement not yet made. Requiring acceptance to
+     price a delivery would ask the sender to agree to terms before they have
+     been told what it costs, and it would contradict the database, whose
+     couranr_dr_consumer_acceptance_chk deliberately exempts
+     `request_state = 'draft'` for the same reason.
+
+     So the split follows the row's own lifecycle: the estimate persists the
+     declared value and the derived level onto the draft; `requireAcceptance`
+     gates the submit that takes it out of draft, which is the moment the
+     constraint begins to require the evidence and the moment the sender
+     actually tenders the shipment. */
   const acceptRaw =
     r.acceptance !== null && typeof r.acceptance === "object" && !Array.isArray(r.acceptance)
       ? (r.acceptance as Record<string, unknown>)
@@ -441,12 +507,6 @@ export function validateConsumerSendBody(raw: unknown): ConsumerSendBodyResult {
     shipmentCertification: acceptRaw.shipmentCertification === true,
     electronicTransactions: acceptRaw.electronicTransactions === true,
   };
-  if (!acceptance.shipmentCertification) {
-    return { ok: false, reason: "shipment_certification_required" };
-  }
-  if (!acceptance.electronicTransactions) {
-    return { ok: false, reason: "electronic_consent_required" };
-  }
 
   const shipRaw =
     r.shipment !== null && typeof r.shipment === "object" && !Array.isArray(r.shipment)

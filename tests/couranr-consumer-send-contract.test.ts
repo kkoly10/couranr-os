@@ -4,7 +4,9 @@ import {
   isEstimateBodyFailure,
 } from "@/lib/couranr/sameday/liveAdapters";
 import {
+  isAcceptanceFailure,
   isConsumerSendBodyFailure,
+  requireAcceptance,
   validateConsumerSendBody,
 } from "@/lib/couranr/consumer/send";
 import { CONSUMER_MAX_DECLARED_VALUE_CENTS } from "@/lib/couranr/consumer/protection";
@@ -103,14 +105,6 @@ describe("the body the UI builds is a body the server accepts", () => {
         "declared value over the ceiling",
         { ...completeInput, declaredValueCents: CONSUMER_MAX_DECLARED_VALUE_CENTS + 1 },
       ],
-      [
-        "certification unchecked",
-        { ...completeInput, acceptance: { ...completeInput.acceptance, shipmentCertification: false } },
-      ],
-      [
-        "electronic consent unchecked",
-        { ...completeInput, acceptance: { ...completeInput.acceptance, electronicTransactions: false } },
-      ],
       ["no sender email", { ...completeInput, contact: { name: "Alex Chen", mobile: "+15715550100" } }],
     ];
     for (const [label, input] of cases) {
@@ -120,6 +114,51 @@ describe("the body the UI builds is a body the server accepts", () => {
       if (r.stage === "client") {
         expect(r.reason, `"${label}" has no readable note`).toMatch(/[a-z]{3}.*[a-z]{3}/);
       }
+    }
+  });
+
+  it("prices WITHOUT the acknowledgements — they gate the submit, not the quote", () => {
+    /* The order matters and it is easy to get backwards. An estimate creates a
+       DRAFT; asking the sender to accept terms before Couranr has told them the
+       cost is the wrong order, and the database draws the same line —
+       couranr_dr_consumer_acceptance_chk exempts `request_state = 'draft'` and
+       begins to require the evidence only once the row leaves it.
+
+       So both gates must PRICE an unaccepted body, and `requireAcceptance` must
+       refuse to submit it. A single validator that required acceptance up front
+       would pass every refusal-shaped test here while making /send ask for a
+       signature before a price. */
+    for (const acceptance of [
+      undefined,
+      { shipmentCertification: false, electronicTransactions: false },
+      { shipmentCertification: true, electronicTransactions: false },
+    ]) {
+      const r = throughBothGates({ ...completeInput, acceptance });
+      expect(r.stage, `pricing was blocked by acceptance ${JSON.stringify(acceptance)}`).toBe(
+        "accepted"
+      );
+    }
+
+    // And the submit gate refuses every one of them, naming which is missing.
+    const reason = (a: unknown) => {
+      const r = requireAcceptance(a);
+      return isAcceptanceFailure(r) ? r.reason : "<accepted>";
+    };
+    expect(reason(undefined)).toBe("shipment_certification_required");
+    expect(reason({ shipmentCertification: false, electronicTransactions: true })).toBe(
+      "shipment_certification_required"
+    );
+    expect(reason({ shipmentCertification: true, electronicTransactions: false })).toBe(
+      "electronic_consent_required"
+    );
+    expect(requireAcceptance(completeInput.acceptance).ok).toBe(true);
+
+    // Truthiness is not consent, on the submit gate too.
+    for (const truthy of ["true", 1, "2026-09-14T00:00:00Z", {}]) {
+      expect(
+        reason({ shipmentCertification: truthy, electronicTransactions: true }),
+        `${JSON.stringify(truthy)} was accepted as consent`
+      ).toBe("shipment_certification_required");
     }
   });
 

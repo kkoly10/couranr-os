@@ -416,24 +416,23 @@ describe("validateConsumerSendBody", () => {
     expect(validateConsumerSendBody({ ...valid, declaredValueCents: 0 }).ok).toBe(true);
   });
 
-  it("requires BOTH acknowledgements, and accepts only a literal true", () => {
-    expect(reasonFor({ ...valid, acceptance: undefined })).toBe(
-      "shipment_certification_required"
-    );
-    expect(
-      reasonFor({ ...valid, acceptance: { ...valid.acceptance, shipmentCertification: false } })
-    ).toBe("shipment_certification_required");
-    expect(
-      reasonFor({ ...valid, acceptance: { ...valid.acceptance, electronicTransactions: false } })
-    ).toBe("electronic_consent_required");
-    /* Truthiness is not consent. A client that sends a string — including a
-       timestamp that looks like evidence — has not acknowledged anything, and
-       `=== true` is what keeps "1", "yes" and a forged moment out. */
-    for (const truthy of ["true", 1, "2026-09-14T00:00:00Z", {}]) {
-      expect(
-        reasonFor({ ...valid, acceptance: { ...valid.acceptance, shipmentCertification: truthy } }),
-        `${JSON.stringify(truthy)} was accepted as consent`
-      ).toBe("shipment_certification_required");
+  it("parses the acknowledgements but does NOT require them to price", () => {
+    /* This validator serves estimateConsumerSend, which creates a DRAFT. The
+       database exempts drafts from couranr_dr_consumer_acceptance_chk for the
+       same reason: a draft is a statement not yet made. requireAcceptance is
+       the submit-time gate — see the block below. */
+    for (const acceptance of [undefined, {}, { shipmentCertification: false }]) {
+      const r = validateConsumerSendBody({ ...valid, acceptance });
+      expect(r.ok, `acceptance ${JSON.stringify(acceptance)} blocked pricing`).toBe(true);
+      if (r.ok) expect(r.value.acceptance.shipmentCertification).toBe(false);
+    }
+    const r = validateConsumerSendBody(valid);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.acceptance).toEqual({
+        shipmentCertification: true,
+        electronicTransactions: true,
+      });
     }
   });
 

@@ -156,7 +156,33 @@ export const SEND_COPY = {
   timing_live_note: "Couranr picks up as soon as possible and confirms the exact timing with you after your request.",
   review_heading: "Here’s your delivery",
   contact_heading: "Where should we send updates?",
-  acknowledgement: "I confirm this item is eligible for delivery and I have authority to send or collect it.",
+  /* The recipient is required from V1. Every Consumer Same Day delivery before
+     it was created with no recipient identity at all. */
+  recipient_heading: "Who is receiving this delivery?",
+  declared_value_label: "What is this shipment worth?",
+  declared_value_help:
+    "Your own estimate of the total value, in dollars. Couranr uses it to decide how the "
+    + "shipment is handled and photographed — it is not an appraisal, a valuation, or insurance.",
+  /* The CEILING IS NOT WRITTEN HERE. MKT-005 forbids a price literal in copy —
+     a number in a sentence is a second place the amount lives, and it goes
+     stale silently. /send composes this with the ceiling read from
+     CONSUMER_MAX_DECLARED_VALUE_CENTS, which is the same constant the server
+     and the database derive from. */
+  declared_value_max_note: "Couranr Same Day carries shipments declared up to",
+  /* Progressive disclosure. The sender is told what the declared value CHANGES
+     about the handling, at the moment they enter it — not after they have paid. */
+  protection_standard: "Standard handling: the driver photographs the delivery at drop-off.",
+  protection_secure_pickup:
+    "Secure pickup: the driver photographs the item before it is packed, applies a numbered "
+    + "tamper-evident seal, photographs the sealed package, and confirms your pickup code last.",
+  protection_protected_handoff:
+    "Protected handoff: everything in secure pickup, plus the recipient verifies their identity "
+    + "before the handoff. This shipment cannot be left at a door.",
+  acknowledgement:
+    "I confirm this item is eligible for delivery, that the value I declared is honest, "
+    + "that I am 18 or older, and that I have authority to send or collect it.",
+  electronic_consent:
+    "I agree to receive the terms, receipts and delivery records for this shipment electronically.",
   received_heading: "We have your request.",
   received_support: "Couranr is confirming your delivery.",
 } as const;
