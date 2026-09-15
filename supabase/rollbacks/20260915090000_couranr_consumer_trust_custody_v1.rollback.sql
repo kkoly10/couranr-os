@@ -60,7 +60,11 @@ alter table public.couranr_delivery_proofs
     )
   );
 
+drop trigger if exists couranr_dr_freeze_consent_evidence on public.couranr_delivery_requests;
+drop function if exists private.couranr_freeze_consumer_consent_evidence() restrict;
+
 alter table public.couranr_delivery_requests
+  drop constraint if exists couranr_dr_recipient_attestation_chk,
   drop constraint if exists couranr_dr_consumer_email_first_chk,
   drop constraint if exists couranr_dr_consumer_acceptance_chk,
   drop constraint if exists couranr_dr_terms_evidence_chk,

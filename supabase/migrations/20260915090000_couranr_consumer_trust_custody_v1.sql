@@ -136,9 +136,30 @@ alter table public.couranr_delivery_requests
     or (sender_terms_version is not null and sender_terms_accepted_at is not null)
   );
 
--- A GOVERNED consumer request that has been submitted must carry both
--- acceptances and both adult attestations. Version-aware: a request with no
--- policy version — every historical row — is untouched by this rule.
+-- A GOVERNED consumer request that has been submitted must carry the SENDER's
+-- evidence. Version-aware: a request with no policy version — every historical
+-- row — is untouched by this rule.
+--
+-- THE RECIPIENT'S ATTESTATION IS DELIBERATELY NOT REQUIRED HERE, and the reason
+-- is sequence rather than leniency. `couranr_submit_consumer_delivery_request`
+-- moves a request draft -> awaiting_quote_acceptance (or pending_couranr_review
+-- when it needs pricing review). The recipient attests afterwards, through the
+-- tracking link — and that link does not exist until the request is submitted.
+-- Requiring it here therefore refuses the only order of events that can occur:
+-- every governed consumer submit failed this CHECK.
+--
+-- That was not hypothetical. It shipped, and the reason nothing caught it is
+-- worth keeping next to the fix: every test of this constraint attacked it by
+-- VIOLATING it, and the one accepting fixture pre-loaded
+-- `recipient_adult_attested_at` so the row would pass. A constraint exercised
+-- only by breaking it looks perfect while refusing every real customer.
+-- e2e/disposable/consumerTrustCustody.mjs A26/A27 now walk the legitimate
+-- sequence, which is what found this.
+--
+-- The recipient's attestation is enforced where it can actually be satisfied:
+-- at handoff, by the drop-off command, which can read the delivery this request
+-- belongs to. A CHECK on this table cannot see that table, so expressing the
+-- rule here could only ever be wrong in one direction or the other.
 alter table public.couranr_delivery_requests
   drop constraint if exists couranr_dr_consumer_acceptance_chk;
 alter table public.couranr_delivery_requests
@@ -151,9 +172,111 @@ alter table public.couranr_delivery_requests
       and sender_terms_accepted_at is not null
       and sender_electronic_consent_at is not null
       and sender_adult_attested_at is not null
-      and recipient_adult_attested_at is not null
     )
   );
+
+-- A recipient attestation may exist only on a row this policy governs. Without
+-- this, dropping the column from the rule above would let a timestamp be
+-- written onto an ungoverned or business row, where nothing would ever read it
+-- and its presence would imply a workflow that never ran.
+alter table public.couranr_delivery_requests
+  drop constraint if exists couranr_dr_recipient_attestation_chk;
+alter table public.couranr_delivery_requests
+  add constraint couranr_dr_recipient_attestation_chk check (
+    recipient_adult_attested_at is null
+    or (protection_policy_version is not null and requester_kind = 'consumer')
+  );
+
+/* ─────────── 3b. consent evidence is APPEND-ONLY ──────────────────────────
+   Removing `recipient_adult_attested_at` from the CHECK above costs a property
+   that CHECK was silently providing: once set, it could not be erased, because
+   a null would fail the constraint on the next write.
+
+   A CHECK cannot express "was not null before", so the property moves to where
+   it can be stated — a trigger. The rule is append-only rather than immutable:
+   null -> a value is the attestation being given, which is the entire point;
+   a value -> null or a DIFFERENT value is evidence being rewritten, which is
+   what must never happen to a record a claim may later depend on.
+
+   This extends the pattern `private.couranr_derive_requester_scope` already
+   established for the contact snapshot, deliberately as a SEPARATE trigger: the
+   identity rule is absolute immutability and this one is append-only, and
+   replacing that function from this migration would make its body depend on a
+   file it does not own. */
+create or replace function private.couranr_freeze_consumer_consent_evidence()
+returns trigger
+language plpgsql
+security invoker
+set search_path = ''
+as $fn$
+begin
+  /* A DRAFT is still being composed. The sender may raise their declared value,
+     correct a typo, or re-accept after changing what they are shipping — every
+     one of those is a legitimate edit to a statement not yet made. Freezing from
+     the first write would refuse a sender who simply changed their mind on the
+     form, which is not fraud and not custody.
+
+     The record becomes evidence when the request LEAVES draft: that is the
+     moment the sender tenders the statement, and from then on a change is a
+     rewrite of what they represented. (`couranr_submit_consumer_delivery_request`
+     is the only path out of draft, and it sets submitted_at in the same write.)
+
+     Found by A7: freezing from first write also masked
+     couranr_dr_declared_value_range_chk, because the trigger fired before the
+     CHECK could — a rule that hides another rule is how a constraint silently
+     stops being tested. */
+  if old.request_state = 'draft' then
+    return new;
+  end if;
+
+  if old.sender_terms_version is not null
+     and new.sender_terms_version is distinct from old.sender_terms_version then
+    raise exception 'consumer_consent_evidence_is_append_only' using errcode = 'CR409',
+      detail = 'sender_terms_version';
+  end if;
+  if old.sender_terms_accepted_at is not null
+     and new.sender_terms_accepted_at is distinct from old.sender_terms_accepted_at then
+    raise exception 'consumer_consent_evidence_is_append_only' using errcode = 'CR409',
+      detail = 'sender_terms_accepted_at';
+  end if;
+  if old.sender_electronic_consent_at is not null
+     and new.sender_electronic_consent_at is distinct from old.sender_electronic_consent_at then
+    raise exception 'consumer_consent_evidence_is_append_only' using errcode = 'CR409',
+      detail = 'sender_electronic_consent_at';
+  end if;
+  if old.sender_adult_attested_at is not null
+     and new.sender_adult_attested_at is distinct from old.sender_adult_attested_at then
+    raise exception 'consumer_consent_evidence_is_append_only' using errcode = 'CR409',
+      detail = 'sender_adult_attested_at';
+  end if;
+  if old.recipient_adult_attested_at is not null
+     and new.recipient_adult_attested_at is distinct from old.recipient_adult_attested_at then
+    raise exception 'consumer_consent_evidence_is_append_only' using errcode = 'CR409',
+      detail = 'recipient_adult_attested_at';
+  end if;
+  -- The declared value is the sender's representation at the moment of tender,
+  -- and the protection level is derived from it. Once custody begins, changing
+  -- either would rewrite what the driver was told to do and what the sender
+  -- represented — so both are frozen the same way.
+  if old.declared_value_cents is not null
+     and new.declared_value_cents is distinct from old.declared_value_cents then
+    raise exception 'consumer_consent_evidence_is_append_only' using errcode = 'CR409',
+      detail = 'declared_value_cents';
+  end if;
+  return new;
+end
+$fn$;
+
+comment on function private.couranr_freeze_consumer_consent_evidence is
+  'Consent evidence and the declared value are append-only: null -> a value is '
+  'the acknowledgement being given; a value -> null or a different value is '
+  'evidence being rewritten. Paired with couranr_dr_consumer_acceptance_chk, '
+  'which requires the sender evidence to be PRESENT once submitted.';
+
+drop trigger if exists couranr_dr_freeze_consent_evidence on public.couranr_delivery_requests;
+create trigger couranr_dr_freeze_consent_evidence
+  before update on public.couranr_delivery_requests
+  for each row execute function private.couranr_freeze_consumer_consent_evidence();
 
 /* ─────────────── 4. email-first: sender AND recipient required ────────── */
 

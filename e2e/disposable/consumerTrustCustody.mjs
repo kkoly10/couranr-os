@@ -32,7 +32,16 @@ const refuses = (q, marker) => {
   catch (e) { const s = String(e.stderr || e.message);
     if (s.includes(marker)) return marker;
     const other = /constraint "([a-z_]+)"/.exec(s);
-    return other ? `refused-by:${other[1]}` : `other:${s.replace(/\s+/g," ").slice(0,90)}`; }
+    if (other) return `refused-by:${other[1]}`;
+    /* A trigger refuses by RAISE, which carries no constraint name. The Couranr
+       command convention is a bare snake_case identifier as the message, so a
+       named refusal is distinguishable from a typo — "syntax error at or near"
+       has spaces and never matches. Without this a correct trigger refusal
+       reads as `other:` and scores as a FAILURE, which is how removing a CHECK
+       in favour of a trigger looks like a regression when it is the fix. */
+    const raised = /ERROR:\s+([a-z][a-z0-9_]{4,})\s*$/m.exec(s);
+    if (raised && raised[1].includes("_")) return `raised:${raised[1]}`;
+    return `other:${s.replace(/\s+/g," ").slice(0,90)}`; }
 };
 /* A write that must not succeed. Names the constraint expected, but accepts any
    refusal and REPORTS which rule actually fired — pinning one name turns a
@@ -51,6 +60,7 @@ try {
     businessId: biz, actorUserId: usr, marker: "tc-probe", recipientName: "TC recipient",
   });
   const R = chain.requestId;
+  const POL = "couranr-consumer-protection-v1-2026-09-14";
   const setV = (cents, level) =>
     `update public.couranr_delivery_requests set declared_value_cents=${cents},`
     + ` protection_level=${level === null ? "null" : `'${level}'`},`
@@ -78,9 +88,23 @@ try {
     refuses(`update public.couranr_delivery_requests set protection_level=null where id='${R}'`,
       "couranr_dr_protection_completeness_chk") === "couranr_dr_protection_completeness_chk");
 
-  // negative value
-  t("A7", "a negative declared value is refused",
-    refuses(setV(-1, "standard"), "couranr_dr_declared_value_range_chk") === "couranr_dr_declared_value_range_chk");
+  /* Negative value. Asserted on a FRESH row rather than by mutating R: R now
+     carries a declared value, and the append-only trigger would refuse the
+     change before the range CHECK could be reached — so the old UPDATE form
+     stopped proving the range rule the moment that trigger existed. An INSERT
+     is also what a real caller meets. */
+  { const r = mustRefuse(`insert into public.couranr_delivery_requests
+        (business_account_id, requester_kind, source, request_state,
+         consumer_contact_snapshot, pickup_address, dropoff_address, version,
+         created_by, idempotency_key, idempotency_scope,
+         declared_value_cents, protection_level, protection_policy_version)
+      select null::uuid, 'consumer', source, 'draft',
+         '{"email":"s@example.test"}'::jsonb, pickup_address, dropoff_address,
+         version, created_by, 'tc-neg-val-' || gen_random_uuid()::text,
+         'consumer:tc-negative-value-scope', -1, 'standard', '${POL}'
+      from public.couranr_delivery_requests where id='${R}'`,
+      "couranr_dr_declared_value_range_chk");
+    t("A7", "a negative declared value is refused", r.ok, r.got); }
 
   // historical compatibility: an ungoverned row is untouched by every new rule
   // The row that matters for §25: CONFIRMED, consumer, no policy version, no
@@ -125,7 +149,6 @@ try {
 
   // A governed, SUBMITTED consumer request needs sender email + recipient
   // name/email. Build one that is governed and confirmed, then strip each.
-  const POL = "couranr-consumer-protection-v1-2026-09-14";
   const C = sql(`insert into public.couranr_delivery_requests
       (business_account_id, requester_kind, source, request_state, submitted_at,
        consumer_contact_snapshot, recipient_name, recipient_email,
@@ -182,17 +205,199 @@ try {
   { const r = mustRefuse(`update public.couranr_delivery_requests set recipient_name='   ' where id='${C}'`, "couranr_dr_consumer_email_first_chk");
     t("A19", "removing the RECIPIENT name from a governed request is refused", r.ok, r.got); }
 
-  { const r = mustRefuse(`update public.couranr_delivery_requests set recipient_adult_attested_at=null where id='${C}'`, "couranr_dr_consumer_acceptance_chk");
-    t("A21", "dropping the adult attestation on a governed request is refused", r.ok, r.got); }
+  /* These three were UPDATEs that set a column to null. They now reach the
+     append-only trigger first, which refuses them for a DIFFERENT and stronger
+     reason — so as UPDATEs they would no longer prove the CHECK works at all,
+     only that the trigger does. Moved to INSERT, where the CHECK is what a real
+     caller actually meets, exactly as A17/A20 do for email-first. The erasure
+     property they used to cover is now A29–A32, against the trigger that owns
+     it. */
+  const missingEvidence = (col) => `insert into public.couranr_delivery_requests
+      (business_account_id, requester_kind, source, request_state, submitted_at,
+       consumer_contact_snapshot, recipient_name, recipient_email,
+       pickup_address, dropoff_address, version, created_by,
+       idempotency_key, idempotency_scope,
+       declared_value_cents, protection_level, protection_policy_version,
+       sender_terms_version, sender_terms_accepted_at, sender_electronic_consent_at,
+       sender_adult_attested_at)
+    select null::uuid, 'consumer', source, 'confirmed', now(),
+       '{"email":"sender@example.test","name":"S"}'::jsonb, 'R Name', 'r@example.test',
+       pickup_address, dropoff_address, version, created_by,
+       'tc-miss-' || gen_random_uuid()::text, 'consumer:tc-missing-fixture-scope',
+       2000, 'standard', '${POL}',
+       ${col === "sender_terms_version" ? "null" : "'shipment-terms-v1'"},
+       ${col === "sender_terms_accepted_at" ? "null" : "now()"},
+       ${col === "sender_electronic_consent_at" ? "null" : "now()"},
+       ${col === "sender_adult_attested_at" ? "null" : "now()"}
+    from public.couranr_delivery_requests where id='${R}'`;
 
-  { const r = mustRefuse(`update public.couranr_delivery_requests set sender_electronic_consent_at=null where id='${C}'`, "couranr_dr_consumer_acceptance_chk");
-    t("A22", "dropping electronic consent on a governed request is refused", r.ok, r.got); }
+  { const r = mustRefuse(missingEvidence("sender_adult_attested_at"),
+      "couranr_dr_consumer_acceptance_chk");
+    t("A21", "a governed submitted request with NO sender adult attestation is refused", r.ok, r.got); }
 
-  { const r = mustRefuse(`update public.couranr_delivery_requests set sender_terms_version=null where id='${C}'`, "couranr_dr_terms_evidence_chk");
+  { const r = mustRefuse(missingEvidence("sender_electronic_consent_at"),
+      "couranr_dr_consumer_acceptance_chk");
+    t("A22", "a governed submitted request with NO electronic consent is refused", r.ok, r.got); }
+
+  /* Both-or-neither: a timestamp saying "they accepted" with no version saying
+     WHAT they accepted is not evidence. This is couranr_dr_terms_evidence_chk,
+     which is a different rule from the acceptance CHECK and must fire on its
+     own — so the row is otherwise complete. */
+  { const r = mustRefuse(missingEvidence("sender_terms_version"),
+      "couranr_dr_terms_evidence_chk");
     t("A23", "accepted terms with no version is refused — a boolean is not evidence", r.ok, r.got); }
 
   { const r = mustRefuse(`update public.couranr_delivery_requests set protection_level='none' where id='${C}'`, "couranr_dr_protection_level_chk");
     t("A24", "an unknown protection level is refused", r.ok, r.got); }
+
+  /* ── THE LEGITIMATE UNHAPPY PATH (§27) ────────────────────────────────────
+     Every check above attacks the constraint by VIOLATING it, and A16's happy
+     path pre-loads `recipient_adult_attested_at` so the row is accepted. Both
+     pass while the constraint blocks the only sequence that actually occurs.
+
+     The real order is: the sender completes /send and SUBMITS, which moves the
+     request draft -> awaiting_quote_acceptance. Only afterwards does the
+     recipient open the tracking link and attest. So at submit time the sender's
+     evidence is complete and the recipient's attestation CANNOT exist yet —
+     there is no tracking token to attest through until the request is submitted.
+
+     A constraint tested only by breaking it looks perfect and refuses every
+     legitimate customer. This is the check that tells the difference. */
+  const senderSubmitted = (state) => `insert into public.couranr_delivery_requests
+      (business_account_id, requester_kind, source, request_state, submitted_at,
+       consumer_contact_snapshot, recipient_name, recipient_email,
+       pickup_address, dropoff_address, version, created_by,
+       idempotency_key, idempotency_scope,
+       declared_value_cents, protection_level, protection_policy_version,
+       sender_terms_version, sender_terms_accepted_at, sender_electronic_consent_at,
+       sender_adult_attested_at, recipient_adult_attested_at)
+    select null::uuid, 'consumer', source, '${state}', now(),
+       '{"email":"sender@example.test","name":"S"}'::jsonb, 'R Name', 'r@example.test',
+       pickup_address, dropoff_address, version, created_by,
+       'tc-seq-' || gen_random_uuid()::text, 'consumer:tc-sequence-fixture-scope',
+       2000, 'standard', '${POL}',
+       'shipment-terms-v1', now(), now(), now(),
+       null   -- the recipient has not opened the tracking link yet
+    from public.couranr_delivery_requests where id='${R}'`;
+
+  const submitted = {};
+  for (const [id, state] of [["A26", "awaiting_quote_acceptance"], ["A27", "pending_couranr_review"]]) {
+    let ok = false, detail = "";
+    try { submitted[state] = sql(senderSubmitted(state) + " returning id"); ok = true; }
+    catch (e) { const m = /constraint "([a-z_]+)"/.exec(String(e.stderr || e.message));
+      detail = m ? `blocked by ${m[1]}` : String(e.stderr || e.message).replace(/\s+/g, " ").slice(0, 90); }
+    t(id, `a sender may SUBMIT to '${state}' before the recipient attests`, ok, detail);
+  }
+
+  /* ── consent evidence is APPEND-ONLY ──────────────────────────────────────
+     Removing recipient_adult_attested_at from the acceptance CHECK cost a
+     property that CHECK was silently providing: once written it could not be
+     erased, because a null would fail the constraint on the next write. A CHECK
+     cannot say "was not null before", so the property moved to a trigger. These
+     prove the trigger actually carries it — otherwise the fix above would have
+     quietly traded a blocked flow for erasable evidence. */
+  const A26id = submitted["awaiting_quote_acceptance"];
+  if (A26id) {
+    let ok = false, detail = "";
+    try { sql(`update public.couranr_delivery_requests
+                 set recipient_adult_attested_at=now() where id='${A26id}'`); ok = true; }
+    catch (e) { detail = String(e.stderr || e.message).replace(/\s+/g, " ").slice(0, 90); }
+    t("A28", "the recipient CAN attest later — null -> a value is the whole point", ok, detail);
+
+    { const r = mustRefuse(`update public.couranr_delivery_requests
+        set recipient_adult_attested_at=null where id='${A26id}'`,
+        "consumer_consent_evidence_is_append_only");
+      t("A29", "and having attested, the attestation cannot be erased", r.ok, r.got); }
+
+    { const r = mustRefuse(`update public.couranr_delivery_requests
+        set recipient_adult_attested_at=now() + interval '1 day' where id='${A26id}'`,
+        "consumer_consent_evidence_is_append_only");
+      t("A30", "nor moved to a different moment", r.ok, r.got); }
+
+    { const r = mustRefuse(`update public.couranr_delivery_requests
+        set sender_terms_version='shipment-terms-v0' where id='${A26id}'`,
+        "consumer_consent_evidence_is_append_only");
+      t("A31", "the terms version accepted against cannot be rewritten", r.ok, r.got); }
+
+    /* The declared value decides the protection level, which decides what the
+       driver is told to do. Changing it after the fact would rewrite both the
+       sender's representation and the custody instruction. */
+    { const r = mustRefuse(`update public.couranr_delivery_requests
+        set declared_value_cents=49999 where id='${A26id}'`,
+        "consumer_consent_evidence_is_append_only");
+      t("A32", "the declared value cannot change once stated", r.ok, r.got); }
+  } else {
+    t("A28", "the recipient CAN attest later", false, "A26 row was never created");
+  }
+
+  /* THE CARVE-OUT, tested in the direction that can regress silently.
+     A29-A32 prove the freeze holds after submit. Nothing above proves the
+     sender can still revise BEFORE it — and if the freeze were tightened back
+     to "from first write", every one of those would still pass while a sender
+     who corrected a typo on the /send form got a CR409. A rule that only ever
+     refuses is only ever tested by refusals. */
+  { const D = sql(`insert into public.couranr_delivery_requests
+        (business_account_id, requester_kind, source, request_state,
+         consumer_contact_snapshot, recipient_name, recipient_email,
+         pickup_address, dropoff_address, version,
+         created_by, idempotency_key, idempotency_scope,
+         declared_value_cents, protection_level, protection_policy_version,
+         sender_terms_version, sender_terms_accepted_at)
+      select null::uuid, 'consumer', source, 'draft',
+         '{"email":"s@example.test"}'::jsonb, 'R Name', 'r@example.test',
+         pickup_address, dropoff_address,
+         version, created_by, 'tc-draft-' || gen_random_uuid()::text,
+         'consumer:tc-draft-revision-scope', 2000, 'standard', '${POL}',
+         'shipment-terms-v1', now()
+      from public.couranr_delivery_requests where id='${R}' returning id`);
+
+    let ok = false, detail = "";
+    try {
+      // $20.00 -> $200.00, which also moves the derived level standard ->
+      // protected_handoff. Both must be writable while the statement is a draft.
+      sql(`update public.couranr_delivery_requests
+             set declared_value_cents=20000, protection_level='protected_handoff'
+           where id='${D}'`);
+      const now = sql(`select declared_value_cents||'/'||protection_level
+                       from public.couranr_delivery_requests where id='${D}'`);
+      ok = now === "20000/protected_handoff"; detail = now;
+    } catch (e) { detail = String(e.stderr || e.message).replace(/\s+/g, " ").slice(0, 90); }
+    t("A34", "a sender may still revise the declared value while it is a DRAFT", ok, detail);
+
+    let ok2 = false, detail2 = "";
+    try {
+      sql(`update public.couranr_delivery_requests
+             set sender_terms_accepted_at=now() + interval '1 minute' where id='${D}'`);
+      ok2 = true;
+    } catch (e) { detail2 = String(e.stderr || e.message).replace(/\s+/g, " ").slice(0, 90); }
+    t("A35", "and may re-accept the terms while it is a DRAFT", ok2, detail2);
+
+    /* And the freeze must engage the moment it stops being a draft — otherwise
+       the carve-out is not a carve-out, it is a hole. */
+    sql(`update public.couranr_delivery_requests
+           set request_state='awaiting_quote_acceptance', submitted_at=now(),
+               sender_electronic_consent_at=now(), sender_adult_attested_at=now()
+         where id='${D}'`);
+    { const r = mustRefuse(`update public.couranr_delivery_requests
+        set declared_value_cents=100 where id='${D}'`,
+        "consumer_consent_evidence_is_append_only");
+      t("A36", "and the freeze engages the moment it leaves draft", r.ok, r.got); }
+  }
+
+  /* A recipient attestation on a row this policy does NOT govern would imply a
+     workflow that never ran. */
+  { const r = mustRefuse(`insert into public.couranr_delivery_requests
+        (business_account_id, requester_kind, source, request_state,
+         consumer_contact_snapshot, pickup_address, dropoff_address, version,
+         created_by, idempotency_key, idempotency_scope, recipient_adult_attested_at)
+      select null::uuid, 'consumer', source, 'draft',
+         '{"email":"s@example.test"}'::jsonb, pickup_address, dropoff_address,
+         version, created_by, 'tc-ung-' || gen_random_uuid()::text,
+         'consumer:tc-ungoverned-scope', now()
+      from public.couranr_delivery_requests where id='${R}'`,
+      "couranr_dr_recipient_attestation_chk");
+    t("A33", "an UNGOVERNED row cannot carry a recipient attestation", r.ok, r.got); }
+
 
   // The two new proof types must actually be storable, or Secure Pickup cannot
   // record what it is required to record.

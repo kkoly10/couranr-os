@@ -91,8 +91,32 @@ const BASE = process.env.COURANR_DISPOSABLE_DIR || "/var/lib/postgresql/couranr-
 const PORT = Number(process.env.COURANR_DISPOSABLE_PORT || 55432);
 const DB = "couranr_disposable";
 
+/**
+ * PostgreSQL 17 on macOS refuses to start unless the locale is pinned:
+ *
+ *   FATAL:  postmaster became multithreaded during startup
+ *   HINT:   Set the LC_ALL environment variable to a valid locale.
+ *
+ * The postmaster forks before it is allowed to be multithreaded, and on Darwin
+ * an unset or invalid locale makes libc spin up threads inside that window. The
+ * server's own HINT names the fix. This cost a full debugging cycle to find,
+ * because up.mjs tears the directory down on failure — including the log that
+ * says why — so the error the caller sees is only "could not start server".
+ *
+ * `C` rather than a UTF-8 locale on purpose: the disposable cluster exists to
+ * make privilege and constraint assertions, and a collation that varies by
+ * machine would make ORDER BY results vary with it. Linux is unaffected either
+ * way, so this stays one code path.
+ */
+const CLUSTER_ENV = { ...process.env, LC_ALL: process.env.LC_ALL || "C" };
+
 const sh = (cmd, args, opts = {}) =>
-  execFileSync(cmd, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], ...opts });
+  execFileSync(cmd, args, {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    env: CLUSTER_ENV,
+    ...opts,
+  });
 
 /**
  * Runs the cluster commands as whichever identity actually owns the data

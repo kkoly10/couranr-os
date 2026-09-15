@@ -105,6 +105,7 @@ describe("the constraints the migration claims to add", () => {
     "couranr_dr_terms_evidence_chk",
     "couranr_dr_consumer_acceptance_chk",
     "couranr_dr_consumer_email_first_chk",
+    "couranr_dr_recipient_attestation_chk",
   ];
 
   it("declares every constraint this stage depends on", () => {
