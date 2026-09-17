@@ -20,10 +20,10 @@ export const dynamic = "force-dynamic";
  * response as for a missing delivery, and a 410-for-expired against a
  * 404-for-unknown would confirm that a delivery exists to anyone probing.
  *
- * GET ONLY. There is no POST, PATCH or DELETE on this route and there must
- * never be one: a token that travels by SMS into group chats must not be able
- * to change anything. CUS-008's edit surface, when it lands, authenticates the
- * save separately.
+ * This STATUS route is GET-only. A sibling endpoint exposes exactly one
+ * bounded action for a recipient-audience credential: accepting the versioned
+ * adult-attestation statement required by protected handoff. It cannot change
+ * delivery state, money, routing, proof or customer data.
  */
 
 /** The single refusal. Not parameterized — there is nothing to parameterize. */

@@ -137,10 +137,10 @@ try {
     refuses(`insert into public.couranr_recipient_identity_verifications
        (delivery_id, policy_version, identity_verified, adult_verified)
        values ('${D}','v1', false, true)`, "couranr_riv_derived_flags_chk") === "couranr_riv_derived_flags_chk");
-  t("A13", "a 'verified' state without verified_at is refused",
-    refuses(`insert into public.couranr_recipient_identity_verifications
+  { const r = mustRefuse(`insert into public.couranr_recipient_identity_verifications
        (delivery_id, policy_version, verification_state) values ('${D}','v1','verified')`,
-      "couranr_riv_verified_pair_chk") === "couranr_riv_verified_pair_chk");
+      "couranr_riv_outcome_coherence_chk");
+    t("A13", "a 'verified' state without coherent verified evidence is refused", r.ok, r.got); }
 
   /* ── §15/§17: email-first and versioned acceptance ────────────────────
      These four constraints shipped in stage 2 written but never once violated
@@ -156,13 +156,13 @@ try {
        idempotency_key, idempotency_scope,
        declared_value_cents, protection_level, protection_policy_version,
        sender_terms_version, sender_terms_accepted_at, sender_electronic_consent_at,
-       sender_adult_attested_at, recipient_adult_attested_at)
+       sender_adult_attested_at)
     select null::uuid, 'consumer', source, 'confirmed', now(),
        '{"email":"sender@example.test","name":"S"}'::jsonb, 'R Name', 'r@example.test',
        pickup_address, dropoff_address, version, created_by,
        'tc-governed-' || gen_random_uuid()::text, 'consumer:tc-governed-fixture-scope',
        2000, 'standard', '${POL}',
-       'shipment-terms-v1', now(), now(), now(), now()
+       'shipment-terms-v1', now(), now(), now()
     from public.couranr_delivery_requests where id='${R}' returning id`);
   t("A16", "a fully-governed submitted consumer request IS accepted", C.length === 36, C.slice(0,8));
 
@@ -178,13 +178,13 @@ try {
        idempotency_key, idempotency_scope,
        declared_value_cents, protection_level, protection_policy_version,
        sender_terms_version, sender_terms_accepted_at, sender_electronic_consent_at,
-       sender_adult_attested_at, recipient_adult_attested_at)
+       sender_adult_attested_at)
     select null::uuid, 'consumer', source, 'confirmed', now(),
        '${snapshot}'::jsonb, ${rName}, ${rEmail},
        pickup_address, dropoff_address, version, created_by,
        'tc-neg-' || gen_random_uuid()::text, 'consumer:tc-negative-fixture-scope',
        2000, 'standard', '${POL}',
-       'shipment-terms-v1', now(), now(), now(), now()
+       'shipment-terms-v1', now(), now(), now()
     from public.couranr_delivery_requests where id='${R}'`;
 
   { const r = mustRefuse(governedInsert('{"name":"S"}', "'R Name'", "'r@example.test'"),
@@ -300,7 +300,9 @@ try {
   if (A26id) {
     let ok = false, detail = "";
     try { sql(`update public.couranr_delivery_requests
-                 set recipient_adult_attested_at=now() where id='${A26id}'`); ok = true; }
+                 set recipient_adult_attested_at=now(),
+                     recipient_attestation_version='couranr-recipient-adult-attestation-2026-09'
+               where id='${A26id}'`); ok = true; }
     catch (e) { detail = String(e.stderr || e.message).replace(/\s+/g, " ").slice(0, 90); }
     t("A28", "the recipient CAN attest later — null -> a value is the whole point", ok, detail);
 
@@ -353,14 +355,14 @@ try {
 
     let ok = false, detail = "";
     try {
-      // $20.00 -> $200.00, which also moves the derived level standard ->
-      // protected_handoff. Both must be writable while the statement is a draft.
+      // $20.00 -> $100.00, which also moves the derived level standard ->
+      // secure_pickup. Both must be writable while the statement is a draft.
       sql(`update public.couranr_delivery_requests
-             set declared_value_cents=20000, protection_level='protected_handoff'
+             set declared_value_cents=10000, protection_level='secure_pickup'
            where id='${D}'`);
       const now = sql(`select declared_value_cents||'/'||protection_level
                        from public.couranr_delivery_requests where id='${D}'`);
-      ok = now === "20000/protected_handoff"; detail = now;
+      ok = now === "10000/secure_pickup"; detail = now;
     } catch (e) { detail = String(e.stderr || e.message).replace(/\s+/g, " ").slice(0, 90); }
     t("A34", "a sender may still revise the declared value while it is a DRAFT", ok, detail);
 
@@ -497,18 +499,12 @@ try {
      attestation still absent because the recipient has no tracking link yet. */
   { const { sid, rid } = newBinding();
     sql(callTrust(sid, 15001, "'couranr-consumer-shipment-terms-2026-09'", "true", "true"));
-    let ok = false, detail = "";
-    try {
-      sql(`update public.couranr_delivery_requests
+    const r = mustRefuse(`update public.couranr_delivery_requests
              set request_state='awaiting_quote_acceptance', submitted_at=now(), version=version+1
-           where id='${rid}'`);
-      const row = sql(`select request_state||'/'||protection_level||'/'||
-                              (recipient_adult_attested_at is null)
-                       from public.couranr_delivery_requests where id='${rid}'`);
-      ok = row === "awaiting_quote_acceptance/protected_handoff/true"; detail = row;
-    } catch (e) { const m = /constraint "([a-z_]+)"/.exec(String(e.stderr || e.message));
-      detail = m ? `blocked by ${m[1]}` : String(e.stderr || e.message).replace(/\s+/g, " ").slice(0, 90); }
-    t("D14", "a trust-recorded draft SUBMITS, recipient attestation still absent", ok, detail); }
+           where id='${rid}'`, "protected_handoff_identity_unavailable");
+    t("D14", "a protected handoff cannot submit while identity capability is absent",
+      r.ok && (r.got === "protected_handoff_identity_unavailable" ||
+        r.got === "raised:protected_handoff_identity_unavailable"), r.got); }
 
   { const { sid, rid } = newBinding();
     sql(callTrust(sid, 2000, "'couranr-consumer-shipment-terms-2026-09'", "true", "true"));
@@ -622,6 +618,10 @@ try {
       "public.couranr_record_seal_condition(uuid,uuid,text)",
       "private.couranr_enforce_consumer_dropoff_custody()",
       "public.couranr_record_recipient_identity_verification(uuid,text,text,boolean,boolean,boolean,text)",
+      "public.couranr_claim_consumer_recipient_tracking_delivery(uuid,text,integer)",
+      "public.couranr_mark_recipient_tracking_notification(text,text)",
+      "public.couranr_fail_recipient_tracking_notification(text,text)",
+      "public.couranr_attest_recipient_adult(text,text,boolean)",
     ];
     const open = sealed.filter((f) =>
       ["public", "anon", "authenticated"].some((r) => priv(f, r)));
@@ -634,6 +634,10 @@ try {
       "public.couranr_record_consumer_trust(uuid,integer,text,boolean,boolean)",
       "public.couranr_record_delivery_seal(uuid,uuid,text,uuid)",
       "public.couranr_record_seal_condition(uuid,uuid,text)",
+      "public.couranr_claim_consumer_recipient_tracking_delivery(uuid,text,integer)",
+      "public.couranr_mark_recipient_tracking_notification(text,text)",
+      "public.couranr_fail_recipient_tracking_notification(text,text)",
+      "public.couranr_attest_recipient_adult(text,text,boolean)",
     ];
     const blocked = commands.filter((f) => !priv(f, "service_role"));
     t("P2", "and service_role still can", blocked.length === 0, blocked.join(", ") || "both");
@@ -986,27 +990,27 @@ try {
   };
 
   { const f = await protectedAtDropoff("tc-id-none");
-    const r = mustRefuse(deliver(f), "recipient_identity_attempt_required");
-    t("G1", "a protected handoff cannot complete with NO identity attempt recorded",
-      (r.got === "recipient_identity_attempt_required" ||
-       r.got === "raised:recipient_identity_attempt_required"), r.got); }
+    const r = mustRefuse(deliver(f), "recipient_identity_verification_required");
+    t("G1", "a protected handoff cannot complete with NO identity verification",
+      (r.got === "recipient_identity_verification_required" ||
+       r.got === "raised:recipient_identity_verification_required"), r.got); }
 
-  /* THE V1 PATH. The provider is off; 'unavailable' is recorded and the handoff
-     proceeds on the recipient code and the driver. Requiring 'verified' here
-     would brick every protected handoff — the same shape as the acceptance
-     constraint that refused every consumer submit. */
+  /* `unavailable` is durable evidence that no check completed. It is never a
+     substitute for the verified outcome the sender was promised. */
   { const f = await protectedAtDropoff("tc-id-unavailable");
     sql(identity(f, "unavailable"));
-    const done = succeeds(deliver(f), f, "delivered");
-    t("G2", "'unavailable' is a recorded fact and the handoff proceeds", done.ok, done.got); }
+    const r = mustRefuse(deliver(f), "recipient_identity_not_verified");
+    t("G2", "'unavailable' is recorded but never authorizes handoff",
+      r.got === "recipient_identity_not_verified" ||
+      r.got === "raised:recipient_identity_not_verified", r.got); }
 
   for (const [id, state] of [["G3", "pending"], ["G4", "processing"]]) {
     const f = await protectedAtDropoff("tc-id-" + state);
     sql(identity(f, state, { ref: "vs_test_" + state }));
-    const r = mustRefuse(deliver(f), "recipient_identity_unresolved");
+    const r = mustRefuse(deliver(f), "recipient_identity_not_verified");
     t(id, "a '" + state + "' verification is not an outcome and blocks the handoff",
-      (r.got === "recipient_identity_unresolved" ||
-       r.got === "raised:recipient_identity_unresolved"), r.got);
+      (r.got === "recipient_identity_not_verified" ||
+       r.got === "raised:recipient_identity_not_verified"), r.got);
   }
 
   { const f = await protectedAtDropoff("tc-id-verified");
@@ -1019,18 +1023,20 @@ try {
      exists for. Not a stranded parcel: could_not_deliver and the returns flow
      are the path and they already exist. */
   { const f = await protectedAtDropoff("tc-id-failed");
-    sql(identity(f, "failed"));
-    const r = mustRefuse(deliver(f), "recipient_identity_unresolved");
+    sql(identity(f, "failed", { ref: "vs_test_failed" }));
+    const r = mustRefuse(deliver(f), "recipient_identity_not_verified");
     t("G6", "a FAILED identity check stops the handoff rather than completing it",
-      (r.got === "recipient_identity_unresolved" ||
-       r.got === "raised:recipient_identity_unresolved"), r.got); }
+      (r.got === "recipient_identity_not_verified" ||
+       r.got === "raised:recipient_identity_not_verified"), r.got); }
 
   { const f = await protectedAtDropoff("tc-id-resolved");
-    sql(identity(f, "failed"));
+    sql(identity(f, "failed", { ref: "vs_test_resolved" }));
     /* A resolved outcome cannot be re-run to a different one. Otherwise a
        failed check could be retried until it passed, which is not verification
        — it is retrying until the answer is convenient. */
-    const r = mustRefuse(identity(f, "verified", { verified: true, adult: true, match: true }),
+    const r = mustRefuse(identity(f, "verified", {
+      ref: "vs_test_resolved", verified: true, adult: true, match: true,
+    }),
       "identity_verification_already_resolved");
     t("G7", "a resolved verification cannot be re-run to a different answer",
       (r.got === "identity_verification_already_resolved" ||
@@ -1038,7 +1044,7 @@ try {
 
     // Re-recording the SAME state stays idempotent, so a webhook retry is safe.
     let ok = false, detail = "";
-    try { sql(identity(f, "failed")); ok = true; }
+    try { sql(identity(f, "failed", { ref: "vs_test_resolved" })); ok = true; }
     catch (e) { detail = String(e.stderr || e.message).replace(/\s+/g, " ").slice(0, 80); }
     t("G8", "...but re-recording the same outcome is idempotent", ok, detail); }
 
@@ -1058,10 +1064,112 @@ try {
        canceled session leaves the delivery with NO live verification. Reading
        "the latest row" instead of "the live row" would treat an abandoned
        attempt as the answer. */
-    const r = mustRefuse(deliver(f), "recipient_identity_attempt_required");
+    const r = mustRefuse(deliver(f), "recipient_identity_verification_required");
     t("G10", "a CANCELED session leaves no live verification, and blocks",
-      (r.got === "recipient_identity_attempt_required" ||
-       r.got === "raised:recipient_identity_attempt_required"), r.got); }
+      (r.got === "recipient_identity_verification_required" ||
+       r.got === "raised:recipient_identity_verification_required"), r.got); }
+
+  { const f = await protectedAtDropoff("tc-id-false-verified");
+    const r = mustRefuse(identity(f, "verified", { ref: "vs_false" }),
+      "verified_identity_evidence_incomplete");
+    t("G11", "a verified label with false evidence is refused",
+      r.got === "verified_identity_evidence_incomplete" ||
+      r.got === "raised:verified_identity_evidence_incomplete", r.got); }
+
+  { const f = await protectedAtDropoff("tc-id-rewrite");
+    sql(identity(f, "failed", { ref: "vs_rewrite" }));
+    const r = mustRefuse(identity(f, "failed", {
+      ref: "vs_rewrite", verified: true, adult: true, match: false,
+    }), "identity_verification_already_resolved");
+    t("G12", "same-state replay cannot rewrite terminal evidence",
+      r.got === "identity_verification_already_resolved" ||
+      r.got === "raised:identity_verification_already_resolved", r.got); }
+
+  /* ── §H: RECIPIENT-HELD LINK + VERSIONED ADULT ATTESTATION ────────────
+     Protected handoff cannot be sold while the provider seam is absent. To
+     execute the downstream command a future activation unlocks, this
+     disposable-only fixture disables the availability trigger only for the
+     INSERT of a synthetic already-confirmed request, then restores it before
+     any command is called. No production/runtime path has this bypass. */
+  const makeProtectedRecipientRequest = (scope) => {
+    sql(`alter table public.couranr_delivery_requests
+           disable trigger couranr_dr_block_unavailable_protected_handoff`);
+    try {
+      return sql(`insert into public.couranr_delivery_requests
+          (business_account_id,requester_kind,source,request_state,submitted_at,
+           consumer_contact_snapshot,recipient_name,recipient_email,
+           pickup_address,dropoff_address,version,created_by,
+           idempotency_key,idempotency_scope,
+           declared_value_cents,protection_level,protection_policy_version,
+           sender_terms_version,sender_terms_accepted_at,
+           sender_electronic_consent_at,sender_adult_attested_at)
+        select null::uuid,'consumer','consumer_send','confirmed',now(),
+           '{"email":"sender@example.test","name":"Sender"}'::jsonb,
+           'Recipient','recipient@example.test',pickup_address,dropoff_address,
+           1,null::uuid,'${scope}-key','consumer:${scope}',
+           20000,'protected_handoff','${POL}',
+           'couranr-consumer-shipment-terms-2026-09',now(),now(),now()
+        from public.couranr_delivery_requests where id='${R}' returning id`);
+    } finally {
+      sql(`alter table public.couranr_delivery_requests
+             enable trigger couranr_dr_block_unavailable_protected_handoff`);
+    }
+  };
+  const claimRecipient = (rid, hash) =>
+    `select outcome from public.couranr_claim_consumer_recipient_tracking_delivery(
+      '${rid}',repeat('${hash}',64),30)`;
+  const attestRecipient = (hash, version="couranr-recipient-adult-attestation-2026-09") =>
+    `select public.couranr_attest_recipient_adult(repeat('${hash}',64),'${version}',true)`;
+
+  { const rid = makeProtectedRecipientRequest("tc-recipient-attest");
+    const first = sql(claimRecipient(rid,"a"));
+    const concurrent = sql(claimRecipient(rid,"b"));
+    t("H1", "the database serializes one recipient notification claim",
+      first === "issued" && concurrent === "in_progress", `${first}/${concurrent}`);
+
+    const wrong = mustRefuse(attestRecipient("c"), "tracking_token_not_available");
+    t("H2", "an unknown recipient token cannot attest",
+      wrong.got === "tracking_token_not_available" ||
+      wrong.got === "raised:tracking_token_not_available", wrong.got);
+
+    sql(`select public.couranr_mark_recipient_tracking_notification(
+      repeat('a',64),'resend_test_receipt')`);
+    t("H3", "a provider receipt closes the claim and retry reports sent",
+      sql(claimRecipient(rid,"d")) === "sent");
+
+    sql(attestRecipient("a"));
+    const evidence = sql(`select recipient_attestation_version||'/'||
+        (recipient_adult_attested_at is not null)::text||'/'||version
+      from public.couranr_delivery_requests where id='${rid}'`);
+    t("H4", "the active recipient credential records versioned evidence and advances CAS",
+      evidence === "couranr-recipient-adult-attestation-2026-09/true/2", evidence);
+
+    const event = sql(`select command||'/'||(metadata->>'attestationVersion')
+      from public.couranr_delivery_request_events
+      where request_id='${rid}' and command='record_recipient_adult_attestation'`);
+    t("H5", "recipient attestation leaves a versioned audit event",
+      event === "record_recipient_adult_attestation/couranr-recipient-adult-attestation-2026-09", event);
+
+    const mismatch = mustRefuse(attestRecipient("a","different-version"),
+      "recipient_attestation_already_recorded");
+    t("H6", "a retry cannot rewrite the accepted statement version",
+      mismatch.got === "recipient_attestation_already_recorded" ||
+      mismatch.got === "raised:recipient_attestation_already_recorded", mismatch.got);
+
+    const stored = sql(`select count(*) from public.couranr_delivery_access_tokens
+      where request_id='${rid}' and token_hash=repeat('a',64) and audience='recipient'`);
+    t("H7", "only the token digest is stored under recipient audience", stored === "1", stored); }
+
+  { const rid = makeProtectedRecipientRequest("tc-recipient-failed-mail");
+    sql(claimRecipient(rid,"e"));
+    const failed = sql(`select public.couranr_fail_recipient_tracking_notification(
+      repeat('e',64),'provider_send_failed')`);
+    const revoked = sql(`select (revoked_at is not null)::text||'/'||revoked_reason
+      from public.couranr_delivery_access_tokens where token_hash=repeat('e',64)`);
+    const replacement = sql(claimRecipient(rid,"f"));
+    t("H8", "a failed email revokes exactly its token and permits a fresh claim",
+      failed === "t" && revoked === "true/provider_send_failed" && replacement === "issued",
+      `${failed}/${revoked}/${replacement}`); }
 
   /* A recipient attestation on a row this policy does NOT govern would imply a
      workflow that never ran. */

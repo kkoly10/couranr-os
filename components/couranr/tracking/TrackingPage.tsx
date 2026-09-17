@@ -26,7 +26,7 @@ import {
   STAGE_TONES,
   type TrackingStage,
 } from "@/lib/couranr/tracking/states";
-import { fetchProofUrl, fetchTracking } from "./client";
+import { attestRecipientAdult, fetchProofUrl, fetchTracking } from "./client";
 
 /**
  * PUB-006 — secure live tracking, with CUS-006 (#proof) and CUS-008 (#access).
@@ -159,6 +159,11 @@ export function TrackingPage({ token }: { token: string }) {
       {load.phase === "ready" ? (
         <>
           <StatusCard tracking={load.tracking} />
+          <RecipientAttestationCard
+            token={token}
+            tracking={load.tracking}
+            onRecorded={() => void reload()}
+          />
           <ProgressRail stage={load.tracking.stage} />
           <ProofSection token={token} tracking={load.tracking} />
           <AccessSection tracking={load.tracking} />
@@ -166,6 +171,69 @@ export function TrackingPage({ token }: { token: string }) {
         </>
       ) : null}
     </Stack>
+  );
+}
+
+function RecipientAttestationCard({
+  token,
+  tracking,
+  onRecorded,
+}: {
+  token: string;
+  tracking: TrackingProjection;
+  onRecorded: () => void;
+}) {
+  const [accepted, setAccepted] = React.useState(false);
+  const [status, setStatus] = React.useState<"idle" | "saving" | "failed">("idle");
+
+  if (!tracking.recipientAdultAttestationRequired) return null;
+
+  if (tracking.recipientAdultAttested) {
+    return (
+      <Alert tone="success" title="Adult attestation recorded">
+        Couranr recorded that the recipient confirmed they are 18 or older for
+        this protected handoff.
+      </Alert>
+    );
+  }
+
+  async function save() {
+    if (!accepted) return;
+    setStatus("saving");
+    const ok = await attestRecipientAdult(token);
+    if (!ok) {
+      setStatus("failed");
+      return;
+    }
+    onRecorded();
+  }
+
+  return (
+    <Card>
+      <CardHeader title="Confirm before handoff" />
+      <Stack gap={3}>
+        <Text>
+          This protected handoff must be made to an adult recipient in person.
+          This statement does not replace the separate identity check.
+        </Text>
+        <label style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
+          <input
+            type="checkbox"
+            checked={accepted}
+            onChange={(event) => setAccepted(event.target.checked)}
+          />
+          <span>I confirm that I am 18 or older and will receive this delivery.</span>
+        </label>
+        <Button onClick={() => void save()} disabled={!accepted || status === "saving"}>
+          {status === "saving" ? "Recording…" : "Record confirmation"}
+        </Button>
+        {status === "failed" ? (
+          <Alert tone="warning" title="Confirmation not recorded">
+            Try again. The delivery cannot complete until this is recorded.
+          </Alert>
+        ) : null}
+      </Stack>
+    </Card>
   );
 }
 

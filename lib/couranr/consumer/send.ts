@@ -35,7 +35,17 @@ import {
   isPaymentFailure,
   reconcilePaymentIntent,
 } from "@/lib/couranr/payments/commands";
-import { issueTrackingLink, isTrackingFailure } from "@/lib/couranr/tracking/commands";
+import {
+  claimConsumerRecipientTrackingDelivery,
+  failRecipientTrackingNotification,
+  isTrackingFailure,
+  markRecipientTrackingNotification,
+} from "@/lib/couranr/tracking/commands";
+import { hashTrackingToken } from "@/lib/couranr/tracking/tokens";
+import { isRecipientIdentityCapabilityAvailable } from "@/lib/couranr/identity/recipientIdentity";
+import { sendRenderedEmail } from "@/lib/couranr/email/send";
+import { custDirectDeliveryConfirmed } from "@/lib/couranr/email/templates/customer";
+import { defaultEmailConfig, url as emailUrl } from "@/lib/couranr/email/theme";
 import { recordConsumerIntakeEvidenceAfterEstimate } from "./intake";
 import {
   CODE_SHOWN_ONCE_WARNING,
@@ -616,7 +626,8 @@ const OWN_REQUEST_COLUMNS =
   "id,version,request_state,quote_status,current_quote_version_id,pickup_manifest_version," +
   "pickup_manifest,pickup_manifest_policy_version," +
   "delivery_subtotal_cents,quote_line_items,review_reasons,consumer_contact_snapshot," +
-  "timing_intent,requested_pickup_local,requested_departure_at,timing_review_reasons";
+  "timing_intent,requested_pickup_local,requested_departure_at,timing_review_reasons," +
+  "recipient_name,recipient_email,reference,dropoff_address,protection_level";
 
 /**
  * Load the session's own request — and ONLY it. `service_role` bypasses RLS,
@@ -1139,6 +1150,18 @@ export async function submitConsumerSend(params: {
           : "Enter what this shipment is worth before submitting this delivery.",
     });
   }
+  if (
+    protection.requirements.level === "protected_handoff" &&
+    !isRecipientIdentityCapabilityAvailable()
+  ) {
+    return fail({
+      operation: op,
+      code: "conflict",
+      detail: { reason: "protected_handoff_identity_unavailable" },
+      message:
+        "Couranr cannot accept this protected handoff until recipient identity verification is available. No payment was authorized.",
+    });
+  }
 
   const recorded = await callRpc<Record<string, any>>(op, RPC.recordTrust, {
     p_guest_session_id: params.session.id,
@@ -1193,9 +1216,10 @@ async function loadOwnObligation(
 }
 
 /**
- * The guest's own-request projection. When the request reaches `confirmed`
- * and no live tracking link exists, ONE is minted here and the raw token is
- * returned this once — it is never recoverable afterwards.
+ * The guest's own-request projection. When a direct-consumer request reaches
+ * `confirmed`, the database claims ONE recipient-link delivery attempt. The
+ * raw token is emailed to the recipient and returned to the sender on this
+ * response only; PostgreSQL stores only its SHA-256 digest.
  */
 export async function getConsumerSendView(params: {
   session: GuestSession;
@@ -1219,19 +1243,66 @@ export async function getConsumerSendView(params: {
   };
 
   if (row.request_state === "confirmed") {
-    const { count, error } = (await supabaseAdmin
-      .from("couranr_delivery_access_tokens")
-      .select("id", { count: "exact", head: true })
-      .eq("request_id", String(row.id))
-      .is("revoked_at", null)
-      .gt("expires_at", new Date().toISOString())) as { count: number | null; error: any };
-    if (error) {
-      return fail({ operation: op, code: "internal", detail: { message: error.message } });
-    }
-    if ((count ?? 0) === 0) {
-      const issued = await issueTrackingLink({ requestId: String(row.id) });
-      if (isTrackingFailure(issued)) return issued;
-      view.trackingToken = issued.value.token;
+    const claimed = await claimConsumerRecipientTrackingDelivery({
+      requestId: String(row.id),
+    });
+    if (isTrackingFailure(claimed)) return claimed;
+
+    if (claimed.value.outcome === "issued") {
+      const rawToken = claimed.value.token;
+      const nonProductionUnarmed =
+        process.env.VERCEL_ENV !== "production" && process.env.COURANR_EMAIL_SEND !== "live";
+
+      // Keep disposable/preview flows usable without fabricating a provider
+      // receipt. Production always has to deliver and record the recipient
+      // email before treating this claim as complete.
+      if (!nonProductionUnarmed) {
+        const dropoff = row.dropoff_address ?? {};
+        const dropoffLabel =
+          [dropoff.city, dropoff.region].filter((value) => typeof value === "string" && value).join(", ") ||
+          String(dropoff.formattedAddress ?? "Delivery address");
+        const senderName =
+          typeof row.consumer_contact_snapshot?.name === "string"
+            ? row.consumer_contact_snapshot.name.trim()
+            : "";
+        const rendered = custDirectDeliveryConfirmed(defaultEmailConfig, {
+          senderName: senderName || undefined,
+          recipientName: String(row.recipient_name ?? "there"),
+          reference: String(row.reference),
+          dropoffLabel,
+          trackUrl: emailUrl(defaultEmailConfig, `/track/${encodeURIComponent(rawToken)}`),
+          recipientAdultAttestationRequired: row.protection_level === "protected_handoff",
+        });
+        const sent = await sendRenderedEmail(rendered, {
+          to: String(row.recipient_email ?? ""),
+          idempotencyKey: `consumer-tracking:${hashTrackingToken(rawToken)}`,
+        });
+        if ("reason" in sent) {
+          const revoked = await failRecipientTrackingNotification({
+            rawToken,
+            reason: `recipient_email_${sent.reason}`,
+          });
+          if (isTrackingFailure(revoked)) return revoked;
+          return fail({
+            operation: op,
+            code: "internal",
+            detail: { reason: sent.reason, correlationId: sent.correlationId },
+            message: "The recipient tracking email could not be sent yet. Please try again.",
+          });
+        }
+        const marked = await markRecipientTrackingNotification({
+          rawToken,
+          providerId: sent.id,
+        });
+        if (isTrackingFailure(marked)) {
+          await failRecipientTrackingNotification({
+            rawToken,
+            reason: "recipient_email_receipt_not_recorded",
+          });
+          return marked;
+        }
+      }
+      view.trackingToken = rawToken;
     }
   }
 

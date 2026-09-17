@@ -92,6 +92,9 @@ export type RequestCommand = (typeof REQUEST_COMMANDS)[number];
  * level and the consent evidence onto a draft, and the submit that follows is
  * the transition. A verb in the transition model would imply a state change
  * that never happens.
+ *
+ * `record_recipient_adult_attestation` is likewise a recipient-capability
+ * audit fact, not an actor-invocable request-state transition.
  */
 export const REQUEST_EVENT_COMMANDS = [
   ...REQUEST_COMMANDS,
@@ -99,6 +102,7 @@ export const REQUEST_EVENT_COMMANDS = [
   "auto_plan_delivery_request",
   "apply_promotional_credit",
   "record_consumer_trust",
+  "record_recipient_adult_attestation",
 ] as const;
 export type RequestEventCommand = (typeof REQUEST_EVENT_COMMANDS)[number];
 

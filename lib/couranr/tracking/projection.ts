@@ -119,6 +119,10 @@ export type TrackingProjection = {
   /** Whether Couranr was authorized to leave the delivery without a handoff. */
   leaveAtDoorAuthorized: boolean;
 
+  /** Recipient-held trust evidence; no declared value or identity detail leaks. */
+  recipientAdultAttestationRequired: boolean;
+  recipientAdultAttested: boolean;
+
   /** The fact, never the person. */
   driverAssigned: boolean;
 
@@ -199,8 +203,9 @@ export function buildTrackingProjection(input: {
 
   const visible = (Array.isArray(input.proofs) ? input.proofs : []).filter(isCustomerVisibleProof);
 
-  const dropoff = d?.dropoff_address ?? null;
+  const dropoff = d?.dropoff_address ?? input.request?.dropoff_address ?? null;
   const proofMethod = typeof d?.proof_method === "string" ? d.proof_method : null;
+  const consumerSenderName = str(input.request?.consumer_contact_snapshot, "name");
 
   return {
     stage,
@@ -208,7 +213,8 @@ export function buildTrackingProjection(input: {
     // support conversation can name the same thing Operations sees.
     sourceState: d ? (typeof d.fulfillment_state === "string" ? d.fulfillment_state : null) : null,
 
-    senderName: typeof input.business?.name === "string" ? input.business.name : "",
+    senderName:
+      typeof input.business?.name === "string" ? input.business.name : consumerSenderName,
 
     dropoff: {
       line1: str(dropoff, "line1"),
@@ -225,6 +231,12 @@ export function buildTrackingProjection(input: {
     serviceLevel: typeof d?.service_level === "string" ? d.service_level : null,
     signatureRequired: d?.signature_required === true,
     leaveAtDoorAuthorized: proofMethod === "leave_at_door",
+
+    recipientAdultAttestationRequired:
+      input.request?.protection_level === "protected_handoff",
+    recipientAdultAttested:
+      typeof input.request?.recipient_adult_attested_at === "string" &&
+      input.request.recipient_adult_attested_at.length > 0,
 
     driverAssigned: input.assignmentActive === true,
 
@@ -291,6 +303,8 @@ export const TRACKING_PROJECTION_ALLOWED_KEYS: readonly string[] = [
   "serviceLevel",
   "signatureRequired",
   "leaveAtDoorAuthorized",
+  "recipientAdultAttestationRequired",
+  "recipientAdultAttested",
   "driverAssigned",
   "proof",
   "timeline",

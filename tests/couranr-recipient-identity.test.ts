@@ -4,8 +4,8 @@ import path from "node:path";
 import {
   COURANR_IDENTITY_POLICY_VERSION,
   IDENTITY_OUTCOME_COPY,
+  isRecipientIdentityCapabilityAvailable,
   isStripeIdentityActivated,
-  resolveRecipientIdentity,
 } from "@/lib/couranr/identity/recipientIdentity";
 
 /**
@@ -66,21 +66,12 @@ describe("the seam cannot call Stripe, rather than being switched off", () => {
     expect(isStripeIdentityActivated()).toBe(true);
   });
 
-  it("records 'unavailable' — a fact, not an absence", async () => {
-    /* `unavailable` is in couranr_riv_state_chk's vocabulary and the drop-off
-       trigger accepts exactly it and 'verified'. A protected handoff that
-       proceeded on the recipient code is a DIFFERENT fact from one that passed
-       an identity check, and a claim months later has to tell them apart. */
-    const out = await resolveRecipientIdentity("11111111-1111-4111-8111-111111111111");
-    expect(out.state).toBe("unavailable");
-    expect(out.providerReference).toBeNull();
-    expect(out.identityVerified).toBe(false);
-    expect(out.adultVerified).toBe(false);
-    expect(out.authorizedRecipientMatch).toBe(false);
-    expect(out.policyVersion).toBe(COURANR_IDENTITY_POLICY_VERSION);
+  it("exposes an unavailable capability without manufacturing a verification attempt", () => {
+    expect(isRecipientIdentityCapabilityAvailable()).toBe(false);
+    expect(COURANR_IDENTITY_POLICY_VERSION).toMatch(/recipient-identity/);
   });
 
-  it("the ACTIVATION FLAG ALONE cannot make a shipment look verified", async () => {
+  it("the ACTIVATION FLAG ALONE cannot make the capability available", () => {
     /* The dangerous shape: someone sets the flag in production expecting the
        integration to exist, and every protected handoff starts reporting
        'verified' against a provider that was never called. */
@@ -91,22 +82,17 @@ describe("the seam cannot call Stripe, rather than being switched off", () => {
     } as never;
     expect(isStripeIdentityActivated()).toBe(true);
 
-    const out = await resolveRecipientIdentity("11111111-1111-4111-8111-111111111111");
-    expect(out.state).toBe("unavailable");
-    expect(out.identityVerified).toBe(false);
+    expect(isRecipientIdentityCapabilityAvailable()).toBe(false);
   });
 });
 
 describe("what the recipient is told", () => {
   it("does not apologise for a check that was never attempted", () => {
-    /* Nothing was attempted and nothing went wrong, so `unavailable` must not
-       read as a failure. A recipient reading it is deciding whether to answer
-       the door, not auditing Couranr's provider integrations. */
+    /* No check was attempted, so the copy must say exactly what Operations is
+       allowed to do rather than implying a recipient code substitutes for it. */
     const copy = IDENTITY_OUTCOME_COPY.unavailable;
-    expect(copy).not.toMatch(/fail|error|sorry|unable|problem|could not/i);
-    // And it says what actually governs the handoff instead.
-    expect(copy).toMatch(/code/i);
-    expect(copy).toMatch(/in person|recipient/i);
+    expect(copy).toMatch(/unavailable/i);
+    expect(copy).toMatch(/do not complete/i);
   });
 
   it("covers every state the database allows, so no outcome renders blank", () => {

@@ -15,12 +15,10 @@ assertServerOnly("lib/couranr/tracking/commands.ts");
 /**
  * Named server commands for the customer tracking link.
  *
- * READ-ONLY BY CONSTRUCTION. There is exactly one mutation reachable from a
- * customer-held token — the `last_used_at` stamp that
- * `couranr_redeem_delivery_access_token` writes on the token's own row. No
- * function in this module changes a delivery, a request, a payment, an
- * assignment or a proof, and `tests/couranr-tracking.test.ts` asserts the
- * absence of the strings that would.
+ * READ-ONLY EXCEPT ONE BOUNDED RECIPIENT ACTION. A recipient-audience token may
+ * record the versioned adult attestation required by protected handoff. It can
+ * never change a delivery state, address, payment, assignment, proof, price or
+ * route. Redemption also stamps `last_used_at` on the token's own row.
  *
  * Every query is service-role and therefore bypasses RLS, so every query
  * re-scopes itself: the token resolves to exactly one request id and one
@@ -29,9 +27,16 @@ assertServerOnly("lib/couranr/tracking/commands.ts");
 
 export const RPC = {
   issueToken: "couranr_issue_delivery_access_token",
+  claimConsumerRecipientDelivery: "couranr_claim_consumer_recipient_tracking_delivery",
+  markRecipientNotification: "couranr_mark_recipient_tracking_notification",
+  failRecipientNotification: "couranr_fail_recipient_tracking_notification",
+  attestRecipientAdult: "couranr_attest_recipient_adult",
   redeemToken: "couranr_redeem_delivery_access_token",
   revokeTokens: "couranr_revoke_delivery_access_tokens",
 } as const;
+
+export const COURANR_RECIPIENT_ATTESTATION_VERSION =
+  "couranr-recipient-adult-attestation-2026-09";
 
 export type TrackingFailure = {
   ok: false;
@@ -113,6 +118,85 @@ export async function issueTrackingLink(params: {
 
   // The only moment the raw token exists outside the customer's URL.
   return { ok: true, value: { token, expiresAt: String(r.value.expires_at) } };
+}
+
+export type ConsumerRecipientDeliveryClaim =
+  | { outcome: "issued"; token: string; expiresAt: string }
+  | { outcome: "sent" | "in_progress" };
+
+/**
+ * Claim the one recipient-email delivery attempt for a confirmed direct
+ * consumer request. The database serializes claims on the request. A fresh
+ * in-progress claim is never replaced; a crashed claim becomes replaceable
+ * after its two-minute lease. The raw token exists only on the `issued` arm.
+ */
+export async function claimConsumerRecipientTrackingDelivery(params: {
+  requestId: string;
+}): Promise<TrackingResult<ConsumerRecipientDeliveryClaim>> {
+  const op = "claimConsumerRecipientTrackingDelivery";
+  const token = generateTrackingToken();
+  const r = await callRpc<any[] | any>(op, RPC.claimConsumerRecipientDelivery, {
+    p_request_id: params.requestId,
+    p_token_hash: hashTrackingToken(token),
+    p_ttl_days: TRACKING_TOKEN_TTL_DAYS,
+  });
+  if (isTrackingFailure(r)) return r;
+  const row = Array.isArray(r.value) ? r.value[0] : r.value;
+  if (row?.outcome === "sent" || row?.outcome === "in_progress") {
+    return { ok: true, value: { outcome: row.outcome } };
+  }
+  if (row?.outcome !== "issued" || typeof row.expires_at !== "string") {
+    return fail({ operation: op, code: "conflict", detail: { reason: "invalid claim result" } });
+  }
+  return {
+    ok: true,
+    value: { outcome: "issued", token, expiresAt: String(row.expires_at) },
+  };
+}
+
+export async function markRecipientTrackingNotification(params: {
+  rawToken: string;
+  providerId: string;
+}): Promise<TrackingResult<{ recorded: true }>> {
+  const r = await callRpc(
+    "markRecipientTrackingNotification",
+    RPC.markRecipientNotification,
+    {
+      p_token_hash: hashTrackingToken(params.rawToken),
+      p_provider_id: params.providerId,
+    }
+  );
+  if (isTrackingFailure(r)) return r;
+  return { ok: true, value: { recorded: true } };
+}
+
+/** Revoke exactly the token whose provider delivery did not complete. */
+export async function failRecipientTrackingNotification(params: {
+  rawToken: string;
+  reason: string;
+}): Promise<TrackingResult<{ revoked: boolean }>> {
+  const r = await callRpc<boolean>(
+    "failRecipientTrackingNotification",
+    RPC.failRecipientNotification,
+    {
+      p_token_hash: hashTrackingToken(params.rawToken),
+      p_reason: params.reason,
+    }
+  );
+  if (isTrackingFailure(r)) return r;
+  return { ok: true, value: { revoked: r.value === true } };
+}
+
+export async function attestRecipientAdult(params: {
+  rawToken: string;
+}): Promise<TrackingResult<{ attested: true }>> {
+  const r = await callRpc("attestRecipientAdult", RPC.attestRecipientAdult, {
+    p_token_hash: hashTrackingToken(params.rawToken),
+    p_attestation_version: COURANR_RECIPIENT_ATTESTATION_VERSION,
+    p_accept: true,
+  });
+  if (isTrackingFailure(r)) return r;
+  return { ok: true, value: { attested: true } };
 }
 
 /* ----------------------------------------------------------- revoke --- */
@@ -209,7 +293,10 @@ export async function loadTrackingView(params: {
 
   const reqQ = await supabaseAdmin
     .from("couranr_delivery_requests")
-    .select("id, request_state, readiness_state")
+    .select(
+      "id, request_state, readiness_state, protection_level, recipient_adult_attested_at, " +
+        "consumer_contact_snapshot, dropoff_address"
+    )
     .eq("id", requestId)
     .maybeSingle();
   if (reqQ.error) {

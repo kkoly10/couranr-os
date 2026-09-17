@@ -205,7 +205,14 @@ function fixture(overrides: Record<string, any> = {}) {
             },
             ...(overrides.delivery ?? {}),
           },
-    business: { id: "33333333-3333-4333-8333-333333333333", name: "Rowan & Fig", ...(overrides.business ?? {}) },
+    business:
+      overrides.business === null
+        ? null
+        : {
+            id: "33333333-3333-4333-8333-333333333333",
+            name: "Rowan & Fig",
+            ...(overrides.business ?? {}),
+          },
     assignmentActive: overrides.assignmentActive ?? true,
     proofs: overrides.proofs ?? [],
     events: overrides.events ?? [],
@@ -277,6 +284,57 @@ describe("tracking projection", () => {
     expect(p.scheduledPickupStart).toBeNull();
     expect(p.driverAssigned).toBe(false);
     expect(p.proof.state).toBe("unavailable");
+  });
+
+  it("uses the canonical request snapshot for a direct recipient before delivery conversion", () => {
+    const p = buildTrackingProjection(
+      fixture({
+        business: null,
+        delivery: null,
+        assignmentActive: false,
+        request: {
+          consumer_contact_snapshot: { name: "Avery Chen", email: "private@example.test" },
+          dropoff_address: {
+            line1: "4 Canonical Way",
+            line2: "Unit 2",
+            city: "Woodbridge",
+            region: "VA",
+            postalCode: "22191",
+            instructions: "private gate code",
+          },
+        },
+      })
+    );
+    expect(p.senderName).toBe("Avery Chen");
+    expect(p.dropoff).toEqual({
+      line1: "4 Canonical Way",
+      line2: "Unit 2",
+      city: "Woodbridge",
+      region: "VA",
+      postalCode: "22191",
+    });
+    expect(JSON.stringify(p)).not.toContain("private@example.test");
+    expect(JSON.stringify(p)).not.toContain("private gate code");
+  });
+
+  it("exposes only whether the protected recipient attestation is required and recorded", () => {
+    const before = buildTrackingProjection(
+      fixture({ request: { protection_level: "protected_handoff" } })
+    );
+    expect(before.recipientAdultAttestationRequired).toBe(true);
+    expect(before.recipientAdultAttested).toBe(false);
+
+    const after = buildTrackingProjection(
+      fixture({
+        request: {
+          protection_level: "protected_handoff",
+          recipient_adult_attested_at: "2026-09-16T12:00:00.000Z",
+          recipient_attestation_version: "must-not-leak",
+        },
+      })
+    );
+    expect(after.recipientAdultAttested).toBe(true);
+    expect(JSON.stringify(after)).not.toContain("must-not-leak");
   });
 
   it("prefers the delivery's state over the request's once one exists", () => {
@@ -419,7 +477,7 @@ describe("timeline", () => {
  * Source-level guarantees
  * ===================================================================== */
 
-describe("the tracking command layer is read-only", () => {
+describe("the tracking command layer has only its bounded SQL mutation", () => {
   const src = fs.readFileSync(path.join(REPO, "lib/couranr/tracking/commands.ts"), "utf8");
 
   it("contains no write against a delivery, request, payment or proof", () => {
@@ -444,6 +502,40 @@ describe("the tracking command layer is read-only", () => {
     // this module must never branch on them to build a response.
     expect(src).not.toContain('reason: "expired"');
     expect(src).not.toContain('reason: "revoked"');
+  });
+});
+
+describe("recipient adult-attestation route authority", () => {
+  const route = fs.readFileSync(
+    path.join(REPO, "app/api/couranr/track/[token]/adult-attestation/route.ts"),
+    "utf8"
+  );
+  const commands = fs.readFileSync(
+    path.join(REPO, "lib/couranr/tracking/commands.ts"),
+    "utf8"
+  );
+
+  it("accepts literal consent only and never a browser-selected version or request", () => {
+    expect(route).toContain('const BODY_KEYS = new Set(["accepted"])');
+    expect(route).toContain("accepted !== true");
+    expect(route).not.toMatch(/body\.(version|requestId|recipient|attestedAt)/);
+  });
+
+  it("states the attestation version on the server and hashes the credential", () => {
+    expect(commands).toContain("COURANR_RECIPIENT_ATTESTATION_VERSION");
+    expect(commands).toContain("p_attestation_version: COURANR_RECIPIENT_ATTESTATION_VERSION");
+    expect(commands).toContain("p_token_hash: hashTrackingToken(params.rawToken)");
+  });
+
+  it("renders an explicit checkbox and never presents the attestation as identity verification", () => {
+    const page = fs.readFileSync(
+      path.join(REPO, "components/couranr/tracking/TrackingPage.tsx"),
+      "utf8"
+    );
+    expect(page).toContain('type="checkbox"');
+    expect(page).toMatch(/I confirm that I am 18 or older/);
+    expect(page).toMatch(/does not replace the separate identity check/);
+    expect(page).toContain('disabled={!accepted || status === "saving"}');
   });
 });
 

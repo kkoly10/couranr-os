@@ -11,9 +11,8 @@ import type { TrackingProjection } from "@/lib/couranr/tracking/projection";
  * the URL is the whole authorization, and it is carried in the path exactly as
  * the payment link is.
  *
- * There is no mutating call in this file. There is no mutating ROUTE to make
- * one against. A link that travels by SMS into forwarded threads must not be
- * able to change anything.
+ * The only mutation is a versioned adult attestation for a protected handoff.
+ * It cannot change delivery, money, route, address, proof or lifecycle state.
  */
 
 export type TrackingRefused = { resolved: false };
@@ -79,5 +78,21 @@ export async function fetchProofUrl(
     return typeof url === "string" && url.length > 0 ? { url } : null;
   } catch {
     return null;
+  }
+}
+
+export async function attestRecipientAdult(token: string): Promise<boolean> {
+  try {
+    const res = await fetch(
+      `/api/couranr/track/${encodeURIComponent(token)}/adult-attestation`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accepted: true }),
+      }
+    );
+    return res.ok;
+  } catch {
+    return false;
   }
 }

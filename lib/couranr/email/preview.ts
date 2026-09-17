@@ -19,6 +19,7 @@ import {
 import {
   custApproveAndPay,
   custOrderConfirmed,
+  custDirectDeliveryConfirmed,
   custOutForDelivery,
   custDelivered,
   custRecipientUnavailable,
@@ -56,6 +57,11 @@ export function collectEmails(config: EmailConfig): Entry[] {
 
   push(cust, "Approve & pay (customer-paid)", custApproveAndPay(config, s.customer.approveAndPay));
   push(cust, "Order confirmed & scheduled", custOrderConfirmed(config, s.customer.orderConfirmed));
+  push(
+    "Couranr → Direct recipient",
+    "Direct delivery confirmed",
+    custDirectDeliveryConfirmed(config, s.customer.directDeliveryConfirmed),
+  );
   push(cust, "Out for delivery", custOutForDelivery(config, s.customer.outForDelivery));
   push(cust, "Delivered", custDelivered(config, s.customer.delivered));
   push(cust, "Recipient unavailable", custRecipientUnavailable(config, s.customer.recipientUnavailable));

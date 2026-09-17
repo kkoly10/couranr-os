@@ -414,6 +414,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/pay/[token]/reconcile/route.ts",
       "app/api/couranr/pay/[token]/route.ts",
       "app/api/couranr/stripe/webhook/route.ts",
+      "app/api/couranr/track/[token]/adult-attestation/route.ts",
       "app/api/couranr/track/[token]/proof/[proofId]/url/route.ts",
       "app/api/couranr/track/[token]/route.ts",
     ]);
@@ -526,6 +527,10 @@ describe("canonical server routes do not import the browser client", () => {
       // `loadTrackingView` redeems internally and then loads only the rows the
       // sanitized projection needs.
       { shape: /isWellFormedTrackingToken\(/, redeem: /loadTrackingView\(/ },
+    ],
+    [
+      "app/api/couranr/track/[token]/adult-attestation/route.ts",
+      { shape: /isWellFormedTrackingToken\(/, redeem: /attestRecipientAdult\(/ },
     ],
     [
       "app/api/couranr/track/[token]/proof/[proofId]/url/route.ts",

@@ -152,6 +152,16 @@ export interface CustOrderConfirmedInput {
   trackUrl: string;
 }
 
+/** Direct Consumer Same Day confirmation; there is no merchant/shop identity. */
+export interface CustDirectDeliveryConfirmedInput {
+  senderName?: string;
+  recipientName: string;
+  reference: string;
+  dropoffLabel: string;
+  trackUrl: string;
+  recipientAdultAttestationRequired: boolean;
+}
+
 export interface CustOutForDeliveryInput {
   shop: Shop;
   recipientName: string;

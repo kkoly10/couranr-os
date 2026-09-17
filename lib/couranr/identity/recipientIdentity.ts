@@ -17,13 +17,11 @@ assertServerOnly("lib/couranr/identity/recipientIdentity.ts");
  * that fires in a test somebody writes six weeks from now. A branch that does
  * not exist cannot.
  *
- * WHAT THE SEAM STILL DOES. It records the OUTCOME of the attempt, which for V1
- * is `unavailable`. That is deliberately not the same as recording nothing: a
- * protected handoff that proceeded on the recipient code and the driver is a
- * different fact from one that passed an identity check, and a claim months
- * later has to be able to tell them apart. The database agrees — `unavailable`
- * is in couranr_riv_state_chk's vocabulary, and the drop-off trigger accepts
- * exactly `verified` and `unavailable` and refuses everything else.
+ * WHAT THE SEAM STILL DOES. It states whether the capability exists. It does
+ * not manufacture an `unavailable` attempt at driver arrival and it never lets
+ * absence masquerade as verification. The database blocks a protected request
+ * before commercial acceptance while this capability is unavailable, and the
+ * handoff gate accepts only coherent `verified` evidence.
  */
 
 /** Bumped when what a verification MEANS changes, not when the code changes. */
@@ -56,58 +54,26 @@ export function isStripeIdentityActivated(): boolean {
 }
 
 /**
- * The ONE place a provider call would live.
+ * Whether this build can actually begin a recipient verification.
  *
- * It does not make one. When Stripe Identity is activated this is where the
- * session creation goes, and the shape it must return is already fixed by
- * `IdentityOutcome` — so activating it is a change to this function and nothing
- * else: not the command, not the trigger, not the driver flow.
+ * False even if somebody flips the environment flag: no provider implementation
+ * exists, so configuration alone cannot make protected handoff sellable.
  */
-async function beginProviderSession(_deliveryId: string): Promise<IdentityOutcome | null> {
-  // Intentionally unimplemented. See the module comment: the activated branch
-  // does not exist rather than being switched off.
-  return null;
-}
-
-/**
- * The outcome to record for a protected handoff.
- *
- * Returns `unavailable` while the provider is not activated, which is a
- * recorded fact and not an absence. If activation is ever set without the
- * provider call being implemented, this still returns `unavailable` rather than
- * inventing a verification — the flag alone must never be able to make a
- * shipment look verified.
- */
-export async function resolveRecipientIdentity(deliveryId: string): Promise<IdentityOutcome> {
-  const unavailable: IdentityOutcome = {
-    state: "unavailable",
-    providerReference: null,
-    identityVerified: false,
-    adultVerified: false,
-    authorizedRecipientMatch: false,
-    policyVersion: COURANR_IDENTITY_POLICY_VERSION,
-  };
-
-  if (!isStripeIdentityActivated()) return unavailable;
-
-  const started = await beginProviderSession(deliveryId);
-  return started ?? unavailable;
+export function isRecipientIdentityCapabilityAvailable(): boolean {
+  return false;
 }
 
 /**
  * What the recipient is told, and what Operations sees, for each outcome.
  *
- * `unavailable` does NOT say "verification failed" or apologise: nothing was
- * attempted and nothing went wrong. It says what actually governs the handoff
- * instead, because a recipient reading it is deciding whether to answer the
- * door, not auditing Couranr's provider integrations.
+ * `unavailable` is Operations evidence only. It never tells a recipient that a
+ * protected handoff may proceed without the check the sender was promised.
  */
 export const IDENTITY_OUTCOME_COPY: Readonly<Record<IdentityOutcome["state"], string>> = {
   pending: "Identity check started. Couranr is waiting for the result.",
   processing: "Identity check in progress.",
   verified: "Identity confirmed.",
   failed: "The identity check did not pass. Couranr will contact the sender.",
-  unavailable:
-    "This delivery is handed to the named recipient in person, against the code they read to the driver.",
+  unavailable: "Recipient identity verification is unavailable. Do not complete the handoff.",
   canceled: "The identity check was not completed.",
 };

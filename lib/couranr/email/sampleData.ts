@@ -15,6 +15,7 @@ import type {
   BizActionNeededInput,
   CustApproveAndPayInput,
   CustOrderConfirmedInput,
+  CustDirectDeliveryConfirmedInput,
   CustOutForDeliveryInput,
   CustDeliveredInput,
   CustRecipientUnavailableInput,
@@ -53,6 +54,7 @@ export interface EmailSamples {
   customer: {
     approveAndPay: CustApproveAndPayInput;
     orderConfirmed: CustOrderConfirmedInput;
+    directDeliveryConfirmed: CustDirectDeliveryConfirmedInput;
     outForDelivery: CustOutForDeliveryInput;
     delivered: CustDeliveredInput;
     recipientUnavailable: CustRecipientUnavailableInput;
@@ -158,6 +160,14 @@ export function buildSamples(config: EmailConfig): EmailSamples {
         scheduledWindowLabel: "Today, 2:00–4:00 PM",
         dropoffLabel: "Woodbridge, VA",
         trackUrl,
+      },
+      directDeliveryConfirmed: {
+        senderName: "Avery Chen",
+        recipientName: recipient,
+        reference,
+        dropoffLabel: "Woodbridge, VA",
+        trackUrl,
+        recipientAdultAttestationRequired: true,
       },
       outForDelivery: {
         shop,

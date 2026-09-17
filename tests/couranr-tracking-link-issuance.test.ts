@@ -59,8 +59,11 @@ describe("merchant tracking-link issuance", () => {
     expect(HOSTED).toContain("pg_advisory_xact_lock");
   });
 
-  it("keeps direct Consumer /send on its existing guest-owned issuance path", () => {
-    expect(CONSUMER).toContain("issueTrackingLink({ requestId: String(row.id) })");
+  it("keeps direct Consumer /send guest-scoped while delivering the recipient link", () => {
+    expect(CONSUMER).toContain("claimConsumerRecipientTrackingDelivery({");
+    expect(CONSUMER).toContain("sendRenderedEmail(rendered");
+    expect(CONSUMER).toContain("markRecipientTrackingNotification({");
+    expect(CONSUMER).toContain("failRecipientTrackingNotification({");
     expect(CONSUMER).toContain('row.request_state === "confirmed"');
   });
 

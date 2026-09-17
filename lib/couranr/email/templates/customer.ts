@@ -14,6 +14,7 @@ import { RenderedEmail } from "../types";
 import type {
   CustApproveAndPayInput,
   CustOrderConfirmedInput,
+  CustDirectDeliveryConfirmedInput,
   CustOutForDeliveryInput,
   CustDeliveredInput,
   CustRecipientUnavailableInput,
@@ -99,6 +100,41 @@ export function custOrderConfirmed(
     preheader: "Follow your delivery any time with live tracking.",
     contentHtml: content,
     fromName: viaName(input.shop.name, config.brandName),
+  });
+}
+
+/** Direct Consumer Same Day confirmation — Couranr, not a merchant, is sender. */
+export function custDirectDeliveryConfirmed(
+  config: EmailConfig,
+  input: CustDirectDeliveryConfirmedInput,
+): RenderedEmail {
+  const sender = input.senderName ? esc(input.senderName) : "The sender";
+  const content = [
+    eyebrow("Couranr Same Day"),
+    h1("A delivery to you is confirmed"),
+    paragraph(
+      `Hi ${esc(input.recipientName)} — ${sender} asked Couranr to deliver an item to you. Use the private link below to follow the delivery.`,
+    ),
+    detailList([
+      { label: "Reference", value: esc(input.reference) },
+      { label: "Delivering to", value: esc(input.dropoffLabel) },
+    ]),
+    input.recipientAdultAttestationRequired
+      ? panel({
+          tone: "info",
+          title: "Confirm before handoff",
+          html: "This protected handoff requires you to confirm that you are 18 or older on the tracking page. Identity verification is a separate requirement and must also complete before the parcel changes hands.",
+        })
+      : "",
+    button({ label: "Track your delivery", href: input.trackUrl }),
+    fallbackLink(input.trackUrl),
+    small("Keep this link private. Pickup and delivery times are estimates."),
+  ].join("\n");
+
+  return renderEmail(config, {
+    subject: "Your Couranr delivery is confirmed",
+    preheader: "Use your private link to follow this delivery.",
+    contentHtml: content,
   });
 }
 
