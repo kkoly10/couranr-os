@@ -125,3 +125,89 @@ describe("each surface renders the sentence written for its audience", () => {
     expect(tampered).toMatch(/MARKETS_PUBLIC_COPY(?!_NEUTRAL)/);
   });
 });
+
+/**
+ * THE 2026-09 MARKETING-ARCHITECTURE LOCK — one claim, one sentence, however
+ * many surfaces render it.
+ *
+ * The brief's adversarial review asks, in as many words, "do supporting pages
+ * and overview pages contradict each other?" The answer is a property of the
+ * source, not of a reading: a claim boundary that exists twice in prose will
+ * eventually exist twice in two different wordings, and the reader who meets
+ * both is the one who finds out.
+ *
+ * Two claim boundaries now cross page families and are asserted here.
+ */
+const MASTER_SURFACE = "app/(couranr)/(public)/(master-public)/page.tsx";
+
+describe("cross-surface claim boundaries are single-sourced", () => {
+  const BUSINESS_OVERVIEW = "app/(couranr)/(public)/(business-public)/business/page.tsx";
+  const BUSINESS_TYPES = "app/(couranr)/(public)/(business-public)/businesses/page.tsx";
+  const SAMEDAY = "app/(couranr)/(public)/(consumer-public)/sameday/page.tsx";
+
+  it("the category-does-not-decide-eligibility line is ONE governed constant", () => {
+    /* PUB-001 §6 teases the category system and PUB-009 owns it. Both have to
+       say that a category tunes recommendations and never decides what can be
+       sent — and both render `CATEGORY_PURPOSE_COPY` rather than saying it in
+       their own words. The brief proposed separate wording for the overview
+       page; using the constant instead is the deviation this asserts. */
+    for (const f of [BUSINESS_OVERVIEW, BUSINESS_TYPES]) {
+      expect(read(f), `${f} does not render the governed category sentence`).toContain(
+        "CATEGORY_PURPOSE_COPY",
+      );
+    }
+    // And neither retypes it. The words themselves must appear in exactly one
+    // place: the registry module.
+    const sentence = "shapes what Couranr suggests";
+    for (const f of [BUSINESS_OVERVIEW, BUSINESS_TYPES]) {
+      expect(read(f), `${f} retypes the governed category sentence`).not.toContain(sentence);
+    }
+    expect(read("lib/couranr/categories/registry.ts")).toContain(sentence);
+  });
+
+  it("both prohibition surfaces derive from the enforced vocabulary", () => {
+    /* PUB-013 §6 expands every prohibited class; PUB-001 §11 shows the group
+       headings only. Two DEPTHS of one list is fine. Two LISTS is the drift —
+       so both read PROHIBITED_GROUPS and neither types a category. */
+    for (const f of [SAMEDAY, BUSINESS_OVERVIEW]) {
+      expect(read(f), `${f} does not derive its prohibition summary`).toContain(
+        "PROHIBITED_GROUPS",
+      );
+    }
+    for (const f of [SAMEDAY, BUSINESS_OVERVIEW]) {
+      const src = read(f);
+      for (const typed of ["Alcohol", "Firearms", "Live animals", "Prescription medication"]) {
+        expect(src, `${f} types "${typed}" instead of deriving it`).not.toContain(typed);
+      }
+    }
+  });
+
+  it("the locked product distinction is ONE string, rendered on both surfaces", () => {
+    /* "Same Day solves a delivery. Couranr for Business helps your business
+       offer delivery." is the owner-locked positioning. The master homepage and
+       the business overview both make the argument; if the sentence existed
+       twice, the two pages could end up describing one product differently. */
+    for (const f of [MASTER_SURFACE, BUSINESS_OVERVIEW]) {
+      expect(read(f), `${f} does not render the locked distinction`).toContain(
+        "MASTER_COPY.network_statement",
+      );
+    }
+    const words = "Same Day solves a delivery";
+    for (const f of [MASTER_SURFACE, BUSINESS_OVERVIEW]) {
+      expect(read(f), `${f} retypes the locked distinction`).not.toContain(words);
+    }
+    expect(read("lib/couranr/public/masterSameDayCopy.ts")).toContain(words);
+  });
+
+  it("no public surface carries the Consumer Same Day declared-value ceiling", () => {
+    /* It is a CONSUMER decision and the value-tiered custody work it belongs to
+       is not in this build, so no page states one — and in particular the
+       business family must not inherit it. This fails the moment a ceiling is
+       written anywhere public without the decision that authorises it. */
+    for (const f of [MASTER_SURFACE, BUSINESS_OVERVIEW, BUSINESS_TYPES, SAMEDAY]) {
+      const src = read(f);
+      expect(src, `${f} states a declared-value ceiling`).not.toMatch(/declared value/i);
+      expect(src, `${f} states a maximum value`).not.toMatch(/maximum (declared )?value/i);
+    }
+  });
+});

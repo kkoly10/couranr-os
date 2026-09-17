@@ -39,6 +39,7 @@ import {
   WEIGHT_SURCHARGE_THROUGH_LB,
   dollars,
 } from "@/lib/couranr/public/governed";
+import { CATEGORY_PURPOSE_COPY } from "@/lib/couranr/categories/registry";
 import { MASTER_COPY } from "@/lib/couranr/public/masterSameDayCopy";
 import { PROHIBITED_GROUPS } from "@/lib/couranr/public/prohibitedSummary";
 import { routeForScreen } from "@/lib/couranr/navigation";
@@ -865,11 +866,17 @@ export default function Page() {
           {/* THE CLAIM BOUNDARY, and it is the reason the deep category system
               belongs on one page rather than two. A category tunes what
               Couranr suggests; the shipment policy decides eligibility, per
-              shipment, after the details are described. */}
-          <p className="cr-mkt-narrative__note">
-            Your business category helps Couranr tailor recommendations. It does not
-            determine whether your shipment is eligible.
-          </p>
+              shipment, after the details are described.
+
+              THE GOVERNED SENTENCE, not a second one. The brief proposes
+              wording for this line, and `CATEGORY_PURPOSE_COPY` already says it
+              — on `/businesses` and inside merchant settings, from
+              lib/couranr/categories/registry.ts. Typing a near-duplicate here
+              would put a third phrasing of one claim boundary on a third
+              surface, which is the drift this batch exists to remove. The
+              deviation from the brief's exact words is deliberate and
+              recorded. */}
+          <p className="cr-mkt-narrative__note">{CATEGORY_PURPOSE_COPY}</p>
           <p className="cr-mkt-narrative__cta">
             <Link href="/businesses">See supported business types →</Link>
           </p>
