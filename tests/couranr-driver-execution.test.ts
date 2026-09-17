@@ -18,7 +18,9 @@ import {
   nextDriverCommand,
   proofStageAllowedFrom,
   requiresLargeShipmentProof,
+  resolveLargeLoadPackageCount,
 } from "@/lib/couranr/driver/states";
+import { buildAssignedDeliveryProjection } from "@/lib/couranr/dispatch/projection";
 
 const ROOT = path.resolve(__dirname, "..");
 const MIGRATIONS = path.join(ROOT, "supabase/migrations");
@@ -478,6 +480,75 @@ describe("driver-facing copy and derived requirements", () => {
     expect(requiresLargeShipmentProof({ packageCount: 10 })).toBe(true);
     expect(requiresLargeShipmentProof({ vehicleClass: "car", declaredWeightLb: 9 })).toBe(false);
     expect(requiresLargeShipmentProof({})).toBe(false);
+  });
+
+  /**
+   * THE DIVERGENCE, and the exact table the SQL is held to.
+   *
+   * `couranr_complete_pickup_v2` resolves the count with a TYPE TEST —
+   * `jsonb_typeof(v_manifest->'packageCount')='number'` — which does not coerce,
+   * so a manifest carrying `"3"` is not a count and the expression falls through
+   * to the shipment root. The fallback uses `->>`, which stringifies anything,
+   * so the ROOT does accept `"12"`. The old projection read both sides with one
+   * coercing helper and answered 3 where the server answered 12 — the driver was
+   * shown no securement requirement, uploaded nothing, and the RPC refused with
+   * `securement_photo_required` after they pressed Confirm pickup.
+   *
+   * These six rows are the SAME six that §O/O9 of
+   * e2e/disposable/consumerTrustCustody.mjs EXECUTES against PostgreSQL. One
+   * table, two engines; if they ever disagree one of the two suites goes red.
+   */
+  const COUNT_PRECEDENCE: Array<[unknown, unknown, number | null]> = [
+    [12, 3, 12],
+    [3, 12, 3],
+    // The divergent one: a STRING manifest count is not a count to jsonb_typeof.
+    ["3", 12, 12],
+    // The mirror: the shipment ROOT does accept a numeric string, through ->>.
+    [undefined, "12", 12],
+    [null, 7, 7],
+    [undefined, undefined, null],
+  ];
+
+  it("resolves the package count exactly as couranr_complete_pickup_v2 does", () => {
+    for (const [manifest, shipment, want] of COUNT_PRECEDENCE) {
+      expect(
+        resolveLargeLoadPackageCount(manifest, shipment),
+        `manifest=${JSON.stringify(manifest)} shipment=${JSON.stringify(shipment)}`
+      ).toBe(want);
+    }
+  });
+
+  it("the driver projection resolves it the same way, so the UI cannot disagree", () => {
+    for (const [manifest, shipment, want] of COUNT_PRECEDENCE) {
+      const projected = buildAssignedDeliveryProjection({
+        delivery: {
+          id: "00000000-0000-4000-8000-00000000000d",
+          version: 1,
+          shipment: {
+            ...(shipment === undefined ? {} : { packageCount: shipment }),
+            pickupManifest: manifest === undefined ? {} : { packageCount: manifest },
+          },
+          vehicle_requirement: { vehicleClass: "van" },
+        },
+        assignment: { id: "a-1" },
+        vehicle: null,
+        merchant: null,
+      });
+      expect(
+        projected.shipment.packageCount,
+        `manifest=${JSON.stringify(manifest)} shipment=${JSON.stringify(shipment)}`
+      ).toBe(want);
+    }
+  });
+
+  it("THE REGRESSION: a string manifest count no longer hides a large load", () => {
+    /* The precise shape that reached securement_photo_required in production
+       terms: the manifest says "3", the shipment root says 12, and 12 is over
+       the threshold. Before the fix the UI answered false here. */
+    expect(requiresLargeShipmentProof({ manifestPackageCount: "3", packageCount: 12 })).toBe(true);
+    // ...and a real numeric manifest count still WINS over the root, both ways.
+    expect(requiresLargeShipmentProof({ manifestPackageCount: 3, packageCount: 12 })).toBe(false);
+    expect(requiresLargeShipmentProof({ manifestPackageCount: 12, packageCount: 3 })).toBe(true);
   });
 });
 

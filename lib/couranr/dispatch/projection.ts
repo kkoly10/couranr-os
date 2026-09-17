@@ -22,6 +22,7 @@
  */
 
 import { requirementsFor } from "@/lib/couranr/consumer/protection";
+import { resolveLargeLoadPackageCount } from "@/lib/couranr/driver/states";
 
 export type AssignedDeliveryProjection = {
   deliveryId: string;
@@ -175,8 +176,16 @@ export function buildAssignedDeliveryProjection(input: {
     shipment: {
       description:
         str(manifest, "description") || null,
-      packageCount:
-        num(manifest, "packageCount") ?? num(shipment, "packageCount"),
+      /* The SAME resolution couranr_complete_pickup_v2 performs, from the same
+         two jsonb slots, via the one function that owns the rule. The old
+         `num(manifest) ?? num(shipment)` coerced a STRING manifest count, which
+         the database's `jsonb_typeof(...)='number'` test refuses — so the two
+         sides could read different counts, and the driver was the one who found
+         out, at `securement_photo_required`, after pressing Confirm pickup. */
+      packageCount: resolveLargeLoadPackageCount(
+        (manifest as Record<string, unknown> | null)?.packageCount,
+        (shipment as Record<string, unknown> | null)?.packageCount
+      ),
       orderReference:
         str(manifest, "orderReference") || null,
       handlingNotes:
