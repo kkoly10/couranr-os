@@ -31,10 +31,10 @@ proves every generated view matches its source.
 
 | Status | Count |
 |---|---|
-| `complete_verified` | 20 |
+| `complete_verified` | 19 |
 | `not_started` | 10 |
 | `partial` | 10 |
-| `complete_pending_external` | 6 |
+| `complete_pending_external` | 7 |
 | `complete_unverified` | 1 |
 
 ## Screens — 68 rows against 68 canonical screens
@@ -97,7 +97,8 @@ Still rendering `ScreenPlaceholder` (11): `OPS-006` · `OPS-011` · `OPS-013` ·
 | `P6-004` | Internal ledger migration/cutover is complete; authenticated UI verification and live external Stripe reconciliation remain outstanding. No paid provider call is authorized by this row. |
 | `P7-005` | Waiting-fee assessment requires an owner decision on the charging mechanism (no payer reauthorization path exists); recorded as evidence only. |
 | `P12-002` | Blocked behind P12-001 and explicit founder approval for the real paid canary. |
-| `P10-009` | Owner approval required before any production migration is applied. |
+| `P10-008` | The rank-1 decision registry does not sanction this protection model and PRF-002 contradicts it. |
+| `P10-009` | Owner approval required before any production migration is applied. PRF-002 defines the pickup happy path as one pickup photo and carries no Secure Pickup carve-out; see P10-008. |
 | `P10-010` | No qualified legal review. The documents are explicitly unreviewed drafts. |
 | `P10-011` | Provider not activated and no restricted key configured, so protected handoff is not sellable. |
 
