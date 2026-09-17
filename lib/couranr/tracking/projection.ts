@@ -232,8 +232,19 @@ export function buildTrackingProjection(input: {
     signatureRequired: d?.signature_required === true,
     leaveAtDoorAuthorized: proofMethod === "leave_at_door",
 
+    /* EVERY governed consumer recipient attests, not only a protected handoff.
+       This read still said protected_handoff after 20260917130000 widened the
+       rule in SQL, which meant the recipient of a standard delivery was
+       REQUIRED to attest and was never shown the card — the handoff would then
+       be refused recipient_adult_attestation_required with nothing they could
+       have done about it.
+
+       protection_level is a safe proxy for "governed": couranr_dr_protection_
+       completeness_chk makes declared value, level and policy version
+       all-or-nothing, so a non-null level means the row is governed. */
     recipientAdultAttestationRequired:
-      input.request?.protection_level === "protected_handoff",
+      typeof input.request?.protection_level === "string" &&
+      input.request.protection_level.length > 0,
     recipientAdultAttested:
       typeof input.request?.recipient_adult_attested_at === "string" &&
       input.request.recipient_adult_attested_at.length > 0,

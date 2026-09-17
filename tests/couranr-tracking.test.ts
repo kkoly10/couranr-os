@@ -534,8 +534,58 @@ describe("recipient adult-attestation route authority", () => {
     );
     expect(page).toContain('type="checkbox"');
     expect(page).toMatch(/I confirm that I am 18 or older/);
-    expect(page).toMatch(/does not replace the separate identity check/);
+    /* The PROPERTY, not the old sentence. This used to pin the phrase "does not
+       replace the separate identity check", which was true only of a protected
+       handoff — every governed consumer recipient attests now, and a standard
+       delivery has no identity check to distinguish the attestation from.
+       Naming a check that will not happen is itself a promise a claim tests, so
+       what must hold is that the card never CLAIMS to verify identity. */
+    expect(page).not.toMatch(/identity (is |has been )?(verified|confirmed)/i);
+    expect(page).not.toMatch(/verifies? your identity/i);
+    // And it still asks the recipient to confirm, rather than asserting for them.
+    // \s+ because JSX wraps prose: the source has a newline between "Confirm"
+    // and "you", which a literal-space regex misses while the rendered page
+    // reads exactly as intended.
+    expect(page).toMatch(/Confirm\s+you are 18 or older/);
     expect(page).toContain('disabled={!accepted || status === "saving"}');
+  });
+});
+
+describe("every governed consumer recipient is asked to attest", () => {
+  /* The owner decision is universal: sender 18+, recipient 18+. Migration
+     20260917130000 widened the SQL rule to every governed consumer level, but
+     this projection still said `protection_level === "protected_handoff"`.
+     The consequence was not cosmetic — the recipient of a standard delivery was
+     REQUIRED to attest and was never shown the card, so the handoff would be
+     refused recipient_adult_attestation_required with nothing they could have
+     done about it. */
+  for (const level of ["standard", "secure_pickup", "protected_handoff"]) {
+    it(`asks a ${level} recipient`, () => {
+      const p = buildTrackingProjection(fixture({ request: { protection_level: level } }));
+      expect(p.recipientAdultAttestationRequired).toBe(true);
+    });
+  }
+
+  it("does NOT ask an ungoverned recipient", () => {
+    /* Every business delivery and every consumer delivery predating the policy.
+       protection_level is a safe proxy for governed because
+       couranr_dr_protection_completeness_chk makes declared value, level and
+       policy version all-or-nothing. */
+    const p = buildTrackingProjection(fixture({ request: { protection_level: null } }));
+    expect(p.recipientAdultAttestationRequired).toBe(false);
+  });
+
+  it("records the attestation once it exists, at any level", () => {
+    const p = buildTrackingProjection(
+      fixture({
+        request: {
+          protection_level: "standard",
+          recipient_adult_attested_at: "2026-09-17T12:00:00.000Z",
+        },
+      })
+    );
+    expect(p.recipientAdultAttestationRequired).toBe(true);
+    expect(p.recipientAdultAttested).toBe(true);
   });
 });
 

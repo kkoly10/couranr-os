@@ -191,8 +191,8 @@ function RecipientAttestationCard({
   if (tracking.recipientAdultAttested) {
     return (
       <Alert tone="success" title="Adult attestation recorded">
-        Couranr recorded that the recipient confirmed they are 18 or older for
-        this protected handoff.
+        Couranr recorded that you confirmed you are 18 or older for this
+        delivery.
       </Alert>
     );
   }
@@ -212,9 +212,14 @@ function RecipientAttestationCard({
     <Card>
       <CardHeader title="Confirm before handoff" />
       <Stack gap={3}>
+        {/* TRUE AT EVERY LEVEL. This said "protected handoff" and referred to
+            "the separate identity check" — neither is true of a standard
+            delivery, which has no identity check at all, and every governed
+            consumer recipient now attests. Naming a check that will not happen
+            is the kind of promise a claim later tests. */}
         <Text>
-          This protected handoff must be made to an adult recipient in person.
-          This statement does not replace the separate identity check.
+          Couranr hands this delivery to an adult recipient in person. Confirm
+          you are 18 or older before the driver arrives.
         </Text>
         <label style={{ display: "flex", gap: "0.75rem", alignItems: "flex-start" }}>
           <input
