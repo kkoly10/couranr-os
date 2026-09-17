@@ -9,6 +9,7 @@ import {
 import { buildTrackingProjection, type TrackingProjection } from "./projection";
 import { isTrackingRefusal, type TrackingRefusal } from "./states";
 import { generateTrackingToken, hashTrackingToken, TRACKING_TOKEN_TTL_DAYS } from "./tokens";
+import { generateHandoffCode, handoffCodeDigest } from "@/lib/couranr/driver/codes";
 
 assertServerOnly("lib/couranr/tracking/commands.ts");
 
@@ -31,6 +32,7 @@ export const RPC = {
   markRecipientNotification: "couranr_mark_recipient_tracking_notification",
   failRecipientNotification: "couranr_fail_recipient_tracking_notification",
   attestRecipientAdult: "couranr_attest_recipient_adult",
+  issueRecipientDropoffCode: "couranr_issue_recipient_dropoff_code",
   redeemToken: "couranr_redeem_delivery_access_token",
   revokeTokens: "couranr_revoke_delivery_access_tokens",
 } as const;
@@ -433,4 +435,129 @@ export async function authorizeProofForToken(params: {
   if (!q.data?.storage_object_path) return { ok: true, value: null };
 
   return { ok: true, value: { proofId: String(q.data.id) } };
+}
+
+/* ------------------------------------------ recipient drop-off credential --- */
+
+/**
+ * Mint the recipient's drop-off PIN into the recipient's own browser.
+ *
+ * THE RAW PIN IS RETURNED EXACTLY ONCE AND IS NEVER RECOVERABLE. It is not
+ * stored, not logged, not put in analytics, and — the point of the whole
+ * design — NEVER EMAILED. An emailed PIN is a PIN in the mailbox of anyone else
+ * who can read that mailbox, which reduces it to precisely the assurance the
+ * tracking link already carries. The link proves control of an address; the PIN
+ * is meant to prove presence at the door.
+ *
+ * THE RETRY LOOP IS NOT DEFENSIVE PADDING. The generation is inside the signed
+ * digest (`recipient:v1:<delivery>:<generation>:<code>`) so that regenerating a
+ * code cannot yield the same digest for the same six digits. That means the
+ * caller must hash BEFORE the database assigns the generation, so it proposes
+ * one and the command refuses a stale proposal. A lost race is retried with the
+ * fresh number; without this, the stored digest would be signed for generation
+ * N against a row numbered N+1 and the recipient's PIN would never verify.
+ *
+ * Copied in shape from `issueGuestPickupCode` in consumer/send.ts, deliberately
+ * — one idiom for handoff credentials, not two.
+ */
+export async function issueRecipientDropoffCode(params: {
+  rawToken: string;
+}): Promise<TrackingResult<{ code: string; generation: number; expiresAt: string }>> {
+  const op = "issueRecipientDropoffCode";
+  const tokenHash = hashTrackingToken(params.rawToken);
+
+  /* Resolve the delivery through the TOKEN, never through anything the caller
+     supplied. The command re-resolves it in SQL as well; this read exists only
+     to number the generation, and a disagreement between the two is caught by
+     the CAS rather than trusted. */
+  const { data: token, error: tokenError } = (await supabaseAdmin
+    .from("couranr_delivery_access_tokens")
+    .select("request_id")
+    .eq("token_hash", tokenHash)
+    .eq("audience", "recipient")
+    .limit(1)) as { data: any; error: any };
+  if (tokenError) return fail({ operation: op, code: "internal", detail: tokenError.message });
+  const requestId = token?.[0]?.request_id;
+  if (!requestId) return fail({ operation: op, code: "not_found", detail: { reason: "token" } });
+
+  const { data: delivery, error: deliveryError } = (await supabaseAdmin
+    .from("couranr_deliveries")
+    .select("id")
+    .eq("request_id", String(requestId))
+    .limit(1)) as { data: any; error: any };
+  if (deliveryError) return fail({ operation: op, code: "internal", detail: deliveryError.message });
+  const deliveryId = delivery?.[0]?.id;
+  if (!deliveryId) {
+    return fail({
+      operation: op,
+      code: "conflict",
+      detail: { reason: "delivery_not_created" },
+      message: "Your code will be available once Couranr schedules the delivery.",
+    });
+  }
+
+  const MAX_GENERATION_ATTEMPTS = 4;
+  for (let attempt = 0; attempt < MAX_GENERATION_ATTEMPTS; attempt += 1) {
+    const { data: current, error: generationError } = (await supabaseAdmin
+      .from("couranr_handoff_codes")
+      .select("generation")
+      .eq("delivery_id", String(deliveryId))
+      .eq("code_kind", "recipient_dropoff")
+      .order("generation", { ascending: false })
+      .limit(1)) as { data: any; error: any };
+    if (generationError) {
+      return fail({ operation: op, code: "internal", detail: generationError.message });
+    }
+
+    const generation = Number(current?.[0]?.generation ?? 0) + 1;
+    const code = generateHandoffCode();
+    let digest: string;
+    try {
+      digest = handoffCodeDigest({
+        kind: "recipient_dropoff",
+        deliveryId: String(deliveryId),
+        generation,
+        code,
+      });
+    } catch {
+      return fail({
+        operation: op,
+        code: "internal",
+        detail: { reason: "handoff_secret_unavailable" },
+      });
+    }
+
+    const { data, error } = (await supabaseAdmin.rpc(RPC.issueRecipientDropoffCode, {
+      p_token_hash: tokenHash,
+      p_expected_generation: generation,
+      p_code_digest: digest,
+      p_ttl_minutes: 720,
+    })) as { data: any; error: any };
+
+    if (error) {
+      if (error.code === "CR409" && error.message === "handoff_generation_conflict") continue;
+      return fail({
+        operation: op,
+        code: classifyDatabaseError(error),
+        detail: { fn: RPC.issueRecipientDropoffCode, code: error.code, message: error.message },
+      });
+    }
+    if (!data || Number(data.generation) !== generation) {
+      return fail({
+        operation: op,
+        code: "internal",
+        detail: { reason: "handoff_generation_mismatch" },
+      });
+    }
+
+    return {
+      ok: true,
+      value: {
+        code,
+        generation,
+        expiresAt: String(data.expires_at ?? ""),
+      },
+    };
+  }
+  return fail({ operation: op, code: "version_conflict", detail: { reason: "generation_exhausted" } });
 }
