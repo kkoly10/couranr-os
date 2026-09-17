@@ -382,3 +382,68 @@ describe("navigation states no unresolved product decision", () => {
     }
   });
 });
+
+/**
+ * THE 2026-09 MARKETING-ARCHITECTURE LOCK — the owner-approved public order.
+ *
+ * Navigation order stopped being an accident of registry listing order in the
+ * same change. It is asserted as a whole SEQUENCE, not as a set with a few
+ * spot-checks, because every defect this navigation actually had was an
+ * ordering or a labelling one:
+ *
+ *   - PUB-001 was absent entirely. The business family had four destinations
+ *     and no way back to the page they all belong to, so a reader who opened
+ *     Pricing could not return to the product.
+ *   - PUB-009 was labelled "For businesses" while pointing at the business
+ *     CATEGORY page. Once "Couranr for Business" became a product name, two
+ *     items in one bar meant different things under nearly the same words.
+ */
+describe("public navigation is the owner-locked order", () => {
+  it("renders Overview, How it works, Pricing, Service areas, Business types", () => {
+    expect(
+      navigationFor("public").map((i) => [i.screenId, i.label, i.href]),
+    ).toEqual([
+      ["PUB-001", "Overview", "/business"],
+      ["PUB-011", "How it works", "/how-it-works"],
+      ["PUB-008", "Pricing", "/pricing"],
+      ["PUB-010", "Service areas", "/service-areas"],
+      ["PUB-009", "Business types", "/businesses"],
+    ]);
+  });
+
+  it("no longer calls the category page 'For businesses'", () => {
+    // The product name belongs to PUB-001. A label collision here is the exact
+    // ambiguity the lock removed, so it is asserted rather than assumed.
+    const labels = navigationFor("public").map((i) => i.label);
+    expect(labels).not.toContain("For businesses");
+    expect(new Set(labels).size).toBe(labels.length);
+  });
+
+  it("does not light Overview on the category page's route", () => {
+    /* "/businesses" starts with the STRING "/business". `exact` is derived from
+       whether a sibling nests under the item, and nothing nests under
+       "/business" — so Overview is not exact, and the segment-aware matcher is
+       what has to keep it dark on "/businesses". Worth an assertion: a raw
+       prefix test here would light two items at once. */
+    const overview = navigationFor("public").find((i) => i.screenId === "PUB-001")!;
+    expect(overview.exact).toBe(false);
+    expect(isActiveRoute("/businesses", overview)).toBe(false);
+    expect(isActiveRoute("/business", overview)).toBe(true);
+    expect(activeNavItem("/businesses", navigationFor("public"))?.screenId).toBe("PUB-009");
+  });
+
+  it("changed the PUBLIC order only — the authenticated surfaces are untouched", () => {
+    /* `navigationFor` now walks NAV_LABELS rather than the screen registry.
+       That is a behaviour change for every role, so the three that were NOT
+       meant to move are pinned to what they rendered before it. */
+    expect(navigationFor("merchant").map((i) => i.screenId)).toEqual([
+      "MER-001", "MER-004", "MER-008", "MER-010", "MER-012", "MER-013", "MER-014",
+    ]);
+    expect(navigationFor("driver").map((i) => i.screenId)).toEqual([
+      "DRV-001", "DRV-008", "DRV-009", "DRV-010",
+    ]);
+    expect(navigationFor("operations").map((i) => i.screenId)).toEqual([
+      "OPS-001", "OPS-002", "OPS-005", "OPS-007", "OPS-008", "OPS-009", "OPS-012",
+    ]);
+  });
+});
