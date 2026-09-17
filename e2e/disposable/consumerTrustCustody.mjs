@@ -656,6 +656,30 @@ try {
       sql(`select (has_schema_privilege('anon','private','USAGE') or
                    has_schema_privilege('authenticated','private','USAGE'))::text`) === "false",
       "anon/authenticated");
+
+    /* P4 — closure O made a PUBLIC command call a PRIVATE function directly.
+       couranr_complete_pickup_v2 is `security invoker` and the server calls it
+       as service_role, so the privilege is checked against service_role at
+       runtime, not against the definer. Every assertion in this file otherwise
+       runs as the superuser `postgres`, which can call anything — so a missing
+       grant here would be invisible to all 150 of them and would fail EVERY
+       pickup in production, business ones included, with "permission denied for
+       function". Asserted with has_function_privilege, and with USAGE on the
+       schema, because either one missing is the same outage. */
+    t("P4", "service_role can reach the private level function the pickup command now calls",
+      priv("private.couranr_delivery_protection_level(uuid)", "service_role") &&
+      sql(`select has_schema_privilege('service_role','private','USAGE')::text`) === "true",
+      `execute=${priv("private.couranr_delivery_protection_level(uuid)", "service_role")}` +
+      ` usage=${sql(`select has_schema_privilege('service_role','private','USAGE')::text`)}`);
+
+    /* P5 — a replacement with a DIFFERENT signature overloads rather than
+       replaces, leaving the old body callable and the two answers disagreeing
+       forever. One row, or this migration did not replace anything. */
+    const overloads = sql(
+      `select count(*)::text from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+        where n.nspname='public' and p.proname='couranr_complete_pickup_v2'`);
+    t("P5", "there is exactly ONE couranr_complete_pickup_v2, not an overload pair",
+      overloads === "1", overloads);
   }
 
   /* ── §V: EVERY enforcement point, from the LIVE catalog ─────────────────
@@ -730,10 +754,17 @@ try {
      is refused — which is itself why a protected handoff can never acquire
      leave_at_door after the fact, and why F6 has to build one that way from
      the start to reach the rule at all. */
-  const custodyChain = async (marker, cents, level, state = "at_pickup", proofMethod = undefined) => {
+  /* `seed` is the same story as `proofMethod` one level up: `shipment` and
+     `vehicle_requirement` are in the immutable commercial snapshot, so a
+     fixture that needs a BOX TRUCK or a heavy load has to be born with one.
+     §O's large-load cases would otherwise be unreachable — an UPDATE is refused
+     by delivery_commercial_snapshot_is_immutable. */
+  const custodyChain = async (marker, cents, level, state = "at_pickup", proofMethod = undefined,
+                              seed = undefined) => {
     const c = await seedCanonicalDeliveryChain(psqlTransport(psql), {
       businessId: biz, actorUserId: usr, marker, recipientName: "TC recipient",
       ...(proofMethod ? { proofMethod } : {}),
+      ...(seed || {}),
     });
     if (level !== null) govern(c.requestId, cents, level);
     sql(`update public.couranr_deliveries
@@ -1007,6 +1038,206 @@ try {
     const r = mustRefuse(sealQuery(f, drvS, sp, "seal-seq-0002"),
       "couranr_dss_identifier_unique_active");
     t("N2", "case cannot smuggle a duplicate serial past the index", r.ok, r.got); }
+
+  /* ── §O: the PHOTO BURDEN, executed through couranr_complete_pickup_v2 ────
+     Everything above drives the TRIGGER with a bare UPDATE, which is the right
+     way to prove the trigger catches v1 as well as v2 — and it is precisely why
+     nothing above has ever executed the RPC's own `shipment_photo_required`.
+     That requirement is inside the function, so only calling the function can
+     prove it fires, and only calling the function can prove it has STOPPED
+     firing for a secure pickup.
+
+     A Secure Pickup used to owe four photographs — generic + prepack + sealed,
+     plus securement on a large load — and the generic one proves neither of the
+     two things the other two prove. 20260917160000 removes it for a GOVERNED
+     secure_pickup/protected_handoff and for nothing else.
+
+     WHAT MUST NOT MOVE, and is asserted rather than assumed:
+       * a governed STANDARD pickup still owes it,
+       * an UNGOVERNED pickup — every business delivery and every historical
+         consumer one — still owes it,
+       * a secure pickup on a genuinely large load still owes the securement
+         photo, which is about the DRIVE rather than the ceremony,
+       * the 20260917120000 ordering rules still hold when the transition is
+         made by the RPC rather than by a hand-written UPDATE.
+
+     There is no fourth "half-governed" case to test: couranr_dr_protection_
+     completeness_chk makes a level without a policy version structurally
+     impossible, so private.couranr_delivery_protection_level's null answer is
+     reached only by the all-null shape, which is O3. */
+  const drvO = driverFor("tc-driver-o@example.test");
+
+  const oFixture = async (marker, cents, level, seed = undefined) => {
+    sql(`update public.couranr_delivery_assignments
+            set assignment_state='completed', end_reason='completed', ended_at=now()
+          where driver_id='${drvO.driverId}' and assignment_state='active'`);
+    const f = await custodyChain(marker, cents, level, "at_pickup", undefined, seed);
+    assign(f, drvO);
+    return f;
+  };
+
+  /* The CAS token the real driver client sends. Read rather than assumed: the
+     seed chain and the govern() update both touch the row, and a stale guess
+     returns delivery_not_in_expected_state, which would read as a photo rule
+     passing when nothing was tested at all. */
+  const dver = (f) => sql(`select version from public.couranr_deliveries where id='${f.dlv}'`);
+  const completePickup = (f, drv) =>
+    `select public.couranr_complete_pickup_v2('${f.dlv}', ${dver(f)}, '${drv.userId}',` +
+    ` 38.8951, -77.0364, 12)`;
+  const proofTypes = (f) => sql(
+    `select coalesce(string_agg(distinct proof_type, ',' order by proof_type), 'none')
+       from public.couranr_delivery_proofs
+      where delivery_id='${f.dlv}' and proof_stage='pickup'`);
+
+  /* O1 — the whole point. Documented, sealed, confirmed, and NO generic photo. */
+  { const f = await oFixture("tc-o-secure", 5000, "secure_pickup");
+    addProof(f, "item_prepack_photo", drvO, "now() - interval '9 minutes'");
+    const sp = addProof(f, "sealed_package_photo", drvO, "now() - interval '7 minutes'");
+    sealIt(f, drvO, sp, "SEAL-O-0001");
+    consumeCode(f, 1, "now()");
+    const types = proofTypes(f);
+    t("O1a", "the secure fixture genuinely holds NO generic shipment photo",
+      types === "item_prepack_photo,sealed_package_photo", types);
+    const r = succeeds(completePickup(f, drvO), f);
+    t("O1", "a SECURE pickup completes on prepack + sealed + seal + credential, with no generic photo",
+      r.ok, r.got); }
+
+  /* O2 — the governed STANDARD level keeps the simple pickup, unchanged. */
+  { const f = await oFixture("tc-o-standard", 3000, "standard");
+    consumeCode(f, 1, "now()");
+    const r = mustRefuse(completePickup(f, drvO), "shipment_photo_required");
+    t("O2", "a governed STANDARD pickup still REQUIRES the generic shipment photo",
+      (r.got === "shipment_photo_required" || r.got === "raised:shipment_photo_required"), r.got);
+    addProof(f, "shipment_photo", drvO);
+    const done = succeeds(completePickup(f, drvO), f);
+    t("O2b", "...and completes once it has one", done.ok, done.got); }
+
+  /* O3 — HISTORICAL COMPATIBILITY. Every business delivery and every consumer
+     delivery predating the protection policy derives a null level. */
+  { const f = await oFixture("tc-o-ungoverned", null, null);
+    consumeCode(f, 1, "now()");
+    const r = mustRefuse(completePickup(f, drvO), "shipment_photo_required");
+    t("O3", "an UNGOVERNED/business pickup still REQUIRES the generic shipment photo",
+      (r.got === "shipment_photo_required" || r.got === "raised:shipment_photo_required"), r.got);
+    addProof(f, "shipment_photo", drvO);
+    const done = succeeds(completePickup(f, drvO), f);
+    t("O3b", "...and completes once it has one, exactly as before", done.ok, done.got); }
+
+  /* O4 — a secure shipment that is genuinely large still owes the securement
+     photo. Born a box truck: the vehicle requirement is in the immutable
+     commercial snapshot. */
+  { const f = await oFixture("tc-o-secure-large", 5000, "secure_pickup",
+      { vehicleRequirement: { vehicleClass: "box_truck", maxPayloadLb: 2000 } });
+    addProof(f, "item_prepack_photo", drvO, "now() - interval '9 minutes'");
+    const sp = addProof(f, "sealed_package_photo", drvO, "now() - interval '7 minutes'");
+    sealIt(f, drvO, sp, "SEAL-O-0002");
+    consumeCode(f, 1, "now()");
+    const r = mustRefuse(completePickup(f, drvO), "securement_photo_required");
+    t("O4", "a SECURE pickup on a genuinely large load still requires the securement photo",
+      (r.got === "securement_photo_required" || r.got === "raised:securement_photo_required"), r.got);
+    addProof(f, "securement_photo", drvO);
+    const done = succeeds(completePickup(f, drvO), f);
+    t("O4b", "...and completes with securement + prepack + sealed, still no generic photo",
+      done.ok, done.got); }
+
+  /* O5 — NEGATIVE CONTROL for the change itself. Dropping the generic photo
+     must not have dropped the requirement to document anything: a secure pickup
+     with no prepack photo is still refused, by the rule that owns it. */
+  { const f = await oFixture("tc-o-secure-nodoc", 5000, "secure_pickup");
+    consumeCode(f, 1, "now()");
+    const r = mustRefuse(completePickup(f, drvO), "item_prepack_photo_required");
+    t("O5", "a SECURE pickup with NO documentation at all is still refused",
+      (r.got === "item_prepack_photo_required" ||
+       r.got === "raised:item_prepack_photo_required"), r.got); }
+
+  /* O6 — the 20260917120000 ordering still holds when the RPC makes the
+     transition. The sealed photo is taken FIRST and the "pre-pack" photo
+     afterwards, which shows a sealed package rather than the item. */
+  { const f = await oFixture("tc-o-order-prepack", 5000, "secure_pickup");
+    const sp = addProof(f, "sealed_package_photo", drvO, "now() - interval '9 minutes'");
+    addProof(f, "item_prepack_photo", drvO, "now() - interval '7 minutes'");
+    sealIt(f, drvO, sp, "SEAL-O-0003");
+    consumeCode(f, 1, "now()");
+    const r = mustRefuse(completePickup(f, drvO), "prepack_photo_must_precede_sealing");
+    t("O6", "through the RPC, the prepack photo must still precede the sealing",
+      (r.got === "prepack_photo_must_precede_sealing" ||
+       r.got === "raised:prepack_photo_must_precede_sealing"), r.got); }
+
+  /* O7 — and the credential is still LAST. Taken on arrival, before anything
+     was documented or sealed. */
+  { const f = await oFixture("tc-o-order-credential", 5000, "secure_pickup");
+    addProof(f, "item_prepack_photo", drvO, "now() - interval '9 minutes'");
+    const sp = addProof(f, "sealed_package_photo", drvO, "now() - interval '7 minutes'");
+    sealIt(f, drvO, sp, "SEAL-O-0004");
+    consumeCode(f, 1, "now() - interval '30 minutes'");
+    const r = mustRefuse(completePickup(f, drvO), "pickup_credential_before_documentation");
+    t("O7", "through the RPC, the sender credential must still come after the documentation",
+      (r.got === "pickup_credential_before_documentation" ||
+       r.got === "raised:pickup_credential_before_documentation"), r.got); }
+
+  /* O8 — the audit event says which rule applied, so an Operations reader can
+     tell a secure pickup that legitimately has no generic photo from one that
+     is missing evidence. */
+  { const ev = sql(
+      `select (metadata->>'protectionLevel')||'/'||(metadata->>'genericShipmentPhotoRequired')
+         from public.couranr_delivery_events e
+         join public.couranr_deliveries d on d.id=e.delivery_id
+         join public.couranr_delivery_requests r on r.id=d.request_id
+        where e.command='complete_pickup' and r.protection_level='secure_pickup'
+          and r.protection_policy_version is not null
+        order by e.created_at desc limit 1`);
+    t("O8", "the pickup event records the level and that the generic photo was not owed",
+      ev === "secure_pickup/false", ev); }
+
+  /* O9/O10 — THE LARGE-LOAD DIVERGENCE, both sides of it.
+
+     couranr_complete_pickup_v2 resolves the count with a TYPE TEST:
+
+         case when jsonb_typeof(v_manifest->'packageCount')='number'
+                then (v_manifest->>'packageCount')::numeric
+              else nullif(v_dlv.shipment->>'packageCount','')::numeric end
+
+     `jsonb_typeof(...)='number'` does not coerce, so a manifest carrying
+     "packageCount": "3" is NOT a count to the database and it falls through to
+     the shipment root — while the fallback uses `->>`, which stringifies
+     anything, so the ROOT does accept "12". The TypeScript read both sides with
+     one coercing helper and therefore answered 3 where the server answered 12.
+     Twelve is over the threshold: the driver was shown no securement
+     requirement, uploaded nothing, pressed Confirm pickup, and the RPC answered
+     securement_photo_required with the sender in front of them.
+
+     O9 EXECUTES the expression over every shape that matters. O10 asserts the
+     shipped function still contains it, so the table below cannot drift away
+     from the function it is describing. lib/couranr/driver/states.ts
+     (resolveLargeLoadPackageCount) is held to the SAME expected row in
+     tests/couranr-driver-execution.test.ts — one table, two engines. */
+  { const CASES = [
+      // [manifest jsonb, shipment jsonb, expected resolved count as text]
+      [`'{"packageCount":12}'`,   `'{"packageCount":3}'`,    "12"],
+      [`'{"packageCount":3}'`,    `'{"packageCount":12}'`,   "3"],
+      // THE DIVERGENT ONE. A string is not a number to jsonb_typeof.
+      [`'{"packageCount":"3"}'`,  `'{"packageCount":12}'`,   "12"],
+      // ...and the mirror: the root DOES accept a numeric string, via ->>.
+      [`'{}'`,                    `'{"packageCount":"12"}'`, "12"],
+      [`'null'`,                  `'{"packageCount":7}'`,    "7"],
+      [`'{}'`,                    `'{}'`,                    ""],
+    ];
+    const got = CASES.map(([m, s]) => sql(
+      `select coalesce((case
+          when jsonb_typeof((${m}::jsonb)->'packageCount')='number'
+            then ((${m}::jsonb)->>'packageCount')::numeric
+          else nullif((${s}::jsonb)->>'packageCount','')::numeric
+        end)::text, '')`)).join("|");
+    const want = CASES.map((c) => c[2]).join("|");
+    t("O9", "the SQL count precedence resolves manifest-number-first, root-string-second",
+      got === want, `${got} vs ${want}`);
+
+    const src = sql(
+      `select (pg_get_functiondef(p.oid) ~ 'jsonb_typeof\\(v_manifest->''packageCount''\\)=''number''')::text
+         from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+        where n.nspname='public' and p.proname='couranr_complete_pickup_v2' limit 1`);
+    t("O10", "the shipped function still resolves the count with that exact type test",
+      src === "true", src); }
 
   /* ── §F: the custody chain CLOSES at handoff ────────────────────────────
      A tamper-evident seal nobody looks at is a sticker. Its whole value is the
@@ -1667,6 +1898,46 @@ try {
   t("A15", "and the columns survive the refusal",
     sql(`select count(*) from information_schema.columns where table_schema='public'
          and table_name='couranr_delivery_requests' and column_name='declared_value_cents'`) === "1");
+
+  /* ── §O rollback: the way BACK is a real state, not a claim ─────────────
+     A rollback file that has never been executed is a text file. This runs the
+     real one and reads what the function became, then re-applies the forward
+     migration so the database is left where the rest of the suite expects it.
+     Both are create-or-replace over one function, so the round trip touches no
+     row. Last in the file on purpose: nothing after it depends on the ordering. */
+  const runSql = (file) => execFileSync(
+    path.join(process.env.COURANR_PGBIN || "/usr/lib/postgresql/16/bin", "psql"), [
+      "-h", "127.0.0.1", "-p", String(process.env.COURANR_DISPOSABLE_PORT || 55432),
+      "-U", "postgres", "-d", "couranr_disposable", "-q", "-v", "ON_ERROR_STOP=1", "-f", file,
+    ], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  const hasSecureBranch = () => sql(
+    `select (pg_get_functiondef(p.oid) ~ 'not v_secure and not exists')::text
+       from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+      where n.nspname='public' and p.proname='couranr_complete_pickup_v2' limit 1`);
+  const execPriv = () => sql(
+    `select has_function_privilege('anon',
+       'public.couranr_complete_pickup_v2(uuid,integer,uuid,numeric,numeric,numeric)','EXECUTE')::text`);
+
+  { let ok = false, detail = "";
+    try {
+      runSql("supabase/rollbacks/20260917160000_couranr_secure_pickup_photo_burden.rollback.sql");
+      detail = hasSecureBranch();
+      ok = detail === "false";
+    } catch (e) { detail = `refused:${String(e.stderr || e.message).replace(/\s+/g," ").slice(0,80)}`; }
+    t("O11", "the paired rollback RUNS and restores the unconditional generic photo",
+      ok, detail); }
+
+  { let ok = false, detail = "";
+    try {
+      runSql("supabase/migrations/20260917160000_couranr_secure_pickup_photo_burden.sql");
+      // `create or replace` RESETS grants, and pg_default_acl publishes every
+      // new public function to anon — so the re-apply must leave anon with NO
+      // execute, on both sides of the round trip.
+      detail = `${hasSecureBranch()}/anon:${execPriv()}`;
+      ok = detail === "true/anon:false";
+    } catch (e) { detail = `failed:${String(e.stderr || e.message).replace(/\s+/g," ").slice(0,80)}`; }
+    t("O12", "re-applying the forward migration restores it, still unreachable by anon",
+      ok, detail); }
 
   console.log(`\n  probe: ${pass} passed, ${fail} failed`);
 } finally { down({ quiet: true }); }

@@ -2023,6 +2023,141 @@ describe("secure pickup (above $30.00)", () => {
     // The code is offered immediately, exactly as it always has been.
     expect(screen.getByText(/enter six-digit code instead/i)).toBeTruthy();
   });
+
+  /* ── closure O: the generic pickup photo is not asked of a secure pickup ── */
+
+  it("never offers the generic pickup photo, and never blocks on it", async () => {
+    /* THE DEFECT: a Secure Pickup asked for the generic shipment photo on top of
+       the prepack photo and the sealed-package photo — three photographs before
+       the seal number, four on a large load. The generic one proves neither of
+       the things the other two prove. couranr_complete_pickup_v2 stopped
+       requiring it for a governed secure level in 20260917160000; this list and
+       that function have to agree, or the driver is blocked on a photo the
+       server does not want. */
+    fetchMyProof.mockResolvedValue(recordedProofs("item_prepack_photo", "sealed_package_photo"));
+    const { container } = render(
+      <PickupFlow assigned={secureView()} location={usableLocation()} onCompleted={vi.fn()} />
+    );
+
+    await waitFor(() => expect(screen.getByText("Secure pickup")).toBeTruthy());
+    // The field is not merely optional — it is not on screen, because a photo
+    // field on screen is a photo a driver takes.
+    expect(screen.queryByLabelText(/photo of the pickup/i)).toBeNull();
+    expect(container.textContent ?? "").not.toMatch(
+      /take one photo showing everything you are collecting/i
+    );
+    /* ...and it is not in the blocker list either. Matched on the blocker's own
+       wording rather than on "photo": the secure blockers legitimately mention
+       photographs, so a broad match would pass on the item and sealed prompts
+       and prove nothing about the generic one. */
+    expect(container.textContent ?? "").not.toMatch(/pickup photo to sync/i);
+  });
+
+  it("still asks a GOVERNED STANDARD delivery for the generic pickup photo", async () => {
+    /* The level below secure keeps the simple pickup exactly as it shipped. A
+       change scoped to "governed" rather than to "secure" would have caught this
+       one too, and the server would still have demanded the photo. */
+    fetchMyProof.mockResolvedValue(ok({ proof: [] }));
+    const { container } = render(
+      <PickupFlow
+        assigned={
+          assignedView({
+            fulfillmentState: "at_pickup",
+            protection: {
+              level: "standard",
+              requiresPrepackPhoto: false,
+              requiresSealedPackagePhoto: false,
+              requiresSecuritySeal: false,
+              credentialAfterDocumentation: false,
+              requiresSealCheckAtDropoff: false,
+            },
+          } as never)
+        }
+        location={usableLocation()}
+        onCompleted={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(screen.getByText("Verify pickup")).toBeTruthy());
+    expect(screen.queryByText("Secure pickup")).toBeNull();
+    expect(container.textContent ?? "").toMatch(
+      /take one photo showing everything you are collecting/i
+    );
+  });
+
+  it("still asks a SECURE delivery for the securement photo on a large load", async () => {
+    /* The securement photo is about the DRIVE, not the custody ceremony, so it
+       survives at every level. Dropping the generic photo must not have taken it
+       with it — the RPC still answers securement_photo_required. */
+    fetchMyProof.mockResolvedValue(recordedProofs("item_prepack_photo", "sealed_package_photo"));
+    const { container } = render(
+      <PickupFlow
+        assigned={secureView({
+          vehicleRequirement: { vehicleClass: "box_truck", maxPayloadLb: 4000 },
+        })}
+        location={usableLocation()}
+        onCompleted={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(screen.getByText("Secure pickup")).toBeTruthy());
+    expect(screen.getByText("Securement photo")).toBeTruthy();
+    expect(container.textContent ?? "").toMatch(/photo of the secured load/i);
+    /* ...and the generic one is still absent even though its card now renders.
+       This is the ONLY assertion that reaches the inner gate: for a secure
+       pickup that is not large the whole card is gone, so a field left inside it
+       is unreachable and a test using that fixture cannot see the difference.
+       Asserted on the FIELD, not on the card's description, because the
+       description is the thing that changes for a large secure load. */
+    expect(screen.queryByLabelText(/photo of the pickup/i)).toBeNull();
+    expect(container.textContent ?? "").not.toMatch(
+      /fit the full pickup in the frame/i
+    );
+  });
+
+  it("completes a secure pickup with no generic photo once the ceremony is done", async () => {
+    /* The end-to-end claim, at the only level a jsdom test can make it: the
+       Confirm pickup button is ENABLED with prepack + sealed + seal + code and no
+       generic photo, and completePickup is actually called. The disposable-
+       database counterpart (§O in e2e/disposable/consumerTrustCustody.mjs)
+       proves the server then accepts it. */
+    /* `pickupCredentialVerified` is how a reload learns the sender already
+       confirmed, so the flow can be driven to the Confirm button without
+       re-entering a six-digit code this test is not about. */
+    fetchMyProof.mockResolvedValue(
+      ok({
+        proof: [
+          { proofId: "00000000-0000-4000-8000-000000000001", proofStage: "pickup",
+            proofType: "item_prepack_photo" },
+          { proofId: "00000000-0000-4000-8000-000000000002", proofStage: "pickup",
+            proofType: "sealed_package_photo" },
+        ],
+        pickupCredentialVerified: true,
+      })
+    );
+    recordDeliverySeal.mockResolvedValue(
+      ok({ seal: { sealId: "seal-1", sealIdentifier: "CR-SEAL-0099" } })
+    );
+    completePickup.mockResolvedValue(ok({ delivery: { fulfillmentState: "picked_up" } }));
+    const user = userEvent.setup();
+    const onCompleted = vi.fn();
+    render(
+      <PickupFlow assigned={secureView()} location={usableLocation()} onCompleted={onCompleted} />
+    );
+
+    await waitFor(() => expect(screen.getByText("Secure pickup")).toBeTruthy());
+    const sealField = screen.getByLabelText(/seal number/i) as HTMLInputElement;
+    await waitFor(() => expect(sealField.disabled).toBe(false));
+    await user.type(sealField, "CR-SEAL-0099");
+    await user.click(screen.getByRole("button", { name: /record seal/i }));
+    await waitFor(() => expect(screen.getByText(/Seal CR-SEAL-0099 is recorded/i)).toBeTruthy());
+
+    const confirm = screen.getByRole("button", { name: /confirm pickup/i }) as HTMLButtonElement;
+    await waitFor(() => expect(confirm.disabled).toBe(false));
+    await user.click(confirm);
+    await waitFor(() => expect(completePickup).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onCompleted).toHaveBeenCalledTimes(1));
+  });
 });
 
 

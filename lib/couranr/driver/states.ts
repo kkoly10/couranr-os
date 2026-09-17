@@ -303,6 +303,56 @@ export const DROPOFF_EXCEPTION_REASON_LABELS: Record<string, string> = {
 };
 
 /**
+ * THE package count the large-load predicate is allowed to read, resolved the
+ * way `couranr_complete_pickup_v2` resolves it and no other way.
+ *
+ * The SQL is:
+ *
+ *     case when jsonb_typeof(v_manifest->'packageCount')='number'
+ *            then (v_manifest->>'packageCount')::numeric
+ *          else nullif(v_dlv.shipment->>'packageCount','')::numeric end
+ *
+ * Two properties of that are load-bearing and were BOTH missing here:
+ *
+ *  1. The manifest wins ONLY when its count is a real JSON number.
+ *     `jsonb_typeof(...)='number'` is a type test, not a coercion, so a manifest
+ *     carrying `"packageCount": "3"` is not a count at all to the database and
+ *     it falls through to the shipment root. TypeScript that coerced the string
+ *     accepted 3 where the server read 12 — and 12 is over the threshold. The
+ *     driver was shown no securement requirement, uploaded nothing, pressed
+ *     Confirm pickup, and the RPC answered `securement_photo_required` with the
+ *     sender standing in front of them.
+ *  2. The fallback is `->>`, which stringifies whatever type is there, so the
+ *     shipment ROOT does accept a numeric string. The asymmetry is real and is
+ *     reproduced rather than tidied away.
+ *
+ * `couranr_build_pickup_manifest` takes `p_package_count integer`, so a manifest
+ * it wrote can only carry a number or nothing. Nothing constrains the inner
+ * types of `pickup_manifest` itself — the column CHECK only requires a jsonb
+ * object — so a legacy row, a hand-written manifest or any future writer can
+ * still produce the divergent shape.
+ */
+export function resolveLargeLoadPackageCount(
+  manifestPackageCount: unknown,
+  shipmentPackageCount: unknown
+): number | null {
+  // jsonb_typeof(...)='number' — a type test. No string is accepted here.
+  if (typeof manifestPackageCount === "number" && Number.isFinite(manifestPackageCount)) {
+    return manifestPackageCount;
+  }
+  // nullif(shipment->>'packageCount','')::numeric — text out of jsonb, so a
+  // numeric string IS a count on this side.
+  if (typeof shipmentPackageCount === "number" && Number.isFinite(shipmentPackageCount)) {
+    return shipmentPackageCount;
+  }
+  if (typeof shipmentPackageCount === "string" && shipmentPackageCount.trim() !== "") {
+    const n = Number(shipmentPackageCount);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+/**
  * Whether the stored shipment triggers the large-or-unusual pickup
  * requirements.
  *
@@ -310,14 +360,22 @@ export const DROPOFF_EXCEPTION_REASON_LABELS: Record<string, string> = {
  * vehicle class the plan committed to and the declared weight — never from a
  * browser boolean. A driver who could assert "this is not unusual" could skip
  * the securement photo on exactly the load that most needs it.
+ *
+ * `packageCount` is the SHIPMENT-ROOT value and `manifestPackageCount` the
+ * frozen pickup manifest's, kept apart on purpose: collapsing them before this
+ * function is what let the two sides disagree. A caller holding only an
+ * already-resolved count may still pass it as `packageCount` alone — that is
+ * exactly the `else` branch of the SQL.
  */
 export function requiresLargeShipmentProof(input: {
   vehicleClass?: string | null;
   declaredWeightLb?: number | null;
   packageCount?: number | null;
+  manifestPackageCount?: unknown;
 }): boolean {
   const heavyClass = input.vehicleClass === "box_truck";
   const heavyLoad = typeof input.declaredWeightLb === "number" && input.declaredWeightLb >= 150;
-  const manyPackages = typeof input.packageCount === "number" && input.packageCount >= 10;
+  const count = resolveLargeLoadPackageCount(input.manifestPackageCount, input.packageCount);
+  const manyPackages = count !== null && count >= 10;
   return heavyClass || heavyLoad || manyPackages;
 }

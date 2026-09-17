@@ -31,10 +31,29 @@ assertServerOnly("lib/couranr/driver/proof.ts");
  * file that is not there.
  */
 
+/**
+ * `item_prepack_photo` and `sealed_package_photo` were added to the DATABASE
+ * vocabulary by 20260915090000 (couranr_dp_type_chk / _proof_type_check) and are
+ * demanded of every secure pickup by the custody trigger, but this allow-list
+ * was never extended — so `prepareProofUpload` answered
+ * `proof_type_not_valid_for_stage` and a Secure Pickup could not upload either
+ * of the two photographs it cannot complete without. The custody ceremony was
+ * unreachable in the product from the day it shipped. This list and the CHECK
+ * constraint are the two halves of one vocabulary and must be extended together.
+ */
 const PROOF_TYPES_BY_STAGE: Record<ProofStage, readonly string[]> = {
-  pickup: ["shipment_photo", "condition_photo", "securement_photo"],
+  pickup: [
+    "shipment_photo",
+    "condition_photo",
+    "securement_photo",
+    "item_prepack_photo",
+    "sealed_package_photo",
+  ],
   pickup_discrepancy: ["discrepancy_evidence"],
-  dropoff: ["delivery_photo", "signature"],
+  // `dropoff_seal_photo` is the same omission one stage later: 20260917140000
+  // added it to the CHECK and made it mandatory for a secure drop-off, and
+  // DropoffProof.tsx uploads it, but this list refused it.
+  dropoff: ["delivery_photo", "signature", "dropoff_seal_photo"],
   return: ["return_condition_photo"],
 };
 
