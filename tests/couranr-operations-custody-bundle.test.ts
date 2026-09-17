@@ -566,8 +566,32 @@ describe("declared_value_cents is Operations-only", () => {
    */
   it("the driver projection excludes it, both in source and in what it builds", () => {
     const src = readFileSync(path.join(ROOT, "lib/couranr/dispatch/projection.ts"), "utf8");
-    expect(src).not.toMatch(/declared_value_cents/);
-    expect(src).not.toMatch(/declaredValue/);
+    /* The literal DOES appear in that file — in PROJECTION_FORBIDDEN_SUBSTRINGS,
+       which is what actively bars it from the driver payload. A blanket
+       "must not contain the string" assertion forbids the guard itself, which
+       is exactly backwards: it passes on a file with no protection and fails on
+       the one that protects hardest.
+
+       COMMENTS ARE STRIPPED FIRST. Locating the list by its first mention found
+       a sentence ABOUT the list rather than the list — the same way a migration
+       test once passed by matching the prose describing a rule instead of the
+       rule. */
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    /* Anchored on the ARRAY OPENER, not the identifier. The declaration reads
+       `PROJECTION_FORBIDDEN_SUBSTRINGS: readonly string[] = [`, so slicing to
+       the next "]" stops inside `string[]` and captures an empty list — which
+       then reports "the guard is missing" about a guard that is right there. */
+    const listStart = code.indexOf("PROJECTION_FORBIDDEN_SUBSTRINGS");
+    const arrayStart = code.indexOf("= [", listStart);
+    const forbiddenList = code.slice(arrayStart, code.indexOf("];", arrayStart));
+    expect(forbiddenList, "the driver projection should BAR the declared value").toMatch(
+      /declared_value_cents/
+    );
+    const withoutList = code.replace(forbiddenList, "");
+    expect(withoutList, "the driver projection must not read the declared value").not.toMatch(
+      /declared_value_cents/
+    );
+    expect(withoutList).not.toMatch(/declaredValueCents\s*[:=]/);
 
     const projection = buildAssignedDeliveryProjection({
       delivery: {
