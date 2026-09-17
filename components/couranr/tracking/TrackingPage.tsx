@@ -26,7 +26,12 @@ import {
   STAGE_TONES,
   type TrackingStage,
 } from "@/lib/couranr/tracking/states";
-import { attestRecipientAdult, fetchProofUrl, fetchTracking } from "./client";
+import {
+  attestRecipientAdult,
+  fetchProofUrl,
+  fetchTracking,
+  issueRecipientDropoffCode,
+} from "./client";
 
 /**
  * PUB-006 — secure live tracking, with CUS-006 (#proof) and CUS-008 (#access).
@@ -164,6 +169,7 @@ export function TrackingPage({ token }: { token: string }) {
             tracking={load.tracking}
             onRecorded={() => void reload()}
           />
+          <RecipientCodeCard token={token} tracking={load.tracking} />
           <ProgressRail stage={load.tracking.stage} />
           <ProofSection token={token} tracking={load.tracking} />
           <AccessSection tracking={load.tracking} />
@@ -171,6 +177,94 @@ export function TrackingPage({ token }: { token: string }) {
         </>
       ) : null}
     </Stack>
+  );
+}
+
+/**
+ * The recipient's half of the handoff.
+ *
+ * WHY THIS IS A BUTTON AND NOT A NUMBER ON THE PAGE. The PIN is minted on
+ * demand and shown once, because the server keeps only a keyed digest of it.
+ * Rendering it on every page load would mean re-minting on every load, which
+ * would churn the credential and destroy the supersede trail that makes "which
+ * code was this" answerable during a claim.
+ *
+ * AND WHY IT IS NEVER EMAILED. An emailed PIN sits in whatever mailbox can read
+ * that address — which is exactly the assurance the tracking link already
+ * carries, so it would add nothing while looking like it added something. The
+ * copy says so plainly, because a recipient who expects it by email will go
+ * looking for it in the wrong place at the door.
+ */
+function RecipientCodeCard({
+  token,
+  tracking,
+}: {
+  token: string;
+  tracking: TrackingProjection;
+}) {
+  const [code, setCode] = React.useState<string | null>(null);
+  const [status, setStatus] = React.useState<"idle" | "minting" | "too_soon" | "failed">("idle");
+
+  /* Governed consumer deliveries only, and only while a handoff can still
+     happen. The same window the server enforces — stated here so the control
+     does not appear on a page where pressing it can only produce a refusal. */
+  const settled =
+    tracking.stage === "delivered" || tracking.stage === "return";
+  if (!tracking.recipientAdultAttestationRequired || settled) return null;
+
+  async function mint() {
+    setStatus("minting");
+    const result = await issueRecipientDropoffCode(token);
+    if ("error" in result) {
+      setStatus(result.error === "too_soon" ? "too_soon" : "failed");
+      return;
+    }
+    setCode(result.code);
+    setStatus("idle");
+  }
+
+  return (
+    <Card>
+      <CardHeader title="Your handoff code" />
+      <Stack gap={3}>
+        <Text>
+          The driver will ask for a six-digit code when they arrive. Get yours
+          here when you are ready to receive the delivery. Couranr never sends
+          this code by email or text.
+        </Text>
+        {code ? (
+          <Stack gap={2}>
+            <Text>
+              <strong
+                style={{ fontSize: "1.75rem", letterSpacing: "0.35em" }}
+                data-testid="recipient-dropoff-code"
+              >
+                {code}
+              </strong>
+            </Text>
+            <Text>
+              Shown once. If you lose it, get a new code — the old one stops
+              working.
+            </Text>
+          </Stack>
+        ) : (
+          <Button onClick={() => void mint()} disabled={status === "minting"}>
+            {status === "minting" ? "Getting your code…" : "Get my code"}
+          </Button>
+        )}
+        {status === "too_soon" ? (
+          <Alert tone="warning" title="Just a moment">
+            You just got a code. Wait a few seconds before asking for another.
+          </Alert>
+        ) : null}
+        {status === "failed" ? (
+          <Alert tone="danger" title="Could not get your code">
+            Couranr could not issue a code just now. Your link is still valid —
+            try again in a moment.
+          </Alert>
+        ) : null}
+      </Stack>
+    </Card>
   );
 }
 

@@ -280,6 +280,7 @@ describe("canonical routes cannot leak a database detail", () => {
       "app/api/couranr/pay/[token]/route.ts",
       "app/api/couranr/stripe/webhook/route.ts",
       "app/api/couranr/track/[token]/adult-attestation/route.ts",
+      "app/api/couranr/track/[token]/dropoff-code/route.ts",
       "app/api/couranr/track/[token]/proof/[proofId]/url/route.ts",
       "app/api/couranr/track/[token]/route.ts",
     ]);

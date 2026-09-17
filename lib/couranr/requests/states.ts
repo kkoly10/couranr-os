@@ -95,6 +95,9 @@ export type RequestCommand = (typeof REQUEST_COMMANDS)[number];
  *
  * `record_recipient_adult_attestation` is likewise a recipient-capability
  * audit fact, not an actor-invocable request-state transition.
+ *
+ * `issue_recipient_dropoff_code` is the third of that kind: the recipient
+ * minting their own handoff credential leaves an audit fact and moves nothing.
  */
 export const REQUEST_EVENT_COMMANDS = [
   ...REQUEST_COMMANDS,
@@ -103,6 +106,7 @@ export const REQUEST_EVENT_COMMANDS = [
   "apply_promotional_credit",
   "record_consumer_trust",
   "record_recipient_adult_attestation",
+  "issue_recipient_dropoff_code",
 ] as const;
 export type RequestEventCommand = (typeof REQUEST_EVENT_COMMANDS)[number];
 

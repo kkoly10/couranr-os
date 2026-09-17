@@ -120,7 +120,11 @@ export const LEGAL_DOCUMENTS: Readonly<Record<LegalDocumentId, LegalDocumentMeta
     navLabel: "Prohibited items",
     summary: "What Couranr will not carry, and how Couranr decides.",
     version: "couranr-prohibited-items-policy-draft-2026-09",
-    acceptanceIsRecorded: false,
+    /* The shipment certification names this document by name, so accepting it
+       accepts both. 20260917170000 adds sender_prohibited_items_version and
+       couranr_record_consumer_trust stamps it — the claim on the page is only
+       honest because that column exists. */
+    acceptanceIsRecorded: true,
   },
   privacy: {
     id: "privacy",

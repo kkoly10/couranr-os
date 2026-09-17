@@ -191,7 +191,9 @@ describe("server-only modules are unreachable from client code", () => {
       "lib/couranr/hosted/commands.ts",
       // Holds the Anthropic API key inside the client it constructs, and the
       // system prompt that governs what a model is told about merchant text.
+      "lib/couranr/identity/commands.ts",
       "lib/couranr/identity/recipientIdentity.ts",
+      "lib/couranr/identity/stripeIdentity.ts",
       "lib/couranr/intake/anthropicProvider.ts",
       "lib/couranr/intake/commands.ts",
       "lib/couranr/intake/interpret.ts",
@@ -422,6 +424,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/pay/[token]/route.ts",
       "app/api/couranr/stripe/webhook/route.ts",
       "app/api/couranr/track/[token]/adult-attestation/route.ts",
+      "app/api/couranr/track/[token]/dropoff-code/route.ts",
       "app/api/couranr/track/[token]/proof/[proofId]/url/route.ts",
       "app/api/couranr/track/[token]/route.ts",
     ]);
@@ -538,6 +541,14 @@ describe("canonical server routes do not import the browser client", () => {
     [
       "app/api/couranr/track/[token]/adult-attestation/route.ts",
       { shape: /isWellFormedTrackingToken\(/, redeem: /attestRecipientAdult\(/ },
+    ],
+    [
+      // The recipient's own handoff credential. Same contract as the
+      // attestation route: the tracking token IS the authorization, shape is
+      // checked before anything is hashed, and the command re-resolves it in
+      // SQL as a live, unexpired, recipient-audience credential.
+      "app/api/couranr/track/[token]/dropoff-code/route.ts",
+      { shape: /isWellFormedTrackingToken\(/, redeem: /issueRecipientDropoffCode\(/ },
     ],
     [
       "app/api/couranr/track/[token]/proof/[proofId]/url/route.ts",

@@ -156,11 +156,36 @@ describe("the registry is the only place a version lives", () => {
     expect(senderShipmentTermsCitation()).toEqual(legalCitation(SAME_DAY_SHIPMENT_TERMS_ID));
   });
 
-  it("only the Same Day terms claim an acceptance is recorded", () => {
-    // Saying "we recorded that you accepted this" about a document no command
-    // writes would be a false statement on a legal page.
+  it("only documents a command actually records may claim an acceptance", () => {
+    /* Saying "we recorded that you accepted this" about a document no command
+       writes would be a false statement on a legal page. TWO documents claim it
+       now, and the claim is checked against the SQL below rather than against
+       this list — the list is what the page says, the migration is what is
+       true, and the point of the pairing is that they cannot drift. */
     const recording = LEGAL_DOCUMENT_LIST.filter((d) => d.acceptanceIsRecorded).map((d) => d.id);
-    expect(recording).toEqual([SAME_DAY_SHIPMENT_TERMS_ID]);
+    expect([...recording].sort()).toEqual(["prohibited-items", SAME_DAY_SHIPMENT_TERMS_ID].sort());
+  });
+
+  it("every document claiming a recorded acceptance is stamped by the command", () => {
+    /* The guard for the claim above. Read the stamped version OUT of the SQL
+       rather than asserting the SQL contains a string this test also hardcodes
+       — that passes if both are wrong, which is the failure mode this repo's
+       protection-version parity test already exists to prevent. */
+    const sql = readFileSync(
+      path.join(
+        path.resolve(__dirname, ".."),
+        "supabase/migrations/20260917170000_couranr_prohibited_items_acceptance.sql"
+      ),
+      "utf8"
+    );
+    const stamped = /sender_prohibited_items_version='([^']+)'/.exec(sql);
+    expect(stamped, "the command stamps no prohibited-items version").toBeTruthy();
+    expect(stamped?.[1]).toBe(LEGAL_DOCUMENTS["prohibited-items"].version);
+    expect(LEGAL_DOCUMENTS["prohibited-items"].acceptanceIsRecorded).toBe(true);
+
+    /* And the freeze must cover it, or a recorded acceptance could be rewritten
+       after tender — which is the whole property that makes it evidence. */
+    expect(sql).toMatch(/old\.sender_prohibited_items_version is not null/);
   });
 });
 
