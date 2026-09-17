@@ -75,7 +75,9 @@ position. When a claim matters, read the thing itself.
 
 ## Project status — read this before doing anything
 
-**NOT launch-ready. NO-GO for public launch, production customer onboarding, or real customer data** (as of 2026-07). This is *not* a greenfield pre-launch repo — the connected Supabase project holds real rows: 42 `orders`, 29 `deliveries`, 94 `addresses`, 28 `rentals`, 46 renter-license files. Treat the database as production data with production consequences.
+**NOT launch-ready. NO-GO for public launch, production customer onboarding, or real customer data** (re-confirmed 2026-09-17). This is *not* a greenfield pre-launch repo — the connected Supabase project holds real rows: 42 `orders`, 29 `deliveries`, 94 `addresses`, 28 `rentals`, 46 renter-license files. Those legacy counts were re-measured on 2026-09-17 and are unchanged.
+
+**The CANONICAL tables now hold production rows too** — 3 `couranr_delivery_requests` and 1 `couranr_deliveries` — so "the new tables are empty, I can experiment" is no longer true anywhere. Treat the whole database as production data with production consequences.
 
 The four P0 database issues earlier revisions of this file listed as open are
 **all CLOSED**, verified at `401b3ee` by catalog query:
@@ -83,7 +85,7 @@ The four P0 database issues earlier revisions of this file listed as open are
 | # | the old claim | measured now |
 |---|---|---|
 | 1 | the owning customer can rewrite `orders` money columns | `authenticated` holds **no** UPDATE/INSERT/DELETE on `orders`; policies are SELECT-only plus an `is_admin()`-gated ALL |
-| 2 | `addresses`, `delivery_admin_events`, `stripe_webhook_events`, `rental_verifications` have RLS disabled with full `anon` DML | all four have `relrowsecurity = true`, zero policies, and `anon` holds no SELECT/INSERT/UPDATE/DELETE. **0 of 54 public tables have RLS disabled** |
+| 2 | `addresses`, `delivery_admin_events`, `stripe_webhook_events`, `rental_verifications` have RLS disabled with full `anon` DML | all four have `relrowsecurity = true`, zero policies, and `anon` holds no SELECT/INSERT/UPDATE/DELETE. **0 of 96 public tables have RLS disabled** (re-measured 2026-09-17) |
 | 3 | the `delivery-photos` bucket is public with no policies | `public = false`, 10 MB `file_size_limit`, MIME allow-list of jpeg/png/webp/heic |
 | 4 | the assigned driver can rewrite `deliveries` status and fee columns | `authenticated` holds **no** UPDATE/INSERT/DELETE on `deliveries` |
 
@@ -96,8 +98,12 @@ table GRANT, not the policy, is what actually closed them.
 - Two legacy API routes have no gate: `app/api/auto/vehicles` (read-only GET)
   and `app/api/special-request` (POST that only `console.log`s, which puts
   caller-supplied contact details into server logs).
-- **56 legacy page routes and 26 legacy `auto`/`docs` API routes are still
-  live.** The legacy runtime has not been cut over.
+- **The legacy runtime has not been cut over.** Legacy page routes and legacy
+  `auto`/`docs` API routes are both still live. The counts this line used to
+  pin were measured with a narrower glob than the one that reproduces them,
+  so measure rather than quote:
+  `find app -name page.tsx -not -path '*(couranr)*' | wc -l` and the matching
+  `find app/api -name route.ts -not -path '*/couranr/*' | wc -l`.
 - Two pricing engines are simultaneously reachable — the canonical one and
   `lib/delivery/policy.ts` behind the legacy courier routes.
 
@@ -171,13 +177,13 @@ npm run check        # lint && typecheck && test:run && build
 npm run ci:local     # THE GATE — see "GitHub Actions is NOT the gate" below
 ```
 
-There are **36 scripts**. The platform baseline specifies 32. Of the 13 gate commands the release matrix names, most now EXIST and pass: `check:routes`, `check:rls`, `check:legacy-imports`, `check:migrations`, `check:gates:controls`, `db:reset`, `db:test`, `test:deploy-safety`. Still absent: `test:security` and `test:payments`. Do not invent a script that pretends to pass — a check that cannot fail is worse than no check.
+There are **70 scripts** (measured 2026-09-17). The platform baseline specifies 32. Of the 13 gate commands the release matrix names, most now EXIST and pass: `check:routes`, `check:rls`, `check:legacy-imports`, `check:migrations`, `check:gates:controls`, `db:reset`, `db:test`, `test:deploy-safety`. Still absent: `test:security` and `test:payments`. Do not invent a script that pretends to pass — a check that cannot fail is worse than no check.
 
-**`npm run build` succeeds with no `.env.local` present** — verified twice at `401b3ee` in a container that had none, compiling 91 static pages. The old failure (a module-scope Supabase client whose constructor threw `supabaseUrl is required` during page-data collection) is fixed for the build path. `lib/supabaseAdmin.ts` is the lazy pattern to copy. ~61 module-scope `createClient(` call sites still exist across `app/` and `lib/`; they no longer break the build, but they remain the reason a route can hold a client it never re-scopes.
+**`npm run build` succeeds with no `.env.local` present** — verified twice at `401b3ee` in a container that had none, compiling 88 static pages (measured 2026-09-17; it was 91 before the legacy trim). The old failure (a module-scope Supabase client whose constructor threw `supabaseUrl is required` during page-data collection) is fixed for the build path. `lib/supabaseAdmin.ts` is the lazy pattern to copy. Module-scope `createClient(` call sites still exist across `app/` and `lib/` — count them with `grep -rl 'createClient(' app lib` rather than quoting a number, because this one has moved every time it was measured; they no longer break the build, but they remain the reason a route can hold a client it never re-scopes.
 
 Tests use **Vitest**, not Jest and not `node:test`. Files live in `tests/*.test.ts(x)`, alias `@` → repo root. **jsdom IS configured** — `environmentMatchGlobs` applies it to `tests/**/*.dom.test.tsx` while everything else stays in `node` — and **@testing-library/react and @testing-library/user-event ARE installed**. Browser tests run through **Playwright** from `e2e/run.mjs` (groups A–Q), not through a Vitest project. `testTimeout` is 15s because a jsdom render can miss the 5s default under parallel load. There is still no Vitest `projects` config, so the four `test:*` project suites the baseline names do not exist.
 
-**`db:test` NOW EXISTS** (`node e2e/disposable/dbTest.mjs`, 35/35 passing, plus `check:rls` for the privilege subset) and stands up its own disposable PostgreSQL, so calling a `couranr_*` command is a one-liner rather than a manual cluster build. It is still not wired into `npm run check`, so `npm run check` alone still executes no `couranr_*` command. There is still no pgTAP — which is mandatory before a SQL command is done, and "Execution verification" below explains what it cost to learn that. `e2e/` drives the browser; nothing yet drives the SQL.
+**`db:test` NOW EXISTS** (`node e2e/disposable/dbTest.mjs`, plus `check:rls` for the privilege subset — run it for the current count; measured 38/38 on 2026-09-17) and stands up its own disposable PostgreSQL, so calling a `couranr_*` command is a one-liner rather than a manual cluster build. It is still not wired into `npm run check`, so `npm run check` alone still executes no `couranr_*` command. There is still no pgTAP — which is mandatory before a SQL command is done, and "Execution verification" below explains what it cost to learn that. `e2e/` drives the browser; nothing yet drives the SQL.
 
 **Runtime versions drift two ways now:** local Node 22, **CI Node 24** (`.github/workflows/ci.yml:35`) which matches the target. The old CI-Node-20 mismatch is fixed. There is still no `.nvmrc`, `.node-version`, `engines`, or `packageManager`, and `package-lock.json` is lockfileVersion 2 against a target of 3 — so a dependency whose engines require ≥24 installs in CI and fails locally.
 
@@ -256,7 +262,7 @@ because Actions has never once executed that file.
 
 ## Migrations and the database
 
-**Migrations exist and are fully applied.** `supabase/migrations/` holds **48 forward migrations**, with paired rollbacks in a separate `supabase/rollbacks/` directory (48 files), and the live project reports **48 applied**. Every forward migration has an applied row. Still missing: generated types (`types/database.generated.ts` does not exist, so every Supabase query is untyped) and a reproducible `db:reset`. The live database now has **54 public tables and 6 views**, of which **18 are `couranr_*`** with **62 `couranr_*` functions**.
+**Migrations exist and are fully applied.** `supabase/migrations/` holds **126 forward migrations**, with paired rollbacks in a separate `supabase/rollbacks/` directory (126 files), and the live project reports **125 applied** (measured 2026-09-17). The one unapplied file is the newest; that gap is normal mid-batch and is the number to re-check first. **Count these, never quote them** — `ls supabase/migrations/*.sql | wc -l` and, joining on NAME not the filename prefix, `select count(*) from supabase_migrations.schema_migrations`. Every forward migration has an applied row. Still missing: generated types (`types/database.generated.ts` does not exist, so every Supabase query is untyped) and a reproducible `db:reset`. The live database now has **96 public tables and 6 views**, of which **58 are `couranr_*`**, with **230 `couranr_*` functions in `public` and 50 in `private`** (measured 2026-09-17).
 
 Do not write a migration without it being reviewed first. When migrations do land they must be additive (`add column if not exists`, `create table if not exists`) and must never drop a table, drop a column, or delete data.
 
@@ -268,13 +274,13 @@ Known code/database drift: `business_pricing_profiles` is queried by `lib/busine
 
 | Pattern | Where | Note |
 |---|---|---|
-| Browser cookie client | `lib/supabaseClient.ts:6` | `"use client"`, **47 importers** |
+| Browser cookie client | `lib/supabaseClient.ts:6` | `"use client"`, **45 importers** (2026-09-17) |
 | Auth-helper server/route clients | 4 sites | `app/driver/layout.tsx:11`, `app/portal/page.tsx:9`, `app/api/admin/deliveries/route.ts:8`, `app/api/driver/my-deliveries/route.ts:8` |
 | Service-role proxy | `lib/supabaseAdmin.ts:22-38` | lazy, correct |
-| **Ad-hoc inline service-role `createClient`** | **47 route files** | the real consolidation work |
+| **Ad-hoc inline service-role `createClient`** | **54 route files** (2026-09-17) | the real consolidation work |
 | Anon client + forwarded Bearer token | 6 admin routes | e.g. `app/api/admin/drivers/route.ts:14` |
 
-**47 of 141 API routes use the service-role key**, which bypasses RLS entirely — every one must re-scope its own queries. **Only 2 of 141 have no auth, gate, signature or token marker**, both legacy (`app/api/auto/vehicles`, a read-only GET, and `app/api/special-request`, a POST that only `console.log`s its caller's contact details). **Zero canonical routes under `app/api/couranr` are ungated** — `npm run check:routes` measures this over all 70 canonical routes and is part of the gate.
+**67 of 196 API routes use the service-role key** (measured 2026-09-17), which bypasses RLS entirely — every one must re-scope its own queries. **Only 2 have no auth, gate, signature or token marker**, both legacy (`app/api/auto/vehicles`, a read-only GET, and `app/api/special-request`, a POST that only `console.log`s its caller's contact details). **Zero canonical routes under `app/api/couranr` are ungated** — `npm run check:routes` measures this over all **127** canonical routes and is part of the gate. Run it for the current number rather than reading one here.
 
 **The bug this section used to name is GONE, by deletion rather than by repair.** Six server-context files imported the `"use client"` browser client — a browser client in a server route carries no JWT, so it authenticates as **`anon`**, not `authenticated`, which is why `/api/delivery/complete` returned 403 and almost certainly never captured a payment. All six (`lib/delivery/authorizeDeliveryPayment.ts`, `lib/stripe/capturePayment.ts`, `lib/delivery/completeDelivery.ts`, `lib/delivery/getDeliveryByOrderId.ts`, `lib/getUserRole.ts`, `app/api/delivery/complete/route.ts`) no longer exist — measured at `304db8d`, along with **zero** current importers of the browser client anywhere under `lib/` or `app/api/`. Do not go looking for these files. The FAILURE MODE is still worth knowing, because nothing structurally prevents it from being reintroduced: there is no lint rule barring a `"use client"` import from a server module.
 
@@ -308,15 +314,15 @@ Route counts move with every slice, so they are GENERATED: `docs/couranr-mvp/IMP
 
 Since LEG-004 the public route ownership is `/` PUB-012, `/business` PUB-001, `/businesses` PUB-009, `/sameday` PUB-013, `/send` and `/estimate` PUB-004, and the merchant application lives under `/app/business/*`. Public chrome is chosen by SERVER route-group layouts — `(master-public)`, `(business-public)`, `(consumer-public)`, `(token-public)` — never by `usePathname()`.
 
-Of the 43 canonical target routes in the Master Package, **2 exist** (`/`, `/driver`) and 41 do not. Target names differ from actual: `/sign-in` and `/sign-up` vs. the existing `/login` and `/signup`.
+THIS PARAGRAPH USED TO SAY only 2 of the 43 canonical target routes existed. That stopped being true a long time ago and is the kind of stale claim that makes a reader think the product is barely started: **51 canonical page routes exist** under `app/(couranr)/` as of 2026-09-17, including `/send`, `/sameday`, `/business`, `/operations` and `/legal`. Existing is not the same as working — `SCREEN_IMPLEMENTATION_LEDGER.csv` is the authority on which canonical screens are functional, and some canonical pages still render `ScreenPlaceholder`. Target names differ from actual: `/sign-in` and `/sign-up` vs. the existing `/login` and `/signup`.
 
 ### CSS and components
 
-One stylesheet: `app/globals.css`, 818 lines of plain CSS with 7 custom properties. No Tailwind, no PostCSS, no `components.json`. **776 inline `style={{…}}` props** against 707 `className=` attributes. Eleven components, **zero UI primitives** — none of the 27 the baseline requires. `lib/cn.ts` exists but is a naive `filter(Boolean).join(" ")` with no importers.
+One stylesheet: `app/globals.css`, 818 lines of plain CSS with 7 custom properties. No Tailwind, no PostCSS, no `components.json`. **736 inline `style={{…}}` props** against 1428 `className=` attributes (measured 2026-09-17 — the ratio has inverted since this line was written, so the inline-style problem is shrinking rather than growing). Nine top-level components, **zero UI primitives** — none of the 27 the baseline requires. `lib/cn.ts` exists but is a naive `filter(Boolean).join(" ")` with no importers.
 
 When the canonical design system arrives it must be **additive** — new route group, namespaced `--couranr-*` tokens (the existing `:root` already defines `--border`, `--muted`, `--card`, `--shadow` with different values, so unprefixed tokens would silently restyle every legacy page). Do not bulk-restyle legacy auto/docs pages.
 
-The canonical screens reference `canonical-mvp-images/**` paths; **13 of the 62 referenced files exist on disk** (an earlier note here said 0, which stopped being true once the delivered mockups landed). The 91 UUID-named PNGs at the repo root are the raw source set, and **`docs/couranr-mvp/ui-reference/CANONICAL_SCREEN_SOURCE_MAP.tsv` is the map to use** — 107 rows, every source present, every canonical screen ID, with alternates recorded and non-MVP assets classified `BRAND:`/`EXTRA:`.
+The canonical screens reference `canonical-mvp-images/**` paths; not all of the referenced files exist on disk. Count them rather than quoting a number — this line has carried 0 and then 13, and both went stale. The UUID-named PNGs at the repo root are the raw source set (99 of them on 2026-09-17), and **`docs/couranr-mvp/ui-reference/CANONICAL_SCREEN_SOURCE_MAP.tsv` is the map to use** — 107 rows, every source present, every canonical screen ID, with alternates recorded and non-MVP assets classified `BRAND:`/`EXTRA:`.
 
 `docs/platform-dependency-baseline-v1-1` carries a rival `canonical-source-map.tsv`. **Do not merge it** (PR #16, closed 2026-08-01) — not because it is dangerous to `main`, but because it is strictly worse and it re-arms a workflow:
 
@@ -351,7 +357,7 @@ When a deliverable would be several files, **combine them into a single file**. 
 
 ### Git
 
-Work happens on the designated `claude/*` branch. `main` is `9c0a63bd5284e065978860b8893c170478fab1f5`; preservation refs `archive/auto-docs-multiservice` (branch, at that SHA) exist.
+Work happens on the designated `claude/*` branch. `main` has moved and is no longer the SHA this line used to pin — read it with `git rev-parse origin/main` (it was `051ebb27` on 2026-09-17); preservation refs `archive/auto-docs-multiservice` (branch, at that SHA) exist.
 
 **Tag pushes fail with HTTP 403 in this environment.** Annotated tags, lightweight tags and `git push --tags` are all rejected by the git proxy while branch pushes to the same remote succeed in the same command, and no GitHub MCP tool creates tags or refs. The two required preservation tags exist locally only. Don't burn time re-litigating this — use a branch as the durable pointer, or ask the operator to create the tag in the GitHub UI.
 
