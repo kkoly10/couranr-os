@@ -2,31 +2,50 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SAME_DAY_COPY } from "@/lib/couranr/public/masterSameDayCopy";
 import { MARKETS_PUBLIC_COPY_NEUTRAL } from "@/lib/couranr/public/governed";
+import { PROHIBITED_GROUPS, groupLabels } from "@/lib/couranr/public/prohibitedSummary";
 import { routeForScreen } from "@/lib/couranr/navigation";
 
 /**
  * PUB-013 — Couranr Same Day, at `/sameday`.
  *
- * The consumer entry path MKT-004 added. Nine governed regions, and the
- * contract's floors are the inverse of the business family's: three image-led
- * sections and one product proof are REQUIRED, because a page asking a person
- * to hand over something they own has to show the handover rather than
- * describe it.
+ * The consumer entry path MKT-004 added. TWELVE governed regions since the
+ * 2026-09 marketing-architecture lock, and the contract's floors are the
+ * inverse of the business family's: three image-led sections and a product
+ * proof are REQUIRED, because a page asking a person to hand over something
+ * they own has to show the handover rather than describe it.
  *
- * WHAT THIS PAGE MUST NOT DO, and each is a decision rather than taste:
- *   - no fake price. The Same Day backend is unwired, so `consumer-price`
- *     states that price comes before the request and shows no amount.
- *   - no live tracking data. `consumer-tracking` is a three-stage product
- *     story, not a delivery.
+ * WHAT THE LOCK CHANGED, and why each is a decision rather than a reshuffle:
+ *   - a COMPACT business cross-link at §2. The separation between Same Day and
+ *     For Business is PURPOSE, never speed, and a person who owns a business
+ *     and needs one personal trip belongs here. Compact on purpose — the brief
+ *     says not to make it a giant visual section.
+ *   - §5 states the trips as example GROUPS with an explicit disclaimer, in
+ *     place of a bare list of nouns that read as an eligibility promise.
+ *   - §6 is new and says what Couranr will NOT carry. Its categories are
+ *     rendered from `PROHIBITED_CLASSES` through `prohibitedSummary`, the same
+ *     vocabulary the policy engine and `/send` enforce. Nothing here types a
+ *     category name; a second list is exactly the drift the brief bans.
+ *   - §7 is new and describes the handoff EVIDENCE THIS BUILD RECORDS. Nothing
+ *     more. See the note on that section.
+ *   - §10 no longer depicts the nine internal address-interaction states. They
+ *     remain a PRODUCT requirement on `/send` and are untouched there; on a
+ *     marketing page they told a visitor nothing about whether Couranr could
+ *     run their trip.
+ *
+ * WHAT THIS PAGE MUST NOT DO, unchanged:
+ *   - no fake price. `consumer-price` states when the price appears, not what
+ *     it is.
+ *   - no live tracking data. `consumer-tracking` is a product story.
  *   - no marketplace, catalogue, menu or storefront — MKT-004's consumer
  *     guardrail. For collection the item is already bought elsewhere.
  *   - no generic consumer sign-in. Customer accounts are optional at MVP.
  *   - no radius, ZIP eligibility or polygon: SVC-002 is UNRESOLVED.
  *
- * Every string comes from `SAME_DAY_COPY` (MKT-005); every destination from the
- * screen source. The market sentence is MKT-006's consumer-neutral one,
- * imported not typed — MKT-001's begins "Local BUSINESS delivery across …",
- * which is the wrong product to describe to a person on this page.
+ * Every string comes from `SAME_DAY_COPY` (MKT-005) or from the derived
+ * prohibition summary; every destination from the screen source. The market
+ * sentence is MKT-006's consumer-neutral one, imported not typed — MKT-001's
+ * begins "Local BUSINESS delivery across …", which is the wrong product to
+ * describe to a person on this page.
  */
 
 export const metadata: Metadata = {
@@ -38,6 +57,7 @@ const IMG = "/images/marketing/2026-08/w";
 
 export default function Page() {
   const send = routeForScreen("PUB-004");
+  const business = routeForScreen("PUB-001");
   const sendIntent = (intent: "send" | "pickup") => `${send}?intent=${intent}`;
 
   return (
@@ -97,10 +117,36 @@ export default function Page() {
         </div>
       </section>
 
-      {/* ─── 2 ───────────────────────── already-bought / image-narrative ─── */}
+      {/* ─── 2 ─── sameday-business-crosslink / structured-information-block ─── */}
+      {/* A COMPACT callout, and the restraint is the requirement: the brief
+          says not to make this a giant visual section. One rule, one question,
+          one sentence, one link. It routes on PURPOSE — Same Day for an
+          individual delivery, For Business when delivery is part of the
+          business — and never on speed, because both products may run
+          same-day. No photograph, no panel, no card. */}
+      <section
+        className="cr-mkt-section cr-sd-crosslink"
+        aria-labelledby="s2-h"
+        data-couranr-section="sameday-business-crosslink"
+        data-composition="structured-information-block"
+        data-image-led="false"
+        data-grid-dominant="false"
+        data-product-proof="false"
+      >
+        <h2 id="s2-h" className="cr-sd-crosslink__heading">
+          {SAME_DAY_COPY.crosslink_heading}
+        </h2>
+        <p className="cr-sd-crosslink__body">{SAME_DAY_COPY.crosslink_body}</p>
+        <Link href={business} className="cr-sd-crosslink__cta">
+          {SAME_DAY_COPY.crosslink_cta}
+          <span aria-hidden="true"> →</span>
+        </Link>
+      </section>
+
+      {/* ─── 3 ───────────────────────── already-bought / image-narrative ─── */}
       <section
         className="cr-mkt-section cr-sd-editorial"
-        aria-labelledby="s2-h"
+        aria-labelledby="s3-h"
         data-couranr-section="already-bought"
         data-composition="image-narrative"
         data-image-led="true"
@@ -127,7 +173,7 @@ export default function Page() {
           </picture>
         </div>
         <div className="cr-sd-editorial__copy">
-          <h2 id="s2-h" className="cr-type-marketing-section">
+          <h2 id="s3-h" className="cr-type-marketing-section">
             {SAME_DAY_COPY.already_bought_headline}
           </h2>
           <p className="cr-mkt-editorial__body cr-type-lead">
@@ -140,13 +186,13 @@ export default function Page() {
         </div>
       </section>
 
-      {/* ─── 3 ────────────────────── send-what-you-have / split-story ─── */}
+      {/* ─── 4 ────────────────────── send-what-you-have / split-story ─── */}
       {/* Orientation REVERSES from the section above: the contract says the
           desktop editorial sections alternate deliberately, so a reader is not
           scrolling past the same layout twice. */}
       <section
         className="cr-mkt-section cr-sd-editorial cr-sd-editorial--reverse"
-        aria-labelledby="s3-h"
+        aria-labelledby="s4-h"
         data-couranr-section="send-what-you-have"
         data-composition="split-story"
         data-image-led="true"
@@ -173,7 +219,7 @@ export default function Page() {
           </picture>
         </div>
         <div className="cr-sd-editorial__copy">
-          <h2 id="s3-h" className="cr-type-marketing-section">
+          <h2 id="s4-h" className="cr-type-marketing-section">
             {SAME_DAY_COPY.send_what_you_have_headline}
           </h2>
           <p className="cr-mkt-editorial__body cr-type-lead">
@@ -186,41 +232,126 @@ export default function Page() {
         </div>
       </section>
 
-      {/* ─── 4 ──────────────────── consumer-breadth / editorial-statement ─── */}
-      {/* Editorial text, NOT bordered cards. The contract caps grid-dominant at
-          zero and §19 calls the alternative a card cemetery. */}
+      {/* ─── 5 ──────────────────── consumer-breadth / editorial-statement ─── */}
+      {/* Typography-led, and the flowing groups are what keeps it that way: the
+          contract caps grid-dominant at zero and §19 calls four bordered tiles
+          a card cemetery. The disclaimer is NOT decoration — a list of nouns
+          with nothing after it reads as an eligibility promise, and the policy
+          engine decides eligibility per shipment, after the details. */}
       <section
-        className="cr-mkt-editorial"
-        aria-labelledby="s4-h"
+        className="cr-mkt-editorial cr-mkt-editorial--wide"
+        aria-labelledby="s5-h"
         data-couranr-section="consumer-breadth"
         data-composition="editorial-statement"
         data-image-led="false"
         data-grid-dominant="false"
         data-product-proof="false"
       >
-        <h2 id="s4-h" className="cr-type-marketing-section">
+        <h2 id="s5-h" className="cr-type-marketing-section">
           {SAME_DAY_COPY.breadth_headline}
         </h2>
-        <ul className="cr-sd-breadth">
-          {SAME_DAY_COPY.breadth_labels.map((label) => (
-            <li key={label} className="cr-sd-breadth__item">
-              {label}
-            </li>
+        <p className="cr-mkt-editorial__body cr-type-lead">{SAME_DAY_COPY.breadth_lead}</p>
+        <dl className="cr-sd-breadth">
+          {SAME_DAY_COPY.breadth_group_titles.map((title, i) => (
+            <div key={title} className="cr-sd-breadth__group">
+              <dt className="cr-sd-breadth__term">{title}</dt>
+              <dd className="cr-sd-breadth__detail">{SAME_DAY_COPY.breadth_group_bodies[i]}</dd>
+            </div>
           ))}
-        </ul>
+        </dl>
+        <p className="cr-sd-breadth__note">{SAME_DAY_COPY.breadth_disclaimer}</p>
       </section>
 
-      {/* ─── 5 ───────────────────────── consumer-workflow / workflow-rail ─── */}
+      {/* ─── 6 ───────── consumer-prohibited / structured-information-block ─── */}
+      {/* The categories are RENDERED FROM `PROHIBITED_CLASSES`, the vocabulary
+          the policy engine and the /send funnel enforce, through a keyed
+          presentation map. Nothing on this page types a category name, and
+          `tests/couranr-prohibited-summary.test.ts` fails if a class gains no
+          label, lands in no group, or is named here without existing there.
+          A hand-typed marketing list would be a second policy that drifts on
+          the day the first one changes.
+
+          Ruled rows, not panels. §19.7 permits cards for genuinely discrete
+          utility content, but the contract caps grid-dominant at zero for every
+          PUB-013 region, so the density comes from the rules and the columns.
+
+          NO policy-document link. The brief asks for one and says to take its
+          destination from the legal registry; `lib/legal.ts` has no such entry
+          and no canonical screen owns that route, so the choice was a dead
+          link, a link to the LEGACY /terms page, or none. The rendered summary
+          answers the question on its own. */}
       <section
         className="cr-mkt-section"
-        aria-labelledby="s5-h"
+        aria-labelledby="s6-h"
+        data-couranr-section="consumer-prohibited"
+        data-composition="structured-information-block"
+        data-image-led="false"
+        data-grid-dominant="false"
+        data-product-proof="false"
+      >
+        <h2 id="s6-h" className="cr-type-marketing-section">
+          {SAME_DAY_COPY.prohibited_heading}
+        </h2>
+        <p className="cr-mkt-editorial__body cr-type-lead">{SAME_DAY_COPY.prohibited_body}</p>
+        <dl className="cr-sd-policy">
+          {PROHIBITED_GROUPS.map((group) => (
+            <div key={group.title} className="cr-sd-policy__row">
+              <dt className="cr-sd-policy__term">{group.title}</dt>
+              <dd className="cr-sd-policy__detail">{groupLabels(group).join(", ")}</dd>
+            </div>
+          ))}
+        </dl>
+        <p className="cr-sd-policy__help">{SAME_DAY_COPY.prohibited_help}</p>
+      </section>
+
+      {/* ─── 7 ───────────────────────── consumer-handoff / product-proof ─── */}
+      {/* EVERY SENTENCE HERE DESCRIBES EVIDENCE THIS BUILD ACTUALLY RECORDS.
+          The pickup command requires a shipment photograph before it will move
+          a delivery to `picked_up`; each drop-off completion command requires
+          the evidence its stored proof method names — a recipient PIN, a
+          delivery photograph, or a captured signature (`PROOF_METHODS` in
+          lib/couranr/driver/states.ts, enforced in the completion functions).
+
+          WHAT IS DELIBERATELY ABSENT. The brief's progressive paragraph
+          described value-tiered custody: documenting the item before packing, a
+          numbered tamper-evident seal, recipient identity verification above a
+          declared-value threshold. That work is not in this build — it lives on
+          an unmerged Trust/Custody branch — so those sentences would be a
+          protection claim Couranr cannot honour today. The owner chose to ship
+          the rest and omit them. The honesty sentence stays either way: Couranr
+          documents, it does not authenticate or appraise.
+
+          The methods are rendered as an ordered handoff, which is what a
+          product proof of this flow is — not a pill rail (that device belongs
+          to §11's tracking stages) and not a screenshot. */}
+      <section
+        className="cr-mkt-section"
+        aria-labelledby="s7-h"
+        data-couranr-section="consumer-handoff"
+        data-composition="product-proof"
+        data-image-led="false"
+        data-grid-dominant="false"
+        data-product-proof="true"
+      >
+        <h2 id="s7-h" className="cr-type-marketing-section">
+          {SAME_DAY_COPY.handoff_heading}
+        </h2>
+        <p className="cr-mkt-editorial__body cr-type-lead">{SAME_DAY_COPY.handoff_body}</p>
+        <p className="cr-sd-handoff__detail">{SAME_DAY_COPY.handoff_progressive}</p>
+        <p className="cr-sd-handoff__honesty">{SAME_DAY_COPY.handoff_honesty}</p>
+      </section>
+
+      {/* ─── 8 ───────────────────────── consumer-workflow / workflow-rail ─── */}
+      <section
+        className="cr-mkt-section"
+        aria-labelledby="s8-h"
         data-couranr-section="consumer-workflow"
         data-composition="workflow-rail"
         data-image-led="false"
         data-grid-dominant="false"
         data-product-proof="false"
       >
-        <h2 id="s5-h" className="cr-type-marketing-section">
+        <h2 id="s8-h" className="cr-type-marketing-section">
           {SAME_DAY_COPY.workflow_headline}
         </h2>
         <ol className="cr-sd-rail">
@@ -235,50 +366,41 @@ export default function Page() {
         </ol>
       </section>
 
-      {/* ─── 6 ───────────── consumer-price / structured-information-block ─── */}
-      {/* NO SAMPLE AMOUNT. The Same Day backend is unwired, so any figure here
-          would be a production-authoritative claim with nothing behind it. The
-          section states WHEN the price appears, which is a true statement about
-          the flow, and PRC-001's numbers stay on the business pricing page
-          where a real quote backs them. */}
+      {/* ─── 9 ───────────── consumer-price / structured-information-block ─── */}
+      {/* NO SAMPLE AMOUNT, and the reason has not changed: a figure here would
+          be a production-authoritative claim a marketing page cannot make.
+          The section states WHEN the price appears, which is true of the flow,
+          and PRC-005's numbers stay on the business pricing page where a real
+          quote backs them. */}
       <section
         className="cr-mkt-section"
-        aria-labelledby="s6-h"
+        aria-labelledby="s9-h"
         data-couranr-section="consumer-price"
         data-composition="structured-information-block"
         data-image-led="false"
         data-grid-dominant="false"
         data-product-proof="false"
       >
-        <h2 id="s6-h" className="cr-type-marketing-section">
+        <h2 id="s9-h" className="cr-type-marketing-section">
           {SAME_DAY_COPY.price_headline}
         </h2>
         <p className="cr-mkt-editorial__body cr-type-lead">{SAME_DAY_COPY.price_body}</p>
       </section>
 
-      {/* ─── 7 ─────────────────── consumer-availability / split-story ─── */}
-      {/* THE NINE STATES ARE THE SECTION. The work order asks this region to
-          "present the full address/availability interaction story" and names
-          every state: idle / focused / typing / suggestions / selected /
-          checking / eligible / review-needed / error. This shipped as two prose
-          paragraphs that DESCRIBED checking and depicted none of them — zero of
-          the nine appeared in the rendered HTML. Prose about an interaction is
-          not the interaction story.
+      {/* ─── 10 ────────────────── consumer-availability / split-story ─── */}
+      {/* THE NINE INTERACTION STATES ARE GONE FROM THIS PAGE. They were the
+          section — idle / focused / typing / suggestions / selected / checking
+          / eligible / review-needed / error, rendered as a ruled sequence — and
+          the 2026-09 lock removes them: internal UI mechanics on a marketing
+          page tell a visitor nothing about whether Couranr can run their trip.
+          They remain PRODUCT requirements on `/send` and nothing there changed.
 
-          Rendered as a static ordered sequence, in the same ruled language as
-          the workflow rail above and the tracking stages below, because that is
-          what the rest of the page already uses to tell a sequence. No mock
-          address field and no sample suggestion list: an invented address is
-          fabricated product data, which this page bans elsewhere and would be
-          banning here for the same reason.
-
-          No service-area lookup runs and no boundary is drawn. SVC-002 is
-          UNRESOLVED, so "eligible" says Couranr can run the trip and
-          "review-needed" says the address is captured — never that it is out of
-          area, which is a verdict nothing here is entitled to reach. */}
+          No service-area lookup runs here and no boundary is drawn. SVC-002 is
+          UNRESOLVED, so this says Couranr CHECKS the trip — never that an
+          address is out of area, which is a verdict this page cannot reach. */}
       <section
-        className="cr-mkt-split cr-sd-availability"
-        aria-labelledby="s7-h"
+        className="cr-mkt-split"
+        aria-labelledby="s10-h"
         data-couranr-section="consumer-availability"
         data-composition="split-story"
         data-image-led="false"
@@ -286,39 +408,33 @@ export default function Page() {
         data-product-proof="false"
       >
         <div className="cr-mkt-split__lead">
-          <h2 id="s7-h" className="cr-type-marketing-section">
+          <h2 id="s10-h" className="cr-type-marketing-section">
             {SAME_DAY_COPY.availability_headline}
           </h2>
           <p>{MARKETS_PUBLIC_COPY_NEUTRAL}</p>
         </div>
-        <ol className="cr-sd-states">
-          {SAME_DAY_COPY.availability_state_order.map((state, i) => (
-            <li key={state} className="cr-sd-state" data-couranr-address-state={state}>
-              <span className="cr-sd-state__label">
-                {SAME_DAY_COPY.availability_state_labels[i]}
-              </span>
-              <span className="cr-sd-state__caption">
-                {SAME_DAY_COPY.availability_state_captions[i]}
-              </span>
-            </li>
-          ))}
-        </ol>
+        <div className="cr-sd-availability__body">
+          <p className="cr-mkt-editorial__body cr-type-lead">{SAME_DAY_COPY.availability_body}</p>
+          <Link href={send} className="cr-button cr-button--secondary cr-button--lg">
+            {SAME_DAY_COPY.availability_cta}
+          </Link>
+        </div>
       </section>
 
-      {/* ─── 8 ───────────────────────── consumer-tracking / product-proof ─── */}
+      {/* ─── 11 ──────────────────────── consumer-tracking / product-proof ─── */}
       {/* A product NARRATIVE, not live data. Three stage labels from MKT-005,
           rendered as a static sequence: no delivery, no driver, no ETA and no
-          token. The contract's one product-proof floor is satisfied here. */}
+          token. */}
       <section
         className="cr-mkt-section"
-        aria-labelledby="s8-h"
+        aria-labelledby="s11-h"
         data-couranr-section="consumer-tracking"
         data-composition="product-proof"
         data-image-led="false"
         data-grid-dominant="false"
         data-product-proof="true"
       >
-        <h2 id="s8-h" className="cr-type-marketing-section">
+        <h2 id="s11-h" className="cr-type-marketing-section">
           {SAME_DAY_COPY.tracking_headline}
         </h2>
         <ol className="cr-sd-track">
@@ -331,10 +447,10 @@ export default function Page() {
         <p className="cr-mkt-editorial__body">{SAME_DAY_COPY.tracking_body}</p>
       </section>
 
-      {/* ─── 9 ────────────── consumer-closing / full-bleed-interruption ─── */}
+      {/* ─── 12 ───────────── consumer-closing / full-bleed-interruption ─── */}
       <section
         className="cr-mkt-closing cr-mkt-closing--split"
-        aria-labelledby="s9-h"
+        aria-labelledby="s12-h"
         data-couranr-section="consumer-closing"
         data-composition="full-bleed-interruption"
         data-image-led="false"
@@ -342,7 +458,7 @@ export default function Page() {
         data-product-proof="false"
       >
         <div className="cr-mkt-closing__copy">
-          <h2 id="s9-h" className="cr-mkt-h2-inverse">
+          <h2 id="s12-h" className="cr-mkt-h2-inverse">
             {SAME_DAY_COPY.closing_headline}
           </h2>
           <p className="cr-mkt-closing__body">{SAME_DAY_COPY.closing_support}</p>

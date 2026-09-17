@@ -3201,23 +3201,45 @@
       "value": {
         "master": {
           "hero_headline": "Local delivery, built around you.",
-          "hero_support": "Whether you’re sending something across town or adding delivery to your business, Couranr handles the trip.",
-          "consumer_door_title": "Send something",
-          "consumer_door_support": "For individuals who need something delivered locally.",
-          "business_door_title": "Add delivery to my business",
-          "business_door_support": "Your customers order from you. Couranr handles delivery.",
-          "network_heading": "One local delivery network. Two ways to use it.",
-          "network_individuals": "You already own it, bought it, or need it picked up. Couranr moves it.",
-          "network_businesses": "Your customers order from you. Couranr handles delivery."
+          "hero_support": "Need one local delivery? Use Couranr Same Day. Run a business that wants to offer delivery to customers? Couranr for Business gives you the delivery operation behind it.",
+          "consumer_door_title": "Couranr Same Day",
+          "consumer_door_support": "Send something you have or pick up something you’ve already bought.",
+          "business_door_title": "Couranr for Business",
+          "business_door_support": "Your customers order from you. Couranr handles the delivery operation.",
+          "brand_line": "One local delivery network. Two ways to use it.",
+          "network_heading": "One delivery, or delivery as part of your business?",
+          "network_statement": "Same Day solves a delivery. Couranr for Business helps your business offer delivery.",
+          "network_consumer_title": "Couranr Same Day",
+          "network_consumer_body": "Use Same Day when you personally need an item delivered or picked up.",
+          "network_consumer_points": [
+            "Something you already own",
+            "Something you already bought or arranged",
+            "No business workspace required",
+            "Request and pay for the delivery you need"
+          ],
+          "network_business_title": "Couranr for Business",
+          "network_business_body": "Use Couranr for Business when customers are buying from your business and delivery is part of how you serve them.",
+          "network_business_points": [
+            "Manage customer deliveries in one workspace",
+            "Choose whether the business or customer pays",
+            "Follow fulfillment, tracking and proof",
+            "Keep delivery history together"
+          ],
+          "network_edge_case": "A business owner can still use Same Day for an occasional personal or one-off trip. What determines the product is the purpose of the delivery—not whether you happen to own a business.",
+          "network_example": "Bought a cake and need it picked up? Same Day. Run the bakery and want Couranr delivering customer cake orders? For Business.",
+          "service_area_heading": "Where Couranr delivers"
         },
         "same_day": {
           "hero_headline": "Need it across town today?",
-          "hero_support": "Send something you have, or have Couranr pick something up for you.",
+          "hero_support": "Send something you have, or have Couranr pick up something you already bought or arranged.",
           "hero_question": "What do you need?",
           "intent_send_title": "Send something I have",
           "intent_send_support": "From me, my home, work, a friend or family member.",
           "intent_pickup_title": "Pick something up for me",
           "intent_pickup_support": "Something you’ve already bought, ordered or arranged.",
+          "crosslink_heading": "Delivering orders for your customers?",
+          "crosslink_body": "Same Day is for individual deliveries. If delivery is part of your business, explore Couranr for Business.",
+          "crosslink_cta": "For Business",
           "already_bought_headline": "Already bought it? We’ll go get it.",
           "already_bought_body": "Your dry cleaning is ready. The cake is finished. Your print order is waiting. You bought something from a local shop.",
           "already_bought_close": "Couranr can pick it up and bring it to you.",
@@ -3226,70 +3248,50 @@
           "send_what_you_have_body": "Keys left at home. Documents someone needs. A gift for a friend. Something your family forgot.",
           "send_what_you_have_close": "You don’t have to make the trip yourself.",
           "send_what_you_have_cta": "Send something",
-          "breadth_headline": "The local trips that steal your time.",
-          "breadth_labels": [
-            "Keys",
-            "Documents",
-            "Gifts",
-            "Finished orders",
-            "Store purchases",
-            "Dry cleaning",
-            "Bakery orders",
-            "Personal items"
+          "breadth_headline": "Everyday local items, without making the trip yourself.",
+          "breadth_lead": "Couranr Same Day is designed for eligible items you already own, have purchased or have arranged for pickup.",
+          "breadth_group_titles": [
+            "Documents & keys",
+            "Local purchases",
+            "Clothing & personal items",
+            "Practical items"
           ],
+          "breadth_group_bodies": [
+            "Papers, keys and everyday personal items.",
+            "Retail orders, bakery orders and purchases already arranged with a business.",
+            "Dry cleaning, clothing, gifts and forgotten belongings.",
+            "Eligible electronics, auto parts, tools and office supplies."
+          ],
+          "breadth_disclaimer": "Examples are not automatic approval. Couranr checks the shipment details before accepting the delivery.",
+          "prohibited_heading": "Some things shouldn’t travel with Couranr.",
+          "prohibited_body": "For safety, legal and insurance reasons, Couranr does not transport certain regulated, hazardous or unusually high-risk items.",
+          "prohibited_help": "Not sure about your item? Describe it when you request the delivery. Couranr checks whether it can be accepted before you pay.",
+          "handoff_heading": "Built for accountable handoffs.",
+          "handoff_body": "Couranr records important pickup and delivery events so there is a clear record of the handoff.",
+          "handoff_progressive": "A delivery is picked up against a confirmation step, and handed over using the method chosen for that delivery — a recipient code, a photo at the door, or a signature.",
+          "handoff_honesty": "Couranr documents what is presented and handed over. Couranr does not authenticate, appraise or certify merchandise.",
           "workflow_headline": "A few details. Then Couranr handles the trip.",
           "workflow_labels": [
             "Tell us where",
-            "Tell us what",
+            "Tell us what you’re sending",
             "Choose when",
-            "Review your quote",
+            "Review your delivery and price",
             "Couranr confirms"
           ],
           "price_headline": "See the price before you request.",
-          "tracking_headline": "Know what’s happening after pickup.",
+          "price_body": "You review the delivery and its price before anything is requested. Couranr confirms availability, schedule and vehicle before any payment is captured.",
+          "availability_headline": "Enter the addresses. Couranr checks the trip.",
+          "availability_body": "Add the pickup and destination in Same Day. Couranr checks the trip against the area it currently serves before you submit your request.",
+          "availability_cta": "Check a delivery",
+          "tracking_headline": "Follow it from confirmation to handoff.",
+          "tracking_body": "Couranr gives the recipient a private tracking experience after the delivery is confirmed. Pickup, movement and secure handoff are recorded as the delivery progresses.",
           "tracking_labels": [
             "Confirmed",
             "Picked up",
             "Delivered"
           ],
           "closing_headline": "One less trip to make.",
-          "closing_support": "Send something you have or let Couranr go pick it up.",
-          "price_body": "You review the delivery and its price before anything is requested. Couranr confirms availability, schedule and vehicle before any payment is captured.",
-          "tracking_body": "Couranr sends the recipient a private tracking link when the delivery is confirmed. It is the only way the delivery can be opened.",
-          "availability_headline": "Tell Couranr where, and it checks.",
-          "availability_state_order": [
-            "idle",
-            "focused",
-            "typing",
-            "suggestions",
-            "selected",
-            "checking",
-            "eligible",
-            "review-needed",
-            "error"
-          ],
-          "availability_state_labels": [
-            "Idle",
-            "Focused",
-            "Typing",
-            "Suggestions",
-            "Selected",
-            "Checking",
-            "Eligible",
-            "Review needed",
-            "Error"
-          ],
-          "availability_state_captions": [
-            "The pickup and destination fields, waiting for you.",
-            "You tap one. Couranr is ready for the address.",
-            "You start typing. Nothing is submitted yet.",
-            "Matching addresses appear as you type.",
-            "You choose the one you meant, and it fills in.",
-            "Couranr checks the trip against the area it operates in.",
-            "Couranr can run this trip. You carry on to the next step.",
-            "Couranr captures the address for review. Nothing is turned away at the door.",
-            "Something did not load. You can try again without losing what you entered."
-          ]
+          "closing_support": "Send something you have or let Couranr go pick it up."
         },
         "send": {
           "trip_send_origin": "Where is the item now?",
@@ -3298,6 +3300,7 @@
           "trip_destination": "Where is it going?",
           "item_question": "What are we delivering?",
           "item_example": "A birthday cake I already paid for at Main Street Bakery.",
+          "item_ai_disclosure": "Couranr uses AI to read this description and suggest your shipment details. You confirm everything before you pay, and Couranr — not the AI — sets the price and what can be carried.",
           "readiness_question": "Is it ready for pickup?",
           "readiness_yes": "Yes, the business says it’s ready",
           "readiness_no": "Not yet / I’m not sure",
@@ -3310,8 +3313,7 @@
           "contact_heading": "Where should we send updates?",
           "acknowledgement": "I confirm this item is eligible for delivery and I have authority to send or collect it.",
           "received_heading": "We have your request.",
-          "received_support": "Couranr is confirming your delivery.",
-          "item_ai_disclosure": "Couranr uses AI to read this description and suggest your shipment details. You confirm everything before you pay, and Couranr — not the AI — sets the price and what can be carried."
+          "received_support": "Couranr is confirming your delivery."
         },
         "chrome": {
           "same_day": "Same Day",

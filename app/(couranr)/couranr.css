@@ -3853,6 +3853,51 @@
 
 .cr-master-network__desc { margin: 0; color: var(--couranr-text); }
 
+/* The 2026-09 positioning lock extended master-network from two sentences to
+   the full "which Couranr is mine?" answer. Everything below stays inside the
+   `editorial-statement` contract: `grid-dominant` is false and load-bearing,
+   so none of this becomes a row of tiles.
+
+   The brand line leads the section above the question. It is the only place
+   the master brand statement appears on the page, so it sits apart from the
+   heading rather than acting as a subtitle under it. */
+.cr-master-network__brand {
+  margin: 0 0 var(--couranr-space-4);
+  color: var(--couranr-text-muted);
+}
+
+/* The product distinction, immediately under the question it answers. Body
+   measure rather than the section's 24ch statement measure — it is two
+   sentences that must read as one thought. */
+.cr-master-network__statement { max-width: 54ch; }
+
+/* The points under each product. A plain marker list, indented under its
+   definition, NOT four checkmark tiles — §28 bans the icon-tile grammar and
+   this is exactly where a two-audience homepage reaches for it. */
+.cr-master-network__points {
+  margin: var(--couranr-space-3) 0 0;
+  padding-left: var(--couranr-space-5);
+  display: grid;
+  gap: var(--couranr-space-1);
+  font-size: var(--couranr-text-sm);
+  color: var(--couranr-text-muted);
+}
+
+/* The two sentences that stop the most common misreading — that owning a
+   business routes you to For Business. They close the section rather than
+   sitting beside the columns, because they qualify BOTH of them. The example
+   is set quieter than the rule it illustrates. */
+.cr-master-network__edge {
+  margin: var(--couranr-space-8) 0 0;
+  max-width: 62ch;
+}
+
+.cr-master-network__example {
+  margin: var(--couranr-space-3) 0 0;
+  max-width: 62ch;
+  color: var(--couranr-text-muted);
+}
+
 /* ── PUB-013, Couranr Same Day ──────────────────────────────────────────── */
 
 /* The hero's mobile requirement is a CONTRACT term, not a preference: the
@@ -3939,29 +3984,54 @@
 .cr-sd-editorial__copy > h2 { margin: 0; color: var(--couranr-text); }
 .cr-sd-editorial__copy > p { margin: 0; }
 
-/* Breadth as TEXT. An inline run separated by rules, not eight bordered cards —
-   §19's card-cemetery ban is the reason this is a list with dividers. */
+/* consumer-breadth. Until the 2026-09 lock this was an inline run of eight
+   nouns; it is now four example GROUPS, each a term and the sentence that
+   says what belongs in it.
+
+   Still TEXT, and still not cards. The composition is `editorial-statement`
+   and the contract caps grid-dominant at zero for every PUB-013 region, so the
+   groups flow in a two-column measure with whitespace between them rather than
+   sitting in four bordered tiles — §19's card-cemetery ban is the reason.
+
+   NO separator glyph, learned once already on the run this replaced: a
+   `::before` divider on every item but the first puts a rule at the START of a
+   wrapped line, because CSS cannot see a line break. The rhythm is the gap. */
 .cr-sd-breadth {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--couranr-space-2) var(--couranr-space-4);
-  margin: var(--couranr-space-5) 0 0;
-  padding: 0;
-  list-style: none;
+  display: grid;
+  gap: var(--couranr-space-6);
+  margin: var(--couranr-space-6) 0 0;
 }
 
-.cr-sd-breadth__item {
+@media (min-width: 720px) {
+  .cr-sd-breadth {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--couranr-space-8);
+  }
+}
+
+.cr-sd-breadth__group { display: grid; gap: var(--couranr-space-2); }
+
+.cr-sd-breadth__term {
   font-family: var(--couranr-font-display);
   font-size: var(--couranr-text-lg);
   color: var(--couranr-text);
 }
 
-/* NO separator glyph between items. A `::before` rule on every item but the
-   first puts a divider at the START of a wrapped line — visible at 1440, where
-   "Personal items" wraps and led with a stray rule. CSS cannot see a line
-   break, so the divider is dropped and the rhythm comes from the gap instead.
-   The contract calls for editorial text, and a wider gap is what that is. */
-.cr-sd-breadth { gap: var(--couranr-space-3) var(--couranr-space-6); }
+.cr-sd-breadth__detail {
+  margin: 0;
+  font-size: var(--couranr-text-sm);
+  color: var(--couranr-text-muted);
+}
+
+/* The disclaimer is not a footnote. A list of example items with nothing after
+   it reads as an eligibility promise, and eligibility is decided per shipment
+   by the policy engine after the details are described — so this line carries
+   body weight and sits on its own. */
+.cr-sd-breadth__note {
+  margin: var(--couranr-space-6) 0 0;
+  max-width: 54ch;
+  color: var(--couranr-text);
+}
 
 /* A connected sequence, which is what makes it a rail rather than five boxes:
    the connector is a continuous line the numbers sit on. */
@@ -4055,56 +4125,126 @@
   font-weight: 400;
 }
 
-/* consumer-availability: the nine address/availability states as a ruled
-   sequence. A LIST, not a card grid — the composition contract caps
-   grid-dominant at zero for every PUB-013 region and §19 calls the alternative
-   a card cemetery, so the states are separated by rules and whitespace and
-   carry no panel, border box or background of their own.
+/* consumer-prohibited: the enforced prohibition vocabulary, as ruled policy
+   rows. RULES, NOT PANELS — §19.7 permits cards for genuinely discrete utility
+   content, but the PUB-013 contract caps grid-dominant at zero for every
+   region, so the density comes from the rule between rows and the two columns,
+   and no row carries a border box or a background of its own.
 
-   `.cr-sd-availability` gives the split a wider right column than the shared
-   38/62: nine captions in a 62% column at 1440 wrap to two lines each and the
-   lead sits alone above a lot of nothing. */
-.cr-sd-states {
-  margin: 0;
+   This is the device the retired nine-state sequence used, kept and renamed
+   rather than reinvented: a ruled term-and-detail list is what this page
+   already used to read a dense sequence, and §28 bans a second grammar for the
+   same job. */
+.cr-sd-policy {
+  margin: var(--couranr-space-6) 0 0;
   padding: 0;
-  list-style: none;
-  counter-reset: cr-sd-state;
 }
 
-.cr-sd-state {
+.cr-sd-policy__row {
   display: grid;
   gap: var(--couranr-space-1);
   padding: var(--couranr-space-3) 0;
   border-top: 1px solid var(--couranr-border);
 }
 
-.cr-sd-state:first-child { border-top: 0; padding-top: 0; }
-.cr-sd-state:last-child { padding-bottom: 0; }
+.cr-sd-policy__row:first-child { border-top: 0; padding-top: 0; }
+.cr-sd-policy__row:last-child { padding-bottom: 0; }
 
-.cr-sd-state__label {
+.cr-sd-policy__term {
   font-size: var(--couranr-text-sm);
   font-weight: 600;
   color: var(--couranr-text);
 }
 
-.cr-sd-state__caption {
+.cr-sd-policy__detail {
+  margin: 0;
   font-size: var(--couranr-text-sm);
   color: var(--couranr-text-muted);
 }
 
-/* Two columns for the label and its caption once there is room for them, so
-   the nine states read as a schedule rather than eighteen stacked lines. */
+/* Two columns for the group and its members once there is room, so six groups
+   read as a schedule rather than twelve stacked lines. The term column is
+   wider than the retired state column was: "Living things and biological
+   material" is a heading, not a one-word status. */
 @media (min-width: 640px) {
-  .cr-sd-state {
-    grid-template-columns: 9rem 1fr;
+  .cr-sd-policy__row {
+    grid-template-columns: 15rem 1fr;
     gap: var(--couranr-space-4);
     align-items: baseline;
   }
 }
 
-@media (min-width: 900px) {
-  .cr-sd-availability { grid-template-columns: 32fr 68fr; }
+/* The "not sure about your item?" line routes a reader to the place the
+   question is actually answered — the request flow, where the policy engine
+   reads the description. Body weight, because it is the section's action. */
+.cr-sd-policy__help {
+  margin: var(--couranr-space-6) 0 0;
+  max-width: 54ch;
+  color: var(--couranr-text);
 }
+
+/* sameday-business-crosslink: COMPACT is the requirement. The brief says not
+   to make this a giant visual section, so it is one top rule, a small heading,
+   one sentence and a text link — no photograph, no panel, no button row, and
+   no section-scale type. It reads as an aside between two photographic
+   stories, which is what it is. */
+.cr-sd-crosslink {
+  display: grid;
+  gap: var(--couranr-space-2);
+  justify-items: start;
+  padding-top: var(--couranr-space-5);
+  border-top: 1px solid var(--couranr-border);
+}
+
+.cr-sd-crosslink__heading {
+  margin: 0;
+  font-family: var(--couranr-font-display);
+  font-size: var(--couranr-text-lg);
+  color: var(--couranr-text);
+}
+
+.cr-sd-crosslink__body {
+  margin: 0;
+  max-width: 62ch;
+  color: var(--couranr-text-muted);
+}
+
+.cr-sd-crosslink__cta {
+  font-weight: 600;
+  color: var(--couranr-navy);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.cr-sd-crosslink__cta:focus-visible {
+  outline: 3px solid var(--couranr-gold);
+  outline-offset: 2px;
+}
+
+/* consumer-handoff. The honesty sentence is set apart deliberately: it is the
+   limit on everything above it — Couranr documents, it does not authenticate
+   or appraise — and a limit buried in the same block as the claim it bounds is
+   a limit nobody reads. */
+.cr-sd-handoff__detail {
+  margin: var(--couranr-space-5) 0 0;
+  max-width: 62ch;
+  color: var(--couranr-text);
+}
+
+.cr-sd-handoff__honesty {
+  margin: var(--couranr-space-5) 0 0;
+  max-width: 62ch;
+  padding-left: var(--couranr-space-4);
+  border-left: 2px solid var(--couranr-border);
+  font-size: var(--couranr-text-sm);
+  color: var(--couranr-text-muted);
+}
+
+/* consumer-availability. The right column is the body and its action now that
+   the nine interaction states are gone, so it no longer needs the widened
+   32/68 split the states required — the shared 38/62 fits two short
+   paragraphs. */
+.cr-sd-availability__body { display: grid; gap: var(--couranr-space-5); justify-items: start; }
 
 /* The hero's media column. Declared even though it only carries the picture:
    the token test requires every rendered class to have a rule, and an

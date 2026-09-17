@@ -2819,33 +2819,56 @@ two tiles.
 | # | `data-couranr-section` | required state / intent | device | `data-composition` (§19) | image-led | grid-dominant | product-proof |
 |---|---|---|---|---|---|---|---|
 | 1 | `master-hero` | Default — the brand line plus two photographic audience doors | asymmetric photo-led hero, consumer door first on mobile | `split-story` | true | false | false |
-| 2 | `master-network` | Default — one network, two ways to use it | typography-led statement, no icons or cards | `editorial-statement` | false | false | false |
+| 2 | `master-network` | Default — which Couranr to use, and why the difference is purpose rather than speed | typography-led statement, no icons or cards | `editorial-statement` | false | false | false |
 | 3 | `master-service-area` | Default — consumer-neutral coverage reassurance | governed market names, no radius/ZIP/polygon | `structured-information-block` | false | false | false |
 
 ### PUB-013 — Couranr Same Day
 
-**Budgets:** grid-dominant <= 0 · image-led >= 3 · product-proof >= 1 · workflow-rail == 1
+**Budgets:** grid-dominant <= 0 · image-led >= 3 · product-proof >= 2 · workflow-rail == 1
 
 Required states from `ui_screen_registry.json`: Default; mobile navigation. This
 is the consumer entry path, and its floors are the inverse of PUB-008's: three
-image-led sections and one product proof are REQUIRED, because a page asking a
+image-led sections and a product proof are REQUIRED, because a page asking a
 person to hand over something they own has to show the handover rather than
-describe it. The three approved consumer photographs carry those three floors.
+describe it. The three approved consumer photographs carry the image-led floor.
 
 `grid-dominant <= 0` again, and for the same reason: the breadth of trips is an
-editorial list, not a card cemetery.
+editorial list, not a card cemetery. §19.7 permits panels for genuinely
+discrete utility content, and §6 and §9 are exactly that — but the cap holds
+for every region here, so those sections get their density from ruled rows and
+columns rather than from a grid of boxes.
+
+**The 2026-09 marketing-architecture lock took this page from nine sections to
+twelve, and raised the product-proof floor from one to two.** Three regions are
+new. §2 is a COMPACT business cross-link: Same Day and Couranr for Business are
+separated by the PURPOSE of the delivery and never by speed, and a business
+owner with a one-off personal trip belongs here — compact is a requirement, not
+a size preference. §6 states what Couranr will not carry, rendered from
+`PROHIBITED_CLASSES` through a keyed presentation map so the page cannot become
+a second policy list that drifts from the one the engine enforces. §7 describes
+the handoff evidence THIS BUILD RECORDS — pickup confirmation, then the drop-off
+method the delivery carries — and is the second product proof, which is why the
+floor moved: the handover claim is now load-bearing rather than optional.
+
+What LEFT: §10 no longer depicts the nine internal address-interaction states.
+They remain a product requirement on `/send` and are untouched there; on a
+marketing page they described an interaction instead of answering whether
+Couranr could run the trip.
 
 | # | `data-couranr-section` | required state / intent | device | `data-composition` (§19) | image-led | grid-dominant | product-proof |
 |---|---|---|---|---|---|---|---|
 | 1 | `sameday-hero` | Default — both intents visible before the image on mobile | ~45/55 interaction-and-photography split | `split-story` | true | false | false |
-| 2 | `already-bought` | Default — the collect-for-me case | editorial photograph with lead copy | `image-narrative` | true | false | false |
-| 3 | `send-what-you-have` | Default — the send case, orientation reversed from §2 | mirrored editorial split | `split-story` | true | false | false |
-| 4 | `consumer-breadth` | Default — the trips, as text | editorial list, no bordered cards | `editorial-statement` | false | false | false |
-| 5 | `consumer-workflow` | Default — five steps to a request | connected sequence rail | `workflow-rail` | false | false | false |
-| 6 | `consumer-price` | Default — price is shown before requesting | statement, no sample amount while the backend is unwired | `structured-information-block` | false | false | false |
-| 7 | `consumer-availability` | Default — the address and availability story | asymmetric lead + state narrative | `split-story` | false | false | false |
-| 8 | `consumer-tracking` | Default — what happens after pickup | three-stage product story, no live data | `product-proof` | false | false | true |
-| 9 | `consumer-closing` | Default — the two intents, once more | navy interruption | `full-bleed-interruption` | false | false | false |
+| 2 | `sameday-business-crosslink` | Default — which product, decided on purpose rather than speed | compact ruled callout, no photograph or panel | `structured-information-block` | false | false | false |
+| 3 | `already-bought` | Default — the collect-for-me case | editorial photograph with lead copy | `image-narrative` | true | false | false |
+| 4 | `send-what-you-have` | Default — the send case, orientation reversed from §3 | mirrored editorial split | `split-story` | true | false | false |
+| 5 | `consumer-breadth` | Default — example trips, with eligibility disclaimed | flowing definition groups, no bordered cards | `editorial-statement` | false | false | false |
+| 6 | `consumer-prohibited` | Default — what Couranr will not carry | ruled policy rows rendered from the enforced vocabulary | `structured-information-block` | false | false | false |
+| 7 | `consumer-handoff` | Default — the evidence this build records | handoff statement, no value-tiered custody claim | `product-proof` | false | false | true |
+| 8 | `consumer-workflow` | Default — five steps to a request | connected sequence rail | `workflow-rail` | false | false | false |
+| 9 | `consumer-price` | Default — price is shown before requesting | statement, no sample consumer amount | `structured-information-block` | false | false | false |
+| 10 | `consumer-availability` | Default — Couranr checks the trip, no boundary drawn | asymmetric lead + action, no interaction states | `split-story` | false | false | false |
+| 11 | `consumer-tracking` | Default — what happens after pickup | three-stage product story, no live data | `product-proof` | false | false | true |
+| 12 | `consumer-closing` | Default — the two intents, once more | navy interruption | `full-bleed-interruption` | false | false | false |
 
 ---
 
