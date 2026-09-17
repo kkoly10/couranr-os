@@ -7,6 +7,7 @@ import {
   WEIGHT_SURCHARGE_THROUGH_LB,
 } from "@/lib/couranr/public/governed";
 import {
+  CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS,
   CONSUMER_MAX_DECLARED_VALUE_CENTS,
   declaredValueDollars,
 } from "@/lib/couranr/consumer/protection";
@@ -63,10 +64,13 @@ export default function DeliveryPolicyPage() {
             checkout.
           </li>
           <li>
-            Maximum declared value, counted across the whole shipment rather
-            than per item:{" "}
+            Maximum declared value under this policy, counted across the whole
+            shipment rather than per item:{" "}
             <strong>{declaredValueDollars(CONSUMER_MAX_DECLARED_VALUE_CENTS)}</strong>.
-            Couranr refuses a higher declared value at the moment it is entered.
+            Couranr currently accepts declared values up to{" "}
+            <strong>{declaredValueDollars(CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS)}</strong>,
+            because the protection level above that figure is not yet available;
+            a higher value is refused at the moment it is entered.
           </li>
           <li>
             Anything outside these limits is reviewed by Couranr before it can

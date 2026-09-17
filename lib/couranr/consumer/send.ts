@@ -82,7 +82,6 @@ assertServerOnly("lib/couranr/consumer/send.ts");
 
 import {
   CONSUMER_EMAIL_RE,
-  CONSUMER_MAX_DECLARED_VALUE_CENTS,
   CONSUMER_SENDER_TERMS_VERSION,
   declaredValueDollars,
   CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS,
