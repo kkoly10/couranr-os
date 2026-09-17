@@ -88,6 +88,9 @@ const NOTES = {
   /* EMAIL-FIRST. A phone cannot substitute: email is the transactional channel
      for the confirmation, the tracking link and any claim. */
   senderEmailInvalid: "Check your email address — Couranr could not read it.",
+  senderNameRequired: "Enter your name — it goes on the shipment record you are certifying.",
+  recipientEmailMismatch:
+    "The two recipient email addresses do not match. Check both — the tracking link goes to this address and nowhere else.",
   recipientNameRequired: "Enter the name of the person receiving this delivery.",
   recipientEmailRequired: "Enter the recipient's email so Couranr can send them the tracking link.",
   recipientEmailInvalid: "Check the recipient's email address — Couranr could not read it.",
@@ -235,6 +238,7 @@ export function buildEstimateBody(input: QuoteInput): EstimateBodyResult {
   // EMAIL-FIRST (V1). The old rule was phone OR email; the server now requires
   // the email and the phone stays optional. These two gates must agree exactly
   // — tests/couranr-consumer-send-contract.test.ts holds them together.
+  if (!contact.name) return { ok: false, note: NOTES.senderNameRequired };
   if (!contact.email) return { ok: false, note: NOTES.contactRequired };
   if (!CONSUMER_EMAIL_RE.test(contact.email)) {
     return { ok: false, note: NOTES.senderEmailInvalid };
@@ -245,6 +249,20 @@ export function buildEstimateBody(input: QuoteInput): EstimateBodyResult {
   if (!recipient.email) return { ok: false, note: NOTES.recipientEmailRequired };
   if (!CONSUMER_EMAIL_RE.test(recipient.email)) {
     return { ok: false, note: NOTES.recipientEmailInvalid };
+  }
+
+  /* M — TYPO RISK. The recipient email carries a private bearer capability: the
+     adult attestation, identity verification and the handoff PIN all live behind
+     the link sent to it. A single mistyped character delivers all three to a
+     stranger, and unlike a wrong phone number nothing bounces back to say so.
+     
+     Confirmed by re-entry, compared on the NORMALIZED value so case and
+     surrounding spaces do not produce a false mismatch. The confirmation is a
+     CLIENT-SIDE gate and is deliberately never persisted — a second stored copy
+     of an address is a second thing to keep in sync and adds no evidence. */
+  const confirm = (input.recipientEmailConfirm ?? "").trim().toLowerCase();
+  if (confirm !== recipient.email.trim().toLowerCase()) {
+    return { ok: false, note: NOTES.recipientEmailMismatch };
   }
 
   /* DECLARED VALUE, judged by the SAME authority the server and the database
@@ -846,7 +864,8 @@ export function createLiveSameDayAdapters(
           quoteStatus?: unknown;
           totalCents?: unknown;
           paymentState?: unknown;
-          trackingToken?: unknown;
+          recipientNotifiedAt?: unknown;
+          recipientNotifiedTo?: unknown;
         };
       } | null)?.request;
       if (!req || typeof req.state !== "string") return null;
@@ -856,8 +875,13 @@ export function createLiveSameDayAdapters(
         totalCents: typeof req.totalCents === "number" ? req.totalCents : null,
         paymentState: typeof req.paymentState === "string" ? req.paymentState : null,
       };
-      if (typeof req.trackingToken === "string" && req.trackingToken !== "") {
-        view.trackingToken = req.trackingToken;
+      /* A recipient bearer token must never reach the sender's adapter, so
+         there is nothing here to copy across even if the server regressed. */
+      if (typeof req.recipientNotifiedAt === "string" && req.recipientNotifiedAt !== "") {
+        view.recipientNotifiedAt = req.recipientNotifiedAt;
+        if (typeof req.recipientNotifiedTo === "string") {
+          view.recipientNotifiedTo = req.recipientNotifiedTo;
+        }
       }
       return view;
     },

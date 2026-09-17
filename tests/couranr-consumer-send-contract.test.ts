@@ -42,6 +42,8 @@ const completeInput = {
   dropoffPlaceId: "place_dropoff",
   contact: { name: "Alex Chen", mobile: "+15715550100", email: "alex@example.test" },
   recipient: { name: "Dana Reyes", email: "dana@example.test", mobile: "+15715550101" },
+  // Re-entered by the sender; compared normalized and never persisted (M).
+  recipientEmailConfirm: "dana@example.test",
   declaredValueCents: 2_000,
   acceptance: { shipmentCertification: true, electronicTransactions: true },
   shipment: {
@@ -160,6 +162,36 @@ describe("the body the UI builds is a body the server accepts", () => {
         `${JSON.stringify(truthy)} was accepted as consent`
       ).toBe("shipment_certification_required");
     }
+  });
+
+  it("blocks a MISTYPED recipient email before it can be used", () => {
+    /* The recipient email is not a contact detail here — it is where a private
+       bearer capability is delivered. One wrong character sends the adult
+       attestation, identity verification and handoff PIN to a stranger, and
+       unlike a wrong phone number nothing bounces back to say so. */
+    const r = throughBothGates({ ...completeInput, recipientEmailConfirm: "dana@exampel.test" });
+    expect(r.stage).toBe("client");
+
+    // Absent entirely is a mismatch, not a skip.
+    const missing = throughBothGates({ ...completeInput, recipientEmailConfirm: undefined });
+    expect(missing.stage).toBe("client");
+  });
+
+  it("does not manufacture a mismatch out of case or spacing", () => {
+    // Refusing "  Dana@Example.test " against "dana@example.test" would train
+    // senders to distrust the field, which is worse than not having it.
+    const r = throughBothGates({
+      ...completeInput,
+      recipientEmailConfirm: "  Dana@Example.TEST  ",
+    });
+    expect(r.stage, "a normalized-equal confirmation was refused").toBe("accepted");
+  });
+
+  it("never persists the confirmation — it is a gate, not evidence", () => {
+    const r = throughBothGates(completeInput);
+    expect(r.stage).toBe("accepted");
+    if (r.stage !== "accepted") return;
+    expect(JSON.stringify(r.value)).not.toContain("recipientEmailConfirm");
   });
 
   it("never lets the client gate pass something the SERVER then refuses", () => {

@@ -136,6 +136,7 @@ const GOOD_QUOTE_INPUT = {
      while phone-OR-email satisfied the old rule; it cannot be now. */
   contact: { name: "Ada", mobile: "+15715550100", email: "ada@example.test" },
   recipient: { name: "Grace", mobile: "+15715550101", email: "grace@example.test" },
+  recipientEmailConfirm: "grace@example.test",
   declaredValueCents: 2_500,
   acceptance: { shipmentCertification: true, electronicTransactions: true },
   shipment: { description: "a birthday cake", weightLb: 8, weightBand: null, restrictedClass: "none" },
@@ -792,8 +793,8 @@ describe("reconcilePayment trusts only the server's payment key", () => {
   });
 });
 
-describe("readRequest: the tracking token is the server's to grant", () => {
-  it("returns the nested view with its token", async () => {
+describe("readRequest: the recipient's token is never the sender's to hold", () => {
+  it("surfaces that the recipient was notified, and where", async () => {
     const a = live({
       fetchImpl: fakeFetch({
         [S]: SESSION_OK,
@@ -804,7 +805,8 @@ describe("readRequest: the tracking token is the server's to grant", () => {
               quoteStatus: "estimated",
               totalCents: 1049,
               paymentState: "authorized",
-              trackingToken: "trk_abc",
+              recipientNotifiedAt: "2026-09-17T12:00:00.000Z",
+              recipientNotifiedTo: "dana@example.test",
             },
           },
         }),
@@ -816,29 +818,40 @@ describe("readRequest: the tracking token is the server's to grant", () => {
       quoteStatus: "estimated",
       totalCents: 1049,
       paymentState: "authorized",
-      trackingToken: "trk_abc",
+      recipientNotifiedAt: "2026-09-17T12:00:00.000Z",
+      recipientNotifiedTo: "dana@example.test",
     });
   });
 
-  it("a view without a token has NO trackingToken key; failures are null", async () => {
+  it("DROPS a recipient token even if the server hands one back", async () => {
+    /* Defence in depth for the finding this replaced. The sender view used to
+       carry `trackingToken` — the same raw token emailed to the recipient,
+       whose audience is `recipient` and which authorizes the adult attestation,
+       identity verification and the handoff PIN. The server no longer sends it;
+       this proves the adapter would not surface it if a regression did, so the
+       sender's screen cannot become recipient authority by forwarding. */
     const a = live({
       fetchImpl: fakeFetch({
         [S]: SESSION_OK,
         [REQUEST]: () => ({
           body: {
-            request: { state: "pending_couranr_review", quoteStatus: "estimated", totalCents: 1049, paymentState: null },
+            request: {
+              state: "confirmed",
+              quoteStatus: "estimated",
+              totalCents: 1049,
+              paymentState: "authorized",
+              trackingToken: "trk_recipient_capability",
+              recipientNotifiedAt: "2026-09-17T12:00:00.000Z",
+              recipientNotifiedTo: "dana@example.test",
+            },
           },
         }),
       }).impl,
       storage: null,
     });
     const view = await a.readRequest!();
-    expect(view && "trackingToken" in view).toBe(false);
-    const down = live({
-      fetchImpl: fakeFetch({ [S]: SESSION_OK, [REQUEST]: () => ({ status: 500, body: { error: "x" } }) }).impl,
-      storage: null,
-    });
-    expect(await down.readRequest!()).toBeNull();
+    expect(JSON.stringify(view)).not.toContain("trk_recipient_capability");
+    expect((view as Record<string, unknown>).trackingToken).toBeUndefined();
   });
 });
 

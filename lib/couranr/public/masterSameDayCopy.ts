@@ -171,7 +171,14 @@ export const SEND_COPY = {
   declared_value_max_note: "Couranr Same Day carries shipments declared up to",
   /* Progressive disclosure. The sender is told what the declared value CHANGES
      about the handling, at the moment they enter it — not after they have paid. */
-  protection_standard: "Standard handling: the driver photographs the delivery at drop-off.",
+  /* TRUE OF THE CANONICAL PATH. This used to promise that the driver
+     photographs the delivery at drop-off. Consumer Same Day uses proof_method
+     'photo_or_pin', which routes to the recipient-PIN handoff — and that path
+     takes no photograph at all. Promising evidence the system does not collect
+     is worse than promising less, because the sender only finds out when they
+     ask for it in a claim. */
+  protection_standard:
+    "Standard handling: your recipient confirms the handoff with a code they read to the driver.",
   protection_secure_pickup:
     "Secure pickup: the driver photographs the item before it is packed, applies a numbered "
     + "tamper-evident seal, photographs the sealed package, and confirms your pickup code last.",

@@ -117,6 +117,8 @@ export type QuoteInput = {
   /** The recipient. Name and email are required from V1; `mobile` maps to
    *  `phone` the same way the sender's does. */
   recipient?: { name?: string; mobile?: string; email?: string };
+  /** Re-entered recipient email. Compared normalized, never persisted (M). */
+  recipientEmailConfirm?: string;
   /** TOTAL declared shipment value in integer cents — a sender representation,
    *  never an appraisal. The PROTECTION LEVEL is derived from it on the server
    *  and re-derived by the database; the browser never states a level. */
@@ -161,7 +163,9 @@ export type ConsumerRequestReading = {
   quoteStatus: string;
   totalCents: number | null;
   paymentState: string | null;
-  trackingToken?: string;
+  /** The sender is told the recipient was notified, never given their token. */
+  recipientNotifiedAt?: string;
+  recipientNotifiedTo?: string;
 };
 
 export type SameDayAdapters = {

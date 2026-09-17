@@ -266,7 +266,9 @@ describe("validateConsumerSendBody", () => {
   const valid = {
     pickupPlaceId: "p1",
     dropoffPlaceId: "p2",
-    contact: { phone: "+15715550100", email: "sender@example.test" },
+    // V1 requires the sender's NAME: the terms they accept say "I am authorized
+    // to send these items", and an acceptance signed by nobody is weak evidence.
+    contact: { name: "Alex Chen", phone: "+15715550100", email: "sender@example.test" },
     recipient: { name: "Dana Reyes", email: "recipient@example.test" },
     // $20.00 — inside the standard band on purpose, so these pre-existing
     // assertions keep testing what they were written to test.
@@ -487,6 +489,20 @@ describe("validateConsumerSendBody", () => {
     }
   });
 
+  it("requires the SENDER'S NAME, not just an address to reach them", () => {
+    /* The certification the sender accepts says "I am authorized to send these
+       items". An acceptance signed by nobody is weak evidence of precisely the
+       thing a claim turns on, so V1 requires the name. Phone stays optional. */
+    const { name, ...noName } = valid.contact as Record<string, unknown>;
+    expect(reasonFor({ ...valid, contact: noName })).toBe("sender_name_required");
+    expect(reasonFor({ ...valid, contact: { ...valid.contact, name: "   " } })).toBe(
+      "sender_name_required"
+    );
+    // A phone still is not required.
+    const { phone, ...noPhone } = valid.contact as Record<string, unknown>;
+    expect(validateConsumerSendBody({ ...valid, contact: noPhone }).ok).toBe(true);
+  });
+
   it("does NOT forbid declaredValueCents — it is the one input the sender states", () => {
     // The guard on the guard: if a future edit added `declaredvaluecents` to the
     // list, every legitimate send would fail closed with `forbidden_field` and
@@ -688,5 +704,60 @@ describe("consumer restricted-signal parity (review item 1)", () => {
     const code = stripped(LIB);
     expect(code).toMatch(/scanRestrictedSignals\(body\.shipment\.description \?\? ""\)/);
     expect(code).toMatch(/evaluateShipmentPolicy\([\s\S]{0,400}\{ textSignals \}/);
+  });
+});
+
+
+/* =========================================================================
+ * A — SENDER AND RECIPIENT ARE DIFFERENT CAPABILITIES
+ * ====================================================================== */
+
+describe("the sender is never handed the recipient's token", () => {
+  const SEND_LIB = readFileSync(path.join(ROOT, "lib/couranr/consumer/send.ts"), "utf8");
+  const code = stripped(SEND_LIB);
+
+  it("assigns no raw token onto the sender's view", () => {
+    /* The finding: `view.trackingToken = rawToken` returned the SAME token that
+       had just been emailed to the recipient. Its audience is `recipient` and
+       it authorizes the adult attestation, identity verification and the
+       handoff PIN — so the sender held all three, and so did anyone they
+       forwarded their screen to.
+
+       Asserted against the source because the alternative is an integration
+       test that has to stand up email, and the property is simple: nothing
+       assigns a raw token into the object returned to the sender. */
+    /* Matches ANY property assignment of the raw token, including through a
+       cast. The first version of this test looked for `view.trackingToken =`
+       and a negative control writing `(view as any).trackingToken = rawToken`
+       walked straight past it — a guard narrow enough to name the old line is a
+       guard the next regression is free to route around. */
+    expect(/\.\w+\s*=\s*rawToken\b/.test(code), "a raw token is assigned onto an object").toBe(
+      false
+    );
+    // And no object literal carries it as a property value either.
+    expect(/\b\w*[Tt]oken\s*:\s*rawToken\b/.test(code)).toBe(false);
+  });
+
+  it("keeps no token field on the sender view type at all", () => {
+    // A field that exists is a field something will eventually populate.
+    const raw = SEND_LIB.slice(
+      SEND_LIB.indexOf("export type ConsumerSendView = {"),
+      SEND_LIB.indexOf("};", SEND_LIB.indexOf("export type ConsumerSendView = {"))
+    );
+    /* COMMENTS STRIPPED. The doc comment on this type explains that the sender
+       is never given the recipient's TOKEN, so an un-stripped match fails on the
+       explanation rather than on a field — the same way a migration test once
+       "passed" by matching the sentence describing the rule instead of the
+       rule. Only declarations can leak a value. */
+    const type = raw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    expect(type).not.toMatch(/token/i);
+    // What the sender legitimately gets instead: the fact, and the address.
+    expect(type).toContain("recipientNotifiedAt");
+    expect(type).toContain("recipientNotifiedTo");
+  });
+
+  it("still emails the recipient — the capability moved, it did not vanish", () => {
+    expect(code).toContain("sendRenderedEmail");
+    expect(code).toMatch(/trackUrl[\s\S]{0,80}rawToken/);
   });
 });

@@ -465,7 +465,13 @@ export function validateConsumerSendBody(raw: unknown): ConsumerSendBodyResult {
   // the old rule. A phone cannot substitute: email is the transactional
   // channel for the confirmation, the tracking link and any claim.
   if (!email) return { ok: false, reason: "sender_email_required" };
-  const contact = { name: str(contactRaw.name), phone: str(contactRaw.phone), email };
+  /* SENDER NAME REQUIRED (V1). A shipment is a representation by a named
+     person: the terms they accept say "I am authorized to send these items",
+     and an acceptance signed by nobody is weak evidence of exactly the thing a
+     claim turns on. Phone stays optional. */
+  const senderName = str(contactRaw.name);
+  if (!senderName) return { ok: false, reason: "sender_name_required" };
+  const contact = { name: senderName.slice(0, 200), phone: str(contactRaw.phone), email };
 
   // The recipient. Name and email required; phone stays optional and cannot
   // satisfy the email rule.
@@ -1190,8 +1196,22 @@ export type ConsumerSendView = {
   quoteStatus: string;
   totalCents: number | null;
   paymentState: string | null;
-  /** Present EXACTLY ONCE: the first read after confirmation mints the link. */
-  trackingToken?: string;
+  /**
+   * THE SENDER IS TOLD THE RECIPIENT WAS NOTIFIED. THE SENDER IS NEVER GIVEN
+   * THE RECIPIENT'S TOKEN.
+   *
+   * This used to carry `trackingToken` — the SAME raw token that had just been
+   * emailed to the recipient. That token's audience is `recipient` and it
+   * authorizes recipient-only actions: the adult attestation, identity
+   * verification, and the recipient's handoff PIN. Returning it to the sender
+   * handed one party another party's capability, and anyone the sender
+   * forwarded their own screen to inherited it.
+   *
+   * What the sender legitimately needs is the FACT of delivery and the address
+   * it went to, so a typo is visible. Not the capability.
+   */
+  recipientNotifiedAt?: string;
+  recipientNotifiedTo?: string;
 };
 
 /** The live obligation for the session's request. Consumer rows only. */
@@ -1302,7 +1322,11 @@ export async function getConsumerSendView(params: {
           return marked;
         }
       }
-      view.trackingToken = rawToken;
+      /* Deliberately NOT `view.trackingToken = rawToken`. See ConsumerSendView:
+         the raw token is a recipient capability and the sender is told only
+         that it was sent, and where. */
+      view.recipientNotifiedAt = new Date().toISOString();
+      view.recipientNotifiedTo = String(row.recipient_email ?? "");
     }
   }
 

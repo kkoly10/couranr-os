@@ -108,11 +108,13 @@ async function selectAddress(inputId: string) {
 
 /** Everything the estimate needs from the review step, V1 contract. */
 async function fillSenderAndRecipient() {
+  await userEvent.type(screen.getByLabelText("Name"), "Alex Chen");
   await userEvent.type(screen.getByLabelText("Mobile"), "+15715550100");
   await userEvent.type(screen.getByLabelText("Email"), "sender@example.test");
   await userEvent.type(screen.getByLabelText("Recipient name"), "Dana Reyes");
   await userEvent.type(screen.getByLabelText("Recipient email"), "dana@example.test");
   await userEvent.type(screen.getByLabelText(/Recipient mobile/), "+15715550101");
+  await userEvent.type(screen.getByLabelText(/Confirm recipient email/i), "dana@example.test");
 }
 
 async function driveToReviewStep() {
@@ -177,13 +179,18 @@ describe("consumer /send funnel gating", () => {
 
     // A mobile alone no longer opens it: V1 is EMAIL-FIRST and the recipient is
     // required, because the tracking link and any claim travel by email.
-    await userEvent.type(screen.getByLabelText("Mobile"), "+15715550100");
+    await userEvent.type(screen.getByLabelText("Name"), "Alex Chen");
+  await userEvent.type(screen.getByLabelText("Mobile"), "+15715550100");
     expect(btn(/Check the price/).disabled).toBe(true);
     await userEvent.type(screen.getByLabelText("Email"), "sender@example.test");
     expect(btn(/Check the price/).disabled).toBe(true);
     await userEvent.type(screen.getByLabelText("Recipient name"), "Dana Reyes");
     expect(btn(/Check the price/).disabled).toBe(true);
     await userEvent.type(screen.getByLabelText("Recipient email"), "dana@example.test");
+    // Still closed: the recipient email carries a private capability and must be
+    // confirmed before it can be used (M).
+    expect(btn(/Check the price/).disabled).toBe(true);
+    await userEvent.type(screen.getByLabelText(/Confirm recipient email/i), "dana@example.test");
     await waitFor(() => expect(btn(/Check the price/).disabled).toBe(false));
     await userEvent.click(btn(/Check the price/));
 

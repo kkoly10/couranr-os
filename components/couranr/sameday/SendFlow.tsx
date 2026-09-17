@@ -144,6 +144,10 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
      this was created with no recipient identity at all, because the UI never
      collected one and the server passed null. */
   const [recipient, setRecipient] = React.useState({ name: "", mobile: "", email: "" });
+  /* M — the recipient email carries a private capability and a typo delivers it
+     to a stranger with nothing bouncing back to say so. Re-entered, compared
+     normalized, and never persisted. */
+  const [recipientEmailConfirm, setRecipientEmailConfirm] = React.useState("");
   /* DOLLARS as the sender typed them. Converted to integer cents once, by
      `declaredCents` below — never carried as a float. */
   const [declaredValue, setDeclaredValue] = React.useState("");
@@ -168,7 +172,11 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
     amountCents: number;
   } | null>(null);
   const [liveNote, setLiveNote] = React.useState<string | null>(null);
-  const [trackingToken, setTrackingToken] = React.useState<string | null>(null);
+  /* The SENDER is told the recipient was emailed, and where. The recipient's
+     tracking token is their capability and never reaches this screen — a
+     sender who forwards this page must not be forwarding recipient authority. */
+  const [recipientNotified, setRecipientNotified] =
+    React.useState<{ at: string; to: string } | null>(null);
   /* True when the server says the payment is authorized while Couranr review
      is still pending — the CAP-001 posture the received screen must state. */
   const [authorizedPending, setAuthorizedPending] = React.useState(false);
@@ -331,6 +339,7 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
         dropoffPlaceId: destination.placeId ?? null,
         contact: { name: contact.name, mobile: contact.mobile, email: contact.email },
         recipient: { name: recipient.name, mobile: recipient.mobile, email: recipient.email },
+        recipientEmailConfirm,
         declaredValueCents: declaredCents,
         acceptance: {
           shipmentCertification: acknowledged,
@@ -396,7 +405,11 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
      exists. When it names none, the received screen simply shows none. */
   async function finishLive() {
     const view = adapters.readRequest ? await adapters.readRequest() : null;
-    setTrackingToken(view?.trackingToken ?? null);
+    setRecipientNotified(
+      view?.recipientNotifiedAt
+        ? { at: view.recipientNotifiedAt, to: view.recipientNotifiedTo ?? "" }
+        : null
+    );
     setAuthorizedPending(
       view?.paymentState === "authorized" && view?.state === "pending_couranr_review"
     );
@@ -453,7 +466,11 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
         /* The raw tracking token is shown once by doctrine; a later resume
            may not get it back. The STATUS is still the truth to show. */
         setConfirmed(true);
-        setTrackingToken(view.trackingToken ?? null);
+        setRecipientNotified(
+          view.recipientNotifiedAt
+            ? { at: view.recipientNotifiedAt, to: view.recipientNotifiedTo ?? "" }
+            : null
+        );
         setReceived(true);
         return;
       }
@@ -586,8 +603,11 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
      claim, so `buildEstimateBody` and the server both require it — this gate
      must require the same thing or the sender meets a refusal the form never
      warned them about. */
-  const hasContact = contact.email.trim() !== "";
-  const hasRecipient = recipient.name.trim() !== "" && recipient.email.trim() !== "";
+  const hasContact = contact.name.trim() !== "" && contact.email.trim() !== "";
+  const recipientEmailsMatch =
+    recipient.email.trim().toLowerCase() === recipientEmailConfirm.trim().toLowerCase();
+  const hasRecipient =
+    recipient.name.trim() !== "" && recipient.email.trim() !== "" && recipientEmailsMatch;
 
   /* Dollars -> integer cents, or null when the sender has not stated a readable
      amount. NOT coerced: an unreadable value is not a $0 shipment, and treating
@@ -671,9 +691,17 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
             no request was created, and saying so is the only honest line;
             inventing a confirmation would be a fabricated record on a
             customer's screen. */}
-        {mode === "live" && trackingToken ? (
-          <p className="cr-send-note">
-            <a href={`/track/${trackingToken}`}>Track this delivery</a>
+        {/* The recipient's tracking link is emailed to the RECIPIENT. It is
+            deliberately not rendered here and not returned to this screen: it
+            carries the recipient's adult attestation, identity verification and
+            handoff PIN, and a sender who forwarded this page would be forwarding
+            all three. Showing the address back is what actually helps the
+            sender — a typo is visible at the one moment they can still say so. */}
+        {mode === "live" && recipientNotified ? (
+          <p className="cr-send-note" data-couranr-recipient-notified="true">
+            Couranr emailed the tracking link to{" "}
+            {recipientNotified.to || "your recipient"}. They will use it to confirm
+            the delivery.
           </p>
         ) : null}
 
@@ -1191,6 +1219,25 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
                 />
               </label>
             ))}
+            <label className="cr-send-field__inline">
+              <span>Confirm recipient email</span>
+              <input
+                className="cr-input"
+                type="email"
+                autoComplete="off"
+                value={recipientEmailConfirm}
+                onChange={(e) => {
+                  setRecipientEmailConfirm(e.target.value);
+                  invalidateQuote();
+                }}
+              />
+            </label>
+            {recipientEmailConfirm.trim() !== "" && !recipientEmailsMatch ? (
+              <p className="cr-send-field__hint" data-couranr-recipient-email-mismatch="true">
+                These do not match. Couranr sends the tracking link to this address and nowhere
+                else.
+              </p>
+            ) : null}
           </div>
 
           {/* The estimate is requested EXPLICITLY, and only once contact exists
@@ -1221,8 +1268,10 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
                     )}.`
                   : "Go back and enter what this shipment is worth, then check the price."
                 : !hasContact
-                  ? "Add your email above, then check the price."
-                  : "Add the recipient’s name and email above, then check the price."}
+                  ? "Add your name and email above, then check the price."
+                  : !recipientEmailsMatch && recipient.email.trim() !== ""
+                    ? "Confirm the recipient’s email above — the two entries must match."
+                    : "Add the recipient’s name and email above, then check the price."}
             </p>
           ) : null}
 
