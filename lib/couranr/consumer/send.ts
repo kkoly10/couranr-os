@@ -35,17 +35,11 @@ import {
   isPaymentFailure,
   reconcilePaymentIntent,
 } from "@/lib/couranr/payments/commands";
-import {
-  claimConsumerRecipientTrackingDelivery,
-  failRecipientTrackingNotification,
-  isTrackingFailure,
-  markRecipientTrackingNotification,
-} from "@/lib/couranr/tracking/commands";
-import { hashTrackingToken } from "@/lib/couranr/tracking/tokens";
 import { isRecipientIdentityCapabilityAvailable } from "@/lib/couranr/identity/recipientIdentity";
-import { sendRenderedEmail } from "@/lib/couranr/email/send";
-import { custDirectDeliveryConfirmed } from "@/lib/couranr/email/templates/customer";
-import { defaultEmailConfig, url as emailUrl } from "@/lib/couranr/email/theme";
+/* READ ONLY. This module imports the notification subsystem's REPORTER and
+   nothing that sends: the claim/send/receipt trio moved to the lifecycle, and
+   re-importing `sendRenderedEmail` here would be the regression. */
+import { recipientNotifiedAt } from "@/lib/couranr/email/consumerLifecycle";
 import { recordConsumerIntakeEvidenceAfterEstimate } from "./intake";
 import {
   CODE_SHOWN_ONCE_WARNING,
@@ -1236,10 +1230,27 @@ async function loadOwnObligation(
 }
 
 /**
- * The guest's own-request projection. When a direct-consumer request reaches
- * `confirmed`, the database claims ONE recipient-link delivery attempt. The
- * raw token is emailed to the recipient and returned to the sender on this
- * response only; PostgreSQL stores only its SHA-256 digest.
+ * The guest's own-request projection.
+ *
+ * A PURE READ. IT SENDS NOTHING, CLAIMS NOTHING AND WRITES NOTHING.
+ *
+ * It used to do all three: on `confirmed` it claimed the recipient tracking
+ * token, called the email provider inline and recorded the receipt, all inside
+ * a GET behind the sender's status page. That was wrong in three separate ways
+ * and every one of them was reachable:
+ *
+ *   - a provider blip made this projection return `internal`, so the SENDER'S
+ *     status page failed to load for an operation that had already succeeded —
+ *     the delivery was confirmed and the card was authorized;
+ *   - a sender who closed the tab after that blip ended the story. Nothing
+ *     retried, nothing alarmed, and the recipient was never emailed;
+ *   - the recipient's invitation depended on the sender opening a page at all.
+ *
+ * The send is now owned by `advanceAutomaticFulfillment` (see
+ * `lib/couranr/email/consumerLifecycle.ts`), which runs from every lifecycle
+ * seam and from the 5-minute cron. This function REPORTS what that recorded:
+ * `recipient_notified_at` comes off the token row the SQL receipt wrote, not
+ * from a clock reading taken next to an attempted send.
  */
 export async function getConsumerSendView(params: {
   session: GuestSession;
@@ -1263,69 +1274,14 @@ export async function getConsumerSendView(params: {
   };
 
   if (row.request_state === "confirmed") {
-    const claimed = await claimConsumerRecipientTrackingDelivery({
-      requestId: String(row.id),
-    });
-    if (isTrackingFailure(claimed)) return claimed;
-
-    if (claimed.value.outcome === "issued") {
-      const rawToken = claimed.value.token;
-      const nonProductionUnarmed =
-        process.env.VERCEL_ENV !== "production" && process.env.COURANR_EMAIL_SEND !== "live";
-
-      // Keep disposable/preview flows usable without fabricating a provider
-      // receipt. Production always has to deliver and record the recipient
-      // email before treating this claim as complete.
-      if (!nonProductionUnarmed) {
-        const dropoff = row.dropoff_address ?? {};
-        const dropoffLabel =
-          [dropoff.city, dropoff.region].filter((value) => typeof value === "string" && value).join(", ") ||
-          String(dropoff.formattedAddress ?? "Delivery address");
-        const senderName =
-          typeof row.consumer_contact_snapshot?.name === "string"
-            ? row.consumer_contact_snapshot.name.trim()
-            : "";
-        const rendered = custDirectDeliveryConfirmed(defaultEmailConfig, {
-          senderName: senderName || undefined,
-          recipientName: String(row.recipient_name ?? "there"),
-          reference: String(row.reference),
-          dropoffLabel,
-          trackUrl: emailUrl(defaultEmailConfig, `/track/${encodeURIComponent(rawToken)}`),
-          recipientAdultAttestationRequired: row.protection_level === "protected_handoff",
-        });
-        const sent = await sendRenderedEmail(rendered, {
-          to: String(row.recipient_email ?? ""),
-          idempotencyKey: `consumer-tracking:${hashTrackingToken(rawToken)}`,
-        });
-        if ("reason" in sent) {
-          const revoked = await failRecipientTrackingNotification({
-            rawToken,
-            reason: `recipient_email_${sent.reason}`,
-          });
-          if (isTrackingFailure(revoked)) return revoked;
-          return fail({
-            operation: op,
-            code: "internal",
-            detail: { reason: sent.reason, correlationId: sent.correlationId },
-            message: "The recipient tracking email could not be sent yet. Please try again.",
-          });
-        }
-        const marked = await markRecipientTrackingNotification({
-          rawToken,
-          providerId: sent.id,
-        });
-        if (isTrackingFailure(marked)) {
-          await failRecipientTrackingNotification({
-            rawToken,
-            reason: "recipient_email_receipt_not_recorded",
-          });
-          return marked;
-        }
-      }
-      /* Deliberately NOT `view.trackingToken = rawToken`. See ConsumerSendView:
-         the raw token is a recipient capability and the sender is told only
-         that it was sent, and where. */
-      view.recipientNotifiedAt = new Date().toISOString();
+    const notifiedAt = await recipientNotifiedAt(String(row.id));
+    if (notifiedAt) {
+      /* The FACT and the address — never the token. The raw token's audience is
+         `recipient`; it authorizes the adult attestation, identity verification
+         and the recipient's handoff PIN, so handing it to the sender would hand
+         one party another party's capability, and anyone the sender forwarded
+         their screen to would inherit it. */
+      view.recipientNotifiedAt = notifiedAt;
       view.recipientNotifiedTo = String(row.recipient_email ?? "");
     }
   }

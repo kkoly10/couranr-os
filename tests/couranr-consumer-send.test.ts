@@ -756,8 +756,23 @@ describe("the sender is never handed the recipient's token", () => {
     expect(type).toContain("recipientNotifiedTo");
   });
 
-  it("still emails the recipient — the capability moved, it did not vanish", () => {
-    expect(code).toContain("sendRenderedEmail");
-    expect(code).toMatch(/trackUrl[\s\S]{0,80}rawToken/);
+  /*
+   * The capability moved TWICE now. First the raw token stopped being returned
+   * to the sender; then the send itself left this module entirely, because a
+   * GET projection is the wrong owner for an irreversible side effect — a
+   * provider blip surfaced as a failed status-page load, and a sender who
+   * closed the tab meant the recipient was never emailed.
+   *
+   * So the assertion is no longer "this file still sends". It is: this file
+   * sends NOTHING, and the module that does still puts the raw token in the
+   * tracking URL rather than anywhere a sender can see.
+   */
+  it("still emails the recipient — the capability moved to the lifecycle, it did not vanish", () => {
+    const lifecycle = stripped(
+      readFileSync(path.join(ROOT, "lib/couranr/email/consumerLifecycle.ts"), "utf8")
+    );
+    expect(code).not.toContain("sendRenderedEmail");
+    expect(lifecycle).toContain("sendRenderedEmail");
+    expect(lifecycle).toMatch(/trackUrl[\s\S]{0,80}rawToken/);
   });
 });

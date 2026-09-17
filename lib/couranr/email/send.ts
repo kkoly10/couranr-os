@@ -157,11 +157,31 @@ type Dispatch =
   | { kind: "blocked"; reason: EmailSkipReason }
   | { kind: "send"; recipient: string; redirected: boolean };
 
+/**
+ * ONE reading of the environment predicate, for every caller.
+ *
+ * `lib/couranr/consumer/send.ts` carried a second copy —
+ * `VERCEL_ENV !== "production" && COURANR_EMAIL_SEND !== "live"` — written
+ * inline at its call site so it could decide whether to bother claiming a
+ * recipient token at all. Two independent readings of the same two variables is
+ * how one of them comes to arm an environment the other still considers
+ * blocked: the caller claims and revokes on a loop while this module refuses
+ * every send, or worse, the caller skips a send this module would have made.
+ *
+ * A caller that needs to decide "is it worth starting" asks THIS function; the
+ * caller that actually sends gets the same answer from `resolveDispatch`, which
+ * is built on it.
+ */
+export function emailSendingIsArmed(): boolean {
+  if (process.env.VERCEL_ENV === "production") return true;
+  return process.env.COURANR_EMAIL_SEND === "live";
+}
+
 function resolveDispatch(to: string): Dispatch {
   const production = process.env.VERCEL_ENV === "production";
   if (production) return { kind: "send", recipient: to, redirected: false };
 
-  if (process.env.COURANR_EMAIL_SEND !== "live") {
+  if (!emailSendingIsArmed()) {
     return { kind: "blocked", reason: "disabled_outside_production" };
   }
 
