@@ -165,6 +165,11 @@ describe("server-only modules are unreachable from client code", () => {
       // Builds canonical proof object paths and holds the bucket name. Paths
       // are the part of a private object that leaks furthest.
       "lib/couranr/driver/proofPaths.ts",
+      // Owns the consumer notification lifecycle: the service-role client, the
+      // recipient tracking claim/receipt trio, and the one instant a RAW
+      // tracking token exists in plaintext. A bundle reaching it would ship the
+      // code that mints a recipient's capability.
+      "lib/couranr/email/consumerLifecycle.ts",
       // The one minter of a merchant send address. Holds the service-role
       // client and reads auth.users through the admin API, so it sees every
       // member's email — exactly the projection a browser bundle must never

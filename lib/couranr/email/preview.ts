@@ -25,6 +25,14 @@ import {
   custRecipientUnavailable,
   custReturnNotice,
 } from "./templates/customer";
+import {
+  consumerSenderRequestReceived,
+  consumerSenderRequestConfirmed,
+  consumerRecipientOutForDelivery,
+  consumerRecipientDelivered,
+  consumerSenderHandoffFailed,
+  consumerSenderReturnNotice,
+} from "./templates/consumer";
 import { allAuthEmails } from "./templates/supabaseAuth";
 
 interface Entry {
@@ -39,6 +47,11 @@ export function collectEmails(config: EmailConfig): Entry[] {
   const s = buildSamples(config);
   const biz = "Couranr → Business";
   const cust = "Business → Customer";
+  /* Both direct-consumer audiences share one gallery section so a reviewer can
+     see the sender's and the recipient's halves of the same delivery together
+     and check that neither carries the other's capability. */
+  const direct = "Couranr → Direct recipient";
+  const sameDay = "Couranr Same Day → Sender";
   const auth = "Supabase Auth";
 
   const entries: Entry[] = [];
@@ -57,15 +70,39 @@ export function collectEmails(config: EmailConfig): Entry[] {
 
   push(cust, "Approve & pay (customer-paid)", custApproveAndPay(config, s.customer.approveAndPay));
   push(cust, "Order confirmed & scheduled", custOrderConfirmed(config, s.customer.orderConfirmed));
-  push(
-    "Couranr → Direct recipient",
-    "Direct delivery confirmed",
-    custDirectDeliveryConfirmed(config, s.customer.directDeliveryConfirmed),
-  );
   push(cust, "Out for delivery", custOutForDelivery(config, s.customer.outForDelivery));
   push(cust, "Delivered", custDelivered(config, s.customer.delivered));
   push(cust, "Recipient unavailable", custRecipientUnavailable(config, s.customer.recipientUnavailable));
   push(cust, "Return notice", custReturnNotice(config, s.customer.returnNotice));
+
+  push(
+    direct,
+    "Direct delivery confirmed (invitation)",
+    custDirectDeliveryConfirmed(config, s.customer.directDeliveryConfirmed),
+  );
+  push(
+    direct,
+    "Out for delivery",
+    consumerRecipientOutForDelivery(config, s.consumer.recipientOutForDelivery),
+  );
+  push(direct, "Delivered", consumerRecipientDelivered(config, s.consumer.recipientDelivered));
+
+  push(
+    sameDay,
+    "Request received",
+    consumerSenderRequestReceived(config, s.consumer.senderRequestReceived),
+  );
+  push(
+    sameDay,
+    "Request confirmed",
+    consumerSenderRequestConfirmed(config, s.consumer.senderRequestConfirmed),
+  );
+  push(
+    sameDay,
+    "Handoff could not be completed",
+    consumerSenderHandoffFailed(config, s.consumer.senderHandoffFailed),
+  );
+  push(sameDay, "Return notice", consumerSenderReturnNotice(config, s.consumer.senderReturnNotice));
 
   for (const a of allAuthEmails(config)) {
     push(auth, a.key.replace(/_/g, " "), { subject: a.subject, html: a.html });

@@ -200,3 +200,82 @@ export interface CustReturnNoticeInput {
   reasonLabel: string;
   helpUrl: string;
 }
+
+/* ------------------------------------------------------------------ */
+/* Couranr Same Day — direct consumer lifecycle                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * There is no shop in this lane. A person asked Couranr to take something to
+ * another person, so the two audiences are the SENDER (who paid, and who can
+ * still act) and the RECIPIENT (who is waiting, and who holds a private
+ * tracking link and nothing else).
+ *
+ * NO INPUT HERE CARRIES A CODE OR A PIN, and that is structural rather than a
+ * convention: a field that does not exist cannot be interpolated into a
+ * template by a later edit. The recipient's handoff PIN lives behind the
+ * token-protected tracking page; `codeOnTrackingPage` says only that one
+ * exists and where to look.
+ */
+
+export interface ConsumerSenderRequestReceivedInput {
+  senderName?: string;
+  recipientName: string;
+  reference: string;
+  dropoffLabel: string;
+  statusUrl: string;
+}
+
+export interface ConsumerSenderRequestConfirmedInput {
+  senderName?: string;
+  recipientName: string;
+  reference: string;
+  dropoffLabel: string;
+  /** True once the recipient's own tracking invitation has been accepted by the
+      provider. The sender is told the FACT, never the recipient's token. */
+  recipientNotified: boolean;
+  statusUrl: string;
+}
+
+/**
+ * NO `trackUrl` ON EITHER RECIPIENT FOLLOW-UP, and this is a fact about the
+ * system rather than an omission.
+ *
+ * The recipient's tracking token exists in plaintext for exactly one instant —
+ * inside `claimConsumerRecipientTrackingDelivery`, which returns it once and
+ * stores only its SHA-256. Nothing can recover it afterwards, so a follow-up
+ * sent hours later has no link to offer and must not invent one: minting a
+ * SECOND token to fill the gap would revoke the link the recipient is already
+ * holding. These messages point back to the invitation instead.
+ */
+export interface ConsumerRecipientOutForDeliveryInput {
+  senderName?: string;
+  recipientName: string;
+  reference: string;
+  handoffMethodLabel: string;
+  /** A code is required; the email says WHERE it is, never what it is. */
+  codeOnTrackingPage?: boolean;
+}
+
+export interface ConsumerRecipientDeliveredInput {
+  senderName?: string;
+  recipientName: string;
+  reference: string;
+  deliveredAtLabel: string;
+}
+
+export interface ConsumerSenderHandoffFailedInput {
+  senderName?: string;
+  recipientName: string;
+  reference: string;
+  reasonLabel: string;
+  statusUrl: string;
+}
+
+export interface ConsumerSenderReturnNoticeInput {
+  senderName?: string;
+  recipientName: string;
+  reference: string;
+  reasonLabel: string;
+  statusUrl: string;
+}

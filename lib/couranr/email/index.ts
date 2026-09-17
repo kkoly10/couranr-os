@@ -7,6 +7,7 @@
  *
  *  - templates/business.ts     Couranr → merchant
  *  - templates/customer.ts     merchant → recipient (sent by Couranr)
+ *  - templates/consumer.ts     Couranr Same Day → sender and recipient
  *  - templates/supabaseAuth.ts Supabase Auth emails, for the dashboard
  *
  * THE SENDER IS DELIBERATELY NOT RE-EXPORTED HERE. `./send` holds
@@ -27,4 +28,6 @@ export * from "./types";
 export * from "./primitives";
 export * from "./templates/business";
 export * from "./templates/customer";
+export * from "./templates/consumer";
 export * from "./templates/supabaseAuth";
+export * from "./idempotency";
