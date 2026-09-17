@@ -391,6 +391,51 @@ describe("the lifecycle owns the recipient invitation", () => {
     expect(report.results[0]).toMatchObject({ outcome: "skipped", reason: "sent" });
   });
 
+  /*
+   * THE 30-DAY RE-INVITE. A tracking token's TTL is 30 days and nothing moves a
+   * request out of `confirmed`, so the claim's `expires_at > now()` filter finds
+   * no live token a month after delivery, issues a brand new one and answers
+   * `issued`. Page-driven, that was survivable — the sender had stopped opening
+   * the page. Cron-driven it is a certainty: every recipient re-invited to
+   * track a delivery that arrived a month ago, and again the month after.
+   *
+   * `recipient_notified_at` survives revocation and expiry, so asking it BEFORE
+   * the claim means the expired-token path is never reached.
+   */
+  it("never re-invites a recipient whose invitation was already receipted", async () => {
+    h.tokens = [{ recipient_notified_at: "2026-08-01T00:00:00.000Z" }];
+    h.rpc.couranr_claim_consumer_recipient_tracking_delivery = claimReturns("issued");
+    const p = provider();
+
+    const report = await notifyConsumerLifecycle({ requestId: REQ, fetchImpl: p.fetchImpl });
+
+    expect(rpcCallsTo("couranr_claim_consumer_recipient_tracking_delivery").length).toBe(0);
+    expect(p.calls.length).toBe(0);
+    expect(report.results[0]).toMatchObject({
+      notification: "recipient_delivery_invitation",
+      outcome: "skipped",
+      reason: "already_notified",
+    });
+  });
+
+  /* And retry is bounded: once the delivery is over, stop trying. */
+  it("stops attempting the invitation once the delivery has finished", async () => {
+    for (const fulfillment_state of ["delivered", "could_not_deliver", "returned", "cancelled"]) {
+      h.rpcCalls = [];
+      h.delivery = { id: DLV, proof_method: "signature", fulfillment_state };
+      h.rpc.couranr_claim_consumer_recipient_tracking_delivery = claimReturns("issued");
+      const p = provider();
+
+      const report = await notifyConsumerLifecycle({ requestId: REQ, fetchImpl: p.fetchImpl });
+
+      expect(rpcCallsTo("couranr_claim_consumer_recipient_tracking_delivery").length).toBe(0);
+      expect(report.results[0]).toMatchObject({
+        outcome: "skipped",
+        reason: "delivery_is_over",
+      });
+    }
+  });
+
   it("sends nothing while another worker holds the claim lease", async () => {
     h.rpc.couranr_claim_consumer_recipient_tracking_delivery = claimReturns("in_progress");
     const p = provider();

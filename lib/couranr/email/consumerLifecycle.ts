@@ -211,6 +211,53 @@ async function deliver(params: {
 /* -------------------------------------------------- recipient invitation --- */
 
 /**
+ * Fulfillment states after which an invitation to track a delivery is pointless.
+ *
+ * A bound on RETRY, not on correctness. Without one, a request whose mail has
+ * been failing since it was confirmed would be re-attempted every five minutes
+ * for the life of the row; with one, the attempts stop when the delivery does.
+ */
+const TERMINAL_FULFILLMENT_STATES = new Set([
+  "delivered",
+  "could_not_deliver",
+  "returned",
+  "cancelled",
+]);
+
+/**
+ * INVITE ONCE, EVER — and this guard is the whole reason the function exists.
+ *
+ * `couranr_claim_consumer_recipient_tracking_delivery` looks for a live token:
+ * `revoked_at is null and expires_at > now()`. A tracking token's TTL is 30
+ * days, and NOTHING in this schema moves a request out of `confirmed` — so 30
+ * days after a delivery completed, the claim finds no live token, issues a
+ * brand new one and answers `issued`. Under the old page-driven send that was
+ * survivable, because the sender had long since stopped opening the page.
+ * Under a 5-minute cron it is a certainty: every recipient would be emailed
+ * "a delivery to you is confirmed" again, a month after it arrived, and again
+ * the month after that.
+ *
+ * `recipient_notified_at` is the fact that closes it: it is written once, it
+ * survives revocation and expiry, and it is never cleared. Asked BEFORE the
+ * claim, so the expired-token path is never reached at all.
+ */
+async function inviteRecipientIfOwed(params: {
+  request: Record<string, any>;
+  alreadyNotified: boolean;
+  fulfillmentState: string;
+  fetchImpl?: typeof fetch;
+}): Promise<ConsumerNotificationResult> {
+  const notification: ConsumerEmailNotification = "recipient_delivery_invitation";
+  if (params.alreadyNotified) {
+    return { notification, outcome: "skipped", reason: "already_notified" };
+  }
+  if (TERMINAL_FULFILLMENT_STATES.has(params.fulfillmentState)) {
+    return { notification, outcome: "skipped", reason: "delivery_is_over" };
+  }
+  return sendRecipientInvitation({ request: params.request, fetchImpl: params.fetchImpl });
+}
+
+/**
  * Claim the one recipient-email delivery attempt and send it.
  *
  * CLAIM BEFORE SEND, RECEIPT AFTER — the order is the whole safety property. A
@@ -397,15 +444,33 @@ export async function notifyConsumerLifecycle(
     const reference = String(request.reference ?? "");
     const statusUrl = emailUrl(defaultEmailConfig, "/send");
 
-    /* The recipient's invitation goes FIRST, so the sender's "confirmed" email
-       can state the notification as a fact rather than a promise. */
-    if (request.request_state === "confirmed") {
-      report.results.push(
-        await sendRecipientInvitation({ request, fetchImpl: options.fetchImpl })
-      );
+    const { data: delivery, error: deliveryError } = (await supabaseAdmin
+      .from("couranr_deliveries")
+      .select("id,proof_method,timezone,fulfillment_state")
+      .eq("request_id", requestId)
+      .maybeSingle()) as { data: any; error: any };
+    if (deliveryError) {
+      record("consumerLifecycle.loadDelivery", { requestId, message: deliveryError.message });
+      report.reason = "delivery_load_failed";
+      return report;
     }
 
-    const recipientNotified = (await recipientNotifiedAt(requestId)) !== null;
+    /* The recipient's invitation goes FIRST, so the sender's "confirmed" email
+       can state the notification as a fact rather than a promise. */
+    let recipientNotified = (await recipientNotifiedAt(requestId)) !== null;
+    if (request.request_state === "confirmed") {
+      report.results.push(
+        await inviteRecipientIfOwed({
+          request,
+          alreadyNotified: recipientNotified,
+          fulfillmentState: str(delivery?.fulfillment_state),
+          fetchImpl: options.fetchImpl,
+        })
+      );
+      recipientNotified =
+        recipientNotified ||
+        report.results[report.results.length - 1].outcome === "sent";
+    }
 
     /* ---- sender: the request's own lifecycle ---- */
     if (senderEmail) {
@@ -464,15 +529,6 @@ export async function notifyConsumerLifecycle(
     }
 
     /* ---- the delivery's own lifecycle ---- */
-    const { data: delivery, error: deliveryError } = (await supabaseAdmin
-      .from("couranr_deliveries")
-      .select("id,proof_method,timezone")
-      .eq("request_id", requestId)
-      .maybeSingle()) as { data: any; error: any };
-    if (deliveryError) {
-      record("consumerLifecycle.loadDelivery", { requestId, message: deliveryError.message });
-      return report;
-    }
     if (!delivery?.id) return report;
 
     const events = await loadRecentEvents({
