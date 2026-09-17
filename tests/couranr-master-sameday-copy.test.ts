@@ -399,7 +399,12 @@ describe("PUB-013 renders its custody figures from authority", () => {
 
   it("composes both thresholds from the protection module and types neither", () => {
     expect(code).toContain("PROTECTION_THRESHOLDS.standardMaxCents");
-    expect(code).toContain("PROTECTION_THRESHOLDS.securePickupMaxCents");
+    /* The upper figure now comes from CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS,
+       which IS securePickupMaxCents but names WHY: it is the most a customer
+       can actually buy while the protected-handoff block is live, as opposed
+       to the policy ceiling. /send reads the same constant, so the two
+       surfaces cannot state different maximums again. */
+    expect(code).toContain("CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS");
     expect(code).toContain("declaredValueDollars");
     expect(code, "a dollar amount is typed onto PUB-013").not.toMatch(/\$\s?\d/);
     // POSITIVE CONTROL: the comment stripper left the render intact.

@@ -23,7 +23,7 @@ import {
 } from "@/components/couranr/sameday/ConsumerAddressField";
 import { WEIGHT_BAND_LABELS } from "@/lib/couranr/shipment/weightBandLabels";
 import {
-  CONSUMER_MAX_DECLARED_VALUE_CENTS,
+  CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS,
   declaredValueDollars,
   deriveProtection,
   isProtectionDeclined,
@@ -1013,7 +1013,7 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
                }>
               {declaredValueTooHigh
                 ? `${SEND_COPY.declared_value_max_note} ${declaredValueDollars(
-                    CONSUMER_MAX_DECLARED_VALUE_CENTS
+                    CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS
                   )}.`
                 : protectionNote}
             </p>
@@ -1291,7 +1291,7 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
               {!hasDeclaredValue
                 ? declaredValueTooHigh
                   ? `${SEND_COPY.declared_value_max_note} ${declaredValueDollars(
-                      CONSUMER_MAX_DECLARED_VALUE_CENTS
+                      CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS
                     )}.`
                   : "Go back and enter what this shipment is worth, then check the price."
                 : !hasContact

@@ -87,6 +87,33 @@ export const PROTECTION_THRESHOLDS = {
   protectedHandoffMaxCents: CONSUMER_MAX_DECLARED_VALUE_CENTS,
 } as const;
 
+/**
+ * THE HIGHEST DECLARED VALUE A CONSUMER CAN ACTUALLY SEND TODAY.
+ *
+ * NOT the same number as `CONSUMER_MAX_DECLARED_VALUE_CENTS`, and the
+ * difference is the whole point. That constant is the POLICY ceiling: the most
+ * this authority will ever govern, enforced by
+ * `couranr_dr_declared_value_range_chk`. This one is what a customer can buy.
+ *
+ * They differ because anything above `securePickupMaxCents` derives to
+ * `protected_handoff`, and `private.couranr_block_unavailable_protected_handoff`
+ * — an ENABLED trigger in production — raises `protected_handoff_identity_unavailable`
+ * for any consumer request at that level the moment it leaves draft. There is
+ * no flag and no escape: Stripe Identity is not activated, so the top band is
+ * unreachable. A shipment declared above this cannot be submitted at all.
+ *
+ * WHY IT IS HERE RATHER THAN IN A PAGE. Two public surfaces state a maximum —
+ * `/sameday` and `/send` — and they were stating different numbers: the
+ * marketing page had been corrected to the truth while `/send` still promised
+ * the policy ceiling, so a sender could fill in $400 and only be refused at
+ * submit. One authority, one answer, both surfaces.
+ *
+ * WHEN IDENTITY IS ACTIVATED and the block is lifted, this becomes
+ * `CONSUMER_MAX_DECLARED_VALUE_CENTS` and both surfaces move together.
+ */
+export const CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS: number =
+  PROTECTION_THRESHOLDS.securePickupMaxCents;
+
 /** What the derived level actually requires. Read by server, SQL tests and UI. */
 export type ProtectionRequirements = {
   level: ProtectionLevel;

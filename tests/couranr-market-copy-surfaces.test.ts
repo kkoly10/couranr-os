@@ -265,7 +265,7 @@ describe("cross-surface claim boundaries are single-sourced", () => {
       .replace(/\{\/\*[\s\S]*?\*\/\}/g, " ")
       .replace(/\/\*[\s\S]*?\*\//g, " ");
     expect(code, "PUB-013 no longer renders the accepted maximum").toContain(
-      "PROTECTION_THRESHOLDS.securePickupMaxCents",
+      "CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS",
     );
     expect(code).toContain("declaredValueDollars");
     expect(code, "PUB-013 types a dollar amount").not.toMatch(/\$\s?\d/);

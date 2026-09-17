@@ -246,8 +246,11 @@ export const SEND_COPY = {
   timing_live_note: "Couranr picks up as soon as possible and confirms the exact timing with you after your request.",
   review_heading: "Here’s your delivery",
   contact_heading: "Where should we send updates?",
-  /* The recipient is required from V1. Every Consumer Same Day delivery before
-     it was created with no recipient identity at all. */
+  /* A named recipient with an email is REQUIRED from V1 onward — send.ts
+     refuses the request otherwise. It used to be optional, and a delivery could
+     be created carrying no recipient identity at all; that is history now, and
+     it is the reason Couranr can email the recipient their own tracking instead
+     of handing the sender a link to forward. */
   recipient_heading: "Who is receiving this delivery?",
   declared_value_label: "What is this shipment worth?",
   declared_value_help:

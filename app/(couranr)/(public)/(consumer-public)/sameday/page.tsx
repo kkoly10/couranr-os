@@ -4,6 +4,7 @@ import { SAME_DAY_COPY } from "@/lib/couranr/public/masterSameDayCopy";
 import { MARKETS_PUBLIC_COPY_NEUTRAL } from "@/lib/couranr/public/governed";
 import { PROHIBITED_GROUPS, groupLabels } from "@/lib/couranr/public/prohibitedSummary";
 import {
+  CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS,
   PROTECTION_THRESHOLDS,
   declaredValueDollars,
 } from "@/lib/couranr/consumer/protection";
@@ -396,7 +397,7 @@ export default function Page() {
         </p>
         <p className="cr-sd-handoff__detail">
           {SAME_DAY_COPY.handoff_declared_value}{" "}
-          {declaredValueDollars(PROTECTION_THRESHOLDS.securePickupMaxCents)}.
+          {declaredValueDollars(CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS)}.
         </p>
         <p className="cr-sd-handoff__detail">
           {SAME_DAY_COPY.handoff_declared_value_close}

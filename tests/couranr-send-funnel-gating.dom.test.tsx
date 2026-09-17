@@ -359,11 +359,18 @@ describe("consumer /send funnel gating", () => {
       expect(btn("Continue").disabled, `$${dollars} should advance`).toBe(false);
     }
 
-    // Over the ceiling: refused, with the ceiling named, and the step blocked.
+    /* Over the ceiling: refused, with the ceiling named, and the step blocked.
+       THE NAMED FIGURE CHANGED, and the change is the point. /send used to
+       promise the $500 POLICY ceiling while the database refused anything above
+       $150 — protected_handoff is blocked because Stripe Identity is not
+       activated — so a sender could be invited to declare $400 and only find
+       out at submit. Both surfaces now render
+       CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS, which is what can actually be
+       bought. $500.01 is still refused; it is simply no longer the boundary. */
     fireEvent.change(value, { target: { value: "500.01" } });
     expect(level()).toBe("none");
     expect(btn("Continue").disabled).toBe(true);
-    expect(screen.getByText(new RegExp(`${SEND_COPY.declared_value_max_note}\\s+\\$500\\.00`))).toBeTruthy();
+    expect(screen.getByText(new RegExp(`${SEND_COPY.declared_value_max_note}\\s+\\$150\\.00`))).toBeTruthy();
 
     // Unreadable input is refused too, rather than coerced to zero — coercion
     // would route a $500 item onto the standard path with no seal.
