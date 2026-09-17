@@ -205,6 +205,12 @@ describe("server-only modules are unreachable from client code", () => {
       // slot. A bundle must never carry it.
       "lib/couranr/intake/testSeam.ts",
       "lib/couranr/onboarding/commands.ts",
+      // OPS-012. Holds the service-role client and reads, cross-business, the
+      // whole custody chain — declared value, seal, recipient identity outcome
+      // and every private evidence row. A browser reaching it would hold the
+      // reader that answers for ANY delivery, and the object paths that reader
+      // sees but never publishes.
+      "lib/couranr/operations/custodyBundle.ts",
       // The payment modules hold the service-role client, the Stripe secret
       // key and the token hashing. None may ever be reachable from a bundle.
       "lib/couranr/payments/commands.ts",
@@ -376,6 +382,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/operations/conversations/[id]/messages/route.ts",
       "app/api/couranr/operations/conversations/[id]/route.ts",
       "app/api/couranr/operations/deliveries/[id]/assignment/route.ts",
+      "app/api/couranr/operations/deliveries/[id]/custody/route.ts",
       "app/api/couranr/operations/deliveries/[id]/help-link/route.ts",
       "app/api/couranr/operations/deliveries/[id]/pickup-code/route.ts",
       "app/api/couranr/operations/deliveries/[id]/recipient-code/route.ts",

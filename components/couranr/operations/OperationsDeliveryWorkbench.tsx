@@ -21,6 +21,7 @@ import { OperationsPaymentRecoveryPanel } from "@/components/couranr/fulfillment
 import { OperationsPilotCreditPanel } from "@/components/couranr/fulfillment/OperationsPilotCreditPanel";
 import { OperationsAssignmentPanel } from "@/components/couranr/dispatch/OperationsAssignmentPanel";
 import { OperationsExecutionPanel } from "@/components/couranr/dispatch/OperationsExecutionPanel";
+import { CustodyBundlePanel } from "@/components/couranr/operations/CustodyBundlePanel";
 import type { FulfillmentView } from "@/components/couranr/fulfillment/client";
 import {
   LIFECYCLE_STAGE_LABELS,
@@ -140,6 +141,27 @@ export function OperationsDeliveryWorkbench({
           />
         )}
       </div>
+
+      {/*
+        OPS-012 — the custody bundle, mounted OUTSIDE the phase switch on
+        purpose.
+
+        `CurrentAction` answers "what should Operations do next", and it swaps
+        its whole body per phase. Custody is not a next action: an investigator
+        opening a claim two weeks after delivery needs the chain, and the phase
+        by then is the terminal one whose branch renders an execution panel or
+        an "no further action" notice. Rendering it here means the record is on
+        the screen from the moment a canonical delivery exists — through
+        execution, and for as long afterwards as anyone can claim against it.
+
+        It appears only when `fulfillment.delivery` exists because custody is
+        recorded against the DELIVERY, not the request: before capture there is
+        no delivery id to read one for, and the request-stage screens already
+        show the sender's declaration.
+      */}
+      {fulfillment?.delivery ? (
+        <CustodyBundlePanel deliveryId={fulfillment.delivery.id} />
+      ) : null}
     </Stack>
   );
 }
