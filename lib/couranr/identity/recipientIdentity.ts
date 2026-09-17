@@ -54,13 +54,40 @@ export function isStripeIdentityActivated(): boolean {
 }
 
 /**
- * Whether this build can actually begin a recipient verification.
+ * The credential that can read a date of birth.
  *
- * False even if somebody flips the environment flag: no provider implementation
- * exists, so configuration alone cannot make protected handoff sellable.
+ * NOT `STRIPE_SECRET_KEY`. Stripe's access table marks date of birth as
+ * unreachable with a secret key — it requires a RESTRICTED key carrying the
+ * Identity Verification Results and Recent Detailed Verification Results read
+ * permissions, and its own `verified_outputs.dob` expand path. Since the
+ * database will not record a `verified` row unless `adult_verified` is true,
+ * a build without this key cannot complete a single protected handoff.
+ *
+ * It is named separately from every other Stripe credential in this repository
+ * so it can be rolled on its own, which is the documented reason to scope a
+ * restricted key to one product in the first place.
+ */
+export function hasIdentityRestrictedKey(): boolean {
+  const k = process.env.COURANR_STRIPE_IDENTITY_RESTRICTED_KEY;
+  return typeof k === "string" && k.trim() !== "";
+}
+
+/**
+ * Whether this build can actually begin and resolve a recipient verification.
+ *
+ * THIS COMMENT USED TO SAY the answer was false unconditionally because no
+ * provider implementation existed. That stopped being true when
+ * `lib/couranr/identity/stripeIdentity.ts` landed, and a comment naming a
+ * guarantee the code no longer makes is worse than no comment — it is the
+ * reason nobody goes looking.
+ *
+ * What is true now: the implementation exists, it is exercised only through
+ * explicitly injected transport and credentials, and it is live only when the
+ * owner has BOTH activated the provider and supplied the restricted key. Both
+ * conditions are configuration the owner controls; neither is a code change.
  */
 export function isRecipientIdentityCapabilityAvailable(): boolean {
-  return false;
+  return isStripeIdentityActivated() && hasIdentityRestrictedKey();
 }
 
 /**
