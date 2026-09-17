@@ -1295,22 +1295,28 @@ try {
        r.got === "raised:recipient_identity_not_verified"), r.got); }
 
   { const f = await protectedAtDropoff("tc-id-resolved");
-    sql(identity(f, "failed", { ref: "vs_test_resolved" }));
-    /* A resolved outcome cannot be re-run to a different one. Otherwise a
-       failed check could be retried until it passed, which is not verification
-       — it is retrying until the answer is convenient. */
-    const r = mustRefuse(identity(f, "verified", {
-      ref: "vs_test_resolved", verified: true, adult: true, match: true,
-    }),
+    sql(identity(f, "verified", {
+      ref: "vs_test_resolved", verified: true, adult: true, match: true }));
+    /* THE BOUNDARY IS A SUCCESS, NOT A FAILURE. This check used to assert that
+       a FAILED verification could not be re-run — which read as anti-gaming and
+       was actually a bug: Stripe has no `failed` status, a check that does not
+       pass leaves the session in `requires_input`, and the documented guidance
+       is to retry THAT SAME session. A recipient whose photo was blurry could
+       never reach verified. R1 now proves the retry works; what must never be
+       re-run is a verification that already SUCCEEDED. */
+    const r = mustRefuse(identity(f, "failed", { ref: "vs_test_resolved" }),
       "identity_verification_already_resolved");
-    t("G7", "a resolved verification cannot be re-run to a different answer",
+    t("G7", "a VERIFIED check cannot be re-run to a different answer",
       (r.got === "identity_verification_already_resolved" ||
        r.got === "raised:identity_verification_already_resolved"), r.got);
 
     // Re-recording the SAME state stays idempotent, so a webhook retry is safe.
     let ok = false, detail = "";
-    try { sql(identity(f, "failed", { ref: "vs_test_resolved" })); ok = true; }
-    catch (e) { detail = String(e.stderr || e.message).replace(/\s+/g, " ").slice(0, 80); }
+    try { sql(identity(f, "verified", {
+            ref: "vs_test_resolved", verified: true, adult: true, match: true }));
+          ok = true; }
+    catch (e) { const m = /ERROR:\s+([a-z_]+)/.exec(String(e.stderr || e.message));
+      detail = m ? m[1] : "refused"; }
     t("G8", "...but re-recording the same outcome is idempotent", ok, detail); }
 
   { /* An identity record on a delivery that never required one would sit in the
@@ -1342,13 +1348,75 @@ try {
       r.got === "raised:verified_identity_evidence_incomplete", r.got); }
 
   { const f = await protectedAtDropoff("tc-id-rewrite");
-    sql(identity(f, "failed", { ref: "vs_rewrite" }));
-    const r = mustRefuse(identity(f, "failed", {
-      ref: "vs_rewrite", verified: true, adult: true, match: false,
+    sql(identity(f, "verified", {
+      ref: "vs_rewrite", verified: true, adult: true, match: true }));
+    /* Pointed at VERIFIED, not at failed. A failed row's evidence legitimately
+       changes on a retry — the second attempt may read the document but fail
+       the name match, which is a different failure with different flags. What
+       must never change is the evidence behind a SUCCESS. */
+    /* The replay must be internally VALID, or an earlier rule refuses it first:
+       'verified' with match=false is rejected as incomplete evidence and never
+       reaches the terminal branch. A different provider reference is valid on
+       its own and can only be refused by the rule under test — which is what
+       makes this a test of that rule rather than of its neighbour. */
+    const r = mustRefuse(identity(f, "verified", {
+      ref: "vs_rewrite_different", verified: true, adult: true, match: true,
     }), "identity_verification_already_resolved");
-    t("G12", "same-state replay cannot rewrite terminal evidence",
+    t("G12", "a verified row's evidence cannot be rewritten by replay",
       r.got === "identity_verification_already_resolved" ||
       r.got === "raised:identity_verification_already_resolved", r.got); }
+
+  /* ── §R: a FAILED identity check must be RETRYABLE ───────────────────────
+     Found by reading Stripe's documentation rather than our schema. Stripe
+     Identity has no `failed` status: a check that does not pass leaves the
+     session in `requires_input` with last_error set, and Stripe's guidance is
+     to reuse THAT SAME session for another attempt.
+
+     So `failed` is our word for an outcome the provider treats as resumable.
+     The applied rule treated it as terminal, which meant a recipient whose
+     first photo was blurry could never reach `verified` and their protected
+     handoff was blocked permanently — by a rule written to stop fraud. A blurry
+     photograph is not fraud.
+
+     Source: https://docs.stripe.com/identity/how-sessions-work */
+  { const f = await protectedAtDropoff("tc-id-retry");
+    sql(identity(f, "pending", { ref: "vs_test_retry" }));
+    sql(identity(f, "failed", { ref: "vs_test_retry" }));
+
+    let ok = false, detail = "";
+    try {
+      sql(identity(f, "verified",
+        { ref: "vs_test_retry", verified: true, adult: true, match: true }));
+      detail = sql(`select verification_state from
+        public.couranr_recipient_identity_verifications where delivery_id='${f.dlv}'`);
+      ok = detail === "verified";
+    } catch (e) { const m = /ERROR:\s+([a-z_]+)/.exec(String(e.stderr || e.message));
+      detail = m ? m[1] : "refused"; }
+    t("R1", "a failed check can be retried to verified on the SAME session", ok, detail);
+
+    const done = succeeds(deliver(f), f, "delivered");
+    t("R2", "...and the handoff then completes", done.ok, done.got); }
+
+  /* R3 — what must still NOT be re-runnable. The boundary is a SUCCESS, not a
+     failure: a verification cannot be un-verified or rewritten. */
+  { const f = await protectedAtDropoff("tc-id-verified-final");
+    sql(identity(f, "verified", { ref: "vs_final", verified: true, adult: true, match: true }));
+    const r = mustRefuse(identity(f, "failed", { ref: "vs_final" }),
+      "identity_verification_already_resolved");
+    t("R3", "a VERIFIED check can never be rewritten to anything else",
+      (r.got === "identity_verification_already_resolved" ||
+       r.got === "raised:identity_verification_already_resolved"), r.got); }
+
+  /* R4 — activation mid-flight. 'unavailable' records that Couranr never asked,
+     which stops being true the moment the provider is switched on. */
+  { const f = await protectedAtDropoff("tc-id-activated");
+    sql(identity(f, "unavailable"));
+    let ok = false, detail = "";
+    try { sql(identity(f, "pending", { ref: "vs_activated" })); ok = true; }
+    catch (e) { const m = /ERROR:\s+([a-z_]+)/.exec(String(e.stderr || e.message));
+      detail = m ? m[1] : "refused"; }
+    t("R4", "'unavailable' can advance once the provider is activated", ok, detail); }
+
 
   /* ── §H: RECIPIENT-HELD LINK + VERSIONED ADULT ATTESTATION ────────────
      Protected handoff cannot be sold while the provider seam is absent. To
