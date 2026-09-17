@@ -11,7 +11,7 @@ ledgers own per-item state; this is their sum.
 The 721-line hand-written version of this file is preserved whole at
 [`autonomous-evidence/status-archive/IMPLEMENTATION_STATUS-2026-08-06.md`](./autonomous-evidence/status-archive/IMPLEMENTATION_STATUS-2026-08-06.md).
 It restated per-row evidence the ledgers already carried, and the restatement is
-what went stale: it counted 39 migrations while 122 were on disk.
+what went stale: it counted 39 migrations while 124 were on disk.
 
 ## Where truth lives
 
@@ -27,14 +27,14 @@ what went stale: it counted 39 migrations while 122 were on disk.
 Run `npm run governance:facts` for the live counts; `npm run check:governance`
 proves every generated view matches its source.
 
-## Work items — 42 total
+## Work items — 47 total
 
 | Status | Count |
 |---|---|
-| `complete_verified` | 18 |
+| `complete_verified` | 20 |
 | `not_started` | 10 |
 | `partial` | 10 |
-| `complete_pending_external` | 3 |
+| `complete_pending_external` | 6 |
 | `complete_unverified` | 1 |
 
 ## Screens — 68 rows against 68 canonical screens
@@ -55,11 +55,11 @@ Still rendering `ScreenPlaceholder` (11): `OPS-006` · `OPS-011` · `OPS-013` ·
 | Page routes | 101 |
 | …canonical, under `app/(couranr)` | 51 |
 | …legacy | 50 |
-| API routes | 196 |
-| …canonical, under `app/api/couranr` | 126 |
+| API routes | 197 |
+| …canonical, under `app/api/couranr` | 127 |
 | …legacy | 70 |
-| Forward migrations | 122 |
-| Paired rollbacks | 122 |
+| Forward migrations | 124 |
+| Paired rollbacks | 124 |
 | Canonical screens | 68 |
 | …Core | 64 |
 | …MVP-complete | 4 |
@@ -97,6 +97,9 @@ Still rendering `ScreenPlaceholder` (11): `OPS-006` · `OPS-011` · `OPS-013` ·
 | `P6-004` | Internal ledger migration/cutover is complete; authenticated UI verification and live external Stripe reconciliation remain outstanding. No paid provider call is authorized by this row. |
 | `P7-005` | Waiting-fee assessment requires an owner decision on the charging mechanism (no payer reauthorization path exists); recorded as evidence only. |
 | `P12-002` | Blocked behind P12-001 and explicit founder approval for the real paid canary. |
+| `P10-009` | Owner approval required before any production migration is applied. |
+| `P10-010` | No qualified legal review. The documents are explicitly unreviewed drafts. |
+| `P10-011` | Provider not activated and no restricted key configured, so protected handoff is not sellable. |
 
 ## Verification SHAs
 
@@ -106,6 +109,7 @@ each is in the ledger row itself — `test_evidence`, `browser_verified` and
 
 | SHA | covers | rows |
 |---|---|---|
+| `03210c722b13c9315a21716e47a6205680c2999c` | 5 work items | P10-008, P10-009, P10-010, P10-011, P10-012 |
 | `08f59f8d0cc062c36252a7295f86513618187965` | 1 screen | MER-004 |
 | `0d57ba736000e8ecb9d28c87a4e78a683599a316` | 1 work item | P3-002 |
 | `14fa99fbcf8103d33bb7267a8f4729421bccd400` | 1 work item | P6-001 |

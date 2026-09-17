@@ -41,3 +41,8 @@ P10-004,10,Marketing,Build PUB-009 /businesses and PUB-011 /how-it-works per MKT
 P10-005,10,Marketing,Build PUB-008 /pricing and PUB-010 /service-areas per MKT-002,P10-003,P1,Locked pricing and four named markets only
 P10-006,10,Marketing,Enforce MKT-002 prohibited-claim boundaries across public pages,P10-003;P10-004;P10-005,P0,No public string matches a prohibited claim
 P10-007,10,Marketing,Apply UI-TYP-001 typography to the canonical public surface,P10-003,P1,Public pages match the approved Couranr visual scale
+P10-008,10,Consumer,Separate sender and recipient capabilities on the consumer send seam,P10-003,P0,The sender read path never returns the recipient tracking token or any credential derived from it
+P10-009,10,Consumer,"Server-side custody ordering, seal evidence, universal recipient adulthood and the recipient drop-off credential",P10-008,P0,The database enforces the custody sequence; every governed recipient attests adulthood; a recipient can mint their own drop-off PIN from their tracking link and it is never emailed
+P10-010,10,Legal,Publish the cited legal surfaces and record versioned sender acceptance of both,P10-008,P0,Every document the clickwrap names is readable before acceptance and the version recorded is the version shown
+P10-011,10,Consumer,Recipient identity verification adapter for protected handoff,P10-008,P1,Adulthood and authorized-recipient match are computed from the provider and the personal data is discarded; no live call is possible without explicitly supplied credentials
+P10-012,10,Consumer,Operations custody bundle and consumer lifecycle email off the sender read path,P10-008,P0,"Operations can assemble a custody record for a claim; the recipient is emailed by the lifecycle, not by the sender opening a page"
