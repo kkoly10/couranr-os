@@ -156,13 +156,40 @@ describe("cross-surface claim boundaries are single-sourced", () => {
         "CATEGORY_PURPOSE_COPY",
       );
     }
-    // And neither retypes it. The words themselves must appear in exactly one
-    // place: the registry module.
+    // And nobody retypes it. The words themselves must appear in exactly one
+    // place: the registry module. FOUR surfaces render this sentence, and
+    // onboarding carried its own paraphrase until 2026-09 — the screen where a
+    // merchant actually picks a category was the one place the overstated
+    // "does not limit what you can send" was most likely to be believed.
+    const RENDERERS = [
+      BUSINESS_OVERVIEW,
+      BUSINESS_TYPES,
+      "components/couranr/settings/MerchantSettings.tsx",
+      "components/couranr/onboarding/OnboardingForm.tsx",
+    ];
     const sentence = "shapes what Couranr suggests";
-    for (const f of [BUSINESS_OVERVIEW, BUSINESS_TYPES]) {
-      expect(read(f), `${f} retypes the governed category sentence`).not.toContain(sentence);
+    /* COMMENTS STRIPPED. A note explaining which wording a file replaced quotes
+       that wording, and a raw scan reads the explanation as the violation it
+       describes — the same lesson the prohibited-claims scanner and the
+       destructive-migration scanner both wrote down. */
+    const code = (f: string) =>
+      read(f)
+        .replace(/\{\/\*[\s\S]*?\*\/\}/g, " ")
+        .replace(/\/\*[\s\S]*?\*\//g, " ");
+    for (const f of RENDERERS) {
+      expect(code(f), `${f} does not render the governed category sentence`).toContain(
+        "CATEGORY_PURPOSE_COPY",
+      );
+      expect(code(f), `${f} retypes the governed category sentence`).not.toContain(sentence);
     }
     expect(read("lib/couranr/categories/registry.ts")).toContain(sentence);
+    /* The claim boundary itself, asserted where it lives so a future edit
+       cannot quietly restore the absolute the rendered page contradicted.
+       Comments stripped for the same reason as above — the constant's own note
+       records the wording it replaced, which is exactly the string checked. */
+    expect(code("lib/couranr/categories/registry.ts")).not.toContain(
+      "never limits what you can send",
+    );
   });
 
   it("both prohibition surfaces derive from the enforced vocabulary", () => {

@@ -357,8 +357,17 @@ describe("CATEGORY CONTROLS RECOMMENDATIONS, NOT ELIGIBILITY", () => {
   });
 
   it("the merchant is TOLD it does not limit them", () => {
-    expect(CATEGORY_PURPOSE_COPY).toMatch(/never limits/i);
+    /* "never limits" until 2026-09, when the absolute turned out to be false:
+       the shipment-safety rules limit what can be sent on every delivery. The
+       sentence still has to make BOTH of the claims it exists to make — a
+       category decides neither what can be carried nor what it costs — so those
+       are asserted instead of the phrasing that overstated the first one. */
+    expect(CATEGORY_PURPOSE_COPY).toMatch(/does not decide/i);
+    expect(CATEGORY_PURPOSE_COPY).toMatch(/can be carried/i);
+    expect(CATEGORY_PURPOSE_COPY).toMatch(/what it costs/i);
     expect(CATEGORY_PURPOSE_COPY).toMatch(/suggest/i);
+    // And it must not go back to promising that anything at all can be sent.
+    expect(CATEGORY_PURPOSE_COPY).not.toMatch(/never limits what you can send/i);
   });
 
   it("the module states the authority and the invariant", () => {

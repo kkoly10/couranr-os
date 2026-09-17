@@ -15,7 +15,7 @@ import {
 import { CheckboxRow, Field, Input, Select, Textarea } from "@/components/couranr/forms";
 import { CardSkeleton, EmptyState, ErrorState, LoadingState } from "@/components/couranr/states";
 import { BUSINESS_CATEGORIES } from "@/lib/couranr/onboarding/workspace";
-import { MAX_SECONDARY_CATEGORIES } from "@/lib/couranr/categories/registry";
+import { CATEGORY_PURPOSE_COPY, MAX_SECONDARY_CATEGORIES } from "@/lib/couranr/categories/registry";
 import {
   isApiFailure,
   newIdempotencyKey,
@@ -209,7 +209,13 @@ export function OnboardingForm() {
         <Card>
           <CardHeader
             title="Your business"
-            description="Category shapes what Couranr suggests. It does not limit what you can send."
+            /* The GOVERNED sentence, not a paraphrase. This read "Category
+               shapes what Couranr suggests. It does not limit what you can
+               send." — a fourth wording of one claim boundary, on the screen
+               where a merchant actually picks a category, and the one place the
+               absolute "does not limit what you can send" was most likely to be
+               believed. */
+            description={CATEGORY_PURPOSE_COPY}
           />
           <Stack gap={3}>
             <Field label="Business name" required error={fieldErrors.name}>

@@ -220,6 +220,21 @@ export function validateSecondarySelection(
  * Rendered on every screen that asks for one. It exists so no merchant ever
  * believes their category limits them — the sentence is the Master Package's
  * own, and a test asserts the category screens carry it.
+ *
+ * SECOND CLAUSE CORRECTED, 2026-09. It read "It never limits what you can send
+ * or what it costs", and the absolute was not true: the shipment-safety rules
+ * limit what can be sent, on every delivery, business account or not. Reading
+ * the RENDERED /business page is what surfaced it — the marketing-architecture
+ * lock put a shipment-safety section on the same page, so one page said "never
+ * limits what you can send" four sections above "Couranr does not transport
+ * certain regulated, hazardous or unusually high-risk items".
+ *
+ * What the sentence is FOR is unchanged and is what makes the fix a narrowing
+ * rather than a retreat: a category shapes recommendations and decides neither
+ * eligibility nor price. Both of those are still stated. Corrected here rather
+ * than worked around on one page, because the same words render on
+ * `/businesses`, in merchant settings and in onboarding, and a fourth phrasing
+ * would have been the drift this batch exists to remove.
  */
 export const CATEGORY_PURPOSE_COPY =
-  "Your category shapes what Couranr suggests when you create a delivery. It never limits what you can send or what it costs.";
+  "Your category shapes what Couranr suggests when you create a delivery. It does not decide whether a shipment can be carried, or what it costs.";
