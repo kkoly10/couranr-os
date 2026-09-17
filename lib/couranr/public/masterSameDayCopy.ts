@@ -115,15 +115,22 @@ export const SAME_DAY_COPY = {
   prohibited_help: "Not sure about your item? Describe it when you request the delivery. Couranr checks whether it can be accepted before you pay.",
 
   /* Accountable handoffs. Every sentence here describes evidence the shipped
-     pickup/drop-off implementation actually records (PRF-001: pickup
-     confirmation, and one of recipient PIN, photo or signature at drop-off).
+     SAME DAY path actually records — which is narrower than the driver
+     platform as a whole, and that distinction is the correction.
+
+     THREE METHODS EXIST; SAME DAY USES ONE. `PROOF_METHODS` offers
+     photo_or_pin, signature and leave_at_door, but both consumer write paths
+     pass a literal `p_proof_method: "photo_or_pin"` (lib/couranr/consumer/send.ts
+     :636, :831) and SendFlow exposes no choice — so on the product THIS page
+     sells, "a photo at the door" and "a signature" can never occur. Offering
+     all three here described the platform and mis-described the product.
      Value-tiered custody — declared-value ceilings, numbered tamper-evident
      seals, recipient identity verification — is NOT described, because it is
      not in this build. Adding those sentences before that work ships would be
      a protection claim Couranr cannot honour. */
   handoff_heading: "Built for accountable handoffs.",
   handoff_body: "Couranr records important pickup and delivery events so there is a clear record of the handoff.",
-  handoff_progressive: "A delivery is picked up against a confirmation step, and handed over using the method chosen for that delivery \u2014 a recipient code, a photo at the door, or a signature.",
+  handoff_progressive: "A Same Day delivery is released at pickup by a code, and handed to the recipient against a code at the door.",
   handoff_honesty: "Couranr documents what is presented and handed over. Couranr does not authenticate, appraise or certify merchandise.",
 
   workflow_headline: "A few details. Then Couranr handles the trip.",
@@ -138,7 +145,14 @@ export const SAME_DAY_COPY = {
   price_body:
     "You review the delivery and its price before anything is requested. Couranr confirms availability, schedule and vehicle before any payment is captured.",
 
-  /* Availability. The nine interaction states (idle/focused/typing/…) are a
+  /* Tracking. "Couranr gives the recipient a private tracking experience"
+     until the 2026-09 review: on a Same Day request Couranr holds NO recipient
+     identity — send.ts passes null for recipient name, phone and email (:626-628,
+     :822-824) and the link is rendered on the SENDER's confirmation screen.
+     Couranr has no channel to reach the recipient, so the sender is who gets
+     the link and who may share it.
+
+     Availability. The nine interaction states (idle/focused/typing/…) are a
      PRODUCT requirement for /send and stay enforced there; they were never
      marketing, and depicting internal UI state on a marketing page told a
      visitor nothing about whether Couranr could run their trip. */
@@ -148,7 +162,7 @@ export const SAME_DAY_COPY = {
 
   tracking_headline: "Follow it from confirmation to handoff.",
   tracking_body:
-    "Couranr gives the recipient a private tracking experience after the delivery is confirmed. Pickup, movement and secure handoff are recorded as the delivery progresses.",
+    "Couranr gives you a private tracking link once the delivery is confirmed, to keep or to pass to whoever is receiving it. Pickup, movement and handoff are recorded as the delivery progresses.",
   tracking_labels: [
     "Confirmed",
     "Picked up",

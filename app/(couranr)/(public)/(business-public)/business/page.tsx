@@ -192,13 +192,17 @@ const PROOF_TIMELINE = [
   { state: "Created", note: "Request received, priced server-side", done: true },
   { state: "Payment authorized", note: "Held, not captured", done: true },
   { state: "Couranr confirmation", note: "Schedule and vehicle confirmed", done: true },
-  /* "Photo and PIN recorded at pickup" until the 2026-09 claim audit, and it
-     was wrong in both halves. `couranr_complete_pickup` requires a SHIPMENT
-     photograph and a CONDITION photograph (plus a securement photograph when
-     the load calls for one) and refuses without them; the recipient code is a
-     DROP-OFF credential and is never presented at pickup. The line now says
-     what the command enforces. */
-  { state: "Picked up", note: "Shipment and condition photographed", done: true },
+  /* "Photo and PIN recorded at pickup" until the 2026-09 claim audit, and then
+     "Shipment and condition photographed", which was ALSO wrong — the audit
+     read `couranr_complete_pickup` in the 20260802060000 migration while
+     lib/couranr/driver/commands.ts:306 calls `couranr_complete_pickup_v2`,
+     which supersedes it. Grepping the v2 body for `condition_photo` returns
+     ZERO. What v2 actually refuses without: a CONSUMED merchant_pickup code of
+     the latest generation (`pickup_code_not_accepted`), a `shipment_photo`
+     (`shipment_photo_required`), and a `securement_photo` when the load calls
+     for one. The recipient code remains a DROP-OFF credential, never presented
+     at pickup. Read the command the app calls, not the one it used to. */
+  { state: "Picked up", note: "Pickup code verified, shipment photographed", done: true },
   { state: "In transit", note: "Live tracking shared with your customer", done: false },
   /* One of three, never all three. Each drop-off command requires exactly the
      evidence its stored proof method names — a verified recipient code, a
@@ -238,7 +242,13 @@ const PROOF_TIMELINE = [
    asked this section not to make. Location is the one that IS universal —
    `couranr_handoff_records` stores coordinates for every method. */
 const PROOF_ARTIFACTS = [
-  { label: "Recipient code", detail: "Four digits, verified at the door", photo: PROOF_ARTIFACT_PHOTOS[0] },
+  /* NO DIGIT COUNT. This said "Four digits" while `CODE_DIGITS` in
+     lib/couranr/driver/codes.ts is 6 and the driver screen says "six-digit" —
+     a number pinned in marketing copy and nowhere else drifts the moment the
+     credential changes, which is exactly what had already happened. The count
+     is an implementation detail no merchant needs; what matters is that the
+     code GATES completion, which `recipient_code_not_accepted` (CR409) does. */
+  { label: "Recipient code", detail: "Verified at the door before the delivery completes", photo: PROOF_ARTIFACT_PHOTOS[0] },
   { label: "Delivery photo", detail: "When the delivery is left at the door", photo: PROOF_ARTIFACT_PHOTOS[1] },
   { label: "Location", detail: "Recorded on every handoff", photo: PROOF_ARTIFACT_PHOTOS[2] },
   { label: "Signature", detail: "When the delivery calls for one", photo: PROOF_ARTIFACT_PHOTOS[3] },
@@ -788,7 +798,7 @@ export default function Page() {
           yet keep. */}
       <section
         className="cr-mkt-split"
-        aria-labelledby="s5-h"
+        aria-labelledby="s5r-h"
         data-couranr-section="responsibility"
         data-composition="split-story"
         data-image-led="false"
@@ -796,7 +806,7 @@ export default function Page() {
         data-product-proof="false"
       >
         <div className="cr-mkt-split__lead">
-          <Heading level={2} id="s5-h" className="cr-type-marketing-section">
+          <Heading level={2} id="s5r-h" className="cr-type-marketing-section">
             You sell it. Couranr delivers it.
           </Heading>
           <Text muted className="cr-type-lead">
@@ -1119,9 +1129,9 @@ export default function Page() {
           </Heading>
           <Text muted className="cr-type-lead">
             Every delivery is dispatched and managed by Couranr — no public driver
-            marketplace, no bidding. The shipment is photographed at pickup, and the
-            handoff is recorded using the method that delivery calls for — a recipient
-            code, a photo at the door, or a signature. Both you and your customer can
+            marketplace, no bidding. Pickup is released by a code and photographed, and
+            the handoff is recorded using the method that delivery calls for — a
+            recipient code, a photo at the door, or a signature. Both you and your customer can
             watch the delivery live, and anything that needs a change goes through
             Couranr confirmation, not a driver&apos;s judgment call.
           </Text>
@@ -1280,14 +1290,14 @@ export default function Page() {
           or a link to the LEGACY multi-product /terms page. */}
       <section
         className="cr-mkt-editorial cr-mkt-editorial--wide"
-        aria-labelledby="s11-h"
+        aria-labelledby="s11s-h"
         data-couranr-section="shipment-safety"
         data-composition="editorial-statement"
         data-image-led="false"
         data-grid-dominant="false"
         data-product-proof="false"
       >
-        <Heading level={2} id="s11-h" className="cr-type-marketing-section">
+        <Heading level={2} id="s11s-h" className="cr-type-marketing-section">
           Shipment safety applies to every Couranr delivery.
         </Heading>
         <p className="cr-mkt-editorial__body cr-type-lead">

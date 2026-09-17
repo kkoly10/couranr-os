@@ -568,9 +568,21 @@ describe("the category system", () => {
       path.join(ROOT, "app/(couranr)/(public)/(business-public)/businesses/page.tsx"),
       "utf8",
     );
-    const grid = page.slice(page.indexOf('className="cr-mkt-categories"'));
-    expect(grid, "PUB-009 renders no category list at all").not.toBe("");
-    const section = grid.slice(0, grid.indexOf("</ul>"));
+    /* `indexOf` FIRST, and asserted as an INDEX. This read
+       `page.slice(page.indexOf(...))` then `expect(grid).not.toBe("")` — and
+       `slice(-1)` returns the file's LAST CHARACTER, never "", so the guard
+       passed on exactly the condition it was added to catch, and the six
+       assertions below then ran against a one-character string and passed
+       vacuously. It was added in the same edit that MOVED this assertion from
+       PUB-001 to PUB-009, which is precisely when a wrong-file or renamed-class
+       mistake is most likely. */
+    const at = page.indexOf('className="cr-mkt-categories"');
+    expect(at, "PUB-009 renders no category list at all").toBeGreaterThan(-1);
+    const grid = page.slice(at);
+    const end = grid.indexOf("</ul>");
+    expect(end, "PUB-009's category list is never closed").toBeGreaterThan(-1);
+    const section = grid.slice(0, end);
+    expect(section.length, "the category list slice is too small to assert on").toBeGreaterThan(50);
     for (const interactive of ["<a ", "<Link", "<button", "onClick", "tabIndex", "role="]) {
       expect(section, `the category grid must not become ${interactive}`).not.toContain(interactive);
     }

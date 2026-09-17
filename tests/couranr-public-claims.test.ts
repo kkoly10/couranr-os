@@ -171,9 +171,25 @@ function violations(source: string, rules: Rule[] = RULES): { rule: string; cont
 const PROHIBITION_VOCABULARY = "lib/couranr/public/prohibitedSummary.ts";
 const CARVED_OUT_RULE = "medical-category";
 
+/**
+ * The carve-out is a NARROWED RULE, not a dropped one.
+ *
+ * Removing `medical-category` outright for this file was wider than the
+ * compensating assertion claimed: the rule's pattern is
+ * /pharmac|prescription|medical delivery/i, and dropping it left `pharmac` and
+ * `medical delivery` unguarded in a file that renders on a public page — so an
+ * actual advertisement placed there would have shipped green. Only the
+ * `prescription` alternative needs an exemption, and only because the
+ * vocabulary's own label is "Prescription medication".
+ */
+const NARROWED_MEDICAL_RULE: Rule = {
+  name: CARVED_OUT_RULE,
+  pattern: /pharmac|medical delivery/i,
+};
+
 function rulesFor(relativePath: string): Rule[] {
   return relativePath === PROHIBITION_VOCABULARY
-    ? RULES.filter((r) => r.name !== CARVED_OUT_RULE)
+    ? RULES.map((r) => (r.name === CARVED_OUT_RULE ? NARROWED_MEDICAL_RULE : r))
     : RULES;
 }
 
@@ -210,10 +226,11 @@ describe("the prohibition-vocabulary carve-out is paid for", () => {
     expect(files).toContain(rel);
   });
 
-  it("only ONE rule is carved out, and only for that file", () => {
-    expect(rulesFor(rel).map((r) => r.name)).toEqual(
-      RULES.filter((r) => r.name !== CARVED_OUT_RULE).map((r) => r.name),
-    );
+  it("only ONE rule is narrowed, and only for that file", () => {
+    // Same rule COUNT — the rule is narrowed in place, not removed.
+    expect(rulesFor(rel).map((r) => r.name)).toEqual(RULES.map((r) => r.name));
+    expect(rulesFor(rel).find((r) => r.name === CARVED_OUT_RULE)!.pattern.source)
+      .not.toBe(RULES.find((r) => r.name === CARVED_OUT_RULE)!.pattern.source);
     expect(rulesFor("app/(couranr)/(public)/(consumer-public)/sameday/page.tsx")).toBe(RULES);
     expect(rulesFor("lib/couranr/public/governed.ts")).toBe(RULES);
   });
@@ -239,6 +256,23 @@ describe("the prohibition-vocabulary carve-out is paid for", () => {
     // And the refusal framing is stated in the copy the section renders with it.
     expect(src).not.toMatch(/deliver\w*\s+(your\s+)?prescription/i);
     expect(src).not.toMatch(/pharmac/i);
+  });
+
+  it("the narrowed rule still rejects pharmacy and medical-delivery copy IN THAT FILE", () => {
+    /* The half of the carve-out that was missing. `prescription` is exempt
+       because the vocabulary label needs it; `pharmac` and `medical delivery`
+       are not, and an advertisement using either inside this file must still
+       be caught. */
+    for (const planted of [
+      'const blurb = "Couranr runs pharmacy delivery across the area.";',
+      'const blurb = "Ask about medical delivery for your practice.";',
+    ]) {
+      expect(violations(planted, rulesFor(rel)).map((v) => v.rule), planted)
+        .toContain(CARVED_OUT_RULE);
+    }
+    // And the one phrase the exemption exists for still passes.
+    expect(violations('prescription_medication: "Prescription medication",', rulesFor(rel)))
+      .toEqual([]);
   });
 
   it("the carve-out does not disable the rule for the pages", () => {

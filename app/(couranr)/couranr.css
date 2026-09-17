@@ -3109,10 +3109,6 @@
   color: var(--couranr-text);
 }
 
-@media (min-width: 900px) {
-  .cr-mkt-catgrid { grid-template-columns: repeat(3, 1fr); }
-}
-
 /* Gate A / D-3 — the coverage assurances beside the corridor map. */
 .cr-mkt-assurances {
   list-style: none;

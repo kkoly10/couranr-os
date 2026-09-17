@@ -15,6 +15,8 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { MKT_005_COPY, SAME_DAY_COPY } from "@/lib/couranr/public/masterSameDayCopy";
+import { PROHIBITED_CLASSES } from "@/lib/couranr/shipment/facts";
+import { PROHIBITED_LABELS } from "@/lib/couranr/public/prohibitedSummary";
 
 const ROOT = path.join(__dirname, "..");
 const REGISTRY = JSON.parse(readFileSync(path.join(ROOT, "02_DECISION_REGISTRY.json"), "utf8"));
@@ -166,9 +168,30 @@ describe("PUB-013 marketing copy limits", () => {
   it("states the prohibition without re-listing the categories", () => {
     const strings = Object.values(SD).flatMap((v) => (Array.isArray(v) ? v : [v]));
     expect(strings.length).toBeGreaterThan(40);
+    /* ALL 23 CANONICAL CLASSES, derived — not the seven that were hand-typed
+       here. Sixteen were unguarded (cash, explosives, fuel, people, compressed
+       gas, corrosive/toxic hazmat, prescription medication, controlled
+       substances, illegal/stolen goods, negotiable instruments, biological
+       specimens, infectious material, vaping/nicotine, regulated dangerous
+       goods), so the exact drift this test exists to prevent — a second policy
+       list typed into locked marketing copy — was only partially blocked. The
+       list is now read from the vocabulary it is guarding, so a 24th class is
+       covered the day it is added. */
+    const categories = [
+      ...PROHIBITED_CLASSES.map((c) => c.replace(/_/g, " ")),
+      ...Object.values(PROHIBITED_LABELS),
+    ];
+    expect(categories.length).toBeGreaterThan(40);
     for (const s of strings) {
-      for (const cat of ["alcohol", "tobacco", "firearms", "ammunition", "cannabis", "fireworks", "live animals"]) {
-        expect(s.toLowerCase(), `${cat} is typed into locked copy: ${s}`).not.toContain(cat);
+      for (const cat of categories) {
+        /* WHOLE PHRASE, word-bounded. Splitting these on "_" and matching
+           substrings was tried and is wrong twice over: "live" matches
+           "Delivering", and "regulated" is a word `prohibited_body` is
+           entitled to use generically ("certain regulated, hazardous or
+           unusually high-risk items"). What may not appear is a CATEGORY —
+           i.e. the phrase a hand-typed second list would actually contain. */
+        const re = new RegExp(`\\b${cat.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i");
+        expect(re.test(s), `"${cat}" is typed into locked copy: ${s}`).toBe(false);
       }
     }
     expect(SD.prohibited_help).toMatch(/before you pay/i);
@@ -212,11 +235,39 @@ describe("PUB-013 marketing copy limits", () => {
     expect(SD.handoff_honesty).toMatch(/does not authenticate, appraise or certify/i);
   });
 
-  it("promises no universal photograph, signature or code at drop-off", () => {
-    // PRF-001 chooses ONE method per delivery; copy may not promise all three.
-    expect(SD.handoff_progressive).toMatch(/\bor\b/);
-    expect(SD.handoff_progressive.toLowerCase()).not.toMatch(/every delivery (is|gets)|always (photograph|signed)/);
-    expect(SD.tracking_body.toLowerCase()).not.toMatch(/gps|second-by-second|live map|photo of every/);
+  /**
+   * THE DROP-OFF METHOD, CORRECTED 2026-09.
+   *
+   * This asserted `/\bor\b/` — that the copy offered alternatives — on the
+   * reasoning that PRF-001 picks one of three methods per delivery and copy
+   * must not promise all three. That is true of the driver PLATFORM and false
+   * of the product THIS page sells: both consumer write paths pass a literal
+   * `p_proof_method: "photo_or_pin"` (lib/couranr/consumer/send.ts) and
+   * SendFlow exposes no choice, so on Same Day a signature and a leave-at-door
+   * photograph can never occur. Offering three read as a menu the funnel does
+   * not serve. The test now asserts the narrower truth, and — importantly —
+   * FAILS if the three-method sentence comes back.
+   */
+  it("names only the drop-off method Same Day actually uses", () => {
+    const h = SD.handoff_progressive.toLowerCase();
+    expect(h).toMatch(/code/);
+    // The two methods the Same Day funnel can never reach.
+    expect(h, SD.handoff_progressive).not.toMatch(/signature/);
+    expect(h, SD.handoff_progressive).not.toMatch(/photo at the door|leave (it )?at the door/);
+    expect(h).not.toMatch(/every delivery (is|gets)|always (photograph|signed)/);
+  });
+
+  /**
+   * TRACKING REACH. "Couranr gives the recipient a private tracking
+   * experience" was false: a Same Day request carries null recipient name,
+   * phone and email, and the link renders on the SENDER's confirmation screen.
+   * Couranr has no channel to the recipient, so the copy may not say it
+   * delivers anything to them.
+   */
+  it("does not claim Couranr reaches the recipient directly", () => {
+    const t = SD.tracking_body.toLowerCase();
+    expect(t).not.toMatch(/gps|second-by-second|live map|photo of every/);
+    expect(t, SD.tracking_body).not.toMatch(/gives the recipient|sends? the recipient|notif\w* the recipient/);
   });
 
   it("keeps the business cross-link about purpose, never speed", () => {
