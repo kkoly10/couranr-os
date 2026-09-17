@@ -373,7 +373,15 @@ describe("§32.4 + fidelity amendment §6 — the eyebrow rule", () => {
     const home = readFileSync(path.join(CANON, "(public)/(business-public)/business/page.tsx"), "utf8");
     expect(home).toContain("Your customers want delivery.");
     expect(home).toContain("Now you can say yes.");
-    expect(home).toContain("Keep taking orders through your website");
+    /* The support line was "Keep taking orders through your website, phone,
+       text, social media, POS or storefront…" until the 2026-09
+       marketing-architecture lock. It enumerated the seven channels that §4
+       then renders as seven tiles, and naming them twice cost the sentence its
+       actual job — saying what Couranr IS. The headline is untouched; this
+       assertion follows the owner-locked rewrite rather than pinning the
+       version it replaced. */
+    expect(home).toContain("Keep taking orders through the channels you already use.");
+    expect(home).toContain("Couranr handles the");
   });
 });
 

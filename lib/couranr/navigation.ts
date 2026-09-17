@@ -47,13 +47,32 @@ const ROLE_GROUP: Record<Exclude<ShellRole, "customer">, ScreenGroup> = {
 /**
  * Short labels keyed by screen ID. A screen absent from this map is not a
  * primary navigation destination (detail views, step and tab variants).
+ *
+ * DECLARATION ORDER IS NAVIGATION ORDER. `navigationFor` walks this map rather
+ * than the screen registry, because the order a reader meets destinations in is
+ * a product decision and the registry's listing order is an artefact of how
+ * screens were catalogued. Those two happened to coincide for the authenticated
+ * surfaces and never did for the public one: the 2026-09 marketing-architecture
+ * lock asks for Overview first and Business types last, which is neither
+ * alphabetical nor registry order.
  */
 const NAV_LABELS: Record<string, string> = {
-  // Public — PUB-001 is the marketing home; auth entry points are separate.
-  "PUB-008": "Pricing",
-  "PUB-009": "For businesses",
-  "PUB-010": "Service areas",
+  /* Public — Couranr for Business chrome. Auth entry points are separate and
+     are rendered as actions, not navigation.
+
+     "Overview" for PUB-001, which was absent entirely: the business family had
+     four destinations and no way back to the page they all belong to, so a
+     reader who clicked Pricing could not return to the product.
+
+     "Business types", NOT "For businesses". PUB-009 is the business-CATEGORY
+     page, and once "Couranr for Business" became a product name the old label
+     read as the product — two items in one bar pointing at different things
+     under nearly the same words. */
+  "PUB-001": "Overview",
   "PUB-011": "How it works",
+  "PUB-008": "Pricing",
+  "PUB-010": "Service areas",
+  "PUB-009": "Business types",
 
   // Merchant
   "MER-001": "Dashboard",
@@ -145,18 +164,24 @@ export function navigationFor(role: ShellRole): NavItem[] {
 
   const group = ROLE_GROUP[role];
 
-  const candidates = CANONICAL_SCREENS.filter(
-    (s) =>
-      s.group === group &&
-      (role !== "operations" ||
-        (s.status !== "placeholder_only" && s.status !== "missing"))
-  )
-    .map((s) => ({ screen: s, label: NAV_LABELS[s.id], href: firstCleanRoute(s) }))
-    .flatMap((c) =>
-      c.label && c.href && !COLLIDING.has(c.href)
-        ? [{ screen: c.screen, label: c.label, href: c.href }]
-        : [],
-    );
+  /* Walked in NAV_LABELS order, not registry order — see the note on that map.
+     The screen is still LOOKED UP in the registry, so a label naming a screen
+     that does not exist, or one that belongs to another surface, still yields
+     nothing: the ordering moved, the isolation did not. */
+  const candidates = Object.entries(NAV_LABELS)
+    .map(([id, label]) => ({ screen: CANONICAL_SCREENS.find((s) => s.id === id), label }))
+    .flatMap(({ screen, label }) => {
+      if (!screen || screen.group !== group) return [];
+      if (
+        role === "operations" &&
+        (screen.status === "placeholder_only" || screen.status === "missing")
+      ) {
+        return [];
+      }
+      const href = firstCleanRoute(screen);
+      if (!href || COLLIDING.has(href)) return [];
+      return [{ screen, label, href }];
+    });
 
   const hrefs = candidates.map((c) => c.href);
 

@@ -26,7 +26,7 @@ import { ROOT, screenSource, SCREEN_OUTPUTS, SCREEN_SOURCE } from "./screenRegis
 import { SCREENS_MODULE_OUTPUT } from "./screensModule.mjs";
 import { VISUAL_SOURCE_OUTPUTS, VISUAL_REGISTRY as VISUAL_SOURCE } from "./visualSources.mjs";
 import { STATUS_OUTPUT } from "./statusReport.mjs";
-import { visualDocDrift } from "./visualRegistry.mjs";
+import { visualDocDrift, VISUAL_REGISTRY as VISUAL_SOURCE_FOR_CONTROL } from "./visualRegistry.mjs";
 
 const MANIFEST = "docs/couranr-mvp/authority/AUTHORITY_MANIFEST.json";
 const CONTROL = process.argv.includes("--positive-control");
@@ -405,10 +405,18 @@ if (CONTROL) {
   {
     const spec = join(ROOT, "docs/couranr-mvp/brand/COURANR_VISUAL_SYSTEM_V2_2.md");
     const before = readFileSync(spec, "utf8");
-    const planted = before.replace(
-      "| 2 | `pickup-problem` |",
-      "| 2 | `pickup-problems` |",
-    );
+    /* THE PLANT IS DERIVED FROM THE CONTRACT, not typed. It named
+       `pickup-problem` by hand, and the 2026-09 marketing-architecture lock
+       retired that section — the replace stopped matching, and the control's
+       whole value became the one line that says it could not plant. That line
+       is why this was caught rather than shipped silently, and deriving the
+       target is what stops it happening on the next section rename. */
+    const pub001 = JSON.parse(readFileSync(join(ROOT, VISUAL_SOURCE_FOR_CONTROL), "utf8"))
+      .composition.pages.find((x) => x.screen === "PUB-001");
+    const victim = pub001?.rows?.[1]?.id;
+    const planted = victim
+      ? before.replace(`| 2 | \`${victim}\` |`, `| 2 | \`${victim}s-drifted\` |`)
+      : before;
     if (planted === before) {
       console.error("positive control FAILED — could not plant a §27 table drift; the control tested nothing");
       bad++;

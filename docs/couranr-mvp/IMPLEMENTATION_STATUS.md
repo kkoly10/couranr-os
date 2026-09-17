@@ -41,9 +41,9 @@ proves every generated view matches its source.
 
 | Status | Count |
 |---|---|
-| `functional_verified` | 32 |
+| `functional_verified` | 29 |
+| `functional_unverified` | 14 |
 | `partial` | 14 |
-| `functional_unverified` | 11 |
 | `placeholder_only` | 11 |
 
 Still rendering `ScreenPlaceholder` (11): `OPS-006` · `OPS-011` · `OPS-013` · `OPS-014` · `OPS-015` · `OPS-016` · `OPS-017` · `OPS-018` · `OPS-019` · `OPS-020` · `OPS-021`.
@@ -111,7 +111,6 @@ each is in the ledger row itself — `test_evidence`, `browser_verified` and
 | `14fa99fbcf8103d33bb7267a8f4729421bccd400` | 1 work item | P6-001 |
 | `1b3a1c90c88a554f1ac1ff1e6a6d06a97d602150` | 2 screens | CUS-006, CUS-008 |
 | `277982f2548e9b804c466121437c696b4ba52af4` | 1 screen | CUS-002 |
-| `2848a8f33bde8362bd3c9fcfb9266781fcecb77a` | 2 screens | PUB-012, PUB-013 |
 | `32893e21401a6f056821c4caaa7858460c7356b8` | 1 screen | MER-001 |
 | `401b3eea5cd96bb09d224f3b113ba6091bba807d` | 18 work items, 26 screens | P0-001, P0-002, P1-001, P1-002, P1-003, P1-004, P2-002, P4-001, P5-002, P7-001, P7-002, P7-003, P8-003, P9-001, P9-002, P9-003, P9-004, P10-007, CUS-005, DRV-002, DRV-003, DRV-004, DRV-005, DRV-006, MER-002, MER-006, MER-007, OPS-002, OPS-004, OPS-006, OPS-008, OPS-011, OPS-013, OPS-014, OPS-015, OPS-016, OPS-017, OPS-018, OPS-019, OPS-020, OPS-021, PUB-002, PUB-003, PUB-005 |
 | `50f576e991dd249849d93206fc9e7cda330e71b7` | 1 screen | MER-005 |
@@ -134,7 +133,8 @@ each is in the ledger row itself — `test_evidence`, `browser_verified` and
 | `daa01c0cfabc65e61f7e7f4380edc8cdcfb3582d` | 1 work item, 1 screen | P7-004, DRV-007 |
 | `dd2388a7fa89c41bc5c6cf4c8411ffd4d0e4a5f0` | 2 screens | DRV-009, DRV-010 |
 | `ea8bd06483229f16a2c6df9a30b41b7872324090` | 5 work items | P10-001, P10-002, P11-001, P12-001, P12-002 |
-| `ec4a2af8f7c1de0bee4e3c021b50c875acdd6633` | 4 work items, 5 screens | P10-003, P10-004, P10-005, P10-006, PUB-001, PUB-008, PUB-009, PUB-010, PUB-011 |
+| `ec4a2af8f7c1de0bee4e3c021b50c875acdd6633` | 4 work items, 4 screens | P10-003, P10-004, P10-005, P10-006, PUB-008, PUB-009, PUB-010, PUB-011 |
+| `ef1c085c03f46951e8a114c00d795aa786cb53d1` | 3 screens | PUB-001, PUB-012, PUB-013 |
 | `f204c2a48356dc2dba34cc2daa7baf27e1d8bfe6` | 1 work item, 2 screens | P6-004, OPS-009, OPS-010 |
 | `f4bff8d0d29fa8be2e9ea1a37bcfa5fd1520005c` | 2 screens | MER-010, MER-011 |
 | `f949f5b05db039649a968390a08ab1ae28213f6d` | 1 screen | OPS-001 |
