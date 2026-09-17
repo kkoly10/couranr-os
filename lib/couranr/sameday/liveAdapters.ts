@@ -50,8 +50,8 @@ import { parseOperatingLocal, type TimingIntent } from "@/lib/couranr/timing/pol
 
 import {
   CONSUMER_EMAIL_RE,
-  deriveProtection,
-  isProtectionDeclined,
+  evaluateConsumerProtectionAvailability,
+  isProtectionUnavailable,
 } from "@/lib/couranr/consumer/protection";
 /* ------------------------------------------------------------ constants -- */
 
@@ -96,6 +96,16 @@ const NOTES = {
   recipientEmailInvalid: "Check the recipient's email address — Couranr could not read it.",
   declaredValueRequired: "Enter what this shipment is worth, in whole dollars.",
   declaredValueTooHigh: "Couranr Same Day carries shipments declared up to $500. Enter a lower value.",
+
+  /* Inside policy, but the tier it derives to cannot be bought yet. A
+
+     DISTINCT note: telling a sender $200 is over the maximum would be
+
+     false, and it is not the message that helps them. */
+
+  declaredValueUnavailable:
+
+    "Protected Handoff is not available yet. Lower the declared value to continue.",
   certificationRequired: "Confirm what you are shipping before Couranr can price it.",
   electronicConsentRequired: "Agree to electronic records before Couranr can price it.",
   scheduledTimeRequired: "Choose the date and time for your scheduled pickup.",
@@ -270,14 +280,21 @@ export function buildEstimateBody(input: QuoteInput): EstimateBodyResult {
      on this path, provider lookups the owner pays for. What is NOT done here is
      deriving the level — that is the server's alone, and the browser never
      sends one. */
-  const protection = deriveProtection(input.declaredValueCents);
-  if (isProtectionDeclined(protection)) {
+  /* AVAILABILITY, not only policy — and this gate is the reason the contract
+     test exists. `SendFlow` was corrected to refuse an unbuyable tier while
+     THIS builder still accepted it, so the client would have handed the server a
+     body the server refuses. Client-refuses/server-accepts is merely
+     conservative; client-accepts/server-refuses is the outage. */
+  const protection = evaluateConsumerProtectionAvailability(input.declaredValueCents);
+  if (isProtectionUnavailable(protection)) {
     return {
       ok: false,
       note:
         protection.reason === "declared_value_above_maximum"
           ? NOTES.declaredValueTooHigh
-          : NOTES.declaredValueRequired,
+          : protection.reason === "protection_level_unavailable"
+            ? NOTES.declaredValueUnavailable
+            : NOTES.declaredValueRequired,
     };
   }
   const declaredValueCents = input.declaredValueCents as number;

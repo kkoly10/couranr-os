@@ -262,6 +262,12 @@ export const SEND_COPY = {
      CONSUMER_MAX_DECLARED_VALUE_CENTS, which is the same constant the server
      and the database derive from. */
   declared_value_max_note: "Couranr Same Day carries shipments declared up to",
+  /* Shown when the value is inside policy but the tier it derives to cannot
+     be bought yet. It names the product, never the provider — a customer
+     has no use for the fact that an identity vendor is not switched on. */
+  declared_value_unavailable_note:
+    "Protected Handoff is not available yet. Couranr Same Day currently accepts "
+    + "shipments with a declared value up to",
   /* Progressive disclosure. The sender is told what the declared value CHANGES
      about the handling, at the moment they enter it — not after they have paid. */
   /* TRUE OF THE CANONICAL PATH. This used to promise that the driver

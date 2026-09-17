@@ -25,8 +25,8 @@ import { WEIGHT_BAND_LABELS } from "@/lib/couranr/shipment/weightBandLabels";
 import {
   CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS,
   declaredValueDollars,
-  deriveProtection,
-  isProtectionDeclined,
+  evaluateConsumerProtectionAvailability,
+  isProtectionUnavailable,
 } from "@/lib/couranr/consumer/protection";
 import { parseOperatingLocal } from "@/lib/couranr/timing/policy";
 import { SAME_DAY_CUTOFF_COPY } from "@/lib/couranr/public/governed";
@@ -656,8 +656,14 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
      have paid, and not in terms they have to accept sight unseen. The level is
      derived by the same function the server and the database use; nothing here
      chooses one. */
-  const protection = deriveProtection(declaredCents);
-  const protectionNote = isProtectionDeclined(protection)
+  /* AVAILABILITY, not merely policy. `deriveProtection` answers what the value
+     MEANS and still does — the database re-derives the same answer. This asks
+     the second question the funnel was missing: whether that level can be
+     bought today. They differ right now, and conflating them let a $200
+     shipment walk through this step while the page said the maximum was $150,
+     being shown a Protected Handoff promise it could not deliver. */
+  const protection = evaluateConsumerProtectionAvailability(declaredCents);
+  const protectionNote = isProtectionUnavailable(protection)
     ? null
     : protection.requirements.level === "standard"
       ? SEND_COPY.protection_standard
@@ -665,8 +671,13 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
         ? SEND_COPY.protection_secure_pickup
         : SEND_COPY.protection_protected_handoff;
   const declaredValueTooHigh =
-    isProtectionDeclined(protection) && protection.reason === "declared_value_above_maximum";
-  const hasDeclaredValue = !isProtectionDeclined(protection);
+    isProtectionUnavailable(protection) && protection.reason === "declared_value_above_maximum";
+  /* Inside policy, but the tier is not sellable. A DISTINCT state: telling the
+     sender $200 is "above the maximum" would be false, and indistinguishable in
+     a log from a real policy breach. */
+  const declaredValueUnavailable =
+    isProtectionUnavailable(protection) && protection.reason === "protection_level_unavailable";
+  const hasDeclaredValue = !isProtectionUnavailable(protection);
   const quoteState = quote?.state;
   const quotePriced = quoteState === "live-available" || quoteState === "fixture-available";
   const quoteReview = quoteState === "manual-review";
@@ -1009,13 +1020,17 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
             />
             <p id="send-declared-value-note" className="cr-send-field__hint"
                data-couranr-protection={
-                 isProtectionDeclined(protection) ? "none" : protection.requirements.level
+                 isProtectionUnavailable(protection) ? "none" : protection.requirements.level
                }>
-              {declaredValueTooHigh
-                ? `${SEND_COPY.declared_value_max_note} ${declaredValueDollars(
+              {declaredValueUnavailable
+                ? `${SEND_COPY.declared_value_unavailable_note} ${declaredValueDollars(
                     CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS
                   )}.`
-                : protectionNote}
+                : declaredValueTooHigh
+                  ? `${SEND_COPY.declared_value_max_note} ${declaredValueDollars(
+                      CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS
+                    )}.`
+                  : protectionNote}
             </p>
           </div>
 

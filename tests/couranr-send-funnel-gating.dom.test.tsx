@@ -346,18 +346,45 @@ describe("consumer /send funnel gating", () => {
     expect(level()).toBe("none");
     expect(btn("Continue").disabled).toBe(true);
 
+    /* THIS TABLE USED TO CODIFY THE DEFECT. It asserted that $150.01 and $500
+       rendered the Protected Handoff disclosure and advanced the step — which
+       is precisely what was wrong: Protected Handoff cannot be bought while
+       Stripe Identity is inactive, so the funnel was showing a promise it could
+       not keep and walking the sender toward a refusal that only arrived at
+       submit. A test asserting the broken behaviour is why it survived review. */
     for (const [dollars, want, copy] of [
       ["30.00", "standard", SEND_COPY.protection_standard],
       ["30.01", "secure_pickup", SEND_COPY.protection_secure_pickup],
       ["150.00", "secure_pickup", SEND_COPY.protection_secure_pickup],
-      ["150.01", "protected_handoff", SEND_COPY.protection_protected_handoff],
-      ["500.00", "protected_handoff", SEND_COPY.protection_protected_handoff],
     ] as const) {
       fireEvent.change(value, { target: { value: dollars } });
       expect(level(), `$${dollars}`).toBe(want);
       expect(screen.getByText(copy)).toBeTruthy();
       expect(btn("Continue").disabled, `$${dollars} should advance`).toBe(false);
     }
+
+    /* INSIDE POLICY, NOT PURCHASABLE. $150.01 through $500 derive to
+       protected_handoff, which is real policy and is refused commercially. The
+       sender must be told plainly, must NOT be shown the Protected Handoff
+       promise, and must not advance. */
+    for (const dollars of ["150.01", "200.00", "499.99", "500.00"] as const) {
+      fireEvent.change(value, { target: { value: dollars } });
+      expect(level(), `$${dollars} must not present a purchasable tier`).toBe("none");
+      expect(
+        screen.queryByText(SEND_COPY.protection_protected_handoff as string),
+        `$${dollars} still advertises Protected Handoff`
+      ).toBeNull();
+      expect(
+        screen.getByText(
+          new RegExp(`${SEND_COPY.declared_value_unavailable_note}\\s+\\$150\\.00`)
+        )
+      ).toBeTruthy();
+      expect(btn("Continue").disabled, `$${dollars} must not advance`).toBe(true);
+    }
+
+    /* The message names the PRODUCT, never the provider — a customer has no use
+       for the fact that an identity vendor is not switched on. */
+    expect(document.body.textContent).not.toMatch(/stripe/i);
 
     /* Over the ceiling: refused, with the ceiling named, and the step blocked.
        THE NAMED FIGURE CHANGED, and the change is the point. /send used to

@@ -86,7 +86,9 @@ import {
   CONSUMER_SENDER_TERMS_VERSION,
   declaredValueDollars,
   deriveProtection,
+  evaluateConsumerProtectionAvailability,
   isProtectionDeclined,
+  isProtectionUnavailable,
 } from "@/lib/couranr/consumer/protection";
 
 export const RPC = {
@@ -489,15 +491,37 @@ export function validateConsumerSendBody(raw: unknown): ConsumerSendBodyResult {
   // from can never become two different rules.
   const declaredRaw = r.declaredValueCents;
   const declaredValueCents = typeof declaredRaw === "number" ? declaredRaw : Number.NaN;
-  const protection = deriveProtection(declaredValueCents);
-  if (isProtectionDeclined(protection)) {
+  /* TWO QUESTIONS, NOT ONE. `deriveProtection` says what the value MEANS and is
+     still the only derivation — the database re-derives the identical answer.
+     `evaluateConsumerProtectionAvailability` adds the one this validator was
+     missing: whether that level can be SOLD today. A $200 shipment is a
+     perfectly valid protected_handoff under policy and is not purchasable,
+     because Stripe Identity is not activated.
+
+     REFUSED HERE, BEFORE ANY DRAFT OR ESTIMATE. The submit path already refused
+     it, but only after a draft had been created and a quote calculated — so the
+     sender was walked through the funnel and turned away at the end, having
+     been shown a Protected Handoff promise on the way. The database trigger
+     remains the final backstop; this is the first of three agreeing gates.
+
+     `protection_level_unavailable` is NOT `declared_value_above_maximum`. $200
+     is not above the $500 policy maximum, and reusing that reason would make a
+     temporary commercial limit indistinguishable from a real policy breach. */
+  const availability = evaluateConsumerProtectionAvailability(declaredValueCents);
+  if (isProtectionUnavailable(availability)) {
     return {
       ok: false,
       reason:
-        protection.reason === "declared_value_above_maximum"
+        availability.reason === "declared_value_above_maximum"
           ? "declared_value_above_maximum"
-          : "declared_value_invalid",
+          : availability.reason === "protection_level_unavailable"
+            ? "protection_level_unavailable"
+            : "declared_value_invalid",
     };
+  }
+  const protection = deriveProtection(declaredValueCents);
+  if (isProtectionDeclined(protection)) {
+    return { ok: false, reason: "declared_value_invalid" };
   }
 
   /* The acknowledgements are PARSED here and REQUIRED at submit, not here.

@@ -88,6 +88,57 @@ export const PROTECTION_THRESHOLDS = {
 } as const;
 
 /**
+ * WHICH PROTECTION LEVELS COURANR CAN ACTUALLY SELL TODAY.
+ *
+ * THIS IS THE ONE PLACE TO CHANGE WHEN STRIPE IDENTITY IS ACTIVATED. Remove
+ * `protected_handoff` from this list and everything follows from it: the
+ * accepted maximum below becomes $500, `/sameday` displays $500, `/send` stops
+ * refusing the band, the Protected Handoff disclosure becomes reachable, and
+ * the server begins accepting the tier. Nothing else needs editing, and in
+ * particular no marketing number is maintained by hand.
+ *
+ * WHY AVAILABILITY IS A SEPARATE IDEA FROM POLICY. A $200 shipment genuinely
+ * maps to `protected_handoff` — that is the policy answer and it is correct.
+ * What is missing is whether that level can be BOUGHT. Protected Handoff
+ * requires a verified recipient identity, Stripe Identity is not activated, and
+ * `private.couranr_block_unavailable_protected_handoff` refuses the request at
+ * the database. So the level is derivable and unsellable at the same time, and
+ * conflating the two is what let a $200 shipment walk through the funnel while
+ * the page said the maximum was $150.
+ */
+export const PROTECTION_LEVELS_CURRENTLY_UNAVAILABLE: readonly ProtectionLevel[] = [
+  "protected_handoff",
+];
+
+export function isProtectionLevelCurrentlyAvailable(level: unknown): boolean {
+  return isProtectionLevel(level) && !PROTECTION_LEVELS_CURRENTLY_UNAVAILABLE.includes(level);
+}
+
+/** The bands in ascending order, paired with the level each one derives to. */
+const BAND_CEILINGS: ReadonlyArray<{ level: ProtectionLevel; maxCents: number }> = [
+  { level: "standard", maxCents: PROTECTION_THRESHOLDS.standardMaxCents },
+  { level: "secure_pickup", maxCents: PROTECTION_THRESHOLDS.securePickupMaxCents },
+  { level: "protected_handoff", maxCents: PROTECTION_THRESHOLDS.protectedHandoffMaxCents },
+];
+
+/**
+ * The highest declared value that is actually purchasable right now.
+ *
+ * DERIVED, never typed. It walks the bands from the bottom and stops at the
+ * first unavailable one, so it is the highest CONTIGUOUS ceiling — if a middle
+ * band were ever withdrawn, the maximum would correctly fall to the band below
+ * it rather than skipping over a hole and accepting a value nothing can serve.
+ */
+function highestAvailableCeiling(): number {
+  let ceiling = 0;
+  for (const band of BAND_CEILINGS) {
+    if (!isProtectionLevelCurrentlyAvailable(band.level)) break;
+    ceiling = band.maxCents;
+  }
+  return ceiling;
+}
+
+/**
  * THE HIGHEST DECLARED VALUE A CONSUMER CAN ACTUALLY SEND TODAY.
  *
  * NOT the same number as `CONSUMER_MAX_DECLARED_VALUE_CENTS`, and the
@@ -111,8 +162,63 @@ export const PROTECTION_THRESHOLDS = {
  * WHEN IDENTITY IS ACTIVATED and the block is lifted, this becomes
  * `CONSUMER_MAX_DECLARED_VALUE_CENTS` and both surfaces move together.
  */
-export const CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS: number =
-  PROTECTION_THRESHOLDS.securePickupMaxCents;
+export const CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS: number = highestAvailableCeiling();
+
+/**
+ * Whether a declared value can be accepted commercially RIGHT NOW.
+ *
+ * THE GATE THE FUNNEL WAS MISSING. `deriveProtection` answers the POLICY
+ * question and must keep doing so — it is what the database re-derives and what
+ * a stored row is checked against. This answers the COMMERCIAL one, and the two
+ * genuinely differ today.
+ *
+ * `protection_level_unavailable` is deliberately NOT `declared_value_above_maximum`.
+ * $200 is not above the $500 policy maximum; saying it was would be a false
+ * statement to the customer and would make the refusal impossible to tell apart
+ * from a real policy breach in a log. It carries the derived level so a caller
+ * can say WHICH tier is unavailable without re-deriving it.
+ */
+export type ProtectionAvailability =
+  | { ok: true; requirements: ProtectionRequirements }
+  | {
+      ok: false;
+      reason: "declared_value_invalid" | "declared_value_above_maximum";
+      level: "declined";
+    }
+  | {
+      ok: false;
+      reason: "protection_level_unavailable";
+      level: Exclude<ProtectionLevel, "declined">;
+    };
+
+/** `strict: false`, so `.ok` does not narrow without an explicit predicate. */
+export function isProtectionUnavailable(
+  a: ProtectionAvailability
+): a is Extract<ProtectionAvailability, { ok: false }> {
+  return a.ok === false;
+}
+
+export function evaluateConsumerProtectionAvailability(
+  declaredValueCents: unknown
+): ProtectionAvailability {
+  const decision = deriveProtection(declaredValueCents);
+  if (isProtectionDeclined(decision)) {
+    return { ok: false, reason: decision.reason, level: "declined" };
+  }
+  const level = decision.requirements.level;
+  /* `ProtectionRequirements.level` is typed as the full union, so this narrows
+     it. It is unreachable by construction — `deriveProtection` never returns a
+     successful decision carrying 'declined' — and it is written as a real
+     refusal rather than a cast so that if that ever stopped being true, the
+     value would be refused instead of silently treated as purchasable. */
+  if (level === "declined") {
+    return { ok: false, reason: "declared_value_invalid", level: "declined" };
+  }
+  if (!isProtectionLevelCurrentlyAvailable(level)) {
+    return { ok: false, reason: "protection_level_unavailable", level };
+  }
+  return { ok: true, requirements: decision.requirements };
+}
 
 /** What the derived level actually requires. Read by server, SQL tests and UI. */
 export type ProtectionRequirements = {

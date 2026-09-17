@@ -440,7 +440,16 @@ describe("validateConsumerSendBody", () => {
     expect(reasonFor({ ...valid, declaredValueCents: 50_001 })).toBe(
       "declared_value_above_maximum"
     );
-    expect(validateConsumerSendBody({ ...valid, declaredValueCents: 50_000 }).ok).toBe(true);
+    /* $500 IS NO LONGER ACCEPTED, and the reason is not the ceiling. It derives
+       to protected_handoff, which cannot be sold while Stripe Identity is
+       inactive, so it is refused as CURRENTLY UNAVAILABLE. Calling it "above
+       the maximum" would be false — $500 is exactly the maximum — and would
+       make a temporary commercial limit indistinguishable from a policy breach
+       in a log. The policy ceiling itself is unchanged. */
+    expect(reasonFor({ ...valid, declaredValueCents: 50_000 })).toBe(
+      "protection_level_unavailable"
+    );
+    expect(validateConsumerSendBody({ ...valid, declaredValueCents: 15_000 }).ok).toBe(true);
     expect(validateConsumerSendBody({ ...valid, declaredValueCents: 0 }).ok).toBe(true);
   });
 
@@ -515,7 +524,12 @@ describe("validateConsumerSendBody", () => {
     const r = validateConsumerSendBody({
       ...valid,
       recipient: { name: "  Dana Reyes  ", email: "recipient@example.test", phone: null },
-      declaredValueCents: 15_001,
+      /* $150.00, not $150.01. This test is about RECIPIENT NORMALIZATION; a
+         value one cent higher now derives to an unavailable tier and the body
+         is refused, so the fixture would answer a question about declared value
+         instead of the one it was written to ask. The file's own header warns
+         about exactly this. */
+      declaredValueCents: 15_000,
     });
     expect(r.ok).toBe(true);
     if (r.ok) {
@@ -525,7 +539,7 @@ describe("validateConsumerSendBody", () => {
       expect(r.value.contact.email).toBe("sender@example.test");
       // Passed through EXACTLY. The level is derived from it on the server and
       // re-derived by the database; the validator must not round or rescale it.
-      expect(r.value.declaredValueCents).toBe(15_001);
+      expect(r.value.declaredValueCents).toBe(15_000);
       expect(r.value.acceptance).toEqual({
         shipmentCertification: true,
         electronicTransactions: true,

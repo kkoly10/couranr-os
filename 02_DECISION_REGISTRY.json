@@ -3319,6 +3319,7 @@
           "declared_value_label": "What is this shipment worth?",
           "declared_value_help": "Your own estimate of the total value, in dollars. Couranr uses it to decide how the shipment is handled and photographed — it is not an appraisal, a valuation, or insurance.",
           "declared_value_max_note": "Couranr Same Day carries shipments declared up to",
+          "declared_value_unavailable_note": "Protected Handoff is not available yet. Couranr Same Day currently accepts shipments with a declared value up to",
           "protection_standard": "Standard handling: your recipient confirms the handoff with a code they read to the driver.",
           "protection_secure_pickup": "Secure pickup: the driver photographs the item before it is packed, applies a numbered tamper-evident seal, photographs the sealed package, and confirms your pickup code last.",
           "protection_protected_handoff": "Protected handoff: everything in secure pickup, plus the recipient verifies their identity before the handoff. This shipment cannot be left at a door.",
