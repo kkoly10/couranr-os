@@ -1,8 +1,20 @@
+import Link from "next/link";
 import {
   OPERATING_DAYS_COPY,
   OPERATING_WINDOW_COPY,
   SAME_DAY_CUTOFF_COPY,
+  WEIGHT_INCLUDED_THROUGH_LB,
+  WEIGHT_SURCHARGE_THROUGH_LB,
 } from "@/lib/couranr/public/governed";
+import {
+  CONSUMER_MAX_DECLARED_VALUE_CENTS,
+  declaredValueDollars,
+} from "@/lib/couranr/consumer/protection";
+import {
+  LEGAL_DRAFTED_ON,
+  SAME_DAY_SHIPMENT_TERMS_ID,
+  legalDocumentHref,
+} from "@/lib/couranr/legal/registry";
 
 export default function DeliveryPolicyPage() {
   return (
@@ -14,6 +26,14 @@ export default function DeliveryPolicyPage() {
         This policy explains what we deliver, how scheduling works, and how we
         protect customers and drivers with verification and clear limits.
       </p>
+      <p style={{ marginTop: 10, color: "#444", lineHeight: 1.6 }}>
+        For a Couranr Same Day shipment the governing document is the{" "}
+        <Link href={legalDocumentHref(SAME_DAY_SHIPMENT_TERMS_ID)}>
+          Same Day Shipment Terms
+        </Link>
+        , which is the version a sender accepts and Couranr records. Where this
+        page and that document differ, that document is the one that applies.
+      </p>
 
       <Section title="Delivery Scope">
         Couranr Delivery provides local courier services for documents, packages,
@@ -21,16 +41,36 @@ export default function DeliveryPolicyPage() {
         value, and safety.
       </Section>
 
+      {/* RECONCILED. This section published "80 lbs" and "$300" as the
+          standard-checkout limits, and BOTH were unsourced: the root decision
+          registry contains no `80 lb` and no `$300` anywhere. The declared-value
+          figure also contradicted the live consumer flow, which refuses anything
+          above CONSUMER_MAX_DECLARED_VALUE_CENTS in TypeScript, re-derives the
+          same ceiling in SQL, and enforces it a third time with a CHECK
+          constraint on couranr_delivery_requests. Two different published
+          numbers for one limit is the defect — a customer reading this page and
+          a customer using /send were told different things — so the fix is to
+          render the constants the system actually enforces, exactly the way the
+          hours below were fixed when they drifted. */}
       <Section title="Item Limits">
         <ul style={ul}>
           <li>
-            Maximum weight (standard checkout): <strong>80 lbs</strong>
+            Weight is included through{" "}
+            <strong>{WEIGHT_INCLUDED_THROUGH_LB} lb</strong>, and a weight
+            surcharge applies through{" "}
+            <strong>{WEIGHT_SURCHARGE_THROUGH_LB} lb</strong>. Heavier than that
+            is a Large Item and goes to Couranr review rather than straight to
+            checkout.
           </li>
           <li>
-            Maximum declared value (standard checkout): <strong>$300</strong>
+            Maximum declared value, counted across the whole shipment rather
+            than per item:{" "}
+            <strong>{declaredValueDollars(CONSUMER_MAX_DECLARED_VALUE_CENTS)}</strong>.
+            Couranr refuses a higher declared value at the moment it is entered.
           </li>
           <li>
-            Over limits require a <strong>Special Request</strong> approval.
+            Anything outside these limits is reviewed by Couranr before it can
+            be booked.
           </li>
         </ul>
       </Section>
@@ -110,8 +150,12 @@ export default function DeliveryPolicyPage() {
         conditions beyond our control.
       </Section>
 
+      {/* `new Date().toLocaleDateString()` used to render here, which claimed
+          this page was last updated today, every day, forever — and rendered a
+          server-locale date the reader never sees the same way twice. A fixed
+          draft date is both honest and deterministic. */}
       <div style={{ marginTop: 26, paddingTop: 16, borderTop: "1px solid #e5e7eb", color: "#6b7280", fontSize: 13 }}>
-        Version: v1 • Last updated: {new Date().toLocaleDateString()}
+        Version: v1 • Drafted {LEGAL_DRAFTED_ON}
       </div>
     </div>
   );
