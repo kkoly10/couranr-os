@@ -1,8 +1,14 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { SEND_COPY } from "@/lib/couranr/public/masterSameDayCopy";
+import {
+  legalCitation,
+  senderShipmentTermsCitation,
+  type LegalCitation,
+} from "@/lib/couranr/legal/registry";
 import {
   getSameDayAdaptersForMode,
   type IntakeProposal,
@@ -68,6 +74,27 @@ function parseIntent(raw: string | null): Intent | null {
 }
 
 const emptyAddress: ConsumerAddressValue = { value: "", placeId: null };
+
+/**
+ * The two documents the shipment certification names, cited rather than
+ * described.
+ *
+ * NOTHING HERE IS TYPED. Title, version and href all come from
+ * `lib/couranr/legal/registry.ts` as one object, so a link cannot point at one
+ * document while the sentence beside it names another, and the version shown
+ * cannot drift from the version stored. `senderShipmentTermsCitation()` returns
+ * `CONSUMER_SENDER_TERMS_VERSION` BY CONSTRUCTION — the same constant
+ * `lib/couranr/consumer/send.ts` passes to `couranr_record_consumer_trust` as
+ * `p_terms_version` — which is the whole point: the browser never states a
+ * version, it displays the one the server is going to record.
+ *
+ * Module scope, not a hook: these are pure reads of a dependency-free registry
+ * and recomputing them per render buys nothing.
+ */
+const CLICKWRAP_CITATIONS: readonly LegalCitation[] = [
+  senderShipmentTermsCitation(),
+  legalCitation("prohibited-items"),
+];
 
 /**
  * The shipment-safety declaration options — SAME closed vocabulary and SAME
@@ -1286,6 +1313,47 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
                 computed it and nothing here can change it. */}
             {quote?.state === "live-available" ? `Total: ${formatCents(quote.totalCents)}` : null}
           </p>
+
+          {/* THE DOCUMENTS, ABOVE THE CHECKBOXES AND OUTSIDE THE LABELS.
+
+              Above, because the sender has to be able to read them BEFORE
+              accepting — a clickwrap whose documents live only in the footer
+              asks for agreement to something never offered.
+
+              Outside the <label>, for two independent reasons. A link inside a
+              label toggles the checkbox when it is clicked, so the sender who
+              tries to read the terms silently accepts them instead. And the
+              label's text content IS the accessible handle the funnel tests
+              take hold of (`getByLabelText(SEND_COPY.acknowledgement)`, which
+              is an exact match on label text) — link text folded into it would
+              break that without changing a single assertion's intent.
+
+              Each opens in a new tab: this is a five-step form held in
+              component state, and navigating away from it loses the trip, the
+              item, the recipient and the standing quote. */}
+          <div data-couranr-clickwrap="documents">
+            <p className="cr-send-field__hint">{SEND_COPY.legal_read_first}</p>
+            <ul className="cr-list">
+              {CLICKWRAP_CITATIONS.map((doc) => (
+                <li key={doc.documentId}>
+                  <Link
+                    href={doc.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-couranr-legal-link={doc.documentId}
+                  >
+                    {doc.title}
+                  </Link>{" "}
+                  <span
+                    className="cr-send-note"
+                    data-couranr-legal-version={doc.version}
+                  >
+                    {doc.version}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
 
           {/* BOTH are required to submit, and NEITHER is required to price.
               The estimate creates a draft; asking the sender to accept terms
