@@ -3,6 +3,11 @@ import Link from "next/link";
 import { SAME_DAY_COPY } from "@/lib/couranr/public/masterSameDayCopy";
 import { MARKETS_PUBLIC_COPY_NEUTRAL } from "@/lib/couranr/public/governed";
 import { PROHIBITED_GROUPS, groupLabels } from "@/lib/couranr/public/prohibitedSummary";
+import {
+  PROTECTION_THRESHOLDS,
+  declaredValueDollars,
+} from "@/lib/couranr/consumer/protection";
+import { LEGAL_DOCUMENTS, legalDocumentHref } from "@/lib/couranr/legal/registry";
 import { routeForScreen } from "@/lib/couranr/navigation";
 
 /**
@@ -24,7 +29,9 @@ import { routeForScreen } from "@/lib/couranr/navigation";
  *   - §6 is new and says what Couranr will NOT carry. Its categories are
  *     rendered from `PROHIBITED_CLASSES` through `prohibitedSummary`, the same
  *     vocabulary the policy engine and `/send` enforce. Nothing here types a
- *     category name; a second list is exactly the drift the brief bans.
+ *     category name; a second list is exactly the drift the brief bans. Its
+ *     policy link and the link's title come from `lib/couranr/legal/registry.ts`
+ *     — the same entry `/send`'s clickwrap cites.
  *   - §7 is new and describes the handoff EVIDENCE THIS BUILD RECORDS. Nothing
  *     more. See the note on that section.
  *   - §10 no longer depicts the nine internal address-interaction states. They
@@ -34,7 +41,9 @@ import { routeForScreen } from "@/lib/couranr/navigation";
  *
  * WHAT THIS PAGE MUST NOT DO, unchanged:
  *   - no fake price. `consumer-price` states when the price appears, not what
- *     it is.
+ *     it is. The two custody figures in §7 are NOT prices — they are the
+ *     declared-value thresholds `lib/couranr/consumer/protection.ts` derives,
+ *     rendered from that module and never typed, exactly as `/send` does it.
  *   - no live tracking data. `consumer-tracking` is a product story.
  *   - no marketplace, catalogue, menu or storefront — MKT-004's consumer
  *     guardrail. For collection the item is already bought elsewhere.
@@ -275,11 +284,16 @@ export default function Page() {
           utility content, but the contract caps grid-dominant at zero for every
           PUB-013 region, so the density comes from the rules and the columns.
 
-          NO policy-document link. The brief asks for one and says to take its
-          destination from the legal registry; `lib/legal.ts` has no such entry
-          and no canonical screen owns that route, so the choice was a dead
-          link, a link to the LEGACY /terms page, or none. The rendered summary
-          answers the question on its own. */}
+          THE POLICY LINK IS BACK. This block used to say there was no such
+          document and no route to send anyone to, so the only options were a
+          dead link or the LEGACY multi-product /terms page. Both facts changed:
+          `lib/couranr/legal/registry.ts` owns the `prohibited-items` entry and
+          `/legal/prohibited-items` renders it. The href AND the link text come
+          from that registry — the title is not typed here for the same reason a
+          category is not, so the name a visitor reads and the document they
+          land on cannot become two different things. It is the same entry
+          `SendFlow`'s clickwrap cites, which is what makes accepting it at
+          `/send` and reading it here the same policy. */}
       <section
         className="cr-mkt-section"
         aria-labelledby="s6-h"
@@ -302,6 +316,15 @@ export default function Page() {
           ))}
         </dl>
         <p className="cr-sd-policy__help">{SAME_DAY_COPY.prohibited_help}</p>
+        <p className="cr-sd-policy__cta">
+          {SAME_DAY_COPY.prohibited_cta}{" "}
+          <Link
+            href={legalDocumentHref("prohibited-items")}
+            data-couranr-legal-link="prohibited-items"
+          >
+            {LEGAL_DOCUMENTS["prohibited-items"].title}
+          </Link>
+        </p>
       </section>
 
       {/* ─── 7 ───────────────────────── consumer-handoff / product-proof ─── */}
@@ -312,14 +335,38 @@ export default function Page() {
           delivery photograph, or a captured signature (`PROOF_METHODS` in
           lib/couranr/driver/states.ts, enforced in the completion functions).
 
-          WHAT IS DELIBERATELY ABSENT. The brief's progressive paragraph
-          described value-tiered custody: documenting the item before packing, a
-          numbered tamper-evident seal, recipient identity verification above a
-          declared-value threshold. That work is not in this build — it lives on
-          an unmerged Trust/Custody branch — so those sentences would be a
-          protection claim Couranr cannot honour today. The owner chose to ship
-          the rest and omit them. The honesty sentence stays either way: Couranr
-          documents, it does not authenticate or appraise.
+          WHAT THIS BLOCK USED TO SAY, AND WHY IT WAS WRONG. It said value-
+          tiered custody — documenting the item before packing, a numbered
+          tamper-evident seal, recipient identity verification above a declared-
+          value threshold — was "not in this build" and lived on an unmerged
+          Trust/Custody branch. That branch is merged. `deriveProtection` in
+          `lib/couranr/consumer/protection.ts` derives standard / secure pickup
+          / protected handoff from the declared value; the SQL re-derives it;
+          and `private.couranr_enforce_consumer_custody_sequence` refuses the
+          at_pickup -> picked_up transition without the prepack photograph
+          (`item_prepack_photo_required`), the sealed-package photograph
+          (`sealed_package_photo_required`), the seal bound to that photograph
+          (`security_seal_required`) and the sender's credential consumed LAST
+          (`pickup_credential_before_documentation`). Denying protection the
+          product actually performs is the same defect as promising protection
+          it does not, one direction over.
+
+          WHAT IS STILL ABSENT, AND THE FIGURE THAT DEPENDS ON IT. Protected
+          handoff requires recipient identity verification, which is not
+          activated: `private.couranr_block_unavailable_protected_handoff` is an
+          enabled trigger raising `protected_handoff_identity_unavailable` for
+          ANY consumer request at that level the moment it leaves draft, with no
+          flag and no escape, and `submitConsumerSend` refuses it before that
+          with no payment authorized. Anything declared above
+          `securePickupMaxCents` derives to protected handoff, so THAT is the
+          largest declared value a customer can actually submit today —
+          `CONSUMER_MAX_DECLARED_VALUE_CENTS` is the policy ceiling, not the
+          accepted one, and printing it here would sell a shipment the database
+          refuses. Both figures below are read from the protection module; no
+          amount is typed on this page or in MKT-005.
+
+          The honesty sentence stays either way: Couranr documents, it does not
+          authenticate or appraise.
 
           The methods are rendered as an ordered handoff, which is what a
           product proof of this flow is — not a pill rail (that device belongs
@@ -338,6 +385,22 @@ export default function Page() {
         </h2>
         <p className="cr-mkt-editorial__body cr-type-lead">{SAME_DAY_COPY.handoff_body}</p>
         <p className="cr-sd-handoff__detail">{SAME_DAY_COPY.handoff_progressive}</p>
+        {/* RENDERED FROM AUTHORITY, both of them. `standardMaxCents` is where
+            secure pickup begins; `securePickupMaxCents` is where protected
+            handoff would begin and therefore where Couranr stops accepting.
+            `declaredValueDollars` is the same formatter `/send` uses, so the
+            two surfaces cannot format one threshold two ways. */}
+        <p className="cr-sd-handoff__detail">
+          {SAME_DAY_COPY.handoff_secure_pickup}{" "}
+          {declaredValueDollars(PROTECTION_THRESHOLDS.standardMaxCents)}.
+        </p>
+        <p className="cr-sd-handoff__detail">
+          {SAME_DAY_COPY.handoff_declared_value}{" "}
+          {declaredValueDollars(PROTECTION_THRESHOLDS.securePickupMaxCents)}.
+        </p>
+        <p className="cr-sd-handoff__detail">
+          {SAME_DAY_COPY.handoff_declared_value_close}
+        </p>
         <p className="cr-sd-handoff__honesty">{SAME_DAY_COPY.handoff_honesty}</p>
       </section>
 
@@ -424,7 +487,19 @@ export default function Page() {
       {/* ─── 11 ──────────────────────── consumer-tracking / product-proof ─── */}
       {/* A product NARRATIVE, not live data. Three stage labels from MKT-005,
           rendered as a static sequence: no delivery, no driver, no ETA and no
-          token. */}
+          token.
+
+          THE REACH CHANGED. `tracking_body` used to say Couranr handed the
+          SENDER a link to keep or forward, because a Same Day request carried
+          no recipient identity. It carries one now — `recipient_email` is
+          required (`recipient_email_required` in consumer/send.ts) — and
+          `lib/couranr/email/consumerLifecycle.ts` emails the recipient their own
+          private tracking, then emails them again out-for-delivery and on
+          arrival. `getConsumerSendView` returns no tracking token at all; the
+          sender is told the notification went out and to which address. The
+          copy says what the customer GETS. The reason the sender is not handed
+          the recipient's link belongs where the sender can act on it, which is
+          SendFlow, not here. */}
       <section
         className="cr-mkt-section"
         aria-labelledby="s11-h"

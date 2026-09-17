@@ -3266,9 +3266,13 @@
           "prohibited_heading": "Some things shouldn’t travel with Couranr.",
           "prohibited_body": "For safety, legal and insurance reasons, Couranr does not transport certain regulated, hazardous or unusually high-risk items.",
           "prohibited_help": "Not sure about your item? Describe it when you request the delivery. Couranr checks whether it can be accepted before you pay.",
+          "prohibited_cta": "Read the full policy:",
           "handoff_heading": "Built for accountable handoffs.",
           "handoff_body": "Couranr records important pickup and delivery events so there is a clear record of the handoff.",
-          "handoff_progressive": "A Same Day delivery is released at pickup by a code, and handed to the recipient against a code at the door.",
+          "handoff_progressive": "Every Same Day delivery is released at pickup by a code the sender holds, and handed over against a code at the door. What the shipment is worth decides how much more Couranr does.",
+          "handoff_secure_pickup": "Secure pickup goes further: the Couranr driver photographs the item before it is packed, applies a numbered tamper-evident seal, photographs the sealed package, and confirms the sender’s code last. Couranr applies it to every shipment declared above",
+          "handoff_declared_value": "You tell Couranr what a shipment is worth when you request it. Today Couranr Same Day accepts a declared value up to",
+          "handoff_declared_value_close": "If a shipment is worth more than that, Couranr says so before you pay and nothing is charged.",
           "handoff_honesty": "Couranr documents what is presented and handed over. Couranr does not authenticate, appraise or certify merchandise.",
           "workflow_headline": "A few details. Then Couranr handles the trip.",
           "workflow_labels": [
@@ -3284,7 +3288,7 @@
           "availability_body": "Add the pickup and destination in Same Day. Couranr checks the trip against the area it currently serves before you submit your request.",
           "availability_cta": "Check a delivery",
           "tracking_headline": "Follow it from confirmation to handoff.",
-          "tracking_body": "Couranr gives you a private tracking link once the delivery is confirmed, to keep or to pass to whoever is receiving it. Pickup, movement and handoff are recorded as the delivery progresses.",
+          "tracking_body": "When the delivery is confirmed, Couranr emails your recipient their own private tracking, and tells you the address it went to. Pickup, movement and handoff are recorded as the delivery progresses.",
           "tracking_labels": [
             "Confirmed",
             "Picked up",

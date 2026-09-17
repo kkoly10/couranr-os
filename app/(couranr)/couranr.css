@@ -4210,6 +4210,15 @@
   color: var(--couranr-text);
 }
 
+/* The policy link. Tight to the sentence above it rather than a space-6 gap,
+   because it is the same thought finishing — "not sure about your item?" and
+   "here is the document that decides" are one answer, not two. */
+.cr-sd-policy__cta {
+  margin: var(--couranr-space-3) 0 0;
+  max-width: 54ch;
+  color: var(--couranr-text);
+}
+
 /* sameday-business-crosslink: COMPACT is the requirement. The brief says not
    to make this a giant visual section, so it is one top rule, a small heading,
    one sentence and a text link — no photograph, no panel, no button row, and

@@ -226,15 +226,48 @@ describe("cross-surface claim boundaries are single-sourced", () => {
     expect(read("lib/couranr/public/masterSameDayCopy.ts")).toContain(words);
   });
 
-  it("no public surface carries the Consumer Same Day declared-value ceiling", () => {
-    /* It is a CONSUMER decision and the value-tiered custody work it belongs to
-       is not in this build, so no page states one — and in particular the
-       business family must not inherit it. This fails the moment a ceiling is
-       written anywhere public without the decision that authorises it. */
-    for (const f of [MASTER_SURFACE, BUSINESS_OVERVIEW, BUSINESS_TYPES, SAMEDAY]) {
+  /**
+   * THE CEILING BAN, SPLIT 2026-09-17.
+   *
+   * WHAT CHANGED AND WHY. This banned a declared-value ceiling on ALL FOUR
+   * public surfaces, on the ground that "the value-tiered custody work it
+   * belongs to is not in this build". That work IS in this build —
+   * `deriveProtection` derives the level, the SQL re-derives it, and
+   * `private.couranr_enforce_consumer_custody_sequence` enforces the ceremony —
+   * so the ban is now scoped to the surfaces it was always really about.
+   *
+   * THE SCOPE IS WHAT MATTERS, and it is unchanged: the protection authority
+   * governs CONSUMER Same Day and nothing else.
+   * `private.couranr_delivery_protection_level` returns null unless the request
+   * carries a `protection_policy_version`, and the only writer of that column
+   * is `couranr_record_consumer_trust`, which resolves a consumer guest session
+   * and filters `requester_kind='consumer'`. So a business delivery derives no
+   * level, and the master and business surfaces must still never state one — a
+   * merchant reading a ceiling would be reading a policy their deliveries are
+   * not held to.
+   */
+  it("the master and business surfaces state no declared-value ceiling", () => {
+    for (const f of [MASTER_SURFACE, BUSINESS_OVERVIEW, BUSINESS_TYPES]) {
       const src = read(f);
       expect(src, `${f} states a declared-value ceiling`).not.toMatch(/declared value/i);
       expect(src, `${f} states a maximum value`).not.toMatch(/maximum (declared )?value/i);
     }
+  });
+
+  /* PUB-013 is the consumer surface, so it is the ONE page that owes the
+     figure. What it may not do is type it: the amounts are composed from
+     `lib/couranr/consumer/protection.ts`, the module the server and the SQL
+     both derive from. Comments stripped for the same reason as the category
+     scanner above — the block explaining which constant was rejected names
+     that constant, and a raw scan reads the explanation as the violation. */
+  it("PUB-013 states the ceiling, and composes it from the protection module", () => {
+    const code = read(SAMEDAY)
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, " ")
+      .replace(/\/\*[\s\S]*?\*\//g, " ");
+    expect(code, "PUB-013 no longer renders the accepted maximum").toContain(
+      "PROTECTION_THRESHOLDS.securePickupMaxCents",
+    );
+    expect(code).toContain("declaredValueDollars");
+    expect(code, "PUB-013 types a dollar amount").not.toMatch(/\$\s?\d/);
   });
 });
