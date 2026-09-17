@@ -860,6 +860,119 @@ try {
     t("E8", "a seal on a STANDARD delivery is refused, not quietly stored",
       (r.got === "seal_not_required_for_delivery" || r.got === "raised:seal_not_required_for_delivery"), r.got); }
 
+  /* ── §S: the custody SEQUENCE, attacked out of order ─────────────────────
+     §E proves every PART of the ceremony is present. Presence is not sequence,
+     and a direct API caller reaching the same RPCs in a different order
+     satisfied all of §E: photograph the sealed package first, upload the
+     "pre-pack" photo afterwards, and both exist. A pre-pack photo taken after
+     the package was sealed shows a sealed package — which is what the other
+     photo is for — so the one thing that photo exists to prove was unproven.
+
+     These build legitimate AND hostile sequences with controlled timestamps. */
+  const orderedFixture = async (marker, drv) => {
+    /* couranr_asg_one_active_per_driver allows a driver exactly one live
+       assignment, which is the same invariant that lets
+       couranr_driver_assignment_for resolve "their" delivery at all. Each
+       fixture retires the previous one first. */
+    sql(`update public.couranr_delivery_assignments
+            set assignment_state='completed', end_reason='completed', ended_at=now()
+          where driver_id='${drv.driverId}' and assignment_state='active'`);
+    const f = await custodyChain(marker, 5000, "secure_pickup");
+    assign(f, drv);
+    return f;
+  };
+
+  const drvS = driverFor("tc-driver-s@example.test");
+  /* Returns the QUERY. mustRefuse takes a string and runs it itself, so a
+     helper that executed eagerly would fire the statement before the assertion
+     ever saw it — which is how N1 first reported a raw psql crash instead of a
+     refusal. */
+  const sealQuery = (f, drv, proofId, serial) =>
+    "select public.couranr_record_delivery_seal('" + f.dlv + "','" + drv.userId +
+    "','" + serial + "','" + proofId + "')";
+  const sealIt = (f, drv, proofId, serial) => sql(sealQuery(f, drv, proofId, serial));
+
+  /* S1 — THE ATTACK THE OLD RULE ALLOWED. Sealed photo first, pre-pack second.
+     Every part present; the order is a lie. */
+  { const f = await orderedFixture("tc-seq-reversed", drvS);
+    const sp = addProof(f, "sealed_package_photo", drvS, "now() - interval '9 minutes'");
+    addProof(f, "item_prepack_photo", drvS, "now() - interval '4 minutes'");
+    sealIt(f, drvS, sp, "SEAL-SEQ-0001");
+    consumeCode(f, 1, "now()");
+    const r = mustRefuse(pickUp(f), "prepack_photo_must_precede_sealing");
+    t("S1", "a pre-pack photo taken AFTER sealing cannot complete the pickup",
+      (r.got === "prepack_photo_must_precede_sealing" ||
+       r.got === "raised:prepack_photo_must_precede_sealing"), r.got); }
+
+  /* S2 — the legitimate sequence still completes. A rule that only refuses is a
+     rule nobody has shown to be satisfiable. */
+  { const f = await orderedFixture("tc-seq-correct", drvS);
+    addProof(f, "item_prepack_photo", drvS, "now() - interval '9 minutes'");
+    const sp = addProof(f, "sealed_package_photo", drvS, "now() - interval '7 minutes'");
+    sealIt(f, drvS, sp, "SEAL-SEQ-0002");
+    consumeCode(f, 1, "now()");
+    const done = succeeds(pickUp(f), f, "picked_up");
+    t("S2", "item, then sealed package, then seal, then credential — completes",
+      done.ok, done.got); }
+
+  /* S3 — the seal cannot predate the photograph it cites. A serial recorded
+     before there is a sealed package to photograph is a serial typed early. */
+  { const f = await orderedFixture("tc-seq-seal-early", drvS);
+    addProof(f, "item_prepack_photo", drvS, "now() - interval '9 minutes'");
+    const sp = addProof(f, "sealed_package_photo", drvS, "now() - interval '2 minutes'");
+    sealIt(f, drvS, sp, "SEAL-SEQ-0003");
+    // Back-date the seal to before its own photograph.
+    sql("update public.couranr_delivery_security_seals set applied_at = now() - interval '6 minutes'" +
+        " where delivery_id='" + f.dlv + "'");
+    consumeCode(f, 1, "now()");
+    const r = mustRefuse(pickUp(f), "seal_recorded_before_sealed_photo");
+    t("S3", "a seal recorded BEFORE its own photograph is refused",
+      (r.got === "seal_recorded_before_sealed_photo" ||
+       r.got === "raised:seal_recorded_before_sealed_photo"), r.got); }
+
+  /* S4 — THE GAP THE OLD RULE LEFT. The credential was compared against the
+     photographs and never against the SEAL, so it could be taken after both
+     photos and before the seal was recorded. The sender's confirmation means
+     "the documented and SEALED shipment is what I am tendering". */
+  { const f = await orderedFixture("tc-seq-cred-before-seal", drvS);
+    addProof(f, "item_prepack_photo", drvS, "now() - interval '9 minutes'");
+    const sp = addProof(f, "sealed_package_photo", drvS, "now() - interval '8 minutes'");
+    consumeCode(f, 1, "now() - interval '7 minutes'");   // after photos, before seal
+    sealIt(f, drvS, sp, "SEAL-SEQ-0004");                // seal recorded now
+    const r = mustRefuse(pickUp(f), "pickup_credential_before_documentation");
+    t("S4", "a credential taken before the SEAL was recorded is refused",
+      (r.got === "pickup_credential_before_documentation" ||
+       r.got === "raised:pickup_credential_before_documentation"), r.got); }
+
+  /* S5 — several legitimate pre-pack shots are fine; the FIRST still has to
+     precede the sealing. Using max() here would let a later upload repair an
+     out-of-order sequence after the fact. */
+  { const f = await orderedFixture("tc-seq-multi-prepack", drvS);
+    addProof(f, "item_prepack_photo", drvS, "now() - interval '9 minutes'");
+    addProof(f, "item_prepack_photo", drvS, "now() - interval '8 minutes'");
+    const sp = addProof(f, "sealed_package_photo", drvS, "now() - interval '6 minutes'");
+    sealIt(f, drvS, sp, "SEAL-SEQ-0005");
+    consumeCode(f, 1, "now()");
+    const done = succeeds(pickUp(f), f, "picked_up");
+    t("S5", "several pre-pack shots are fine while the first precedes sealing",
+      done.ok, done.got); }
+
+  /* N — a tamper-evident seal is single-use by construction. Two custody
+     records claiming one serial means one of them is false. */
+  { const f = await orderedFixture("tc-seq-dup-serial", drvS);
+    const sp = addProof(f, "sealed_package_photo", drvS);
+    const r = mustRefuse(sealQuery(f, drvS, sp, "SEAL-SEQ-0002"),
+      "couranr_dss_identifier_unique_active");
+    t("N1", "a serial already used on another delivery is refused", r.ok, r.got); }
+
+  { const f = await orderedFixture("tc-seq-dup-case", drvS);
+    const sp = addProof(f, "sealed_package_photo", drvS);
+    /* 'seal-seq-0002' and 'SEAL-SEQ-0002' are the same physical label. A
+       case-sensitive index would wave the second one through. */
+    const r = mustRefuse(sealQuery(f, drvS, sp, "seal-seq-0002"),
+      "couranr_dss_identifier_unique_active");
+    t("N2", "case cannot smuggle a duplicate serial past the index", r.ok, r.got); }
+
   /* ── §F: the custody chain CLOSES at handoff ────────────────────────────
      A tamper-evident seal nobody looks at is a sticker. Its whole value is the
      comparison between what was applied and what arrived, and until this stage
@@ -871,12 +984,20 @@ try {
 
   /* A sealed delivery parked at at_dropoff: the pickup ceremony already done,
      the seal applied, now standing at the recipient's door. */
+  let serialSeq = 0;
+  const uniqueSerial = () => `TC${String(++serialSeq).padStart(5, "0")}`;
+
   const sealedAtDropoff = async (marker, level, drv, proofMethod = null) => {
     const f = await custodyChain(marker, level === "protected_handoff" ? 20000 : 5000,
       level, "at_pickup", proofMethod);
     assign(f, drv);
     const sp = addProof(f, "sealed_package_photo", drv);
-    sql(`select public.couranr_record_delivery_seal('${f.dlv}','${drv.userId}','SEAL-${marker.slice(-6)}','${sp}')`);
+    /* A DISTINCT serial per fixture. The first version used the marker's last six
+       characters, so 'tc-id-verified' and any other marker ending the same way
+       produced one serial — and the new uniqueness index refused the second,
+       which is the index doing exactly its job on my own fixtures. A physical
+       seal is single-use; test fixtures have to respect that too. */
+    sql(`select public.couranr_record_delivery_seal('${f.dlv}','${drv.userId}','SEAL-${uniqueSerial()}','${sp}')`);
     sql(`update public.couranr_deliveries set fulfillment_state='at_dropoff' where id='${f.dlv}'`);
     return f;
   };
