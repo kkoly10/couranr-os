@@ -85,9 +85,8 @@ import {
   CONSUMER_MAX_DECLARED_VALUE_CENTS,
   CONSUMER_SENDER_TERMS_VERSION,
   declaredValueDollars,
-  deriveProtection,
+  CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS,
   evaluateConsumerProtectionAvailability,
-  isProtectionDeclined,
   isProtectionUnavailable,
 } from "@/lib/couranr/consumer/protection";
 
@@ -518,10 +517,6 @@ export function validateConsumerSendBody(raw: unknown): ConsumerSendBodyResult {
             ? "protection_level_unavailable"
             : "declared_value_invalid",
     };
-  }
-  const protection = deriveProtection(declaredValueCents);
-  if (isProtectionDeclined(protection)) {
-    return { ok: false, reason: "declared_value_invalid" };
   }
 
   /* The acknowledgements are PARSED here and REQUIRED at submit, not here.
@@ -1158,22 +1153,39 @@ export async function submitConsumerSend(params: {
     });
   }
 
-  const protection = deriveProtection(
+  /* THE SAME AUTHORITY THE FUNNEL USES. This path used to answer "is protected
+     handoff available" for itself, via isRecipientIdentityCapabilityAvailable()
+     alone, while the funnel answered it from
+     PROTECTION_LEVELS_CURRENTLY_UNAVAILABLE. Two answers to one question: flip
+     the list without setting the environment and submit would accept what the
+     funnel refused; set the environment without flipping the list and the
+     reverse. One switch now, checked here first so the refusal reason matches
+     everywhere. */
+  const availability = evaluateConsumerProtectionAvailability(
     typeof raw.declaredValueCents === "number" ? raw.declaredValueCents : Number.NaN
   );
-  if (isProtectionDeclined(protection)) {
+  if (isProtectionUnavailable(availability)) {
     return fail({
       operation: op,
-      code: "invalid_input",
-      detail: { reason: protection.reason },
+      code: availability.reason === "protection_level_unavailable" ? "conflict" : "invalid_input",
+      detail: { reason: availability.reason },
       message:
-        protection.reason === "declared_value_above_maximum"
-          ? `Couranr Same Day carries shipments declared up to ${declaredValueDollars(
-              CONSUMER_MAX_DECLARED_VALUE_CENTS
-            )}.`
+        availability.reason === "declared_value_above_maximum" ||
+        availability.reason === "protection_level_unavailable"
+          ? /* NAMES WHAT CAN ACTUALLY BE SENT, not the policy ceiling. This said
+               $500 while /send and /sameday said $150, so a sender at $600 was
+               told to lower it to $500 and would have been refused again. */
+            `Couranr Same Day currently carries shipments declared up to ${declaredValueDollars(
+              CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS
+            )}. No payment was authorized.`
           : "Enter what this shipment is worth before submitting this delivery.",
     });
   }
+  const protection = { requirements: availability.requirements };
+  /* The CONFIGURATION backstop, kept deliberately. The list above says what
+     Couranr sells; this says whether the provider is actually switched on. Both
+     must agree before a protected handoff is accepted, so activating the tier
+     in code without configuring the provider still fails closed. */
   if (
     protection.requirements.level === "protected_handoff" &&
     !isRecipientIdentityCapabilityAvailable()

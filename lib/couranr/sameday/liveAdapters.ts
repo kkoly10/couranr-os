@@ -50,6 +50,8 @@ import { parseOperatingLocal, type TimingIntent } from "@/lib/couranr/timing/pol
 
 import {
   CONSUMER_EMAIL_RE,
+  CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS,
+  declaredValueDollars,
   evaluateConsumerProtectionAvailability,
   isProtectionUnavailable,
 } from "@/lib/couranr/consumer/protection";
@@ -95,7 +97,13 @@ const NOTES = {
   recipientEmailRequired: "Enter the recipient's email so Couranr can send them the tracking link.",
   recipientEmailInvalid: "Check the recipient's email address — Couranr could not read it.",
   declaredValueRequired: "Enter what this shipment is worth, in whole dollars.",
-  declaredValueTooHigh: "Couranr Same Day carries shipments declared up to $500. Enter a lower value.",
+  /* COMPOSED FROM AUTHORITY, and it names the ACCEPTED maximum rather than the
+     policy ceiling. It used to type "$500", which was the policy number and
+     useless advice: a sender at $600 told to go under $500 would enter $400
+     and be refused again. */
+  declaredValueTooHigh:
+    "Couranr Same Day currently carries shipments declared up to "
+    + `${declaredValueDollars(CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS)}. Enter a lower value.`,
 
   /* Inside policy, but the tier it derives to cannot be bought yet. A
 

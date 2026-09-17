@@ -162,6 +162,61 @@ describe("the server refuses before any draft or quote work", () => {
   });
 });
 
+describe("there is exactly ONE availability authority", () => {
+  /*
+   * FOUND IN REVIEW, AFTER the first fix was already green. The submit path
+   * answered "is protected handoff available" for itself, from
+   * isRecipientIdentityCapabilityAvailable(), while the funnel answered it from
+   * PROTECTION_LEVELS_CURRENTLY_UNAVAILABLE. Two answers to one question, and
+   * they can disagree in both directions: flip the list without configuring the
+   * provider and submit accepts what the funnel refused; configure the provider
+   * without flipping the list and the reverse. The whole suite passed anyway,
+   * which is why this test exists.
+   */
+  it("no path decides availability without consulting the shared authority", () => {
+    const src = readSource("lib/couranr/consumer/send.ts");
+    const gates = [...src.matchAll(/isRecipientIdentityCapabilityAvailable\(\)/g)];
+    expect(gates.length, "the configuration backstop disappeared").toBeGreaterThan(0);
+    for (const g of gates) {
+      const before = src.slice(0, g.index ?? 0);
+      expect(
+        before.includes("evaluateConsumerProtectionAvailability("),
+        "a path gates on provider configuration without first asking the availability authority"
+      ).toBe(true);
+    }
+  });
+
+  it("keeps the configuration backstop, so code-only activation still fails closed", () => {
+    /* The list says what Couranr SELLS; the predicate says whether the provider
+       is actually switched on. Removing protected_handoff from the list without
+       configuring Stripe must still refuse. */
+    const src = readSource("lib/couranr/consumer/send.ts");
+    expect(src).toMatch(
+      /level === "protected_handoff"[\s\S]{0,80}!isRecipientIdentityCapabilityAvailable\(\)/
+    );
+  });
+
+  it("no customer-facing maximum is composed from the POLICY ceiling", () => {
+    /* The same defect one layer down: the submit refusal and the adapter note
+       both told the sender the limit was $500 while /send and /sameday said
+       $150, so someone at $600 would lower to $400 and be refused again. */
+    for (const f of [
+      "lib/couranr/consumer/send.ts",
+      "lib/couranr/sameday/liveAdapters.ts",
+      "components/couranr/sameday/SendFlow.tsx",
+    ]) {
+      const src = readSource(f);
+      expect(src, `${f} types a dollar literal into a customer message`).not.toMatch(
+        /declared up to \$\d/
+      );
+      expect(
+        src,
+        `${f} composes a customer-facing maximum from the policy ceiling`
+      ).not.toMatch(/up to \$\{declaredValueDollars\(\s*CONSUMER_MAX_DECLARED_VALUE_CENTS/);
+    }
+  });
+});
+
 describe("the database backstop is untouched", () => {
   it("still refuses a protected handoff at the last line of defence", () => {
     /* Three gates that must agree: browser, server, database. This asserts the
