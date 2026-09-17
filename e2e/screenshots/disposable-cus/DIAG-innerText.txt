@@ -1,9 +1,8 @@
 Skip to main content
-Overview
-How it works
 Pricing
+For businesses
 Service areas
-Business types
+How it works
 Sign in
 Create business account
 Delivery Help
@@ -16,66 +15,6 @@ Couranr normally replies to messages within 15 minutes during operating hours. O
 
 Couranr does not offer phone support. Everything is handled here so it stays attached to your delivery.
 
-Cancellation or return request
-
-Couranr Operations reviews this request. The form itself never changes custody, money or delivery state.
-
-Before driver arrival
-Request cancellation review
-
-For a customer-request cancellation after Couranr confirmation and before driver arrival, CAN-001 retains $8 from the delivery-service charge. A Couranr-caused cancellation is $0. Weather before pickup is handled separately: if Couranr pauses or cancels for weather, the authorization is released or the delivery-service charge is refunded with no cancellation fee. Operations applies the rule that matches the verified reason. This does not mean you personally owe $8; this link does not expose payer identity.
-
-Policy reference: CAN-001 + REF-003. The amount shown here is delivery-service policy, not a statement that you personally are the payer.
-
-Why do you need Couranr to review this?*
-I need this delivery cancelled or returned
-The recipient will not be available
-There is an address or access problem
-Weather or safety makes the handoff unsafe
-There is a damage or condition concern
-Something else
-Additional details (optional) (optional)
-
-Submitting sends a structured review request into Delivery Help. It does not cancel the delivery, start a return, approve a fee, issue a refund, change the payer or authorize a new charge.
-
-Send cancellation request
-Return & delivery refund
-
-Status for this delivery only.
-
-No return open
-
-No physical return is currently recorded for this delivery.
-
-No refund decision
-
-No Couranr delivery-service refund decision is currently recorded.
-
-This page covers Couranr delivery-service status only. Product refunds, replacements, merchandise value, and merchandise-return decisions are handled by the business that sold the item. Payment amounts and payment-method details are not shown on a Delivery Help link.
-
-Report a delivery problem
-
-Tell Couranr what happened and attach useful evidence.
-
-What went wrong?*
-Damaged or in different condition
-Something is missing
-Wrong item
-Not delivered
-Add details*
-
-Describe what you expected and what happened.
-
-Add photos (optional)
-
-Optional. JPEG, PNG, WebP or HEIC. Up to 5.
-
-i
-
-What this report does
-
-Couranr reviews the delivery issue. It does not automatically refund merchandise or decide compensation. The business remains responsible for the merchandise and merchandise refunds.
-Submit delivery report
 Your messages
 
 You have not sent anything yet. Choose what this is about and tell us what is happening.
@@ -99,11 +38,10 @@ Couranr for Business — local delivery infrastructure for local businesses.
 
 Product
 
-Overview
-How it works
 Pricing
+For businesses
 Service areas
-Business types
+How it works
 
 Get started
 
