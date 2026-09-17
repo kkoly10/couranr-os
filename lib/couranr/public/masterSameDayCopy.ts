@@ -118,6 +118,17 @@ export const SAME_DAY_COPY = {
      SAME DAY path actually records — which is narrower than the driver
      platform as a whole, and that distinction is the correction.
 
+     AND IT DOES NOT NAME THE CODE, which was the second error here. Same Day
+     stores `photo_or_pin`, so `couranr_complete_direct_handoff_delivery`
+     requires a VERIFIED RECIPIENT CODE — but the routes that issue or reveal
+     one exist only under /api/couranr/merchant and /api/couranr/operations, and
+     no consumer surface shows it (the track token page does not). Telling a
+     Same Day customer they will be asked for a code at the door promises
+     something nothing gives them. That gap is a PRODUCT issue and is reported
+     as one; the copy meanwhile says what is true — a confirmation at pickup and
+     a confirmed, recorded handoff — without naming a credential the customer
+     cannot hold.
+
      THREE METHODS EXIST; SAME DAY USES ONE. `PROOF_METHODS` offers
      photo_or_pin, signature and leave_at_door, but both consumer write paths
      pass a literal `p_proof_method: "photo_or_pin"` (lib/couranr/consumer/send.ts
@@ -130,7 +141,7 @@ export const SAME_DAY_COPY = {
      a protection claim Couranr cannot honour. */
   handoff_heading: "Built for accountable handoffs.",
   handoff_body: "Couranr records important pickup and delivery events so there is a clear record of the handoff.",
-  handoff_progressive: "A Same Day delivery is released at pickup by a code, and handed to the recipient against a code at the door.",
+  handoff_progressive: "A Same Day delivery is released at pickup against a confirmation step, and the handoff to the recipient is confirmed and recorded at the door.",
   handoff_honesty: "Couranr documents what is presented and handed over. Couranr does not authenticate, appraise or certify merchandise.",
 
   workflow_headline: "A few details. Then Couranr handles the trip.",

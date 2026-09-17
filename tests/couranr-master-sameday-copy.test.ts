@@ -177,11 +177,33 @@ describe("PUB-013 marketing copy limits", () => {
        list typed into locked marketing copy — was only partially blocked. The
        list is now read from the vocabulary it is guarding, so a 24th class is
        covered the day it is added. */
+    /* THE UNDERSCORE TOKENS TOO, or the widening silently NARROWS. Deriving
+       only the joined phrase ("cannabis thc") and the label ("Cannabis and THC
+       products") lost the bare word "cannabis", which the seven hand-typed
+       entries this replaced did catch. A scan that gains sixteen categories and
+       drops one is not strictly stronger, and "strictly stronger" is the whole
+       claim being made for it.
+
+       Tokens shorter than five characters are excluded because they collide
+       with ordinary English — "thc", "gas", "cash" is fine but "fuel" and
+       "live" are not, and "live" matching "Delivering" is a false positive
+       already hit once. The joined phrase and the label still cover those. */
+    /* Tokens that are QUALIFIERS in the vocabulary rather than category names.
+       `prohibited_body` is entitled to say "certain regulated, hazardous or
+       unusually high-risk items" — that is the section describing the rule, not
+       naming a category, and blocking the word would force the copy to be
+       vaguer than the policy. The joined phrase ("regulated dangerous goods")
+       and the label ("Other regulated dangerous goods") still catch the
+       CATEGORY, which is what must not be re-listed. */
+    const GENERIC_QUALIFIERS = new Set(["regulated", "dangerous", "goods"]);
     const categories = [
       ...PROHIBITED_CLASSES.map((c) => c.replace(/_/g, " ")),
+      ...PROHIBITED_CLASSES.flatMap((c) => c.split("_"))
+        .filter((w) => w.length >= 5 && !GENERIC_QUALIFIERS.has(w)),
       ...Object.values(PROHIBITED_LABELS),
     ];
-    expect(categories.length).toBeGreaterThan(40);
+    expect(categories).toContain("cannabis");
+    expect(categories.length).toBeGreaterThan(60);
     for (const s of strings) {
       for (const cat of categories) {
         /* WHOLE PHRASE, word-bounded. Splitting these on "_" and matching
@@ -248,13 +270,22 @@ describe("PUB-013 marketing copy limits", () => {
    * not serve. The test now asserts the narrower truth, and — importantly —
    * FAILS if the three-method sentence comes back.
    */
-  it("names only the drop-off method Same Day actually uses", () => {
+  it("names no drop-off credential the consumer can never be given", () => {
     const h = SD.handoff_progressive.toLowerCase();
-    expect(h).toMatch(/code/);
-    // The two methods the Same Day funnel can never reach.
+    /* The two methods the Same Day funnel can never reach — it stores a
+       literal `photo_or_pin`. */
     expect(h, SD.handoff_progressive).not.toMatch(/signature/);
     expect(h, SD.handoff_progressive).not.toMatch(/photo at the door|leave (it )?at the door/);
+    /* AND NOT THE CODE EITHER. `couranr_complete_direct_handoff_delivery`
+       does require a verified recipient code, so naming it reads as accurate —
+       but the routes that issue or reveal one live only under
+       /api/couranr/merchant and /api/couranr/operations, and no consumer
+       surface shows it. Promising a customer a code nothing gives them is the
+       same class of error as promising a method the funnel cannot select. */
+    expect(h, SD.handoff_progressive).not.toMatch(/\bcode\b|\bpin\b/);
     expect(h).not.toMatch(/every delivery (is|gets)|always (photograph|signed)/);
+    // It must still describe a real, recorded handoff rather than go silent.
+    expect(h).toMatch(/confirm/);
   });
 
   /**

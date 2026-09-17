@@ -698,15 +698,14 @@ async function main() {
        1440-only assertion. It runs before `heroContrast`, which injects a
        stylesheet and reloads. */
     const photographic = await photographicSections(cpage);
-    /* Under CONTROL a SECOND photographic section is planted and its identity
-       is derived from the live page (see the control block above), so this
-       asserts the COUNT and that the hero leads — naming the victim here would
-       reintroduce the hardcode that the section deletion already broke once. */
-    const ok = CONTROL
-      ? photographic.length === 2 && photographic[0] === "hero"
-      : JSON.stringify(photographic) === JSON.stringify(["hero"]);
+    /* NO `CONTROL ?` BRANCH. One was added here and it was dead code: the
+       control block earlier in this file always `process.exit`s, so this line
+       only ever runs in a normal run where nothing is planted. The branch came
+       with a comment asserting it ran under --positive-control, which was
+       simply false — a comment is a factual claim like any other. The control's
+       own assertion about the planted section lives where the plant does. */
     check(
-      ok,
+      JSON.stringify(photographic) === JSON.stringify(["hero"]),
       `@${width} the hero is the only section painting text over photography, so ` +
         `heroContrast covers all of it (found: ${photographic.join(", ") || "none"})`,
     );

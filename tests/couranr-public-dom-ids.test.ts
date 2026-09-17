@@ -49,7 +49,14 @@ function walk(dir: string): string[] {
 function literalIds(source: string): string[] {
   const code = source
     .replace(/\{\/\*[\s\S]*?\*\/\}/g, " ")
-    .replace(/\/\*[\s\S]*?\*\//g, " ");
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    /* `//` LINE COMMENTS TOO. Stripping only block comments read three
+       token-public pages' notes about `<main id="cr-main">` as live ids — a
+       phantom id in the set, which both invents collisions that are not there
+       and (were a real duplicate to appear in a comment) masks ones that are.
+       The character class excludes `:` so a `https://` inside a string is not
+       mistaken for a comment. */
+    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
   return [...code.matchAll(/\bid="([^"{}]+)"/g)].map((m) => m[1]);
 }
 
@@ -99,12 +106,26 @@ describe("canonical public pages emit unique DOM ids", () => {
     expect(total).toBeGreaterThan(20);
   });
 
-  it("POSITIVE CONTROL: a planted duplicate is detected", () => {
-    const planted = '<h2 id="dup-h">A</h2><section aria-labelledby="dup-h"/><h2 id="dup-h">B</h2>';
-    const ids = literalIds(planted);
+  /* The duplicate detection, extracted so the gate and its control run the
+     SAME code. Both controls used to re-implement the counting inline, which
+     made them tests of the test rather than of the gate — they would have
+     stayed green if the gate's own loop were deleted. */
+  function duplicateIds(source: string): string[] {
     const seen = new Map<string, number>();
-    for (const id of ids) seen.set(id, (seen.get(id) ?? 0) + 1);
-    expect([...seen.entries()].filter(([, n]) => n > 1).map(([id]) => id)).toEqual(["dup-h"]);
+    for (const id of literalIds(source)) seen.set(id, (seen.get(id) ?? 0) + 1);
+    return [...seen.entries()].filter(([, n]) => n > 1).map(([id]) => id);
+  }
+
+  it("POSITIVE CONTROL: a planted duplicate is detected by the gate's own function", () => {
+    const planted = '<h2 id="dup-h">A</h2><section aria-labelledby="dup-h"/><h2 id="dup-h">B</h2>';
+    expect(duplicateIds(planted)).toEqual(["dup-h"]);
+    // And the real pages are clean under that same function.
+    for (const f of PAGES) expect(duplicateIds(readFileSync(f, "utf8")), f).toEqual([]);
+  });
+
+  it("POSITIVE CONTROL: a `//` comment mentioning an id is not counted", () => {
+    expect(literalIds('// <main id="cr-main"> is the shell landmark\n<h2 id="s2-h">A</h2>'))
+      .toEqual(["s2-h"]);
   });
 
   it("POSITIVE CONTROL: a comment mentioning a retired id is not counted", () => {

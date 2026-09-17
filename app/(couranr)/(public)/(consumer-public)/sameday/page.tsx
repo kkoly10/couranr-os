@@ -321,9 +321,13 @@ export default function Page() {
           the rest and omit them. The honesty sentence stays either way: Couranr
           documents, it does not authenticate or appraise.
 
-          The methods are rendered as an ordered handoff, which is what a
-          product proof of this flow is — not a pill rail (that device belongs
-          to §11's tracking stages) and not a screenshot. */}
+          ONE METHOD, NOT THREE. An earlier revision of this comment and of the
+          copy described "a recipient code, a photo at the door, or a
+          signature". Those three exist in `PROOF_METHODS`, and the MERCHANT
+          path chooses among them per delivery — but both consumer write paths
+          pass a literal `photo_or_pin` and SendFlow offers no choice, so on
+          Same Day the other two can never occur. The three-method sentence is
+          correct on /business and was wrong here. */}
       <section
         className="cr-mkt-section"
         aria-labelledby="s7-h"
