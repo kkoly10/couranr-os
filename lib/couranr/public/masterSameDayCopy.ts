@@ -185,11 +185,34 @@ export const SEND_COPY = {
   protection_protected_handoff:
     "Protected handoff: everything in secure pickup, plus the recipient verifies their identity "
     + "before the handoff. This shipment cannot be left at a door.",
+  /* THE CLICKWRAP, and the reason it is worded this way.
+     The server records `sender_terms_version` and `sender_terms_accepted_at`
+     on every submitted request. Before this string said so, the recorded
+     evidence was STRONGER THAN THE UI THAT GENERATED IT: a row asserted the
+     sender had accepted a versioned document, and the sentence they actually
+     ticked never named a document at all. What is recorded and what was shown
+     are now the same statement.
+     NO HREF LIVES HERE. MKT-005 stores words, never destinations
+     (`routes_excluded`), and the parity test refuses a path or a URL inside
+     any locked string. `SendFlow` renders the two documents as real links
+     beside this checkbox, titled and versioned from
+     `lib/couranr/legal/registry.ts` — the one module that owns a version —
+     so the name in this sentence and the document behind the link cannot
+     become two different things. */
   acknowledgement:
-    "I confirm this item is eligible for delivery, that the value I declared is honest, "
-    + "that I am 18 or older, and that I have authority to send or collect it.",
+    "I confirm that I am 18 or older, that I am authorized to send or collect these items, "
+    + "that the recipient is 18 or older, and that the shipment description, quantity and "
+    + "declared value are accurate. I agree to Couranr’s Same Day Shipment Terms and "
+    + "Prohibited and Restricted Items Policy.",
   electronic_consent:
-    "I agree to receive the terms, receipts and delivery records for this shipment electronically.",
+    "I agree to conduct this transaction electronically and to receive Couranr records and "
+    + "notices by email.",
+  /* The lead-in above the two document links. The documents are presented
+     BEFORE the checkboxes, because a clickwrap whose documents are only
+     reachable from a footer asks for agreement to something the sender was
+     never offered. */
+  legal_read_first:
+    "Read these before you accept. Couranr records the version you accept with your shipment.",
   received_heading: "We have your request.",
   received_support: "Couranr is confirming your delivery.",
 } as const;

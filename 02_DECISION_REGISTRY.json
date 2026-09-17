@@ -3308,7 +3308,7 @@
           "timing_live_note": "Couranr picks up as soon as possible and confirms the exact timing with you after your request.",
           "review_heading": "Here’s your delivery",
           "contact_heading": "Where should we send updates?",
-          "acknowledgement": "I confirm this item is eligible for delivery, that the value I declared is honest, that I am 18 or older, and that I have authority to send or collect it.",
+          "acknowledgement": "I confirm that I am 18 or older, that I am authorized to send or collect these items, that the recipient is 18 or older, and that the shipment description, quantity and declared value are accurate. I agree to Couranr’s Same Day Shipment Terms and Prohibited and Restricted Items Policy.",
           "received_heading": "We have your request.",
           "received_support": "Couranr is confirming your delivery.",
           "item_ai_disclosure": "Couranr uses AI to read this description and suggest your shipment details. You confirm everything before you pay, and Couranr — not the AI — sets the price and what can be carried.",
@@ -3319,7 +3319,8 @@
           "protection_standard": "Standard handling: your recipient confirms the handoff with a code they read to the driver.",
           "protection_secure_pickup": "Secure pickup: the driver photographs the item before it is packed, applies a numbered tamper-evident seal, photographs the sealed package, and confirms your pickup code last.",
           "protection_protected_handoff": "Protected handoff: everything in secure pickup, plus the recipient verifies their identity before the handoff. This shipment cannot be left at a door.",
-          "electronic_consent": "I agree to receive the terms, receipts and delivery records for this shipment electronically."
+          "electronic_consent": "I agree to conduct this transaction electronically and to receive Couranr records and notices by email.",
+          "legal_read_first": "Read these before you accept. Couranr records the version you accept with your shipment."
         },
         "chrome": {
           "same_day": "Same Day",
