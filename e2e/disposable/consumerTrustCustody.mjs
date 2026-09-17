@@ -516,6 +516,12 @@ try {
 
   const driverFor = (email) => {
     const u = sql(`insert into auth.users (email) values ('${email}') returning id`);
+    /* A PROFILE too. couranr_delivery_incidents.opened_by references profiles,
+       not auth.users, so a driver with no profile cannot open one — which the
+       automatic seal incident surfaced. Real drivers always have a profile;
+       this fixture simply did not. */
+    sql(`insert into public.profiles (id, role) values ('${u}', 'driver')
+         on conflict (id) do nothing`);
     return { userId: u, driverId: sql(
       `insert into public.couranr_drivers (user_id, display_name, driver_state, active)
        values ('${u}', 'TC driver', 'active', true) returning id`) };
@@ -615,7 +621,7 @@ try {
       "private.couranr_freeze_consumer_consent_evidence()",
       "private.couranr_enforce_consumer_custody_sequence()",
       "private.couranr_derive_protection_level(integer)",
-      "public.couranr_record_seal_condition(uuid,uuid,text)",
+      "public.couranr_record_seal_condition(uuid,uuid,text,uuid)",
       "private.couranr_enforce_consumer_dropoff_custody()",
       "public.couranr_record_recipient_identity_verification(uuid,text,text,boolean,boolean,boolean,text)",
       "public.couranr_claim_consumer_recipient_tracking_delivery(uuid,text,integer)",
@@ -633,7 +639,7 @@ try {
     const commands = [
       "public.couranr_record_consumer_trust(uuid,integer,text,boolean,boolean)",
       "public.couranr_record_delivery_seal(uuid,uuid,text,uuid)",
-      "public.couranr_record_seal_condition(uuid,uuid,text)",
+      "public.couranr_record_seal_condition(uuid,uuid,text,uuid)",
       "public.couranr_claim_consumer_recipient_tracking_delivery(uuid,text,integer)",
       "public.couranr_mark_recipient_tracking_notification(text,text)",
       "public.couranr_fail_recipient_tracking_notification(text,text)",
@@ -1017,6 +1023,12 @@ try {
   const uniqueSerial = () => `TC${String(++serialSeq).padStart(5, "0")}`;
 
   const sealedAtDropoff = async (marker, level, drv, proofMethod = null) => {
+    /* couranr_asg_one_active_per_driver allows a driver exactly one live
+       assignment. Retire the previous one rather than making every caller
+       remember to. */
+    sql(`update public.couranr_delivery_assignments
+            set assignment_state='completed', end_reason='completed', ended_at=now()
+          where driver_id='${drv.driverId}' and assignment_state='active'`);
     const f = await custodyChain(marker, level === "protected_handoff" ? 20000 : 5000,
       level, "at_pickup", proofMethod);
     assign(f, drv);
@@ -1033,8 +1045,16 @@ try {
 
   const drvD = driverFor("tc-driver-d@example.test");
   const drvE = driverFor("tc-driver-e@example.test");
-  const condition = (f, drv, c) =>
-    `select public.couranr_record_seal_condition('${f.dlv}','${drv.userId}','${c}')`;
+  /* The seal condition now requires the photograph it was observed from (H),
+     so the fixture takes one first. The 3-argument overload is gone on purpose
+     — see J2. */
+  const condition = (f, drv, c) => {
+    const ph = sql(`insert into public.couranr_delivery_proofs
+         (delivery_id, assignment_id, proof_stage, proof_type, actor_driver_id)
+       values ('${f.dlv}', '${f.asg}', 'dropoff', 'dropoff_seal_photo', '${drv.driverId}')
+       returning id`);
+    return `select public.couranr_record_seal_condition('${f.dlv}','${drv.userId}','${c}','${ph}')`;
+  };
 
   { const f = await sealedAtDropoff("tc-dropoff-unchecked", "secure_pickup", drvD);
     const r = mustRefuse(deliver(f), "seal_condition_required_at_dropoff");
@@ -1111,6 +1131,101 @@ try {
     const r = mustRefuse(condition(f, drvE, "intact"), "security_seal_required");
     t("F11", "a condition cannot be recorded when no seal was ever applied",
       (r.got === "security_seal_required" || r.got === "raised:security_seal_required"), r.got); }
+
+  /* ── §J: the seal is PHOTOGRAPHED at handoff, and a bad one files itself ──
+     H — the driver's word was the only record of what the seal looked like. A
+     claim turns on exactly that observation, and "the driver said intact" is
+     not evidence of the same kind as a photograph.
+
+     I — damaged and missing were recorded and then vanished into an ordinary
+     delivery. The incident now opens inside the same statement, so it cannot
+     depend on a driver remembering to file one at a doorstep, and cannot be
+     skipped by one who would rather not explain it. */
+  const dropoffPhoto = (f, drv) => sql(
+    `insert into public.couranr_delivery_proofs
+       (delivery_id, assignment_id, proof_stage, proof_type, actor_driver_id)
+     values ('${f.dlv}', '${f.asg}', 'dropoff', 'dropoff_seal_photo', '${drv.driverId}')
+     returning id`);
+  const conditionWithPhoto = (f, drv, c, proofId) =>
+    `select public.couranr_record_seal_condition('${f.dlv}','${drv.userId}','${c}','${proofId}')`;
+
+  const drvJ = driverFor("tc-driver-j@example.test");
+
+  { const f = await sealedAtDropoff("tc-seal-nophoto", "secure_pickup", drvJ);
+    const r = mustRefuse(
+      `select public.couranr_record_seal_condition('${f.dlv}','${drvJ.userId}','intact',null)`,
+      "dropoff_seal_photo_required");
+    t("J1", "a seal condition cannot be recorded without photographing the seal",
+      (r.got === "dropoff_seal_photo_required" ||
+       r.got === "raised:dropoff_seal_photo_required"), r.got);
+
+    /* THE OLD 3-ARGUMENT OVERLOAD MUST BE GONE. Leaving it beside the new one
+       would let every existing caller bypass the photograph requirement by
+       calling the function exactly the way they always have — the least visible
+       kind of hole. */
+    const r2 = mustRefuse(
+      `select public.couranr_record_seal_condition('${f.dlv}','${drvJ.userId}','intact')`,
+      "does not exist");
+    t("J2", "the photograph-less overload no longer exists to be called",
+      r2.got.includes("does not exist") || r2.got.includes("other:"), r2.got.slice(0, 60)); }
+
+  { /* The OTHER delivery is built first and by a DIFFERENT driver, so drvJ still
+       holds `f` when the assertion runs. Built the other way round, drvJ's live
+       assignment moves to `other` and the call is refused `not_your_delivery` —
+       a correct refusal, but for authority rather than for the binding this
+       check is about. */
+    const drvJ2 = driverFor("tc-driver-j2@example.test");
+    const other = await sealedAtDropoff("tc-seal-foreign-src", "secure_pickup", drvJ2);
+    const foreign = dropoffPhoto(other, drvJ2);
+    const f = await sealedAtDropoff("tc-seal-foreign-photo", "secure_pickup", drvJ);
+    const r = mustRefuse(conditionWithPhoto(f, drvJ, "intact", foreign),
+      "dropoff_seal_photo_required");
+    t("J3", "a condition cannot cite ANOTHER delivery's seal photograph",
+      (r.got === "dropoff_seal_photo_required" ||
+       r.got === "raised:dropoff_seal_photo_required"), r.got); }
+
+  { const f = await sealedAtDropoff("tc-seal-intact-ok", "secure_pickup", drvJ);
+    const ph = dropoffPhoto(f, drvJ);
+    sql(conditionWithPhoto(f, drvJ, "intact", ph));
+    const bound = sql(`select (dropoff_seal_proof_id='${ph}')::text
+      from public.couranr_delivery_security_seals where delivery_id='${f.dlv}'`);
+    t("J4", "the observation is bound to the photograph it was made from",
+      bound === "true", bound);
+    const none = sql(`select count(*) from public.couranr_delivery_incidents
+      where delivery_id='${f.dlv}'`);
+    t("J5", "an INTACT seal opens no incident", none === "0", none); }
+
+  for (const [id, cond] of [["J6", "damaged"], ["J7", "missing"]]) {
+    const f = await sealedAtDropoff(`tc-seal-${cond}-inc`, "secure_pickup", drvJ);
+    const ph = dropoffPhoto(f, drvJ);
+    sql(conditionWithPhoto(f, drvJ, cond, ph));
+    const row = sql(`select incident_type||'/'||incident_state||'/'||severity
+      from public.couranr_delivery_incidents where delivery_id='${f.dlv}'`);
+    t(id, `a '${cond}' seal files a seal_integrity incident by itself`,
+      row === "seal_integrity/reported/urgent", row);
+
+    const ev = sql(`select (metadata->>'dropoffCondition')||'/'||
+        (metadata->>'dropoffSealProofId')||'/'||(metadata->>'sealIdentifier' is not null)::text
+      from public.couranr_delivery_incident_events e
+      join public.couranr_delivery_incidents i on i.id=e.incident_id
+      where i.delivery_id='${f.dlv}'`);
+    t(id + "b", "...carrying the condition, the photo and the serial",
+      ev === `${cond}/${ph}/true`, ev);
+
+    /* AND IT STILL DELIVERS. Blocking a bad seal would hand the one person
+       holding the parcel a reason to report 'intact'. */
+    const done = succeeds(deliver(f), f, "delivered");
+    t(id + "c", `a '${cond}' seal still completes the handoff`, done.ok, done.got);
+  }
+
+  { /* No money moves. Opening an incident records a fact; payment is an
+       Operations decision with its own command. */
+    const paid = sql(`select count(*) from public.couranr_payment_obligations o
+      join public.couranr_deliveries d on d.payment_obligation_id=o.id
+      join public.couranr_delivery_incidents i on i.delivery_id=d.id
+      where i.incident_type='seal_integrity' and o.payment_state='refunded'`);
+    t("J8", "filing a seal incident moves no money", paid === "0", paid); }
+
 
   /* ── §G: RECIPIENT IDENTITY, and the fact that it is not active ─────────
      Stripe Identity is not activated in V1 by the owner's instruction. The

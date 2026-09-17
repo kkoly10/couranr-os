@@ -106,6 +106,17 @@ export function DropoffProof({
      happens BEFORE the parcel changes hands, and the database refuses the
      completion without it (seal_condition_required_at_dropoff). */
   const [sealCondition, setSealCondition] = React.useState<string | null>(null);
+  /* H — the observation is bound to a PHOTOGRAPH of the seal. "The driver said
+     intact" is not evidence of the same kind, and a claim turns on exactly this
+     observation. The photo comes first so the condition is read from something
+     rather than from memory. */
+  const sealPhoto = useProofUpload({
+    deliveryId: assigned.deliveryId,
+    stage: "dropoff",
+    proofType: "dropoff_seal_photo",
+    location,
+    recordedProofId: recordedProof.dropoff_seal_photo ?? null,
+  });
   const [sealBusy, setSealBusy] = React.useState(false);
   const [sealError, setSealError] = React.useState<string | null>(null);
 
@@ -180,6 +191,13 @@ export function DropoffProof({
           description="Compare the seal against the package before handing it over."
         />
         <Stack gap={3}>
+          <PhotoField
+            label="Photo of the seal"
+            hint="Fit the seal and its number in the frame, before you hand anything over."
+            upload={sealPhoto}
+            blocked={!location.usable}
+            blockedReason={location.message}
+          />
           <Alert tone="info" title="You get one answer">
             Record what you actually see. Couranr reviews a damaged or missing seal — it does
             not stop the delivery, and it cannot be changed afterwards.
@@ -194,11 +212,15 @@ export function DropoffProof({
             <Button
               key={value}
               variant={value === "intact" ? "primary" : "secondary"}
-              disabled={sealBusy}
+              disabled={sealBusy || !sealPhoto.finalized}
               onClick={() => {
                 setSealBusy(true);
                 setSealError(null);
-                void recordSealCondition(assigned.deliveryId, value).then((r) => {
+                void recordSealCondition(
+                  assigned.deliveryId,
+                  value,
+                  sealPhoto.proofId ?? ""
+                ).then((r) => {
                   setSealBusy(false);
                   if (isApiFailure(r)) {
                     setSealError(withReference(r));
@@ -211,6 +233,11 @@ export function DropoffProof({
               {label}
             </Button>
           ))}
+          {!sealPhoto.finalized ? (
+            <Text size="xs" muted>
+              Photograph the seal first — the condition you record is read from that photo.
+            </Text>
+          ) : null}
           {sealError ? (
             <Alert tone="warning" title="Seal check not recorded">{sealError}</Alert>
           ) : null}

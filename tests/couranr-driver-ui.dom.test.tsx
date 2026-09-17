@@ -2039,6 +2039,18 @@ describe("checking the seal at handoff", () => {
     credentialAfterDocumentation: true,
     requiresSealCheckAtDropoff: true,
   };
+  /** A finalized drop-off seal photograph already on file (H). */
+  const withSealPhoto = () =>
+    ok({
+      proof: [
+        {
+          proofId: "00000000-0000-4000-8000-0000000000aa",
+          proofStage: "dropoff",
+          proofType: "dropoff_seal_photo",
+        },
+      ],
+    });
+
   const renderSealed = (protection: unknown = SEALED) =>
     render(
       <DropoffProof
@@ -2064,16 +2076,25 @@ describe("checking the seal at handoff", () => {
   });
 
   it("records one answer and then opens the handoff", async () => {
+    fetchMyProof.mockResolvedValue(withSealPhoto());
     recordSealCondition.mockResolvedValue(
       ok({ seal: { sealId: "seal-1", dropoffCondition: "intact" } })
     );
     const user = userEvent.setup();
     renderSealed();
     await waitFor(() => expect(screen.getByText("Check the seal")).toBeTruthy());
-    await user.click(screen.getByRole("button", { name: /Intact/i }));
+    const intact = screen.getByRole("button", { name: /Intact/i }) as HTMLButtonElement;
+    await waitFor(() => expect(intact.disabled).toBe(false));
+    await user.click(intact);
 
     await waitFor(() => expect(recordSealCondition).toHaveBeenCalledTimes(1));
-    expect(recordSealCondition.mock.calls[0]).toEqual(["del-fixture-1", "intact"]);
+    /* The condition is recorded AGAINST the photograph. A condition with no
+       photo is the driver's word wearing a photograph's clothes. */
+    expect(recordSealCondition.mock.calls[0]).toEqual([
+      "del-fixture-1",
+      "intact",
+      "00000000-0000-4000-8000-0000000000aa",
+    ]);
     // The handoff form is now reachable.
     await waitFor(() => expect(screen.queryByText("Check the seal")).toBeNull());
   });
@@ -2082,13 +2103,16 @@ describe("checking the seal at handoff", () => {
     /* If a broken seal blocked the delivery, the one person holding the parcel
        would have every reason to report it intact. Recording the truth has to
        be the cheapest path available. */
+    fetchMyProof.mockResolvedValue(withSealPhoto());
     recordSealCondition.mockResolvedValue(
       ok({ seal: { sealId: "seal-1", dropoffCondition: "damaged" } })
     );
     const user = userEvent.setup();
     renderSealed();
     await waitFor(() => expect(screen.getByText("Check the seal")).toBeTruthy());
-    await user.click(screen.getByRole("button", { name: /Damaged/i }));
+    const damaged = screen.getByRole("button", { name: /Damaged/i }) as HTMLButtonElement;
+    await waitFor(() => expect(damaged.disabled).toBe(false));
+    await user.click(damaged);
 
     await waitFor(() => expect(recordSealCondition).toHaveBeenCalledTimes(1));
     expect(recordSealCondition.mock.calls[0][1]).toBe("damaged");
@@ -2106,6 +2130,42 @@ describe("checking the seal at handoff", () => {
     });
     await waitFor(() => expect(screen.getByText("Recipient code")).toBeTruthy());
     expect(screen.queryByText("Check the seal")).toBeNull();
+    expect(recordSealCondition).not.toHaveBeenCalled();
+  });
+});
+
+describe("the seal condition is read from a photograph", () => {
+  it("cannot be recorded until the seal has been photographed", async () => {
+    /* H — "the driver said intact" is not evidence of the same kind as a
+       photograph of the seal, and a claim turns on exactly that observation.
+       The server refuses without it (dropoff_seal_photo_required); this keeps
+       the driver from meeting that refusal at a doorstep. */
+    fetchMyProof.mockResolvedValue(ok({ proof: [] }));
+    render(
+      <DropoffProof
+        assigned={
+          assignedView({
+            fulfillmentState: "at_dropoff",
+            proof: { method: "photo_or_pin", signatureRequired: false },
+            protection: {
+              level: "secure_pickup",
+              requiresPrepackPhoto: true,
+              requiresSealedPackagePhoto: true,
+              requiresSecuritySeal: true,
+              credentialAfterDocumentation: true,
+              requiresSealCheckAtDropoff: true,
+            },
+          } as never)
+        }
+        location={usableLocation()}
+        onCompleted={vi.fn()}
+      />
+    );
+    await waitFor(() => expect(screen.getByText("Check the seal")).toBeTruthy());
+    for (const name of [/Intact/i, /Damaged/i, /Missing/i]) {
+      expect((screen.getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(true);
+    }
+    expect(screen.getByText(/Photograph the seal first/i)).toBeTruthy();
     expect(recordSealCondition).not.toHaveBeenCalled();
   });
 });

@@ -795,6 +795,8 @@ export async function recordSealCondition(p: {
   userId: string;
   deliveryId: string;
   condition: string;
+  /** The drop-off photograph the observation was made from. Required (H). */
+  dropoffSealProofId: string;
 }): Promise<DriverResult<{ sealId: string; dropoffCondition: string }>> {
   const operation = "recordSealCondition";
   if (!["intact", "damaged", "missing"].includes(p.condition)) {
@@ -810,6 +812,7 @@ export async function recordSealCondition(p: {
     p_delivery_id: p.deliveryId,
     p_actor_user_id: p.userId,
     p_condition: p.condition,
+    p_dropoff_seal_proof_id: p.dropoffSealProofId,
   });
   if (!r.ok) return r;
 

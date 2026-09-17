@@ -34,10 +34,18 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   }
 
   const condition = typeof body?.condition === "string" ? body.condition : "";
+  const dropoffSealProofId =
+    typeof body?.dropoffSealProofId === "string" ? body.dropoffSealProofId : "";
+  if (!UUID_RE.test(dropoffSealProofId)) {
+    // The observation is bound to a photograph of the seal. Refused here so the
+    // driver is told to take it rather than meeting a constraint name.
+    return routeFailure("invalid_input", "Photograph the seal before recording its condition.");
+  }
   const r = await recordSealCondition({
     userId: auth.userId,
     deliveryId: params.id,
     condition,
+    dropoffSealProofId,
   });
   if (isDriverFailure(r)) return failureResponse(r);
   // NESTED key, like every other canonical route.
