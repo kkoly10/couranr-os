@@ -92,11 +92,20 @@ begin
    limit 1;
 
   if v_sealed is null then
-    -- Either no seal, or a seal citing no photograph. Distinguish them: a seal
-    -- with no proof is a serial typed into a box, and saying "photo required"
-    -- would send the driver to retake a photo they already have.
-    if exists (select 1 from public.couranr_delivery_security_seals where delivery_id = new.id) then
-      raise exception 'sealed_package_photo_required' using errcode='CR409';
+    /* THREE DIFFERENT FAULTS REACH HERE and they need three different answers.
+       Telling a driver "photograph the sealed package" when the photo already
+       exists and it is the BINDING that is missing sends them to redo work that
+       will not fix anything — and a driver who is told to do the wrong thing
+       twice starts working around the app.
+
+       couranr_record_delivery_seal always binds a proof, so an unbound seal
+       means somebody reached the table directly. It is named plainly rather
+       than folded into the photo message. */
+    if exists (
+      select 1 from public.couranr_delivery_security_seals
+       where delivery_id = new.id and sealed_package_proof_id is null
+    ) then
+      raise exception 'security_seal_not_bound_to_photo' using errcode='CR409';
     end if;
     if not exists (
       select 1 from public.couranr_delivery_proofs

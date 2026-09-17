@@ -957,6 +957,35 @@ try {
     t("S5", "several pre-pack shots are fine while the first precedes sealing",
       done.ok, done.got); }
 
+  /* S6/S7 — the three ways `no sealed evidence` can happen need three answers.
+     My first draft raised 'sealed_package_photo_required' for a seal that cites
+     NO photograph, while its own comment said doing that would send a driver to
+     retake a photo they already have. A driver told to redo the wrong thing
+     twice starts working around the app. */
+  { const f = await orderedFixture("tc-seq-unbound-seal", drvS);
+    addProof(f, "item_prepack_photo", drvS, "now() - interval '9 minutes'");
+    addProof(f, "sealed_package_photo", drvS, "now() - interval '7 minutes'");
+    // Reached the table directly: the command always binds a proof.
+    sql(`insert into public.couranr_delivery_security_seals
+           (delivery_id, seal_identifier, applied_by_driver_id)
+         values ('${f.dlv}', 'TC-UNBOUND-1', '${drvS.driverId}')`);
+    consumeCode(f, 1, "now()");
+    const r = mustRefuse(pickUp(f), "security_seal_not_bound_to_photo");
+    t("S6", "a seal citing NO photograph is named as unbound, not as a missing photo",
+      (r.got === "security_seal_not_bound_to_photo" ||
+       r.got === "raised:security_seal_not_bound_to_photo"), r.got); }
+
+  { const f = await orderedFixture("tc-seq-photo-no-seal", drvS);
+    addProof(f, "item_prepack_photo", drvS, "now() - interval '9 minutes'");
+    addProof(f, "sealed_package_photo", drvS, "now() - interval '7 minutes'");
+    consumeCode(f, 1, "now()");
+    // Photo present, no seal at all: the seal is what is missing, and the
+    // message has to say so rather than asking for another photograph.
+    const r = mustRefuse(pickUp(f), "security_seal_required");
+    t("S7", "a sealed photo with no seal asks for the SEAL, not another photo",
+      (r.got === "security_seal_required" ||
+       r.got === "raised:security_seal_required"), r.got); }
+
   /* N — a tamper-evident seal is single-use by construction. Two custody
      records claiming one serial means one of them is false. */
   { const f = await orderedFixture("tc-seq-dup-serial", drvS);
@@ -1212,6 +1241,31 @@ try {
      disposable-only fixture disables the availability trigger only for the
      INSERT of a synthetic already-confirmed request, then restores it before
      any command is called. No production/runtime path has this bypass. */
+  const makeRecipientRequestAtLevel = (scope, cents, level) => {
+    sql(`alter table public.couranr_delivery_requests
+           disable trigger couranr_dr_block_unavailable_protected_handoff`);
+    try {
+      return sql(`insert into public.couranr_delivery_requests
+          (business_account_id,requester_kind,source,request_state,submitted_at,
+           consumer_contact_snapshot,recipient_name,recipient_email,
+           pickup_address,dropoff_address,version,created_by,
+           idempotency_key,idempotency_scope,
+           declared_value_cents,protection_level,protection_policy_version,
+           sender_terms_version,sender_terms_accepted_at,
+           sender_electronic_consent_at,sender_adult_attested_at)
+        select null::uuid,'consumer','consumer_send','confirmed',now(),
+           '{"email":"sender@example.test","name":"Sender"}'::jsonb,
+           'Recipient','recipient@example.test',pickup_address,dropoff_address,
+           1,null::uuid,'${scope}-key','consumer:${scope}',
+           ${cents},'${level}','${POL}',
+           'couranr-consumer-shipment-terms-2026-09',now(),now(),now()
+        from public.couranr_delivery_requests where id='${R}' returning id`);
+    } finally {
+      sql(`alter table public.couranr_delivery_requests
+             enable trigger couranr_dr_block_unavailable_protected_handoff`);
+    }
+  };
+
   const makeProtectedRecipientRequest = (scope) => {
     sql(`alter table public.couranr_delivery_requests
            disable trigger couranr_dr_block_unavailable_protected_handoff`);
@@ -1291,6 +1345,73 @@ try {
     t("H8", "a failed email revokes exactly its token and permits a fresh claim",
       failed === "t" && revoked === "true/provider_send_failed" && replacement === "issued",
       `${failed}/${revoked}/${replacement}`); }
+
+  /* ── §C: EVERY recipient is 18+, not only a protected handoff ────────────
+     The owner decision is universal. The applied trigger returned early for
+     'standard', so an ordinary consumer delivery never reached the attestation
+     check at all — $12 does not change who is standing at the door.
+
+     THE TRAP THIS AVOIDS, and the reason both functions move in ONE migration:
+     couranr_attest_recipient_adult refused unless the level was
+     protected_handoff. Widening the handoff requirement alone would have made
+     every standard and secure delivery undeliverable, because the recipient had
+     no way to satisfy the rule being imposed on them. C1 is that check.
+
+     WHAT IS NOT EXECUTED HERE, stated rather than implied: the trigger rule is
+     proven against the COMMAND and against a business delivery, not against a
+     real consumer delivery. No disposable fixture can currently produce one —
+     couranr_dr_requester_tenancy_chk requires a consumer request to have a null
+     business_account_id, while the delivery's frozen commercial snapshot must
+     match the request's, so a seeded business chain cannot be converted and a
+     consumer chain would have to be built through the canonical consumer
+     commands. That is a fixture gap, and it is why C1 matters most: it covers
+     the half that would actually have bricked. */
+
+  /* C1 — THE ANTI-BRICK CHECK. Before this migration a standard recipient
+     asked to confirm their age was told the attestation was not allowed. */
+  { const rid = makeRecipientRequestAtLevel("tc-adult-cmd-standard", 3000, "standard");
+    sql(claimRecipient(rid, "7"));
+    let ok = false, detail = "";
+    try {
+      sql(attestRecipient("7"));
+      detail = sql(`select (recipient_adult_attested_at is not null)::text
+                    from public.couranr_delivery_requests where id='${rid}'`);
+      ok = detail === "true";
+    } catch (e) { const m = /ERROR:\s+([a-z_]+)/.exec(String(e.stderr || e.message));
+      detail = m ? m[1] : "refused"; }
+    t("C1", "the recipient of a STANDARD delivery may attest at all", ok, detail); }
+
+  { const rid = makeRecipientRequestAtLevel("tc-adult-cmd-secure", 5000, "secure_pickup");
+    sql(claimRecipient(rid, "8"));
+    let ok = false, detail = "";
+    try { sql(attestRecipient("8"));
+      ok = sql(`select (recipient_adult_attested_at is not null)::text
+                from public.couranr_delivery_requests where id='${rid}'`) === "true";
+    } catch (e) { const m = /ERROR:\s+([a-z_]+)/.exec(String(e.stderr || e.message));
+      detail = m ? m[1] : "refused"; }
+    t("C2", "...and so may the recipient of a SECURE PICKUP delivery", ok, detail); }
+
+  /* C3 — the rule must still reach ONLY consumer deliveries. A universal adult
+     requirement that also stopped every business pickup would be found in
+     production, not here. */
+  { const f = await custodyChain("tc-adult-business", null, null, "at_dropoff");
+    const done = succeeds(deliver(f), f, "delivered");
+    t("C3", "a BUSINESS delivery is untouched by the consumer adult rule",
+      done.ok, done.got); }
+
+  /* C4 — the trigger text itself, since no fixture can execute it against a
+     consumer delivery yet. Asserted from the LIVE catalog rather than the file,
+     so it reflects what is actually installed. */
+  { const def = sql(`select pg_get_functiondef(p.oid)
+      from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+     where n.nspname='private' and p.proname='couranr_enforce_consumer_dropoff_custody'`);
+    const attestIdx = def.indexOf("recipient_adult_attestation_required");
+    const secureGate = def.indexOf("not in ('secure_pickup','protected_handoff')");
+    t("C4", "the installed trigger checks adult evidence BEFORE the secure-only gate",
+      attestIdx > -1 && secureGate > -1 && attestIdx < secureGate,
+      `attest@${attestIdx} secureGate@${secureGate}`); }
+
+
 
   /* A recipient attestation on a row this policy does NOT govern would imply a
      workflow that never ran. */
