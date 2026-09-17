@@ -548,22 +548,66 @@ describe("the category system", () => {
     }
   });
 
-  it("renders as a list of eleven non-interactive items", () => {
+  /**
+   * WHERE THE CATEGORY SYSTEM LIVES, since the 2026-09 marketing-architecture
+   * lock: PUB-009 (`/businesses`) and nowhere else.
+   *
+   * This used to assert the eleven-item grid on PUB-001. The owner removed that
+   * section — `/business` and `/businesses` were rendering the same system
+   * twice, and the overview page is meant to route to the dedicated one rather
+   * than reproduce it. The assertion did not go away with the section; it MOVED
+   * to the page that now owns the behaviour, and a second assertion holds the
+   * de-duplication in place. Deleting it instead would have retired a real
+   * guarantee under cover of an owner decision that never asked for that.
+   */
+  it("PUB-009 renders every governed category, non-interactively", () => {
     /* "Preserve keyboard/focus/click behavior" resolved to: there is none, and
        adding some would be the regression. A category is chosen at sign-up.
        A card that looks pressable and is not is worse than a plain card. */
     const page = readFileSync(
-      path.join(ROOT, "app/(couranr)/(public)/(business-public)/business/page.tsx"),
+      path.join(ROOT, "app/(couranr)/(public)/(business-public)/businesses/page.tsx"),
       "utf8",
     );
-    const grid = page.slice(page.indexOf('className="cr-mkt-catgrid"'));
+    const grid = page.slice(page.indexOf('className="cr-mkt-categories"'));
+    expect(grid, "PUB-009 renders no category list at all").not.toBe("");
     const section = grid.slice(0, grid.indexOf("</ul>"));
     for (const interactive of ["<a ", "<Link", "<button", "onClick", "tabIndex", "role="]) {
       expect(section, `the category grid must not become ${interactive}`).not.toContain(interactive);
     }
-    // The fallback is the eleventh ITEM, inside the list — lifting it out would
-    // tell a screen reader there are ten categories.
-    expect(section).toContain("cr-mkt-catgrid__item--general");
-    expect(section).toContain("CATEGORY_LABELS[GENERAL_CATEGORY]");
+    // Every governed category, from the registry — not a hand-picked subset.
+    expect(section).toContain("BUSINESS_CATEGORIES.map");
+    // The fallback is an ITEM, inside the list — lifting it out would tell a
+    // screen reader there is one category fewer than there is.
+    expect(section).toContain("GENERAL_CATEGORY");
+    expect(section).toContain("CATEGORY_LABELS[c]");
+  });
+
+  it("PUB-001 does NOT render a second copy of the category system", () => {
+    /* COMMENTS STRIPPED FIRST. The page's own note explains that its example
+       trades are deliberately NOT `CATEGORY_LABELS` values — and a scan of raw
+       source read that explanation as the violation it describes. Same lesson
+       the prohibited-claims scanner and the destructive-migration scanner both
+       wrote down: a comment saying "not X" is not an X. */
+    const page = readFileSync(
+      path.join(ROOT, "app/(couranr)/(public)/(business-public)/business/page.tsx"),
+      "utf8",
+    )
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, " ")
+      .replace(/\/\*[\s\S]*?\*\//g, " ");
+    // The mechanics, not the word "category": the overview page may say the
+    // word and must not carry the registry, the grid or the secondary-category
+    // rule that PUB-009 owns.
+    for (const owned of [
+      "cr-mkt-catgrid",
+      "BUSINESS_CATEGORIES",
+      "CATEGORY_LABELS",
+      "GENERAL_CATEGORY",
+      "MAX_SECONDARY_CATEGORIES",
+      "CATEGORY_SYSTEM_PHOTOS",
+    ]) {
+      expect(page, `PUB-001 still carries ${owned}, which PUB-009 owns`).not.toContain(owned);
+    }
+    // And it still routes there, so the breadth claim has somewhere to land.
+    expect(page).toContain("/businesses");
   });
 });

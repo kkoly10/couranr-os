@@ -2963,119 +2963,150 @@
 @media (min-width: 640px) { .cr-mkt-categories { grid-template-columns: repeat(2, 1fr); } }
 @media (min-width: 900px) { .cr-mkt-categories { grid-template-columns: repeat(3, 1fr); } }
 
-/* ── PUB-001 section 9, the image-based category system ───────────────────
-   §27 Section 9 sanctions either "selective category grid" or "image-based
-   category system". This is the second, adopted on owner instruction
-   2026-09-08 once the tenth category photograph landed. It is a SECOND device
-   beside `.cr-mkt-categories` above, not a replacement for it: PUB-009 still
-   renders the text-only grid and r8 records that its §27.1 table does not
-   move.
+/* ── PUB-001's image-based category system is RETIRED ──────────────────
 
-   TWO LAYOUTS, one grid. At 640px and up the card is vertical — 4:3
-   photograph, then label. Below it the card is a horizontal media row with a
-   1:1 crop at 128px, which is the shape that survives a 375px viewport: ten
-   stacked 4:3 cards is roughly 2,600px of scroll for a list the reader wants
-   to skim. */
-.cr-mkt-catgrid {
-  list-style: none;
-  margin: 0;
-  padding: 0;
+   `.cr-mkt-catgrid*` — a ten-card grid of category photographs with a general
+   fallback — lived here until the 2026-09 marketing-architecture lock removed
+   the `categories` section from `/business`. PUB-009 (`/businesses`) owns the
+   deep category system, and this page was a second copy of it.
+
+   The rules are DELETED rather than left unused: an unused class is one import
+   away from coming back without the decision that removed it, which is the
+   lesson the retired marketing eyebrow wrote into this stylesheet.
+
+   `CATEGORY_SYSTEM_PHOTOS` and its registry tests are untouched — the ten
+   approved photographs still exist, provenance and all. Nothing renders them
+   today; giving them a home on PUB-009 is an owner decision, not a cleanup. */
+
+/* ── PUB-001 section 2, the product choice ────────────────────────────
+   Typography-led by contract. Two products with five points between them is
+   exactly where a page reaches for a comparison table or a pair of
+   pricing-style cards; §28 bans that, and `grid-dominant` stays false. */
+.cr-mkt-choice__statement { max-width: 56ch; }
+
+.cr-mkt-choice {
   display: grid;
-  gap: var(--couranr-space-3);
-  grid-template-columns: 1fr;
-  /* The section is centred (`cr-mkt-section--centred`), and centred text
-     inside a media card puts the label away from its own photograph. */
-  text-align: left;
+  gap: var(--couranr-space-6);
+  margin: var(--couranr-space-8) 0 0;
 }
-.cr-mkt-catgrid__item {
-  display: grid;
-  /* MOBILE: image column then text column, both rows of one card. */
-  grid-template-columns: 128px 1fr;
-  /* `stretch`, NOT `center`. With `center` the image cell collapses to the
-     image's own content height and the card measured 98px tall with a 128x96
-     picture — the 4:3 ratio leaking into a slot that is supposed to be square.
-     Stretching gives `height: 100%` a real row to resolve against. */
-  align-items: stretch;
-  gap: var(--couranr-space-4);
-  border: 1px solid var(--couranr-border);
-  border-radius: var(--couranr-radius-md);
-  background: var(--couranr-surface);
-  overflow: hidden;
+
+@media (min-width: 900px) {
+  .cr-mkt-choice { grid-template-columns: 1fr 1fr; gap: var(--couranr-space-8); }
 }
-.cr-mkt-catgrid__photo {
-  display: block;
-  width: 100%;
-  height: 100%;
-  /* MOBILE is the 1:1 crop, so the box is square and 128px wide — a 128px
-     card, which is the size at which a trade is still readable. The
-     `aspect-ratio` is what makes the row square rather than letting the
-     image's own ratio set it. */
-  aspect-ratio: 1 / 1;
-  /* The photographs are cropped about a focal point by
-     scripts/buildMarketingImages.mjs, so `cover` here is finishing a crop that
-     was already art-directed, not choosing one. */
-  object-fit: cover;
-  object-position: center;
-  background: var(--couranr-surface-sunken);
-}
-.cr-mkt-catgrid__label {
-  align-self: center;
-  padding-block: var(--couranr-space-3);
-  padding-inline-end: var(--couranr-space-4);
+
+.cr-mkt-choice__item { display: grid; gap: var(--couranr-space-2); align-content: start; }
+
+.cr-mkt-choice__term {
+  font-family: var(--couranr-font-display);
   font-size: var(--couranr-text-sm);
-  font-weight: var(--couranr-weight-medium);
-  line-height: var(--couranr-leading-tight);
-  color: var(--couranr-text);
-  /* Four of the ten labels are four words long. Without this they break to
-     three lines in a 2-column card at 768 and the row heights stop matching. */
-  text-wrap: balance;
-}
-
-/* The general fallback spans every column and carries no photograph.
-   registry.ts calls it "a real category rather than a blank", so it is marked
-   as a choice rather than styled as the leftover at the end of the list. */
-.cr-mkt-catgrid__item--general {
-  grid-column: 1 / -1;
-  grid-template-columns: 1fr;
-  gap: var(--couranr-space-1);
-  padding: var(--couranr-space-4);
-  border-color: var(--couranr-gold);
-  background: var(--couranr-surface-sunken);
-}
-.cr-mkt-catgrid__eyebrow {
-  font-size: var(--couranr-text-xs);
   font-weight: var(--couranr-weight-semibold);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  color: var(--couranr-text-muted);
-}
-.cr-mkt-catgrid__item--general .cr-mkt-catgrid__label {
-  padding-inline-end: 0;
-  font-size: var(--couranr-text-base);
-}
-.cr-mkt-catgrid__note {
-  font-size: var(--couranr-text-sm);
-  line-height: var(--couranr-leading-normal);
+  letter-spacing: 0.01em;
   color: var(--couranr-text-muted);
 }
 
-@media (min-width: 640px) {
-  .cr-mkt-catgrid { grid-template-columns: repeat(2, 1fr); }
-  /* VERTICAL from here up: photograph on its own row, label beneath. */
-  .cr-mkt-catgrid__item {
-    grid-template-columns: 1fr;
-    align-items: start;
-    gap: 0;
-    /* The label sits in the remaining space, so equal-height cards keep their
-       photographs on one baseline whatever the label wraps to. */
-    align-content: start;
+.cr-mkt-choice__desc { margin: 0; color: var(--couranr-text); }
+
+/* A marker list indented under its definition, not five icon tiles. */
+.cr-mkt-choice__points {
+  margin: var(--couranr-space-3) 0 0;
+  padding-left: var(--couranr-space-5);
+  display: grid;
+  gap: var(--couranr-space-1);
+  font-size: var(--couranr-text-sm);
+  color: var(--couranr-text-muted);
+}
+
+/* The close states the rule; the cross-link is the one place this page tells a
+   reader they may be on the wrong product, so it is a real invitation and is
+   set as a link rather than as a footnote. */
+.cr-mkt-choice__close {
+  margin: var(--couranr-space-8) 0 0;
+  max-width: 62ch;
+  color: var(--couranr-text);
+}
+
+.cr-mkt-choice__crosslink { margin: var(--couranr-space-3) 0 0; font-weight: 600; }
+
+/* ── PUB-001 section 5, the responsibility split ────────────────────
+   TWO COLUMNS, NOT TWO CARDS. The pairing is a comparison of two
+   responsibilities, and boxing each side would make a doctrine statement look
+   like a pricing table. The rule between them at desktop is what says the two
+   lists are opposed. */
+.cr-mkt-responsibility {
+  display: grid;
+  gap: var(--couranr-space-6);
+  min-width: 0;
+}
+
+@media (min-width: 720px) {
+  .cr-mkt-responsibility { grid-template-columns: 1fr 1fr; gap: var(--couranr-space-8); }
+  .cr-mkt-responsibility__side + .cr-mkt-responsibility__side {
+    padding-left: var(--couranr-space-8);
+    border-left: 1px solid var(--couranr-border);
   }
-  .cr-mkt-catgrid__photo { aspect-ratio: 4 / 3; height: auto; }
-  .cr-mkt-catgrid__label { align-self: start; padding: var(--couranr-space-4); }
-  .cr-mkt-catgrid__item--general {
-    /* It keeps its own padding and must not inherit the label's. */
-    gap: var(--couranr-space-1);
-  }
+}
+
+.cr-mkt-responsibility__side > h3 { margin: 0 0 var(--couranr-space-3); }
+
+.cr-mkt-responsibility__list {
+  margin: 0;
+  padding-left: var(--couranr-space-5);
+  display: grid;
+  gap: var(--couranr-space-1);
+  font-size: var(--couranr-text-sm);
+  color: var(--couranr-text-muted);
+}
+
+/* Spans both columns: it is the conclusion of the pair, not of one side. */
+.cr-mkt-responsibility__close {
+  margin: 0;
+  max-width: 62ch;
+  color: var(--couranr-text);
+}
+
+@media (min-width: 720px) {
+  .cr-mkt-responsibility__close { grid-column: 1 / -1; }
+}
+
+/* ── Example runs ─────────────────────────────────────────
+   Shared by section 6's business types and section 11's prohibition group
+   headings. TEXT, with the rhythm carried by the gap: no separator glyph,
+   because a `::before` divider on every item but the first puts a rule at the
+   START of a wrapped line and CSS cannot see a line break. That defect was
+   measured once already, on the Same Day breadth run. */
+.cr-mkt-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--couranr-space-3) var(--couranr-space-6);
+  margin: var(--couranr-space-5) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.cr-mkt-examples__item {
+  font-family: var(--couranr-font-display);
+  font-size: var(--couranr-text-base);
+  color: var(--couranr-text);
+}
+
+/* Section 6's claim boundary and its route onward. The note is body weight
+   because it is a limit on the section above it, not a caption. */
+.cr-mkt-narrative__note {
+  margin: var(--couranr-space-5) 0 0;
+  max-width: 54ch;
+  color: var(--couranr-text);
+}
+
+.cr-mkt-narrative__cta { margin: var(--couranr-space-3) 0 0; font-weight: 600; }
+
+/* Section 7's link to the dedicated workflow page, and section 11's closing
+   line. Both sit under a block they qualify. */
+.cr-mkt-section__more { margin: var(--couranr-space-6) 0 0; font-weight: 600; }
+
+.cr-mkt-safety__note {
+  margin: var(--couranr-space-6) 0 0;
+  max-width: 62ch;
+  color: var(--couranr-text);
 }
 
 @media (min-width: 900px) {

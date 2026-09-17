@@ -170,8 +170,14 @@ describe.each(PAGES)("$screen ($route) matches its normative table", (page) => {
     if (page.screen === "PUB-001") {
       // §32.3 states these numerically for the homepage, so they are asserted
       // here rather than read from a budget line.
-      // Fourteen since §27.0 r6 promoted `payer-choice` to its own section.
-      expect(spec).toHaveLength(14);
+      /* Fifteen since the 2026-09 marketing-architecture lock. The owner
+         approved a new information architecture for /business: `pickup-problem`
+         merged into `outcomes`, `categories` retired to PUB-009 which owns the
+         category system, and `product-choice`, `responsibility` and
+         `shipment-safety` added. The number is updated because the AUTHORITY
+         changed — §27.0's table and VISUAL_REGISTRY.json both carry fifteen
+         rows — not to make a page pass. */
+      expect(spec).toHaveLength(15);
       expect(countFlag(rendered, "imageLed"), "image-led floor is 2").toBeGreaterThanOrEqual(2);
       expect(countFlag(rendered, "productProof"), "product-proof floor is 1").toBeGreaterThanOrEqual(1);
       expect(

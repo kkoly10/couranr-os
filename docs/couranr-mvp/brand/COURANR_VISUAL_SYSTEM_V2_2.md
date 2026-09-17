@@ -2302,15 +2302,16 @@ Use a record shape equivalent to:
   "composition_regions": [
     "navigation",
     "hero",
-    "pickup-problem",
-    "category-breadth",
-    "order-channels",
+    "product-choice",
     "outcomes",
+    "order-channels",
+    "responsibility",
+    "category-breadth",
     "workflow",
     "payer-choice",
     "product-proof",
-    "categories",
     "delivery-options",
+    "shipment-safety",
     "pricing",
     "service-area",
     "faq",
@@ -2449,34 +2450,60 @@ of §19's approved types, while §32.3 requires every `data-composition` value t
 be one of them. The "§27 wording" column preserves the prose so each mapping is
 auditable.
 
+**THE 2026-09 MARKETING-ARCHITECTURE LOCK took this table from fourteen rows to
+fifteen.** The owner locked the information architecture for `/business`, and
+it is a re-ordering and a de-duplication rather than a redesign: every
+composition, every photograph and every device below is the one that was
+already approved.
+
+What LEFT. `pickup-problem` is removed and merged into `outcomes` — "Pickup-only
+means lost orders" opened the page with a loss framing before a reader had been
+told what the product is, and §3 now states the same fact as the thing delivery
+adds. `categories`, the eleven-card image grid with the primary/secondary
+mechanics, is removed because `/businesses` (PUB-009) owns the deep category
+system and this page was a second copy of it; `category-breadth` teases and
+routes there.
+
+What ARRIVED. `product-choice` answers which product a visitor needs, on PURPOSE
+rather than speed — its two locked sentences render from MKT-005 so this page
+and the master homepage cannot describe the products differently.
+`responsibility` is promoted out of a collapsed FAQ row into a major section.
+`shipment-safety` states that a business account does not make prohibited goods
+eligible, summarised from the same derivation `/sameday` uses.
+
 | # | `data-couranr-section` | §27 section | §27 wording | `data-composition` (§19) | image-led | grid-dominant | product-proof |
 |---|---|---|---|---|---|---|---|
 | 1 | `hero` | Hero | image-integrated hero | `image-integrated-hero` | true | false | false |
-| 2 | `pickup-problem` | Pickup-only problem | editorial statement | `editorial-statement` | false | false | false |
-| 3 | `category-breadth` | Delivery beyond restaurants | image narrative | `image-narrative` | true | false | false |
+| 2 | `product-choice` | *(none — 2026-09 positioning lock)* | which Couranr to use, decided on purpose rather than speed | `editorial-statement` | false | false | false |
+| 3 | `outcomes` | Business outcomes (merged with the retired pickup-only problem) | split story *or* editorial/product split | `split-story` | **true** | false | false |
 | 4 | `order-channels` | Existing order channels | channel flow / structured strip | `structured-information-block` | false | false | false |
-| 5 | `outcomes` | Business outcomes | split story *or* editorial/product split | `split-story` | **true** | false | false |
-| 6 | `workflow` | Four-step workflow | connected workflow rail | `workflow-rail` | false | false | false |
-| 7 | `payer-choice` | *(none — drift ledger)* | artboard: "You decide who pays for delivery", two tinted payer cards | `structured-information-block` | false | false | false |
-| 8 | `product-proof` | Managed delivery and proof | product proof + supporting narrative | `product-proof` | false | false | **true** |
-| 9 | `categories` | Supported business categories | selective category grid *or* image-based category system | `structured-information-block` | **true** | **true** | false |
+| 5 | `responsibility` | *(none — 2026-09 lock, promoted from the FAQ)* | what the business owns, what Couranr owns | `split-story` | false | false | false |
+| 6 | `category-breadth` | Delivery beyond restaurants | image narrative, teaser only — PUB-009 owns the category system | `image-narrative` | true | false | false |
+| 7 | `workflow` | Four-step workflow | connected workflow rail | `workflow-rail` | false | false | false |
+| 8 | `payer-choice` | *(none — drift ledger)* | artboard: "You decide who pays for delivery", two tinted payer cards | `structured-information-block` | false | false | false |
+| 9 | `product-proof` | Managed delivery and proof | product proof + supporting narrative | `product-proof` | false | false | **true** |
 | 10 | `delivery-options` | *(none — MKT-003)* | artboard: "Delivery options that fit your needs", four discrete options | `structured-information-block` | false | false | false |
-| 11 | `pricing` | Pricing and pilot economics | structured high-contrast information block | `structured-information-block` | false | false | false |
-| 12 | `service-area` | Service areas | map / route visual | `image-narrative` | true | false | false |
-| 13 | `faq` | FAQ and claim boundaries | restrained utility | `structured-information-block` | false | false | false |
-| 14 | `closing` | Closing CTA | full-bleed brand moment | `full-bleed-interruption` | false | false | false |
+| 11 | `shipment-safety` | *(none — 2026-09 lock)* | a business account does not make prohibited goods eligible | `editorial-statement` | false | false | false |
+| 12 | `pricing` | Pricing and pilot economics | structured high-contrast information block | `structured-information-block` | false | false | false |
+| 13 | `service-area` | Service areas | map / route visual | `image-narrative` | true | false | false |
+| 14 | `faq` | FAQ and claim boundaries | restrained utility | `structured-information-block` | false | false | false |
+| 15 | `closing` | Closing CTA | full-bleed brand moment | `full-bleed-interruption` | false | false | false |
 
 Resulting budgets, which are what §32.3 asserts:
 
-- adjacent duplicate compositions: **2** — `categories`+`delivery-options` and
-  `delivery-options`+`pricing`. Both are the artboard's own sequence, and
-  COURANR_VISUAL_FIDELITY_AMENDMENT.md §3.1 demotes §19's adjacency prohibition
-  from a hard rule to a **drift diagnostic**. The test reports the count; it no
-  longer fails on it. See r6 below.
-- `data-grid-dominant="true"`: **1** — section 9 (§19 cap is 2);
-- `data-image-led="true"`: **5** — sections 1, 3, 5, 9, 12 (§27 floor is 2);
-- `data-product-proof="true"`: **1** — section 8 (§27 floor is 1);
-- `workflow-rail`: exactly **1** — section 6.
+- adjacent duplicate compositions: **0**. There were two —
+  `categories`+`delivery-options` and `delivery-options`+`pricing` — and both
+  were the artboard's own sequence, sanctioned by
+  COURANR_VISUAL_FIDELITY_AMENDMENT.md §3.1 as a **drift diagnostic** rather
+  than a failure. They are gone as a CONSEQUENCE of the 2026-09 lock, not as a
+  goal of it: `categories` was removed for duplication with PUB-009, and
+  `shipment-safety` happens to land between `delivery-options` and `pricing`.
+  The diagnostic remains a diagnostic. See r6 below.
+- `data-grid-dominant="true"`: **0** — `categories` was the only one and is
+  retired (§19 cap is 2, so zero is inside it);
+- `data-image-led="true"`: **4** — sections 1, 3, 6, 13 (§27 floor is 2);
+- `data-product-proof="true"`: **1** — section 9 (§27 floor is 1);
+- `workflow-rail`: exactly **1** — section 7.
 
 Where the flags come from, so they are not taste:
 
@@ -2509,7 +2536,7 @@ Notes:
 - **`navigation` is a region, not a governed section.** §25's
   `composition_regions` array carries one more entry than this table because the
   artboard has a navigation band; the shell renders it and it carries no
-  `data-couranr-section`. Fourteen governed sections, fifteen artboard
+  `data-couranr-section`. Fifteen governed sections, sixteen artboard
   regions — the counts are supposed to differ.
 - The "Required composition" column is the composition type each section must
   resolve to, drawn from §19. Where §27 offers alternatives ("split story **or**

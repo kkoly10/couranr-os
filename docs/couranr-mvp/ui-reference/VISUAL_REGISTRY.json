@@ -44,7 +44,7 @@
           },
           {
             "n": 2,
-            "id": "pickup-problem",
+            "id": "product-choice",
             "composition": "editorial-statement",
             "imageLed": "false",
             "gridDominant": "false",
@@ -52,8 +52,8 @@
           },
           {
             "n": 3,
-            "id": "category-breadth",
-            "composition": "image-narrative",
+            "id": "outcomes",
+            "composition": "split-story",
             "imageLed": "true",
             "gridDominant": "false",
             "productProof": "false"
@@ -68,14 +68,22 @@
           },
           {
             "n": 5,
-            "id": "outcomes",
+            "id": "responsibility",
             "composition": "split-story",
-            "imageLed": "true",
+            "imageLed": "false",
             "gridDominant": "false",
             "productProof": "false"
           },
           {
             "n": 6,
+            "id": "category-breadth",
+            "composition": "image-narrative",
+            "imageLed": "true",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 7,
             "id": "workflow",
             "composition": "workflow-rail",
             "imageLed": "false",
@@ -83,7 +91,7 @@
             "productProof": "false"
           },
           {
-            "n": 7,
+            "n": 8,
             "id": "payer-choice",
             "composition": "structured-information-block",
             "imageLed": "false",
@@ -91,20 +99,12 @@
             "productProof": "false"
           },
           {
-            "n": 8,
+            "n": 9,
             "id": "product-proof",
             "composition": "product-proof",
             "imageLed": "false",
             "gridDominant": "false",
             "productProof": "true"
-          },
-          {
-            "n": 9,
-            "id": "categories",
-            "composition": "structured-information-block",
-            "imageLed": "true",
-            "gridDominant": "true",
-            "productProof": "false"
           },
           {
             "n": 10,
@@ -116,6 +116,14 @@
           },
           {
             "n": 11,
+            "id": "shipment-safety",
+            "composition": "editorial-statement",
+            "imageLed": "false",
+            "gridDominant": "false",
+            "productProof": "false"
+          },
+          {
+            "n": 12,
             "id": "pricing",
             "composition": "structured-information-block",
             "imageLed": "false",
@@ -123,7 +131,7 @@
             "productProof": "false"
           },
           {
-            "n": 12,
+            "n": 13,
             "id": "service-area",
             "composition": "image-narrative",
             "imageLed": "true",
@@ -131,7 +139,7 @@
             "productProof": "false"
           },
           {
-            "n": 13,
+            "n": 14,
             "id": "faq",
             "composition": "structured-information-block",
             "imageLed": "false",
@@ -139,7 +147,7 @@
             "productProof": "false"
           },
           {
-            "n": 14,
+            "n": 15,
             "id": "closing",
             "composition": "full-bleed-interruption",
             "imageLed": "false",
