@@ -98,7 +98,7 @@ Still rendering `ScreenPlaceholder` (11): `OPS-006` · `OPS-011` · `OPS-013` ·
 | `P7-005` | Waiting-fee assessment requires an owner decision on the charging mechanism (no payer reauthorization path exists); recorded as evidence only. |
 | `P12-002` | Blocked behind P12-001 and explicit founder approval for the real paid canary. |
 | `P10-008` | The rank-1 decision registry does not sanction this protection model and PRF-002 contradicts it. |
-| `P10-009` | Owner approval required before any production migration is applied. PRF-002 defines the pickup happy path as one pickup photo and carries no Secure Pickup carve-out; see P10-008. |
+| `P10-009` | PRF-002 contradicts the shipped and now-applied custody rules; see P10-008. |
 | `P10-010` | No qualified legal review. The documents are explicitly unreviewed drafts. |
 | `P10-011` | Provider not activated and no restricted key configured, so protected handoff is not sellable. |
 
