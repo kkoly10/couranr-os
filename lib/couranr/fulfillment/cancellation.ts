@@ -12,6 +12,7 @@ import {
   isFulfillmentFailure,
   refundPayment,
   releaseAuthorization,
+  stripeRefundGateway,
   type FulfillmentFailure,
   type FulfillmentResult,
   type RefundOutcome,
@@ -376,6 +377,7 @@ export async function cancelDeliveryWithRecovery(params: {
     requestId: params.requestId,
     businessAccountId: params.businessAccountId,
     reason: refundReason,
+    gateway: stripeRefundGateway(),
   });
   if (isFulfillmentFailure(refunded)) {
     /* The fulfillment closure PERSISTED, and so did the governed reason —
@@ -696,6 +698,7 @@ async function resumeSettlementFromClosureEvidence(
     requestId: params.requestId,
     businessAccountId: params.businessAccountId,
     reason: refundReason,
+    gateway: stripeRefundGateway(),
   });
   if (isFulfillmentFailure(refunded)) return refunded;
 

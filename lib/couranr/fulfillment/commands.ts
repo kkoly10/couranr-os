@@ -1407,6 +1407,43 @@ export type RefundOutcome = {
   reason: string;
 };
 
+/* ------------------------------------------------- the provider seam ---- */
+
+/**
+ * The ONLY two provider operations the refund flow performs, behind an
+ * injectable interface — the same discipline `lib/couranr/email/send.ts` uses
+ * with `fetchImpl`.
+ *
+ * There is deliberately NO DEFAULT VALUE anywhere. Every function that can
+ * reach the payment provider takes this as a REQUIRED parameter, so a caller
+ * that forgets it is a compile error rather than a live API call — omission
+ * cannot reach Stripe. `npm run typecheck:canonical` is what enforces that.
+ */
+export type RefundGateway = {
+  list(params: {
+    payment_intent: string;
+    limit: number;
+    starting_after?: string;
+  }): Promise<{ data?: any[]; has_more?: boolean } | null>;
+  create(
+    params: { payment_intent: string; amount: number; metadata: Record<string, string> },
+    options: { idempotencyKey: string }
+  ): Promise<{ id?: string; status?: string; amount?: number } | null>;
+};
+
+/**
+ * The real gateway. `getStripeClient()` is resolved INSIDE each method, not
+ * when this factory runs, so building one reads no environment variable and
+ * constructs no client — the lazy-proxy discipline `lib/stripeClient.ts` and
+ * `lib/supabaseAdmin.ts` both follow.
+ */
+export function stripeRefundGateway(): RefundGateway {
+  return {
+    list: (params) => getStripeClient().refunds.list(params as any) as any,
+    create: (params, options) => getStripeClient().refunds.create(params as any, options) as any,
+  };
+}
+
 /**
  * Read the request's obligation with the SAME nullable-tenancy discipline
  * releaseAuthorization uses: a consumer request (business null) matches with
@@ -1467,6 +1504,8 @@ export async function refundPayment(params: {
   requestId: string;
   businessAccountId: string | null;
   reason: RefundReason;
+  /** REQUIRED. There is no default: omission cannot reach the real provider. */
+  gateway: RefundGateway;
 }): Promise<FulfillmentResult<RefundOutcome>> {
   const op = "refundPayment";
 
@@ -1514,7 +1553,7 @@ export async function refundPayment(params: {
     };
   }
 
-  return convergeRefundAttemptWithProvider(op, attempt);
+  return convergeRefundAttemptWithProvider(op, attempt, params.gateway);
 }
 
 /**
@@ -1529,6 +1568,8 @@ export async function reconcileRefund(params: {
   actor: RequestActor;
   requestId: string;
   businessAccountId: string | null;
+  /** REQUIRED. There is no default: omission cannot reach the real provider. */
+  gateway: RefundGateway;
 }): Promise<FulfillmentResult<RefundOutcome>> {
   const op = "reconcileRefund";
 
@@ -1578,7 +1619,7 @@ export async function reconcileRefund(params: {
     };
   }
 
-  return convergeRefundAttemptWithProvider(op, attempt);
+  return convergeRefundAttemptWithProvider(op, attempt, params.gateway);
 }
 
 /**
@@ -1596,9 +1637,10 @@ export async function reconcileRefund(params: {
  * Expired Stripe idempotency keys are never relied on as duplicate
  * protection; the list is the proof, the key is only request-level hygiene.
  */
-async function convergeRefundAttemptWithProvider(
+export async function convergeRefundAttemptWithProvider(
   op: string,
-  attempt: RefundAttemptRow
+  attempt: RefundAttemptRow,
+  gateway: RefundGateway
 ): Promise<FulfillmentResult<RefundOutcome>> {
   /*
    * LIST FIRST — and NEVER write after an unknown read. Stripe idempotency
@@ -1626,7 +1668,7 @@ async function convergeRefundAttemptWithProvider(
     const MAX_REFUND_LIST_PAGES = 10;
     let startingAfter: string | undefined;
     for (let page = 0; page < MAX_REFUND_LIST_PAGES; page += 1) {
-      const listed = await getStripeClient().refunds.list({
+      const listed = await gateway.list({
         payment_intent: attempt.provider_payment_intent_id,
         limit: 100,
         ...(startingAfter ? { starting_after: startingAfter } : {}),
@@ -1696,16 +1738,17 @@ async function convergeRefundAttemptWithProvider(
     });
   }
 
-  return submitAndCompleteRefund(op, attempt);
+  return submitAndCompleteRefund(op, attempt, gateway);
 }
 
 async function submitAndCompleteRefund(
   op: string,
-  attempt: RefundAttemptRow
+  attempt: RefundAttemptRow,
+  gateway: RefundGateway
 ): Promise<FulfillmentResult<RefundOutcome>> {
   let refund: any;
   try {
-    refund = await getStripeClient().refunds.create(
+    refund = await gateway.create(
       {
         payment_intent: attempt.provider_payment_intent_id,
         amount: attempt.amount_cents,

@@ -217,7 +217,21 @@ describe("server-only modules are unreachable from client code", () => {
       // and every private evidence row. A browser reaching it would hold the
       // reader that answers for ANY delivery, and the object paths that reader
       // sees but never publishes.
+      // OPS-013/OPS-014. Holds the service-role client and reads, across every
+      // business, the request, delivery, payment, proof, support and driver
+      // tables. It projects those reads down to non-identifying columns before
+      // aggregating, but the READER itself answers for all tenants, so a
+      // bundle must never be able to reach it. `analyticsTypes.ts` is the
+      // deliberate client-safe half: types and closed label vocabularies only.
+      "lib/couranr/operations/analytics.ts",
       "lib/couranr/operations/custodyBundle.ts",
+      "lib/couranr/operations/refunds.ts",
+      // OPS-015/OPS-016/OPS-020. Holds the service-role client, the write path
+      // for the AI kill switch and the request-intake pause, and the audit
+      // reader that touches all eleven append-only event tables BEFORE they are
+      // redacted. A browser reaching it would hold the unredacted read and the
+      // switch that stops intake for every merchant at once.
+      "lib/couranr/operations/settings.ts",
       // The payment modules hold the service-role client, the Stripe secret
       // key and the token hashing. None may ever be reachable from a bundle.
       "lib/couranr/payments/commands.ts",
@@ -385,6 +399,8 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/merchant/presets/route.ts",
       "app/api/couranr/merchant/website-tools/route.ts",
       "app/api/couranr/operations/activation/route.ts",
+      "app/api/couranr/operations/analytics/route.ts",
+      "app/api/couranr/operations/analytics/unmet-demand/route.ts",
       "app/api/couranr/operations/businesses/route.ts",
       "app/api/couranr/operations/conversations/[id]/messages/route.ts",
       "app/api/couranr/operations/conversations/[id]/route.ts",
@@ -423,6 +439,11 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/operations/problem-reports/route.ts",
       "app/api/couranr/operations/proof/[proofId]/url/route.ts",
       "app/api/couranr/operations/queue/route.ts",
+      "app/api/couranr/operations/refunds/[id]/approve/route.ts",
+      "app/api/couranr/operations/refunds/[id]/deny/route.ts",
+      "app/api/couranr/operations/refunds/route.ts",
+      "app/api/couranr/operations/settings/audit/route.ts",
+      "app/api/couranr/operations/settings/availability/route.ts",
       "app/api/couranr/operations/vehicles/[id]/route.ts",
       "app/api/couranr/operations/vehicles/route.ts",
       "app/api/couranr/pay/[token]/reconcile/route.ts",

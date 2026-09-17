@@ -65,7 +65,7 @@ vi.mock("@/lib/couranr/requests/commands", () => ({
   isCommandFailure: (r: any) => r?.ok === false,
 }));
 
-import { reconcileRefund, refundPayment } from "@/lib/couranr/fulfillment/commands";
+import { reconcileRefund, refundPayment, stripeRefundGateway } from "@/lib/couranr/fulfillment/commands";
 import { POST as refundRoutePost } from "@/app/api/couranr/operations/delivery-requests/[id]/refund/route";
 
 const OPS = { kind: "operations", userId: "00000000-0000-4000-8000-000000000001" } as const;
@@ -127,10 +127,17 @@ beforeEach(() => {
   rpcAnswers();
 });
 
+/*
+ * The provider seam is a REQUIRED parameter now — there is no default, so a
+ * caller that forgets it does not compile rather than reaching Stripe. Here it
+ * is built from the mocked `@/lib/stripeClient` above, so every assertion in
+ * this file still counts calls against the same `h.stripe` double.
+ */
 const args = {
   actor: OPS,
   requestId: OBLIGATION.request_id,
   businessAccountId: null as string | null,
+  gateway: stripeRefundGateway(),
 };
 
 describe("reconcileRefund never writes after an unknown read", () => {
@@ -272,6 +279,7 @@ describe("refundPayment rides the SAME convergence path", () => {
     requestId: OBLIGATION.request_id,
     businessAccountId: null as string | null,
     reason: "full_refund" as const,
+    gateway: stripeRefundGateway(),
   };
 
   it("an old pending_unknown attempt + a LIST failure makes zero creates", () => {

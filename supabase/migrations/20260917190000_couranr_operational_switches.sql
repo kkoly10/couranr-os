@@ -34,6 +34,15 @@
 --
 -- APPLYING THIS CHANGES NO BEHAVIOUR. request_intake_paused seeds false, so the
 -- trigger returns immediately and every existing path behaves exactly as it did.
+--
+-- ONE TABLE, NOT TWO. The Operations settings slice independently built
+-- couranr_operational_flags over the same four FLG-001 keys — a coordination
+-- failure, since both were written in parallel. That table is dropped from its
+-- migration and its surface reads and writes THIS one, because this is the
+-- table the intake-pause trigger actually consults. Two tables would have meant
+-- a console throwing a switch that gated nothing. Its compare-and-set survives
+-- here; its direct UPDATE does not, because that path would have changed a
+-- launch-gate switch with no audit row.
 
 begin;
 
@@ -41,6 +50,10 @@ create table if not exists public.couranr_operational_switches (
   switch_key text primary key,
   enabled boolean not null,
   reason text,
+  /* Compare-and-set, so two Operations consoles open on this page cannot each
+     write the state they were rendered with. Folded in from the settings slice,
+     which had built the same CAS against a second table. */
+  version integer not null default 1,
   updated_at timestamptz not null default now(),
   updated_by uuid references auth.users(id) on update cascade on delete restrict,
   constraint couranr_os_key_chk check (switch_key in (
@@ -147,7 +160,8 @@ create or replace function public.couranr_set_operational_switch(
   p_switch_key text,
   p_enabled boolean,
   p_actor_user_id uuid,
-  p_reason text
+  p_reason text,
+  p_expected_version integer default null
 )
 returns public.couranr_operational_switches
 language plpgsql security invoker set search_path=''
@@ -171,6 +185,14 @@ begin
     raise exception 'switch_unknown' using errcode='CR404';
   end if;
 
+  /* A caller that names a version must match. Null means "I did not read one",
+     which the seeding path and an emergency console both legitimately do — the
+     switch that stops intake must never be un-throwable because a page was
+     stale. */
+  if p_expected_version is not null and p_expected_version <> v_row.version then
+    raise exception 'switch_version_conflict' using errcode='CR409';
+  end if;
+
   v_from := v_row.enabled;
 
   /* Recorded even when nothing changes. "Operations confirmed AI was already
@@ -185,6 +207,7 @@ begin
     update public.couranr_operational_switches set
       enabled = p_enabled,
       reason = nullif(btrim(coalesce(p_reason,'')),''),
+      version = version + 1,
       updated_at = now(),
       updated_by = p_actor_user_id
     where switch_key = p_switch_key
@@ -213,9 +236,9 @@ grant select, insert on public.couranr_operational_switch_events to service_role
 alter table public.couranr_operational_switches enable row level security;
 alter table public.couranr_operational_switch_events enable row level security;
 
-revoke all on function public.couranr_set_operational_switch(text,boolean,uuid,text)
+revoke all on function public.couranr_set_operational_switch(text,boolean,uuid,text,integer)
   from public,anon,authenticated;
-grant execute on function public.couranr_set_operational_switch(text,boolean,uuid,text)
+grant execute on function public.couranr_set_operational_switch(text,boolean,uuid,text,integer)
   to service_role;
 
 commit;

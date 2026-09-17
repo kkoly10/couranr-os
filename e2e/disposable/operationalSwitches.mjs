@@ -141,9 +141,9 @@ try {
   /* ------------------------------------------------------------ sealed --- */
 
   const grants = sql(`select
-      has_function_privilege('anon','public.couranr_set_operational_switch(text,boolean,uuid,text)','execute')::text
-    ||'/'|| has_function_privilege('authenticated','public.couranr_set_operational_switch(text,boolean,uuid,text)','execute')::text
-    ||'/'|| has_function_privilege('service_role','public.couranr_set_operational_switch(text,boolean,uuid,text)','execute')::text`);
+      has_function_privilege('anon','public.couranr_set_operational_switch(text,boolean,uuid,text,integer)','execute')::text
+    ||'/'|| has_function_privilege('authenticated','public.couranr_set_operational_switch(text,boolean,uuid,text,integer)','execute')::text
+    ||'/'|| has_function_privilege('service_role','public.couranr_set_operational_switch(text,boolean,uuid,text,integer)','execute')::text`);
   t("S14", "no browser role may throw a switch; service_role may",
     grants === "false/false/true", grants);
 
@@ -157,6 +157,38 @@ try {
      join pg_namespace n on n.oid=p.pronamespace
     where n.nspname='public' and p.proname='couranr_set_operational_switch'`);
   t("S16", "exactly one function of this name exists", overloads === "1", overloads);
+
+  /* ------------------------------------------------------------- CAS ----- */
+
+  /* Folded in from the settings slice, which had built the same compare-and-set
+     against a second table over the same four keys. Two tables would have meant
+     a console throwing a switch that gated nothing, so that table is gone and
+     its CAS lives here. */
+  const ver = () => sql(`select version from public.couranr_operational_switches
+                          where switch_key='ai_auto_reply_enabled'`);
+  const v0 = Number(ver());
+  sql(`select enabled from public.couranr_set_operational_switch(
+        'ai_auto_reply_enabled',true,'${usr}','cas probe',${v0})`);
+  t("S17", "a matching expected version is accepted and bumps the version",
+    Number(ver()) === v0 + 1, `${v0} -> ${ver()}`);
+
+  const stale = mustRefuse(`select public.couranr_set_operational_switch(
+        'ai_auto_reply_enabled',false,'${usr}','stale console',${v0})`,
+    "switch_version_conflict");
+  t("S18", "a STALE console cannot overwrite a switch someone else just moved",
+    stale.got === "raised:switch_version_conflict" || stale.got === "switch_version_conflict",
+    stale.got);
+  t("S19", "and the refusal wrote nothing",
+    sql(`select enabled from public.couranr_operational_switches
+          where switch_key='ai_auto_reply_enabled'`) === "t");
+
+  /* The emergency path. A switch that stops intake must never be un-throwable
+     because a page was stale, so a caller that names no version still wins. */
+  sql(`select public.couranr_set_operational_switch(
+        'ai_auto_reply_enabled',false,'${usr}','emergency',null)`);
+  t("S20", "a caller naming NO version can still throw the switch",
+    sql(`select enabled from public.couranr_operational_switches
+          where switch_key='ai_auto_reply_enabled'`) === "f");
 
 } catch (e) {
   console.error("\n  SUITE ERROR:", String(e.stderr || e.message).slice(0, 900));

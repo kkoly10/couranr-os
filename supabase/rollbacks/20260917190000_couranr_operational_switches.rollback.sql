@@ -32,7 +32,7 @@ end $$;
 
 drop trigger if exists couranr_dr_intake_pause on public.couranr_delivery_requests;
 drop function if exists private.couranr_enforce_request_intake_pause() restrict;
-drop function if exists public.couranr_set_operational_switch(text,boolean,uuid,text) restrict;
+drop function if exists public.couranr_set_operational_switch(text,boolean,uuid,text,integer) restrict;
 drop function if exists private.couranr_switch_enabled(text) restrict;
 
 drop index if exists public.couranr_ose_key_time_idx;

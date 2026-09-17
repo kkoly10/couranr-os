@@ -315,12 +315,75 @@ describe("the screen ledger covers every canonical screen", () => {
    * surrounding shell looks.
    */
   it("no screen backed by a ScreenPlaceholder page is classified functional", () => {
+    /*
+     * ONE PAGE CAN NOW BACK SEVERAL SCREENS AT DIFFERENT STAGES. /operations/settings
+     * renders real panels for OPS-016 and OPS-020 and a ScreenPlaceholder for
+     * OPS-017/018/019, all from one file — so "this file mentions
+     * ScreenPlaceholder" stopped being the same question as "this screen is a
+     * placeholder", and the substring check flagged three working screens.
+     *
+     * The fix is to make the guard MORE precise, not looser. Where a page
+     * declares which screen each tab serves and whether it is built, that
+     * declaration is read and the rule is applied PER SCREEN, in both
+     * directions: a tab marked `built: false` may not be classified functional,
+     * and a tab marked `built: true` may not still be classified
+     * `placeholder_only`. The second half is new, and it is the half that
+     * catches a ledger row nobody remembered to move.
+     *
+     * The tempting fix — moving the ScreenPlaceholder into another file so the
+     * substring stops matching — would have been gaming the guard rather than
+     * satisfying it.
+     */
+    const tabSources = [...new Set(screens.map((r) => r.current_page_path.trim()))]
+      .filter((p) => p && existsSync(path.join(ROOT, p)))
+      .flatMap((p) => {
+        const src = read(p);
+        const m = /from "@\/(components\/[^"]+\/tabs)"/.exec(src);
+        if (!m || !existsSync(path.join(ROOT, `${m[1]}.ts`))) return [];
+        return [[p, read(`${m[1]}.ts`)] as const];
+      });
+    const builtByScreen = new Map<string, boolean>();
+    const pageHasMap = new Set<string>();
+    for (const [pagePath, tabSrc] of tabSources) {
+      pageHasMap.add(pagePath);
+      for (const m of tabSrc.matchAll(
+        /screenId:\s*"([A-Z]+-\d+)"[\s\S]{0,400}?built:\s*(true|false)/g
+      )) {
+        builtByScreen.set(m[1], m[2] === "true");
+      }
+    }
+    // Non-vacuous: the settings page must actually have been resolved.
+    expect(builtByScreen.get("OPS-017"), "the tab map was not read").toBe(false);
+    expect(builtByScreen.get("OPS-016")).toBe(true);
+
     const offenders: string[] = [];
     for (const r of screens) {
       const p = r.current_page_path.trim();
       if (!p || !existsSync(path.join(ROOT, p))) continue;
-      const isPlaceholder = read(p).includes("ScreenPlaceholder");
-      if (isPlaceholder && r.implementation_status.startsWith("functional")) {
+      const status = r.implementation_status;
+
+      if (builtByScreen.has(r.screen_id)) {
+        const built = builtByScreen.get(r.screen_id);
+        if (!built && status.startsWith("functional")) {
+          offenders.push(`${r.screen_id} -> tab is built:false but classified ${status}`);
+        }
+        if (built && status === "placeholder_only") {
+          offenders.push(`${r.screen_id} -> tab is built:true but still placeholder_only`);
+        }
+        continue;
+      }
+
+      /* A screen the map does not name is the page's own shell. It is a
+         placeholder only if the page places EVERY tab it has. */
+      if (pageHasMap.has(p)) {
+        const anyBuilt = [...builtByScreen.entries()].some(([, b]) => b);
+        if (!anyBuilt && status.startsWith("functional")) {
+          offenders.push(`${r.screen_id} -> ${p} places every tab`);
+        }
+        continue;
+      }
+
+      if (read(p).includes("ScreenPlaceholder") && status.startsWith("functional")) {
         offenders.push(`${r.screen_id} -> ${p}`);
       }
     }

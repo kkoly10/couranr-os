@@ -11,7 +11,7 @@ ledgers own per-item state; this is their sum.
 The 721-line hand-written version of this file is preserved whole at
 [`autonomous-evidence/status-archive/IMPLEMENTATION_STATUS-2026-08-06.md`](./autonomous-evidence/status-archive/IMPLEMENTATION_STATUS-2026-08-06.md).
 It restated per-row evidence the ledgers already carried, and the restatement is
-what went stale: it counted 39 migrations while 126 were on disk.
+what went stale: it counted 39 migrations while 128 were on disk.
 
 ## Where truth lives
 
@@ -27,14 +27,14 @@ what went stale: it counted 39 migrations while 126 were on disk.
 Run `npm run governance:facts` for the live counts; `npm run check:governance`
 proves every generated view matches its source.
 
-## Work items — 47 total
+## Work items — 49 total
 
 | Status | Count |
 |---|---|
 | `complete_verified` | 19 |
-| `not_started` | 10 |
-| `partial` | 10 |
-| `complete_pending_external` | 7 |
+| `partial` | 11 |
+| `complete_pending_external` | 9 |
+| `not_started` | 9 |
 | `complete_unverified` | 1 |
 
 ## Screens — 68 rows against 68 canonical screens
@@ -42,11 +42,11 @@ proves every generated view matches its source.
 | Status | Count |
 |---|---|
 | `functional_verified` | 32 |
+| `functional_unverified` | 17 |
 | `partial` | 14 |
-| `functional_unverified` | 11 |
-| `placeholder_only` | 11 |
+| `placeholder_only` | 5 |
 
-Still rendering `ScreenPlaceholder` (11): `OPS-006` · `OPS-011` · `OPS-013` · `OPS-014` · `OPS-015` · `OPS-016` · `OPS-017` · `OPS-018` · `OPS-019` · `OPS-020` · `OPS-021`.
+Still rendering `ScreenPlaceholder` (5): `OPS-006` · `OPS-017` · `OPS-018` · `OPS-019` · `OPS-021`.
 
 ## Measured repository state
 
@@ -55,11 +55,11 @@ Still rendering `ScreenPlaceholder` (11): `OPS-006` · `OPS-011` · `OPS-013` ·
 | Page routes | 101 |
 | …canonical, under `app/(couranr)` | 51 |
 | …legacy | 50 |
-| API routes | 197 |
-| …canonical, under `app/api/couranr` | 127 |
+| API routes | 204 |
+| …canonical, under `app/api/couranr` | 134 |
 | …legacy | 70 |
-| Forward migrations | 126 |
-| Paired rollbacks | 126 |
+| Forward migrations | 128 |
+| Paired rollbacks | 128 |
 | Canonical screens | 68 |
 | …Core | 64 |
 | …MVP-complete | 4 |
@@ -82,7 +82,7 @@ Still rendering `ScreenPlaceholder` (11): `OPS-006` · `OPS-011` · `OPS-013` ·
 | `P9-002` | not_started | Implement Ghost drafts and operator coach |
 | `P9-003` | not_started | Implement verifier and auto-reply gates |
 | `P9-004` | not_started | Implement Ask Couranr |
-| `P10-001` | not_started | Implement market/conversion/economics/support events |
+| `P10-001` | partial | Implement market/conversion/economics/support events |
 | `P10-002` | not_started | Implement payment/proof/support/security alerts |
 | `P11-001` | not_started | Migrate selected fixtures and disable legacy runtime |
 | `P12-001` | not_started | Execute full acceptance matrix |
@@ -101,6 +101,8 @@ Still rendering `ScreenPlaceholder` (11): `OPS-006` · `OPS-011` · `OPS-013` ·
 | `P10-009` | PRF-002 contradicts the shipped and now-applied custody rules; see P10-008. |
 | `P10-010` | No qualified legal review. The documents are explicitly unreviewed drafts. |
 | `P10-011` | Provider not activated and no restricted key configured, so protected handoff is not sellable. |
+| `P10-013` | Owner approval required before any production migration is applied. |
+| `P10-014` | FLG-002 unresolved; owner approval required before applying the migration. |
 
 ## Verification SHAs
 
@@ -118,7 +120,8 @@ each is in the ledger row itself — `test_evidence`, `browser_verified` and
 | `277982f2548e9b804c466121437c696b4ba52af4` | 1 screen | CUS-002 |
 | `2848a8f33bde8362bd3c9fcfb9266781fcecb77a` | 2 screens | PUB-012, PUB-013 |
 | `32893e21401a6f056821c4caaa7858460c7356b8` | 1 screen | MER-001 |
-| `401b3eea5cd96bb09d224f3b113ba6091bba807d` | 18 work items, 26 screens | P0-001, P0-002, P1-001, P1-002, P1-003, P1-004, P2-002, P4-001, P5-002, P7-001, P7-002, P7-003, P8-003, P9-001, P9-002, P9-003, P9-004, P10-007, CUS-005, DRV-002, DRV-003, DRV-004, DRV-005, DRV-006, MER-002, MER-006, MER-007, OPS-002, OPS-004, OPS-006, OPS-008, OPS-011, OPS-013, OPS-014, OPS-015, OPS-016, OPS-017, OPS-018, OPS-019, OPS-020, OPS-021, PUB-002, PUB-003, PUB-005 |
+| `38ec5f27190301b39320c05164f28449ffed9054` | 2 screens | OPS-013, OPS-014 |
+| `401b3eea5cd96bb09d224f3b113ba6091bba807d` | 18 work items, 24 screens | P0-001, P0-002, P1-001, P1-002, P1-003, P1-004, P2-002, P4-001, P5-002, P7-001, P7-002, P7-003, P8-003, P9-001, P9-002, P9-003, P9-004, P10-007, CUS-005, DRV-002, DRV-003, DRV-004, DRV-005, DRV-006, MER-002, MER-006, MER-007, OPS-002, OPS-004, OPS-006, OPS-008, OPS-011, OPS-015, OPS-016, OPS-017, OPS-018, OPS-019, OPS-020, OPS-021, PUB-002, PUB-003, PUB-005 |
 | `50f576e991dd249849d93206fc9e7cda330e71b7` | 1 screen | MER-005 |
 | `5723b3a22773f15d8d1b3e1d36bdf77b8341a6de` | 1 screen | DRV-001 |
 | `6d97bc132efdb7ed165dae11189077b2ea34d6f9` | 1 work item | P3-001 |
@@ -138,8 +141,10 @@ each is in the ledger row itself — `test_evidence`, `browser_verified` and
 | `d580a94fbac8ce645205ba8930ad1b8bfee632cc` | 1 work item, 3 screens | P8-001, DRV-008, MER-012, PUB-006 |
 | `daa01c0cfabc65e61f7e7f4380edc8cdcfb3582d` | 1 work item, 1 screen | P7-004, DRV-007 |
 | `dd2388a7fa89c41bc5c6cf4c8411ffd4d0e4a5f0` | 2 screens | DRV-009, DRV-010 |
-| `ea8bd06483229f16a2c6df9a30b41b7872324090` | 5 work items | P10-001, P10-002, P11-001, P12-001, P12-002 |
+| `ea8bd06483229f16a2c6df9a30b41b7872324090` | 4 work items | P10-002, P11-001, P12-001, P12-002 |
 | `ec4a2af8f7c1de0bee4e3c021b50c875acdd6633` | 4 work items, 5 screens | P10-003, P10-004, P10-005, P10-006, PUB-001, PUB-008, PUB-009, PUB-010, PUB-011 |
-| `f204c2a48356dc2dba34cc2daa7baf27e1d8bfe6` | 1 work item, 2 screens | P6-004, OPS-009, OPS-010 |
+| `f03cc928ef15da7bf4f84467caed3ff90c711d00` | 1 work item | P10-014 |
+| `f204c2a48356dc2dba34cc2daa7baf27e1d8bfe6` | 2 screens | OPS-009, OPS-010 |
 | `f4bff8d0d29fa8be2e9ea1a37bcfa5fd1520005c` | 2 screens | MER-010, MER-011 |
+| `f862bf638e88765e3df89f4e8ecb079dcbfbb5cc` | 3 work items | P6-004, P10-001, P10-013 |
 | `f949f5b05db039649a968390a08ab1ae28213f6d` | 1 screen | OPS-001 |
