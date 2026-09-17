@@ -53,13 +53,15 @@ const SELF_VERSION = "v2.2";
 /**
  * How many rows §27.0 must carry.
  *
- * Thirteen since MKT-003 added `delivery-options`. This is asserted rather than
- * derived so that a row silently DISAPPEARING from the table is caught: every
- * other check here is a property of whatever rows it finds, and all of them
- * pass happily on a table that lost a section. Changing this number is a
- * content decision and belongs in 02_DECISION_REGISTRY.json first.
+ * Fifteen since the 2026-09 marketing-architecture lock: `pickup-problem` and
+ * `categories` retired, `product-choice`, `responsibility` and
+ * `shipment-safety` added. This is asserted rather than derived so that a row
+ * silently DISAPPEARING from the table is caught: every other check here is a
+ * property of whatever rows it finds, and all of them pass happily on a table
+ * that lost a section. Changing this number is a content decision and belongs
+ * in 02_DECISION_REGISTRY.json first.
  */
-const EXPECTED_ROWS = 14;
+const EXPECTED_ROWS = 15;
 
 /**
  * The screens with a canonical artboard. COURANR_VISUAL_FIDELITY_AMENDMENT.md
@@ -341,7 +343,14 @@ if (process.argv.includes("--positive-control")) {
   // that fails here is the gate that forced `pricing` to navy.
   contractControl(
     "an adjacent duplicate on PUB-001 is reported as a diagnostic",
-    (reg) => { rowsOf(reg, "PUB-001")[7].composition = "structured-information-block"; },
+    /* Index 10 is `shipment-safety`, an editorial statement sitting between
+       two structured blocks. It used to be index 7, which the 2026-09 lock
+       turned into `payer-choice` — already a structured block, so the "plant"
+       became a no-op and this control would have gone on passing while
+       testing nothing. Picked for the property, not the position: the mutated
+       row must DIFFER from its neighbour before the plant, or there is no
+       adjacency to create. */
+    (reg) => { rowsOf(reg, "PUB-001")[10].composition = "structured-information-block"; },
     "adjacent duplicate composition",
     "diagnostics",
   );
@@ -349,7 +358,7 @@ if (process.argv.includes("--positive-control")) {
   contractControl(
     "a dropped §27.0 row",
     (reg) => { rowsOf(reg, "PUB-001").splice(6, 1); },
-    "expected 14",
+    "expected 15",
   );
   process.exit(bad ? 1 : 0);
 }

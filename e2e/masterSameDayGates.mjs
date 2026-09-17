@@ -43,8 +43,12 @@ import { createRequire } from "node:module";
  * against the requirement.
  */
 const WO = {
-  master_consumer_door: "Send something",
-  master_business_door: "Add delivery to my business",
+  /* The 2026-09 marketing-architecture lock rewrote both door titles: the
+     doors now carry the PRODUCT NAMES, because the master homepage's job is to
+     tell a visitor which of the two products is theirs. Transcribed, as the
+     header says, so a bad edit to the copy module cannot move the goalposts. */
+  master_consumer_door: "Couranr Same Day",
+  master_business_door: "Couranr for Business",
   tracking_stages: ["Confirmed", "Picked up", "Delivered"],
   chrome: {
     same_day: "Same Day",
@@ -72,9 +76,12 @@ const WIDTHS = [1440, 1024, 768, 390, 320];
 const MASTER_SECTIONS = ["master-hero", "master-network", "master-service-area"];
 const SAMEDAY_SECTIONS = [
   "sameday-hero",
+  "sameday-business-crosslink",
   "already-bought",
   "send-what-you-have",
   "consumer-breadth",
+  "consumer-prohibited",
+  "consumer-handoff",
   "consumer-workflow",
   "consumer-price",
   "consumer-availability",
@@ -82,9 +89,17 @@ const SAMEDAY_SECTIONS = [
   "consumer-closing",
 ];
 
-/* The work order's own list, transcribed. Kept literal rather than read from
-   the copy module so a bad edit to the module cannot also move the goalposts. */
-const AVAILABILITY_STATES = [
+/* THE NINE ADDRESS-INTERACTION STATES ARE NO LONGER MARKETING.
+   The 2026-09 lock removed their presentation from PUB-013 — they remain a
+   PRODUCT requirement on /send and are still enforced there. This gate used to
+   assert all nine rendered on /sameday, in order, each with a label and a
+   caption; after the lock that asserted markup no page emits, and the gate went
+   125/125 -> 109/125 while the per-push tier never ran it.
+
+   The assertion is INVERTED rather than deleted: the states must NOT come back
+   to the marketing page. That keeps the owner's decision gated instead of
+   merely unobserved. */
+const RETIRED_MARKETING_STATES = [
   "idle",
   "focused",
   "typing",
@@ -223,13 +238,13 @@ async function sameDayContentGate(browser) {
       })),
     );
     check(
-      `sameday@${width} all nine availability states, in order`,
-      JSON.stringify(states.map((s) => s.id)) === JSON.stringify(AVAILABILITY_STATES),
+      `sameday@${width} the retired interaction states do not render`,
+      states.length === 0,
       states.map((s) => s.id).join(",") || "none rendered",
     );
     check(
-      `sameday@${width} every state visible with a label and a caption`,
-      states.length === 9 && states.every((s) => s.visible && s.label && s.caption),
+      `sameday@${width} no retired state id appears in the markup`,
+      states.every((s) => !RETIRED_MARKETING_STATES.includes(s.id)),
     );
 
     /* consumer-workflow — "Connected sequence". The connector is the claim, so
@@ -523,10 +538,13 @@ async function main() {
       probe("section-order comparison detects a swapped pair",
         JSON.stringify(sections) !== JSON.stringify(swapped));
 
+      /* The control for the INVERTED assertion: prove the scan would notice if
+         a retired state came back, by comparing the live (empty) set against a
+         planted one. A control that plants nothing tests nothing. */
       const states = await page.$$eval("[data-couranr-address-state]", (els) =>
         els.map((e) => e.getAttribute("data-couranr-address-state")));
-      probe("availability-state comparison detects a missing state",
-        JSON.stringify(states) !== JSON.stringify(AVAILABILITY_STATES.slice(0, 8)),
+      probe("retired-state scan detects a state that came back",
+        JSON.stringify(states) !== JSON.stringify([RETIRED_MARKETING_STATES[0]]),
         `${states.length} rendered`);
 
       const stages = await page.$$eval(".cr-sd-track__stage", (e) => e.map((n) => n.textContent.trim()));

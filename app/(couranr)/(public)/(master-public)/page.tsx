@@ -11,10 +11,17 @@ import { routeForScreen } from "@/lib/couranr/navigation";
  * send a visitor down the right one. It is NOT the Business page with wider
  * copy and it is NOT a consumer catalogue.
  *
- * EXACTLY THREE governed regions, and the contract in `VISUAL_REGISTRY.json`
- * caps grid-dominant at zero. The obvious way to build a two-audience homepage
- * is a row of feature cards; §28 bans that template-filling, and the two
- * audience doors are one editorial hero composition rather than two tiles.
+ * EXACTLY THREE governed regions, and the contract in §27.1 caps
+ * grid-dominant at zero. The obvious way to build a two-audience homepage is a
+ * row of feature cards; §28 bans that template-filling, and the two audience
+ * doors are one editorial hero composition rather than two tiles.
+ *
+ * THE 2026-09 POSITIONING LOCK. Section 2 used to be two sentences about who
+ * the network serves. It now answers the question a first-time visitor
+ * actually arrives with — which product is mine? — and answers it on PURPOSE,
+ * not speed: both products may run same-day, and owning a business does not
+ * force a person into For Business. The edge case and the bakery example are
+ * governed copy precisely because that is the distinction people get wrong.
  *
  * Every string here comes from `MASTER_COPY` (MKT-005) and every destination
  * from `routeForScreen` (the screen source). Nothing on this page types a
@@ -109,8 +116,10 @@ export default function Page() {
 
       {/* ─── 2 ────────────────────── master-network / editorial-statement ─── */}
       {/* Typography-led by contract: no icon grid, no feature cards, no
-          metrics. TRM-001 and MKT-002 both forbid unverified proof, and there
-          is nothing here to prove — this section states what the network is. */}
+          metrics. The two sides are a definition list — the same device the
+          section already used — extended with the points, the edge case and
+          the example. `grid-dominant` stays false and that is load-bearing:
+          §28 bans turning this into four identical tiles. */}
       <section
         className="cr-mkt-editorial"
         aria-labelledby="m2-h"
@@ -120,34 +129,57 @@ export default function Page() {
         data-grid-dominant="false"
         data-product-proof="false"
       >
+        <p className="cr-master-network__brand cr-type-lead">{MASTER_COPY.brand_line}</p>
         <h2 id="m2-h" className="cr-type-marketing-section">
           {MASTER_COPY.network_heading}
         </h2>
+        <p className="cr-mkt-editorial__body cr-type-lead cr-master-network__statement">
+          {MASTER_COPY.network_statement}
+        </p>
+
         <dl className="cr-master-network">
           <div className="cr-master-network__item">
-            <dt className="cr-master-network__term">Individuals</dt>
+            <dt className="cr-master-network__term">{MASTER_COPY.network_consumer_title}</dt>
             <dd className="cr-master-network__desc cr-type-lead">
-              {MASTER_COPY.network_individuals}
+              {MASTER_COPY.network_consumer_body}
+              <ul className="cr-master-network__points">
+                {MASTER_COPY.network_consumer_points.map((point) => (
+                  <li key={point}>{point}</li>
+                ))}
+              </ul>
             </dd>
           </div>
           <div className="cr-master-network__item">
-            <dt className="cr-master-network__term">Businesses</dt>
+            <dt className="cr-master-network__term">{MASTER_COPY.network_business_title}</dt>
             <dd className="cr-master-network__desc cr-type-lead">
-              {MASTER_COPY.network_businesses}
+              {MASTER_COPY.network_business_body}
+              <ul className="cr-master-network__points">
+                {MASTER_COPY.network_business_points.map((point) => (
+                  <li key={point}>{point}</li>
+                ))}
+              </ul>
             </dd>
           </div>
         </dl>
+
+        {/* The two sentences that stop the most common misreading: that owning
+            a business routes you to For Business. It does not — the purpose of
+            the delivery does. */}
+        <p className="cr-master-network__edge cr-mkt-editorial__body">
+          {MASTER_COPY.network_edge_case}
+        </p>
+        <p className="cr-master-network__example cr-mkt-editorial__body">
+          {MASTER_COPY.network_example}
+        </p>
       </section>
 
       {/* ─── 3 ─────────── master-service-area / structured-information-block ─── */}
       {/* Consumer-NEUTRAL coverage, not the business-only service-area copy.
-          This shipped reading MARKETS_PUBLIC_COPY, which is MKT-001's sentence
-          and literally begins "Local BUSINESS delivery across …" — the exact
-          copy the work order names as the thing this region must not be. The
-          market names still come from the governed module (MKT-006 now) and are
-          not typed here. No radius, no ZIP eligibility, no polygon, no instant
-          eligibility and no Maryland coverage: SVC-002 (the boundary) is
-          UNRESOLVED, so any of those would be an invented product claim. */}
+          The market names come from the governed module (MKT-006) and are not
+          typed here. No radius, no ZIP eligibility, no polygon and no instant
+          eligibility: SVC-002 (the boundary) is UNRESOLVED, so any of those
+          would be an invented product claim. Detailed geography belongs to
+          /service-areas and is deliberately not duplicated here. */}
       <section
         className="cr-mkt-section"
         aria-labelledby="m3-h"
@@ -158,7 +190,7 @@ export default function Page() {
         data-product-proof="false"
       >
         <h2 id="m3-h" className="cr-type-marketing-section">
-          Where Couranr delivers
+          {MASTER_COPY.service_area_heading}
         </h2>
         <p className="cr-mkt-editorial__body cr-type-lead">{MARKETS_PUBLIC_COPY_NEUTRAL}</p>
         <div className="cr-mkt-cta-row">

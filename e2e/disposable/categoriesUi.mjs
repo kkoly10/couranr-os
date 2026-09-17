@@ -55,6 +55,26 @@ import {
   ANON_JWT,
 } from "./gateway.mjs";
 import { postgrestTarget } from "../../scripts/provisionPostgrest.mjs";
+import { readFileSync } from "node:fs";
+
+/**
+ * `CATEGORY_PURPOSE_COPY`, read out of its TypeScript source.
+ *
+ * This file is .mjs and cannot import the .ts registry, and transcribing the
+ * sentence is what broke A4 in the first place. Extracting it keeps the check
+ * pinned to the governed constant, so an approved copy change moves the gate
+ * with it while a REMOVED boundary still fails. Throws rather than falling back
+ * to a regex: a silently-unfound constant would make A4 assert nothing.
+ */
+function categoryPurposeCopy() {
+  const src = readFileSync(
+    path.join(path.dirname(fileURLToPath(import.meta.url)), "../../lib/couranr/categories/registry.ts"),
+    "utf8",
+  );
+  const m = src.match(/export const CATEGORY_PURPOSE_COPY\s*=\s*\n?\s*"((?:[^"\\]|\\.)*)"/);
+  if (!m) throw new Error("categoriesUi: CATEGORY_PURPOSE_COPY not found in lib/couranr/categories/registry.ts");
+  return JSON.parse(`"${m[1]}"`);
+}
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const SHOTS = path.join(ROOT, "e2e/screenshots/categories");
@@ -288,9 +308,20 @@ async function main() {
       check("A3", "the primary is NOT offered as one of its own secondaries",
         (await box(onboarding, "Florists, gifts, specialty retail").count()) === 0);
 
+      /* THE GOVERNED SENTENCE, not a transcription of it. Both alternatives of
+         the old regex — /does not limit what you can send|never limits/ — were
+         removed in ONE commit: `CATEGORY_PURPOSE_COPY` dropped the false
+         absolute "never limits what you can send" (shipment-safety rules DO
+         limit it), and OnboardingForm's hardcoded paraphrase was replaced by
+         that same constant. Nothing rendered either phrase any more, so A4
+         could never match again and this suite is not in the per-push tier.
+
+         Asserting the CONSTANT means the check follows an approved copy change
+         instead of breaking on one, while still failing if onboarding stops
+         rendering the boundary at all — which is what A4 is for. */
       const body = await mainText(onboarding);
-      check("A4", "the screen says a category does not limit what can be sent",
-        /does not limit what you can send|never limits/i.test(body));
+      check("A4", "the screen says a category does not decide what can be sent",
+        body.includes(categoryPurposeCopy()));
 
       await box(onboarding, "Repair and electronics").check();
       await box(onboarding, "Printing, signage, promotional products").check();

@@ -437,8 +437,30 @@ async function main() {
        a covering image, out of flow, behind the section's own content. The
        "hero is the only one" assertion must notice — a guard that cannot fail
        is not a guard, and this one shipped without a control the first time. */
-    await page.evaluate(() => {
-      const sec = document.querySelector('[data-couranr-section="pickup-problem"]');
+    /* THE VICTIM IS DERIVED, not named. This planted into
+       `[data-couranr-section="pickup-problem"]`, and the 2026-09
+       marketing-architecture lock deleted that section — `querySelector`
+       returned null and the whole control died on a TypeError before any
+       assertion, so the proof that Gate C can go red silently stopped
+       existing. Two sibling controls named the same section and were repaired;
+       this third one was missed because it lives in e2e/, which the per-push
+       tier never runs.
+
+       Any non-hero section will do: what the predicate looks for is a SECOND
+       photographic band, not a particular one. Picking the first section that
+       is not the hero keeps the control alive across any future reorder. */
+    const victim = await page.evaluate(() => {
+      const secs = [...document.querySelectorAll("[data-couranr-section]")]
+        .map((e) => e.getAttribute("data-couranr-section"))
+        .filter((id) => id !== "hero");
+      return secs[0] ?? null;
+    });
+    if (!victim) {
+      console.error("test:pub001 positive control FAILED — no non-hero section to plant into");
+      process.exit(1);
+    }
+    await page.evaluate((id) => {
+      const sec = document.querySelector(`[data-couranr-section="${id}"]`);
       sec.style.position = "relative";
       sec.style.isolation = "isolate";
       const img = document.createElement("img");
@@ -447,12 +469,13 @@ async function main() {
       img.style.cssText =
         "position:absolute;inset:0;width:100%;height:100%;object-fit:cover;z-index:-2";
       sec.prepend(img);
-    });
+    }, victim);
     await page.waitForFunction(
-      () => {
-        const i = document.querySelector('[data-couranr-section="pickup-problem"] img');
+      (id) => {
+        const i = document.querySelector(`[data-couranr-section="${id}"] img`);
         return !!i && i.complete && i.naturalWidth > 0;
       },
+      victim,
       { timeout: 15_000 },
     );
     await page.addScriptTag({ content: AXE_SOURCE });
@@ -467,7 +490,7 @@ async function main() {
     await browser.close();
     stopServer();
     const caughtSecondPhoto =
-      plantedPhotographic.length === 2 && plantedPhotographic.includes("pickup-problem");
+      plantedPhotographic.length === 2 && plantedPhotographic.includes(victim);
     const caughtContrast = ids.includes("color-contrast");
     const caughtH1 = h1s > 1;
     if (caughtContrast && caughtH1 && caughtSecondPhoto) {
@@ -589,7 +612,26 @@ async function main() {
   const HOTFIX_MEASURES = [
     { sel: ".cr-hero__h1-lead", width: 690, font: 60 },
     { sel: ".cr-hero__h1-accent", width: 888, font: 49.8 },
-    { sel: ".cr-mkt-editorial > h2", width: 544, font: 44 },
+    /* RETIRED, not re-pointed — and that distinction is the whole correction.
+       This row was `.cr-mkt-editorial > h2` at 544px/44px: the FIRST such
+       heading on the page, which was `pickup-problem`'s `cr-type-statement`
+       h2. The 2026-09 lock deleted that section, the bare selector silently
+       re-pointed at `product-choice`'s heading, and the measure failed at
+       480px/40px with no style having changed (`.cr-mkt-editorial > h1, > h2
+       { max-width: 16ch }` is byte-identical base and HEAD).
+
+       Re-pointing it was tried and is wrong: the two `.cr-mkt-editorial`
+       sections that remain on /business (`product-choice`, `shipment-safety`)
+       both use `cr-type-marketing-section`, not `cr-type-statement`, so they
+       render at a different type scale and any 544/44 expectation on them
+       would be a fabricated number. No element on this page now carries the
+       combination this row measured.
+
+       The CSS RULE is still exercised — by both of those headings — so the
+       hotfix is not unguarded; what is gone is this specific recorded
+       measurement. Re-pin it from a real browser measurement at the MVP
+       completion pass, alongside the PUB_001_VISUAL_DRIFT_LEDGER row for
+       `pickup-problem`, which is now equally stale. */
     { sel: ".cr-mkt-proof__copy p", width: 806, font: 20 },
   ];
   const measured = await page.evaluate(
@@ -656,9 +698,15 @@ async function main() {
        1440-only assertion. It runs before `heroContrast`, which injects a
        stylesheet and reloads. */
     const photographic = await photographicSections(cpage);
-    const expected = CONTROL ? ["hero", "pickup-problem"] : ["hero"];
+    /* Under CONTROL a SECOND photographic section is planted and its identity
+       is derived from the live page (see the control block above), so this
+       asserts the COUNT and that the hero leads — naming the victim here would
+       reintroduce the hardcode that the section deletion already broke once. */
+    const ok = CONTROL
+      ? photographic.length === 2 && photographic[0] === "hero"
+      : JSON.stringify(photographic) === JSON.stringify(["hero"]);
     check(
-      JSON.stringify(photographic) === JSON.stringify(expected),
+      ok,
       `@${width} the hero is the only section painting text over photography, so ` +
         `heroContrast covers all of it (found: ${photographic.join(", ") || "none"})`,
     );

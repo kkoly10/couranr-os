@@ -152,6 +152,47 @@ function violations(source: string, rules: Rule[] = RULES): { rule: string; cont
   return out;
 }
 
+/**
+ * THE ONE CARVE-OUT, and what pays for it.
+ *
+ * `medical-category` comes from `ui_screen_registry.json`: "Do not advertise
+ * medical or prohibited categories." One public file exists whose entire job
+ * is to name the categories Couranr REFUSES — `prohibitedSummary.ts`, the
+ * keyed rendering of `PROHIBITED_CLASSES` that `/sameday` §6 prints. Saying
+ * "Prescription medication" there is that rule being obeyed, not broken.
+ *
+ * The `allow` window cannot express this: it looks ±80 characters around the
+ * match, and inside a 23-entry `Record` the neighbours are other labels, not a
+ * prohibition marker. So the carve-out is explicit, it is ONE file and ONE
+ * rule, and the block below pays for it three ways — the file must still be
+ * clean under every OTHER rule, each match must sit inside the derived
+ * vocabulary rather than in prose, and no other public file may claim it.
+ */
+const PROHIBITION_VOCABULARY = "lib/couranr/public/prohibitedSummary.ts";
+const CARVED_OUT_RULE = "medical-category";
+
+/**
+ * The carve-out is a NARROWED RULE, not a dropped one.
+ *
+ * Removing `medical-category` outright for this file was wider than the
+ * compensating assertion claimed: the rule's pattern is
+ * /pharmac|prescription|medical delivery/i, and dropping it left `pharmac` and
+ * `medical delivery` unguarded in a file that renders on a public page — so an
+ * actual advertisement placed there would have shipped green. Only the
+ * `prescription` alternative needs an exemption, and only because the
+ * vocabulary's own label is "Prescription medication".
+ */
+const NARROWED_MEDICAL_RULE: Rule = {
+  name: CARVED_OUT_RULE,
+  pattern: /pharmac|medical delivery/i,
+};
+
+function rulesFor(relativePath: string): Rule[] {
+  return relativePath === PROHIBITION_VOCABULARY
+    ? RULES.map((r) => (r.name === CARVED_OUT_RULE ? NARROWED_MEDICAL_RULE : r))
+    : RULES;
+}
+
 describe("public surface carries no prohibited claim", () => {
   const files = PUBLIC_TREES.flatMap((t) => walk(path.join(ROOT, t)));
 
@@ -162,14 +203,85 @@ describe("public surface carries no prohibited claim", () => {
   });
 
   for (const f of files) {
-    it(`${path.relative(ROOT, f)} is clean`, () => {
-      const found = violations(readFileSync(f, "utf8"));
+    const rel = path.relative(ROOT, f);
+    it(`${rel} is clean`, () => {
+      const found = violations(readFileSync(f, "utf8"), rulesFor(rel));
       expect(
         found,
         found.map((v) => `${v.rule}: ${v.context}`).join("; ")
       ).toEqual([]);
     });
   }
+});
+
+describe("the prohibition-vocabulary carve-out is paid for", () => {
+  const rel = PROHIBITION_VOCABULARY;
+  const abs = path.join(ROOT, rel);
+  const src = readFileSync(abs, "utf8");
+
+  it("the carved-out file exists and is in a scanned tree", () => {
+    // A carve-out for a file that moved is a rule silently disabled for
+    // nothing, and it would stay green forever.
+    const files = PUBLIC_TREES.flatMap((t) => walk(path.join(ROOT, t))).map((f) => path.relative(ROOT, f));
+    expect(files).toContain(rel);
+  });
+
+  it("only ONE rule is narrowed, and only for that file", () => {
+    // Same rule COUNT — the rule is narrowed in place, not removed.
+    expect(rulesFor(rel).map((r) => r.name)).toEqual(RULES.map((r) => r.name));
+    expect(rulesFor(rel).find((r) => r.name === CARVED_OUT_RULE)!.pattern.source)
+      .not.toBe(RULES.find((r) => r.name === CARVED_OUT_RULE)!.pattern.source);
+    expect(rulesFor("app/(couranr)/(public)/(consumer-public)/sameday/page.tsx")).toBe(RULES);
+    expect(rulesFor("lib/couranr/public/governed.ts")).toBe(RULES);
+  });
+
+  it("the file is still clean under every other rule", () => {
+    const found = violations(src, rulesFor(rel));
+    expect(found, found.map((v) => `${v.rule}: ${v.context}`).join("; ")).toEqual([]);
+  });
+
+  it("names the medical category ONLY as a refusal, never as an offer", () => {
+    /* Every `medical-category` match must be a key or a value of the derived
+       vocabulary. A sentence of marketing prose in this file — which is what
+       the carve-out would otherwise wave through — fails here. */
+    const rule = RULES.find((r) => r.name === CARVED_OUT_RULE)!;
+    const hits = violations(src, [rule]);
+    expect(hits.length).toBeGreaterThan(0);
+    for (const h of hits) {
+      expect(
+        /prescription_medication|"Prescription medication"/.test(h.context),
+        `medical-category match outside the derived vocabulary: ${h.context}`,
+      ).toBe(true);
+    }
+    // And the refusal framing is stated in the copy the section renders with it.
+    expect(src).not.toMatch(/deliver\w*\s+(your\s+)?prescription/i);
+    expect(src).not.toMatch(/pharmac/i);
+  });
+
+  it("the narrowed rule still rejects pharmacy and medical-delivery copy IN THAT FILE", () => {
+    /* The half of the carve-out that was missing. `prescription` is exempt
+       because the vocabulary label needs it; `pharmac` and `medical delivery`
+       are not, and an advertisement using either inside this file must still
+       be caught. */
+    for (const planted of [
+      'const blurb = "Couranr runs pharmacy delivery across the area.";',
+      'const blurb = "Ask about medical delivery for your practice.";',
+    ]) {
+      expect(violations(planted, rulesFor(rel)).map((v) => v.rule), planted)
+        .toContain(CARVED_OUT_RULE);
+    }
+    // And the one phrase the exemption exists for still passes.
+    expect(violations('prescription_medication: "Prescription medication",', rulesFor(rel)))
+      .toEqual([]);
+  });
+
+  it("the carve-out does not disable the rule for the pages", () => {
+    // The mutation control that matters: an ADVERTISEMENT on a real public
+    // page must still be rejected.
+    const planted = 'const copy = "Couranr delivers your prescription the same day.";';
+    expect(violations(planted, rulesFor("app/(couranr)/(public)/(consumer-public)/sameday/page.tsx")).map((v) => v.rule))
+      .toContain(CARVED_OUT_RULE);
+  });
 });
 
 describe("governed.ts agrees with the root decision registry", () => {
