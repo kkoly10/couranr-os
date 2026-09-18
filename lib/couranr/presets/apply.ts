@@ -64,7 +64,15 @@ export type PresetSeed = Partial<{
   payerType: "merchant" | "customer";
 }>;
 
-/** Which preset fields reach the form, for copy that tells the merchant the truth. */
+/**
+ * The ACP-025 fields this build CAN place on a form.
+ *
+ * Not UI copy — the merchant-facing names live in `PRESET_FIELD_LABEL`. This is
+ * the accounting half of the seven-field contract: together with
+ * `UNAPPLIED_PRESET_FIELDS` it must name all seven, and a test asserts exactly
+ * that, so adding a suggestable field without deciding where it goes fails
+ * rather than silently doing nothing.
+ */
 export const APPLICABLE_PRESET_FIELDS = [
   "commonItem",
   "packageCount",
@@ -76,6 +84,13 @@ export const APPLICABLE_PRESET_FIELDS = [
 /**
  * Preset fields deliberately NOT applied, with the reason, so the UI can say so
  * rather than leaving a merchant to wonder why what they saved did nothing.
+ *
+ * These two never reach `PresetSeed` at all — `buildPresetSeed` has nowhere to
+ * put them — so they cannot come out of `planPresetApplication` either. They
+ * are read straight off the BODY by `describeUnapplied`, which is the only
+ * reason this table earns its place: for a while it existed, documented exactly
+ * this promise, and was read by nothing but its own test, which meant a
+ * merchant whose preset carried vehicle needs got silence.
  */
 export const UNAPPLIED_PRESET_FIELDS: Readonly<Record<string, string>> = {
   vehicleCapabilities:
@@ -83,6 +98,53 @@ export const UNAPPLIED_PRESET_FIELDS: Readonly<Record<string, string>> = {
   requiredQuestions:
     "Required questions are not part of the delivery form yet.",
 };
+
+/** Merchant-facing names for the two fields that never reach the form. */
+const UNAPPLIED_PRESET_FIELD_LABEL: Readonly<Record<string, string>> = {
+  vehicleCapabilities: "Vehicle needs",
+  requiredQuestions: "Questions to ask",
+};
+
+/** Why a seed field the form COULD hold was still not applied. */
+const SEED_NOT_APPLIED_REASON: Readonly<Partial<Record<keyof PresetSeed, string>>> = {
+  pickupDescription: "You describe the shipment in your own words on this form.",
+  payerType: "You choose who pays on this form.",
+};
+
+/** One thing a preset carried, and the reason it did not reach the form. */
+export type UnappliedField = { label: string; reason: string };
+
+/**
+ * Everything the preset holds that this form did not fill, each with its reason.
+ *
+ * Two sources, because there are two ways a value can fail to land: a seed key
+ * this build refuses to apply (`payerType`, or a description on a form with no
+ * description field), and a body key that never became a seed at all (vehicle
+ * needs, required questions). A merchant does not care which kind theirs is —
+ * they care that the thing they saved did nothing and nobody said why.
+ */
+export function describeUnapplied(
+  notApplied: readonly (keyof PresetSeed)[],
+  body: PresetBody | null | undefined,
+): UnappliedField[] {
+  const out: UnappliedField[] = notApplied.map((k) => ({
+    label: PRESET_FIELD_LABEL[k],
+    reason: SEED_NOT_APPLIED_REASON[k] ?? "This form asks for it directly.",
+  }));
+
+  if (body && typeof body === "object") {
+    for (const key of Object.keys(UNAPPLIED_PRESET_FIELDS)) {
+      const value = (body as Record<string, unknown>)[key];
+      if (Array.isArray(value) && value.length > 0) {
+        out.push({
+          label: UNAPPLIED_PRESET_FIELD_LABEL[key] ?? key,
+          reason: UNAPPLIED_PRESET_FIELDS[key],
+        });
+      }
+    }
+  }
+  return out;
+}
 
 const PAYER_TYPES = new Set(["merchant", "customer"]);
 

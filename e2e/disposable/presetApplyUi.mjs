@@ -505,6 +505,39 @@ async function main() {
     );
     await page3.screenshot({ path: path.join(SHOTS, "03-withdrawn-proof.png"), fullPage: true });
 
+    /*
+     * A saved VEHICLE REQUIREMENT cannot reach this form — vehicle suitability
+     * is server-authoritative and decided at pricing. For a while it was simply
+     * dropped in silence, which is the same "nothing happened" this whole build
+     * argues against. Proven here through the real jsonb round-trip, because
+     * the field is an ARRAY and the seed builder never carries it.
+     */
+    const vehicleId = makePreset(bizId, owner, "Refrigerated run", {
+      commonItem: "Chilled cake",
+      packageCount: 1,
+      vehicleCapabilities: ["refrigerated"],
+    });
+    const page4 = await signIn(ownerEmail);
+    await page4.goto(`${BASE}/app/business/deliveries/new`, { waitUntil: "domcontentloaded" });
+    await page4.getByTestId("preset-start-open").waitFor({ state: "visible", timeout: 60_000 });
+    await page4.getByTestId("preset-start-open").click();
+    await page4.getByTestId("preset-start-select").waitFor({ state: "visible", timeout: 30_000 });
+    await page4.getByTestId("preset-start-select").selectOption(vehicleId);
+    await page4.getByTestId("preset-start-apply").click();
+    await page4.getByTestId("preset-start-filled").waitFor({ state: "visible", timeout: 30_000 });
+    const unapplied = await page4.getByTestId("preset-start-not-applied").innerText();
+    check(
+      "PA-22",
+      "a saved vehicle requirement is explained, not silently dropped",
+      /Vehicle needs/i.test(unapplied) && /priced/i.test(unapplied),
+      unapplied.replace(/\s+/g, " ").slice(0, 90)
+    );
+    check(
+      "PA-23",
+      "and it is never presented as something the merchant entered",
+      !/Vehicle/i.test(await text(page4, "preset-start-kept"))
+    );
+
     console.log(`\n  ${passed} passed, ${failed} failed`);
     if (failed > 0) process.exitCode = 1;
   } finally {

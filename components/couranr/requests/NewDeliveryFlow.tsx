@@ -32,6 +32,7 @@ import { PresetStartCard, type PresetApplicationOutcome, type ResolvedPreset } f
 import {
   PRESET_FIELD_LABEL,
   buildPresetSeed,
+  describeUnapplied,
   planPresetApplication,
   type PresetSeed,
 } from "@/lib/couranr/presets/apply";
@@ -548,7 +549,10 @@ export function NewDeliveryFlow({
         presetName: preset.name,
         filled,
         keptAsEntered: skipped.map((k) => PRESET_FIELD_LABEL[k]),
-        notApplied: notApplied.map((k) => PRESET_FIELD_LABEL[k]),
+        /* Reads the BODY as well as the plan: vehicle needs and required
+           questions never become seed values, so a plan alone cannot report
+           them and the merchant would hear nothing about them at all. */
+        notApplied: describeUnapplied(notApplied, preset.body as PresetBody),
       };
     },
     [pickupDescription, pickupPackageCount, pickupHandlingNotes, proofMethodTouched, isOperations],
@@ -796,7 +800,23 @@ export function NewDeliveryFlow({
           decision about whose presets staff may spend, not a UI change.
         */}
         {!isOperations && businessAccountId ? (
-          <PresetStartCard businessAccountId={businessAccountId} onApply={applyPreset} />
+          /*
+             KEYED ON THE BUSINESS so it REMOUNTS when the merchant changes who
+             the delivery is for. That control sits above this card, and a
+             merchant on more than one business can change it with the picker
+             already open. Without the key the card kept the other business's
+             list, its chosen id and its outcome: applying one was refused by
+             the server — correctly, the tenancy check is what it is — but the
+             merchant was told it "may have been archived or removed", which is
+             false and sends them hunting for a problem that does not exist.
+             Remounting is the whole fix; every piece of that state is the
+             card's own and none of it survives a business change.
+          */
+          <PresetStartCard
+            key={businessAccountId}
+            businessAccountId={businessAccountId}
+            onApply={applyPreset}
+          />
         ) : null}
 
         <Card>

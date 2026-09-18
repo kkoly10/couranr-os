@@ -25,6 +25,7 @@
 import * as React from "react";
 import { Alert, Button, Card, CardHeader, Cluster, Stack, Text } from "@/components/couranr/primitives";
 import { Field, Select } from "@/components/couranr/forms";
+import type { UnappliedField } from "@/lib/couranr/presets/apply";
 import {
   fetchPresetForApplication,
   fetchPresetsForDelivery,
@@ -44,10 +45,12 @@ export type PresetApplicationOutcome = {
   keptAsEntered: string[];
   /**
    * Carried by the preset but never applied by this build — reported on its own
-   * line, because saying "left as you entered them" about a field the merchant
-   * never touched would be the form telling them something untrue.
+   * line WITH THE REASON, because saying "left as you entered them" about a
+   * field the merchant never touched would be the form telling them something
+   * untrue, and saying nothing at all is how a saved vehicle requirement
+   * quietly does nothing for weeks.
    */
-  notApplied: string[];
+  notApplied: UnappliedField[];
 };
 
 export function PresetStartCard({
@@ -88,6 +91,12 @@ export function PresetStartCard({
     setOpen(true);
     setOutcome(null);
     setFailure(null);
+    /* The list is about to be refetched, so a choice made against the PREVIOUS
+       list is not a choice against this one. Keeping it left `chosen` pointing
+       at a preset the reloaded list might no longer contain — the select showed
+       nothing selected while "Use this preset" stayed enabled, which is a
+       button promising to apply something the merchant cannot see. */
+    setChosen("");
     load();
   }
 
@@ -167,23 +176,38 @@ export function PresetStartCard({
                 </Select>
               )}
             </Field>
-            <Cluster gap={2}>
-              <Button
-                variant="secondary"
-                type="button"
-                loading={busy}
-                disabled={!chosen}
-                onClick={apply}
-                data-testid="preset-start-apply"
-              >
-                Use this preset
-              </Button>
-              <Button variant="ghost" type="button" onClick={() => setOpen(false)}>
-                Cancel
-              </Button>
-            </Cluster>
           </>
         ) : null}
+
+        {/*
+          CANCEL LIVES OUT HERE, not beside the chooser. It used to sit inside
+          the "there are presets" branch, so the two states that need it most —
+          a lookup that failed, and a merchant with no presets yet — rendered an
+          expanded card with a message and no control of any kind. Opening it
+          was a one-way door on the page.
+        */}
+        <Cluster gap={2}>
+          {options !== null && options.length > 0 ? (
+            <Button
+              variant="secondary"
+              type="button"
+              loading={busy}
+              disabled={!chosen}
+              onClick={apply}
+              data-testid="preset-start-apply"
+            >
+              Use this preset
+            </Button>
+          ) : null}
+          <Button
+            variant="ghost"
+            type="button"
+            onClick={() => setOpen(false)}
+            data-testid="preset-start-cancel"
+          >
+            Cancel
+          </Button>
+        </Cluster>
 
         {outcome ? (
           <Alert tone="success" title={`Filled in from “${outcome.presetName}”`}>
@@ -203,10 +227,14 @@ export function PresetStartCard({
                 </Text>
               ) : null}
               {outcome.notApplied.length > 0 ? (
-                <Text muted data-testid="preset-start-not-applied">
-                  Not filled in: {outcome.notApplied.join(", ")}. You enter those directly on
-                  this form.
-                </Text>
+                <Stack gap={1} data-testid="preset-start-not-applied">
+                  <Text muted>Not filled in:</Text>
+                  {outcome.notApplied.map((f) => (
+                    <Text key={f.label} muted>
+                      {f.label} — {f.reason}
+                    </Text>
+                  ))}
+                </Stack>
               ) : null}
             </Stack>
           </Alert>

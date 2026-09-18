@@ -11,6 +11,7 @@ import {
   APPLICABLE_PRESET_FIELDS,
   PRESET_FIELD_LABEL,
   UNAPPLIED_PRESET_FIELDS,
+  describeUnapplied,
   buildPresetSeed,
   planPresetApplication,
 } from "@/lib/couranr/presets/apply";
@@ -202,5 +203,50 @@ describe("planPresetApplication — fill empty only", () => {
     // …and the fields that DO have a home are still filled.
     expect(apply.pickupPackageCount).toBe("3");
     expect(apply.pickupHandlingNotes).toBe("Keep upright");
+  });
+});
+
+/*
+ * This table used to be read by nothing but the test below. It documented, in
+ * as many words, that the UI would explain an unapplied field — and a merchant
+ * whose preset carried vehicle needs was told nothing at all.
+ */
+describe("describeUnapplied — the reason reaches the merchant", () => {
+  it("names a vehicle requirement the form cannot apply, with its reason", () => {
+    const out = describeUnapplied([], {
+      commonItem: "Roses",
+      vehicleCapabilities: ["refrigerated"],
+    } as never);
+    expect(out).toEqual([
+      {
+        label: "Vehicle needs",
+        reason: UNAPPLIED_PRESET_FIELDS.vehicleCapabilities,
+      },
+    ]);
+  });
+
+  it("says nothing about a field the preset does not carry", () => {
+    expect(describeUnapplied([], { commonItem: "Roses" } as never)).toEqual([]);
+    // An empty array is not a saved requirement.
+    expect(describeUnapplied([], { vehicleCapabilities: [] } as never)).toEqual([]);
+  });
+
+  it("reports both kinds together — a refused seed value and a homeless body value", () => {
+    const out = describeUnapplied(["payerType"], {
+      requiredQuestions: ["Which entrance?"],
+    } as never);
+    expect(out.map((f) => f.label)).toEqual(["Who pays", "Questions to ask"]);
+    expect(out.every((f) => f.reason.length > 0)).toBe(true);
+  });
+
+  it("gives every reason in merchant language, with no field names", () => {
+    const out = describeUnapplied(["payerType", "pickupDescription"], {
+      vehicleCapabilities: ["refrigerated"],
+      requiredQuestions: ["Which entrance?"],
+    } as never);
+    expect(out).toHaveLength(4);
+    for (const f of out) {
+      expect(`${f.label} ${f.reason}`).not.toMatch(/pickup[A-Z]|payerType|vehicleCapabilities|requiredQuestions|body/);
+    }
   });
 });
