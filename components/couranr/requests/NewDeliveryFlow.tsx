@@ -911,10 +911,10 @@ export function NewDeliveryFlow({
 
           <Grid columns={2}>
             <Field
-              label="Weight"
+              label="Shipment weight"
               required
               error={fieldErrors.weightLb ?? fieldErrors.weightBand}
-              hint="Exact pounds when you know them; otherwise the honest range."
+              hint="Choose the exact weight if you know it, or select the closest range."
             >
               {(p) => (
                 <Select
@@ -931,7 +931,7 @@ export function NewDeliveryFlow({
               )}
             </Field>
             {weightMode === "exact" ? (
-              <Field label="Weight (lb)" required error={fieldErrors.weightLb}>
+              <Field label="Exact weight (lb)" required error={fieldErrors.weightLb}>
                 {(p) => (
                   <Input
                     {...p}
