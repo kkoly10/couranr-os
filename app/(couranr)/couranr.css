@@ -3868,27 +3868,41 @@
    the text rather than centred in a row that is mostly empty beside it. */
 .cr-mkt-section[data-couranr-section="master-service-area"] .cr-mkt-cta-row { justify-content: flex-start; }
 
-/* PUB-012 TAKES ITS SUPPORTING COPY OFF THE LEGACY GREY.
-   `--couranr-text-muted` is #667085: 4.67:1 on this ground, clearing AA by
-   0.17 and reading washed out at the sizes this page is actually read at. On a
-   homepage whose entire job is routing a visitor to one of two products, the
-   sentences doing that routing are not supporting copy, and there is no rank
-   they needed grey to express — size and weight already carry it.
+/* THE MARKETING SURFACE COMES OFF THE LEGACY GREY, by owner decision.
+   `--couranr-text-muted` is #667085 — 4.67:1 on this ground. It clears AA by
+   0.17 and reads washed out at the sizes these pages are actually read at,
+   which on marketing is overwhelmingly a phone.
 
-   SCOPED TO THIS PAGE'S GOVERNED SECTIONS, deliberately, rather than changed on
-   `.cr-mkt-editorial__body` itself. That class serves the whole marketing
-   family, and promoting every body paragraph on every page is a bigger call
-   than this one. The nav links in shell.css are also left alone: muted is
-   their RESTING state and `--couranr-text` is their hover state, so darkening
-   them would erase an affordance rather than fix a legibility problem — and
-   that shell is shared with the merchant and operations apps.
+   ONE RULE RATHER THAN TWENTY-SEVEN. Enumerating the muted text across
+   /, /sameday, /business, /pricing, /how-it-works, /businesses,
+   /service-areas and /legal found it spread over 27 different classes —
+   `cr-text`, bare `li` and `dd`, `cr-mkt-editorial__body`, and a long tail of
+   per-section `__note` / `__detail` / `__tag` classes. Overriding each would
+   be a large diff that a later class could silently escape. Redefining the
+   token inside the marketing wrapper covers every one of them, including
+   classes nobody has written yet.
 
-   After this, no wording inside PUB-012's three regions is muted. Hierarchy on
-   this page is carried entirely by size and weight. */
-[data-couranr-section="master-hero"] .cr-mkt-editorial__body,
-[data-couranr-section="master-service-area"] .cr-mkt-editorial__body {
-  color: var(--couranr-text);
-}
+   THE MECHANISM IS THIS FILE'S OWN. `.cr-mkt-payer`,
+   `.cr-mkt-proof__panel-head` and `.cr-mkt-channelstrip__item` already rescope
+   this exact token to `--couranr-text-muted-tint`, for the same reason: a
+   measured contrast failure. This is the same move at the surface level.
+
+   SCOPED TO THE PUBLIC SURFACE, not to `.cr-mkt`. Every public route stamps
+   `data-couranr-surface="public"` on `.cr-shell`; the merchant app stamps
+   `merchant` and Operations stamps `operations`. Keying on that attribute
+   reaches the legal documents too — they are public pages that carry no
+   `.cr-mkt` wrapper — and makes it structurally impossible for this to leak
+   into the app surfaces, whose muted text is dense operational UI where tonal
+   rank does real work and which were no part of this decision.
+
+   VERIFIED SAFE BEFORE APPLYING: no muted text anywhere on the marketing pages
+   sits on a dark ground, so darkening cannot invert a contrast pair. Checked in
+   the browser across all eight routes, not assumed.
+
+   The cost is that tonal hierarchy is gone from these pages — rank is now
+   carried by size, weight and position alone. That is the owner's call and it
+   is the same trade the master-network pass made deliberately. */
+.cr-shell[data-couranr-surface="public"] { --couranr-text-muted: var(--couranr-text); }
 
 /* THE FORK, DRAWN AS A FORK.
    This section asks the reader to self-select in about two seconds, and it was
@@ -4000,13 +4014,11 @@
 /* The product distinction, immediately under the question it answers. Body
    measure rather than the section's 24ch statement measure — it is two
    sentences that must read as one thought. */
-/* FULL CONTRAST, OVERRIDING `.cr-mkt-editorial__body`'s muted default. This
-   sentence is the ANSWER to the question directly above it — the one line that
-   tells a reader which product is theirs — and it was inheriting 4.67:1 grey
-   from a shared body class. Overridden here rather than on
-   `.cr-mkt-editorial__body` itself, because that class is used across the
-   marketing family and this is a judgement about THIS sentence's rank, not
-   about body copy everywhere. */
+/* FULL CONTRAST. This sentence is the ANSWER to the question directly above
+   it — the one line telling a reader which product is theirs — and it was
+   inheriting 4.67:1 grey from a shared body class. Stated explicitly here as
+   well as by the surface rule above, because its rank does not depend on that
+   rule staying in place. */
 .cr-master-network__statement {
   max-width: 54ch;
   color: var(--couranr-text);

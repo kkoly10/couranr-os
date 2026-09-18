@@ -96,7 +96,11 @@
   border-radius: var(--couranr-radius-sm);
   font-size: var(--couranr-text-sm);
   font-weight: var(--couranr-weight-medium);
-  color: var(--couranr-text-muted);
+  /* Full contrast at rest, by owner decision: #667085 is 4.67:1 and reads faint
+     at 14px. Safe to darken because NEITHER state signal depended on the resting
+     colour — hover carries a background change, and the current page carries the
+     inset underline below. Both survive. */
+  color: var(--couranr-text);
   text-decoration: none;
 }
 .cr-topbar__link:hover { color: var(--couranr-text); background: var(--couranr-surface-sunken); }
