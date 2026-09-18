@@ -752,8 +752,27 @@ try {
      the delivery's commercial snapshot, frozen by
      delivery_commercial_snapshot_is_immutable. Trying to change it afterwards
      is refused — which is itself why a protected handoff can never acquire
-     leave_at_door after the fact, and why F6 has to build one that way from
-     the start to reach the rule at all. */
+     leave_at_door after the fact.
+
+     WITHDRAWN METHODS ARE THE ONE EXCEPTION, and they have to be. leave_at_door
+     is no longer offered: normalizeDeliveryRequestInput refuses it at intake and
+     couranr_create_delivery_from_capture (20260918010000) refuses to convert a
+     request that still carries it, so seeding one and converting it — which is
+     how F6 used to reach the rule — now fails at the conversion. The product can
+     no longer build this shape at all, which is exactly what that migration is
+     for.
+
+     The rule F6 proves still governs the deliveries history already left behind,
+     so the fixture builds that shape the way history did: seed a selectable
+     method, convert through the normal command, then restore the historical
+     value with the snapshot trigger stood down for that one statement. Safe to
+     do here because the protected-handoff rule fires only on the
+     at_dropoff -> delivered transition, which is F6's own deliver() call — every
+     intermediate fixture update passes straight through it.
+
+     The alternative was to delete F6, and a withdrawn method is precisely when a
+     rule about it stops being exercised by accident. */
+  const WITHDRAWN_PROOF_METHODS = new Set(["leave_at_door"]);
   /* `seed` is the same story as `proofMethod` one level up: `shipment` and
      `vehicle_requirement` are in the immutable commercial snapshot, so a
      fixture that needs a BOX TRUCK or a heavy load has to be born with one.
@@ -761,11 +780,31 @@ try {
      by delivery_commercial_snapshot_is_immutable. */
   const custodyChain = async (marker, cents, level, state = "at_pickup", proofMethod = undefined,
                               seed = undefined) => {
+    const grandfathered = Boolean(proofMethod) && WITHDRAWN_PROOF_METHODS.has(proofMethod);
     const c = await seedCanonicalDeliveryChain(psqlTransport(psql), {
       businessId: biz, actorUserId: usr, marker, recipientName: "TC recipient",
-      ...(proofMethod ? { proofMethod } : {}),
+      ...(proofMethod ? { proofMethod: grandfathered ? "photo_or_pin" : proofMethod } : {}),
       ...(seed || {}),
     });
+    if (grandfathered) {
+      /* All THREE rows. The request is what the conversion guard reads, the
+         delivery is what the dropoff rule reads, and the quote's
+         service_configuration_snapshot is what couranr_enforce_delivery_quote
+         compares the delivery against on every later update — leave any one of
+         them behind and the fixture dies of delivery_quote_mismatch long before
+         it reaches the rule. History wrote all three together. */
+      sql(`set session_replication_role=replica;
+           update public.couranr_delivery_requests set proof_method='${proofMethod}'
+             where id='${c.requestId}';
+           update public.couranr_quote_versions
+              set service_configuration_snapshot =
+                  jsonb_set(service_configuration_snapshot,'{proofMethod}',
+                            to_jsonb('${proofMethod}'::text))
+            where request_id='${c.requestId}';
+           update public.couranr_deliveries set proof_method='${proofMethod}'
+             where id='${c.deliveryId}';
+           set session_replication_role=default;`);
+    }
     if (level !== null) govern(c.requestId, cents, level);
     sql(`update public.couranr_deliveries
            set fulfillment_state='${state}' where id='${c.deliveryId}'`);
