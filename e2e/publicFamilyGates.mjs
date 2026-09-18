@@ -62,6 +62,17 @@ const BASE = `http://127.0.0.1:${PORT}`;
 const ART = path.join(ROOT, "e2e/artifacts/pub-family");
 const CONTROL = process.argv.includes("--positive-control");
 
+/* `<CouranrAnalytics/>` injects Vercel Analytics, whose script the VERCEL EDGE
+   serves at /_vercel/insights/script.js. Nothing in this repo answers that path,
+   so `next start` 404s it on any machine that is not Vercel and Chromium logs a
+   console error on EVERY page in this family. The deployed site is clean.
+
+   Same exemption, same reasoning and same scope as e2e/pub001Gates.mjs: the
+   platform prefix only, `console` messages only — never `pageerror` — counted in
+   the check's own message so it cannot grow silently, and paired with a
+   per-width assertion that every non-platform subresource resolves. */
+const PLATFORM_SERVED = /\/_vercel\//;
+
 const require = createRequire(import.meta.url);
 const { chromium } = require(
   process.env.PLAYWRIGHT_PATH || "/opt/node22/lib/node_modules/playwright",
@@ -428,8 +439,23 @@ async function main() {
     for (const width of WIDTHS) {
       const tab = await browser.newPage({ viewport: { width, height: 900 } });
       const errors = [];
+      const platform = [];
       tab.on("pageerror", (e) => errors.push(e.message));
-      tab.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+      tab.on("console", (m) => {
+        if (m.type() !== "error") return;
+        /* The failed subresource's URL is in location(), NOT in text() — text()
+           is the generic "Failed to load resource: ... 404" with no URL in it. */
+        const where = m.location()?.url || "";
+        (PLATFORM_SERVED.test(where) ? platform : errors).push(`${m.text()} ${where}`.trim());
+      });
+      /* The evidence the exemption rests on: a 404 that never reaches the
+         console is invisible to the listener above. */
+      const badResponses = [];
+      tab.on("response", (r) => {
+        if (r.status() >= 400 && !PLATFORM_SERVED.test(r.url())) {
+          badResponses.push(`${r.status()} ${r.url()}`);
+        }
+      });
 
       const res = await tab.goto(`${BASE}${page.route}`, { waitUntil: "networkidle" });
       await tab.evaluate(() => document.fonts.ready);
@@ -441,6 +467,10 @@ async function main() {
           d.style.cssText = "width:200vw;height:4px";
           document.body.appendChild(d);
         });
+        /* And an error of the kind the page itself could emit, to prove the
+           /_vercel/* exemption above still counts everything else. */
+        await tab.evaluate(() => console.error("planted: pub-family control console error"));
+        await new Promise((r) => setTimeout(r, 250));
       }
 
       const m = await tab.evaluate(() => {
@@ -484,7 +514,16 @@ async function main() {
         m.smallTargets.length === 0,
         `@${width} button controls meet their §18 height (${m.smallTargets.join(", ") || "all pass"})`,
       );
-      check(errors.length === 0, `@${width} no console errors (${errors.slice(0, 1).join("") || "none"})`);
+      check(
+        errors.length === 0,
+        `@${width} no console errors (${errors.slice(0, 1).join("") || "none"})` +
+          (platform.length ? ` [${platform.length} platform-served exempt: /_vercel/*]` : ""),
+      );
+      check(
+        badResponses.length === 0,
+        `@${width} every non-platform subresource resolved ` +
+          `(${badResponses.slice(0, 2).join("; ") || "none failed"})`,
+      );
 
       if (width === WIDTHS[WIDTHS.length - 1]) {
         await tab.screenshot({

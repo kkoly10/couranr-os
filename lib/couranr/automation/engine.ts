@@ -8,6 +8,7 @@ import {
   isFulfillmentFailure,
 } from "@/lib/couranr/fulfillment/commands";
 import { logServerFailure, newCorrelationId } from "@/lib/couranr/errors";
+import { notifyConsumerLifecycle } from "@/lib/couranr/email/consumerLifecycle";
 
 assertServerOnly("lib/couranr/automation/engine.ts");
 
@@ -56,15 +57,61 @@ function isRpcFailure<T>(
   return result.ok === false;
 }
 
+export interface AdvanceOptions {
+  /** Test seam only, threaded to the email provider. Production passes nothing. */
+  fetchImpl?: typeof fetch;
+}
+
 /**
  * Advance one request through the parts of the normal lane that do not depend
- * on wall-clock dispatch.
+ * on wall-clock dispatch, then send whatever customer notifications that
+ * request now owes.
  *
  * Safe to call after submit, payer authorization, readiness changes, from a
  * webhook, and from the periodic catch-up worker. Every database mutation is
  * idempotent and re-checks the canonical request/quote itself.
+ *
+ * WHY NOTIFICATION LIVES HERE. `confirmed` is PRODUCED inside this path, by
+ * `couranr_try_auto_accept_standard_request`, and this function is already
+ * called from every canonical seam that can change a request plus the 5-minute
+ * cron. It is the only place in the codebase where "the state just changed" and
+ * "we will be called again if this does not work" are both true. The recipient
+ * invitation previously lived in `getConsumerSendView`, a GET projection — so a
+ * provider blip 500'd the sender's status page, and a sender who closed the tab
+ * meant the recipient was never emailed at all.
  */
 export async function advanceAutomaticFulfillment(
+  requestId: string,
+  options?: AdvanceOptions
+): Promise<AutoResult> {
+  const result = await advanceAutomaticFulfillmentState(requestId);
+
+  /*
+   * ALWAYS, and never fatally.
+   *
+   * Outside the early-return chain above on purpose: a request that is already
+   * `confirmed` must still get its recipient email even when THIS tick's
+   * auto-accept or auto-plan RPC failed, because those two failures have
+   * nothing to do with whether the recipient was told.
+   *
+   * `notifyConsumerLifecycle` is total by contract and proved so by test. The
+   * try/catch is the structural guarantee that a future edit to it cannot turn
+   * a mail outage into a 500 on the Stripe webhook — this function's callers
+   * include one.
+   */
+  try {
+    await notifyConsumerLifecycle({ requestId, fetchImpl: options?.fetchImpl });
+  } catch (err) {
+    recordFailure("advanceAutomaticFulfillment.notify", {
+      requestId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  return result;
+}
+
+async function advanceAutomaticFulfillmentState(
   requestId: string
 ): Promise<AutoResult> {
   const accepted = await rpc<Record<string, any>>(

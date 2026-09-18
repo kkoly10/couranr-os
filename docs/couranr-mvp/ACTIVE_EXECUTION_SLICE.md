@@ -10,16 +10,47 @@ as a reason to build something the package does not require.
 
 ## 1. Execution identity
 
+**Updated 2026-09-17.** This file is a low-rank operational pointer — the
+authority manifest classifies it `non_authority/historical`, and its own banner
+says it is rewritten as slices complete. Both are true: the classification is
+about authority RANK, not immutability. It had been pointing at Phase 8 and
+batch `B01` since 2026-08-06, six weeks after that stopped being the active
+slice. Phase 8 history is preserved below, unedited, from "The base SHA is the
+SEC-001 hotfix merge" onward.
+
+Nothing here states current truth. `IMPLEMENTATION_LEDGER.csv` and the generated
+`IMPLEMENTATION_STATUS.md` are the authorities for implementation state.
+
 | | |
 |---|---|
-| Base branch | `main` |
-| Base SHA | `f26d857fb797b008fc5772700d65a4e5c181f259` — Phase 8 (PR #22) squash-merged 2026-08-06 |
-| Previous base | `bf38d156ddcaae70f99c3a0c2d0e82efd0cf26a7` (migration hygiene, PR #23) |
-| Phase 8 branch | `claude/couranr-phase-8-conversations` — retained (not deleted) so every ledger `last_verified_sha` stays reachable |
-| Last verification SHA | `a115f9212364bab0951053c73877952674ee07d6` — the authenticated messaging pass; tree at `f26d857` is byte-identical to head `8f0725f` |
-| Phase 8 PR | [#22](https://github.com/kkoly10/couranr-os/pull/22), **MERGED** |
-| Status | **Phase 8 CLOSED — the active slice is now the autonomous completion run** governed by [`AUTONOMOUS_COMPLETION_EXECUTION_SPEC.md`](./AUTONOMOUS_COMPLETION_EXECUTION_SPEC.md), batch `B01`, state in [`AUTONOMOUS_RUN_STATE.json`](./AUTONOMOUS_RUN_STATE.json) |
-| Reconciliation | [`PHASE8_RECONCILIATION.md`](./PHASE8_RECONCILIATION.md) |
+| Active branch | `claude/consumer-sameday-trust-custody` |
+| Head SHA | `9be13eb9174a3ac8a4611547d3c59fe862094cf7` |
+| Base branch | `main` — read it with `git rev-parse origin/main`; it has moved and is no longer any SHA pinned in this file |
+| Active slice | **Consumer Same Day V1 Trust, Custody & Fraud — closure findings A–Q, all built**, followed by the MVP-completion run |
+| Ledger rows | `P10-008` … `P10-012`, added 2026-09-17 |
+| Production schema | **125 migrations applied**; the seven-migration trust/custody batch was applied 2026-09-17 with explicit owner approval and verified by catalog query |
+| Merge state | **NOT merged to `main`.** The owner's instruction stands. The database is deliberately ahead of the deployed app, which is safe: the only function in the batch the live code touches is `couranr_complete_pickup_v2`, unchanged in signature and in behaviour for every request `main` can create |
+
+**What is open, and none of it is closeable from inside the repository:**
+
+- **The rank-1 registry does not sanction the shipped custody model.** `PRF-002`
+  still defines the pickup happy path as one pickup photo with no Secure Pickup
+  carve-out, and the protection bands appear in no decision record — only inside
+  `MKT-005`, which is marketing copy. By the authority chain's own rule the code
+  is the defect until an owner decision record exists. It is not drafted here: a
+  decision record written by the implementer is fabricated authority.
+- **Stripe Identity is not activated** and no restricted key is configured, so
+  protected handoff is not sellable. Date of birth needs a RESTRICTED key and is
+  readable only within 48 hours of submission.
+- **No qualified legal review.** Every legal document says so in its own text.
+
+**Two of `GAT-001`'s eleven launch gates were unbuilt** and are now built —
+`request_intake_paused` and `ai_global_kill_switch` per `FLG-001`, enforced on
+the draft→live transition so every intake path passes through one rule.
+
+**`GAT-002` defers Ghost Operations from the first vertical slice** while keeping
+it canonical MVP. That is why the Ghost surface is not being built ahead of the
+switches that keep it off.
 
 The base SHA is the SEC-001 hotfix merge (PR #21). The Phase 8 branch is rebased
 onto it, so the conversation work is built on a repository where the admin

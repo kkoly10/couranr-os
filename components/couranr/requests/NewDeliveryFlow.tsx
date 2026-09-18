@@ -1,6 +1,10 @@
 "use client";
 
 import * as React from "react";
+import {
+  SELECTABLE_PROOF_METHODS,
+  isSelectableProofMethod,
+} from "@/lib/couranr/requests/input";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -116,6 +120,12 @@ const RESTRICTED_CLASS_OPTIONS: ReadonlyArray<readonly [string, string]> = [
   ["people", "people"],
 ];
 
+/** The one place a selectable method's label lives. */
+const PROOF_METHOD_LABELS: Record<(typeof SELECTABLE_PROOF_METHODS)[number], string> = {
+  photo_or_pin: "Photo or PIN",
+  signature: "Signature",
+};
+
 export function NewDeliveryFlow({
   mode = "merchant",
 }: {
@@ -160,6 +170,9 @@ export function NewDeliveryFlow({
   const [intakeSessionId, setIntakeSessionId] = React.useState<string | null>(null);
   const [serviceLevel, setServiceLevel] = React.useState("standard");
   const [proofMethod, setProofMethod] = React.useState("photo_or_pin");
+  /* Set when a duplicate or preset carried a method that is no longer
+     selectable, so the substitution is visible rather than silent. */
+  const [withdrawnProofMethod, setWithdrawnProofMethod] = React.useState<string | null>(null);
   const [readinessState, setReadinessState] = React.useState("not_confirmed");
   const [payerType, setPayerType] = React.useState<"merchant" | "customer">("merchant");
   const [signatureRequired, setSignatureRequired] = React.useState(false);
@@ -229,7 +242,21 @@ export function NewDeliveryFlow({
     if (typeof seed.recipientEmail === "string") setRecipientEmail(seed.recipientEmail);
     if (Number.isFinite(seed.weightLb)) setWeightLb(String(seed.weightLb));
     if (typeof seed.serviceLevel === "string") setServiceLevel(seed.serviceLevel);
-    if (typeof seed.proofMethod === "string") setProofMethod(seed.proofMethod);
+    if (typeof seed.proofMethod === "string") {
+      /* A DUPLICATE OR PRESET MAY CARRY A WITHDRAWN METHOD. Saved presets and
+         older deliveries legitimately hold `leave_at_door`. Seeding it would
+         either submit a request the server now refuses, or — worse — look
+         accepted in the form and fail late. It is normalized to the default AND
+         the merchant is told, because silently changing someone's chosen proof
+         method is its own defect. The saved preset itself is never rewritten. */
+      if (isSelectableProofMethod(seed.proofMethod)) {
+        setProofMethod(seed.proofMethod);
+        setWithdrawnProofMethod(null);
+      } else {
+        setProofMethod("photo_or_pin");
+        setWithdrawnProofMethod(seed.proofMethod);
+      }
+    }
     setSignatureRequired(seed.signatureRequired === true);
   }, [searchParams]);
 
@@ -888,12 +915,28 @@ export function NewDeliveryFlow({
                 </Select>
               )}
             </Field>
+            {withdrawnProofMethod ? (
+              <p className="cr-field__hint" data-couranr-proof-withdrawn={withdrawnProofMethod}>
+                This proof method is no longer available. Couranr has selected{" "}
+                {PROOF_METHOD_LABELS.photo_or_pin} instead — change it before you
+                continue if you would rather use something else.
+              </p>
+            ) : null}
             <Field label="Proof of delivery" required error={fieldErrors.proofMethod}>
               {(p) => (
                 <Select {...p} value={proofMethod} onChange={(e) => setProofMethod(e.target.value)}>
-                  <option value="photo_or_pin">Photo or PIN</option>
-                  <option value="signature">Signature</option>
-                  <option value="leave_at_door">Leave at door</option>
+                  {/* LEAVE AT DOOR IS NOT OFFERED. PRF-001 requires a recorded
+                      customer authorization for it and no such fact exists in
+                      the schema, so Couranr cannot honour the method it would
+                      be selling. Rendered from SELECTABLE_PROOF_METHODS rather
+                      than typed, so the list here and the server gate cannot
+                      drift apart. Existing deliveries keep the method they were
+                      created under; this only governs new requests. */}
+                  {SELECTABLE_PROOF_METHODS.map((m) => (
+                    <option key={m} value={m}>
+                      {PROOF_METHOD_LABELS[m]}
+                    </option>
+                  ))}
                 </Select>
               )}
             </Field>

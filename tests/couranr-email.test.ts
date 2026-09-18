@@ -10,6 +10,7 @@ import {
   bizActionNeeded,
   custApproveAndPay,
   custOrderConfirmed,
+  custDirectDeliveryConfirmed,
   custOutForDelivery,
   custDelivered,
   custRecipientUnavailable,
@@ -44,7 +45,12 @@ const customerEmails: RenderedEmail[] = [
   custReturnNotice(cfg, s.customer.returnNotice),
 ];
 
-const all = [...businessEmails, ...customerEmails];
+const directRecipientEmail = custDirectDeliveryConfirmed(
+  cfg,
+  s.customer.directDeliveryConfirmed,
+);
+
+const all = [...businessEmails, ...customerEmails, directRecipientEmail];
 
 describe("Couranr email — envelope", () => {
   it("sends from the DKIM-verified subdomain, never the unverified apex", () => {
@@ -95,6 +101,20 @@ describe("Couranr email — customer mail is sent for the shop", () => {
     const out = custOutForDelivery(cfg, s.customer.outForDelivery);
     expect(out.html.toLowerCase()).toContain("tracking page");
     expect(out.html).not.toMatch(/\bPIN[:=]?\s*\d/);
+  });
+});
+
+describe("Couranr email — direct consumer recipient", () => {
+  it("names Couranr rather than inventing a merchant and carries only the private tracking URL", () => {
+    expect(directRecipientEmail.from).toContain("Couranr <no-reply@mail.couranr.com>");
+    expect(directRecipientEmail.html).toContain("Avery Chen");
+    expect(directRecipientEmail.html).toContain("tok_demo7f42qk");
+    expect(directRecipientEmail.html).not.toContain("Bloom &amp; Co");
+  });
+
+  it("states that adult attestation does not replace identity verification", () => {
+    expect(directRecipientEmail.html).toMatch(/18 or older/i);
+    expect(directRecipientEmail.html).toMatch(/Identity verification is a separate requirement/i);
   });
 });
 

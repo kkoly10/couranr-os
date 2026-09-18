@@ -435,7 +435,18 @@ describe("public navigation is the owner-locked order", () => {
   it("changed the PUBLIC order only — the authenticated surfaces are untouched", () => {
     /* `navigationFor` now walks NAV_LABELS rather than the screen registry.
        That is a behaviour change for every role, so the three that were NOT
-       meant to move are pinned to what they rendered before it. */
+       meant to move are pinned to what they rendered before it.
+ 
+       OPERATIONS HAS GROWN SINCE THIS TEST WAS WRITTEN, and the growth is not a
+       marketing change. This file arrived from a branch built on the older
+       shared base; on the reconciliation branch, OPS-011 (refunds), OPS-013
+       (analytics) and OPS-015 (settings) have moved out of `placeholder_only`
+       in the screen ledger, and `navigationFor` deliberately filters that status
+       out — so promoting a screen adds its nav item. The assertion below keeps
+       its original job (marketing did not reorder an authenticated surface) and
+       is updated to the list the current product renders. The three additions
+       are named so a future reader can tell a legitimate promotion from an
+       accidental reordering. */
     expect(navigationFor("merchant").map((i) => i.screenId)).toEqual([
       "MER-001", "MER-004", "MER-008", "MER-010", "MER-012", "MER-013", "MER-014",
     ]);
@@ -443,7 +454,8 @@ describe("public navigation is the owner-locked order", () => {
       "DRV-001", "DRV-008", "DRV-009", "DRV-010",
     ]);
     expect(navigationFor("operations").map((i) => i.screenId)).toEqual([
-      "OPS-001", "OPS-002", "OPS-005", "OPS-007", "OPS-008", "OPS-009", "OPS-012",
+      "OPS-001", "OPS-002", "OPS-005", "OPS-007", "OPS-008", "OPS-009",
+      "OPS-011", "OPS-012", "OPS-013", "OPS-015",
     ]);
   });
 });

@@ -33,6 +33,7 @@ import {
   completeLeaveAtDoor,
   completeSignature,
   fetchMyProof,
+  recordSealCondition,
   verifyRecipientCode,
   type AssignedDeliveryView,
   type CompletionResult,
@@ -99,6 +100,26 @@ export function DropoffProof({
   const [completed, setCompleted] = React.useState(false);
   const [recordedProof, setRecordedProof] = React.useState<Record<string, string>>({});
 
+  /* THE SEAL, LOOKED AT. A tamper-evident seal nobody compares is a sticker:
+     its whole value is the difference between what was applied at pickup and
+     what arrived here. Gated ahead of the handoff form because the comparison
+     happens BEFORE the parcel changes hands, and the database refuses the
+     completion without it (seal_condition_required_at_dropoff). */
+  const [sealCondition, setSealCondition] = React.useState<string | null>(null);
+  /* H — the observation is bound to a PHOTOGRAPH of the seal. "The driver said
+     intact" is not evidence of the same kind, and a claim turns on exactly this
+     observation. The photo comes first so the condition is read from something
+     rather than from memory. */
+  const sealPhoto = useProofUpload({
+    deliveryId: assigned.deliveryId,
+    stage: "dropoff",
+    proofType: "dropoff_seal_photo",
+    location,
+    recordedProofId: recordedProof.dropoff_seal_photo ?? null,
+  });
+  const [sealBusy, setSealBusy] = React.useState(false);
+  const [sealError, setSealError] = React.useState<string | null>(null);
+
   React.useEffect(() => {
     let live = true;
     void fetchMyProof(assigned.deliveryId).then((result) => {
@@ -157,6 +178,72 @@ export function DropoffProof({
   // refuse.
   if (command !== COMPLETION_COMMAND[method]) {
     return <NotAtDropoffYet state={state} />;
+  }
+
+  /* The comparison comes first. Recording is ONE observation — the database
+     refuses a second (seal_condition_already_recorded) so a driver cannot
+     record 'damaged', read the room, and revise it. */
+  if (assigned.protection.requiresSealCheckAtDropoff && sealCondition === null) {
+    return (
+      <Card>
+        <CardHeader
+          title="Check the seal"
+          description="Compare the seal against the package before handing it over."
+        />
+        <Stack gap={3}>
+          <PhotoField
+            label="Photo of the seal"
+            hint="Fit the seal and its number in the frame, before you hand anything over."
+            upload={sealPhoto}
+            blocked={!location.usable}
+            blockedReason={location.message}
+          />
+          <Alert tone="info" title="You get one answer">
+            Record what you actually see. Couranr reviews a damaged or missing seal — it does
+            not stop the delivery, and it cannot be changed afterwards.
+          </Alert>
+          {(
+            [
+              ["intact", "Intact — the seal is unbroken and the number matches"],
+              ["damaged", "Damaged — the seal is broken, cut or resealed"],
+              ["missing", "Missing — there is no seal on the package"],
+            ] as const
+          ).map(([value, label]) => (
+            <Button
+              key={value}
+              variant={value === "intact" ? "primary" : "secondary"}
+              disabled={sealBusy || !sealPhoto.finalized}
+              onClick={() => {
+                setSealBusy(true);
+                setSealError(null);
+                void recordSealCondition(
+                  assigned.deliveryId,
+                  value,
+                  sealPhoto.proofId ?? ""
+                ).then((r) => {
+                  setSealBusy(false);
+                  if (isApiFailure(r)) {
+                    setSealError(withReference(r));
+                    return;
+                  }
+                  setSealCondition(r.value.seal.dropoffCondition);
+                });
+              }}
+            >
+              {label}
+            </Button>
+          ))}
+          {!sealPhoto.finalized ? (
+            <Text size="xs" muted>
+              Photograph the seal first — the condition you record is read from that photo.
+            </Text>
+          ) : null}
+          {sealError ? (
+            <Alert tone="warning" title="Seal check not recorded">{sealError}</Alert>
+          ) : null}
+        </Stack>
+      </Card>
+    );
   }
 
   const shared: FormProps = {

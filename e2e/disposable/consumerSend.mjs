@@ -174,7 +174,15 @@ function createArgs(sessionId, over = {}) {
     p_overnight_requested := false,
     p_route_distance_meters := ${METERS_5MI}, p_route_duration_seconds := 600,
     p_route_static_duration_seconds := 600, p_route_traffic_delay_seconds := 0,
-    p_distance_source := 'google_routes_v2', p_serviceability_outcome := 'available_for_request',
+    /* MAPBOX is the canonical route authority: couranr_append_routed_quote_version
+       raises mapbox_route_authority_required for anything else, and
+       lib/couranr/routing/canonicalRoute.ts imports mapboxDirections —
+       googleRoutes.ts has zero importers. This suite passed the old literal
+       and so refused on EVERY run since 20260905030000 added that rule. It
+       went unnoticed because the disposable tier could not start on macOS
+       and GitHub Actions has no budget to run it. Nothing here calls a
+       provider: the literal IS the assertion the caller used one. */
+    p_distance_source := 'mapbox_directions_v5', p_serviceability_outcome := 'available_for_request',
     p_route_review_reason := null::text,
     p_quote_status := ${o.quoteStatus},
     p_pricing_policy_version := ${o.policy},
@@ -209,7 +217,7 @@ function estimateArgs(requestId, sessionId, version, over = {}) {
     p_overnight_requested := false,
     p_route_distance_meters := ${METERS_5MI}, p_route_duration_seconds := 600,
     p_route_static_duration_seconds := 600, p_route_traffic_delay_seconds := 0,
-    p_distance_source := 'google_routes_v2', p_serviceability_outcome := 'available_for_request',
+    p_distance_source := 'mapbox_directions_v5', p_serviceability_outcome := 'available_for_request',
     p_route_review_reason := null::text,
     p_quote_status := 'estimated', p_pricing_policy_version := '${POLICY}',
     p_delivery_subtotal_cents := ${o.subtotal},
@@ -567,7 +575,7 @@ async function main() {
       p_quote_line_items := ${jsonLit([{ code: "delivery_base", label: "Delivery", amountCents: 2799 }])},
       p_route_distance_meters := ${METERS_5MI}, p_route_duration_seconds := 720,
       p_route_static_duration_seconds := 700, p_route_traffic_delay_seconds := 20,
-      p_distance_source := 'google_routes_v2',
+      p_distance_source := 'mapbox_directions_v5',
       p_serviceability_outcome := 'available_for_request',
       p_route_review_reason := null::text,
       p_requote_reason := 'distance corrected at review')`);

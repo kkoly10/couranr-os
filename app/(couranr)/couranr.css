@@ -3326,6 +3326,16 @@
   color: var(--couranr-text);
 }
 
+/* An unavailable proof method still states its requirements — the doctrine is
+   correct and the capability is not built. Set apart from the requirement list
+   so it reads as a status rather than one more requirement. */
+.cr-mkt-proof__unavailable {
+  margin: 0 0 0.5rem;
+  color: var(--couranr-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
 /* ── a navy band that stacks copy above content instead of beside a figure ─ */
 
 .cr-mkt-band__inner--stacked { display: block; }
@@ -4206,6 +4216,15 @@
    reads the description. Body weight, because it is the section's action. */
 .cr-sd-policy__help {
   margin: var(--couranr-space-6) 0 0;
+  max-width: 54ch;
+  color: var(--couranr-text);
+}
+
+/* The policy link. Tight to the sentence above it rather than a space-6 gap,
+   because it is the same thought finishing — "not sure about your item?" and
+   "here is the document that decides" are one answer, not two. */
+.cr-sd-policy__cta {
+  margin: var(--couranr-space-3) 0 0;
   max-width: 54ch;
   color: var(--couranr-text);
 }
@@ -5092,4 +5111,25 @@
    relative to this field wrapper; no Google key or provider UI lives here. */
 .cr-root .cr-place-search {
   position: relative;
+}
+
+/* ── OPS-013 / OPS-014 analytics filters ──────────────────────────────────
+   The filter row is a plain responsive grid so a narrow Operations window
+   stacks the controls instead of scrolling the page sideways. */
+.cr-root .cr-ops-analytics-filters {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--couranr-space-4);
+}
+
+@media (min-width: 720px) {
+  .cr-root .cr-ops-analytics-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1100px) {
+  .cr-root .cr-ops-analytics-filters {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }

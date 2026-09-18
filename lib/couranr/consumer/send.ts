@@ -35,7 +35,11 @@ import {
   isPaymentFailure,
   reconcilePaymentIntent,
 } from "@/lib/couranr/payments/commands";
-import { issueTrackingLink, isTrackingFailure } from "@/lib/couranr/tracking/commands";
+import { isRecipientIdentityCapabilityAvailable } from "@/lib/couranr/identity/recipientIdentity";
+/* READ ONLY. This module imports the notification subsystem's REPORTER and
+   nothing that sends: the claim/send/receipt trio moved to the lifecycle, and
+   re-importing `sendRenderedEmail` here would be the regression. */
+import { recipientNotifiedAt } from "@/lib/couranr/email/consumerLifecycle";
 import { recordConsumerIntakeEvidenceAfterEstimate } from "./intake";
 import {
   CODE_SHOWN_ONCE_WARNING,
@@ -76,6 +80,16 @@ assertServerOnly("lib/couranr/consumer/send.ts");
  * evidence hook.
  */
 
+import {
+  CONSUMER_EMAIL_RE,
+  CONSUMER_SENDER_TERMS_VERSION,
+  declaredValueDollars,
+  acceptedDeclaredValueCents,
+  evaluateConsumerProtectionAvailability,
+  isProtectionUnavailable,
+  type ProtectionCapabilities,
+} from "@/lib/couranr/consumer/protection";
+
 export const RPC = {
   createSession: "couranr_create_consumer_guest_session",
   redeemSession: "couranr_redeem_consumer_guest_session",
@@ -87,6 +101,7 @@ export const RPC = {
   createObligation: "couranr_create_payment_obligation",
   issueGuestPickupCode: "couranr_issue_guest_pickup_code_cas",
   claimPlaceSearch: "couranr_claim_consumer_place_search",
+  recordTrust: "couranr_record_consumer_trust",
 } as const;
 
 /** Sessions live 24 hours; the SQL clamps to [5 min, 3 days] regardless. */
@@ -202,6 +217,24 @@ export const FORBIDDEN_CONSUMER_KEYS = [
   "durationseconds",
   "trafficdelayseconds",
   "payertype",
+  /* Custody protection — DERIVED from declaredValueCents by the server and
+     re-derived by a CHECK constraint. `declaredValueCents` is deliberately NOT
+     here: it is the one protection input the sender legitimately states. The
+     OUTPUT never is. Nothing reads these keys today, so a body carrying one is
+     currently ignored rather than honored — which is precisely the weakness:
+     ignoring is silent, and the point of this list is that a payload reaching
+     for a server-owned field is refused outright, before any field of it is
+     accepted. */
+  "protectionlevel",
+  "protectionpolicyversion",
+  /* Consent EVIDENCE. The sender sends booleans; the server stamps the moment
+     and the document version. A client-supplied timestamp is not evidence of
+     anything — it is a claim about a moment only the server witnessed. */
+  "sendertermsversion",
+  "sendertermsacceptedat",
+  "senderelectronicconsentat",
+  "senderadultattestedat",
+  "recipientadultattestedat",
 ] as const;
 
 function canonicalKey(k: string): string {
@@ -298,6 +331,16 @@ export type ConsumerSendBody = {
   pickupPlaceId: string;
   dropoffPlaceId: string;
   contact: { name: string | null; phone: string | null; email: string | null };
+  /** The recipient, required from V1. Both RPCs have always accepted these;
+   *  the consumer path passed null, so every Consumer Same Day delivery was
+   *  created with no recipient identity at all. */
+  recipient: { name: string; email: string; phone: string | null };
+  /** TOTAL declared shipment value, integer cents. A sender representation,
+   *  never an appraisal. The level is DERIVED from it on the server. */
+  declaredValueCents: number;
+  /** The two acknowledgements. BOOLEANS, not timestamps: a client-supplied
+   *  moment is not evidence. The server stamps time and document version. */
+  acceptance: { shipmentCertification: boolean; electronicTransactions: boolean };
   shipment: {
     description: string | null;
     weightLb: number | null;
@@ -316,7 +359,8 @@ export type ConsumerSendBody = {
 };
 
 // Deliberately permissive: only rejects text that cannot be an address.
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// THE email rule, from the dependency-free authority both sides import.
+const EMAIL_RE = CONSUMER_EMAIL_RE;
 
 function str(v: unknown): string | null {
   if (typeof v !== "string") return null;
@@ -336,6 +380,73 @@ export function isConsumerSendBodyFailure(
   r: ConsumerSendBodyResult
 ): r is { ok: false; reason: string } {
   return r.ok === false;
+}
+
+/**
+ * The submit-time gate. BOTH acknowledgements, each compared with `===`.
+ *
+ * Separate from `validateConsumerSendBody` because they answer different
+ * questions at different moments: that one asks "is this a complete enough
+ * statement to price?", this one asks "is the sender tendering it?". The
+ * database draws the same line — a draft is exempt from
+ * couranr_dr_consumer_acceptance_chk and a submitted row is not.
+ *
+ * Truthiness is deliberately not accepted. "1", "yes" and a client-supplied
+ * timestamp that looks like evidence are all truthy and none of them is an
+ * acknowledgement; the server stamps the moment and the document version.
+ */
+export type ConsumerAcceptance = {
+  shipmentCertification: boolean;
+  electronicTransactions: boolean;
+};
+
+export type ConsumerAcceptanceResult =
+  | { ok: true; value: ConsumerAcceptance }
+  | { ok: false; reason: string };
+
+/**
+ * `tsconfig` sets `"strict": false`; without `strictNullChecks` a bare
+ * `r.ok ? … : r.reason` does not narrow this union, so reading `.reason` is a
+ * type error at the call site. The same predicate pattern as
+ * `isConsumerSendBodyFailure` and `isProtectionDeclined`.
+ */
+export function isAcceptanceFailure(
+  r: ConsumerAcceptanceResult
+): r is { ok: false; reason: string } {
+  return r.ok === false;
+}
+
+export function requireAcceptance(
+  raw: unknown
+): ConsumerAcceptanceResult {
+  const r =
+    raw !== null && typeof raw === "object" && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {};
+  const value: ConsumerAcceptance = {
+    shipmentCertification: r.shipmentCertification === true,
+    electronicTransactions: r.electronicTransactions === true,
+  };
+  if (!value.shipmentCertification) {
+    return { ok: false, reason: "shipment_certification_required" };
+  }
+  if (!value.electronicTransactions) {
+    return { ok: false, reason: "electronic_consent_required" };
+  }
+  return { ok: true, value };
+}
+
+/**
+ * THE ONE PLACE THE SERVER ASKS "what can Couranr sell right now".
+ *
+ * Both the estimate gate and the submit gate call this, so they cannot answer
+ * differently. It reads the REAL configuration —
+ * `isRecipientIdentityCapabilityAvailable()` requires both the activation flag
+ * and the restricted key — rather than a hardcoded list of level names, which
+ * is what previously let a code-level switch disagree with the provider state.
+ */
+function currentProtectionCapabilities(): ProtectionCapabilities {
+  return { recipientIdentityVerification: isRecipientIdentityCapabilityAvailable() };
 }
 
 export function validateConsumerSendBody(raw: unknown): ConsumerSendBodyResult {
@@ -358,7 +469,93 @@ export function validateConsumerSendBody(raw: unknown): ConsumerSendBodyResult {
       : {};
   const email = str(contactRaw.email);
   if (email && !EMAIL_RE.test(email)) return { ok: false, reason: "contact_email_invalid" };
-  const contact = { name: str(contactRaw.name), phone: str(contactRaw.phone), email };
+  // EMAIL-FIRST. The sender email was optional while phone OR email satisfied
+  // the old rule. A phone cannot substitute: email is the transactional
+  // channel for the confirmation, the tracking link and any claim.
+  if (!email) return { ok: false, reason: "sender_email_required" };
+  /* SENDER NAME REQUIRED (V1). A shipment is a representation by a named
+     person: the terms they accept say "I am authorized to send these items",
+     and an acceptance signed by nobody is weak evidence of exactly the thing a
+     claim turns on. Phone stays optional. */
+  const senderName = str(contactRaw.name);
+  if (!senderName) return { ok: false, reason: "sender_name_required" };
+  const contact = { name: senderName.slice(0, 200), phone: str(contactRaw.phone), email };
+
+  // The recipient. Name and email required; phone stays optional and cannot
+  // satisfy the email rule.
+  const recipRaw =
+    r.recipient !== null && typeof r.recipient === "object" && !Array.isArray(r.recipient)
+      ? (r.recipient as Record<string, unknown>)
+      : {};
+  const recipientName = str(recipRaw.name);
+  const recipientEmail = str(recipRaw.email);
+  if (!recipientName) return { ok: false, reason: "recipient_name_required" };
+  if (!recipientEmail) return { ok: false, reason: "recipient_email_required" };
+  if (!EMAIL_RE.test(recipientEmail)) return { ok: false, reason: "recipient_email_invalid" };
+  const recipient = {
+    name: recipientName.slice(0, 200),
+    email: recipientEmail,
+    phone: str(recipRaw.phone),
+  };
+
+  // DECLARED VALUE, validated through the SAME authority the server and the
+  // database use, so what the client may send and what the level is derived
+  // from can never become two different rules.
+  const declaredRaw = r.declaredValueCents;
+  const declaredValueCents = typeof declaredRaw === "number" ? declaredRaw : Number.NaN;
+  /* TWO QUESTIONS, NOT ONE. `deriveProtection` says what the value MEANS and is
+     still the only derivation — the database re-derives the identical answer.
+     `evaluateConsumerProtectionAvailability` adds the one this validator was
+     missing: whether that level can be SOLD today. A $200 shipment is a
+     perfectly valid protected_handoff under policy and is not purchasable,
+     because Stripe Identity is not activated.
+
+     REFUSED HERE, BEFORE ANY DRAFT OR ESTIMATE. The submit path already refused
+     it, but only after a draft had been created and a quote calculated — so the
+     sender was walked through the funnel and turned away at the end, having
+     been shown a Protected Handoff promise on the way. The database trigger
+     remains the final backstop; this is the first of three agreeing gates.
+
+     `protection_level_unavailable` is NOT `declared_value_above_maximum`. $200
+     is not above the $500 policy maximum, and reusing that reason would make a
+     temporary commercial limit indistinguishable from a real policy breach. */
+  const availability = evaluateConsumerProtectionAvailability(
+    declaredValueCents,
+    currentProtectionCapabilities()
+  );
+  if (isProtectionUnavailable(availability)) {
+    return {
+      ok: false,
+      reason:
+        availability.reason === "declared_value_above_maximum"
+          ? "declared_value_above_maximum"
+          : availability.reason === "protection_level_unavailable"
+            ? "protection_level_unavailable"
+            : "declared_value_invalid",
+    };
+  }
+
+  /* The acknowledgements are PARSED here and REQUIRED at submit, not here.
+     This body is validated by `estimateConsumerSend`, which creates or updates a
+     DRAFT — and a draft is a statement not yet made. Requiring acceptance to
+     price a delivery would ask the sender to agree to terms before they have
+     been told what it costs, and it would contradict the database, whose
+     couranr_dr_consumer_acceptance_chk deliberately exempts
+     `request_state = 'draft'` for the same reason.
+
+     So the split follows the row's own lifecycle: the estimate persists the
+     declared value and the derived level onto the draft; `requireAcceptance`
+     gates the submit that takes it out of draft, which is the moment the
+     constraint begins to require the evidence and the moment the sender
+     actually tenders the shipment. */
+  const acceptRaw =
+    r.acceptance !== null && typeof r.acceptance === "object" && !Array.isArray(r.acceptance)
+      ? (r.acceptance as Record<string, unknown>)
+      : {};
+  const acceptance = {
+    shipmentCertification: acceptRaw.shipmentCertification === true,
+    electronicTransactions: acceptRaw.electronicTransactions === true,
+  };
 
   const shipRaw =
     r.shipment !== null && typeof r.shipment === "object" && !Array.isArray(r.shipment)
@@ -416,6 +613,9 @@ export function validateConsumerSendBody(raw: unknown): ConsumerSendBodyResult {
       pickupPlaceId,
       dropoffPlaceId,
       contact,
+      recipient,
+      declaredValueCents,
+      acceptance,
       shipment: {
         description: description ? description.slice(0, 2000) : null,
         weightLb,
@@ -461,7 +661,8 @@ const OWN_REQUEST_COLUMNS =
   "id,version,request_state,quote_status,current_quote_version_id,pickup_manifest_version," +
   "pickup_manifest,pickup_manifest_policy_version," +
   "delivery_subtotal_cents,quote_line_items,review_reasons,consumer_contact_snapshot," +
-  "timing_intent,requested_pickup_local,requested_departure_at,timing_review_reasons";
+  "timing_intent,requested_pickup_local,requested_departure_at,timing_review_reasons," +
+  "recipient_name,recipient_email,reference,dropoff_address,protection_level";
 
 /**
  * Load the session's own request — and ONLY it. `service_role` bypasses RLS,
@@ -623,9 +824,11 @@ export async function estimateConsumerSend(params: {
 
   const sharedArgs = {
     p_shipment_description: body.shipment.description,
-    p_recipient_name: null as string | null,
-    p_recipient_phone: null as string | null,
-    p_recipient_email: null as string | null,
+    // These were `null` for the whole life of the consumer funnel, so every
+    // Consumer Same Day delivery was created with no recipient identity.
+    p_recipient_name: body.recipient.name,
+    p_recipient_phone: body.recipient.phone,
+    p_recipient_email: body.recipient.email,
     p_weight_lb: body.shipment.weightLb,
     p_weight_band: body.shipment.weightBand,
     p_restricted_class: body.shipment.restrictedClass,
@@ -817,6 +1020,11 @@ export async function refreshConsumerSendQuote(params: {
     p_guest_session_id: params.session.id,
     p_expected_version: Number(row.version),
     // Shipment facts are already the stored truth; only the quote refreshes.
+    // The nulls below are SAFE ONLY because of this flag: the RPC writes
+    // recipient_name/phone/email inside `if p_update_shipment then`, and its
+    // else-branch touches only loaded_miles, the payload, timing review
+    // reasons and the version. Flip this to true without also passing the
+    // stored recipient and every quote refresh silently erases the recipient.
     p_update_shipment: false,
     p_shipment_description: description,
     p_recipient_name: null as string | null,
@@ -884,6 +1092,22 @@ export async function setConsumerPickupReadiness(params: {
 
 export async function submitConsumerSend(params: {
   session: GuestSession;
+  /**
+   * The sender's statement at the moment of tender: what they say the shipment
+   * is worth, and both acknowledgements.
+   *
+   * This route used to read no body at all, on the principle that the session
+   * names the request and the server holds every fact about it. That principle
+   * is about COMMERCIAL facts — a price, a state, a target, route evidence —
+   * and it is unchanged: `FORBIDDEN_CONSUMER_KEYS` still refuses every one of
+   * them, including the protection level and the consent timestamps, and the
+   * level here is derived rather than accepted.
+   *
+   * An acknowledgement is the one kind of fact the server cannot hold on the
+   * sender's behalf. It exists only because a person ticked a box, and it is
+   * made at submission rather than at pricing — so it has to travel here.
+   */
+  body?: unknown;
 }): Promise<ConsumerResult<{ state: string }>> {
   const op = "submitConsumerSend";
   const loaded = await loadOwnRequest(op, params.session);
@@ -924,10 +1148,83 @@ export async function submitConsumerSend(params: {
     });
   }
 
+  /* Record the trust statement BEFORE submitting, in that order and not the
+     reverse. couranr_record_consumer_trust refuses anything but a draft, and
+     the submit is what takes the row out of draft — so recording first is the
+     only order that works, and it is also the order that means a request can
+     never be tendered without the evidence. Two version bumps, so the submit
+     below reads the version this write returned rather than the stale one. */
+  const raw = (params.body ?? {}) as Record<string, unknown>;
+
+  const accepted = requireAcceptance(raw.acceptance);
+  if (isAcceptanceFailure(accepted)) {
+    return fail({
+      operation: op,
+      code: "invalid_input",
+      detail: { reason: accepted.reason },
+      message:
+        accepted.reason === "shipment_certification_required"
+          ? "Confirm what you are shipping before submitting this delivery."
+          : "Agree to electronic records before submitting this delivery.",
+    });
+  }
+
+  /* THE SAME AUTHORITY THE FUNNEL USES. This path used to answer "is protected
+     handoff available" for itself, via isRecipientIdentityCapabilityAvailable()
+     alone, while the funnel answered it from
+     PROTECTION_LEVELS_CURRENTLY_UNAVAILABLE. Two answers to one question: flip
+     the list without setting the environment and submit would accept what the
+     funnel refused; set the environment without flipping the list and the
+     reverse. One switch now, checked here first so the refusal reason matches
+     everywhere. */
+  const availability = evaluateConsumerProtectionAvailability(
+    typeof raw.declaredValueCents === "number" ? raw.declaredValueCents : Number.NaN,
+    currentProtectionCapabilities()
+  );
+  if (isProtectionUnavailable(availability)) {
+    return fail({
+      operation: op,
+      code: availability.reason === "protection_level_unavailable" ? "conflict" : "invalid_input",
+      detail: { reason: availability.reason },
+      message:
+        availability.reason === "declared_value_above_maximum" ||
+        availability.reason === "protection_level_unavailable"
+          ? /* NAMES WHAT CAN ACTUALLY BE SENT, not the policy ceiling. This said
+               $500 while /send and /sameday said $150, so a sender at $600 was
+               told to lower it to $500 and would have been refused again. */
+            `Couranr Same Day currently carries shipments declared up to ${declaredValueDollars(
+              acceptedDeclaredValueCents(currentProtectionCapabilities())
+            )}. No payment was authorized.`
+          : "Enter what this shipment is worth before submitting this delivery.",
+    });
+  }
+  /* THE SEPARATE CONFIGURATION BACKSTOP IS GONE, and its disappearance is the
+     point rather than a loss. It used to read
+     `level === 'protected_handoff' && !isRecipientIdentityCapabilityAvailable()`,
+     which was a SECOND answer to the availability question — necessary only
+     because the first answer was a hardcoded list of level names that knew
+     nothing about the provider. It is now structurally unreachable: the
+     availability gate above derives protected_handoff's availability FROM that
+     same predicate, through currentProtectionCapabilities(), so a code switch
+     cannot get ahead of the configuration because there is no longer a code
+     switch separate from it. A branch that cannot fire reads as protection that
+     is not there. The database trigger remains the final backstop. */
+
+  const recorded = await callRpc<Record<string, any>>(op, RPC.recordTrust, {
+    p_guest_session_id: params.session.id,
+    p_declared_value_cents: raw.declaredValueCents,
+    // SERVER-STATED. A sender cannot claim to have accepted a version they were
+    // not shown, so this is never read from the body.
+    p_terms_version: CONSUMER_SENDER_TERMS_VERSION,
+    p_accept_shipment_certification: accepted.value.shipmentCertification,
+    p_accept_electronic_transactions: accepted.value.electronicTransactions,
+  });
+  if (isConsumerFailure(recorded)) return recorded;
+
   const r = await callRpc<Record<string, any>>(op, RPC.submit, {
     p_request_id: params.session.requestId,
     p_guest_session_id: params.session.id,
-    p_expected_version: Number(loaded.value.version),
+    p_expected_version: Number(recorded.value.version),
   });
   if (isConsumerFailure(r)) return r;
   return { ok: true, value: { state: String(r.value.request_state) } };
@@ -940,8 +1237,22 @@ export type ConsumerSendView = {
   quoteStatus: string;
   totalCents: number | null;
   paymentState: string | null;
-  /** Present EXACTLY ONCE: the first read after confirmation mints the link. */
-  trackingToken?: string;
+  /**
+   * THE SENDER IS TOLD THE RECIPIENT WAS NOTIFIED. THE SENDER IS NEVER GIVEN
+   * THE RECIPIENT'S TOKEN.
+   *
+   * This used to carry `trackingToken` — the SAME raw token that had just been
+   * emailed to the recipient. That token's audience is `recipient` and it
+   * authorizes recipient-only actions: the adult attestation, identity
+   * verification, and the recipient's handoff PIN. Returning it to the sender
+   * handed one party another party's capability, and anyone the sender
+   * forwarded their own screen to inherited it.
+   *
+   * What the sender legitimately needs is the FACT of delivery and the address
+   * it went to, so a typo is visible. Not the capability.
+   */
+  recipientNotifiedAt?: string;
+  recipientNotifiedTo?: string;
 };
 
 /** The live obligation for the session's request. Consumer rows only. */
@@ -966,9 +1277,27 @@ async function loadOwnObligation(
 }
 
 /**
- * The guest's own-request projection. When the request reaches `confirmed`
- * and no live tracking link exists, ONE is minted here and the raw token is
- * returned this once — it is never recoverable afterwards.
+ * The guest's own-request projection.
+ *
+ * A PURE READ. IT SENDS NOTHING, CLAIMS NOTHING AND WRITES NOTHING.
+ *
+ * It used to do all three: on `confirmed` it claimed the recipient tracking
+ * token, called the email provider inline and recorded the receipt, all inside
+ * a GET behind the sender's status page. That was wrong in three separate ways
+ * and every one of them was reachable:
+ *
+ *   - a provider blip made this projection return `internal`, so the SENDER'S
+ *     status page failed to load for an operation that had already succeeded —
+ *     the delivery was confirmed and the card was authorized;
+ *   - a sender who closed the tab after that blip ended the story. Nothing
+ *     retried, nothing alarmed, and the recipient was never emailed;
+ *   - the recipient's invitation depended on the sender opening a page at all.
+ *
+ * The send is now owned by `advanceAutomaticFulfillment` (see
+ * `lib/couranr/email/consumerLifecycle.ts`), which runs from every lifecycle
+ * seam and from the 5-minute cron. This function REPORTS what that recorded:
+ * `recipient_notified_at` comes off the token row the SQL receipt wrote, not
+ * from a clock reading taken next to an attempted send.
  */
 export async function getConsumerSendView(params: {
   session: GuestSession;
@@ -992,19 +1321,15 @@ export async function getConsumerSendView(params: {
   };
 
   if (row.request_state === "confirmed") {
-    const { count, error } = (await supabaseAdmin
-      .from("couranr_delivery_access_tokens")
-      .select("id", { count: "exact", head: true })
-      .eq("request_id", String(row.id))
-      .is("revoked_at", null)
-      .gt("expires_at", new Date().toISOString())) as { count: number | null; error: any };
-    if (error) {
-      return fail({ operation: op, code: "internal", detail: { message: error.message } });
-    }
-    if ((count ?? 0) === 0) {
-      const issued = await issueTrackingLink({ requestId: String(row.id) });
-      if (isTrackingFailure(issued)) return issued;
-      view.trackingToken = issued.value.token;
+    const notifiedAt = await recipientNotifiedAt(String(row.id));
+    if (notifiedAt) {
+      /* The FACT and the address — never the token. The raw token's audience is
+         `recipient`; it authorizes the adult attestation, identity verification
+         and the recipient's handoff PIN, so handing it to the sender would hand
+         one party another party's capability, and anyone the sender forwarded
+         their screen to would inherit it. */
+      view.recipientNotifiedAt = notifiedAt;
+      view.recipientNotifiedTo = String(row.recipient_email ?? "");
     }
   }
 

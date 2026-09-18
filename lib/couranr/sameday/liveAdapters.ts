@@ -48,6 +48,13 @@ import type {
 } from "./adapters";
 import { parseOperatingLocal, type TimingIntent } from "@/lib/couranr/timing/policy";
 
+import {
+  CONSUMER_EMAIL_RE,
+  CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS,
+  declaredValueDollars,
+  evaluateConsumerProtectionAvailability,
+  isProtectionUnavailable,
+} from "@/lib/couranr/consumer/protection";
 /* ------------------------------------------------------------ constants -- */
 
 export const GUEST_STORAGE_KEY = "couranr-send-guest";
@@ -79,7 +86,36 @@ const NOTES = {
   descriptionRequired: "Tell Couranr what the driver should look for at pickup.",
   descriptionTooLong: "Keep the pickup description to 1,000 characters or fewer.",
   packageCountInvalid: "Package count must be a whole number from 1 to 9,999, or left blank.",
-  contactRequired: "Add your mobile number or email on the review step, then check the price.",
+  contactRequired: "Add your email on the review step, then check the price.",
+  /* EMAIL-FIRST. A phone cannot substitute: email is the transactional channel
+     for the confirmation, the tracking link and any claim. */
+  senderEmailInvalid: "Check your email address — Couranr could not read it.",
+  senderNameRequired: "Enter your name — it goes on the shipment record you are certifying.",
+  recipientEmailMismatch:
+    "The two recipient email addresses do not match. Check both — the tracking link goes to this address and nowhere else.",
+  recipientNameRequired: "Enter the name of the person receiving this delivery.",
+  recipientEmailRequired: "Enter the recipient's email so Couranr can send them the tracking link.",
+  recipientEmailInvalid: "Check the recipient's email address — Couranr could not read it.",
+  declaredValueRequired: "Enter what this shipment is worth, in whole dollars.",
+  /* COMPOSED FROM AUTHORITY, and it names the ACCEPTED maximum rather than the
+     policy ceiling. It used to type "$500", which was the policy number and
+     useless advice: a sender at $600 told to go under $500 would enter $400
+     and be refused again. */
+  declaredValueTooHigh:
+    "Couranr Same Day currently carries shipments declared up to "
+    + `${declaredValueDollars(CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS)}. Enter a lower value.`,
+
+  /* Inside policy, but the tier it derives to cannot be bought yet. A
+
+     DISTINCT note: telling a sender $200 is over the maximum would be
+
+     false, and it is not the message that helps them. */
+
+  declaredValueUnavailable:
+
+    "Protected Handoff is not available yet. Lower the declared value to continue.",
+  certificationRequired: "Confirm what you are shipping before Couranr can price it.",
+  electronicConsentRequired: "Agree to electronic records before Couranr can price it.",
   scheduledTimeRequired: "Choose the date and time for your scheduled pickup.",
   review: "Couranr will review this delivery and confirm the price with you.",
   // Timing-specific review reasons name WHY, so the sender is not left guessing.
@@ -217,9 +253,69 @@ export function buildEstimateBody(input: QuoteInput): EstimateBodyResult {
   }
 
   const contact = consumerContactFromSend(input.contact);
-  if (!contact.phone && !contact.email) {
-    return { ok: false, note: NOTES.contactRequired };
+  // EMAIL-FIRST (V1). The old rule was phone OR email; the server now requires
+  // the email and the phone stays optional. These two gates must agree exactly
+  // — tests/couranr-consumer-send-contract.test.ts holds them together.
+  if (!contact.name) return { ok: false, note: NOTES.senderNameRequired };
+  if (!contact.email) return { ok: false, note: NOTES.contactRequired };
+  if (!CONSUMER_EMAIL_RE.test(contact.email)) {
+    return { ok: false, note: NOTES.senderEmailInvalid };
   }
+
+  const recipient = consumerContactFromSend(input.recipient);
+  if (!recipient.name) return { ok: false, note: NOTES.recipientNameRequired };
+  if (!recipient.email) return { ok: false, note: NOTES.recipientEmailRequired };
+  if (!CONSUMER_EMAIL_RE.test(recipient.email)) {
+    return { ok: false, note: NOTES.recipientEmailInvalid };
+  }
+
+  /* M — TYPO RISK. The recipient email carries a private bearer capability: the
+     adult attestation, identity verification and the handoff PIN all live behind
+     the link sent to it. A single mistyped character delivers all three to a
+     stranger, and unlike a wrong phone number nothing bounces back to say so.
+     
+     Confirmed by re-entry, compared on the NORMALIZED value so case and
+     surrounding spaces do not produce a false mismatch. The confirmation is a
+     CLIENT-SIDE gate and is deliberately never persisted — a second stored copy
+     of an address is a second thing to keep in sync and adds no evidence. */
+  const confirm = (input.recipientEmailConfirm ?? "").trim().toLowerCase();
+  if (confirm !== recipient.email.trim().toLowerCase()) {
+    return { ok: false, note: NOTES.recipientEmailMismatch };
+  }
+
+  /* DECLARED VALUE, judged by the SAME authority the server and the database
+     use. Refusing here is free; refusing at the server costs a round trip and,
+     on this path, provider lookups the owner pays for. What is NOT done here is
+     deriving the level — that is the server's alone, and the browser never
+     sends one. */
+  /* AVAILABILITY, not only policy — and this gate is the reason the contract
+     test exists. `SendFlow` was corrected to refuse an unbuyable tier while
+     THIS builder still accepted it, so the client would have handed the server a
+     body the server refuses. Client-refuses/server-accepts is merely
+     conservative; client-accepts/server-refuses is the outage. */
+  const protection = evaluateConsumerProtectionAvailability(input.declaredValueCents);
+  if (isProtectionUnavailable(protection)) {
+    return {
+      ok: false,
+      note:
+        protection.reason === "declared_value_above_maximum"
+          ? NOTES.declaredValueTooHigh
+          : protection.reason === "protection_level_unavailable"
+            ? NOTES.declaredValueUnavailable
+            : NOTES.declaredValueRequired,
+    };
+  }
+  const declaredValueCents = input.declaredValueCents as number;
+
+  /* Booleans, compared with ===. Truthiness is not consent. NOT required to
+     price: the estimate creates a draft, and asking the sender to accept terms
+     before Couranr has told them the cost is the wrong order. The /send review
+     step gates "Continue to payment" on both, which is the submit that takes
+     the request out of draft — the same line the database draws. */
+  const acceptance = {
+    shipmentCertification: input.acceptance?.shipmentCertification === true,
+    electronicTransactions: input.acceptance?.electronicTransactions === true,
+  };
 
   // TMZ-001: a scheduled pickup needs the sender's local wall-clock words in
   // the `YYYY-MM-DDTHH:MM` shape. Checked locally and for free; the SERVER
@@ -255,6 +351,9 @@ export function buildEstimateBody(input: QuoteInput): EstimateBodyResult {
       pickupPlaceId,
       dropoffPlaceId,
       contact,
+      recipient,
+      declaredValueCents,
+      acceptance,
       shipment: {
         description,
         weightLb,
@@ -598,8 +697,29 @@ export function createLiveSameDayAdapters(
       return quoteReadingFromEstimate(est);
     },
 
-    async submitRequest(): Promise<SubmitOutcome> {
-      const r = await guestCall(API.submit, { method: "POST" });
+    async submitRequest(statement): Promise<SubmitOutcome> {
+      /* Refused LOCALLY and for free when the sender has not actually stated
+         it. The server refuses the same thing again — this is the gate that can
+         say so without a round trip, and without the generic failure a server
+         refusal would render as. */
+      if (!statement || statement.declaredValueCents === null) {
+        return { state: "unavailable", note: NOTES.declaredValueRequired };
+      }
+      if (!statement.acceptance.shipmentCertification) {
+        return { state: "unavailable", note: NOTES.certificationRequired };
+      }
+      if (!statement.acceptance.electronicTransactions) {
+        return { state: "unavailable", note: NOTES.electronicConsentRequired };
+      }
+      const r = await guestCall(API.submit, {
+        method: "POST",
+        // The body carries the sender's own representation and their two
+        // acknowledgements. No price, no state, no target, no level.
+        body: {
+          declaredValueCents: statement.declaredValueCents,
+          acceptance: statement.acceptance,
+        },
+      });
       if (!r) return { state: "unavailable", note: NOTES.serviceDown };
       if (!r.ok) {
         return {
@@ -769,7 +889,8 @@ export function createLiveSameDayAdapters(
           quoteStatus?: unknown;
           totalCents?: unknown;
           paymentState?: unknown;
-          trackingToken?: unknown;
+          recipientNotifiedAt?: unknown;
+          recipientNotifiedTo?: unknown;
         };
       } | null)?.request;
       if (!req || typeof req.state !== "string") return null;
@@ -779,8 +900,13 @@ export function createLiveSameDayAdapters(
         totalCents: typeof req.totalCents === "number" ? req.totalCents : null,
         paymentState: typeof req.paymentState === "string" ? req.paymentState : null,
       };
-      if (typeof req.trackingToken === "string" && req.trackingToken !== "") {
-        view.trackingToken = req.trackingToken;
+      /* A recipient bearer token must never reach the sender's adapter, so
+         there is nothing here to copy across even if the server regressed. */
+      if (typeof req.recipientNotifiedAt === "string" && req.recipientNotifiedAt !== "") {
+        view.recipientNotifiedAt = req.recipientNotifiedAt;
+        if (typeof req.recipientNotifiedTo === "string") {
+          view.recipientNotifiedTo = req.recipientNotifiedTo;
+        }
       }
       return view;
     },

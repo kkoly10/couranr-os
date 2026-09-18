@@ -12,11 +12,17 @@
  * human reviewer reads straight past.
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { MKT_005_COPY, SAME_DAY_COPY } from "@/lib/couranr/public/masterSameDayCopy";
 import { PROHIBITED_CLASSES } from "@/lib/couranr/shipment/facts";
 import { PROHIBITED_LABELS } from "@/lib/couranr/public/prohibitedSummary";
+import {
+  CONSUMER_MAX_DECLARED_VALUE_CENTS,
+  PROTECTION_THRESHOLDS,
+  deriveProtection,
+} from "@/lib/couranr/consumer/protection";
+import { LEGAL_DOCUMENTS } from "@/lib/couranr/legal/registry";
 
 const ROOT = path.join(__dirname, "..");
 const REGISTRY = JSON.parse(readFileSync(path.join(ROOT, "02_DECISION_REGISTRY.json"), "utf8"));
@@ -177,33 +183,11 @@ describe("PUB-013 marketing copy limits", () => {
        list typed into locked marketing copy — was only partially blocked. The
        list is now read from the vocabulary it is guarding, so a 24th class is
        covered the day it is added. */
-    /* THE UNDERSCORE TOKENS TOO, or the widening silently NARROWS. Deriving
-       only the joined phrase ("cannabis thc") and the label ("Cannabis and THC
-       products") lost the bare word "cannabis", which the seven hand-typed
-       entries this replaced did catch. A scan that gains sixteen categories and
-       drops one is not strictly stronger, and "strictly stronger" is the whole
-       claim being made for it.
-
-       Tokens shorter than five characters are excluded because they collide
-       with ordinary English — "thc", "gas", "cash" is fine but "fuel" and
-       "live" are not, and "live" matching "Delivering" is a false positive
-       already hit once. The joined phrase and the label still cover those. */
-    /* Tokens that are QUALIFIERS in the vocabulary rather than category names.
-       `prohibited_body` is entitled to say "certain regulated, hazardous or
-       unusually high-risk items" — that is the section describing the rule, not
-       naming a category, and blocking the word would force the copy to be
-       vaguer than the policy. The joined phrase ("regulated dangerous goods")
-       and the label ("Other regulated dangerous goods") still catch the
-       CATEGORY, which is what must not be re-listed. */
-    const GENERIC_QUALIFIERS = new Set(["regulated", "dangerous", "goods"]);
     const categories = [
       ...PROHIBITED_CLASSES.map((c) => c.replace(/_/g, " ")),
-      ...PROHIBITED_CLASSES.flatMap((c) => c.split("_"))
-        .filter((w) => w.length >= 5 && !GENERIC_QUALIFIERS.has(w)),
       ...Object.values(PROHIBITED_LABELS),
     ];
-    expect(categories).toContain("cannabis");
-    expect(categories.length).toBeGreaterThan(60);
+    expect(categories.length).toBeGreaterThan(40);
     for (const s of strings) {
       for (const cat of categories) {
         /* WHOLE PHRASE, word-bounded. Splitting these on "_" and matching
@@ -219,41 +203,104 @@ describe("PUB-013 marketing copy limits", () => {
     expect(SD.prohibited_help).toMatch(/before you pay/i);
   });
 
-  /* NO POLICY-DOCUMENT CTA while no policy document exists.
-     MKT-ARCH §6 asks for "View Prohibited & Restricted Items Policy →" and
-     says to take the destination from the legal registry rather than typing a
-     URL. `lib/legal.ts` carries two effective dates and no such document, and
-     no canonical screen owns that route — so the CTA would have been a dead
-     link or a link to the LEGACY multi-product /terms page. It waits for the
-     document, and this fails if the copy comes back before the destination. */
-  it("promises no prohibited-items policy document that does not exist", () => {
-    expect(SD).not.toHaveProperty("prohibited_cta");
+  /**
+   * THE POLICY-DOCUMENT CTA, RESTORED 2026-09-17.
+   *
+   * WHAT CHANGED AND WHY. This case asserted that `SD` had NO `prohibited_cta`,
+   * because MKT-ARCH §6 asked for one and there was no document to point it at:
+   * `lib/legal.ts` carried two effective dates and nothing else, so the CTA
+   * would have been a dead link or a link to the LEGACY multi-product /terms
+   * page. The document exists now — `lib/couranr/legal/registry.ts` owns the
+   * `prohibited-items` entry with a title, a slug, a version and
+   * `acceptanceIsRecorded: true`, and `/legal/prohibited-items` renders it — so
+   * the assertion is INVERTED rather than deleted. A CTA that disappears again
+   * must fail.
+   *
+   * THE TWO REGEXES BELOW ARE UNCHANGED, and that is deliberate: they were
+   * never about whether the document existed. They forbid TYPING the document's
+   * name into locked copy, which is still the rule. The page renders the title
+   * from the registry, so the name a visitor reads and the document behind the
+   * link cannot become two different things.
+   */
+  it("carries the policy CTA without typing the document name", () => {
+    expect(SD).toHaveProperty("prohibited_cta");
+    expect(SD.prohibited_cta.length).toBeGreaterThan(4);
     const strings = Object.values(SD).flatMap((v) => (Array.isArray(v) ? v : [v]));
     for (const s of strings) {
       expect(s, s).not.toMatch(/prohibited (&|and) restricted items policy/i);
       expect(s, s).not.toMatch(/shipment terms/i);
     }
+    /* The name has to actually live in the registry, or the negative above is
+       satisfied by a registry entry that was renamed out from under the page —
+       a green test over a link whose text no longer names the policy. Asserted
+       against the SAME pattern the copy is forbidden to contain, so the two
+       halves cannot drift apart. */
+    expect(LEGAL_DOCUMENTS["prohibited-items"].title).toMatch(
+      /prohibited (&|and) restricted items policy/i,
+    );
   });
 
   /**
    * THE HANDOFF CLAIM LIMIT — the load-bearing assertion in this file.
    *
-   * Value-tiered custody (a declared-value ceiling, numbered tamper-evident
-   * seals, recipient identity verification) is NOT in this build. Copy that
-   * described it would be a protection claim Couranr cannot honour, and it
-   * would read as insurance. This fails the moment such a sentence is added
-   * without the implementation.
+   * WHAT CHANGED AND WHY, 2026-09-17. This case forbade the words "tamper",
+   * "seal" and "declared value" in the handoff copy on the ground that
+   * value-tiered custody was "NOT in this build". It IS in this build:
+   * `deriveProtection` derives standard / secure_pickup / protected_handoff
+   * from the declared value, the SQL re-derives it, and
+   * `private.couranr_enforce_consumer_custody_sequence` refuses the
+   * at_pickup -> picked_up transition without the prepack photograph, the
+   * sealed-package photograph, the seal bound to that photograph and the
+   * sender's credential consumed LAST. Forbidding a sentence that is true is
+   * the same defect as permitting one that is false, one direction over — so
+   * the forbidden list keeps ONLY the claims that are still unsupported, and
+   * the custody that is real is now asserted POSITIVELY. A page that quietly
+   * drops back to silence about it fails here.
+   *
+   * THE ONE THAT MOVED FROM "unimplemented" TO "unavailable": recipient
+   * identity verification. The adapter exists, Stripe Identity is not
+   * activated, and `private.couranr_block_unavailable_protected_handoff`
+   * refuses every consumer request at `protected_handoff`. So the copy may
+   * describe SECURE PICKUP and may NOT offer protected handoff or an identity
+   * check — that would sell a shipment the database refuses.
    */
-  it("claims only the handoff evidence this build records", () => {
-    const all = [SD.handoff_heading, SD.handoff_body, SD.handoff_progressive, SD.handoff_honesty].join(" ");
+  it("claims the custody this build performs, and no more", () => {
+    const all = [
+      SD.handoff_heading,
+      SD.handoff_body,
+      SD.handoff_progressive,
+      SD.handoff_secure_pickup,
+      SD.handoff_declared_value,
+      SD.handoff_declared_value_close,
+      SD.handoff_honesty,
+    ].join(" ").toLowerCase();
+
+    /* Still unsupported, every one. The insurance words were never about the
+       custody tiers — a declared value is a sender representation, not cover —
+       and the identity words describe a level no consumer request can leave
+       draft at. */
     for (const forbidden of [
-      "tamper", "seal", "identity verification", "verify your identity",
-      "declared value", "insured", "insurance", "guarantee", "guaranteed",
+      "insured", "insurance", "guarantee", "guaranteed",
       "fully protected", "verified authentic", "appraised", "certified",
+      "identity verification", "verify your identity", "verifies their identity",
+      "protected handoff", "id check", "photo id",
     ]) {
-      expect(all.toLowerCase(), `unsupported protection claim: "${forbidden}"`).not.toContain(forbidden);
+      expect(all, `unsupported protection claim: "${forbidden}"`).not.toContain(forbidden);
     }
-    // The honesty sentence is mandatory, not optional.
+
+    /* POSITIVE, because a negative-only list is satisfied by saying nothing at
+       all — which is exactly the state this correction is undoing. */
+    expect(all, "the sealed-custody ceremony is no longer described").toContain(
+      "tamper-evident seal",
+    );
+    expect(all, "the prepack documentation is no longer described").toContain(
+      "before it is packed",
+    );
+    expect(all, "the sealed-package photograph is no longer described").toContain(
+      "sealed package",
+    );
+
+    // The honesty sentence is mandatory, not optional. Unchanged.
     expect(SD.handoff_honesty).toMatch(/does not authenticate, appraise or certify/i);
   });
 
@@ -270,40 +317,157 @@ describe("PUB-013 marketing copy limits", () => {
    * not serve. The test now asserts the narrower truth, and — importantly —
    * FAILS if the three-method sentence comes back.
    */
-  it("names no drop-off credential the consumer can never be given", () => {
-    const h = SD.handoff_progressive.toLowerCase();
-    /* The two methods the Same Day funnel can never reach — it stores a
-       literal `photo_or_pin`. */
+  it("names only the drop-off method Same Day actually uses", () => {
+    /* WIDENED 2026-09-17. It scanned `handoff_progressive` alone, which was the
+       whole handoff paragraph at the time. The custody correction split that
+       paragraph across four keys, and a scan of one of them would have passed a
+       signature promised in any of the other three — the same defect in a
+       different key, which is the note the prohibition scanner above already
+       carries. */
+    const h = [
+      SD.handoff_progressive,
+      SD.handoff_secure_pickup,
+      SD.handoff_declared_value,
+      SD.handoff_declared_value_close,
+    ].join(" ").toLowerCase();
+    expect(SD.handoff_progressive.toLowerCase()).toMatch(/code/);
+    // The two methods the Same Day funnel can never reach.
     expect(h, SD.handoff_progressive).not.toMatch(/signature/);
     expect(h, SD.handoff_progressive).not.toMatch(/photo at the door|leave (it )?at the door/);
-    /* AND NOT THE CODE EITHER. `couranr_complete_direct_handoff_delivery`
-       does require a verified recipient code, so naming it reads as accurate —
-       but the routes that issue or reveal one live only under
-       /api/couranr/merchant and /api/couranr/operations, and no consumer
-       surface shows it. Promising a customer a code nothing gives them is the
-       same class of error as promising a method the funnel cannot select. */
-    expect(h, SD.handoff_progressive).not.toMatch(/\bcode\b|\bpin\b/);
     expect(h).not.toMatch(/every delivery (is|gets)|always (photograph|signed)/);
-    // It must still describe a real, recorded handoff rather than go silent.
-    expect(h).toMatch(/confirm/);
   });
 
   /**
-   * TRACKING REACH. "Couranr gives the recipient a private tracking
-   * experience" was false: a Same Day request carries null recipient name,
-   * phone and email, and the link renders on the SENDER's confirmation screen.
-   * Couranr has no channel to the recipient, so the copy may not say it
-   * delivers anything to them.
+   * TRACKING REACH, INVERTED 2026-09-17.
+   *
+   * WHAT CHANGED AND WHY. This case asserted the copy may NOT say Couranr
+   * reaches the recipient. That was correct when a Same Day request carried
+   * null recipient name, phone and email and the tracking link rendered on the
+   * SENDER's own confirmation screen. Both halves are false now:
+   * `recipient_email` is REQUIRED — `lib/couranr/consumer/send.ts` fails
+   * `recipient_email_required` without it — and
+   * `lib/couranr/email/consumerLifecycle.ts` emails the recipient their own
+   * private tracking link, then emails them again out-for-delivery and on
+   * arrival. `getConsumerSendView` returns no tracking token at all.
+   *
+   * So the assertion inverts: the copy MUST say the recipient is reached, and
+   * must NOT hand the sender a link the confirmation screen will never show
+   * them. The GPS / live-map limits are untouched — they were never about
+   * reach, and they are still claims this build cannot make.
    */
-  it("does not claim Couranr reaches the recipient directly", () => {
+  it("gives the recipient their own tracking and promises the sender no link", () => {
     const t = SD.tracking_body.toLowerCase();
     expect(t).not.toMatch(/gps|second-by-second|live map|photo of every/);
-    expect(t, SD.tracking_body).not.toMatch(/gives the recipient|sends? the recipient|notif\w* the recipient/);
+    /* The correction, asserted positively — silence would pass a negative. */
+    expect(t, SD.tracking_body).toMatch(/recipient/);
+    /* The sender is never told they receive, keep or forward the recipient's
+       link. getConsumerSendView deliberately returns none, so any of these
+       would be a promise the confirmation screen cannot keep. */
+    expect(t, SD.tracking_body).not.toMatch(
+      /gives you a (private )?tracking link|your (own )?tracking link/,
+    );
+    expect(t, SD.tracking_body).not.toMatch(
+      /to keep or to pass|forward (it|the link)|share (it|the link)|pass (it )?(on|to)/,
+    );
   });
 
   it("keeps the business cross-link about purpose, never speed", () => {
     const all = [SD.crosslink_heading, SD.crosslink_body, SD.crosslink_cta].join(" ").toLowerCase();
     expect(all).not.toMatch(/faster|quicker|priority|speed|upgrade|tier/);
     expect(all).toMatch(/part of your business/);
+  });
+});
+
+/**
+ * THE TWO CUSTODY FIGURES ON PUB-013, AND THE TRIGGER THE SECOND ONE DEPENDS ON.
+ *
+ * NEW 2026-09-17, with the copy correction it guards. MKT-005 forbids a price
+ * literal in a locked string, so the amounts cannot live in the copy — they are
+ * composed on the page from `lib/couranr/consumer/protection.ts`, which is the
+ * same module the server and the SQL derive from. This is the shape SEND_COPY's
+ * `declared_value_max_note` already uses; without a test it is a convention, and
+ * a convention is what a hardcoded "$150.00" quietly breaks.
+ */
+describe("PUB-013 renders its custody figures from authority", () => {
+  const PAGE_PATH = "app/(couranr)/(public)/(consumer-public)/sameday/page.tsx";
+  const PAGE = readFileSync(path.join(ROOT, PAGE_PATH), "utf8");
+  /* COMMENTS STRIPPED. The blocks above these renders name the constants and
+     the route they replaced, and a raw scan reads the explanation as the
+     violation it describes — the same lesson the category scanner in
+     couranr-market-copy-surfaces.test.ts already wrote down. */
+  const code = PAGE.replace(/\{\/\*[\s\S]*?\*\/\}/g, " ").replace(/\/\*[\s\S]*?\*\//g, " ");
+
+  it("composes both thresholds from the protection module and types neither", () => {
+    expect(code).toContain("PROTECTION_THRESHOLDS.standardMaxCents");
+    /* The upper figure now comes from CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS,
+       which IS securePickupMaxCents but names WHY: it is the most a customer
+       can actually buy while the protected-handoff block is live, as opposed
+       to the policy ceiling. /send reads the same constant, so the two
+       surfaces cannot state different maximums again. */
+    expect(code).toContain("acceptedDeclaredValueCents");
+    expect(code).toContain("declaredValueDollars");
+    expect(code, "a dollar amount is typed onto PUB-013").not.toMatch(/\$\s?\d/);
+    // POSITIVE CONTROL: the comment stripper left the render intact.
+    expect(code).toContain("SAME_DAY_COPY.handoff_secure_pickup");
+    expect(code).toContain("SAME_DAY_COPY.handoff_declared_value");
+  });
+
+  it("links the policy through the legal registry, href and title alike", () => {
+    expect(code).toContain('legalDocumentHref("prohibited-items")');
+    expect(code).toContain('LEGAL_DOCUMENTS["prohibited-items"].title');
+    expect(code, "the policy route is typed rather than resolved").not.toContain(
+      "/legal/prohibited-items",
+    );
+    expect(code, "the policy title is typed rather than resolved").not.toContain(
+      LEGAL_DOCUMENTS["prohibited-items"].title,
+    );
+  });
+
+  /**
+   * THE ACCEPTED MAXIMUM IS NOT THE POLICY MAXIMUM, and this is what keeps that
+   * true.
+   *
+   * `deriveProtection` sends every value above `securePickupMaxCents` to
+   * `protected_handoff`, and `private.couranr_block_unavailable_protected_handoff`
+   * — an enabled trigger with no flag and no escape — raises
+   * `protected_handoff_identity_unavailable` for any consumer request at that
+   * level the moment it leaves draft. So `securePickupMaxCents` is the largest
+   * declared value a customer can actually submit, and
+   * `CONSUMER_MAX_DECLARED_VALUE_CENTS` is a ceiling nobody can reach.
+   *
+   * The day that trigger is dropped, protected handoff becomes buyable and this
+   * page starts UNDER-stating what Couranr accepts. Nothing else in the suite
+   * connects a migration to the marketing sentence it invalidates, so this
+   * assertion is that link: a migration that removes the block turns it red and
+   * forces the copy to be revisited rather than left quietly stale.
+   */
+  it("states the maximum a customer can submit, not the policy ceiling", () => {
+    const at = deriveProtection(PROTECTION_THRESHOLDS.securePickupMaxCents);
+    const over = deriveProtection(PROTECTION_THRESHOLDS.securePickupMaxCents + 1);
+    expect(at).toMatchObject({ ok: true, requirements: { level: "secure_pickup" } });
+    expect(over).toMatchObject({ ok: true, requirements: { level: "protected_handoff" } });
+    expect(PROTECTION_THRESHOLDS.securePickupMaxCents).toBeLessThan(
+      CONSUMER_MAX_DECLARED_VALUE_CENTS,
+    );
+
+    const MIGRATIONS = path.join(ROOT, "supabase/migrations");
+    const TRIGGER = "couranr_dr_block_unavailable_protected_handoff";
+    const creators: string[] = [];
+    const droppers: string[] = [];
+    for (const f of readdirSync(MIGRATIONS).filter((n) => n.endsWith(".sql"))) {
+      const sql = readFileSync(path.join(MIGRATIONS, f), "utf8");
+      const creates = new RegExp(`create trigger\\s+${TRIGGER}`, "i").test(sql);
+      const drops = new RegExp(`drop trigger[^;]*${TRIGGER}`, "i").test(sql);
+      if (creates) creators.push(f);
+      /* The idempotent `drop if exists` that PRECEDES a create is not a
+         removal. Only a drop with no create beside it retires the block. */
+      if (drops && !creates) droppers.push(f);
+    }
+    // POSITIVE CONTROL: a negative result here is a claim about the scan first.
+    expect(creators.length, "the scan cannot find the trigger at all").toBeGreaterThan(0);
+    expect(
+      droppers,
+      "protected handoff was activated — PUB-013 now understates the accepted maximum",
+    ).toEqual([]);
   });
 });

@@ -55,6 +55,7 @@
     "typecheck:canonical": "tsc --noEmit -p tsconfig.canonical.json",
     "typecheck:couranr-foundation": "tsc -p tsconfig.couranr-foundation.json",
     "test:payment-recovery": "node e2e/disposable/paymentRecovery.mjs",
+    "test:refund-review": "node e2e/disposable/refundReview.mjs",
     "test:credit-settlement": "node e2e/disposable/creditSettlement.mjs",
     "test:rollback-guards": "node e2e/disposable/rollbackGuards.mjs",
     "test:consumer-send": "node e2e/disposable/consumerSend.mjs",
@@ -71,7 +72,8 @@
     "check:governance": "node scripts/governance/check.mjs",
     "governance:facts": "node scripts/governance/facts.mjs",
     "couranr:integrity": "node scripts/couranrIntegrity.mjs",
-    "test:cus004-browser": "node e2e/disposable/customerProblemReport.mjs"
+    "test:cus004-browser": "node e2e/disposable/customerProblemReport.mjs",
+    "test:consumer-trust-custody": "node e2e/disposable/consumerTrustCustody.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.123.0",

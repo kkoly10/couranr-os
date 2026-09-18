@@ -26,6 +26,7 @@ import {
 import {
   completePickup,
   fetchMyProof,
+  recordDeliverySeal,
   verifyPickupCode,
   type AssignedDeliveryView,
 } from "./client";
@@ -132,6 +133,41 @@ export function PickupFlow({
     recordedProofId: recorded.securement_photo ?? null,
   });
 
+  /* SECURE PICKUP (above $30.00). The hooks are built unconditionally because
+     hooks must be; whether they are REQUIRED is the protection level's call,
+     and for an ungoverned delivery every flag below is false and this flow is
+     byte-identical to what shipped. */
+  const protection = assigned.protection;
+  const secure = protection.requiresSecuritySeal;
+
+  const prepackPhoto = useProofUpload({
+    deliveryId,
+    stage: "pickup",
+    proofType: "item_prepack_photo",
+    location,
+    recordedProofId: recorded.item_prepack_photo ?? null,
+  });
+  const sealedPackagePhoto = useProofUpload({
+    deliveryId,
+    stage: "pickup",
+    proofType: "sealed_package_photo",
+    location,
+    recordedProofId: recorded.sealed_package_photo ?? null,
+  });
+
+  const [sealIdentifier, setSealIdentifier] = React.useState("");
+  const [sealRecorded, setSealRecorded] = React.useState<string | null>(null);
+  const [sealBusy, setSealBusy] = React.useState(false);
+  const [sealError, setSealError] = React.useState<string | null>(null);
+
+  /* The credential means "the documented and sealed shipment is what I am
+     tendering", so it can only be taken once there IS a documented, sealed
+     shipment. The database refuses the pickup otherwise
+     (pickup_credential_before_documentation); this keeps the driver from
+     reaching that refusal with the sender standing in front of them. */
+  const documentationComplete =
+    !secure || (prepackPhoto.finalized && sealedPackagePhoto.finalized && sealRecorded !== null);
+
   const large = requiresLargeShipmentProof({
     vehicleClass: assigned.vehicleRequirement.vehicleClass,
     declaredWeightLb: assigned.shipment.declaredWeightLb,
@@ -141,7 +177,16 @@ export function PickupFlow({
   const blockers: string[] = [];
   if (pinOutcome !== "accepted") blockers.push("Verify the pickup with the sender.");
   if (!location.usable) blockers.push(location.message);
-  if (!shipmentPhoto.finalized) {
+  /* THE GENERIC PICKUP PHOTO IS NOT ASKED OF A SECURE PICKUP. On a secure
+     shipment the prepack photo shows the item and the sealed photo shows the
+     package the seal is read from; a third shot of "everything you are
+     collecting" sits between them proving neither, and it was a fourth photo
+     once the load was large. `couranr_complete_pickup_v2` stopped requiring it
+     for a governed secure_pickup/protected_handoff in
+     20260917160000_couranr_secure_pickup_photo_burden.sql — this list and that
+     function must agree in BOTH directions, or the driver is either blocked on
+     a photo the server does not want or waved through into a refusal. */
+  if (!secure && !shipmentPhoto.finalized) {
     blockers.push(
       shipmentPhoto.status === "queued"
         ? "Wait for the saved pickup photo to sync with Couranr."
@@ -155,6 +200,23 @@ export function PickupFlow({
         : "Take a photo showing the large load secured."
     );
   }
+  if (secure && !prepackPhoto.finalized) {
+    blockers.push(
+      prepackPhoto.status === "queued"
+        ? "Wait for the saved item photo to sync with Couranr."
+        : "Photograph the item itself, before it goes into the package."
+    );
+  }
+  if (secure && !sealedPackagePhoto.finalized) {
+    blockers.push(
+      sealedPackagePhoto.status === "queued"
+        ? "Wait for the saved sealed-package photo to sync with Couranr."
+        : "Seal the package and photograph it with the seal visible."
+    );
+  }
+  if (secure && sealRecorded === null) {
+    blockers.push("Record the seal number printed on the tamper-evident label.");
+  }
   if (version === null) {
     blockers.push("Reload this delivery so Couranr can confirm its current version.");
   }
@@ -162,6 +224,22 @@ export function PickupFlow({
     blockers.push("Couranr Operations must review the pickup issue before you continue.");
   }
   const ready = blockers.length === 0;
+
+  async function recordSeal() {
+    // The seal is bound to the PHOTOGRAPH it is visible in, so a finalized
+    // proof id is a precondition, not a nicety — the SQL refuses without it.
+    const proofId = sealedPackagePhoto.finalized ? sealedPackagePhoto.proofId : null;
+    if (!proofId || sealBusy) return;
+    setSealBusy(true);
+    setSealError(null);
+    const result = await recordDeliverySeal(deliveryId, sealIdentifier, proofId);
+    setSealBusy(false);
+    if (isApiFailure(result)) {
+      setSealError(withReference(result));
+      return;
+    }
+    setSealRecorded(result.value.seal.sealIdentifier);
+  }
 
   async function verifyCode(code: string) {
     if (!/^\d{6}$/.test(code) || pinBusy) return;
@@ -252,20 +330,124 @@ export function PickupFlow({
     <Stack gap={6}>
       <ExpectedPickup assigned={assigned} large={large} />
 
+      {/* SECURE PICKUP, rendered BEFORE the verification card on purpose: the
+          order on screen is the order the custody sequence requires, and a
+          driver who works top to bottom does the right thing without reading a
+          warning. The database enforces the same order regardless. */}
+      {secure ? (
+        <Card>
+          <CardHeader
+            title="Secure pickup"
+            description="This shipment is documented and sealed before the sender confirms it."
+            actions={
+              <Badge tone={sealRecorded ? "success" : "neutral"}>
+                {sealRecorded ? "Sealed" : "Required"}
+              </Badge>
+            }
+          />
+          <Stack gap={3}>
+            <Alert tone="info" title="Do these in order">
+              Photograph the item, seal the package, photograph the seal, then record the seal
+              number. The sender confirms last.
+            </Alert>
+
+            <PhotoField
+              label="Photo of the item, before packing"
+              hint="Show the item itself. This is what proves WHAT was handed over."
+              upload={prepackPhoto}
+              blocked={!location.usable}
+              blockedReason={location.message}
+            />
+
+            <PhotoField
+              label="Photo of the sealed package"
+              hint="Fit the tamper-evident seal in the frame, with its number readable."
+              upload={sealedPackagePhoto}
+              blocked={!location.usable || !prepackPhoto.finalized}
+              blockedReason={
+                !location.usable
+                  ? location.message
+                  : "Photograph the item first — once it is sealed you cannot show what is inside."
+              }
+            />
+
+            {sealRecorded ? (
+              <Alert tone="success" title="Seal recorded">
+                Seal {sealRecorded} is recorded against the sealed-package photo.
+              </Alert>
+            ) : (
+              <>
+                <Field
+                  label="Seal number"
+                  hint="Exactly as printed on the tamper-evident label."
+                >
+                  {(a) => (
+                    <input
+                      {...a}
+                      className="cr-input"
+                      type="text"
+                      inputMode="text"
+                      autoComplete="off"
+                      value={sealIdentifier}
+                      disabled={sealBusy || !sealedPackagePhoto.finalized}
+                      onChange={(event) => setSealIdentifier(event.currentTarget.value)}
+                    />
+                  )}
+                </Field>
+                <Button
+                  onClick={() => void recordSeal()}
+                  disabled={
+                    sealBusy ||
+                    !sealedPackagePhoto.finalized ||
+                    sealIdentifier.trim().length < 4
+                  }
+                >
+                  {sealBusy ? "Recording…" : "Record seal"}
+                </Button>
+                {!sealedPackagePhoto.finalized ? (
+                  <Text size="xs" muted>
+                    Take the sealed-package photo first — the seal is recorded against it.
+                  </Text>
+                ) : null}
+                {sealError ? (
+                  <Alert tone="warning" title="Seal not recorded">{sealError}</Alert>
+                ) : null}
+              </>
+            )}
+          </Stack>
+        </Card>
+      ) : null}
+
       <Card>
         <CardHeader
           title="Verify pickup"
           description="Ask the sender to show their Couranr pickup QR. The six-digit code underneath is the fallback."
           actions={
-            pinOutcome === "accepted" ? <Badge tone="success">Verified</Badge> : <Badge tone="neutral">1 of 2</Badge>
+            pinOutcome === "accepted" ? (
+              <Badge tone="success">Verified</Badge>
+            ) : secure ? (
+              // A secure pickup has no "2 of 2" generic photo to be the other
+              // half of, so the counter would be counting a step that no longer
+              // exists.
+              <Badge tone="neutral">Last step</Badge>
+            ) : (
+              <Badge tone="neutral">1 of 2</Badge>
+            )
           }
         />
         <Stack gap={3}>
+          {pinOutcome !== "accepted" && !documentationComplete ? (
+            <Alert tone="info" title="Document the shipment first">
+              This delivery needs the item photographed, sealed and the seal number recorded
+              before you take the sender&rsquo;s code. Their code confirms the sealed shipment,
+              so it comes last.
+            </Alert>
+          ) : null}
           {pinOutcome === "accepted" ? (
             <Alert tone="success" title="Sender verified">
               Pickup verification accepted. You do not need to scan or enter it again.
             </Alert>
-          ) : (
+          ) : !documentationComplete ? null : (
             <>
               <Field
                 label="Scan pickup QR"
@@ -356,35 +538,55 @@ export function PickupFlow({
         </Cluster>
       )}
 
-      <Card>
-        <CardHeader
-          title="Pickup photo"
-          description="Take one photo showing everything you are taking. This is the normal pickup proof."
-          actions={<Badge tone={shipmentPhoto.finalized ? "success" : "neutral"}>2 of 2</Badge>}
-        />
-        <PhotoField
-          label="Photo of the pickup"
-          hint="Fit the full pickup in the frame when possible."
-          upload={shipmentPhoto}
-          blocked={!location.usable}
-          blockedReason={location.message}
-        />
-
-        {large ? (
-          <Stack gap={3} style={{ marginTop: "var(--couranr-space-4)" }}>
-            <Alert tone="info" title="Large or unusual load">
-              Couranr needs one extra securement photo for this load. You do not need to fill out a loading report.
-            </Alert>
+      {/* For a SECURE pickup this card exists only when the load is large: the
+          generic pickup photo is not required and is therefore not offered,
+          because a photo field on screen is a photo a driver takes. The
+          securement photo is about the DRIVE rather than the custody ceremony,
+          so it survives at every level. */}
+      {!secure || large ? (
+        <Card>
+          <CardHeader
+            title={secure ? "Securement photo" : "Pickup photo"}
+            description={
+              secure
+                ? "This load needs its securement shown. The item and the sealed package are already photographed above."
+                : "Take one photo showing everything you are taking. This is the normal pickup proof."
+            }
+            actions={
+              secure ? undefined : (
+                <Badge tone={shipmentPhoto.finalized ? "success" : "neutral"}>2 of 2</Badge>
+              )
+            }
+          />
+          {secure ? null : (
             <PhotoField
-              label="Photo of the secured load"
-              hint="Show the straps, tie-downs, ramp or other securement before driving."
-              upload={securementPhoto}
+              label="Photo of the pickup"
+              hint="Fit the full pickup in the frame when possible."
+              upload={shipmentPhoto}
               blocked={!location.usable}
               blockedReason={location.message}
             />
-          </Stack>
-        ) : null}
-      </Card>
+          )}
+
+          {large ? (
+            <Stack
+              gap={3}
+              style={secure ? undefined : { marginTop: "var(--couranr-space-4)" }}
+            >
+              <Alert tone="info" title="Large or unusual load">
+                Couranr needs one extra securement photo for this load. You do not need to fill out a loading report.
+              </Alert>
+              <PhotoField
+                label="Photo of the secured load"
+                hint="Show the straps, tie-downs, ramp or other securement before driving."
+                upload={securementPhoto}
+                blocked={!location.usable}
+                blockedReason={location.message}
+              />
+            </Stack>
+          ) : null}
+        </Card>
+      ) : null}
 
       {discrepancyReported ? null : (
         <Button
@@ -401,7 +603,12 @@ export function PickupFlow({
         onReported={() => setDiscrepancyReported(true)}
       />
 
-      {shipmentPhoto.status === "queued" || securementPhoto.status === "queued" ? (
+      {/* Every proof this flow can actually be waiting on. The secure pair was
+          missing, so a queued prepack or sealed photo blocked the driver with no
+          route to the sync panel. */}
+      {(!secure && shipmentPhoto.status === "queued") ||
+      securementPhoto.status === "queued" ||
+      (secure && (prepackPhoto.status === "queued" || sealedPackagePhoto.status === "queued")) ? (
         <Alert tone="warning" title="Proof is waiting to sync">
           Couranr cannot confirm custody until the queued proof is server-verified.{" "}
           <a className={buttonClassName({ variant: "secondary", size: "sm" })} href={`/driver/deliveries/${deliveryId}?panel=offline-sync`}>
@@ -424,7 +631,9 @@ export function PickupFlow({
             </Alert>
           ) : (
             <Alert tone="success" title="Ready to confirm pickup">
-              Sender verification, pickup photo and location are recorded.
+              {secure
+                ? "The item photo, the sealed-package photo, the seal number, sender verification and location are recorded."
+                : "Sender verification, pickup photo and location are recorded."}
             </Alert>
           )}
 

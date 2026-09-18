@@ -7,6 +7,7 @@ import {
   type PublicErrorCode,
 } from "@/lib/couranr/errors";
 import { canActOnDeliveryRequest, type RequestActor } from "@/lib/couranr/requests/permissions";
+import { isSelectableProofMethod } from "@/lib/couranr/requests/input";
 import { REQUEST_VIEW_COLUMNS } from "@/lib/couranr/requests/commands";
 import { getStripeClient } from "@/lib/stripeClient";
 import type { ReadinessState } from "@/lib/couranr/requests/states";
@@ -463,11 +464,80 @@ export async function capturePaymentForAutomation(params: {
 }
 
 /** Step 4. Idempotent: a second call returns the same delivery. */
+/**
+ * THE HISTORICAL-CONVERSION GUARD (P10-015, second half).
+ *
+ * Withdrawing `leave_at_door` from new INTAKE did not close the whole gap. A
+ * request stored before the withdrawal keeps its frozen proof method, and the
+ * two settlement paths — a captured payment and an applied promotional credit —
+ * copy that method straight onto a brand-new delivery. So a historical row
+ * could still MATERIALIZE a leave-at-door delivery that PRF-001 says needs a
+ * customer authorization nothing records.
+ *
+ * Production has exactly that row: request 4672dbfe is confirmed and ready,
+ * carries leave_at_door, and has no delivery.
+ *
+ * THE ORDER IS THE WHOLE DESIGN. An existing delivery is returned FIRST and
+ * unconditionally, so the delivery already at pickup under leave_at_door is
+ * grandfathered and every retry stays idempotent. Only a request with NO
+ * delivery is refused. Nothing here rewrites the request, its quote, or the
+ * existing delivery, and the driver's completion command is untouched.
+ *
+ * Shared by all three entry points — capture, operations credit, and the
+ * automatic worker — so none of them can be the one that forgot.
+ */
+async function refuseUnavailableProofMethodConversion(
+  op: string,
+  requestId: string
+): Promise<FulfillmentFailure | null> {
+  /* 1. EXISTING DELIVERY WINS. Idempotent by design and the grandfather clause
+        in one: if the delivery exists we never look at the proof method. */
+  const existing = (await supabaseAdmin
+    .from("couranr_deliveries")
+    .select("id")
+    .eq("request_id", requestId)
+    .limit(1)) as { data: any; error: any };
+  if (existing.error) {
+    return fail({ operation: op, code: "internal", detail: existing.error.message });
+  }
+  if (Array.isArray(existing.data) && existing.data.length > 0) return null;
+
+  /* 2. No delivery yet — read the frozen method off the request. */
+  const req = (await supabaseAdmin
+    .from("couranr_delivery_requests")
+    .select("proof_method")
+    .eq("id", requestId)
+    .limit(1)) as { data: any; error: any };
+  if (req.error) {
+    return fail({ operation: op, code: "internal", detail: req.error.message });
+  }
+  const method = req.data?.[0]?.proof_method;
+  /* A request with no row at all is not this guard's business — the RPC raises
+     request_not_found with its own reason. */
+  if (typeof method !== "string" || method === "") return null;
+
+  /* 3. Refuse creation of a NEW delivery under a withdrawn method. */
+  if (!isSelectableProofMethod(method)) {
+    return fail({
+      operation: op,
+      code: "conflict",
+      detail: { reason: "proof_method_currently_unavailable", proofMethod: method },
+      message:
+        "This request uses a delivery proof method Couranr cannot currently offer. " +
+        "No delivery was created and no further charge was made.",
+    });
+  }
+  return null;
+}
+
 async function convertAfterCapture(
   op: string,
   requestId: string,
   ob: { id: string; payment_state: string }
 ): Promise<FulfillmentResult<CaptureOutcome>> {
+  const withdrawn = await refuseUnavailableProofMethodConversion(op, requestId);
+  if (withdrawn) return withdrawn;
+
   const created = await callRpc<Record<string, any>>(op, RPC.createDelivery, {
     p_request_id: requestId,
   });
@@ -831,6 +901,9 @@ export async function createDeliveryFromPromotionalCredit(params: {
     });
   }
 
+  const withdrawn = await refuseUnavailableProofMethodConversion(op, params.requestId);
+  if (withdrawn) return withdrawn;
+
   const r = await callRpc<Record<string, any>>(op, RPC.createDeliveryFromCredit, {
     p_request_id: params.requestId,
   });
@@ -847,6 +920,9 @@ export async function createDeliveryFromPromotionalCreditForAutomation(params: {
   requestId: string;
 }): Promise<FulfillmentResult<{ delivery: Record<string, any> }>> {
   const op = "createDeliveryFromPromotionalCreditForAutomation";
+  const withdrawn = await refuseUnavailableProofMethodConversion(op, params.requestId);
+  if (withdrawn) return withdrawn;
+
   const r = await callRpc<Record<string, any>>(op, RPC.createDeliveryFromCredit, {
     p_request_id: params.requestId,
   });
@@ -1407,6 +1483,43 @@ export type RefundOutcome = {
   reason: string;
 };
 
+/* ------------------------------------------------- the provider seam ---- */
+
+/**
+ * The ONLY two provider operations the refund flow performs, behind an
+ * injectable interface — the same discipline `lib/couranr/email/send.ts` uses
+ * with `fetchImpl`.
+ *
+ * There is deliberately NO DEFAULT VALUE anywhere. Every function that can
+ * reach the payment provider takes this as a REQUIRED parameter, so a caller
+ * that forgets it is a compile error rather than a live API call — omission
+ * cannot reach Stripe. `npm run typecheck:canonical` is what enforces that.
+ */
+export type RefundGateway = {
+  list(params: {
+    payment_intent: string;
+    limit: number;
+    starting_after?: string;
+  }): Promise<{ data?: any[]; has_more?: boolean } | null>;
+  create(
+    params: { payment_intent: string; amount: number; metadata: Record<string, string> },
+    options: { idempotencyKey: string }
+  ): Promise<{ id?: string; status?: string; amount?: number } | null>;
+};
+
+/**
+ * The real gateway. `getStripeClient()` is resolved INSIDE each method, not
+ * when this factory runs, so building one reads no environment variable and
+ * constructs no client — the lazy-proxy discipline `lib/stripeClient.ts` and
+ * `lib/supabaseAdmin.ts` both follow.
+ */
+export function stripeRefundGateway(): RefundGateway {
+  return {
+    list: (params) => getStripeClient().refunds.list(params as any) as any,
+    create: (params, options) => getStripeClient().refunds.create(params as any, options) as any,
+  };
+}
+
 /**
  * Read the request's obligation with the SAME nullable-tenancy discipline
  * releaseAuthorization uses: a consumer request (business null) matches with
@@ -1467,6 +1580,8 @@ export async function refundPayment(params: {
   requestId: string;
   businessAccountId: string | null;
   reason: RefundReason;
+  /** REQUIRED. There is no default: omission cannot reach the real provider. */
+  gateway: RefundGateway;
 }): Promise<FulfillmentResult<RefundOutcome>> {
   const op = "refundPayment";
 
@@ -1514,7 +1629,7 @@ export async function refundPayment(params: {
     };
   }
 
-  return convergeRefundAttemptWithProvider(op, attempt);
+  return convergeRefundAttemptWithProvider(op, attempt, params.gateway);
 }
 
 /**
@@ -1529,6 +1644,8 @@ export async function reconcileRefund(params: {
   actor: RequestActor;
   requestId: string;
   businessAccountId: string | null;
+  /** REQUIRED. There is no default: omission cannot reach the real provider. */
+  gateway: RefundGateway;
 }): Promise<FulfillmentResult<RefundOutcome>> {
   const op = "reconcileRefund";
 
@@ -1578,7 +1695,7 @@ export async function reconcileRefund(params: {
     };
   }
 
-  return convergeRefundAttemptWithProvider(op, attempt);
+  return convergeRefundAttemptWithProvider(op, attempt, params.gateway);
 }
 
 /**
@@ -1596,9 +1713,10 @@ export async function reconcileRefund(params: {
  * Expired Stripe idempotency keys are never relied on as duplicate
  * protection; the list is the proof, the key is only request-level hygiene.
  */
-async function convergeRefundAttemptWithProvider(
+export async function convergeRefundAttemptWithProvider(
   op: string,
-  attempt: RefundAttemptRow
+  attempt: RefundAttemptRow,
+  gateway: RefundGateway
 ): Promise<FulfillmentResult<RefundOutcome>> {
   /*
    * LIST FIRST — and NEVER write after an unknown read. Stripe idempotency
@@ -1626,7 +1744,7 @@ async function convergeRefundAttemptWithProvider(
     const MAX_REFUND_LIST_PAGES = 10;
     let startingAfter: string | undefined;
     for (let page = 0; page < MAX_REFUND_LIST_PAGES; page += 1) {
-      const listed = await getStripeClient().refunds.list({
+      const listed = await gateway.list({
         payment_intent: attempt.provider_payment_intent_id,
         limit: 100,
         ...(startingAfter ? { starting_after: startingAfter } : {}),
@@ -1696,16 +1814,17 @@ async function convergeRefundAttemptWithProvider(
     });
   }
 
-  return submitAndCompleteRefund(op, attempt);
+  return submitAndCompleteRefund(op, attempt, gateway);
 }
 
 async function submitAndCompleteRefund(
   op: string,
-  attempt: RefundAttemptRow
+  attempt: RefundAttemptRow,
+  gateway: RefundGateway
 ): Promise<FulfillmentResult<RefundOutcome>> {
   let refund: any;
   try {
-    refund = await getStripeClient().refunds.create(
+    refund = await gateway.create(
       {
         payment_intent: attempt.provider_payment_intent_id,
         amount: attempt.amount_cents,

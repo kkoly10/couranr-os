@@ -1,8 +1,14 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { SEND_COPY } from "@/lib/couranr/public/masterSameDayCopy";
+import {
+  legalCitation,
+  senderShipmentTermsCitation,
+  type LegalCitation,
+} from "@/lib/couranr/legal/registry";
 import {
   getSameDayAdaptersForMode,
   type IntakeProposal,
@@ -16,6 +22,14 @@ import {
   type ConsumerAddressValue,
 } from "@/components/couranr/sameday/ConsumerAddressField";
 import { WEIGHT_BAND_LABELS } from "@/lib/couranr/shipment/weightBandLabels";
+import {
+  NO_PROTECTION_CAPABILITIES,
+  acceptedDeclaredValueCents,
+  declaredValueDollars,
+  evaluateConsumerProtectionAvailability,
+  isProtectionUnavailable,
+  type ProtectionCapabilities,
+} from "@/lib/couranr/consumer/protection";
 import { parseOperatingLocal } from "@/lib/couranr/timing/policy";
 import { SAME_DAY_CUTOFF_COPY } from "@/lib/couranr/public/governed";
 import { PickupCredentialDisplay } from "@/components/couranr/dispatch/PickupCredentialDisplay";
@@ -64,6 +78,27 @@ function parseIntent(raw: string | null): Intent | null {
 const emptyAddress: ConsumerAddressValue = { value: "", placeId: null };
 
 /**
+ * The two documents the shipment certification names, cited rather than
+ * described.
+ *
+ * NOTHING HERE IS TYPED. Title, version and href all come from
+ * `lib/couranr/legal/registry.ts` as one object, so a link cannot point at one
+ * document while the sentence beside it names another, and the version shown
+ * cannot drift from the version stored. `senderShipmentTermsCitation()` returns
+ * `CONSUMER_SENDER_TERMS_VERSION` BY CONSTRUCTION — the same constant
+ * `lib/couranr/consumer/send.ts` passes to `couranr_record_consumer_trust` as
+ * `p_terms_version` — which is the whole point: the browser never states a
+ * version, it displays the one the server is going to record.
+ *
+ * Module scope, not a hook: these are pure reads of a dependency-free registry
+ * and recomputing them per render buys nothing.
+ */
+const CLICKWRAP_CITATIONS: readonly LegalCitation[] = [
+  senderShipmentTermsCitation(),
+  legalCitation("prohibited-items"),
+];
+
+/**
  * The shipment-safety declaration options — SAME closed vocabulary and SAME
  * merchant-facing copy as `NewDeliveryFlow`'s select, held in parity by
  * tests/couranr-sameday-live.test.ts. "unknown" until the sender actively
@@ -96,7 +131,17 @@ const RESTRICTED_CLASS_OPTIONS: ReadonlyArray<readonly [string, string]> = [
   ["people", "people"],
 ];
 
-export function SendFlow({ mode }: { mode: AdapterMode }) {
+export function SendFlow({
+  mode,
+  capabilities,
+}: {
+  mode: AdapterMode;
+  /* Read on the SERVER and handed down — this component cannot see the
+     provider configuration itself. Optional, and its absence means the
+     fail-closed default: a client that guessed optimistically would offer a
+     tier the server then refuses, which is the outage direction. */
+  capabilities?: ProtectionCapabilities;
+}) {
   const router = useRouter();
   const params = useSearchParams();
   /* The mode is resolved on the server and passed down; the client builds
@@ -134,7 +179,19 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
 
   const [quote, setQuote] = React.useState<QuoteReading | { state: "calculating" } | { state: "stale" } | null>(null);
   const [contact, setContact] = React.useState({ name: "", mobile: "", email: "" });
+  /* The recipient. Required from V1 — every Consumer Same Day delivery before
+     this was created with no recipient identity at all, because the UI never
+     collected one and the server passed null. */
+  const [recipient, setRecipient] = React.useState({ name: "", mobile: "", email: "" });
+  /* M — the recipient email carries a private capability and a typo delivers it
+     to a stranger with nothing bouncing back to say so. Re-entered, compared
+     normalized, and never persisted. */
+  const [recipientEmailConfirm, setRecipientEmailConfirm] = React.useState("");
+  /* DOLLARS as the sender typed them. Converted to integer cents once, by
+     `declaredCents` below — never carried as a float. */
+  const [declaredValue, setDeclaredValue] = React.useState("");
   const [acknowledged, setAcknowledged] = React.useState(false);
+  const [electronicConsent, setElectronicConsent] = React.useState(false);
 
   const [payment, setPayment] = React.useState<
     | "preparing"
@@ -154,7 +211,11 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
     amountCents: number;
   } | null>(null);
   const [liveNote, setLiveNote] = React.useState<string | null>(null);
-  const [trackingToken, setTrackingToken] = React.useState<string | null>(null);
+  /* The SENDER is told the recipient was emailed, and where. The recipient's
+     tracking token is their capability and never reaches this screen — a
+     sender who forwards this page must not be forwarding recipient authority. */
+  const [recipientNotified, setRecipientNotified] =
+    React.useState<{ at: string; to: string } | null>(null);
   /* True when the server says the payment is authorized while Couranr review
      is still pending — the CAP-001 posture the received screen must state. */
   const [authorizedPending, setAuthorizedPending] = React.useState(false);
@@ -316,6 +377,13 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
         pickupPlaceId: pickup.placeId ?? null,
         dropoffPlaceId: destination.placeId ?? null,
         contact: { name: contact.name, mobile: contact.mobile, email: contact.email },
+        recipient: { name: recipient.name, mobile: recipient.mobile, email: recipient.email },
+        recipientEmailConfirm,
+        declaredValueCents: declaredCents,
+        acceptance: {
+          shipmentCertification: acknowledged,
+          electronicTransactions: electronicConsent,
+        },
         shipment: {
           description: item,
           packageCount:
@@ -376,7 +444,11 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
      exists. When it names none, the received screen simply shows none. */
   async function finishLive() {
     const view = adapters.readRequest ? await adapters.readRequest() : null;
-    setTrackingToken(view?.trackingToken ?? null);
+    setRecipientNotified(
+      view?.recipientNotifiedAt
+        ? { at: view.recipientNotifiedAt, to: view.recipientNotifiedTo ?? "" }
+        : null
+    );
     setAuthorizedPending(
       view?.paymentState === "authorized" && view?.state === "pending_couranr_review"
     );
@@ -433,7 +505,11 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
         /* The raw tracking token is shown once by doctrine; a later resume
            may not get it back. The STATUS is still the truth to show. */
         setConfirmed(true);
-        setTrackingToken(view.trackingToken ?? null);
+        setRecipientNotified(
+          view.recipientNotifiedAt
+            ? { at: view.recipientNotifiedAt, to: view.recipientNotifiedTo ?? "" }
+            : null
+        );
         setReceived(true);
         return;
       }
@@ -498,7 +574,13 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
   async function submit() {
     setPayment("processing");
     setLiveNote(null);
-    const outcome = await adapters.submitRequest();
+    const outcome = await adapters.submitRequest({
+      declaredValueCents: declaredCents,
+      acceptance: {
+        shipmentCertification: acknowledged,
+        electronicTransactions: electronicConsent,
+      },
+    });
 
     if (mode === "live") {
       if (outcome.state !== "received") {
@@ -555,7 +637,61 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
      draft and freezes the contact snapshot, and a contactless draft can never
      be submitted. So the price is requested explicitly, only once a way to
      reach the sender exists. */
-  const hasContact = contact.mobile.trim() !== "" || contact.email.trim() !== "";
+  /* EMAIL-FIRST (V1): a phone no longer satisfies this. Email is the
+     transactional channel for the confirmation, the tracking link and any
+     claim, so `buildEstimateBody` and the server both require it — this gate
+     must require the same thing or the sender meets a refusal the form never
+     warned them about. */
+  const hasContact = contact.name.trim() !== "" && contact.email.trim() !== "";
+  const recipientEmailsMatch =
+    recipient.email.trim().toLowerCase() === recipientEmailConfirm.trim().toLowerCase();
+  const hasRecipient =
+    recipient.name.trim() !== "" && recipient.email.trim() !== "" && recipientEmailsMatch;
+
+  /* Dollars -> integer cents, or null when the sender has not stated a readable
+     amount. NOT coerced: an unreadable value is not a $0 shipment, and treating
+     it as one would put a $500 item on the standard path with no prepack photo
+     and no seal. The same refusal the server makes, made here for free. */
+  /* Plain consts, not useMemo. Both are a regex test and a pure function call
+     over one string — memoizing them buys nothing, and the React Compiler
+     refuses the whole component with "Existing memoization could not be
+     preserved" when a hand-written memo sits in a render path it wants to
+     compile. Caught by `npm run lint`, which was clean before this. */
+  const declaredCents = (() => {
+    const t = declaredValue.trim();
+    if (t === "" || !/^\d{1,7}(\.\d{1,2})?$/.test(t)) return null;
+    return Math.round(Number(t) * 100);
+  })();
+
+  /* THE DISCLOSURE. The sender is told what their declared value changes about
+     how the shipment is handled AT THE MOMENT THEY ENTER IT — not after they
+     have paid, and not in terms they have to accept sight unseen. The level is
+     derived by the same function the server and the database use; nothing here
+     chooses one. */
+  /* AVAILABILITY, not merely policy. `deriveProtection` answers what the value
+     MEANS and still does — the database re-derives the same answer. This asks
+     the second question the funnel was missing: whether that level can be
+     bought today. They differ right now, and conflating them let a $200
+     shipment walk through this step while the page said the maximum was $150,
+     being shown a Protected Handoff promise it could not deliver. */
+  const caps = capabilities ?? NO_PROTECTION_CAPABILITIES;
+  const acceptedMaxCents = acceptedDeclaredValueCents(caps);
+  const protection = evaluateConsumerProtectionAvailability(declaredCents, caps);
+  const protectionNote = isProtectionUnavailable(protection)
+    ? null
+    : protection.requirements.level === "standard"
+      ? SEND_COPY.protection_standard
+      : protection.requirements.level === "secure_pickup"
+        ? SEND_COPY.protection_secure_pickup
+        : SEND_COPY.protection_protected_handoff;
+  const declaredValueTooHigh =
+    isProtectionUnavailable(protection) && protection.reason === "declared_value_above_maximum";
+  /* Inside policy, but the tier is not sellable. A DISTINCT state: telling the
+     sender $200 is "above the maximum" would be false, and indistinguishable in
+     a log from a real policy breach. */
+  const declaredValueUnavailable =
+    isProtectionUnavailable(protection) && protection.reason === "protection_level_unavailable";
+  const hasDeclaredValue = !isProtectionUnavailable(protection);
   const quoteState = quote?.state;
   const quotePriced = quoteState === "live-available" || quoteState === "fixture-available";
   const quoteReview = quoteState === "manual-review";
@@ -607,9 +743,17 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
             no request was created, and saying so is the only honest line;
             inventing a confirmation would be a fabricated record on a
             customer's screen. */}
-        {mode === "live" && trackingToken ? (
-          <p className="cr-send-note">
-            <a href={`/track/${trackingToken}`}>Track this delivery</a>
+        {/* The recipient's tracking link is emailed to the RECIPIENT. It is
+            deliberately not rendered here and not returned to this screen: it
+            carries the recipient's adult attestation, identity verification and
+            handoff PIN, and a sender who forwarded this page would be forwarding
+            all three. Showing the address back is what actually helps the
+            sender — a typo is visible at the one moment they can still say so. */}
+        {mode === "live" && recipientNotified ? (
+          <p className="cr-send-note" data-couranr-recipient-notified="true">
+            Couranr emailed the tracking link to{" "}
+            {recipientNotified.to || "your recipient"}. They will use it to confirm
+            the delivery.
           </p>
         ) : null}
 
@@ -864,6 +1008,46 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
             </select>
           </div>
 
+          {/* DECLARED VALUE. On the item step because it is a fact about the
+              item, and because the disclosure beneath it must be read while the
+              sender can still change what they are sending. */}
+          <div className="cr-send-field">
+            <label className="cr-send-field__label" htmlFor="send-declared-value">
+              {SEND_COPY.declared_value_label}
+            </label>
+            <p className="cr-send-field__hint">{SEND_COPY.declared_value_help}</p>
+            <input
+              id="send-declared-value"
+              className="cr-input"
+              type="text"
+              inputMode="decimal"
+              autoComplete="off"
+              value={declaredValue}
+              aria-describedby="send-declared-value-note"
+              onChange={(e) => {
+                setDeclaredValue(e.target.value);
+                /* The declared value decides the protection level, which
+                   decides what the driver is instructed to do. A standing quote
+                   described a different shipment — stale it. */
+                invalidateQuote();
+              }}
+            />
+            <p id="send-declared-value-note" className="cr-send-field__hint"
+               data-couranr-protection={
+                 isProtectionUnavailable(protection) ? "none" : protection.requirements.level
+               }>
+              {declaredValueUnavailable
+                ? `${SEND_COPY.declared_value_unavailable_note} ${declaredValueDollars(
+                    acceptedMaxCents
+                  )}.`
+                : declaredValueTooHigh
+                  ? `${SEND_COPY.declared_value_max_note} ${declaredValueDollars(
+                      acceptedMaxCents
+                    )}.`
+                  : protectionNote}
+            </p>
+          </div>
+
           {intent === "pickup" || mode === "live" ? (
             <fieldset className="cr-send-field">
               <legend className="cr-send-field__label">{SEND_COPY.readiness_question}</legend>
@@ -900,7 +1084,7 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
             <button
               type="button"
               className="cr-button cr-button--primary"
-              disabled={mode === "live" && readiness === null}
+              disabled={(mode === "live" && readiness === null) || !hasDeclaredValue}
               onClick={() => setPhase("timing")}
             >
               Continue
@@ -1064,6 +1248,54 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
                 optional at MVP and this flow creates none. */}
           </div>
 
+          {/* THE RECIPIENT. Name and email required; a phone does not satisfy
+              the email rule, because the tracking link and any claim travel by
+              email. Beside the sender's own contact rather than on the trip
+              step: both are identity, and the sender is answering them in one
+              place at one time. */}
+          <div className="cr-send-field">
+            <p className="cr-send-field__label">{SEND_COPY.recipient_heading}</p>
+            {(
+              [
+                ["name", "Recipient name", "text"],
+                ["mobile", "Recipient mobile (optional)", "tel"],
+                ["email", "Recipient email", "email"],
+              ] as const
+            ).map(([k, label, type]) => (
+              <label key={k} className="cr-send-field__inline">
+                <span>{label}</span>
+                <input
+                  className="cr-input"
+                  type={type}
+                  value={recipient[k]}
+                  onChange={(e) => {
+                    setRecipient((r) => ({ ...r, [k]: e.target.value }));
+                    invalidateQuote();
+                  }}
+                />
+              </label>
+            ))}
+            <label className="cr-send-field__inline">
+              <span>Confirm recipient email</span>
+              <input
+                className="cr-input"
+                type="email"
+                autoComplete="off"
+                value={recipientEmailConfirm}
+                onChange={(e) => {
+                  setRecipientEmailConfirm(e.target.value);
+                  invalidateQuote();
+                }}
+              />
+            </label>
+            {recipientEmailConfirm.trim() !== "" && !recipientEmailsMatch ? (
+              <p className="cr-send-field__hint" data-couranr-recipient-email-mismatch="true">
+                These do not match. Couranr sends the tracking link to this address and nowhere
+                else.
+              </p>
+            ) : null}
+          </div>
+
           {/* The estimate is requested EXPLICITLY, and only once contact exists
               — the first estimate freezes the draft's contact snapshot, so a
               contactless draft could never be submitted. Firing before contact
@@ -1073,14 +1305,29 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
             type="button"
             className="cr-button cr-button--secondary"
             data-couranr-quote-request="true"
-            disabled={!hasContact || quoteState === "calculating"}
+            disabled={
+              !hasContact || !hasRecipient || !hasDeclaredValue || quoteState === "calculating"
+            }
             onClick={() => void computeQuote()}
           >
             {quotePriced || quoteReview ? "Check the price again" : "Check the price"}
           </button>
-          {!hasContact ? (
+          {/* Name what is actually missing. "Add your details" makes the sender
+              hunt; the gate above has four parts and the hint says which one is
+              open. */}
+          {!hasContact || !hasRecipient || !hasDeclaredValue ? (
             <p className="cr-send-field__hint">
-              Add your mobile number or email above, then check the price.
+              {!hasDeclaredValue
+                ? declaredValueTooHigh
+                  ? `${SEND_COPY.declared_value_max_note} ${declaredValueDollars(
+                      acceptedMaxCents
+                    )}.`
+                  : "Go back and enter what this shipment is worth, then check the price."
+                : !hasContact
+                  ? "Add your name and email above, then check the price."
+                  : !recipientEmailsMatch && recipient.email.trim() !== ""
+                    ? "Confirm the recipient’s email above — the two entries must match."
+                    : "Add the recipient’s name and email above, then check the price."}
             </p>
           ) : null}
 
@@ -1096,9 +1343,65 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
             {quote?.state === "live-available" ? `Total: ${formatCents(quote.totalCents)}` : null}
           </p>
 
+          {/* THE DOCUMENTS, ABOVE THE CHECKBOXES AND OUTSIDE THE LABELS.
+
+              Above, because the sender has to be able to read them BEFORE
+              accepting — a clickwrap whose documents live only in the footer
+              asks for agreement to something never offered.
+
+              Outside the <label>, for two independent reasons. A link inside a
+              label toggles the checkbox when it is clicked, so the sender who
+              tries to read the terms silently accepts them instead. And the
+              label's text content IS the accessible handle the funnel tests
+              take hold of (`getByLabelText(SEND_COPY.acknowledgement)`, which
+              is an exact match on label text) — link text folded into it would
+              break that without changing a single assertion's intent.
+
+              Each opens in a new tab: this is a five-step form held in
+              component state, and navigating away from it loses the trip, the
+              item, the recipient and the standing quote. */}
+          <div data-couranr-clickwrap="documents">
+            <p className="cr-send-field__hint">{SEND_COPY.legal_read_first}</p>
+            <ul className="cr-list">
+              {CLICKWRAP_CITATIONS.map((doc) => (
+                <li key={doc.documentId}>
+                  <Link
+                    href={doc.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    data-couranr-legal-link={doc.documentId}
+                  >
+                    {doc.title}
+                  </Link>{" "}
+                  <span
+                    className="cr-send-note"
+                    data-couranr-legal-version={doc.version}
+                  >
+                    {doc.version}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/* BOTH are required to submit, and NEITHER is required to price.
+              The estimate creates a draft; asking the sender to accept terms
+              before Couranr has told them the cost is the wrong order, and the
+              database draws the same line — couranr_dr_consumer_acceptance_chk
+              exempts a draft and requires the evidence once the row leaves it.
+              The server stamps the moment and the document version; these are
+              booleans, never timestamps the browser chose. */}
           <label className="cr-send-choice">
             <input type="checkbox" checked={acknowledged} onChange={(e) => setAcknowledged(e.target.checked)} />
             <span>{SEND_COPY.acknowledgement}</span>
+          </label>
+          <label className="cr-send-choice">
+            <input
+              type="checkbox"
+              checked={electronicConsent}
+              onChange={(e) => setElectronicConsent(e.target.checked)}
+            />
+            <span>{SEND_COPY.electronic_consent}</span>
           </label>
 
           <div className="cr-send-actions">
@@ -1112,7 +1415,7 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
             <button
               type="button"
               className="cr-button cr-button--primary"
-              disabled={!acknowledged || !quoteProceedable}
+              disabled={!acknowledged || !electronicConsent || !quoteProceedable}
               onClick={() => setPhase("payment")}
             >
               {quoteReview ? "Continue to Couranr review" : "Continue to payment"}

@@ -359,12 +359,35 @@ async function main() {
     eq("PR-21e2", "... and that refusal wrote NOTHING — still exactly one refund row",
        one(`select count(*) from public.couranr_payment_refunds where obligation_id='${hOb.obligationId}'`),
        "1");
-    eq("PR-21f", "... schema-enforced too: a second live attempt row is impossible (23505)",
+    /* Two INDEPENDENT schema guards refuse a second attempt row, and they fire
+       in this order. Both are asserted, because each covers a case the other
+       does not.
+
+       (a) A DIFFERENT reason is refused by the settlement-identity trigger
+           added with OPS-011 — it binds one obligation to one governed
+           settlement for every writer, not just for couranr_begin_payment_refund.
+           This used to reach the unique index instead; the write is refused
+           either way, now earlier and with a named reason. */
+    eq("PR-21f", "... a raw second attempt under a DIFFERENT reason is refused by the identity guard",
        raises(`insert into public.couranr_payment_refunds
                  (obligation_id, request_id, provider_payment_intent_id, amount_cents,
                   retained_cents, reason, refund_key, attempt_state, actor_user_id)
                select obligation_id, request_id, provider_payment_intent_id, 100,
                       0, 'full_refund', 'couranr:refund:probe-' || gen_random_uuid()::text,
+                      'requested', actor_user_id
+                 from public.couranr_payment_refunds where obligation_id='${hOb.obligationId}'`),
+       "CR409|refund_settlement_reason_conflict");
+
+    /* (b) The SAME reason passes the identity guard, so the partial unique
+           index is what makes a second LIVE attempt impossible. That is the
+           original PR-21f invariant, now proved against the case that actually
+           reaches it. */
+    eq("PR-21f2", "... schema-enforced too: a second live attempt row is impossible (23505)",
+       raises(`insert into public.couranr_payment_refunds
+                 (obligation_id, request_id, provider_payment_intent_id, amount_cents,
+                  retained_cents, reason, refund_key, attempt_state, actor_user_id)
+               select obligation_id, request_id, provider_payment_intent_id, 100,
+                      0, reason, 'couranr:refund:probe-' || gen_random_uuid()::text,
                       'requested', actor_user_id
                  from public.couranr_payment_refunds where obligation_id='${hOb.obligationId}'`),
        "23505|duplicate key value violates unique constraint \"couranr_pr_one_live_attempt_uniq\"");

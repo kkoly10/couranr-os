@@ -9,6 +9,20 @@ import { navigationFor, routeForScreen } from "@/lib/couranr/navigation";
  * green. Every master and consumer chrome label is read from here now.
  */
 import { PUBLIC_CHROME_COPY as CHROME } from "@/lib/couranr/public/masterSameDayCopy";
+/**
+ * The legal documents are destinations too, and until now no public footer had
+ * one. A version string was being written onto production request rows while
+ * the document behind it was unreachable from every canonical surface.
+ *
+ * The COLUMN IS DERIVED from the registry rather than typed here, for the same
+ * reason `PUBLIC_DESTINATIONS` resolves screens rather than hardcoding paths: a
+ * document added to the registry reaches the footer automatically, and a footer
+ * link can never name a document that does not exist.
+ */
+import {
+  LEGAL_DOCUMENT_LIST,
+  legalDocumentHref,
+} from "@/lib/couranr/legal/registry";
 import { Container, Text } from "@/components/couranr/primitives";
 import {
   DriverTabBar,
@@ -68,6 +82,32 @@ const PUBLIC_DESTINATIONS = {
   signIn: () => routeForScreen("PUB-002"),
   signUp: () => routeForScreen("PUB-003"),
 };
+
+/**
+ * The legal column, identical on all three public footers.
+ *
+ * One function rather than three copies: the business, master and consumer
+ * footers each had their own hand-written link lists, and the reason the legal
+ * documents were unreachable is that "add it to the footer" meant editing three
+ * places and nobody did it once. A shared column cannot be added to two of the
+ * three.
+ */
+function LegalFooterColumn() {
+  return (
+    <nav className="cr-footer__col" aria-label="Legal">
+      <p className="cr-footer__coltitle">Legal</p>
+      <ul className="cr-footer__links">
+        {LEGAL_DOCUMENT_LIST.map((doc) => (
+          <li key={doc.id}>
+            <Link href={legalDocumentHref(doc.id)} className="cr-footer__link">
+              {doc.navLabel}
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </nav>
+  );
+}
 
 export function PublicShell({
   variant = "business",
@@ -229,6 +269,13 @@ function BusinessPublicShell({ children }: { children: React.ReactNode }) {
                 only with a delivery's access token. The link 404'd for its
                 whole life. V10's recon named it, and the fix is to drop the
                 item rather than invent a generic help screen to justify it. */}
+
+            {/* The Legal column is the OPPOSITE case, and that is why it is
+                added where Support was removed: every one of these routes
+                exists and renders, and each names the version the server
+                records. The rule the Support column broke was "no dead link",
+                not "no third column". */}
+            <LegalFooterColumn />
           </div>
         </div>
       </footer>
@@ -322,6 +369,8 @@ function MasterPublicShell({ children }: { children: React.ReactNode }) {
                 </li>
               </ul>
             </nav>
+
+            <LegalFooterColumn />
           </div>
         </div>
       </footer>
@@ -418,6 +467,11 @@ function ConsumerPublicShell({ children }: { children: React.ReactNode }) {
                 </li>
               </ul>
             </nav>
+
+            {/* PUB-013 and PUB-004 are where the Same Day shipment terms are
+                actually accepted, so the consumer footer is the one place this
+                column had to reach. */}
+            <LegalFooterColumn />
           </div>
         </div>
       </footer>

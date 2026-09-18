@@ -55,6 +55,14 @@ vi.mock("@/lib/couranr/fulfillment/commands", () => ({
   refundPayment: h.refundPayment,
   releaseAuthorization: h.releaseAuthorization,
   isFulfillmentFailure: (r: any) => r?.ok === false,
+  /* The provider seam is a required parameter now. These suites assert on
+     what the COMMAND was called with, never on a provider call, so the seam
+     is stubbed with a gateway that would throw if anything tried to use it —
+     which is the point: nothing on these paths may reach a provider. */
+  stripeRefundGateway: () => ({
+    list: () => { throw new Error("no provider call is permitted in this suite"); },
+    create: () => { throw new Error("no provider call is permitted in this suite"); },
+  }),
 }));
 
 import { cancelDeliveryWithRecovery } from "@/lib/couranr/fulfillment/cancellation";

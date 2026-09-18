@@ -15,10 +15,17 @@ import type {
   BizActionNeededInput,
   CustApproveAndPayInput,
   CustOrderConfirmedInput,
+  CustDirectDeliveryConfirmedInput,
   CustOutForDeliveryInput,
   CustDeliveredInput,
   CustRecipientUnavailableInput,
   CustReturnNoticeInput,
+  ConsumerSenderRequestReceivedInput,
+  ConsumerSenderRequestConfirmedInput,
+  ConsumerRecipientOutForDeliveryInput,
+  ConsumerRecipientDeliveredInput,
+  ConsumerSenderHandoffFailedInput,
+  ConsumerSenderReturnNoticeInput,
   LineItem,
 } from "./types";
 
@@ -30,6 +37,8 @@ const USD = "usd";
 const shop = { name: "Bloom & Co" };
 const reference = "CR-8F42QK";
 const recipient = "Jordan Rivera";
+/* The direct-consumer lane has no shop: a person sends, a person receives. */
+const sender = "Avery Chen";
 
 const lineItems: LineItem[] = [
   { label: "Delivery — first 2.0 mi", amountCents: 799, note: "Standard service" },
@@ -53,10 +62,20 @@ export interface EmailSamples {
   customer: {
     approveAndPay: CustApproveAndPayInput;
     orderConfirmed: CustOrderConfirmedInput;
+    directDeliveryConfirmed: CustDirectDeliveryConfirmedInput;
     outForDelivery: CustOutForDeliveryInput;
     delivered: CustDeliveredInput;
     recipientUnavailable: CustRecipientUnavailableInput;
     returnNotice: CustReturnNoticeInput;
+  };
+  /** Couranr Same Day, direct consumer — no shop in this lane. */
+  consumer: {
+    senderRequestReceived: ConsumerSenderRequestReceivedInput;
+    senderRequestConfirmed: ConsumerSenderRequestConfirmedInput;
+    recipientOutForDelivery: ConsumerRecipientOutForDeliveryInput;
+    recipientDelivered: ConsumerRecipientDeliveredInput;
+    senderHandoffFailed: ConsumerSenderHandoffFailedInput;
+    senderReturnNotice: ConsumerSenderReturnNoticeInput;
   };
 }
 
@@ -64,6 +83,7 @@ export function buildSamples(config: EmailConfig): EmailSamples {
   const trackUrl = url(config, "/track/tok_demo7f42qk");
   const payUrl = url(config, "/pay/tok_demo7f42qk");
   const helpUrl = url(config, "/help/tok_demo7f42qk");
+  const sameDayUrl = url(config, "/send");
   const deliveryUrl = url(config, "/business/deliveries/CR-8F42QK");
   const proofUrl = url(config, "/business/deliveries/CR-8F42QK#proof");
 
@@ -159,6 +179,14 @@ export function buildSamples(config: EmailConfig): EmailSamples {
         dropoffLabel: "Woodbridge, VA",
         trackUrl,
       },
+      directDeliveryConfirmed: {
+        senderName: sender,
+        recipientName: recipient,
+        reference,
+        dropoffLabel: "Woodbridge, VA",
+        trackUrl,
+        recipientAdultAttestationRequired: true,
+      },
       outForDelivery: {
         shop,
         recipientName: recipient,
@@ -191,6 +219,50 @@ export function buildSamples(config: EmailConfig): EmailSamples {
         reference,
         reasonLabel: "Two delivery attempts were made without a successful handoff.",
         helpUrl,
+      },
+    },
+    consumer: {
+      senderRequestReceived: {
+        senderName: sender,
+        recipientName: recipient,
+        reference,
+        dropoffLabel: "Woodbridge, VA",
+        statusUrl: sameDayUrl,
+      },
+      senderRequestConfirmed: {
+        senderName: sender,
+        recipientName: recipient,
+        reference,
+        dropoffLabel: "Woodbridge, VA",
+        recipientNotified: true,
+        statusUrl: sameDayUrl,
+      },
+      recipientOutForDelivery: {
+        senderName: sender,
+        recipientName: recipient,
+        reference,
+        handoffMethodLabel: "Hand to you",
+        codeOnTrackingPage: true,
+      },
+      recipientDelivered: {
+        senderName: sender,
+        recipientName: recipient,
+        reference,
+        deliveredAtLabel: "Sep 3, 2026 · 3:41 PM",
+      },
+      senderHandoffFailed: {
+        senderName: sender,
+        recipientName: recipient,
+        reference,
+        reasonLabel: "The driver arrived at 3:20 PM and no one was available to receive the delivery.",
+        statusUrl: sameDayUrl,
+      },
+      senderReturnNotice: {
+        senderName: sender,
+        recipientName: recipient,
+        reference,
+        reasonLabel: "Two handoff attempts were made without a successful delivery.",
+        statusUrl: sameDayUrl,
       },
     },
   };

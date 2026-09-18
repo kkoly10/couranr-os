@@ -165,6 +165,11 @@ describe("server-only modules are unreachable from client code", () => {
       // Builds canonical proof object paths and holds the bucket name. Paths
       // are the part of a private object that leaks furthest.
       "lib/couranr/driver/proofPaths.ts",
+      // Owns the consumer notification lifecycle: the service-role client, the
+      // recipient tracking claim/receipt trio, and the one instant a RAW
+      // tracking token exists in plaintext. A bundle reaching it would ship the
+      // code that mints a recipient's capability.
+      "lib/couranr/email/consumerLifecycle.ts",
       // The one minter of a merchant send address. Holds the service-role
       // client and reads auth.users through the admin API, so it sees every
       // member's email — exactly the projection a browser bundle must never
@@ -191,6 +196,9 @@ describe("server-only modules are unreachable from client code", () => {
       "lib/couranr/hosted/commands.ts",
       // Holds the Anthropic API key inside the client it constructs, and the
       // system prompt that governs what a model is told about merchant text.
+      "lib/couranr/identity/commands.ts",
+      "lib/couranr/identity/recipientIdentity.ts",
+      "lib/couranr/identity/stripeIdentity.ts",
       "lib/couranr/intake/anthropicProvider.ts",
       "lib/couranr/intake/commands.ts",
       "lib/couranr/intake/interpret.ts",
@@ -204,6 +212,26 @@ describe("server-only modules are unreachable from client code", () => {
       // slot. A bundle must never carry it.
       "lib/couranr/intake/testSeam.ts",
       "lib/couranr/onboarding/commands.ts",
+      // OPS-012. Holds the service-role client and reads, cross-business, the
+      // whole custody chain — declared value, seal, recipient identity outcome
+      // and every private evidence row. A browser reaching it would hold the
+      // reader that answers for ANY delivery, and the object paths that reader
+      // sees but never publishes.
+      // OPS-013/OPS-014. Holds the service-role client and reads, across every
+      // business, the request, delivery, payment, proof, support and driver
+      // tables. It projects those reads down to non-identifying columns before
+      // aggregating, but the READER itself answers for all tenants, so a
+      // bundle must never be able to reach it. `analyticsTypes.ts` is the
+      // deliberate client-safe half: types and closed label vocabularies only.
+      "lib/couranr/operations/analytics.ts",
+      "lib/couranr/operations/custodyBundle.ts",
+      "lib/couranr/operations/refunds.ts",
+      // OPS-015/OPS-016/OPS-020. Holds the service-role client, the write path
+      // for the AI kill switch and the request-intake pause, and the audit
+      // reader that touches all eleven append-only event tables BEFORE they are
+      // redacted. A browser reaching it would hold the unredacted read and the
+      // switch that stops intake for every merchant at once.
+      "lib/couranr/operations/settings.ts",
       // The payment modules hold the service-role client, the Stripe secret
       // key and the token hashing. None may ever be reachable from a bundle.
       "lib/couranr/payments/commands.ts",
@@ -332,6 +360,8 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/driver/deliveries/[id]/proof-sync-failure/route.ts",
       "app/api/couranr/driver/deliveries/[id]/proof-upload/route.ts",
       "app/api/couranr/driver/deliveries/[id]/proof/route.ts",
+      "app/api/couranr/driver/deliveries/[id]/record-seal/route.ts",
+      "app/api/couranr/driver/deliveries/[id]/seal-condition/route.ts",
       "app/api/couranr/driver/deliveries/[id]/start-dropoff-route/route.ts",
       "app/api/couranr/driver/deliveries/[id]/start-pickup-route/route.ts",
       "app/api/couranr/driver/deliveries/[id]/start-return/route.ts",
@@ -369,10 +399,13 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/merchant/presets/route.ts",
       "app/api/couranr/merchant/website-tools/route.ts",
       "app/api/couranr/operations/activation/route.ts",
+      "app/api/couranr/operations/analytics/route.ts",
+      "app/api/couranr/operations/analytics/unmet-demand/route.ts",
       "app/api/couranr/operations/businesses/route.ts",
       "app/api/couranr/operations/conversations/[id]/messages/route.ts",
       "app/api/couranr/operations/conversations/[id]/route.ts",
       "app/api/couranr/operations/deliveries/[id]/assignment/route.ts",
+      "app/api/couranr/operations/deliveries/[id]/custody/route.ts",
       "app/api/couranr/operations/deliveries/[id]/help-link/route.ts",
       "app/api/couranr/operations/deliveries/[id]/pickup-code/route.ts",
       "app/api/couranr/operations/deliveries/[id]/recipient-code/route.ts",
@@ -406,11 +439,18 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/operations/problem-reports/route.ts",
       "app/api/couranr/operations/proof/[proofId]/url/route.ts",
       "app/api/couranr/operations/queue/route.ts",
+      "app/api/couranr/operations/refunds/[id]/approve/route.ts",
+      "app/api/couranr/operations/refunds/[id]/deny/route.ts",
+      "app/api/couranr/operations/refunds/route.ts",
+      "app/api/couranr/operations/settings/audit/route.ts",
+      "app/api/couranr/operations/settings/availability/route.ts",
       "app/api/couranr/operations/vehicles/[id]/route.ts",
       "app/api/couranr/operations/vehicles/route.ts",
       "app/api/couranr/pay/[token]/reconcile/route.ts",
       "app/api/couranr/pay/[token]/route.ts",
       "app/api/couranr/stripe/webhook/route.ts",
+      "app/api/couranr/track/[token]/adult-attestation/route.ts",
+      "app/api/couranr/track/[token]/dropoff-code/route.ts",
       "app/api/couranr/track/[token]/proof/[proofId]/url/route.ts",
       "app/api/couranr/track/[token]/route.ts",
     ]);
@@ -523,6 +563,18 @@ describe("canonical server routes do not import the browser client", () => {
       // `loadTrackingView` redeems internally and then loads only the rows the
       // sanitized projection needs.
       { shape: /isWellFormedTrackingToken\(/, redeem: /loadTrackingView\(/ },
+    ],
+    [
+      "app/api/couranr/track/[token]/adult-attestation/route.ts",
+      { shape: /isWellFormedTrackingToken\(/, redeem: /attestRecipientAdult\(/ },
+    ],
+    [
+      // The recipient's own handoff credential. Same contract as the
+      // attestation route: the tracking token IS the authorization, shape is
+      // checked before anything is hashed, and the command re-resolves it in
+      // SQL as a live, unexpired, recipient-audience credential.
+      "app/api/couranr/track/[token]/dropoff-code/route.ts",
+      { shape: /isWellFormedTrackingToken\(/, redeem: /issueRecipientDropoffCode\(/ },
     ],
     [
       "app/api/couranr/track/[token]/proof/[proofId]/url/route.ts",

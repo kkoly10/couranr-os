@@ -226,15 +226,129 @@ describe("cross-surface claim boundaries are single-sourced", () => {
     expect(read("lib/couranr/public/masterSameDayCopy.ts")).toContain(words);
   });
 
-  it("no public surface carries the Consumer Same Day declared-value ceiling", () => {
-    /* It is a CONSUMER decision and the value-tiered custody work it belongs to
-       is not in this build, so no page states one — and in particular the
-       business family must not inherit it. This fails the moment a ceiling is
-       written anywhere public without the decision that authorises it. */
-    for (const f of [MASTER_SURFACE, BUSINESS_OVERVIEW, BUSINESS_TYPES, SAMEDAY]) {
+  /**
+   * THE CEILING BAN, SPLIT 2026-09-17.
+   *
+   * WHAT CHANGED AND WHY. This banned a declared-value ceiling on ALL FOUR
+   * public surfaces, on the ground that "the value-tiered custody work it
+   * belongs to is not in this build". That work IS in this build —
+   * `deriveProtection` derives the level, the SQL re-derives it, and
+   * `private.couranr_enforce_consumer_custody_sequence` enforces the ceremony —
+   * so the ban is now scoped to the surfaces it was always really about.
+   *
+   * THE SCOPE IS WHAT MATTERS, and it is unchanged: the protection authority
+   * governs CONSUMER Same Day and nothing else.
+   * `private.couranr_delivery_protection_level` returns null unless the request
+   * carries a `protection_policy_version`, and the only writer of that column
+   * is `couranr_record_consumer_trust`, which resolves a consumer guest session
+   * and filters `requester_kind='consumer'`. So a business delivery derives no
+   * level, and the master and business surfaces must still never state one — a
+   * merchant reading a ceiling would be reading a policy their deliveries are
+   * not held to.
+   */
+  it("the master and business surfaces state no declared-value ceiling", () => {
+    for (const f of [MASTER_SURFACE, BUSINESS_OVERVIEW, BUSINESS_TYPES]) {
       const src = read(f);
       expect(src, `${f} states a declared-value ceiling`).not.toMatch(/declared value/i);
       expect(src, `${f} states a maximum value`).not.toMatch(/maximum (declared )?value/i);
     }
+  });
+
+  /* PUB-013 is the consumer surface, so it is the ONE page that owes the
+     figure. What it may not do is type it: the amounts are composed from
+     `lib/couranr/consumer/protection.ts`, the module the server and the SQL
+     both derive from. Comments stripped for the same reason as the category
+     scanner above — the block explaining which constant was rejected names
+     that constant, and a raw scan reads the explanation as the violation. */
+  it("PUB-013 states the ceiling, and composes it from the protection module", () => {
+    const code = read(SAMEDAY)
+      .replace(/\{\/\*[\s\S]*?\*\/\}/g, " ")
+      .replace(/\/\*[\s\S]*?\*\//g, " ");
+    expect(code, "PUB-013 no longer renders the accepted maximum").toContain(
+      "acceptedDeclaredValueCents",
+    );
+    expect(code).toContain("declaredValueDollars");
+    expect(code, "PUB-013 types a dollar amount").not.toMatch(/\$\s?\d/);
+  });
+});
+
+/* ═══════════════════ MKT-005 must DECLARE every surface it governs ════════ */
+
+describe("MKT-005's declared scope matches the surfaces it actually governs", () => {
+  /*
+   * THE GAP THAT LET A MERGE DROP PUB-001. MKT-005 is rank-1 authority for the
+   * locked copy, and `/business` renders its `network_*` strings through
+   * MASTER_COPY. A reconciliation merge kept those VALUES and silently dropped
+   * PUB-001 and `/business` from the record's `affected_screen_ids` and
+   * `affected_routes`, so the authority governed the copy without naming the
+   * surface. Every gate stayed green: nothing compared the declared scope to
+   * the real one.
+   *
+   * The fix is not to make a test ignore `/business`. It is to require the
+   * record to say where it applies, and to fail when a surface renders a locked
+   * string the record does not claim.
+   */
+  const REGISTRY = JSON.parse(
+    readFileSync(path.join(__dirname, "..", "02_DECISION_REGISTRY.json"), "utf8")
+  );
+  const MKT005 = REGISTRY.decisions.find((r: { id: string }) => r.id === "MKT-005");
+
+  /** Surface -> the screen id and route MKT-005 must declare for it. */
+  const GOVERNED: ReadonlyArray<readonly [string, string, string]> = [
+    ["app/(couranr)/(public)/(master-public)/page.tsx", "PUB-012", "/"],
+    ["app/(couranr)/(public)/(consumer-public)/sameday/page.tsx", "PUB-013", "/sameday"],
+    ["app/(couranr)/(public)/(business-public)/business/page.tsx", "PUB-001", "/business"],
+  ];
+
+  it.each(GOVERNED.map((g) => [g[1], g] as const))(
+    "%s is declared in MKT-005's scope",
+    (_id, [file, screenId, route]) => {
+      const src = readFileSync(path.join(__dirname, "..", file), "utf8");
+      /* Non-vacuous: the surface must actually render locked MKT-005 copy.
+         MKT-005 has four groups and a surface may draw on any of them —
+         /sameday renders SAME_DAY_COPY, not MASTER_COPY — so the check is that
+         it renders one of the governed modules, not one specific group. An
+         earlier version of this test demanded MASTER_COPY everywhere and failed
+         /sameday, which would have been the test being wrong about the record
+         rather than the record being wrong about the surface. */
+      expect(src, `${file} renders no MKT-005 copy at all`).toMatch(
+        /\b(MASTER_COPY|SAME_DAY_COPY|PUBLIC_CHROME_COPY)\./
+      );
+      expect(
+        MKT005.affected_screen_ids,
+        `MKT-005 governs ${file} but does not declare ${screenId}`
+      ).toContain(screenId);
+      expect(
+        MKT005.affected_routes,
+        `MKT-005 governs ${file} but does not declare ${route}`
+      ).toContain(route);
+    }
+  );
+
+  it("names the business page among the code paths it governs", () => {
+    expect(
+      (MKT005.affected_code_paths ?? []).some((p: string) => p.includes("business/page.tsx")),
+      "MKT-005 does not list the business page it governs"
+    ).toBe(true);
+  });
+
+  it("a /business copy edit that retypes a locked string fails", () => {
+    /* The drift this exists to catch: someone types the positioning sentence
+       into the business page instead of rendering it from MASTER_COPY. The
+       string then has two owners and the registry governs only one of them. */
+    const src = readFileSync(
+      path.join(__dirname, "..", "app/(couranr)/(public)/(business-public)/business/page.tsx"),
+      "utf8"
+    );
+    const code = src.replace(/\{\/\*[\s\S]*?\*\/\}/g, " ").replace(/\/\*[\s\S]*?\*\//g, " ");
+    const locked = MKT005.value.master.network_statement as string;
+    expect(locked.length).toBeGreaterThan(20);
+    expect(
+      code.includes(locked),
+      "/business retypes MKT-005's locked positioning string instead of rendering it"
+    ).toBe(false);
+    expect(code, "/business stopped rendering the locked string at all").toMatch(
+      /MASTER_COPY\.network_statement/
+    );
   });
 });

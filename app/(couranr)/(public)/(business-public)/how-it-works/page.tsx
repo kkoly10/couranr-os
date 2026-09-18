@@ -112,11 +112,26 @@ const CUSTOMER_PAID = [
  * The two forbidden items are stated, not omitted. A proof page that lists only
  * what is collected reads as surveillance; the limit is the reassurance.
  */
+/*
+ * WHAT `couranr_complete_pickup_v2` ACTUALLY REQUIRES AND RECORDS.
+ *
+ * "Package count" and "Condition photo" were here and are gone, because the
+ * command the app calls collects neither. `condition_photo_required` is raised
+ * only inside the v1 `couranr_complete_pickup`, which no application code calls,
+ * and v2 inserts `observed_package_count` as a literal null. PRF-002 amended
+ * PRF-001 to say so in as many words — "the driver does not re-enter expected
+ * package count, merchant/staff identity, or assigned vehicle on the happy
+ * path", with a condition photo named in its acceptance criteria — so the page
+ * was rendering the SUPERSEDED record.
+ *
+ * The vehicle stays: v2 records `confirmed_vehicle_id` from the assignment. It
+ * is recorded without being re-entered, which is what PRF-002 changed.
+ *
+ * tests/couranr-how-it-works-proof.test.ts ties this list to the command.
+ */
 const PICKUP_PROOF = [
   "Merchant pickup PIN",
-  "Package count",
   "Shipment photo",
-  "Condition photo",
   "Timestamp and location",
   "The actual vehicle",
 ];
@@ -132,6 +147,14 @@ const DELIVERY_PROOF = [
   },
   {
     method: "Leave at door",
+    /* THE REQUIREMENTS ARE CORRECT AND STAY. PRF-001 lists customer
+       authorization among them, and that is the authority. What changed is the
+       AVAILABILITY claim: no customer-authorization fact exists in the schema,
+       so Couranr cannot honour the method and has withdrawn it from new
+       requests (SELECTABLE_PROOF_METHODS). Deleting the entry would quietly
+       drop the doctrine; presenting it as available would promise something
+       nothing records. It is listed with its requirements and marked unavailable
+       — which is also the honest answer to "why can I not choose this?". */
     requires: [
       "Merchant permission",
       "Customer authorization",
@@ -139,6 +162,7 @@ const DELIVERY_PROOF = [
       "Weather suitability",
       "Photo, timestamp and location",
     ],
+    availableForNewDeliveries: false,
   },
 ];
 
@@ -389,6 +413,13 @@ export default function Page() {
           {DELIVERY_PROOF.map((d) => (
             <div key={d.method} className="cr-mkt-proof__group">
               <h3 className="cr-type-label">{d.method}</h3>
+              {d.availableForNewDeliveries === false ? (
+                <p className="cr-mkt-proof__unavailable">
+                  Not available for new deliveries yet. Couranr records a customer
+                  authorization before leaving anything at a door, and that is
+                  still being built.
+                </p>
+              ) : null}
               <ul className="cr-mkt-proof__requires">
                 {d.requires.map((r) => (
                   <li key={r}>{r}</li>

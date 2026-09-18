@@ -131,7 +131,14 @@ const GOOD_QUOTE_INPUT = {
   timingIntent: "asap" as const,
   pickupPlaceId: "place-a",
   dropoffPlaceId: "place-b",
-  contact: { name: "Ada", mobile: "+15715550100", email: "" },
+  /* V1 trust contract: email-first for the sender, a named recipient with an
+     email, a declared value and both acknowledgements. `email` was "" here
+     while phone-OR-email satisfied the old rule; it cannot be now. */
+  contact: { name: "Ada", mobile: "+15715550100", email: "ada@example.test" },
+  recipient: { name: "Grace", mobile: "+15715550101", email: "grace@example.test" },
+  recipientEmailConfirm: "grace@example.test",
+  declaredValueCents: 2_500,
+  acceptance: { shipmentCertification: true, electronicTransactions: true },
   shipment: { description: "a birthday cake", weightLb: 8, weightBand: null, restrictedClass: "none" },
 };
 
@@ -690,12 +697,12 @@ describe("submitRequest reads the nested `request` key", () => {
     });
     const a = live({ fetchImpl: f.impl, storage: null });
     await a.quote(GOOD_QUOTE_INPUT);
-    expect(await a.submitRequest()).toEqual({ state: "received", requestId: "req-1" });
+    expect(await a.submitRequest({ declaredValueCents: 2_000, acceptance: { shipmentCertification: true, electronicTransactions: true } })).toEqual({ state: "received", requestId: "req-1" });
   });
 
   it("a flat body or a refusal is unavailable, with the server's message", async () => {
     const flat = fakeFetch({ [S]: SESSION_OK, [SUBMIT]: () => ({ body: { state: "x" } }) });
-    expect((await live({ fetchImpl: flat.impl, storage: null }).submitRequest()).state).toBe(
+    expect((await live({ fetchImpl: flat.impl, storage: null }).submitRequest({ declaredValueCents: 2_000, acceptance: { shipmentCertification: true, electronicTransactions: true } })).state).toBe(
       "unavailable"
     );
     const refused = fakeFetch({
@@ -705,7 +712,7 @@ describe("submitRequest reads the nested `request` key", () => {
         body: { error: "Add a phone number or email so Couranr can reach you about this delivery." },
       }),
     });
-    const r = await live({ fetchImpl: refused.impl, storage: null }).submitRequest();
+    const r = await live({ fetchImpl: refused.impl, storage: null }).submitRequest({ declaredValueCents: 2_000, acceptance: { shipmentCertification: true, electronicTransactions: true } });
     expect(r.state).toBe("unavailable");
     if (r.state === "unavailable") expect(r.note).toContain("phone number or email");
   });
@@ -786,8 +793,8 @@ describe("reconcilePayment trusts only the server's payment key", () => {
   });
 });
 
-describe("readRequest: the tracking token is the server's to grant", () => {
-  it("returns the nested view with its token", async () => {
+describe("readRequest: the recipient's token is never the sender's to hold", () => {
+  it("surfaces that the recipient was notified, and where", async () => {
     const a = live({
       fetchImpl: fakeFetch({
         [S]: SESSION_OK,
@@ -798,7 +805,8 @@ describe("readRequest: the tracking token is the server's to grant", () => {
               quoteStatus: "estimated",
               totalCents: 1049,
               paymentState: "authorized",
-              trackingToken: "trk_abc",
+              recipientNotifiedAt: "2026-09-17T12:00:00.000Z",
+              recipientNotifiedTo: "dana@example.test",
             },
           },
         }),
@@ -810,29 +818,40 @@ describe("readRequest: the tracking token is the server's to grant", () => {
       quoteStatus: "estimated",
       totalCents: 1049,
       paymentState: "authorized",
-      trackingToken: "trk_abc",
+      recipientNotifiedAt: "2026-09-17T12:00:00.000Z",
+      recipientNotifiedTo: "dana@example.test",
     });
   });
 
-  it("a view without a token has NO trackingToken key; failures are null", async () => {
+  it("DROPS a recipient token even if the server hands one back", async () => {
+    /* Defence in depth for the finding this replaced. The sender view used to
+       carry `trackingToken` — the same raw token emailed to the recipient,
+       whose audience is `recipient` and which authorizes the adult attestation,
+       identity verification and the handoff PIN. The server no longer sends it;
+       this proves the adapter would not surface it if a regression did, so the
+       sender's screen cannot become recipient authority by forwarding. */
     const a = live({
       fetchImpl: fakeFetch({
         [S]: SESSION_OK,
         [REQUEST]: () => ({
           body: {
-            request: { state: "pending_couranr_review", quoteStatus: "estimated", totalCents: 1049, paymentState: null },
+            request: {
+              state: "confirmed",
+              quoteStatus: "estimated",
+              totalCents: 1049,
+              paymentState: "authorized",
+              trackingToken: "trk_recipient_capability",
+              recipientNotifiedAt: "2026-09-17T12:00:00.000Z",
+              recipientNotifiedTo: "dana@example.test",
+            },
           },
         }),
       }).impl,
       storage: null,
     });
     const view = await a.readRequest!();
-    expect(view && "trackingToken" in view).toBe(false);
-    const down = live({
-      fetchImpl: fakeFetch({ [S]: SESSION_OK, [REQUEST]: () => ({ status: 500, body: { error: "x" } }) }).impl,
-      storage: null,
-    });
-    expect(await down.readRequest!()).toBeNull();
+    expect(JSON.stringify(view)).not.toContain("trk_recipient_capability");
+    expect((view as Record<string, unknown>).trackingToken).toBeUndefined();
   });
 });
 
@@ -867,7 +886,7 @@ describe("GUARD: the fixture path is unchanged, and production is live", () => {
     const q = await a.quote({ pickup: "a", destination: "b", timingIntent: "asap" });
     expect(q.state).toBe("fixture-available");
     expect(q.state === "fixture-available" && q.totalCents).toBe(BASE_PRICE_CENTS);
-    expect((await a.submitRequest()).state).toBe("received-preview");
+    expect((await a.submitRequest({ declaredValueCents: 2_000, acceptance: { shipmentCertification: true, electronicTransactions: true } })).state).toBe("received-preview");
     expect((await a.authorizePayment()).state).toBe("authorized-fixture");
     const s = await a.searchAddress("main");
     expect(s.status === "ok" && s.suggestions.length).toBeGreaterThan(0);

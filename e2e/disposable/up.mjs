@@ -91,8 +91,32 @@ const BASE = process.env.COURANR_DISPOSABLE_DIR || "/var/lib/postgresql/couranr-
 const PORT = Number(process.env.COURANR_DISPOSABLE_PORT || 55432);
 const DB = "couranr_disposable";
 
+/**
+ * PostgreSQL 17 on macOS refuses to start unless the locale is pinned:
+ *
+ *   FATAL:  postmaster became multithreaded during startup
+ *   HINT:   Set the LC_ALL environment variable to a valid locale.
+ *
+ * The postmaster forks before it is allowed to be multithreaded, and on Darwin
+ * an unset or invalid locale makes libc spin up threads inside that window. The
+ * server's own HINT names the fix. This cost a full debugging cycle to find,
+ * because up.mjs tears the directory down on failure — including the log that
+ * says why — so the error the caller sees is only "could not start server".
+ *
+ * `C` rather than a UTF-8 locale on purpose: the disposable cluster exists to
+ * make privilege and constraint assertions, and a collation that varies by
+ * machine would make ORDER BY results vary with it. Linux is unaffected either
+ * way, so this stays one code path.
+ */
+const CLUSTER_ENV = { ...process.env, LC_ALL: process.env.LC_ALL || "C" };
+
 const sh = (cmd, args, opts = {}) =>
-  execFileSync(cmd, args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], ...opts });
+  execFileSync(cmd, args, {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    env: CLUSTER_ENV,
+    ...opts,
+  });
 
 /**
  * Runs the cluster commands as whichever identity actually owns the data
@@ -235,9 +259,20 @@ export function verifyFidelity() {
      * no `couranr_` prefix. They are asserted by name below instead, so this
      * probe cannot silently stop covering them.
      */
-    ["35 couranr_ tables (including immutable quote versions)",
+    /* 63, not 58. Five tables landed after this probe was last pinned
+       (caaa176b, 2026-09-16) and the number was not moved with them:
+       `couranr_operational_switches` + `couranr_operational_switch_events`
+       (20260917190000, FLG-001), `couranr_refund_requests` (20260917200000,
+       OPS-011), and `couranr_market_availability` +
+       `couranr_operations_setting_events` (20260917210000).
+
+       Deliberately an exact equality, not `>=`: this probe is the one place a
+       table added or dropped without anyone noticing shows up, and `>=` would
+       make a DROP invisible. It is its own positive control — 62 and 64 both
+       fail — so the cost of that strictness is this comment, every time. */
+    ["63 couranr_ tables (including trust/custody evidence)",
       () => one(`select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace
-                 where n.nspname='public' and c.relkind='r' and c.relname like 'couranr%'`) === "35"],
+                 where n.nspname='public' and c.relkind='r' and c.relname like 'couranr%'`) === "63"],
     ["the merchant-customer tables exist and are service_role-only",
       () =>
         one(`select has_table_privilege('service_role','public.merchant_customers','INSERT')

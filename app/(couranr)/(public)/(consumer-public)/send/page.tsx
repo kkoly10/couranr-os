@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import type { Metadata } from "next";
 import { SendFlow } from "@/components/couranr/sameday/SendFlow";
 import { resolveAdapterMode } from "@/lib/couranr/sameday/adapterMode";
+import { isRecipientIdentityCapabilityAvailable } from "@/lib/couranr/identity/recipientIdentity";
 
 /**
  * PUB-004's direct-consumer mode, at `/send`.
@@ -38,7 +39,17 @@ export default function Page() {
   return (
     <div className="cr-mkt cr-send-page">
       <Suspense fallback={<p className="cr-send-note">Loading your delivery form…</p>}>
-        <SendFlow mode={mode} />
+        <SendFlow
+          mode={mode}
+          /* THE REAL CONFIGURATION, read on the server and handed down. SendFlow
+             is a client component and cannot see it; without this it would fall
+             back to the fail-closed default forever and keep promising $150
+             after Protected Handoff was activated. Passing it here is what makes
+             activation a configuration act rather than an edit to two pages. */
+          capabilities={{
+            recipientIdentityVerification: isRecipientIdentityCapabilityAvailable(),
+          }}
+        />
       </Suspense>
     </div>
   );

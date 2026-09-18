@@ -205,7 +205,14 @@ function fixture(overrides: Record<string, any> = {}) {
             },
             ...(overrides.delivery ?? {}),
           },
-    business: { id: "33333333-3333-4333-8333-333333333333", name: "Rowan & Fig", ...(overrides.business ?? {}) },
+    business:
+      overrides.business === null
+        ? null
+        : {
+            id: "33333333-3333-4333-8333-333333333333",
+            name: "Rowan & Fig",
+            ...(overrides.business ?? {}),
+          },
     assignmentActive: overrides.assignmentActive ?? true,
     proofs: overrides.proofs ?? [],
     events: overrides.events ?? [],
@@ -277,6 +284,57 @@ describe("tracking projection", () => {
     expect(p.scheduledPickupStart).toBeNull();
     expect(p.driverAssigned).toBe(false);
     expect(p.proof.state).toBe("unavailable");
+  });
+
+  it("uses the canonical request snapshot for a direct recipient before delivery conversion", () => {
+    const p = buildTrackingProjection(
+      fixture({
+        business: null,
+        delivery: null,
+        assignmentActive: false,
+        request: {
+          consumer_contact_snapshot: { name: "Avery Chen", email: "private@example.test" },
+          dropoff_address: {
+            line1: "4 Canonical Way",
+            line2: "Unit 2",
+            city: "Woodbridge",
+            region: "VA",
+            postalCode: "22191",
+            instructions: "private gate code",
+          },
+        },
+      })
+    );
+    expect(p.senderName).toBe("Avery Chen");
+    expect(p.dropoff).toEqual({
+      line1: "4 Canonical Way",
+      line2: "Unit 2",
+      city: "Woodbridge",
+      region: "VA",
+      postalCode: "22191",
+    });
+    expect(JSON.stringify(p)).not.toContain("private@example.test");
+    expect(JSON.stringify(p)).not.toContain("private gate code");
+  });
+
+  it("exposes only whether the protected recipient attestation is required and recorded", () => {
+    const before = buildTrackingProjection(
+      fixture({ request: { protection_level: "protected_handoff" } })
+    );
+    expect(before.recipientAdultAttestationRequired).toBe(true);
+    expect(before.recipientAdultAttested).toBe(false);
+
+    const after = buildTrackingProjection(
+      fixture({
+        request: {
+          protection_level: "protected_handoff",
+          recipient_adult_attested_at: "2026-09-16T12:00:00.000Z",
+          recipient_attestation_version: "must-not-leak",
+        },
+      })
+    );
+    expect(after.recipientAdultAttested).toBe(true);
+    expect(JSON.stringify(after)).not.toContain("must-not-leak");
   });
 
   it("prefers the delivery's state over the request's once one exists", () => {
@@ -419,7 +477,7 @@ describe("timeline", () => {
  * Source-level guarantees
  * ===================================================================== */
 
-describe("the tracking command layer is read-only", () => {
+describe("the tracking command layer has only its bounded SQL mutation", () => {
   const src = fs.readFileSync(path.join(REPO, "lib/couranr/tracking/commands.ts"), "utf8");
 
   it("contains no write against a delivery, request, payment or proof", () => {
@@ -444,6 +502,90 @@ describe("the tracking command layer is read-only", () => {
     // this module must never branch on them to build a response.
     expect(src).not.toContain('reason: "expired"');
     expect(src).not.toContain('reason: "revoked"');
+  });
+});
+
+describe("recipient adult-attestation route authority", () => {
+  const route = fs.readFileSync(
+    path.join(REPO, "app/api/couranr/track/[token]/adult-attestation/route.ts"),
+    "utf8"
+  );
+  const commands = fs.readFileSync(
+    path.join(REPO, "lib/couranr/tracking/commands.ts"),
+    "utf8"
+  );
+
+  it("accepts literal consent only and never a browser-selected version or request", () => {
+    expect(route).toContain('const BODY_KEYS = new Set(["accepted"])');
+    expect(route).toContain("accepted !== true");
+    expect(route).not.toMatch(/body\.(version|requestId|recipient|attestedAt)/);
+  });
+
+  it("states the attestation version on the server and hashes the credential", () => {
+    expect(commands).toContain("COURANR_RECIPIENT_ATTESTATION_VERSION");
+    expect(commands).toContain("p_attestation_version: COURANR_RECIPIENT_ATTESTATION_VERSION");
+    expect(commands).toContain("p_token_hash: hashTrackingToken(params.rawToken)");
+  });
+
+  it("renders an explicit checkbox and never presents the attestation as identity verification", () => {
+    const page = fs.readFileSync(
+      path.join(REPO, "components/couranr/tracking/TrackingPage.tsx"),
+      "utf8"
+    );
+    expect(page).toContain('type="checkbox"');
+    expect(page).toMatch(/I confirm that I am 18 or older/);
+    /* The PROPERTY, not the old sentence. This used to pin the phrase "does not
+       replace the separate identity check", which was true only of a protected
+       handoff — every governed consumer recipient attests now, and a standard
+       delivery has no identity check to distinguish the attestation from.
+       Naming a check that will not happen is itself a promise a claim tests, so
+       what must hold is that the card never CLAIMS to verify identity. */
+    expect(page).not.toMatch(/identity (is |has been )?(verified|confirmed)/i);
+    expect(page).not.toMatch(/verifies? your identity/i);
+    // And it still asks the recipient to confirm, rather than asserting for them.
+    // \s+ because JSX wraps prose: the source has a newline between "Confirm"
+    // and "you", which a literal-space regex misses while the rendered page
+    // reads exactly as intended.
+    expect(page).toMatch(/Confirm\s+you are 18 or older/);
+    expect(page).toContain('disabled={!accepted || status === "saving"}');
+  });
+});
+
+describe("every governed consumer recipient is asked to attest", () => {
+  /* The owner decision is universal: sender 18+, recipient 18+. Migration
+     20260917130000 widened the SQL rule to every governed consumer level, but
+     this projection still said `protection_level === "protected_handoff"`.
+     The consequence was not cosmetic — the recipient of a standard delivery was
+     REQUIRED to attest and was never shown the card, so the handoff would be
+     refused recipient_adult_attestation_required with nothing they could have
+     done about it. */
+  for (const level of ["standard", "secure_pickup", "protected_handoff"]) {
+    it(`asks a ${level} recipient`, () => {
+      const p = buildTrackingProjection(fixture({ request: { protection_level: level } }));
+      expect(p.recipientAdultAttestationRequired).toBe(true);
+    });
+  }
+
+  it("does NOT ask an ungoverned recipient", () => {
+    /* Every business delivery and every consumer delivery predating the policy.
+       protection_level is a safe proxy for governed because
+       couranr_dr_protection_completeness_chk makes declared value, level and
+       policy version all-or-nothing. */
+    const p = buildTrackingProjection(fixture({ request: { protection_level: null } }));
+    expect(p.recipientAdultAttestationRequired).toBe(false);
+  });
+
+  it("records the attestation once it exists, at any level", () => {
+    const p = buildTrackingProjection(
+      fixture({
+        request: {
+          protection_level: "standard",
+          recipient_adult_attested_at: "2026-09-17T12:00:00.000Z",
+        },
+      })
+    );
+    expect(p.recipientAdultAttestationRequired).toBe(true);
+    expect(p.recipientAdultAttested).toBe(true);
   });
 });
 

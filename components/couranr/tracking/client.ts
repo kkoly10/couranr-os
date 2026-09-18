@@ -11,9 +11,8 @@ import type { TrackingProjection } from "@/lib/couranr/tracking/projection";
  * the URL is the whole authorization, and it is carried in the path exactly as
  * the payment link is.
  *
- * There is no mutating call in this file. There is no mutating ROUTE to make
- * one against. A link that travels by SMS into forwarded threads must not be
- * able to change anything.
+ * The only mutation is a versioned adult attestation for a protected handoff.
+ * It cannot change delivery, money, route, address, proof or lifecycle state.
  */
 
 export type TrackingRefused = { resolved: false };
@@ -79,5 +78,51 @@ export async function fetchProofUrl(
     return typeof url === "string" && url.length > 0 ? { url } : null;
   } catch {
     return null;
+  }
+}
+
+export async function attestRecipientAdult(token: string): Promise<boolean> {
+  try {
+    const res = await fetch(
+      `/api/couranr/track/${encodeURIComponent(token)}/adult-attestation`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accepted: true }),
+      }
+    );
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Mint the recipient's drop-off PIN.
+ *
+ * Returns the code EXACTLY ONCE. There is no second call that can retrieve it:
+ * the server stores only a keyed digest, so a recipient who loses it mints a
+ * fresh one and the old one is superseded. That is the design, not a gap — a
+ * code that could be re-read is a code that can be read by whoever gets to the
+ * page next.
+ *
+ * Nothing here writes the code to storage, and nothing logs it.
+ */
+export async function issueRecipientDropoffCode(
+  token: string
+): Promise<{ code: string; expiresAt: string } | { error: "too_soon" | "failed" }> {
+  try {
+    const res = await fetch(
+      `/api/couranr/track/${encodeURIComponent(token)}/dropoff-code`,
+      { method: "POST", headers: { "Content-Type": "application/json" } }
+    );
+    if (res.status === 429) return { error: "too_soon" };
+    if (!res.ok) return { error: "failed" };
+    const body = (await res.json()) as { dropoffCode?: { code?: string; expiresAt?: string } };
+    const code = body?.dropoffCode?.code;
+    if (typeof code !== "string" || code.length === 0) return { error: "failed" };
+    return { code, expiresAt: String(body.dropoffCode?.expiresAt ?? "") };
+  } catch {
+    return { error: "failed" };
   }
 }

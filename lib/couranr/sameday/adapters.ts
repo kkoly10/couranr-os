@@ -97,6 +97,12 @@ export type PaymentOutcome =
  * live adapter refuses (with an instructive note, no network call) until the
  * ones the canonical estimate requires are present.
  */
+/** What the sender tenders, as booleans and integer cents — never timestamps. */
+export type ConsumerTenderStatement = {
+  declaredValueCents: number | null;
+  acceptance: { shipmentCertification: boolean; electronicTransactions: boolean };
+};
+
 export type QuoteInput = {
   pickup: string;
   destination: string;
@@ -108,6 +114,18 @@ export type QuoteInput = {
   dropoffPlaceId?: string | null;
   /** UI field names. The adapter maps `mobile` -> the API/DB key `phone`. */
   contact?: { name?: string; mobile?: string; email?: string };
+  /** The recipient. Name and email are required from V1; `mobile` maps to
+   *  `phone` the same way the sender's does. */
+  recipient?: { name?: string; mobile?: string; email?: string };
+  /** Re-entered recipient email. Compared normalized, never persisted (M). */
+  recipientEmailConfirm?: string;
+  /** TOTAL declared shipment value in integer cents — a sender representation,
+   *  never an appraisal. The PROTECTION LEVEL is derived from it on the server
+   *  and re-derived by the database; the browser never states a level. */
+  declaredValueCents?: number | null;
+  /** The two acknowledgements, as booleans. The server stamps the moment and
+   *  the document version — a browser-supplied timestamp is not evidence. */
+  acceptance?: { shipmentCertification?: boolean; electronicTransactions?: boolean };
   shipment?: {
     description?: string | null;
     packageCount?: number | null;
@@ -145,7 +163,9 @@ export type ConsumerRequestReading = {
   quoteStatus: string;
   totalCents: number | null;
   paymentState: string | null;
-  trackingToken?: string;
+  /** The sender is told the recipient was notified, never given their token. */
+  recipientNotifiedAt?: string;
+  recipientNotifiedTo?: string;
 };
 
 export type SameDayAdapters = {
@@ -154,7 +174,10 @@ export type SameDayAdapters = {
   checkAvailability(pickup: string, destination: string): Promise<AvailabilityVerdict>;
   readIntake(text: string): Promise<IntakeReading>;
   quote(input: QuoteInput): Promise<QuoteReading>;
-  submitRequest(): Promise<SubmitOutcome>;
+  /** The sender's statement at tender: declared value and both acknowledgements.
+   *  Optional in the TYPE so the fixture and disabled adapters stay
+   *  byte-identical; the LIVE adapter refuses a submit without it. */
+  submitRequest(statement?: ConsumerTenderStatement): Promise<SubmitOutcome>;
   authorizePayment(): Promise<PaymentOutcome>;
   /* ADDITIVE, live-only, both OPTIONAL so the fixture and disabled objects
      stay byte-identical to what shipped. A component must feature-check. */

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isActorDenied, resolveRequestActor } from "@/lib/couranr/requests/actor";
-import { isFulfillmentFailure, refundPayment } from "@/lib/couranr/fulfillment/commands";
+import { isFulfillmentFailure, refundPayment, stripeRefundGateway } from "@/lib/couranr/fulfillment/commands";
 import { getDeliveryRequest, isCommandFailure } from "@/lib/couranr/requests/commands";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
 
@@ -59,6 +59,9 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     requestId: params.id,
     businessAccountId: loaded.value.request.business_account_id ?? null,
     reason: "full_refund",
+    // The provider seam, named explicitly. It has no default value, so a
+    // caller that omits it does not compile.
+    gateway: stripeRefundGateway(),
   });
   if (isFulfillmentFailure(result)) return failureResponse(result);
 

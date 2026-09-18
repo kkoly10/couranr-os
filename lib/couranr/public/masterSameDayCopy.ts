@@ -103,45 +103,88 @@ export const SAME_DAY_COPY = {
      A second hand-typed list on a marketing page is exactly the drift this
      repository keeps paying for.
 
-     NO "View Prohibited & Restricted Items Policy" CTA. The brief asks for one
-     and says to take its destination from the legal registry rather than
-     typing a URL — but `lib/legal.ts` carries two effective dates and no such
-     document, and no canonical screen owns that route. The choices were a link
-     to nothing, a link to the LEGACY multi-product /terms page, or no link.
-     The rendered category summary already answers "what can I not send?"
-     completely, so the CTA waits for the policy document to exist. */
+     THE POLICY CTA IS BACK, AND THIS BLOCK USED TO EXPLAIN WHY IT WAS ABSENT.
+     It said `lib/legal.ts` carried no such document and no canonical screen
+     owned the route, so the only options were a dead link or a link to the
+     LEGACY multi-product /terms page. That is no longer true:
+     `lib/couranr/legal/registry.ts` owns `prohibited-items` — title, slug,
+     version and `acceptanceIsRecorded: true` — and /legal/prohibited-items
+     renders it. `/send`’s clickwrap already cites the same registry entry, so
+     the marketing page linking to anything else would be the drift.
+
+     THE DOCUMENT NAME IS NOT TYPED HERE EITHER, for the same reason a category
+     is not: the page renders the link with the title the registry owns, so the
+     name on this page and the document behind it cannot become two different
+     things. This string is the lead-in only. */
   prohibited_heading: "Some things shouldn\u2019t travel with Couranr.",
   prohibited_body: "For safety, legal and insurance reasons, Couranr does not transport certain regulated, hazardous or unusually high-risk items.",
   prohibited_help: "Not sure about your item? Describe it when you request the delivery. Couranr checks whether it can be accepted before you pay.",
+  prohibited_cta: "Read the full policy:",
 
   /* Accountable handoffs. Every sentence here describes evidence the shipped
      SAME DAY path actually records — which is narrower than the driver
      platform as a whole, and that distinction is the correction.
 
-     AND IT DOES NOT NAME THE CODE, which was the second error here. Same Day
-     stores `photo_or_pin`, so `couranr_complete_direct_handoff_delivery`
-     requires a VERIFIED RECIPIENT CODE — but the routes that issue or reveal
-     one exist only under /api/couranr/merchant and /api/couranr/operations, and
-     no consumer surface shows it (the track token page does not). Telling a
-     Same Day customer they will be asked for a code at the door promises
-     something nothing gives them. That gap is a PRODUCT issue and is reported
-     as one; the copy meanwhile says what is true — a confirmation at pickup and
-     a confirmed, recorded handoff — without naming a credential the customer
-     cannot hold.
-
      THREE METHODS EXIST; SAME DAY USES ONE. `PROOF_METHODS` offers
      photo_or_pin, signature and leave_at_door, but both consumer write paths
-     pass a literal `p_proof_method: "photo_or_pin"` (lib/couranr/consumer/send.ts
-     :636, :831) and SendFlow exposes no choice — so on the product THIS page
-     sells, "a photo at the door" and "a signature" can never occur. Offering
-     all three here described the platform and mis-described the product.
-     Value-tiered custody — declared-value ceilings, numbered tamper-evident
-     seals, recipient identity verification — is NOT described, because it is
-     not in this build. Adding those sentences before that work ships would be
-     a protection claim Couranr cannot honour. */
+     pass a literal `p_proof_method: "photo_or_pin"` (lib/couranr/consumer/send.ts)
+     and SendFlow exposes no choice — so on the product THIS page sells, a
+     photograph left at the door and a captured signature can never occur.
+     Offering all three described the platform and mis-described the product.
+
+     VALUE-TIERED CUSTODY IS REAL NOW, AND THIS BLOCK USED TO DENY IT. It said
+     declared-value ceilings, numbered tamper-evident seals and recipient
+     identity verification were "not in this build". Two of those three have
+     shipped: `deriveProtection` in lib/couranr/consumer/protection.ts derives
+     standard / secure pickup / protected handoff from the declared value, the
+     SQL re-derives and enforces it, and
+     private.couranr_enforce_consumer_custody_sequence requires the prepack
+     photograph, the sealed-package photograph, the seal bound to that
+     photograph, and the sender’s credential consumed LAST, in that order.
+     Denying protection that shipped is the same defect as promising protection
+     that has not, one direction over.
+
+     WHAT IS STILL NOT OFFERED, AND WHY THE STATED CEILING IS NOT THE POLICY
+     CEILING. Protected handoff needs recipient identity verification, which is
+     not activated. `private.couranr_block_unavailable_protected_handoff` is an
+     enabled trigger that raises `protected_handoff_identity_unavailable` for
+     ANY consumer request at that level the moment it leaves draft, with no
+     flag and no escape, and `submitConsumerSend` refuses it first with no
+     payment authorized. A declared value above
+     PROTECTION_THRESHOLDS.securePickupMaxCents derives to protected handoff, so
+     THAT threshold — not CONSUMER_MAX_DECLARED_VALUE_CENTS, which is the policy
+     ceiling — is what a customer can actually buy today. Neither amount is
+     written here; the page renders both figures from
+     lib/couranr/consumer/protection.ts. */
   handoff_heading: "Built for accountable handoffs.",
   handoff_body: "Couranr records important pickup and delivery events so there is a clear record of the handoff.",
-  handoff_progressive: "A Same Day delivery is released at pickup against a confirmation step, and the handoff to the recipient is confirmed and recorded at the door.",
+  /* MAIN CARRIES A WEAKER VERSION OF THIS SENTENCE, AND IT IS SUPERSEDED, NOT
+     LOST. PR #82's 1b7e3efc rewrote it to "released at pickup against a
+     confirmation step… confirmed and recorded at the door", on the reasoning
+     that naming a code "promises something nothing gives them" because the
+     routes issuing one existed only under /api/couranr/merchant and
+     /api/couranr/operations, with no consumer surface showing it.
+
+     That reasoning was correct on main and is FALSE on this branch. The
+     recipient mints their own PIN from their own tracking link —
+     app/api/couranr/track/[token]/dropoff-code/route.ts, rendered by
+     components/couranr/tracking/TrackingPage.tsx — and the sender holds the
+     pickup code in SendFlow. Both halves of the sentence are things a customer
+     actually gets here, so the stronger wording is the accurate one. Restoring
+     main's version would understate a capability that shipped, which is the
+     same defect as overstating one, pointing the other way. */
+  handoff_progressive: "Every Same Day delivery is released at pickup by a code the sender holds, and handed over against a code at the door. What the shipment is worth decides how much more Couranr does.",
+  /* ENDS WHERE THE AMOUNT BEGINS — the page appends the figure derived from
+     PROTECTION_THRESHOLDS. Same shape as SEND_COPY.declared_value_max_note and
+     for the same reason: a number inside a sentence is a second place the
+     threshold lives, and it goes stale without anything going red. */
+  handoff_secure_pickup: "Secure pickup goes further: the Couranr driver photographs the item before it is packed, applies a numbered tamper-evident seal, photographs the sealed package, and confirms the sender\u2019s code last. Couranr applies it to every shipment declared above",
+  /* Also ends where the amount begins. "Accepts today" rather than a policy
+     ceiling, deliberately: while protected handoff is unavailable, what the
+     policy permits and what a customer can submit are two different numbers,
+     and a marketing page owes the second one. */
+  handoff_declared_value: "You tell Couranr what a shipment is worth when you request it. Today Couranr Same Day accepts a declared value up to",
+  handoff_declared_value_close: "If a shipment is worth more than that, Couranr says so before you pay and nothing is charged.",
   handoff_honesty: "Couranr documents what is presented and handed over. Couranr does not authenticate, appraise or certify merchandise.",
 
   workflow_headline: "A few details. Then Couranr handles the trip.",
@@ -156,12 +199,21 @@ export const SAME_DAY_COPY = {
   price_body:
     "You review the delivery and its price before anything is requested. Couranr confirms availability, schedule and vehicle before any payment is captured.",
 
-  /* Tracking. "Couranr gives the recipient a private tracking experience"
-     until the 2026-09 review: on a Same Day request Couranr holds NO recipient
-     identity — send.ts passes null for recipient name, phone and email (:626-628,
-     :822-824) and the link is rendered on the SENDER's confirmation screen.
-     Couranr has no channel to reach the recipient, so the sender is who gets
-     the link and who may share it.
+  /* Tracking. THIS BLOCK USED TO SAY Couranr held no recipient identity, had
+     no channel to reach the recipient, and therefore gave the SENDER the link
+     to keep or forward. Every clause of that is now false. `recipient_email`
+     is REQUIRED — consumer/send.ts fails `recipient_email_required` without it
+     — and lib/couranr/email/consumerLifecycle.ts emails the recipient their
+     own tracking link, then emails them again when it is out for delivery and
+     when it arrives. getConsumerSendView returns NO tracking token at all: the
+     sender is told that the notification went out and to which address, which
+     is what lets them catch a typo, and nothing more.
+
+     SAY WHAT THE CUSTOMER GETS, NOT HOW IT IS ENFORCED. The reason the sender
+     does not receive the link is that the recipient’s token authorizes the
+     recipient’s own actions, and a forwarded screen would hand those to whoever
+     received it. That is a correct reason and it does not belong on a marketing
+     page; SendFlow explains it where the sender can act on it.
 
      Availability. The nine interaction states (idle/focused/typing/…) are a
      PRODUCT requirement for /send and stay enforced there; they were never
@@ -173,7 +225,7 @@ export const SAME_DAY_COPY = {
 
   tracking_headline: "Follow it from confirmation to handoff.",
   tracking_body:
-    "Couranr gives you a private tracking link once the delivery is confirmed, to keep or to pass to whoever is receiving it. Pickup, movement and handoff are recorded as the delivery progresses.",
+    "When the delivery is confirmed, Couranr emails your recipient their own private tracking, and tells you the address it went to. Pickup, movement and handoff are recorded as the delivery progresses.",
   tracking_labels: [
     "Confirmed",
     "Picked up",
@@ -209,7 +261,72 @@ export const SEND_COPY = {
   timing_live_note: "Couranr picks up as soon as possible and confirms the exact timing with you after your request.",
   review_heading: "Here’s your delivery",
   contact_heading: "Where should we send updates?",
-  acknowledgement: "I confirm this item is eligible for delivery and I have authority to send or collect it.",
+  /* A named recipient with an email is REQUIRED from V1 onward — send.ts
+     refuses the request otherwise. It used to be optional, and a delivery could
+     be created carrying no recipient identity at all; that is history now, and
+     it is the reason Couranr can email the recipient their own tracking instead
+     of handing the sender a link to forward. */
+  recipient_heading: "Who is receiving this delivery?",
+  declared_value_label: "What is this shipment worth?",
+  declared_value_help:
+    "Your own estimate of the total value, in dollars. Couranr uses it to decide how the "
+    + "shipment is handled and photographed — it is not an appraisal, a valuation, or insurance.",
+  /* The CEILING IS NOT WRITTEN HERE. MKT-005 forbids a price literal in copy —
+     a number in a sentence is a second place the amount lives, and it goes
+     stale silently. /send composes this with the ceiling read from
+     CONSUMER_MAX_DECLARED_VALUE_CENTS, which is the same constant the server
+     and the database derive from. */
+  declared_value_max_note: "Couranr Same Day carries shipments declared up to",
+  /* Shown when the value is inside policy but the tier it derives to cannot
+     be bought yet. It names the product, never the provider — a customer
+     has no use for the fact that an identity vendor is not switched on. */
+  declared_value_unavailable_note:
+    "Protected Handoff is not available yet. Couranr Same Day currently accepts "
+    + "shipments with a declared value up to",
+  /* Progressive disclosure. The sender is told what the declared value CHANGES
+     about the handling, at the moment they enter it — not after they have paid. */
+  /* TRUE OF THE CANONICAL PATH. This used to promise that the driver
+     photographs the delivery at drop-off. Consumer Same Day uses proof_method
+     'photo_or_pin', which routes to the recipient-PIN handoff — and that path
+     takes no photograph at all. Promising evidence the system does not collect
+     is worse than promising less, because the sender only finds out when they
+     ask for it in a claim. */
+  protection_standard:
+    "Standard handling: your recipient confirms the handoff with a code they read to the driver.",
+  protection_secure_pickup:
+    "Secure pickup: the driver photographs the item before it is packed, applies a numbered "
+    + "tamper-evident seal, photographs the sealed package, and confirms your pickup code last.",
+  protection_protected_handoff:
+    "Protected handoff: everything in secure pickup, plus the recipient verifies their identity "
+    + "before the handoff. This shipment cannot be left at a door.",
+  /* THE CLICKWRAP, and the reason it is worded this way.
+     The server records `sender_terms_version` and `sender_terms_accepted_at`
+     on every submitted request. Before this string said so, the recorded
+     evidence was STRONGER THAN THE UI THAT GENERATED IT: a row asserted the
+     sender had accepted a versioned document, and the sentence they actually
+     ticked never named a document at all. What is recorded and what was shown
+     are now the same statement.
+     NO HREF LIVES HERE. MKT-005 stores words, never destinations
+     (`routes_excluded`), and the parity test refuses a path or a URL inside
+     any locked string. `SendFlow` renders the two documents as real links
+     beside this checkbox, titled and versioned from
+     `lib/couranr/legal/registry.ts` — the one module that owns a version —
+     so the name in this sentence and the document behind the link cannot
+     become two different things. */
+  acknowledgement:
+    "I confirm that I am 18 or older, that I am authorized to send or collect these items, "
+    + "that the recipient is 18 or older, and that the shipment description, quantity and "
+    + "declared value are accurate. I agree to Couranr’s Same Day Shipment Terms and "
+    + "Prohibited and Restricted Items Policy.",
+  electronic_consent:
+    "I agree to conduct this transaction electronically and to receive Couranr records and "
+    + "notices by email.",
+  /* The lead-in above the two document links. The documents are presented
+     BEFORE the checkboxes, because a clickwrap whose documents are only
+     reachable from a footer asks for agreement to something the sender was
+     never offered. */
+  legal_read_first:
+    "Read these before you accept. Couranr records the version you accept with your shipment.",
   received_heading: "We have your request.",
   received_support: "Couranr is confirming your delivery.",
 } as const;

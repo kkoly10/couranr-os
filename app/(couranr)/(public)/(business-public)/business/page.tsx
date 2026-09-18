@@ -199,7 +199,9 @@ const PROOF_TIMELINE = [
      which supersedes it. Grepping the v2 body for `condition_photo` returns
      ZERO. What v2 actually refuses without: a CONSUMED merchant_pickup code of
      the latest generation (`pickup_code_not_accepted`), a `shipment_photo`
-     (`shipment_photo_required`), and a `securement_photo` when the load calls
+     (`shipment_photo_required` — unconditional here, though 20260917180000 made
+     it conditional on the protection level, which only affects governed CONSUMER
+     shipments and never a business one), and a `securement_photo` when the load calls
      for one. The recipient code remains a DROP-OFF credential, never presented
      at pickup. Read the command the app calls, not the one it used to. */
   { state: "Picked up", note: "Pickup code verified, shipment photographed", done: true },
@@ -344,10 +346,21 @@ const BUSINESS_VALUE_POINTS = [
  * the FAQ answer this replaces, itemised; the Couranr column names only what
  * the product actually does.
  *
- * "Pickup and drop-off evidence", NOT "custody evidence". Value-tiered custody
- * — documenting an item before packing, a numbered tamper-evident seal,
- * recipient identity verification — is not in this build, and naming custody
- * as a Couranr responsibility would promise a chain this build does not keep.
+ * "Pickup and drop-off evidence", NOT "custody evidence", and THE REASON HAS
+ * CHANGED. This note used to say value-tiered custody — documenting an item
+ * before packing, a numbered tamper-evident seal, recipient identity
+ * verification — was "not in this build". It is: `deriveProtection` in
+ * `lib/couranr/consumer/protection.ts` derives it and
+ * `private.couranr_enforce_consumer_custody_sequence` enforces it.
+ *
+ * What is still true is the SCOPE, which is the only thing this list turns on.
+ * That authority governs CONSUMER Same Day and nothing else:
+ * `private.couranr_delivery_protection_level` joins delivery -> request and
+ * returns null unless `protection_policy_version` is set, which no business
+ * delivery carries, and the custody trigger returns immediately for a null
+ * level. So a merchant reading this column would be reading a chain their
+ * deliveries do not run. The wording stays; the justification is scope, not
+ * absence. Promote it the day business requests derive a protection level.
  */
 const MERCHANT_HANDLES = [
   "Product selection",

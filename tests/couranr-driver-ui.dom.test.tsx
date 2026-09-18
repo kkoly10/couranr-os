@@ -46,6 +46,8 @@ const completeDirectHandoff = vi.fn();
 const completeSignature = vi.fn();
 const completeLeaveAtDoor = vi.fn();
 const reportDiscrepancy = vi.fn();
+const recordDeliverySeal = vi.fn();
+const recordSealCondition = vi.fn();
 const verifyPickupCode = vi.fn();
 const verifyRecipientCode = vi.fn();
 const fetchMerchantProof = vi.fn();
@@ -82,6 +84,8 @@ vi.mock("@/components/couranr/dispatch/client", async (importOriginal) => {
     completeLeaveAtDoor: (...a: unknown[]) => completeLeaveAtDoor(...a),
     reportDiscrepancy: (...a: unknown[]) => reportDiscrepancy(...a),
     verifyPickupCode: (...a: unknown[]) => verifyPickupCode(...a),
+    recordDeliverySeal: (...a: unknown[]) => recordDeliverySeal(...a),
+    recordSealCondition: (...a: unknown[]) => recordSealCondition(...a),
     verifyRecipientCode: (...a: unknown[]) => verifyRecipientCode(...a),
     fetchMerchantProof: (...a: unknown[]) => fetchMerchantProof(...a),
     fetchMyProof: (...a: unknown[]) => fetchMyProof(...a),
@@ -190,6 +194,18 @@ function assignedView(over: Partial<AssignedFixture> = {}): AssignedFixture {
     },
     proof: { method: "photo_or_pin", signatureRequired: false },
     vehicleRequirement: { vehicleClass: "cargo_van", maxPayloadLb: 100 },
+    /* UNGOVERNED by default, which is what almost every delivery is — every
+       business delivery and every consumer one predating the policy. A secure
+       fixture is opted into per test, so the default path stays the one that
+       has always shipped. */
+    protection: {
+      level: null,
+      requiresPrepackPhoto: false,
+      requiresSealedPackagePhoto: false,
+      requiresSecuritySeal: false,
+      credentialAfterDocumentation: false,
+      requiresSealCheckAtDropoff: false,
+    },
     assignment: {
       assignmentId: "asg-fixture-1",
       assignedAt: "2026-08-03T13:30:00.000Z",
@@ -281,6 +297,8 @@ const ALL_DOUBLES = [
   completeSignature,
   completeLeaveAtDoor,
   reportDiscrepancy,
+  recordDeliverySeal,
+  recordSealCondition,
   verifyPickupCode,
   verifyRecipientCode,
   fetchMerchantProof,
@@ -1880,5 +1898,409 @@ describe("the pickup form reflects proof the server already holds", () => {
     expect(route).toContain('.eq("driver_id", driver.id)');
     // Metadata only: no path, no bucket, no signed URL on this route.
     expect(route).not.toMatch(/signedProofUrl|storage_object_path|createSignedUrl/);
+  });
+});
+
+
+/* =========================================================================
+ * SECURE PICKUP — the custody sequence, in the driver's hands
+ * ====================================================================== */
+
+describe("secure pickup (above $30.00)", () => {
+  const SECURE = {
+    level: "secure_pickup",
+    requiresPrepackPhoto: true,
+    requiresSealedPackagePhoto: true,
+    requiresSecuritySeal: true,
+    credentialAfterDocumentation: true,
+    requiresSealCheckAtDropoff: true,
+  };
+  const secureView = (over: Record<string, unknown> = {}) =>
+    assignedView({ fulfillmentState: "at_pickup", protection: SECURE, ...over } as never);
+
+  /** A finalized proof, the way the server reports one already on file. */
+  const recordedProofs = (...types: string[]) =>
+    ok({
+      proof: types.map((proofType, i) => ({
+        proofId: `00000000-0000-4000-8000-00000000000${i + 1}`,
+        proofStage: "pickup",
+        proofType,
+      })),
+    });
+
+  it("asks for the item photo, the sealed photo and the seal — in that order", async () => {
+    fetchMyProof.mockResolvedValue(ok({ proof: [] }));
+    render(
+      <PickupFlow assigned={secureView()} location={usableLocation()} onCompleted={vi.fn()} />
+    );
+
+    await waitFor(() => expect(screen.getByText("Secure pickup")).toBeTruthy());
+
+    /* THE ORDER IS THE POINT. A sealed-package photo taken before the item
+       photo proves nothing about what is inside, so the second field is blocked
+       until the first is finalized — and the reason says why rather than just
+       refusing. */
+    expect(
+      screen.getByText(/Photograph the item first — once it is sealed/i)
+    ).toBeTruthy();
+
+    // The seal cannot be recorded until there is a photograph to bind it to.
+    const sealButton = screen.getByRole("button", { name: /record seal/i }) as HTMLButtonElement;
+    expect(sealButton.disabled).toBe(true);
+    expect(screen.getByText(/Take the sealed-package photo first/i)).toBeTruthy();
+  });
+
+  it("hides the sender's code until the shipment is documented and sealed", async () => {
+    /* The credential means "the documented and sealed shipment is what I am
+       tendering". Offering it first invites a driver to take it on arrival,
+       which the database then refuses with the sender standing right there
+       (pickup_credential_before_documentation). */
+    fetchMyProof.mockResolvedValue(ok({ proof: [] }));
+    render(
+      <PickupFlow assigned={secureView()} location={usableLocation()} onCompleted={vi.fn()} />
+    );
+
+    await waitFor(() => expect(screen.getByText("Secure pickup")).toBeTruthy());
+    expect(screen.getByText(/Document the shipment first/i)).toBeTruthy();
+    expect(screen.queryByText(/enter six-digit code instead/i)).toBeNull();
+  });
+
+  it("records the seal against the sealed-package photo, then opens the code", async () => {
+    fetchMyProof.mockResolvedValue(recordedProofs("item_prepack_photo", "sealed_package_photo"));
+    recordDeliverySeal.mockResolvedValue(
+      ok({ seal: { sealId: "seal-1", sealIdentifier: "CR-SEAL-0042" } })
+    );
+    const user = userEvent.setup();
+    render(
+      <PickupFlow assigned={secureView()} location={usableLocation()} onCompleted={vi.fn()} />
+    );
+
+    await waitFor(() => expect(screen.getByText("Secure pickup")).toBeTruthy());
+    // Still closed: both photos exist but nothing is sealed yet.
+    expect(screen.getByText(/Document the shipment first/i)).toBeTruthy();
+
+    /* WAIT FOR THE CONTROL, don't count it. The recorded proofs arrive from a
+       mount effect, so the seal field is disabled on the first paint and
+       userEvent.type into a disabled input silently does nothing — which reads
+       as "the button never fired" rather than "the test typed too early". */
+    const sealField = screen.getByLabelText(/seal number/i) as HTMLInputElement;
+    await waitFor(() => expect(sealField.disabled).toBe(false));
+    await user.type(sealField, "CR-SEAL-0042");
+    await user.click(screen.getByRole("button", { name: /record seal/i }));
+
+    await waitFor(() => expect(recordDeliverySeal).toHaveBeenCalledTimes(1));
+    /* The seal is bound to the SEALED-PACKAGE photo's id, not the item photo's
+       and not a fresh guess — a seal citing the wrong photograph is a serial
+       typed into a box, and the SQL refuses it. */
+    expect(recordDeliverySeal.mock.calls[0]).toEqual([
+      "del-fixture-1",
+      "CR-SEAL-0042",
+      "00000000-0000-4000-8000-000000000002",
+    ]);
+
+    await waitFor(() => expect(screen.getByText(/Seal CR-SEAL-0042 is recorded/i)).toBeTruthy());
+    // NOW the sender's code is offered.
+    expect(screen.queryByText(/Document the shipment first/i)).toBeNull();
+    expect(screen.getByText(/enter six-digit code instead/i)).toBeTruthy();
+  });
+
+  it("changes NOTHING for an ungoverned delivery", async () => {
+    /* Every business delivery and every consumer delivery predating this policy.
+       If the secure card or the gate leaked into the default path it would stop
+       deliveries that have always worked. */
+    fetchMyProof.mockResolvedValue(ok({ proof: [] }));
+    render(
+      <PickupFlow
+        assigned={assignedView({ fulfillmentState: "at_pickup" })}
+        location={usableLocation()}
+        onCompleted={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(screen.getByText("Verify pickup")).toBeTruthy());
+    expect(screen.queryByText("Secure pickup")).toBeNull();
+    expect(screen.queryByText(/Document the shipment first/i)).toBeNull();
+    // The code is offered immediately, exactly as it always has been.
+    expect(screen.getByText(/enter six-digit code instead/i)).toBeTruthy();
+  });
+
+  /* ── closure O: the generic pickup photo is not asked of a secure pickup ── */
+
+  it("never offers the generic pickup photo, and never blocks on it", async () => {
+    /* THE DEFECT: a Secure Pickup asked for the generic shipment photo on top of
+       the prepack photo and the sealed-package photo — three photographs before
+       the seal number, four on a large load. The generic one proves neither of
+       the things the other two prove. couranr_complete_pickup_v2 stopped
+       requiring it for a governed secure level in 20260917160000; this list and
+       that function have to agree, or the driver is blocked on a photo the
+       server does not want. */
+    fetchMyProof.mockResolvedValue(recordedProofs("item_prepack_photo", "sealed_package_photo"));
+    const { container } = render(
+      <PickupFlow assigned={secureView()} location={usableLocation()} onCompleted={vi.fn()} />
+    );
+
+    await waitFor(() => expect(screen.getByText("Secure pickup")).toBeTruthy());
+    // The field is not merely optional — it is not on screen, because a photo
+    // field on screen is a photo a driver takes.
+    expect(screen.queryByLabelText(/photo of the pickup/i)).toBeNull();
+    expect(container.textContent ?? "").not.toMatch(
+      /take one photo showing everything you are collecting/i
+    );
+    /* ...and it is not in the blocker list either. Matched on the blocker's own
+       wording rather than on "photo": the secure blockers legitimately mention
+       photographs, so a broad match would pass on the item and sealed prompts
+       and prove nothing about the generic one. */
+    expect(container.textContent ?? "").not.toMatch(/pickup photo to sync/i);
+  });
+
+  it("still asks a GOVERNED STANDARD delivery for the generic pickup photo", async () => {
+    /* The level below secure keeps the simple pickup exactly as it shipped. A
+       change scoped to "governed" rather than to "secure" would have caught this
+       one too, and the server would still have demanded the photo. */
+    fetchMyProof.mockResolvedValue(ok({ proof: [] }));
+    const { container } = render(
+      <PickupFlow
+        assigned={
+          assignedView({
+            fulfillmentState: "at_pickup",
+            protection: {
+              level: "standard",
+              requiresPrepackPhoto: false,
+              requiresSealedPackagePhoto: false,
+              requiresSecuritySeal: false,
+              credentialAfterDocumentation: false,
+              requiresSealCheckAtDropoff: false,
+            },
+          } as never)
+        }
+        location={usableLocation()}
+        onCompleted={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(screen.getByText("Verify pickup")).toBeTruthy());
+    expect(screen.queryByText("Secure pickup")).toBeNull();
+    expect(container.textContent ?? "").toMatch(
+      /take one photo showing everything you are collecting/i
+    );
+  });
+
+  it("still asks a SECURE delivery for the securement photo on a large load", async () => {
+    /* The securement photo is about the DRIVE, not the custody ceremony, so it
+       survives at every level. Dropping the generic photo must not have taken it
+       with it — the RPC still answers securement_photo_required. */
+    fetchMyProof.mockResolvedValue(recordedProofs("item_prepack_photo", "sealed_package_photo"));
+    const { container } = render(
+      <PickupFlow
+        assigned={secureView({
+          vehicleRequirement: { vehicleClass: "box_truck", maxPayloadLb: 4000 },
+        })}
+        location={usableLocation()}
+        onCompleted={vi.fn()}
+      />
+    );
+
+    await waitFor(() => expect(screen.getByText("Secure pickup")).toBeTruthy());
+    expect(screen.getByText("Securement photo")).toBeTruthy();
+    expect(container.textContent ?? "").toMatch(/photo of the secured load/i);
+    /* ...and the generic one is still absent even though its card now renders.
+       This is the ONLY assertion that reaches the inner gate: for a secure
+       pickup that is not large the whole card is gone, so a field left inside it
+       is unreachable and a test using that fixture cannot see the difference.
+       Asserted on the FIELD, not on the card's description, because the
+       description is the thing that changes for a large secure load. */
+    expect(screen.queryByLabelText(/photo of the pickup/i)).toBeNull();
+    expect(container.textContent ?? "").not.toMatch(
+      /fit the full pickup in the frame/i
+    );
+  });
+
+  it("completes a secure pickup with no generic photo once the ceremony is done", async () => {
+    /* The end-to-end claim, at the only level a jsdom test can make it: the
+       Confirm pickup button is ENABLED with prepack + sealed + seal + code and no
+       generic photo, and completePickup is actually called. The disposable-
+       database counterpart (§O in e2e/disposable/consumerTrustCustody.mjs)
+       proves the server then accepts it. */
+    /* `pickupCredentialVerified` is how a reload learns the sender already
+       confirmed, so the flow can be driven to the Confirm button without
+       re-entering a six-digit code this test is not about. */
+    fetchMyProof.mockResolvedValue(
+      ok({
+        proof: [
+          { proofId: "00000000-0000-4000-8000-000000000001", proofStage: "pickup",
+            proofType: "item_prepack_photo" },
+          { proofId: "00000000-0000-4000-8000-000000000002", proofStage: "pickup",
+            proofType: "sealed_package_photo" },
+        ],
+        pickupCredentialVerified: true,
+      })
+    );
+    recordDeliverySeal.mockResolvedValue(
+      ok({ seal: { sealId: "seal-1", sealIdentifier: "CR-SEAL-0099" } })
+    );
+    completePickup.mockResolvedValue(ok({ delivery: { fulfillmentState: "picked_up" } }));
+    const user = userEvent.setup();
+    const onCompleted = vi.fn();
+    render(
+      <PickupFlow assigned={secureView()} location={usableLocation()} onCompleted={onCompleted} />
+    );
+
+    await waitFor(() => expect(screen.getByText("Secure pickup")).toBeTruthy());
+    const sealField = screen.getByLabelText(/seal number/i) as HTMLInputElement;
+    await waitFor(() => expect(sealField.disabled).toBe(false));
+    await user.type(sealField, "CR-SEAL-0099");
+    await user.click(screen.getByRole("button", { name: /record seal/i }));
+    await waitFor(() => expect(screen.getByText(/Seal CR-SEAL-0099 is recorded/i)).toBeTruthy());
+
+    const confirm = screen.getByRole("button", { name: /confirm pickup/i }) as HTMLButtonElement;
+    await waitFor(() => expect(confirm.disabled).toBe(false));
+    await user.click(confirm);
+    await waitFor(() => expect(completePickup).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onCompleted).toHaveBeenCalledTimes(1));
+  });
+});
+
+
+/* =========================================================================
+ * SEAL CHECK AT HANDOFF — the custody chain closes
+ * ====================================================================== */
+
+describe("checking the seal at handoff", () => {
+  const SEALED = {
+    level: "secure_pickup",
+    requiresPrepackPhoto: true,
+    requiresSealedPackagePhoto: true,
+    requiresSecuritySeal: true,
+    credentialAfterDocumentation: true,
+    requiresSealCheckAtDropoff: true,
+  };
+  /** A finalized drop-off seal photograph already on file (H). */
+  const withSealPhoto = () =>
+    ok({
+      proof: [
+        {
+          proofId: "00000000-0000-4000-8000-0000000000aa",
+          proofStage: "dropoff",
+          proofType: "dropoff_seal_photo",
+        },
+      ],
+    });
+
+  const renderSealed = (protection: unknown = SEALED) =>
+    render(
+      <DropoffProof
+        assigned={
+          assignedView({
+            fulfillmentState: "at_dropoff",
+            proof: { method: "photo_or_pin", signatureRequired: false },
+            protection,
+          } as never)
+        }
+        location={usableLocation()}
+        onCompleted={vi.fn()}
+      />
+    );
+
+  it("asks for the seal BEFORE the handoff form, not after", async () => {
+    /* The comparison happens before the parcel changes hands. Offering the
+       handoff form first would let a driver complete the delivery and meet
+       seal_condition_required_at_dropoff with the recipient standing there. */
+    renderSealed();
+    await waitFor(() => expect(screen.getByText("Check the seal")).toBeTruthy());
+    expect(screen.queryByLabelText(/recipient code/i)).toBeNull();
+  });
+
+  it("records one answer and then opens the handoff", async () => {
+    fetchMyProof.mockResolvedValue(withSealPhoto());
+    recordSealCondition.mockResolvedValue(
+      ok({ seal: { sealId: "seal-1", dropoffCondition: "intact" } })
+    );
+    const user = userEvent.setup();
+    renderSealed();
+    await waitFor(() => expect(screen.getByText("Check the seal")).toBeTruthy());
+    const intact = screen.getByRole("button", { name: /Intact/i }) as HTMLButtonElement;
+    await waitFor(() => expect(intact.disabled).toBe(false));
+    await user.click(intact);
+
+    await waitFor(() => expect(recordSealCondition).toHaveBeenCalledTimes(1));
+    /* The condition is recorded AGAINST the photograph. A condition with no
+       photo is the driver's word wearing a photograph's clothes. */
+    expect(recordSealCondition.mock.calls[0]).toEqual([
+      "del-fixture-1",
+      "intact",
+      "00000000-0000-4000-8000-0000000000aa",
+    ]);
+    // The handoff form is now reachable.
+    await waitFor(() => expect(screen.queryByText("Check the seal")).toBeNull());
+  });
+
+  it("does not punish honesty — a DAMAGED seal still opens the handoff", async () => {
+    /* If a broken seal blocked the delivery, the one person holding the parcel
+       would have every reason to report it intact. Recording the truth has to
+       be the cheapest path available. */
+    fetchMyProof.mockResolvedValue(withSealPhoto());
+    recordSealCondition.mockResolvedValue(
+      ok({ seal: { sealId: "seal-1", dropoffCondition: "damaged" } })
+    );
+    const user = userEvent.setup();
+    renderSealed();
+    await waitFor(() => expect(screen.getByText("Check the seal")).toBeTruthy());
+    const damaged = screen.getByRole("button", { name: /Damaged/i }) as HTMLButtonElement;
+    await waitFor(() => expect(damaged.disabled).toBe(false));
+    await user.click(damaged);
+
+    await waitFor(() => expect(recordSealCondition).toHaveBeenCalledTimes(1));
+    expect(recordSealCondition.mock.calls[0][1]).toBe("damaged");
+    await waitFor(() => expect(screen.queryByText("Check the seal")).toBeNull());
+  });
+
+  it("keeps the seal check out of an UNGOVERNED drop-off entirely", async () => {
+    renderSealed({
+      level: null,
+      requiresPrepackPhoto: false,
+      requiresSealedPackagePhoto: false,
+      requiresSecuritySeal: false,
+      credentialAfterDocumentation: false,
+      requiresSealCheckAtDropoff: false,
+    });
+    await waitFor(() => expect(screen.getByText("Recipient code")).toBeTruthy());
+    expect(screen.queryByText("Check the seal")).toBeNull();
+    expect(recordSealCondition).not.toHaveBeenCalled();
+  });
+});
+
+describe("the seal condition is read from a photograph", () => {
+  it("cannot be recorded until the seal has been photographed", async () => {
+    /* H — "the driver said intact" is not evidence of the same kind as a
+       photograph of the seal, and a claim turns on exactly that observation.
+       The server refuses without it (dropoff_seal_photo_required); this keeps
+       the driver from meeting that refusal at a doorstep. */
+    fetchMyProof.mockResolvedValue(ok({ proof: [] }));
+    render(
+      <DropoffProof
+        assigned={
+          assignedView({
+            fulfillmentState: "at_dropoff",
+            proof: { method: "photo_or_pin", signatureRequired: false },
+            protection: {
+              level: "secure_pickup",
+              requiresPrepackPhoto: true,
+              requiresSealedPackagePhoto: true,
+              requiresSecuritySeal: true,
+              credentialAfterDocumentation: true,
+              requiresSealCheckAtDropoff: true,
+            },
+          } as never)
+        }
+        location={usableLocation()}
+        onCompleted={vi.fn()}
+      />
+    );
+    await waitFor(() => expect(screen.getByText("Check the seal")).toBeTruthy());
+    for (const name of [/Intact/i, /Damaged/i, /Missing/i]) {
+      expect((screen.getByRole("button", { name }) as HTMLButtonElement).disabled).toBe(true);
+    }
+    expect(screen.getByText(/Photograph the seal first/i)).toBeTruthy();
+    expect(recordSealCondition).not.toHaveBeenCalled();
   });
 });

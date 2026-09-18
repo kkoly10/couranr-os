@@ -104,6 +104,32 @@ describe("consumer route inventory", () => {
         ]) {
           expect(rx.test(code), `${rel(file)} reads forbidden pickup-manifest data`).toBe(false);
         }
+      } else if (rel(file) === "app/api/couranr/consumer/submit/route.ts") {
+        /* This route read NO body until the V1 trust contract. It now reads
+           exactly two things, and neither is a commercial fact: the sender's own
+           declared value, and their two acknowledgements.
+
+           The distinction the original rule was protecting is intact. The server
+           still holds every price, state and target; the protection LEVEL is
+           derived by the database from the declared value rather than accepted;
+           and FORBIDDEN_CONSUMER_KEYS refuses a body reaching for the level, the
+           policy version or the consent timestamps.
+
+           An acknowledgement is the one fact the server cannot hold on the
+           sender's behalf — it exists only because a person ticked a box, at
+           submission rather than at pricing. The route hands the raw object to
+           the lib and never dereferences it, the same shape as the estimate
+           route above. */
+        expect((code.match(/req\.json\(\)/g) || []).length).toBe(1);
+        expect(code).toMatch(/submitConsumerSend\(\{ session: session\.value, body \}\)/);
+        expect(/\bbody\s*\.\s*[a-zA-Z]/.test(code)).toBe(false);
+        for (const rx of [
+          /body\??\.\s*(amount|total|price|subtotal|cents)/i,
+          /body\??\.\s*(requestId|businessAccountId|target|policy|route|state|status)/i,
+          /protectionLevel|protection_level|termsAcceptedAt/i,
+        ]) {
+          expect(rx.test(code), `${rel(file)} reads a server-owned field`).toBe(false);
+        }
       } else if (rel(file) === "app/api/couranr/consumer/readiness/route.ts") {
         // FND-006: this route has one intentionally tiny body vocabulary:
         // { readiness: "ready" | "not_ready" }. It cannot name a request or
@@ -232,10 +258,22 @@ describe("findForbiddenConsumerKey", () => {
 /* --------------------------------------------------- body validation ----- */
 
 describe("validateConsumerSendBody", () => {
+  /* The full contract body. Every assertion below spreads this and overrides
+     ONE thing, so a test about weight is not silently answered by the email
+     gate — the new trust fields are checked before the shipment fields, and an
+     under-specified fixture would make each of these tests report the first
+     missing field instead of its own subject. */
   const valid = {
     pickupPlaceId: "p1",
     dropoffPlaceId: "p2",
-    contact: { phone: "+15715550100" },
+    // V1 requires the sender's NAME: the terms they accept say "I am authorized
+    // to send these items", and an acceptance signed by nobody is weak evidence.
+    contact: { name: "Alex Chen", phone: "+15715550100", email: "sender@example.test" },
+    recipient: { name: "Dana Reyes", email: "recipient@example.test" },
+    // $20.00 — inside the standard band on purpose, so these pre-existing
+    // assertions keep testing what they were written to test.
+    declaredValueCents: 2_000,
+    acceptance: { shipmentCertification: true, electronicTransactions: true },
     shipment: { weightLb: 20, restrictedClass: "none" },
   };
 
@@ -341,6 +379,174 @@ describe("validateConsumerSendBody", () => {
     // Refresh re-prices the STORED statement, as the business refresh does.
     expect(LIB).toMatch(/row\.timing_intent === "scheduled" \? "scheduled" : "asap"/);
   });
+
+  /* ---------------------------------------- V1 trust contract (new) ------ */
+
+  /* Every refusal below is attempted ON PURPOSE. A validation reason nobody
+     violates deliberately is a reason nobody knows fires — stage 2 shipped four
+     CHECK constraints written and never once violated, and this is the same
+     failure one layer up. Each case overrides exactly ONE field of `valid`, so
+     the reason it asserts is the reason it caused. */
+  const reasonFor = (body: unknown): string => {
+    const r = validateConsumerSendBody(body);
+    expect(r.ok, `expected a refusal, got acceptance`).toBe(false);
+    return isConsumerSendBodyFailure(r) ? r.reason : "<accepted>";
+  };
+
+  it("EMAIL-FIRST: a sender phone cannot stand in for a sender email", () => {
+    const { email, ...noEmail } = valid.contact as Record<string, unknown>;
+    expect(reasonFor({ ...valid, contact: noEmail })).toBe("sender_email_required");
+    expect(reasonFor({ ...valid, contact: { phone: "+15715550100" } })).toBe(
+      "sender_email_required"
+    );
+    // A malformed one is refused as malformed, not as missing.
+    expect(reasonFor({ ...valid, contact: { ...valid.contact, email: "dana@" } })).toBe(
+      "contact_email_invalid"
+    );
+  });
+
+  it("requires a recipient identity — the field every consumer send lacked", () => {
+    expect(reasonFor({ ...valid, recipient: undefined })).toBe("recipient_name_required");
+    expect(reasonFor({ ...valid, recipient: { email: "r@example.test" } })).toBe(
+      "recipient_name_required"
+    );
+    expect(reasonFor({ ...valid, recipient: { name: "Dana Reyes" } })).toBe(
+      "recipient_email_required"
+    );
+    // A recipient phone does not satisfy the recipient email rule either.
+    expect(
+      reasonFor({ ...valid, recipient: { name: "Dana Reyes", phone: "+15715550101" } })
+    ).toBe("recipient_email_required");
+    expect(
+      reasonFor({ ...valid, recipient: { name: "Dana Reyes", email: "not-an-email" } })
+    ).toBe("recipient_email_invalid");
+  });
+
+  it("refuses an unreadable declared value rather than treating it as $0", () => {
+    /* The dangerous coercion: `Number(undefined)` is NaN and `Number(null)` is
+       0. If this validator coerced, a body that simply omitted the value would
+       be accepted as a $0.00 shipment and routed onto the standard path with no
+       prepack photo and no seal — while carrying a $500 item. */
+    for (const bad of [undefined, null, "2000", Number.NaN, 12.5, -1, {}, [], true]) {
+      expect(reasonFor({ ...valid, declaredValueCents: bad }), `${JSON.stringify(bad)}`).toBe(
+        "declared_value_invalid"
+      );
+    }
+  });
+
+  it("declines above the $500 ceiling with its own distinct reason", () => {
+    // Distinct from `declared_value_invalid` because the sender must be told
+    // the ceiling, not that their number was unreadable.
+    expect(reasonFor({ ...valid, declaredValueCents: 50_001 })).toBe(
+      "declared_value_above_maximum"
+    );
+    /* $500 IS NO LONGER ACCEPTED, and the reason is not the ceiling. It derives
+       to protected_handoff, which cannot be sold while Stripe Identity is
+       inactive, so it is refused as CURRENTLY UNAVAILABLE. Calling it "above
+       the maximum" would be false — $500 is exactly the maximum — and would
+       make a temporary commercial limit indistinguishable from a policy breach
+       in a log. The policy ceiling itself is unchanged. */
+    expect(reasonFor({ ...valid, declaredValueCents: 50_000 })).toBe(
+      "protection_level_unavailable"
+    );
+    expect(validateConsumerSendBody({ ...valid, declaredValueCents: 15_000 }).ok).toBe(true);
+    expect(validateConsumerSendBody({ ...valid, declaredValueCents: 0 }).ok).toBe(true);
+  });
+
+  it("parses the acknowledgements but does NOT require them to price", () => {
+    /* This validator serves estimateConsumerSend, which creates a DRAFT. The
+       database exempts drafts from couranr_dr_consumer_acceptance_chk for the
+       same reason: a draft is a statement not yet made. requireAcceptance is
+       the submit-time gate — see the block below. */
+    for (const acceptance of [undefined, {}, { shipmentCertification: false }]) {
+      const r = validateConsumerSendBody({ ...valid, acceptance });
+      expect(r.ok, `acceptance ${JSON.stringify(acceptance)} blocked pricing`).toBe(true);
+      if (r.ok) expect(r.value.acceptance.shipmentCertification).toBe(false);
+    }
+    const r = validateConsumerSendBody(valid);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.acceptance).toEqual({
+        shipmentCertification: true,
+        electronicTransactions: true,
+      });
+    }
+  });
+
+  it("refuses a body reaching for a SERVER-DERIVED protection field", () => {
+    /* The client states a value. It never states the level, the policy version,
+       or the moment it consented. These are refused outright rather than
+       ignored: ignoring is silent, and a later refactor that spread the body
+       into the RPC parameters would turn a silent ignore into a live hole. */
+    for (const key of [
+      "protectionLevel",
+      "protectionPolicyVersion",
+      "senderTermsVersion",
+      "senderTermsAcceptedAt",
+      "senderElectronicConsentAt",
+      "senderAdultAttestedAt",
+      "recipientAdultAttestedAt",
+    ]) {
+      expect(reasonFor({ ...valid, [key]: "x" }), `${key} was not refused`).toBe(
+        "forbidden_field"
+      );
+      // And nested, because a real payload nests.
+      expect(
+        reasonFor({ ...valid, shipment: { ...valid.shipment, [key]: "x" } }),
+        `nested ${key} was not refused`
+      ).toBe("forbidden_field");
+    }
+  });
+
+  it("requires the SENDER'S NAME, not just an address to reach them", () => {
+    /* The certification the sender accepts says "I am authorized to send these
+       items". An acceptance signed by nobody is weak evidence of precisely the
+       thing a claim turns on, so V1 requires the name. Phone stays optional. */
+    const { name, ...noName } = valid.contact as Record<string, unknown>;
+    expect(reasonFor({ ...valid, contact: noName })).toBe("sender_name_required");
+    expect(reasonFor({ ...valid, contact: { ...valid.contact, name: "   " } })).toBe(
+      "sender_name_required"
+    );
+    // A phone still is not required.
+    const { phone, ...noPhone } = valid.contact as Record<string, unknown>;
+    expect(validateConsumerSendBody({ ...valid, contact: noPhone }).ok).toBe(true);
+  });
+
+  it("does NOT forbid declaredValueCents — it is the one input the sender states", () => {
+    // The guard on the guard: if a future edit added `declaredvaluecents` to the
+    // list, every legitimate send would fail closed with `forbidden_field` and
+    // the tests above would still pass, because they all assert refusals.
+    expect(findForbiddenConsumerKey({ declaredValueCents: 2_000 })).toBeNull();
+    expect(validateConsumerSendBody(valid).ok).toBe(true);
+  });
+
+  it("carries the new fields through to the value, normalized and unchanged", () => {
+    const r = validateConsumerSendBody({
+      ...valid,
+      recipient: { name: "  Dana Reyes  ", email: "recipient@example.test", phone: null },
+      /* $150.00, not $150.01. This test is about RECIPIENT NORMALIZATION; a
+         value one cent higher now derives to an unavailable tier and the body
+         is refused, so the fixture would answer a question about declared value
+         instead of the one it was written to ask. The file's own header warns
+         about exactly this. */
+      declaredValueCents: 15_000,
+    });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.value.recipient.name).toBe("Dana Reyes");
+      expect(r.value.recipient.email).toBe("recipient@example.test");
+      expect(r.value.recipient.phone).toBeNull();
+      expect(r.value.contact.email).toBe("sender@example.test");
+      // Passed through EXACTLY. The level is derived from it on the server and
+      // re-derived by the database; the validator must not round or rescale it.
+      expect(r.value.declaredValueCents).toBe(15_000);
+      expect(r.value.acceptance).toEqual({
+        shipmentCertification: true,
+        electronicTransactions: true,
+      });
+    }
+  });
+
 });
 
 /* -------------------------------------------------------- SQL posture ---- */
@@ -512,5 +718,75 @@ describe("consumer restricted-signal parity (review item 1)", () => {
     const code = stripped(LIB);
     expect(code).toMatch(/scanRestrictedSignals\(body\.shipment\.description \?\? ""\)/);
     expect(code).toMatch(/evaluateShipmentPolicy\([\s\S]{0,400}\{ textSignals \}/);
+  });
+});
+
+
+/* =========================================================================
+ * A — SENDER AND RECIPIENT ARE DIFFERENT CAPABILITIES
+ * ====================================================================== */
+
+describe("the sender is never handed the recipient's token", () => {
+  const SEND_LIB = readFileSync(path.join(ROOT, "lib/couranr/consumer/send.ts"), "utf8");
+  const code = stripped(SEND_LIB);
+
+  it("assigns no raw token onto the sender's view", () => {
+    /* The finding: `view.trackingToken = rawToken` returned the SAME token that
+       had just been emailed to the recipient. Its audience is `recipient` and
+       it authorizes the adult attestation, identity verification and the
+       handoff PIN — so the sender held all three, and so did anyone they
+       forwarded their screen to.
+
+       Asserted against the source because the alternative is an integration
+       test that has to stand up email, and the property is simple: nothing
+       assigns a raw token into the object returned to the sender. */
+    /* Matches ANY property assignment of the raw token, including through a
+       cast. The first version of this test looked for `view.trackingToken =`
+       and a negative control writing `(view as any).trackingToken = rawToken`
+       walked straight past it — a guard narrow enough to name the old line is a
+       guard the next regression is free to route around. */
+    expect(/\.\w+\s*=\s*rawToken\b/.test(code), "a raw token is assigned onto an object").toBe(
+      false
+    );
+    // And no object literal carries it as a property value either.
+    expect(/\b\w*[Tt]oken\s*:\s*rawToken\b/.test(code)).toBe(false);
+  });
+
+  it("keeps no token field on the sender view type at all", () => {
+    // A field that exists is a field something will eventually populate.
+    const raw = SEND_LIB.slice(
+      SEND_LIB.indexOf("export type ConsumerSendView = {"),
+      SEND_LIB.indexOf("};", SEND_LIB.indexOf("export type ConsumerSendView = {"))
+    );
+    /* COMMENTS STRIPPED. The doc comment on this type explains that the sender
+       is never given the recipient's TOKEN, so an un-stripped match fails on the
+       explanation rather than on a field — the same way a migration test once
+       "passed" by matching the sentence describing the rule instead of the
+       rule. Only declarations can leak a value. */
+    const type = raw.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    expect(type).not.toMatch(/token/i);
+    // What the sender legitimately gets instead: the fact, and the address.
+    expect(type).toContain("recipientNotifiedAt");
+    expect(type).toContain("recipientNotifiedTo");
+  });
+
+  /*
+   * The capability moved TWICE now. First the raw token stopped being returned
+   * to the sender; then the send itself left this module entirely, because a
+   * GET projection is the wrong owner for an irreversible side effect — a
+   * provider blip surfaced as a failed status-page load, and a sender who
+   * closed the tab meant the recipient was never emailed.
+   *
+   * So the assertion is no longer "this file still sends". It is: this file
+   * sends NOTHING, and the module that does still puts the raw token in the
+   * tracking URL rather than anywhere a sender can see.
+   */
+  it("still emails the recipient — the capability moved to the lifecycle, it did not vanish", () => {
+    const lifecycle = stripped(
+      readFileSync(path.join(ROOT, "lib/couranr/email/consumerLifecycle.ts"), "utf8")
+    );
+    expect(code).not.toContain("sendRenderedEmail");
+    expect(lifecycle).toContain("sendRenderedEmail");
+    expect(lifecycle).toMatch(/trackUrl[\s\S]{0,80}rawToken/);
   });
 });
