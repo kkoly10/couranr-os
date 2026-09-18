@@ -295,7 +295,22 @@ async function sendRecipientInvitation(params: {
     reference: String(params.request.reference),
     dropoffLabel: dropoffLabel(params.request.dropoff_address),
     trackUrl: emailUrl(defaultEmailConfig, `/track/${encodeURIComponent(rawToken)}`),
-    recipientAdultAttestationRequired: params.request.protection_level === "protected_handoff",
+    /* EVERY governed consumer recipient attests, not only a protected handoff.
+       This is the SAME defect tracking/projection.ts already carries a fix and a
+       comment for — 20260917130000 widened the rule in SQL and only one of the
+       two readers was updated. The consequence here is worse than a wrong flag:
+       private.couranr_enforce_consumer_dropoff_custody refuses the handoff with
+       recipient_adult_attestation_required for EVERY governed consumer
+       delivery, and protected_handoff is the one tier that cannot be sold — so
+       for every shipment Couranr can actually sell, the recipient's only
+       proactive notification omitted the one thing that blocks their delivery.
+
+       protection_level is a safe proxy for "governed":
+       couranr_dr_protection_completeness_chk makes declared value, level and
+       policy version all-or-nothing, so a non-null level means governed. */
+    recipientAdultAttestationRequired:
+      typeof params.request.protection_level === "string" &&
+      params.request.protection_level.length > 0,
   });
 
   const result = await deliver({

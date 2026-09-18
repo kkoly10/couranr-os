@@ -199,7 +199,9 @@ const PROOF_TIMELINE = [
      which supersedes it. Grepping the v2 body for `condition_photo` returns
      ZERO. What v2 actually refuses without: a CONSUMED merchant_pickup code of
      the latest generation (`pickup_code_not_accepted`), a `shipment_photo`
-     (`shipment_photo_required`), and a `securement_photo` when the load calls
+     (`shipment_photo_required` — unconditional here, though 20260917180000 made
+     it conditional on the protection level, which only affects governed CONSUMER
+     shipments and never a business one), and a `securement_photo` when the load calls
      for one. The recipient code remains a DROP-OFF credential, never presented
      at pickup. Read the command the app calls, not the one it used to. */
   { state: "Picked up", note: "Pickup code verified, shipment photographed", done: true },

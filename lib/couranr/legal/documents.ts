@@ -287,12 +287,24 @@ const SAME_DAY_SHIPMENT_TERMS: readonly LegalSection[] = [
           + `recipient verifies their identity before the package changes hands, and the `
           + `package can never be left at a door.`,
       ]),
+      /* THIS DESCRIBED THE FUNNEL AS IT WAS. It said such a request "can be
+         priced and saved but Couranr will not confirm it", which was true when
+         the only refusal sat at submit. The declared value is now refused the
+         moment it is entered, before any price is calculated and before
+         anything is stored — so the old sentence both overstated how far a
+         sender could get and contradicted /policy/delivery, which says the
+         value is refused at entry. Two public documents, one rule, opposite
+         statements.
+
+         Safe to correct in place rather than behind a new version: no request
+         in production carries a sender_terms_version at all, so no recorded
+         acceptance points at the superseded wording. */
       p(
         `Couranr cannot take a Protected Handoff shipment today. Recipient identity `
         + `verification is built but not switched on, so a request that declares more than `
-        + `${SECURE_TOP} can be priced and saved but Couranr will not confirm it. Couranr `
-        + `would rather refuse the shipment than run a handoff it promised to check and `
-        + `cannot.`
+        + `${SECURE_TOP} is refused as soon as the value is entered — before Couranr `
+        + `calculates a price and before anything is saved. Couranr would rather refuse `
+        + `the shipment than run a handoff it promised to check and cannot.`
       ),
     ],
   },

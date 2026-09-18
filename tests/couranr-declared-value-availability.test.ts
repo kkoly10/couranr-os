@@ -217,6 +217,56 @@ describe("there is exactly ONE availability authority", () => {
   });
 });
 
+describe("every reader of the adult-attestation rule agrees with the SQL", () => {
+  /*
+   * THIS RULE HAS NOW DRIFTED TWICE. 20260917130000 widened the database rule so
+   * EVERY governed consumer recipient attests, not only a protected handoff.
+   * tracking/projection.ts was corrected then; email/consumerLifecycle.ts was
+   * not, and kept the narrow test for weeks. Because protected_handoff is the
+   * one tier that cannot be sold, the narrow test is false for every shipment
+   * Couranr can actually sell — so the recipient's only proactive notification
+   * omitted the requirement that blocks their own delivery.
+   *
+   * A test on one reader would not have caught it. This asserts the SHAPE of
+   * the rule everywhere it is read.
+   */
+  const READERS = [
+    "lib/couranr/tracking/projection.ts",
+    "lib/couranr/email/consumerLifecycle.ts",
+  ];
+
+  it.each(READERS)("%s derives it from GOVERNED, not from protected_handoff", (file) => {
+    const src = readSource(file);
+    /* The ASSIGNMENT, not the type declaration. `projection.ts` declares
+       `recipientAdultAttestationRequired: boolean;` on its exported type before
+       it assigns one, and an indexOf that lands on the declaration would read a
+       type annotation and pass no matter what the code does. */
+    const sites = [...src.matchAll(/recipientAdultAttestationRequired:\s*(?!boolean;)/g)];
+    expect(sites.length, `${file} no longer assigns the flag`).toBeGreaterThan(0);
+    const idx = sites[sites.length - 1].index ?? -1;
+    const expr = src.slice(idx, idx + 320);
+    expect(
+      expr,
+      `${file} gates the attestation on protected_handoff, which cannot be sold`
+    ).not.toMatch(/===\s*"protected_handoff"/);
+    expect(expr, `${file} does not test for a governed row`).toMatch(/protection_level/);
+  });
+
+  it("and the SQL really does require it at every level", () => {
+    // Non-vacuous: if the migration ever narrows again, the readers should follow.
+    const sql = readSource(
+      "supabase/migrations/20260917130000_couranr_universal_recipient_adult.sql"
+    );
+    const guard = sql.slice(
+      sql.indexOf("if v_request.requester_kind='consumer'"),
+      sql.indexOf("recipient_adult_attestation_required' using errcode='CR409'")
+    );
+    expect(guard, "the SQL guard is scoped to a single protection level").not.toContain(
+      "protected_handoff"
+    );
+  });
+});
+
 describe("the database backstop is untouched", () => {
   it("still refuses a protected handoff at the last line of defence", () => {
     /* Three gates that must agree: browser, server, database. This asserts the
