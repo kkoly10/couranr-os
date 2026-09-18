@@ -3902,7 +3902,32 @@
    The cost is that tonal hierarchy is gone from these pages — rank is now
    carried by size, weight and position alone. That is the owner's call and it
    is the same trade the master-network pass made deliberately. */
-.cr-shell[data-couranr-surface="public"] { --couranr-text-muted: var(--couranr-text); }
+/* A SECOND GREY EXISTED AND THE FIRST SWEEP MISSED IT.
+   `--couranr-text-muted-tint` (#656f84) is a near-twin of the token above, and
+   `.cr-mkt-payer`, `.cr-mkt-proof__panel-head` and `.cr-mkt-channelstrip__item`
+   point at it explicitly — so those containers overrode the line below and kept
+   their copy grey. Measured across the public pages: 35 text nodes at
+   4.52-4.76:1, and every one of them at 12, 13 or 14px. The smallest text on
+   the site was carrying the weakest contrast. It cleared AA and was still
+   unreadable in practice, which is the whole lesson of this pass — AA is a
+   floor for compliance, not a target for design.
+
+   SECONDARY IS NOW A REAL COLOUR RATHER THAN A FADED ONE. #34435c measures
+   9.37:1 on canvas and 9.98:1 on white — about twice the old tint — while
+   staying a visible step below the navy primary at 17.11:1. So the tonal
+   hierarchy the tint was trying to express survives, and survives legibly:
+   rank comes from a darker-versus-darkest pair, not from fading one of them
+   toward the background. It is drawn from the navy's own hue family so it
+   reads as the same palette rather than an imported grey.
+
+   Both tokens are set here, on the public surface only. The merchant and
+   operations apps stamp `merchant` and `operations` and keep the original
+   values — their dense operational UI is a different problem and was no part
+   of this decision. */
+.cr-shell[data-couranr-surface="public"] {
+  --couranr-text-muted: var(--couranr-text);
+  --couranr-text-muted-tint: #34435c;
+}
 
 /* THE FORK, DRAWN AS A FORK.
    This section asks the reader to self-select in about two seconds, and it was
