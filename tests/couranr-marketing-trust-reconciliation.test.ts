@@ -78,9 +78,19 @@ describe("Same Day reads its declared-value limit from authority", () => {
     for (const [name, src] of [["/send", send], ["/sameday", page]] as const) {
       expect(src, `${name} renders the policy ceiling instead of the accepted maximum`)
         .not.toMatch(/declaredValueDollars\(\s*CONSUMER_MAX_DECLARED_VALUE_CENTS/);
-      expect(src, `${name} does not render the accepted maximum from authority`)
-        .toMatch(/CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS/);
+      /* BOTH now derive it from the capability-aware function rather than a
+         fail-closed constant, so activating Protected Handoff moves both
+         surfaces without either page being edited. /sameday is a server
+         component and reads the provider state directly; /send is a client
+         component and is handed it as a prop by its server page. */
+      expect(src, `${name} does not derive the accepted maximum from authority`)
+        .toMatch(/acceptedDeclaredValueCents|acceptedMaxCents/);
     }
+    const sendPage = read("app/(couranr)/(public)/(consumer-public)/send/page.tsx");
+    expect(sendPage, "/send's server page no longer injects the real capability")
+      .toMatch(/recipientIdentityVerification:\s*isRecipientIdentityCapabilityAvailable\(\)/);
+    expect(page, "/sameday no longer reads the real capability")
+      .toMatch(/recipientIdentityVerification:\s*isRecipientIdentityCapabilityAvailable\(\)/);
   });
 
   it("the accepted maximum is below the policy ceiling while the top tier is blocked", () => {

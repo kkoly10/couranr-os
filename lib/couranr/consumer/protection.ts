@@ -88,95 +88,121 @@ export const PROTECTION_THRESHOLDS = {
 } as const;
 
 /**
- * WHICH PROTECTION LEVELS COURANR CAN ACTUALLY SELL TODAY.
+ * WHAT A PROTECTION LEVEL NEEDS BEFORE IT CAN BE SOLD.
  *
- * THIS IS THE ONE PLACE TO CHANGE WHEN STRIPE IDENTITY IS ACTIVATED. Remove
- * `protected_handoff` from this list and everything follows from it: the
- * accepted maximum below becomes $500, `/sameday` displays $500, `/send` stops
- * refusing the band, the Protected Handoff disclosure becomes reachable, and
- * the server begins accepting the tier. Nothing else needs editing, and in
- * particular no marketing number is maintained by hand.
+ * THE AUTHORITY THIS FILE USED TO GET WRONG. Availability was a hardcoded list
+ * of level names, which made the "one switch" claim false in a way that only
+ * showed up in one direction: the list said what Couranr sells, while
+ * `isRecipientIdentityCapabilityAvailable()` said whether the provider was
+ * actually configured, and nothing reconciled them. Remove a level from the
+ * list without configuring Stripe and the estimate path would price a $200
+ * draft while submit still refused it — the exact funnel the availability gate
+ * was built to close, reintroduced by a one-line edit.
  *
- * WHY AVAILABILITY IS A SEPARATE IDEA FROM POLICY. A $200 shipment genuinely
- * maps to `protected_handoff` — that is the policy answer and it is correct.
- * What is missing is whether that level can be BOUGHT. Protected Handoff
- * requires a verified recipient identity, Stripe Identity is not activated, and
- * `private.couranr_block_unavailable_protected_handoff` refuses the request at
- * the database. So the level is derivable and unsellable at the same time, and
- * conflating the two is what let a $200 shipment walk through the funnel while
- * the page said the maximum was $150.
+ * So availability is no longer asserted. It is DERIVED from capabilities: a
+ * level is sellable when every capability it requires is genuinely present.
+ * Activating Protected Handoff is now a configuration act, not a code edit —
+ * the moment the provider reports available, every surface moves together.
  */
-export const PROTECTION_LEVELS_CURRENTLY_UNAVAILABLE: readonly ProtectionLevel[] = [
-  "protected_handoff",
-];
+export type ProtectionCapabilities = {
+  /**
+   * Whether recipient identity verification can actually run right now. On the
+   * server this is `isRecipientIdentityCapabilityAvailable()`, which requires
+   * BOTH the activation flag and the restricted key. In the browser it is
+   * whatever a server component passed down.
+   */
+  recipientIdentityVerification: boolean;
+};
 
-export function isProtectionLevelCurrentlyAvailable(level: unknown): boolean {
-  return isProtectionLevel(level) && !PROTECTION_LEVELS_CURRENTLY_UNAVAILABLE.includes(level);
+/**
+ * FAIL-CLOSED BY CONSTRUCTION. Every caller that cannot see the real
+ * configuration gets this, and every capability in it is false. A client that
+ * guessed optimistically would offer a tier the server then refuses, which is
+ * the client-accepts/server-refuses asymmetry — the outage direction.
+ */
+export const NO_PROTECTION_CAPABILITIES: ProtectionCapabilities = {
+  recipientIdentityVerification: false,
+};
+
+/** What each level requires. `standard` and `secure_pickup` need nothing. */
+const LEVEL_CAPABILITY_REQUIREMENTS: Readonly<
+  Record<Exclude<ProtectionLevel, "declined">, ReadonlyArray<keyof ProtectionCapabilities>>
+> = {
+  standard: [],
+  secure_pickup: [],
+  /* Protected Handoff verifies the recipient's identity through the provider
+     before physical handoff. Without that it is not a weaker version of itself;
+     it is a promise Couranr cannot keep, and
+     private.couranr_block_unavailable_protected_handoff refuses it in SQL. */
+  protected_handoff: ["recipientIdentityVerification"],
+};
+
+export function isProtectionLevelCurrentlyAvailable(
+  level: unknown,
+  capabilities: ProtectionCapabilities = NO_PROTECTION_CAPABILITIES
+): boolean {
+  if (!isProtectionLevel(level) || level === "declined") return false;
+  return LEVEL_CAPABILITY_REQUIREMENTS[level].every((c) => capabilities?.[c] === true);
+}
+
+/** Every level's availability in one answer, for a surface that shows a table. */
+export function protectionLevelAvailability(
+  capabilities: ProtectionCapabilities = NO_PROTECTION_CAPABILITIES
+): Readonly<Record<Exclude<ProtectionLevel, "declined">, boolean>> {
+  return {
+    standard: isProtectionLevelCurrentlyAvailable("standard", capabilities),
+    secure_pickup: isProtectionLevelCurrentlyAvailable("secure_pickup", capabilities),
+    protected_handoff: isProtectionLevelCurrentlyAvailable("protected_handoff", capabilities),
+  };
 }
 
 /** The bands in ascending order, paired with the level each one derives to. */
-const BAND_CEILINGS: ReadonlyArray<{ level: ProtectionLevel; maxCents: number }> = [
+const BAND_CEILINGS: ReadonlyArray<{
+  level: Exclude<ProtectionLevel, "declined">;
+  maxCents: number;
+}> = [
   { level: "standard", maxCents: PROTECTION_THRESHOLDS.standardMaxCents },
   { level: "secure_pickup", maxCents: PROTECTION_THRESHOLDS.securePickupMaxCents },
   { level: "protected_handoff", maxCents: PROTECTION_THRESHOLDS.protectedHandoffMaxCents },
 ];
 
 /**
- * The highest declared value that is actually purchasable right now.
+ * The highest declared value purchasable under these capabilities.
  *
- * DERIVED, never typed. It walks the bands from the bottom and stops at the
- * first unavailable one, so it is the highest CONTIGUOUS ceiling — if a middle
- * band were ever withdrawn, the maximum would correctly fall to the band below
- * it rather than skipping over a hole and accepting a value nothing can serve.
+ * The highest CONTIGUOUS ceiling: it walks from the bottom and stops at the
+ * first unavailable band, so a withdrawn middle band correctly drops the
+ * maximum rather than skipping a hole and accepting a value nothing can serve.
  */
-function highestAvailableCeiling(): number {
+export function acceptedDeclaredValueCents(
+  capabilities: ProtectionCapabilities = NO_PROTECTION_CAPABILITIES
+): number {
   let ceiling = 0;
   for (const band of BAND_CEILINGS) {
-    if (!isProtectionLevelCurrentlyAvailable(band.level)) break;
+    if (!isProtectionLevelCurrentlyAvailable(band.level, capabilities)) break;
     ceiling = band.maxCents;
   }
   return ceiling;
 }
 
 /**
- * THE HIGHEST DECLARED VALUE A CONSUMER CAN ACTUALLY SEND TODAY.
+ * The fail-closed accepted maximum, for a caller with no view of configuration.
  *
- * NOT the same number as `CONSUMER_MAX_DECLARED_VALUE_CENTS`, and the
- * difference is the whole point. That constant is the POLICY ceiling: the most
- * this authority will ever govern, enforced by
- * `couranr_dr_declared_value_range_chk`. This one is what a customer can buy.
- *
- * They differ because anything above `securePickupMaxCents` derives to
- * `protected_handoff`, and `private.couranr_block_unavailable_protected_handoff`
- * — an ENABLED trigger in production — raises `protected_handoff_identity_unavailable`
- * for any consumer request at that level the moment it leaves draft. There is
- * no flag and no escape: Stripe Identity is not activated, so the top band is
- * unreachable. A shipment declared above this cannot be submitted at all.
- *
- * WHY IT IS HERE RATHER THAN IN A PAGE. Two public surfaces state a maximum —
- * `/sameday` and `/send` — and they were stating different numbers: the
- * marketing page had been corrected to the truth while `/send` still promised
- * the policy ceiling, so a sender could fill in $400 and only be refused at
- * submit. One authority, one answer, both surfaces.
- *
- * WHEN IDENTITY IS ACTIVATED and the block is lifted, this becomes
- * `CONSUMER_MAX_DECLARED_VALUE_CENTS` and both surfaces move together.
+ * NOT a policy number — `CONSUMER_MAX_DECLARED_VALUE_CENTS` is that. This is
+ * what a surface may promise when it cannot see whether the provider is on.
  */
-export const CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS: number = highestAvailableCeiling();
+export const CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS: number = acceptedDeclaredValueCents();
 
 /**
  * Whether a declared value can be accepted commercially RIGHT NOW.
  *
- * THE GATE THE FUNNEL WAS MISSING. `deriveProtection` answers the POLICY
- * question and must keep doing so — it is what the database re-derives and what
- * a stored row is checked against. This answers the COMMERCIAL one, and the two
- * genuinely differ today.
+ * `deriveProtection` answers the POLICY question and must keep doing so — it is
+ * what the database re-derives and what a stored row is checked against. This
+ * answers the COMMERCIAL one, and the two genuinely differ today.
  *
  * `protection_level_unavailable` is deliberately NOT `declared_value_above_maximum`.
- * $200 is not above the $500 policy maximum; saying it was would be a false
- * statement to the customer and would make the refusal impossible to tell apart
- * from a real policy breach in a log. It carries the derived level so a caller
- * can say WHICH tier is unavailable without re-deriving it.
+ * $200 is not above the $500 policy maximum; saying it was would be false to the
+ * customer and would make a temporary commercial limit indistinguishable from a
+ * real policy breach in a log.
  */
 export type ProtectionAvailability =
   | { ok: true; requirements: ProtectionRequirements }
@@ -199,7 +225,8 @@ export function isProtectionUnavailable(
 }
 
 export function evaluateConsumerProtectionAvailability(
-  declaredValueCents: unknown
+  declaredValueCents: unknown,
+  capabilities: ProtectionCapabilities = NO_PROTECTION_CAPABILITIES
 ): ProtectionAvailability {
   const decision = deriveProtection(declaredValueCents);
   if (isProtectionDeclined(decision)) {
@@ -207,14 +234,13 @@ export function evaluateConsumerProtectionAvailability(
   }
   const level = decision.requirements.level;
   /* `ProtectionRequirements.level` is typed as the full union, so this narrows
-     it. It is unreachable by construction — `deriveProtection` never returns a
-     successful decision carrying 'declined' — and it is written as a real
-     refusal rather than a cast so that if that ever stopped being true, the
-     value would be refused instead of silently treated as purchasable. */
+     it. Unreachable by construction, and written as a refusal rather than a
+     cast so that if it ever stopped being true the value would be refused
+     instead of silently treated as purchasable. */
   if (level === "declined") {
     return { ok: false, reason: "declared_value_invalid", level: "declined" };
   }
-  if (!isProtectionLevelCurrentlyAvailable(level)) {
+  if (!isProtectionLevelCurrentlyAvailable(level, capabilities)) {
     return { ok: false, reason: "protection_level_unavailable", level };
   }
   return { ok: true, requirements: decision.requirements };

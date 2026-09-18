@@ -23,10 +23,12 @@ import {
 } from "@/components/couranr/sameday/ConsumerAddressField";
 import { WEIGHT_BAND_LABELS } from "@/lib/couranr/shipment/weightBandLabels";
 import {
-  CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS,
+  NO_PROTECTION_CAPABILITIES,
+  acceptedDeclaredValueCents,
   declaredValueDollars,
   evaluateConsumerProtectionAvailability,
   isProtectionUnavailable,
+  type ProtectionCapabilities,
 } from "@/lib/couranr/consumer/protection";
 import { parseOperatingLocal } from "@/lib/couranr/timing/policy";
 import { SAME_DAY_CUTOFF_COPY } from "@/lib/couranr/public/governed";
@@ -129,7 +131,17 @@ const RESTRICTED_CLASS_OPTIONS: ReadonlyArray<readonly [string, string]> = [
   ["people", "people"],
 ];
 
-export function SendFlow({ mode }: { mode: AdapterMode }) {
+export function SendFlow({
+  mode,
+  capabilities,
+}: {
+  mode: AdapterMode;
+  /* Read on the SERVER and handed down — this component cannot see the
+     provider configuration itself. Optional, and its absence means the
+     fail-closed default: a client that guessed optimistically would offer a
+     tier the server then refuses, which is the outage direction. */
+  capabilities?: ProtectionCapabilities;
+}) {
   const router = useRouter();
   const params = useSearchParams();
   /* The mode is resolved on the server and passed down; the client builds
@@ -662,7 +674,9 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
      bought today. They differ right now, and conflating them let a $200
      shipment walk through this step while the page said the maximum was $150,
      being shown a Protected Handoff promise it could not deliver. */
-  const protection = evaluateConsumerProtectionAvailability(declaredCents);
+  const caps = capabilities ?? NO_PROTECTION_CAPABILITIES;
+  const acceptedMaxCents = acceptedDeclaredValueCents(caps);
+  const protection = evaluateConsumerProtectionAvailability(declaredCents, caps);
   const protectionNote = isProtectionUnavailable(protection)
     ? null
     : protection.requirements.level === "standard"
@@ -1024,11 +1038,11 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
                }>
               {declaredValueUnavailable
                 ? `${SEND_COPY.declared_value_unavailable_note} ${declaredValueDollars(
-                    CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS
+                    acceptedMaxCents
                   )}.`
                 : declaredValueTooHigh
                   ? `${SEND_COPY.declared_value_max_note} ${declaredValueDollars(
-                      CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS
+                      acceptedMaxCents
                     )}.`
                   : protectionNote}
             </p>
@@ -1306,7 +1320,7 @@ export function SendFlow({ mode }: { mode: AdapterMode }) {
               {!hasDeclaredValue
                 ? declaredValueTooHigh
                   ? `${SEND_COPY.declared_value_max_note} ${declaredValueDollars(
-                      CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS
+                      acceptedMaxCents
                     )}.`
                   : "Go back and enter what this shipment is worth, then check the price."
                 : !hasContact

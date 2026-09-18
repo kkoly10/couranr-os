@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import {
   buildEstimateBody,
   isEstimateBodyFailure,
@@ -9,7 +11,10 @@ import {
   requireAcceptance,
   validateConsumerSendBody,
 } from "@/lib/couranr/consumer/send";
-import { CONSUMER_MAX_DECLARED_VALUE_CENTS } from "@/lib/couranr/consumer/protection";
+import {
+  CONSUMER_MAX_DECLARED_VALUE_CENTS,
+  PROTECTION_THRESHOLDS,
+} from "@/lib/couranr/consumer/protection";
 
 /**
  * THE SEAM. Two validators stand between the sender and the database:
@@ -200,7 +205,14 @@ describe("the body the UI builds is a body the server accepts", () => {
     const probes: unknown[] = [
       completeInput,
       { ...completeInput, declaredValueCents: 0 },
-      { ...completeInput, declaredValueCents: CONSUMER_MAX_DECLARED_VALUE_CENTS },
+      /* THE TOP OF THE ACCEPTED BAND, not the policy ceiling. This probe used
+         to carry CONSUMER_MAX_DECLARED_VALUE_CENTS ($500), which now passes
+         vacuously: the client gate refuses it, so the stage is "client" and
+         the assertion holds without ever exercising the server. $150 is the
+         highest value that must actually reach the server and be accepted,
+         which is what this list is for. $500's refusal is asserted explicitly
+         in the submit-seam block below. */
+      { ...completeInput, declaredValueCents: PROTECTION_THRESHOLDS.securePickupMaxCents },
       { ...completeInput, recipient: { ...completeInput.recipient, mobile: "" } },
       { ...completeInput, contact: { ...completeInput.contact, mobile: "" } },
       {
@@ -215,5 +227,71 @@ describe("the body the UI builds is a body the server accepts", () => {
       expect(r.stage, `server refused a body the client built: ${"reason" in r ? r.reason : ""}`)
         .not.toBe("server");
     }
+  });
+});
+
+/* ══════════════════════════ the SUBMIT seam ══════════════════════════════ */
+
+describe("the submit seam cannot bypass availability", () => {
+  /*
+   * THE GAP AN INDEPENDENT REVIEWER FOUND. `throughBothGates` above covers the
+   * ESTIMATE seam only. `liveAdapters.submitRequest` checks three local things
+   * — a stated value, and the two acknowledgements — and then POSTs. It has no
+   * availability gate of its own and deliberately should not have one: a second
+   * copy of that rule in the adapter is exactly the duplication that let the
+   * funnel and the server disagree in the first place.
+   *
+   * What must be true instead is that the ENDPOINT it posts to refuses. Today
+   * the sender cannot reach this seam with an unavailable value — the item
+   * step's Continue is disabled and editing the value stales the quote — but
+   * "the UI won't let you" is not a security property. This test deliberately
+   * goes around the step machine and drives the adapter contract directly, so a
+   * future UI regression cannot quietly open the path.
+   */
+  const ADAPTER_ENDPOINT = "/api/couranr/consumer/submit";
+
+  it("submitRequest posts to the endpoint that enforces the shared authority", () => {
+    const src = readFileSync(
+      path.join(__dirname, "..", "lib/couranr/sameday/liveAdapters.ts"),
+      "utf8"
+    );
+    const seam = src.slice(src.indexOf("async submitRequest("), src.indexOf("async submitRequest(") + 1400);
+    expect(seam, "the submit seam no longer calls the submit endpoint").toMatch(
+      /guestCall\(API\.submit/
+    );
+    expect(src, "the submit endpoint constant moved").toContain(ADAPTER_ENDPOINT);
+    /* And it must NOT have grown its own copy of the availability rule. */
+    expect(seam, "the adapter grew a duplicate availability rule").not.toMatch(
+      /evaluateConsumerProtectionAvailability|protection_level_unavailable/
+    );
+  });
+
+  it("the endpoint behind that seam refuses an unavailable value", () => {
+    /* Driven at the server contract the adapter posts INTO, with a body shaped
+       exactly as the seam builds it, for every value in the unavailable band.
+       This is the assertion the UI cannot make on the server's behalf. */
+    for (const cents of [15_001, 20_000, 49_999, 50_000]) {
+      const checked = validateConsumerSendBody({
+        ...completeInput,
+        declaredValueCents: cents,
+      } as never);
+      expect(
+        isConsumerSendBodyFailure(checked),
+        `$${(cents / 100).toFixed(2)} was accepted by the server the seam posts to`
+      ).toBe(true);
+      if (isConsumerSendBodyFailure(checked)) {
+        expect(checked.reason).toBe("protection_level_unavailable");
+      }
+    }
+  });
+
+  it("and still accepts the top of the AVAILABLE band, so it is not refusing everything", () => {
+    // POSITIVE CONTROL. Without it a validator that refused every body would
+    // pass the assertion above and look like a working gate.
+    const ok = validateConsumerSendBody({
+      ...completeInput,
+      declaredValueCents: 15_000,
+    } as never);
+    expect(isConsumerSendBodyFailure(ok), "the top of the accepted band was refused").toBe(false);
   });
 });

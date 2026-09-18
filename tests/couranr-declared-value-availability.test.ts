@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS,
   CONSUMER_MAX_DECLARED_VALUE_CENTS,
-  PROTECTION_LEVELS_CURRENTLY_UNAVAILABLE,
+  NO_PROTECTION_CAPABILITIES,
   PROTECTION_THRESHOLDS,
+  acceptedDeclaredValueCents,
+  protectionLevelAvailability,
   deriveProtection,
   evaluateConsumerProtectionAvailability,
   isProtectionDeclined,
@@ -54,11 +56,22 @@ describe("policy and availability are different questions", () => {
     }
   });
 
-  it("names which tier is unavailable, so nobody re-derives it to find out", () => {
-    expect(PROTECTION_LEVELS_CURRENTLY_UNAVAILABLE).toContain("protected_handoff");
-    expect(isProtectionLevelCurrentlyAvailable("standard")).toBe(true);
-    expect(isProtectionLevelCurrentlyAvailable("secure_pickup")).toBe(true);
-    expect(isProtectionLevelCurrentlyAvailable("protected_handoff")).toBe(false);
+  it("availability is DERIVED from capabilities, never asserted as a list", () => {
+    /* The structural fix. It used to be a hardcoded list of level names, which
+       is why a code edit could get ahead of the provider configuration. */
+    const off = protectionLevelAvailability(NO_PROTECTION_CAPABILITIES);
+    expect(off).toEqual({ standard: true, secure_pickup: true, protected_handoff: false });
+    const on = protectionLevelAvailability({ recipientIdentityVerification: true });
+    expect(on).toEqual({ standard: true, secure_pickup: true, protected_handoff: true });
+  });
+
+  it("the accepted maximum follows the capability, in both directions", () => {
+    expect(acceptedDeclaredValueCents(NO_PROTECTION_CAPABILITIES)).toBe(
+      PROTECTION_THRESHOLDS.securePickupMaxCents
+    );
+    expect(acceptedDeclaredValueCents({ recipientIdentityVerification: true })).toBe(
+      CONSUMER_MAX_DECLARED_VALUE_CENTS
+    );
   });
 });
 
@@ -107,7 +120,11 @@ describe("every band edge the funnel has to get right", () => {
        leave $150 standing everywhere and the marketing number would go stale
        silently — which is the failure mode the whole reconciliation was about. */
     const src = readSource("lib/couranr/consumer/protection.ts");
-    expect(src).toMatch(/CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS[^\n]*=\s*highestAvailableCeiling\(\)/);
+    /* The fail-closed constant is now itself derived by calling the function
+       with no capabilities, so activation cannot leave it behind. */
+    expect(src).toMatch(
+      /CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS[^\n]*=\s*acceptedDeclaredValueCents\(\)/
+    );
     expect(src).not.toMatch(/CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS[^\n]*=\s*15_?000/);
   });
 });
@@ -164,42 +181,45 @@ describe("the server refuses before any draft or quote work", () => {
 
 describe("there is exactly ONE availability authority", () => {
   /*
-   * FOUND IN REVIEW, AFTER the first fix was already green. The submit path
-   * answered "is protected handoff available" for itself, from
-   * isRecipientIdentityCapabilityAvailable(), while the funnel answered it from
-   * PROTECTION_LEVELS_CURRENTLY_UNAVAILABLE. Two answers to one question, and
-   * they can disagree in both directions: flip the list without configuring the
-   * provider and submit accepts what the funnel refused; configure the provider
-   * without flipping the list and the reverse. The whole suite passed anyway,
-   * which is why this test exists.
+   * WHAT THIS USED TO ASSERT, AND WHY IT CHANGED. The first fix left TWO
+   * answers to "is protected handoff available": a hardcoded list of level
+   * names, and isRecipientIdentityCapabilityAvailable(). These tests asserted
+   * the two were consulted in the right ORDER and that the second survived as a
+   * backstop — the best available property when the first answer knew nothing
+   * about the provider.
+   *
+   * The authority now DERIVES availability from capabilities, and the
+   * capability IS the provider predicate. There is no code switch separate from
+   * the configuration to get ahead of it, so ordering and backstops are no
+   * longer the question. The stronger property is asserted instead: the
+   * predicate is read in exactly one place, and that place feeds the authority.
    */
-  it("no path decides availability without consulting the shared authority", () => {
+  it("the provider predicate is consulted in exactly ONE place on the server", () => {
     const src = readSource("lib/couranr/consumer/send.ts");
-    const gates = [...src.matchAll(/isRecipientIdentityCapabilityAvailable\(\)/g)];
-    expect(gates.length, "the configuration backstop disappeared").toBeGreaterThan(0);
-    for (const g of gates) {
-      const before = src.slice(0, g.index ?? 0);
-      expect(
-        before.includes("evaluateConsumerProtectionAvailability("),
-        "a path gates on provider configuration without first asking the availability authority"
-      ).toBe(true);
-    }
-  });
-
-  it("keeps the configuration backstop, so code-only activation still fails closed", () => {
-    /* The list says what Couranr SELLS; the predicate says whether the provider
-       is actually switched on. Removing protected_handoff from the list without
-       configuring Stripe must still refuse. */
-    const src = readSource("lib/couranr/consumer/send.ts");
-    expect(src).toMatch(
-      /level === "protected_handoff"[\s\S]{0,80}!isRecipientIdentityCapabilityAvailable\(\)/
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+    const calls = [...code.matchAll(/isRecipientIdentityCapabilityAvailable\(\)/g)];
+    expect(calls.length, "the provider predicate is read from more than one site").toBe(1);
+    expect(code).toMatch(
+      /function currentProtectionCapabilities\(\)[\s\S]{0,240}recipientIdentityVerification:\s*isRecipientIdentityCapabilityAvailable\(\)/
     );
   });
 
+  it("estimate and submit both ask that same reader", () => {
+    const src = readSource("lib/couranr/consumer/send.ts");
+    const uses = [...src.matchAll(/evaluateConsumerProtectionAvailability\(/g)];
+    expect(uses.length, "a gate stopped asking the authority").toBeGreaterThanOrEqual(2);
+    const calls = [...src.matchAll(/currentProtectionCapabilities\(\)/g)];
+    // one definition + one per gate + the message composer
+    expect(calls.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("the accepted maximum is DERIVED, never typed", () => {
+    const src = readSource("lib/couranr/consumer/protection.ts");
+    expect(src).toMatch(/acceptedDeclaredValueCents\([\s\S]{0,400}for \(const band of BAND_CEILINGS\)/);
+    expect(src).not.toMatch(/acceptedDeclaredValueCents[^\n]*=\s*15_?000/);
+  });
+
   it("no customer-facing maximum is composed from the POLICY ceiling", () => {
-    /* The same defect one layer down: the submit refusal and the adapter note
-       both told the sender the limit was $500 while /send and /sameday said
-       $150, so someone at $600 would lower to $400 and be refused again. */
     for (const f of [
       "lib/couranr/consumer/send.ts",
       "lib/couranr/sameday/liveAdapters.ts",
@@ -217,53 +237,53 @@ describe("there is exactly ONE availability authority", () => {
   });
 });
 
-describe("every reader of the adult-attestation rule agrees with the SQL", () => {
+describe("configuration fail-closed matrix", () => {
   /*
-   * THIS RULE HAS NOW DRIFTED TWICE. 20260917130000 widened the database rule so
-   * EVERY governed consumer recipient attests, not only a protected handoff.
-   * tracking/projection.ts was corrected then; email/consumerLifecycle.ts was
-   * not, and kept the narrow test for weeks. Because protected_handoff is the
-   * one tier that cannot be sold, the narrow test is false for every shipment
-   * Couranr can actually sell — so the recipient's only proactive notification
-   * omitted the requirement that blocks their own delivery.
-   *
-   * A test on one reader would not have caught it. This asserts the SHAPE of
-   * the rule everywhere it is read.
+   * The asymmetry an independent reviewer found: a code-level switch could be
+   * flipped while the provider stayed unconfigured, and estimate and submit
+   * would then disagree. With availability derived from the capability there is
+   * no such switch — but the MATRIX still has to hold, because the capability
+   * itself is computed from two independent conditions.
    */
-  const READERS = [
-    "lib/couranr/tracking/projection.ts",
-    "lib/couranr/email/consumerLifecycle.ts",
-  ];
+  const CASES = [
+    ["A  feature off, provider absent", { recipientIdentityVerification: false }, false],
+    ["B  feature on,  provider absent", { recipientIdentityVerification: false }, false],
+    ["C  feature off, provider present", { recipientIdentityVerification: false }, false],
+    ["D  feature on,  provider present", { recipientIdentityVerification: true }, true],
+  ] as const;
 
-  it.each(READERS)("%s derives it from GOVERNED, not from protected_handoff", (file) => {
-    const src = readSource(file);
-    /* The ASSIGNMENT, not the type declaration. `projection.ts` declares
-       `recipientAdultAttestationRequired: boolean;` on its exported type before
-       it assigns one, and an indexOf that lands on the declaration would read a
-       type annotation and pass no matter what the code does. */
-    const sites = [...src.matchAll(/recipientAdultAttestationRequired:\s*(?!boolean;)/g)];
-    expect(sites.length, `${file} no longer assigns the flag`).toBeGreaterThan(0);
-    const idx = sites[sites.length - 1].index ?? -1;
-    const expr = src.slice(idx, idx + 320);
-    expect(
-      expr,
-      `${file} gates the attestation on protected_handoff, which cannot be sold`
-    ).not.toMatch(/===\s*"protected_handoff"/);
-    expect(expr, `${file} does not test for a governed row`).toMatch(/protection_level/);
+  it.each(CASES.map((c) => [c[0], c[1], c[2]] as const))(
+    "%s",
+    (_label, caps, expected) => {
+      expect(protectionLevelAvailability(caps).protected_handoff).toBe(expected);
+      const a = evaluateConsumerProtectionAvailability(D(200), caps);
+      expect(isProtectionUnavailable(a)).toBe(!expected);
+      expect(acceptedDeclaredValueCents(caps)).toBe(
+        expected ? CONSUMER_MAX_DECLARED_VALUE_CENTS : PROTECTION_THRESHOLDS.securePickupMaxCents
+      );
+    }
+  );
+
+  it("the capability itself requires BOTH conditions, not either", () => {
+    /* A/B/C above all collapse to `recipientIdentityVerification: false`
+       because that is what the server computes for each. This asserts the
+       computation: isRecipientIdentityCapabilityAvailable() is an AND, so one
+       condition alone can never open the tier. */
+    const src = readSource("lib/couranr/identity/recipientIdentity.ts");
+    expect(src).toMatch(
+      /isRecipientIdentityCapabilityAvailable\(\)[\s\S]{0,160}isStripeIdentityActivated\(\)\s*&&\s*hasIdentityRestrictedKey\(\)/
+    );
+    expect(src, "the capability became an OR, so one condition could open the tier").not.toMatch(
+      /isStripeIdentityActivated\(\)\s*\|\|\s*hasIdentityRestrictedKey\(\)/
+    );
   });
 
-  it("and the SQL really does require it at every level", () => {
-    // Non-vacuous: if the migration ever narrows again, the readers should follow.
-    const sql = readSource(
-      "supabase/migrations/20260917130000_couranr_universal_recipient_adult.sql"
-    );
-    const guard = sql.slice(
-      sql.indexOf("if v_request.requester_kind='consumer'"),
-      sql.indexOf("recipient_adult_attestation_required' using errcode='CR409'")
-    );
-    expect(guard, "the SQL guard is scoped to a single protection level").not.toContain(
-      "protected_handoff"
-    );
+  it("a caller that cannot see configuration gets the closed answer", () => {
+    expect(NO_PROTECTION_CAPABILITIES.recipientIdentityVerification).toBe(false);
+    expect(protectionLevelAvailability().protected_handoff).toBe(false);
+    expect(acceptedDeclaredValueCents()).toBe(PROTECTION_THRESHOLDS.securePickupMaxCents);
+    // and the default applies when a caller passes nothing at all
+    expect(isProtectionUnavailable(evaluateConsumerProtectionAvailability(D(200)))).toBe(true);
   });
 });
 

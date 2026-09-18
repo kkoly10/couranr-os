@@ -84,9 +84,10 @@ import {
   CONSUMER_EMAIL_RE,
   CONSUMER_SENDER_TERMS_VERSION,
   declaredValueDollars,
-  CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS,
+  acceptedDeclaredValueCents,
   evaluateConsumerProtectionAvailability,
   isProtectionUnavailable,
+  type ProtectionCapabilities,
 } from "@/lib/couranr/consumer/protection";
 
 export const RPC = {
@@ -435,6 +436,19 @@ export function requireAcceptance(
   return { ok: true, value };
 }
 
+/**
+ * THE ONE PLACE THE SERVER ASKS "what can Couranr sell right now".
+ *
+ * Both the estimate gate and the submit gate call this, so they cannot answer
+ * differently. It reads the REAL configuration —
+ * `isRecipientIdentityCapabilityAvailable()` requires both the activation flag
+ * and the restricted key — rather than a hardcoded list of level names, which
+ * is what previously let a code-level switch disagree with the provider state.
+ */
+function currentProtectionCapabilities(): ProtectionCapabilities {
+  return { recipientIdentityVerification: isRecipientIdentityCapabilityAvailable() };
+}
+
 export function validateConsumerSendBody(raw: unknown): ConsumerSendBodyResult {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
     return { ok: false, reason: "not_an_object" };
@@ -505,7 +519,10 @@ export function validateConsumerSendBody(raw: unknown): ConsumerSendBodyResult {
      `protection_level_unavailable` is NOT `declared_value_above_maximum`. $200
      is not above the $500 policy maximum, and reusing that reason would make a
      temporary commercial limit indistinguishable from a real policy breach. */
-  const availability = evaluateConsumerProtectionAvailability(declaredValueCents);
+  const availability = evaluateConsumerProtectionAvailability(
+    declaredValueCents,
+    currentProtectionCapabilities()
+  );
   if (isProtectionUnavailable(availability)) {
     return {
       ok: false,
@@ -1161,7 +1178,8 @@ export async function submitConsumerSend(params: {
      reverse. One switch now, checked here first so the refusal reason matches
      everywhere. */
   const availability = evaluateConsumerProtectionAvailability(
-    typeof raw.declaredValueCents === "number" ? raw.declaredValueCents : Number.NaN
+    typeof raw.declaredValueCents === "number" ? raw.declaredValueCents : Number.NaN,
+    currentProtectionCapabilities()
   );
   if (isProtectionUnavailable(availability)) {
     return fail({
@@ -1175,28 +1193,22 @@ export async function submitConsumerSend(params: {
                $500 while /send and /sameday said $150, so a sender at $600 was
                told to lower it to $500 and would have been refused again. */
             `Couranr Same Day currently carries shipments declared up to ${declaredValueDollars(
-              CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS
+              acceptedDeclaredValueCents(currentProtectionCapabilities())
             )}. No payment was authorized.`
           : "Enter what this shipment is worth before submitting this delivery.",
     });
   }
-  const protection = { requirements: availability.requirements };
-  /* The CONFIGURATION backstop, kept deliberately. The list above says what
-     Couranr sells; this says whether the provider is actually switched on. Both
-     must agree before a protected handoff is accepted, so activating the tier
-     in code without configuring the provider still fails closed. */
-  if (
-    protection.requirements.level === "protected_handoff" &&
-    !isRecipientIdentityCapabilityAvailable()
-  ) {
-    return fail({
-      operation: op,
-      code: "conflict",
-      detail: { reason: "protected_handoff_identity_unavailable" },
-      message:
-        "Couranr cannot accept this protected handoff until recipient identity verification is available. No payment was authorized.",
-    });
-  }
+  /* THE SEPARATE CONFIGURATION BACKSTOP IS GONE, and its disappearance is the
+     point rather than a loss. It used to read
+     `level === 'protected_handoff' && !isRecipientIdentityCapabilityAvailable()`,
+     which was a SECOND answer to the availability question — necessary only
+     because the first answer was a hardcoded list of level names that knew
+     nothing about the provider. It is now structurally unreachable: the
+     availability gate above derives protected_handoff's availability FROM that
+     same predicate, through currentProtectionCapabilities(), so a code switch
+     cannot get ahead of the configuration because there is no longer a code
+     switch separate from it. A branch that cannot fire reads as protection that
+     is not there. The database trigger remains the final backstop. */
 
   const recorded = await callRpc<Record<string, any>>(op, RPC.recordTrust, {
     p_guest_session_id: params.session.id,

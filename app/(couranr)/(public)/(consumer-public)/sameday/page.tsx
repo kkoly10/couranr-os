@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
+import { isRecipientIdentityCapabilityAvailable } from "@/lib/couranr/identity/recipientIdentity";
 import Link from "next/link";
 import { SAME_DAY_COPY } from "@/lib/couranr/public/masterSameDayCopy";
 import { MARKETS_PUBLIC_COPY_NEUTRAL } from "@/lib/couranr/public/governed";
 import { PROHIBITED_GROUPS, groupLabels } from "@/lib/couranr/public/prohibitedSummary";
 import {
-  CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS,
   PROTECTION_THRESHOLDS,
+  acceptedDeclaredValueCents,
   declaredValueDollars,
 } from "@/lib/couranr/consumer/protection";
 import { LEGAL_DOCUMENTS, legalDocumentHref } from "@/lib/couranr/legal/registry";
@@ -397,7 +398,15 @@ export default function Page() {
         </p>
         <p className="cr-sd-handoff__detail">
           {SAME_DAY_COPY.handoff_declared_value}{" "}
-          {declaredValueDollars(CONSUMER_ACCEPTED_DECLARED_VALUE_CENTS)}.
+          {declaredValueDollars(
+              /* THE REAL CONFIGURATION, not a constant. This page is a server
+                 component, so it can ask what Couranr can actually sell right
+                 now. When Protected Handoff is activated this figure becomes
+                 $500 here and on /send together, with neither page edited. */
+              acceptedDeclaredValueCents({
+                recipientIdentityVerification: isRecipientIdentityCapabilityAvailable(),
+              })
+            )}.
         </p>
         <p className="cr-sd-handoff__detail">
           {SAME_DAY_COPY.handoff_declared_value_close}
