@@ -118,12 +118,12 @@ each is in the ledger row itself — `test_evidence`, `browser_verified` and
 | `08f59f8d0cc062c36252a7295f86513618187965` | 1 screen | MER-004 |
 | `0d57ba736000e8ecb9d28c87a4e78a683599a316` | 1 work item | P3-002 |
 | `14fa99fbcf8103d33bb7267a8f4729421bccd400` | 1 work item | P6-001 |
+| `17442eaae6922a7767e178a1bae028531790ffd1` | 1 work item | P4-002 |
 | `1b3a1c90c88a554f1ac1ff1e6a6d06a97d602150` | 2 screens | CUS-006, CUS-008 |
 | `277982f2548e9b804c466121437c696b4ba52af4` | 1 screen | CUS-002 |
 | `32893e21401a6f056821c4caaa7858460c7356b8` | 1 screen | MER-001 |
 | `38ec5f27190301b39320c05164f28449ffed9054` | 2 screens | OPS-013, OPS-014 |
 | `401b3eea5cd96bb09d224f3b113ba6091bba807d` | 18 work items, 24 screens | P0-001, P0-002, P1-001, P1-002, P1-003, P1-004, P2-002, P4-001, P5-002, P7-001, P7-002, P7-003, P8-003, P9-001, P9-002, P9-003, P9-004, P10-007, CUS-005, DRV-002, DRV-003, DRV-004, DRV-005, DRV-006, MER-002, MER-006, MER-007, OPS-002, OPS-004, OPS-006, OPS-008, OPS-011, OPS-015, OPS-016, OPS-017, OPS-018, OPS-019, OPS-020, OPS-021, PUB-002, PUB-003, PUB-005 |
-| `42fe7bae9e98fe78f42e23e71532b50ae753c1ef` | 1 work item | P4-002 |
 | `4e6ea3aa1ee93f797dd78eab82d6b39db1ce912b` | 1 work item | P10-015 |
 | `50f576e991dd249849d93206fc9e7cda330e71b7` | 1 screen | MER-005 |
 | `5723b3a22773f15d8d1b3e1d36bdf77b8341a6de` | 1 screen | DRV-001 |
