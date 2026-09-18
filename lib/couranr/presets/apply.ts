@@ -92,15 +92,24 @@ export const APPLICABLE_PRESET_FIELDS = [
  * this promise, and was read by nothing but its own test, which meant a
  * merchant whose preset carried vehicle needs got silence.
  */
-export const UNAPPLIED_PRESET_FIELDS: Readonly<Record<string, string>> = {
+export type BodyOnlyPresetField = "vehicleCapabilities" | "requiredQuestions";
+
+export const UNAPPLIED_PRESET_FIELDS: Readonly<Record<BodyOnlyPresetField, string>> = {
   vehicleCapabilities:
     "Vehicle suitability is decided when the delivery is priced, not chosen on the form.",
   requiredQuestions:
     "Required questions are not part of the delivery form yet.",
 };
 
-/** Merchant-facing names for the two fields that never reach the form. */
-const UNAPPLIED_PRESET_FIELD_LABEL: Readonly<Record<string, string>> = {
+/**
+ * Merchant-facing names for the two fields that never reach the form.
+ *
+ * Keyed on the same union as the reasons above, so a field added to one and not
+ * the other fails to compile. It previously fell back to the raw key, which
+ * would have put `vehicleCapabilities` in front of a merchant — the same way a
+ * generic reason would have: quietly, and only once someone shipped it.
+ */
+const UNAPPLIED_PRESET_FIELD_LABEL: Readonly<Record<BodyOnlyPresetField, string>> = {
   vehicleCapabilities: "Vehicle needs",
   requiredQuestions: "Questions to ask",
 };
@@ -145,11 +154,11 @@ export function describeUnapplied(
   }));
 
   if (body && typeof body === "object") {
-    for (const key of Object.keys(UNAPPLIED_PRESET_FIELDS)) {
+    for (const key of Object.keys(UNAPPLIED_PRESET_FIELDS) as BodyOnlyPresetField[]) {
       const value = (body as Record<string, unknown>)[key];
       if (Array.isArray(value) && value.length > 0) {
         out.push({
-          label: UNAPPLIED_PRESET_FIELD_LABEL[key] ?? key,
+          label: UNAPPLIED_PRESET_FIELD_LABEL[key],
           reason: UNAPPLIED_PRESET_FIELDS[key],
         });
       }
