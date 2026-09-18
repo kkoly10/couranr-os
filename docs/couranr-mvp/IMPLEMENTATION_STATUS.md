@@ -118,7 +118,6 @@ each is in the ledger row itself — `test_evidence`, `browser_verified` and
 | `08f59f8d0cc062c36252a7295f86513618187965` | 1 screen | MER-004 |
 | `0d57ba736000e8ecb9d28c87a4e78a683599a316` | 1 work item | P3-002 |
 | `14fa99fbcf8103d33bb7267a8f4729421bccd400` | 1 work item | P6-001 |
-| `17442eaae6922a7767e178a1bae028531790ffd1` | 1 work item | P4-002 |
 | `1b3a1c90c88a554f1ac1ff1e6a6d06a97d602150` | 2 screens | CUS-006, CUS-008 |
 | `277982f2548e9b804c466121437c696b4ba52af4` | 1 screen | CUS-002 |
 | `32893e21401a6f056821c4caaa7858460c7356b8` | 1 screen | MER-001 |
@@ -146,6 +145,7 @@ each is in the ledger row itself — `test_evidence`, `browser_verified` and
 | `dd2388a7fa89c41bc5c6cf4c8411ffd4d0e4a5f0` | 2 screens | DRV-009, DRV-010 |
 | `ea8bd06483229f16a2c6df9a30b41b7872324090` | 4 work items | P10-002, P11-001, P12-001, P12-002 |
 | `ec4a2af8f7c1de0bee4e3c021b50c875acdd6633` | 4 work items, 4 screens | P10-003, P10-004, P10-005, P10-006, PUB-008, PUB-009, PUB-010, PUB-011 |
+| `ee502b49ed31066788e41546be1c4768127f7bc0` | 1 work item | P4-002 |
 | `ef1c085c03f46951e8a114c00d795aa786cb53d1` | 3 screens | PUB-001, PUB-012, PUB-013 |
 | `f03cc928ef15da7bf4f84467caed3ff90c711d00` | 1 work item | P10-014 |
 | `f204c2a48356dc2dba34cc2daa7baf27e1d8bfe6` | 2 screens | OPS-009, OPS-010 |
