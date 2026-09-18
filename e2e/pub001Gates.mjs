@@ -83,6 +83,95 @@ const check = (ok, message) => {
   return ok;
 };
 
+/* ─────────────────────────────────────── requests the PLATFORM serves ──
+   `<CouranrAnalytics/>` (app/layout.tsx) injects Vercel Analytics, whose script
+   the VERCEL EDGE serves at /_vercel/insights/script.js. Nothing in this repo
+   answers that path — there is no public/_vercel and no route for it — so
+   `next start` returns 404 on any machine that is not Vercel, and Chromium logs
+   a console error for the failed script. On the deployed site the edge serves
+   it and the console is clean.
+
+   That makes the 404 a property of running the production build OUTSIDE Vercel,
+   not a defect in the page, so the fix belongs in this harness rather than in
+   the assertion: the console-error check keeps its full strength over
+   everything the page itself emits.
+
+   Scoped to the platform prefix, and to `console` messages only — `pageerror`
+   is never exempted, because a thrown exception is the page's own code. Every
+   exemption is counted in the check's own message, so this can never grow
+   quietly into a filter that hides real errors, and it has its own positive
+   control in Gate B. */
+const PLATFORM_SERVED = /\/_vercel\//;
+
+/* Set by Gate B under --positive-control, read by Gate C's control verdict —
+   which is the only place that can report it, because the control block always
+   `process.exit`s there. */
+let controlConsoleCaught = false;
+
+
+/* The typography hotfix's measures, as the hotfix wrote them: a count of `ch`.
+   See the MEASURE block in Gate C for why the pixel form had to go. */
+const HOTFIX_MEASURES = [
+  { sel: ".cr-hero__h1-lead", ch: 15, font: 60 },
+  { sel: ".cr-hero__h1-accent", ch: 24, font: 49.8 },
+  /* RETIRED, not re-pointed — and that distinction is the whole correction.
+     This row was `.cr-mkt-editorial > h2` at 544px/44px: the FIRST such
+     heading on the page, which was `pickup-problem`'s `cr-type-statement`
+     h2. The 2026-09 lock deleted that section, the bare selector silently
+     re-pointed at `product-choice`'s heading, and the measure failed at
+     480px/40px with no style having changed (`.cr-mkt-editorial > h1, > h2
+     { max-width: 16ch }` is byte-identical base and HEAD).
+
+     Re-pointing it was tried and is wrong: the two `.cr-mkt-editorial`
+     sections that remain on /business (`product-choice`, `shipment-safety`)
+     both use `cr-type-marketing-section`, not `cr-type-statement`, so they
+     render at a different type scale and any 544/44 expectation on them
+     would be a fabricated number. No element on this page now carries the
+     combination this row measured.
+
+     The CSS RULE is still exercised — by both of those headings — so the
+     hotfix is not unguarded; what is gone is this specific recorded
+     measurement. Re-pin it from a real browser measurement at the MVP
+     completion pass, alongside the PUB_001_VISUAL_DRIFT_LEDGER row for
+     `pickup-problem`, which is now equally stale. */
+  { sel: ".cr-mkt-proof__copy p", ch: 62, font: 20 },
+];
+
+/* Resolve each hotfix measure IN THE BROWSER, returning the used width beside
+   the width its declared `ch` count comes to here. Shared by the real check and
+   by the positive control, so the control exercises the code the gate trusts. */
+async function measureHotfix(page, specs) {
+  return page.evaluate(
+    (rows) =>
+      rows.map((s) => {
+        const el = document.querySelector(s.sel);
+        if (!el) return { ...s, missing: true };
+        /* Let CSS resolve `1ch` in the element's OWN font context: a child
+           inherits the font, so `width:1ch` on it resolves through exactly the
+           unit the element's `max-width: Nch` uses. Measuring the "0" glyph
+           through the `font` shorthand is NOT equivalent — the shorthand drops
+           font-variation-settings, and the two disagreed here. */
+        const probe = document.createElement("span");
+        probe.style.cssText = "display:block;width:1ch;height:0;visibility:hidden";
+        el.appendChild(probe);
+        const ch1 = probe.getBoundingClientRect().width;
+        probe.remove();
+        return {
+          ...s,
+          ch1,
+          gotWidth: el.getBoundingClientRect().width,
+          gotFont: parseFloat(getComputedStyle(el).fontSize),
+        };
+      }),
+    specs,
+  );
+}
+
+/* A measure is wrong when the element does not render the `ch` count the hotfix
+   approved — shadowed by a later declaration, or clipped because a container
+   has become the binding constraint. */
+const measureOff = (m) => m.missing || Math.abs(m.gotWidth - m.ch * m.ch1) > 1;
+
 let server;
 
 async function reachable() {
@@ -315,10 +404,38 @@ async function main() {
   for (const width of WIDTHS) {
     const page = await browser.newPage({ viewport: { width, height: 900 } });
     const errors = [];
+    const platform = [];
     page.on("pageerror", (e) => errors.push(e.message));
-    page.on("console", (m) => m.type() === "error" && errors.push(m.text()));
+    page.on("console", (m) => {
+      if (m.type() !== "error") return;
+      /* The URL of a failed subresource is in location(), NOT in text(): text()
+         is the generic "Failed to load resource: ... 404 (Not Found)" with no
+         URL in it at all. Matching the exemption against text() would have
+         exempted nothing — or, written loosely, everything. */
+      const where = m.location()?.url || "";
+      (PLATFORM_SERVED.test(where) ? platform : errors).push(`${m.text()} ${where}`.trim());
+    });
+    /* The evidence the exemption rests on, and a check in its own right: a 404
+       that never reaches the console — a prefetch, an image, a fetch() whose
+       rejection is swallowed — is invisible to the listener above. This says
+       the platform path is the ONLY thing on this page that fails to resolve,
+       so the exemption can never be quietly covering something else. */
+    const badResponses = [];
+    page.on("response", (r) => {
+      if (r.status() >= 400 && !PLATFORM_SERVED.test(r.url())) {
+        badResponses.push(`${r.status()} ${r.url()}`);
+      }
+    });
     const res = await page.goto(`${BASE}${PUB_001_ROUTE}`, { waitUntil: "networkidle" });
     await page.evaluate(() => document.fonts.ready);
+    if (CONTROL && width === WIDTHS[0]) {
+      /* POSITIVE CONTROL for the exemption above: emit an error of the kind the
+         page itself could emit and prove it is still counted. One width only,
+         so the control shows one red line rather than six. */
+      await page.evaluate(() => console.error("planted: pub001 control console error"));
+      await new Promise((r) => setTimeout(r, 250));
+      controlConsoleCaught = errors.some((e) => e.includes("planted: pub001 control console error"));
+    }
 
     const m = await page.evaluate(() => {
       const de = document.documentElement;
@@ -368,7 +485,16 @@ async function main() {
     );
     check(m.ctaVisible, `@${width} the primary hero CTA is visible and unclipped`);
     check(m.smallTargets.length === 0, `@${width} button controls meet their §18 height (${m.smallTargets.join(", ") || "all pass"})`);
-    check(errors.length === 0, `@${width} no console errors (${errors.slice(0, 1).join("") || "none"})`);
+    check(
+      errors.length === 0,
+      `@${width} no console errors (${errors.slice(0, 1).join("") || "none"})` +
+        (platform.length ? ` [${platform.length} platform-served exempt: /_vercel/*]` : ""),
+    );
+    check(
+      badResponses.length === 0,
+      `@${width} every non-platform subresource resolved ` +
+        `(${badResponses.slice(0, 2).join("; ") || "none failed"})`,
+    );
     const wantSrc = width <= 640 ? "portrait" : "wide";
     check(m.heroSrc.includes(wantSrc), `@${width} hero resolves the ${wantSrc} source (${m.heroSrc})`);
     if (width === WIDTHS[0]) check(m.navMode === "drawer", `@${width} navigation collapses to the drawer`);
@@ -487,23 +613,38 @@ async function main() {
     // Read the planted section BEFORE the browser goes away — this is a live
     // page query, not a value already collected.
     const plantedPhotographic = await photographicSections(page);
+    /* FOURTH PLANT — the historical defect itself, reproduced exactly. The
+       original was a LATER declaration of identical specificity setting `78ch`
+       over the hotfix's `62ch`, so the measure check is planted the same way:
+       an appended stylesheet, same selector, no `!important`. It must live here
+       rather than beside the measure block, because this control always
+       `process.exit`s and a `CONTROL ?` branch down there would be dead code —
+       which is precisely the mistake recorded further down this file. */
+    await page.addStyleTag({ content: ".cr-mkt-proof__copy p { max-width: 78ch; }" });
+    const shadowed = await measureHotfix(page, HOTFIX_MEASURES);
+    const shadowedRow = shadowed.find((m) => m.sel === ".cr-mkt-proof__copy p");
+    const caughtMeasure = !!shadowedRow && measureOff(shadowedRow);
     await browser.close();
     stopServer();
     const caughtSecondPhoto =
       plantedPhotographic.length === 2 && plantedPhotographic.includes(victim);
     const caughtContrast = ids.includes("color-contrast");
     const caughtH1 = h1s > 1;
-    if (caughtContrast && caughtH1 && caughtSecondPhoto) {
+    if (caughtContrast && caughtH1 && caughtSecondPhoto && caughtMeasure && controlConsoleCaught) {
       console.log(
         `test:pub001 positive control ok — axe flagged ${ids.join(", ")}, the page now has ${h1s} h1s, ` +
-          `and the planted second photographic section was detected ` +
-          `(${plantedPhotographic.join(", ")}), so Gate C can go red`,
+          `the planted second photographic section was detected ` +
+          `(${plantedPhotographic.join(", ")}), the shadowed 78ch measure was caught ` +
+          `(${shadowedRow.gotWidth.toFixed(1)}px against a ${shadowedRow.ch}ch authority of ` +
+          `${(shadowedRow.ch * shadowedRow.ch1).toFixed(1)}px), and a planted console error was still ` +
+          `counted past the /_vercel/* exemption, so Gates B and C can go red`,
       );
       process.exit(0);
     }
     console.error(
       `positive control FAILED — contrast caught: ${caughtContrast}, duplicate h1 caught: ${caughtH1}, ` +
-        `second photographic section caught: ${caughtSecondPhoto} (${plantedPhotographic.join(", ") || "none"})`,
+        `second photographic section caught: ${caughtSecondPhoto} (${plantedPhotographic.join(", ") || "none"}), ` +
+        `shadowed measure caught: ${caughtMeasure}, planted console error counted: ${controlConsoleCaught}`,
     );
     process.exit(1);
   }
@@ -590,9 +731,37 @@ async function main() {
 
      Two assertions, both on the RENDER, never on the rule:
 
-     1. Named elements this hotfix sized must still render at those sizes. A
-        tolerance of 1px absorbs sub-pixel clamp arithmetic and nothing else —
-        a shadowed declaration moves these by hundreds of pixels.
+     1. Named elements this hotfix sized must still render THE MEASURE IT SET.
+        Written as a count of `ch`, which is what the hotfix actually approved,
+        not as the pixel count that count happened to come to in one browser.
+
+        It was pixels — 690/888/806 — and those three numbers are not
+        reproducible in any browser, including the one that recorded them. They
+        imply 46.0px per `ch` for the 60px lead and 37.0px for the 49.8px
+        accent, and those are the SAME font: `ch` scales with font-size, so one
+        of them has to be wrong (37/46 = 0.804, but 49.8/60 = 0.83). Every
+        recorded value is an exact integer of pixels — 46, 37, 13, and 40 and
+        35 at the other widths in the review doc — which is the signature of an
+        engine that rounded `ch` to whole pixels. Today's Chromium resolves it
+        sub-pixel: 44.879, 37.250, 12.617. The hotfix's own note recorded
+        `ch` here is 13px (Inter's 0 is 0.65em); the same byte-identical
+        Inter-Variable.woff2 now measures 0.6309em.
+
+        Nothing in the repo moved: the `15ch`/`24ch`/`62ch` declarations,
+        `.cr-type-hero`, `.cr-hero__body`, `--couranr-container-max` and all
+        three font files are byte-identical to the hotfix commit, and all three
+        elements render their declared measure exactly. What moved is the
+        browser — the Playwright this gate names is not installed on every
+        machine that runs it.
+
+        So the measure is asserted against `N * (1ch resolved here)`. That is
+        strictly stronger than a pixel constant, not weaker: the shadowed `78ch`
+        this check exists to catch still lands hundreds of pixels off its `62ch`
+        authority, a container that starts clipping the measure still fails, and
+        the expectation can no longer silently pass on a browser whose `ch`
+        differs. The `ch` counts stay hard-coded here on purpose — reading them
+        back out of couranr.css would make the check circular, because a
+        shadowing declaration is exactly what it must not trust.
 
      2. A generic invariant: a heading's measure must be at least eight times
         its OWN font-size. This is the `ch`-scope failure written as something a
@@ -609,51 +778,13 @@ async function main() {
      question, but a page-wide typography policy question for the owner, not
      something to settle inside a regression check. It is recorded in
      PUB_001_TYPOGRAPHY_HOTFIX_REVIEW.md instead. */
-  const HOTFIX_MEASURES = [
-    { sel: ".cr-hero__h1-lead", width: 690, font: 60 },
-    { sel: ".cr-hero__h1-accent", width: 888, font: 49.8 },
-    /* RETIRED, not re-pointed — and that distinction is the whole correction.
-       This row was `.cr-mkt-editorial > h2` at 544px/44px: the FIRST such
-       heading on the page, which was `pickup-problem`'s `cr-type-statement`
-       h2. The 2026-09 lock deleted that section, the bare selector silently
-       re-pointed at `product-choice`'s heading, and the measure failed at
-       480px/40px with no style having changed (`.cr-mkt-editorial > h1, > h2
-       { max-width: 16ch }` is byte-identical base and HEAD).
-
-       Re-pointing it was tried and is wrong: the two `.cr-mkt-editorial`
-       sections that remain on /business (`product-choice`, `shipment-safety`)
-       both use `cr-type-marketing-section`, not `cr-type-statement`, so they
-       render at a different type scale and any 544/44 expectation on them
-       would be a fabricated number. No element on this page now carries the
-       combination this row measured.
-
-       The CSS RULE is still exercised — by both of those headings — so the
-       hotfix is not unguarded; what is gone is this specific recorded
-       measurement. Re-pin it from a real browser measurement at the MVP
-       completion pass, alongside the PUB_001_VISUAL_DRIFT_LEDGER row for
-       `pickup-problem`, which is now equally stale. */
-    { sel: ".cr-mkt-proof__copy p", width: 806, font: 20 },
-  ];
-  const measured = await page.evaluate(
-    (specs) =>
-      specs.map((s) => {
-        const el = document.querySelector(s.sel);
-        if (!el) return { ...s, missing: true };
-        const cs = getComputedStyle(el);
-        return {
-          ...s,
-          gotWidth: el.getBoundingClientRect().width,
-          gotFont: parseFloat(cs.fontSize),
-        };
-      }),
-    HOTFIX_MEASURES,
-  );
+  const measured = await measureHotfix(page, HOTFIX_MEASURES);
   for (const m of measured) {
     if (m.missing) { check(false, `@1440 measure ${m.sel}: element not rendered`); continue; }
     check(
-      Math.abs(m.gotWidth - m.width) <= 1 && Math.abs(m.gotFont - m.font) <= 1,
+      !measureOff(m) && Math.abs(m.gotFont - m.font) <= 1,
       `@1440 measure ${m.sel}: ${m.gotWidth.toFixed(1)}px at ${m.gotFont}px ` +
-        `(hotfix set ${m.width}px at ${m.font}px)`,
+        `(hotfix set ${m.ch}ch = ${(m.ch * m.ch1).toFixed(1)}px at ${m.font}px)`,
     );
   }
 
