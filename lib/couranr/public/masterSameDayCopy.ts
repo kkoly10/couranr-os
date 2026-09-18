@@ -158,6 +158,21 @@ export const SAME_DAY_COPY = {
      lib/couranr/consumer/protection.ts. */
   handoff_heading: "Built for accountable handoffs.",
   handoff_body: "Couranr records important pickup and delivery events so there is a clear record of the handoff.",
+  /* MAIN CARRIES A WEAKER VERSION OF THIS SENTENCE, AND IT IS SUPERSEDED, NOT
+     LOST. PR #82's 1b7e3efc rewrote it to "released at pickup against a
+     confirmation step… confirmed and recorded at the door", on the reasoning
+     that naming a code "promises something nothing gives them" because the
+     routes issuing one existed only under /api/couranr/merchant and
+     /api/couranr/operations, with no consumer surface showing it.
+
+     That reasoning was correct on main and is FALSE on this branch. The
+     recipient mints their own PIN from their own tracking link —
+     app/api/couranr/track/[token]/dropoff-code/route.ts, rendered by
+     components/couranr/tracking/TrackingPage.tsx — and the sender holds the
+     pickup code in SendFlow. Both halves of the sentence are things a customer
+     actually gets here, so the stronger wording is the accurate one. Restoring
+     main's version would understate a capability that shipped, which is the
+     same defect as overstating one, pointing the other way. */
   handoff_progressive: "Every Same Day delivery is released at pickup by a code the sender holds, and handed over against a code at the door. What the shipment is worth decides how much more Couranr does.",
   /* ENDS WHERE THE AMOUNT BEGINS — the page appends the figure derived from
      PROTECTION_THRESHOLDS. Same shape as SEND_COPY.declared_value_max_note and

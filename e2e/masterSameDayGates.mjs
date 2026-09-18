@@ -242,6 +242,12 @@ async function sameDayContentGate(browser) {
       states.length === 0,
       states.map((s) => s.id).join(",") || "none rendered",
     );
+    /* Kept DISTINCT from the check above rather than duplicating it: that one
+       says nothing carries the attribute at all, this one says nothing carries
+       a RETIRED id under any other spelling — a node with
+       data-couranr-address-state="something-new" would pass the first and is
+       caught here only if it names a retired state, which is the regression
+       this guards. Stated so the two are not read as one assertion twice. */
     check(
       `sameday@${width} no retired state id appears in the markup`,
       states.every((s) => !RETIRED_MARKETING_STATES.includes(s.id)),
@@ -538,14 +544,29 @@ async function main() {
       probe("section-order comparison detects a swapped pair",
         JSON.stringify(sections) !== JSON.stringify(swapped));
 
-      /* The control for the INVERTED assertion: prove the scan would notice if
-         a retired state came back, by comparing the live (empty) set against a
-         planted one. A control that plants nothing tests nothing. */
-      const states = await page.$$eval("[data-couranr-address-state]", (els) =>
+      /* THE CONTROL PLANTS. The first attempt at this compared the live
+         (always-empty) set against a literal array and was therefore true
+         unconditionally — it printed "ok" with nothing planted, under a comment
+         that read "A control that plants nothing tests nothing". It now injects
+         a real retired-state node, re-runs the SAME scan the assertion uses,
+         and requires it to see it; the node is removed afterwards so the rest
+         of the run is unaffected. */
+      await page.evaluate((id) => {
+        const el = document.createElement("div");
+        el.setAttribute("data-couranr-address-state", id);
+        el.setAttribute("data-control-plant", "1");
+        document.body.appendChild(el);
+      }, RETIRED_MARKETING_STATES[0]);
+      const plantedStates = await page.$$eval("[data-couranr-address-state]", (els) =>
+        els.map((e) => e.getAttribute("data-couranr-address-state")));
+      await page.evaluate(() => {
+        document.querySelector("[data-control-plant]")?.remove();
+      });
+      const cleanStates = await page.$$eval("[data-couranr-address-state]", (els) =>
         els.map((e) => e.getAttribute("data-couranr-address-state")));
       probe("retired-state scan detects a state that came back",
-        JSON.stringify(states) !== JSON.stringify([RETIRED_MARKETING_STATES[0]]),
-        `${states.length} rendered`);
+        plantedStates.length === 1 && cleanStates.length === 0,
+        `planted ${plantedStates.length}, clean ${cleanStates.length}`);
 
       const stages = await page.$$eval(".cr-sd-track__stage", (e) => e.map((n) => n.textContent.trim()));
       probe("tracking-stage comparison detects wrong copy",
