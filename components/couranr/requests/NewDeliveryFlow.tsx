@@ -28,6 +28,16 @@ import {
   PermissionDeniedState,
 } from "@/components/couranr/states";
 import { QuoteSummary } from "./QuoteSummary";
+import { PresetStartCard, type PresetApplicationOutcome, type ResolvedPreset } from "./PresetStartCard";
+import {
+  PRESET_FIELD_LABEL,
+  buildPresetSeed,
+  withdrawnProofMethodFromBody,
+  describeUnapplied,
+  planPresetApplication,
+  type PresetSeed,
+} from "@/lib/couranr/presets/apply";
+import type { PresetBody } from "@/lib/couranr/presets/fields";
 import {
   createDeliveryRequest,
   createOperationsDeliveryRequest,
@@ -170,6 +180,10 @@ export function NewDeliveryFlow({
   const [intakeSessionId, setIntakeSessionId] = React.useState<string | null>(null);
   const [serviceLevel, setServiceLevel] = React.useState("standard");
   const [proofMethod, setProofMethod] = React.useState("photo_or_pin");
+  /* Proof method DEFAULTS rather than starting blank, so "is it empty" has no
+     answer — and a preset's fill-empty-only rule needs one. This records
+     whether the value on screen is the merchant's choice or just the default. */
+  const [proofMethodTouched, setProofMethodTouched] = React.useState(false);
   /* Set when a duplicate or preset carried a method that is no longer
      selectable, so the substitution is visible rather than silent. */
   const [withdrawnProofMethod, setWithdrawnProofMethod] = React.useState<string | null>(null);
@@ -251,9 +265,11 @@ export function NewDeliveryFlow({
          method is its own defect. The saved preset itself is never rewritten. */
       if (isSelectableProofMethod(seed.proofMethod)) {
         setProofMethod(seed.proofMethod);
+        setProofMethodTouched(true);
         setWithdrawnProofMethod(null);
       } else {
         setProofMethod("photo_or_pin");
+        setProofMethodTouched(true);
         setWithdrawnProofMethod(seed.proofMethod);
       }
     }
@@ -472,6 +488,85 @@ export function NewDeliveryFlow({
       ? `/operations/deliveries/${result.value.request.id}`
       : `/app/business/deliveries/${result.value.request.id}`);
   }
+
+  /**
+   * Apply a preset the SERVER just resolved.
+   *
+   * Fill-empty-only: anything the merchant has already typed stays exactly as
+   * they typed it, and is named back to them so the difference is visible
+   * rather than discovered later. The preset row itself is never written here —
+   * this is a read applied to local form state, so a later edit to the preset
+   * cannot reach a request that was already created from it.
+   *
+   * Proof method goes through the SAME withdrawn-method path a duplicated
+   * delivery uses. A preset legitimately holds `leave_at_door` from before it
+   * was withdrawn; seeding it would either be refused by the server or, worse,
+   * look accepted and fail late. There is deliberately no preset-specific
+   * proof-method check — a second validator is how the two drift.
+   */
+  const applyPreset = React.useCallback(
+    (preset: ResolvedPreset): PresetApplicationOutcome => {
+      const seed: PresetSeed = buildPresetSeed(preset.body as PresetBody);
+      const withdrawnFromPreset = withdrawnProofMethodFromBody(preset.body as PresetBody);
+      const { apply, skipped, notApplied } = planPresetApplication(seed, {
+        pickupDescription,
+        pickupPackageCount,
+        pickupHandlingNotes,
+        proofMethodTouched,
+        /* Only the OPERATIONS form asks for a description outright; on the
+           merchant form Smart Intake owns it, so a preset has nowhere honest to
+           put one. Today this is always false, because the card above renders
+           on the merchant flow only — it is written as the real condition
+           rather than a literal so that enabling presets for Operations does
+           not silently start filling a field that flow does not have. */
+        pickupDescriptionEditable: isOperations,
+      });
+
+      const filled: string[] = [];
+      if (apply.pickupDescription !== undefined) {
+        setPickupDescription(apply.pickupDescription);
+        filled.push(PRESET_FIELD_LABEL.pickupDescription);
+      }
+      if (apply.pickupPackageCount !== undefined) {
+        setPickupPackageCount(apply.pickupPackageCount);
+        filled.push(PRESET_FIELD_LABEL.pickupPackageCount);
+      }
+      if (apply.pickupHandlingNotes !== undefined) {
+        setPickupHandlingNotes(apply.pickupHandlingNotes);
+        filled.push(PRESET_FIELD_LABEL.pickupHandlingNotes);
+      }
+      if (apply.proofMethod !== undefined) {
+        /* Selectable by TYPE now: `buildPresetSeed` cannot emit anything else,
+           so there is no branch here to get wrong. */
+        setProofMethod(apply.proofMethod);
+        setWithdrawnProofMethod(null);
+        setProofMethodTouched(true);
+        filled.push(PRESET_FIELD_LABEL.proofMethod);
+      } else if (withdrawnFromPreset !== null && !proofMethodTouched) {
+        /* The preset holds a method Couranr no longer offers. The seed dropped
+           it so it can never reach form state; saying nothing would be the
+           other defect, because the merchant chose that method once and would
+           otherwise just find it missing. Skipped when they have already picked
+           a proof method themselves, on the same fill-empty-only rule as every
+           other field. */
+        setProofMethod("photo_or_pin");
+        setWithdrawnProofMethod(withdrawnFromPreset);
+        setProofMethodTouched(true);
+        filled.push(PRESET_FIELD_LABEL.proofMethod);
+      }
+
+      return {
+        presetName: preset.name,
+        filled,
+        keptAsEntered: skipped.map((k) => PRESET_FIELD_LABEL[k]),
+        /* Reads the BODY as well as the plan: vehicle needs and required
+           questions never become seed values, so a plan alone cannot report
+           them and the merchant would hear nothing about them at all. */
+        notApplied: describeUnapplied(notApplied, preset.body as PresetBody),
+      };
+    },
+    [pickupDescription, pickupPackageCount, pickupHandlingNotes, proofMethodTouched, isOperations],
+  );
 
   if (accounts === null && accountsError) {
     return (
@@ -704,6 +799,36 @@ export function NewDeliveryFlow({
           </Grid>
         </Card>
 
+        {/*
+          MERCHANT FLOW ONLY. A preset belongs to a business, and the route
+          resolves it through the same membership authority everything else
+          uses — so it answers only to a MEMBER of that business. Operations
+          creates deliveries FOR businesses it is generally not a member of,
+          which would make this a button that refuses on every normal
+          operations delivery. Offering it there and letting it fail is worse
+          than not offering it; extending presets to Operations is an authority
+          decision about whose presets staff may spend, not a UI change.
+        */}
+        {!isOperations && businessAccountId ? (
+          /*
+             KEYED ON THE BUSINESS so it REMOUNTS when the merchant changes who
+             the delivery is for. That control sits above this card, and a
+             merchant on more than one business can change it with the picker
+             already open. Without the key the card kept the other business's
+             list, its chosen id and its outcome: applying one was refused by
+             the server — correctly, the tenancy check is what it is — but the
+             merchant was told it "may have been archived or removed", which is
+             false and sends them hunting for a problem that does not exist.
+             Remounting is the whole fix; every piece of that state is the
+             card's own and none of it survives a business change.
+          */
+          <PresetStartCard
+            key={businessAccountId}
+            businessAccountId={businessAccountId}
+            onApply={applyPreset}
+          />
+        ) : null}
+
         <Card>
           <CardHeader
             title="Shipment"
@@ -924,7 +1049,14 @@ export function NewDeliveryFlow({
             ) : null}
             <Field label="Proof of delivery" required error={fieldErrors.proofMethod}>
               {(p) => (
-                <Select {...p} value={proofMethod} onChange={(e) => setProofMethod(e.target.value)}>
+                <Select
+                  {...p}
+                  value={proofMethod}
+                  onChange={(e) => {
+                    setProofMethod(e.target.value);
+                    setProofMethodTouched(true);
+                  }}
+                >
                   {/* LEAVE AT DOOR IS NOT OFFERED. PRF-001 requires a recorded
                       customer authorization for it and no such fact exists in
                       the schema, so Couranr cannot honour the method it would

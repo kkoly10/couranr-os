@@ -9,6 +9,7 @@ import {
   duplicatePreset,
   isPresetFailure,
   listPresets,
+  resolvePresetForApplication,
   setPresetArchived,
   updatePreset,
 } from "@/lib/couranr/presets/commands";
@@ -41,6 +42,24 @@ export async function GET(req: NextRequest) {
   const actor = settingsActorFrom(resolved);
   if (!actor || !memberMay(actor, "presets.read")) {
     return routeFailure("not_permitted", "You do not have access to this business.");
+  }
+
+  /*
+   * APPLYING a preset to a delivery form asks a narrower question than listing
+   * does, and it is asked later — after the merchant has chosen, by which time
+   * the picker's copy may be stale or the preset archived. The form sends an
+   * id and nothing else; the body it will apply comes from here, under this
+   * caller's business account, at the current version. The browser is never
+   * the source of what a preset says.
+   */
+  const presetId = req.nextUrl.searchParams.get("presetId");
+  if (presetId !== null) {
+    if (!UUID_RE.test(presetId)) {
+      return routeFailure("invalid_input", "That preset could not be found.");
+    }
+    const one = await resolvePresetForApplication({ businessAccountId, presetId });
+    if (isPresetFailure(one)) return failureResponse(one);
+    return NextResponse.json({ preset: one.value });
   }
 
   /*
