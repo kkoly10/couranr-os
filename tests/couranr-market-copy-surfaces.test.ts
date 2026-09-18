@@ -271,3 +271,84 @@ describe("cross-surface claim boundaries are single-sourced", () => {
     expect(code, "PUB-013 types a dollar amount").not.toMatch(/\$\s?\d/);
   });
 });
+
+/* ═══════════════════ MKT-005 must DECLARE every surface it governs ════════ */
+
+describe("MKT-005's declared scope matches the surfaces it actually governs", () => {
+  /*
+   * THE GAP THAT LET A MERGE DROP PUB-001. MKT-005 is rank-1 authority for the
+   * locked copy, and `/business` renders its `network_*` strings through
+   * MASTER_COPY. A reconciliation merge kept those VALUES and silently dropped
+   * PUB-001 and `/business` from the record's `affected_screen_ids` and
+   * `affected_routes`, so the authority governed the copy without naming the
+   * surface. Every gate stayed green: nothing compared the declared scope to
+   * the real one.
+   *
+   * The fix is not to make a test ignore `/business`. It is to require the
+   * record to say where it applies, and to fail when a surface renders a locked
+   * string the record does not claim.
+   */
+  const REGISTRY = JSON.parse(
+    readFileSync(path.join(__dirname, "..", "02_DECISION_REGISTRY.json"), "utf8")
+  );
+  const MKT005 = REGISTRY.decisions.find((r: { id: string }) => r.id === "MKT-005");
+
+  /** Surface -> the screen id and route MKT-005 must declare for it. */
+  const GOVERNED: ReadonlyArray<readonly [string, string, string]> = [
+    ["app/(couranr)/(public)/(master-public)/page.tsx", "PUB-012", "/"],
+    ["app/(couranr)/(public)/(consumer-public)/sameday/page.tsx", "PUB-013", "/sameday"],
+    ["app/(couranr)/(public)/(business-public)/business/page.tsx", "PUB-001", "/business"],
+  ];
+
+  it.each(GOVERNED.map((g) => [g[1], g] as const))(
+    "%s is declared in MKT-005's scope",
+    (_id, [file, screenId, route]) => {
+      const src = readFileSync(path.join(__dirname, "..", file), "utf8");
+      /* Non-vacuous: the surface must actually render locked MKT-005 copy.
+         MKT-005 has four groups and a surface may draw on any of them —
+         /sameday renders SAME_DAY_COPY, not MASTER_COPY — so the check is that
+         it renders one of the governed modules, not one specific group. An
+         earlier version of this test demanded MASTER_COPY everywhere and failed
+         /sameday, which would have been the test being wrong about the record
+         rather than the record being wrong about the surface. */
+      expect(src, `${file} renders no MKT-005 copy at all`).toMatch(
+        /\b(MASTER_COPY|SAME_DAY_COPY|PUBLIC_CHROME_COPY)\./
+      );
+      expect(
+        MKT005.affected_screen_ids,
+        `MKT-005 governs ${file} but does not declare ${screenId}`
+      ).toContain(screenId);
+      expect(
+        MKT005.affected_routes,
+        `MKT-005 governs ${file} but does not declare ${route}`
+      ).toContain(route);
+    }
+  );
+
+  it("names the business page among the code paths it governs", () => {
+    expect(
+      (MKT005.affected_code_paths ?? []).some((p: string) => p.includes("business/page.tsx")),
+      "MKT-005 does not list the business page it governs"
+    ).toBe(true);
+  });
+
+  it("a /business copy edit that retypes a locked string fails", () => {
+    /* The drift this exists to catch: someone types the positioning sentence
+       into the business page instead of rendering it from MASTER_COPY. The
+       string then has two owners and the registry governs only one of them. */
+    const src = readFileSync(
+      path.join(__dirname, "..", "app/(couranr)/(public)/(business-public)/business/page.tsx"),
+      "utf8"
+    );
+    const code = src.replace(/\{\/\*[\s\S]*?\*\/\}/g, " ").replace(/\/\*[\s\S]*?\*\//g, " ");
+    const locked = MKT005.value.master.network_statement as string;
+    expect(locked.length).toBeGreaterThan(20);
+    expect(
+      code.includes(locked),
+      "/business retypes MKT-005's locked positioning string instead of rendering it"
+    ).toBe(false);
+    expect(code, "/business stopped rendering the locked string at all").toMatch(
+      /MASTER_COPY\.network_statement/
+    );
+  });
+});

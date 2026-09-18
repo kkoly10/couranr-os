@@ -27,14 +27,14 @@ what went stale: it counted 39 migrations while 128 were on disk.
 Run `npm run governance:facts` for the live counts; `npm run check:governance`
 proves every generated view matches its source.
 
-## Work items — 49 total
+## Work items — 50 total
 
 | Status | Count |
 |---|---|
 | `complete_verified` | 19 |
 | `partial` | 11 |
+| `not_started` | 10 |
 | `complete_pending_external` | 9 |
-| `not_started` | 9 |
 | `complete_unverified` | 1 |
 
 ## Screens — 68 rows against 68 canonical screens
@@ -88,6 +88,7 @@ Still rendering `ScreenPlaceholder` (5): `OPS-006` · `OPS-017` · `OPS-018` · 
 | `P12-001` | not_started | Execute full acceptance matrix |
 | `P12-002` | not_started | Complete controlled production canary |
 | `P10-007` | not_started | Apply UI-TYP-001 typography to the canonical public surface |
+| `P10-015` | not_started | Implement the customer authorization PRF-001 requires for leave-at-door |
 
 ## Recorded blockers and deferments
 
@@ -103,6 +104,7 @@ Still rendering `ScreenPlaceholder` (5): `OPS-006` · `OPS-017` · `OPS-018` · 
 | `P10-011` | Provider not activated and no restricted key configured, so protected handoff is not sellable. |
 | `P10-013` | Owner approval required before any production migration is applied. |
 | `P10-014` | FLG-002 unresolved; owner approval required before applying the migration. |
+| `P10-015` | LIVE EXPOSURE, measured 2026-09-17: production holds 2 requests and 1 delivery with proof_method='leave_at_door', 0 delivered. leave_at_door is currently the ONLY proof_method present in production. So a merchant can select it today and a driver can complete it with no customer authorization recorded. Consumer Same Day is NOT exposed — it hardcodes photo_or_pin — and protected_handoff forbids leave-at-door outright. |
 
 ## Verification SHAs
 
@@ -120,6 +122,7 @@ each is in the ledger row itself — `test_evidence`, `browser_verified` and
 | `277982f2548e9b804c466121437c696b4ba52af4` | 1 screen | CUS-002 |
 | `32893e21401a6f056821c4caaa7858460c7356b8` | 1 screen | MER-001 |
 | `38ec5f27190301b39320c05164f28449ffed9054` | 2 screens | OPS-013, OPS-014 |
+| `3b056a5eca777b0c4d003f9eb653c33df490ce5e` | 1 work item | P10-015 |
 | `401b3eea5cd96bb09d224f3b113ba6091bba807d` | 18 work items, 24 screens | P0-001, P0-002, P1-001, P1-002, P1-003, P1-004, P2-002, P4-001, P5-002, P7-001, P7-002, P7-003, P8-003, P9-001, P9-002, P9-003, P9-004, P10-007, CUS-005, DRV-002, DRV-003, DRV-004, DRV-005, DRV-006, MER-002, MER-006, MER-007, OPS-002, OPS-004, OPS-006, OPS-008, OPS-011, OPS-015, OPS-016, OPS-017, OPS-018, OPS-019, OPS-020, OPS-021, PUB-002, PUB-003, PUB-005 |
 | `50f576e991dd249849d93206fc9e7cda330e71b7` | 1 screen | MER-005 |
 | `5723b3a22773f15d8d1b3e1d36bdf77b8341a6de` | 1 screen | DRV-001 |

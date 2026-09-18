@@ -112,11 +112,26 @@ const CUSTOMER_PAID = [
  * The two forbidden items are stated, not omitted. A proof page that lists only
  * what is collected reads as surveillance; the limit is the reassurance.
  */
+/*
+ * WHAT `couranr_complete_pickup_v2` ACTUALLY REQUIRES AND RECORDS.
+ *
+ * "Package count" and "Condition photo" were here and are gone, because the
+ * command the app calls collects neither. `condition_photo_required` is raised
+ * only inside the v1 `couranr_complete_pickup`, which no application code calls,
+ * and v2 inserts `observed_package_count` as a literal null. PRF-002 amended
+ * PRF-001 to say so in as many words — "the driver does not re-enter expected
+ * package count, merchant/staff identity, or assigned vehicle on the happy
+ * path", with a condition photo named in its acceptance criteria — so the page
+ * was rendering the SUPERSEDED record.
+ *
+ * The vehicle stays: v2 records `confirmed_vehicle_id` from the assignment. It
+ * is recorded without being re-entered, which is what PRF-002 changed.
+ *
+ * tests/couranr-how-it-works-proof.test.ts ties this list to the command.
+ */
 const PICKUP_PROOF = [
   "Merchant pickup PIN",
-  "Package count",
   "Shipment photo",
-  "Condition photo",
   "Timestamp and location",
   "The actual vehicle",
 ];
