@@ -2831,17 +2831,37 @@ anti-pattern §19.4 names by name.
 
 ### PUB-012 — Couranr master homepage
 
-**Budgets:** grid-dominant <= 0 · image-led >= 1 · product-proof >= 0 · workflow-rail == 0
+**Budgets:** grid-dominant <= 1 · image-led >= 0 · product-proof >= 0 · workflow-rail == 0
 
 Required states from `ui_screen_registry.json`: Default; mobile navigation. The
 page exists to route a visitor to one of MKT-004's two entry paths, so it is the
 shortest contract in the family — **exactly three governed regions**, and a
 fourth marketing section is a defect in this table rather than a styling choice.
 
-`grid-dominant <= 0` is the whole point. The obvious way to build a
-two-audience homepage is a card grid of features, and §28 bans exactly that
-template-filling. The two audience doors are one editorial hero composition, not
-two tiles.
+**AMENDED 2026-09-18, by the owner, for marketing latitude.** This page
+previously read `grid-dominant <= 0 · image-led >= 1`. Both were changed, and
+the reasoning for each is different:
+
+- **`grid-dominant` 0 -> 1.** The original note said "`grid-dominant <= 0` is
+  the whole point": the obvious way to build a two-audience homepage is a card
+  grid of features, and §28 bans that template-filling. That reasoning still
+  holds and is why the cap is 1 rather than removed — one tiled region is a
+  deliberate choice a marketer can now make, two would make the page the card
+  cemetery the rule exists to prevent. §19's universal cap of two is unchanged
+  and this remains tighter than it, as §27.0 requires of any page-level cap.
+- **`image-led` 1 -> 0.** A FLOOR forces content to exist. Requiring a
+  photographic region whether or not the page wants one is the same
+  template-filling §28 bans, just pointed the other way — which is precisely
+  why `/pricing` was written `>= 0`. Stated deliberately here, per the rule
+  above that a `>= 0` in this family is a decision and not an omission. The
+  homepage still carries its photography; nothing now compels it to.
+
+What did NOT change: §28 itself, §19's adjacency rule and cap of two, the
+three-region contract above, and every quality floor in §18/§23 — contrast, tap
+targets, overflow and the accessibility gates are correctness rather than taste
+and are not the marketer's to trade away.
+
+The two audience doors remain one editorial hero composition, not two tiles.
 
 | # | `data-couranr-section` | required state / intent | device | `data-composition` (§19) | image-led | grid-dominant | product-proof |
 |---|---|---|---|---|---|---|---|

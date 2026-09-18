@@ -3868,24 +3868,157 @@
    the text rather than centred in a row that is mostly empty beside it. */
 .cr-mkt-section[data-couranr-section="master-service-area"] .cr-mkt-cta-row { justify-content: flex-start; }
 
+/* THE MARKETING SURFACE COMES OFF THE LEGACY GREY, by owner decision.
+   `--couranr-text-muted` is #667085 — 4.67:1 on this ground. It clears AA by
+   0.17 and reads washed out at the sizes these pages are actually read at,
+   which on marketing is overwhelmingly a phone.
+
+   ONE RULE RATHER THAN TWENTY-SEVEN. Enumerating the muted text across
+   /, /sameday, /business, /pricing, /how-it-works, /businesses,
+   /service-areas and /legal found it spread over 27 different classes —
+   `cr-text`, bare `li` and `dd`, `cr-mkt-editorial__body`, and a long tail of
+   per-section `__note` / `__detail` / `__tag` classes. Overriding each would
+   be a large diff that a later class could silently escape. Redefining the
+   token inside the marketing wrapper covers every one of them, including
+   classes nobody has written yet.
+
+   THE MECHANISM IS THIS FILE'S OWN. `.cr-mkt-payer`,
+   `.cr-mkt-proof__panel-head` and `.cr-mkt-channelstrip__item` already rescope
+   this exact token to `--couranr-text-muted-tint`, for the same reason: a
+   measured contrast failure. This is the same move at the surface level.
+
+   SCOPED TO THE PUBLIC SURFACE, not to `.cr-mkt`. Every public route stamps
+   `data-couranr-surface="public"` on `.cr-shell`; the merchant app stamps
+   `merchant` and Operations stamps `operations`. Keying on that attribute
+   reaches the legal documents too — they are public pages that carry no
+   `.cr-mkt` wrapper — and makes it structurally impossible for this to leak
+   into the app surfaces, whose muted text is dense operational UI where tonal
+   rank does real work and which were no part of this decision.
+
+   VERIFIED SAFE BEFORE APPLYING: no muted text anywhere on the marketing pages
+   sits on a dark ground, so darkening cannot invert a contrast pair. Checked in
+   the browser across all eight routes, not assumed.
+
+   The cost is that tonal hierarchy is gone from these pages — rank is now
+   carried by size, weight and position alone. That is the owner's call and it
+   is the same trade the master-network pass made deliberately. */
+/* A SECOND GREY EXISTED AND THE FIRST SWEEP MISSED IT.
+   `--couranr-text-muted-tint` (#656f84) is a near-twin of the token above, and
+   `.cr-mkt-payer`, `.cr-mkt-proof__panel-head` and `.cr-mkt-channelstrip__item`
+   point at it explicitly — so those containers overrode the line below and kept
+   their copy grey. Measured across the public pages: 35 text nodes at
+   4.52-4.76:1, and every one of them at 12, 13 or 14px. The smallest text on
+   the site was carrying the weakest contrast. It cleared AA and was still
+   unreadable in practice, which is the whole lesson of this pass — AA is a
+   floor for compliance, not a target for design.
+
+   SECONDARY IS NOW A REAL COLOUR RATHER THAN A FADED ONE. #34435c measures
+   9.37:1 on canvas and 9.98:1 on white — about twice the old tint — while
+   staying a visible step below the navy primary at 17.11:1. So the tonal
+   hierarchy the tint was trying to express survives, and survives legibly:
+   rank comes from a darker-versus-darkest pair, not from fading one of them
+   toward the background. It is drawn from the navy's own hue family so it
+   reads as the same palette rather than an imported grey.
+
+   Both tokens are set here, on the public surface only. The merchant and
+   operations apps stamp `merchant` and `operations` and keep the original
+   values — their dense operational UI is a different problem and was no part
+   of this decision. */
+.cr-shell[data-couranr-surface="public"] {
+  --couranr-text-muted: var(--couranr-text);
+  --couranr-text-muted-tint: #34435c;
+}
+
+/* THE FORK, DRAWN AS A FORK.
+   This section asks the reader to self-select in about two seconds, and it was
+   rendering as one grey column: two blocks of identical prose, identical
+   bullets, identical colour, with nothing marking them as two different doors.
+   At 390px they stack with only a gap between them and read as one list of
+   eight bullets — the state this was rebuilt from.
+
+   What it is NOT is two cards. §28 and PUB-012's table keep this section
+   typography-led, so the differentiation is carried by colour, rule and
+   hierarchy: devices that belong to type, not to tiles. `grid-dominant` stays
+   honestly false, because one panel holding a definition list is not a
+   repeating card grid. */
 .cr-master-network {
   display: grid;
   gap: var(--couranr-space-6);
   margin: 0;
+  padding: var(--couranr-space-6);
+  border-radius: var(--couranr-radius-lg);
+  /* The wash runs warm -> cool in the READING ORDER OF THE PATHS, so it maps
+     the fork rather than decorating it: Same Day is gold, For Business is navy,
+     and the gradient turns when the layout does. Stacked here, so top -> bottom.
+     rgba rather than the tokens because this file has no color-mix and derives
+     every alpha variant the same way (see --couranr-shadow-*); the values are
+     --couranr-gold #f4b740 and --couranr-navy #0d1525, and a change to either
+     token must be mirrored here.
+
+     STRENGTH IS BOUNDED BY MEASURED CONTRAST, not by taste. At these values the
+     warm end resolves to about #f6ecd4 and the cool end to about #dbdddc;
+     `--couranr-text` measures ~15:1 and ~13:1 on them, far above AA. What the
+     ceiling really protects is MUTED text, which would fall to ~3.6:1 on the
+     cool end and fail — so nothing inside this panel is allowed to stay muted,
+     and the points below were moved off it for exactly this reason. */
+  background-image: linear-gradient(
+    180deg,
+    rgba(244, 183, 64, 0.18) 0%,
+    rgba(244, 183, 64, 0) 40%,
+    rgba(13, 21, 37, 0) 60%,
+    rgba(13, 21, 37, 0.12) 100%
+  );
 }
 
 @media (min-width: 900px) {
-  .cr-master-network { grid-template-columns: 1fr 1fr; gap: var(--couranr-space-8); }
+  .cr-master-network {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--couranr-space-8);
+    padding: var(--couranr-space-8);
+    /* Side by side now, so the same wash turns to match: gold over the Same Day
+       column, navy over the Business one. */
+    background-image: linear-gradient(
+      90deg,
+      rgba(244, 183, 64, 0.18) 0%,
+      rgba(244, 183, 64, 0) 42%,
+      rgba(13, 21, 37, 0) 58%,
+      rgba(13, 21, 37, 0.12) 100%
+    );
+  }
 }
 
-.cr-master-network__item { display: grid; gap: var(--couranr-space-2); }
+/* The ruled edge is the one device here that SURVIVES THE MOBILE STACK. Two
+   columns tell the paths apart by position; at 390px position is gone and
+   colour plus rule is all that is left. No fill, no border box, no shadow and
+   no radius on the items themselves — a rule is typography, a filled box is a
+   card. The neutral default means a path without a modifier still reads as an
+   entry rather than losing its edge silently. */
+.cr-master-network__item {
+  display: grid;
+  gap: var(--couranr-space-2);
+  padding-left: var(--couranr-space-5);
+  border-left: 4px solid var(--couranr-border);
+}
 
+.cr-master-network__item--sameday { border-left-color: var(--couranr-gold); }
+.cr-master-network__item--business { border-left-color: var(--couranr-navy); }
+
+/* THE NAME IS THE CHOICE, so it is the loudest thing in its block.
+   It was `--couranr-text-sm` in `--couranr-text-muted`: the smallest step on
+   the scale, greyed, sitting above a sentence set at lead size in full
+   contrast. The product the reader is choosing between was quieter than the
+   explanation of it, so the eye landed on prose and never found the fork. That
+   inversion — not the absence of cards — is what made the section monotone.
+
+   The colour stays `--couranr-text` rather than taking the path colour: gold on
+   this ground is about 1.8:1 and would fail AA as text. Colour rides the rule,
+   which carries nothing a reader has to read. */
 .cr-master-network__term {
   font-family: var(--couranr-font-display);
-  font-size: var(--couranr-text-sm);
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  color: var(--couranr-text-muted);
+  font-size: var(--couranr-text-xl);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--couranr-text);
 }
 
 .cr-master-network__desc { margin: 0; color: var(--couranr-text); }
@@ -3900,39 +4033,68 @@
    heading rather than acting as a subtitle under it. */
 .cr-master-network__brand {
   margin: 0 0 var(--couranr-space-4);
-  color: var(--couranr-text-muted);
+  color: var(--couranr-text);
 }
 
 /* The product distinction, immediately under the question it answers. Body
    measure rather than the section's 24ch statement measure — it is two
    sentences that must read as one thought. */
-.cr-master-network__statement { max-width: 54ch; }
+/* FULL CONTRAST. This sentence is the ANSWER to the question directly above
+   it — the one line telling a reader which product is theirs — and it was
+   inheriting 4.67:1 grey from a shared body class. Stated explicitly here as
+   well as by the surface rule above, because its rank does not depend on that
+   rule staying in place. */
+.cr-master-network__statement {
+  max-width: 54ch;
+  color: var(--couranr-text);
+}
 
 /* The points under each product. A plain marker list, indented under its
    definition, NOT four checkmark tiles — §28 bans the icon-tile grammar and
    this is exactly where a two-audience homepage reaches for it. */
+/* THE POINTS WERE THE FAINT PART. They were `--couranr-text-muted` at
+   `--couranr-text-sm` — 4.67:1 on this ground, which clears AA by 0.17 and
+   reads washed out at 14px on a phone, which is where most of this page is
+   read. Two changes: full `--couranr-text`, and one step up the scale to 16px.
+
+   HIERARCHY NOW COMES FROM SIZE, NOT FROM FADING THE TEXT. The term is 22px
+   bold and the description is lead size, so the points still sit third without
+   having to be greyed to get there — and greying was the more expensive way to
+   buy that rank, because it spent legibility to do it. It also could not
+   survive the stronger wash above: muted on the cool end measures ~3.6:1. */
 .cr-master-network__points {
   margin: var(--couranr-space-3) 0 0;
   padding-left: var(--couranr-space-5);
   display: grid;
-  gap: var(--couranr-space-1);
-  font-size: var(--couranr-text-sm);
-  color: var(--couranr-text-muted);
+  gap: var(--couranr-space-2);
+  font-size: var(--couranr-text-base);
+  color: var(--couranr-text);
 }
 
 /* The two sentences that stop the most common misreading — that owning a
    business routes you to For Business. They close the section rather than
    sitting beside the columns, because they qualify BOTH of them. The example
    is set quieter than the rule it illustrates. */
+/* The edge case is a RULE — it is what stops the most common misreading of the
+   whole section — so it carries full contrast for the same reason the statement
+   does. */
 .cr-master-network__edge {
   margin: var(--couranr-space-8) 0 0;
   max-width: 62ch;
+  color: var(--couranr-text);
 }
 
+/* OFF MUTED TOO, by owner decision. An earlier pass kept this one grey so the
+   section retained a single deliberate step down — the example illustrates the
+   rule above rather than stating it. The owner's call is that legibility wins
+   over that rank, and it is a defensible trade: the example is the most
+   concrete sentence in the section and is the one a skimmer is most likely to
+   actually read. Rank is still carried, by position and by the shorter measure
+   of the rule above it. */
 .cr-master-network__example {
   margin: var(--couranr-space-3) 0 0;
   max-width: 62ch;
-  color: var(--couranr-text-muted);
+  color: var(--couranr-text);
 }
 
 /* ── PUB-013, Couranr Same Day ──────────────────────────────────────────── */
