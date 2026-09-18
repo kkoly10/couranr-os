@@ -648,6 +648,46 @@ try {
     const blocked = commands.filter((f) => !priv(f, "service_role"));
     t("P2", "and service_role still can", blocked.length === 0, blocked.join(", ") || "both");
 
+    /* P3 is P2 without the list. P2 asserts the right property — "the server
+       still can, or the whole flow is bricked" — over hand-written `public.`
+       names, and that is exactly how the outage got through: 20260915090000
+       revoked private.couranr_derive_protection_level from service_role as well
+       as from the browser roles, and no list had a `private.` name on it.
+
+       Every public function that writes couranr_delivery_requests is SECURITY
+       INVOKER, and couranr_dr_protection_derived_chk names that function in a
+       CHECK — and PostgreSQL verifies EXECUTE on a function named in a CHECK at
+       DML time even when the expression short-circuits past the call. So the
+       whole delivery-request lifecycle returned `permission denied` for the
+       server while every assertion here stayed green, because the rest of this
+       suite drives the database as `postgres`, for whom privilege is never
+       checked.
+
+       So DERIVE the set: any private function reachable from a CHECK constraint
+       or called by a SECURITY INVOKER public function must be executable by
+       service_role. A future revoke that closes one lands here on its own. */
+    const stranded = sql(`
+      select coalesce(string_agg(distinct fn, ', '), '') from (
+        select p.proname as fn
+          from pg_constraint c
+          join pg_proc p
+            on pg_get_constraintdef(c.oid) like '%private.' || p.proname || '%'
+          join pg_namespace n on n.oid = p.pronamespace
+         where c.contype = 'c' and n.nspname = 'private'
+           and not has_function_privilege('service_role', p.oid, 'EXECUTE')
+        union
+        select pv.proname
+          from pg_proc pb
+          join pg_namespace nb on nb.oid = pb.pronamespace
+          join pg_proc pv on true
+          join pg_namespace nv on nv.oid = pv.pronamespace
+         where nb.nspname = 'public' and not pb.prosecdef and nv.nspname = 'private'
+           and pb.prosrc like '%private.' || pv.proname || '%'
+           and not has_function_privilege('service_role', pv.oid, 'EXECUTE')
+      ) s`);
+    t("P6", "no private function the server must call is revoked from service_role",
+      stranded === "", stranded || "none stranded");
+
     /* The triggers fire with their functions revoked from PUBLIC because
        EXECUTE is checked when a trigger is CREATED, not when it runs. E4 and
        A29-A32 would go red if that were wrong, so this records the reason
