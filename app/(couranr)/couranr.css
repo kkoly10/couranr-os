@@ -3868,24 +3868,90 @@
    the text rather than centred in a row that is mostly empty beside it. */
 .cr-mkt-section[data-couranr-section="master-service-area"] .cr-mkt-cta-row { justify-content: flex-start; }
 
+/* THE FORK, DRAWN AS A FORK.
+   This section asks the reader to self-select in about two seconds, and it was
+   rendering as one grey column: two blocks of identical prose, identical
+   bullets, identical colour, with nothing marking them as two different doors.
+   At 390px they stack with only a gap between them and read as one list of
+   eight bullets — the state this was rebuilt from.
+
+   What it is NOT is two cards. §28 and PUB-012's table keep this section
+   typography-led, so the differentiation is carried by colour, rule and
+   hierarchy: devices that belong to type, not to tiles. `grid-dominant` stays
+   honestly false, because one panel holding a definition list is not a
+   repeating card grid. */
 .cr-master-network {
   display: grid;
   gap: var(--couranr-space-6);
   margin: 0;
+  padding: var(--couranr-space-6);
+  border-radius: var(--couranr-radius-lg);
+  /* The wash runs warm -> cool in the READING ORDER OF THE PATHS, so it maps
+     the fork rather than decorating it: Same Day is gold, For Business is navy,
+     and the gradient turns when the layout does. Stacked here, so top -> bottom.
+     rgba rather than the tokens because this file has no color-mix and derives
+     every alpha variant the same way (see --couranr-shadow-*); the values are
+     --couranr-gold #f4b740 and --couranr-navy #0d1525, and a change to either
+     token must be mirrored here. Alpha is capped at 0.1 so body text keeps its
+     full contrast ratio over the wash. */
+  background-image: linear-gradient(
+    180deg,
+    rgba(244, 183, 64, 0.1) 0%,
+    rgba(244, 183, 64, 0) 38%,
+    rgba(13, 21, 37, 0) 62%,
+    rgba(13, 21, 37, 0.06) 100%
+  );
 }
 
 @media (min-width: 900px) {
-  .cr-master-network { grid-template-columns: 1fr 1fr; gap: var(--couranr-space-8); }
+  .cr-master-network {
+    grid-template-columns: 1fr 1fr;
+    gap: var(--couranr-space-8);
+    padding: var(--couranr-space-8);
+    /* Side by side now, so the same wash turns to match: gold over the Same Day
+       column, navy over the Business one. */
+    background-image: linear-gradient(
+      90deg,
+      rgba(244, 183, 64, 0.1) 0%,
+      rgba(244, 183, 64, 0) 42%,
+      rgba(13, 21, 37, 0) 58%,
+      rgba(13, 21, 37, 0.06) 100%
+    );
+  }
 }
 
-.cr-master-network__item { display: grid; gap: var(--couranr-space-2); }
+/* The ruled edge is the one device here that SURVIVES THE MOBILE STACK. Two
+   columns tell the paths apart by position; at 390px position is gone and
+   colour plus rule is all that is left. No fill, no border box, no shadow and
+   no radius on the items themselves — a rule is typography, a filled box is a
+   card. The neutral default means a path without a modifier still reads as an
+   entry rather than losing its edge silently. */
+.cr-master-network__item {
+  display: grid;
+  gap: var(--couranr-space-2);
+  padding-left: var(--couranr-space-5);
+  border-left: 3px solid var(--couranr-border);
+}
 
+.cr-master-network__item--sameday { border-left-color: var(--couranr-gold); }
+.cr-master-network__item--business { border-left-color: var(--couranr-navy); }
+
+/* THE NAME IS THE CHOICE, so it is the loudest thing in its block.
+   It was `--couranr-text-sm` in `--couranr-text-muted`: the smallest step on
+   the scale, greyed, sitting above a sentence set at lead size in full
+   contrast. The product the reader is choosing between was quieter than the
+   explanation of it, so the eye landed on prose and never found the fork. That
+   inversion — not the absence of cards — is what made the section monotone.
+
+   The colour stays `--couranr-text` rather than taking the path colour: gold on
+   this ground is about 1.8:1 and would fail AA as text. Colour rides the rule,
+   which carries nothing a reader has to read. */
 .cr-master-network__term {
   font-family: var(--couranr-font-display);
-  font-size: var(--couranr-text-sm);
-  font-weight: 600;
-  letter-spacing: 0.01em;
-  color: var(--couranr-text-muted);
+  font-size: var(--couranr-text-xl);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--couranr-text);
 }
 
 .cr-master-network__desc { margin: 0; color: var(--couranr-text); }
