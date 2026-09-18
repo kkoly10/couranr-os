@@ -20,14 +20,26 @@
  * FIVE OF THE SEVEN, AND WHY THE OTHER TWO ARE ABSENT
  * ---------------------------------------------------------------------------
  *
- * A preset may suggest seven things (ACP-025). Five have somewhere legitimate
- * to go on the current New Delivery form:
+ * A preset may suggest seven things (ACP-025). Five of them MAP to a form value
+ * here — but read the right-hand column before assuming five of them land:
  *
- *   commonItem      -> pickupDescription   (OPERATIONS form only - see below)
- *   packageCount    -> pickupPackageCount
- *   handling        -> pickupHandlingNotes
- *   proofMethod     -> proofMethod         (through the EXISTING withdrawn path)
- *   payerPreference -> payerType
+ *   packageCount    -> pickupPackageCount   FILLS when empty
+ *   handling        -> pickupHandlingNotes  FILLS when empty
+ *   proofMethod     -> proofMethod          FILLS, through the EXISTING
+ *                                           withdrawn-method path
+ *   commonItem      -> pickupDescription    NEVER, today: the field exists only
+ *                                           on the Operations form, and this
+ *                                           card renders only on the merchant
+ *                                           one. Mapped rather than deleted
+ *                                           because the rule is about the FORM,
+ *                                           not the preset, and the day
+ *                                           Operations gets presets it lands.
+ *   payerPreference -> payerType            NEVER, by rule — see
+ *                                           `planPresetApplication`
+ *
+ * So THREE fields reach a merchant's form today. Both of the others are
+ * reported to the merchant with their reason rather than dropped quietly, which
+ * is the only honest way to map a field to nowhere.
  *
  * `commonItem` has a home on only ONE of the two forms this flow renders. The
  * operations form asks "What should the driver look for?" outright; the
