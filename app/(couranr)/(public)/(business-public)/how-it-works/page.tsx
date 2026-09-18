@@ -147,6 +147,14 @@ const DELIVERY_PROOF = [
   },
   {
     method: "Leave at door",
+    /* THE REQUIREMENTS ARE CORRECT AND STAY. PRF-001 lists customer
+       authorization among them, and that is the authority. What changed is the
+       AVAILABILITY claim: no customer-authorization fact exists in the schema,
+       so Couranr cannot honour the method and has withdrawn it from new
+       requests (SELECTABLE_PROOF_METHODS). Deleting the entry would quietly
+       drop the doctrine; presenting it as available would promise something
+       nothing records. It is listed with its requirements and marked unavailable
+       — which is also the honest answer to "why can I not choose this?". */
     requires: [
       "Merchant permission",
       "Customer authorization",
@@ -154,6 +162,7 @@ const DELIVERY_PROOF = [
       "Weather suitability",
       "Photo, timestamp and location",
     ],
+    availableForNewDeliveries: false,
   },
 ];
 
@@ -404,6 +413,13 @@ export default function Page() {
           {DELIVERY_PROOF.map((d) => (
             <div key={d.method} className="cr-mkt-proof__group">
               <h3 className="cr-type-label">{d.method}</h3>
+              {d.availableForNewDeliveries === false ? (
+                <p className="cr-mkt-proof__unavailable">
+                  Not available for new deliveries yet. Couranr records a customer
+                  authorization before leaving anything at a door, and that is
+                  still being built.
+                </p>
+              ) : null}
               <ul className="cr-mkt-proof__requires">
                 {d.requires.map((r) => (
                   <li key={r}>{r}</li>

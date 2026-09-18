@@ -3326,6 +3326,16 @@
   color: var(--couranr-text);
 }
 
+/* An unavailable proof method still states its requirements — the doctrine is
+   correct and the capability is not built. Set apart from the requirement list
+   so it reads as a status rather than one more requirement. */
+.cr-mkt-proof__unavailable {
+  margin: 0 0 0.5rem;
+  color: var(--couranr-text-muted);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
 /* ── a navy band that stacks copy above content instead of beside a figure ─ */
 
 .cr-mkt-band__inner--stacked { display: block; }

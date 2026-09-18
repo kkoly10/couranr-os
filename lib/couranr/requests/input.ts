@@ -31,8 +31,34 @@ import { READINESS_STATES } from "./states";
  *     level is an error, not a fallback to "standard".
  */
 
+/**
+ * EVERY proof method that has ever been stored. Historical, and it must stay
+ * complete: deliveries already carry `leave_at_door`, driver execution has to
+ * read and complete them, and the Operations surfaces have to display them.
+ * Narrowing this would strand work in flight.
+ */
 export const PROOF_METHODS = ["photo_or_pin", "signature", "leave_at_door"] as const;
 export type ProofMethod = (typeof PROOF_METHODS)[number];
+
+/**
+ * What a NEW request may choose. A strict subset, and the distinction is the
+ * whole point of P10-015.
+ *
+ * PRF-001 requires a recorded CUSTOMER AUTHORIZATION for leave-at-door, and no
+ * such fact exists anywhere in the schema — `couranr_complete_leave_at_door_delivery`
+ * says so in its own header. So the method is real, it is stored on live rows,
+ * and it cannot honestly be offered again until that authorization exists.
+ *
+ * SUPPORTED-HISTORICAL and CURRENTLY-SELECTABLE are deliberately two lists.
+ * Collapsing them into one would force a choice between offering a method
+ * Couranr cannot honour and stranding the delivery already at pickup.
+ */
+export const SELECTABLE_PROOF_METHODS = ["photo_or_pin", "signature"] as const;
+export type SelectableProofMethod = (typeof SELECTABLE_PROOF_METHODS)[number];
+
+export function isSelectableProofMethod(v: unknown): v is SelectableProofMethod {
+  return typeof v === "string" && (SELECTABLE_PROOF_METHODS as readonly string[]).includes(v);
+}
 
 export const PAYER_TYPES = ["merchant", "customer"] as const;
 export type PayerType = (typeof PAYER_TYPES)[number];
@@ -107,6 +133,9 @@ export type InputErrorCode =
   | "additional_stops_unsupported"
   | "unknown_service_level"
   | "unknown_proof_method"
+  /* A real, historically-stored method that is not currently selectable.
+     Distinct from `unknown_proof_method` on purpose — see the gate below. */
+  | "proof_method_currently_unavailable"
   | "unknown_payer_type"
   | "unknown_readiness_state"
   | "unknown_source"
@@ -306,6 +335,21 @@ export function normalizeDeliveryRequestInput(raw: unknown): NormalizeResult {
   const proofMethod = (str(r.proofMethod) ?? "photo_or_pin") as ProofMethod;
   if (!PROOF_METHODS.includes(proofMethod)) {
     errors.push({ code: "unknown_proof_method", field: "proofMethod" });
+  } else if (!isSelectableProofMethod(proofMethod)) {
+    /* A REAL METHOD THAT IS NOT CURRENTLY OFFERED — reported distinctly from an
+       unknown one. `leave_at_door` is not a typo and not a hostile value: live
+       rows carry it and a delivery is at pickup under it right now. Reporting
+       it as `unknown_proof_method` would tell a merchant their input was
+       malformed, and would make a temporary withdrawal indistinguishable from a
+       client bug in a log.
+
+       This is the ONE server gate. Every new-request path — merchant create,
+       estimate, re-estimate, submit, a duplicate prefilled from an older
+       delivery, a saved preset, a stale browser tab, a direct API call —
+       reaches it through normalizeDeliveryRequestInput, so none of them can
+       mint a new leave-at-door request. Existing deliveries are untouched:
+       nothing here reads or rewrites a stored proof_method. */
+    errors.push({ code: "proof_method_currently_unavailable", field: "proofMethod" });
   }
 
   const payerType = (str(r.payerType) ?? "merchant") as PayerType;

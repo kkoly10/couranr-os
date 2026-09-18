@@ -32,9 +32,9 @@ proves every generated view matches its source.
 | Status | Count |
 |---|---|
 | `complete_verified` | 19 |
-| `partial` | 11 |
-| `not_started` | 10 |
+| `partial` | 12 |
 | `complete_pending_external` | 9 |
+| `not_started` | 9 |
 | `complete_unverified` | 1 |
 
 ## Screens — 68 rows against 68 canonical screens
@@ -88,7 +88,7 @@ Still rendering `ScreenPlaceholder` (5): `OPS-006` · `OPS-017` · `OPS-018` · 
 | `P12-001` | not_started | Execute full acceptance matrix |
 | `P12-002` | not_started | Complete controlled production canary |
 | `P10-007` | not_started | Apply UI-TYP-001 typography to the canonical public surface |
-| `P10-015` | not_started | Implement the customer authorization PRF-001 requires for leave-at-door |
+| `P10-015` | partial | Withdraw leave-at-door from new requests until customer authorization exists |
 
 ## Recorded blockers and deferments
 
@@ -104,7 +104,7 @@ Still rendering `ScreenPlaceholder` (5): `OPS-006` · `OPS-017` · `OPS-018` · 
 | `P10-011` | Provider not activated and no restricted key configured, so protected handoff is not sellable. |
 | `P10-013` | Owner approval required before any production migration is applied. |
 | `P10-014` | FLG-002 unresolved; owner approval required before applying the migration. |
-| `P10-015` | LIVE EXPOSURE, measured 2026-09-17: production holds 2 requests and 1 delivery with proof_method='leave_at_door', 0 delivered. leave_at_door is currently the ONLY proof_method present in production. So a merchant can select it today and a driver can complete it with no customer authorization recorded. Consumer Same Day is NOT exposed — it hardcodes photo_or_pin — and protected_handoff forbids leave-at-door outright. |
+| `P10-015` | INTAKE IS NOW FAIL-CLOSED: a new request naming leave_at_door is refused with proof_method_currently_unavailable by the single shared normalizer, which every create/estimate/submit path reaches, Operations included. RESIDUAL, MEASURED 2026-09-17 read-only: request 3727b5d5 (confirmed) already has delivery ba21db8e at at_pickup — grandfathered and completable. Request 4672dbfe (confirmed, ready, leave_at_door) has NO delivery, a CANCELLED payment obligation, zero promotional-credit plans and zero credits, so both delivery-creation paths (couranr_create_delivery_from_capture, ..._from_promotional_credit) are closed to it BY CURRENT DATA rather than structurally. If a credit were later applied or a new obligation captured, it could still mint an unauthorized leave-at-door delivery. Not mutated: that is an owner decision about a live merchant row. |
 
 ## Verification SHAs
 
@@ -122,8 +122,8 @@ each is in the ledger row itself — `test_evidence`, `browser_verified` and
 | `277982f2548e9b804c466121437c696b4ba52af4` | 1 screen | CUS-002 |
 | `32893e21401a6f056821c4caaa7858460c7356b8` | 1 screen | MER-001 |
 | `38ec5f27190301b39320c05164f28449ffed9054` | 2 screens | OPS-013, OPS-014 |
-| `3b056a5eca777b0c4d003f9eb653c33df490ce5e` | 1 work item | P10-015 |
 | `401b3eea5cd96bb09d224f3b113ba6091bba807d` | 18 work items, 24 screens | P0-001, P0-002, P1-001, P1-002, P1-003, P1-004, P2-002, P4-001, P5-002, P7-001, P7-002, P7-003, P8-003, P9-001, P9-002, P9-003, P9-004, P10-007, CUS-005, DRV-002, DRV-003, DRV-004, DRV-005, DRV-006, MER-002, MER-006, MER-007, OPS-002, OPS-004, OPS-006, OPS-008, OPS-011, OPS-015, OPS-016, OPS-017, OPS-018, OPS-019, OPS-020, OPS-021, PUB-002, PUB-003, PUB-005 |
+| `4e6ea3aa1ee93f797dd78eab82d6b39db1ce912b` | 1 work item | P10-015 |
 | `50f576e991dd249849d93206fc9e7cda330e71b7` | 1 screen | MER-005 |
 | `5723b3a22773f15d8d1b3e1d36bdf77b8341a6de` | 1 screen | DRV-001 |
 | `6d97bc132efdb7ed165dae11189077b2ea34d6f9` | 1 work item | P3-001 |
