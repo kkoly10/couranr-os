@@ -79,6 +79,28 @@ describe("buildPresetSeed", () => {
     expect(buildPresetSeed({ packageCount: -1 })).toEqual({});
   });
 
+  /*
+   * DEFENCE IN DEPTH. `fields.ts` strips these before a write and a jsonb CHECK
+   * refuses them in the database, so a body carrying one should be impossible.
+   * This asserts the third gate anyway: the seed builder reads five known keys
+   * and nothing else, so even a body that somehow held a weight, a value, a
+   * price or a vehicle could not put one on the delivery form. The cost of the
+   * assertion is a line; the cost of assuming is a preset that fixes a price.
+   */
+  it("cannot carry a forbidden field onto the form, whatever the body holds", () => {
+    const seed = buildPresetSeed({
+      commonItem: "Two dozen roses in a box",
+      weightLb: 42,
+      dimensions: { l: 10, w: 10, h: 10 },
+      declaredValueCents: 250_000,
+      vehicle: "cargo_van",
+      priceCents: 4_999,
+      loadingAvailable: true,
+      safetyCritical: true,
+    } as never);
+    expect(seed).toEqual({ pickupDescription: "Two dozen roses in a box" });
+  });
+
   it("drops an unrecognised payer preference instead of coercing it", () => {
     // Coercing to "merchant" would decide who pays on the merchant's behalf.
     expect(buildPresetSeed({ payerPreference: "split" })).toEqual({});
