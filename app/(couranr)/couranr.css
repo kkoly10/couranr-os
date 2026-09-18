@@ -3868,6 +3868,28 @@
    the text rather than centred in a row that is mostly empty beside it. */
 .cr-mkt-section[data-couranr-section="master-service-area"] .cr-mkt-cta-row { justify-content: flex-start; }
 
+/* PUB-012 TAKES ITS SUPPORTING COPY OFF THE LEGACY GREY.
+   `--couranr-text-muted` is #667085: 4.67:1 on this ground, clearing AA by
+   0.17 and reading washed out at the sizes this page is actually read at. On a
+   homepage whose entire job is routing a visitor to one of two products, the
+   sentences doing that routing are not supporting copy, and there is no rank
+   they needed grey to express — size and weight already carry it.
+
+   SCOPED TO THIS PAGE'S GOVERNED SECTIONS, deliberately, rather than changed on
+   `.cr-mkt-editorial__body` itself. That class serves the whole marketing
+   family, and promoting every body paragraph on every page is a bigger call
+   than this one. The nav links in shell.css are also left alone: muted is
+   their RESTING state and `--couranr-text` is their hover state, so darkening
+   them would erase an affordance rather than fix a legibility problem — and
+   that shell is shared with the merchant and operations apps.
+
+   After this, no wording inside PUB-012's three regions is muted. Hierarchy on
+   this page is carried entirely by size and weight. */
+[data-couranr-section="master-hero"] .cr-mkt-editorial__body,
+[data-couranr-section="master-service-area"] .cr-mkt-editorial__body {
+  color: var(--couranr-text);
+}
+
 /* THE FORK, DRAWN AS A FORK.
    This section asks the reader to self-select in about two seconds, and it was
    rendering as one grey column: two blocks of identical prose, identical
@@ -3972,7 +3994,7 @@
    heading rather than acting as a subtitle under it. */
 .cr-master-network__brand {
   margin: 0 0 var(--couranr-space-4);
-  color: var(--couranr-text-muted);
+  color: var(--couranr-text);
 }
 
 /* The product distinction, immediately under the question it answers. Body
@@ -4018,19 +4040,24 @@
    is set quieter than the rule it illustrates. */
 /* The edge case is a RULE — it is what stops the most common misreading of the
    whole section — so it carries full contrast for the same reason the statement
-   does. The example below it stays muted deliberately: it illustrates this rule
-   rather than stating it, and that rank is worth keeping now that it is the
-   only quiet thing left here. */
+   does. */
 .cr-master-network__edge {
   margin: var(--couranr-space-8) 0 0;
   max-width: 62ch;
   color: var(--couranr-text);
 }
 
+/* OFF MUTED TOO, by owner decision. An earlier pass kept this one grey so the
+   section retained a single deliberate step down — the example illustrates the
+   rule above rather than stating it. The owner's call is that legibility wins
+   over that rank, and it is a defensible trade: the example is the most
+   concrete sentence in the section and is the one a skimmer is most likely to
+   actually read. Rank is still carried, by position and by the shorter measure
+   of the rule above it. */
 .cr-master-network__example {
   margin: var(--couranr-space-3) 0 0;
   max-width: 62ch;
-  color: var(--couranr-text-muted);
+  color: var(--couranr-text);
 }
 
 /* ── PUB-013, Couranr Same Day ──────────────────────────────────────────── */
