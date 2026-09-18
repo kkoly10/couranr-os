@@ -345,3 +345,66 @@ export async function setPresetArchived(params: {
   if (isPresetFailure(r)) return r;
   return { ok: true, value: writeResult(r.value, []) };
 }
+
+/**
+ * Resolve ONE preset for application to a delivery form.
+ *
+ * Separate from `listPresets` on purpose. The list populates a picker; this
+ * answers the different question asked a moment later — "is this preset still
+ * mine, still available, and what does it say RIGHT NOW" — and it is the only
+ * answer the form is allowed to act on.
+ *
+ * Three things follow from resolving here rather than trusting the picker's copy:
+ *
+ *   * TENANCY. The row is fetched under the caller's business account, so a
+ *     guessed or borrowed id belongs to nobody and returns not_found. The
+ *     caller's membership is verified before this runs; this is the second
+ *     lock, not the only one.
+ *   * FRESHNESS. A tab left open across an edit holds an old body. This reads
+ *     the current version, so the merchant applies what the preset says today.
+ *   * AVAILABILITY. An archived preset resolves to not_found rather than
+ *     quietly applying, because "nothing happened" is the worst answer a
+ *     button can give.
+ *
+ * `not_found` deliberately covers all three of "no such id", "not yours" and
+ * "archived". Distinguishing them would confirm that somebody else's id exists.
+ */
+export async function resolvePresetForApplication(params: {
+  businessAccountId: string;
+  presetId: string;
+}): Promise<PresetResult<{ id: string; name: string; version: number; body: unknown }>> {
+  const op = "resolvePresetForApplication";
+
+  const row = await supabaseAdmin
+    .from("couranr_merchant_presets")
+    .select("id,name,body,version,archived_at")
+    .eq("business_account_id", params.businessAccountId)
+    .eq("id", params.presetId)
+    .is("archived_at", null)
+    .maybeSingle();
+
+  if (row.error) {
+    return fail({
+      operation: op,
+      code: "internal",
+      detail: { lookup: "couranr_merchant_presets", error: row.error },
+    });
+  }
+  if (!row.data) {
+    return fail({
+      operation: op,
+      code: "not_found",
+      detail: { reason: "absent, not owned, or archived" },
+    });
+  }
+
+  return {
+    ok: true,
+    value: {
+      id: String(row.data.id),
+      name: String(row.data.name ?? ""),
+      version: Number(row.data.version ?? 0),
+      body: row.data.body ?? {},
+    },
+  };
+}

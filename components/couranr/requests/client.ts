@@ -583,3 +583,41 @@ export function submitOperationsDeliveryRequest(input: {
     }
   );
 }
+
+/**
+ * Presets a merchant may start a delivery from.
+ *
+ * Fetched when the picker OPENS rather than when the page mounts. A form can sit
+ * open for a long time, and a list captured at mount would keep offering a
+ * preset that has since been archived or edited — the merchant would pick
+ * something that no longer exists and get either nothing or yesterday's values.
+ */
+export type ApplicablePresetOption = {
+  id: string;
+  name: string;
+  version: number;
+};
+
+export function fetchPresetsForDelivery(input: { businessAccountId: string }) {
+  return call<{ presets: { mine: ApplicablePresetOption[] } }>(
+    `/api/couranr/merchant/presets?businessAccountId=${encodeURIComponent(input.businessAccountId)}`
+  );
+}
+
+/**
+ * Resolve ONE preset at the moment it is applied.
+ *
+ * The body the form fills from comes from here, never from the picker's copy:
+ * the server re-checks that the preset is this business's and still available,
+ * and returns the CURRENT version. A stale tab therefore applies today's
+ * preset or is refused — it cannot apply yesterday's.
+ */
+export function fetchPresetForApplication(input: {
+  businessAccountId: string;
+  presetId: string;
+}) {
+  return call<{ preset: { id: string; name: string; version: number; body: unknown } }>(
+    `/api/couranr/merchant/presets?businessAccountId=${encodeURIComponent(input.businessAccountId)}` +
+      `&presetId=${encodeURIComponent(input.presetId)}`
+  );
+}
