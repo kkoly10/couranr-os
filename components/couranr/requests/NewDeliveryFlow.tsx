@@ -510,6 +510,13 @@ export function NewDeliveryFlow({
         pickupPackageCount,
         pickupHandlingNotes,
         proofMethodTouched,
+        /* Only the OPERATIONS form asks for a description outright; on the
+           merchant form Smart Intake owns it, so a preset has nowhere honest to
+           put one. Today this is always false, because the card above renders
+           on the merchant flow only — it is written as the real condition
+           rather than a literal so that enabling presets for Operations does
+           not silently start filling a field that flow does not have. */
+        pickupDescriptionEditable: isOperations,
       });
 
       const filled: string[] = [];
@@ -544,7 +551,7 @@ export function NewDeliveryFlow({
         notApplied: notApplied.map((k) => PRESET_FIELD_LABEL[k]),
       };
     },
-    [pickupDescription, pickupPackageCount, pickupHandlingNotes, proofMethodTouched],
+    [pickupDescription, pickupPackageCount, pickupHandlingNotes, proofMethodTouched, isOperations],
   );
 
   if (accounts === null && accountsError) {
@@ -778,7 +785,17 @@ export function NewDeliveryFlow({
           </Grid>
         </Card>
 
-        {businessAccountId ? (
+        {/*
+          MERCHANT FLOW ONLY. A preset belongs to a business, and the route
+          resolves it through the same membership authority everything else
+          uses — so it answers only to a MEMBER of that business. Operations
+          creates deliveries FOR businesses it is generally not a member of,
+          which would make this a button that refuses on every normal
+          operations delivery. Offering it there and letting it fail is worse
+          than not offering it; extending presets to Operations is an authority
+          decision about whose presets staff may spend, not a UI change.
+        */}
+        {!isOperations && businessAccountId ? (
           <PresetStartCard businessAccountId={businessAccountId} onApply={applyPreset} />
         ) : null}
 

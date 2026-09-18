@@ -598,8 +598,16 @@ export type ApplicablePresetOption = {
   version: number;
 };
 
+/**
+ * The GET route answers with the whole presets VIEW under `presets`, and the
+ * merchant's own rows are the `presets` inside it — the outer key names the
+ * payload, the inner one names the collection. The sibling `suggestions` are
+ * Couranr's recommendations for the merchant's categories, which are NOT
+ * offered here: a delivery starts from something the merchant saved, not from
+ * something nobody has adopted yet.
+ */
 export function fetchPresetsForDelivery(input: { businessAccountId: string }) {
-  return call<{ presets: { mine: ApplicablePresetOption[] } }>(
+  return call<{ presets: { presets: ApplicablePresetOption[] } }>(
     `/api/couranr/merchant/presets?businessAccountId=${encodeURIComponent(input.businessAccountId)}`
   );
 }

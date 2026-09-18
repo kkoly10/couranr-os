@@ -21,6 +21,8 @@ const EMPTY_FORM = {
   pickupPackageCount: "",
   pickupHandlingNotes: "",
   proofMethodTouched: false,
+  // The OPERATIONS form, which genuinely asks for a description.
+  pickupDescriptionEditable: true,
 };
 
 const FULL_BODY = {
@@ -167,6 +169,7 @@ describe("planPresetApplication — fill empty only", () => {
       pickupPackageCount: first.apply.pickupPackageCount ?? "",
       pickupHandlingNotes: first.apply.pickupHandlingNotes ?? "",
       proofMethodTouched: first.apply.proofMethod !== undefined,
+      pickupDescriptionEditable: EMPTY_FORM.pickupDescriptionEditable,
     };
     expect(planPresetApplication(seed, after).apply).toEqual({});
   });
@@ -178,5 +181,26 @@ describe("planPresetApplication — fill empty only", () => {
     expect(Object.keys(PRESET_FIELD_LABEL).sort()).toEqual(
       ["payerType", "pickupDescription", "pickupHandlingNotes", "pickupPackageCount", "proofMethod"],
     );
+  });
+
+  /*
+   * The merchant form has no description field at all - Smart Intake owns it,
+   * one way. Filling `pickupDescription` there would write a value the merchant
+   * can neither see nor edit, and Smart Intake would overwrite it as soon as
+   * they described the shipment. The existing duplicate-a-delivery seed reached
+   * the same conclusion and seeds every other field but this one.
+   */
+  it("does not fill a description when the form has no field for one", () => {
+    const { apply, skipped, notApplied } = planPresetApplication(buildPresetSeed(FULL_BODY), {
+      ...EMPTY_FORM,
+      pickupDescriptionEditable: false,
+    });
+    expect(apply.pickupDescription).toBeUndefined();
+    expect(notApplied).toContain("pickupDescription");
+    // Not "you already entered this" - the merchant entered nothing.
+    expect(skipped).not.toContain("pickupDescription");
+    // …and the fields that DO have a home are still filled.
+    expect(apply.pickupPackageCount).toBe("3");
+    expect(apply.pickupHandlingNotes).toBe("Keep upright");
   });
 });

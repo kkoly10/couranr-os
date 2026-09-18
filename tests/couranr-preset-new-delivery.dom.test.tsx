@@ -46,8 +46,16 @@ import { NewDeliveryFlow } from "@/components/couranr/requests/NewDeliveryFlow";
 
 const PRESET_ID = "22222222-2222-4222-8222-222222222222";
 
+/*
+ * THE REAL ROUTE SHAPE. The GET answers with the presets VIEW under `presets`,
+ * and the merchant's own rows are the `presets` inside it. An earlier version of
+ * this mock invented `mine`, which made every test here pass against a payload
+ * the server never sends — the picker was empty in a real browser and green
+ * here. Mocks are only worth their cost when they are the shape the server
+ * actually returns.
+ */
 function listOk(name = "Weekly florist run") {
-  return { ok: true, value: { presets: { mine: [{ id: PRESET_ID, name, version: 3 }] } } };
+  return { ok: true, value: { presets: { presets: [{ id: PRESET_ID, name, version: 3 }] } } };
 }
 function resolveOk(body: Record<string, unknown>, name = "Weekly florist run") {
   return { ok: true, value: { preset: { id: PRESET_ID, name, version: 3, body } } };
@@ -91,7 +99,11 @@ describe("preset application in New Delivery", () => {
     await user.click(screen.getByTestId("preset-start-apply"));
     // The picker's copy is never what fills the form.
     await waitFor(() => expect(h.calls).toEqual(["list", "resolve"]));
-    expect((await screen.findByTestId("preset-start-filled")).textContent ?? "").toMatch(/What to look for/i);
+    // This is the MERCHANT form, so the description has no field and is not
+    // among what was filled - see the not-applied assertions below.
+    expect((await screen.findByTestId("preset-start-filled")).textContent ?? "").toMatch(
+      /Package count/i,
+    );
   });
 
   it("names what it filled in merchant language, never field names", async () => {
@@ -145,7 +157,7 @@ describe("preset application in New Delivery", () => {
   });
 
   it("shows an honest empty state rather than pretending presets failed to load", async () => {
-    h.list = { ok: true, value: { presets: { mine: [] } } };
+    h.list = { ok: true, value: { presets: { presets: [] } } };
     const user = userEvent.setup();
     render(<NewDeliveryFlow />);
     await user.click(await screen.findByTestId("preset-start-open"));
@@ -175,7 +187,7 @@ describe("preset application in New Delivery", () => {
     await user.click(screen.getByTestId("preset-start-apply"));
 
     const notApplied = await screen.findByTestId("preset-start-not-applied");
-    expect(notApplied.textContent ?? "").toMatch(/Not filled in: Who pays/i);
+    expect(notApplied.textContent ?? "").toMatch(/Who pays/i);
     // And it must not appear in the "you entered this" line.
     const kept = screen.queryByTestId("preset-start-kept");
     expect(kept?.textContent ?? "").not.toMatch(/Who pays/i);
@@ -196,5 +208,26 @@ describe("preset application in New Delivery", () => {
 
     expect(await screen.findByText(/archived or removed/i)).toBeTruthy();
     await waitFor(() => expect(screen.queryByTestId("preset-start-filled")).toBeNull());
+  });
+
+  /*
+   * The merchant form has no "what to look for" field - Smart Intake owns the
+   * description. A preset that claimed to fill it would be pointing at a box
+   * that is not on screen, and Smart Intake would overwrite the value anyway.
+   */
+  it("does not claim to fill a description the merchant form does not have", async () => {
+    const user = userEvent.setup();
+    render(<NewDeliveryFlow />);
+    await openPicker(user);
+    await user.selectOptions(screen.getByTestId("preset-start-select"), PRESET_ID);
+    await user.click(screen.getByTestId("preset-start-apply"));
+
+    const filled = await screen.findByTestId("preset-start-filled");
+    expect(filled.textContent ?? "").not.toMatch(/What to look for/i);
+    const notApplied = await screen.findByTestId("preset-start-not-applied");
+    expect(notApplied.textContent ?? "").toMatch(/What to look for/i);
+    // What DOES have a home on this form is still filled.
+    expect(filled.textContent ?? "").toMatch(/Package count/i);
+    expect(filled.textContent ?? "").toMatch(/Handling note/i);
   });
 });

@@ -23,11 +23,23 @@
  * A preset may suggest seven things (ACP-025). Five have somewhere legitimate
  * to go on the current New Delivery form:
  *
- *   commonItem      -> pickupDescription   ("Tell the driver what to look for")
+ *   commonItem      -> pickupDescription   (OPERATIONS form only - see below)
  *   packageCount    -> pickupPackageCount
  *   handling        -> pickupHandlingNotes
  *   proofMethod     -> proofMethod         (through the EXISTING withdrawn path)
  *   payerPreference -> payerType
+ *
+ * `commonItem` has a home on only ONE of the two forms this flow renders. The
+ * operations form asks "What should the driver look for?" outright; the
+ * merchant form does not - there, Smart Intake owns the description and pushes
+ * it down through `onDescriptionChange`, one way. Writing `pickupDescription`
+ * on the merchant form would set a value the merchant cannot see or edit, claim
+ * in the outcome that something was filled when nothing visibly changed, and
+ * then have Smart Intake overwrite it the moment they describe the shipment.
+ * The existing duplicate-a-delivery seed reached the same conclusion and seeds
+ * every other field but this one. So the caller says whether the field is real,
+ * and when it is not the value is reported as not applied rather than written
+ * somewhere invisible.
  *
  * `vehicleCapabilities` and `requiredQuestions` have no field on that form, and
  * this module does not invent one. Adding UI so a preset value has a home would
@@ -149,6 +161,11 @@ export function planPresetApplication(
     pickupPackageCount: string;
     pickupHandlingNotes: string;
     proofMethodTouched: boolean;
+    /**
+     * Whether "What should the driver look for?" is actually on screen. False
+     * on the merchant form, where Smart Intake owns the description.
+     */
+    pickupDescriptionEditable: boolean;
   },
 ): {
   apply: PresetSeed;
@@ -165,7 +182,12 @@ export function planPresetApplication(
     else apply[key] = seed[key];
   };
 
-  take("pickupDescription", current.pickupDescription.trim() !== "");
+  if (seed.pickupDescription !== undefined && !current.pickupDescriptionEditable) {
+    // No field to fill. Reported, not written somewhere the merchant cannot see.
+    notApplied.push("pickupDescription");
+  } else {
+    take("pickupDescription", current.pickupDescription.trim() !== "");
+  }
   take("pickupPackageCount", current.pickupPackageCount.trim() !== "");
   take("pickupHandlingNotes", current.pickupHandlingNotes.trim() !== "");
   take("proofMethod", current.proofMethodTouched);

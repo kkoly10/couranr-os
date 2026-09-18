@@ -80,7 +80,7 @@ export function PresetStartCard({
         setFailure(r);
         return;
       }
-      setOptions(r.value.presets.mine ?? []);
+      setOptions(r.value.presets.presets ?? []);
     });
   }, [businessAccountId]);
 
@@ -204,8 +204,8 @@ export function PresetStartCard({
               ) : null}
               {outcome.notApplied.length > 0 ? (
                 <Text muted data-testid="preset-start-not-applied">
-                  Not filled in: {outcome.notApplied.join(", ")}. These are always set on the
-                  delivery itself.
+                  Not filled in: {outcome.notApplied.join(", ")}. You enter those directly on
+                  this form.
                 </Text>
               ) : null}
             </Stack>
