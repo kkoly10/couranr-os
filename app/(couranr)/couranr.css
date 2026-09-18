@@ -3892,14 +3892,20 @@
      rgba rather than the tokens because this file has no color-mix and derives
      every alpha variant the same way (see --couranr-shadow-*); the values are
      --couranr-gold #f4b740 and --couranr-navy #0d1525, and a change to either
-     token must be mirrored here. Alpha is capped at 0.1 so body text keeps its
-     full contrast ratio over the wash. */
+     token must be mirrored here.
+
+     STRENGTH IS BOUNDED BY MEASURED CONTRAST, not by taste. At these values the
+     warm end resolves to about #f6ecd4 and the cool end to about #dbdddc;
+     `--couranr-text` measures ~15:1 and ~13:1 on them, far above AA. What the
+     ceiling really protects is MUTED text, which would fall to ~3.6:1 on the
+     cool end and fail — so nothing inside this panel is allowed to stay muted,
+     and the points below were moved off it for exactly this reason. */
   background-image: linear-gradient(
     180deg,
-    rgba(244, 183, 64, 0.1) 0%,
-    rgba(244, 183, 64, 0) 38%,
-    rgba(13, 21, 37, 0) 62%,
-    rgba(13, 21, 37, 0.06) 100%
+    rgba(244, 183, 64, 0.18) 0%,
+    rgba(244, 183, 64, 0) 40%,
+    rgba(13, 21, 37, 0) 60%,
+    rgba(13, 21, 37, 0.12) 100%
   );
 }
 
@@ -3912,10 +3918,10 @@
        column, navy over the Business one. */
     background-image: linear-gradient(
       90deg,
-      rgba(244, 183, 64, 0.1) 0%,
+      rgba(244, 183, 64, 0.18) 0%,
       rgba(244, 183, 64, 0) 42%,
       rgba(13, 21, 37, 0) 58%,
-      rgba(13, 21, 37, 0.06) 100%
+      rgba(13, 21, 37, 0.12) 100%
     );
   }
 }
@@ -3930,7 +3936,7 @@
   display: grid;
   gap: var(--couranr-space-2);
   padding-left: var(--couranr-space-5);
-  border-left: 3px solid var(--couranr-border);
+  border-left: 4px solid var(--couranr-border);
 }
 
 .cr-master-network__item--sameday { border-left-color: var(--couranr-gold); }
@@ -3972,27 +3978,53 @@
 /* The product distinction, immediately under the question it answers. Body
    measure rather than the section's 24ch statement measure — it is two
    sentences that must read as one thought. */
-.cr-master-network__statement { max-width: 54ch; }
+/* FULL CONTRAST, OVERRIDING `.cr-mkt-editorial__body`'s muted default. This
+   sentence is the ANSWER to the question directly above it — the one line that
+   tells a reader which product is theirs — and it was inheriting 4.67:1 grey
+   from a shared body class. Overridden here rather than on
+   `.cr-mkt-editorial__body` itself, because that class is used across the
+   marketing family and this is a judgement about THIS sentence's rank, not
+   about body copy everywhere. */
+.cr-master-network__statement {
+  max-width: 54ch;
+  color: var(--couranr-text);
+}
 
 /* The points under each product. A plain marker list, indented under its
    definition, NOT four checkmark tiles — §28 bans the icon-tile grammar and
    this is exactly where a two-audience homepage reaches for it. */
+/* THE POINTS WERE THE FAINT PART. They were `--couranr-text-muted` at
+   `--couranr-text-sm` — 4.67:1 on this ground, which clears AA by 0.17 and
+   reads washed out at 14px on a phone, which is where most of this page is
+   read. Two changes: full `--couranr-text`, and one step up the scale to 16px.
+
+   HIERARCHY NOW COMES FROM SIZE, NOT FROM FADING THE TEXT. The term is 22px
+   bold and the description is lead size, so the points still sit third without
+   having to be greyed to get there — and greying was the more expensive way to
+   buy that rank, because it spent legibility to do it. It also could not
+   survive the stronger wash above: muted on the cool end measures ~3.6:1. */
 .cr-master-network__points {
   margin: var(--couranr-space-3) 0 0;
   padding-left: var(--couranr-space-5);
   display: grid;
-  gap: var(--couranr-space-1);
-  font-size: var(--couranr-text-sm);
-  color: var(--couranr-text-muted);
+  gap: var(--couranr-space-2);
+  font-size: var(--couranr-text-base);
+  color: var(--couranr-text);
 }
 
 /* The two sentences that stop the most common misreading — that owning a
    business routes you to For Business. They close the section rather than
    sitting beside the columns, because they qualify BOTH of them. The example
    is set quieter than the rule it illustrates. */
+/* The edge case is a RULE — it is what stops the most common misreading of the
+   whole section — so it carries full contrast for the same reason the statement
+   does. The example below it stays muted deliberately: it illustrates this rule
+   rather than stating it, and that rank is worth keeping now that it is the
+   only quiet thing left here. */
 .cr-master-network__edge {
   margin: var(--couranr-space-8) 0 0;
   max-width: 62ch;
+  color: var(--couranr-text);
 }
 
 .cr-master-network__example {
