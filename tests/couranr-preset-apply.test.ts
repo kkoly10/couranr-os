@@ -8,6 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  withdrawnProofMethodFromBody,
   APPLICABLE_PRESET_FIELDS,
   PRESET_FIELD_LABEL,
   UNAPPLIED_PRESET_FIELDS,
@@ -107,12 +108,36 @@ describe("buildPresetSeed", () => {
     expect(buildPresetSeed({ payerPreference: "merchant" })).toEqual({ payerType: "merchant" });
   });
 
-  it("passes the proof method through verbatim, withdrawn or not", () => {
-    // Deliberately NOT validated here — the form's existing withdrawn-method
-    // path owns that. A second validator is the defect this avoids.
-    expect(buildPresetSeed({ proofMethod: "leave_at_door" })).toEqual({
-      proofMethod: "leave_at_door",
+  it("keeps a selectable proof method", () => {
+    expect(buildPresetSeed({ proofMethod: "signature" })).toEqual({ proofMethod: "signature" });
+    expect(buildPresetSeed({ proofMethod: "photo_or_pin" })).toEqual({
+      proofMethod: "photo_or_pin",
     });
+  });
+
+  it("CANNOT emit a withdrawn proof method, whatever the stored body says", () => {
+    /* The earlier shape passed this through verbatim and left the check to the
+       form. That reasoning was half right: this module must not become a SECOND
+       proof-method validator, and it still is not one — it calls
+       `isSelectableProofMethod`, the same authority the intake gate, the form's
+       select and the database backstop read.
+
+       What it must not do is leave the rule bound to a call site. A seed value
+       goes straight into form state, so a future second consumer of
+       `planPresetApplication` would have put a withdrawn method on a form by
+       simply forgetting to check, and forgetting is silent. The seed type is
+       now `SelectableProofMethod`, so this cannot compile, let alone run. */
+    expect(buildPresetSeed({ proofMethod: "leave_at_door" })).toEqual({});
+  });
+
+  it("still surfaces the withdrawn method, so the merchant is told", () => {
+    /* Dropping it silently is the other defect: the merchant chose that method
+       once and would otherwise just find it missing from the form. */
+    expect(withdrawnProofMethodFromBody({ proofMethod: "leave_at_door" })).toBe("leave_at_door");
+    expect(withdrawnProofMethodFromBody({ proofMethod: "signature" })).toBeNull();
+    expect(withdrawnProofMethodFromBody({ proofMethod: "   " })).toBeNull();
+    expect(withdrawnProofMethodFromBody(null)).toBeNull();
+    expect(withdrawnProofMethodFromBody({})).toBeNull();
   });
 });
 

@@ -66,13 +66,22 @@
  */
 
 import type { PresetBody } from "./fields";
+import {
+  isSelectableProofMethod,
+  type SelectableProofMethod,
+} from "@/lib/couranr/requests/input";
 
 /** The subset of a preset body that the current New Delivery form can accept. */
 export type PresetSeed = Partial<{
   pickupDescription: string;
   pickupPackageCount: string;
   pickupHandlingNotes: string;
-  proofMethod: string;
+  /* NARROWED ON PURPOSE. A seed value goes straight into form state, so the
+     type is the place to stop a withdrawn method rather than the call site:
+     `string` here meant every future caller had to remember the check, and
+     forgetting it is silent. `buildPresetSeed` is the only producer and it
+     filters through the ONE authority below. */
+  proofMethod: SelectableProofMethod;
   payerType: "merchant" | "customer";
 }>;
 
@@ -209,12 +218,22 @@ export function buildPresetSeed(body: PresetBody | null | undefined): PresetSeed
   if (typeof body.handling === "string" && body.handling.trim() !== "") {
     seed.pickupHandlingNotes = body.handling.trim();
   }
-  // Passed through verbatim. Whether it is still SELECTABLE is not this
-  // module's question — the form's existing withdrawn-method path owns that,
-  // and duplicating the check here would create the second proof-method
-  // validator this build is explicitly not allowed to have.
-  if (typeof body.proofMethod === "string" && body.proofMethod.trim() !== "") {
-    seed.proofMethod = body.proofMethod.trim();
+  /* FILTERED, NOT VALIDATED. The original note here was right that this module
+     must not become a second proof-method validator — this build has been bitten
+     by two-authority drift before. So it does not implement a check: it CALLS
+     `isSelectableProofMethod`, the single authority the intake gate, the form's
+     select and the database backstop all use. One rule, read from one place.
+
+     What changed is where the rule binds. It used to bind at the call site,
+     which meant a future second consumer of `planPresetApplication` would put a
+     withdrawn method into form state by simply not remembering to check. Now a
+     non-selectable value cannot enter a `PresetSeed` at all, and the type says
+     so. `withdrawnProofMethodFromBody` below keeps the merchant informed, which
+     is the half that must not be lost: silently changing someone's saved proof
+     method is its own defect. The preset itself is never rewritten. */
+  if (typeof body.proofMethod === "string") {
+    const raw = body.proofMethod.trim();
+    if (isSelectableProofMethod(raw)) seed.proofMethod = raw;
   }
   // A payer preference outside the two the form models is dropped rather than
   // coerced: silently turning an unrecognised value into "merchant" would
@@ -223,6 +242,23 @@ export function buildPresetSeed(body: PresetBody | null | undefined): PresetSeed
     seed.payerType = body.payerPreference as "merchant" | "customer";
   }
   return seed;
+}
+
+/**
+ * The proof method a saved preset holds that Couranr no longer offers, if any.
+ *
+ * `buildPresetSeed` drops it, because a withdrawn method must never reach form
+ * state. Dropping it silently would be the other defect — the merchant chose
+ * that method once and is entitled to know it is not being used — so the value
+ * is surfaced here for the caller to report. Same single authority as the
+ * builder; this is a read of the body, not a second rule.
+ */
+export function withdrawnProofMethodFromBody(
+  body: PresetBody | null | undefined,
+): string | null {
+  const raw = typeof body?.proofMethod === "string" ? body.proofMethod.trim() : "";
+  if (raw === "" || isSelectableProofMethod(raw)) return null;
+  return raw;
 }
 
 /**

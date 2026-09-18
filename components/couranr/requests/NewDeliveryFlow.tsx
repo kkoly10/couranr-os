@@ -32,6 +32,7 @@ import { PresetStartCard, type PresetApplicationOutcome, type ResolvedPreset } f
 import {
   PRESET_FIELD_LABEL,
   buildPresetSeed,
+  withdrawnProofMethodFromBody,
   describeUnapplied,
   planPresetApplication,
   type PresetSeed,
@@ -506,6 +507,7 @@ export function NewDeliveryFlow({
   const applyPreset = React.useCallback(
     (preset: ResolvedPreset): PresetApplicationOutcome => {
       const seed: PresetSeed = buildPresetSeed(preset.body as PresetBody);
+      const withdrawnFromPreset = withdrawnProofMethodFromBody(preset.body as PresetBody);
       const { apply, skipped, notApplied } = planPresetApplication(seed, {
         pickupDescription,
         pickupPackageCount,
@@ -534,13 +536,21 @@ export function NewDeliveryFlow({
         filled.push(PRESET_FIELD_LABEL.pickupHandlingNotes);
       }
       if (apply.proofMethod !== undefined) {
-        if (isSelectableProofMethod(apply.proofMethod)) {
-          setProofMethod(apply.proofMethod);
-          setWithdrawnProofMethod(null);
-        } else {
-          setProofMethod("photo_or_pin");
-          setWithdrawnProofMethod(apply.proofMethod);
-        }
+        /* Selectable by TYPE now: `buildPresetSeed` cannot emit anything else,
+           so there is no branch here to get wrong. */
+        setProofMethod(apply.proofMethod);
+        setWithdrawnProofMethod(null);
+        setProofMethodTouched(true);
+        filled.push(PRESET_FIELD_LABEL.proofMethod);
+      } else if (withdrawnFromPreset !== null && !proofMethodTouched) {
+        /* The preset holds a method Couranr no longer offers. The seed dropped
+           it so it can never reach form state; saying nothing would be the
+           other defect, because the merchant chose that method once and would
+           otherwise just find it missing. Skipped when they have already picked
+           a proof method themselves, on the same fill-empty-only rule as every
+           other field. */
+        setProofMethod("photo_or_pin");
+        setWithdrawnProofMethod(withdrawnFromPreset);
         setProofMethodTouched(true);
         filled.push(PRESET_FIELD_LABEL.proofMethod);
       }
