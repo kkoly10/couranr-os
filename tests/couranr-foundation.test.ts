@@ -203,3 +203,60 @@ describe("internal preview gate", () => {
     restore();
   });
 });
+
+
+/**
+ * The master-network wash is written in rgba, because this stylesheet has no
+ * `color-mix` and derives every alpha variant the same way its shadow tokens
+ * do. That is consistent, but it means the gradient holds a COPY of two brand
+ * colours rather than a reference to them — so a future change to
+ * `--couranr-gold` or `--couranr-navy` would leave the homepage washed in the
+ * old palette with nothing to say so.
+ *
+ * The CSS carries a comment telling the next editor to mirror the change. A
+ * comment is not a mechanism. This is.
+ */
+describe("the master-network gradient tracks its brand tokens", () => {
+  const rgbOf = (hex: string) => {
+    const h = hex.replace("#", "");
+    return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16));
+  };
+  const tokenHex = (name: string) => {
+    const m = new RegExp(`--couranr-${name}:\\s*(#[0-9a-fA-F]{6})`).exec(CSS);
+    expect(m, `--couranr-${name} is not defined`).toBeTruthy();
+    return m![1];
+  };
+  /* The two gradients — stacked and side-by-side — and nothing else. */
+  const washes = () => {
+    const start = CSS.indexOf(".cr-master-network {");
+    const end = CSS.indexOf(".cr-master-network__item {");
+    expect(start, "the master-network block moved").toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    return CSS.slice(start, end);
+  };
+
+  it("paints the warm end in --couranr-gold and the cool end in --couranr-navy", () => {
+    const wash = washes();
+    const [gr, gg, gb] = rgbOf(tokenHex("gold"));
+    const [nr, ng, nb] = rgbOf(tokenHex("navy"));
+    /* Read the triplets OUT of the CSS rather than asserting it contains a
+       string this test also hardcodes — that passes when both are wrong. */
+    const triplets = [...wash.matchAll(/rgba\((\d+),\s*(\d+),\s*(\d+),/g)].map((m) =>
+      [Number(m[1]), Number(m[2]), Number(m[3])].join(","),
+    );
+    expect(triplets.length, "expected both gradients to be present").toBeGreaterThanOrEqual(4);
+    const distinct = [...new Set(triplets)].sort();
+    expect(distinct).toEqual([[gr, gg, gb].join(","), [nr, ng, nb].join(",")].sort());
+  });
+
+  it("keeps every wash stop faint enough for body text to clear AA over it", () => {
+    /* The ceiling is not taste. `--couranr-text-muted` is the weakest thing the
+       surface still permits anywhere, and the wash must not push a reader below
+       the AA floor. 0.2 leaves the navy end above 4.5:1 with room to spare. */
+    const alphas = [...washes().matchAll(/rgba\(\d+,\s*\d+,\s*\d+,\s*([\d.]+)\)/g)].map((m) =>
+      Number(m[1]),
+    );
+    expect(alphas.length).toBeGreaterThan(0);
+    for (const a of alphas) expect(a).toBeLessThanOrEqual(0.2);
+  });
+});
