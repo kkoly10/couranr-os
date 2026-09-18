@@ -105,9 +105,21 @@ const UNAPPLIED_PRESET_FIELD_LABEL: Readonly<Record<string, string>> = {
   requiredQuestions: "Questions to ask",
 };
 
-/** Why a seed field the form COULD hold was still not applied. */
-const SEED_NOT_APPLIED_REASON: Readonly<Partial<Record<keyof PresetSeed, string>>> = {
+/**
+ * Why a seed field the form COULD hold was still not applied.
+ *
+ * EXHAUSTIVE on purpose — not `Partial`. Only two of these can reach the
+ * not-applied bucket today, but a rule that adds a third would otherwise
+ * compile happily and show the merchant a generic sentence invented to cover
+ * the gap. Requiring the reason here makes that a type error at the moment the
+ * rule changes, which is the same bargain the seven-field accounting test
+ * makes: a field with nowhere to go must fail loudly, never quietly.
+ */
+const SEED_NOT_APPLIED_REASON: Readonly<Record<keyof PresetSeed, string>> = {
   pickupDescription: "You describe the shipment in your own words on this form.",
+  pickupPackageCount: "You set the package count on this form.",
+  pickupHandlingNotes: "You write the handling note on this form.",
+  proofMethod: "You choose proof of delivery on this form.",
   payerType: "You choose who pays on this form.",
 };
 
@@ -129,7 +141,7 @@ export function describeUnapplied(
 ): UnappliedField[] {
   const out: UnappliedField[] = notApplied.map((k) => ({
     label: PRESET_FIELD_LABEL[k],
-    reason: SEED_NOT_APPLIED_REASON[k] ?? "This form asks for it directly.",
+    reason: SEED_NOT_APPLIED_REASON[k],
   }));
 
   if (body && typeof body === "object") {
