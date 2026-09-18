@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import {
   PROOF_METHODS,
@@ -183,5 +183,104 @@ describe("what must NOT have changed", () => {
     const send = read("lib/couranr/consumer/send.ts");
     expect(send).toMatch(/p_proof_method:\s*"photo_or_pin"/);
     expect(send).not.toMatch(/leave_at_door/);
+  });
+});
+
+/* ════════════ the HISTORICAL CONVERSION gap (P10-015, second half) ═══════ */
+
+describe("a historical request cannot MATERIALIZE a withdrawn-method delivery", () => {
+  /*
+   * Withdrawing leave_at_door from INTAKE did not close the whole gap. A request
+   * stored before the withdrawal keeps its frozen proof method, and both
+   * settlement paths copy it onto a brand new delivery. Production carries
+   * exactly such a row: confirmed, ready, leave_at_door, no delivery.
+   *
+   * BEHAVIOUR is proved by execution against real PostgreSQL in
+   * e2e/disposable/withdrawnProofConversion.mjs — including that the
+   * grandfathered delivery is still returned idempotently and that moving the
+   * guard one step earlier breaks it. What THIS file proves is that every entry
+   * point is wired to the shared guard, which a SQL probe cannot see.
+   */
+  const FULFILLMENT = read("lib/couranr/fulfillment/commands.ts");
+  const code = FULFILLMENT.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/^\s*\/\/.*$/gm, " ");
+
+  it("there is ONE shared guard, not a copy per path", () => {
+    const defs = [...code.matchAll(/async function refuseUnavailableProofMethodConversion\(/g)];
+    expect(defs.length, "the guard was duplicated").toBe(1);
+  });
+
+  it("it checks for an EXISTING delivery before it looks at the proof method", () => {
+    /* The grandfather clause. Reversing these two reads would refuse the
+       delivery already at pickup — proved red by a negative control in the
+       disposable probe. */
+    const body = code.slice(code.indexOf("async function refuseUnavailableProofMethodConversion("));
+    const existing = body.indexOf('.from("couranr_deliveries")');
+    const method = body.indexOf('.from("couranr_delivery_requests")');
+    expect(existing).toBeGreaterThan(-1);
+    expect(method).toBeGreaterThan(-1);
+    expect(existing, "the guard reads the proof method before checking for a delivery")
+      .toBeLessThan(method);
+    expect(body).toMatch(/isSelectableProofMethod\(method\)/);
+    expect(body).toMatch(/proof_method_currently_unavailable/);
+  });
+
+  it("ALL THREE entry points call it — capture, operations credit, automatic worker", () => {
+    /* Three call sites plus one definition. The automatic worker is the one
+       that matters most: it runs unattended on a cron tick, so a path it could
+       take alone is a path nobody watches. */
+    const calls = [...code.matchAll(/await refuseUnavailableProofMethodConversion\(/g)];
+    expect(calls.length, "an entry point is not guarded").toBe(3);
+
+    for (const fn of [
+      "convertAfterCapture",
+      "createDeliveryFromPromotionalCredit",
+      "createDeliveryFromPromotionalCreditForAutomation",
+    ]) {
+      const at = code.indexOf(fn === "createDeliveryFromPromotionalCredit"
+        ? "export async function createDeliveryFromPromotionalCredit(params"
+        : fn === "createDeliveryFromPromotionalCreditForAutomation"
+          ? "export async function createDeliveryFromPromotionalCreditForAutomation("
+          : "async function convertAfterCapture(");
+      expect(at, `${fn} not found`).toBeGreaterThan(-1);
+      const body = code.slice(at, at + 1600);
+      const guard = body.indexOf("refuseUnavailableProofMethodConversion(");
+      const rpc = body.indexOf("callRpc(");
+      const rpcAlt = body.indexOf("callRpc<");
+      const firstRpc = [rpc, rpcAlt].filter((i) => i > -1).sort((a, b) => a - b)[0];
+      expect(guard, `${fn} does not call the guard`).toBeGreaterThan(-1);
+      expect(guard, `${fn} calls the RPC before the guard`).toBeLessThan(firstRpc);
+    }
+  });
+
+  it("the database backstop exists and is UNAPPLIED", () => {
+    const m = read("supabase/migrations/20260918010000_couranr_withdrawn_proof_method_conversion.sql");
+    // Both settlement functions replaced by name, each with the refusal.
+    expect(m).toContain("function public.couranr_create_delivery_from_capture(");
+    expect(m).toContain("function public.couranr_create_delivery_from_promotional_credit(");
+    expect([...m.matchAll(/proof_method_currently_unavailable/g)].length).toBe(2);
+    /* The ordering that grandfathers the in-flight delivery: the existing
+       delivery is returned before the refusal is reached, in BOTH functions. */
+    for (const part of m.split("create or replace function").slice(1)) {
+      const ret = part.indexOf("if found then return v_d; end if;");
+      const refuse = part.indexOf("proof_method_currently_unavailable");
+      expect(ret, "a function lost its idempotent return").toBeGreaterThan(-1);
+      expect(ret, "the refusal precedes the existing-delivery return").toBeLessThan(refuse);
+    }
+    expect(
+      existsSync(path.join(ROOT, "supabase/rollbacks/20260918010000_couranr_withdrawn_proof_method_conversion.rollback.sql"))
+    ).toBe(true);
+  });
+
+  it("does not touch the driver's completion command", () => {
+    /* EXECUTABLE SQL ONLY. The migration's header says in prose that the
+       completion command is deliberately untouched, so a raw scan matches the
+       promise instead of checking it — the fourth time this repo has caught
+       that shape. Comments stripped, then asserted. */
+    const m = read("supabase/migrations/20260918010000_couranr_withdrawn_proof_method_conversion.sql")
+      .replace(/^\s*--.*$/gm, " ")
+      .replace(/\/\*[\s\S]*?\*\//g, " ");
+    expect(m).not.toContain("couranr_complete_leave_at_door_delivery");
+    // Non-vacuous: the stripper left the executable statements intact.
+    expect(m).toContain("function public.couranr_create_delivery_from_capture(");
   });
 });
