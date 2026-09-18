@@ -119,7 +119,19 @@ export default function Page() {
           metrics. The two sides are a definition list — the same device the
           section already used — extended with the points, the edge case and
           the example. `grid-dominant` stays false and that is load-bearing:
-          §28 bans turning this into four identical tiles. */}
+          §28 bans turning this into four identical tiles.
+
+          THE TWO MODIFIERS ARE A PATH CODE, NOT A CARD. This section is a
+          FORK — the reader self-selects in about two seconds — and it was
+          rendering as one grey column: the product names were set at the
+          smallest step in muted grey, quieter than the prose explaining them,
+          so the eye landed on sentences and never found the choice. The
+          modifiers carry a colour per path (gold = Same Day, navy = Business)
+          on a ruled edge, which is a typographic device and survives the
+          mobile stack where side-by-side position does not. No fill, no
+          border box, no shadow and no radius on the items themselves — the
+          two sides remain a definition list and `grid-dominant` remains
+          honestly false. */}
       <section
         className="cr-mkt-editorial"
         aria-labelledby="m2-h"
@@ -138,7 +150,7 @@ export default function Page() {
         </p>
 
         <dl className="cr-master-network">
-          <div className="cr-master-network__item">
+          <div className="cr-master-network__item cr-master-network__item--sameday">
             <dt className="cr-master-network__term">{MASTER_COPY.network_consumer_title}</dt>
             <dd className="cr-master-network__desc cr-type-lead">
               {MASTER_COPY.network_consumer_body}
@@ -149,7 +161,7 @@ export default function Page() {
               </ul>
             </dd>
           </div>
-          <div className="cr-master-network__item">
+          <div className="cr-master-network__item cr-master-network__item--business">
             <dt className="cr-master-network__term">{MASTER_COPY.network_business_title}</dt>
             <dd className="cr-master-network__desc cr-type-lead">
               {MASTER_COPY.network_business_body}
