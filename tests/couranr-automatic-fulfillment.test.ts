@@ -24,6 +24,10 @@ const MAPBOX_CUTOVER = readFileSync(
   join(MIGRATIONS, "20260904175646_couranr_mapbox_routing_cutover.sql"),
   "utf8"
 ).toLowerCase();
+const ASAP_AFTER_CUTOFF_PARITY = readFileSync(
+  join(MIGRATIONS, "20260918234500_couranr_asap_after_cutoff_auto_lane.sql"),
+  "utf8"
+).toLowerCase();
 const ENGINE = readFileSync(join(ROOT, "lib/couranr/automation/engine.ts"), "utf8");
 const CRON = readFileSync(
   join(ROOT, "app/api/couranr/internal/automation/tick/route.ts"),
@@ -120,6 +124,27 @@ describe("automatic scheduling and capacity", () => {
       "weight_not_automatic",
     ];
     for (const reason of reasons) expect(FOUNDATION).toContain("'" + reason + "'");
+  });
+
+  it("keeps ordinary ASAP after-cutoff work automatic for the next business window", () => {
+    // Canonical quoting already treats this reason as informational for ASAP.
+    // The automatic-lane predicate must make the same distinction instead of
+    // opening a manual-planning exception for a normal after-cutoff request.
+    const canonical = source("lib/couranr/routing/canonicalRoute.ts");
+    expect(canonical).toContain(
+      'if (reason === "same_day_after_cutoff" && t.intent === "asap") continue;'
+    );
+    expect(ASAP_AFTER_CUTOFF_PARITY).toContain("v_req.timing_intent='asap'");
+    expect(ASAP_AFTER_CUTOFF_PARITY).toContain(
+      "timing_reason.reason='same_day_after_cutoff'"
+    );
+    expect(ASAP_AFTER_CUTOFF_PARITY).toContain("jsonb_array_elements_text");
+    expect(ASAP_AFTER_CUTOFF_PARITY).toContain("return 'timing_requires_review'");
+    // The carve-out is only for ASAP. Scheduled requests retain the timing
+    // review reason and therefore remain outside the automatic lane.
+    expect(ASAP_AFTER_CUTOFF_PARITY).not.toMatch(
+      /v_req\.timing_intent='scheduled'[\s\S]{0,180}same_day_after_cutoff/
+    );
   });
 });
 
