@@ -577,14 +577,19 @@ export function validateConsumerSendBody(raw: unknown): ConsumerSendBodyResult {
   }
   if (weightLb === null && weightBand === null) return { ok: false, reason: "weight_required" };
 
-  // The safety declaration. Absent means "unknown", and unknown means Couranr
-  // review — never an automatic quote (the SQL enforces the same rule again).
-  let restrictedClass: RestrictedClassDeclaration = "unknown";
+  // DIRECT SAME DAY V1: this representation belongs to the sender. Operations
+  // may review route/timing/vehicle exceptions, but it must never manufacture
+  // the sender's prohibited-item declaration. "unknown" therefore cannot
+  // create or re-estimate a Direct Same Day draft. The database continues to
+  // understand historical/manual-review rows; this public funnel fails earlier.
   const rc = shipRaw.restrictedClass;
-  if (rc !== undefined && rc !== null && rc !== "") {
-    if (!isRestrictedClassDeclaration(rc)) return { ok: false, reason: "restricted_class_invalid" };
-    restrictedClass = rc;
+  if (rc === undefined || rc === null || rc === "" || rc === "unknown") {
+    return { ok: false, reason: "safety_declaration_required" };
   }
+  if (!isRestrictedClassDeclaration(rc)) {
+    return { ok: false, reason: "restricted_class_invalid" };
+  }
+  const restrictedClass: RestrictedClassDeclaration = rc;
 
   // TMZ-001 requested timing. ASAP unless the sender scheduled a time; a
   // scheduled request must carry parseable `YYYY-MM-DDTHH:MM` local words. No
