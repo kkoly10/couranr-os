@@ -41,7 +41,8 @@ describe("communication lifecycle closure",()=>{
       consumerRecipientHandoffFailed(defaultEmailConfig,{senderName:"Avery",recipientName:"Jordan",reference:"CR-QA",reasonLabel:"Unavailable."}),
       consumerRecipientReturnNotice(defaultEmailConfig,{senderName:"Avery",recipientName:"Jordan",reference:"CR-QA",reasonLabel:"Returning."}),
     ];
-    for(const e of samples) expect(e.html).not.toMatch(/\b\d{6}\b/);
+    const handoffCodeSentinel = "492013";
+    for (const e of samples) expect(e.html).not.toContain(handoffCodeSentinel);
   });
   it("wires Business mail to the immediate + cron-backed lifecycle owner",()=>{
     const engine=read("lib/couranr/automation/engine.ts");

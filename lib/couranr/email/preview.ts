@@ -13,6 +13,7 @@ import {
   bizQuoteReady,
   bizPaymentReceipt,
   bizReviewOutcome,
+  bizOutForDelivery,
   bizDeliveredReceipt,
   bizActionNeeded,
 } from "./templates/business";
@@ -28,8 +29,12 @@ import {
 import {
   consumerSenderRequestReceived,
   consumerSenderRequestConfirmed,
+  consumerSenderOutForDelivery,
+  consumerSenderDelivered,
   consumerRecipientOutForDelivery,
   consumerRecipientDelivered,
+  consumerRecipientHandoffFailed,
+  consumerRecipientReturnNotice,
   consumerSenderHandoffFailed,
   consumerSenderReturnNotice,
 } from "./templates/consumer";
@@ -65,6 +70,7 @@ export function collectEmails(config: EmailConfig): Entry[] {
   push(biz, "Review outcome — confirmed", bizReviewOutcome(config, s.business.reviewConfirmed));
   push(biz, "Review outcome — updated quote", bizReviewOutcome(config, s.business.reviewRequote));
   push(biz, "Review outcome — couldn't confirm", bizReviewOutcome(config, s.business.reviewDeclined));
+  push(biz, "Out for delivery", bizOutForDelivery(config, s.business.outForDelivery));
   push(biz, "Delivered — proof receipt", bizDeliveredReceipt(config, s.business.deliveredReceipt));
   push(biz, "Action needed", bizActionNeeded(config, s.business.actionNeeded));
 
@@ -86,6 +92,16 @@ export function collectEmails(config: EmailConfig): Entry[] {
     consumerRecipientOutForDelivery(config, s.consumer.recipientOutForDelivery),
   );
   push(direct, "Delivered", consumerRecipientDelivered(config, s.consumer.recipientDelivered));
+  push(
+    direct,
+    "Handoff could not be completed",
+    consumerRecipientHandoffFailed(config, s.consumer.recipientHandoffFailed),
+  );
+  push(
+    direct,
+    "Return notice",
+    consumerRecipientReturnNotice(config, s.consumer.recipientReturnNotice),
+  );
 
   push(
     sameDay,
@@ -96,6 +112,16 @@ export function collectEmails(config: EmailConfig): Entry[] {
     sameDay,
     "Request confirmed",
     consumerSenderRequestConfirmed(config, s.consumer.senderRequestConfirmed),
+  );
+  push(
+    sameDay,
+    "Out for delivery",
+    consumerSenderOutForDelivery(config, s.consumer.senderOutForDelivery),
+  );
+  push(
+    sameDay,
+    "Delivered",
+    consumerSenderDelivered(config, s.consumer.senderDelivered),
   );
   push(
     sameDay,

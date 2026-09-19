@@ -725,9 +725,16 @@ describe("consumer lifecycle notifications", () => {
     ];
     const p = provider();
 
-    await notifyConsumerLifecycle({ requestId: REQ, fetchImpl: p.fetchImpl });
+    const report = await notifyConsumerLifecycle({ requestId: REQ, fetchImpl: p.fetchImpl });
 
-    expect(p.calls.length).toBe(0);
+    // Missing sender email must not silence the recipient's own exception notice.
+    expect(p.calls.map((call) => call.body.to)).toEqual(["jordan@example.com"]);
+    expect(
+      report.results.find((result) => result.notification === "recipient_handoff_failed")
+    ).toMatchObject({ outcome: "sent" });
+    expect(
+      report.results.find((result) => result.notification === "sender_handoff_failed")
+    ).toBeUndefined();
   });
 });
 
@@ -843,6 +850,7 @@ describe("no Couranr email can carry a handoff code", () => {
     ["bizPaymentReceipt", businessTemplates.bizPaymentReceipt, s.business.paymentReceipt],
     ["bizReviewOutcome", businessTemplates.bizReviewOutcome, s.business.reviewConfirmed],
     ["bizDeliveredReceipt", businessTemplates.bizDeliveredReceipt, s.business.deliveredReceipt],
+    ["bizOutForDelivery", businessTemplates.bizOutForDelivery, s.business.outForDelivery],
     ["bizActionNeeded", businessTemplates.bizActionNeeded, s.business.actionNeeded],
     ["custApproveAndPay", customerTemplates.custApproveAndPay, s.customer.approveAndPay],
     ["custOrderConfirmed", customerTemplates.custOrderConfirmed, s.customer.orderConfirmed],
@@ -875,9 +883,29 @@ describe("no Couranr email can carry a handoff code", () => {
       s.consumer.recipientOutForDelivery,
     ],
     [
+      "consumerSenderOutForDelivery",
+      consumerTemplates.consumerSenderOutForDelivery,
+      s.consumer.senderOutForDelivery,
+    ],
+    [
       "consumerRecipientDelivered",
       consumerTemplates.consumerRecipientDelivered,
       s.consumer.recipientDelivered,
+    ],
+    [
+      "consumerSenderDelivered",
+      consumerTemplates.consumerSenderDelivered,
+      s.consumer.senderDelivered,
+    ],
+    [
+      "consumerRecipientHandoffFailed",
+      consumerTemplates.consumerRecipientHandoffFailed,
+      s.consumer.recipientHandoffFailed,
+    ],
+    [
+      "consumerRecipientReturnNotice",
+      consumerTemplates.consumerRecipientReturnNotice,
+      s.consumer.recipientReturnNotice,
     ],
     [
       "consumerSenderHandoffFailed",
@@ -960,6 +988,10 @@ describe("no Couranr email can carry a handoff code", () => {
       consumerTemplates.consumerSenderRequestConfirmed(cfg, s.consumer.senderRequestConfirmed),
       consumerTemplates.consumerRecipientOutForDelivery(cfg, s.consumer.recipientOutForDelivery),
       consumerTemplates.consumerRecipientDelivered(cfg, s.consumer.recipientDelivered),
+      consumerTemplates.consumerSenderOutForDelivery(cfg, s.consumer.senderOutForDelivery),
+      consumerTemplates.consumerSenderDelivered(cfg, s.consumer.senderDelivered),
+      consumerTemplates.consumerRecipientHandoffFailed(cfg, s.consumer.recipientHandoffFailed),
+      consumerTemplates.consumerRecipientReturnNotice(cfg, s.consumer.recipientReturnNotice),
       consumerTemplates.consumerSenderHandoffFailed(cfg, s.consumer.senderHandoffFailed),
       consumerTemplates.consumerSenderReturnNotice(cfg, s.consumer.senderReturnNotice),
       customerTemplates.custDirectDeliveryConfirmed(cfg, s.customer.directDeliveryConfirmed),
@@ -998,6 +1030,22 @@ describe("the preview gallery is complete", () => {
         defaultEmailConfig,
         s.consumer.recipientDelivered
       ),
+      consumerTemplates.consumerSenderOutForDelivery(
+        defaultEmailConfig,
+        s.consumer.senderOutForDelivery
+      ),
+      consumerTemplates.consumerSenderDelivered(
+        defaultEmailConfig,
+        s.consumer.senderDelivered
+      ),
+      consumerTemplates.consumerRecipientHandoffFailed(
+        defaultEmailConfig,
+        s.consumer.recipientHandoffFailed
+      ),
+      consumerTemplates.consumerRecipientReturnNotice(
+        defaultEmailConfig,
+        s.consumer.recipientReturnNotice
+      ),
       consumerTemplates.consumerSenderHandoffFailed(
         defaultEmailConfig,
         s.consumer.senderHandoffFailed
@@ -1015,8 +1063,12 @@ describe("the preview gallery is complete", () => {
     expect(Object.keys(s.consumer).sort()).toEqual(
       [
         "recipientDelivered",
+        "recipientHandoffFailed",
         "recipientOutForDelivery",
+        "recipientReturnNotice",
+        "senderDelivered",
         "senderHandoffFailed",
+        "senderOutForDelivery",
         "senderRequestConfirmed",
         "senderRequestReceived",
         "senderReturnNotice",
