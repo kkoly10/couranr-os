@@ -25,8 +25,12 @@ import { RenderedEmail } from "../types";
 import type {
   ConsumerSenderRequestReceivedInput,
   ConsumerSenderRequestConfirmedInput,
+  ConsumerSenderOutForDeliveryInput,
+  ConsumerSenderDeliveredInput,
   ConsumerRecipientOutForDeliveryInput,
   ConsumerRecipientDeliveredInput,
+  ConsumerRecipientHandoffFailedInput,
+  ConsumerRecipientReturnNoticeInput,
   ConsumerSenderHandoffFailedInput,
   ConsumerSenderReturnNoticeInput,
 } from "../types";
@@ -192,6 +196,62 @@ export function consumerSenderReturnNotice(
   });
 }
 
+/** Sender progress — courier is on the way to the recipient. */
+export function consumerSenderOutForDelivery(
+  config: EmailConfig,
+  input: ConsumerSenderOutForDeliveryInput,
+): RenderedEmail {
+  const content = [
+    eyebrow(EYEBROW),
+    h1("Your delivery is on the way"),
+    paragraph(
+      `${hi(input.senderName)}Couranr picked up your delivery and is heading to ${strongNavy(
+        input.recipientName,
+      )}.`,
+    ),
+    detailList([
+      { label: "Reference", value: esc(input.reference) },
+      { label: "Recipient", value: esc(input.recipientName) },
+    ]),
+    button({ label: "Open Couranr Same Day", href: input.statusUrl, variant: "secondary" }),
+    fallbackLink(input.statusUrl),
+    small("Arrival times are estimates and can shift with traffic."),
+  ].join("\n");
+  return renderEmail(config, {
+    subject: `On the way — your Couranr delivery ${input.reference}`,
+    preheader: `Couranr is heading to ${input.recipientName}.`,
+    contentHtml: content,
+  });
+}
+
+/** Sender receipt — successful handoff. */
+export function consumerSenderDelivered(
+  config: EmailConfig,
+  input: ConsumerSenderDeliveredInput,
+): RenderedEmail {
+  const content = [
+    eyebrow(EYEBROW),
+    h1("Your delivery was delivered"),
+    paragraph(
+      `${hi(input.senderName)}Couranr completed the handoff to ${strongNavy(
+        input.recipientName,
+      )}.`,
+    ),
+    detailList([
+      { label: "Reference", value: esc(input.reference) },
+      { label: "Recipient", value: esc(input.recipientName) },
+      { label: "Delivered", value: esc(input.deliveredAtLabel) },
+    ]),
+    button({ label: "Open Couranr Same Day", href: input.statusUrl, variant: "secondary" }),
+    fallbackLink(input.statusUrl),
+  ].join("\n");
+  return renderEmail(config, {
+    subject: `Delivered — your Couranr delivery ${input.reference}`,
+    preheader: `Couranr completed the handoff to ${input.recipientName}.`,
+    contentHtml: content,
+  });
+}
+
 /* -------------------------------------------------------- recipient --- */
 
 /** 3 · On the way to the recipient. */
@@ -261,6 +321,49 @@ export function consumerRecipientDelivered(
   return renderEmail(config, {
     subject: "Delivered — your Couranr delivery",
     preheader: `Your Couranr delivery arrived ${input.deliveredAtLabel}.`,
+    contentHtml: content,
+  });
+}
+
+
+/** Recipient exception — the handoff could not be completed. */
+export function consumerRecipientHandoffFailed(
+  config: EmailConfig,
+  input: ConsumerRecipientHandoffFailedInput,
+): RenderedEmail {
+  const sender = input.senderName ? esc(input.senderName) : "the sender";
+  const content = [
+    eyebrow(EYEBROW),
+    h1("Couranr couldn't complete the handoff"),
+    paragraph(`${hi(input.recipientName)}Couranr could not complete the delivery ${sender} sent you.`),
+    panel({ tone: "warning", title: "What happened", html: esc(input.reasonLabel) }),
+    detailList([{ label: "Reference", value: esc(input.reference) }]),
+    small("Couranr also notified the sender. Reply to this email for delivery help, and keep your private tracking link for status updates."),
+  ].join("\n");
+  return renderEmail(config, {
+    subject: "Action needed — your Couranr delivery",
+    preheader: "Couranr couldn't complete the handoff.",
+    contentHtml: content,
+  });
+}
+
+/** Recipient exception — the shipment is returning to its sender. */
+export function consumerRecipientReturnNotice(
+  config: EmailConfig,
+  input: ConsumerRecipientReturnNoticeInput,
+): RenderedEmail {
+  const sender = input.senderName ? esc(input.senderName) : "the sender";
+  const content = [
+    eyebrow(EYEBROW),
+    h1("This delivery is being returned"),
+    paragraph(`${hi(input.recipientName)}the delivery ${sender} sent you is being returned.`),
+    panel({ tone: "neutral", title: "Reason", html: esc(input.reasonLabel) }),
+    detailList([{ label: "Reference", value: esc(input.reference) }]),
+    small("Couranr also notified the sender. Reply to this email if you need delivery help."),
+  ].join("\n");
+  return renderEmail(config, {
+    subject: "Returning — your Couranr delivery",
+    preheader: "The delivery is being returned to its sender.",
     contentHtml: content,
   });
 }

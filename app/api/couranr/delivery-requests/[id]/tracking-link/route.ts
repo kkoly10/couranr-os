@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { isActorDenied, resolveRequestActor } from "@/lib/couranr/requests/actor";
 import { getDeliveryRequest, isCommandFailure } from "@/lib/couranr/requests/commands";
 import { canActOnDeliveryRequest } from "@/lib/couranr/requests/permissions";
-import { isTrackingFailure, issueTrackingLink } from "@/lib/couranr/tracking/commands";
+import {
+  isTrackingFailure,
+  issueTrackingLink,
+  recipientTrackingNotificationState,
+} from "@/lib/couranr/tracking/commands";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
 
 export const dynamic = "force-dynamic";
@@ -86,6 +90,15 @@ export async function POST(
     return routeFailure(
       "conflict",
       "Tracking becomes available after Couranr confirms the delivery."
+    );
+  }
+
+  const notification = await recipientTrackingNotificationState({ requestId: id });
+  if (isTrackingFailure(notification)) return failureResponse(notification);
+  if (notification.value.notifiedAt) {
+    return routeFailure(
+      "conflict",
+      "Couranr already emailed the recipient a private tracking link. Replacing it would invalidate their email link; contact Couranr Support if it must be reset."
     );
   }
 

@@ -65,6 +65,12 @@ export function MerchantReadinessPanel({
   const payment = fulfillment?.payment;
   const delivery = fulfillment?.delivery;
   const authorized = payment?.paymentState === "authorized";
+  const credited = Boolean(fulfillment?.promotionalCredit);
+  // The server accepts either exact-current-quote Stripe authorization OR an
+  // applied full Couranr credit as commercial authority for "ready". Keep the
+  // browser on the same rule so a credited pilot cannot get trapped in
+  // Preparing with a Ready button that never appears.
+  const commerciallyCovered = authorized || credited;
   // Once capture starts the answer is frozen — a driver is being planned
   // around it, and the server refuses a change.
   const frozen =
@@ -94,7 +100,8 @@ export function MerchantReadinessPanel({
    * The provider SETTLED this capture as failed. Verified, not assumed — which
    * is the only reason it is safe to tell a merchant nothing was taken.
    */
-  const reauthorizationRequired = payment?.paymentState === "failed" && !delivery;
+  const reauthorizationRequired =
+    payment?.paymentState === "failed" && !delivery && !credited;
   const customerPays = payment?.payerType === "customer";
 
   async function generateLink() {
@@ -134,8 +141,10 @@ export function MerchantReadinessPanel({
 
         {delivery ? (
           <Alert tone="success" title="Couranr has scheduled this delivery">
-            {formatCents(delivery.capturedAmountCents)} was captured and this delivery is
-            scheduled for pickup between{" "}
+            {delivery.promotionalCreditId
+              ? "Couranr promotional credit covers this delivery. No card payment was captured."
+              : `${formatCents(delivery.capturedAmountCents)} was captured.`}{" "}
+            Pickup is scheduled between{" "}
             {new Date(delivery.scheduledPickupStart).toLocaleString()} and{" "}
             {new Date(delivery.scheduledPickupEnd).toLocaleString()} ({delivery.timezone}).
             Couranr will assign a driver.
@@ -193,9 +202,16 @@ export function MerchantReadinessPanel({
           </Alert>
         ) : null}
 
-        {!authorized && !frozen ? (
+        {!commerciallyCovered && !frozen ? (
           <Alert tone="info" title="Waiting for payment authorization">
             Couranr can collect this delivery once the payment is authorized.
+          </Alert>
+        ) : null}
+
+        {credited && !delivery ? (
+          <Alert tone="success" title="Delivery amount covered">
+            Couranr promotional credit covers the quoted delivery amount. You can mark the
+            shipment ready without authorizing a card.
           </Alert>
         ) : null}
 
@@ -206,7 +222,7 @@ export function MerchantReadinessPanel({
             ).map((c) => {
               // Ready additionally needs the money held; the server enforces
               // it, and offering the button anyway would just produce a 409.
-              const blocked = c.to === "ready" && !authorized;
+              const blocked = c.to === "ready" && !commerciallyCovered;
               if (blocked) return null;
               return (
                 <Button

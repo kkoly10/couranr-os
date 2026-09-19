@@ -29,7 +29,9 @@ assertServerOnly("lib/couranr/tracking/commands.ts");
 export const RPC = {
   issueToken: "couranr_issue_delivery_access_token",
   claimConsumerRecipientDelivery: "couranr_claim_consumer_recipient_tracking_delivery",
+  claimBusinessRecipientDelivery: "couranr_claim_business_recipient_tracking_delivery",
   markRecipientNotification: "couranr_mark_recipient_tracking_notification",
+  markBusinessRecipientNotification: "couranr_mark_business_recipient_tracking_notification",
   failRecipientNotification: "couranr_fail_recipient_tracking_notification",
   attestRecipientAdult: "couranr_attest_recipient_adult",
   issueRecipientDropoffCode: "couranr_issue_recipient_dropoff_code",
@@ -154,6 +156,61 @@ export async function claimConsumerRecipientTrackingDelivery(params: {
     ok: true,
     value: { outcome: "issued", token, expiresAt: String(row.expires_at) },
   };
+}
+
+export type BusinessRecipientDeliveryClaim =
+  | { outcome: "issued"; token: string; expiresAt: string }
+  | { outcome: "sent" | "in_progress" | "existing_unclaimed" };
+
+export async function claimBusinessRecipientTrackingDelivery(params: {
+  requestId: string;
+}): Promise<TrackingResult<BusinessRecipientDeliveryClaim>> {
+  const op = "claimBusinessRecipientTrackingDelivery";
+  const token = generateTrackingToken();
+  const r = await callRpc<any[] | any>(op, RPC.claimBusinessRecipientDelivery, {
+    p_request_id: params.requestId,
+    p_token_hash: hashTrackingToken(token),
+    p_ttl_days: TRACKING_TOKEN_TTL_DAYS,
+  });
+  if (isTrackingFailure(r)) return r;
+  const row = Array.isArray(r.value) ? r.value[0] : r.value;
+  if (row?.outcome === "sent" || row?.outcome === "in_progress" || row?.outcome === "existing_unclaimed") {
+    return { ok: true, value: { outcome: row.outcome } };
+  }
+  if (row?.outcome !== "issued" || typeof row.expires_at !== "string") {
+    return fail({ operation: op, code: "conflict", detail: { reason: "invalid claim result" } });
+  }
+  return { ok: true, value: { outcome: "issued", token, expiresAt: String(row.expires_at) } };
+}
+
+export async function markBusinessRecipientTrackingNotification(params: {
+  rawToken: string;
+  providerId: string;
+}): Promise<TrackingResult<{ recorded: true }>> {
+  const r = await callRpc("markBusinessRecipientTrackingNotification", RPC.markBusinessRecipientNotification, {
+    p_token_hash: hashTrackingToken(params.rawToken),
+    p_provider_id: params.providerId,
+  });
+  if (isTrackingFailure(r)) return r;
+  return { ok: true, value: { recorded: true } };
+}
+
+export async function recipientTrackingNotificationState(params: {
+  requestId: string;
+}): Promise<TrackingResult<{ active: boolean; notifiedAt: string | null }>> {
+  const op="recipientTrackingNotificationState";
+  const { data,error }=(await supabaseAdmin
+    .from("couranr_delivery_access_tokens")
+    .select("expires_at,recipient_notified_at")
+    .eq("request_id",params.requestId)
+    .eq("audience","recipient")
+    .is("revoked_at",null)
+    .gt("expires_at",new Date().toISOString())
+    .order("created_at",{ascending:false})
+    .limit(1)) as {data:any[]|null;error:any};
+  if(error) return fail({operation:op,code:classifyDatabaseError(error),detail:error});
+  const row=data?.[0];
+  return {ok:true,value:{active:Boolean(row),notifiedAt:row?.recipient_notified_at?String(row.recipient_notified_at):null}};
 }
 
 export async function markRecipientTrackingNotification(params: {

@@ -102,6 +102,14 @@ export interface BizReviewOutcomeInput {
   ctaUrl: string;
 }
 
+export interface BizOutForDeliveryInput {
+  businessName: string;
+  reference: string;
+  recipientName: string;
+  etaLabel?: string;
+  detailsUrl: string;
+}
+
 export interface BizDeliveredReceiptInput {
   businessName: string;
   reference: string;
@@ -172,7 +180,7 @@ export interface CustOutForDeliveryInput {
   /** When a handoff code is required, we tell them WHERE to find it — we never
    * put the code itself in the email. */
   codeOnTrackingPage?: boolean;
-  trackUrl: string;
+  trackUrl?: string;
 }
 
 export interface CustDeliveredInput {
@@ -182,7 +190,7 @@ export interface CustDeliveredInput {
   deliveredAtLabel: string;
   proofMethodLabel: string;
   proofUrl?: string;
-  trackUrl: string;
+  trackUrl?: string;
 }
 
 export interface CustRecipientUnavailableInput {
@@ -190,7 +198,7 @@ export interface CustRecipientUnavailableInput {
   recipientName: string;
   reference: string;
   message: string;
-  helpUrl: string;
+  helpUrl?: string;
 }
 
 export interface CustReturnNoticeInput {
@@ -198,7 +206,7 @@ export interface CustReturnNoticeInput {
   recipientName: string;
   reference: string;
   reasonLabel: string;
-  helpUrl: string;
+  helpUrl?: string;
 }
 
 /* ------------------------------------------------------------------ */
@@ -248,6 +256,21 @@ export interface ConsumerSenderRequestConfirmedInput {
  * SECOND token to fill the gap would revoke the link the recipient is already
  * holding. These messages point back to the invitation instead.
  */
+export interface ConsumerSenderOutForDeliveryInput {
+  senderName?: string;
+  recipientName: string;
+  reference: string;
+  statusUrl: string;
+}
+
+export interface ConsumerSenderDeliveredInput {
+  senderName?: string;
+  recipientName: string;
+  reference: string;
+  deliveredAtLabel: string;
+  statusUrl: string;
+}
+
 export interface ConsumerRecipientOutForDeliveryInput {
   senderName?: string;
   recipientName: string;
@@ -262,6 +285,20 @@ export interface ConsumerRecipientDeliveredInput {
   recipientName: string;
   reference: string;
   deliveredAtLabel: string;
+}
+
+export interface ConsumerRecipientHandoffFailedInput {
+  senderName?: string;
+  recipientName: string;
+  reference: string;
+  reasonLabel: string;
+}
+
+export interface ConsumerRecipientReturnNoticeInput {
+  senderName?: string;
+  recipientName: string;
+  reference: string;
+  reasonLabel: string;
 }
 
 export interface ConsumerSenderHandoffFailedInput {
