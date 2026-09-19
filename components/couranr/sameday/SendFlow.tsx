@@ -166,6 +166,9 @@ export function SendFlow({
      never both, never an invention — and the shipment-safety declaration. */
   const [weightMode, setWeightMode] = React.useState("exact");
   const [weightLb, setWeightLb] = React.useState("");
+  /* "unknown" is an internal sentinel only. Direct Same Day V1 requires the
+     SENDER to make the safety declaration; Operations must never manufacture
+     it on the sender's behalf. */
   const [restrictedClass, setRestrictedClass] = React.useState("unknown");
   const [intake, setIntake] = React.useState<IntakeReading | { state: "untouched" } | { state: "analyzing" }>({ state: "untouched" });
   const [readiness, setReadiness] = React.useState<"yes" | "no" | null>(null);
@@ -692,6 +695,10 @@ export function SendFlow({
   const declaredValueUnavailable =
     isProtectionUnavailable(protection) && protection.reason === "protection_level_unavailable";
   const hasDeclaredValue = !isProtectionUnavailable(protection);
+  /* Direct Same Day cannot defer the sender's prohibited-item declaration to
+     Operations. "unknown" is only the untouched form sentinel; the server
+     independently rejects it before creating/updating a draft. */
+  const hasSafetyDeclaration = restrictedClass !== "unknown";
   const quoteState = quote?.state;
   const quotePriced = quoteState === "live-available" || quoteState === "fixture-available";
   const quoteReview = quoteState === "manual-review";
@@ -986,8 +993,8 @@ export function SendFlow({
               Restricted items
             </label>
             <p className="cr-send-field__hint">
-              An automatic price needs your confirmation that none of these are in the shipment.
-              Anything else goes to Couranr review.
+              Required. Tell Couranr whether any listed item is in the shipment. This is your
+              declaration as the sender; Couranr cannot make it for you.
             </p>
             <select
               id="send-restricted"
@@ -998,7 +1005,7 @@ export function SendFlow({
                 invalidateQuote();
               }}
             >
-              <option value="unknown">Not sure yet — Couranr will review</option>
+              <option value="unknown" disabled>Choose one — required</option>
               <option value="none">None of these — I confirm</option>
               {RESTRICTED_CLASS_OPTIONS.map(([value, label]) => (
                 <option key={value} value={value}>
@@ -1006,6 +1013,12 @@ export function SendFlow({
                 </option>
               ))}
             </select>
+            {!hasSafetyDeclaration ? (
+              <p className="cr-send-field__hint" data-couranr-safety-required="true">
+                Choose an option before continuing. Couranr cannot confirm prohibited-item
+                status on your behalf.
+              </p>
+            ) : null}
           </div>
 
           {/* DECLARED VALUE. On the item step because it is a fact about the
@@ -1084,7 +1097,11 @@ export function SendFlow({
             <button
               type="button"
               className="cr-button cr-button--primary"
-              disabled={(mode === "live" && readiness === null) || !hasDeclaredValue}
+              disabled={
+                (mode === "live" && readiness === null) ||
+                !hasDeclaredValue ||
+                !hasSafetyDeclaration
+              }
               onClick={() => setPhase("timing")}
             >
               Continue
@@ -1306,7 +1323,11 @@ export function SendFlow({
             className="cr-button cr-button--secondary"
             data-couranr-quote-request="true"
             disabled={
-              !hasContact || !hasRecipient || !hasDeclaredValue || quoteState === "calculating"
+              !hasContact ||
+              !hasRecipient ||
+              !hasDeclaredValue ||
+              !hasSafetyDeclaration ||
+              quoteState === "calculating"
             }
             onClick={() => void computeQuote()}
           >
@@ -1315,9 +1336,11 @@ export function SendFlow({
           {/* Name what is actually missing. "Add your details" makes the sender
               hunt; the gate above has four parts and the hint says which one is
               open. */}
-          {!hasContact || !hasRecipient || !hasDeclaredValue ? (
+          {!hasContact || !hasRecipient || !hasDeclaredValue || !hasSafetyDeclaration ? (
             <p className="cr-send-field__hint">
-              {!hasDeclaredValue
+              {!hasSafetyDeclaration
+                ? "Go back and make the required prohibited-item declaration, then check the price."
+                : !hasDeclaredValue
                 ? declaredValueTooHigh
                   ? `${SEND_COPY.declared_value_max_note} ${declaredValueDollars(
                       acceptedMaxCents
