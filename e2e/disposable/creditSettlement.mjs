@@ -18,7 +18,11 @@
  *   CS-3  POSITIVE CONTROL — the pre-fix (rollback) body raises on the SAME
  *         credit fixture, proving the fixture actually exercises the XOR and the
  *         fix is what makes CS-1 pass
- *   CS-4  anon/authenticated hold no EXECUTE on the function
+ *   CS-4  anon/authenticated hold no EXECUTE on the planning function
+ *   CS-5  a matching applied credit lets the merchant mark pickup ready without
+ *         inventing a Stripe authorization, and records the commercial authority
+ *   CS-6  POSITIVE CONTROL — rolling back readiness parity makes that SAME
+ *         credited-readiness transition fail with payment_not_authorized
  */
 import crypto from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -114,8 +118,32 @@ async function main() {
       return { request, creditId, subtotal };
     }
 
-    /* ── CS-1: the fix — credit path with a coexisting obligation succeeds ── */
+    /* ── CS-1 / CS-5: credit readiness + planning both honor the same authority ── */
     const s1 = await seedCreditScenario(`cs1-${uniq()}`);
+
+    // CS-5: the merchant may declare a credited shipment ready without a
+    // fabricated Stripe authorization. Before 20260918233000 this exact
+    // fixture failed because the readiness helper only recognized an
+    // authorized payment obligation.
+    const readyV1 = reqVersion(s1.request.requestId);
+    const ready1 = raises(
+      `select public.couranr_mark_delivery_ready(
+         '${s1.request.requestId}', '${bizId}', ${readyV1}, '${merchant}')`
+    );
+    eq("CS-5a", "credited request can be marked ready without Stripe authorization",
+       ready1.split("|")[0], "NO_ERROR");
+    eq("CS-5b", "credited request persisted readiness=ready",
+       one(`select readiness_state from public.couranr_delivery_requests
+             where id='${s1.request.requestId}'`),
+       "ready");
+    eq("CS-5c", "readiness event records promotional_credit as commercial authority",
+       one(`select coalesce(metadata->>'commercialAuthority','NULL')
+             from public.couranr_delivery_request_events
+             where request_id='${s1.request.requestId}'
+               and command='mark_delivery_ready'
+             order by created_at desc limit 1`),
+       "promotional_credit");
+
     const v1 = reqVersion(s1.request.requestId);
     const raised1 = raises(`select ${confirmCall(s1.request.requestId, v1, ops)}`);
     eq("CS-1a", "credit confirm with a coexisting requires_action obligation does NOT raise",
@@ -145,11 +173,17 @@ async function main() {
        `${paidOb.obligationId}|NULL`);
 
     /* ── CS-4: EXECUTE grants (before we degrade the function for CS-3) ── */
-    eq("CS-4", "anon/authenticated hold no EXECUTE on couranr_confirm_service_plan",
+    eq("CS-4a", "anon/authenticated hold no EXECUTE on couranr_confirm_service_plan",
        one(`select has_function_privilege('anon',
               'public.couranr_confirm_service_plan(uuid,integer,uuid,timestamptz,timestamptz,text,uuid,jsonb)','EXECUTE')::text
             || ',' || has_function_privilege('authenticated',
               'public.couranr_confirm_service_plan(uuid,integer,uuid,timestamptz,timestamptz,text,uuid,jsonb)','EXECUTE')::text`),
+       "false,false");
+    eq("CS-4b", "anon/authenticated hold no EXECUTE on couranr_apply_readiness",
+       one(`select has_function_privilege('anon',
+              'public.couranr_apply_readiness(uuid,uuid,integer,uuid,text,text,text[])','EXECUTE')::text
+            || ',' || has_function_privilege('authenticated',
+              'public.couranr_apply_readiness(uuid,uuid,integer,uuid,text,text,text[])','EXECUTE')::text`),
        "false,false");
 
     /* ── CS-3: POSITIVE CONTROL — the pre-fix body raises on the SAME fixture ── */
@@ -166,6 +200,24 @@ async function main() {
     (code3 === "CR409" || code3 === "23514")
       ? ok("CS-3", `pre-fix body REJECTS the credit confirm (proves the fixture exercises the XOR)`, `${code3} ${msg3}`)
       : bad("CS-3", "pre-fix body should raise CR409/23514 on the credit fixture", raised3);
+
+    /* ── CS-6: readiness positive control — restore the known-broken rule ── */
+    const readinessRollback = readFileSync(
+      path.join(ROOT, "supabase/rollbacks/20260918233000_couranr_promotional_credit_readiness_parity.rollback.sql"),
+      "utf8"
+    );
+    psql(readinessRollback);
+    const s6 = await seedCreditScenario(`cs6-${uniq()}`);
+    const readyV6 = reqVersion(s6.request.requestId);
+    const raised6 = raises(
+      `select public.couranr_mark_delivery_ready(
+         '${s6.request.requestId}', '${bizId}', ${readyV6}, '${merchant}')`
+    );
+    const code6 = raised6.split("|")[0];
+    const msg6 = raised6.split("|").slice(1).join("|");
+    code6 === "CR409" && /payment_not_authorized/.test(msg6)
+      ? ok("CS-6", "pre-fix readiness body rejects the same credited request", `${code6} ${msg6}`)
+      : bad("CS-6", "pre-fix readiness body should fail on payment_not_authorized", raised6);
 
     console.log(`\n  credit settlement: ${pass} passed, ${fail} failed\n`);
     if (fail > 0) process.exitCode = 1;
