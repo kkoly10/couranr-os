@@ -9,6 +9,7 @@ import {
 } from "@/lib/couranr/fulfillment/commands";
 import { logServerFailure, newCorrelationId } from "@/lib/couranr/errors";
 import { notifyConsumerLifecycle } from "@/lib/couranr/email/consumerLifecycle";
+import { notifyBusinessLifecycle } from "@/lib/couranr/email/businessLifecycle";
 
 assertServerOnly("lib/couranr/automation/engine.ts");
 
@@ -102,7 +103,16 @@ export async function advanceAutomaticFulfillment(
   try {
     await notifyConsumerLifecycle({ requestId, fetchImpl: options?.fetchImpl });
   } catch (err) {
-    recordFailure("advanceAutomaticFulfillment.notify", {
+    recordFailure("advanceAutomaticFulfillment.notifyConsumer", {
+      requestId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  try {
+    await notifyBusinessLifecycle({ requestId, fetchImpl: options?.fetchImpl });
+  } catch (err) {
+    recordFailure("advanceAutomaticFulfillment.notifyBusiness", {
       requestId,
       error: err instanceof Error ? err.message : String(err),
     });

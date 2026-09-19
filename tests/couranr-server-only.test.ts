@@ -169,6 +169,7 @@ describe("server-only modules are unreachable from client code", () => {
       // recipient tracking claim/receipt trio, and the one instant a RAW
       // tracking token exists in plaintext. A bundle reaching it would ship the
       // code that mints a recipient's capability.
+      "lib/couranr/email/businessLifecycle.ts",
       "lib/couranr/email/consumerLifecycle.ts",
       // The one minter of a merchant send address. Holds the service-role
       // client and reads auth.users through the admin API, so it sees every

@@ -19,6 +19,10 @@ import { custDirectDeliveryConfirmed } from "./templates/customer";
 import {
   consumerRecipientDelivered,
   consumerRecipientOutForDelivery,
+  consumerRecipientHandoffFailed,
+  consumerRecipientReturnNotice,
+  consumerSenderOutForDelivery,
+  consumerSenderDelivered,
   consumerSenderHandoffFailed,
   consumerSenderRequestConfirmed,
   consumerSenderRequestReceived,
@@ -559,72 +563,107 @@ export async function notifyConsumerLifecycle(
 
     for (const ev of events) {
       const state = String(ev.to_state ?? "");
-      if (state === "in_transit" || state === "delivered") {
-        if (!recipientEmail) continue;
-        const notification: ConsumerEmailNotification =
-          state === "in_transit" ? "recipient_out_for_delivery" : "recipient_delivered";
-        const rendered =
-          state === "in_transit"
-            ? consumerRecipientOutForDelivery(defaultEmailConfig, {
-                senderName,
-                recipientName: str(request.recipient_name) || "there",
-                reference,
-                handoffMethodLabel: RECIPIENT_HANDOFF_LABEL[proofMethod] ?? "Hand to you",
-                codeOnTrackingPage: proofMethod === METHOD_REQUIRES_CODE,
-              })
-            : consumerRecipientDelivered(defaultEmailConfig, {
-                senderName,
-                recipientName: str(request.recipient_name) || "there",
-                reference,
-                deliveredAtLabel: whenLabel(ev.created_at, str(delivery.timezone) || undefined),
-              });
-        report.results.push(
-          await deliver({
+      const deliveredAtLabel = whenLabel(ev.created_at, str(delivery.timezone) || undefined);
+
+      if (state === "in_transit") {
+        if (recipientEmail) {
+          const notification: ConsumerEmailNotification = "recipient_out_for_delivery";
+          report.results.push(await deliver({
             notification,
-            rendered,
+            rendered: consumerRecipientOutForDelivery(defaultEmailConfig, {
+              senderName,
+              recipientName: str(request.recipient_name) || "there",
+              reference,
+              handoffMethodLabel: RECIPIENT_HANDOFF_LABEL[proofMethod] ?? "Hand to you",
+              codeOnTrackingPage: proofMethod === METHOD_REQUIRES_CODE,
+            }),
             to: recipientEmail,
             idempotencyKey: consumerEmailIdempotencyKey.forEvent(notification, String(ev.id)),
             fetchImpl: options.fetchImpl,
-          })
-        );
+          }));
+        }
+        if (senderEmail) {
+          const notification: ConsumerEmailNotification = "sender_out_for_delivery";
+          report.results.push(await deliver({
+            notification,
+            rendered: consumerSenderOutForDelivery(defaultEmailConfig, {
+              senderName, recipientName, reference, statusUrl,
+            }),
+            to: senderEmail,
+            idempotencyKey: consumerEmailIdempotencyKey.forEvent(notification, String(ev.id)),
+            fetchImpl: options.fetchImpl,
+          }));
+        }
         continue;
       }
 
-      /* could_not_deliver and return_required both go to the SENDER: the
-         recipient was not there, and the sender is the party who paid, who owns
-         the items and who can decide what happens next. */
-      if (!senderEmail) continue;
-      const notification: ConsumerEmailNotification =
-        state === "could_not_deliver" ? "sender_handoff_failed" : "sender_return_notice";
+      if (state === "delivered") {
+        if (recipientEmail) {
+          const notification: ConsumerEmailNotification = "recipient_delivered";
+          report.results.push(await deliver({
+            notification,
+            rendered: consumerRecipientDelivered(defaultEmailConfig, {
+              senderName,
+              recipientName: str(request.recipient_name) || "there",
+              reference,
+              deliveredAtLabel,
+            }),
+            to: recipientEmail,
+            idempotencyKey: consumerEmailIdempotencyKey.forEvent(notification, String(ev.id)),
+            fetchImpl: options.fetchImpl,
+          }));
+        }
+        if (senderEmail) {
+          const notification: ConsumerEmailNotification = "sender_delivered";
+          report.results.push(await deliver({
+            notification,
+            rendered: consumerSenderDelivered(defaultEmailConfig, {
+              senderName, recipientName, reference, deliveredAtLabel, statusUrl,
+            }),
+            to: senderEmail,
+            idempotencyKey: consumerEmailIdempotencyKey.forEvent(notification, String(ev.id)),
+            fetchImpl: options.fetchImpl,
+          }));
+        }
+        continue;
+      }
+
       const reasonLabel =
         state === "could_not_deliver"
           ? "Couranr's driver could not complete the handoff at the drop-off address."
-          : "Couranr could not complete this delivery, so the items are being returned to you.";
-      const rendered =
-        state === "could_not_deliver"
-          ? consumerSenderHandoffFailed(defaultEmailConfig, {
-              senderName,
-              recipientName,
-              reference,
-              reasonLabel,
-              statusUrl,
-            })
-          : consumerSenderReturnNotice(defaultEmailConfig, {
-              senderName,
-              recipientName,
-              reference,
-              reasonLabel,
-              statusUrl,
-            });
-      report.results.push(
-        await deliver({
+          : "Couranr could not complete this delivery, so the items are being returned to the sender.";
+
+      if (senderEmail) {
+        const notification: ConsumerEmailNotification =
+          state === "could_not_deliver" ? "sender_handoff_failed" : "sender_return_notice";
+        report.results.push(await deliver({
           notification,
-          rendered,
+          rendered: state === "could_not_deliver"
+            ? consumerSenderHandoffFailed(defaultEmailConfig, {senderName,recipientName,reference,reasonLabel,statusUrl})
+            : consumerSenderReturnNotice(defaultEmailConfig, {senderName,recipientName,reference,reasonLabel,statusUrl}),
           to: senderEmail,
           idempotencyKey: consumerEmailIdempotencyKey.forEvent(notification, String(ev.id)),
           fetchImpl: options.fetchImpl,
-        })
-      );
+        }));
+      }
+
+      if (recipientEmail) {
+        const notification: ConsumerEmailNotification =
+          state === "could_not_deliver" ? "recipient_handoff_failed" : "recipient_return_notice";
+        report.results.push(await deliver({
+          notification,
+          rendered: state === "could_not_deliver"
+            ? consumerRecipientHandoffFailed(defaultEmailConfig, {
+                senderName,recipientName: str(request.recipient_name) || "there",reference,reasonLabel,
+              })
+            : consumerRecipientReturnNotice(defaultEmailConfig, {
+                senderName,recipientName: str(request.recipient_name) || "there",reference,reasonLabel,
+              }),
+          to: recipientEmail,
+          idempotencyKey: consumerEmailIdempotencyKey.forEvent(notification, String(ev.id)),
+          fetchImpl: options.fetchImpl,
+        }));
+      }
     }
 
     return report;

@@ -11,6 +11,7 @@ import type {
   BizQuoteReadyInput,
   BizPaymentReceiptInput,
   BizReviewOutcomeInput,
+  BizOutForDeliveryInput,
   BizDeliveredReceiptInput,
   BizActionNeededInput,
   CustApproveAndPayInput,
@@ -22,8 +23,12 @@ import type {
   CustReturnNoticeInput,
   ConsumerSenderRequestReceivedInput,
   ConsumerSenderRequestConfirmedInput,
+  ConsumerSenderOutForDeliveryInput,
+  ConsumerSenderDeliveredInput,
   ConsumerRecipientOutForDeliveryInput,
   ConsumerRecipientDeliveredInput,
+  ConsumerRecipientHandoffFailedInput,
+  ConsumerRecipientReturnNoticeInput,
   ConsumerSenderHandoffFailedInput,
   ConsumerSenderReturnNoticeInput,
   LineItem,
@@ -56,6 +61,7 @@ export interface EmailSamples {
     reviewConfirmed: BizReviewOutcomeInput;
     reviewRequote: BizReviewOutcomeInput;
     reviewDeclined: BizReviewOutcomeInput;
+    outForDelivery: BizOutForDeliveryInput;
     deliveredReceipt: BizDeliveredReceiptInput;
     actionNeeded: BizActionNeededInput;
   };
@@ -72,8 +78,12 @@ export interface EmailSamples {
   consumer: {
     senderRequestReceived: ConsumerSenderRequestReceivedInput;
     senderRequestConfirmed: ConsumerSenderRequestConfirmedInput;
+    senderOutForDelivery: ConsumerSenderOutForDeliveryInput;
+    senderDelivered: ConsumerSenderDeliveredInput;
     recipientOutForDelivery: ConsumerRecipientOutForDeliveryInput;
     recipientDelivered: ConsumerRecipientDeliveredInput;
+    recipientHandoffFailed: ConsumerRecipientHandoffFailedInput;
+    recipientReturnNotice: ConsumerRecipientReturnNoticeInput;
     senderHandoffFailed: ConsumerSenderHandoffFailedInput;
     senderReturnNotice: ConsumerSenderReturnNoticeInput;
   };
@@ -140,6 +150,13 @@ export function buildSamples(config: EmailConfig): EmailSamples {
         outcome: "declined",
         declineReason: "No driver is available for the requested overnight window in this area tonight.",
         ctaUrl: deliveryUrl,
+      },
+      outForDelivery: {
+        businessName: "Bloom & Co",
+        reference,
+        recipientName: recipient,
+        etaLabel: "about 20 minutes",
+        detailsUrl: deliveryUrl,
       },
       deliveredReceipt: {
         businessName: "Bloom & Co",
@@ -237,6 +254,19 @@ export function buildSamples(config: EmailConfig): EmailSamples {
         recipientNotified: true,
         statusUrl: sameDayUrl,
       },
+      senderOutForDelivery: {
+        senderName: sender,
+        recipientName: recipient,
+        reference,
+        statusUrl: sameDayUrl,
+      },
+      senderDelivered: {
+        senderName: sender,
+        recipientName: recipient,
+        reference,
+        deliveredAtLabel: "Sep 3, 2026 · 3:41 PM",
+        statusUrl: sameDayUrl,
+      },
       recipientOutForDelivery: {
         senderName: sender,
         recipientName: recipient,
@@ -249,6 +279,18 @@ export function buildSamples(config: EmailConfig): EmailSamples {
         recipientName: recipient,
         reference,
         deliveredAtLabel: "Sep 3, 2026 · 3:41 PM",
+      },
+      recipientHandoffFailed: {
+        senderName: sender,
+        recipientName: recipient,
+        reference,
+        reasonLabel: "The driver arrived at 3:20 PM and no one was available to receive the delivery.",
+      },
+      recipientReturnNotice: {
+        senderName: sender,
+        recipientName: recipient,
+        reference,
+        reasonLabel: "Two handoff attempts were made without a successful delivery.",
       },
       senderHandoffFailed: {
         senderName: sender,

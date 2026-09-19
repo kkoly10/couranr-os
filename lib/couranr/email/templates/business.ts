@@ -15,6 +15,7 @@ import type {
   BizQuoteReadyInput,
   BizPaymentReceiptInput,
   BizReviewOutcomeInput,
+  BizOutForDeliveryInput,
   BizDeliveredReceiptInput,
   BizActionNeededInput,
 } from "../types";
@@ -183,19 +184,26 @@ export function bizReviewOutcome(
       panel({
         tone: "success",
         title: "Confirmed",
-        html: "Your delivery is scheduled and a vehicle is assigned. You'll get tracking updates as it moves.",
+        html: input.vehicleLabel
+          ? "Your delivery is scheduled and Couranr has assigned a vehicle."
+          : "Your delivery is scheduled. Couranr will assign a driver and vehicle before pickup.",
       }),
       detailList([
         { label: "Reference", value: input.reference },
         { label: "Window", value: input.scheduledWindowLabel ?? "Same-day (estimated)" },
-        { label: "Vehicle", value: input.vehicleLabel ?? "Couranr-assigned" },
+        {
+          label: input.vehicleLabel ? "Vehicle" : "Dispatch",
+          value: input.vehicleLabel ?? "Assignment pending",
+        },
       ]),
       button({ label: "View delivery", href: input.ctaUrl }),
       small(ESTIMATE_NOTE),
     ].join("\n");
     return renderEmail(config, {
       subject: `Confirmed — delivery ${input.reference}`,
-      preheader: "Couranr confirmed your delivery and assigned a vehicle.",
+      preheader: input.vehicleLabel
+        ? "Couranr scheduled your delivery and assigned a vehicle."
+        : "Couranr scheduled your delivery; dispatch assignment is next.",
       contentHtml: content,
     });
   }
@@ -245,6 +253,34 @@ export function bizReviewOutcome(
   return renderEmail(config, {
     subject: `Couldn't confirm — delivery ${input.reference}`,
     preheader: "This delivery couldn't be confirmed. You haven't been charged.",
+    contentHtml: content,
+  });
+}
+
+/** 6 · Driver is on the way to the recipient. */
+export function bizOutForDelivery(
+  config: EmailConfig,
+  input: BizOutForDeliveryInput,
+): RenderedEmail {
+  const content = [
+    eyebrow(`On the way · ${input.reference}`),
+    h1("Your delivery is on the way"),
+    paragraph(
+      `Couranr picked up this delivery and is heading to ${strongNavy(input.recipientName)}.${
+        input.etaLabel ? ` Estimated arrival ${escapeInline(input.etaLabel)}.` : ""
+      }`,
+    ),
+    detailList([
+      { label: "Reference", value: input.reference },
+      { label: "Recipient", value: input.recipientName },
+    ]),
+    button({ label: "View delivery", href: input.detailsUrl, variant: "secondary" }),
+    small("Arrival times are estimates and can shift with traffic."),
+  ].join("\n");
+
+  return renderEmail(config, {
+    subject: `On the way — delivery ${input.reference}`,
+    preheader: `Couranr is heading to ${input.recipientName}.`,
     contentHtml: content,
   });
 }

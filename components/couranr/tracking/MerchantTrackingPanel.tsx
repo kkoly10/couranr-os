@@ -83,7 +83,7 @@ export function MerchantTrackingPanel({
     <Card>
       <CardHeader
         title="Recipient tracking"
-        description="Share a secure delivery-specific link. It does not expose the driver's phone number."
+        description="Couranr emails tracking automatically once a delivery is scheduled. You can also create a secure link here before that notification is sent."
         actions={<Badge tone="info">Secure link</Badge>}
       />
       <Stack gap={3}>
@@ -120,7 +120,7 @@ export function MerchantTrackingPanel({
             </Cluster>
             {copied ? (
               <Alert tone="success" title="Tracking link copied">
-                Send it directly to the recipient through the customer channel you already use.
+                Send it directly to the recipient through the customer channel you already use. Couranr will not replace a link after it has been emailed automatically.
               </Alert>
             ) : null}
             <Text size="xs" muted>

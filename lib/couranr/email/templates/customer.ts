@@ -161,9 +161,13 @@ export function custOutForDelivery(
           )}). Find it on your tracking page — for your security, we never include it in an email.`,
         })
       : panel({ tone: "info", title: "Handoff", html: `Method: ${esc(input.handoffMethodLabel)}.` }),
-    button({ label: "Track your delivery", href: input.trackUrl }),
-    fallbackLink(input.trackUrl),
-    small("Arrival times are estimates and can shift with traffic."),
+    input.trackUrl ? button({ label: "Track your delivery", href: input.trackUrl }) : "",
+    input.trackUrl ? fallbackLink(input.trackUrl) : "",
+    small(
+      input.trackUrl
+        ? "Arrival times are estimates and can shift with traffic."
+        : "Use the private Couranr tracking link from your scheduled-delivery email for live status. Arrival times are estimates and can shift with traffic.",
+    ),
   ].join("\n");
 
   return renderEmail(config, {
@@ -188,7 +192,9 @@ export function custDelivered(config: EmailConfig, input: CustDeliveredInput): R
     ]),
     input.proofUrl
       ? button({ label: "View proof", href: input.proofUrl })
-      : button({ label: "View delivery", href: input.trackUrl, variant: "secondary" }),
+      : input.trackUrl
+        ? button({ label: "View delivery", href: input.trackUrl, variant: "secondary" })
+        : "",
     small(
       `Questions about the delivery? Just reply. For anything about your order itself, please contact ${esc(input.shop.name)}.`,
     ),
@@ -216,9 +222,13 @@ export function custRecipientUnavailable(
       )}, but couldn't complete the handoff.`,
     ),
     panel({ tone: "warning", title: "What happened", html: esc(input.message) }),
-    paragraph("Choose what happens next and we'll follow your instructions."),
-    button({ label: "Choose what happens next", href: input.helpUrl }),
-    fallbackLink(input.helpUrl),
+    paragraph(
+      input.helpUrl
+        ? "Choose what happens next and we'll follow your instructions."
+        : `Couranr and ${strongNavy(input.shop.name)} have been notified. Reply to this email if you need help with the delivery.`,
+    ),
+    input.helpUrl ? button({ label: "Choose what happens next", href: input.helpUrl }) : "",
+    input.helpUrl ? fallbackLink(input.helpUrl) : "",
   ].join("\n");
 
   return renderEmail(config, {
@@ -241,8 +251,14 @@ export function custReturnNotice(
       `Your order from ${strongNavy(input.shop.name)} is on its way back. Here's why, and what you can do.`,
     ),
     panel({ tone: "neutral", title: "Reason", html: esc(input.reasonLabel) }),
-    button({ label: "See details", href: input.helpUrl, variant: "secondary" }),
-    small(`For questions about the order itself, please contact ${esc(input.shop.name)}.`),
+    input.helpUrl
+      ? button({ label: "See details", href: input.helpUrl, variant: "secondary" })
+      : "",
+    small(
+      input.helpUrl
+        ? `For questions about the order itself, please contact ${esc(input.shop.name)}.`
+        : `Couranr and ${esc(input.shop.name)} have been notified. Reply to this email for delivery help.`,
+    ),
   ].join("\n");
 
   return renderEmail(config, {
