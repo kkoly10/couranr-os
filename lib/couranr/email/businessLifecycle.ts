@@ -113,8 +113,8 @@ export async function notifyBusinessLifecycle(options:{requestId:string;fetchImp
     report.eligible=true;
     const {data:business,error:businessError}=(await supabaseAdmin.from("business_accounts").select("id,name").eq("id",businessAccountId).maybeSingle()) as {data:any;error:any};
     if(businessError||!business){report.reason="business_load_failed";if(businessError)record("businessLifecycle.loadBusiness",businessError.message);return report;}
-    const merchant=await resolveMerchantNotificationAddress({businessAccountId});
-    const merchantEmail=merchant.ok?merchant.email:"";
+    const merchant=await resolveMerchantNotificationAddress(businessAccountId);
+    const merchantEmail=merchant.audience==="merchant"?merchant.address:"";
     const businessName=str(business.name)||"Your business";
     const since=new Date(Date.now()-BUSINESS_NOTIFICATION_LOOKBACK_MINUTES*60*1000).toISOString();
     const detailsUrl=emailUrl(defaultEmailConfig,`/app/business/deliveries/${encodeURIComponent(requestId)}`);
