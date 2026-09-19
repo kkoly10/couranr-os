@@ -309,10 +309,34 @@ describe("validateConsumerSendBody", () => {
     ).toBe(true);
   });
 
-  it("an absent safety declaration means unknown — review, never a default 'none'", () => {
-    const r = validateConsumerSendBody({ ...valid, shipment: { weightLb: 5 } });
-    expect(r.ok).toBe(true);
-    if (r.ok) expect(r.value.shipment.restrictedClass).toBe("unknown");
+  it("DIRECT SAME DAY V1: requires the sender's prohibited-item declaration", () => {
+    for (const shipment of [
+      { weightLb: 5 },
+      { weightLb: 5, restrictedClass: "unknown" },
+      { weightLb: 5, restrictedClass: "" },
+    ]) {
+      const r = validateConsumerSendBody({ ...valid, shipment });
+      expect(r.ok).toBe(false);
+      if (isConsumerSendBodyFailure(r)) {
+        expect(r.reason).toBe("safety_declaration_required");
+      }
+    }
+
+    // The server accepts an explicit sender declaration, including a specific
+    // governed restricted class. Policy — not this parser — decides whether a
+    // declared class is carryable.
+    expect(
+      validateConsumerSendBody({
+        ...valid,
+        shipment: { weightLb: 5, restrictedClass: "none" },
+      }).ok
+    ).toBe(true);
+    expect(
+      validateConsumerSendBody({
+        ...valid,
+        shipment: { weightLb: 5, restrictedClass: "alcohol" },
+      }).ok
+    ).toBe(true);
   });
 
   it("an unrecognized declaration or band is an error, never coerced", () => {
