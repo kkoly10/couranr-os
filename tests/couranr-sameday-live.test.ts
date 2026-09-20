@@ -450,6 +450,7 @@ describe("quote maps quoteStatus, reads the nested `estimate` key", () => {
     expect(q).toEqual({
       state: "live-available",
       totalCents: 1049,
+      lineItems: ESTIMATED.lineItems,
       quoteVersionId: "qv-1",
       requestId: "req-1",
       expiresAt: "2026-09-03T12:15:00.000Z",

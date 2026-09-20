@@ -92,7 +92,15 @@ function QuoteBreakdown({
       <dl className="cr-send-summary">
         {lineItems.map((line, index) => (
           <React.Fragment key={`${line.code}-${index}`}>
-            <dt>{line.label}</dt>
+            <dt>
+              {line.label}
+              {line.quantity !== 1 && line.unitAmountCents > 0 ? (
+                <small>
+                  {" "}
+                  · {Number(line.quantity.toFixed(3))} × {formatCents(line.unitAmountCents)}
+                </small>
+              ) : null}
+            </dt>
             <dd>{line.amountCents === 0 ? "Included" : formatCents(line.amountCents)}</dd>
           </React.Fragment>
         ))}
@@ -282,7 +290,9 @@ export function SendFlow({
         const d = JSON.parse(raw) as Record<string, any>;
         if (d?.version === 1) {
           if (d.intent === "send" || d.intent === "pickup") setIntent(d.intent);
-          if (["trip", "item", "timing", "review", "payment"].includes(d.phase)) setPhase(d.phase);
+          if (["trip", "item", "timing", "review", "payment"].includes(d.phase)) {
+            setPhase(d.phase === "payment" ? "review" : d.phase);
+          }
           if (d.pickup && typeof d.pickup.value === "string") setPickup(d.pickup);
           if (d.destination && typeof d.destination.value === "string") setDestination(d.destination);
           if (typeof d.item === "string") setItem(d.item);
@@ -303,16 +313,10 @@ export function SendFlow({
           if (typeof d.acknowledged === "boolean") setAcknowledged(d.acknowledged);
           if (typeof d.electronicConsent === "boolean") setElectronicConsent(d.electronicConsent);
           if (d.quote && typeof d.quote === "object") {
-            const q = d.quote as QuoteReading;
-            if (
-              q.state === "live-available" &&
-              q.expiresAt &&
-              Date.parse(q.expiresAt) <= Date.now()
-            ) {
-              setQuote({ state: "stale" });
-            } else {
-              setQuote(q);
-            }
+            /* A browser-stored quote is useful only as a signal that a quote
+               existed. Never render its amount after reload: re-check the
+               canonical server quote before the sender can continue. */
+            setQuote({ state: "stale" });
           }
         }
       }

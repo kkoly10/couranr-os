@@ -208,7 +208,7 @@ export function PaymentForm({
       <Stack gap={3}>
         <PaymentElement
           onReady={() => setElementReady(true)}
-          onLoaderror={(event: any) => {
+          onLoadError={(event) => {
             console.error("[couranr-payment] Stripe Payment Element failed to load", event?.error);
             setElementReady(false);
             setError("The secure card form could not load. Nothing was charged. Reload and try again.");
