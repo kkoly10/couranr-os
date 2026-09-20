@@ -1,27 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isActorDenied, resolveRequestActor } from "@/lib/couranr/requests/actor";
-import { capturePayment, isFulfillmentFailure } from "@/lib/couranr/fulfillment/commands";
+import {
+  capturePayment,
+  getCanonicalDelivery,
+  getServicePlan,
+  isFulfillmentFailure,
+} from "@/lib/couranr/fulfillment/commands";
+import {
+  commitOperationsDispatchAssignment,
+  isDispatchFailure,
+  releaseOperationsDispatchReservation,
+  reserveOperationsDispatchCandidate,
+} from "@/lib/couranr/dispatch/commands";
 import { getDeliveryRequest, isCommandFailure } from "@/lib/couranr/requests/commands";
-import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { failureResponse, routeFailure, routeInternalFailure } from "@/lib/couranr/requests/respond";
 
 export const dynamic = "force-dynamic";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /**
- * POST — capture the authorized payment and create the canonical delivery.
+ * POST — dispatch an Operations-planned, card-authorized delivery.
  *
- * The body carries NO amount: the amount is the one already authorized, and
- * Stripe captures the full hold by default. Every prerequisite — confirmed
- * request, ready merchant, confirmed service plan for this generation, no
- * existing delivery — is re-checked in the database inside the same statement
- * that moves the obligation, so a stale Operations tab cannot capture against
- * a request that has moved on.
+ * Ordering is deliberate:
+ *   1. reserve a real compatible driver + vehicle
+ *   2. capture the existing authorized hold (no browser amount)
+ *   3. create/reuse the canonical delivery
+ *   4. atomically commit the reserved assignment
  *
- * Safe to retry: `couranr_begin_payment_capture` returns the existing
- * obligation when a capture is already in flight or done, Stripe's idempotency
- * key returns the first capture rather than performing a second, and
- * conversion is idempotent on `request_id`.
+ * This closes the old manual-flow gap where Operations captured first and only
+ * afterwards discovered whether anyone could actually take the delivery.
+ * Automatic plans keep their existing server-worker path, which already uses
+ * the same reserve -> settle -> assign ordering.
  */
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
@@ -37,16 +48,106 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   });
   if (isCommandFailure(loaded)) return failureResponse(loaded);
 
-  const result = await capturePayment({
+  const plan = await getServicePlan({ requestId: params.id });
+  if (isFulfillmentFailure(plan)) return failureResponse(plan);
+  if (!plan.value.plan || plan.value.plan.plan_source !== "operations") {
+    return routeFailure("conflict", "This delivery is not on an Operations dispatch plan.");
+  }
+
+  const reserved = await reserveOperationsDispatchCandidate({
+    actor: actor.actor,
+    requestId: params.id,
+  });
+  if (isDispatchFailure(reserved)) return failureResponse(reserved);
+  const reservationId = String(reserved.value.reservation.reservationId);
+
+  const captured = await capturePayment({
     actor: actor.actor,
     requestId: params.id,
     businessAccountId: loaded.value.request.business_account_id ?? null,
   });
-  if (isFulfillmentFailure(result)) return failureResponse(result);
+  if (isFulfillmentFailure(captured)) {
+    await releaseOperationsDispatchReservation({
+      actor: actor.actor,
+      reservationId,
+      reason: "payment_capture_not_completed",
+    });
+    return failureResponse(captured);
+  }
+
+  const deliveryId = captured.value.deliveryId;
+  if (!deliveryId) {
+    await releaseOperationsDispatchReservation({
+      actor: actor.actor,
+      reservationId,
+      reason: "canonical_delivery_missing",
+    });
+    return routeInternalFailure({
+      operation: "operationsDispatch.capture",
+      detail: { requestId: params.id },
+      message: "Payment settled but the delivery could not be loaded. Do not capture again.",
+    });
+  }
+
+  const { data: delivery, error: deliveryError } = (await supabaseAdmin
+    .from("couranr_deliveries")
+    .select("id,version,fulfillment_state")
+    .eq("id", deliveryId)
+    .maybeSingle()) as { data: any; error: any };
+
+  if (deliveryError || !delivery) {
+    await releaseOperationsDispatchReservation({
+      actor: actor.actor,
+      reservationId,
+      reason: "canonical_delivery_reload_failed",
+    });
+    return routeInternalFailure({
+      operation: "operationsDispatch.reloadDelivery",
+      detail: deliveryError?.message ?? null,
+      message: "Payment settled but Couranr could not finish driver assignment. Do not capture again.",
+    });
+  }
+
+  if (delivery.fulfillment_state === "assigned") {
+    await releaseOperationsDispatchReservation({
+      actor: actor.actor,
+      reservationId,
+      reason: "delivery_already_assigned",
+    });
+    return NextResponse.json({
+      paymentState: captured.value.paymentState,
+      deliveryId,
+      fulfillmentState: "assigned",
+      assignmentState: "active",
+    });
+  }
+
+  const assigned = await commitOperationsDispatchAssignment({
+    actor: actor.actor,
+    reservationId,
+    deliveryId,
+    expectedVersion: Number(delivery.version),
+    requestId: params.id,
+    servicePlanId: String(plan.value.plan.id),
+  });
+  if (isDispatchFailure(assigned)) {
+    await releaseOperationsDispatchReservation({
+      actor: actor.actor,
+      reservationId,
+      reason: "assignment_commit_failed",
+    });
+    return failureResponse({
+      ...assigned,
+      message:
+        "Payment was captured, but driver assignment did not finish. Do not capture again; reload and assign the scheduled delivery.",
+    } as any);
+  }
 
   return NextResponse.json({
-    paymentState: result.value.paymentState,
-    deliveryId: result.value.deliveryId,
-    fulfillmentState: "scheduled",
+    paymentState: captured.value.paymentState,
+    deliveryId,
+    fulfillmentState: "assigned",
+    assignmentState: "active",
+    assignmentId: assigned.value.assignment.id,
   });
 }

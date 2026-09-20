@@ -2,23 +2,23 @@ import { NextRequest, NextResponse } from "next/server";
 import { isActorDenied, resolveRequestActor } from "@/lib/couranr/requests/actor";
 import {
   createDeliveryFromPromotionalCredit,
+  getServicePlan,
   isFulfillmentFailure,
 } from "@/lib/couranr/fulfillment/commands";
+import {
+  commitOperationsDispatchAssignment,
+  isDispatchFailure,
+  releaseOperationsDispatchReservation,
+  reserveOperationsDispatchCandidate,
+} from "@/lib/couranr/dispatch/commands";
 import { getDeliveryRequest, isCommandFailure } from "@/lib/couranr/requests/commands";
-import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { failureResponse, routeFailure, routeInternalFailure } from "@/lib/couranr/requests/respond";
 
 export const dynamic = "force-dynamic";
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-/**
- * POST — create the canonical delivery from an applied Couranr promotional credit.
- *
- * No amount is accepted from the browser and this route never touches Stripe.
- * The database verifies the current immutable quote, applied credit, merchant
- * readiness, confirmed plan and tenant before conversion.
- */
+/** Dispatch a fully credited Operations plan without creating a card charge. */
 export async function POST(req: NextRequest, props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   if (!UUID_RE.test(params.id)) return routeFailure("not_found", "Delivery request not found.");
@@ -33,16 +33,74 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   });
   if (isCommandFailure(loaded)) return failureResponse(loaded);
 
-  const result = await createDeliveryFromPromotionalCredit({
+  const plan = await getServicePlan({ requestId: params.id });
+  if (isFulfillmentFailure(plan)) return failureResponse(plan);
+  if (!plan.value.plan || plan.value.plan.plan_source !== "operations") {
+    return routeFailure("conflict", "This delivery is not on an Operations dispatch plan.");
+  }
+
+  const reserved = await reserveOperationsDispatchCandidate({ actor: actor.actor, requestId: params.id });
+  if (isDispatchFailure(reserved)) return failureResponse(reserved);
+  const reservationId = String(reserved.value.reservation.reservationId);
+
+  const created = await createDeliveryFromPromotionalCredit({
     actor: actor.actor,
     requestId: params.id,
     businessAccountId: loaded.value.request.business_account_id ?? null,
   });
-  if (isFulfillmentFailure(result)) return failureResponse(result);
+  if (isFulfillmentFailure(created)) {
+    await releaseOperationsDispatchReservation({
+      actor: actor.actor,
+      reservationId,
+      reason: "credit_delivery_conversion_failed",
+    });
+    return failureResponse(created);
+  }
+
+  const deliveryId = String(created.value.delivery.id);
+  const { data: delivery, error } = (await supabaseAdmin
+    .from("couranr_deliveries")
+    .select("id,version,fulfillment_state")
+    .eq("id", deliveryId)
+    .maybeSingle()) as { data: any; error: any };
+  if (error || !delivery) {
+    await releaseOperationsDispatchReservation({
+      actor: actor.actor,
+      reservationId,
+      reason: "canonical_delivery_reload_failed",
+    });
+    return routeInternalFailure({
+      operation: "operationsDispatch.creditReload",
+      detail: error?.message ?? null,
+      message: "The credited delivery was scheduled but Couranr could not finish driver assignment.",
+    });
+  }
+
+  const assigned = await commitOperationsDispatchAssignment({
+    actor: actor.actor,
+    reservationId,
+    deliveryId,
+    expectedVersion: Number(delivery.version),
+    requestId: params.id,
+    servicePlanId: String(plan.value.plan.id),
+  });
+  if (isDispatchFailure(assigned)) {
+    await releaseOperationsDispatchReservation({
+      actor: actor.actor,
+      reservationId,
+      reason: "assignment_commit_failed",
+    });
+    return failureResponse({
+      ...assigned,
+      message: "The credited delivery was scheduled but driver assignment did not finish. Reload and assign it.",
+    } as any);
+  }
 
   return NextResponse.json({
-    deliveryId: result.value.delivery.id,
-    fulfillmentState: result.value.delivery.fulfillment_state,
+    deliveryId,
+    fulfillmentState: "assigned",
     settlement: "promotional_credit",
+    assignmentState: "active",
+    assignmentId: assigned.value.assignment.id,
   });
 }

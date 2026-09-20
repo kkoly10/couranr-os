@@ -353,8 +353,8 @@ function MobileQueueCard({
                         ? "Plan delivery"
                         : stage === "service_plan_confirmed"
                           ? entry.promotionalCredit
-                            ? "Schedule credited delivery"
-                            : "Capture payment"
+                            ? "Dispatch credited delivery"
+                            : "Dispatch delivery"
                           : stage === "captured_scheduled"
                             ? "Assign driver"
                             : stage === "driver_assigned"
@@ -499,8 +499,8 @@ function DesktopQueueRow({
                         ? "Plan delivery"
                         : stage === "service_plan_confirmed"
                           ? entry.promotionalCredit
-                            ? "Schedule credited delivery"
-                            : "Capture payment"
+                            ? "Dispatch credited delivery"
+                            : "Dispatch delivery"
                           : stage === "captured_scheduled"
                             ? "Assign driver"
                             : stage === "driver_assigned"
