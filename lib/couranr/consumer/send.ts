@@ -1241,6 +1241,8 @@ export type ConsumerSendView = {
   state: string;
   quoteStatus: string;
   totalCents: number | null;
+  /** Canonical server-authored quote lines; display only. */
+  lineItems: unknown[];
   paymentState: string | null;
   /**
    * THE SENDER IS TOLD THE RECIPIENT WAS NOTIFIED. THE SENDER IS NEVER GIVEN
@@ -1322,6 +1324,7 @@ export async function getConsumerSendView(params: {
       row.quote_status === "estimated" && row.delivery_subtotal_cents !== null
         ? Number(row.delivery_subtotal_cents)
         : null,
+    lineItems: Array.isArray(row.quote_line_items) ? row.quote_line_items : [],
     paymentState: ob.value ? String(ob.value.payment_state) : null,
   };
 

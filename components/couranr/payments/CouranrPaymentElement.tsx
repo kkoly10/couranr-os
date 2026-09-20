@@ -44,7 +44,7 @@ const AUTHORIZE_COPY =
 let stripePromise: Promise<Stripe | null> | null = null;
 function getStripePromise(): Promise<Stripe | null> | null {
   const key = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
-  if (!key) return null;
+  if (!key || !/^pk_(?:live|test)_/.test(key)) return null;
   if (!stripePromise) stripePromise = loadStripe(key);
   return stripePromise;
 }
@@ -112,6 +112,7 @@ export function PaymentForm({
 
   const [phase, setPhase] = React.useState<Phase>("ready");
   const [error, setError] = React.useState<string | null>(null);
+  const [elementReady, setElementReady] = React.useState(false);
 
   /**
    * Guards a second submission while the first is in flight.
@@ -136,6 +137,7 @@ export function PaymentForm({
     try {
       const { error: confirmError } = await stripe.confirmPayment({
         elements,
+        confirmParams: { return_url: `${window.location.origin}/send` },
         // Stay on the page when the card allows it; redirect when it does not.
         redirect: "if_required",
       });
@@ -182,8 +184,9 @@ export function PaymentForm({
         "Couranr is still confirming this payment. You can close this page — you will be notified once it is authorized."
       );
       setPhase("error");
-    } catch {
-      setError("We could not reach Couranr. Nothing was charged.");
+    } catch (cause) {
+      console.error("[couranr-payment] Stripe confirmation failed", cause);
+      setError("The secure payment form could not complete. Nothing was charged. Reload and try again.");
       setPhase("error");
     } finally {
       inFlight.current = false;
@@ -203,7 +206,17 @@ export function PaymentForm({
   return (
     <form onSubmit={onSubmit} data-couranr-payment-form>
       <Stack gap={3}>
-        <PaymentElement />
+        <PaymentElement
+          onReady={() => setElementReady(true)}
+          onLoadError={(event) => {
+            console.error("[couranr-payment] Stripe Payment Element failed to load", event?.error);
+            setElementReady(false);
+            setError("The secure card form could not load. Nothing was charged. Reload and try again.");
+            setPhase("error");
+          }}
+        />
+
+        {!elementReady && !error ? <Text size="sm" muted>Loading secure payment form…</Text> : null}
 
         {error ? (
           <ErrorState title="That payment could not be completed" body={error} />
@@ -217,7 +230,7 @@ export function PaymentForm({
           type="submit"
           variant="primary"
           loading={busy}
-          disabled={busy || !stripe || !elements}
+          disabled={busy || !stripe || !elements || !elementReady}
         >
           {phase === "reconciling"
             ? "Confirming with Couranr"
