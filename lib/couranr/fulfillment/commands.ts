@@ -1069,9 +1069,50 @@ export async function listOperationsLifecycle(params: {
   }
 
   const candidates = candidateRows ?? [];
-  const ids = candidates.map((r) => String(r.request_id));
+  const workIds = candidates.map((r) => String(r.request_id));
   const total =
     candidates.length > 0 ? Number(candidates[0].total_count ?? candidates.length) : 0;
+
+  /*
+   * Automatic schedules are visibility, not Operations work. Append a bounded
+   * upcoming/recent window after the paginated work set so machine-owned rows
+   * can never crowd exceptions, review or capture work out of the first page.
+   * Ninety-six hours covers a Friday-evening -> Monday service window.
+   */
+  const now = Date.now();
+  const visibilityStart = new Date(now - 2 * 60 * 60 * 1000).toISOString();
+  const visibilityEnd = new Date(now + 96 * 60 * 60 * 1000).toISOString();
+  const { data: automaticPlans, error: automaticPlansError } = (await supabaseAdmin
+    .from("couranr_service_plans")
+    .select("request_id,scheduled_pickup_start")
+    .eq("plan_state", "confirmed")
+    .eq("plan_source", "automatic")
+    .gte("scheduled_pickup_end", visibilityStart)
+    .lte("scheduled_pickup_start", visibilityEnd)
+    .order("scheduled_pickup_start", { ascending: true })
+    .limit(50)) as {
+      data: Array<{ request_id: string; scheduled_pickup_start: string }> | null;
+      error: any;
+    };
+
+  if (automaticPlansError) {
+    return fail({
+      operation: op,
+      code: "internal",
+      detail: automaticPlansError.message,
+      message: "The Couranr Operations Queue could not be loaded.",
+    });
+  }
+
+  const seen = new Set(workIds);
+  const automaticIds = (automaticPlans ?? [])
+    .map((r) => String(r.request_id))
+    .filter((id) => {
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+  const ids = [...workIds, ...automaticIds];
   if (ids.length === 0) return { ok: true, value: { entries: [], total } };
 
   const { data: requestRows, error: requestError } = (await supabaseAdmin

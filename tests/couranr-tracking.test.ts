@@ -205,6 +205,7 @@ function fixture(overrides: Record<string, any> = {}) {
             },
             ...(overrides.delivery ?? {}),
           },
+    servicePlan: overrides.servicePlan ?? null,
     business:
       overrides.business === null
         ? null
@@ -284,6 +285,25 @@ describe("tracking projection", () => {
     expect(p.scheduledPickupStart).toBeNull();
     expect(p.driverAssigned).toBe(false);
     expect(p.proof.state).toBe("unavailable");
+  });
+
+  it("shows the confirmed service-plan window before delivery conversion", () => {
+    const p = buildTrackingProjection(
+      fixture({
+        delivery: null,
+        assignmentActive: false,
+        servicePlan: {
+          scheduled_pickup_start: "2026-09-21T12:30:00.000Z",
+          scheduled_pickup_end: "2026-09-21T13:00:00.000Z",
+          timezone: "America/New_York",
+        },
+      })
+    );
+    expect(p.stage).toBe("confirmed");
+    expect(p.scheduledPickupStart).toBe("2026-09-21T12:30:00.000Z");
+    expect(p.scheduledPickupEnd).toBe("2026-09-21T13:00:00.000Z");
+    expect(p.timezone).toBe("America/New_York");
+    expect(p.driverAssigned).toBe(false);
   });
 
   it("uses the canonical request snapshot for a direct recipient before delivery conversion", () => {
@@ -548,6 +568,28 @@ describe("recipient adult-attestation route authority", () => {
     // reads exactly as intended.
     expect(page).toMatch(/Confirm\s+you are 18 or older/);
     expect(page).toContain('disabled={!accepted || status === "saving"}');
+  });
+});
+
+describe("recipient handoff-code readiness", () => {
+  const page = fs.readFileSync(
+    path.join(REPO, "components/couranr/tracking/TrackingPage.tsx"),
+    "utf8"
+  );
+
+  it("does not offer PIN issuance before adult attestation and driver assignment", () => {
+    expect(page).toContain("if (!tracking.recipientAdultAttested) return null");
+    expect(page).toContain("if (!tracking.driverAssigned)");
+    expect(page).toMatch(/will become available here once a\s+driver is assigned/);
+  });
+
+  it("keeps the server fail-closed and the PIN short-lived", () => {
+    const commands = fs.readFileSync(
+      path.join(REPO, "lib/couranr/tracking/commands.ts"),
+      "utf8"
+    );
+    expect(commands).toContain('reason: "delivery_not_created"');
+    expect(commands).toContain("p_ttl_minutes: 720");
   });
 });
 

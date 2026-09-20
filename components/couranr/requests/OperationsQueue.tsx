@@ -134,10 +134,15 @@ export function OperationsQueue() {
                 340 rows and told nothing believes they have seen the queue.
               */}
               {(() => {
-                const inFlight = entries.filter((e) => e.stage !== "captured_scheduled").length;
-                return total > inFlight
-                  ? `Showing the ${inFlight} oldest of ${total} requests in flight, plus recently scheduled work.`
-                  : `${inFlight} request${inFlight === 1 ? "" : "s"} in flight.`;
+                const automatic = entries.filter((e) => e.stage === "automatic_scheduled").length;
+                const workShown = entries.length - automatic;
+                const workCopy =
+                  total > workShown
+                    ? `Showing the ${workShown} oldest of ${total} requests needing attention.`
+                    : `${workShown} request${workShown === 1 ? "" : "s"} need attention.`;
+                return automatic > 0
+                  ? `${workCopy} ${automatic} upcoming automatic schedule${automatic === 1 ? "" : "s"} also visible.`
+                  : workCopy;
               })()}
             </Text>
             <Button size="sm" onClick={load}>

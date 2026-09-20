@@ -378,9 +378,27 @@ export async function loadTrackingView(params: {
   }
 
   let delivery: any = null;
+  let servicePlan: any = null;
   let assignmentActive = false;
   let proofs: any[] = [];
   let events: any[] = [];
+
+  /* A recipient link can exist before capture creates the canonical delivery.
+     In that window the confirmed plan is safe customer-facing truth. */
+  if (!deliveryId) {
+    const planQ = await supabaseAdmin
+      .from("couranr_service_plans")
+      .select("scheduled_pickup_start, scheduled_pickup_end, timezone")
+      .eq("request_id", requestId)
+      .eq("plan_state", "confirmed")
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (planQ.error) {
+      return fail({ operation: op, code: classifyDatabaseError(planQ.error), detail: planQ.error });
+    }
+    servicePlan = planQ.data ?? null;
+  }
 
   if (deliveryId) {
     const dlvQ = await supabaseAdmin
@@ -438,6 +456,7 @@ export async function loadTrackingView(params: {
   const projection = buildTrackingProjection({
     request: reqQ.data,
     delivery,
+    servicePlan,
     business: bizQ.data,
     assignmentActive,
     proofs,

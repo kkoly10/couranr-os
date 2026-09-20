@@ -212,6 +212,30 @@ function RecipientCodeCard({
     tracking.stage === "delivered" || tracking.stage === "return";
   if (!tracking.recipientAdultAttestationRequired || settled) return null;
 
+  /* The PIN belongs to the physical handoff, not to booking. The server
+     requires a canonical delivery and the credential lasts 12 hours, so the
+     public page waits for adult attestation plus a real driver assignment. */
+  if (!tracking.recipientAdultAttested) return null;
+
+  if (!tracking.driverAssigned) {
+    return (
+      <Card>
+        <CardHeader title="Your handoff code" />
+        <Stack gap={3}>
+          <Text>
+            Your six-digit handoff code will become available here once a
+            driver is assigned. Couranr never sends this code by email or text.
+          </Text>
+          {tracking.scheduledPickupStart ? (
+            <Text size="sm" muted>
+              Check back closer to the scheduled pickup window shown above.
+            </Text>
+          ) : null}
+        </Stack>
+      </Card>
+    );
+  }
+
   async function mint() {
     setStatus("minting");
     const result = await issueRecipientDropoffCode(token);

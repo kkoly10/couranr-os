@@ -186,12 +186,15 @@ export function proofStateFor(params: {
 export function buildTrackingProjection(input: {
   request: any;
   delivery: any | null;
+  /** Confirmed plan used only before canonical delivery conversion. */
+  servicePlan?: any | null;
   business: any | null;
   assignmentActive: boolean;
   proofs: any[];
   events: any[];
 }): TrackingProjection {
   const d = input.delivery;
+  const schedule = d ?? input.servicePlan ?? null;
 
   const fulfillmentStage = d ? stageForFulfillmentState(d.fulfillment_state) : null;
   const stage: TrackingStage =
@@ -224,9 +227,9 @@ export function buildTrackingProjection(input: {
       postalCode: str(dropoff, "postalCode"),
     },
 
-    scheduledPickupStart: isoOrNull(d?.scheduled_pickup_start),
-    scheduledPickupEnd: isoOrNull(d?.scheduled_pickup_end),
-    timezone: typeof d?.timezone === "string" ? d.timezone : null,
+    scheduledPickupStart: isoOrNull(schedule?.scheduled_pickup_start),
+    scheduledPickupEnd: isoOrNull(schedule?.scheduled_pickup_end),
+    timezone: typeof schedule?.timezone === "string" ? schedule.timezone : null,
 
     serviceLevel: typeof d?.service_level === "string" ? d.service_level : null,
     signatureRequired: d?.signature_required === true,
