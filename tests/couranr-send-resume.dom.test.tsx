@@ -148,7 +148,7 @@ describe("SendFlow live resume — awaiting the payer's authorization", () => {
 
     // The resume landed on the payment step with the server's stored total.
     const cta = await screen.findByRole("button", { name: "Continue to payment" });
-    expect(screen.getByText("Total: $12.99")).toBeTruthy();
+    expect(screen.getByText("$12.99")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Request this delivery" })).toBeNull();
 
     // The stored session was reused: exactly one GET /request, with the guest
@@ -232,7 +232,7 @@ describe("SendFlow live resume — awaiting the payer's authorization", () => {
 
     // Real same-request recovery: the fresh total is on screen with the
     // reason it changed, and the payment CTA is back — not a dead end.
-    await waitFor(() => expect(screen.getByText("Total: $13.99")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("$13.99")).toBeTruthy());
     expect(screen.getByRole("status").textContent).toMatch(/The price was refreshed/);
     expect(screen.queryByRole("alert")).toBeNull();
 

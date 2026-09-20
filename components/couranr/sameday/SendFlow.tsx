@@ -1516,7 +1516,7 @@ export function SendFlow({
 
           <div className="cr-send-note" data-couranr-quote={quote?.state ?? "none"}>
             {quote?.state === "calculating" ? "Calculating…" : null}
-            {quote?.state === "stale" ? "Your details were restored — check the current price again." : null}
+            {quote?.state === "stale" ? "Delivery details changed — check the current price again." : null}
             {/* Manual review is NOT a payable state — it says so plainly. */}
             {quote?.state === "manual-review" ? quote.note : null}
             {quote?.state === "unavailable" ? quote.note : null}

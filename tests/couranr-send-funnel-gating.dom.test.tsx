@@ -197,7 +197,7 @@ describe("consumer /send funnel gating", () => {
     // Exactly one estimate, and the SERVER's number is shown despite the failing
     // interpret feature — AI is enrichment, never a gate on ordering.
     await waitFor(() => expect(f.of(ESTIMATE)).toHaveLength(1));
-    await screen.findByText("Total: $12.34");
+    await screen.findByText("$12.34");
 
     // Payment progression needs the acknowledgement AND a proceedable quote.
     expect(btn("Continue to payment").disabled).toBe(true);
@@ -215,7 +215,7 @@ describe("consumer /send funnel gating", () => {
     await driveToReviewStep();
     await fillSenderAndRecipient();
     await userEvent.click(btn(/Check the price/));
-    await screen.findByText("Total: $12.34");
+    await screen.findByText("$12.34");
     /* BOTH acknowledgements, and neither of them gated the price above — the
        estimate creates a draft, and the database exempts a draft from
        couranr_dr_consumer_acceptance_chk for the same reason. */
@@ -226,7 +226,7 @@ describe("consumer /send funnel gating", () => {
 
     // Changing a quote input (contact here) stales the standing quote.
     await userEvent.type(screen.getByLabelText("Email"), "a@b.co");
-    await screen.findByText(/You changed the trip/);
+    await screen.findByText(/check the current price again/i);
     expect(btn("Continue to payment").disabled).toBe(true);
   });
 
@@ -291,7 +291,7 @@ describe("consumer /send funnel gating", () => {
       /protectionLevel|protectionPolicyVersion|AcceptedAt|AttestedAt|ConsentAt/
     );
 
-    await screen.findByText("Total: $12.34");
+    await screen.findByText("$12.34");
     await userEvent.click(screen.getByLabelText(SEND_COPY.acknowledgement));
     await userEvent.click(screen.getByLabelText(SEND_COPY.electronic_consent));
     await userEvent.click(btn("Continue to payment"));
@@ -445,6 +445,6 @@ describe("consumer /send funnel gating", () => {
     expect(sent.timing).toEqual({ intent: "scheduled", requestedPickupLocal: "2027-03-10T10:30" });
     // Only the sender's words left the browser: no zone, no instant.
     expect(JSON.stringify(sent)).not.toMatch(/requestedDepartureAt|America\/New_York/);
-    await screen.findByText("Total: $12.34");
+    await screen.findByText("$12.34");
   });
 });
