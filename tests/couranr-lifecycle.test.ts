@@ -535,6 +535,20 @@ describe("capture idempotency key", () => {
   });
 });
 
+describe("automatic schedule visibility", () => {
+  it("keeps machine schedules out of the work set but appends a bounded Admin visibility window", () => {
+    expect(QUEUE_STAGES).not.toContain("automatic_scheduled");
+    const commands = readFileSync(join(ROOT, "lib/couranr/fulfillment/commands.ts"), "utf8");
+    const route = readFileSync(join(ROOT, "app/api/couranr/operations/queue/route.ts"), "utf8");
+
+    expect(commands).toContain('.eq("plan_source", "automatic")');
+    expect(commands).toContain("now + 96 * 60 * 60 * 1000");
+    expect(commands).toContain("const ids = [...workIds, ...automaticIds]");
+    expect(route).toContain('stage === "automatic_scheduled"');
+    expect(route).toContain('entry.stage !== "automatic_scheduled"');
+  });
+});
+
 describe("queue projection", () => {
   /*
    * The queue feeds `toDeliveryRequestView` from a narrower `select` than the

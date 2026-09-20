@@ -71,7 +71,7 @@ export const STAGE_LABELS: Record<TrackingStage, string> = {
  */
 export const STAGE_DESCRIPTIONS: Record<TrackingStage, string> = {
   preparing: "Couranr has this delivery. The sender is getting your items ready.",
-  confirmed: "Couranr has confirmed this delivery and is assigning a driver.",
+  confirmed: "Couranr has confirmed this delivery. A driver will be assigned before pickup.",
   assigned: "A Couranr driver is assigned and is collecting your items.",
   picked_up: "Your items are with the driver.",
   in_transit: "Your driver is on the way to you.",

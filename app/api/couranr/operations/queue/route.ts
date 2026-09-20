@@ -127,9 +127,14 @@ export async function GET(req: NextRequest) {
     };
   });
 
-  const entries = mappedEntries.filter((entry) =>
-    (QUEUE_STAGES as readonly LifecycleStage[]).includes(entry.stage as LifecycleStage)
-  );
+  const entries = mappedEntries.filter((entry) => {
+    const stage = entry.stage as LifecycleStage;
+    return (
+      (QUEUE_STAGES as readonly LifecycleStage[]).includes(stage) ||
+      stage === "automatic_scheduled"
+    );
+  });
+  const workEntries = entries.filter((entry) => entry.stage !== "automatic_scheduled");
 
   return NextResponse.json({
     entries,
@@ -144,6 +149,6 @@ export async function GET(req: NextRequest) {
      * Compares against the WORK entries only. Recently-scheduled rows are
      * folded in on top of the window and are not part of what was truncated.
      */
-    truncated: result.value.total > entries.length,
+    truncated: result.value.total > workEntries.length,
   });
 }
