@@ -27,18 +27,18 @@ const AUTO = readFileSync(path.join(ROOT, "lib/couranr/automation/engine.ts"), "
 
 describe("Operations settlement -> dispatch parity", () => {
   it("reserves a compatible resource before card capture and commits only after delivery creation", () => {
-    const reserve = CAPTURE_ROUTE.indexOf("reserveOperationsDispatchCandidate");
-    const capture = CAPTURE_ROUTE.indexOf("capturePayment({");
-    const commit = CAPTURE_ROUTE.indexOf("commitOperationsDispatchAssignment");
+    const reserve = CAPTURE_ROUTE.indexOf("const reserved = await reserveOperationsDispatchCandidate");
+    const capture = CAPTURE_ROUTE.indexOf("const captured = await capturePayment", reserve);
+    const commit = CAPTURE_ROUTE.indexOf("const assigned = await commitOperationsDispatchAssignment", capture);
     expect(reserve).toBeGreaterThan(-1);
     expect(capture).toBeGreaterThan(reserve);
     expect(commit).toBeGreaterThan(capture);
   });
 
   it("uses the same reserve-before-settle shape for credited manual deliveries", () => {
-    const reserve = CREDIT_ROUTE.indexOf("reserveOperationsDispatchCandidate");
-    const settle = CREDIT_ROUTE.indexOf("createDeliveryFromPromotionalCredit");
-    const commit = CREDIT_ROUTE.indexOf("commitOperationsDispatchAssignment");
+    const reserve = CREDIT_ROUTE.indexOf("const reserved = await reserveOperationsDispatchCandidate");
+    const settle = CREDIT_ROUTE.indexOf("const created = await createDeliveryFromPromotionalCredit", reserve);
+    const commit = CREDIT_ROUTE.indexOf("const assigned = await commitOperationsDispatchAssignment", settle);
     expect(reserve).toBeGreaterThan(-1);
     expect(settle).toBeGreaterThan(reserve);
     expect(commit).toBeGreaterThan(settle);

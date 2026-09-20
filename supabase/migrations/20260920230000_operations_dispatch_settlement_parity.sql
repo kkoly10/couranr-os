@@ -16,7 +16,7 @@ create or replace function public.couranr_reserve_operations_dispatch_candidate(
   p_now timestamptz default now()
 ) returns jsonb
 language plpgsql
-set search_path=''
+set search_path = ''
 as $fn$
 declare
   v_plan public.couranr_service_plans;
@@ -142,7 +142,7 @@ create or replace function public.couranr_commit_operations_dispatch_assignment(
   p_idempotency_key text
 ) returns public.couranr_delivery_assignments
 language plpgsql
-set search_path=''
+set search_path = ''
 as $fn$
 declare
   v_res public.couranr_dispatch_reservations;
