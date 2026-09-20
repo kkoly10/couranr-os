@@ -13,6 +13,7 @@ import {
   getSameDayAdaptersForMode,
   type IntakeProposal,
   type IntakeReading,
+  type QuoteLineItem,
   type QuoteReading,
 } from "@/lib/couranr/sameday/adapters";
 import type { AdapterMode } from "@/lib/couranr/sameday/adapterMode";
@@ -76,6 +77,31 @@ function parseIntent(raw: string | null): Intent | null {
 }
 
 const emptyAddress: ConsumerAddressValue = { value: "", placeId: null };
+const DRAFT_STORAGE_KEY = "couranr-send-draft-v1";
+
+function QuoteBreakdown({
+  totalCents,
+  lineItems,
+}: {
+  totalCents: number;
+  lineItems: QuoteLineItem[];
+}) {
+  return (
+    <div data-couranr-price-breakdown="true">
+      <p className="cr-send-field__label">Price breakdown</p>
+      <dl className="cr-send-summary">
+        {lineItems.map((line, index) => (
+          <React.Fragment key={`${line.code}-${index}`}>
+            <dt>{line.label}</dt>
+            <dd>{line.amountCents === 0 ? "Included" : formatCents(line.amountCents)}</dd>
+          </React.Fragment>
+        ))}
+        <dt><strong>Total</strong></dt>
+        <dd><strong>{formatCents(totalCents)}</strong></dd>
+      </dl>
+    </div>
+  );
+}
 
 /**
  * The two documents the shipment certification names, cited rather than
@@ -234,6 +260,130 @@ export function SendFlow({
   /* Final closure §5: a resumed request is ALREADY SUBMITTED — the payment
      button must go straight to /pay and never POST /submit again. */
   const [resumePay, setResumePay] = React.useState(false);
+  const [draftHydrated, setDraftHydrated] = React.useState(mode !== "live");
+
+  function clearDraftStorage() {
+    if (mode !== "live") return;
+    try {
+      window.sessionStorage.removeItem(DRAFT_STORAGE_KEY);
+    } catch {
+      // Blocked site data degrades to in-memory behavior.
+    }
+  }
+
+  /* Preserve PRE-SUBMISSION work across same-tab reloads. This is UI recovery,
+     never commercial authority: the server still derives route, quote, state
+     and payment from canonical data. */
+  React.useEffect(() => {
+    if (mode !== "live") return;
+    try {
+      const raw = window.sessionStorage.getItem(DRAFT_STORAGE_KEY);
+      if (raw) {
+        const d = JSON.parse(raw) as Record<string, any>;
+        if (d?.version === 1) {
+          if (d.intent === "send" || d.intent === "pickup") setIntent(d.intent);
+          if (["trip", "item", "timing", "review", "payment"].includes(d.phase)) setPhase(d.phase);
+          if (d.pickup && typeof d.pickup.value === "string") setPickup(d.pickup);
+          if (d.destination && typeof d.destination.value === "string") setDestination(d.destination);
+          if (typeof d.item === "string") setItem(d.item);
+          if (typeof d.packageCount === "string") setPackageCount(d.packageCount);
+          if (typeof d.weightMode === "string") setWeightMode(d.weightMode);
+          if (typeof d.weightLb === "string") setWeightLb(d.weightLb);
+          if (typeof d.restrictedClass === "string") setRestrictedClass(d.restrictedClass);
+          if (d.readiness === "yes" || d.readiness === "no" || d.readiness === null) setReadiness(d.readiness);
+          if (typeof d.reference === "string") setReference(d.reference);
+          if (d.timingIntent === "asap" || d.timingIntent === "scheduled" || d.timingIntent === null) {
+            setTimingIntent(d.timingIntent);
+          }
+          if (typeof d.requestedPickupLocal === "string") setRequestedPickupLocal(d.requestedPickupLocal);
+          if (d.contact && typeof d.contact === "object") setContact(d.contact);
+          if (d.recipient && typeof d.recipient === "object") setRecipient(d.recipient);
+          if (typeof d.recipientEmailConfirm === "string") setRecipientEmailConfirm(d.recipientEmailConfirm);
+          if (typeof d.declaredValue === "string") setDeclaredValue(d.declaredValue);
+          if (typeof d.acknowledged === "boolean") setAcknowledged(d.acknowledged);
+          if (typeof d.electronicConsent === "boolean") setElectronicConsent(d.electronicConsent);
+          if (d.quote && typeof d.quote === "object") {
+            const q = d.quote as QuoteReading;
+            if (
+              q.state === "live-available" &&
+              q.expiresAt &&
+              Date.parse(q.expiresAt) <= Date.now()
+            ) {
+              setQuote({ state: "stale" });
+            } else {
+              setQuote(q);
+            }
+          }
+        }
+      }
+    } catch {
+      // Corrupt or blocked storage is non-fatal.
+    } finally {
+      setDraftHydrated(true);
+    }
+    // one-time hydrate
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  React.useEffect(() => {
+    if (mode !== "live" || !draftHydrated || received || confirmed) return;
+    if (!intent && phase === "trip" && !pickup.value && !destination.value) return;
+    try {
+      window.sessionStorage.setItem(
+        DRAFT_STORAGE_KEY,
+        JSON.stringify({
+          version: 1,
+          intent,
+          phase,
+          pickup,
+          destination,
+          item,
+          packageCount,
+          weightMode,
+          weightLb,
+          restrictedClass,
+          readiness,
+          reference,
+          timingIntent,
+          requestedPickupLocal,
+          quote,
+          contact,
+          recipient,
+          recipientEmailConfirm,
+          declaredValue,
+          acknowledged,
+          electronicConsent,
+        })
+      );
+    } catch {
+      // Same degradation rule as the guest session.
+    }
+  }, [
+    mode,
+    draftHydrated,
+    received,
+    confirmed,
+    intent,
+    phase,
+    pickup,
+    destination,
+    item,
+    packageCount,
+    weightMode,
+    weightLb,
+    restrictedClass,
+    readiness,
+    reference,
+    timingIntent,
+    requestedPickupLocal,
+    quote,
+    contact,
+    recipient,
+    recipientEmailConfirm,
+    declaredValue,
+    acknowledged,
+    electronicConsent,
+  ]);
 
   /* An edit that would change a quote marks the existing one STALE rather than
      leaving a number on screen that no longer describes the trip. */
@@ -455,6 +605,7 @@ export function SendFlow({
     setAuthorizedPending(
       view?.paymentState === "authorized" && view?.state === "pending_couranr_review"
     );
+    clearDraftStorage();
     setReceived(true);
   }
 
@@ -477,6 +628,7 @@ export function SendFlow({
       const view = adapters.readRequest ? await adapters.readRequest() : null;
       if (cancelled || !view) return;
       if (view.state === "awaiting_quote_acceptance" || view.state === "quote_revision_required") {
+        clearDraftStorage();
         /* Awaiting the payer: straight to payment, with the server's number.
            The request is already submitted, so the CTA continues payment. */
         setResumePay(true);
@@ -486,6 +638,7 @@ export function SendFlow({
           setQuote({
             state: "live-available",
             totalCents: view.totalCents,
+            lineItems: view.lineItems,
             quoteVersionId: null,
             requestId: "",
             expiresAt: null,
@@ -500,11 +653,13 @@ export function SendFlow({
         return;
       }
       if (view.state === "pending_couranr_review") {
+        clearDraftStorage();
         setAuthorizedPending(view.paymentState === "authorized");
         setReceived(true);
         return;
       }
       if (view.state === "confirmed") {
+        clearDraftStorage();
         /* The raw tracking token is shown once by doctrine; a later resume
            may not get it back. The STATUS is still the truth to show. */
         setConfirmed(true);
@@ -591,6 +746,7 @@ export function SendFlow({
         setPayment("failed");
         return;
       }
+      clearDraftStorage();
       const auth = await adapters.authorizePayment();
       if (auth.state === "authorization-required") {
         /* The server minted the intent; the one Payment Element confirms it,
@@ -1363,7 +1519,9 @@ export function SendFlow({
             {quote?.state === "fixture-available" ? quote.note : null}
             {/* The live price is the SERVER's number, echoed. Nothing here
                 computed it and nothing here can change it. */}
-            {quote?.state === "live-available" ? `Total: ${formatCents(quote.totalCents)}` : null}
+            {quote?.state === "live-available" ? (
+              <QuoteBreakdown totalCents={quote.totalCents} lineItems={quote.lineItems} />
+            ) : null}
           </p>
 
           {/* THE DOCUMENTS, ABOVE THE CHECKBOXES AND OUTSIDE THE LABELS.
@@ -1454,7 +1612,9 @@ export function SendFlow({
           {payment === "form-shell" ? (
             <>
               {/* An automatic price: the SERVER's number, echoed, ready to pay. */}
-              {quote?.state === "live-available" || quote?.state === "fixture-available" ? (
+              {quote?.state === "live-available" ? (
+                <QuoteBreakdown totalCents={quote.totalCents} lineItems={quote.lineItems} />
+              ) : quote?.state === "fixture-available" ? (
                 <p className="cr-send-note">Total: {formatCents(quote.totalCents)}</p>
               ) : null}
               {/* Manual review: a clearly non-payable state. Couranr reviews the

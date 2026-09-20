@@ -33,6 +33,7 @@ import {
   isEstimateBodyFailure,
   createLiveSameDayAdapters,
   isRouteReviewReason,
+  quoteLineItemsFrom,
   quoteReadingFromEstimate,
   reviewNoteFor,
   timingFromEstimate,
@@ -147,7 +148,9 @@ const ESTIMATED = {
   quoteStatus: "estimated",
   pickupManifestVersion: 0,
   totalCents: 1049,
-  lineItems: [],
+  lineItems: [
+    { code: "base_delivery", label: "Base delivery", quantity: 1, amountCents: 799, unitAmountCents: 799 },
+  ],
   reviewReasons: [],
   quoteVersionId: "qv-1",
   expiresAt: "2026-09-03T12:15:00.000Z",
@@ -393,13 +396,15 @@ describe("buildEstimateBody: honest statement or a local refusal", () => {
     expect(r.ok).toBe(false);
   });
 
-  it("an absent declaration is sent as 'unknown', never a default 'none'", () => {
-    const r = buildEstimateBody({
-      ...GOOD_QUOTE_INPUT,
-      shipment: { ...GOOD_QUOTE_INPUT.shipment, restrictedClass: undefined },
-    });
-    expect(r.ok).toBe(true);
-    if (r.ok) expect((r.body.shipment as Record<string, unknown>).restrictedClass).toBe("unknown");
+  it("Direct Same Day refuses an absent/unknown safety declaration locally", () => {
+    for (const restrictedClass of [undefined, "", "unknown"]) {
+      const r = buildEstimateBody({
+        ...GOOD_QUOTE_INPUT,
+        shipment: { ...GOOD_QUOTE_INPUT.shipment, restrictedClass },
+      });
+      expect(r.ok).toBe(false);
+      if (isEstimateBodyFailure(r)) expect(r.note).toMatch(/restricted item/i);
+    }
   });
 
   it("timing carries the sender's intent: ASAP, or the scheduled Eastern local words", () => {
@@ -530,6 +535,18 @@ describe("quote maps quoteStatus, reads the nested `estimate` key", () => {
     });
     expect(q.state).toBe("unavailable");
     expect(f.calls.length).toBe(0);
+  });
+
+  it("sanitizes server-authored quote lines before rendering them", () => {
+    expect(
+      quoteLineItemsFrom([
+        { code: "base", label: "Base", quantity: 1, amountCents: 799, unitAmountCents: 799 },
+        { code: "bad", label: "", quantity: 1, amountCents: -1, unitAmountCents: 0 },
+        "not-an-object",
+      ])
+    ).toEqual([
+      { code: "base", label: "Base", quantity: 1, amountCents: 799, unitAmountCents: 799 },
+    ]);
   });
 
   it("fails closed on an estimated status missing its numbers", () => {
@@ -804,6 +821,7 @@ describe("readRequest: the recipient's token is never the sender's to hold", () 
               state: "confirmed",
               quoteStatus: "estimated",
               totalCents: 1049,
+              lineItems: ESTIMATED.lineItems,
               paymentState: "authorized",
               recipientNotifiedAt: "2026-09-17T12:00:00.000Z",
               recipientNotifiedTo: "dana@example.test",
@@ -817,6 +835,7 @@ describe("readRequest: the recipient's token is never the sender's to hold", () 
       state: "confirmed",
       quoteStatus: "estimated",
       totalCents: 1049,
+      lineItems: ESTIMATED.lineItems,
       paymentState: "authorized",
       recipientNotifiedAt: "2026-09-17T12:00:00.000Z",
       recipientNotifiedTo: "dana@example.test",
@@ -1041,6 +1060,13 @@ describe("CAP-001 payment order surfaces (review item 2)", () => {
   });
 
   const sendFlow = readFileSync("components/couranr/sameday/SendFlow.tsx", "utf8");
+
+  it("pre-submit work survives a same-tab refresh and price rows are visible", () => {
+    expect(sendFlow).toContain('DRAFT_STORAGE_KEY = "couranr-send-draft-v1"');
+    expect(sendFlow).toMatch(/sessionStorage\.getItem\(DRAFT_STORAGE_KEY\)/);
+    expect(sendFlow).toMatch(/sessionStorage\.setItem\(/);
+    expect(sendFlow).toContain('data-couranr-price-breakdown="true"');
+  });
 
   it("the resume path is live-only, feature-checked and gated on a STORED session", () => {
     // A reload resumes from the canonical request/payment state; a first

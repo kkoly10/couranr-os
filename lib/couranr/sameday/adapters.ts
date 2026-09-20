@@ -33,6 +33,15 @@ export type AvailabilityVerdict =
   | { state: "review-needed"; note: string }
   | { state: "unavailable"; note: string };
 
+/** One display-only line from the server-authored canonical quote. */
+export type QuoteLineItem = {
+  code: string;
+  label: string;
+  quantity: number;
+  amountCents: number;
+  unitAmountCents: number;
+};
+
 /**
  * ADDITIVE (INT-002): a STRUCTURED proposal from Consumer Smart Intake. The
  * value is a closed-vocabulary fact (a weight band, a restricted class, a
@@ -60,6 +69,7 @@ export type QuoteReading =
   | {
       state: "live-available";
       totalCents: number;
+      lineItems: QuoteLineItem[];
       quoteVersionId: string | null;
       requestId: string;
       expiresAt: string | null;
@@ -162,6 +172,7 @@ export type ConsumerRequestReading = {
   state: string;
   quoteStatus: string;
   totalCents: number | null;
+  lineItems: QuoteLineItem[];
   paymentState: string | null;
   /** The sender is told the recipient was notified, never given their token. */
   recipientNotifiedAt?: string;

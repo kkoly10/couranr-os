@@ -36,7 +36,10 @@ vi.mock("@stripe/react-stripe-js", () => ({
       {children}
     </div>
   ),
-  PaymentElement: () => <div data-testid="payment-element" />,
+  PaymentElement: ({ onReady }: any) => {
+    queueMicrotask(() => onReady?.({}));
+    return <div data-testid="payment-element" />;
+  },
   useStripe: () => ({ confirmPayment }),
   useElements: () => elementsInstance,
 }));
@@ -94,6 +97,7 @@ describe("CouranrPaymentElement", () => {
     const arg = confirmPayment.mock.calls[0][0];
     expect(arg.redirect).toBe("if_required");
     expect(arg.elements).toBe(elementsInstance);
+    expect(arg.confirmParams.return_url).toMatch(/\/send$/);
     // No amount, no currency, no destination is passed from the browser.
     expect(arg.amount).toBeUndefined();
     expect(arg.currency).toBeUndefined();
@@ -195,6 +199,15 @@ describe("CouranrPaymentElement", () => {
     await waitFor(() => expect(screen.getByText(/could not reach Couranr/i)).toBeTruthy());
     expect(onAuthorized).not.toHaveBeenCalled();
     expect(screen.queryByText(/Payment authorized/i)).toBeNull();
+  });
+
+  it("refuses a non-publishable key instead of mounting a blank payment element", () => {
+    process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = "mk_not_a_publishable_key";
+    render(
+      <CouranrPaymentElement clientSecret={SECRET} amountCents={100} reconcile={vi.fn() as any} />
+    );
+    expect(screen.getByText(/not available right now/i)).toBeTruthy();
+    expect(screen.queryByTestId("payment-element")).toBeNull();
   });
 
   it("says so plainly when no publishable key is configured", () => {

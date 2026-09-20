@@ -42,6 +42,7 @@ import type {
   PickupCredentialReading,
   ReadinessOutcome,
   QuoteInput,
+  QuoteLineItem,
   QuoteReading,
   SameDayAdapters,
   SubmitOutcome,
@@ -83,6 +84,8 @@ const NOTES = {
   bothAddresses: "Enter both a pickup and a destination.",
   chooseSuggestions: "Choose both addresses from the suggestions.",
   weightRequired: "Enter the weight, or choose the honest range.",
+  safetyDeclarationRequired:
+    "Choose whether the shipment contains any listed restricted item before Couranr prices it.",
   descriptionRequired: "Tell Couranr what the driver should look for at pickup.",
   descriptionTooLong: "Keep the pickup description to 1,000 characters or fewer.",
   packageCountInvalid: "Package count must be a whole number from 1 to 9,999, or left blank.",
@@ -334,6 +337,12 @@ export function buildEstimateBody(input: QuoteInput): EstimateBodyResult {
   if (!description) return { ok: false, note: NOTES.descriptionRequired };
   if (description.length > 1000) return { ok: false, note: NOTES.descriptionTooLong };
 
+  const restrictedClass =
+    typeof ship?.restrictedClass === "string" ? ship.restrictedClass.trim() : "";
+  if (!restrictedClass || restrictedClass === "unknown") {
+    return { ok: false, note: NOTES.safetyDeclarationRequired };
+  }
+
   const packageCount =
     ship?.packageCount === null || ship?.packageCount === undefined
       ? null
@@ -358,11 +367,9 @@ export function buildEstimateBody(input: QuoteInput): EstimateBodyResult {
         description,
         weightLb,
         weightBand,
-        // Absent means "unknown" server-side too; sent explicitly for honesty.
-        restrictedClass:
-          typeof ship?.restrictedClass === "string" && ship.restrictedClass !== ""
-            ? ship.restrictedClass
-            : "unknown",
+        // Direct Same Day requires the sender's explicit declaration. The
+        // server independently enforces the same rule.
+        restrictedClass,
         signatureRequired: ship?.signatureRequired === true,
         overnightRequested: ship?.overnightRequested === true,
       },
@@ -383,6 +390,7 @@ type EstimateLike = {
   quoteStatus?: unknown;
   pickupManifestVersion?: unknown;
   totalCents?: unknown;
+  lineItems?: unknown;
   reviewReasons?: unknown;
   quoteVersionId?: unknown;
   expiresAt?: unknown;
@@ -390,6 +398,32 @@ type EstimateLike = {
 };
 
 /** The server's timing echo, kept only where every field has its shape. */
+export function quoteLineItemsFrom(raw: unknown): QuoteLineItem[] {
+  if (!Array.isArray(raw)) return [];
+  const out: QuoteLineItem[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const row = item as Record<string, unknown>;
+    const code = typeof row.code === "string" ? row.code : "";
+    const label = typeof row.label === "string" ? row.label.trim() : "";
+    const quantity = Number(row.quantity);
+    const amountCents = Number(row.amountCents);
+    const unitAmountCents = Number(row.unitAmountCents);
+    if (
+      !code ||
+      !label ||
+      !Number.isFinite(quantity) ||
+      quantity < 0 ||
+      !Number.isInteger(amountCents) ||
+      amountCents < 0 ||
+      !Number.isInteger(unitAmountCents) ||
+      unitAmountCents < 0
+    ) continue;
+    out.push({ code, label, quantity, amountCents, unitAmountCents });
+  }
+  return out;
+}
+
 export function timingFromEstimate(
   raw: unknown
 ): { intent: TimingIntent; requestedPickupLocal: string | null } | null {
@@ -431,6 +465,7 @@ export function quoteReadingFromEstimate(est: EstimateLike): QuoteReading {
     return {
       state: "live-available",
       totalCents: est.totalCents,
+      lineItems: quoteLineItemsFrom(est.lineItems),
       quoteVersionId: typeof est.quoteVersionId === "string" ? est.quoteVersionId : null,
       requestId,
       expiresAt: typeof est.expiresAt === "string" ? est.expiresAt : null,
@@ -888,6 +923,7 @@ export function createLiveSameDayAdapters(
           state?: unknown;
           quoteStatus?: unknown;
           totalCents?: unknown;
+          lineItems?: unknown;
           paymentState?: unknown;
           recipientNotifiedAt?: unknown;
           recipientNotifiedTo?: unknown;
@@ -898,6 +934,7 @@ export function createLiveSameDayAdapters(
         state: req.state,
         quoteStatus: typeof req.quoteStatus === "string" ? req.quoteStatus : "",
         totalCents: typeof req.totalCents === "number" ? req.totalCents : null,
+        lineItems: quoteLineItemsFrom(req.lineItems),
         paymentState: typeof req.paymentState === "string" ? req.paymentState : null,
       };
       /* A recipient bearer token must never reach the sender's adapter, so
