@@ -1514,9 +1514,9 @@ export function SendFlow({
             </p>
           ) : null}
 
-          <p className="cr-send-note" data-couranr-quote={quote?.state ?? "none"}>
+          <div className="cr-send-note" data-couranr-quote={quote?.state ?? "none"}>
             {quote?.state === "calculating" ? "Calculating…" : null}
-            {quote?.state === "stale" ? "You changed the trip — check the price again." : null}
+            {quote?.state === "stale" ? "Your details were restored — check the current price again." : null}
             {/* Manual review is NOT a payable state — it says so plainly. */}
             {quote?.state === "manual-review" ? quote.note : null}
             {quote?.state === "unavailable" ? quote.note : null}
@@ -1526,7 +1526,7 @@ export function SendFlow({
             {quote?.state === "live-available" ? (
               <QuoteBreakdown totalCents={quote.totalCents} lineItems={quote.lineItems} />
             ) : null}
-          </p>
+          </div>
 
           {/* THE DOCUMENTS, ABOVE THE CHECKBOXES AND OUTSIDE THE LABELS.
 
