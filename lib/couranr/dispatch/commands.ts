@@ -40,6 +40,9 @@ export const RPC = {
   updateVehicle: "couranr_update_dispatch_vehicle",
   assign: "couranr_assign_delivery",
   replaceAssignment: "couranr_replace_delivery_assignment",
+  reserveOperations: "couranr_reserve_operations_dispatch_candidate",
+  commitOperations: "couranr_commit_operations_dispatch_assignment",
+  releaseReservation: "couranr_release_automatic_dispatch_reservation",
 } as const;
 
 /**
@@ -369,6 +372,82 @@ export async function setVehicleAvailability(params: {
   });
   if (isDispatchFailure(r)) return r;
   return { ok: true, value: { vehicle: r.value } };
+}
+
+/* --------------------------------------------- pre-settlement dispatch --- */
+
+/**
+ * Reserve a compatible driver+vehicle BEFORE money is captured.
+ *
+ * Manual Operations used to capture first and only then expose the assignment
+ * panel. That made settlement succeed even when no driver could actually take
+ * the job. This mirrors the automatic worker's safe ordering: reserve -> settle
+ * -> create canonical delivery -> commit assignment.
+ */
+export async function reserveOperationsDispatchCandidate(params: {
+  actor: RequestActor;
+  requestId: string;
+}): Promise<DispatchResult<{ reservation: Record<string, any> }>> {
+  const op = "reserveOperationsDispatchCandidate";
+  const gate = requireOperations(params.actor, op);
+  if (isDispatchFailure(gate)) return gate;
+
+  const r = await callRpc<Record<string, any>>(op, RPC.reserveOperations, {
+    p_request_id: params.requestId,
+    p_actor_user_id: gate.actor.userId,
+    p_now: new Date().toISOString(),
+  });
+  if (isDispatchFailure(r)) return r;
+
+  if (String(r.value?.outcome ?? "") !== "reserved") {
+    return fail({
+      operation: op,
+      code: "conflict",
+      reason: "no_dispatch_candidate",
+      detail: { outcome: r.value?.outcome, reason: r.value?.reason },
+      message: dispatchReasonMessage("no_dispatch_candidate"),
+    });
+  }
+  return { ok: true, value: { reservation: r.value } };
+}
+
+export async function releaseOperationsDispatchReservation(params: {
+  actor: RequestActor;
+  reservationId: string;
+  reason: string;
+}): Promise<DispatchResult<{ reservation: Record<string, any> }>> {
+  const op = "releaseOperationsDispatchReservation";
+  const gate = requireOperations(params.actor, op);
+  if (isDispatchFailure(gate)) return gate;
+  const r = await callRpc<Record<string, any>>(op, RPC.releaseReservation, {
+    p_reservation_id: params.reservationId,
+    p_reason: params.reason,
+  });
+  if (isDispatchFailure(r)) return r;
+  return { ok: true, value: { reservation: r.value } };
+}
+
+export async function commitOperationsDispatchAssignment(params: {
+  actor: RequestActor;
+  reservationId: string;
+  deliveryId: string;
+  expectedVersion: number;
+  requestId: string;
+  servicePlanId: string;
+}): Promise<DispatchResult<{ assignment: Record<string, any> }>> {
+  const op = "commitOperationsDispatchAssignment";
+  const gate = requireOperations(params.actor, op);
+  if (isDispatchFailure(gate)) return gate;
+
+  const r = await callRpc<Record<string, any>>(op, RPC.commitOperations, {
+    p_reservation_id: params.reservationId,
+    p_delivery_id: params.deliveryId,
+    p_expected_delivery_version: params.expectedVersion,
+    p_actor_user_id: gate.actor.userId,
+    p_idempotency_key: `ops-dispatch:${params.requestId}:${params.servicePlanId}`,
+  });
+  if (isDispatchFailure(r)) return r;
+  return { ok: true, value: { assignment: r.value } };
 }
 
 /* -------------------------------------------------------- assignment --- */

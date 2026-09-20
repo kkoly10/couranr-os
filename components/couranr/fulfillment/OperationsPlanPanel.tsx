@@ -15,13 +15,12 @@ import {
 import { isApiFailure, withReference } from "@/components/couranr/requests/client";
 
 /**
- * OPS-003 — service plan, capture, and the canonical delivery result.
+ * OPS-003 — service plan, settlement, and managed dispatch.
  *
- * Capture is deliberately gated in the UI on the same conditions the database
- * enforces, so an operator is never offered a button that will 409. The
- * database remains the authority; this only avoids inviting a failure.
- *
- * There is no amount field. Capture takes the authorized hold.
+ * The primary action reserves a compatible driver/vehicle BEFORE settlement,
+ * then the server settles, creates the canonical delivery and commits that
+ * reserved assignment. The browser still carries no amount and no target
+ * fulfillment state.
  */
 
 const VEHICLE_CLASSES = [
@@ -125,6 +124,7 @@ export function OperationsPlanPanel({
     setBusy(false);
     if (isApiFailure(r)) {
       setError(withReference(r));
+      onChanged();
       return;
     }
     onChanged();
@@ -150,6 +150,7 @@ export function OperationsPlanPanel({
     setBusy(false);
     if (isApiFailure(r)) {
       setError(withReference(r));
+      onChanged();
       return;
     }
     onChanged();
@@ -162,7 +163,7 @@ export function OperationsPlanPanel({
         description={
           credit
             ? "Confirm the pickup window and vehicle, then schedule against the approved Couranr pilot credit."
-            : "Confirm the pickup window and vehicle, then capture the authorized payment."
+            : "Confirm the pickup window and vehicle requirement, then dispatch against the authorized payment."
         }
         actions={
           delivery ? (
@@ -351,7 +352,7 @@ export function OperationsPlanPanel({
                * idempotent conversion — so this cannot take money twice.
                */
               <Button variant="primary" loading={busy} onClick={capture}>
-                Finish scheduling
+                Finish dispatch
               </Button>
             ) : reauthorizationRequired ? (
               /*
@@ -373,11 +374,11 @@ export function OperationsPlanPanel({
                 disabled={!canFinalizeCredit}
                 onClick={finalizeCredit}
               >
-                Schedule with pilot credit
+                Dispatch with pilot credit
               </Button>
             ) : (
               <Button variant="primary" loading={busy} disabled={!canCapture} onClick={capture}>
-                Capture {payment ? formatCents(payment.amountCents) : ""} and schedule
+                Dispatch delivery
               </Button>
             )}
           </Cluster>

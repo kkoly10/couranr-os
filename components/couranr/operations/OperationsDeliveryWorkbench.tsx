@@ -394,15 +394,15 @@ function workbenchCopy(
       };
     case "service_plan_confirmed":
       return {
-        title: credited ? "Schedule this credited delivery" : "Capture and schedule",
+        title: "Dispatch this delivery",
         description: credited
-          ? "The service plan is confirmed. Create the canonical delivery against the approved Couranr credit."
-          : "The service plan is confirmed. Capture the authorized amount and create the canonical delivery.",
+          ? "Reserve a compatible driver and vehicle, create the credited delivery, and assign it."
+          : "Reserve a compatible driver and vehicle first, then capture the authorization and assign the delivery.",
       };
     case "captured_not_scheduled":
       return {
-        title: "Finish scheduling",
-        description: "Payment is already captured. Create the canonical delivery without taking money again.",
+        title: "Finish dispatch",
+        description: "Payment is already captured. Finish canonical delivery creation and driver assignment without taking money again.",
       };
     case "automatic_scheduled":
       return {
