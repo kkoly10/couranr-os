@@ -196,7 +196,9 @@ describe("CouranrPaymentElement", () => {
     });
     const { onAuthorized } = setup({ reconcile } as any);
     await userEvent.click(screen.getByRole("button", { name: /authorize/i }));
-    await waitFor(() => expect(screen.getByText(/could not reach Couranr/i)).toBeTruthy());
+    await waitFor(() =>
+      expect(screen.getByText(/secure payment form could not complete/i)).toBeTruthy()
+    );
     expect(onAuthorized).not.toHaveBeenCalled();
     expect(screen.queryByText(/Payment authorized/i)).toBeNull();
   });
