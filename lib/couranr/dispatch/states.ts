@@ -101,6 +101,7 @@ export const DISPATCH_REASONS = [
   "dispatch_reservation_expired",
   "dispatch_reservation_delivery_mismatch",
   "operations_service_plan_not_confirmed",
+  "operations_dispatch_reservation_invalid",
 ] as const;
 export type DispatchReason = (typeof DISPATCH_REASONS)[number];
 
@@ -129,6 +130,7 @@ const REASON_COPY: Record<DispatchReason, string> = {
   dispatch_reservation_expired: "The driver reservation expired before dispatch finished. Try dispatching again.",
   dispatch_reservation_delivery_mismatch: "The reserved driver does not belong to this delivery plan.",
   operations_service_plan_not_confirmed: "This Operations service plan is no longer confirmed.",
+  operations_dispatch_reservation_invalid: "The reserved driver or vehicle changed before dispatch finished. Try dispatching again.",
 };
 
 /**
