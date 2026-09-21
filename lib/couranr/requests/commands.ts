@@ -1392,6 +1392,7 @@ export async function getDeliveryRequest(params: {
     "id,actor_type,command,from_state,to_state,created_at," +
     "reasonCode:metadata->>reasonCode," +
     "reasonVersion:metadata->>reasonVersion," +
+    "senderReviewNote:metadata->>senderReviewNote," +
     "legacyReason:metadata->>reason";
 
   const { data: events } = await supabaseAdmin

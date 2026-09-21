@@ -110,6 +110,16 @@ export type RedeemedHelpLink = {
   conversationId: string;
 };
 
+export async function helpTokenAudience(tokenId: string): Promise<"legacy" | "sender" | "recipient" | null> {
+  const { data, error } = await supabaseAdmin
+    .from("couranr_help_access_tokens")
+    .select("audience")
+    .eq("id", tokenId)
+    .maybeSingle();
+  if (error || !data) return null;
+  return ["legacy", "sender", "recipient"].includes(data.audience) ? data.audience : null;
+}
+
 /**
  * Turns a raw token into its delivery and thread, creating both the thread and
  * the customer participant on first use.
@@ -260,4 +270,22 @@ export async function issueHelpToken(params: {
     ok: true,
     value: { tokenId: data as unknown as string, token, expiresInDays: ttl },
   };
+}
+
+/** A customer-held sender session or recipient tracking token can mint only
+ * its own one-delivery Help audience. SQL derives the delivery and tenant. */
+export async function issueCustomerHelpToken(params: {
+  sourceKind: "sender_guest" | "recipient_tracking";
+  rawSourceToken: string;
+}): Promise<HelpResult<{ token: string; path: string }>> {
+  const token = generateHelpToken();
+  const { error } = await supabaseAdmin.rpc("couranr_issue_customer_help_token", {
+    p_source_kind: params.sourceKind,
+    p_source_token_hash: hashHelpToken(params.rawSourceToken),
+    p_help_token_hash: hashHelpToken(token),
+  });
+  if (error) {
+    return fail({ code: classifyDatabaseError(error), operation: "help.issueCustomer", detail: error });
+  }
+  return { ok: true, value: { token, path: `/help/${token}` } };
 }

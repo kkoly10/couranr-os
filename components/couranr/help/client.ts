@@ -33,6 +33,7 @@ export type HelpMessage = {
 
 export type HelpView = {
   conversationId: string;
+  audience: "legacy" | "sender" | "recipient";
   messages: HelpMessage[];
   topics: readonly CustomerTopic[];
   supportTargetMinutes: number;

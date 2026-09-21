@@ -180,7 +180,12 @@ function CurrentAction({
   onLifecycleChanged: () => void;
 }) {
   if (work.lifecycleStage === "automatic_scheduled") {
-    return <AutomaticFulfillmentPanel fulfillment={fulfillment} />;
+    return <Stack gap={4}>
+      <AutomaticFulfillmentPanel fulfillment={fulfillment} />
+      {fulfillment?.delivery ? (
+        <OperationsPaymentRecoveryPanel request={request} fulfillment={fulfillment} onChanged={onLifecycleChanged} />
+      ) : null}
+    </Stack>;
   }
 
   if (work.lifecycleStage === "proof_sync_attention") {
@@ -222,10 +227,13 @@ function CurrentAction({
         ) : null}
         {stage === "dispatch" ? (
           fulfillment?.delivery ? (
-            <OperationsAssignmentPanel
-              deliveryId={fulfillment.delivery.id}
-              onChanged={onLifecycleChanged}
-            />
+            <Stack gap={4}>
+              <OperationsAssignmentPanel
+                deliveryId={fulfillment.delivery.id}
+                onChanged={onLifecycleChanged}
+              />
+              <OperationsPaymentRecoveryPanel request={request} fulfillment={fulfillment} onChanged={onLifecycleChanged} />
+            </Stack>
           ) : (
             <OperationsPlanPanel
               request={request}
@@ -309,10 +317,13 @@ function CurrentAction({
 
   if (work.phase === "dispatch") {
     return fulfillment?.delivery ? (
-      <OperationsAssignmentPanel
-        deliveryId={fulfillment.delivery.id}
-        onChanged={onLifecycleChanged}
-      />
+      <Stack gap={4}>
+        <OperationsAssignmentPanel
+          deliveryId={fulfillment.delivery.id}
+          onChanged={onLifecycleChanged}
+        />
+        <OperationsPaymentRecoveryPanel request={request} fulfillment={fulfillment} onChanged={onLifecycleChanged} />
+      </Stack>
     ) : (
       <ErrorState
         title="The scheduled delivery could not be loaded"
@@ -333,6 +344,7 @@ function CurrentAction({
           deliveryId={fulfillment.delivery.id}
           onChanged={onLifecycleChanged}
         />
+        <OperationsPaymentRecoveryPanel request={request} fulfillment={fulfillment} onChanged={onLifecycleChanged} />
       </Stack>
     ) : null;
   }

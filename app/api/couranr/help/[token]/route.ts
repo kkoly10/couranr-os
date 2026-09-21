@@ -6,6 +6,7 @@ import {
   postHelpMessage,
   readHelpThread,
   redeemHelpToken,
+  helpTokenAudience,
 } from "@/lib/couranr/conversations/help";
 import { COURANR_TIMEZONE } from "@/lib/couranr/hours/operatingHours";
 import {
@@ -52,6 +53,8 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: str
 
   const link = await redeemHelpToken((await ctx.params).token);
   if (isHelpFailure(link)) return refuse();
+  const audience = await helpTokenAudience(link.value.tokenId);
+  if (!audience) return refuse();
 
   const [thread, returnStatus, resolutionPolicy, problemReportsResult] = await Promise.all([
     readHelpThread(link.value.tokenId),
@@ -65,6 +68,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: str
     // The conversation id is returned so the page can post without a second
     // redemption. It is not a credential — every write re-resolves the token.
     conversationId: link.value.conversationId,
+    audience,
     messages: thread.value,
     topics: CUSTOMER_TOPICS,
     // "State the normal 15-minute response target during operating hours, not a
@@ -82,7 +86,7 @@ export async function GET(_req: NextRequest, ctx: { params: Promise<{ token: str
     returnStatus,
     // CUS-002. Server-derived stage/policy only. This projection contains no
     // payer identity, payment amount, browser-chosen target state or mutation.
-    resolutionPolicy,
+    resolutionPolicy: audience === "recipient" ? { available: false } : resolutionPolicy,
     // CUS-004. A subsystem read failure is not rendered as "no reports".
     // Delivery Help stays usable while the dedicated panel shows unavailable.
     problemReports: isProblemFailure(problemReportsResult)

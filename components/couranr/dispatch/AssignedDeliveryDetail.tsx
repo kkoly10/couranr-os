@@ -44,7 +44,7 @@ import {
 import { locationBody, useLocationCapture, type LocationState } from "./useLocationCapture";
 import { DrivingMode } from "./DrivingMode";
 import { DropoffProof } from "./DropoffProof";
-import { DeliveryIssueReport } from "./DeliveryIssueReport";
+import { DeliveryIssueReport, PrePickupIssueReport } from "./DeliveryIssueReport";
 import { ReturnFlow } from "./ReturnFlow";
 import { LocationBlock, PickupFlow, readDeliveryVersion } from "./PickupFlow";
 
@@ -324,7 +324,7 @@ function ActiveAssignment({
           arrive(state === "en_route_to_pickup" ? "arrive_at_pickup" : "arrive_at_dropoff")
         }
         onReportIssue={
-          state === "in_transit"
+          state === "in_transit" || state === "en_route_to_pickup"
             ? () => {
                 window.location.href = `/driver/deliveries/${assigned.deliveryId}#report-issue`;
               }
@@ -378,6 +378,10 @@ function ActiveAssignment({
           location={location}
           onReported={() => void reload()}
         />
+      ) : null}
+
+      {state === "assigned" || state === "en_route_to_pickup" ? (
+        <PrePickupIssueReport deliveryId={assigned.deliveryId} onReported={() => void reload()} />
       ) : null}
 
       <Grid columns={2}>

@@ -34,6 +34,14 @@ const nextConfig = {
       { source: "/courier", destination: "/estimate", permanent: false },
     ];
   },
+  async headers() {
+    // These path segments are bearer capabilities. A same-origin navigation
+    // would otherwise send the full token URL as Referer to another route.
+    return ["/help/:token", "/track/:token"].map((source) => ({
+      source,
+      headers: [{ key: "Referrer-Policy", value: "no-referrer" }],
+    }));
+  },
 };
 
 module.exports = nextConfig;

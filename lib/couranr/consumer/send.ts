@@ -102,6 +102,7 @@ export const RPC = {
   issueGuestPickupCode: "couranr_issue_guest_pickup_code_cas",
   claimPlaceSearch: "couranr_claim_consumer_place_search",
   recordTrust: "couranr_record_consumer_trust",
+  requestCancellationReview: "couranr_request_sender_cancellation_review",
 } as const;
 
 /** Sessions live 24 hours; the SQL clamps to [5 min, 3 days] regardless. */
@@ -1239,6 +1240,8 @@ export async function submitConsumerSend(params: {
 
 export type ConsumerSendView = {
   state: string;
+  /** Physical lifecycle, not commercial authority; null before conversion. */
+  deliveryState: string | null;
   quoteStatus: string;
   totalCents: number | null;
   /** Canonical server-authored quote lines; display only. */
@@ -1317,8 +1320,16 @@ export async function getConsumerSendView(params: {
   const ob = await loadOwnObligation(op, params.session);
   if (isConsumerFailure(ob)) return ob;
 
+  const { data: delivery, error: deliveryError } = await supabaseAdmin
+    .from("couranr_deliveries")
+    .select("fulfillment_state")
+    .eq("request_id", String(row.id))
+    .maybeSingle();
+  if (deliveryError) return fail({ operation: op, code: "internal", detail: deliveryError.message });
+
   const view: ConsumerSendView = {
     state: String(row.request_state),
+    deliveryState: delivery?.fulfillment_state ? String(delivery.fulfillment_state) : null,
     quoteStatus: String(row.quote_status ?? "not_quoted"),
     totalCents:
       row.quote_status === "estimated" && row.delivery_subtotal_cents !== null
@@ -1342,6 +1353,25 @@ export async function getConsumerSendView(params: {
   }
 
   return { ok: true, value: view };
+}
+
+/** Review evidence only. CAN-001 still belongs to Operations; this changes no
+ * request state, delivery state, authorization, capture, refund or custody. */
+export async function requestSenderCancellationReview(params: {
+  session: GuestSession;
+  note: string;
+  idempotencyKey: string;
+}): Promise<ConsumerResult<{ eventId: string }>> {
+  if (!params.session.requestId) {
+    return fail({ operation: "requestSenderCancellationReview", code: "not_found" });
+  }
+  const r = await callRpc<string>("requestSenderCancellationReview", RPC.requestCancellationReview, {
+    p_guest_session_id: params.session.id,
+    p_idempotency_key: params.idempotencyKey,
+    p_note: params.note,
+  });
+  if (isConsumerFailure(r)) return r;
+  return { ok: true, value: { eventId: String(r.value) } };
 }
 
 /* ------------------------------------------- sender pickup credential --- */

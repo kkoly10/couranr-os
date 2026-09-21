@@ -760,7 +760,13 @@ export function DeliveryRequestDetail({
                 {events.map((e) => (
                   <tr key={e.id}>
                     <td>{new Date(e.created_at).toLocaleString()}</td>
-                    <td>{e.command}</td>
+                    <td>
+                      {e.command === "sender_cancellation_review_requested"
+                        ? "Sender requested cancellation review"
+                        : e.command}
+                      {surface === "operations" && e.command === "sender_cancellation_review_requested" && e.senderReviewNote
+                        ? <div>{e.senderReviewNote}</div> : null}
+                    </td>
                     <td>{e.actor_type}</td>
                     <td>{e.to_state ?? "—"}</td>
                   </tr>

@@ -46,9 +46,11 @@ const stripped = (src: string) =>
 /* ------------------------------------------------- the route inventory --- */
 
 describe("consumer route inventory", () => {
-  it("holds exactly the twelve contracted routes", () => {
+  it("holds the contracted guest and sender-capability routes", () => {
     expect(ROUTE_FILES.map(rel)).toEqual([
+      "app/api/couranr/consumer/cancellation-review/route.ts",
       "app/api/couranr/consumer/estimate/route.ts",
+      "app/api/couranr/consumer/help-link/route.ts",
       "app/api/couranr/consumer/interpret/route.ts",
       "app/api/couranr/consumer/pay/route.ts",
       "app/api/couranr/consumer/pickup-code/route.ts",
@@ -56,6 +58,7 @@ describe("consumer route inventory", () => {
       "app/api/couranr/consumer/places/route.ts",
       "app/api/couranr/consumer/readiness/route.ts",
       "app/api/couranr/consumer/reconcile-payment/route.ts",
+      "app/api/couranr/consumer/recover-sender/route.ts",
       "app/api/couranr/consumer/refresh-quote/route.ts",
       "app/api/couranr/consumer/request/route.ts",
       "app/api/couranr/consumer/session/route.ts",
@@ -143,6 +146,16 @@ describe("consumer route inventory", () => {
         ]) {
           expect(rx.test(code), `${rel(file)} reads forbidden readiness payload data`).toBe(false);
         }
+      } else if (rel(file) === "app/api/couranr/consumer/cancellation-review/route.ts") {
+        expect(code).toContain("requestSenderCancellationReview");
+        expect(code).toMatch(/\.note/);
+        expect(code).toMatch(/\.idempotencyKey/);
+        expect(/body\??\.\s*(amount|total|price|subtotal|cents|requestId|state|target|policy|route)/i.test(code)).toBe(false);
+      } else if (rel(file) === "app/api/couranr/consumer/recover-sender/route.ts") {
+        expect(code).toContain("recoverSenderGuestSession");
+        expect(code).toContain("isWellFormedAccessToken");
+        expect(code).toMatch(/\.token/);
+        expect(/body\??\.\s*(amount|total|price|subtotal|cents|requestId|state|target|policy|route)/i.test(code)).toBe(false);
       } else {
         expect(/req\.json\(\)|req\.text\(\)|req\.formData\(\)/.test(code)).toBe(false);
       }
@@ -154,7 +167,8 @@ describe("consumer route inventory", () => {
 
     it(`${rel(file)} is guest-gated or mints the session`, () => {
       expect(
-        /redeemGuestSessionToken/.test(src) || /createGuestSession/.test(src),
+        /redeemGuestSessionToken/.test(src) || /createGuestSession/.test(src)
+          || (rel(file) === "app/api/couranr/consumer/recover-sender/route.ts" && /recoverSenderGuestSession/.test(src)),
         `${rel(file)} has no gate`
       ).toBe(true);
     });

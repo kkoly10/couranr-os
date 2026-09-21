@@ -31,6 +31,7 @@ import {
   fetchProofUrl,
   fetchTracking,
   issueRecipientDropoffCode,
+  issueRecipientHelpLink,
 } from "./client";
 
 /**
@@ -173,7 +174,7 @@ export function TrackingPage({ token }: { token: string }) {
           <ProgressRail stage={load.tracking.stage} />
           <ProofSection token={token} tracking={load.tracking} />
           <AccessSection tracking={load.tracking} />
-          <HelpCard />
+          <HelpCard token={token} />
         </>
       ) : null}
     </Stack>
@@ -204,6 +205,7 @@ function RecipientCodeCard({
 }) {
   const [code, setCode] = React.useState<string | null>(null);
   const [status, setStatus] = React.useState<"idle" | "minting" | "too_soon" | "failed">("idle");
+  const [confirmReplace, setConfirmReplace] = React.useState(false);
 
   /* Governed consumer deliveries only, and only while a handoff can still
      happen. The same window the server enforces — stated here so the control
@@ -212,19 +214,19 @@ function RecipientCodeCard({
     tracking.stage === "delivered" || tracking.stage === "return";
   if (!tracking.recipientAdultAttestationRequired || settled) return null;
 
-  /* The PIN belongs to the physical handoff, not to booking. The server
-     requires a canonical delivery and the credential lasts 12 hours, so the
-     public page waits for adult attestation plus a real driver assignment. */
+  /* Pickup completion is the custody boundary, not driver assignment. SQL
+     independently enforces the same window for every issuer. */
   if (!tracking.recipientAdultAttested) return null;
 
-  if (!tracking.driverAssigned) {
+  if (!(["picked_up", "in_transit", "at_dropoff"] as Array<string>).includes(tracking.sourceState ?? "")) {
     return (
       <Card>
         <CardHeader title="Your handoff code" />
         <Stack gap={3}>
           <Text>
-            Your six-digit handoff code will become available here once a
-            driver is assigned. Couranr never sends this code by email or text.
+            Your six-digit drop-off code will become available after Couranr
+            collects the shipment. It is for the recipient to give the driver
+            at delivery, never at pickup. Couranr never emails or texts it.
           </Text>
           {tracking.scheduledPickupStart ? (
             <Text size="sm" muted>
@@ -244,6 +246,7 @@ function RecipientCodeCard({
       return;
     }
     setCode(result.code);
+    setConfirmReplace(false);
     setStatus("idle");
   }
 
@@ -270,6 +273,23 @@ function RecipientCodeCard({
               Shown once. If you lose it, get a new code — the old one stops
               working.
             </Text>
+            {confirmReplace ? (
+              <Stack gap={2}>
+                <Alert tone="warning" title="Replace this code?">
+                  The current code stops working immediately when a new one is issued.
+                </Alert>
+                <Button onClick={() => void mint()} disabled={status === "minting"}>
+                  {status === "minting" ? "Replacing…" : "Yes, replace code"}
+                </Button>
+                <Button variant="secondary" onClick={() => setConfirmReplace(false)} disabled={status === "minting"}>
+                  Keep current code
+                </Button>
+              </Stack>
+            ) : (
+              <Button variant="secondary" onClick={() => setConfirmReplace(true)}>
+                Replace lost or exposed code
+              </Button>
+            )}
           </Stack>
         ) : (
           <Button onClick={() => void mint()} disabled={status === "minting"}>
@@ -648,7 +668,17 @@ function AccessSection({ tracking }: { tracking: TrackingProjection }) {
  * and a 15-minute response target DURING OPERATING HOURS — a target, never a
  * guarantee, and never "24/7".
  */
-function HelpCard() {
+function HelpCard({ token }: { token: string }) {
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState(false);
+  async function openHelp() {
+    setBusy(true);
+    setError(false);
+    const path = await issueRecipientHelpLink(token);
+    setBusy(false);
+    if (!path) { setError(true); return; }
+    window.location.assign(path);
+  }
   return (
     <Card>
       <CardHeader title="Something wrong?" />
@@ -657,12 +687,10 @@ function HelpCard() {
           Couranr Support answers delivery questions through Delivery Help.
           During operating hours the normal response target is 15 minutes.
         </Text>
-        {/*
-          NOT LINKED YET, on purpose. PUB-006 lists "open Delivery Help" as an
-          allowed action and `/help/[token]` is the next change in this slice;
-          a button pointing at a 404 is worse than none, so the affordance
-          lands with the page it opens.
-        */}
+        <Button variant="secondary" disabled={busy} onClick={() => void openHelp()}>
+          {busy ? "Opening Delivery Help…" : "Open Delivery Help"}
+        </Button>
+        {error ? <Alert tone="warning" title="Help could not open">Try again in a moment.</Alert> : null}
       </Stack>
     </Card>
   );

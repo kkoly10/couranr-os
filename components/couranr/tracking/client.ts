@@ -126,3 +126,15 @@ export async function issueRecipientDropoffCode(
     return { error: "failed" };
   }
 }
+
+export async function issueRecipientHelpLink(token: string): Promise<string | null> {
+  try {
+    const res = await fetch(`/api/couranr/track/${encodeURIComponent(token)}/help-link`, {
+      method: "POST", cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const body = await res.json();
+    return typeof body?.help?.path === "string" && body.help.path.startsWith("/help/")
+      ? body.help.path : null;
+  } catch { return null; }
+}

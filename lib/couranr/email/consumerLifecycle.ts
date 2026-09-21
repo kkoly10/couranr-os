@@ -8,6 +8,7 @@ import {
   markRecipientTrackingNotification,
 } from "@/lib/couranr/tracking/commands";
 import { hashTrackingToken } from "@/lib/couranr/tracking/tokens";
+import { issueSenderAccessToken } from "@/lib/couranr/consumer/senderAccess";
 import { emailSendingIsArmed, looksLikeAnAddress, sendRenderedEmail } from "./send";
 import {
   PROVIDER_IDEMPOTENCY_RETENTION_HOURS,
@@ -461,8 +462,6 @@ export async function notifyConsumerLifecycle(
     const senderName = str(request.consumer_contact_snapshot?.name) || undefined;
     const recipientName = str(request.recipient_name) || "your recipient";
     const reference = String(request.reference ?? "");
-    const statusUrl = emailUrl(defaultEmailConfig, "/send");
-
     const { data: delivery, error: deliveryError } = (await supabaseAdmin
       .from("couranr_deliveries")
       .select("id,proof_method,timezone,fulfillment_state")
@@ -491,16 +490,40 @@ export async function notifyConsumerLifecycle(
         report.results[report.results.length - 1].outcome === "sent";
     }
 
+    const requestEvents = senderEmail ? await loadRecentEvents({
+      table: "couranr_delivery_request_events",
+      column: "request_id",
+      id: requestId,
+      states: ["pending_couranr_review", "confirmed"],
+      since,
+    }) : [];
+    const deliveryEvents = delivery?.id ? await loadRecentEvents({
+      table: "couranr_delivery_events",
+      column: "delivery_id",
+      id: String(delivery.id),
+      states: ["in_transit", "delivered", "could_not_deliver", "return_required"],
+      since,
+    }) : [];
+
+    /* Email itself is the sender relationship. A recipient tracking URL would
+       also authorize attestation and drop-off PIN, so it must never be reused
+       here. Keep the raw sender token in a URL fragment: no server request or
+       referrer receives it before the browser exchanges it. Earlier links
+       remain valid across notification retries; no new claim revokes them. */
+    const senderToken = senderEmail && (requestEvents.length > 0 || deliveryEvents.length > 0)
+      ? await issueSenderAccessToken(requestId) : null;
+    if (senderEmail && (requestEvents.length > 0 || deliveryEvents.length > 0) && !senderToken) {
+      record("consumerLifecycle.senderAccess", { requestId, reason: "issue_failed" });
+      report.reason = "sender_access_issue_failed";
+      return report;
+    }
+    const statusUrl = senderToken
+      ? `${emailUrl(defaultEmailConfig, "/send")}#sender=${encodeURIComponent(senderToken)}`
+      : emailUrl(defaultEmailConfig, "/send");
+
     /* ---- sender: the request's own lifecycle ---- */
     if (senderEmail) {
-      const events = await loadRecentEvents({
-        table: "couranr_delivery_request_events",
-        column: "request_id",
-        id: requestId,
-        states: ["pending_couranr_review", "confirmed"],
-        since,
-      });
-      for (const ev of events) {
+      for (const ev of requestEvents) {
         const notification: ConsumerEmailNotification =
           ev.to_state === "confirmed" ? "sender_request_confirmed" : "sender_request_received";
         /*
@@ -550,13 +573,7 @@ export async function notifyConsumerLifecycle(
     /* ---- the delivery's own lifecycle ---- */
     if (!delivery?.id) return report;
 
-    const events = await loadRecentEvents({
-      table: "couranr_delivery_events",
-      column: "delivery_id",
-      id: String(delivery.id),
-      states: ["in_transit", "delivered", "could_not_deliver", "return_required"],
-      since,
-    });
+    const events = deliveryEvents;
 
     const recipientEmail = str(request.recipient_email);
     const proofMethod = str(delivery.proof_method);

@@ -25,7 +25,7 @@ import {
   type FulfillmentState,
 } from "@/lib/couranr/driver/states";
 import {
-  fetchMerchantProof,
+  fetchOperationsProof,
   fetchOperationsProofUrl,
   fetchReturnCustody,
   requireReturnFromBrowser,
@@ -857,11 +857,9 @@ function OperationsProofPanel({ deliveryId }: { deliveryId: string }) {
   const load = React.useCallback(async () => {
     const mine = ++latestRead.current;
     setLoading(true);
-    // The metadata list has one reader for both audiences: that route resolves
-    // an Operations caller as `operations` before it looks for a membership, so
-    // Operations gets the same list without a second endpoint. The MEDIA is
-    // where the audiences differ, and that is a separate, Operations-only call.
-    const r = await fetchMerchantProof(deliveryId);
+    // Direct Consumer deliveries have no merchant tenancy. Operations reads
+    // metadata through its own delivery-scoped route; media remains separately authorized.
+    const r = await fetchOperationsProof(deliveryId);
     // A second load supersedes this one; a slow first response must not
     // overwrite a newer list.
     if (mine !== latestRead.current) return;

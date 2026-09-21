@@ -170,6 +170,7 @@ export type PickupCredentialReading = {
 
 export type ConsumerRequestReading = {
   state: string;
+  deliveryState: string | null;
   quoteStatus: string;
   totalCents: number | null;
   lineItems: QuoteLineItem[];
@@ -197,6 +198,10 @@ export type SameDayAdapters = {
   setPickupReadiness?(readiness: "ready" | "not_ready"): Promise<ReadinessOutcome>;
   issuePickupCredential?(): Promise<PickupCredentialReading>;
   readRequest?(): Promise<ConsumerRequestReading | null>;
+  /** Email-addressed sender capability; never accepts a recipient tracking token. */
+  recoverSenderAccess?(token: string): Promise<boolean>;
+  openDeliveryHelp?(): Promise<string | null>;
+  requestCancellationReview?(note: string, idempotencyKey: string): Promise<boolean>;
   /* ADDITIVE, live-only (final closure §5): re-price the session's OWN bound
      request from its STORED canonical facts — the resume path's honest answer
      to a QVL-expired quote, since a reloaded page has no form state to

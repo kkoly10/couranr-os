@@ -156,7 +156,9 @@ describe("classifyDatabaseError", () => {
 describe("canonical routes cannot leak a database detail", () => {
   it("covers every canonical route", () => {
     expect(ROUTES.map(rel).sort()).toEqual([
+      "app/api/couranr/consumer/cancellation-review/route.ts",
       "app/api/couranr/consumer/estimate/route.ts",
+      "app/api/couranr/consumer/help-link/route.ts",
       "app/api/couranr/consumer/interpret/route.ts",
       "app/api/couranr/consumer/pay/route.ts",
       "app/api/couranr/consumer/pickup-code/route.ts",
@@ -164,6 +166,7 @@ describe("canonical routes cannot leak a database detail", () => {
       "app/api/couranr/consumer/places/route.ts",
       "app/api/couranr/consumer/readiness/route.ts",
       "app/api/couranr/consumer/reconcile-payment/route.ts",
+      "app/api/couranr/consumer/recover-sender/route.ts",
       "app/api/couranr/consumer/refresh-quote/route.ts",
       "app/api/couranr/consumer/request/route.ts",
       "app/api/couranr/consumer/session/route.ts",
@@ -245,6 +248,7 @@ describe("canonical routes cannot leak a database detail", () => {
       "app/api/couranr/operations/deliveries/[id]/custody/route.ts",
       "app/api/couranr/operations/deliveries/[id]/help-link/route.ts",
       "app/api/couranr/operations/deliveries/[id]/pickup-code/route.ts",
+      "app/api/couranr/operations/deliveries/[id]/proof/route.ts",
       "app/api/couranr/operations/deliveries/[id]/recipient-code/route.ts",
       "app/api/couranr/operations/deliveries/[id]/return-code/route.ts",
       "app/api/couranr/operations/deliveries/[id]/return/route.ts",
@@ -288,6 +292,7 @@ describe("canonical routes cannot leak a database detail", () => {
       "app/api/couranr/stripe/webhook/route.ts",
       "app/api/couranr/track/[token]/adult-attestation/route.ts",
       "app/api/couranr/track/[token]/dropoff-code/route.ts",
+      "app/api/couranr/track/[token]/help-link/route.ts",
       "app/api/couranr/track/[token]/proof/[proofId]/url/route.ts",
       "app/api/couranr/track/[token]/route.ts",
     ]);

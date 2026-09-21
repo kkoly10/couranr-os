@@ -812,6 +812,34 @@ describe("reconcilePayment trusts only the server's payment key", () => {
 });
 
 describe("readRequest: the recipient's token is never the sender's to hold", () => {
+  it("exchanges a sender email capability into the original guest session on another device", async () => {
+    const storage = memoryStorage(); // no prior sessionStorage on this device
+    const f = fakeFetch({
+      "/api/couranr/consumer/recover-sender": () => ({
+        body: { guestSession: { token: "restored-guest-token", expiresAt: FUTURE() } },
+      }),
+      [REQUEST]: () => ({ body: { request: { state: "confirmed", deliveryState: "at_pickup" } } }),
+      [S]: SESSION_OK,
+    });
+    const a = live({ fetchImpl: f.impl, storage });
+    expect(await a.recoverSenderAccess!("sender-email-capability")).toBe(true);
+    expect(JSON.parse(storage.map.get(GUEST_STORAGE_KEY)!).token).toBe("restored-guest-token");
+    expect((await a.readRequest!())?.deliveryState).toBe("at_pickup");
+    expect((f.of(REQUEST)[0].init?.headers as Record<string, string>)[GUEST_HEADER]).toBe("restored-guest-token");
+    expect(f.of(S)).toHaveLength(0); // recovery never creates a new request/session
+    expect(JSON.stringify(f.calls)).not.toContain("recipient_tracking");
+  });
+
+  it("does not replace guest authority with a failed or malformed sender exchange", async () => {
+    const storage = memoryStorage();
+    const f = fakeFetch({
+      "/api/couranr/consumer/recover-sender": () => ({ status: 404, body: { error: "not_found" } }),
+    });
+    const a = live({ fetchImpl: f.impl, storage });
+    expect(await a.recoverSenderAccess!("recipient-or-invalid-token")).toBe(false);
+    expect(storage.map.has(GUEST_STORAGE_KEY)).toBe(false);
+  });
+
   it("surfaces that the recipient was notified, and where", async () => {
     const a = live({
       fetchImpl: fakeFetch({
@@ -834,6 +862,7 @@ describe("readRequest: the recipient's token is never the sender's to hold", () 
     });
     expect(await a.readRequest!()).toEqual({
       state: "confirmed",
+      deliveryState: null,
       quoteStatus: "estimated",
       totalCents: 1049,
       lineItems: ESTIMATED.lineItems,

@@ -74,6 +74,9 @@ const API = {
   interpret: "/api/couranr/consumer/interpret",
   pickupManifest: "/api/couranr/consumer/pickup-manifest",
   pickupCode: "/api/couranr/consumer/pickup-code",
+  recoverSender: "/api/couranr/consumer/recover-sender",
+  helpLink: "/api/couranr/consumer/help-link",
+  cancellationReview: "/api/couranr/consumer/cancellation-review",
 } as const;
 
 /** The two review reasons that are about the TRIP rather than the shipment. */
@@ -598,6 +601,39 @@ export function createLiveSameDayAdapters(
   }
 
   return {
+    async requestCancellationReview(note: string, idempotencyKey: string): Promise<boolean> {
+      const r = await guestCall(API.cancellationReview, {
+        method: "POST", body: { note, idempotencyKey },
+      });
+      return Boolean(r?.ok && (r.body as { review?: { eventId?: unknown } } | null)?.review?.eventId);
+    },
+    async openDeliveryHelp(): Promise<string | null> {
+      const r = await guestCall(API.helpLink, { method: "POST" });
+      if (!r?.ok) return null;
+      const path = (r.body as { help?: { path?: unknown } } | null)?.help?.path;
+      return typeof path === "string" && path.startsWith("/help/") ? path : null;
+    },
+    async recoverSenderAccess(token: string): Promise<boolean> {
+      try {
+        const res = await fetchImpl(API.recoverSender, {
+          method: "POST",
+          cache: "no-store",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ token }),
+        });
+        if (!res.ok) return false;
+        const body = (await res.json().catch(() => null)) as {
+          guestSession?: { token?: unknown; expiresAt?: unknown };
+        } | null;
+        const recovered = body?.guestSession;
+        if (typeof recovered?.token !== "string" || typeof recovered?.expiresAt !== "string") return false;
+        guest = { token: recovered.token, expiresAt: recovered.expiresAt };
+        persistGuest(guest);
+        return true;
+      } catch {
+        return false;
+      }
+    },
     async searchAddress(query: string): Promise<AddressSearchResult> {
       const q = query.trim();
       // Min-3 mirrors the server autocomplete's own gate; below it there is no
@@ -921,6 +957,7 @@ export function createLiveSameDayAdapters(
       const req = (r.body as {
         request?: {
           state?: unknown;
+          deliveryState?: unknown;
           quoteStatus?: unknown;
           totalCents?: unknown;
           lineItems?: unknown;
@@ -932,6 +969,7 @@ export function createLiveSameDayAdapters(
       if (!req || typeof req.state !== "string") return null;
       const view: ConsumerRequestReading = {
         state: req.state,
+        deliveryState: typeof req.deliveryState === "string" ? req.deliveryState : null,
         quoteStatus: typeof req.quoteStatus === "string" ? req.quoteStatus : "",
         totalCents: typeof req.totalCents === "number" ? req.totalCents : null,
         lineItems: quoteLineItemsFrom(req.lineItems),

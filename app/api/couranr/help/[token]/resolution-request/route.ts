@@ -3,6 +3,7 @@ import {
   isHelpFailure,
   isWellFormedHelpToken,
   redeemHelpToken,
+  helpTokenAudience,
 } from "@/lib/couranr/conversations/help";
 import {
   isHelpResolutionReason,
@@ -38,6 +39,9 @@ export async function POST(
 
   const link = await redeemHelpToken(raw);
   if (isHelpFailure(link)) return refuse();
+  if (await helpTokenAudience(link.value.tokenId) === "recipient") {
+    return routeFailure("not_permitted", "Only the sender can request cancellation or return review.");
+  }
 
   let payload: any;
   try {

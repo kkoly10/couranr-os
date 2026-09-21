@@ -30,6 +30,10 @@ const GATE_MARKER = new RegExp(
     "resolveUserId",
     "getUserFromRequest",
     "redeem\\w*(Token|Link)",
+    // Both named commands validate a hashed, audience-scoped capability in
+    // SQL before issuing any replacement session or Delivery Help link.
+    "recoverSenderGuestSession",
+    "issueCustomerHelpToken",
     "constructEvent",
     "authorization",
     "bearer",

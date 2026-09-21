@@ -577,10 +577,10 @@ describe("recipient handoff-code readiness", () => {
     "utf8"
   );
 
-  it("does not offer PIN issuance before adult attestation and driver assignment", () => {
+  it("does not offer PIN issuance before attestation and actual custody", () => {
     expect(page).toContain("if (!tracking.recipientAdultAttested) return null");
-    expect(page).toContain("if (!tracking.driverAssigned)");
-    expect(page).toMatch(/will become available here once a\s+driver is assigned/);
+    expect(page).toContain('["picked_up", "in_transit", "at_dropoff"]');
+    expect(page).toMatch(/will become available after Couranr\s+collects the shipment/);
   });
 
   it("keeps the server fail-closed and the PIN short-lived", () => {

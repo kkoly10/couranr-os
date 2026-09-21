@@ -36,7 +36,7 @@
  * afterwards, and holds no real data at any point.
  *
  * ---------------------------------------------------------------------------
- * STATUS: PASSING, 11/11. What it took, recorded so it is not re-learned.
+ * STATUS: PASSING, 12/12. What it took, recorded so it is not re-learned.
  * ---------------------------------------------------------------------------
  *
  * Five defects stood between this file and a green run. Three were in the
@@ -71,7 +71,7 @@
  */
 
 import { execFileSync, spawn } from "node:child_process";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -113,6 +113,9 @@ function check(id, description, ok, detail = "") {
 
 const sql = (q) => psql(q).trim();
 const sha256 = (s) => crypto.createHash("sha256").update(s).digest("hex");
+const messageForm = (page) => page.locator("form").filter({
+  has: page.getByRole("heading", { name: "Send a message" }),
+});
 
 /**
  * Seeds one delivery and one help token.
@@ -174,7 +177,7 @@ async function main() {
     pgrst = await startPostgrest({
       dbUrl: dbUrl(),
       binary: PGRST_BIN,
-      workDir: "/var/lib/postgresql/couranr-disposable/pgrst",
+      workDir: path.join(process.env.COURANR_DISPOSABLE_DIR || "/var/lib/postgresql/couranr-disposable", "pgrst"),
     });
     if (!(await waitForPostgrest())) throw new Error("PostgREST did not start");
     gateway = await startGateway();
@@ -254,8 +257,13 @@ async function main() {
     }
     if (!live) throw new Error("the application did not start");
 
-    const { chromium } = await import("/opt/node22/lib/node_modules/playwright/index.mjs");
-    browser = await chromium.launch({ args: ["--no-proxy-server"] });
+    const { chromium } = await import("playwright");
+    browser = await chromium.launch({
+      args: ["--no-proxy-server"],
+      ...(process.env.COURANR_BROWSER_EXECUTABLE
+        ? { executablePath: process.env.COURANR_BROWSER_EXECUTABLE }
+        : {}),
+    });
 
     /* ─────────────────────────── CUS-001 ─────────────────────────── */
 
@@ -263,17 +271,8 @@ async function main() {
     const pageA = await browser.newPage();
     await pageA.goto(`${BASE}/help/${a.raw}#address-change`, { waitUntil: "networkidle" });
 
-    // UNCONDITIONAL DIAGNOSTIC. The previous three runs failed while I reasoned
-    // about what the page might be showing. Capture it instead.
-    const bodyA = await pageA.innerText("body");
-    const htmlA = await pageA.content();
-    const selectCount = await pageA.locator("select").count();
-    const textareaCount = await pageA.locator("textarea").count();
-    writeFileSync(path.join(SHOTS, "DIAG-innerText.txt"), bodyA);
-    writeFileSync(path.join(SHOTS, "DIAG-page.html"), htmlA);
-    await pageA.screenshot({ path: path.join(SHOTS, "DIAG-render.png"), fullPage: true });
-    console.log(`  DIAG selects=${selectCount} textareas=${textareaCount} bodyLen=${bodyA.length}`);
-    console.log(`  DIAG innerText head: ${JSON.stringify(bodyA.slice(0, 400))}`);
+    const selectCount = await messageForm(pageA).locator("select").count();
+    const textareaCount = await messageForm(pageA).locator("textarea").count();
 
     // C1 must assert something that exists ONLY in the loaded help form. The
     // earlier /Delivery Help/i matched the marketing nav, so it was asserting a
@@ -283,14 +282,14 @@ async function main() {
       `${selectCount} select(s), ${textareaCount} textarea(s)`);
 
     // BROWSER SIDE: the fragment preselected the topic.
-    const selectedA = await pageA.locator("select").inputValue();
+    const selectedA = await messageForm(pageA).locator("select").inputValue();
     check("C2", "CUS-001 #address-change preselects topic address_concern",
       selectedA === "address_concern", `select = ${selectedA}`);
     await pageA.screenshot({ path: path.join(SHOTS, "C2-cus001-preselected.png"), fullPage: true });
 
     const bodyTextA = "[CUS001] the address on this delivery is wrong";
-    await pageA.fill("textarea", bodyTextA);
-    await pageA.click('button[type="submit"]');
+    await messageForm(pageA).locator("textarea").fill(bodyTextA);
+    await messageForm(pageA).locator('button[type="submit"]').click();
     await pageA.waitForTimeout(2500);
 
     // DATABASE SIDE: the row exists, with THAT topic. Rendering proved nothing
@@ -316,14 +315,14 @@ async function main() {
     const pageB = await browser.newPage();
     await pageB.goto(`${BASE}/help/${b.raw}#recipient-unavailable`, { waitUntil: "networkidle" });
 
-    const selectedB = await pageB.locator("select").inputValue();
+    const selectedB = await messageForm(pageB).locator("select").inputValue();
     check("C4", "CUS-003 #recipient-unavailable preselects topic availability",
       selectedB === "availability", `select = ${selectedB}`);
     await pageB.screenshot({ path: path.join(SHOTS, "C4-cus003-preselected.png"), fullPage: true });
 
     const bodyTextB = "[CUS003] nobody will be home at the drop-off";
-    await pageB.fill("textarea", bodyTextB);
-    await pageB.click('button[type="submit"]');
+    await messageForm(pageB).locator("textarea").fill(bodyTextB);
+    await messageForm(pageB).locator('button[type="submit"]').click();
     await pageB.waitForTimeout(2500);
 
     const rowB = sql(
@@ -341,7 +340,7 @@ async function main() {
     const c = await seed("[CUSBARE]");
     const pageC = await browser.newPage();
     await pageC.goto(`${BASE}/help/${c.raw}`, { waitUntil: "networkidle" });
-    const selectedC = await pageC.locator("select").inputValue();
+    const selectedC = await messageForm(pageC).locator("select").inputValue();
     check("C6", "CONTROL: the bare route preselects NEITHER fragment topic",
       selectedC !== "address_concern" && selectedC !== "availability",
       `bare default = ${selectedC}`);
@@ -349,7 +348,7 @@ async function main() {
     // An unknown fragment must not be honoured as a topic.
     await pageC.goto(`${BASE}/help/${c.raw}#not-a-real-fragment`, { waitUntil: "networkidle" });
     await pageC.waitForTimeout(500);
-    const selectedD = await pageC.locator("select").inputValue();
+    const selectedD = await messageForm(pageC).locator("select").inputValue();
     check("C7", "CONTROL: an unrecognised fragment falls back to the default topic",
       selectedD === selectedC, `= ${selectedD}`);
 
@@ -365,7 +364,8 @@ async function main() {
     // The two threads are genuinely separate rows, not one reused.
     const distinct = sql(
       `select count(distinct id) from public.couranr_conversations
-        where delivery_id in ('${a.deliveryId}', '${b.deliveryId}')`
+        where delivery_id in ('${a.deliveryId}', '${b.deliveryId}')
+          and kind = 'delivery_help'`
     );
     check("C9", "each delivery opened its own conversation", distinct === "2", `${distinct} conversations`);
 
@@ -375,7 +375,8 @@ async function main() {
                 when response_due_at is null then 'null'
                 when response_due_at = public.couranr_add_operating_minutes(received_at, 15) then 'operating-minutes'
                 else 'flat-wall-clock' end
-         from public.couranr_conversations where delivery_id = '${a.deliveryId}'`
+         from public.couranr_conversations
+        where delivery_id = '${a.deliveryId}' and kind = 'delivery_help'`
     );
     check("C10", "the response deadline was computed in OPERATING minutes, not wall clock",
       due === "operating-minutes", due);

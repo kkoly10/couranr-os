@@ -289,7 +289,7 @@ async function main() {
   eq("DX-10b", "the schema refuses a raw six-digit code outright",
      raises(`insert into public.couranr_handoff_codes
                (delivery_id, code_kind, generation, code_digest, code_state, issued_by, expires_at)
-             values ('${D1}','recipient_dropoff',1,'123456','active','${ops}',now()+interval '1 hour')`)
+             values ('${D1}','merchant_pickup',3,'123456','active','${ops}',now()+interval '1 hour')`)
        .split("|")[0],
      "23514");
   for (let i = 0; i < 3; i += 1) verifyCode(D1, "merchant_pickup", digestOf(`wrong-${i}`), drvAUser);

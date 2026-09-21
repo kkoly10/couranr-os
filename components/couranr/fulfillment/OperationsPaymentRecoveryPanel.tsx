@@ -34,6 +34,18 @@ const CANCEL_REASONS = [
   { value: "failed_pickup", label: "Driver arrived; pickup cannot occur" },
 ];
 
+/** Mirror CAN-001's stage/refusal vocabulary; a customer post-pickup request
+ * goes to governed return review, never a financial Cancel button. */
+export function cancellationReasonsFor(deliveryState: string | null) {
+  if (deliveryState === "at_pickup") return CANCEL_REASONS.filter((r) =>
+    r.value === "failed_pickup" || r.value === "couranr_caused"
+  );
+  if (["picked_up", "in_transit", "at_dropoff"].includes(deliveryState ?? "")) {
+    return CANCEL_REASONS.filter((r) => r.value === "couranr_caused");
+  }
+  return CANCEL_REASONS.filter((r) => r.value !== "failed_pickup");
+}
+
 type PaymentView = NonNullable<FulfillmentView["payment"]>;
 
 /**
@@ -162,6 +174,7 @@ export function OperationsPaymentRecoveryPanel({
   const [releaseReason, setReleaseReason] = React.useState("");
   const [cancelReason, setCancelReason] = React.useState(CANCEL_REASONS[0].value);
   const [cancelNote, setCancelNote] = React.useState("");
+  const [confirmCancel, setConfirmCancel] = React.useState(false);
   const [resumeNote, setResumeNote] = React.useState("");
 
   const payment = fulfillment?.payment ?? null;
@@ -175,6 +188,9 @@ export function OperationsPaymentRecoveryPanel({
     staleProviderHold: payment.staleProviderHold,
     deliveryState: delivery?.fulfillmentState ?? null,
   });
+  const allowedReasons = cancellationReasonsFor(delivery?.fulfillmentState ?? null);
+  const selectedReason = allowedReasons.some((r) => r.value === cancelReason)
+    ? cancelReason : allowedReasons[0].value;
 
   async function run(action: () => Promise<{ ok: boolean } & Record<string, any>>, done: string) {
     setBusy(true);
@@ -370,8 +386,8 @@ export function OperationsPaymentRecoveryPanel({
           <Stack gap={2}>
             <Field label="Cancel this delivery" hint="Composes the governed commands: the delivery closes, and money comes back per CAN-001 from the delivery's STORED stage.">
               {(a) => (
-                <Select {...a} value={cancelReason} onChange={(e) => setCancelReason(e.target.value)}>
-                  {CANCEL_REASONS.map((o) => (
+                <Select {...a} value={selectedReason} onChange={(e) => { setCancelReason(e.target.value); setConfirmCancel(false); }}>
+                  {allowedReasons.map((o) => (
                     <option key={o.value} value={o.value}>
                       {o.label}
                     </option>
@@ -388,31 +404,37 @@ export function OperationsPaymentRecoveryPanel({
                 <Input
                   {...a}
                   value={cancelNote}
-                  onChange={(e) => setCancelNote(e.target.value)}
+                  onChange={(e) => { setCancelNote(e.target.value); setConfirmCancel(false); }}
                   maxLength={500}
                   placeholder="e.g. customer cancelled before the driver left"
                 />
               )}
             </Field>
-            <Cluster gap={2}>
-              <Button
-                variant="destructive"
-                disabled={busy || !cancelNote.trim()}
-                onClick={() =>
-                  run(
-                    () =>
-                      cancelDeliveryFromBrowser({
-                        id: request.id,
-                        reason: cancelReason,
-                        note: cancelNote.trim(),
-                      }),
-                    "The delivery was closed and the governed money recovery ran."
-                  )
-                }
-              >
-                Cancel delivery
+            {confirmCancel ? (
+              <Stack gap={2}>
+                <Alert tone="warning" title="Confirm governed cancellation">
+                  This closes the delivery and starts CAN-001 settlement. At pickup,
+                  failed-pickup evidence is required; after pickup, only a Couranr-caused
+                  failure can use this action. A customer return request belongs in Help review.
+                </Alert>
+                <Cluster gap={2}>
+                  <Button variant="destructive" disabled={busy || !cancelNote.trim()} onClick={() => {
+                    setConfirmCancel(false);
+                    void run(
+                      () => cancelDeliveryFromBrowser({ id: request.id, reason: selectedReason, note: cancelNote.trim() }),
+                      "The delivery was closed and the governed money recovery ran."
+                    );
+                  }}>
+                    Confirm cancellation and settlement
+                  </Button>
+                  <Button variant="secondary" onClick={() => setConfirmCancel(false)} disabled={busy}>Keep delivery open</Button>
+                </Cluster>
+              </Stack>
+            ) : (
+              <Button variant="destructive" disabled={busy || !cancelNote.trim()} onClick={() => setConfirmCancel(true)}>
+                Review cancellation consequences
               </Button>
-            </Cluster>
+            )}
           </Stack>
         ) : null}
       </Stack>

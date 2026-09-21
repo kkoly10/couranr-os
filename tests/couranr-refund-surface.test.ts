@@ -184,6 +184,7 @@ describe("refundControlsFor — the V0 panel truth table", () => {
 describe("the browser surface stays narrow", () => {
   const client = readFileSync("components/couranr/fulfillment/client.ts", "utf8");
   const panel = readFileSync("components/couranr/fulfillment/OperationsPaymentRecoveryPanel.tsx", "utf8");
+  const workbench = readFileSync("components/couranr/operations/OperationsDeliveryWorkbench.tsx", "utf8");
 
   it("client bodies are plain objects — call() encodes them exactly once", () => {
     // The double-stringify defect made every recovery button dead: call()
@@ -208,6 +209,20 @@ describe("the browser surface stays narrow", () => {
   it("the cancel action collects the mandatory note the route requires", () => {
     expect(panel).toMatch(/cancelNote/);
     expect(panel).toMatch(/note:\s*cancelNote\.trim\(\)/);
+  });
+
+  it("mounts the governed recovery action in scheduled, dispatch and live execution work", () => {
+    for (const branch of [
+      'work.lifecycleStage === "automatic_scheduled"',
+      'stage === "dispatch"',
+      'work.phase === "dispatch"',
+      'work.phase === "execute"',
+    ]) {
+      const start = workbench.indexOf(branch);
+      expect(start, branch).toBeGreaterThan(-1);
+      expect(workbench.slice(start, start + 1400), branch).toContain("OperationsPaymentRecoveryPanel");
+    }
+    expect(panel).toContain("Confirm cancellation and settlement");
   });
 });
 

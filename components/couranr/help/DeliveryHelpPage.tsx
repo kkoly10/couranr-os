@@ -251,11 +251,19 @@ export function DeliveryHelpPage({ token }: { token: string }) {
         </Text>
       </Card>
 
-      <CancellationReturnRequestPanel
-        token={token}
-        policy={view.resolutionPolicy}
-        onSent={() => load(false)}
-      />
+      {view.audience === "recipient" ? (
+        <Alert tone="info" title="Recipient help">
+          Report availability, address, access, safety or handoff concerns below.
+          The sender owns cancellation and return requests; Couranr Operations
+          decides any change to the delivery or payment.
+        </Alert>
+      ) : (
+        <CancellationReturnRequestPanel
+          token={token}
+          policy={view.resolutionPolicy}
+          onSent={() => load(false)}
+        />
+      )}
 
       <ReturnRefundStatusPanel status={view.returnStatus} />
 

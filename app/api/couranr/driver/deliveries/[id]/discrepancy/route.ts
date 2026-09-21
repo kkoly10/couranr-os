@@ -19,8 +19,8 @@ const MAX_NOTES = 1000;
  *
  * Two explicit stages, chosen by the body's `stage` field (default 'pickup'):
  *
- *   'pickup'  → couranr_report_pickup_discrepancy. SQL-gated to at_pickup;
- *               blocks complete_pickup while open.
+ *   'pickup'  → couranr_report_pickup_discrepancy. SQL-gated to an assigned
+ *               pre-custody delivery; blocks complete_pickup while open.
  *   'dropoff' → couranr_report_dropoff_exception (§31). SQL-gated to
  *               picked_up / in_transit / at_dropoff; evidence only — it gates
  *               nothing for the driver, but it is one of the two halves
@@ -56,7 +56,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
   const allowedReasons: readonly string[] =
     stage === "dropoff"
       ? [...DISCREPANCY_REASONS, ...DROPOFF_EXCEPTION_EXTRA_REASONS]
-      : DISCREPANCY_REASONS;
+      : [...DISCREPANCY_REASONS, "address_or_access_problem", "weather_or_safety"];
 
   const reason = typeof body?.reason === "string" ? body.reason.trim() : "";
   if (!allowedReasons.includes(reason)) {

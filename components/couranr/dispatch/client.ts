@@ -479,6 +479,13 @@ export function fetchMerchantProof(deliveryId: string) {
   );
 }
 
+/** Operations metadata read does not require a merchant business tenant. */
+export function fetchOperationsProof(deliveryId: string) {
+  return call<{ proof: ProofMetadataView[] }>(
+    `/api/couranr/operations/deliveries/${deliveryId}/proof`
+  );
+}
+
 /**
  * What the CALLING DRIVER has already recorded on their own delivery.
  *

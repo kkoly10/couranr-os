@@ -124,6 +124,7 @@ describe("server-only modules are unreachable from client code", () => {
       // and every consumer command wrapper. A bundle reaching it would ship
       // the code that turns an anonymous URL header into authority.
       "lib/couranr/consumer/send.ts",
+      "lib/couranr/consumer/senderAccess.ts",
       // Holds the service-role client and every conversation command. A bundle
       // reaching it would ship the write path for messages — and the module
       // that calls `couranr_conversation_thread`, which is the one door to a
@@ -320,7 +321,9 @@ describe("canonical server routes do not import the browser client", () => {
    */
   it("covers every canonical route", () => {
     expect(canonical.map(rel).sort()).toEqual([
+      "app/api/couranr/consumer/cancellation-review/route.ts",
       "app/api/couranr/consumer/estimate/route.ts",
+      "app/api/couranr/consumer/help-link/route.ts",
       "app/api/couranr/consumer/interpret/route.ts",
       "app/api/couranr/consumer/pay/route.ts",
       "app/api/couranr/consumer/pickup-code/route.ts",
@@ -328,6 +331,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/consumer/places/route.ts",
       "app/api/couranr/consumer/readiness/route.ts",
       "app/api/couranr/consumer/reconcile-payment/route.ts",
+      "app/api/couranr/consumer/recover-sender/route.ts",
       "app/api/couranr/consumer/refresh-quote/route.ts",
       "app/api/couranr/consumer/request/route.ts",
       "app/api/couranr/consumer/session/route.ts",
@@ -409,6 +413,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/operations/deliveries/[id]/custody/route.ts",
       "app/api/couranr/operations/deliveries/[id]/help-link/route.ts",
       "app/api/couranr/operations/deliveries/[id]/pickup-code/route.ts",
+      "app/api/couranr/operations/deliveries/[id]/proof/route.ts",
       "app/api/couranr/operations/deliveries/[id]/recipient-code/route.ts",
       "app/api/couranr/operations/deliveries/[id]/return-code/route.ts",
       "app/api/couranr/operations/deliveries/[id]/return/route.ts",
@@ -452,6 +457,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/stripe/webhook/route.ts",
       "app/api/couranr/track/[token]/adult-attestation/route.ts",
       "app/api/couranr/track/[token]/dropoff-code/route.ts",
+      "app/api/couranr/track/[token]/help-link/route.ts",
       "app/api/couranr/track/[token]/proof/[proofId]/url/route.ts",
       "app/api/couranr/track/[token]/route.ts",
     ]);
@@ -483,6 +489,14 @@ describe("canonical server routes do not import the browser client", () => {
    * ship an unauthenticated route.
    */
   const TOKEN_AUTHORIZED = new Map<string, { shape: RegExp; redeem: RegExp }>([
+    [
+      "app/api/couranr/consumer/recover-sender/route.ts",
+      { shape: /isWellFormedAccessToken\(/, redeem: /recoverSenderGuestSession\(/ },
+    ],
+    [
+      "app/api/couranr/track/[token]/help-link/route.ts",
+      { shape: /isWellFormedTrackingToken\(/, redeem: /issueCustomerHelpToken\(/ },
+    ],
     /*
      * Batch 3 §D. The consumer guest routes authorize by the opaque
      * x-couranr-guest header: shape-checked before hashing, then redeemed
@@ -492,6 +506,14 @@ describe("canonical server routes do not import the browser client", () => {
      */
     [
       "app/api/couranr/consumer/estimate/route.ts",
+      { shape: /redeemGuestSessionToken\(/, redeem: /redeemGuestSessionToken\(/ },
+    ],
+    [
+      "app/api/couranr/consumer/cancellation-review/route.ts",
+      { shape: /redeemGuestSessionToken\(/, redeem: /redeemGuestSessionToken\(/ },
+    ],
+    [
+      "app/api/couranr/consumer/help-link/route.ts",
       { shape: /redeemGuestSessionToken\(/, redeem: /redeemGuestSessionToken\(/ },
     ],
     [

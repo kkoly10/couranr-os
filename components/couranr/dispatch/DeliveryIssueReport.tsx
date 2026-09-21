@@ -23,6 +23,61 @@ const OPTIONS = [
 ] as const;
 const MAX_NOTES=500;
 
+const PRE_PICKUP_OPTIONS = [
+  ["loading_not_available", "Sender or item is unavailable"],
+  ["address_or_access_problem", "Pickup address or access is a problem"],
+  ["weather_or_safety", "Weather or conditions are not safe"],
+  ["prohibited_item_concern", "I have a safety or prohibited-item concern"],
+  ["visible_damage", "The item appears damaged"],
+  ["other", "Something else is blocking pickup"],
+] as const;
+
+/** Evidence-only pre-custody stop; the existing pickup discrepancy commands
+ * and Operations resolution own the next decision. */
+export function PrePickupIssueReport({ deliveryId, onReported }: {
+  deliveryId: string;
+  onReported: () => void;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const [reason, setReason] = React.useState("");
+  const [notes, setNotes] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [reported, setReported] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function submit() {
+    if (busy || !reason) return;
+    setBusy(true); setError(null);
+    const r = await reportDiscrepancy(deliveryId, { stage: "pickup", reason, notes: notes.trim() || undefined });
+    setBusy(false);
+    if (isApiFailure(r)) { setError(withReference(r)); return; }
+    setReported(true); setOpen(false); onReported();
+  }
+
+  return (
+    <Card id="report-issue">
+      <CardHeader title={reported ? "Pickup issue reported" : "Cannot safely proceed to pickup?"}
+        description="Stop safely and report the issue. Operations decides whether to continue, reassign, or cancel."
+        actions={!reported ? <Button variant="secondary" onClick={() => setOpen((value) => !value)}>
+          {open ? "Close" : "Report pickup issue"}
+        </Button> : <Badge tone="warning">Operations review</Badge>} />
+      {open ? <Stack gap={3}>
+        <Field label="What is blocking pickup?" required>{(a) => <Select {...a} value={reason} onChange={(e) => setReason(e.target.value)}>
+          <option value="">Choose the closest reason</option>
+          {PRE_PICKUP_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+        </Select>}</Field>
+        <Field label="What happened?" hint={`${Math.max(0, MAX_NOTES - notes.length)} characters left.`}>
+          {(a) => <Textarea {...a} rows={3} maxLength={MAX_NOTES} value={notes} onChange={(e) => setNotes(e.target.value.slice(0, MAX_NOTES))} />}
+        </Field>
+        {error ? <Alert tone="danger" title="Issue not sent">{error}</Alert> : null}
+        <Button variant="secondary" disabled={!reason} loading={busy} loadingLabel="Reporting…" onClick={() => void submit()}>
+          Report to Operations
+        </Button>
+      </Stack> : null}
+    </Card>
+  );
+}
+
 /**
  * Post-pickup issue capture. The location is evidence of WHERE the driver
  * stopped; if a return becomes necessary it is the immutable origin candidate

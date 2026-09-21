@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
@@ -604,6 +605,14 @@ describe("consumer lifecycle notifications", () => {
     expect(p.calls[0].headers["Idempotency-Key"]).toContain(
       "couranr.consumer.sender_request_received/ev-recv"
     );
+    const senderLink = JSON.stringify(p.calls[0].body).match(/#sender=([A-Za-z0-9_-]+)/)?.[1];
+    expect(senderLink).toBeTruthy();
+    const senderIssuance = rpcCallsTo("couranr_issue_sender_access_token");
+    expect(senderIssuance).toHaveLength(1);
+    expect(senderIssuance[0].args.p_token_hash).toBe(
+      createHash("sha256").update(senderLink!).digest("hex")
+    );
+    expect(p.calls[0].body.to).toBe("avery@example.com");
 
     h.request = consumerRequest();
     h.requestEvents = [

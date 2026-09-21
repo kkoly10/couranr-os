@@ -258,6 +258,11 @@ export function SendFlow({
   const [authorizedPending, setAuthorizedPending] = React.useState(false);
   /* True when the server says the request is confirmed (resume path). */
   const [confirmed, setConfirmed] = React.useState(false);
+  const [deliveryState, setDeliveryState] = React.useState<string | null>(null);
+  const [reviewNote, setReviewNote] = React.useState("");
+  const [reviewBusy, setReviewBusy] = React.useState(false);
+  const [reviewSent, setReviewSent] = React.useState(false);
+  const [reviewError, setReviewError] = React.useState<string | null>(null);
   const [pickupCredential, setPickupCredential] = React.useState<{
     deliveryId: string;
     code: string;
@@ -265,6 +270,9 @@ export function SendFlow({
   } | null>(null);
   const [pickupCredentialBusy, setPickupCredentialBusy] = React.useState(false);
   const [pickupCredentialNote, setPickupCredentialNote] = React.useState<string | null>(null);
+  const [confirmPickupReplacement, setConfirmPickupReplacement] = React.useState(false);
+  const [helpBusy, setHelpBusy] = React.useState(false);
+  const [helpNote, setHelpNote] = React.useState<string | null>(null);
   /* Final closure §5: a resumed request is ALREADY SUBMITTED — the payment
      button must go straight to /pay and never POST /submit again. */
   const [resumePay, setResumePay] = React.useState(false);
@@ -595,12 +603,60 @@ export function SendFlow({
       code: issued.code,
       warning: issued.warning,
     });
+    setConfirmPickupReplacement(false);
+  }
+
+  async function openSenderHelp() {
+    if (!adapters.openDeliveryHelp || helpBusy) return;
+    setHelpBusy(true);
+    setHelpNote(null);
+    const path = await adapters.openDeliveryHelp();
+    setHelpBusy(false);
+    if (!path) {
+      setHelpNote("Delivery Help opens after a canonical delivery exists. If Couranr is still reviewing this request, contact Operations for cancellation review.");
+      return;
+    }
+    window.location.assign(path);
+  }
+
+  async function requestSenderReview() {
+    if (!adapters.requestCancellationReview || reviewBusy || reviewNote.trim().length < 5) return;
+    setReviewBusy(true);
+    setReviewError(null);
+    const accepted = await adapters.requestCancellationReview(reviewNote.trim(), crypto.randomUUID());
+    setReviewBusy(false);
+    if (accepted) setReviewSent(true);
+    else setReviewError("Couranr could not receive this review request. Please try again or contact Operations.");
+  }
+
+  function senderReviewPanel() {
+    if (mode !== "live" || deliveryState || !adapters.requestCancellationReview) return null;
+    return (
+      <div className="cr-send-panel" data-couranr-sender-review="true">
+        <h2>Need to change or cancel this request?</h2>
+        <p className="cr-send-field__hint">Ask Couranr to review it. This does not cancel a payment or delivery automatically.</p>
+        {reviewSent ? <p role="status" className="cr-send-note">Your request was recorded for Operations review.</p> : (
+          <>
+            <label className="cr-send-field__label" htmlFor="sender-review-note">What changed?</label>
+            <textarea id="sender-review-note" className="cr-input cr-send-textarea" rows={3} maxLength={1200}
+              value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} />
+            <button type="button" className="cr-button cr-button--secondary"
+              disabled={reviewBusy || reviewNote.trim().length < 5} onClick={() => void requestSenderReview()}>
+              {reviewBusy ? "Sending…" : "Request cancellation review"}
+            </button>
+            {reviewError ? <p role="alert" className="cr-field__error">{reviewError}</p> : null}
+          </>
+        )}
+      </div>
+    );
   }
 
   /* Live mode: the request GET is the only voice on whether a tracking link
      exists. When it names none, the received screen simply shows none. */
   async function finishLive() {
     const view = adapters.readRequest ? await adapters.readRequest() : null;
+    setDeliveryState(view?.deliveryState ?? null);
+    setConfirmed(view?.state === "confirmed");
     setRecipientNotified(
       view?.recipientNotifiedAt
         ? { at: view.recipientNotifiedAt, to: view.recipientNotifiedTo ?? "" }
@@ -620,17 +676,32 @@ export function SendFlow({
      stored, so a first visit never mints one just by loading the page. */
   React.useEffect(() => {
     if (mode !== "live" || !adapters.readRequest) return;
-    let stored: string | null = null;
-    try {
-      stored = window.sessionStorage.getItem(GUEST_STORAGE_KEY);
-    } catch {
-      stored = null;
-    }
-    if (!stored) return;
     let cancelled = false;
     void (async () => {
+      const senderHash = window.location.hash;
+      if (senderHash.startsWith("#sender=")) {
+        let token = "";
+        try { token = decodeURIComponent(senderHash.slice("#sender=".length)); }
+        catch { /* Malformed links fail the same uniform recovery gate. */ }
+        // Fragments are not sent to the server, but remove them from the
+        // address bar before showing any recovered sender status.
+        window.history.replaceState(null, "", window.location.pathname + window.location.search);
+        const recovered = adapters.recoverSenderAccess
+          ? await adapters.recoverSenderAccess(token) : false;
+        if (cancelled) return;
+        if (!recovered) {
+          setLiveNote("This sender link is not available. Ask Couranr Operations for help.");
+          return;
+        }
+      } else {
+        let stored: string | null = null;
+        try { stored = window.sessionStorage.getItem(GUEST_STORAGE_KEY); }
+        catch { stored = null; }
+        if (!stored) return;
+      }
       const view = adapters.readRequest ? await adapters.readRequest() : null;
       if (cancelled || !view) return;
+      setDeliveryState(view.deliveryState);
       if (view.state === "awaiting_quote_acceptance" || view.state === "quote_revision_required") {
         clearDraftStorage();
         /* Awaiting the payer: straight to payment, with the server's number.
@@ -924,18 +995,35 @@ export function SendFlow({
           </p>
         ) : null}
 
-        {mode === "live" && confirmed && adapters.issuePickupCredential ? (
+        {mode === "live" && confirmed && deliveryState && ["scheduled", "assigned", "en_route_to_pickup", "at_pickup"].includes(deliveryState) && adapters.issuePickupCredential ? (
           <div className="cr-send-panel" data-couranr-sender-pickup-code="true">
             <h2>Your pickup verification</h2>
             <p className="cr-send-field__hint">
               Keep this with the person handing the item to the Couranr driver. Do not send it to the driver in advance.
             </p>
             {pickupCredential ? (
-              <PickupCredentialDisplay
-                deliveryId={pickupCredential.deliveryId}
-                code={pickupCredential.code}
-                warning={pickupCredential.warning}
-              />
+              <div>
+                <PickupCredentialDisplay
+                  deliveryId={pickupCredential.deliveryId}
+                  code={pickupCredential.code}
+                  warning={pickupCredential.warning}
+                />
+                {confirmPickupReplacement ? (
+                  <div>
+                    <p className="cr-send-note">A replacement makes the current pickup code stop working immediately.</p>
+                    <button type="button" className="cr-button cr-button--secondary" disabled={pickupCredentialBusy} onClick={() => void showPickupCredential()}>
+                      {pickupCredentialBusy ? "Replacing…" : "Yes, replace pickup code"}
+                    </button>
+                    <button type="button" className="cr-button cr-button--secondary" disabled={pickupCredentialBusy} onClick={() => setConfirmPickupReplacement(false)}>
+                      Keep current code
+                    </button>
+                  </div>
+                ) : (
+                  <button type="button" className="cr-button cr-button--secondary" onClick={() => setConfirmPickupReplacement(true)}>
+                    Replace lost or exposed pickup code
+                  </button>
+                )}
+              </div>
             ) : (
               <button
                 type="button"
@@ -951,6 +1039,19 @@ export function SendFlow({
             ) : null}
           </div>
         ) : null}
+
+        {mode === "live" && deliveryState && adapters.openDeliveryHelp ? (
+          <div className="cr-send-panel">
+            <h2>Need help with this delivery?</h2>
+            <p className="cr-send-field__hint">Couranr reviews cancellation and return requests by delivery stage. Sending one does not move money or goods on its own.</p>
+            <button type="button" className="cr-button cr-button--secondary" disabled={helpBusy} onClick={() => void openSenderHelp()}>
+              {helpBusy ? "Opening…" : "Open Delivery Help"}
+            </button>
+            {helpNote ? <p className="cr-send-note" role="status">{helpNote}</p> : null}
+          </div>
+        ) : null}
+
+        {senderReviewPanel()}
 
         {mode === "live" ? null : (
           <p className="cr-send-note">Preview only. No delivery was requested.</p>
@@ -1676,6 +1777,7 @@ export function SendFlow({
               Back
             </button>
           </div>
+          {resumePay ? senderReviewPanel() : null}
         </div>
       ) : null}
     </section>
