@@ -49,6 +49,7 @@ describe("consumer route inventory", () => {
   it("holds the contracted guest and sender-capability routes", () => {
     expect(ROUTE_FILES.map(rel)).toEqual([
       "app/api/couranr/consumer/cancellation-review/route.ts",
+      "app/api/couranr/consumer/driver-feedback/route.ts",
       "app/api/couranr/consumer/estimate/route.ts",
       "app/api/couranr/consumer/help-link/route.ts",
       "app/api/couranr/consumer/interpret/route.ts",
@@ -156,6 +157,13 @@ describe("consumer route inventory", () => {
         expect(code).toContain("isWellFormedAccessToken");
         expect(code).toMatch(/\.token/);
         expect(/body\??\.\s*(amount|total|price|subtotal|cents|requestId|state|target|policy|route)/i.test(code)).toBe(false);
+      } else if (rel(file) === "app/api/couranr/consumer/driver-feedback/route.ts") {
+        /* Delivered-only feedback is not quote authority. The route delegates
+           its narrow review/tip vocabulary to the shared handler, while the
+           redeemed guest session supplies request and audience identity. */
+        expect(code).toContain("redeemGuestSessionToken");
+        expect(code).toContain("handleFeedbackRequest");
+        expect(/body\??\.\s*(requestId|businessAccountId|target|policy|route|state|status)/i.test(code)).toBe(false);
       } else {
         expect(/req\.json\(\)|req\.text\(\)|req\.formData\(\)/.test(code)).toBe(false);
       }

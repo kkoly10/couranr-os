@@ -10,6 +10,7 @@ import { buildTrackingProjection, type TrackingProjection } from "./projection";
 import { isTrackingRefusal, type TrackingRefusal } from "./states";
 import { generateTrackingToken, hashTrackingToken, TRACKING_TOKEN_TTL_DAYS } from "./tokens";
 import { generateHandoffCode, handoffCodeDigest } from "@/lib/couranr/driver/codes";
+import { identityForAssignment, type PublicDriverIdentity } from "@/lib/couranr/driver/publicProfile";
 
 assertServerOnly("lib/couranr/tracking/commands.ts");
 
@@ -380,6 +381,7 @@ export async function loadTrackingView(params: {
   let delivery: any = null;
   let servicePlan: any = null;
   let assignmentActive = false;
+  let driverIdentity: PublicDriverIdentity | null = null;
   let proofs: any[] = [];
   let events: any[] = [];
 
@@ -414,17 +416,25 @@ export async function loadTrackingView(params: {
     }
     delivery = dlvQ.data ?? null;
 
-    // The COUNT of active assignments, never the driver. `head: true` means the
-    // driver row is not read into this process at all.
+    // Only the assignment-time public identity. Never read the driver row,
+    // contact phone, vehicle plate, or any assignment metadata into this path.
+    const assignmentState = delivery?.fulfillment_state === "delivered" ? "completed" : "active";
     const asgQ = await supabaseAdmin
       .from("couranr_delivery_assignments")
-      .select("id", { count: "exact", head: true })
+      .select("driver_display_name_snapshot,driver_portrait_id")
       .eq("delivery_id", deliveryId)
-      .eq("assignment_state", "active");
+      .eq("assignment_state", assignmentState)
+      .order("assigned_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
     if (asgQ.error) {
       return fail({ operation: op, code: classifyDatabaseError(asgQ.error), detail: asgQ.error });
     }
-    assignmentActive = (asgQ.count ?? 0) > 0;
+    assignmentActive = assignmentState === "active" && Boolean(asgQ.data);
+    if (asgQ.data) {
+      try { driverIdentity = await identityForAssignment(asgQ.data); }
+      catch (error) { return fail({ operation: op, code: "internal", detail: error }); }
+    }
 
     // Dropoff proof only, filtered in SQL as well as in the projection. Two
     // filters for one rule is deliberate: the projection's is what a unit test
@@ -459,6 +469,7 @@ export async function loadTrackingView(params: {
     servicePlan,
     business: bizQ.data,
     assignmentActive,
+    driverIdentity,
     proofs,
     events,
   });

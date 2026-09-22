@@ -7,6 +7,7 @@ import {
   replaceDeliveryAssignment,
 } from "@/lib/couranr/dispatch/commands";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
+import { notifyDriverDispatchForDelivery } from "@/lib/couranr/email/driverDispatchLifecycle";
 
 export const dynamic = "force-dynamic";
 
@@ -73,6 +74,7 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
     vehicleId,
   });
   if (isDispatchFailure(r)) return failureResponse(r);
+  await notifyDriverDispatchForDelivery(params.id);
   return NextResponse.json({ assignment: r.value.assignment });
 }
 
@@ -121,5 +123,6 @@ export async function PUT(req: NextRequest, props: { params: Promise<{ id: strin
     reason: typeof body?.reason === "string" ? body.reason : null,
   });
   if (isDispatchFailure(r)) return failureResponse(r);
+  await notifyDriverDispatchForDelivery(params.id);
   return NextResponse.json({ assignment: r.value.assignment });
 }

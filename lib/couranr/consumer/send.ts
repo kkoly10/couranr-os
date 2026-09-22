@@ -36,6 +36,7 @@ import {
   reconcilePaymentIntent,
 } from "@/lib/couranr/payments/commands";
 import { isRecipientIdentityCapabilityAvailable } from "@/lib/couranr/identity/recipientIdentity";
+import { identityForAssignment } from "@/lib/couranr/driver/publicProfile";
 /* READ ONLY. This module imports the notification subsystem's REPORTER and
    nothing that sends: the claim/send/receipt trio moved to the lifecycle, and
    re-importing `sendRenderedEmail` here would be the regression. */
@@ -1247,6 +1248,7 @@ export type ConsumerSendView = {
   /** Canonical server-authored quote lines; display only. */
   lineItems: unknown[];
   paymentState: string | null;
+  driver: { name: string; portraitUrl: string | null } | null;
   /**
    * THE SENDER IS TOLD THE RECIPIENT WAS NOTIFIED. THE SENDER IS NEVER GIVEN
    * THE RECIPIENT'S TOKEN.
@@ -1322,10 +1324,23 @@ export async function getConsumerSendView(params: {
 
   const { data: delivery, error: deliveryError } = await supabaseAdmin
     .from("couranr_deliveries")
-    .select("fulfillment_state")
+    .select("id,fulfillment_state")
     .eq("request_id", String(row.id))
     .maybeSingle();
   if (deliveryError) return fail({ operation: op, code: "internal", detail: deliveryError.message });
+
+  let driver: ConsumerSendView["driver"] = null;
+  if (delivery?.id) {
+    const assignmentState = delivery.fulfillment_state === "delivered" ? "completed" : "active";
+    const { data: assignment, error: assignmentError } = await supabaseAdmin
+      .from("couranr_delivery_assignments")
+      .select("driver_display_name_snapshot,driver_portrait_id")
+      .eq("delivery_id", delivery.id).eq("assignment_state", assignmentState)
+      .order("assigned_at", { ascending: false }).limit(1).maybeSingle();
+    if (assignmentError) return fail({ operation: op, code: "internal", detail: assignmentError.message });
+    try { driver = await identityForAssignment(assignment); }
+    catch (error) { return fail({ operation: op, code: "internal", detail: error }); }
+  }
 
   const view: ConsumerSendView = {
     state: String(row.request_state),
@@ -1337,6 +1352,7 @@ export async function getConsumerSendView(params: {
         : null,
     lineItems: Array.isArray(row.quote_line_items) ? row.quote_line_items : [],
     paymentState: ob.value ? String(ob.value.payment_state) : null,
+    driver,
   };
 
   if (row.request_state === "confirmed") {

@@ -77,6 +77,7 @@ const API = {
   recoverSender: "/api/couranr/consumer/recover-sender",
   helpLink: "/api/couranr/consumer/help-link",
   cancellationReview: "/api/couranr/consumer/cancellation-review",
+  driverFeedback: "/api/couranr/consumer/driver-feedback",
 } as const;
 
 /** The two review reasons that are about the TRIP rather than the shipment. */
@@ -607,6 +608,17 @@ export function createLiveSameDayAdapters(
       });
       return Boolean(r?.ok && (r.body as { review?: { eventId?: unknown } } | null)?.review?.eventId);
     },
+    async driverFeedback(body?: Record<string, unknown>) {
+      const r = await guestCall(API.driverFeedback,
+        body === undefined ? { method: "GET" } : { method: "POST", body });
+      if (!r) return { error: NOTES.serviceDown };
+      return r.body as {
+        feedback?: import("@/lib/couranr/driver/feedbackTypes").FeedbackView;
+        tip?: { clientSecret: string | null; state: string; amountCents: number };
+        error?: string;
+      } | null;
+    },
+
     async openDeliveryHelp(): Promise<string | null> {
       const r = await guestCall(API.helpLink, { method: "POST" });
       if (!r?.ok) return null;
@@ -962,6 +974,7 @@ export function createLiveSameDayAdapters(
           totalCents?: unknown;
           lineItems?: unknown;
           paymentState?: unknown;
+          driver?: unknown;
           recipientNotifiedAt?: unknown;
           recipientNotifiedTo?: unknown;
         };
@@ -974,6 +987,12 @@ export function createLiveSameDayAdapters(
         totalCents: typeof req.totalCents === "number" ? req.totalCents : null,
         lineItems: quoteLineItemsFrom(req.lineItems),
         paymentState: typeof req.paymentState === "string" ? req.paymentState : null,
+        driver: req.driver && typeof req.driver === "object" &&
+          typeof (req.driver as any).name === "string"
+          ? { name: (req.driver as any).name,
+              portraitUrl: typeof (req.driver as any).portraitUrl === "string"
+                ? (req.driver as any).portraitUrl : null }
+          : null,
       };
       /* A recipient bearer token must never reach the sender's adapter, so
          there is nothing here to copy across even if the server regressed. */

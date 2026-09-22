@@ -56,12 +56,10 @@ import {
  *     — the recipient already knows their own contact details, so returning
  *       them buys the page nothing and hands a forwarded link a phone number.
  *
- *   driver identity of any kind — name, phone, photo, vehicle plate
- *     — the registry's PUB-006 entry does not ask for it, and it is a real
- *       person's PII behind a URL that forwards. `driverAssigned` carries the
- *       only fact the stage rail needs. PUB-006's mandatory correction already
- *       forbids unrestricted call or customer–driver chat; not shipping the
- *       identity is the same instinct one step earlier.
+ *   driver contact details, internal driver id, or vehicle plate
+ *     — the owner-authorized public identity is limited to the approved
+ *       assignment-time display name and portrait. No contact channel crosses
+ *       this forwarded-link boundary.
  *
  *   proof storage paths and any signed URL
  *     — PHO-001: proof media is reachable only through a short-lived signed
@@ -125,6 +123,8 @@ export type TrackingProjection = {
 
   /** The fact, never the person. */
   driverAssigned: boolean;
+  /** Owner-approved identity for the current/finishing assignment, never contact data. */
+  driver: { name: string; portraitUrl: string | null } | null;
 
   proof: {
     state: ProofState;
@@ -190,6 +190,7 @@ export function buildTrackingProjection(input: {
   servicePlan?: any | null;
   business: any | null;
   assignmentActive: boolean;
+  driverIdentity?: { name: string; portraitUrl: string | null } | null;
   proofs: any[];
   events: any[];
 }): TrackingProjection {
@@ -253,6 +254,10 @@ export function buildTrackingProjection(input: {
       input.request.recipient_adult_attested_at.length > 0,
 
     driverAssigned: input.assignmentActive === true,
+    driver: input.driverIdentity?.name ? {
+      name: input.driverIdentity.name,
+      portraitUrl: input.driverIdentity.portraitUrl ?? null,
+    } : null,
 
     proof: {
       state: proofStateFor({ stage, visibleProofCount: visible.length }),
@@ -320,6 +325,7 @@ export const TRACKING_PROJECTION_ALLOWED_KEYS: readonly string[] = [
   "recipientAdultAttestationRequired",
   "recipientAdultAttested",
   "driverAssigned",
+  "driver",
   "proof",
   "timeline",
 ];

@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import {
   Alert,
   Badge,
@@ -16,6 +17,7 @@ import {
 import { CardSkeleton, ErrorState } from "@/components/couranr/states";
 import { CouranrLogo } from "@/components/brand/CouranrLogo";
 import type { TrackingProjection, TrackingProofItem } from "@/lib/couranr/tracking/projection";
+import { DriverFeedbackPanel } from "@/components/couranr/driver/DriverFeedbackPanel";
 import {
   PROOF_STATE_COPY,
   REFUSAL_COPY,
@@ -113,6 +115,17 @@ function formatWindow(t: TrackingProjection): string {
 export function TrackingPage({ token }: { token: string }) {
   const [load, setLoad] = React.useState<Load>({ phase: "loading" });
 
+  const feedbackRequest = React.useCallback(async (body?: Record<string, unknown>) => {
+    try {
+      const response = await fetch(`/api/couranr/track/${encodeURIComponent(token)}/driver-feedback`, {
+        method: body ? "POST" : "GET", cache: "no-store",
+        headers: body ? { "Content-Type": "application/json" } : undefined,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      return await response.json();
+    } catch { return { error: "Could not reach Couranr. Try again." }; }
+  }, [token]);
+
   const reload = React.useCallback(async () => {
     setLoad({ phase: "loading" });
     const r = await fetchTracking(token);
@@ -175,6 +188,8 @@ export function TrackingPage({ token }: { token: string }) {
           <ProofSection token={token} tracking={load.tracking} />
           <AccessSection tracking={load.tracking} />
           <HelpCard token={token} />
+          {load.tracking.sourceState === "delivered" ?
+            <DriverFeedbackPanel request={feedbackRequest} /> : null}
         </>
       ) : null}
     </Stack>
@@ -430,6 +445,14 @@ function StatusCard({ tracking }: { tracking: TrackingProjection }) {
           <Text size="sm" muted>
             A Couranr driver is assigned to this delivery.
           </Text>
+        ) : null}
+        {tracking.driver ? (
+          <div className="cr-driver-public-profile" data-couranr-public-driver="true">
+            {tracking.driver.portraitUrl ? <Image src={tracking.driver.portraitUrl}
+              width={64} height={64} unoptimized alt={`${tracking.driver.name}, your Couranr driver`}
+              style={{ borderRadius: "50%", objectFit: "cover" }} /> : null}
+            <Text size="sm" strong>{tracking.driver.name} · Couranr driver</Text>
+          </div>
         ) : null}
       </Stack>
     </Card>

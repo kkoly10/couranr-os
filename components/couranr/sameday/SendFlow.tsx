@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { SEND_COPY } from "@/lib/couranr/public/masterSameDayCopy";
@@ -35,6 +36,7 @@ import { parseOperatingLocal } from "@/lib/couranr/timing/policy";
 import { SAME_DAY_CUTOFF_COPY } from "@/lib/couranr/public/governed";
 import { PickupCredentialDisplay } from "@/components/couranr/dispatch/PickupCredentialDisplay";
 import { CouranrPaymentElement } from "@/components/couranr/payments/CouranrPaymentElement";
+import { DriverFeedbackPanel } from "@/components/couranr/driver/DriverFeedbackPanel";
 import { formatCents } from "@/lib/couranr/requests/view";
 import { STAGE_LABELS, stageForFulfillmentState } from "@/lib/couranr/tracking/states";
 
@@ -260,6 +262,9 @@ export function SendFlow({
   /* True when the server says the request is confirmed (resume path). */
   const [confirmed, setConfirmed] = React.useState(false);
   const [deliveryState, setDeliveryState] = React.useState<string | null>(null);
+  const [assignedDriver, setAssignedDriver] = React.useState<{
+    name: string; portraitUrl: string | null;
+  } | null>(null);
   const [reviewNote, setReviewNote] = React.useState("");
   const [reviewBusy, setReviewBusy] = React.useState(false);
   const [reviewSent, setReviewSent] = React.useState(false);
@@ -660,6 +665,7 @@ export function SendFlow({
   async function finishLive() {
     const view = adapters.readRequest ? await adapters.readRequest() : null;
     setDeliveryState(view?.deliveryState ?? null);
+    setAssignedDriver(view?.driver ?? null);
     setConfirmed(view?.state === "confirmed");
     setRecipientNotified(
       view?.recipientNotifiedAt
@@ -711,6 +717,7 @@ export function SendFlow({
       const view = adapters.readRequest ? await adapters.readRequest() : null;
       if (cancelled || !view) return;
       setDeliveryState(view.deliveryState);
+      setAssignedDriver(view.driver ?? null);
       if (view.state === "awaiting_quote_acceptance" || view.state === "quote_revision_required") {
         clearDraftStorage();
         /* Awaiting the payer: straight to payment, with the server's number.
@@ -1011,6 +1018,20 @@ export function SendFlow({
           </p>
         ) : null}
 
+        {mode === "live" && assignedDriver ? (
+          <div className="cr-send-panel" data-couranr-public-driver="true">
+            <h2>Your Couranr driver</h2>
+            <div className="cr-driver-public-profile">
+              {assignedDriver.portraitUrl ? <Image src={assignedDriver.portraitUrl}
+                width={64} height={64} unoptimized
+                alt={`${assignedDriver.name}, your Couranr driver`}
+                style={{ borderRadius: "50%", objectFit: "cover" }} /> : null}
+              <p>{assignedDriver.name}</p>
+            </div>
+            <p className="cr-send-field__hint">Assignments can change. This page shows the current driver; contact Couranr Support for help.</p>
+          </div>
+        ) : null}
+
         {mode === "live" && confirmed && deliveryState && ["scheduled", "assigned", "en_route_to_pickup", "at_pickup"].includes(deliveryState) && adapters.issuePickupCredential ? (
           <div className="cr-send-panel" data-couranr-sender-pickup-code="true">
             <h2>Your pickup verification</h2>
@@ -1068,6 +1089,10 @@ export function SendFlow({
         ) : null}
 
         {senderReviewPanel()}
+
+        {mode === "live" && deliveryState === "delivered" && adapters.driverFeedback ? (
+          <DriverFeedbackPanel request={(body) => adapters.driverFeedback!(body)} />
+        ) : null}
 
         {mode === "live" ? null : (
           <p className="cr-send-note">Preview only. No delivery was requested.</p>

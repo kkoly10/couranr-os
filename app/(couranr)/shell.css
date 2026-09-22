@@ -703,3 +703,23 @@
   box-shadow: 0 0 0 2px var(--couranr-navy), 0 0 0 4px var(--couranr-gold);
   border-radius: 4px;
 }
+
+/* Customer-safe assignment identity: a compact name/portrait lockup shared by
+   Same Day and recipient tracking. Contact details never belong in this row. */
+.cr-driver-public-profile {
+  display: flex;
+  align-items: center;
+  gap: var(--couranr-space-3);
+  flex-wrap: wrap;
+}
+
+/* Operations portrait controls remain usable for both the file row and the
+   consent checkbox without introducing one-off inline layout. */
+.cr-driver-field {
+  display: flex;
+  align-items: center;
+  gap: var(--couranr-space-2);
+  flex-wrap: wrap;
+  margin-block: var(--couranr-space-3);
+  font-size: var(--couranr-text-sm);
+}

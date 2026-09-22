@@ -29,7 +29,7 @@ const GATE_MARKER = new RegExp(
     "resolveRequestActor",
     "resolveUserId",
     "getUserFromRequest",
-    "redeem\\w*(Token|Link)",
+    "redeem\\w*(Token|Link|Portrait)",
     // Both named commands validate a hashed, audience-scoped capability in
     // SQL before issuing any replacement session or Delivery Help link.
     "recoverSenderGuestSession",

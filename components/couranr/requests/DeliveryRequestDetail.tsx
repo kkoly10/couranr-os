@@ -1,11 +1,13 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import {
   Alert,
   Badge,
   Card,
   CardHeader,
+  Cluster,
   Grid,
   Stack,
   Table,
@@ -20,6 +22,7 @@ import {
 } from "@/components/couranr/states";
 import { QuoteSummary } from "./QuoteSummary";
 import { MerchantPaymentPanel } from "@/components/couranr/payments/MerchantPaymentPanel";
+import { DriverFeedbackPanel } from "@/components/couranr/driver/DriverFeedbackPanel";
 import { MerchantTrackingPanel } from "@/components/couranr/tracking/MerchantTrackingPanel";
 import { MerchantReadinessPanel } from "@/components/couranr/fulfillment/MerchantReadinessPanel";
 import { HostedRequestValidationPanel } from "./HostedRequestValidationPanel";
@@ -31,6 +34,7 @@ import { fetchFulfillment, type FulfillmentView } from "@/components/couranr/ful
 import {
   fetchDeliveryRequest,
   fetchMyBusinessAccounts,
+  call,
   type IntakeSessionView,
   isApiFailure,
   type ApiFailure,
@@ -628,6 +632,32 @@ export function DeliveryRequestDetail({
             </Text>
           ) : null}
         </Card>
+      ) : null}
+
+      {!isOperations && fulfillment?.delivery?.driver ? (
+        <Card data-couranr-public-driver="true">
+          <CardHeader title="Your Couranr driver" description="The current or completing assignment." />
+          <Cluster gap={3}>
+            {fulfillment.delivery.driver.portraitUrl ? <Image
+              src={fulfillment.delivery.driver.portraitUrl} width={64} height={64}
+              unoptimized
+              alt={`${fulfillment.delivery.driver.name}, your Couranr driver`}
+              style={{ borderRadius: "50%", objectFit: "cover" }} /> : null}
+            <Text strong>{fulfillment.delivery.driver.name}</Text>
+          </Cluster>
+          <Text size="xs" muted>Driver contact details are private. Couranr Support can help if you need to reach us.</Text>
+        </Card>
+      ) : null}
+
+      {!isOperations && viewerMayWriteDelivery && viewerBusinessAccountId &&
+       fulfillment?.delivery?.fulfillmentState === "delivered" ? (
+        <DriverFeedbackPanel request={async (body) => {
+          const path = `/api/couranr/delivery-requests/${id}/driver-feedback?businessAccountId=${viewerBusinessAccountId}`;
+          const r = await call<{ feedback?: import("@/lib/couranr/driver/feedbackTypes").FeedbackView;
+            tip?: { clientSecret: string | null; state: string; amountCents: number } }>(path,
+            body ? { method: "POST", body } : {});
+          return isApiFailure(r) ? { error: r.error } : r.value;
+        }} />
       ) : null}
 
       {/* MER-007 execution. Only once a canonical delivery exists — before

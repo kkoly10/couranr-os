@@ -4264,7 +4264,8 @@
       },
       "implementation_phase": "Pricing V2 cutover",
       "amended_by": [
-        "SUR-005"
+        "SUR-005",
+        "TIP-001"
       ]
     },
     {
@@ -4937,6 +4938,200 @@
       },
       "implementation_phase": "Pickup Handoff V2",
       "note": "PRODUCT_SPEC.md §11 remains byte-verbatim provenance from the historical Master Package and is intentionally not edited; AUTHORITY_MANIFEST.json states that later atomic decisions in the root decision registry override the narrative doctrine where they amend it."
+    },
+    {
+      "id": "DRV-010",
+      "category": "driver public profile",
+      "decision": "A delivery may expose only the assigned driver's Operations-approved public display name and consented portrait to the sender, recipient and merchant. The identity is frozen on the assignment, appears in dispatch communications and lifecycle surfaces, and never exposes the driver's phone number or other contact information.",
+      "value": {
+        "profile_authority": "Operations-approved driver record",
+        "portrait_storage": "private object storage served through an opaque Couranr-controlled reference",
+        "portrait_requirements": "authenticated Operations upload, explicit driver consent evidence, decoded and re-encoded JPEG, metadata stripped",
+        "assignment_snapshot": [
+          "driver public display name",
+          "approved portrait identity"
+        ],
+        "visible_to": [
+          "sender",
+          "recipient",
+          "merchant"
+        ],
+        "forbidden_public_fields": [
+          "phone number",
+          "email address",
+          "legal or payroll identifiers"
+        ],
+        "revocation": "removes current portrait exposure without rewriting historical assignment identity or audit evidence"
+      },
+      "status": "decided",
+      "decided_by": "owner",
+      "decided_at_utc": "2026-09-22T00:00:00Z",
+      "authority_file": "02_DECISION_REGISTRY.json",
+      "authority_section": "DRV-010",
+      "affected_routes": [
+        "/send",
+        "/track/[token]",
+        "/app/business/deliveries/[id]",
+        "/operations/drivers"
+      ],
+      "affected_screen_ids": [
+        "MER-009",
+        "PUB-006",
+        "OPS-005"
+      ],
+      "affected_database_objects": [
+        "public.couranr_drivers",
+        "public.couranr_driver_portraits",
+        "public.couranr_delivery_assignments",
+        "storage.objects"
+      ],
+      "affected_code_paths": [
+        "lib/couranr/driver/publicProfile.ts",
+        "lib/couranr/email/driverDispatchLifecycle.ts",
+        "lib/couranr/email/templates/driverDispatch.ts",
+        "components/couranr/tracking/TrackingPage.tsx",
+        "components/couranr/sameday/SendFlow.tsx",
+        "components/couranr/requests/DeliveryRequestDetail.tsx"
+      ],
+      "acceptance_criteria": [
+        "A dispatched customer sees the assignment-snapshotted driver name and approved portrait.",
+        "No customer-facing projection or dispatch email contains the driver's phone number.",
+        "A portrait that cannot be decoded as an allowed image is refused, and accepted content is re-encoded without source metadata.",
+        "A portrait cannot be attached to another driver's assignment."
+      ],
+      "conflict_with_current_code": {
+        "code_value": "Driver profiles had no approved portrait and customer projections intentionally exposed no driver identity.",
+        "code_location": "public.couranr_drivers; customer delivery projections; lifecycle email templates before DRV-010",
+        "resolution": "Add a private, consented portrait authority and freeze the approved public identity into each new assignment without exposing contact data.",
+        "remediation_commit": "Driver profile, tips and private feedback batch"
+      },
+      "implementation_phase": "Driver profile, tips and private feedback"
+    },
+    {
+      "id": "TIP-001",
+      "category": "driver tips",
+      "amends": "SUR-003",
+      "decision": "After a delivery is completed, an authorized sender, recipient or merchant may make one optional driver tip through a separate automatically captured Stripe PaymentIntent in Couranr's existing company Stripe account. The gross tip is a company-held payable to the assigned driver, not delivery revenue; this system does not create driver Stripe accounts, transfers or payouts, and the owner settles the payable through the existing manual payroll process.",
+      "value": {
+        "availability": "delivered deliveries only",
+        "payment_rail": "separate Stripe PaymentIntent with automatic capture",
+        "merchant_of_record": "Couranr company Stripe account",
+        "stripe_connect": false,
+        "driver_payment_accounts": false,
+        "automatic_transfer_or_payout": false,
+        "currency": "USD",
+        "minimum_cents": 100,
+        "maximum_cents": 10000,
+        "one_tip_per_delivery_and_audience": true,
+        "browser_amount_authority": "bounded proposal only; the server persists the exact amount before provider creation and verifies provider metadata, amount and currency",
+        "accounting": {
+          "capture": "debit stripe clearing; credit tips payable",
+          "refund": "debit tips payable; credit stripe clearing",
+          "couranr_revenue": false,
+          "driver_share_percent": 100
+        },
+        "manual_payroll": "outside this product flow; the Operations report is a liability/reconciliation view and never represents payroll payment"
+      },
+      "status": "decided",
+      "decided_by": "owner",
+      "decided_at_utc": "2026-09-22T00:00:00Z",
+      "authority_file": "02_DECISION_REGISTRY.json",
+      "authority_section": "TIP-001; amends SUR-003 tip doctrine",
+      "affected_routes": [
+        "/send",
+        "/track/[token]",
+        "/app/business/deliveries/[id]",
+        "/operations/payments"
+      ],
+      "affected_screen_ids": [
+        "MER-009",
+        "PUB-006",
+        "OPS-009"
+      ],
+      "affected_database_objects": [
+        "public.couranr_driver_tips",
+        "public.couranr_ledger_transactions",
+        "public.couranr_ledger_entries"
+      ],
+      "affected_code_paths": [
+        "lib/couranr/driver/feedback.ts",
+        "components/couranr/driver/DriverFeedbackPanel.tsx",
+        "components/couranr/payments/DriverTipPaymentElement.tsx",
+        "components/couranr/operations/DriverFeedbackDashboard.tsx",
+        "app/api/couranr/stripe/webhook/route.ts"
+      ],
+      "acceptance_criteria": [
+        "The delivery payment obligation, quote, authorization and capture are never reused or mutated to collect a tip.",
+        "A tip creates no Connect account, transfer or payout and carries no destination or transfer-data parameter.",
+        "A successful tip capture posts the full tip to tips payable and not to delivery revenue.",
+        "Duplicate provider events and retries converge on one tip and one balanced posting.",
+        "Refunds and disputes are visible to Operations and reverse or hold the liability without fabricating payroll state."
+      ],
+      "conflict_with_current_code": {
+        "code_value": "SUR-003 governed a separate 100% driver tip but runtime had no collection record, provider intent or payable posting.",
+        "code_location": "SUR-003; canonical payment and ledger runtime before TIP-001",
+        "resolution": "Reuse the company Stripe client and balanced ledger through a separate delivered-only tip aggregate; preserve the quote-bound delivery obligation unchanged.",
+        "remediation_commit": "Driver profile, tips and private feedback batch"
+      },
+      "implementation_phase": "Driver profile, tips and private feedback"
+    },
+    {
+      "id": "FDB-001",
+      "category": "driver feedback",
+      "decision": "After a completed delivery, an authorized sender, recipient or merchant may submit one private one-to-five-star driver review with optional concise feedback. The review is bound to the completed assignment, visible to Operations, and has no authority over money, custody, dispatch state or a public driver score.",
+      "value": {
+        "availability": "delivered deliveries only",
+        "rating_range": [
+          1,
+          5
+        ],
+        "maximum_feedback_characters": 1000,
+        "one_review_per_delivery_and_audience": true,
+        "visibility": "Operations private",
+        "public_aggregate_or_badge": false,
+        "driver_self_selection": false,
+        "state_machine_authority": false,
+        "money_authority": false
+      },
+      "status": "decided",
+      "decided_by": "owner",
+      "decided_at_utc": "2026-09-22T00:00:00Z",
+      "authority_file": "02_DECISION_REGISTRY.json",
+      "authority_section": "FDB-001",
+      "affected_routes": [
+        "/send",
+        "/track/[token]",
+        "/app/business/deliveries/[id]",
+        "/operations/payments"
+      ],
+      "affected_screen_ids": [
+        "MER-009",
+        "PUB-006",
+        "OPS-009"
+      ],
+      "affected_database_objects": [
+        "public.couranr_driver_reviews",
+        "public.couranr_delivery_assignments"
+      ],
+      "affected_code_paths": [
+        "lib/couranr/driver/feedback.ts",
+        "lib/couranr/driver/feedbackRoutes.ts",
+        "components/couranr/driver/DriverFeedbackPanel.tsx",
+        "components/couranr/operations/DriverFeedbackDashboard.tsx"
+      ],
+      "acceptance_criteria": [
+        "No review can be created before delivery completion or without a completed assignment.",
+        "Recipient, guest-sender and merchant access are independently re-authorized server-side.",
+        "The browser cannot choose the reviewed driver.",
+        "Submitting feedback cannot mutate payment, assignment, proof, custody or delivery state."
+      ],
+      "conflict_with_current_code": {
+        "code_value": "No canonical driver-review aggregate or customer review surface existed.",
+        "code_location": "customer lifecycle and Operations surfaces before FDB-001",
+        "resolution": "Add one delivered-only private review per authorized audience, bound server-side to the completed assignment and readable only by Operations.",
+        "remediation_commit": "Driver profile, tips and private feedback batch"
+      },
+      "implementation_phase": "Driver profile, tips and private feedback"
     }
   ]
 }

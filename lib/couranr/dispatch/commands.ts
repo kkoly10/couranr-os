@@ -74,7 +74,7 @@ const VEHICLE_AVAILABILITY_RPC: Readonly<Record<string, string>> = {
 };
 
 const DRIVER_COLUMNS =
-  "id,user_id,display_name,contact_phone,driver_state,availability_state,active,market,version,created_at,updated_at";
+  "id,user_id,display_name,contact_phone,driver_state,availability_state,active,market,version,created_at,updated_at,current_portrait_id";
 const VEHICLE_COLUMNS =
   "id,assigned_driver_id,name,vehicle_class,payload_capacity_lb,cargo_length_in,cargo_width_in," +
   "cargo_height_in,enclosed,has_ramp,has_dolly,has_tie_downs,weather_protection,active," +
@@ -185,7 +185,17 @@ export async function listDrivers(params: {
     .select(DRIVER_COLUMNS)
     .order("display_name", { ascending: true });
   if (error) return fail({ operation: op, code: "internal", detail: error.message });
-  return { ok: true, value: { drivers: data ?? [] } };
+  const portraitIds = (data ?? []).map((d: any) => d.current_portrait_id).filter(Boolean);
+  const { data: portraits, error: portraitError } = portraitIds.length
+    ? await supabaseAdmin.from("couranr_driver_portraits")
+        .select("id,public_id,revoked_at").in("id", portraitIds)
+    : { data: [], error: null };
+  if (portraitError) return fail({ operation: op, code: "internal", detail: portraitError.message });
+  const urls = new Map((portraits ?? []).filter((p: any) => !p.revoked_at)
+    .map((p: any) => [String(p.id), `/api/couranr/driver-portrait/${p.public_id}`]));
+  return { ok: true, value: { drivers: (data ?? []).map((d: any) => ({
+    ...d, portrait_url: urls.get(String(d.current_portrait_id)) ?? null,
+  })) } };
 }
 
 export async function createDriverProfile(params: {

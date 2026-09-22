@@ -2,6 +2,7 @@
 
 import {
   call,
+  callMultipart,
   isApiFailure,
   type ApiResult,
 } from "@/components/couranr/requests/client";
@@ -24,7 +25,20 @@ export type DispatchDriver = {
   active: boolean;
   market: string | null;
   version: number;
+  portrait_url?: string | null;
 };
+
+export function publishDriverPortraitFromBrowser(input: {
+  driverId: string; expectedVersion: number; file: File; consentConfirmed: boolean;
+}) {
+  const form = new FormData();
+  form.set("portrait", input.file);
+  form.set("expectedVersion", String(input.expectedVersion));
+  form.set("consentConfirmed", String(input.consentConfirmed));
+  return callMultipart<{ portraitUrl: string }>(
+    `/api/couranr/operations/drivers/${input.driverId}/portrait`, form,
+  );
+}
 
 export type DispatchVehicle = {
   id: string;
