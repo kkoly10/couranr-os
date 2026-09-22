@@ -72,6 +72,27 @@ describe("company-held voluntary driver tips", () => {
     expect(sql).toContain("fulfillment_state<>'delivered'");
   });
 
+  it("keeps closed non-loss disputes as history without weakening open/lost bounds", () => {
+    const repair = source(
+      "supabase/migrations/20260922213915_couranr_tip_closed_dispute_refund_repair.sql",
+    );
+    const rollback = source(
+      "supabase/rollbacks/20260922213915_couranr_tip_closed_dispute_refund_repair.rollback.sql",
+    );
+    expect(repair).toContain(
+      "v_dispute_closed_non_loss:=v_dispute_status in ('warning_closed','won','prevented')",
+    );
+    expect(repair).toContain(
+      "not v_dispute_closed_non_loss and v_dispute_amount>v_capture-v_refund",
+    );
+    expect(repair).toContain("from public,anon,authenticated,service_role");
+    expect(repair).toContain("lock table public.couranr_driver_tips in exclusive mode");
+    expect(rollback).toContain("lock table public.couranr_driver_tips in exclusive mode");
+    expect(rollback).toContain(
+      "tip_closed_dispute_repair_rollback_refused_live_semantics_use_forward_repair",
+    );
+  });
+
   it("keeps the Operations report explicitly out of payroll execution", () => {
     const api = source("app/api/couranr/operations/driver-feedback/route.ts");
     expect(api).toContain("driver payment occurs outside this system");

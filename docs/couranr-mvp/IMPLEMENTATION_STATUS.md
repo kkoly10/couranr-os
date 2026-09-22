@@ -11,7 +11,7 @@ ledgers own per-item state; this is their sum.
 The 721-line hand-written version of this file is preserved whole at
 [`autonomous-evidence/status-archive/IMPLEMENTATION_STATUS-2026-08-06.md`](./autonomous-evidence/status-archive/IMPLEMENTATION_STATUS-2026-08-06.md).
 It restated per-row evidence the ledgers already carried, and the restatement is
-what went stale: it counted 39 migrations while 144 were on disk.
+what went stale: it counted 39 migrations while 145 were on disk.
 
 ## Where truth lives
 
@@ -58,8 +58,8 @@ Still rendering `ScreenPlaceholder` (5): `OPS-006` · `OPS-017` · `OPS-018` · 
 | API routes | 215 |
 | …canonical, under `app/api/couranr` | 145 |
 | …legacy | 70 |
-| Forward migrations | 144 |
-| Paired rollbacks | 144 |
+| Forward migrations | 145 |
+| Paired rollbacks | 145 |
 | Canonical screens | 68 |
 | …Core | 64 |
 | …MVP-complete | 4 |
