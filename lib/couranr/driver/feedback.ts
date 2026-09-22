@@ -46,6 +46,14 @@ type TipRow = {
   payment_state: string; intent_generation: number;
 };
 
+// Keep this string-typed because the pinned Stripe SDK predates `prevented`,
+// while the provider API and canonical SQL vocabulary already include it.
+const CLOSED_NON_LOSS_DISPUTE_STATUSES: ReadonlySet<string> = new Set([
+  "warning_closed",
+  "won",
+  "prevented",
+]);
+
 export function tipIntentMetadata(tip: TipRow): Record<string, string> {
   return {
     couranrTipId: tip.id,
@@ -192,9 +200,15 @@ export async function reconcileDriverTipIntent(intentId: string): Promise<{
       const disputeChargeId = typeof dispute.charge === "string" ? dispute.charge : dispute.charge?.id;
       const disputeIntentId = typeof dispute.payment_intent === "string"
         ? dispute.payment_intent : dispute.payment_intent?.id;
+      const exceedsCapturedAmount = dispute.amount > intent.amount;
+      // A won/prevented/closed inquiry remains attached to the charge as
+      // historical evidence after a later refund. Only a financially active
+      // or lost dispute must still fit inside the unrefunded principal.
+      const overlapsRefundedPrincipal = !CLOSED_NON_LOSS_DISPUTE_STATUSES.has(dispute.status) &&
+        dispute.amount > intent.amount - refundedAmount;
       if (disputeChargeId !== chargeId || (disputeIntentId && disputeIntentId !== intent.id) ||
           dispute.currency !== "usd" || !Number.isInteger(dispute.amount) ||
-          dispute.amount <= 0 || dispute.amount > intent.amount - refundedAmount) {
+          dispute.amount <= 0 || exceedsCapturedAmount || overlapsRefundedPrincipal) {
         throw new Error("tip_dispute_mismatch");
       }
       disputeId = dispute.id;

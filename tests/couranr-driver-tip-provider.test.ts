@@ -60,6 +60,51 @@ function intent(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function mockReconciliation(params: {
+  disputeStatus: string;
+  disputedAmount?: number;
+  refundedAmount?: number;
+}) {
+  const stored = {
+    ...tip,
+    provider_payment_intent_id: "pi_tipprovider123",
+    payment_state: "succeeded",
+  };
+  doubles.retrieveIntent.mockResolvedValue(intent({
+    status: "succeeded",
+    amount_received: 725,
+    latest_charge: "ch_tipprovider123",
+  }));
+  doubles.retrieveCharge.mockResolvedValue({
+    id: "ch_tipprovider123",
+    payment_intent: "pi_tipprovider123",
+    amount: 725,
+    amount_refunded: params.refundedAmount ?? 725,
+    disputed: true,
+  });
+  doubles.listDisputes.mockResolvedValue({
+    has_more: false,
+    data: [{
+      id: "du_tipprovider123",
+      charge: "ch_tipprovider123",
+      payment_intent: "pi_tipprovider123",
+      currency: "usd",
+      amount: params.disputedAmount ?? 300,
+      status: params.disputeStatus,
+    }],
+  });
+  const chain: any = {
+    select: vi.fn(() => chain),
+    eq: vi.fn(() => chain),
+    maybeSingle: vi.fn(async () => ({ data: stored, error: null })),
+  };
+  doubles.from.mockReturnValue(chain);
+  doubles.rpc.mockResolvedValue({
+    data: { ...stored, payment_state: "refunded" },
+    error: null,
+  });
+}
+
 const scope = {
   audience: "sender" as const,
   guestSessionId: "50000000-0000-4000-8000-000000000005",
@@ -263,4 +308,31 @@ describe("driver tip provider double", () => {
       p_disputed_amount_cents: 300,
     }));
   });
+
+  it.each(["warning_closed", "won", "prevented"])(
+    "reconciles a full refund while preserving a historical %s dispute",
+    async (disputeStatus) => {
+      mockReconciliation({ disputeStatus });
+
+      await expect(reconcileDriverTipIntent("pi_tipprovider123"))
+        .resolves.toEqual({ outcome: "settled", state: "refunded" });
+      expect(doubles.rpc).toHaveBeenCalledWith("couranr_settle_driver_tip", expect.objectContaining({
+        p_refunded_amount_cents: 725,
+        p_dispute_id: "du_tipprovider123",
+        p_dispute_status: disputeStatus,
+        p_disputed_amount_cents: 300,
+      }));
+    },
+  );
+
+  it.each(["under_review", "lost"])(
+    "refuses overlapping refunded principal for a %s dispute",
+    async (disputeStatus) => {
+      mockReconciliation({ disputeStatus });
+
+      await expect(reconcileDriverTipIntent("pi_tipprovider123"))
+        .rejects.toThrow("tip_dispute_mismatch");
+      expect(doubles.rpc).not.toHaveBeenCalled();
+    },
+  );
 });

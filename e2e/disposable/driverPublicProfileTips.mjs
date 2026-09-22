@@ -1,10 +1,11 @@
 /** Executed driver identity / private feedback / company-held tip probe.
  * Disposable PostgreSQL only; fake provider IDs are never sent to Stripe. */
 import crypto from "node:crypto";
+import { spawn } from "node:child_process";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { up, down, psql } from "./up.mjs";
+import { up, down, psql, dbUrl } from "./up.mjs";
 import { psqlTransport, seedCanonicalDeliveryChain } from "./gateAFixtures.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -28,20 +29,68 @@ function actor(email, role) {
 }
 function call(name, args) { return `public.${name}(${args.join(",")})`; }
 const q = (v) => `'${escape(v)}'`;
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function backgroundPsql(sql) {
+  const psqlBin = path.join(
+    process.env.COURANR_PGBIN || "/usr/lib/postgresql/16/bin",
+    "psql",
+  );
+  const child = spawn(psqlBin, [
+    "-d", dbUrl(), "-q", "-v", "ON_ERROR_STOP=1", "-c", sql,
+  ], { stdio: ["ignore", "ignore", "pipe"] });
+  let stderr = "";
+  child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
+  const done = new Promise((resolve) => {
+    child.on("close", (code) => resolve({ code, stderr }));
+  });
+  return { done };
+}
+
+async function observeTipTableLock(mode, granted) {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (one(`select exists(
+      select 1 from pg_locks
+       where relation='public.couranr_driver_tips'::regclass
+         and mode='${mode}' and granted=${granted ? "true" : "false"}
+         and pid<>pg_backend_pid())`) === "t") return true;
+    await wait(25);
+  }
+  return false;
+}
 
 try {
   up({ quiet: true });
   const portraitMigration = path.join(root,"supabase/migrations/20260922200000_couranr_driver_public_portraits.sql");
   const feedbackMigration = path.join(root,"supabase/migrations/20260922210000_couranr_driver_feedback_and_tips.sql");
+  const disputeRepairMigration = path.join(root,"supabase/migrations/20260922213915_couranr_tip_closed_dispute_refund_repair.sql");
   const portraitRollback = path.join(root,"supabase/rollbacks/20260922200000_couranr_driver_public_portraits.rollback.sql");
   const feedbackRollback = path.join(root,"supabase/rollbacks/20260922210000_couranr_driver_feedback_and_tips.rollback.sql");
+  const disputeRepairRollback = path.join(root,"supabase/rollbacks/20260922213915_couranr_tip_closed_dispute_refund_repair.rollback.sql");
+  const cleanLockHolder = backgroundPsql(`begin;
+    select id from public.couranr_driver_tips limit 1 for update;
+    select pg_sleep(2);
+    commit;`);
+  if (!await observeTipTableLock("RowShareLock", true)) {
+    throw new Error("tip_row_share_lock_not_observed");
+  }
+  const cleanRepairRollback = backgroundPsql(readFileSync(disputeRepairRollback,"utf8"));
+  const repairRollbackWaited = await observeTipTableLock("ExclusiveLock", false);
+  const [cleanLockResult, cleanRollbackResult] = await Promise.all([
+    cleanLockHolder.done,
+    cleanRepairRollback.done,
+  ]);
+  check("DP-00-lock", "rollback fences an in-flight settlement before its semantic guard",
+    repairRollbackWaited && cleanLockResult.code === 0 && cleanRollbackResult.code === 0,
+    cleanLockResult.stderr || cleanRollbackResult.stderr);
   psql(readFileSync(feedbackRollback,"utf8"));
   psql(readFileSync(portraitRollback,"utf8"));
   check("DP-00a", "unused additive schema rolls back cleanly",
     one("select to_regclass('public.couranr_driver_portraits') is null and to_regclass('public.couranr_driver_tips') is null") === "t");
   psql(readFileSync(portraitMigration,"utf8"));
   psql(readFileSync(feedbackMigration,"utf8"));
-  check("DP-00b", "forward repair reapplies both staged migrations",
+  psql(readFileSync(disputeRepairMigration,"utf8"));
+  check("DP-00b", "forward repair reapplies all staged migrations",
     one("select to_regclass('public.couranr_driver_portraits') is not null and to_regclass('public.couranr_driver_tips') is not null") === "t");
   const suffix = crypto.randomUUID().slice(0, 8);
   const ops = actor(`ops-${suffix}@example.test`, "admin");
@@ -197,6 +246,32 @@ try {
   row(settle(tip,pi,500));
   check("DT-07", "duplicate capture posts one tip transaction",
     one(`select count(*) from private.couranr_ledger_transactions where source_kind='tip'`) === "1");
+
+  for (const status of ["warning_closed", "won", "prevented"]) {
+    const historicalDispute = `du_${crypto.randomUUID().replaceAll("-", "")}`;
+    const probe = one(`begin;
+      do $probe$
+      declare v_tip public.couranr_driver_tips;
+      begin
+        perform ${settle(tip,pi,500,0,{ id: historicalDispute, status, amount: 200 })};
+        select * into v_tip from ${settle(tip,pi,500,500,{ id: historicalDispute, status, amount: 200 })};
+        if v_tip.payment_state<>'refunded' or v_tip.refunded_amount_cents<>500
+           or v_tip.dispute_status<>'${status}' or v_tip.disputed_amount_cents<>200 then
+          raise exception 'closed_non_loss_refund_state_mismatch';
+        end if;
+        if (select count(*) from private.couranr_ledger_transactions
+             where source_kind='tip_refund' and source_id='${tip.id}:500')<>1
+           or (select count(*) from private.couranr_ledger_transactions
+             where source_kind='tip_dispute_loss' and source_id like '${tip.id}:%')<>0 then
+          raise exception 'closed_non_loss_refund_ledger_mismatch';
+        end if;
+      end
+      $probe$;
+      select true;
+      rollback;`);
+    check(`DT-07-${status}`, `${status} remains historical through a full refund`, probe === "t");
+  }
+
   row(settle(tip,pi,500,200));
   check("DT-08", "partial refund reverses only refunded liability",
     one(`select sum(e.amount_cents) from private.couranr_ledger_transactions t
@@ -212,6 +287,19 @@ try {
   check("DT-10", "won dispute closes the hold without a loss posting",
     won.payment_state === "partially_refunded" && won.dispute_closed_at &&
     one(`select count(*) from private.couranr_ledger_transactions where source_kind='tip_dispute_loss'`) === "0");
+  const refundedAfterWin = row(settle(tip,pi,500,500,{ ...recipientDispute, status: "won" }));
+  row(settle(tip,pi,500,500,{ ...recipientDispute, status: "won" }));
+  check("DT-10a", "full refund after a won dispute preserves history and reverses liability once",
+    refundedAfterWin.payment_state === "refunded" &&
+    refundedAfterWin.dispute_status === "won" && refundedAfterWin.disputed_amount_cents === 200 &&
+    Number(one(`select coalesce(sum(e.amount_cents),0) from private.couranr_ledger_transactions t
+      join private.couranr_ledger_entries e on e.transaction_id=t.id
+      where t.source_kind='tip_refund' and t.source_id like '${tip.id}:%'
+        and e.account_code='tips_payable' and e.side='debit'`)) === 500 &&
+    one(`select count(*) from private.couranr_ledger_transactions
+      where source_kind='tip_refund' and source_id like '${tip.id}:%'`) === "2" &&
+    one(`select count(*) from private.couranr_ledger_transactions
+      where source_kind='tip_dispute_loss' and source_id like '${tip.id}:%'`) === "0");
 
   const merchantPi = `pi_${crypto.randomUUID().replaceAll("-", "")}`;
   row(call("couranr_attach_driver_tip_intent", [q(merchantTip.id),q(merchantPi)]));
@@ -227,6 +315,19 @@ try {
       join private.couranr_ledger_entries e on e.transaction_id=t.id
       where t.source_kind='tip_dispute_loss' and e.account_code='tips_payable' and e.side='debit'`) === "300" &&
     one(`select count(*) from private.couranr_ledger_transactions where source_kind='tip_dispute_loss'`) === "1");
+  const lostWithBoundedRefund = row(settle(
+    merchantTip,merchantPi,600,300,{ ...merchantDispute, status: "lost" }));
+  check("DT-11a", "lost dispute accepts only a non-overlapping refund and stays balanced",
+    lostWithBoundedRefund.payment_state === "dispute_lost" &&
+    lostWithBoundedRefund.refunded_amount_cents === 300 &&
+    refusal(`select ${settle(merchantTip,merchantPi,600,301)};`, "tip_dispute_mismatch") &&
+    one(`select refunded_amount_cents=300 from public.couranr_driver_tips
+      where id='${merchantTip.id}'`) === "t");
+  check("DT-11b", "settlement cannot rewrite a dispute amount or terminal result",
+    refusal(`select ${settle(merchantTip,merchantPi,600,300,
+      { ...merchantDispute, status: "lost", amount: 299 })};`, "tip_dispute_amount_conflict") &&
+    refusal(`select ${settle(merchantTip,merchantPi,600,300,
+      { ...merchantDispute, status: "won" })};`, "tip_dispute_transition_unsupported"));
   check("DT-12", "ledger reconciliation remains balanced after refund and dispute loss",
     one(`select public.couranr_get_ledger_reconciliation()->>'balanced'`) === "true");
   check("DT-13", "canonical recent ledger gives tip sources their real amounts",
@@ -256,6 +357,10 @@ try {
   const rollback = readFileSync(feedbackRollback,"utf8");
   check("DT-16", "rollback refuses live tip/review history",
     refusal(rollback, "driver_feedback_rollback_refused_live_history_use_forward_repair"));
+  const repairRollback = readFileSync(disputeRepairRollback,"utf8");
+  check("DT-17", "repair rollback refuses rows that rely on closed-dispute refund semantics",
+    refusal(repairRollback,
+      "tip_closed_dispute_repair_rollback_refused_live_semantics_use_forward_repair"));
 } catch (error) {
   failed++;
   console.error(error);
