@@ -40,6 +40,15 @@ export function publishDriverPortraitFromBrowser(input: {
   );
 }
 
+export function revokeDriverPortraitFromBrowser(input: {
+  driverId: string; expectedVersion: number;
+}) {
+  return call<{ revoked: boolean }>(
+    `/api/couranr/operations/drivers/${input.driverId}/portrait`,
+    { method: "DELETE", body: { expectedVersion: input.expectedVersion } },
+  );
+}
+
 export type DispatchVehicle = {
   id: string;
   assigned_driver_id: string | null;

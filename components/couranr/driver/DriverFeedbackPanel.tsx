@@ -131,6 +131,12 @@ export function DriverFeedbackPanel(props: {
           <Text>This tip was refunded.</Text>
         ) : tip?.paymentState === "partially_refunded" ? (
           <Text>This tip was partially refunded. Couranr Support can help with the balance.</Text>
+        ) : tip?.paymentState === "disputed" ? (
+          <Alert tone="warning" title="Tip under payment review">
+            {formatCents(tip.disputedAmountCents)} is on hold while the payment provider reviews a dispute.
+          </Alert>
+        ) : tip?.paymentState === "dispute_lost" ? (
+          <Text>This tip was reversed after a payment dispute.</Text>
         ) : tipSecret ? (
           <DriverTipPaymentElement clientSecret={tipSecret} amountCents={tipAmount}
             onReconcile={reconcile} />

@@ -17,5 +17,7 @@ alter table public.couranr_delivery_assignments
   drop column driver_display_name_snapshot,drop column driver_portrait_id;
 alter table public.couranr_drivers drop column current_portrait_id;
 drop table public.couranr_driver_portraits restrict;
-delete from storage.buckets where id='couranr-driver-portraits';
+-- Retain the compatible empty private bucket. The forward migration accepts a
+-- bucket provisioned outside this migration, so rollback cannot truthfully
+-- claim ownership and delete it. Reapply is idempotent against this residue.
 commit;

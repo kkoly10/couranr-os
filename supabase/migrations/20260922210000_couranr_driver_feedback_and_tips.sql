@@ -40,17 +40,29 @@ create table public.couranr_driver_tips (
   amount_cents integer not null check (amount_cents between 100 and 10000),
   currency text not null default 'usd' check (currency='usd'),
   provider_payment_intent_id text unique,
+  intent_generation integer not null default 0 check (intent_generation>=0),
   payment_state text not null default 'prepared'
-    check (payment_state in ('prepared','pending','failed','succeeded','partially_refunded','refunded')),
+    check (payment_state in ('prepared','pending','failed','succeeded','partially_refunded','refunded',
+                             'disputed','dispute_lost')),
   captured_amount_cents integer not null default 0,
   refunded_amount_cents integer not null default 0,
+  provider_dispute_id text,
+  dispute_status text not null default 'none'
+    check (dispute_status in ('none','warning_needs_response','warning_under_review',
+                              'needs_response','under_review','warning_closed',
+                              'won','lost','prevented')),
+  disputed_amount_cents integer not null default 0,
   disputed_at timestamptz,
+  dispute_closed_at timestamptz,
   captured_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique(delivery_id,audience),
   check (captured_amount_cents in (0,amount_cents)),
   check (refunded_amount_cents between 0 and captured_amount_cents),
+  check (disputed_amount_cents between 0 and captured_amount_cents),
+  check ((provider_dispute_id is null and dispute_status='none' and disputed_amount_cents=0)
+      or (provider_dispute_id is not null and dispute_status<>'none' and disputed_amount_cents>0)),
   check (captured_at is not null or captured_amount_cents=0)
 );
 comment on table public.couranr_driver_tips is
@@ -200,7 +212,10 @@ begin
       'amountCents',v_tip.amount_cents,'paymentState',v_tip.payment_state,
       'capturedAmountCents',v_tip.captured_amount_cents,
       'refundedAmountCents',v_tip.refunded_amount_cents,
-      'disputed',v_tip.disputed_at is not null) end);
+      'disputed',v_tip.dispute_status in (
+        'warning_needs_response','warning_under_review','needs_response','under_review'),
+      'disputeStatus',v_tip.dispute_status,
+      'disputedAmountCents',v_tip.disputed_amount_cents) end);
 end $fn$;
 
 create function public.couranr_attach_driver_tip_intent(p_tip_id uuid,p_intent_id text)
@@ -225,17 +240,49 @@ begin
   return v_row;
 end $fn$;
 
+-- A canceled PaymentIntent is terminal. After the server freshly verifies that
+-- provider state, this CAS command rotates the stored intent without creating
+-- another tip aggregate or allowing a browser to choose the provider identity.
+create function public.couranr_replace_driver_tip_intent(
+  p_tip_id uuid,p_expected_intent_id text,p_expected_generation integer,p_new_intent_id text
+) returns public.couranr_driver_tips
+language plpgsql security definer set search_path=''
+as $fn$
+declare v_row public.couranr_driver_tips;
+begin
+  if p_new_intent_id !~ '^pi_[A-Za-z0-9]{8,}$'
+     or p_new_intent_id=p_expected_intent_id then
+    raise exception 'tip_intent_invalid' using errcode='CR422';
+  end if;
+  select * into v_row from public.couranr_driver_tips where id=p_tip_id for update;
+  if not found or v_row.provider_payment_intent_id is distinct from p_expected_intent_id
+     or v_row.intent_generation<>p_expected_generation
+     or v_row.payment_state not in ('pending','failed') then
+    raise exception 'tip_intent_conflict' using errcode='CR409';
+  end if;
+  update public.couranr_driver_tips
+     set provider_payment_intent_id=p_new_intent_id,
+         intent_generation=intent_generation+1,
+         payment_state='pending',
+         updated_at=now()
+   where id=p_tip_id returning * into v_row;
+  return v_row;
+end $fn$;
+
 -- Called only after the signed Couranr webhook or a fresh Stripe retrieve.
 -- Metadata and amount are verified AGAINST the prepared row. A refund may be
 -- observed before the capture webhook; both ledger legs then post atomically.
 create function public.couranr_settle_driver_tip(
   p_tip_id uuid,p_intent_id text,p_delivery_id uuid,p_driver_id uuid,
   p_status text,p_amount_cents integer,p_amount_received_cents integer,
-  p_refunded_amount_cents integer,p_currency text,p_disputed boolean
+  p_refunded_amount_cents integer,p_currency text,p_dispute_id text,
+  p_dispute_status text,p_disputed_amount_cents integer
 ) returns public.couranr_driver_tips
 language plpgsql security definer set search_path=''
 as $fn$
 declare v_row public.couranr_driver_tips; v_capture integer; v_refund integer;
+        v_dispute_status text; v_dispute_amount integer; v_dispute_open boolean;
+        v_dispute_final boolean;
 begin
   select * into v_row from public.couranr_driver_tips where id=p_tip_id for update;
   if not found or v_row.provider_payment_intent_id is distinct from p_intent_id
@@ -257,13 +304,45 @@ begin
   if v_refund>v_capture then
     raise exception 'tip_refund_mismatch' using errcode='CR409';
   end if;
+  v_dispute_status:=coalesce(p_dispute_status,'none');
+  v_dispute_amount:=coalesce(p_disputed_amount_cents,0);
+  if p_dispute_id is null then
+    if v_dispute_status<>'none' or v_dispute_amount<>0 then
+      raise exception 'tip_dispute_mismatch' using errcode='CR409';
+    end if;
+    if v_row.provider_dispute_id is not null then
+      v_dispute_status:=v_row.dispute_status;
+      v_dispute_amount:=v_row.disputed_amount_cents;
+    end if;
+  elsif v_dispute_status not in (
+      'warning_needs_response','warning_under_review','needs_response','under_review',
+      'warning_closed','won','lost','prevented'
+    ) or v_dispute_amount<=0 or v_dispute_amount>v_capture-v_refund then
+    raise exception 'tip_dispute_mismatch' using errcode='CR409';
+  end if;
+  -- Never let an out-of-order provider snapshot replace one dispute identity
+  -- with another. A second charge dispute needs an additive schema, not a guess.
+  if v_row.provider_dispute_id is not null and p_dispute_id is not null
+     and p_dispute_id is distinct from v_row.provider_dispute_id then
+    raise exception 'tip_dispute_identity_conflict' using errcode='CR409';
+  end if;
+  v_dispute_open:=v_dispute_status in (
+    'warning_needs_response','warning_under_review','needs_response','under_review');
+  v_dispute_final:=v_dispute_status in ('warning_closed','won','lost','prevented');
   update public.couranr_driver_tips set
     captured_amount_cents=v_capture,
     refunded_amount_cents=v_refund,
     captured_at=case when v_capture>0 then coalesce(captured_at,now()) else captured_at end,
-    disputed_at=case when p_disputed then coalesce(disputed_at,now()) else disputed_at end,
+    provider_dispute_id=coalesce(provider_dispute_id,p_dispute_id),
+    dispute_status=case when p_dispute_id is null then dispute_status else v_dispute_status end,
+    disputed_amount_cents=case when p_dispute_id is null then disputed_amount_cents else v_dispute_amount end,
+    disputed_at=case when p_dispute_id is not null then coalesce(disputed_at,now()) else disputed_at end,
+    dispute_closed_at=case when v_dispute_final then coalesce(dispute_closed_at,now())
+                           when v_dispute_open then null else dispute_closed_at end,
     payment_state=case
       when v_capture>0 and v_refund=v_capture then 'refunded'
+      when v_dispute_status='lost' then 'dispute_lost'
+      when v_dispute_open then 'disputed'
       when v_capture>0 and v_refund>0 then 'partially_refunded'
       when v_capture>0 then 'succeeded'
       when p_status in ('requires_payment_method','canceled') then 'failed'
@@ -277,7 +356,8 @@ end $fn$;
 -- extend only its closed source-kind allowlist with a preflight exact substring.
 alter table private.couranr_ledger_transactions drop constraint couranr_ledger_transactions_source_kind_check;
 alter table private.couranr_ledger_transactions add constraint couranr_ledger_transactions_source_kind_check
-  check (source_kind in ('capture','refund','cancellation_receivable','tip','tip_refund'));
+  check (source_kind in ('capture','refund','cancellation_receivable','tip','tip_refund',
+                         'tip_dispute_loss'));
 do $fn$
 declare v_definition text;
 begin
@@ -287,7 +367,7 @@ begin
   end if;
   execute replace(v_definition,
     'p_source_kind not in (''capture'',''refund'',''cancellation_receivable'')',
-    'p_source_kind not in (''capture'',''refund'',''cancellation_receivable'',''tip'',''tip_refund'')');
+    'p_source_kind not in (''capture'',''refund'',''cancellation_receivable'',''tip'',''tip_refund'',''tip_dispute_loss'')');
 end $fn$;
 
 create function private.couranr_post_driver_tip_ledger()
@@ -312,10 +392,19 @@ begin
         jsonb_build_object('account','tips_payable','side','debit','amountCents',v_delta),
         jsonb_build_object('account','stripe_clearing','side','credit','amountCents',v_delta)));
   end if;
+  if new.dispute_status='lost' and old.dispute_status<>'lost' then
+    perform private.couranr_post_ledger_transaction(
+      'tip_dispute_loss',new.id::text||':'||new.provider_dispute_id,new.request_id,null,null,
+      'usd',coalesce(new.dispute_closed_at,now()),
+      jsonb_build_object('driverId',new.driver_id,'disputeId',new.provider_dispute_id),
+      jsonb_build_array(
+        jsonb_build_object('account','tips_payable','side','debit','amountCents',new.disputed_amount_cents),
+        jsonb_build_object('account','stripe_clearing','side','credit','amountCents',new.disputed_amount_cents)));
+  end if;
   return new;
 end $fn$;
 create trigger couranr_driver_tip_ledger
-  after update of captured_amount_cents,refunded_amount_cents on public.couranr_driver_tips
+  after update of captured_amount_cents,refunded_amount_cents,dispute_status on public.couranr_driver_tips
   for each row execute function private.couranr_post_driver_tip_ledger();
 
 -- Preserve every legacy reconciliation field, but include the new liability
@@ -329,7 +418,8 @@ as $fn$
 with base as (select public.couranr_get_ledger_reconciliation_base() v),
 tips as (
   select coalesce(sum(captured_amount_cents),0)::bigint captured,
-         coalesce(sum(refunded_amount_cents),0)::bigint refunded
+         coalesce(sum(refunded_amount_cents),0)::bigint refunded,
+         coalesce(sum(disputed_amount_cents) filter(where dispute_status='lost'),0)::bigint lost
   from public.couranr_driver_tips
 ),
 tip_balance as (
@@ -350,27 +440,52 @@ missing as (
         join private.couranr_ledger_entries e on e.transaction_id=l.id
         where l.source_kind='tip_refund' group by split_part(l.source_id,':',1)
       ) l on l.tip_id=t.id
-      where t.refunded_amount_cents>coalesce(l.refunded,0))::integer refunds
+      where t.refunded_amount_cents>coalesce(l.refunded,0))::integer refunds,
+    (select count(*) from public.couranr_driver_tips t
+      left join private.couranr_ledger_transactions l
+        on l.source_kind='tip_dispute_loss'
+       and l.source_id=t.id::text||':'||t.provider_dispute_id
+      where t.dispute_status='lost' and l.id is null)::integer dispute_losses
+),
+recent as (
+  select coalesce(jsonb_agg(row_to_json(x) order by x.occurred_at desc),'[]'::jsonb) items
+  from (
+    select t.id,t.source_kind,t.request_id,t.obligation_id,t.currency,t.occurred_at,
+           coalesce(sum(e.amount_cents) filter (
+             where (t.source_kind in ('capture','tip')
+                    and e.account_code='stripe_clearing' and e.side='debit')
+                or (t.source_kind in ('refund','tip_refund','tip_dispute_loss')
+                    and e.account_code='stripe_clearing' and e.side='credit')
+                or (t.source_kind='cancellation_receivable'
+                    and e.account_code='accounts_receivable' and e.side='debit')
+           ),0)::integer amount_cents
+    from private.couranr_ledger_transactions t
+    join private.couranr_ledger_entries e on e.transaction_id=t.id
+    group by t.id order by t.occurred_at desc limit 50
+  ) x
 )
 select b.v || jsonb_build_object(
   'tipCapturedCents',t.captured,
   'tipRefundedCents',t.refunded,
+  'tipDisputeLostCents',t.lost,
   'tipsPayableCents',p.payable,
   'missingTipCaptures',m.captures,
   'missingTipRefunds',m.refunds,
+  'missingTipDisputeLosses',m.dispute_losses,
+  'recentTransactions',r.items,
   'expectedStripeClearingCents',
-    (b.v->>'capturedCents')::bigint-(b.v->>'refundedCents')::bigint+t.captured-t.refunded,
+    (b.v->>'capturedCents')::bigint-(b.v->>'refundedCents')::bigint+t.captured-t.refunded-t.lost,
   'balanced',
     (b.v->>'unbalancedTransactions')::integer=0
     and (b.v->>'missingCaptures')::integer=0
     and (b.v->>'missingRefunds')::integer=0
     and (b.v->>'missingReceivables')::integer=0
-    and m.captures=0 and m.refunds=0
-    and p.payable=t.captured-t.refunded
+    and m.captures=0 and m.refunds=0 and m.dispute_losses=0
+    and p.payable=t.captured-t.refunded-t.lost
     and (b.v->>'stripeClearingCents')::bigint=
-      (b.v->>'capturedCents')::bigint-(b.v->>'refundedCents')::bigint+t.captured-t.refunded
+      (b.v->>'capturedCents')::bigint-(b.v->>'refundedCents')::bigint+t.captured-t.refunded-t.lost
 )
-from base b cross join tips t cross join tip_balance p cross join missing m;
+from base b cross join tips t cross join tip_balance p cross join missing m cross join recent r;
 $fn$;
 revoke all on function public.couranr_get_ledger_reconciliation() from public,anon,authenticated,service_role;
 grant execute on function public.couranr_get_ledger_reconciliation() to service_role;
@@ -387,11 +502,14 @@ revoke all on function public.couranr_get_driver_feedback(uuid,text,text,uuid,uu
   from public,anon,authenticated,service_role;
 revoke all on function public.couranr_attach_driver_tip_intent(uuid,text)
   from public,anon,authenticated,service_role;
-revoke all on function public.couranr_settle_driver_tip(uuid,text,uuid,uuid,text,integer,integer,integer,text,boolean)
+revoke all on function public.couranr_replace_driver_tip_intent(uuid,text,integer,text)
+  from public,anon,authenticated,service_role;
+revoke all on function public.couranr_settle_driver_tip(uuid,text,uuid,uuid,text,integer,integer,integer,text,text,text,integer)
   from public,anon,authenticated,service_role;
 grant execute on function public.couranr_submit_driver_review(uuid,text,text,uuid,uuid,integer,text) to service_role;
 grant execute on function public.couranr_prepare_driver_tip(uuid,text,text,uuid,uuid,integer) to service_role;
 grant execute on function public.couranr_get_driver_feedback(uuid,text,text,uuid,uuid) to service_role;
 grant execute on function public.couranr_attach_driver_tip_intent(uuid,text) to service_role;
-grant execute on function public.couranr_settle_driver_tip(uuid,text,uuid,uuid,text,integer,integer,integer,text,boolean) to service_role;
+grant execute on function public.couranr_replace_driver_tip_intent(uuid,text,integer,text) to service_role;
+grant execute on function public.couranr_settle_driver_tip(uuid,text,uuid,uuid,text,integer,integer,integer,text,text,text,integer) to service_role;
 commit;

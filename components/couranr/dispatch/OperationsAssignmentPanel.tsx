@@ -10,6 +10,7 @@ import {
   assignDeliveryFromBrowser,
   fetchDispatchPanel,
   publishDriverPortraitFromBrowser,
+  revokeDriverPortraitFromBrowser,
   replaceAssignmentFromBrowser,
   type DispatchDriver,
   type DispatchPanelView,
@@ -199,7 +200,8 @@ export function OperationsAssignmentPanel({
 
         {(() => {
           const portraitDriver = drivers.find((d) => d.id === (driverId || assignment?.driver_id));
-          return portraitDriver ? <DriverPortraitPublisher driver={portraitDriver} onPublished={load} /> : null;
+          return portraitDriver ? <DriverPortraitPublisher key={portraitDriver.id}
+            driver={portraitDriver} onPublished={load} /> : null;
         })()}
 
         {assignment ? (
@@ -324,7 +326,7 @@ export function OperationsAssignmentPanel({
 }
 
 /** Operations verifies consent and publishes a re-encoded portrait; no raw URL is accepted. */
-function DriverPortraitPublisher({ driver, onPublished }: {
+export function DriverPortraitPublisher({ driver, onPublished }: {
   driver: DispatchDriver; onPublished: () => Promise<void>;
 }) {
   const [file, setFile] = React.useState<File | null>(null);
@@ -338,6 +340,24 @@ function DriverPortraitPublisher({ driver, onPublished }: {
     setError(null);
     const result = await publishDriverPortraitFromBrowser({
       driverId: driver.id, expectedVersion: driver.version, file, consentConfirmed: true,
+    });
+    setBusy(false);
+    if (isApiFailure(result)) { setError(withReference(result)); return; }
+    setFile(null);
+    setConsent(false);
+    await onPublished();
+  }
+
+  async function revoke() {
+    if (!driver.portrait_url || busy) return;
+    if (!window.confirm(
+      "Remove this portrait from customer pages and future emails? Previously cached email copies may remain outside Couranr.",
+    )) return;
+    setBusy(true);
+    setError(null);
+    const result = await revokeDriverPortraitFromBrowser({
+      driverId: driver.id,
+      expectedVersion: driver.version,
     });
     setBusy(false);
     if (isApiFailure(result)) { setError(withReference(result)); return; }
@@ -371,6 +391,9 @@ function DriverPortraitPublisher({ driver, onPublished }: {
     <Button variant="secondary" disabled={!file || !consent || busy} loading={busy} onClick={publish}>
       Publish approved portrait
     </Button>
+    {driver.portrait_url ? <Button variant="secondary" disabled={busy} onClick={() => void revoke()}>
+      Remove public portrait
+    </Button> : null}
   </div>;
 }
 

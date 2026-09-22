@@ -122,6 +122,25 @@ export async function publishDriverPortrait(params: {
   return { publicId };
 }
 
+/** Consent withdrawal is a named Operations command. The private object and
+ * assignment audit reference remain; public redemption stops immediately. */
+export async function revokeDriverPortrait(params: {
+  driverId: string;
+  expectedVersion: number;
+  actorUserId: string;
+}): Promise<boolean> {
+  if (!UUID.test(params.driverId) || !Number.isInteger(params.expectedVersion) || params.expectedVersion < 1) {
+    throw new Error("portrait_input_invalid");
+  }
+  const { data, error } = await supabaseAdmin.rpc("couranr_revoke_driver_portrait", {
+    p_driver_id: params.driverId,
+    p_expected_version: params.expectedVersion,
+    p_actor_user_id: params.actorUserId,
+  });
+  if (error) throw error;
+  return data === true;
+}
+
 /** Route-safe classification. Decoder and database detail stay in this
  * server-only module; callers receive only a stable code and owned copy. */
 export function classifyDriverPortraitFailure(cause: unknown): {

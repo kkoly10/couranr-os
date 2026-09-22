@@ -9,5 +9,7 @@ export type FeedbackView = {
     capturedAmountCents: number;
     refundedAmountCents: number;
     disputed: boolean;
+    disputeStatus: string;
+    disputedAmountCents: number;
   } | null;
 };

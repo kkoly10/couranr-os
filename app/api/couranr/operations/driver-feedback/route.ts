@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   const tips: Array<any> = [];
   for (let from = 0; ; from += 500) {
     const page = await supabaseAdmin.from("couranr_driver_tips")
-      .select("id,driver_id,delivery_id,audience,amount_cents,captured_amount_cents,refunded_amount_cents,payment_state,disputed_at,captured_at")
+      .select("id,driver_id,delivery_id,audience,amount_cents,captured_amount_cents,refunded_amount_cents,payment_state,dispute_status,disputed_amount_cents,captured_at")
       .order("created_at", { ascending: true }).range(from, from + 499);
     if (page.error) return routeInternalFailure({ operation: "driverFeedbackReport.tips",
       detail: page.error, message: "Driver tips could not be loaded." });
@@ -35,17 +35,24 @@ export async function GET(req: NextRequest) {
     detail: drivers.error, message: "Driver profiles could not be loaded." });
   const names = new Map((drivers.data ?? []).map((d) => [String(d.id), String(d.display_name)]));
   const byDriver = new Map<string, { driverId: string; driverName: string; capturedCents: number;
-    refundedCents: number; netCents: number; disputedHoldCents: number; tipCount: number }>();
+    refundedCents: number; disputeLostCents: number; netCents: number;
+    disputedHoldCents: number; availableCents: number; tipCount: number }>();
   for (const tip of tips) {
     const id = String(tip.driver_id);
     const row = byDriver.get(id) ?? { driverId: id, driverName: names.get(id) ?? "Driver",
-      capturedCents: 0, refundedCents: 0, netCents: 0, disputedHoldCents: 0, tipCount: 0 };
+      capturedCents: 0, refundedCents: 0, disputeLostCents: 0,
+      netCents: 0, disputedHoldCents: 0, availableCents: 0, tipCount: 0 };
     const gross = Number(tip.captured_amount_cents ?? 0);
     const refunded = Number(tip.refunded_amount_cents ?? 0);
     row.capturedCents += gross;
     row.refundedCents += refunded;
-    row.netCents += gross - refunded;
-    if (tip.disputed_at) row.disputedHoldCents += gross - refunded;
+    const disputeAmount = Number(tip.disputed_amount_cents ?? 0);
+    const disputeLost = tip.dispute_status === "lost" ? disputeAmount : 0;
+    row.disputeLostCents += disputeLost;
+    row.netCents += gross - refunded - disputeLost;
+    if (["warning_needs_response", "warning_under_review", "needs_response", "under_review"]
+      .includes(String(tip.dispute_status))) row.disputedHoldCents += disputeAmount;
+    row.availableCents = row.netCents - row.disputedHoldCents;
     if (gross > 0) row.tipCount += 1;
     byDriver.set(id, row);
   }

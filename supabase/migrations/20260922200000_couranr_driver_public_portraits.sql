@@ -93,6 +93,14 @@ begin
     driver_id,public_id,object_path,consent_recorded_at,approved_by
   ) values (p_driver_id,p_public_id,p_object_path,now(),p_actor_user_id)
   returning * into v_portrait;
+  -- A replacement is also a revocation boundary. The old bytes remain in the
+  -- private bucket as audit evidence, but every previously shared opaque URL
+  -- must stop redeeming immediately.
+  if v_driver.current_portrait_id is not null then
+    update public.couranr_driver_portraits
+       set revoked_at=coalesce(revoked_at,now())
+     where id=v_driver.current_portrait_id;
+  end if;
   update public.couranr_drivers
      set current_portrait_id=v_portrait.id,version=version+1,updated_at=now()
    where id=p_driver_id and version=p_expected_version;

@@ -60,7 +60,7 @@ export async function handleFeedbackRequest(
     return routeInternalFailure({
       operation: "driverFeedback",
       detail: cause,
-      message: "We could not process feedback right now. Nothing new was charged.",
+      message: "We could not verify this request. If you were paying a tip, check its status before retrying; a charge may already have completed.",
     });
   }
 }

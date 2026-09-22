@@ -5,6 +5,7 @@ import {
   MAX_DRIVER_PORTRAIT_UPLOAD_BYTES,
   classifyDriverPortraitFailure,
   publishDriverPortrait,
+  revokeDriverPortrait,
 } from "@/lib/couranr/driver/publicProfile";
 
 export const dynamic = "force-dynamic";
@@ -33,6 +34,30 @@ export async function POST(req: NextRequest, props: { params: Promise<{ id: stri
       consentConfirmed: true, bytes: Buffer.from(await file.arrayBuffer()),
     });
     return NextResponse.json({ portraitUrl: `/api/couranr/driver-portrait/${result.publicId}` });
+  } catch (cause) {
+    const failure = classifyDriverPortraitFailure(cause);
+    return routeFailure(failure.code, failure.message);
+  }
+}
+
+export async function DELETE(req: NextRequest, props: { params: Promise<{ id: string }> }) {
+  const actor = await resolveRequestActor(req, null);
+  if (isActorDenied(actor)) return routeFailure(actor.code, actor.error);
+  let body: unknown;
+  try { body = await req.json(); }
+  catch { return routeFailure("invalid_input", "A current driver version is required."); }
+  const expectedVersion = Number((body as { expectedVersion?: unknown })?.expectedVersion);
+  if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
+    return routeFailure("invalid_input", "A current driver version is required.");
+  }
+  try {
+    const { id } = await props.params;
+    const revoked = await revokeDriverPortrait({
+      driverId: id,
+      expectedVersion,
+      actorUserId: actor.userId,
+    });
+    return NextResponse.json({ revoked });
   } catch (cause) {
     const failure = classifyDriverPortraitFailure(cause);
     return routeFailure(failure.code, failure.message);

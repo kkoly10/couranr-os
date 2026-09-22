@@ -240,5 +240,11 @@ function sourceLabel(kind: LedgerReconciliation["recentTransactions"][number]["s
       return "Refund";
     case "cancellation_receivable":
       return "Cancellation receivable";
+    case "tip":
+      return "Driver tip";
+    case "tip_refund":
+      return "Driver tip refund";
+    case "tip_dispute_loss":
+      return "Driver tip dispute loss";
   }
 }

@@ -4972,12 +4972,12 @@
         "/send",
         "/track/[token]",
         "/app/business/deliveries/[id]",
-        "/operations/drivers"
+        "/operations/deliveries/[id]"
       ],
       "affected_screen_ids": [
-        "MER-009",
+        "MER-007",
         "PUB-006",
-        "OPS-005"
+        "OPS-003"
       ],
       "affected_database_objects": [
         "public.couranr_drivers",
@@ -5011,7 +5011,7 @@
       "id": "TIP-001",
       "category": "driver tips",
       "amends": "SUR-003",
-      "decision": "After a delivery is completed, an authorized sender, recipient or merchant may make one optional driver tip through a separate automatically captured Stripe PaymentIntent in Couranr's existing company Stripe account. The gross tip is a company-held payable to the assigned driver, not delivery revenue; this system does not create driver Stripe accounts, transfers or payouts, and the owner settles the payable through the existing manual payroll process.",
+      "decision": "After a delivery is completed, an authorized customer may make an optional driver tip through a separate Stripe PaymentIntent in Couranr's existing company Stripe account. The gross tip is a company-held payable to the assigned driver, not delivery revenue; this system does not create driver Stripe accounts, transfers or payouts, and the owner settles the payable through the existing manual payroll process.",
       "value": {
         "availability": "delivered deliveries only",
         "payment_rail": "separate Stripe PaymentIntent with automatic capture",
@@ -5023,6 +5023,12 @@
         "minimum_cents": 100,
         "maximum_cents": 10000,
         "one_tip_per_delivery_and_audience": true,
+        "provisional_engineering_guardrails_pending_owner_confirmation": [
+          "automatic capture",
+          "USD 1.00 minimum",
+          "USD 100.00 maximum",
+          "one tip independently available to each authorized sender, recipient or merchant audience"
+        ],
         "browser_amount_authority": "bounded proposal only; the server persists the exact amount before provider creation and verifies provider metadata, amount and currency",
         "accounting": {
           "capture": "debit stripe clearing; credit tips payable",
@@ -5033,7 +5039,7 @@
         "manual_payroll": "outside this product flow; the Operations report is a liability/reconciliation view and never represents payroll payment"
       },
       "status": "decided",
-      "decided_by": "owner",
+      "decided_by": "owner for company collection, 100% driver allocation and manual payroll; engineering V0 guardrails for collection limits and audience idempotency",
       "decided_at_utc": "2026-09-22T00:00:00Z",
       "authority_file": "02_DECISION_REGISTRY.json",
       "authority_section": "TIP-001; amends SUR-003 tip doctrine",
@@ -5044,7 +5050,7 @@
         "/operations/payments"
       ],
       "affected_screen_ids": [
-        "MER-009",
+        "MER-007",
         "PUB-006",
         "OPS-009"
       ],
@@ -5094,7 +5100,7 @@
         "money_authority": false
       },
       "status": "decided",
-      "decided_by": "owner",
+      "decided_by": "engineering V0 design under owner direction to add private driver reviews",
       "decided_at_utc": "2026-09-22T00:00:00Z",
       "authority_file": "02_DECISION_REGISTRY.json",
       "authority_section": "FDB-001",
@@ -5105,7 +5111,7 @@
         "/operations/payments"
       ],
       "affected_screen_ids": [
-        "MER-009",
+        "MER-007",
         "PUB-006",
         "OPS-009"
       ],

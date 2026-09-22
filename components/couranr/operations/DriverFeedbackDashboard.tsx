@@ -9,7 +9,8 @@ type Report = {
   asOf: string;
   note: string;
   drivers: Array<{ driverId: string; driverName: string; capturedCents: number;
-    refundedCents: number; netCents: number; disputedHoldCents: number; tipCount: number }>;
+    refundedCents: number; disputeLostCents: number; netCents: number;
+    disputedHoldCents: number; availableCents: number; tipCount: number }>;
   recentReviews: Array<{ driver_id: string; driverName: string; delivery_id: string;
     rating: number; comment: string | null; created_at: string }>;
 };
@@ -44,11 +45,13 @@ export function DriverFeedbackDashboard() {
       <Card>
         <CardHeader title="Tip liabilities by driver" description={`As of ${new Date(report.asOf).toLocaleString()}. Gross totals include all history; this is not a payroll-paid ledger.`} />
         <TableScroll><Table>
-          <thead><tr><th>Driver</th><th>Captured</th><th>Refunded</th><th>Net allocated</th><th>Disputed hold</th><th>Tips</th></tr></thead>
+          <thead><tr><th>Driver</th><th>Captured</th><th>Refunded</th><th>Dispute losses</th><th>Net allocated</th><th>Disputed hold</th><th>Available before payroll</th><th>Tips</th></tr></thead>
           <tbody>{report.drivers.map((driver) => <tr key={driver.driverId}>
             <td>{driver.driverName}</td><td>{formatCents(driver.capturedCents)}</td>
-            <td>{formatCents(driver.refundedCents)}</td><td>{formatCents(driver.netCents)}</td>
-            <td>{formatCents(driver.disputedHoldCents)}</td><td>{driver.tipCount}</td>
+            <td>{formatCents(driver.refundedCents)}</td><td>{formatCents(driver.disputeLostCents)}</td>
+            <td>{formatCents(driver.netCents)}</td>
+            <td>{formatCents(driver.disputedHoldCents)}</td>
+            <td>{formatCents(driver.availableCents)}</td><td>{driver.tipCount}</td>
           </tr>)}</tbody>
         </Table></TableScroll>
         {!report.drivers.length ? <Text>No captured driver tips yet.</Text> : null}

@@ -21,7 +21,10 @@ export default function TipReturnPage() {
         }
       } catch { /* malformed target */ }
     }
-    setMessage("Your card step finished, but this browser could not restore your delivery link. Return to your original Couranr email or delivery tab to check the tip status. Do not retry the charge without checking first.");
+    const fallback = window.setTimeout(() => {
+      setMessage("Your card step finished, but this browser could not restore your delivery link. Return to your original Couranr email or delivery tab to check the tip status. Do not retry the charge without checking first.");
+    }, 0);
+    return () => window.clearTimeout(fallback);
   }, []);
   return <section style={{ maxWidth: 640, margin: "10vh auto", padding: 24 }}>
     <h1>Couranr driver tip</h1><p>{message}</p>

@@ -47,7 +47,7 @@ describe("company-held voluntary driver tips", () => {
     expect(tipIntentMetadata({
       id: "tip-id", delivery_id: "delivery-id", driver_id: "driver-id",
       request_id: "request-id", amount_cents: 500, currency: "usd",
-      provider_payment_intent_id: null, payment_state: "prepared",
+      provider_payment_intent_id: null, payment_state: "prepared", intent_generation: 0,
     })).toEqual({
       couranrTipId: "tip-id",
       couranrTipDeliveryId: "delivery-id",

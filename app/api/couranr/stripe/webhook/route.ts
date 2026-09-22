@@ -98,10 +98,14 @@ export async function POST(req: NextRequest) {
              typeof object.payment_intent === "string") {
     tipIntentId = object.payment_intent;
   } else if (object?.object === "dispute" &&
-             ["charge.dispute.created", "charge.dispute.closed"].includes(event.type)) {
+             ["charge.dispute.created", "charge.dispute.updated", "charge.dispute.closed",
+              "charge.dispute.funds_withdrawn", "charge.dispute.funds_reinstated"].includes(event.type)) {
     try {
-      const chargeId = typeof object.charge === "string" ? object.charge : object.charge?.id;
-      if (chargeId) {
+      if (typeof object.payment_intent === "string") {
+        tipIntentId = object.payment_intent;
+      } else {
+        const chargeId = typeof object.charge === "string" ? object.charge : object.charge?.id;
+        if (!chargeId) return ack("dispute_without_charge");
         const charge = await getStripeClient().charges.retrieve(chargeId);
         tipIntentId = typeof charge.payment_intent === "string"
           ? charge.payment_intent : charge.payment_intent?.id ?? null;

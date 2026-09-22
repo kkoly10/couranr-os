@@ -43,7 +43,7 @@ export async function submitDriverReview(params: {
 type TipRow = {
   id: string; delivery_id: string; driver_id: string; request_id: string;
   amount_cents: number; currency: string; provider_payment_intent_id: string | null;
-  payment_state: string;
+  payment_state: string; intent_generation: number;
 };
 
 export function tipIntentMetadata(tip: TipRow): Record<string, string> {
@@ -52,6 +52,15 @@ export function tipIntentMetadata(tip: TipRow): Record<string, string> {
     couranrTipDeliveryId: tip.delivery_id,
     couranrTipDriverId: tip.driver_id,
   };
+}
+
+async function createTipIntent(tip: TipRow, generation: number): Promise<Stripe.PaymentIntent> {
+  return stripe.paymentIntents.create({
+    amount: tip.amount_cents, currency: "usd", capture_method: "automatic",
+    automatic_payment_methods: { enabled: true },
+    metadata: tipIntentMetadata(tip),
+    description: `Voluntary Couranr driver tip ${tip.delivery_id}`,
+  }, { idempotencyKey: `couranr:driver-tip:${tip.id}:intent:${generation}` });
 }
 
 function exactTipIntent(intent: Stripe.PaymentIntent, tip: TipRow): boolean {
@@ -73,25 +82,57 @@ export async function prepareDriverTip(params: {
   });
   if (error) throw error;
   let tip = data as TipRow;
-  if (tip.payment_state === "succeeded" || tip.payment_state === "refunded" ||
-      tip.payment_state === "partially_refunded") {
+  if (["succeeded", "refunded", "partially_refunded", "disputed", "dispute_lost"]
+      .includes(tip.payment_state)) {
     return { clientSecret: null, state: tip.payment_state, amountCents: tip.amount_cents };
   }
   let intent: Stripe.PaymentIntent;
   if (tip.provider_payment_intent_id) {
     intent = await stripe.paymentIntents.retrieve(tip.provider_payment_intent_id);
+    if (intent.status === "canceled") {
+      const expectedIntent = tip.provider_payment_intent_id;
+      const expectedGeneration = Number(tip.intent_generation ?? 0);
+      const replacement = await createTipIntent(tip, expectedGeneration + 1);
+      const rotated = await supabaseAdmin.rpc("couranr_replace_driver_tip_intent", {
+        p_tip_id: tip.id,
+        p_expected_intent_id: expectedIntent,
+        p_expected_generation: expectedGeneration,
+        p_new_intent_id: replacement.id,
+      });
+      if (rotated.error) {
+        // A concurrent retry may already have attached the exact idempotent
+        // replacement. Re-read once; never create another provider object.
+        const latest = await supabaseAdmin.from("couranr_driver_tips")
+          .select("id,delivery_id,driver_id,request_id,amount_cents,currency,provider_payment_intent_id,payment_state,intent_generation")
+          .eq("id", tip.id).maybeSingle();
+        if (latest.error || !latest.data?.provider_payment_intent_id ||
+            latest.data.provider_payment_intent_id === expectedIntent) {
+          throw rotated.error;
+        }
+        const latestIntentId = latest.data.provider_payment_intent_id;
+        tip = latest.data as TipRow;
+        intent = latestIntentId === replacement.id
+          ? replacement
+          : await stripe.paymentIntents.retrieve(latestIntentId);
+      } else {
+        tip = rotated.data as TipRow;
+        intent = replacement;
+      }
+    }
   } else {
-    intent = await stripe.paymentIntents.create({
-      amount: tip.amount_cents, currency: "usd", capture_method: "automatic",
-      automatic_payment_methods: { enabled: true },
-      metadata: tipIntentMetadata(tip),
-      description: `Voluntary Couranr driver tip ${tip.delivery_id}`,
-    }, { idempotencyKey: `couranr:driver-tip:${tip.id}:v1` });
+    intent = await createTipIntent(tip, Number(tip.intent_generation ?? 0));
     const attached = await supabaseAdmin.rpc("couranr_attach_driver_tip_intent", {
       p_tip_id: tip.id, p_intent_id: intent.id,
     });
-    if (attached.error) throw attached.error;
-    tip = attached.data as TipRow;
+    if (attached.error) {
+      const latest = await supabaseAdmin.from("couranr_driver_tips")
+        .select("id,delivery_id,driver_id,request_id,amount_cents,currency,provider_payment_intent_id,payment_state,intent_generation")
+        .eq("id", tip.id).maybeSingle();
+      if (latest.error || latest.data?.provider_payment_intent_id !== intent.id) throw attached.error;
+      tip = latest.data as TipRow;
+    } else {
+      tip = attached.data as TipRow;
+    }
   }
   if (!exactTipIntent(intent, tip)) throw new Error("tip_intent_mismatch");
   return {
@@ -109,12 +150,14 @@ export async function reconcileDriverTipIntent(intentId: string): Promise<{
   const tipId = intent.metadata?.couranrTipId;
   if (!tipId) return { outcome: "not_tip" };
   const { data, error } = await supabaseAdmin.from("couranr_driver_tips")
-    .select("id,delivery_id,driver_id,request_id,amount_cents,currency,provider_payment_intent_id,payment_state")
+    .select("id,delivery_id,driver_id,request_id,amount_cents,currency,provider_payment_intent_id,payment_state,intent_generation")
     .eq("id", tipId).maybeSingle();
   if (error || !data || !exactTipIntent(intent, data as TipRow)) throw new Error("tip_provider_mismatch");
   const chargeId = typeof intent.latest_charge === "string" ? intent.latest_charge : intent.latest_charge?.id;
   let refundedAmount = 0;
-  let disputed = false;
+  let disputeId: string | null = null;
+  let disputeStatus: string | null = null;
+  let disputedAmount = 0;
   if (chargeId && intent.status === "succeeded") {
     const charge = await stripe.charges.retrieve(chargeId);
     const chargeIntentId = typeof charge.payment_intent === "string"
@@ -123,7 +166,24 @@ export async function reconcileDriverTipIntent(intentId: string): Promise<{
       throw new Error("tip_charge_mismatch");
     }
     refundedAmount = charge.amount_refunded;
-    disputed = charge.disputed;
+    const disputes = await stripe.disputes.list({ charge: chargeId, limit: 10 });
+    if (disputes.has_more || disputes.data.length > 1) {
+      throw new Error("tip_multiple_disputes_unsupported");
+    }
+    const dispute = disputes.data[0];
+    if (dispute) {
+      const disputeChargeId = typeof dispute.charge === "string" ? dispute.charge : dispute.charge?.id;
+      const disputeIntentId = typeof dispute.payment_intent === "string"
+        ? dispute.payment_intent : dispute.payment_intent?.id;
+      if (disputeChargeId !== chargeId || (disputeIntentId && disputeIntentId !== intent.id) ||
+          dispute.currency !== "usd" || !Number.isInteger(dispute.amount) ||
+          dispute.amount <= 0 || dispute.amount > intent.amount - refundedAmount) {
+        throw new Error("tip_dispute_mismatch");
+      }
+      disputeId = dispute.id;
+      disputeStatus = dispute.status;
+      disputedAmount = dispute.amount;
+    }
   }
   const result = await supabaseAdmin.rpc("couranr_settle_driver_tip", {
     p_tip_id: data.id, p_intent_id: intent.id,
@@ -131,7 +191,10 @@ export async function reconcileDriverTipIntent(intentId: string): Promise<{
     p_status: intent.status, p_amount_cents: intent.amount,
     p_amount_received_cents: intent.amount_received,
     p_refunded_amount_cents: refundedAmount,
-    p_currency: intent.currency, p_disputed: disputed,
+    p_currency: intent.currency,
+    p_dispute_id: disputeId,
+    p_dispute_status: disputeStatus,
+    p_disputed_amount_cents: disputedAmount,
   });
   if (result.error) throw result.error;
   return { outcome: "settled", state: result.data.payment_state };
