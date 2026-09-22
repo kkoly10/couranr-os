@@ -32,6 +32,20 @@ export const FULFILLMENT_STATES = [
 
 export type FulfillmentState = (typeof FULFILLMENT_STATES)[number];
 
+/** UI affordance only. The handoff-stage trigger is the issuance authority. */
+export function canIssueHandoffCodeAtStage(
+  kind: "merchant_pickup" | "recipient_dropoff" | "merchant_return",
+  state: string
+): boolean {
+  if (kind === "merchant_pickup") {
+    return ["scheduled", "assigned", "en_route_to_pickup", "at_pickup"].includes(state);
+  }
+  if (kind === "recipient_dropoff") {
+    return ["picked_up", "in_transit", "at_dropoff"].includes(state);
+  }
+  return state === "return_required" || state === "returning";
+}
+
 /**
  * The driver-execution commands, each named for what it DOES rather than for
  * where it lands. A destination is never a parameter: the browser picks a

@@ -16,6 +16,7 @@ import { CardSkeleton, ErrorState, LoadingState } from "@/components/couranr/sta
 import { isApiFailure, withReference } from "@/components/couranr/requests/client";
 import { fetchDispatchPanel } from "./client";
 import {
+  canIssueHandoffCodeAtStage,
   canUnassignBeforePickup,
   isDiscrepancyReason,
   isFulfillmentState,
@@ -205,15 +206,17 @@ export function OperationsExecutionPanel({
       />
 
       {/*
-        Both codes are issued from here because Operations covers for a merchant
-        who cannot — a recipient who never received their code, a driver at a
-        counter where nobody knows what a PIN is. They stay two separate panels
-        with two separate warnings: a single "issue codes" control is how the
-        driver ends up holding the recipient's credential.
+        Operations can cover for a sender or recipient who cannot issue their
+        code. Each panel appears only in its physical handoff window; the SQL
+        stage guard remains the authority if this view is stale.
       */}
-      <HandoffCodePanel deliveryId={deliveryId} kind="merchant_pickup" surface="operations" />
-      <HandoffCodePanel deliveryId={deliveryId} kind="recipient_dropoff" surface="operations" />
-      {state === "return_required" || state === "returning" ? (
+      {canIssueHandoffCodeAtStage("merchant_pickup", fulfillmentState) ? (
+        <HandoffCodePanel deliveryId={deliveryId} kind="merchant_pickup" surface="operations" />
+      ) : null}
+      {canIssueHandoffCodeAtStage("recipient_dropoff", fulfillmentState) ? (
+        <HandoffCodePanel deliveryId={deliveryId} kind="recipient_dropoff" surface="operations" />
+      ) : null}
+      {canIssueHandoffCodeAtStage("merchant_return", fulfillmentState) ? (
         <HandoffCodePanel deliveryId={deliveryId} kind="merchant_return" surface="operations" />
       ) : null}
 

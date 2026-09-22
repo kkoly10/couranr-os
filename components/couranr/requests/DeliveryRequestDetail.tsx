@@ -37,6 +37,7 @@ import {
 } from "./client";
 import { formatCents, REQUEST_STATE_LABELS, type DeliveryRequestView } from "@/lib/couranr/requests/view";
 import { declineMessageFor } from "@/lib/couranr/requests/states";
+import { canIssueHandoffCodeAtStage } from "@/lib/couranr/driver/states";
 
 /**
  * MER-007 — delivery detail.
@@ -632,7 +633,8 @@ export function DeliveryRequestDetail({
       {/* MER-007 execution. Only once a canonical delivery exists — before
           that there is no driver, no state to follow and no proof.
 
-          The merchant sees WHAT HAPPENED and issues the two credentials. They
+          The merchant sees WHAT HAPPENED and issues only the credential for
+          the current physical handoff stage. They
           do not see proof media: PHO-001's authorized viewers are Operations,
           the assigned driver and the owning customer, and the merchant is
           deliberately not among them. */}
@@ -640,8 +642,7 @@ export function DeliveryRequestDetail({
         <>
           <DeliveryExecutionTimeline current={fulfillment.delivery.fulfillmentState} />
           {viewerMayWriteDelivery ? (
-            fulfillment.delivery.fulfillmentState === "return_required" ||
-            fulfillment.delivery.fulfillmentState === "returning" ? (
+            canIssueHandoffCodeAtStage("merchant_return", fulfillment.delivery.fulfillmentState) ? (
               <HandoffCodePanel
                 deliveryId={fulfillment.delivery.id}
                 kind="merchant_return"
@@ -649,16 +650,20 @@ export function DeliveryRequestDetail({
               />
             ) : (
               <>
-                <HandoffCodePanel
-                  deliveryId={fulfillment.delivery.id}
-                  kind="merchant_pickup"
-                  surface="merchant"
-                />
-                <HandoffCodePanel
-                  deliveryId={fulfillment.delivery.id}
-                  kind="recipient_dropoff"
-                  surface="merchant"
-                />
+                {canIssueHandoffCodeAtStage("merchant_pickup", fulfillment.delivery.fulfillmentState) ? (
+                  <HandoffCodePanel
+                    deliveryId={fulfillment.delivery.id}
+                    kind="merchant_pickup"
+                    surface="merchant"
+                  />
+                ) : null}
+                {canIssueHandoffCodeAtStage("recipient_dropoff", fulfillment.delivery.fulfillmentState) ? (
+                  <HandoffCodePanel
+                    deliveryId={fulfillment.delivery.id}
+                    kind="recipient_dropoff"
+                    surface="merchant"
+                  />
+                ) : null}
               </>
             )
           ) : null}

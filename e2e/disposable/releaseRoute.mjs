@@ -67,7 +67,10 @@ const PORT = 3319;
 const STRIPE_PORT = 3320;
 const BASE = `http://127.0.0.1:${PORT}`;
 const PASSWORD = "disposable-release-1";
-const APP_LOG = "/tmp/claude-0/-home-user-couranr-os/3ba65fdb-c110-5366-92d6-85568b408343/scratchpad/relroute-app.log";
+const APP_LOG = path.join(
+  process.env.COURANR_DISPOSABLE_DIR || "/var/lib/postgresql/couranr-disposable",
+  "relroute-app.log",
+);
 const devDist = claimDevDistDir("release-route");
 
 let passed = 0;

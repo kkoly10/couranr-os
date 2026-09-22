@@ -13,7 +13,11 @@ import {
   isDispatchReason,
   replacementIdempotencyKey,
 } from "./states";
-import { buildAssignedDeliveryProjection, type AssignedDeliveryProjection } from "./projection";
+import {
+  buildAssignedDeliveryProjection,
+  pickupContactForDriver,
+  type AssignedDeliveryProjection,
+} from "./projection";
 
 assertServerOnly("lib/couranr/dispatch/commands.ts");
 
@@ -850,6 +854,16 @@ export async function getAssignedDeliveryForDriver(params: {
   const merchantScope = await merchantBusinessScopeForDeliveryRow(delivery);
   if (isDispatchFailure(merchantScope)) return merchantScope;
 
+  const { data: governed, error: governedError } = (await supabaseAdmin
+    .from("couranr_delivery_requests")
+    .select("requester_kind,consumer_contact_snapshot,protection_level,protection_policy_version")
+    .eq("id", String(delivery.request_id))
+    .maybeSingle()) as { data: any; error: any };
+  if (governedError) return fail({ operation: op, code: "internal", detail: governedError.message });
+  if (!governed) {
+    return fail({ operation: op, code: "not_found", detail: { reason: "request_not_found" } });
+  }
+
   let merchant: { name: string | null; phone: string | null } = {
     name: null,
     phone: null,
@@ -871,16 +885,14 @@ export async function getAssignedDeliveryForDriver(params: {
     };
   }
 
-  /* The custody level lives on the REQUEST, and the driver works in deliveries.
-     Read the LEVEL only — never declared_value_cents, which is a theft
-     incentive in a driver's hands and is not needed to perform the ceremony.
-     PROJECTION_FORBIDDEN_SUBSTRINGS enforces that; this select is the other
-     half of it, because a column never fetched cannot leak. */
-  const { data: governed } = (await supabaseAdmin
-    .from("couranr_delivery_requests")
-    .select("protection_level,protection_policy_version")
-    .eq("id", String(delivery.request_id))
-    .maybeSingle()) as { data: any; error: any };
+  /* The immutable sender contact gives a direct Consumer driver the pickup
+     name/phone. The same SELECT reads the governed custody level, but never
+     declared_value_cents or sender email into the driver projection. */
+  const pickupContact = pickupContactForDriver({
+    businessAccountId: merchantScope.value.businessAccountId,
+    businessContact: merchant,
+    request: governed,
+  });
 
   return {
     ok: true,
@@ -889,7 +901,7 @@ export async function getAssignedDeliveryForDriver(params: {
         delivery,
         assignment,
         vehicle: vehicle ?? null,
-        merchant,
+        merchant: pickupContact,
         // Governed ONLY: a level without a policy version is not something this
         // policy wrote, and a driver must not be shown a ceremony nobody agreed to.
         protectionLevel: governed?.protection_policy_version ? governed?.protection_level : null,

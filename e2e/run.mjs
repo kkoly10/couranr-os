@@ -3632,12 +3632,21 @@ async function qIssueCode(requestId, kind) {
     await page.goto(`${BASE_URL}/operations/deliveries/${requestId}`, {
       waitUntil: "domcontentloaded",
     });
-    const label = kind === "pickup" ? /^issue pickup code$/i : /^issue recipient code$/i;
-    const anchor = kind === "pickup" ? "Pickup code" : "Recipient code";
+    const label = kind === "pickup" ? /^show pickup QR & code$/i : /^issue recipient code$/i;
+    const anchor = kind === "pickup" ? "Pickup verification" : "Recipient code";
     const b = page.getByRole("button", { name: label }).first();
     await b.waitFor({ state: "visible", timeout: 30000 });
     await b.click();
     for (let i = 0; i < 40; i += 1) {
+      if (kind === "pickup") {
+        const credential = page.locator('[data-couranr-pickup-credential="true"]');
+        if (await credential.count()) {
+          const digits = ((await credential.textContent()) ?? "").match(/\b\d{3}\s+\d{3}\b/);
+          if (digits) return digits[0].replace(/\s+/g, "");
+        }
+        await page.waitForTimeout(500);
+        continue;
+      }
       const t = (await page.textContent("body")) ?? "";
       const idx = t.indexOf(anchor);
       const seg = (idx >= 0 ? t.slice(idx, idx + 900) : t).replace(/\s+/g, "");

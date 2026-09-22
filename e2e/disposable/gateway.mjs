@@ -389,8 +389,15 @@ export async function waitForPortFree(port, label, { timeoutMs = PORT_SETTLE_MS,
 
 export async function startPostgrest({ dbUrl, binary, workDir }) {
   await waitForPortFree(POSTGREST_PORT, "PostgREST");
-  mkdirSync(workDir, { recursive: true });
-  const conf = path.join(workDir, "postgrest.conf");
+  // Suites that predate COURANR_DISPOSABLE_DIR pass the Linux default here.
+  // Relocate only that default, preserving any caller-specific subdirectory.
+  const defaultBase = "/var/lib/postgresql/couranr-disposable";
+  const effectiveWorkDir = process.env.COURANR_DISPOSABLE_DIR &&
+    (workDir === defaultBase || workDir.startsWith(`${defaultBase}/`))
+    ? path.join(process.env.COURANR_DISPOSABLE_DIR, path.relative(defaultBase, workDir))
+    : workDir;
+  mkdirSync(effectiveWorkDir, { recursive: true });
+  const conf = path.join(effectiveWorkDir, "postgrest.conf");
   writeFileSync(
     conf,
     [

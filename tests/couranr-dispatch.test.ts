@@ -19,6 +19,7 @@ import {
   PROJECTION_ALLOWED_KEYS,
   PROJECTION_FORBIDDEN_SUBSTRINGS,
   buildAssignedDeliveryProjection,
+  pickupContactForDriver,
   projectionLeaks,
 } from "@/lib/couranr/dispatch/projection";
 
@@ -229,6 +230,35 @@ const projection = () =>
   });
 
 describe("the assigned-driver projection", () => {
+  it("uses only the immutable direct Consumer pickup name and phone, not email or a fake merchant", () => {
+    const contact = pickupContactForDriver({
+      businessAccountId: null,
+      businessContact: { name: null, phone: null },
+      request: {
+        requester_kind: "consumer",
+        consumer_contact_snapshot: {
+          name: "  Sender One  ", phone: "  +15550001234  ", email: "private@example.test",
+        },
+      },
+    });
+    expect(contact).toEqual({ name: "Sender One", phone: "+15550001234" });
+    expect(JSON.stringify(contact)).not.toContain("private@example.test");
+  });
+
+  it("preserves the real merchant contact for hosted and Business deliveries", () => {
+    const businessContact = { name: "Petal & Stem Co.", phone: "555-0111" };
+    expect(pickupContactForDriver({
+      businessAccountId: "business-id",
+      businessContact,
+      request: { requester_kind: "consumer", consumer_contact_snapshot: { name: "Guest" } },
+    })).toEqual(businessContact);
+    expect(pickupContactForDriver({
+      businessAccountId: null,
+      businessContact,
+      request: { requester_kind: "business", consumer_contact_snapshot: { name: "Forged" } },
+    })).toEqual({ name: null, phone: null });
+  });
+
   it("emits exactly the allowed keys and nothing else", () => {
     expect(Object.keys(projection()).sort()).toEqual([...PROJECTION_ALLOWED_KEYS].sort());
   });

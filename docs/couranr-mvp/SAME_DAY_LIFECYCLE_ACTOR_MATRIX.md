@@ -31,6 +31,8 @@ Security invariants: recipient tracking never authorizes sender pickup, payer ac
 
 Automated evidence below is from disposable PostgreSQL and test doubles. It does not claim a human collected or delivered the production canary. A locally passing path still needs real-browser and physical canary observation where stated.
 
+On 2026-09-21, an isolated local Supabase stack and installed Chrome completed browser Group A (9/9) and the driver/Operations execution path Q1–Q37 on a synthetic Business delivery. Group Q's two final cleanup assertions could not delete append-only canonical history, so that whole runner did not pass. The browser path does not establish direct Consumer automatic assignment, Consumer proof-metadata access, cross-device sender email recovery, provider email receipts, or physical production handoff. Disposable Same Day lifecycle SQL probes passed 39/39 and driver execution probes 62/62; those are command evidence, not live physical evidence.
+
 | Acceptance path | Executable evidence | Production boundary |
 | --- | --- | --- |
 | Sender pickup code at pickup; reissue invalidates old generation; pickup verifier accepts only its own kind | `test:driver-execution` DX-09–14 and `test:sameday-lifecycle-closure` stage probe; `test:consumer-trust-custody` E4–E8 | Canary has no sender pickup code yet. Driver must perform the real handoff. |

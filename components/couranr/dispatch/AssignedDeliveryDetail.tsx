@@ -391,12 +391,12 @@ function ActiveAssignment({
             description={
               state === "return_required" || state === "returning"
                 ? "Return destination — back to the original sender."
-                : "Collect from the business."
+                : "Collect at the pickup address."
             }
           />
           <Stack gap={3}>
             <AddressLines address={assigned.pickup} />
-            <Contact label="Merchant contact" name={assigned.merchant.name} phone={assigned.merchant.phone} />
+            <Contact label="Request contact" name={assigned.merchant.name} phone={assigned.merchant.phone} />
           </Stack>
         </Card>
         <Card>

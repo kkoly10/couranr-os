@@ -485,6 +485,22 @@ describe("a failed assignment lookup is not an empty one", () => {
     }
   });
 
+  it("shows a direct Consumer requester as a contact without claiming they are at pickup", async () => {
+    fetchMyAssignment.mockResolvedValue(ok({
+      status: "active",
+      assigned: assignedView({
+        fulfillmentState: "at_pickup",
+        merchant: { name: "Consumer Sender", phone: "+15550003333" },
+      }),
+    } as DriverAssignmentResponse));
+    render(<AssignedDeliveryDetail deliveryId="del-fixture-1" />);
+    await screen.findByText("Consumer Sender");
+    expect(bodyText()).toContain("Collect at the pickup address.");
+    expect(bodyText()).toContain("Request contact");
+    expect(bodyText()).not.toContain("Collect from the business.");
+    expect(bodyText()).not.toContain("Merchant contact");
+  });
+
   it("the failed treatment and the empty treatment differ in words AND in role", async () => {
     fetchMyAssignment.mockResolvedValue(fail(500));
     const failed = render(<AssignedDeliveryDetail deliveryId="del-fixture-1" />);
