@@ -60,14 +60,14 @@ const WO = {
 };
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const PORT = Number(process.env.MASTERSD_PORT || 3103);
+const PORT = Number(process.env.MASTERSD_PORT || 3123);
 const BASE = `http://127.0.0.1:${PORT}`;
 const ART = path.join(ROOT, "e2e/artifacts/master-sameday");
 const CONTROL = process.argv.includes("--positive-control");
 
 const require = createRequire(import.meta.url);
 const { chromium } = require(
-  process.env.PLAYWRIGHT_PATH || "/opt/node22/lib/node_modules/playwright",
+  process.env.PLAYWRIGHT_PATH || "playwright",
 );
 
 /** Gate F and G both name exactly these five. */
@@ -497,7 +497,7 @@ async function trackingLauncherGate(browser) {
 
 async function main() {
   await startServer();
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ executablePath: process.env.COURANR_BROWSER_EXECUTABLE || undefined });
   try {
     await structureGate(browser, "/", MASTER_SECTIONS, "master", "[data-couranr-door]");
     await structureGate(browser, "/sameday", SAMEDAY_SECTIONS, "sameday", ".cr-sd-intent");
@@ -531,7 +531,7 @@ async function main() {
     const probes = [];
     const probe = (name, wentRed, detail) => probes.push({ name, wentRed, detail });
 
-    const b = await chromium.launch();
+    const b = await chromium.launch({ executablePath: process.env.COURANR_BROWSER_EXECUTABLE || undefined });
     try {
       const ctx = await b.newContext({ viewport: { width: 1440, height: 900 } });
       const page = await ctx.newPage();

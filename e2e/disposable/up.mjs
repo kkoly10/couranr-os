@@ -188,7 +188,7 @@ export function down({ quiet = false } = {}) {
   if (!quiet) console.log("  disposable database destroyed");
 }
 
-export function up({ quiet = false, beforeMigration = null } = {}) {
+export function up({ quiet = false, beforeMigration = null, throughMigration = null } = {}) {
   const log = (m) => !quiet && console.log(m);
 
   down({ quiet: true });
@@ -215,9 +215,15 @@ export function up({ quiet = false, beforeMigration = null } = {}) {
     "-q", "-v", "ON_ERROR_STOP=1", "-f", path.join(ROOT, "e2e/disposable/bootstrap.sql"),
   ]);
 
-  const migrations = readdirSync(path.join(ROOT, "supabase/migrations"))
+  const allMigrations = readdirSync(path.join(ROOT, "supabase/migrations"))
     .filter((f) => /^\d{14}_.+\.sql$/.test(f) && !f.includes(".rollback."))
     .sort();
+  if (throughMigration !== null && !allMigrations.includes(throughMigration)) {
+    throw new Error(`unknown disposable migration boundary: ${throughMigration}`);
+  }
+  const migrations = throughMigration === null
+    ? allMigrations
+    : allMigrations.slice(0, allMigrations.indexOf(throughMigration) + 1);
   log(`  applying ${migrations.length} forward migrations in filename order...`);
   for (const f of migrations) {
     beforeMigration?.({ filename: f, psql });

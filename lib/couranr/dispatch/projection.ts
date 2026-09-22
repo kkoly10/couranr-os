@@ -55,7 +55,7 @@ export type AssignedDeliveryProjection = {
   pickup: { line1: string; line2: string; city: string; region: string; postalCode: string; instructions: string };
   dropoff: { line1: string; line2: string; city: string; region: string; postalCode: string; instructions: string };
 
-  /** Who to hand off WITH at the pickup end. */
+  /** Pickup coordination contact; the legacy `merchant` key is kept for clients. */
   merchant: { name: string; phone: string };
   /** Who to hand off TO. Name and phone only. */
   recipient: { name: string; phone: string };
@@ -129,6 +129,29 @@ function address(o: any) {
     // read by any path that feeds this.
     instructions: str(o, "instructions"),
   };
+}
+
+/**
+ * An assigned driver needs a contact to coordinate a direct Consumer pickup
+ * even though there is no merchant tenancy. This is the REQUESTER, not a claim
+ * that they will physically be at pickup. The request-time snapshot is
+ * immutable; only name and phone cross this allow-list, never sender email.
+ */
+export function pickupContactForDriver(input: {
+  businessAccountId: string | null;
+  businessContact: { name: string | null; phone: string | null };
+  request: { requester_kind?: string; consumer_contact_snapshot?: unknown };
+}): { name: string | null; phone: string | null } {
+  if (input.businessAccountId) return input.businessContact;
+  if (input.request.requester_kind !== "consumer") return { name: null, phone: null };
+  const snapshot = input.request.consumer_contact_snapshot;
+  if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+    return { name: null, phone: null };
+  }
+  const contact = snapshot as Record<string, unknown>;
+  const name = typeof contact.name === "string" ? contact.name.trim() : "";
+  const phone = typeof contact.phone === "string" ? contact.phone.trim() : "";
+  return { name: name || null, phone: phone || null };
 }
 
 export function buildAssignedDeliveryProjection(input: {

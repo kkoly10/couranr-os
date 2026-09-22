@@ -47,7 +47,7 @@ const execFileAsync = promisify(execFile);
 async function psqlAsync(statement) {
   try {
     const { stdout } = await execFileAsync(
-      "/usr/lib/postgresql/16/bin/psql",
+      `${process.env.COURANR_PGBIN || "/usr/lib/postgresql/16/bin"}/psql`,
       [dbUrl(), "-tA", "-q", "-v", "ON_ERROR_STOP=1", "-c", statement],
       { timeout: 30_000 },
     );

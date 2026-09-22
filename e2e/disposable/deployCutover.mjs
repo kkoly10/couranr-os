@@ -79,7 +79,7 @@ function oldCreateBody(key) {
     p_overnight_requested: false,
     p_route_distance_meters: 3219, p_route_duration_seconds: 600,
     p_route_static_duration_seconds: 600, p_route_traffic_delay_seconds: 0,
-    p_distance_source: "google_routes_v2", p_serviceability_outcome: "available_for_request",
+    p_distance_source: "mapbox_directions_v5", p_serviceability_outcome: "available_for_request",
     p_route_review_reason: null,
     p_quote_status: "estimated", p_pricing_policy_version: POLICY,
     p_delivery_subtotal_cents: 799, p_included_loaded_miles: 2, p_billable_loaded_miles: 0,

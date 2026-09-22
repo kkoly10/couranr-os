@@ -94,7 +94,10 @@ const applyScript = (file) => {
 };
 
 async function main() {
-  up({ quiet: true });
+  // This is a historical migration/rollback contract, so replay to its own
+  // arity fence. Later migrations depend on these columns and must not be
+  // present when testing whether this 2026-09-02 rollback is reversible.
+  up({ quiet: true, throughMigration: "20260902220000_couranr_legacy_arity_fence.sql" });
   try {
     raw(`insert into auth.users(id,email) values ('${USER}','wbt@example.test');
          insert into public.business_accounts(id,name,slug,created_by)

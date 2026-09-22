@@ -15,6 +15,7 @@ import nextVitals from "eslint-config-next/core-web-vitals";
 export default defineConfig([
   ...nextVitals,
   {
+    files: ["**/*.{js,jsx,mjs,ts,tsx,mts,cts}"],
     /**
      * eslint-plugin-react-hooks v6 (bundled by eslint-config-next 16) ships
      * three NEW rules as errors. They flagged 53 sites in code that is

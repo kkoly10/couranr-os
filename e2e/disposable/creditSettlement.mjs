@@ -23,12 +23,14 @@
  *         inventing a Stripe authorization, and records the commercial authority
  *   CS-6  POSITIVE CONTROL — rolling back readiness parity makes that SAME
  *         credited-readiness transition fail with payment_not_authorized
+ *   CS-7  credit-funded plan/delivery keep exact quote identity and make the
+ *         permanent integrity probe clean; the original M5 probe flags them
  */
 import crypto from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { up, psql } from "./up.mjs";
+import { up, down, psql } from "./up.mjs";
 import {
   psqlTransport,
   seedCanonicalQuotedRequest,
@@ -86,6 +88,25 @@ async function main() {
   const t = psqlTransport(psql);
   try {
     console.log("\n  credit settlement XOR — execution verification\n");
+
+    const integrityRollback = readFileSync(
+      path.join(ROOT, "supabase/rollbacks/20260922134911_couranr_integrity_credit_settlement_parity.rollback.sql"), "utf8"
+    );
+    const integrityForward = readFileSync(
+      path.join(ROOT, "supabase/migrations/20260922134911_couranr_integrity_credit_settlement_parity.sql"), "utf8"
+    );
+    psql(integrityRollback);
+    psql(integrityForward);
+    eq("CS-7f", "no-credit rollback and forward reapply preserve a clean probe",
+       one(`select count(*) from public.couranr_foundation_integrity()`), "0");
+    eq("CS-7h", "integrity probe remains service-role only after replacement",
+       one(`select has_function_privilege('anon',
+                 'public.couranr_foundation_integrity()','EXECUTE')::text || ',' ||
+                   has_function_privilege('authenticated',
+                 'public.couranr_foundation_integrity()','EXECUTE')::text || ',' ||
+                   has_function_privilege('service_role',
+                 'public.couranr_foundation_integrity()','EXECUTE')::text`),
+       "false,false,true");
 
     const bizId = one(
       `insert into public.business_accounts (name, slug, status)
@@ -158,6 +179,67 @@ async function main() {
              where request_id='${s1.request.requestId}' and plan_state='confirmed'`),
        s1.creditId);
 
+    /* ── CS-7: the integrity probe must understand BOTH settlement sources ── */
+    const conversion = raises(
+      `select public.couranr_create_delivery_from_promotional_credit('${s1.request.requestId}')`
+    );
+    eq("CS-7a", "credit-backed delivery conversion succeeds", conversion.split("|")[0], "NO_ERROR");
+    eq("CS-7b", "credit plan and delivery retain the identical quote UUID",
+       one(`select (p.quote_version_id=c.quote_version_id
+                     and d.quote_version_id=c.quote_version_id
+                     and p.promotional_credit_id=d.promotional_credit_id
+                     and p.payment_obligation_id is null
+                     and d.payment_obligation_id is null)::text
+              from public.couranr_deliveries d
+              join public.couranr_service_plans p on p.id=d.service_plan_id
+              join public.couranr_promotional_credits c on c.id=d.promotional_credit_id
+             where d.request_id='${s1.request.requestId}'`), "true");
+    eq("CS-7c", "current integrity probe reports no invented obligation mismatch",
+       one(`select count(*) from public.couranr_foundation_integrity()
+             where issue_code in ('plan_obligation_quote_mismatch','delivery_plan_quote_mismatch')
+               and entity_id in (
+                 select id from public.couranr_service_plans where request_id='${s1.request.requestId}'
+                 union all
+                 select id from public.couranr_deliveries where request_id='${s1.request.requestId}'
+               )`), "0");
+    eq("CS-7c2", "the complete read-only integrity probe stays clean for a credit delivery",
+       one(`select count(*) from public.couranr_foundation_integrity()`), "0");
+    eq("CS-7g", "positive control: a corrupted credit/quote amount is detected for plan and delivery",
+       one(`begin;
+         set local session_replication_role = replica;
+         update public.couranr_promotional_credits
+            set standard_quote_cents=standard_quote_cents+1,
+                promotional_credit_cents=promotional_credit_cents+1
+          where id='${s1.creditId}';
+         select count(*) from public.couranr_foundation_integrity()
+          where issue_code in ('plan_obligation_quote_mismatch','delivery_plan_quote_mismatch')
+            and entity_id in (
+              select id from public.couranr_service_plans where request_id='${s1.request.requestId}'
+              union all
+              select id from public.couranr_deliveries where request_id='${s1.request.requestId}'
+            );
+         rollback;`), "2");
+    let rollbackOutcome = "ACCEPTED";
+    try { psql(integrityRollback); }
+    catch (error) { rollbackOutcome = String(error.stderr || error.message); }
+    eq("CS-7e", "rollback refuses to restore the obsolete probe after credit settlement",
+       rollbackOutcome.includes("credit settlement history exists"), true);
+    const m5Source = readFileSync(
+      path.join(ROOT, "supabase/migrations/20260901051617_fnd_a_m5_invariant_cutover.sql"), "utf8"
+    );
+    const m5Probe = m5Source.match(/create function public\.couranr_foundation_integrity\(\)[\s\S]*?\$fn\$;/)?.[0]
+      .replace("create function", "create or replace function");
+    if (!m5Probe) throw new Error("original M5 integrity probe not found");
+    eq("CS-7d", "positive control: original M5 probe incorrectly flags both credit records",
+       one(`begin; ${m5Probe}
+         select count(*) from public.couranr_foundation_integrity()
+          where issue_code in ('plan_obligation_quote_mismatch','delivery_plan_quote_mismatch')
+            and entity_id in (
+              select id from public.couranr_service_plans where request_id='${s1.request.requestId}'
+              union all
+              select id from public.couranr_deliveries where request_id='${s1.request.requestId}'
+            ); rollback;`), "2");
+
     /* ── CS-2: the paid path is unchanged ── */
     const paidReq = await seedCanonicalQuotedRequest(t, {
       businessId: bizId, actorUserId: merchant, marker: `cs2-${uniq()}`, upTo: "confirmed", payerType: "merchant",
@@ -222,8 +304,9 @@ async function main() {
     console.log(`\n  credit settlement: ${pass} passed, ${fail} failed\n`);
     if (fail > 0) process.exitCode = 1;
   } finally {
-    // up() owns teardown via its own process-exit handler in the suite runner;
-    // nothing seeded here touches a real project.
+    // up() does not register a normal-process-exit teardown. Leaving this
+    // disposable cluster on the shared port turns every later DB gate red.
+    down({ quiet: true });
   }
 }
 

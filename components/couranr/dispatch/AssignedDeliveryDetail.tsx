@@ -84,14 +84,10 @@ export function AssignedDeliveryDetail({
   const [busy, setBusy] = React.useState(false);
   const [actionError, setActionError] = React.useState<string | null>(null);
   /**
-   * The version a command last reported, TIED TO THE DELIVERY IT CAME FROM.
-   *
-   * It is the authority once a command has run in this session, because the
-   * projection is refetched afterwards and (today) carries no version of its own
-   * — see `readDeliveryVersion`. The delivery id travels with it because this
-   * component is reused across `/driver/deliveries/<id>` navigations and by
-   * DRV-001's id-less lookup: a bare number would let delivery A's version be
-   * sent as delivery B's `expectedVersion`.
+   * Command response for this delivery. The projection ALSO carries CAS;
+   * either can be ahead while a reload is in flight. Use the higher observed
+   * generation, never an older command version over a newer child-component
+   * completion (or an older projection over a newer command response).
    */
   const [knownVersion, setKnownVersion] = React.useState<{
     deliveryId: string;
@@ -252,11 +248,15 @@ function ActiveAssignment({
   const command = state && method ? nextDriverCommand(state, method) : null;
   const vehicle = assigned.assignment.vehicle;
 
-  // A version is only reused for the delivery that produced it.
-  const version =
-    knownVersion && knownVersion.deliveryId === assigned.deliveryId
-      ? knownVersion.version
-      : readDeliveryVersion(assigned);
+  // A version is only reused for the delivery that produced it. Both values
+  // came from the server; the higher generation survives either reload order.
+  const projectedVersion = readDeliveryVersion(assigned);
+  const commandVersion = knownVersion?.deliveryId === assigned.deliveryId
+    ? knownVersion.version
+    : null;
+  const version = projectedVersion === null
+    ? commandVersion
+    : commandVersion === null ? projectedVersion : Math.max(projectedVersion, commandVersion);
 
   async function run(
     which: "start_route_to_pickup" | "start_route_to_dropoff" | "start_return"
@@ -274,6 +274,11 @@ function ActiveAssignment({
     if (isApiFailure(r)) {
       setActionError(withReference(r));
       return;
+    }
+    // A position used for pickup is not evidence of arrival at the next
+    // destination. The next leg must obtain a fresh fix before its arrival.
+    if (which === "start_route_to_dropoff" || which === "start_return") {
+      location.reset();
     }
     setKnownVersion({ deliveryId: assigned.deliveryId, version: r.value.delivery.version });
     await reload();
@@ -391,12 +396,12 @@ function ActiveAssignment({
             description={
               state === "return_required" || state === "returning"
                 ? "Return destination — back to the original sender."
-                : "Collect from the business."
+                : "Collect at the pickup address."
             }
           />
           <Stack gap={3}>
             <AddressLines address={assigned.pickup} />
-            <Contact label="Merchant contact" name={assigned.merchant.name} phone={assigned.merchant.phone} />
+            <Contact label="Request contact" name={assigned.merchant.name} phone={assigned.merchant.phone} />
           </Stack>
         </Card>
         <Card>

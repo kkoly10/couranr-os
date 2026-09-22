@@ -13,6 +13,7 @@ import {
   PIN_OUTCOMES,
   PROOF_METHODS,
   PROOF_METHOD_LABELS,
+  canIssueHandoffCodeAtStage,
   canUnassignBeforePickup,
   isDrivingState,
   nextDriverCommand,
@@ -283,6 +284,42 @@ describe("canonical proof paths", () => {
  * "test" or "changeme", and anything with fewer than 8 distinct characters.
  */
 const FIXTURE_SECRET = "K7pQ2vX9mZ4tR8wL6nB3hF5jD1sG0yC-aE_uI+oM/qW=";
+
+describe("handoff issuance affordances", () => {
+  it("offers each credential only at its SQL-governed physical stage", () => {
+    const allowed = {
+      merchant_pickup: ["scheduled", "assigned", "en_route_to_pickup", "at_pickup"],
+      recipient_dropoff: ["picked_up", "in_transit", "at_dropoff"],
+      merchant_return: ["return_required", "returning"],
+    } as const;
+    for (const kind of Object.keys(allowed) as (keyof typeof allowed)[]) {
+      for (const state of FULFILLMENT_STATES) {
+        expect(canIssueHandoffCodeAtStage(kind, state), `${kind} at ${state}`).toBe(
+          (allowed[kind] as readonly string[]).includes(state)
+        );
+      }
+    }
+    expect(canIssueHandoffCodeAtStage("recipient_dropoff", "unknown")).toBe(false);
+    // Positive SQL control: this is the actual trigger that refuses issuance,
+    // not a UI-only table of values.
+    const guard = readFileSync(path.join(MIGRATIONS,
+      "20260921150000_couranr_handoff_stage_authority.sql"), "utf8");
+    for (const [kind, states] of Object.entries(allowed)) {
+      const match = new RegExp(`new\\.code_kind='${kind}'\\s+and v_state not in \\(([^)]+)\\)`).exec(guard);
+      expect(match, `${kind} SQL stage guard exists`).not.toBeNull();
+      const sqlStates = [...(match?.[1] ?? "").matchAll(/'([^']+)'/g)].map((m) => m[1]);
+      expect(sqlStates, `${kind} UI and SQL stage sets agree`).toEqual(states);
+    }
+    const ops = readFileSync(path.join(ROOT,
+      "components/couranr/dispatch/OperationsExecutionPanel.tsx"), "utf8");
+    const merchant = readFileSync(path.join(ROOT,
+      "components/couranr/requests/DeliveryRequestDetail.tsx"), "utf8");
+    for (const kind of Object.keys(allowed)) {
+      expect(ops).toContain(`canIssueHandoffCodeAtStage("${kind}", fulfillmentState)`);
+      expect(merchant).toContain(`canIssueHandoffCodeAtStage("${kind}", fulfillment.delivery.fulfillmentState)`);
+    }
+  });
+});
 
 describe("handoff codes", () => {
   const SAVED = process.env.COURANR_HANDOFF_CODE_SECRET;

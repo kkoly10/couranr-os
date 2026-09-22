@@ -449,9 +449,13 @@ export async function main() {
       !crossBodies.includes("first customer message"), crossBodies.slice(0, 50));
 
     /* A12 — the real browser flow, with NO stub on the Couranr API. */
-    const { chromium } = await import("/opt/pw-browsers/../node_modules/playwright/index.mjs")
-      .catch(() => import("/opt/node22/lib/node_modules/playwright/index.mjs"));
-    const browser = await chromium.launch({ args: ["--no-proxy-server"] });
+    const { chromium } = await import("playwright");
+    const browser = await chromium.launch({
+      args: ["--no-proxy-server"],
+      ...(process.env.COURANR_BROWSER_EXECUTABLE
+        ? { executablePath: process.env.COURANR_BROWSER_EXECUTABLE }
+        : {}),
+    });
     try {
       mkdirSync(SHOTS, { recursive: true });
       const page = await browser.newPage();
@@ -463,24 +467,27 @@ export async function main() {
       // was a hard 30s timeout that aborted the whole matrix. Wait for the
       // element each assertion is about instead.
       await page.goto(`${BASE}/help/${tokB}`, { waitUntil: "domcontentloaded" });
-      await page.locator("textarea").first().waitFor({ timeout: 15000 }).catch(() => {});
+      const messageForm = page.locator("form").filter({
+        has: page.getByRole("heading", { name: "Send a message" }),
+      });
+      await messageForm.locator("textarea").waitFor({ timeout: 15000 }).catch(() => {});
       const body = await page.innerText("body");
       // Assert the FORM, not the phrase. `/Delivery Help/i` also matches the
       // marketing navigation, so the old condition passed on a page rendering a
       // refusal — the same false pass `customerHelpFragments.mjs` C1 had, found
       // there by looking at the screenshot. The topic select and the message
       // textarea exist only in the loaded help form.
-      const selects = await page.locator("select").count();
-      const textareas = await page.locator("textarea").count();
+      const selects = await messageForm.locator("select").count();
+      const textareas = await messageForm.locator("textarea").count();
       check("A12", "the real /help/[token] flow renders the help FORM unstubbed",
         selects === 1 && textareas === 1 && !/not available/i.test(body),
         `${selects} select(s), ${textareas} textarea(s)`);
       await page.screenshot({ path: path.join(SHOTS, "A12-live.png"), fullPage: true });
 
       const typed = `${MARK} typed in a real browser`;
-      await page.selectOption("select", "availability");
-      await page.fill("textarea", typed);
-      await page.click('button[type="submit"]');
+      await messageForm.locator("select").selectOption("availability");
+      await messageForm.locator("textarea").fill(typed);
+      await messageForm.getByRole("button", { name: "Send to Couranr" }).click();
       await page.waitForTimeout(2000);
 
       const t = await sb.rpc("couranr_help_thread", { p_token_id: tokenBId });

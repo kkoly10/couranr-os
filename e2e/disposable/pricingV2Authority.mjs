@@ -45,12 +45,12 @@ const items = (a) =>
    'unitAmountCents',${a},'amountCents',${a}))`;
 
 /** One draft through the canonical routed command. */
-function draft(key, { duration = 600, staticDuration = 600, delay = 0, policy = "couranr-pricing-v2-2026-09-01", amount = 799 } = {}) {
+function draft(key, { duration = 600, staticDuration = 600, delay = 0, policy = "couranr-pricing-v2-2026-09-01", amount = 799, distanceSource = "mapbox_directions_v5" } = {}) {
   return `select id from public.couranr_create_routed_delivery_request_draft(
     '${BUSINESS}','${USER}','${key}','merchant_portal','not_confirmed','merchant',
     'Recipient','555-0100','r@example.test',10,0,'standard',false,'photo_or_pin',
     ${addr("place-pickup","10 Market St")},${addr("place-drop","20 Main St")},false,
-    3219,${duration},${staticDuration},${delay},'google_routes_v2','available_for_request',null,
+    3219,${duration},${staticDuration},${delay},'${distanceSource}','available_for_request',null,
     'estimated','${policy}',${amount},2,0,${items(amount)},'[]'::jsonb,
     null,null,null,null,'[]'::jsonb,'none')`;
 }
@@ -120,7 +120,7 @@ function main() {
       '${BUSINESS}','${USER}','v2-review','merchant_portal','not_confirmed','merchant',
       'Recipient','555-0100','r@example.test',10,0,'standard',false,'photo_or_pin',
       ${addr("place-pickup","10 Market St")},${addr("place-drop","20 Main St")},false,
-      null,null,null,null,'google_routes_v2','needs_review','outside_service_area',
+      null,null,null,null,'mapbox_directions_v5','needs_review','outside_service_area',
       'manual_review_required',null,null,null,null,'[]'::jsonb,
       jsonb_build_array('route_needs_review'),
       null,null,null,null,'[]'::jsonb,null)`);
@@ -542,7 +542,10 @@ function main() {
              join pg_namespace n on n.oid=p.pronamespace
             where n.nspname='public' and p.proname='couranr_apply_payment_intent_state'`),
       "1|8");
-    const r1 = one(draft("qvl-rb-stale"));
+    // This older rollback restores the historical Google quote appender. Its
+    // fixtures must reflect that historical state, not today's Mapbox cutover.
+    const historicalSource = "google_routes_v2";
+    const r1 = one(draft("qvl-rb-stale", { distanceSource: historicalSource }));
     age(r1, "40 minutes");
     check("PV2-71", "... and a 40-minute-old quote can be acknowledged again",
       raises(`select public.couranr_submit_delivery_request_v2('${r1}','${BUSINESS}',${ver(r1)},'${USER}',true)`),
@@ -553,20 +556,20 @@ function main() {
        and this is the difference between the two: a fabricated version passes
        a blacklist and must not pass a pin. */
     check("PV2-72", "... and the pre-QVL boundary is only a blacklist, which a made-up version passes",
-      raises(draft("qvl-rb-policy", { policy: "couranr-pricing-v9-2099-01-01" })), "NO_ERROR|");
+      raises(draft("qvl-rb-policy", { policy: "couranr-pricing-v9-2099-01-01", distanceSource: historicalSource })), "NO_ERROR|");
 
     check("PV2-73", "the forward migration re-applies over its own rollback",
       applyScript(QVL_FWD), "NO_ERROR|");
-    const r2 = one(draft("qvl-fw-stale"));
+    const r2 = one(draft("qvl-fw-stale", { distanceSource: historicalSource }));
     age(r2, "40 minutes");
     check("PV2-74", "... and the 15-minute refusal is back",
       raises(`select public.couranr_submit_delivery_request_v2('${r2}','${BUSINESS}',${ver(r2)},'${USER}',true)`),
       "CR410|quote_expired");
     check("PV2-75", "... and the pin refuses that same made-up version an allow-list must reject",
-      raises(draft("qvl-fw-policy", { policy: "couranr-pricing-v9-2099-01-01" })),
+      raises(draft("qvl-fw-policy", { policy: "couranr-pricing-v9-2099-01-01", distanceSource: historicalSource })),
       "CR422|unsupported_pricing_policy_version");
     check("PV2-77", "... and refuses the superseded V1 identifier under the same rule",
-      raises(draft("qvl-fw-v1", { policy: "couranr-pricing-2026-07-31" })),
+      raises(draft("qvl-fw-v1", { policy: "couranr-pricing-2026-07-31", distanceSource: historicalSource })),
       "CR422|unsupported_pricing_policy_version");
     /* The recovery path. If the SQL commits but the migration ledger row does
        not get written - the Supabase apply path writes it in a separate round
@@ -576,7 +579,7 @@ function main() {
        false, and the most alarming possible way to be wrong. */
     check("PV2-81", "the forward migration is re-runnable over itself",
       applyScript(QVL_FWD), "NO_ERROR|");
-    const r3 = one(draft("qvl-rerun-stale"));
+    const r3 = one(draft("qvl-rerun-stale", { distanceSource: historicalSource }));
     age(r3, "40 minutes");
     check("PV2-82", "... and a second run leaves the guards behaving identically",
       raises(`select public.couranr_submit_delivery_request_v2('${r3}','${BUSINESS}',${ver(r3)},'${USER}',true)`),

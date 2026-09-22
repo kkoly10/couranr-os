@@ -16,8 +16,10 @@
 (function () {
   function makeElement(type) {
     var handlers = {};
+    var mounted = false;
     return {
       mount: function (target) {
+        mounted = true;
         var node = typeof target === "string" ? document.querySelector(target) : target;
         if (node) {
           node.setAttribute("data-stripe-element", type);
@@ -31,7 +33,14 @@
       unmount: function () {},
       destroy: function () {},
       update: function () {},
-      on: function (evt, cb) { handlers[evt] = cb; return this; },
+      on: function (evt, cb) {
+        handlers[evt] = cb;
+        // react-stripe-js may attach `ready` after it mounts the element.
+        // The real Stripe Element reports readiness in either order; a mock
+        // that only checks at mount leaves the real Couranr button disabled.
+        if (evt === "ready" && mounted) setTimeout(function () { cb({}); }, 0);
+        return this;
+      },
       off: function () { return this; },
       focus: function () {},
       blur: function () {},

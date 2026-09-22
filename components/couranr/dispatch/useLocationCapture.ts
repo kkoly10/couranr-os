@@ -43,6 +43,8 @@ export type LocationState = {
   /** True only when a mutation requiring a position may proceed. */
   usable: boolean;
   request: () => void;
+  /** Invalidate evidence from a previous leg before a new arrival/proof. */
+  reset: () => void;
 };
 
 export const LOCATION_MESSAGES: Record<LocationStatus, string> = {
@@ -68,9 +70,11 @@ const DEFAULT_TIMEOUT_MS = 15_000;
 export function useLocationCapture(options?: { timeoutMs?: number }): LocationState {
   const [status, setStatus] = React.useState<LocationStatus>("not_requested");
   const [fix, setFix] = React.useState<LocationFix | null>(null);
+  const generation = React.useRef(0);
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   const request = React.useCallback(() => {
+    const mine = ++generation.current;
     if (typeof navigator === "undefined" || !navigator.geolocation) {
       setStatus("unavailable");
       setFix(null);
@@ -80,6 +84,7 @@ export function useLocationCapture(options?: { timeoutMs?: number }): LocationSt
     setFix(null);
     navigator.geolocation.getCurrentPosition(
       (pos) => {
+        if (mine !== generation.current) return;
         const lat = pos?.coords?.latitude;
         const lng = pos?.coords?.longitude;
         // A position object that carries no usable numbers is not a fix. Guard
@@ -98,6 +103,7 @@ export function useLocationCapture(options?: { timeoutMs?: number }): LocationSt
         setStatus("ready");
       },
       (err) => {
+        if (mine !== generation.current) return;
         setFix(null);
         // 1 PERMISSION_DENIED, 2 POSITION_UNAVAILABLE, 3 TIMEOUT
         if (err?.code === 1) setStatus("denied");
@@ -108,6 +114,12 @@ export function useLocationCapture(options?: { timeoutMs?: number }): LocationSt
     );
   }, [timeoutMs]);
 
+  const reset = React.useCallback(() => {
+    generation.current += 1;
+    setFix(null);
+    setStatus("not_requested");
+  }, []);
+
   return {
     status,
     fix,
@@ -117,6 +129,7 @@ export function useLocationCapture(options?: { timeoutMs?: number }): LocationSt
     // setters, and this makes that impossible to miss.
     usable: status === "ready" && fix !== null,
     request,
+    reset,
   };
 }
 

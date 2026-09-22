@@ -344,13 +344,17 @@ async function main() {
 
     // ── C: delivery_chat. driver1 joined an hour ago; one message predates that
     //    join and one follows it, which is what the tenure window is about.
+    // Canonical delivery creation now issues the Business delivery_chat and
+    // enrolls active merchant members atomically. Reuse that exact thread.
     const chatId = sql(
-      `insert into public.couranr_conversations
-         (kind, business_account_id, delivery_id, status, urgency, waiting_on)
-       values ('delivery_chat', '${businessId}', '${deliveryId}', 'open', 'routine', 'driver')
-       returning id`
+      `select id from public.couranr_conversations
+        where kind='delivery_chat' and delivery_id='${deliveryId}'`
     );
-    const chatOwnerPart = addParticipant(chatId, "merchant", merchant.owner.id, "owner");
+    const chatOwnerPart = sql(
+      `select id from public.couranr_conversation_participants
+        where conversation_id='${chatId}' and participant_kind='merchant'
+          and user_id='${merchant.owner.id}' and left_at is null`
+    );
     const chatDriver1Part = addParticipant(
       chatId, "driver", driver1.id, null, "now() - interval '1 hour'"
     );
@@ -397,8 +401,13 @@ async function main() {
 
     /* ─────────────────────────── browser helpers ─────────────────────── */
 
-    const { chromium } = await import("/opt/node22/lib/node_modules/playwright/index.mjs");
-    browser = await chromium.launch({ args: ["--no-proxy-server"] });
+    const { chromium } = await import("playwright");
+    browser = await chromium.launch({
+      args: ["--no-proxy-server"],
+      ...(process.env.COURANR_BROWSER_EXECUTABLE
+        ? { executablePath: process.env.COURANR_BROWSER_EXECUTABLE }
+        : {}),
+    });
 
     /** Signs in through the REAL form and returns the page after the redirect. */
     async function signIn(email) {
@@ -585,12 +594,14 @@ async function main() {
 
       // The visibility control is Operations-only. A merchant offered
       // `couranr_internal` would be offered a choice the server refuses.
-      const visibilitySelects = await page.locator("select").count();
+      const internalVisibilityOptions = await page.locator(
+        'select option[value="couranr_internal"]'
+      ).count();
       check(
         `M-${role}-3`,
         `${role} is NOT offered the internal-note visibility control`,
-        visibilitySelects === 0,
-        `${visibilitySelects} select(s)`
+        internalVisibilityOptions === 0,
+        `${internalVisibilityOptions} internal-note option(s)`
       );
 
       const body = `[MSG] reply from the ${role}`;

@@ -30,7 +30,7 @@
  *
  * Needs no database and no fixtures: every route it visits renders its shell
  * unauthenticated. Reuses a dev server already listening on BASE_URL (default
- * http://127.0.0.1:3000) and only boots one when nothing answers — Next 16's
+ * http://127.0.0.1:3124) and only boots one when nothing answers — Next 16's
  * Turbopack dev server refuses to start a second instance in the same
  * directory, so spawning unconditionally fails the moment anyone has `npm run
  * dev` open.
@@ -44,7 +44,7 @@ import { createRequire } from "node:module";
 import { claimDevDistDir } from "./devDistDir.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const BASE = (process.env.BASE_URL || "http://127.0.0.1:3000").replace(/\/$/, "");
+const BASE = (process.env.BASE_URL || "http://127.0.0.1:3124").replace(/\/$/, "");
 const PORT = Number(new URL(BASE).port || 3000);
 const APP_LOG = path.join(ROOT, "e2e/artifacts/shell-chrome-app.log");
 const devDist = claimDevDistDir("shell-chrome");
@@ -54,7 +54,7 @@ const CONTROL = process.argv.includes("--positive-control");
    the same resolution the other browser harnesses use. */
 const require = createRequire(import.meta.url);
 const { chromium } = require(
-  process.env.PLAYWRIGHT_PATH || "/opt/node22/lib/node_modules/playwright",
+  process.env.PLAYWRIGHT_PATH || "playwright",
 );
 
 const PUBLIC_ROUTES = [
@@ -189,7 +189,7 @@ async function chromeHolds(page, selector, extraCss) {
 
 async function main() {
   await startApp();
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ executablePath: process.env.COURANR_BROWSER_EXECUTABLE || undefined });
 
   /* ---- 1. sticky chrome, in every shell ------------------------------- */
   console.log("\nsticky chrome");

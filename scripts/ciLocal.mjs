@@ -82,6 +82,23 @@ async function settleDisposablePorts() {
   return notes;
 }
 
+/** Refuse a browser gate that would silently reuse another checkout's server. */
+function assertBrowserPortScope(port) {
+  const listeners = spawnSync("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-Fp"], {
+    encoding: "utf8",
+  });
+  if (listeners.error) throw new Error(`cannot inspect browser port ${port}: ${listeners.error.message}`);
+  const pids = [...(listeners.stdout ?? "").matchAll(/^p(\d+)$/gm)].map((m) => m[1]);
+  for (const pid of pids) {
+    const owner = spawnSync("lsof", ["-a", "-p", pid, "-d", "cwd", "-Fn"], { encoding: "utf8" });
+    const cwd = (owner.stdout ?? "").match(/^n(.+)$/m)?.[1];
+    if (cwd !== ROOT) {
+      throw new Error(`browser port ${port} is held by pid ${pid} in ${cwd || "an unknown checkout"}; refusing to test the wrong app`);
+    }
+  }
+  return [];
+}
+
 /** The same resolution order `scripts/provisionPostgrest.mjs` uses. */
 function postgrestPresent() {
   const candidates = [
@@ -189,11 +206,20 @@ const STAGES = [
     ["test:hosted-scheduled-timing", "hosted scheduled timing (TMZ-001 parity) — customer statement frozen on the intake, merchant confirm/adjust, quote snapshot, arity fence predeploy/postdeploy, rollback guard"],
     ["test:cus-problem-bookkeeping", "CUS-004 resolve_report Delivery Help conversation bookkeeping — the transition command called on real reports"],
     ["test:consumer-trust-custody", "Consumer Same Day V1 trust/custody constraints — $501, tampered protection level, seal and identity invariants, rollback refuse-on-evidence"],
+    ["test:sameday-lifecycle-closure", "Same Day actor/credential/cancellation lifecycle command matrix"],
   ].map(([script, why]) => ({
     tier: 3,
     name: script,
     run: ["npm", ["run", script]],
     why,
+    settle: () => {
+      const port = script === "test:pub001" ? Number(process.env.PUB001_PORT || 3120)
+        : script === "test:pub-family" ? Number(process.env.PUBFAMILY_PORT || 3121)
+        : script === "test:master-sameday" ? Number(process.env.MASTERSD_PORT || 3123)
+        : Number(new URL(process.env.BASE_URL || (script === "test:fonts"
+          ? "http://127.0.0.1:3125" : "http://127.0.0.1:3124")).port);
+      return assertBrowserPortScope(port);
+    },
     settle: settleDisposablePorts,
     needs: () => {
       if (!want.db) return "tier 3 not requested — pass --db or --all";
@@ -208,6 +234,7 @@ const STAGES = [
         "test:rollback-guards",
         "test:cus-problem-bookkeeping",
         "test:consumer-trust-custody",
+        "test:sameday-lifecycle-closure",
         "test:driver-execution",
         "test:consumer-send",
         "test:pricing-v2",
@@ -244,9 +271,12 @@ const STAGES = [
       "bash",
       [
         "-c",
-        "pids=$(ps -eo pid,args | grep 'next-server' | grep -v grep | awk '{print $1}'); " +
-          'if [ -n "$pids" ]; then echo "killing stale next-server: $pids"; kill $pids; sleep 2; ' +
-          'else echo "no stale next-server running"; fi',
+        "pids=$(ps -eo pid,args | awk '$2 == \"next-server\" {print $1}'); " +
+          'retired=0; for pid in $pids; do ' +
+          'cwd=$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n "s/^n//p"); ' +
+          'if [ "$cwd" = "$PWD" ]; then echo "retiring this repo next-server: $pid"; kill "$pid"; retired=1; ' +
+          'else echo "preserving unrelated next-server: $pid"; fi; done; ' +
+          'if [ "$retired" = 1 ]; then sleep 2; else echo "no stale next-server for this repo"; fi',
       ],
     ],
     why: "a live `next start` serves the build it booted with, not the one just built",

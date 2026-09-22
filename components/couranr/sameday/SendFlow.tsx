@@ -277,6 +277,9 @@ export function SendFlow({
      button must go straight to /pay and never POST /submit again. */
   const [resumePay, setResumePay] = React.useState(false);
   const [draftHydrated, setDraftHydrated] = React.useState(mode !== "live");
+  // React may replay the mount effect. Keep the sender-link exchange as one
+  // in-flight operation so stripping the fragment cannot strand the replay.
+  const senderRecoveryRef = React.useRef<Promise<boolean> | null>(null);
 
   function clearDraftStorage() {
     if (mode !== "live") return;
@@ -679,15 +682,20 @@ export function SendFlow({
     let cancelled = false;
     void (async () => {
       const senderHash = window.location.hash;
-      if (senderHash.startsWith("#sender=")) {
-        let token = "";
-        try { token = decodeURIComponent(senderHash.slice("#sender=".length)); }
-        catch { /* Malformed links fail the same uniform recovery gate. */ }
+      if (senderHash.startsWith("#sender=") || senderRecoveryRef.current) {
+        if (senderHash.startsWith("#sender=") && !senderRecoveryRef.current) {
+          let token = "";
+          try { token = decodeURIComponent(senderHash.slice("#sender=".length)); }
+          catch { /* Malformed links fail the same uniform recovery gate. */ }
+          senderRecoveryRef.current = adapters.recoverSenderAccess
+            ? adapters.recoverSenderAccess(token) : Promise.resolve(false);
+        }
         // Fragments are not sent to the server, but remove them from the
         // address bar before showing any recovered sender status.
-        window.history.replaceState(null, "", window.location.pathname + window.location.search);
-        const recovered = adapters.recoverSenderAccess
-          ? await adapters.recoverSenderAccess(token) : false;
+        if (senderHash.startsWith("#sender=")) {
+          window.history.replaceState(null, "", window.location.pathname + window.location.search);
+        }
+        const recovered = await senderRecoveryRef.current;
         if (cancelled) return;
         if (!recovered) {
           setLiveNote("This sender link is not available. Ask Couranr Operations for help.");
