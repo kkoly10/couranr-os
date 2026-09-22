@@ -77,4 +77,10 @@ describe("company-held voluntary driver tips", () => {
     expect(api).toContain("driver payment occurs outside this system");
     expect(api).not.toMatch(/stripe|payout|transfer_data/);
   });
+
+  it("never tells a customer an ambiguous provider error means no charge occurred", () => {
+    const payment = source("components/couranr/payments/DriverTipPaymentElement.tsx");
+    expect(payment).not.toContain("The tip was not charged");
+    expect(payment).toContain("a charge may have completed");
+  });
 });

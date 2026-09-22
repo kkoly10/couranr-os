@@ -204,6 +204,37 @@ describe("driver tip provider double", () => {
     }));
   });
 
+  it("acknowledges an exact canceled superseded intent without mutating its replacement", async () => {
+    const stored = { ...tip, provider_payment_intent_id: "pi_tipreplacement123",
+      payment_state: "pending", intent_generation: 1 };
+    doubles.retrieveIntent.mockResolvedValue(intent({ status: "canceled" }));
+    const chain: any = {
+      select: vi.fn(() => chain), eq: vi.fn(() => chain),
+      maybeSingle: vi.fn(async () => ({ data: stored, error: null })),
+    };
+    doubles.from.mockReturnValue(chain);
+
+    await expect(reconcileDriverTipIntent("pi_tipprovider123"))
+      .resolves.toEqual({ outcome: "superseded" });
+    expect(doubles.rpc).not.toHaveBeenCalled();
+    expect(doubles.retrieveCharge).not.toHaveBeenCalled();
+  });
+
+  it("refuses a mismatched noncanceled intent even after a rotation", async () => {
+    const stored = { ...tip, provider_payment_intent_id: "pi_tipreplacement123",
+      payment_state: "pending", intent_generation: 1 };
+    doubles.retrieveIntent.mockResolvedValue(intent({ status: "succeeded", amount_received: 725 }));
+    const chain: any = {
+      select: vi.fn(() => chain), eq: vi.fn(() => chain),
+      maybeSingle: vi.fn(async () => ({ data: stored, error: null })),
+    };
+    doubles.from.mockReturnValue(chain);
+
+    await expect(reconcileDriverTipIntent("pi_tipprovider123"))
+      .rejects.toThrow("tip_provider_mismatch");
+    expect(doubles.rpc).not.toHaveBeenCalled();
+  });
+
   it("persists exact provider dispute identity, amount, and status", async () => {
     const stored = { ...tip, provider_payment_intent_id: "pi_tipprovider123", payment_state: "succeeded" };
     doubles.retrieveIntent.mockResolvedValue(intent({

@@ -53,7 +53,8 @@ function TipForm(props: {
         `${window.location.origin}/tip-return`,
       );
       if (result.error) {
-        setError(result.error.message ?? "The tip was not charged. Try another payment method.");
+        setError(result.error.message ??
+          "We could not confirm the tip. Check its status before trying again; a charge may have completed.");
         setPhase("failed");
         return;
       }

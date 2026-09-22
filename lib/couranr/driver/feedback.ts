@@ -63,13 +63,17 @@ async function createTipIntent(tip: TipRow, generation: number): Promise<Stripe.
   }, { idempotencyKey: `couranr:driver-tip:${tip.id}:intent:${generation}` });
 }
 
-function exactTipIntent(intent: Stripe.PaymentIntent, tip: TipRow): boolean {
-  return intent.id === tip.provider_payment_intent_id &&
-    intent.amount === tip.amount_cents && intent.currency === "usd" &&
+function exactTipCommercialIdentity(intent: Stripe.PaymentIntent, tip: TipRow): boolean {
+  return intent.amount === tip.amount_cents && intent.currency === "usd" &&
     intent.capture_method === "automatic" &&
     intent.metadata?.couranrTipId === tip.id &&
     intent.metadata?.couranrTipDeliveryId === tip.delivery_id &&
     intent.metadata?.couranrTipDriverId === tip.driver_id;
+}
+
+function exactTipIntent(intent: Stripe.PaymentIntent, tip: TipRow): boolean {
+  return intent.id === tip.provider_payment_intent_id &&
+    exactTipCommercialIdentity(intent, tip);
 }
 
 /** A separate company-owned charge, never a delivery authorization or Connect transfer. */
@@ -144,7 +148,7 @@ export async function prepareDriverTip(params: {
 
 /** The browser and webhook both re-read Stripe; neither trusts a callback body. */
 export async function reconcileDriverTipIntent(intentId: string): Promise<{
-  outcome: "not_tip" | "settled"; state?: string;
+  outcome: "not_tip" | "settled" | "superseded"; state?: string;
 }> {
   const intent = await stripe.paymentIntents.retrieve(intentId);
   const tipId = intent.metadata?.couranrTipId;
@@ -152,7 +156,20 @@ export async function reconcileDriverTipIntent(intentId: string): Promise<{
   const { data, error } = await supabaseAdmin.from("couranr_driver_tips")
     .select("id,delivery_id,driver_id,request_id,amount_cents,currency,provider_payment_intent_id,payment_state,intent_generation")
     .eq("id", tipId).maybeSingle();
-  if (error || !data || !exactTipIntent(intent, data as TipRow)) throw new Error("tip_provider_mismatch");
+  if (error || !data) throw new Error("tip_provider_mismatch");
+  const tip = data as TipRow;
+  if (!exactTipIntent(intent, tip)) {
+    // Rotation is permitted only after a fresh provider read proves the old
+    // intent canceled. Stripe may deliver or retry that old canceled webhook
+    // after the CAS has installed its replacement. It is valid but stale:
+    // acknowledge it without touching the replacement or retrying forever.
+    const verifiedSuperseded = tip.intent_generation > 0 &&
+      intent.id !== tip.provider_payment_intent_id &&
+      intent.status === "canceled" &&
+      exactTipCommercialIdentity(intent, tip);
+    if (verifiedSuperseded) return { outcome: "superseded" };
+    throw new Error("tip_provider_mismatch");
+  }
   const chargeId = typeof intent.latest_charge === "string" ? intent.latest_charge : intent.latest_charge?.id;
   let refundedAmount = 0;
   let disputeId: string | null = null;
