@@ -39,7 +39,7 @@ import { fileURLToPath } from "node:url";
 import { createRequire } from "node:module";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const PORT = Number(process.env.PUB001_PORT || 3100);
+const PORT = Number(process.env.PUB001_PORT || 3120);
 const BASE = `http://127.0.0.1:${PORT}`;
 
 /* PUB-001 moved from `/` to `/business` with LEG-004, and `/` is PUB-012 now.
@@ -55,7 +55,7 @@ import { governedPages, specRows } from "../scripts/compositionContract.mjs";
 
 const require = createRequire(import.meta.url);
 const { chromium } = require(
-  process.env.PLAYWRIGHT_PATH || "/opt/node22/lib/node_modules/playwright",
+  process.env.PLAYWRIGHT_PATH || "playwright",
 );
 const AXE_SOURCE = readFileSync(require.resolve("axe-core/axe.min.js"), "utf8");
 
@@ -397,7 +397,7 @@ async function photographicSections(page) {
 
 async function main() {
   await startServer();
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ executablePath: process.env.COURANR_BROWSER_EXECUTABLE || undefined });
 
   /* ══ GATE B ══════════════════════════════════════ runtime responsive ══ */
   console.log("\nGATE B — runtime responsive verification (§24.1)");

@@ -53,7 +53,7 @@ function draftFor(biz, user, key) {
     '${biz}','${user}','${key}','merchant_portal','not_confirmed','merchant',
     'Recipient','555-0100','r@example.test',10,0,'standard',false,'photo_or_pin',
     ${addr("place-pickup", "10 Market St")},${addr("place-drop", "20 Main St")},false,
-    3219,900,600,300,'google_routes_v2','available_for_request',null,
+    3219,900,600,300,'mapbox_directions_v5','available_for_request',null,
     'estimated','${POLICY}',799,2,0,${items(799)},'[]'::jsonb,
     null,'asap',null,null,'[]'::jsonb,'none')`);
 }
@@ -104,7 +104,7 @@ function consumerCreateArgs(sessionId) {
     p_overnight_requested := false,
     p_route_distance_meters := ${C_METERS_5MI}, p_route_duration_seconds := 600,
     p_route_static_duration_seconds := 600, p_route_traffic_delay_seconds := 0,
-    p_distance_source := 'google_routes_v2', p_serviceability_outcome := 'available_for_request',
+    p_distance_source := 'mapbox_directions_v5', p_serviceability_outcome := 'available_for_request',
     p_route_review_reason := null::text,
     p_quote_status := 'estimated', p_pricing_policy_version := '${POLICY}',
     p_delivery_subtotal_cents := 2299, p_included_loaded_miles := 3, p_billable_loaded_miles := (5)::numeric,
@@ -314,7 +314,7 @@ async function main() {
         'merchant_portal','not_confirmed','merchant','Recipient','555-0100','r@example.test',
         null,0,'standard',false,'photo_or_pin',
         ${addr("place-pickup", "10 Market St")},${addr("place-drop", "20 Main St")},false,
-        3219,900,600,300,'google_routes_v2','available_for_request',null,
+        3219,900,600,300,'mapbox_directions_v5','available_for_request',null,
         'estimated','${POLICY}',799,2,0,${items(799)},'[]'::jsonb)`),
       "CR409|intake_policy_stale");
     recordPolicy(session, "allowed");
@@ -328,7 +328,7 @@ async function main() {
       'merchant_portal','not_confirmed','merchant','Recipient','555-0100','r@example.test',
       null,0,'standard',false,'photo_or_pin',
       ${addr("place-pickup", "10 Market St")},${addr("place-drop", "20 Main St")},false,
-      3219,900,600,300,'google_routes_v2','available_for_request',null,
+      3219,900,600,300,'mapbox_directions_v5','available_for_request',null,
       'estimated','${POLICY}',1099,2,0,
       jsonb_build_array(
         jsonb_build_object('code','base_delivery','label','Base','quantity',1,'unitAmountCents',799,'amountCents',799),
@@ -402,7 +402,7 @@ async function main() {
       '${BIZ_A}','${USER_A}','${key}','merchant_portal','not_confirmed','merchant',
       'Recipient','555-0100','r@example.test',null,0,'standard',false,'photo_or_pin',
       ${addr("place-pickup", "10 Market St")},${addr("place-drop", "20 Main St")},false,
-      3219,900,600,300,'google_routes_v2','available_for_request',null,
+      3219,900,600,300,'mapbox_directions_v5','available_for_request',null,
       ${status},${est ? `'${POLICY}'` : "null"},${est ? 799 : "null"},2,0,${est ? items(799) : "'[]'::jsonb"},
       ${est ? "'[]'::jsonb" : `'["shipment_policy_review"]'::jsonb`},
       ${band},'asap',null,null,'[]'::jsonb,${restricted}`;

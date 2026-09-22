@@ -43,7 +43,7 @@ function createAvailable(key, dropPlace = "place-drop-a", meters = 8047, amount 
     '${BUSINESS}','${USER}','${key}','merchant_portal','not_confirmed','merchant',
     'Recipient','555-0100','recipient@example.test',10,0,'standard',false,'photo_or_pin',
     ${address("place-pickup", "10 Market St")},${address(dropPlace, "20 Main St")},false,
-    ${meters},600,600,0,'google_routes_v2','available_for_request',null,
+    ${meters},600,600,0,'mapbox_directions_v5','available_for_request',null,
     'estimated','couranr-pricing-v2-2026-09-01',${amount},3,2,${items(amount)},'[]'::jsonb,
     null,null,null,null,'[]'::jsonb,'none')`);
 }
@@ -74,7 +74,7 @@ function main() {
                   route_distance_meters||'|'||loaded_distance_miles||'|'||
                   route_duration_seconds||'|'||distance_source||'|'||serviceability_outcome
              from public.couranr_quote_versions where request_id='${request}'`),
-      "place-pickup|place-drop-a|8047|5.000|600|google_routes_v2|available_for_request");
+      "place-pickup|place-drop-a|8047|5.000|600|mapbox_directions_v5|available_for_request");
     check("BRA-DB-04", "routed RPC has no browser loaded-mile parameter",
       one(`select coalesce(array_position(proargnames,'p_loaded_miles'),0)
              from pg_proc where oid='public.couranr_create_routed_delivery_request_draft(uuid,uuid,text,text,text,text,text,text,text,numeric,integer,text,boolean,text,jsonb,jsonb,boolean,bigint,integer,integer,integer,text,text,text,text,text,integer,integer,numeric,jsonb,jsonb,text,text,text,timestamptz,jsonb,text)'::regprocedure`),
@@ -86,7 +86,7 @@ function main() {
       'merchant_portal','not_confirmed','merchant','Recipient','555-0100','recipient@example.test',
       10,0,'standard',false,'photo_or_pin',
       ${address("place-pickup", "10 Market St")},${address("place-drop-b", "90 Changed St")},false,
-      16093,900,900,0,'google_routes_v2','available_for_request',null,
+      16093,900,900,0,'mapbox_directions_v5','available_for_request',null,
       'estimated','couranr-pricing-v2-2026-09-01',4500,3,7,${items(4500)},'[]'::jsonb,
       null,null,null,null,'[]'::jsonb,'none')`);
     check("BRA-DB-05", "address change appends Quote 2 and preserves Quote 1",
@@ -99,10 +99,10 @@ function main() {
       '${BUSINESS}','${USER}','route-review','merchant_portal','not_confirmed','merchant',
       'Recipient','555-0100','recipient@example.test',10,0,'standard',false,'photo_or_pin',
       ${address("place-pickup", "10 Market St")},${address("place-review", "30 Review St")},false,
-      null,null,null,null,'google_routes_v2','needs_review','google_routes_unavailable',
+      null,null,null,null,'mapbox_directions_v5','needs_review','mapbox_route_unavailable',
       'manual_review_required',null,null,3,0,'[]'::jsonb,'["route_needs_review"]'::jsonb,
       null,null,null,null,'[]'::jsonb,null)`);
-    check("BRA-DB-06", "Google failure persists needs_review with no distance or amount",
+    check("BRA-DB-06", "provider failure persists needs_review with no distance or amount",
       one(`select serviceability_outcome||'|'||(route_distance_meters is null)||'|'||
                   (loaded_distance_miles is null)||'|'||(subtotal_cents is null)
              from public.couranr_quote_versions where request_id='${review}'`),
@@ -112,7 +112,7 @@ function main() {
       '${BUSINESS}','${USER}','market-review','merchant_portal','not_confirmed','merchant',
       'Recipient','555-0100','recipient@example.test',10,0,'standard',false,'photo_or_pin',
       ${address("place-pickup", "10 Market St")},${address("place-surrounding", "100 King St")},false,
-      8047,600,600,0,'google_routes_v2','needs_review','market_needs_review',
+      8047,600,600,0,'mapbox_directions_v5','needs_review','market_needs_review',
       'manual_review_required',null,null,3,0,'[]'::jsonb,'["route_needs_review"]'::jsonb,
       null,null,null,null,'[]'::jsonb,null)`);
     check("BRA-DB-07", "successful out-of-market route remains needs_review with evidence",

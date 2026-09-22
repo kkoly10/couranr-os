@@ -365,7 +365,12 @@ async function sendRecipientInvitation(params: {
 
 /* -------------------------------------------------------------- sweeps --- */
 
-type SweepRow = { id: string; to_state: string | null; created_at: string | null };
+type SweepRow = {
+  id: string;
+  from_state: string | null;
+  to_state: string | null;
+  created_at: string | null;
+};
 
 /**
  * The events this request owes a notification for.
@@ -386,7 +391,7 @@ async function loadRecentEvents(params: {
 }): Promise<SweepRow[]> {
   const { data, error } = (await supabaseAdmin
     .from(params.table)
-    .select("id,to_state,created_at")
+    .select("id,from_state,to_state,created_at")
     .eq(params.column, params.id)
     .in("to_state", params.states)
     .gte("created_at", params.since)
@@ -396,7 +401,11 @@ async function loadRecentEvents(params: {
     record("consumerLifecycle.loadRecentEvents", { table: params.table, message: error.message });
     return [];
   }
-  return (data ?? []) as SweepRow[];
+  // Planning, readiness and credential commands can append an audit event
+  // whose to_state is still "confirmed". Only a state transition creates a
+  // lifecycle notification; otherwise each such command sends another
+  // confirmation email under a fresh event idempotency key.
+  return ((data ?? []) as SweepRow[]).filter((row) => row.from_state !== row.to_state);
 }
 
 /* -------------------------------------------------------------- driver --- */
@@ -505,21 +514,15 @@ export async function notifyConsumerLifecycle(
       since,
     }) : [];
 
-    /* Email itself is the sender relationship. A recipient tracking URL would
-       also authorize attestation and drop-off PIN, so it must never be reused
-       here. Keep the raw sender token in a URL fragment: no server request or
-       referrer receives it before the browser exchanges it. Earlier links
-       remain valid across notification retries; no new claim revokes them. */
-    const senderToken = senderEmail && (requestEvents.length > 0 || deliveryEvents.length > 0)
-      ? await issueSenderAccessToken(requestId) : null;
-    if (senderEmail && (requestEvents.length > 0 || deliveryEvents.length > 0) && !senderToken) {
-      record("consumerLifecycle.senderAccess", { requestId, reason: "issue_failed" });
-      report.reason = "sender_access_issue_failed";
-      return report;
-    }
-    const statusUrl = senderToken
-      ? `${emailUrl(defaultEmailConfig, "/send")}#sender=${encodeURIComponent(senderToken)}`
-      : emailUrl(defaultEmailConfig, "/send");
+    /* One immutable event -> one stable sender-only link. Resend compares BOTH
+       idempotency key and payload; a new random link on a retry is a 409, not
+       an idempotent send. The recipient's token is never given to the sender. */
+    const senderUrlForEvent = async (eventId: string): Promise<string | null> => {
+      const token = await issueSenderAccessToken(requestId, eventId);
+      return token
+        ? `${emailUrl(defaultEmailConfig, "/send")}#sender=${encodeURIComponent(token)}`
+        : null;
+    };
 
     /* ---- sender: the request's own lifecycle ---- */
     if (senderEmail) {
@@ -539,6 +542,12 @@ export async function notifyConsumerLifecycle(
           request.request_state !== "pending_couranr_review"
         ) {
           report.results.push({ notification, outcome: "skipped", reason: "already_past_review" });
+          continue;
+        }
+        const statusUrl = await senderUrlForEvent(String(ev.id));
+        if (!statusUrl) {
+          record("consumerLifecycle.senderAccess", { requestId, eventId: ev.id, reason: "issue_failed" });
+          report.results.push({ notification, outcome: "failed", reason: "sender_access_issue_failed" });
           continue;
         }
         const rendered =
@@ -581,6 +590,10 @@ export async function notifyConsumerLifecycle(
     for (const ev of events) {
       const state = String(ev.to_state ?? "");
       const deliveredAtLabel = whenLabel(ev.created_at, str(delivery.timezone) || undefined);
+      const statusUrl = senderEmail ? await senderUrlForEvent(String(ev.id)) : null;
+      if (senderEmail && !statusUrl) {
+        record("consumerLifecycle.senderAccess", { requestId, eventId: ev.id, reason: "issue_failed" });
+      }
 
       if (state === "in_transit") {
         if (recipientEmail) {
@@ -599,7 +612,7 @@ export async function notifyConsumerLifecycle(
             fetchImpl: options.fetchImpl,
           }));
         }
-        if (senderEmail) {
+        if (senderEmail && statusUrl) {
           const notification: ConsumerEmailNotification = "sender_out_for_delivery";
           report.results.push(await deliver({
             notification,
@@ -630,7 +643,7 @@ export async function notifyConsumerLifecycle(
             fetchImpl: options.fetchImpl,
           }));
         }
-        if (senderEmail) {
+        if (senderEmail && statusUrl) {
           const notification: ConsumerEmailNotification = "sender_delivered";
           report.results.push(await deliver({
             notification,
@@ -650,7 +663,7 @@ export async function notifyConsumerLifecycle(
           ? "Couranr's driver could not complete the handoff at the drop-off address."
           : "Couranr could not complete this delivery, so the items are being returned to the sender.";
 
-      if (senderEmail) {
+      if (senderEmail && statusUrl) {
         const notification: ConsumerEmailNotification =
           state === "could_not_deliver" ? "sender_handoff_failed" : "sender_return_notice";
         report.results.push(await deliver({

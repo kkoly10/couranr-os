@@ -57,7 +57,7 @@ import { createRequire } from "node:module";
 import { governedPages, specRows } from "../scripts/compositionContract.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const PORT = Number(process.env.PUBFAMILY_PORT || 3101);
+const PORT = Number(process.env.PUBFAMILY_PORT || 3121);
 const BASE = `http://127.0.0.1:${PORT}`;
 const ART = path.join(ROOT, "e2e/artifacts/pub-family");
 const CONTROL = process.argv.includes("--positive-control");
@@ -75,7 +75,7 @@ const PLATFORM_SERVED = /\/_vercel\//;
 
 const require = createRequire(import.meta.url);
 const { chromium } = require(
-  process.env.PLAYWRIGHT_PATH || "/opt/node22/lib/node_modules/playwright",
+  process.env.PLAYWRIGHT_PATH || "playwright",
 );
 const AXE_SOURCE = readFileSync(require.resolve("axe-core/axe.min.js"), "utf8");
 
@@ -430,7 +430,7 @@ async function startServer() {
 
 async function main() {
   await startServer();
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ executablePath: process.env.COURANR_BROWSER_EXECUTABLE || undefined });
 
   for (const page of PAGES) {
     /* ══ GATE B ═══════════════════════════════════ runtime responsive ══ */

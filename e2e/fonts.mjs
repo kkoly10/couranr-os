@@ -30,7 +30,7 @@
  * `--positive-control` re-runs the width-axis measurement with the axis range
  * stripped from the `@font-face` rule, and fails if the check does not notice.
  *
- * Reuses a dev server on BASE_URL (default http://127.0.0.1:3000) and only
+ * Reuses a dev server on BASE_URL (default http://127.0.0.1:3125) and only
  * boots one when nothing answers — Next 16's Turbopack dev server refuses a
  * second instance in the same directory.
  */
@@ -43,7 +43,7 @@ import { createRequire } from "node:module";
 import { claimDevDistDir } from "./devDistDir.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const BASE = (process.env.BASE_URL || "http://127.0.0.1:3000").replace(/\/$/, "");
+const BASE = (process.env.BASE_URL || "http://127.0.0.1:3125").replace(/\/$/, "");
 const PORT = Number(new URL(BASE).port || 3000);
 const APP_LOG = path.join(ROOT, "e2e/artifacts/fonts-app.log");
 const devDist = claimDevDistDir("fonts");
@@ -51,7 +51,7 @@ const CONTROL = process.argv.includes("--positive-control");
 
 const require = createRequire(import.meta.url);
 const { chromium } = require(
-  process.env.PLAYWRIGHT_PATH || "/opt/node22/lib/node_modules/playwright",
+  process.env.PLAYWRIGHT_PATH || "playwright",
 );
 
 /** family → the file it must resolve to, and whether it carries a width axis. */
@@ -150,7 +150,7 @@ async function measureWidthAxis(page, family, a, b) {
 
 async function main() {
   await startApp();
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ executablePath: process.env.COURANR_BROWSER_EXECUTABLE || undefined });
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
 
   /* Every font request the page makes, and how it ended. */

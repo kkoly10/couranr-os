@@ -249,6 +249,7 @@ function locationState(over: Partial<LocationState> = {}): LocationState {
     message: "Couranr needs your location for this step.",
     usable: false,
     request: vi.fn(),
+    reset: vi.fn(),
     ...over,
   };
 }
@@ -1847,7 +1848,7 @@ describe("the pickup form reflects proof the server already holds", () => {
 
   const readyLocation = {
     status: "ready", fix: { latitude: 38.42, longitude: -77.41, accuracyM: 8 },
-    message: "Location captured.", usable: true, request: vi.fn(),
+    message: "Location captured.", usable: true, request: vi.fn(), reset: vi.fn(),
   } as LocationState;
 
   async function renderPickup() {

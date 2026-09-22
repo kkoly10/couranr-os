@@ -675,7 +675,7 @@ function releaseEverythingOnClose(server) {
   };
 }
 
-export async function startGateway({ settleMs = PORT_SETTLE_MS } = {}) {
+export async function startGateway({ settleMs = PORT_SETTLE_MS, storageHandler = null } = {}) {
   await waitForPortFree(GATEWAY_PORT, "the auth gateway", { timeoutMs: settleMs });
   const server = http.createServer((req, res) => {
     // The only rewrite: strip the Supabase REST prefix.
@@ -686,6 +686,15 @@ export async function startGateway({ settleMs = PORT_SETTLE_MS } = {}) {
     if (req.method === "OPTIONS") {
       res.writeHead(204, { ...CORS, "content-length": "0" });
       res.end();
+      return;
+    }
+
+    // Opt-in disposable Storage stand-in for browser proof journeys. Ordinary
+    // suites retain the explicit NO STORAGE API behavior documented above.
+    if (req.url.startsWith("/storage/v1/") && storageHandler) {
+      Promise.resolve(storageHandler(req, res)).catch((error) => {
+        sendJson(res, 500, { error: `disposable storage failure: ${error.message}` });
+      });
       return;
     }
 

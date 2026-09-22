@@ -105,25 +105,15 @@ export function consumerSenderRequestConfirmed(
       { label: "Delivering to", value: esc(input.dropoffLabel) },
       { label: "Recipient", value: esc(input.recipientName) },
     ]),
-    /* The FACT of the recipient's notification, never the link itself. That
-       link is a recipient capability — it authorizes their adult attestation,
-       their identity verification and their handoff PIN — so forwarding it to
-       the sender would hand one party another party's credential. */
-    input.recipientNotified
-      ? panel({
-          tone: "success",
-          title: "Recipient notified",
-          html: `Couranr emailed ${esc(
-            input.recipientName,
-          )} their own private tracking link. For their security that link is theirs alone and is never copied into this message.`,
-        })
-      : panel({
-          tone: "info",
-          title: "Recipient notification",
-          html: `Couranr is emailing ${esc(
-            input.recipientName,
-          )} their own private tracking link. For their security that link is theirs alone and is never copied into this message.`,
-        }),
+    /* Stable across event retries: Resend refuses the same idempotency key
+       with a changed body. The recipient invitation has its own claim/receipt
+       path and may succeed between two sender-email attempts. Never copy its
+       tracking capability into the sender's message. */
+    panel({
+      tone: "info",
+      title: "Recipient tracking",
+      html: `Couranr handles ${esc(input.recipientName)}'s private tracking link separately. For their security that link is theirs alone and is never copied into this message.`,
+    }),
     button({ label: "Open Couranr Same Day", href: input.statusUrl, variant: "secondary" }),
     fallbackLink(input.statusUrl),
     small("Pickup and delivery times are estimates."),

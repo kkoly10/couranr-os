@@ -158,13 +158,14 @@ function refusingProvider() {
   return { calls, fetchImpl };
 }
 
-const ENV_KEYS = ["VERCEL_ENV", "COURANR_EMAIL_SEND", "COURANR_EMAIL_REDIRECT_TO", "RESEND_API_KEY"];
+const ENV_KEYS = ["VERCEL_ENV", "COURANR_EMAIL_SEND", "COURANR_EMAIL_REDIRECT_TO", "RESEND_API_KEY", "COURANR_HANDOFF_CODE_SECRET"];
 let savedEnv: Record<string, string | undefined> = {};
 
 beforeEach(() => {
   savedEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
   process.env.VERCEL_ENV = "production";
   process.env.RESEND_API_KEY = "re_test_key";
+  process.env.COURANR_HANDOFF_CODE_SECRET = "8f0bb79d73ad4cb7b75f0c78ddc98fe4a8c9e23de980b37138e799e751b1dca7";
   delete process.env.COURANR_EMAIL_SEND;
   delete process.env.COURANR_EMAIL_REDIRECT_TO;
 
@@ -593,6 +594,34 @@ describe("consumer lifecycle notifications", () => {
     h.rpc.couranr_claim_consumer_recipient_tracking_delivery = claimReturns("sent");
   });
 
+  it("retries a sender event with the exact same Resend payload when recipient notification state changes", async () => {
+    h.requestEvents = [
+      { id: "event-stable-sender", to_state: "confirmed", created_at: new Date().toISOString() },
+    ];
+    const seen = new Map<string, string>();
+    const bodies: string[] = [];
+    const strictResend = (async (_url: unknown, init: any) => {
+      const key = String(init.headers["Idempotency-Key"]);
+      const body = String(init.body);
+      bodies.push(body);
+      const earlier = seen.get(key);
+      if (earlier && earlier !== body) {
+        return { ok: false, status: 409, json: async () => ({ name: "invalid_idempotent_request" }) } as any;
+      }
+      seen.set(key, body);
+      return { ok: true, status: 200, json: async () => ({ id: "msg_stable" }) } as any;
+    }) as typeof fetch;
+
+    const first = await notifyConsumerLifecycle({ requestId: REQ, fetchImpl: strictResend });
+    h.tokens = [{ recipient_notified_at: new Date().toISOString() }];
+    const second = await notifyConsumerLifecycle({ requestId: REQ, fetchImpl: strictResend });
+
+    expect(first.results.find((r) => r.notification === "sender_request_confirmed")?.outcome).toBe("sent");
+    expect(second.results.find((r) => r.notification === "sender_request_confirmed")?.outcome).toBe("sent");
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]).toBe(bodies[0]);
+  });
+
   it("emails the sender when Couranr receives the request and when it confirms it", async () => {
     h.request = consumerRequest({ request_state: "pending_couranr_review" });
     h.requestEvents = [
@@ -724,6 +753,21 @@ describe("consumer lifecycle notifications", () => {
     ).toMatchObject({ outcome: "skipped", reason: "already_past_review" });
     expect(p.calls.length).toBe(1);
     expect(p.calls[0].headers["Idempotency-Key"]).toContain("sender_request_confirmed/ev-conf");
+  });
+
+  it("does not turn same-state planning and credential audit events into repeat confirmations", async () => {
+    const now = new Date().toISOString();
+    h.requestEvents = [
+      { id: "ev-conf", from_state: "pending_couranr_review", to_state: "confirmed", created_at: now },
+      { id: "ev-plan", from_state: "confirmed", to_state: "confirmed", created_at: now },
+      { id: "ev-pickup-code", from_state: "confirmed", to_state: "confirmed", created_at: now },
+    ];
+    const p = provider();
+
+    const report = await notifyConsumerLifecycle({ requestId: REQ, fetchImpl: p.fetchImpl });
+
+    expect(report.results.filter((r) => r.notification === "sender_request_confirmed")).toHaveLength(1);
+    expect(p.calls.filter((call) => String(call.headers["Idempotency-Key"]).includes("sender_request_confirmed"))).toHaveLength(1);
   });
 
   it("skips an audience it has no address for rather than sending nowhere", async () => {

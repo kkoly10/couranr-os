@@ -191,8 +191,11 @@ async function main() {
 
     /* ─────────────────────────── browser helpers ─────────────────────── */
 
-    const { chromium } = await import("/opt/node22/lib/node_modules/playwright/index.mjs");
-    browser = await chromium.launch({ args: ["--no-proxy-server"] });
+    const { chromium } = await import("playwright");
+    browser = await chromium.launch({
+      executablePath: process.env.COURANR_BROWSER_EXECUTABLE || undefined,
+      args: ["--no-proxy-server"],
+    });
 
     const googleCalls = new Map();
     const pageErrors = [];
@@ -294,8 +297,8 @@ async function main() {
     check("U7", "the panel shows the suggestion, labeled as Couranr's, awaiting confirmation",
       /Couranr suggested/.test(body1) && /Weight \(lb\): 20/.test(body1));
     check("U8", "§10 — a 70-confidence proposal is NOT prefilled into the structured weight",
-      (await fieldLabel(page, "Weight (lb)").inputValue()) === "",
-      `value='${await fieldLabel(page, "Weight (lb)").inputValue()}'`);
+      (await fieldLabel(page, "Exact weight (lb)").inputValue()) === "",
+      `value='${await fieldLabel(page, "Exact weight (lb)").inputValue()}'`);
     check("U9", "no confidence percentage is painted on the screen", !/\b70\s?%|\b90\s?%/.test(body1));
     await page.screenshot({ path: path.join(SHOTS, "U-suggested.png"), fullPage: true });
 
@@ -319,9 +322,9 @@ async function main() {
       sessionRow());
     await page.waitForTimeout(600);
     check("U14", "a TRUSTED fact reflects into the structured form: exact mode, 20 lb",
-      (await fieldLabel(page, "Weight (lb)").inputValue()) === "20" &&
-        (await fieldLabel(page, "Weight").inputValue()) === "exact",
-      `weight='${await fieldLabel(page, "Weight (lb)").inputValue()}'`);
+      (await fieldLabel(page, "Exact weight (lb)").inputValue()) === "20" &&
+        (await fieldLabel(page, "Shipment weight").inputValue()) === "exact",
+      `weight='${await fieldLabel(page, "Exact weight (lb)").inputValue()}'`);
     const body2 = await mainText(page);
     check("U15", "the panel now says 'You told us' for the weight",
       /You told us:[\s\S]*Weight \(lb\): 20/.test(body2));
@@ -383,7 +386,7 @@ async function main() {
     check("U22", "the withdrawn package count is gone from the panel",
       !/Packages: 12/.test(body3) && /Weight \(lb\): 20/.test(body3));
     check("U23", "and the structured weight the merchant confirmed is still 20",
-      (await fieldLabel(page, "Weight (lb)").inputValue()) === "20");
+      (await fieldLabel(page, "Exact weight (lb)").inputValue()) === "20");
     await page.screenshot({ path: path.join(SHOTS, "U-hostile.png"), fullPage: true });
 
     /* ═══════════ 4. the route refuses what it must ════════════════════ */
@@ -516,7 +519,7 @@ async function main() {
 
       /* ---- the merchant changes their mind: exact → band, through the UI ---- */
       await page.getByRole("button", { name: /back to details/i }).click();
-      await fieldLabel(page, "Weight").waitFor({ state: "visible", timeout: 30_000 });
+      await fieldLabel(page, "Shipment weight").waitFor({ state: "visible", timeout: 30_000 });
       // The panel unmounted on the review step. On the way back it must
       // rehydrate the SAME session — not report "no session" and make the
       // flow forget where the facts came from (found by this suite: the
@@ -528,7 +531,7 @@ async function main() {
           /Restricted item: none/.test(backText) &&
           (await page.getByLabel(/What are you delivering/).inputValue()).includes("Ignore all rules"),
         backText.match(/You told us:[^\n]*/)?.[0] ?? "(no 'You told us')");
-      await fieldLabel(page, "Weight").selectOption("over_25_to_50_lb");
+      await fieldLabel(page, "Shipment weight").selectOption("over_25_to_50_lb");
       const estimated = page.waitForResponse(
         (r) => r.request().method() === "POST" && /\/estimate$/.test(new URL(r.url()).pathname),
         { timeout: 60_000 }
