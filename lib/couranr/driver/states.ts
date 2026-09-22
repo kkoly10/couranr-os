@@ -255,9 +255,9 @@ export type PinOutcome = (typeof PIN_OUTCOMES)[number];
 
 export const PIN_OUTCOME_MESSAGES: Record<PinOutcome, string> = {
   accepted: "Code accepted.",
-  invalid: "That code is not correct. Check it with the sender and try again.",
+  invalid: "That code is not correct. Check it with the person providing it and try again.",
   locked:
-    "Too many incorrect attempts. Ask the sender or Couranr Operations to issue a new code.",
+    "Too many incorrect attempts. Ask for a new code or contact Couranr Operations.",
   expired: "That code is no longer valid. Ask for a new one.",
 };
 

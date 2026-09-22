@@ -33,7 +33,7 @@ export function fulfillmentToLifecycleInput(f: {
   readinessState: string;
   payment: { paymentState: string } | null;
   servicePlan: { planState: string } | null;
-  delivery: { driverAssigned: boolean } | null;
+  delivery: { driverAssigned: boolean; fulfillmentState?: string | null } | null;
 }): LifecycleInput {
   return {
     requestState: f.requestState,
@@ -42,6 +42,7 @@ export function fulfillmentToLifecycleInput(f: {
     servicePlanConfirmed: f.servicePlan?.planState === "confirmed",
     canonicalDeliveryExists: Boolean(f.delivery),
     assignmentActive: Boolean(f.delivery?.driverAssigned),
+    fulfillmentState: f.delivery?.fulfillmentState ?? null,
   };
 }
 

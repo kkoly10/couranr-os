@@ -25,12 +25,15 @@ import {
 import { intentIdempotencyKey } from "@/lib/couranr/payments/stripe";
 import { REQUEST_VIEW_COLUMNS } from "@/lib/couranr/requests/commands";
 import { REQUEST_STATES } from "@/lib/couranr/requests/states";
+import { PIN_OUTCOME_MESSAGES } from "@/lib/couranr/driver/states";
 import {
+  operationsAssignmentSummary,
   operationsWorkbenchState,
   OPERATIONS_WORKBENCH_PHASES,
 } from "@/lib/couranr/operations/workbench";
 
 const ROOT = join(__dirname, "..");
+const QUEUE_ROUTE = readFileSync(join(ROOT, "app/api/couranr/operations/queue/route.ts"), "utf8");
 
 /** A confirmed, authorized, un-planned request — the middle of the lifecycle. */
 const BASE: LifecycleInput = {
@@ -177,6 +180,26 @@ describe("OPS-002 lifecycle stage derivation", () => {
     }
   });
 
+  it("terminal physical delivery is never re-dispatch work after its assignment closes", () => {
+    for (const fulfillmentState of ["delivered", "returned", "cancelled", "could_not_deliver"]) {
+      for (const assignmentActive of [false, true]) {
+        const input = {
+          canonicalDeliveryExists: true,
+          assignmentActive,
+          fulfillmentState,
+          paymentState: "captured",
+        };
+        expect(at(input)).toBe("not_actionable");
+        expect(QUEUE_STAGES).not.toContain(at(input));
+      }
+    }
+    expect(QUEUE_ROUTE).toContain("fulfillmentState: row.delivery?.fulfillment_state ?? null");
+    // A real open evidence problem remains visible even if a terminal state
+    // was recorded; the display fix must not hide work requiring review.
+    expect(at({ canonicalDeliveryExists: true, fulfillmentState: "delivered", proofSyncFailureOpen: true }))
+      .toBe("proof_sync_attention");
+  });
+
   /*
    * Readiness cannot advance a row past authorization. A merchant marking
    * "ready" with no hold in place is still awaiting payment — the queue must
@@ -227,6 +250,10 @@ describe("OPS-002 lifecycle stage derivation", () => {
 });
 
 describe("OPS-002 stage metadata", () => {
+  it("handoff error copy does not tell a drop-off driver to ask the sender", () => {
+    expect(PIN_OUTCOME_MESSAGES.invalid).not.toContain("the sender");
+    expect(PIN_OUTCOME_MESSAGES.locked).not.toContain("the sender");
+  });
   it("labels, descriptions, tone and order cover every stage exactly", () => {
     for (const table of [
       LIFECYCLE_STAGE_LABELS,
@@ -333,15 +360,36 @@ describe("OPS-003 lifecycle workbench grouping", () => {
   });
 
   it("terminal delivery evidence wins over an active assignment", () => {
-    for (const fulfillmentState of ["delivered", "could_not_deliver", "cancelled"]) {
+    for (const fulfillmentState of ["delivered", "returned", "could_not_deliver", "cancelled"]) {
       expect(
         grouped({
           canonicalDeliveryExists: true,
           assignmentActive: true,
           fulfillmentState,
-        }).phase
-      ).toBe("complete");
+        })
+      ).toEqual({ phase: "complete", lifecycleStage: "not_actionable" });
     }
+  });
+
+  it("keeps an open proof failure visible even after a terminal delivery transition", () => {
+    expect(grouped({
+      canonicalDeliveryExists: true,
+      fulfillmentState: "delivered",
+      proofSyncFailureOpen: true,
+    })).toEqual({ phase: "execute", lifecycleStage: "proof_sync_attention" });
+  });
+
+  it("describes a closed driver assignment as closed rather than missing", () => {
+    expect(operationsAssignmentSummary({
+      canonicalDeliveryExists: true,
+      assignmentActive: false,
+      fulfillmentState: "delivered",
+    })).toBe("Closed");
+    expect(operationsAssignmentSummary({
+      canonicalDeliveryExists: true,
+      assignmentActive: false,
+      fulfillmentState: "scheduled",
+    })).toBe("Awaiting assignment");
   });
 
   it("declares the operator-facing phases in lifecycle order", () => {

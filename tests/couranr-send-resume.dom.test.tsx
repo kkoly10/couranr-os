@@ -54,6 +54,7 @@ const SESSION = `${API}/session`;
 const ESTIMATE = `${API}/estimate`;
 const SUBMIT = `${API}/submit`;
 const REQUEST = `${API}/request`;
+const RECOVER_SENDER = `${API}/recover-sender`;
 const PAY = `${API}/pay`;
 const REFRESH = `${API}/refresh-quote`;
 
@@ -125,10 +126,12 @@ describe("SendFlow live resume — awaiting the payer's authorization", () => {
   beforeEach(() => {
     process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY = "pk_test_dom_placeholder";
     window.sessionStorage.clear();
+    window.history.replaceState(null, "", "/send");
     routerReplace.mockReset();
   });
   afterEach(() => {
     cleanup();
+    window.history.replaceState(null, "", "/send");
     globalThis.fetch = originalFetch;
     delete process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
   });
@@ -283,5 +286,35 @@ describe("SendFlow live resume — awaiting the payer's authorization", () => {
     expect(await screen.findByText("What do you need?")).toBeTruthy();
     await new Promise((r) => setTimeout(r, 20));
     expect(f.calls).toHaveLength(0);
+  });
+
+  it("a fresh-browser sender email link restores delivered status without the new-order chooser or recipient authority", async () => {
+    window.history.replaceState(null, "", "/send#sender=sender-email-capability");
+    const f = installFetch({
+      [RECOVER_SENDER]: () => ({
+        body: { guestSession: { token: GUEST_TOKEN, expiresAt: new Date(Date.now() + 60 * 60_000).toISOString() } },
+      }),
+      [REQUEST]: () => ({
+        body: { request: {
+          state: "confirmed",
+          deliveryState: "delivered",
+          quoteStatus: "estimated",
+          totalCents: 1075,
+          paymentState: "captured",
+        } },
+      }),
+    });
+
+    render(<SendFlow mode="live" />);
+    await waitFor(() => expect(f.of(RECOVER_SENDER)).toHaveLength(1));
+    await waitFor(() => expect(f.of(REQUEST)).toHaveLength(1));
+    expect(await screen.findByText("Delivery status: Delivered.")).toBeTruthy();
+    expect(screen.queryByText("What do you need?")).toBeNull();
+    expect(window.location.hash).toBe("");
+    expect(f.of(RECOVER_SENDER)).toHaveLength(1);
+    expect(f.of(REQUEST)).toHaveLength(1);
+    expect(f.of(REQUEST)[0].headers[GUEST_HEADER]).toBe(GUEST_TOKEN);
+    expect(f.of(SESSION)).toHaveLength(0);
+    expect(document.body.textContent).not.toContain("recipient drop-off code");
   });
 });

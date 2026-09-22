@@ -50,7 +50,8 @@ function fail(params: {
  * actually reach and refuses to pretend otherwise.
  */
 export function resolutionPolicyForFulfillmentState(
-  state: unknown
+  state: unknown,
+  requesterKind: "business" | "consumer" = "business"
 ): HelpResolutionPolicy | null {
   if (
     state === "not_scheduled" ||
@@ -81,7 +82,7 @@ export function resolutionPolicyForFulfillmentState(
       title: "Request Operations review",
       stageLabel: "Driver has arrived at pickup",
       policySummary:
-        "Couranr does not claim an automatic customer-cancellation amount at this stage. The $15 failed-pickup retention applies only when pickup cannot occur because the package or merchant is unavailable, plus any approved waiting. Operations must review the evidence before deciding the outcome.",
+        "Couranr does not claim an automatic customer-cancellation amount at this stage. The $15 failed-pickup retention applies only when pickup cannot occur because the shipment or pickup contact is unavailable, plus any approved waiting. Operations must review the evidence before deciding the outcome.",
       submitLabel: "Send review request",
       policyReference: "CAN-001 + REF-003",
     };
@@ -141,7 +142,9 @@ export function resolutionPolicyForFulfillmentState(
       title: "Delivery already completed",
       stageLabel: "Delivered",
       policySummary:
-        "A completed delivery is not cancelled through this form. Product returns, product refunds and replacements are the selling business's responsibility. Use the delivery-problem or message form below for a Couranr delivery-service issue.",
+        requesterKind === "consumer"
+          ? "A completed delivery is not cancelled through this form. If this was a purchase, ask the seller about a product return, refund or replacement. Use the delivery-problem or message form below for a Couranr delivery-service issue."
+          : "A completed delivery is not cancelled through this form. Product returns, product refunds and replacements are the selling business's responsibility. Use the delivery-problem or message form below for a Couranr delivery-service issue.",
       submitLabel: null,
       policyReference: "CAN-001 + REF-003",
     };
@@ -181,7 +184,7 @@ async function readHelpResolutionSnapshot(
 ): Promise<HelpResolutionSnapshot | null> {
   const { data, error } = await supabaseAdmin
     .from("couranr_deliveries")
-    .select("fulfillment_state")
+    .select("fulfillment_state, request_id")
     .eq("id", deliveryId)
     .maybeSingle();
 
@@ -195,7 +198,26 @@ async function readHelpResolutionSnapshot(
     return null;
   }
 
-  const policy = resolutionPolicyForFulfillmentState(data.fulfillment_state);
+  let requesterKind: "business" | "consumer" = "business";
+  if (data.fulfillment_state === "delivered") {
+    const request = await supabaseAdmin
+      .from("couranr_delivery_requests")
+      .select("requester_kind")
+      .eq("id", data.request_id)
+      .maybeSingle();
+    if (request.error || !request.data || !["business", "consumer"].includes(request.data.requester_kind)) {
+      logServerFailure({
+        correlationId: newCorrelationId(),
+        operation: "help.resolution.requester_kind",
+        code: "internal",
+        detail: request.error ?? { reason: "requester_kind_unavailable" },
+      });
+      return null;
+    }
+    requesterKind = request.data.requester_kind as "business" | "consumer";
+  }
+
+  const policy = resolutionPolicyForFulfillmentState(data.fulfillment_state, requesterKind);
   if (!policy?.available) {
     logServerFailure({
       correlationId: newCorrelationId(),

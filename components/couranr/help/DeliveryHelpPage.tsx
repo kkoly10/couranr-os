@@ -201,7 +201,7 @@ export function DeliveryHelpPage({ token }: { token: string }) {
         <Alert tone="warning" title="Delivery Help">
           <Text>{REFUSAL}</Text>
           <Text>
-            If you are expecting a delivery, the business that arranged it can send you a new link.
+            If you are expecting a delivery, ask the person or business that arranged it for a new link.
           </Text>
         </Alert>
       </Stack>

@@ -1,5 +1,6 @@
 import {
   lifecycleStage,
+  isTerminalDeliveryState,
   type LifecycleInput,
   type LifecycleStage,
 } from "@/lib/couranr/fulfillment/lifecycle";
@@ -26,8 +27,6 @@ export const OPERATIONS_WORKBENCH_LABELS: Readonly<
   complete: "Complete",
 };
 
-const TERMINAL_FULFILLMENT = new Set(["delivered", "could_not_deliver", "cancelled"]);
-
 export type OperationsWorkbenchInput = LifecycleInput & {
   fulfillmentState?: string | null;
 };
@@ -36,6 +35,17 @@ export type OperationsWorkbenchState = {
   phase: OperationsWorkbenchPhase;
   lifecycleStage: LifecycleStage;
 };
+
+/** A closed assignment is not an unassigned delivery needing dispatch. */
+export function operationsAssignmentSummary(input: {
+  canonicalDeliveryExists: boolean;
+  assignmentActive: boolean;
+  fulfillmentState: string | null;
+}): string {
+  if (!input.canonicalDeliveryExists) return "Not scheduled";
+  if (isTerminalDeliveryState(input.fulfillmentState)) return "Closed";
+  return input.assignmentActive ? "Active" : "Awaiting assignment";
+}
 
 /**
  * One Operations case, one current phase.
@@ -52,8 +62,9 @@ export function operationsWorkbenchState(
 
   if (
     input.canonicalDeliveryExists &&
-    input.fulfillmentState &&
-    TERMINAL_FULFILLMENT.has(input.fulfillmentState)
+    isTerminalDeliveryState(input.fulfillmentState) &&
+    stage !== "proof_sync_attention" &&
+    stage !== "automation_exception"
   ) {
     return { phase: "complete", lifecycleStage: stage };
   }
