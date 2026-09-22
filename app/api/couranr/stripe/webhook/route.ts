@@ -13,6 +13,7 @@ import {
 import { logServerFailure, newCorrelationId } from "@/lib/couranr/errors";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
 import { advanceAutomaticFulfillment } from "@/lib/couranr/automation/engine";
+import { reconcileDriverTipIntent } from "@/lib/couranr/driver/feedback";
 
 export const dynamic = "force-dynamic";
 // The signature is computed over the exact bytes Stripe sent. Any framework
@@ -88,6 +89,41 @@ export async function POST(req: NextRequest) {
   }
 
   const object: any = (event.data as any)?.object ?? {};
+  // Voluntary tips are their own automatic-capture PaymentIntents. They never
+  // enter the quote-bound delivery obligation/capture state machine below.
+  let tipIntentId: string | null = null;
+  if (object?.object === "payment_intent" && object.metadata?.couranrTipId) {
+    tipIntentId = String(object.id ?? "");
+  } else if (object?.object === "charge" && event.type === "charge.refunded" &&
+             typeof object.payment_intent === "string") {
+    tipIntentId = object.payment_intent;
+  } else if (object?.object === "dispute" &&
+             ["charge.dispute.created", "charge.dispute.updated", "charge.dispute.closed",
+              "charge.dispute.funds_withdrawn", "charge.dispute.funds_reinstated"].includes(event.type)) {
+    try {
+      if (typeof object.payment_intent === "string") {
+        tipIntentId = object.payment_intent;
+      } else {
+        const chargeId = typeof object.charge === "string" ? object.charge : object.charge?.id;
+        if (!chargeId) return ack("dispute_without_charge");
+        const charge = await getStripeClient().charges.retrieve(chargeId);
+        tipIntentId = typeof charge.payment_intent === "string"
+          ? charge.payment_intent : charge.payment_intent?.id ?? null;
+      }
+    } catch {
+      return routeFailure("internal", "Tip dispute reconciliation is pending.");
+    }
+  }
+  if (tipIntentId) {
+    try {
+      const tip = await reconcileDriverTipIntent(tipIntentId);
+      return ack(tip.outcome, { tipState: tip.state ?? null });
+    } catch (cause) {
+      logServerFailure({ operation: "couranrStripeWebhook.tip", correlationId: newCorrelationId(),
+        code: "internal", detail: cause });
+      return routeFailure("internal", "Tip reconciliation is pending.");
+    }
+  }
   if (object?.object !== "payment_intent") {
     // Recorded nowhere and acted on not at all — this endpoint is only for
     // PaymentIntents. Acked so Stripe does not retry forever.

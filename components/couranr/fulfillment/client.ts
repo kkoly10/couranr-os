@@ -84,6 +84,7 @@ export type FulfillmentView = {
     revalidatedRouteDurationSeconds: number | null;
     revalidatedTrafficDelaySeconds: number | null;
     driverAssigned: boolean;
+    driver: { name: string; portraitUrl: string | null } | null;
     assignment: {
       id: string;
       driverId: string;

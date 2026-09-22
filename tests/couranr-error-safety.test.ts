@@ -157,6 +157,7 @@ describe("canonical routes cannot leak a database detail", () => {
   it("covers every canonical route", () => {
     expect(ROUTES.map(rel).sort()).toEqual([
       "app/api/couranr/consumer/cancellation-review/route.ts",
+      "app/api/couranr/consumer/driver-feedback/route.ts",
       "app/api/couranr/consumer/estimate/route.ts",
       "app/api/couranr/consumer/help-link/route.ts",
       "app/api/couranr/consumer/interpret/route.ts",
@@ -176,6 +177,7 @@ describe("canonical routes cannot leak a database detail", () => {
       "app/api/couranr/conversations/[id]/route.ts",
       "app/api/couranr/conversations/route.ts",
       "app/api/couranr/delivery-requests/[id]/authorize-payment/route.ts",
+      "app/api/couranr/delivery-requests/[id]/driver-feedback/route.ts",
       "app/api/couranr/delivery-requests/[id]/estimate/route.ts",
       "app/api/couranr/delivery-requests/[id]/fulfillment/route.ts",
       "app/api/couranr/delivery-requests/[id]/payment-link/route.ts",
@@ -187,6 +189,7 @@ describe("canonical routes cannot leak a database detail", () => {
       "app/api/couranr/delivery-requests/[id]/tracking-link/route.ts",
       "app/api/couranr/delivery-requests/[id]/validate-hosted/route.ts",
       "app/api/couranr/delivery-requests/route.ts",
+      "app/api/couranr/driver-portrait/[publicId]/route.ts",
       "app/api/couranr/driver/assignment/route.ts",
       "app/api/couranr/driver/availability/route.ts",
       "app/api/couranr/driver/deliveries/[id]/arrive-at-dropoff/route.ts",
@@ -271,6 +274,8 @@ describe("canonical routes cannot leak a database detail", () => {
       "app/api/couranr/operations/delivery-requests/[id]/submit/route.ts",
       "app/api/couranr/operations/delivery-requests/route.ts",
       "app/api/couranr/operations/discrepancies/[id]/safe-to-continue/route.ts",
+      "app/api/couranr/operations/driver-feedback/route.ts",
+      "app/api/couranr/operations/drivers/[id]/portrait/route.ts",
       "app/api/couranr/operations/drivers/route.ts",
       "app/api/couranr/operations/inbox/route.ts",
       "app/api/couranr/operations/incidents/[id]/route.ts",
@@ -291,6 +296,7 @@ describe("canonical routes cannot leak a database detail", () => {
       "app/api/couranr/pay/[token]/route.ts",
       "app/api/couranr/stripe/webhook/route.ts",
       "app/api/couranr/track/[token]/adult-attestation/route.ts",
+      "app/api/couranr/track/[token]/driver-feedback/route.ts",
       "app/api/couranr/track/[token]/dropoff-code/route.ts",
       "app/api/couranr/track/[token]/help-link/route.ts",
       "app/api/couranr/track/[token]/proof/[proofId]/url/route.ts",
@@ -307,8 +313,13 @@ describe("canonical routes cannot leak a database detail", () => {
       const jsonCalls = src.match(/NextResponse\.json\(/g) || [];
       const errorBodies = src.match(/NextResponse\.json\(\s*\{\s*error:/g) || [];
       expect(errorBodies, `${rel(file)} hand-rolls an error body`).toHaveLength(0);
-      // Every route returns at least one success body.
-      expect(jsonCalls.length).toBeGreaterThan(0);
+      // Every route returns a success body. Portrait bytes are the one
+      // intentional non-JSON success representation.
+      expect(
+        jsonCalls.length > 0 ||
+        /new Response\(/.test(src) ||
+        /handleFeedbackRequest\(/.test(src),
+      ).toBe(true);
     });
 
     it(`${rel(file)} forwards no driver field`, () => {

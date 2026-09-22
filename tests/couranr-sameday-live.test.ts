@@ -869,6 +869,7 @@ describe("readRequest: the recipient's token is never the sender's to hold", () 
       paymentState: "authorized",
       recipientNotifiedAt: "2026-09-17T12:00:00.000Z",
       recipientNotifiedTo: "dana@example.test",
+      driver: null,
     });
   });
 

@@ -10,6 +10,7 @@ import {
 import { logServerFailure, newCorrelationId } from "@/lib/couranr/errors";
 import { notifyConsumerLifecycle } from "@/lib/couranr/email/consumerLifecycle";
 import { notifyBusinessLifecycle } from "@/lib/couranr/email/businessLifecycle";
+import { notifyDriverDispatchLifecycle } from "@/lib/couranr/email/driverDispatchLifecycle";
 
 assertServerOnly("lib/couranr/automation/engine.ts");
 
@@ -115,6 +116,14 @@ export async function advanceAutomaticFulfillment(
     recordFailure("advanceAutomaticFulfillment.notifyBusiness", {
       requestId,
       error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  try {
+    await notifyDriverDispatchLifecycle({ requestId, fetchImpl: options?.fetchImpl });
+  } catch (err) {
+    recordFailure("advanceAutomaticFulfillment.notifyDriverDispatch", {
+      requestId, error: err instanceof Error ? err.message : String(err),
     });
   }
 
@@ -632,6 +641,10 @@ export async function dispatchOne(plan: Record<string, any>): Promise<AutoResult
       deliveryId,
     };
   }
+
+  // The SQL assignment is committed. Mail is downstream and never changes
+  // dispatch success; the cron's notification sweep retries provider failures.
+  await notifyDriverDispatchLifecycle({ requestId });
 
   return {
     ok: true,

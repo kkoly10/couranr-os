@@ -269,16 +269,17 @@ export function verifyFidelity() {
        (caaa176b, 2026-09-16) and the number was not moved with them:
        `couranr_operational_switches` + `couranr_operational_switch_events`
        (20260917190000, FLG-001), `couranr_refund_requests` (20260917200000,
-       OPS-011), and `couranr_market_availability` +
-       `couranr_operations_setting_events` (20260917210000).
+       OPS-011), `couranr_market_availability` +
+       `couranr_operations_setting_events` (20260917210000), and the three
+       driver portrait/review/tip tables (20260922200000/210000).
 
        Deliberately an exact equality, not `>=`: this probe is the one place a
        table added or dropped without anyone noticing shows up, and `>=` would
-       make a DROP invisible. It is its own positive control — 62 and 64 both
+       make a DROP invisible. It is its own positive control — 65 and 67 both
        fail — so the cost of that strictness is this comment, every time. */
-    ["63 couranr_ tables (including trust/custody evidence)",
+    ["66 couranr_ tables (including driver portrait/feedback evidence)",
       () => one(`select count(*) from pg_class c join pg_namespace n on n.oid=c.relnamespace
-                 where n.nspname='public' and c.relkind='r' and c.relname like 'couranr%'`) === "63"],
+                 where n.nspname='public' and c.relkind='r' and c.relname like 'couranr%'`) === "66"],
     ["the merchant-customer tables exist and are service_role-only",
       () =>
         one(`select has_table_privilege('service_role','public.merchant_customers','INSERT')

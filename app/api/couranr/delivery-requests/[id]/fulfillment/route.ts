@@ -16,6 +16,7 @@ import {
   isPaymentFailure,
 } from "@/lib/couranr/payments/commands";
 import { failureResponse, routeFailure } from "@/lib/couranr/requests/respond";
+import { identityForDelivery, type PublicDriverIdentity } from "@/lib/couranr/driver/publicProfile";
 
 export const dynamic = "force-dynamic";
 
@@ -96,6 +97,17 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
     ? await getActiveAssignmentForDelivery({ deliveryId: String(delivery.value.delivery.id) })
     : { ok: true as const, value: { assignment: null } };
   if (isFulfillmentFailure(assignment)) return failureResponse(assignment);
+
+  let publicDriver: PublicDriverIdentity | null = null;
+  if (delivery.value.delivery) {
+    try {
+      publicDriver = await identityForDelivery(
+        String(delivery.value.delivery.id), String(delivery.value.delivery.fulfillment_state),
+      );
+    } catch {
+      return routeFailure("internal", "Driver identity could not be loaded.");
+    }
+  }
 
   const automationException = await getOpenAutomationException({ requestId: params.id });
   if (isFulfillmentFailure(automationException)) return failureResponse(automationException);
@@ -197,6 +209,7 @@ export async function GET(req: NextRequest, props: { params: Promise<{ id: strin
           revalidatedTrafficDelaySeconds:
             delivery.value.delivery.revalidated_traffic_delay_seconds ?? null,
           driverAssigned: Boolean(assignment.value.assignment),
+          driver: publicDriver,
           assignment: assignment.value.assignment
             ? {
                 id: assignment.value.assignment.id,

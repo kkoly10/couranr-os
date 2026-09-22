@@ -16,6 +16,9 @@ const PROTECTED = [
   "couranr_deliveries",
   "couranr_delivery_events",
   "couranr_delivery_assignments",
+  "couranr_driver_portraits",
+  "couranr_driver_reviews",
+  "couranr_driver_tips",
 ];
 
 function walk(dir) {

@@ -91,6 +91,27 @@ export async function call<T>(
   return { ok: true, value: payload as T };
 }
 
+/** Authenticated binary form upload; the browser supplies the multipart boundary. */
+export async function callMultipart<T>(path: string, body: FormData): Promise<ApiResult<T>> {
+  const token = await accessToken();
+  if (!token) return { ok: false, status: 401, error: "Sign in to continue." };
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      method: "POST", headers: { authorization: `Bearer ${token}` }, body,
+    });
+  } catch {
+    return { ok: false, status: 0, error: "You appear to be offline." };
+  }
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) return {
+    ok: false, status: response.status,
+    error: payload?.error ?? "The upload failed.",
+    code: payload?.code, correlationId: payload?.correlationId,
+  };
+  return { ok: true, value: payload as T };
+}
+
 /**
  * A stable key for one submission attempt, so a double-click or a retry after a
  * dropped response cannot create two requests. Generated once per form, not per

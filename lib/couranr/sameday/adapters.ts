@@ -175,6 +175,7 @@ export type ConsumerRequestReading = {
   totalCents: number | null;
   lineItems: QuoteLineItem[];
   paymentState: string | null;
+  driver?: { name: string; portraitUrl: string | null } | null;
   /** The sender is told the recipient was notified, never given their token. */
   recipientNotifiedAt?: string;
   recipientNotifiedTo?: string;
@@ -202,6 +203,11 @@ export type SameDayAdapters = {
   recoverSenderAccess?(token: string): Promise<boolean>;
   openDeliveryHelp?(): Promise<string | null>;
   requestCancellationReview?(note: string, idempotencyKey: string): Promise<boolean>;
+  driverFeedback?(body?: Record<string, unknown>): Promise<{
+    feedback?: import("@/lib/couranr/driver/feedbackTypes").FeedbackView;
+    tip?: { clientSecret: string | null; state: string; amountCents: number };
+    error?: string;
+  } | null>;
   /* ADDITIVE, live-only (final closure §5): re-price the session's OWN bound
      request from its STORED canonical facts — the resume path's honest answer
      to a QVL-expired quote, since a reloaded page has no form state to

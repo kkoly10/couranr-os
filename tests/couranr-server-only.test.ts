@@ -153,6 +153,11 @@ describe("server-only modules are unreachable from client code", () => {
       // The service-role client and every driver transition. It also mints the
       // raw PIN, which exists in exactly one response and nowhere else.
       "lib/couranr/driver/commands.ts",
+      // Delivered-only feedback and tips hold service-role audience checks and
+      // the company Stripe secret. feedbackRoutes is the shared server route
+      // adapter; neither may enter a customer bundle.
+      "lib/couranr/driver/feedback.ts",
+      "lib/couranr/driver/feedbackRoutes.ts",
       // The single accessor for that secret. There is no fallback in it, so a
       // client import would not "degrade" — it would ship the key itself.
       "lib/couranr/driver/handoffSecret.ts",
@@ -166,12 +171,18 @@ describe("server-only modules are unreachable from client code", () => {
       // Builds canonical proof object paths and holds the bucket name. Paths
       // are the part of a private object that leaks furthest.
       "lib/couranr/driver/proofPaths.ts",
+      // Reads and writes the private portrait bucket and approves the only
+      // public identity snapshot a customer is allowed to see.
+      "lib/couranr/driver/publicProfile.ts",
       // Owns the consumer notification lifecycle: the service-role client, the
       // recipient tracking claim/receipt trio, and the one instant a RAW
       // tracking token exists in plaintext. A bundle reaching it would ship the
       // code that mints a recipient's capability.
       "lib/couranr/email/businessLifecycle.ts",
       "lib/couranr/email/consumerLifecycle.ts",
+      // Cross-audience dispatch notifications mint sender access and read the
+      // assignment snapshot; only the pure template is client-safe.
+      "lib/couranr/email/driverDispatchLifecycle.ts",
       // The one minter of a merchant send address. Holds the service-role
       // client and reads auth.users through the admin API, so it sees every
       // member's email — exactly the projection a browser bundle must never
@@ -322,6 +333,7 @@ describe("canonical server routes do not import the browser client", () => {
   it("covers every canonical route", () => {
     expect(canonical.map(rel).sort()).toEqual([
       "app/api/couranr/consumer/cancellation-review/route.ts",
+      "app/api/couranr/consumer/driver-feedback/route.ts",
       "app/api/couranr/consumer/estimate/route.ts",
       "app/api/couranr/consumer/help-link/route.ts",
       "app/api/couranr/consumer/interpret/route.ts",
@@ -341,6 +353,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/conversations/[id]/route.ts",
       "app/api/couranr/conversations/route.ts",
       "app/api/couranr/delivery-requests/[id]/authorize-payment/route.ts",
+      "app/api/couranr/delivery-requests/[id]/driver-feedback/route.ts",
       "app/api/couranr/delivery-requests/[id]/estimate/route.ts",
       "app/api/couranr/delivery-requests/[id]/fulfillment/route.ts",
       "app/api/couranr/delivery-requests/[id]/payment-link/route.ts",
@@ -352,6 +365,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/delivery-requests/[id]/tracking-link/route.ts",
       "app/api/couranr/delivery-requests/[id]/validate-hosted/route.ts",
       "app/api/couranr/delivery-requests/route.ts",
+      "app/api/couranr/driver-portrait/[publicId]/route.ts",
       "app/api/couranr/driver/assignment/route.ts",
       "app/api/couranr/driver/availability/route.ts",
       "app/api/couranr/driver/deliveries/[id]/arrive-at-dropoff/route.ts",
@@ -436,6 +450,8 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/operations/delivery-requests/[id]/submit/route.ts",
       "app/api/couranr/operations/delivery-requests/route.ts",
       "app/api/couranr/operations/discrepancies/[id]/safe-to-continue/route.ts",
+      "app/api/couranr/operations/driver-feedback/route.ts",
+      "app/api/couranr/operations/drivers/[id]/portrait/route.ts",
       "app/api/couranr/operations/drivers/route.ts",
       "app/api/couranr/operations/inbox/route.ts",
       "app/api/couranr/operations/incidents/[id]/route.ts",
@@ -456,6 +472,7 @@ describe("canonical server routes do not import the browser client", () => {
       "app/api/couranr/pay/[token]/route.ts",
       "app/api/couranr/stripe/webhook/route.ts",
       "app/api/couranr/track/[token]/adult-attestation/route.ts",
+      "app/api/couranr/track/[token]/driver-feedback/route.ts",
       "app/api/couranr/track/[token]/dropoff-code/route.ts",
       "app/api/couranr/track/[token]/help-link/route.ts",
       "app/api/couranr/track/[token]/proof/[proofId]/url/route.ts",
@@ -506,6 +523,10 @@ describe("canonical server routes do not import the browser client", () => {
      */
     [
       "app/api/couranr/consumer/estimate/route.ts",
+      { shape: /redeemGuestSessionToken\(/, redeem: /redeemGuestSessionToken\(/ },
+    ],
+    [
+      "app/api/couranr/consumer/driver-feedback/route.ts",
       { shape: /redeemGuestSessionToken\(/, redeem: /redeemGuestSessionToken\(/ },
     ],
     [
@@ -588,6 +609,10 @@ describe("canonical server routes do not import the browser client", () => {
       { shape: /isWellFormedTrackingToken\(/, redeem: /loadTrackingView\(/ },
     ],
     [
+      "app/api/couranr/track/[token]/driver-feedback/route.ts",
+      { shape: /isWellFormedTrackingToken\(/, redeem: /redeemTrackingLink\(/ },
+    ],
+    [
       "app/api/couranr/track/[token]/adult-attestation/route.ts",
       { shape: /isWellFormedTrackingToken\(/, redeem: /attestRecipientAdult\(/ },
     ],
@@ -625,6 +650,12 @@ describe("canonical server routes do not import the browser client", () => {
       // public authorization class. It may only append a reviewed help message.
       "app/api/couranr/help/[token]/resolution-request/route.ts",
       { shape: /isWellFormedHelpToken\(/, redeem: /redeemHelpToken\(/ },
+    ],
+    [
+      // Opaque, revocable portrait reference for mail image proxies. It
+      // carries only approved public identity bytes, never a storage path.
+      "app/api/couranr/driver-portrait/[publicId]/route.ts",
+      { shape: /isWellFormedPortraitPublicId\(/, redeem: /redeemDriverPortrait\(/ },
     ],
   ]);
   const SIGNATURE_AUTHORIZED = new Set(["app/api/couranr/stripe/webhook/route.ts"]);

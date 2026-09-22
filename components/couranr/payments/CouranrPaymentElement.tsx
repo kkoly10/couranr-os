@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { loadStripe, type Stripe } from "@stripe/stripe-js";
+import { loadStripe, type Stripe, type StripeElements } from "@stripe/stripe-js";
 import {
   Elements,
   PaymentElement,
@@ -42,11 +42,26 @@ const AUTHORIZE_COPY =
  * identity changes.
  */
 let stripePromise: Promise<Stripe | null> | null = null;
-function getStripePromise(): Promise<Stripe | null> | null {
+export function getStripePromise(): Promise<Stripe | null> | null {
   const key = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
   if (!key || !/^pk_(?:live|test)_/.test(key)) return null;
   if (!stripePromise) stripePromise = loadStripe(key);
   return stripePromise;
+}
+
+/** The sole browser call into Stripe confirmation. Delivery authorization and
+ * voluntary tips pass different intents and server reconciliation callbacks,
+ * but share the same redirect-safe SDK operation. */
+export function confirmCouranrPayment(
+  stripe: Stripe,
+  elements: StripeElements,
+  returnUrl: string,
+) {
+  return stripe.confirmPayment({
+    elements,
+    confirmParams: { return_url: returnUrl },
+    redirect: "if_required",
+  });
 }
 
 /** What the server said after it re-read the PaymentIntent. */
@@ -135,12 +150,11 @@ export function PaymentForm({
     setPhase("confirming");
 
     try {
-      const { error: confirmError } = await stripe.confirmPayment({
+      const { error: confirmError } = await confirmCouranrPayment(
+        stripe,
         elements,
-        confirmParams: { return_url: `${window.location.origin}/send` },
-        // Stay on the page when the card allows it; redirect when it does not.
-        redirect: "if_required",
-      });
+        `${window.location.origin}/send`,
+      );
 
       if (confirmError) {
         /*

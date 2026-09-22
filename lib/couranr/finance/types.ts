@@ -1,6 +1,7 @@
 export type LedgerRecentTransaction = {
   id: string;
-  source_kind: "capture" | "refund" | "cancellation_receivable";
+  source_kind: "capture" | "refund" | "cancellation_receivable" |
+    "tip" | "tip_refund" | "tip_dispute_loss";
   request_id: string;
   obligation_id: string | null;
   currency: "usd";

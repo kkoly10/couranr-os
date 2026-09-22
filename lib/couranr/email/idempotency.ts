@@ -9,6 +9,8 @@
 export const CONSUMER_EMAIL_NOTIFICATIONS = [
   "sender_request_received",
   "sender_request_confirmed",
+  "sender_driver_dispatched",
+  "recipient_driver_dispatched",
   "recipient_delivery_invitation",
   "recipient_out_for_delivery",
   "sender_out_for_delivery",
@@ -23,6 +25,8 @@ export type ConsumerEmailNotification=(typeof CONSUMER_EMAIL_NOTIFICATIONS)[numb
 
 export const BUSINESS_EMAIL_NOTIFICATIONS = [
   "merchant_scheduled",
+  "merchant_driver_dispatched",
+  "recipient_driver_dispatched",
   "merchant_payment_receipt",
   "merchant_out_for_delivery",
   "merchant_delivered",

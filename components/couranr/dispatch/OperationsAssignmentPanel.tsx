@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import { Alert, Badge, Button, Card, CardHeader, Cluster, Grid, Stack, Text } from "@/components/couranr/primitives";
 import { Field, Select } from "@/components/couranr/forms";
 import { ErrorState } from "@/components/couranr/states";
@@ -8,6 +9,8 @@ import { isApiFailure, withReference } from "@/components/couranr/requests/clien
 import {
   assignDeliveryFromBrowser,
   fetchDispatchPanel,
+  publishDriverPortraitFromBrowser,
+  revokeDriverPortraitFromBrowser,
   replaceAssignmentFromBrowser,
   type DispatchDriver,
   type DispatchPanelView,
@@ -195,6 +198,12 @@ export function OperationsAssignmentPanel({
           <Detail label="Fulfillment" value={delivery.fulfillment_state.replace(/_/g, " ")} />
         </Grid>
 
+        {(() => {
+          const portraitDriver = drivers.find((d) => d.id === (driverId || assignment?.driver_id));
+          return portraitDriver ? <DriverPortraitPublisher key={portraitDriver.id}
+            driver={portraitDriver} onPublished={load} /> : null;
+        })()}
+
         {assignment ? (
           <Alert tone="success" title="This delivery has a driver">
             {assignedDriver?.display_name ?? "Driver"} with{" "}
@@ -314,6 +323,78 @@ export function OperationsAssignmentPanel({
       </Stack>
     </Card>
   );
+}
+
+/** Operations verifies consent and publishes a re-encoded portrait; no raw URL is accepted. */
+export function DriverPortraitPublisher({ driver, onPublished }: {
+  driver: DispatchDriver; onPublished: () => Promise<void>;
+}) {
+  const [file, setFile] = React.useState<File | null>(null);
+  const [consent, setConsent] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function publish() {
+    if (!file || !consent) return;
+    setBusy(true);
+    setError(null);
+    const result = await publishDriverPortraitFromBrowser({
+      driverId: driver.id, expectedVersion: driver.version, file, consentConfirmed: true,
+    });
+    setBusy(false);
+    if (isApiFailure(result)) { setError(withReference(result)); return; }
+    setFile(null);
+    setConsent(false);
+    await onPublished();
+  }
+
+  async function revoke() {
+    if (!driver.portrait_url || busy) return;
+    if (!window.confirm(
+      "Remove this portrait from customer pages and future emails? Previously cached email copies may remain outside Couranr.",
+    )) return;
+    setBusy(true);
+    setError(null);
+    const result = await revokeDriverPortraitFromBrowser({
+      driverId: driver.id,
+      expectedVersion: driver.version,
+    });
+    setBusy(false);
+    if (isApiFailure(result)) { setError(withReference(result)); return; }
+    setFile(null);
+    setConsent(false);
+    await onPublished();
+  }
+
+  return <div className="cr-driver-note">
+    <Cluster gap={3}>
+      {driver.portrait_url ? <Image src={driver.portrait_url} width={64} height={64}
+        unoptimized alt={`${driver.display_name}'s approved portrait`}
+        style={{ borderRadius: "50%", objectFit: "cover" }} /> : null}
+      <div>
+        <Text strong>{driver.display_name}</Text>
+        <Text size="xs" muted>{driver.portrait_url
+          ? "Approved portrait shown to sender and recipient when dispatched."
+          : "No approved portrait yet. Dispatch emails will use the driver name only."}</Text>
+      </div>
+    </Cluster>
+    <label className="cr-driver-field">
+      <span>Driver portrait (JPEG, PNG, or WebP; 4 MB maximum)</span>
+      <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) =>
+        setFile(e.target.files?.[0] ?? null)} />
+    </label>
+    <label className="cr-driver-field">
+      <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} />
+      I have recorded this driver&apos;s consent to show this portrait to customers and in emails.
+    </label>
+    {error ? <Alert tone="warning" title="Portrait not published">{error}</Alert> : null}
+    <Button variant="secondary" disabled={!file || !consent || busy} loading={busy} onClick={publish}>
+      Publish approved portrait
+    </Button>
+    {driver.portrait_url ? <Button variant="secondary" disabled={busy} onClick={() => void revoke()}>
+      Remove public portrait
+    </Button> : null}
+  </div>;
 }
 
 function Detail({ label, value }: { label: string; value: React.ReactNode }) {
