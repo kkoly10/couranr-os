@@ -36,6 +36,7 @@ import { SAME_DAY_CUTOFF_COPY } from "@/lib/couranr/public/governed";
 import { PickupCredentialDisplay } from "@/components/couranr/dispatch/PickupCredentialDisplay";
 import { CouranrPaymentElement } from "@/components/couranr/payments/CouranrPaymentElement";
 import { formatCents } from "@/lib/couranr/requests/view";
+import { STAGE_LABELS, stageForFulfillmentState } from "@/lib/couranr/tracking/states";
 
 /**
  * PUB-004's `/send` flow — presentation and state only.
@@ -946,7 +947,9 @@ export function SendFlow({
      stale, unavailable or not-yet-requested all block. */
   const quoteProceedable = quotePriced || quoteReview;
 
-  if (!intent) {
+  // A recovered sender capability identifies an existing request even when
+  // the email URL has no ?intent=. Its status must outrank the new-order chooser.
+  if (!intent && !received) {
     return (
       <section className="cr-mkt-section cr-send" aria-labelledby="send-h" data-couranr-send="intent">
         <h1 id="send-h" className="cr-type-statement">
@@ -967,13 +970,18 @@ export function SendFlow({
   }
 
   if (received) {
+    const senderStage = stageForFulfillmentState(deliveryState);
     return (
       <section className="cr-mkt-section cr-send" aria-labelledby="send-h" data-couranr-send="received">
         <h1 id="send-h" className="cr-type-statement">
           {SEND_COPY.received_heading}
         </h1>
         <p className="cr-mkt-editorial__body cr-type-lead">
-          {mode === "live" && confirmed ? "Couranr confirmed your delivery." : SEND_COPY.received_support}
+          {mode === "live" && confirmed
+            ? senderStage
+              ? `Delivery status: ${STAGE_LABELS[senderStage]}.`
+              : "Couranr confirmed your delivery."
+            : SEND_COPY.received_support}
         </p>
         {/* CAP-001 truth: authorized is not charged. Shown only when the
             server says the payment is authorized and review is pending. */}

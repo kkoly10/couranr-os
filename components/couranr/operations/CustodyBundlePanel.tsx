@@ -331,6 +331,9 @@ export function CustodyBundlePanel({ deliveryId }: { deliveryId: string }) {
       />
 
       <Stack gap={6}>
+        <Text size="xs" muted>
+          Locations and accuracy below are reported by the driver&rsquo;s device. They support a review but do not independently prove physical presence or handoff.
+        </Text>
         {/*
           The one thing that must never be silent. A section that failed to read
           is NOT a section with nothing in it, and an investigator deciding a
@@ -414,7 +417,7 @@ export function CustodyBundlePanel({ deliveryId }: { deliveryId: string }) {
               </Fact>
               <Fact label="Recorded at pickup">{when(c.pickup.place?.recordedAt ?? null)}</Fact>
             </Grid>
-            <PlaceLine label="Pickup location" place={c.pickup.place} />
+            <PlaceLine label="Device-reported pickup location" place={c.pickup.place} />
             {c.pickup.observedPackageCount !== null ? (
               <Fact label="Packages the driver counted">
                 {String(c.pickup.observedPackageCount)}
@@ -533,7 +536,7 @@ export function CustodyBundlePanel({ deliveryId }: { deliveryId: string }) {
               </Fact>
               <Fact label="Proof method used">{words(c.dropoff.proofMethodUsed)}</Fact>
             </Grid>
-            <PlaceLine label="Delivery location" place={c.dropoff.place} />
+            <PlaceLine label="Device-reported delivery location" place={c.dropoff.place} />
 
             <Grid columns={2}>
               <Fact label="Recipient adult attestation">
@@ -760,7 +763,7 @@ function PlaceLine({ label, place }: { label: string; place: CustodyPlaceView | 
   return (
     <Text size="xs" muted>
       {label}: {place.latitude.toFixed(5)}, {place.longitude.toFixed(5)}
-      {place.accuracyMeters !== null ? ` (±${Math.round(place.accuracyMeters)} m)` : ""} ·{" "}
+      {place.accuracyMeters !== null ? ` (reported accuracy ±${Math.round(place.accuracyMeters)} m)` : ""} ·{" "}
       {when(place.recordedAt)}
     </Text>
   );

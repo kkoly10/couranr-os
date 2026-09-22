@@ -94,6 +94,25 @@ describe("CUS-002 cancellation and return request", () => {
     expect(policy.policySummary).toContain("delivery-service issue");
   });
 
+  it("describes failed pickup without assuming a Consumer sender is a merchant", () => {
+    const policy = resolutionPolicyForFulfillmentState("at_pickup", "consumer");
+    expect(policy?.available).toBe(true);
+    if (!policy?.available) return;
+    expect(policy.policySummary).toContain("pickup contact");
+    expect(policy.policySummary).not.toContain("merchant is unavailable");
+  });
+
+  it("uses direct-consumer wording without inventing a merchant tenancy", () => {
+    const policy = resolutionPolicyForFulfillmentState("delivered", "consumer");
+    expect(policy?.available).toBe(true);
+    if (!policy?.available) return;
+    expect(policy.policySummary).toContain("If this was a purchase, ask the seller");
+    expect(policy.policySummary).not.toContain("selling business's responsibility");
+    expect(SERVER).toContain('.select("requester_kind")');
+    expect(SERVER).toContain('.eq("id", data.request_id)');
+    expect(PAGE).toContain("person or business that arranged it");
+  });
+
   it("derives stage/action/fee server-side from the redeemed delivery and accepts none from the browser", () => {
     expect(ROUTE).toContain("deliveryId: link.value.deliveryId");
     expect(ROUTE).toContain("tokenId: link.value.tokenId");

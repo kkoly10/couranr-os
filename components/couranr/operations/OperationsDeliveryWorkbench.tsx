@@ -31,6 +31,7 @@ import {
   OPERATIONS_WORKBENCH_LABELS,
   OPERATIONS_WORKBENCH_PHASES,
   operationsWorkbenchState,
+  operationsAssignmentSummary,
   type OperationsWorkbenchState,
 } from "@/lib/couranr/operations/workbench";
 import { formatCents, type DeliveryRequestView } from "@/lib/couranr/requests/view";
@@ -63,7 +64,11 @@ export function OperationsDeliveryWorkbench({
     fulfillmentState: fulfillment?.delivery?.fulfillmentState ?? null,
   });
 
-  const copy = workbenchCopy(work, Boolean(fulfillment?.promotionalCredit));
+  const copy = workbenchCopy(
+    work,
+    Boolean(fulfillment?.promotionalCredit),
+    fulfillment?.delivery?.fulfillmentState ?? null
+  );
   const currentIndex = OPERATIONS_WORKBENCH_PHASES.indexOf(work.phase);
   const amount = fulfillment?.promotionalCredit
     ? fulfillment.promotionalCredit.standardQuoteCents
@@ -113,8 +118,12 @@ export function OperationsDeliveryWorkbench({
             value={(fulfillment?.readinessState ?? request.readinessState).replace(/_/g, " ")}
           />
           <CaseFact
-            label="Driver"
-            value={fulfillment?.delivery?.driverAssigned ? "Assigned" : "Not assigned"}
+            label="Driver assignment"
+            value={operationsAssignmentSummary({
+              canonicalDeliveryExists: Boolean(fulfillment?.delivery),
+              assignmentActive: Boolean(fulfillment?.delivery?.driverAssigned),
+              fulfillmentState: fulfillment?.delivery?.fulfillmentState ?? null,
+            })}
           />
         </Grid>
 
@@ -364,8 +373,21 @@ function CurrentAction({
 
 function workbenchCopy(
   work: OperationsWorkbenchState,
-  credited: boolean
+  credited: boolean,
+  fulfillmentState: string | null
 ): { title: string; description: string } {
+  if (work.phase === "complete" && work.lifecycleStage === "not_actionable") {
+    switch (fulfillmentState) {
+      case "delivered":
+        return { title: "Delivery completed", description: "Review the recorded handoff and final proof." };
+      case "returned":
+        return { title: "Return completed", description: "Review the return custody and settlement record." };
+      case "cancelled":
+        return { title: "Delivery cancelled", description: "Review the cancellation and settlement record." };
+      case "could_not_deliver":
+        return { title: "Delivery could not be completed", description: "Review the exception and custody record." };
+    }
+  }
   switch (work.lifecycleStage) {
     case "pending_review":
       return {

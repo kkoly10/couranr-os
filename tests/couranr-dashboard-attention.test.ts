@@ -106,6 +106,7 @@ describe("fulfillmentToLifecycleInput", () => {
       servicePlanConfirmed: true,
       canonicalDeliveryExists: false,
       assignmentActive: false,
+      fulfillmentState: null,
     });
   });
 
@@ -121,5 +122,16 @@ describe("fulfillmentToLifecycleInput", () => {
     expect(mapped.servicePlanConfirmed).toBe(false);
     expect(mapped.canonicalDeliveryExists).toBe(true);
     expect(mapped.assignmentActive).toBe(true);
+  });
+
+  it("does not ask a merchant to act on a completed physical delivery", () => {
+    const mapped = fulfillmentToLifecycleInput({
+      requestState: "confirmed",
+      readinessState: "ready",
+      payment: { paymentState: "captured" },
+      servicePlan: { planState: "confirmed" },
+      delivery: { driverAssigned: false, fulfillmentState: "delivered" },
+    });
+    expect(dashboardAttention(mapped).stage).toBe("not_actionable");
   });
 });

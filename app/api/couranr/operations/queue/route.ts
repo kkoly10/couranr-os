@@ -42,6 +42,7 @@ export async function GET(req: NextRequest) {
       automationExceptionStage: row.automationException?.exception_stage ?? null,
       canonicalDeliveryExists: row.delivery !== null,
       assignmentActive: Boolean(row.assignment),
+      fulfillmentState: row.delivery?.fulfillment_state ?? null,
     });
 
     return {

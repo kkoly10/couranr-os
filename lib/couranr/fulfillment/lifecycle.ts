@@ -58,7 +58,7 @@ export const LIFECYCLE_STAGES = [
    * folding the two would hide the only thing dispatch changes.
    */
   "driver_assigned",
-  /** Declined, cancelled, closed or not yet submitted. Not queue work. */
+  /** Completed, returned, declined, cancelled or not yet submitted. Not queue work. */
   "not_actionable",
 ] as const;
 export type LifecycleStage = (typeof LIFECYCLE_STAGES)[number];
@@ -93,7 +93,20 @@ export type LifecycleInput = {
   automationExceptionOpen?: boolean;
   automationExceptionStage?: string | null;
   canonicalDeliveryExists: boolean;
+  /** The canonical delivery's physical state, not the assignment's live flag. */
+  fulfillmentState?: string | null;
 };
+
+const TERMINAL_DELIVERY_STATES = new Set([
+  "delivered",
+  "cancelled",
+  "could_not_deliver",
+  "returned",
+]);
+
+export function isTerminalDeliveryState(state: unknown): boolean {
+  return typeof state === "string" && TERMINAL_DELIVERY_STATES.has(state);
+}
 
 /**
  * Most-advanced-first. The order is the point:
@@ -116,6 +129,11 @@ export function lifecycleStage(input: LifecycleInput): LifecycleStage {
   if (input.automationExceptionOpen) return "automation_exception";
 
   if (input.canonicalDeliveryExists) {
+    // A completed assignment is no longer active. Without the physical state,
+    // that fact alone misfiles a delivered order as needing a new driver.
+    if (isTerminalDeliveryState(input.fulfillmentState)) {
+      return "not_actionable";
+    }
     if (input.assignmentActive) return "driver_assigned";
     return input.servicePlanSource === "automatic"
       ? "automatic_scheduled"
@@ -231,7 +249,7 @@ export const LIFECYCLE_STAGE_DESCRIPTIONS: Readonly<Record<LifecycleStage, strin
     "Couranr scheduled this normal-lane delivery automatically. No Operations action is required unless an exception opens.",
   captured_scheduled: "Scheduled and commercially settled. No driver is assigned yet.",
   driver_assigned: "A driver and vehicle are committed to this delivery.",
-  not_actionable: "Closed, declined or cancelled.",
+  not_actionable: "Completed, returned, closed, declined or cancelled.",
 };
 
 /**

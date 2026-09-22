@@ -192,6 +192,9 @@ describe("the Operations custody panel", () => {
 
     // The sender's own words, and what they said it was worth.
     await screen.findByText("Two sealed bottles in a padded carton");
+    expect(screen.getByText(/do not independently prove physical presence or handoff/)).toBeTruthy();
+    expect(screen.getByText(/Device-reported pickup location:.*reported accuracy ±9 m/)).toBeTruthy();
+    expect(screen.getByText(/Device-reported delivery location:.*reported accuracy ±6 m/)).toBeTruthy();
     expect(screen.getByText("$240.00")).toBeTruthy();
     expect(screen.getByText("protected handoff")).toBeTruthy();
     expect(screen.getByText("couranr-protection-v1-2026-09-01")).toBeTruthy();
