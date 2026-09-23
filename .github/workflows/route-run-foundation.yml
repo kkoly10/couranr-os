@@ -1,0 +1,44 @@
+name: Route Run database acceptance
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'lib/couranr/routeRuns/**'
+      - 'app/api/couranr/merchant/route-runs/**'
+      - 'supabase/migrations/20260923200000_couranr_route_run_draft_foundation.sql'
+      - 'supabase/rollbacks/20260923200000_couranr_route_run_draft_foundation.rollback.sql'
+      - 'e2e/disposable/routeRunFoundation.mjs'
+      - '.github/workflows/route-run-foundation.yml'
+permissions:
+  contents: read
+concurrency:
+  group: route-run-db-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      COURANR_DISPOSABLE_DIR: /tmp/couranr-route-run-db
+      COURANR_DISPOSABLE_PORT: '55438'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Ensure local PostgreSQL binaries
+        run: |
+          PGBIN="$( (find /usr/lib/postgresql -path '*/bin/initdb' -printf '%h\n' 2>/dev/null || true) | sort -V | tail -n 1)"
+          if [ -z "$PGBIN" ]; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql postgresql-contrib
+            PGBIN="$(find /usr/lib/postgresql -path '*/bin/initdb' -printf '%h\n' | sort -V | tail -n 1)"
+          fi
+          test -x "$PGBIN/initdb"
+          echo "COURANR_PGBIN=$PGBIN" >> "$GITHUB_ENV"
+      - name: Replay migrations and test route drafts, permissions, concurrency and rollback
+        run: node e2e/disposable/routeRunFoundation.mjs
