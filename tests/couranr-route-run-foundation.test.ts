@@ -59,13 +59,17 @@ describe("Route aggregate safety contract", () => {
     expect(inspectRouteAdmission(input).blockers).toContain("payload_exceeded");
   });
   it("never turns an unknown child weight into zero", () => {
-    const input = makeAdmission(); input.children[1].payloadUpperBoundMilliLb = null;
+    const base = makeAdmission();
+    const input = { ...base, children: base.children.map((child, i) =>
+      i === 1 ? { ...child, payloadUpperBoundMilliLb: null } : child) };
     const result = inspectRouteAdmission(input);
     expect(result.payloadUpperBoundMilliLb).toBeNull();
     expect(result.blockers).toContain("cargo_unknown");
   });
   it("refuses unsafe arithmetic instead of overflowing", () => {
-    const input = makeAdmission(); input.children[0].payloadUpperBoundMilliLb = Number.MAX_SAFE_INTEGER;
+    const base = makeAdmission();
+    const input = { ...base, children: base.children.map((child, i) =>
+      i === 0 ? { ...child, payloadUpperBoundMilliLb: Number.MAX_SAFE_INTEGER } : child) };
     expect(inspectRouteAdmission(input).payloadUpperBoundMilliLb).toBeNull();
   });
   it("requires an explicit aggregate value policy; no invented ceiling", () => {
@@ -73,13 +77,16 @@ describe("Route aggregate safety contract", () => {
     expect(inspectRouteAdmission(input).blockers).toContain("route_value_policy_unconfigured");
   });
   it("retains both item and aggregate declared-value checks", () => {
-    const input = makeAdmission(); input.children[0].declaredValueCents = 50001;
+    const base = makeAdmission();
+    const input = { ...base, children: base.children.map((child, i) =>
+      i === 0 ? { ...child, declaredValueCents: 50001 } : child) };
     expect(inspectRouteAdmission(input).blockers).toEqual(expect.arrayContaining(["item_value_exceeded", "route_value_exceeded"]));
   });
   it("refuses mixed businesses, payers, pickups, service days and unknown payment", () => {
-    const input = makeAdmission();
-    Object.assign(input.children[0], { businessAccountId: id(90), payerType: "customer",
-      pickupKey: "other", serviceDay: "2026-10-02", fundingState: "unknown", vehicleCompatible: false });
+    const base = makeAdmission();
+    const input: RouteAdmissionInput = { ...base, children: base.children.map((child, i) =>
+      i === 0 ? { ...child, businessAccountId: id(90), payerType: "customer",
+        pickupKey: "other", serviceDay: "2026-10-02", fundingState: "unknown", vehicleCompatible: false } : child) };
     expect(inspectRouteAdmission(input).blockers).toEqual(expect.arrayContaining([
       "foreign_business", "not_merchant_paid", "pickup_mismatch", "wrong_service_day", "funding_not_secured", "vehicle_incompatible",
     ]));

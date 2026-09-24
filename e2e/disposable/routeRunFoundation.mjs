@@ -119,4 +119,12 @@ try {
   check("draft saving never creates deliveries", one("select count(*) from public.couranr_deliveries"), "0");
   check("single-destination doctrine remains intact", one("select count(*) from public.couranr_delivery_requests where additional_stops<>0 or not single_destination_contract"), "0");
   console.log(`Route Run Foundation: ${checks} checks PASS (disposable PostgreSQL; no providers).`);
+} catch (error) {
+  // The disposable cluster is deleted by finally. Preserve its startup
+  // diagnostic before teardown so a runner failure is not confused with SQL.
+  try {
+    const log = readFileSync(resolve(process.env.COURANR_DISPOSABLE_DIR || "/var/lib/postgresql/couranr-disposable", "log/pg.log"), "utf8");
+    console.error(log.slice(-6000));
+  } catch { /* startup may have failed before a log existed */ }
+  throw error;
 } finally { down({ quiet: true }); }

@@ -41,4 +41,10 @@ jobs:
           test -x "$PGBIN/initdb"
           echo "COURANR_PGBIN=$PGBIN" >> "$GITHUB_ENV"
       - name: Replay migrations and test route drafts, permissions, concurrency and rollback
-        run: node e2e/disposable/routeRunFoundation.mjs
+        # up.mjs supports Linux root -> postgres ownership; the runner user
+        # cannot create PostgreSQL's default Unix socket in /var/run/postgresql.
+        run: |
+          sudo env COURANR_PGBIN="$COURANR_PGBIN" \
+            COURANR_DISPOSABLE_DIR="$COURANR_DISPOSABLE_DIR" \
+            COURANR_DISPOSABLE_PORT="$COURANR_DISPOSABLE_PORT" \
+            "$(command -v node)" e2e/disposable/routeRunFoundation.mjs
